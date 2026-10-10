@@ -8,9 +8,35 @@ import {
 } from "../vizLibrary";
 
 describe("VIZ_LIBRARY corpus (#834)", () => {
-  it("is the curated non-default shelf — Prism + Pulse Grid, both GLSL", () => {
-    expect(VIZ_LIBRARY.map((i) => i.name)).toEqual(["Prism", "Pulse Grid"]);
-    for (const item of VIZ_LIBRARY) expect(item.renderer).toBe("glsl");
+  it("is the curated non-default shelf — the two #287 shaders and the four film sketches (#1992)", () => {
+    expect(VIZ_LIBRARY.map((i) => [i.name, i.renderer])).toEqual([
+      ["Prism", "glsl"],
+      ["Pulse Grid", "glsl"],
+      ["Rain Drive", "glsl"],
+      ["Tunnel", "glsl"],
+      ["Robot Guitarist", "p5"],
+      ["Sunset Drive", "p5"],
+    ]);
+  });
+
+  it("ids and names are unique — a name is the `.viz()` token, an id the row key", () => {
+    expect(new Set(VIZ_LIBRARY.map((i) => i.id)).size).toBe(VIZ_LIBRARY.length);
+    expect(new Set(VIZ_LIBRARY.map((i) => i.name)).size).toBe(VIZ_LIBRARY.length);
+  });
+
+  it("each file's language and extension agree with the package's renderer", () => {
+    // A file registers as a named viz by its `language`; a p5 sketch filed as
+    // glsl (or the reverse) would be handed to the wrong compiler.
+    const expected = {
+      glsl: { language: "glsl", ext: ".glsl" },
+      p5: { language: "p5js", ext: ".p5" },
+      hydra: { language: "hydra", ext: ".hydra" },
+    } as const;
+    for (const item of VIZ_LIBRARY) {
+      const primary = item.files.find((f) => f.relPath.startsWith(`${item.name}.`))!;
+      expect(primary.language, item.name).toBe(expected[item.renderer].language);
+      expect(primary.relPath, item.name).toBe(`${item.name}${expected[item.renderer].ext}`);
+    }
   });
 
   it("every package has a primary file whose basename matches its name", () => {
@@ -22,10 +48,12 @@ describe("VIZ_LIBRARY corpus (#834)", () => {
     }
   });
 
-  it("ships real shader source (not an empty stub)", () => {
+  it("ships real source (not an empty stub) with its renderer's entry point", () => {
+    // GLSL: the ShaderToy entry point. p5: the sketch's own draw loop.
+    const entry = { glsl: "mainImage", p5: "function draw()", hydra: ".out(" } as const;
     for (const item of VIZ_LIBRARY) {
       for (const f of item.files) {
-        expect(f.content).toContain("mainImage"); // ShaderToy entry point
+        expect(f.content, item.name).toContain(entry[item.renderer]);
       }
     }
   });
