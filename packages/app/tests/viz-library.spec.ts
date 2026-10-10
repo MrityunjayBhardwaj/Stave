@@ -238,6 +238,42 @@ test.describe('Asset Library — Viz library (#834)', () => {
     expect(await vizFileId(page, 'Pulse Grid')).not.toBeNull()
   })
 
+  test('lists the film sketches, the p5 ones under P5 (#1992)', async ({ page }) => {
+    await boot(page)
+    const panel = await openLibrary(page)
+    await showVizType(page, panel)
+
+    for (const [id, name, group] of [
+      ['rain-drive', 'Rain Drive', 'GLSL'],
+      ['tunnel', 'Tunnel', 'GLSL'],
+      ['robot-guitarist', 'Robot Guitarist', 'P5'],
+      ['sunset-drive', 'Sunset Drive', 'P5'],
+    ]) {
+      const row = panel.locator(`[data-asset-row="viz:${id}"]`)
+      await expect(row, name).toBeVisible()
+      await expect(row).toContainText(name)
+      await expect(row).toContainText(group)
+    }
+  })
+
+  test('adding Sunset Drive (the first p5 package) materialises + is recognised (#1992)', async ({ page }) => {
+    await boot(page)
+    expect(await vizFileId(page, 'Sunset Drive')).toBeNull()
+
+    const panel = await openLibrary(page)
+    await showVizType(page, panel)
+    const sunset = panel.locator('[data-asset-row="viz:sunset-drive"]')
+    await sunset.hover()
+    await sunset.locator('[data-asset-insert]').click()
+
+    await expect(
+      page.getByText('Added Sunset Drive → viz_lib/Sunset Drive/. Use .viz("Sunset Drive").'),
+    ).toBeVisible()
+    // A `.p5` file is recognised as a viz-language file by the same predicate
+    // the named-viz bridge registers on, as the `.glsl` packages are.
+    expect(await vizFileId(page, 'Sunset Drive')).not.toBeNull()
+  })
+
   test('adding the same package twice is idempotent (no duplicate)', async ({ page }) => {
     await boot(page)
     const panel = await openLibrary(page)
