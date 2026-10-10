@@ -44,6 +44,7 @@ function readChord() {
 
 function draw() {
   // drawn for a 1024 x 512 canvas and scaled to fit, so a canvas of any size shows the whole stage
+  if (!(width > 0 && height > 0)) return   // no room yet: a scale of 0 would make the stage endlessly wide
   const K = min(width / 1024, height / 512), W = width / K, H = height / K
   scale(K)
   const kick = sig.kick || 0, treble = sig.treble || 0
