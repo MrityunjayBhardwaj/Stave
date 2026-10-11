@@ -136,14 +136,19 @@ test.describe('Asset Library — Viz library (#834)', () => {
     const panel = await openLibrary(page)
     await showVizType(page, panel)
 
-    const prism = panel.locator('[data-asset-row="viz:prism"]')
-    const pulse = panel.locator('[data-asset-row="viz:pulse-grid"]')
+    // The FIRST TWO cards on the shelf, whichever they are: a row is shared by
+    // neighbours, and which packages are neighbours changes as the shelf grows
+    // (#1996 put Night Drive ahead of Prism, which split Prism and Pulse Grid
+    // across two rows and failed this test without any layout change).
+    const cards = panel.locator('[data-asset-row^="viz:"]')
+    const prism = cards.nth(0)
+    const pulse = cards.nth(1)
     // Aspect-true is a claim about the shader FRAME, not the card: the card box
     // also contains the name + renderer text, and that chrome is a fixed height
     // that does NOT scale with the preview. Measuring the card would compare a
     // ratio polluted by non-scaling chrome — it happens to come out close, which
     // is worse than failing, so measure the thumbnail.
-    const prismThumb = panel.locator('img[data-asset-thumb="viz:prism"]')
+    const prismThumb = panel.locator('img[data-asset-thumb^="viz:"]').nth(0)
     await expect(prism).toBeVisible()
     await expect(pulse).toBeVisible()
     await expect(prismThumb).toBeVisible()
@@ -244,7 +249,7 @@ test.describe('Asset Library — Viz library (#834)', () => {
     await showVizType(page, panel)
 
     for (const [id, name, group] of [
-      ['rain-drive', 'Rain Drive', 'GLSL'],
+      ['night-drive', 'Night Drive', 'GLSL'],
       ['tunnel', 'Tunnel', 'GLSL'],
       ['robot-guitarist', 'Robot Guitarist', 'P5'],
       ['sunset-drive', 'Sunset Drive', 'P5'],

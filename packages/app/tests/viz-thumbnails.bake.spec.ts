@@ -24,7 +24,7 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 const PACKAGES = [
   { id: 'prism', name: 'Prism' },
   { id: 'pulse-grid', name: 'Pulse Grid' },
-  { id: 'rain-drive', name: 'Rain Drive' },
+  { id: 'night-drive', name: 'Night Drive' },
   { id: 'tunnel', name: 'Tunnel' },
   { id: 'robot-guitarist', name: 'Robot Guitarist' },
   { id: 'sunset-drive', name: 'Sunset Drive' },
