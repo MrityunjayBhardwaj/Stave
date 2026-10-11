@@ -141,6 +141,50 @@ s.osc(() => 8 + stave.sig.bass() * 30, 0.1, 0)      // density rides the low ban
   .modulate(s.noise(2), () => stave.sig.mid() * 0.15) // wobble with the mids
   .out(s.o0)`;
 
+/**
+ * A finished song, one file. The voice line is a sung melody transcribed to
+ * notes, so the template is code only — it needs no audio file.
+ */
+export const FULL_SONG_CODE = `// A full song — 48 bars, 96 seconds. C minor, 120 BPM, one cycle = one bar.
+// Piano chords in a pushed rhythm, an offbeat bass that follows them, a flute
+// playing a short stabbed hook, and a sung line over the last eight bars.
+// Ctrl+Enter to play · Ctrl+. to stop
+//
+// The voice line began as a sung recording. It was read a sixteenth at a time
+// and written as notes: 8 bars, 16 sixteenths a bar. \`c4@11\` is a C held for
+// eleven sixteenths, \`~@3\` is three of silence. The recording is not used.
+//
+// Each track at the bottom is laid out with arrange([bars, part], ...).
+setcps(120/240)
+
+// drums
+const loop  = s("bd*2, hh*4").gain(0.4)
+const four  = s("bd*4, hh*8").gain(0.4)
+const fast  = s("bd*4, hh*16").gain(0.4)
+const beat  = s("bd*4, hh*16, ~ clap ~ clap, [~ oh]*4").gain(0.4)
+const thin  = s("sd*4 sd*8 sd*16 sd*16").gain("0.07 0.09 0.13 0.18")
+
+// bass
+const hollow = note("c2").s("sine").gain(0.35)
+const sub    = note("<ab1 bb1 c2 g1>").struct("~ x ~ x ~ x ~ x").s("sawtooth").lpf(800)
+const subUp  = note("<ab1 bb1 c2 a#1>").struct("~ x ~ x ~ x ~ x").s("sawtooth").lpf("<800 800 2500 2500>")
+const subOn  = note("<ab1 bb1 c2 a#1>").struct("~ x ~ x ~ x ~ x").s("sawtooth").lpf(2500).room(0.4)
+
+// chords, lead
+const chords = note("<[ab3,c4,eb4,g4] [bb3,d4,f4] [c4,eb4,g4,bb4] [g3,bb3,eb4]>").struct("x ~ ~ x ~ ~ x ~").s("piano").room(0.6).gain(0.6)
+const lead   = note("<[c5 c5 ~ eb5 ~ c5 g5 ~] [f5 f5 ~ eb5 ~ d5 bb4 ~]>").s("gm_flute").clip(0.5).delay(0.3).room(0.3).gain(1.2)
+
+// voice
+const melody = note("c4@11 ~@3 d4@2  eb4@2 d4@4 c4@2 bb3@5 ~@3  c4@9 ~@4 eb4@3  eb4@2 f4@4 eb4@2 d4@4 c4 bb3@3  c4@7 ~@4 d4@2 eb4@3  d4@3 c4@8 d4@3 eb4@12 f4@3 g4@7 ~@12").slow(8).s("gm_voice_oohs").room(0.4)
+
+drums: arrange([10, loop], [2, silence], [5, loop], [3, four], [3, fast], [12, beat], [1, thin], [8, beat], [4, loop])
+bass:  arrange([10, silence], [2, hollow], [12, sub], [4, subUp], [16, subOn], [4, silence])
+keys:  arrange([28, silence], [8, chords], [12, chords])
+lead:  arrange([30, silence], [5, lead], [1, silence], [8, lead], [4, silence])
+voice: arrange([40, silence], [8, melody])
+
+all(x => x.postgain(0.8))`;
+
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface TemplateFile {
@@ -249,6 +293,17 @@ function makeStrudelOnlyFiles(): TemplateFile[] {
   ];
 }
 
+function makeFullSongFiles(): TemplateFile[] {
+  return [
+    {
+      id: "song.strudel",
+      path: "song.strudel",
+      content: FULL_SONG_CODE,
+      language: "strudel",
+    },
+  ];
+}
+
 function makeHydraOnlyFiles(): TemplateFile[] {
   const hydraId = hydraPresetId();
   return [
@@ -289,6 +344,14 @@ export const TEMPLATES: ProjectTemplate[] = [
     icon: "🎵",
     files: [],
   },
+  {
+    id: "song",
+    name: "Full Song",
+    description:
+      "A finished 48-bar song: drums, bass, keys, a flute hook and a sung line written as notes.",
+    icon: "🎼",
+    files: [],
+  },
   // Sonic Pi template hidden in this build — engine not vendored yet (#171).
   {
     id: "hydra",
@@ -312,6 +375,8 @@ export function getTemplateFiles(templateId: string): TemplateFile[] {
       return makeStarterFiles();
     case "strudel":
       return makeStrudelOnlyFiles();
+    case "song":
+      return makeFullSongFiles();
     case "sonicpi":
       return makeSonicPiOnlyFiles();
     case "hydra":
