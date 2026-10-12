@@ -88,10 +88,8 @@ const SOURCE_LABELS: Record<AssetSource, string> = {
 };
 
 export function AssetLibraryPanel({
-  onClose,
   initialType,
 }: {
-  onClose?: () => void;
   /**
    * #1787 — the type chip to open on, when present (the storage notice opens
    * the Library on your own sounds, sizes shown). Otherwise the first type.
@@ -233,16 +231,6 @@ export function AssetLibraryPanel({
               while recording needs a microphone and a permission. */}
           <AddAudioButton busy={audio.busy} onFiles={onFiles} />
           <RecordTakeButton />
-          {onClose && (
-            <button
-              style={styles.headerClose}
-              title="Close"
-              aria-label="Close Library"
-              onClick={onClose}
-            >
-              <Icon name="chevron-left" size="14px" />
-            </button>
-          )}
         </div>
       </div>
 
@@ -814,15 +802,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 6,
-  },
-  headerClose: {
-    background: "none",
-    border: "none",
-    color: "var(--text-icon-muted)",
-    cursor: "pointer",
-    padding: 2,
-    display: "flex",
-    alignItems: "center",
   },
   controls: {
     padding: "10px 12px",

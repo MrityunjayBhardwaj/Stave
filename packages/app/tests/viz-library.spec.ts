@@ -61,8 +61,8 @@ async function setVizPreviewHeightToMin(page: Page): Promise<void> {
   await slider.waitFor({ timeout: 5000 })
   await slider.focus()
   await page.keyboard.press('Home')
-  // Scoped + exact: the Library panel's own close is labelled "Close Library",
-  // which an unscoped substring match on 'Close' would also hit. Same trap as the
+  // Scoped + exact: any other control whose label contains "Close" would also
+  // be hit by an unscoped substring match on 'Close'. Same trap as the
   // File button above — the accessible name is a substring match, not an id.
   await page
     .getByTestId('settings-shell')
