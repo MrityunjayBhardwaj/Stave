@@ -24,6 +24,7 @@ import {
   updateVizConfig,
   type VizQualityLevel,
 } from '../visualizers/vizConfig'
+import { TOUCH_POINTER_QUERY } from '../visualEdit/panels/usePhone'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MonacoEditor = any
@@ -179,6 +180,23 @@ export function applyEvalSourceTransform(fileId: string, raw: string): string {
 }
 
 /**
+ * Does revealing a place in the code also give the editor keyboard focus (#2017)?
+ *
+ * With a mouse, yes: the editor hides its caret while blurred, so focus is what
+ * makes the jump visible. On a touch device, no: focusing the editor's text field
+ * is what summons the on-screen keyboard, and a reveal is a SELECTION made in the
+ * Timeline, the Mixer or a list — nobody asked to type. There the cursor still
+ * moves and the code still scrolls; the keyboard opens when the code itself is
+ * tapped.
+ *
+ * Every reveal asks this one function, so the three of them cannot drift apart.
+ */
+export function revealTakesFocus(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true
+  return !window.matchMedia(TOUCH_POINTER_QUERY).matches
+}
+
+/**
  * Reveal the given line in the editor for `fileId` and set the cursor
  * at column 1. Returns true if the editor was found. Line numbers are
  * 1-based.
@@ -189,7 +207,7 @@ export function revealLineInFile(fileId: string, line: number): boolean {
   try {
     editor.revealLineInCenter?.(line)
     editor.setPosition?.({ lineNumber: line, column: 1 })
-    editor.focus?.()
+    if (revealTakesFocus()) editor.focus?.()
     return true
   } catch {
     return false
@@ -213,7 +231,7 @@ export function revealOffsetInFile(fileId: string, offset: number): boolean {
     if (!pos) return false
     editor.revealLineInCenter?.(pos.lineNumber)
     editor.setPosition?.(pos)
-    editor.focus?.()
+    if (revealTakesFocus()) editor.focus?.()
     return true
   } catch {
     return false

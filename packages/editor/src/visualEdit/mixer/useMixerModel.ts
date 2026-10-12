@@ -29,6 +29,7 @@ import {
   type MasterGainState,
 } from '../../codeView'
 import { useActiveWriter } from '../useActiveWriter'
+import { revealTakesFocus } from '../../workspace/editorRegistry'
 
 export interface MixerModel {
   /** one strip per top-level statement, in source order (re-derived on edits) */
@@ -201,10 +202,14 @@ export function jumpCursorToTrack(
     const pos = model.getPositionAt?.(trackOffset)
     if (!pos) return
     const changed = lastJumpRef.current !== trackOffset
-    if (changed || !editor.hasTextFocus?.()) {
+    // #2017 — on a touch device a jump never focuses the editor (that would summon
+    // the keyboard over the strip being dragged), so "the editor isn't focused" is
+    // always true there and cannot be the reason to jump again: only a new target is.
+    const focuses = revealTakesFocus()
+    if (changed || (focuses && !editor.hasTextFocus?.())) {
       editor.setPosition?.(pos)
       editor.revealLineInCenter?.(pos.lineNumber)
-      editor.focus?.()
+      if (focuses) editor.focus?.()
     }
     lastJumpRef.current = trackOffset
   } catch {
