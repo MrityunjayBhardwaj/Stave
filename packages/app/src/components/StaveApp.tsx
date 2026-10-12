@@ -1919,7 +1919,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           <AssetLibraryPanel
             key={libraryOpenedFor}
             initialType={libraryOpenedFor > 0 ? "sample" : undefined}
-            onClose={() => setActivePanelId(null)}
           />
         )}
         {id === "console" && <ConsolePanel />}
