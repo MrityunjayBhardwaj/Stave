@@ -946,6 +946,33 @@ test.describe('Mixer master strip — mute (#800), and no master pan (#1719)', (
     await expect(drawer.locator('[data-mixer-master-pan-control]')).toHaveCount(0)
   })
 
+  // #2027 — taking the pan control off the master must not take its ROW: without
+  // it the master card is one row shorter than a channel card and its meter sits
+  // that much higher, so the meters share no baseline. Both cards are measured in
+  // the same page, so the figures are compared with each other and never with a
+  // number written here.
+  test('the master card is as tall as a channel card, and their meters are level', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, 'd1: s("bd")\nd2: s("hh").gain(0.4)')
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+
+    const box = async (selector: string) => {
+      const b = await drawer.locator(selector).first().boundingBox()
+      if (!b) throw new Error(`not drawn: ${selector}`)
+      return { top: Math.round(b.y), bottom: Math.round(b.y + b.height), height: Math.round(b.height) }
+    }
+    const channel = await box('[data-mixer-strip]')
+    const master = await box('[data-mixer-master-strip]')
+    const channelMeter = await box('[data-mixer-strip-meter]')
+    const masterMeter = await box('[data-mixer-master-meter]')
+
+    // a card that did not lay out measures 0 and would equal another 0
+    expect(channel.height).toBeGreaterThan(100)
+    expect(master).toEqual(channel)
+    expect(masterMeter).toEqual(channelMeter)
+  })
+
   test("a document's own master pan line survives a master fader drag", async ({ page }) => {
     await boot(page)
     const original = 'd1: s("bd*4").pan(0.2)\nall(x => x.pan(0.65))'

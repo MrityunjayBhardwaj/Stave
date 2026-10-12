@@ -43425,6 +43425,15 @@ function MasterStrip({
             )
           ] })
         ] }),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            "data-mixer-master-pan-place": true,
+            "aria-hidden": true,
+            style: { display: "flex", fontSize: 10, visibility: "hidden", userSelect: "none" },
+            children: /* @__PURE__ */ jsxRuntime.jsx("span", { children: "pan" })
+          }
+        ),
         /* @__PURE__ */ jsxRuntime.jsxs(
           "div",
           {

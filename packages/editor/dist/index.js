@@ -43399,6 +43399,15 @@ function MasterStrip({
             )
           ] })
         ] }),
+        /* @__PURE__ */ jsx(
+          "div",
+          {
+            "data-mixer-master-pan-place": true,
+            "aria-hidden": true,
+            style: { display: "flex", fontSize: 10, visibility: "hidden", userSelect: "none" },
+            children: /* @__PURE__ */ jsx("span", { children: "pan" })
+          }
+        ),
         /* @__PURE__ */ jsxs(
           "div",
           {
