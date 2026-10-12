@@ -1,5 +1,21 @@
-import { describe, it, expect } from "vitest";
-import { TEMPLATES, getTemplateFiles, FULL_SONG_CODE } from "../templates";
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  PITCHWHEEL_P5_CODE,
+  SPIRAL_P5_CODE,
+  bundledPresetId,
+  workspaceFileIdForPreset,
+  createWorkspaceFile,
+  getFile,
+  deleteWorkspaceFile,
+} from "@stave/editor";
+import {
+  PITCHWHEEL_P5_UNTIL_2021,
+  PITCHWHEEL_P5_UNTIL_1929,
+  PITCHWHEEL_P5_FIRST,
+  SPIRAL_P5_UNTIL_2021,
+  SPIRAL_P5_FIRST,
+} from "../retiredPresetSources";
+import { TEMPLATES, getTemplateFiles, FULL_SONG_CODE, seedMissingPresetFiles } from "../templates";
 
 describe("project templates", () => {
   // getTemplateFiles answers an id it does not know with the Starter files.
@@ -28,5 +44,53 @@ describe("project templates", () => {
       const bars = [...sections.matchAll(/\[(\d+),/g)].reduce((sum, m) => sum + Number(m[1]), 0);
       expect(bars, name).toBe(48);
     }
+  });
+});
+
+/**
+ * #2021 — a project keeps its own copy of each bundled sketch, so a fix to the
+ * bundled source reaches an existing project only if its copy is replaced. An
+ * unedited copy is; an edited one is somebody's work and is not.
+ */
+describe("bundled sketches in an existing project (#2021)", () => {
+  // name, the sketch as bundled now, the sketch as it shipped before
+  const cases = [
+    ["pitchwheel", PITCHWHEEL_P5_CODE, PITCHWHEEL_P5_UNTIL_2021],
+    ["pitchwheel", PITCHWHEEL_P5_CODE, PITCHWHEEL_P5_UNTIL_1929],
+    ["pitchwheel", PITCHWHEEL_P5_CODE, PITCHWHEEL_P5_FIRST],
+    ["spiral", SPIRAL_P5_CODE, SPIRAL_P5_UNTIL_2021],
+    ["spiral", SPIRAL_P5_CODE, SPIRAL_P5_FIRST],
+  ] as const;
+  const idOf = (name: string) => workspaceFileIdForPreset(bundledPresetId(name, "p5"));
+  // each case starts with neither sketch in the project
+  beforeEach(() => {
+    for (const [name] of cases) deleteWorkspaceFile(idOf(name));
+  });
+
+  it("the records are five different old sketches", () => {
+    expect(new Set(cases.map((c) => c[2])).size).toBe(5);
+  });
+
+  it.each(cases)("%s: an unedited old copy is brought up to date", (name, current, old) => {
+    // controls: the record really is the old sketch, and really differs from the new
+    expect(old).toContain("createCanvas(300, 200)");
+    expect(current).not.toContain("createCanvas(300, 200)");
+    createWorkspaceFile(idOf(name), `preset/viz/${name}.p5`, old, "p5js");
+    seedMissingPresetFiles();
+    expect(getFile(idOf(name))?.content).toBe(current);
+  });
+
+  it.each(cases)("%s: an edited copy is left exactly as its owner wrote it", (name, _current, old) => {
+    const edited = old + "\n// mine";
+    createWorkspaceFile(idOf(name), `preset/viz/${name}.p5`, edited, "p5js");
+    seedMissingPresetFiles();
+    expect(getFile(idOf(name))?.content).toBe(edited);
+  });
+
+  it("a current copy is not rewritten, and a missing one is seeded current", () => {
+    createWorkspaceFile(idOf("pitchwheel"), "preset/viz/pitchwheel.p5", PITCHWHEEL_P5_CODE, "p5js");
+    seedMissingPresetFiles();
+    expect(getFile(idOf("pitchwheel"))?.content).toBe(PITCHWHEEL_P5_CODE);
+    expect(getFile(idOf("spiral"))?.content).toBe(SPIRAL_P5_CODE);
   });
 });

@@ -8,6 +8,7 @@
 
 import {
   seedWorkspaceFile,
+  setContent,
   bundledPresetId,
   workspaceFileIdForPreset,
   isVizLanguage,
@@ -26,6 +27,13 @@ import {
   SIGNALS_SPECTRUM_P5_CODE,
   SIGNALS_BACKDROP_P5_CODE,
 } from "@stave/editor";
+import {
+  PITCHWHEEL_P5_UNTIL_2021,
+  PITCHWHEEL_P5_UNTIL_1929,
+  PITCHWHEEL_P5_FIRST,
+  SPIRAL_P5_UNTIL_2021,
+  SPIRAL_P5_FIRST,
+} from "./retiredPresetSources";
 
 // ── Default code snippets ────────────────────────────────────────────
 
@@ -400,9 +408,17 @@ export function seedProjectFromTemplate(templateId: string): void {
   }
 }
 
+/** The fixed sketch each retired source became (#2021) — see retiredPresetSources.ts. */
+const RETIRED_PRESET_SOURCES: ReadonlyMap<string, readonly string[]> = new Map([
+  [PITCHWHEEL_P5_CODE, [PITCHWHEEL_P5_UNTIL_2021, PITCHWHEEL_P5_UNTIL_1929, PITCHWHEEL_P5_FIRST]],
+  [SPIRAL_P5_CODE, [SPIRAL_P5_UNTIL_2021, SPIRAL_P5_FIRST]],
+]);
+
 /**
- * Seed any missing viz preset workspace files into the current project.
- * Idempotent — seedWorkspaceFile skips files that already exist.
+ * Seed any missing viz preset workspace files into the current project, and bring
+ * an UNEDITED copy of a since-fixed sketch up to date (see RETIRED_PRESET_SOURCES).
+ * Idempotent — seedWorkspaceFile skips files that already exist, and a copy that
+ * has been brought up to date no longer matches a retired source.
  * Call on mount so older projects get the new preset files without
  * requiring a project re-creation.
  */
@@ -410,7 +426,10 @@ export function seedMissingPresetFiles(): void {
   const starterFiles = makeStarterFiles();
   for (const f of starterFiles) {
     if (isVizLanguage(f.language)) {
-      seedWorkspaceFile(f.id, f.path, f.content, f.language, f.meta);
+      const file = seedWorkspaceFile(f.id, f.path, f.content, f.language, f.meta);
+      if (RETIRED_PRESET_SOURCES.get(f.content)?.includes(file.content)) {
+        setContent(f.id, f.content);
+      }
     }
   }
 }

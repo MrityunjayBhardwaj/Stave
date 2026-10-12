@@ -24001,7 +24001,7 @@ function draw() {
 }`;
 var SPIRAL_P5_CODE = `// Stave p5 viz \u2014 Spiral
 function setup() {
-  createCanvas(300, 200)
+  createCanvas(stave.width, stave.height)
   pixelDensity(window.devicePixelRatio || 1)
   noFill()
 }
@@ -24041,7 +24041,7 @@ function draw() {
 var PITCHWHEEL_P5_CODE = `// Stave p5 viz \u2014 Pitchwheel
 const ROOT_FREQ = 440 * pow(2, (36 - 69) / 12)
 function setup() {
-  createCanvas(300, 200)
+  createCanvas(stave.width, stave.height)
   pixelDensity(window.devicePixelRatio || 1)
 }
 function freq2angle(f) { return 0.5 - (log(f / ROOT_FREQ) / log(2) % 1) }
@@ -24062,15 +24062,16 @@ function draw() {
   const now = stave.scheduler.now()
   let haps = stave.scheduler.query(now - 0.01, now + 0.01)
   haps = haps.filter(h => h.begin <= now && h.end > now)
-  const sz = min(width, height), r = sz / 2 - 12
+  // u: one unit of the wheel's own size, so marks keep their proportion at any size
+  const sz = min(width, height), u = sz / 200, r = sz / 2 - 12 * u
   const cx = width / 2, cy = height / 2
   noStroke(); fill(117, 186, 255, 64)
   for (let i = 0; i < 12; i++) {
     const a = freq2angle(ROOT_FREQ * pow(2, i / 12))
     const [x, y] = circPos(cx, cy, r, a)
-    circle(x, y, 7)
+    circle(x, y, 7 * u)
   }
-  noFill(); stroke(117, 186, 255, 48); strokeWeight(1)
+  noFill(); stroke(117, 186, 255, 48); strokeWeight(u)
   circle(cx, cy, r * 2)
   for (const h of haps) {
     const freq = hapFreq(h)
@@ -24078,10 +24079,10 @@ function draw() {
     const a = freq2angle(freq)
     const [x, y] = circPos(cx, cy, r, a)
     const c = h.color ?? '#75baff'
-    stroke(c); strokeWeight(2)
+    stroke(c); strokeWeight(2 * u)
     line(cx, cy, x, y)
     fill(c); noStroke()
-    circle(x, y, 12)
+    circle(x, y, 12 * u)
   }
 }`;
 var WORDFALL_P5_CODE = `// Stave p5 viz \u2014 Wordfall (vertical pianoroll with labels)
