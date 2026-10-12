@@ -36,6 +36,7 @@ import { exportProjectAsZip } from "../exportProject";
 import { StorageFullNotice } from "./StorageFullNotice";
 import { buildStemsArchive, stemDisplayName } from "../stemsArchive";
 import { importProjectFromZip } from "../importProject";
+import { recentProjectEntries } from "../recentProjects";
 import {
   buildShareUrl,
   decodeSharePayload,
@@ -1845,6 +1846,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onOpenShortcuts={() => { setSettingsTab("keys"); setSettingsOpen(true); }}
         onNewProject={() => setTemplateModalOpen(true)}
         onOpenProject={() => setSwitcherModalOpen(true)}
+        recentProjects={recentProjectEntries(projects, activeProject.id)}
+        onOpenRecent={doSwitchProject}
         onRenameProject={handleRenameActiveProject}
         onExportProject={() => {
           exportProjectAsZip(activeProject).catch((err) => {
