@@ -62,13 +62,15 @@ function measurementSpecs(): string[] {
 }
 
 /** `TOUCH_SPECS` and the projects that run them, read from the config's source (#2014). */
-function touchProjects(): { pattern: string; projects: string[]; chromiumIgnoresThem: boolean } {
+function touchProjects(): { pattern: string; projects: string[]; uses: number; chromiumIgnoresThem: boolean } {
   const src = fs.readFileSync(path.join(APP, 'playwright.config.ts'), 'utf8')
   const block = /const TOUCH_SPECS = \['\*\*\/([\w.*-]+)'\]/.exec(src)
   expect(block, 'TOUCH_SPECS not found in playwright.config.ts').not.toBeNull()
   return {
     pattern: block![1],
     projects: [...src.matchAll(/\{ name: '([\w-]+)',[^\n]*testMatch: TOUCH_SPECS \}/g)].map((m) => m[1]),
+    // every project that takes the touch specs, however its entry is laid out
+    uses: [...src.matchAll(/testMatch: TOUCH_SPECS/g)].length,
     chromiumIgnoresThem: /name: 'chromium',[\s\S]*?testIgnore: \[[^\]]*\.\.\.TOUCH_SPECS[^\]]*\]/.test(src),
   }
 }
@@ -115,6 +117,9 @@ describe('#1265 — the browser gate cannot narrow quietly', () => {
     const touch = touchProjects()
     expect(touch.pattern).toBe('touch-*.spec.ts')
     expect(touch.projects.length).toBeGreaterThan(0)
+    // the names are read from one-line entries; a project written another way would be
+    // missed by that reading and so never required in the gate script
+    expect(touch.projects.length, 'a touch project is laid out in a way this test cannot read').toBe(touch.uses)
     expect(touch.chromiumIgnoresThem, 'the chromium project must ignore TOUCH_SPECS').toBe(true)
     for (const name of touch.projects) {
       expect(gateScript, `gate:editing:browser does not run the ${name} project`).toContain(`--project=${name} `)
