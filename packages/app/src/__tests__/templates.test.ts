@@ -8,7 +8,13 @@ import {
   getFile,
   deleteWorkspaceFile,
 } from "@stave/editor";
-import { PITCHWHEEL_P5_UNTIL_2021, SPIRAL_P5_UNTIL_2021 } from "../retiredPresetSources";
+import {
+  PITCHWHEEL_P5_UNTIL_2021,
+  PITCHWHEEL_P5_UNTIL_1929,
+  PITCHWHEEL_P5_FIRST,
+  SPIRAL_P5_UNTIL_2021,
+  SPIRAL_P5_FIRST,
+} from "../retiredPresetSources";
 import { TEMPLATES, getTemplateFiles, FULL_SONG_CODE, seedMissingPresetFiles } from "../templates";
 
 describe("project templates", () => {
@@ -50,12 +56,19 @@ describe("bundled sketches in an existing project (#2021)", () => {
   // name, the sketch as bundled now, the sketch as it shipped before
   const cases = [
     ["pitchwheel", PITCHWHEEL_P5_CODE, PITCHWHEEL_P5_UNTIL_2021],
+    ["pitchwheel", PITCHWHEEL_P5_CODE, PITCHWHEEL_P5_UNTIL_1929],
+    ["pitchwheel", PITCHWHEEL_P5_CODE, PITCHWHEEL_P5_FIRST],
     ["spiral", SPIRAL_P5_CODE, SPIRAL_P5_UNTIL_2021],
+    ["spiral", SPIRAL_P5_CODE, SPIRAL_P5_FIRST],
   ] as const;
   const idOf = (name: string) => workspaceFileIdForPreset(bundledPresetId(name, "p5"));
   // each case starts with neither sketch in the project
   beforeEach(() => {
     for (const [name] of cases) deleteWorkspaceFile(idOf(name));
+  });
+
+  it("the records are five different old sketches", () => {
+    expect(new Set(cases.map((c) => c[2])).size).toBe(5);
   });
 
   it.each(cases)("%s: an unedited old copy is brought up to date", (name, current, old) => {

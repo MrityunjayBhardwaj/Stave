@@ -27,7 +27,13 @@ import {
   SIGNALS_SPECTRUM_P5_CODE,
   SIGNALS_BACKDROP_P5_CODE,
 } from "@stave/editor";
-import { PITCHWHEEL_P5_UNTIL_2021, SPIRAL_P5_UNTIL_2021 } from "./retiredPresetSources";
+import {
+  PITCHWHEEL_P5_UNTIL_2021,
+  PITCHWHEEL_P5_UNTIL_1929,
+  PITCHWHEEL_P5_FIRST,
+  SPIRAL_P5_UNTIL_2021,
+  SPIRAL_P5_FIRST,
+} from "./retiredPresetSources";
 
 // ── Default code snippets ────────────────────────────────────────────
 
@@ -404,8 +410,8 @@ export function seedProjectFromTemplate(templateId: string): void {
 
 /** The fixed sketch each retired source became (#2021) — see retiredPresetSources.ts. */
 const RETIRED_PRESET_SOURCES: ReadonlyMap<string, readonly string[]> = new Map([
-  [PITCHWHEEL_P5_CODE, [PITCHWHEEL_P5_UNTIL_2021]],
-  [SPIRAL_P5_CODE, [SPIRAL_P5_UNTIL_2021]],
+  [PITCHWHEEL_P5_CODE, [PITCHWHEEL_P5_UNTIL_2021, PITCHWHEEL_P5_UNTIL_1929, PITCHWHEEL_P5_FIRST]],
+  [SPIRAL_P5_CODE, [SPIRAL_P5_UNTIL_2021, SPIRAL_P5_FIRST]],
 ]);
 
 /**
