@@ -43950,7 +43950,7 @@ function pickInitialActiveTabId(tabs2) {
   return tabs2[0]?.id ?? null;
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
-function BottomPanel() {
+function BottomPanel({ hidden = false } = {}) {
   const [tabs2, setTabs] = React23.useState(
     () => listBottomPanelTabs()
   );
@@ -44029,6 +44029,7 @@ function BottomPanel() {
     [tabs2, activeTabId, focusTab]
   );
   if (tabs2.length === 0) return null;
+  if (hidden) return null;
   const renderHeight = drag.dragging ? drag.value : height;
   return /* @__PURE__ */ jsxs(
     "div",
@@ -44197,6 +44198,39 @@ function BottomPanel() {
   );
 }
 __name(BottomPanel, "BottomPanel");
+
+// src/workspace/vizLanguages.ts
+var VIZ_LANGUAGES = ["p5js", "hydra", "glsl"];
+var LANGUAGE_TO_RENDERER = {
+  p5js: "p5",
+  hydra: "hydra",
+  glsl: "glsl"
+};
+var RENDERER_TO_LANGUAGE = {
+  p5: "p5js",
+  hydra: "hydra",
+  glsl: "glsl"
+};
+function isVizLanguage(lang) {
+  return VIZ_LANGUAGES.includes(lang);
+}
+__name(isVizLanguage, "isVizLanguage");
+function rendererForLanguage(lang) {
+  return isVizLanguage(lang) ? LANGUAGE_TO_RENDERER[lang] : null;
+}
+__name(rendererForLanguage, "rendererForLanguage");
+function languageForRenderer(renderer) {
+  return RENDERER_TO_LANGUAGE[renderer];
+}
+__name(languageForRenderer, "languageForRenderer");
+
+// src/workspace/bottomPanel/hiddenForTab.ts
+function bottomPanelHiddenForTab(tab) {
+  if (!tab) return false;
+  const language = getFile(tab.fileId)?.language;
+  return language != null && isVizLanguage(language);
+}
+__name(bottomPanelHiddenForTab, "bottomPanelHiddenForTab");
 var tabbarScrollStyleInjected = false;
 function ensureTabbarScrollStyle() {
   if (tabbarScrollStyleInjected) return;
@@ -46395,7 +46429,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             ]
           }
         ),
-        /* @__PURE__ */ jsx(BottomPanel, {}),
+        /* @__PURE__ */ jsx(BottomPanel, { hidden: bottomPanelHiddenForTab(activeTab) }),
         tabDragInProgress && dragOverTarget && /* @__PURE__ */ jsx(
           QuadrantGuideOverlay,
           {
@@ -48708,31 +48742,6 @@ function VizDropdown({
   );
 }
 __name(VizDropdown, "VizDropdown");
-
-// src/workspace/vizLanguages.ts
-var VIZ_LANGUAGES = ["p5js", "hydra", "glsl"];
-var LANGUAGE_TO_RENDERER = {
-  p5js: "p5",
-  hydra: "hydra",
-  glsl: "glsl"
-};
-var RENDERER_TO_LANGUAGE = {
-  p5: "p5js",
-  hydra: "hydra",
-  glsl: "glsl"
-};
-function isVizLanguage(lang) {
-  return VIZ_LANGUAGES.includes(lang);
-}
-__name(isVizLanguage, "isVizLanguage");
-function rendererForLanguage(lang) {
-  return isVizLanguage(lang) ? LANGUAGE_TO_RENDERER[lang] : null;
-}
-__name(rendererForLanguage, "rendererForLanguage");
-function languageForRenderer(renderer) {
-  return RENDERER_TO_LANGUAGE[renderer];
-}
-__name(languageForRenderer, "languageForRenderer");
 
 // src/workspace/preview/vizPresetBridge.ts
 function workspaceFileIdForPreset(presetId) {

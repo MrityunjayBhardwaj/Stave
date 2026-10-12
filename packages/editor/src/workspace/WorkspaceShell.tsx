@@ -166,6 +166,7 @@ import {
 } from './groupLayout'
 import { findBuiltinExampleSource } from './builtinExampleSources'
 import { BottomPanel } from './bottomPanel/BottomPanel'
+import { bottomPanelHiddenForTab } from './bottomPanel/hiddenForTab'
 
 /**
  * Exhaustiveness helper used inside the tab dispatch switch. If TypeScript
@@ -3385,7 +3386,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
        * `Timeline` tab via `seedTabs.ts`. PR-B (MusicalTimeline) will
        * replace by re-registering under the same id (idempotent).
        */}
-      <BottomPanel />
+      <BottomPanel hidden={bottomPanelHiddenForTab(activeTab)} />
 
       {/*
        * Guide line overlay — a shell-level element that previews where
