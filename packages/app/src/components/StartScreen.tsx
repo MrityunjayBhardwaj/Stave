@@ -108,7 +108,7 @@ export function StartScreen({
               <img src={INTRO_VIDEO.poster} alt="" style={styles.poster} />
               <div style={styles.heroShade} aria-hidden />
               <button style={styles.play} onClick={watch} data-start-screen="play">
-                <svg aria-hidden width="14" height="16" viewBox="0 0 12 14" fill="currentColor">
+                <svg aria-hidden width="11" height="13" viewBox="0 0 12 14" fill="currentColor">
                   <path d="M0 0l12 7-12 7z" />
                 </svg>
                 Watch the intro
@@ -219,7 +219,7 @@ export function StartScreen({
 // ── Icons ──────────────────────────────────────────────────────────
 
 const icon = {
-  width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
+  width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
   strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
   "aria-hidden": true, style: { flex: "none", color: "var(--text-icon)" } as React.CSSProperties,
 };
@@ -246,7 +246,7 @@ const styles: Record<string, React.CSSProperties> = {
     boxSizing: "border-box" as const,
   },
   card: {
-    width: 620,
+    width: 434,
     maxWidth: "100%",
     maxHeight: "100%",
     background: "var(--bg-elevated)",
@@ -292,37 +292,37 @@ const styles: Record<string, React.CSSProperties> = {
     position: "absolute" as const,
     // At the foot, not the head: the film's opening frame carries its own
     // headline across the top, and at phone width a name up there sits on it.
-    bottom: 26,
-    left: 18,
+    bottom: 20,
+    left: 14,
     fontFamily: "var(--font-mono), ui-monospace, monospace",
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 700,
     letterSpacing: "-0.5px",
     color: "#ffffff",
   },
   version: {
     position: "absolute" as const,
-    bottom: 32,
-    right: 18,
-    fontSize: 12,
+    bottom: 24,
+    right: 14,
+    fontSize: 11,
     color: "rgba(255,255,255,0.85)",
   },
   play: {
     position: "absolute" as const,
     left: "50%",
-    bottom: 18,
+    bottom: 14,
     transform: "translateX(-50%)",
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    height: 44,
-    padding: "0 18px",
-    borderRadius: 22,
+    gap: 8,
+    height: 36,
+    padding: "0 14px",
+    borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.5)",
     background: "rgba(7,7,13,0.72)",
     color: "#ffffff",
     fontFamily: "inherit",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",
   },
@@ -335,7 +335,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "none",
     border: "none",
     color: "#ffffff",
-    fontSize: 24,
+    fontSize: 20,
     cursor: "pointer",
     lineHeight: 1,
     textShadow: "0 1px 4px rgba(0,0,0,0.8)",
@@ -343,17 +343,17 @@ const styles: Record<string, React.CSSProperties> = {
   columns: {
     display: "flex",
     flexWrap: "wrap" as const,
-    gap: "16px 32px",
-    padding: "18px 24px 14px",
+    gap: "12px 20px",
+    padding: "12px 16px 10px",
   },
   column: {
-    flex: "1 1 240px",
+    flex: "1 1 170px",
     minWidth: 0,
   },
   sectionLabel: {
-    margin: "0 0 6px",
-    padding: "0 8px",
-    fontSize: 12,
+    margin: "0 0 4px",
+    padding: "0 6px",
+    fontSize: 11,
     fontWeight: 500,
     color: "var(--text-tertiary)",
   },
@@ -362,20 +362,20 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column" as const,
   },
   listGap: {
-    marginTop: 14,
+    marginTop: 10,
   },
   item: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    minHeight: 30,
-    padding: "4px 8px",
+    gap: 8,
+    minHeight: 26,
+    padding: "3px 6px",
     background: "none",
     border: "none",
     borderRadius: 4,
     color: "var(--text-chrome)",
     fontFamily: "inherit",
-    fontSize: 13,
+    fontSize: 12,
     textAlign: "left" as const,
     textDecoration: "none",
     cursor: "pointer",
@@ -390,7 +390,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   itemMeta: {
     flex: "none",
-    fontSize: 11,
+    fontSize: 10,
     color: "var(--text-tertiary)",
     whiteSpace: "nowrap" as const,
   },
@@ -399,18 +399,18 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: "wrap" as const,
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
-    padding: "10px 24px 12px 32px",
+    gap: 10,
+    padding: "8px 16px 10px 22px",
     borderTop: "1px solid var(--border-subtle)",
-    fontSize: 12,
+    fontSize: 11,
     color: "var(--text-tertiary)",
   },
   checkLabel: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     color: "var(--text-chrome)",
     cursor: "pointer",
-    minHeight: 28,
+    minHeight: 24,
   },
 };
