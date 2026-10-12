@@ -6,7 +6,7 @@ import { TimeSignatureControl } from "./TimeSignatureControl";
 import { useMenubarLcd } from "../state/menubarLcd";
 import type { RecentProjectEntry } from "../recentProjects";
 
-const GITHUB_REPO_URL = "https://github.com/MrityunjayBhardwaj/stave-code";
+export const GITHUB_REPO_URL = "https://github.com/MrityunjayBhardwaj/stave-code";
 
 // Backdrop selection used to live in a menubar bg-indicator + popover here.
 // As of #347 the backdrop is per-tab, set from the pattern bar's "set bg"
@@ -20,6 +20,8 @@ interface MenuBarProps {
   /** #2020 — File → Open Recent: recently opened projects, newest first. */
   recentProjects: readonly RecentProjectEntry[];
   onOpenRecent: (projectId: string) => void;
+  /** #2019 — Help → Start Screen: bring the start screen back. */
+  onOpenStartScreen: () => void;
   onRenameProject: () => void;
   onExportProject: () => void;
   /** #1346 — real-time bounce of the live output to a .wav. */
@@ -67,6 +69,7 @@ export function MenuBar({
   onOpenProject,
   recentProjects,
   onOpenRecent,
+  onOpenStartScreen,
   onRenameProject,
   onExportProject,
   onBounceToWav,
@@ -175,6 +178,8 @@ export function MenuBar({
       </MenuButton>
 
       <MenuButton label="Help" open={openMenu === "help"} onClick={() => setOpenMenu(openMenu === "help" ? null : "help")}>
+        <MenuItem label="Start Screen" onClick={() => clickItem(onOpenStartScreen)} />
+        <MenuDivider />
         <MenuItem
           label="Documentation"
           onClick={() => clickItem(() => window.open("/docs/", "_blank", "noopener,noreferrer"))}

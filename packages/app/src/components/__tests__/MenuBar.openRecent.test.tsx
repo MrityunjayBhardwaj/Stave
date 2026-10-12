@@ -21,6 +21,7 @@ function menu(recentProjects: RecentProjectEntry[], onOpenRecent = vi.fn()) {
       onOpenProject={noop}
       recentProjects={recentProjects}
       onOpenRecent={onOpenRecent}
+      onOpenStartScreen={noop}
       onRenameProject={noop}
       onExportProject={noop}
       onBounceToWav={noop}

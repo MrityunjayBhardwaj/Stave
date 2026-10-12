@@ -31,12 +31,15 @@ import {
   type TrackEnvelopeAccess,
 } from "@stave/editor";
 import { createTrackEnvelopeRelay } from "../audio/trackEnvelopeRelay";
-import { seedProjectFromTemplate } from "../templates";
+import { TEMPLATES, seedProjectFromTemplate } from "../templates";
 import { exportProjectAsZip } from "../exportProject";
 import { StorageFullNotice } from "./StorageFullNotice";
 import { buildStemsArchive, stemDisplayName } from "../stemsArchive";
 import { importProjectFromZip } from "../importProject";
 import { recentProjectEntries } from "../recentProjects";
+import { StartScreen } from "./StartScreen";
+import appPackage from "../../package.json";
+import { readStartConditions, setStartScreenWanted, showsStartScreen, startScreenWanted } from "../startScreen";
 import {
   buildShareUrl,
   decodeSharePayload,
@@ -167,6 +170,9 @@ interface StaveAppProps {
  */
 const SILENT_BOUNCE_TOAST_MS = 20_000;
 
+/** #2019 — the app's own version, shown on the start screen. */
+const APP_VERSION: string = appPackage.version;
+
 function safeFileName(name: string, fallback: string): string {
   return name.replace(/[^a-z0-9_-]+/gi, "_") || fallback;
 }
@@ -226,6 +232,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   }, []);
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  // #2019 — the start screen. Decided ONCE, when the app first mounts (which is
+  // after the last project has loaded): it greets an arrival and never appears
+  // mid-session on its own. A share link has its own question to ask instead.
+  const [startScreenOpen, setStartScreenOpen] = useState(() =>
+    showsStartScreen(readStartConditions(readShareFragment() != null)),
+  );
+  const [startScreenAtStart, setStartScreenAtStart] = useState(startScreenWanted);
   const [switcherModalOpen, setSwitcherModalOpen] = useState(false);
   const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -1848,6 +1861,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onOpenProject={() => setSwitcherModalOpen(true)}
         recentProjects={recentProjectEntries(projects, activeProject.id)}
         onOpenRecent={doSwitchProject}
+        onOpenStartScreen={() => setStartScreenOpen(true)}
         onRenameProject={handleRenameActiveProject}
         onExportProject={() => {
           exportProjectAsZip(activeProject).catch((err) => {
@@ -2077,6 +2091,36 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onClose={() => setBounceOpen(false)}
         onStart={handleBounceStart}
         onStop={handleBounceStop}
+      />
+
+      <StartScreen
+        open={startScreenOpen}
+        version={APP_VERSION}
+        activeProject={activeProject}
+        projects={projects}
+        templates={TEMPLATES}
+        showAtStart={startScreenAtStart}
+        onShowAtStartChange={(show) => {
+          setStartScreenAtStart(show);
+          setStartScreenWanted(show);
+        }}
+        onClose={() => setStartScreenOpen(false)}
+        onOpenProject={(id) => {
+          setStartScreenOpen(false);
+          void doSwitchProject(id);
+        }}
+        onNewFromTemplate={(template) => {
+          setStartScreenOpen(false);
+          void handleCreateProject(template.name, template.id);
+        }}
+        onBrowseProjects={() => {
+          setStartScreenOpen(false);
+          setSwitcherModalOpen(true);
+        }}
+        onOpenArchive={() => {
+          setStartScreenOpen(false);
+          triggerImportPicker();
+        }}
       />
 
       <TemplateModal
