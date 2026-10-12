@@ -35,7 +35,7 @@ const APP = path.resolve(__dirname, '..', '..')
 const TESTS = path.join(APP, 'tests')
 const MANIFEST = path.join(TESTS, 'browser-gate-manifest.json')
 
-type Runs = 'gate' | 'measurement' | 'ungated'
+type Runs = 'gate' | 'measurement' | 'touch' | 'ungated'
 interface Entry {
   runs: Runs
   why: string
@@ -59,6 +59,20 @@ function measurementSpecs(): string[] {
   const block = /const MEASUREMENT_SPECS = \[([\s\S]*?)\]/.exec(src)
   expect(block, 'MEASUREMENT_SPECS not found in playwright.config.ts').not.toBeNull()
   return [...block![1].matchAll(/\*\*\/([\w.-]+\.spec\.ts)/g)].map((m) => m[1]).sort()
+}
+
+/** `TOUCH_SPECS` and the projects that run them, read from the config's source (#2014). */
+function touchProjects(): { pattern: string; projects: string[]; uses: number; chromiumIgnoresThem: boolean } {
+  const src = fs.readFileSync(path.join(APP, 'playwright.config.ts'), 'utf8')
+  const block = /const TOUCH_SPECS = \['\*\*\/([\w.*-]+)'\]/.exec(src)
+  expect(block, 'TOUCH_SPECS not found in playwright.config.ts').not.toBeNull()
+  return {
+    pattern: block![1],
+    projects: [...src.matchAll(/\{ name: '([\w-]+)',[^\n]*testMatch: TOUCH_SPECS \}/g)].map((m) => m[1]),
+    // every project that takes the touch specs, however its entry is laid out
+    uses: [...src.matchAll(/testMatch: TOUCH_SPECS/g)].length,
+    chromiumIgnoresThem: /name: 'chromium',[\s\S]*?testIgnore: \[[^\]]*\.\.\.TOUCH_SPECS[^\]]*\]/.test(src),
+  }
 }
 
 const withRuns = (r: Runs) =>
@@ -94,6 +108,25 @@ describe('#1265 — the browser gate cannot narrow quietly', () => {
     // config routes them to their own serialised project. Read from the config's own
     // source so the two cannot drift into disagreeing.
     expect(withRuns('measurement')).toEqual(measurementSpecs())
+  })
+
+  it('runs the touch specs on every touch project, and on nothing else (#2014)', () => {
+    // A touch spec asserts what a finger does. On the desktop project it would fail (no
+    // coarse pointer), and left out of the gate script it would simply never run — the
+    // same quiet narrowing as a path filter, one project wide.
+    const touch = touchProjects()
+    expect(touch.pattern).toBe('touch-*.spec.ts')
+    expect(touch.projects.length).toBeGreaterThan(0)
+    // the names are read from one-line entries; a project written another way would be
+    // missed by that reading and so never required in the gate script
+    expect(touch.projects.length, 'a touch project is laid out in a way this test cannot read').toBe(touch.uses)
+    expect(touch.chromiumIgnoresThem, 'the chromium project must ignore TOUCH_SPECS').toBe(true)
+    for (const name of touch.projects) {
+      expect(gateScript, `gate:editing:browser does not run the ${name} project`).toContain(`--project=${name} `)
+    }
+    // the file name decides where a spec runs, so the manifest has to agree with it
+    expect(withRuns('touch')).toEqual(onDisk.filter((f) => f.startsWith('touch-')))
+    expect(withRuns('touch').length).toBeGreaterThan(0)
   })
 
   it('leaves nothing ungated without saying so out loud', () => {

@@ -15,7 +15,7 @@
     "gate:editing:editor": "pnpm --filter @stave/editor exec vitest run --reporter=default --reporter=../app/tests/gate-scope-reporter.ts",
     "gate:editing:instruments": "pnpm --filter @stave/app run test:instruments:collect",
     "gate:editing:app": "pnpm --filter @stave/app exec node scripts/vitest-guard.mjs --reporter=default --reporter=../app/tests/gate-scope-reporter.ts",
-    "gate:editing:browser": "pnpm --filter @stave/app exec playwright test --project=chromium --reporter=list,./tests/gate-population-reporter.ts",
+    "gate:editing:browser": "pnpm --filter @stave/app exec playwright test --project=chromium --project=phone --project=phone-sideways --project=tablet --reporter=list,./tests/gate-population-reporter.ts",
     "gate:editing:browser:quick": "pnpm --filter @stave/app exec playwright test tests/sequencer.spec.ts tests/velocity.spec.ts tests/piano-roll.spec.ts tests/visual-edit-tabs.spec.ts tests/surgery-preserves-spelling.spec.ts tests/resolver-opens-a-grid.spec.ts tests/chord-chart-grid.spec.ts tests/counted-but-empty-views.spec.ts tests/sequencer-projection.spec.ts --project=chromium --workers=1 --reporter=list,./tests/gate-population-reporter.ts",
     "population": "pnpm --filter @stave/app run population"
   },
