@@ -25,8 +25,11 @@ test.describe('Pattern tab on a touch device (#1990)', () => {
     const gridBox = await grid.boundingBox()
     expect(panelBox).not.toBeNull()
     expect(gridBox).not.toBeNull()
-    // a real panel, not a collapsed one whose two widths agree at zero
-    expect(panelBox!.width).toBeGreaterThan(100)
+    // a real panel, not a collapsed one whose two widths agree at zero. On a phone it is
+    // the whole screen across (#2000); on a tablet the rail and side panel sit beside it.
+    const screen = await page.evaluate(() => window.innerWidth)
+    if (onTablet) expect(panelBox!.width).toBeGreaterThan(300)
+    else expect(Math.round(panelBox!.width)).toBe(screen)
 
     if (onTablet) {
       await expect(side).toBeVisible()

@@ -48,7 +48,7 @@ const MEASUREMENT_SPECS = [
 
 /**
  * Specs that only mean something under a finger (#2014): `touch-*.spec.ts`. They run on
- * the three touch projects below and are kept out of `chromium`, so the desktop suite
+ * the touch projects below and are kept out of `chromium`, so the desktop suite
  * collects exactly what it did before.
  *
  * What an emulated device IS here: a screen size, a coarse pointer and touch events —
@@ -59,6 +59,13 @@ const MEASUREMENT_SPECS = [
  * round that). Those stay as real-device checks.
  */
 const TOUCH_SPECS = ['**/touch-*.spec.ts']
+/**
+ * The one touch spec that also runs on an iPhone under WebKit: the layout. Safari is
+ * where most phones will meet the app and it lays out differently from Chromium. The
+ * other touch specs lean on things only Chromium was observed to do (the audio
+ * stand-in), so they stay off it rather than fail for the wrong reason.
+ */
+const TOUCH_LAYOUT_SPECS = ['**/touch-shell.spec.ts']
 
 export default defineConfig({
   testDir: './tests',
@@ -100,6 +107,7 @@ export default defineConfig({
     { name: 'phone', use: { ...devices['Pixel 7'] }, testMatch: TOUCH_SPECS },
     { name: 'phone-sideways', use: { ...devices['Pixel 7 landscape'] }, testMatch: TOUCH_SPECS },
     { name: 'tablet', use: { ...devices['Galaxy Tab S4'] }, testMatch: TOUCH_SPECS },
+    { name: 'iphone', use: { ...devices['iPhone 14'] }, testMatch: TOUCH_LAYOUT_SPECS },
     {
       name: 'measurement',
       use: { browserName: 'chromium' },

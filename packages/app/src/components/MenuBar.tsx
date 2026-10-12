@@ -4,48 +4,19 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { TransportLCD } from "./TransportLCD";
 import { TimeSignatureControl } from "./TimeSignatureControl";
 import { useMenubarLcd } from "../state/menubarLcd";
-import type { RecentProjectEntry } from "../recentProjects";
+import { buildMenus, type MenuActions, type MenuEntry } from "./menuModel";
 
-export const GITHUB_REPO_URL = "https://github.com/MrityunjayBhardwaj/stave-code";
+// kept here for the callers that already import it from the menu bar
+export { GITHUB_REPO_URL } from "./menuModel";
 
 // Backdrop selection used to live in a menubar bg-indicator + popover here.
 // As of #347 the backdrop is per-tab, set from the pattern bar's "set bg"
 // dropdown (and VizEditorChrome), so the menubar no longer owns it.
-interface MenuBarProps {
+//
+// What the menus do is `MenuActions` (#2000): the list of items is built in
+// `menuModel`, which the phone's drawer draws as well.
+interface MenuBarProps extends MenuActions {
   projectName: string;
-  onOpenEditorSettings: () => void;
-  onOpenShortcuts: () => void;
-  onNewProject: () => void;
-  onOpenProject: () => void;
-  /** #2020 — File → Open Recent: recently opened projects, newest first. */
-  recentProjects: readonly RecentProjectEntry[];
-  onOpenRecent: (projectId: string) => void;
-  /** #2019 — Help → Start Screen: bring the start screen back. */
-  onOpenStartScreen: () => void;
-  onRenameProject: () => void;
-  onExportProject: () => void;
-  /** #1346 — real-time bounce of the live output to a .wav. */
-  onBounceToWav: () => void;
-  /**
-   * #1356 — whether the active tab HAS a recordable runtime. Read at render,
-   * i.e. when the menu opens, so it reflects the tab in front of the user.
-   *
-   * The palette entry for the same command already gates on this via `when`.
-   * Without it here the two entry points disagreed: the menu let the user open
-   * the modal and choose a length before telling them it could not bounce.
-   */
-  canBounceToWav: () => boolean;
-  onImportProject: () => void;
-  onShareProject: () => void;
-  onVersionHistory: () => void;
-  onToggleSidebar: () => void;
-  sidebarCollapsed: boolean;
-  onToggleZenMode: () => void;
-  zenMode: boolean;
-  onUndo: () => void;
-  onRedo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
   /** Transport LCD data (#857). Fed from the active runtime in StaveApp. */
   isPlaying: boolean;
   /** The song position the playhead reads (#1725), not cycles since Play. */
@@ -63,34 +34,13 @@ type MenuId = "file" | "edit" | "view" | "help" | null;
 
 export function MenuBar({
   projectName: _projectName,
-  onOpenEditorSettings,
-  onOpenShortcuts,
-  onNewProject,
-  onOpenProject,
-  recentProjects,
-  onOpenRecent,
-  onOpenStartScreen,
-  onRenameProject,
-  onExportProject,
-  onBounceToWav,
-  canBounceToWav,
-  onImportProject,
-  onShareProject,
-  onVersionHistory,
-  onToggleSidebar,
-  sidebarCollapsed,
-  onToggleZenMode,
-  zenMode,
-  onUndo,
-  onRedo,
-  canUndo,
-  canRedo,
   isPlaying,
   getSongPosition,
   getCps,
   getAudioHealth,
   evalError,
   onEvalLamp,
+  ...actions
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<MenuId>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -122,73 +72,16 @@ export function MenuBar({
 
   return (
     <div ref={barRef} style={styles.bar}>
-      <MenuButton label="File" open={openMenu === "file"} onClick={() => setOpenMenu(openMenu === "file" ? null : "file")}>
-        <MenuItem label="New Project..." shortcut="⌘N" onClick={() => clickItem(onNewProject)} />
-        <MenuItem label="Open Project..." shortcut="⌘O" onClick={() => clickItem(onOpenProject)} />
-        <MenuSubmenu label="Open Recent">
-          {recentProjects.map((p) => (
-            <MenuItem
-              key={p.id}
-              label={p.name}
-              shortcut={p.current ? "open now" : undefined}
-              onClick={() => clickItem(() => onOpenRecent(p.id))}
-              disabled={p.current}
-            />
-          ))}
-          {recentProjects.every((p) => p.current) && (
-            <MenuItem label="No other projects" onClick={() => undefined} disabled />
-          )}
-        </MenuSubmenu>
-        <MenuDivider />
-        <MenuItem label="Rename Project..." onClick={() => clickItem(onRenameProject)} />
-        <MenuItem label="Version History..." onClick={() => clickItem(onVersionHistory)} />
-        <MenuDivider />
-        <MenuItem label="Import from .zip..." onClick={() => clickItem(onImportProject)} />
-        <MenuItem label="Export as .zip" onClick={() => clickItem(onExportProject)} />
-        <MenuItem
-          label="Bounce to WAV..."
-          onClick={() => clickItem(onBounceToWav)}
-          disabled={!canBounceToWav()}
-        />
-        <MenuDivider />
-        <MenuItem label="Copy Share Link" onClick={() => clickItem(onShareProject)} />
-        <MenuDivider />
-        <MenuItem label="Editor Settings..." onClick={() => clickItem(onOpenEditorSettings)} />
-        <MenuItem label="Keyboard Shortcuts..." onClick={() => clickItem(onOpenShortcuts)} />
-      </MenuButton>
-
-      <MenuButton label="Edit" open={openMenu === "edit"} onClick={() => setOpenMenu(openMenu === "edit" ? null : "edit")}>
-        <MenuItem label="Undo" shortcut="⌘Z" onClick={() => clickItem(onUndo)} disabled={!canUndo} />
-        <MenuItem label="Redo" shortcut="⌘⇧Z" onClick={() => clickItem(onRedo)} disabled={!canRedo} />
-        <MenuDivider />
-        <MenuItem label="Find..." shortcut="⌘F" onClick={() => setOpenMenu(null)} disabled />
-      </MenuButton>
-
-      <MenuButton label="View" open={openMenu === "view"} onClick={() => setOpenMenu(openMenu === "view" ? null : "view")}>
-        <MenuItem
-          label={sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
-          shortcut="⌘B"
-          onClick={() => clickItem(onToggleSidebar)}
-        />
-        <MenuItem
-          label={zenMode ? "Exit Zen Mode" : "Zen Mode (Fullscreen)"}
-          shortcut="⌘K Z"
-          onClick={() => clickItem(onToggleZenMode)}
-        />
-      </MenuButton>
-
-      <MenuButton label="Help" open={openMenu === "help"} onClick={() => setOpenMenu(openMenu === "help" ? null : "help")}>
-        <MenuItem label="Start Screen" onClick={() => clickItem(onOpenStartScreen)} />
-        <MenuDivider />
-        <MenuItem
-          label="Documentation"
-          onClick={() => clickItem(() => window.open("/docs/", "_blank", "noopener,noreferrer"))}
-        />
-        <MenuItem
-          label="GitHub Repository"
-          onClick={() => clickItem(() => window.open(GITHUB_REPO_URL, "_blank", "noopener,noreferrer"))}
-        />
-      </MenuButton>
+      {buildMenus(actions).map((menu) => (
+        <MenuButton
+          key={menu.id}
+          label={menu.label}
+          open={openMenu === menu.id}
+          onClick={() => setOpenMenu(openMenu === menu.id ? null : menu.id)}
+        >
+          <MenuEntries entries={menu.items} run={clickItem} />
+        </MenuButton>
+      ))}
 
       {lcdEnabled ? (
         <div style={styles.centerSlot}>
@@ -214,6 +107,25 @@ export function MenuBar({
 }
 
 // ── Sub-components ────────────────────────────────────────────────
+
+/** A menu's entries, drawn as the dropdown draws them. `run` closes the menu first. */
+function MenuEntries({ entries, run }: { entries: readonly MenuEntry[]; run: (action: () => void) => void }) {
+  return (
+    <>
+      {entries.map((e, i) =>
+        e.kind === "divider" ? (
+          <MenuDivider key={i} />
+        ) : e.kind === "submenu" ? (
+          <MenuSubmenu key={i} label={e.label}>
+            <MenuEntries entries={e.items} run={run} />
+          </MenuSubmenu>
+        ) : (
+          <MenuItem key={i} label={e.label} shortcut={e.shortcut} onClick={() => run(e.run)} disabled={e.disabled} />
+        ),
+      )}
+    </>
+  );
+}
 
 function MenuButton({
   label, open, onClick, children,

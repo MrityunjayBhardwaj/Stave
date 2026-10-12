@@ -19,7 +19,7 @@
  * (`navigator.userActivation.isActive` read true for an event nobody made, observed
  * 2026-10-12), so it is not recorded. Both are real-device checks.
  */
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 import { bootApp } from './_appBoot'
 
 interface ResumeCall {
@@ -69,49 +69,63 @@ async function recordResumeCalls(page: Page): Promise<void> {
 const resumeCalls = (page: Page): Promise<ResumeCall[]> =>
   page.evaluate(() => (window as unknown as { __resumeCalls: ResumeCall[] }).__resumeCalls)
 
+/** Tap `whichPlay` on a freshly booted page and check who asked for audio, and when. */
+async function tapPlayAndCheck(page: Page, whichPlay: (page: Page) => Locator): Promise<void> {
+  await recordResumeCalls(page)
+  await bootApp(page)
+  const play = whichPlay(page)
+  await expect(play).toBeVisible()
+
+  // Nothing has been touched yet, so nothing has asked.
+  expect(await resumeCalls(page)).toEqual([])
+
+  // The engine takes hold of its context part-way through booting, and puts its touch
+  // listener on in the same breath; a Play tapped before that has no context to ask
+  // (the listener is what covers that case, on the next touch). So wait until the
+  // listener answers: a key event with no key in it does nothing in the app, and is
+  // one of the gestures the listener hears.
+  await expect
+    .poll(
+      async () => {
+        await page.evaluate(() => document.dispatchEvent(new Event('keydown')))
+        return (await resumeCalls(page)).length
+      },
+      { timeout: 30_000 },
+    )
+    .toBeGreaterThan(0)
+  const before = (await resumeCalls(page)).length
+  expect((await resumeCalls(page)).every((c) => c.during === 'keydown')).toBe(true)
+
+  await play.tap()
+
+  await expect.poll(async () => (await resumeCalls(page)).some((c) => c.during === 'click'), { timeout: 10_000 }).toBe(true)
+  const calls = (await resumeCalls(page)).slice(before)
+
+  // Play's own ask: during the click, of a context that was not running
+  const fromPlay = calls.filter((c) => c.during === 'click')
+  expect(fromPlay.length).toBeGreaterThan(0)
+  expect(fromPlay[0]).toEqual({ during: 'click', state: 'suspended' })
+
+  // the listener's ask: on the touch itself, which comes before the click
+  const fromTouch = calls.filter((c) => c.during === 'pointerdown' || c.during === 'pointerup' || c.during === 'touchend')
+  expect(fromTouch.length).toBeGreaterThan(0)
+  expect(calls.indexOf(fromTouch[0])).toBeLessThan(calls.indexOf(fromPlay[0]))
+
+  // and the real context under the stand-in is running, so the ask was not refused
+  const states = await page.evaluate(() => (window as unknown as { __realStates: () => string[] }).__realStates())
+  expect(states.length).toBeGreaterThan(0)
+  expect(states.every((s) => s === 'running')).toBe(true)
+}
+
 test.describe('a tap on Play asks for audio inside the tap (#1987)', () => {
   test('Play asks while its own click is being handled, and the touch listener asks before it', async ({ page }) => {
-    await recordResumeCalls(page)
-    await bootApp(page)
+    await tapPlayAndCheck(page, (p) => p.locator('button:has-text("Play")').first())
+  })
 
-    // Nothing has been touched yet, so nothing has asked.
-    expect(await resumeCalls(page)).toEqual([])
-
-    // The engine takes hold of its context part-way through booting, and puts its touch
-    // listener on in the same breath; a Play tapped before that has no context to ask
-    // (the listener is what covers that case, on the next touch). So wait until the
-    // listener answers: a key event with no key in it does nothing in the app, and is
-    // one of the gestures the listener hears.
-    await expect
-      .poll(
-        async () => {
-          await page.evaluate(() => document.dispatchEvent(new Event('keydown')))
-          return (await resumeCalls(page)).length
-        },
-        { timeout: 30_000 },
-      )
-      .toBeGreaterThan(0)
-    const before = (await resumeCalls(page)).length
-    expect((await resumeCalls(page)).every((c) => c.during === 'keydown')).toBe(true)
-
-    await page.locator('button:has-text("Play")').first().tap()
-
-    await expect.poll(async () => (await resumeCalls(page)).some((c) => c.during === 'click'), { timeout: 10_000 }).toBe(true)
-    const calls = (await resumeCalls(page)).slice(before)
-
-    // Play's own ask: during the click, of a context that was not running
-    const fromPlay = calls.filter((c) => c.during === 'click')
-    expect(fromPlay.length).toBeGreaterThan(0)
-    expect(fromPlay[0]).toEqual({ during: 'click', state: 'suspended' })
-
-    // the listener's ask: on the touch itself, which comes before the click
-    const fromTouch = calls.filter((c) => c.during === 'pointerdown' || c.during === 'pointerup' || c.during === 'touchend')
-    expect(fromTouch.length).toBeGreaterThan(0)
-    expect(calls.indexOf(fromTouch[0])).toBeLessThan(calls.indexOf(fromPlay[0]))
-
-    // and the real context under the stand-in is running, so the ask was not refused
-    const states = await page.evaluate(() => (window as unknown as { __realStates: () => string[] }).__realStates())
-    expect(states.length).toBeGreaterThan(0)
-    expect(states.every((s) => s === 'running')).toBe(true)
+  test("the phone top bar's Play does too (#2001)", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'tablet', 'a tablet has the desktop menu bar, which has no Play')
+    await tapPlayAndCheck(page, (p) => p.locator('[data-phone-top="play"]'))
+    // and it really played: the same button now offers Stop
+    await expect(page.locator('[data-phone-top="play"]')).toHaveAttribute('aria-label', 'Stop', { timeout: 15_000 })
   })
 })

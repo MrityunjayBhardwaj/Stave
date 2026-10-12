@@ -68,9 +68,9 @@ function touchProjects(): { pattern: string; projects: string[]; uses: number; c
   expect(block, 'TOUCH_SPECS not found in playwright.config.ts').not.toBeNull()
   return {
     pattern: block![1],
-    projects: [...src.matchAll(/\{ name: '([\w-]+)',[^\n]*testMatch: TOUCH_SPECS \}/g)].map((m) => m[1]),
+    projects: [...src.matchAll(/\{ name: '([\w-]+)',[^\n]*testMatch: TOUCH_(?:LAYOUT_)?SPECS \}/g)].map((m) => m[1]),
     // every project that takes the touch specs, however its entry is laid out
-    uses: [...src.matchAll(/testMatch: TOUCH_SPECS/g)].length,
+    uses: [...src.matchAll(/testMatch: TOUCH_(?:LAYOUT_)?SPECS/g)].length,
     chromiumIgnoresThem: /name: 'chromium',[\s\S]*?testIgnore: \[[^\]]*\.\.\.TOUCH_SPECS[^\]]*\]/.test(src),
   }
 }

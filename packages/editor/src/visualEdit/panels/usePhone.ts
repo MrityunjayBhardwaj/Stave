@@ -22,7 +22,8 @@ function pointerQuery(): MediaQueryList | null {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(TOUCH_POINTER_QUERY) : null
 }
 
-function isPhone(): boolean {
+/** the answer right now, for code that is not a component (a first render's starting state) */
+export function isPhone(): boolean {
   if (!(pointerQuery()?.matches ?? false)) return false
   const s = window.screen
   // a browser that will not say how big its screen is gets the desktop layout
