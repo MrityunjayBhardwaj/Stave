@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { TransportLCD } from "./TransportLCD";
 import { TimeSignatureControl } from "./TimeSignatureControl";
 import { useMenubarLcd } from "../state/menubarLcd";
+import type { RecentProjectEntry } from "../recentProjects";
 
 export const GITHUB_REPO_URL = "https://github.com/MrityunjayBhardwaj/stave-code";
 
@@ -16,6 +17,9 @@ interface MenuBarProps {
   onOpenShortcuts: () => void;
   onNewProject: () => void;
   onOpenProject: () => void;
+  /** #2020 — File → Open Recent: recently opened projects, newest first. */
+  recentProjects: readonly RecentProjectEntry[];
+  onOpenRecent: (projectId: string) => void;
   /** #2019 — Help → Start Screen: bring the start screen back. */
   onOpenStartScreen: () => void;
   onRenameProject: () => void;
@@ -63,6 +67,8 @@ export function MenuBar({
   onOpenShortcuts,
   onNewProject,
   onOpenProject,
+  recentProjects,
+  onOpenRecent,
   onOpenStartScreen,
   onRenameProject,
   onExportProject,
@@ -119,6 +125,20 @@ export function MenuBar({
       <MenuButton label="File" open={openMenu === "file"} onClick={() => setOpenMenu(openMenu === "file" ? null : "file")}>
         <MenuItem label="New Project..." shortcut="⌘N" onClick={() => clickItem(onNewProject)} />
         <MenuItem label="Open Project..." shortcut="⌘O" onClick={() => clickItem(onOpenProject)} />
+        <MenuSubmenu label="Open Recent">
+          {recentProjects.map((p) => (
+            <MenuItem
+              key={p.id}
+              label={p.name}
+              shortcut={p.current ? "open now" : undefined}
+              onClick={() => clickItem(() => onOpenRecent(p.id))}
+              disabled={p.current}
+            />
+          ))}
+          {recentProjects.every((p) => p.current) && (
+            <MenuItem label="No other projects" onClick={() => undefined} disabled />
+          )}
+        </MenuSubmenu>
         <MenuDivider />
         <MenuItem label="Rename Project..." onClick={() => clickItem(onRenameProject)} />
         <MenuItem label="Version History..." onClick={() => clickItem(onVersionHistory)} />
@@ -231,9 +251,41 @@ function MenuItem({
       disabled={disabled}
       style={{ ...styles.menuItem, ...(disabled ? styles.menuItemDisabled : {}) }}
     >
-      <span>{label}</span>
+      <span style={styles.menuItemLabel}>{label}</span>
       {shortcut && <span style={styles.shortcut}>{shortcut}</span>}
     </button>
+  );
+}
+
+/**
+ * A menu item that opens a second list beside it (#2020). It opens on hover and
+ * on a press — a press only ever opens, so a mouse that hovered first does not
+ * close it again by clicking — and closes when the pointer leaves or the menu does.
+ */
+function MenuSubmenu({ label, children }: { label: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      style={styles.submenuWrap}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        data-stave-menu-item
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+        style={{ ...styles.menuItem, ...(open ? styles.menuButtonOpen : {}) }}
+      >
+        <span>{label}</span>
+        <span aria-hidden style={styles.shortcut}>▸</span>
+      </button>
+      {open && (
+        <div role="menu" aria-label={label} style={styles.submenu}>
+          {children}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -319,14 +371,38 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: "left" as const,
     cursor: "pointer",
   },
+  submenuWrap: {
+    position: "relative" as const,
+  },
+  submenu: {
+    position: "absolute" as const,
+    top: -5,
+    left: "100%",
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border-strong)",
+    borderRadius: 4,
+    padding: "4px 0",
+    zIndex: 9999,
+    minWidth: 200,
+    maxWidth: 320,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
+  },
   menuItemDisabled: {
     color: "var(--text-disabled)",
     cursor: "default",
+  },
+  menuItemLabel: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
+    minWidth: 0,
   },
   shortcut: {
     color: "var(--text-muted)",
     fontSize: 11,
     marginLeft: 20,
+    flex: "none",
+    whiteSpace: "nowrap" as const,
   },
   divider: {
     height: 1,

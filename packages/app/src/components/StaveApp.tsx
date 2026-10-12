@@ -36,6 +36,7 @@ import { exportProjectAsZip } from "../exportProject";
 import { StorageFullNotice } from "./StorageFullNotice";
 import { buildStemsArchive, stemDisplayName } from "../stemsArchive";
 import { importProjectFromZip } from "../importProject";
+import { recentProjectEntries } from "../recentProjects";
 import { StartScreen } from "./StartScreen";
 import appPackage from "../../package.json";
 import { readStartConditions, setStartScreenWanted, showsStartScreen, startScreenWanted } from "../startScreen";
@@ -1858,6 +1859,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onOpenShortcuts={() => { setSettingsTab("keys"); setSettingsOpen(true); }}
         onNewProject={() => setTemplateModalOpen(true)}
         onOpenProject={() => setSwitcherModalOpen(true)}
+        recentProjects={recentProjectEntries(projects, activeProject.id)}
+        onOpenRecent={doSwitchProject}
         onOpenStartScreen={() => setStartScreenOpen(true)}
         onRenameProject={handleRenameActiveProject}
         onExportProject={() => {
