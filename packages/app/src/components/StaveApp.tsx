@@ -1906,7 +1906,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             <div style={styles.panelHeader}>VERSION HISTORY</div>
             <div style={{ flex: 1, minHeight: 0 }}>
               <HistoryPanel
-                onOpenHistoryTab={(req) => shellRef.current?.openHistoryTab(req)}
+                onOpenHistoryTab={(req) => {
+                shellRef.current?.openHistoryTab(req);
+                // as with a file: the tab it opened is under the drawer
+                if (phone) closePhoneDrawer();
+              }}
               />
             </div>
           </div>
