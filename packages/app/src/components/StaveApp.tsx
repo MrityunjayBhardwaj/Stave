@@ -36,6 +36,8 @@ import { exportProjectAsZip } from "../exportProject";
 import { StorageFullNotice } from "./StorageFullNotice";
 import { buildStemsArchive, stemDisplayName } from "../stemsArchive";
 import { importProjectFromZip } from "../importProject";
+import { StartScreen } from "./StartScreen";
+import { readStartConditions, setStartScreenWanted, showsStartScreen, startScreenWanted } from "../startScreen";
 import {
   buildShareUrl,
   decodeSharePayload,
@@ -225,6 +227,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   }, []);
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  // #2019 — the start screen. Decided ONCE, when the app first mounts (which is
+  // after the last project has loaded): it greets an arrival and never appears
+  // mid-session on its own. A share link has its own question to ask instead.
+  const [startScreenOpen, setStartScreenOpen] = useState(() =>
+    showsStartScreen(readStartConditions(readShareFragment() != null)),
+  );
+  const [startScreenAtStart, setStartScreenAtStart] = useState(startScreenWanted);
   const [switcherModalOpen, setSwitcherModalOpen] = useState(false);
   const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -1845,6 +1854,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onOpenShortcuts={() => { setSettingsTab("keys"); setSettingsOpen(true); }}
         onNewProject={() => setTemplateModalOpen(true)}
         onOpenProject={() => setSwitcherModalOpen(true)}
+        onOpenStartScreen={() => setStartScreenOpen(true)}
         onRenameProject={handleRenameActiveProject}
         onExportProject={() => {
           exportProjectAsZip(activeProject).catch((err) => {
@@ -2074,6 +2084,34 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onClose={() => setBounceOpen(false)}
         onStart={handleBounceStart}
         onStop={handleBounceStop}
+      />
+
+      <StartScreen
+        open={startScreenOpen}
+        activeProject={activeProject}
+        projects={projects}
+        showAtStart={startScreenAtStart}
+        onShowAtStartChange={(show) => {
+          setStartScreenAtStart(show);
+          setStartScreenWanted(show);
+        }}
+        onClose={() => setStartScreenOpen(false)}
+        onOpenProject={(id) => {
+          setStartScreenOpen(false);
+          void doSwitchProject(id);
+        }}
+        onNewProject={() => {
+          setStartScreenOpen(false);
+          setTemplateModalOpen(true);
+        }}
+        onOpenArchive={() => {
+          setStartScreenOpen(false);
+          triggerImportPicker();
+        }}
+        onBrowseProjects={() => {
+          setStartScreenOpen(false);
+          setSwitcherModalOpen(true);
+        }}
       />
 
       <TemplateModal

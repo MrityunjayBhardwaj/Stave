@@ -16,6 +16,8 @@ interface MenuBarProps {
   onOpenShortcuts: () => void;
   onNewProject: () => void;
   onOpenProject: () => void;
+  /** #2019 — Help → Start Screen: bring the start screen back. */
+  onOpenStartScreen: () => void;
   onRenameProject: () => void;
   onExportProject: () => void;
   /** #1346 — real-time bounce of the live output to a .wav. */
@@ -61,6 +63,7 @@ export function MenuBar({
   onOpenShortcuts,
   onNewProject,
   onOpenProject,
+  onOpenStartScreen,
   onRenameProject,
   onExportProject,
   onBounceToWav,
@@ -155,6 +158,8 @@ export function MenuBar({
       </MenuButton>
 
       <MenuButton label="Help" open={openMenu === "help"} onClick={() => setOpenMenu(openMenu === "help" ? null : "help")}>
+        <MenuItem label="Start Screen" onClick={() => clickItem(onOpenStartScreen)} />
+        <MenuDivider />
         <MenuItem
           label="Documentation"
           onClick={() => clickItem(() => window.open("/docs/", "_blank", "noopener,noreferrer"))}
