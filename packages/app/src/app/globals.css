@@ -272,3 +272,44 @@ body {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+
+/* --- Touch devices: only the code can be selected (#1993) -------------------
+   On a phone or tablet a long press or a drag on the interface — a file name, a
+   tab, a status readout — starts a text selection: the blue highlight and the
+   copy bubble, over a control the finger meant to press. So where the main
+   pointer is a finger, nothing outside the code is selectable.
+
+   Two rules, because "not selectable" is handed down: an element that says
+   nothing takes its parent's answer, so switching the interface off would
+   switch off the editor and every text field sitting inside it.
+
+   1. The interface: everything that is not the editor, not inside it, and not
+      something you type into.
+   2. The editor's outer element and the things you type into are given back
+      the answer they had before — selectable. `:where()` gives that rule NO
+      weight, so it only fills the gap: any rule of Monaco's own, on any of its
+      elements, still wins, and the editor behaves exactly as it does today.
+
+   A mouse is not a coarse pointer, so a desktop is untouched: copying a line
+   from the console still works there. An element that asks for selectable text
+   in its own inline style keeps it (inline wins). */
+@media (pointer: coarse) {
+  body
+    :not(
+      .monaco-editor,
+      .monaco-editor *,
+      input,
+      textarea,
+      [contenteditable]:not([contenteditable="false"]),
+      [contenteditable]:not([contenteditable="false"]) *
+    ) {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  :where(.monaco-editor, input, textarea, [contenteditable]:not([contenteditable="false"])) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
