@@ -1,12 +1,12 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
 import { parse } from 'acorn';
+import * as React23 from 'react';
+import React23__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import { parse as parse$1 } from '@strudel/mini/krill-parser.js';
 import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
 import { isControlName, getControlName } from '@strudel/core/controls.mjs';
 import { mini } from '@strudel/mini/mini.mjs';
 import { get } from '@tonaljs/chord';
-import * as React23 from 'react';
-import React23__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw, { loader, DiffEditor as DiffEditor$1 } from '@monaco-editor/react';
@@ -2854,6 +2854,36 @@ function pickWorkerVizConfig(config = _active) {
   }, {});
 }
 __name(pickWorkerVizConfig, "pickWorkerVizConfig");
+var TOUCH_POINTER_QUERY = "(pointer: coarse)";
+var PHONE_SHORT_SIDE_PX = 600;
+function pointerQuery() {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(TOUCH_POINTER_QUERY) : null;
+}
+__name(pointerQuery, "pointerQuery");
+function isPhone() {
+  if (!(pointerQuery()?.matches ?? false)) return false;
+  const s = window.screen;
+  if (!s || !(s.width > 0) || !(s.height > 0)) return false;
+  return Math.min(s.width, s.height) < PHONE_SHORT_SIDE_PX;
+}
+__name(isPhone, "isPhone");
+function usePhone() {
+  return React23.useSyncExternalStore(
+    (changed) => {
+      const mql = pointerQuery();
+      if (!mql) return () => void 0;
+      mql.addEventListener("change", changed);
+      window.addEventListener("resize", changed);
+      return () => {
+        mql.removeEventListener("change", changed);
+        window.removeEventListener("resize", changed);
+      };
+    },
+    isPhone,
+    () => false
+  );
+}
+__name(usePhone, "usePhone");
 
 // src/workspace/editorRegistry.ts
 var editors = /* @__PURE__ */ new Map();
@@ -2947,13 +2977,18 @@ function applyEvalSourceTransform(fileId, raw) {
   }
 }
 __name(applyEvalSourceTransform, "applyEvalSourceTransform");
+function revealTakesFocus() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
+  return !window.matchMedia(TOUCH_POINTER_QUERY).matches;
+}
+__name(revealTakesFocus, "revealTakesFocus");
 function revealLineInFile(fileId, line) {
   const editor = editors.get(fileId);
   if (!editor) return false;
   try {
     editor.revealLineInCenter?.(line);
     editor.setPosition?.({ lineNumber: line, column: 1 });
-    editor.focus?.();
+    if (revealTakesFocus()) editor.focus?.();
     return true;
   } catch {
     return false;
@@ -2968,7 +3003,7 @@ function revealOffsetInFile(fileId, offset) {
     if (!pos) return false;
     editor.revealLineInCenter?.(pos.lineNumber);
     editor.setPosition?.(pos);
-    editor.focus?.();
+    if (revealTakesFocus()) editor.focus?.();
     return true;
   } catch {
     return false;
@@ -35878,36 +35913,6 @@ function useActiveChunk() {
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
-var TOUCH_POINTER_QUERY = "(pointer: coarse)";
-var PHONE_SHORT_SIDE_PX = 600;
-function pointerQuery() {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(TOUCH_POINTER_QUERY) : null;
-}
-__name(pointerQuery, "pointerQuery");
-function isPhone() {
-  if (!(pointerQuery()?.matches ?? false)) return false;
-  const s = window.screen;
-  if (!s || !(s.width > 0) || !(s.height > 0)) return false;
-  return Math.min(s.width, s.height) < PHONE_SHORT_SIDE_PX;
-}
-__name(isPhone, "isPhone");
-function usePhone() {
-  return React23.useSyncExternalStore(
-    (changed) => {
-      const mql = pointerQuery();
-      if (!mql) return () => void 0;
-      mql.addEventListener("change", changed);
-      window.addEventListener("resize", changed);
-      return () => {
-        mql.removeEventListener("change", changed);
-        window.removeEventListener("resize", changed);
-      };
-    },
-    isPhone,
-    () => false
-  );
-}
-__name(usePhone, "usePhone");
 function VisualEditStandby({
   panel,
   hint,
@@ -36605,10 +36610,11 @@ function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
     const pos = model.getPositionAt?.(trackOffset);
     if (!pos) return;
     const changed = lastJumpRef.current !== trackOffset;
-    if (changed || !editor.hasTextFocus?.()) {
+    const focuses = revealTakesFocus();
+    if (changed || focuses && !editor.hasTextFocus?.()) {
       editor.setPosition?.(pos);
       editor.revealLineInCenter?.(pos.lineNumber);
-      editor.focus?.();
+      if (focuses) editor.focus?.();
     }
     lastJumpRef.current = trackOffset;
   } catch {

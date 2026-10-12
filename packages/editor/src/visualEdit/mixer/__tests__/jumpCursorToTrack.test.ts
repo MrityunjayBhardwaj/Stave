@@ -6,7 +6,7 @@
  * changed OR the editor isn't focused; otherwise leave the pinned caret alone.
  * Monaco-free — a tiny mock editor records which methods were called.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 
 import { jumpCursorToTrack } from '../useMixerModel'
 
@@ -83,5 +83,47 @@ describe('jumpCursorToTrack', () => {
       jumpCursorToTrack({}, { getPositionAt: () => undefined }, 10, ref),
     ).not.toThrow()
     expect(ref.current).toBeNull() // no position → no jump recorded
+  })
+})
+
+/**
+ * #2017 — on a touch device the jump moves the cursor and scrolls but never focuses
+ * the editor (that would summon the keyboard over the strip under the finger). And
+ * because the editor is then never focused, "not focused" must not count as a reason
+ * to jump again, or every tick of a fader drag would re-centre the code.
+ */
+describe('jumpCursorToTrack on a touch device (#2017)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const touch = () => vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(pointer: coarse)' }))
+
+  it('moves the cursor and reveals, without focusing', () => {
+    touch()
+    const { editor, model, calls } = makeEditor(false)
+    jumpCursorToTrack(editor, model, 7, { current: null })
+    expect(calls).toEqual({ setPosition: 1, reveal: 1, focus: 0, lastLine: 8 })
+  })
+
+  it('a drag on ONE strip jumps once, though the editor never gains focus', () => {
+    touch()
+    const { editor, model, calls } = makeEditor(false)
+    const last = { current: null as number | null }
+    for (let tick = 0; tick < 5; tick++) jumpCursorToTrack(editor, model, 7, last)
+    expect(calls.setPosition).toBe(1)
+    expect(calls.reveal).toBe(1)
+    expect(calls.focus).toBe(0)
+  })
+
+  it('a different strip jumps again', () => {
+    touch()
+    const { editor, model, calls } = makeEditor(false)
+    const last = { current: null as number | null }
+    jumpCursorToTrack(editor, model, 7, last)
+    jumpCursorToTrack(editor, model, 12, last)
+    expect(calls.setPosition).toBe(2)
+    expect(calls.lastLine).toBe(13)
+    expect(calls.focus).toBe(0)
   })
 })
