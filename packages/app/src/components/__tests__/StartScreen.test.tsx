@@ -17,22 +17,40 @@ const project = (id: string, name: string, lastOpenedAt = Date.now()): ProjectMe
 const CURRENT = project("c", "Chorus idea");
 const OTHERS = [project("b", "Bassline"), project("a", "Ambient")];
 
-function show(over: Partial<React.ComponentProps<typeof StartScreen>> = {}) {
-  const calls = {
-    onClose: vi.fn(), onOpenProject: vi.fn(), onNewProject: vi.fn(),
+const TEMPLATE_LIST = [
+  { id: "starter", name: "Starter", description: "d", icon: "x", files: [] },
+  { id: "song", name: "Full Song", description: "d", icon: "x", files: [] },
+];
+
+function props() {
+  return {
+    onClose: vi.fn(), onOpenProject: vi.fn(), onNewFromTemplate: vi.fn(),
     onOpenArchive: vi.fn(), onBrowseProjects: vi.fn(), onShowAtStartChange: vi.fn(),
   };
+}
+
+function show(over: Partial<React.ComponentProps<typeof StartScreen>> = {}) {
+  const calls = props();
   render(
     <StartScreen
       open
+      version="9.9.9"
       activeProject={CURRENT}
       projects={[CURRENT, ...OTHERS]}
+      templates={TEMPLATE_LIST}
       showAtStart
       {...calls}
       {...over}
     />,
   );
   return calls;
+}
+
+/** a browser that is, or is not, isolated from other origins and able to frame without credentials */
+function browser(isolated: boolean, credentiallessFrames: boolean) {
+  vi.stubGlobal("crossOriginIsolated", isolated);
+  if (credentiallessFrames) (HTMLIFrameElement.prototype as unknown as { credentialless: boolean }).credentialless = false;
+  else delete (HTMLIFrameElement.prototype as unknown as { credentialless?: boolean }).credentialless;
 }
 
 const rows = () =>
@@ -44,22 +62,21 @@ describe("StartScreen (#2019)", () => {
   it("draws nothing when closed", () => {
     const { container } = render(
       <StartScreen
-        open={false} activeProject={CURRENT} projects={[CURRENT]} showAtStart
-        onShowAtStartChange={() => undefined} onClose={() => undefined} onOpenProject={() => undefined}
-        onNewProject={() => undefined} onOpenArchive={() => undefined} onBrowseProjects={() => undefined}
+        open={false} version="9.9.9" activeProject={CURRENT} projects={[CURRENT]} templates={TEMPLATE_LIST}
+        showAtStart {...props()}
       />,
     );
     expect(container.firstChild).toBeNull();
   });
 
-  it("lists the open project first as Continue, then the others in order", () => {
+  it("lists the open project first, to continue, then the others in order", () => {
     show();
-    expect(rows()).toEqual(["Chorus ideaopened just nowContinue", "Basslineopened just now", "Ambientopened just now"]);
+    expect(rows()).toEqual(["Chorus ideacontinue", "Basslinejust now", "Ambientjust now"]);
   });
 
   it("Continue is there before the project list has loaded", () => {
     show({ projects: [] });
-    expect(rows()).toEqual(["Chorus ideaopened just nowContinue"]);
+    expect(rows()).toEqual(["Chorus ideacontinue"]);
   });
 
   it("Continue closes the screen and switches nothing", () => {
@@ -75,12 +92,24 @@ describe("StartScreen (#2019)", () => {
     expect(c.onOpenProject.mock.calls).toEqual([["b"]]);
   });
 
-  it("New project and Open a project archive each ask for their own thing", () => {
+  it("each template starts a new project from that template", () => {
     const c = show();
-    fireEvent.click(screen.getByRole("button", { name: /New project/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Open a project archive/ }));
-    expect(c.onNewProject).toHaveBeenCalledTimes(1);
+    expect([...document.querySelectorAll('[data-start-screen="template"]')].map((t) => t.textContent)).toEqual(["Starter", "Full Song"]);
+    fireEvent.click(screen.getByRole("button", { name: "Full Song" }));
+    expect(c.onNewFromTemplate.mock.calls).toEqual([[TEMPLATE_LIST[1]]]);
+  });
+
+  it("Open… and Open a project archive… each ask for their own thing", () => {
+    const c = show();
+    fireEvent.click(screen.getByRole("button", { name: "Open…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open a project archive…" }));
+    expect(c.onBrowseProjects).toHaveBeenCalledTimes(1);
     expect(c.onOpenArchive).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the version it was given", () => {
+    show();
+    expect(screen.getByText("v9.9.9")).toBeTruthy();
   });
 
   it("Escape, the close button and a click outside each close it; a click inside does not", () => {
@@ -105,7 +134,7 @@ describe("StartScreen (#2019)", () => {
     const many = Array.from({ length: START_SCREEN_RECENT_LIMIT + 2 }, (_, i) => project(`p${i}`, `Project ${i}`));
     const c = show({ projects: [CURRENT, ...many] });
     expect(rows()).toHaveLength(START_SCREEN_RECENT_LIMIT);
-    // limit rows = Continue + (limit - 1) others, so (limit + 2) - (limit - 1) = 3 are left over
+    // limit rows = the open project + (limit - 1) others, so (limit + 2) - (limit - 1) = 3 are left over
     fireEvent.click(screen.getByRole("button", { name: "3 more projects…" }));
     expect(c.onBrowseProjects).toHaveBeenCalledTimes(1);
   });
@@ -113,5 +142,49 @@ describe("StartScreen (#2019)", () => {
   it("with nothing left over there is no such link", () => {
     show();
     expect(screen.queryByRole("button", { name: /more project/ })).toBeNull();
+  });
+});
+
+describe("StartScreen — the intro film (#2019)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete (HTMLIFrameElement.prototype as unknown as { credentialless?: boolean }).credentialless;
+  });
+
+  const film = () => document.querySelector('[data-start-screen="film"]') as HTMLIFrameElement | null;
+  const press = () => fireEvent.click(screen.getByRole("button", { name: /Watch the intro/ }));
+
+  it("nothing is loaded from YouTube until Play is pressed", () => {
+    browser(false, false);
+    show();
+    expect(film()).toBeNull();
+    expect((document.querySelector("img") as HTMLImageElement).getAttribute("src")).toBe("/start/introducing-stave.jpg");
+  });
+
+  it("a page not isolated from other origins plays it in place", () => {
+    browser(false, false);
+    const opened = vi.fn();
+    vi.stubGlobal("open", opened);
+    show();
+    press();
+    expect(film()?.getAttribute("src")).toBe("https://www.youtube-nocookie.com/embed/LoVfu-FCTAg?autoplay=1&rel=0");
+    expect(opened).not.toHaveBeenCalled();
+  });
+
+  it("an isolated page that can frame without credentials plays it in place, without credentials", () => {
+    browser(true, true);
+    show();
+    press();
+    expect(film()?.hasAttribute("credentialless")).toBe(true);
+  });
+
+  it("an isolated page that cannot opens it on YouTube instead of showing a blank frame", () => {
+    browser(true, false);
+    const opened = vi.fn();
+    vi.stubGlobal("open", opened);
+    show();
+    press();
+    expect(film()).toBeNull();
+    expect(opened.mock.calls[0][0]).toBe("https://www.youtube.com/watch?v=LoVfu-FCTAg");
   });
 });

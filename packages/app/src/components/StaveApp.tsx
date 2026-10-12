@@ -31,12 +31,13 @@ import {
   type TrackEnvelopeAccess,
 } from "@stave/editor";
 import { createTrackEnvelopeRelay } from "../audio/trackEnvelopeRelay";
-import { seedProjectFromTemplate } from "../templates";
+import { TEMPLATES, seedProjectFromTemplate } from "../templates";
 import { exportProjectAsZip } from "../exportProject";
 import { StorageFullNotice } from "./StorageFullNotice";
 import { buildStemsArchive, stemDisplayName } from "../stemsArchive";
 import { importProjectFromZip } from "../importProject";
 import { StartScreen } from "./StartScreen";
+import appPackage from "../../package.json";
 import { readStartConditions, setStartScreenWanted, showsStartScreen, startScreenWanted } from "../startScreen";
 import {
   buildShareUrl,
@@ -167,6 +168,9 @@ interface StaveAppProps {
  * act, short enough that an ignored offer still goes away on its own.
  */
 const SILENT_BOUNCE_TOAST_MS = 20_000;
+
+/** #2019 — the app's own version, shown on the start screen. */
+const APP_VERSION: string = appPackage.version;
 
 function safeFileName(name: string, fallback: string): string {
   return name.replace(/[^a-z0-9_-]+/gi, "_") || fallback;
@@ -2088,8 +2092,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
       <StartScreen
         open={startScreenOpen}
+        version={APP_VERSION}
         activeProject={activeProject}
         projects={projects}
+        templates={TEMPLATES}
         showAtStart={startScreenAtStart}
         onShowAtStartChange={(show) => {
           setStartScreenAtStart(show);
@@ -2100,17 +2106,17 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           setStartScreenOpen(false);
           void doSwitchProject(id);
         }}
-        onNewProject={() => {
+        onNewFromTemplate={(template) => {
           setStartScreenOpen(false);
-          setTemplateModalOpen(true);
-        }}
-        onOpenArchive={() => {
-          setStartScreenOpen(false);
-          triggerImportPicker();
+          void handleCreateProject(template.name, template.id);
         }}
         onBrowseProjects={() => {
           setStartScreenOpen(false);
           setSwitcherModalOpen(true);
+        }}
+        onOpenArchive={() => {
+          setStartScreenOpen(false);
+          triggerImportPicker();
         }}
       />
 

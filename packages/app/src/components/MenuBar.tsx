@@ -5,7 +5,7 @@ import { TransportLCD } from "./TransportLCD";
 import { TimeSignatureControl } from "./TimeSignatureControl";
 import { useMenubarLcd } from "../state/menubarLcd";
 
-const GITHUB_REPO_URL = "https://github.com/MrityunjayBhardwaj/stave-code";
+export const GITHUB_REPO_URL = "https://github.com/MrityunjayBhardwaj/stave-code";
 
 // Backdrop selection used to live in a menubar bg-indicator + popover here.
 // As of #347 the backdrop is per-tab, set from the pattern bar's "set bg"

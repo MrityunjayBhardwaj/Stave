@@ -15,8 +15,8 @@
 
 export const START_SCREEN_PREF_KEY = "stave:startScreen.show";
 
-/** how many projects the start screen lists */
-export const START_SCREEN_RECENT_LIMIT = 6;
+/** how many projects the start screen lists, the open one included */
+export const START_SCREEN_RECENT_LIMIT = 5;
 
 /** Has the person left "show this when Stave starts" on? Defaults to yes. */
 export function startScreenWanted(): boolean {
@@ -62,6 +62,41 @@ export function readStartConditions(shareLink: boolean): StartConditions {
     shareLink,
     automated: typeof navigator !== "undefined" && navigator.webdriver === true,
     requested: w.__STAVE_START_SCREEN__ === true,
+  };
+}
+
+/** The intro film shown at the top of the start screen. */
+export const INTRO_VIDEO = {
+  id: "LoVfu-FCTAg",
+  title: "Introducing Stave",
+  /** its opening frame, shipped with the app so nothing is fetched from YouTube until Play is pressed */
+  poster: "/start/introducing-stave.jpg",
+} as const;
+
+export const introWatchUrl = `https://www.youtube.com/watch?v=${INTRO_VIDEO.id}`;
+/** the player without YouTube's tracking cookies, starting at once since Play was just pressed */
+export const introEmbedUrl = `https://www.youtube-nocookie.com/embed/${INTRO_VIDEO.id}?autoplay=1&rel=0`;
+
+/**
+ * Can the intro play inside the start screen, or must it open on YouTube?
+ *
+ * Stave isolates its page from other origins (it needs that for shared memory
+ * between the editor and its visuals). An isolated page may only frame another
+ * site's page if that page agrees, which YouTube's player does not — or if the
+ * browser can load the frame without credentials, which only some browsers can.
+ * Where neither holds, a frame would be a blank box, so the film opens in a new
+ * tab instead. A page that is not isolated can frame anything.
+ */
+export function introPlaysInline(browser: { isolated: boolean; credentiallessFrames: boolean }): boolean {
+  return !browser.isolated || browser.credentiallessFrames;
+}
+
+export function readIntroBrowser(): { isolated: boolean; credentiallessFrames: boolean } {
+  if (typeof window === "undefined") return { isolated: false, credentiallessFrames: false };
+  return {
+    isolated: window.crossOriginIsolated === true,
+    credentiallessFrames:
+      typeof HTMLIFrameElement !== "undefined" && "credentialless" in HTMLIFrameElement.prototype,
   };
 }
 
