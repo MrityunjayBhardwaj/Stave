@@ -209,7 +209,20 @@ function pickInitialActiveTabId(
   return tabs[0]?.id ?? null
 }
 
-export function BottomPanel(): React.ReactElement | null {
+export interface BottomPanelProps {
+  /**
+   * #2022 — draw nothing at all, header strip included, while keeping every
+   * piece of the panel's state: open or closed, the active tab, the height.
+   *
+   * This is NOT the user closing the panel. It is the shell saying the panel
+   * has nothing to describe right now (the active pane is a visual), so the
+   * remembered open/closed choice must come through untouched — when `hidden`
+   * goes false the panel is exactly as it was left.
+   */
+  readonly hidden?: boolean
+}
+
+export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.ReactElement | null {
   // Hydrate everything in initializers — Trap 7. Reads are SSR-safe.
   const [tabs, setTabs] = React.useState<readonly BottomPanelTab[]>(() =>
     listBottomPanelTabs(),
@@ -313,6 +326,9 @@ export function BottomPanel(): React.ReactElement | null {
 
   // True zero-pixel cost when no tabs are registered (Trap 2).
   if (tabs.length === 0) return null
+  // #2022 — after every hook, so hiding and showing never changes their order
+  // and the state above survives the gap.
+  if (hidden) return null
 
   // While dragging, render with the live hook value so the drawer
   // visibly resizes; otherwise use the committed height.

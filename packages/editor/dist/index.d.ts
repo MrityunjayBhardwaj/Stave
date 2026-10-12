@@ -12893,7 +12893,19 @@ declare function subscribeIRSnapshot(fn: Listener$2): () => void;
  * Phase 20-01 PR-A.
  */
 
-declare function BottomPanel(): React.ReactElement | null;
+interface BottomPanelProps {
+    /**
+     * #2022 — draw nothing at all, header strip included, while keeping every
+     * piece of the panel's state: open or closed, the active tab, the height.
+     *
+     * This is NOT the user closing the panel. It is the shell saying the panel
+     * has nothing to describe right now (the active pane is a visual), so the
+     * remembered open/closed choice must come through untouched — when `hidden`
+     * goes false the panel is exactly as it was left.
+     */
+    readonly hidden?: boolean;
+}
+declare function BottomPanel({ hidden }?: BottomPanelProps): React.ReactElement | null;
 
 /**
  * bottomPanelRegistry — module-level singleton registry of tabs that the
