@@ -31,12 +31,16 @@ test.describe('Pattern tab on a touch device (#1990)', () => {
     if (onTablet) expect(panelBox!.width).toBeGreaterThan(300)
     else expect(Math.round(panelBox!.width)).toBe(screen)
 
+    // the button that puts the side panel away (#2044) goes where the side panel goes
+    const sideToggle = page.locator('[data-bottom-panel="header"] [data-pattern-side-toggle]')
     if (onTablet) {
+      await expect(sideToggle).toBeVisible()
       await expect(side).toBeVisible()
       const sideBox = await side.boundingBox()
       expect(Math.round(sideBox!.width)).toBe(220)
       expect(Math.round(gridBox!.width + sideBox!.width)).toBe(Math.round(panelBox!.width))
     } else {
+      await expect(sideToggle).toHaveCount(0)
       await expect(side).toHaveCount(0)
       expect(Math.round(gridBox!.width)).toBe(Math.round(panelBox!.width))
     }

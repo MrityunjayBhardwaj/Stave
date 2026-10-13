@@ -499,6 +499,8 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
   const sheetHeight = pulled ?? stopHeights[stop]
   const headerHeight = sheet ? SHEET_HEADER_HEIGHT : HEADER_HEIGHT
   const bodyDrawn = open || (sheet && pulled !== null)
+  /** the showing tab's own header controls, if it has any (#2044) */
+  const activeHeaderActions = tabs.find((tab) => tab.id === activeTabId)?.headerActions ?? null
 
   if (wholeView) {
     // The space keeps the panel's parent findable for `measureRoom`; it takes no room.
@@ -718,6 +720,8 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
             />
           </div>
         )}
+        {/* the showing tab's own controls (#2044), only while there is a body for them to act on */}
+        {bodyDrawn && activeHeaderActions}
         <button
           data-bottom-panel="toggle"
           type="button"

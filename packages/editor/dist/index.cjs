@@ -2,7 +2,7 @@
 
 var core = require('@strudel/core');
 var acorn = require('acorn');
-var React44 = require('react');
+var React45 = require('react');
 var krillParser_js = require('@strudel/mini/krill-parser.js');
 var euclid_mjs = require('@strudel/core/euclid.mjs');
 var controls_mjs = require('@strudel/core/controls.mjs');
@@ -35,7 +35,7 @@ function _interopNamespace(e) {
   return Object.freeze(n);
 }
 
-var React44__namespace = /*#__PURE__*/_interopNamespace(React44);
+var React45__namespace = /*#__PURE__*/_interopNamespace(React45);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
 var Y3__namespace = /*#__PURE__*/_interopNamespace(Y3);
@@ -2905,7 +2905,7 @@ function subscribe(changed) {
 }
 __name(subscribe, "subscribe");
 function usePhone() {
-  return React44__namespace.useSyncExternalStore(subscribe, isPhone, () => false);
+  return React45__namespace.useSyncExternalStore(subscribe, isPhone, () => false);
 }
 __name(usePhone, "usePhone");
 function phoneLayout() {
@@ -2915,7 +2915,7 @@ function phoneLayout() {
 }
 __name(phoneLayout, "phoneLayout");
 function usePhoneLayout() {
-  return React44__namespace.useSyncExternalStore(subscribe, phoneLayout, () => "none");
+  return React45__namespace.useSyncExternalStore(subscribe, phoneLayout, () => "none");
 }
 __name(usePhoneLayout, "usePhoneLayout");
 
@@ -5771,7 +5771,7 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
   const leadingWs = chain.length - chain.trimStart().length;
   let remaining = chain.trim();
   let remainingOffset = baseOffset + leadingWs;
-  let current6 = ir;
+  let current7 = ir;
   while (true) {
     const consumedSep = skipWhitespaceAndLineComments(remaining, 0);
     if (consumedSep > 0) {
@@ -5787,11 +5787,11 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
       remainingOffset + consumed
     ];
     const argsAbsoluteOffset = argsOffset >= 0 ? remainingOffset + argsOffset : remainingOffset;
-    current6 = applyMethod(current6, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
+    current7 = applyMethod(current7, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
     remainingOffset += consumed;
     remaining = rest;
   }
-  return current6;
+  return current7;
 }
 __name(applyChain, "applyChain");
 function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], bindings, numbers) {
@@ -6344,14 +6344,14 @@ __name(splitArgs, "splitArgs");
 function splitArgsWithOffsets(argsStr) {
   const args = [];
   let depth = 0;
-  let current6 = "";
+  let current7 = "";
   let currentStart = 0;
   let inString = false;
   let stringChar = "";
   const pushCurrent = /* @__PURE__ */ __name(() => {
-    if (current6.trim().length === 0) return;
-    const consumed = skipWhitespaceAndLineComments(current6, 0);
-    const value = current6.slice(consumed).trimEnd();
+    if (current7.trim().length === 0) return;
+    const consumed = skipWhitespaceAndLineComments(current7, 0);
+    const value = current7.slice(consumed).trimEnd();
     if (value.length === 0) return;
     args.push({
       value,
@@ -6361,47 +6361,47 @@ function splitArgsWithOffsets(argsStr) {
   for (let i = 0; i < argsStr.length; i++) {
     const ch = argsStr[i];
     if (inString) {
-      current6 += ch;
+      current7 += ch;
       if (ch === stringChar && argsStr[i - 1] !== "\\") inString = false;
       continue;
     }
     if (ch === "/" && argsStr[i + 1] === "/") {
-      if (current6.length === 0) currentStart = i;
+      if (current7.length === 0) currentStart = i;
       while (i < argsStr.length && argsStr[i] !== "\n") {
-        current6 += argsStr[i];
+        current7 += argsStr[i];
         i++;
       }
       if (i < argsStr.length) {
-        current6 += argsStr[i];
+        current7 += argsStr[i];
       }
       continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
-      if (current6.length === 0) currentStart = i;
-      current6 += ch;
+      if (current7.length === 0) currentStart = i;
+      current7 += ch;
       continue;
     }
     if (ch === "(" || ch === "[" || ch === "{") {
       depth++;
-      if (current6.length === 0) currentStart = i;
-      current6 += ch;
+      if (current7.length === 0) currentStart = i;
+      current7 += ch;
       continue;
     }
     if (ch === ")" || ch === "]" || ch === "}") {
       depth--;
-      if (current6.length === 0) currentStart = i;
-      current6 += ch;
+      if (current7.length === 0) currentStart = i;
+      current7 += ch;
       continue;
     }
     if (ch === "," && depth === 0) {
       pushCurrent();
-      current6 = "";
+      current7 = "";
       currentStart = i + 1;
     } else {
-      if (current6.length === 0) currentStart = i;
-      current6 += ch;
+      if (current7.length === 0) currentStart = i;
+      current7 += ch;
     }
   }
   pushCurrent();
@@ -12879,13 +12879,13 @@ function regionTrimEdit(chunk, control, value) {
   if (chunk.headFn !== null && MULTI_VOICE_HEADS.has(chunk.headFn)) {
     return { edit: null, refusal: "not-one-voice", value };
   }
-  const current6 = readRegion(chunk);
-  if (!current6 || !Number.isFinite(value)) {
+  const current7 = readRegion(chunk);
+  if (!current7 || !Number.isFinite(value)) {
     return { edit: null, refusal: "not-a-number", value };
   }
-  const clamped = control === "begin" ? Math.min(Math.max(0, value), current6.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current6.begin + MIN_REGION_SPAN);
+  const clamped = control === "begin" ? Math.min(Math.max(0, value), current7.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current7.begin + MIN_REGION_SPAN);
   if (!Number.isFinite(clamped)) return { edit: null, refusal: "not-a-number", value };
-  const before = current6[control];
+  const before = current7[control];
   if (formatNumber(clamped) === formatNumber(before)) {
     return { edit: null, refusal: "no-change", value: clamped };
   }
@@ -14740,7 +14740,7 @@ function createTrackEnvelopeScheduler(deps) {
   let cycles = 0;
   const envelopes = /* @__PURE__ */ new Map();
   const refused2 = /* @__PURE__ */ new Map();
-  const current6 = /* @__PURE__ */ new Map();
+  const current7 = /* @__PURE__ */ new Map();
   let overCap = [];
   let rendering = null;
   let cancelTimer = null;
@@ -14769,8 +14769,8 @@ function createTrackEnvelopeScheduler(deps) {
       } catch {
         fp = null;
       }
-      if (wanted.includes(id) && current6.get(id) !== fp) {
-        current6.set(id, fp);
+      if (wanted.includes(id) && current7.get(id) !== fp) {
+        current7.set(id, fp);
         deps.onChange();
       }
       deps.schedule(step, 0);
@@ -14796,7 +14796,7 @@ function createTrackEnvelopeScheduler(deps) {
     const seconds = cps > 0 ? cycles / cps : Infinity;
     let spent = 0;
     for (const id of wanted) {
-      const fp = current6.get(id);
+      const fp = current7.get(id);
       if (fp == null) continue;
       const kept = envelopes.get(id)?.fingerprint === fp;
       const cost = seconds * (deps.weight?.(id) ?? 1);
@@ -14825,7 +14825,7 @@ function createTrackEnvelopeScheduler(deps) {
       for (const id of over) if (envelopes.delete(id)) deps.onChange();
       for (const id of todo) {
         if (controller.signal.aborted) break;
-        const fp = current6.get(id);
+        const fp = current7.get(id);
         if (fp == null) continue;
         rendering = id;
         deps.onChange();
@@ -14870,7 +14870,7 @@ function createTrackEnvelopeScheduler(deps) {
         kick();
         return;
       }
-      for (const id of [...current6.keys()]) if (!wanted.includes(id)) current6.delete(id);
+      for (const id of [...current7.keys()]) if (!wanted.includes(id)) current7.delete(id);
       deps.onChange();
       refingerprint();
     },
@@ -14923,7 +14923,7 @@ function createTrackEnvelopeScheduler(deps) {
         data: env.data,
         columns: env.columns,
         cycles: env.cycles,
-        stale: current6.get(trackId) !== env.fingerprint
+        stale: current7.get(trackId) !== env.fingerprint
       };
     },
     status: /* @__PURE__ */ __name(() => ({
@@ -24882,14 +24882,14 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React44__namespace.default.Children.count(children);
-  const childArray = React44__namespace.default.Children.toArray(children);
+  const count = React45__namespace.default.Children.count(children);
+  const childArray = React45__namespace.default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
-  const [sizes, setSizes] = React44.useState(defaultSizes);
-  const containerRef = React44.useRef(null);
-  const draggingRef = React44.useRef(null);
+  const [sizes, setSizes] = React45.useState(defaultSizes);
+  const containerRef = React45.useRef(null);
+  const draggingRef = React45.useRef(null);
   const isHorizontal = direction === "horizontal";
-  const handleMouseDown = React44.useCallback((dividerIndex, e) => {
+  const handleMouseDown = React45.useCallback((dividerIndex, e) => {
     e.preventDefault();
     draggingRef.current = dividerIndex;
     const startPos = isHorizontal ? e.clientX : e.clientY;
@@ -24928,7 +24928,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React44__namespace.default.useEffect(() => {
+  React45__namespace.default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -24944,7 +24944,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React44__namespace.default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React45__namespace.default.Fragment, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
@@ -25470,9 +25470,9 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners16 = /* @__PURE__ */ new Set();
+  const listeners17 = /* @__PURE__ */ new Set();
   const notify6 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners16) l();
+    for (const l of listeners17) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify6(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify6(), "onStackItemPopped");
@@ -25482,7 +25482,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners16,
+    listeners: listeners17,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -25525,10 +25525,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners16 = active.listeners;
-  listeners16.add(cb);
+  const listeners17 = active.listeners;
+  listeners17.add(cb);
   return () => {
-    listeners16.delete(cb);
+    listeners17.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -25712,10 +25712,10 @@ function subscribe2(id, cb) {
   }
   set2.add(cb);
   return () => {
-    const current6 = subscribersByFile.get(id);
-    if (!current6) return;
-    current6.delete(cb);
-    if (current6.size === 0) {
+    const current7 = subscribersByFile.get(id);
+    if (!current7) return;
+    current7.delete(cb);
+    if (current7.size === 0) {
       subscribersByFile.delete(id);
     }
   };
@@ -25938,12 +25938,12 @@ function pruneZoneOverrides(fileId, currentViz) {
   const stale = [];
   for (const [trackKey, value] of overrides.entries()) {
     const entry = value;
-    const current6 = currentViz.get(trackKey);
-    if (!current6) {
+    const current7 = currentViz.get(trackKey);
+    if (!current7) {
       stale.push(trackKey);
-    } else if (entry.vizId && entry.vizId !== current6.vizId) {
+    } else if (entry.vizId && entry.vizId !== current7.vizId) {
       stale.push(trackKey);
-    } else if (entry.contentHash && current6.contentHash && entry.contentHash !== current6.contentHash) {
+    } else if (entry.contentHash && current7.contentHash && entry.contentHash !== current7.contentHash) {
       stale.push(trackKey);
     }
   }
@@ -26107,13 +26107,13 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe9 = React44.useCallback(
+  const subscribe10 = React45.useCallback(
     (onStoreChange) => subscribe2(id, onStoreChange),
     [id]
   );
-  const getSnapshot = React44.useCallback(() => getFile(id), [id]);
-  const file = React44.useSyncExternalStore(subscribe9, getSnapshot, getSnapshot);
-  const setContent2 = React44.useCallback(
+  const getSnapshot = React45.useCallback(() => getFile(id), [id]);
+  const file = React45.useSyncExternalStore(subscribe10, getSnapshot, getSnapshot);
+  const setContent2 = React45.useCallback(
     (content) => setContent(id, content),
     [id]
   );
@@ -29659,7 +29659,7 @@ function ensureStrudelLintCodeActionProvider(monaco, languageId) {
 __name(ensureStrudelLintCodeActionProvider, "ensureStrudelLintCodeActionProvider");
 var EMPTY_META_MAP = /* @__PURE__ */ new Map();
 function useTrackMetaMap(fileId) {
-  const subscribe9 = React44.useCallback(
+  const subscribe10 = React45.useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -29667,11 +29667,11 @@ function useTrackMetaMap(fileId) {
     },
     [fileId]
   );
-  const getSnapshot = React44.useCallback(() => {
+  const getSnapshot = React45.useCallback(() => {
     if (!fileId) return EMPTY_META_MAP;
     return getTrackMetaMapSnapshot(fileId);
   }, [fileId]);
-  return React44.useSyncExternalStore(subscribe9, getSnapshot, getSnapshot);
+  return React45.useSyncExternalStore(subscribe10, getSnapshot, getSnapshot);
 }
 __name(useTrackMetaMap, "useTrackMetaMap");
 
@@ -29693,11 +29693,11 @@ __name(trackBarSegments, "trackBarSegments");
 var BAR_WIDTH_PX = 3;
 function useTrackColourBars(editor, fileId) {
   const trackMeta = useTrackMetaMap(fileId);
-  const trackMetaRef = React44.useRef(trackMeta);
+  const trackMetaRef = React45.useRef(trackMeta);
   trackMetaRef.current = trackMeta;
-  const [enabled, setEnabled] = React44.useState(getTrackColourBarsEnabled);
-  React44.useEffect(() => onTrackColourBarsChange(setEnabled), []);
-  React44.useEffect(() => {
+  const [enabled, setEnabled] = React45.useState(getTrackColourBarsEnabled);
+  React45.useEffect(() => onTrackColourBarsChange(setEnabled), []);
+  React45.useEffect(() => {
     if (!editor || !enabled) return;
     const host = editor.getDomNode?.();
     if (!host) return;
@@ -30939,10 +30939,10 @@ function subscribe3(ref, cb) {
   return () => {
     if (unsubscribed) return;
     unsubscribed = true;
-    const current6 = pinnedSubscribers.get(fileId);
-    if (!current6) return;
-    current6.delete(cb);
-    if (current6.size === 0) {
+    const current7 = pinnedSubscribers.get(fileId);
+    if (!current7) return;
+    current7.delete(cb);
+    if (current7.size === 0) {
       pinnedSubscribers.delete(fileId);
     }
   };
@@ -31721,23 +31721,23 @@ function teardown(timeoutIds, collections) {
 }
 __name(teardown, "teardown");
 function useHighlighting(editor, hapStream) {
-  const timeoutIdsRef = React44.useRef([]);
-  const hapCollectionsRef = React44.useRef(/* @__PURE__ */ new Map());
-  const hapCounterRef = React44.useRef(0);
-  const anchorsRef = React44.useRef(/* @__PURE__ */ new Map());
-  const epochRef = React44.useRef(void 0);
-  const editsRef = React44.useRef(
+  const timeoutIdsRef = React45.useRef([]);
+  const hapCollectionsRef = React45.useRef(/* @__PURE__ */ new Map());
+  const hapCounterRef = React45.useRef(0);
+  const anchorsRef = React45.useRef(/* @__PURE__ */ new Map());
+  const epochRef = React45.useRef(void 0);
+  const editsRef = React45.useRef(
     []
   );
-  const clearAnchors = React44.useCallback(() => {
+  const clearAnchors = React45.useCallback(() => {
     for (const a of anchorsRef.current.values()) a.clear();
     anchorsRef.current.clear();
   }, []);
-  const clearAll = React44.useCallback(() => {
+  const clearAll = React45.useCallback(() => {
     teardown(timeoutIdsRef.current, hapCollectionsRef.current);
     clearAnchors();
   }, [clearAnchors]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!editor || !hapStream) return;
     ensureBaseHighlightStyle();
     epochRef.current = void 0;
@@ -31998,12 +31998,12 @@ function ensureBaseBreakpointStyle() {
 }
 __name(ensureBaseBreakpointStyle, "ensureBaseBreakpointStyle");
 function useBreakpoints(editor, store, onResume) {
-  const collectionRef = React44.useRef(null);
-  const clearAll = React44.useCallback(() => {
+  const collectionRef = React45.useRef(null);
+  const clearAll = React45.useCallback(() => {
     collectionRef.current?.clear();
     collectionRef.current = null;
   }, []);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!editor || !onResume) return;
     const action = editor.addAction({
       id: "stave.debugger.resume",
@@ -32018,7 +32018,7 @@ function useBreakpoints(editor, store, onResume) {
       action.dispose();
     };
   }, [editor, onResume]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!editor || !store) return;
     ensureBaseBreakpointStyle();
     let currentSnapshot = getIRSnapshot();
@@ -33461,10 +33461,10 @@ function readWorkspaceOrder() {
 }
 __name(readWorkspaceOrder, "readWorkspaceOrder");
 function applySnapshot(files, fileMeta, order) {
-  const current6 = listWorkspaceFiles();
-  const currentIds = new Set(current6.map((f) => f.id));
+  const current7 = listWorkspaceFiles();
+  const currentIds = new Set(current7.map((f) => f.id));
   const wantIds = new Set(Object.keys(files));
-  for (const f of current6) {
+  for (const f of current7) {
     if (!wantIds.has(f.id)) deleteWorkspaceFile(f.id);
   }
   const recreatedMissing = [];
@@ -33992,30 +33992,30 @@ function EditorView({
   onCropViz
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
-  const containerRef = React44.useRef(null);
-  const [, forceViewTick] = React44.useState(0);
-  React44.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
+  const containerRef = React45.useRef(null);
+  const [, forceViewTick] = React45.useState(0);
+  React45.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
   const viewedContent = getViewedContent(fileId);
   const viewing = viewedContent !== null;
   const viewedCommit = getViewedCommit();
-  const editorRef = React44.useRef(null);
-  const monacoRef = React44.useRef(null);
-  const viewZoneHandleRef = React44.useRef(null);
-  const lastPayloadRef = React44.useRef(null);
-  const [hapStream, setHapStream] = React44.useState(null);
-  const [breakpointStore, setBreakpointStore] = React44.useState(null);
-  const [onResume, setOnResume] = React44.useState(null);
-  const [editorReady, setEditorReady] = React44.useState(false);
-  React44.useEffect(() => {
+  const editorRef = React45.useRef(null);
+  const monacoRef = React45.useRef(null);
+  const viewZoneHandleRef = React45.useRef(null);
+  const lastPayloadRef = React45.useRef(null);
+  const [hapStream, setHapStream] = React45.useState(null);
+  const [breakpointStore, setBreakpointStore] = React45.useState(null);
+  const [onResume, setOnResume] = React45.useState(null);
+  const [editorReady, setEditorReady] = React45.useState(false);
+  React45.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     const monaco = monacoRef.current;
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
       { kind: "file", fileId },
@@ -34046,7 +34046,7 @@ function EditorView({
       viewZoneHandleRef.current = null;
     };
   }, [fileId, editorReady]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!fileId) return;
     const remount = /* @__PURE__ */ __name(() => {
       const payload = lastPayloadRef.current;
@@ -34071,12 +34071,12 @@ function EditorView({
   useHighlighting(editorRef.current, hapStream);
   useBreakpoints(editorRef.current, breakpointStore, onResume ?? void 0);
   useTrackColourBars(editorRef.current, fileId);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     return () => {
       if (editorRef.current) unregisterEditor(fileId, editorRef.current);
     };
   }, [fileId]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     if (!editor || !monaco) return;
@@ -34088,9 +34088,9 @@ function EditorView({
       clearEvalErrors(monaco, model);
     }
   }, [error]);
-  const onPlayRef = React44.useRef(onPlay);
+  const onPlayRef = React45.useRef(onPlay);
   onPlayRef.current = onPlay;
-  const onStopRef = React44.useRef(onStop);
+  const onStopRef = React45.useRef(onStop);
   onStopRef.current = onStop;
   const handleMonacoBeforeMount = /* @__PURE__ */ __name((monaco) => {
     if (monaco.editor?.defineTheme) defineStrudelMonacoTheme(monaco);
@@ -34268,7 +34268,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React44__namespace.default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React45__namespace.default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -34415,34 +34415,34 @@ function PreviewView({
   paused = false
 }) {
   const { file } = useWorkspaceFile(fileId);
-  const containerRef = React44.useRef(null);
-  const [audioPayload, setAudioPayload] = React44.useState(null);
-  const [reloadTick, setReloadTick] = React44.useState(0);
-  const [, forceSourcesRerender] = React44.useState(0);
-  const catchUpNeededRef = React44.useRef(false);
-  const [liveOn, setLiveOn] = React44.useState(() => getVizLive(fileId));
-  React44.useEffect(() => {
+  const containerRef = React45.useRef(null);
+  const [audioPayload, setAudioPayload] = React45.useState(null);
+  const [reloadTick, setReloadTick] = React45.useState(0);
+  const [, forceSourcesRerender] = React45.useState(0);
+  const catchUpNeededRef = React45.useRef(false);
+  const [liveOn, setLiveOn] = React45.useState(() => getVizLive(fileId));
+  React45.useEffect(() => {
     setLiveOn(getVizLive(fileId));
     return onVizLiveChange(fileId, setLiveOn);
   }, [fileId]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     const unsubscribe = workspaceAudioBus.subscribe(sourceRef, (payload) => {
       setAudioPayload(payload);
     });
     return unsubscribe;
   }, [sourceRef]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     const unsubscribe = workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
     return unsubscribe;
   }, []);
   const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!file) return;
     if (provider.reload === "manual") return;
     if (!liveOn) {
@@ -34472,8 +34472,8 @@ function PreviewView({
     liveOn,
     file
   ]);
-  const prevEffectivelyHiddenRef = React44.useRef(effectivelyHidden);
-  React44.useEffect(() => {
+  const prevEffectivelyHiddenRef = React45.useRef(effectivelyHidden);
+  React45.useEffect(() => {
     const wasHidden = prevEffectivelyHiddenRef.current;
     prevEffectivelyHiddenRef.current = effectivelyHidden;
     if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
@@ -34481,8 +34481,8 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
-  const prevLiveOnRef = React44.useRef(liveOn);
-  React44.useEffect(() => {
+  const prevLiveOnRef = React45.useRef(liveOn);
+  React45.useEffect(() => {
     const wasOff = !prevLiveOnRef.current;
     prevLiveOnRef.current = liveOn;
     if (wasOff && liveOn && catchUpNeededRef.current) {
@@ -34490,7 +34490,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React44__namespace.default.useMemo(() => {
+  const providerNode = React45__namespace.default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -34669,9 +34669,9 @@ var CHORD_MAP = {
   w: "workspace.openPreviewInWindow"
 };
 function useKeyboardCommands(opts) {
-  const optsRef = React44.useRef(opts);
+  const optsRef = React45.useRef(opts);
   optsRef.current = opts;
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     let chordPending = false;
     let chordTimer = null;
     function clearChord() {
@@ -34783,25 +34783,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React44__namespace.useMemo(
+  const changedIds = React45__namespace.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit3.files),
     [commit3, pickerFileIds]
   );
-  const [mode, setMode2] = React44__namespace.useState(defaultMode);
-  React44__namespace.useEffect(() => {
+  const [mode, setMode2] = React45__namespace.useState(defaultMode);
+  React45__namespace.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React44__namespace.useState(
+  const [fileId, setFileId] = React45__namespace.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React44__namespace.useRef(null);
-  const handleMount = React44__namespace.useCallback(
+  const diffEditorRef = React45__namespace.useRef(null);
+  const handleMount = React45__namespace.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -34811,7 +34811,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -34936,18 +34936,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React44__namespace.useMemo(() => snapshotAt(history2, commit3.id), [history2, commit3]);
-  const fileIds = React44__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React44__namespace.useState(
+  const snapshot = React45__namespace.useMemo(() => snapshotAt(history2, commit3.id), [history2, commit3]);
+  const fileIds = React45__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React45__namespace.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React44__namespace.useCallback(
+  const handleMount = React45__namespace.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -35889,7 +35889,7 @@ function subscribeToBottomPanelState(cb) {
 }
 __name(subscribeToBottomPanelState, "subscribeToBottomPanelState");
 function useBottomPanelState() {
-  return React44__namespace.useSyncExternalStore(subscribeToBottomPanelState, getBottomPanelState, () => SERVER_STATE);
+  return React45__namespace.useSyncExternalStore(subscribeToBottomPanelState, getBottomPanelState, () => SERVER_STATE);
 }
 __name(useBottomPanelState, "useBottomPanelState");
 
@@ -35916,7 +35916,7 @@ function useTouchBar() {
 }
 __name(useTouchBar, "useTouchBar");
 function EmptyTimelineStub() {
-  return React44__namespace.createElement(
+  return React45__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -35934,7 +35934,7 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React44__namespace.createElement(EmptyTimelineStub)
+  content: React45__namespace.createElement(EmptyTimelineStub)
 });
 
 // src/workspace/codeUndo.ts
@@ -35958,14 +35958,14 @@ function codeUndoForFocus(el, which) {
 }
 __name(codeUndoForFocus, "codeUndoForFocus");
 function useActiveWriter() {
-  const [editor, setEditor] = React44__namespace.useState(() => getActiveEditor());
-  const editorRef = React44__namespace.useRef(null);
-  const writerRef = React44__namespace.useRef(null);
-  React44__namespace.useEffect(() => {
+  const [editor, setEditor] = React45__namespace.useState(() => getActiveEditor());
+  const editorRef = React45__namespace.useRef(null);
+  const writerRef = React45__namespace.useRef(null);
+  React45__namespace.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     editorRef.current = editor;
     writerRef.current = editor ? createWriter(editor) : null;
   }, [editor]);
@@ -35976,10 +35976,10 @@ __name(useActiveWriter, "useActiveWriter");
 // src/visualEdit/panels/useActiveChunk.ts
 function useActiveChunk() {
   const { editor, editorRef, writerRef } = useActiveWriter();
-  const [chunk, setChunk] = React44__namespace.useState(null);
-  const anchorRef = React44__namespace.useRef(null);
+  const [chunk, setChunk] = React45__namespace.useState(null);
+  const anchorRef = React45__namespace.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -36006,7 +36006,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React44__namespace.useCallback(
+  const applyEdit = React45__namespace.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writerRef.current;
@@ -36021,17 +36021,80 @@ function useActiveChunk() {
     },
     [editorRef, writerRef]
   );
-  const beginGesture = React44__namespace.useCallback(() => openGesture(writerRef.current), [writerRef]);
-  const endGesture = React44__namespace.useCallback(() => closeGesture(writerRef.current), [writerRef]);
+  const beginGesture = React45__namespace.useCallback(() => openGesture(writerRef.current), [writerRef]);
+  const endGesture = React45__namespace.useCallback(() => closeGesture(writerRef.current), [writerRef]);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
+var PATTERN_SIDE_KEY = "stave:visualEdit.patternSide";
+var PATTERN_SIDE_TOGGLE_ATTR = "data-pattern-side-toggle";
+var DEFAULT_SHOWN = true;
+function readStored() {
+  if (typeof window === "undefined") return DEFAULT_SHOWN;
+  try {
+    const v = window.localStorage.getItem(PATTERN_SIDE_KEY);
+    return v === "shown" ? true : v === "hidden" ? false : DEFAULT_SHOWN;
+  } catch {
+    return DEFAULT_SHOWN;
+  }
+}
+__name(readStored, "readStored");
+var current4 = readStored();
+var listeners11 = /* @__PURE__ */ new Set();
+function subscribe4(listener) {
+  listeners11.add(listener);
+  return () => listeners11.delete(listener);
+}
+__name(subscribe4, "subscribe");
+function usePatternSideShown() {
+  return React45__namespace.useSyncExternalStore(subscribe4, () => current4, () => DEFAULT_SHOWN);
+}
+__name(usePatternSideShown, "usePatternSideShown");
+function setPatternSideShown(shown) {
+  if (shown === current4) return;
+  current4 = shown;
+  try {
+    window.localStorage.setItem(PATTERN_SIDE_KEY, shown ? "shown" : "hidden");
+  } catch {
+  }
+  listeners11.forEach((l) => l());
+}
+__name(setPatternSideShown, "setPatternSideShown");
+function PatternSideToggle() {
+  const phone = usePhone();
+  const shown = usePatternSideShown();
+  if (phone) return null;
+  const label = shown ? "Hide side panel" : "Show side panel";
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "button",
+    {
+      ...{ [PATTERN_SIDE_TOGGLE_ATTR]: "" },
+      type: "button",
+      "aria-label": label,
+      title: label,
+      "aria-expanded": shown,
+      onClick: () => setPatternSideShown(!shown),
+      style: {
+        appearance: "none",
+        border: "none",
+        background: "transparent",
+        color: shown ? "var(--foreground, #e2e2e8)" : "var(--foreground-muted, #a0a0aa)",
+        padding: "0 8px",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center"
+      },
+      children: /* @__PURE__ */ jsxRuntime.jsx("svg", { width: "14", height: "12", viewBox: "0 0 14 12", "aria-hidden": "true", focusable: "false", children: /* @__PURE__ */ jsxRuntime.jsx("path", { d: "M1 2h12M1 6h12M1 10h12", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", fill: "none" }) })
+    }
+  );
+}
+__name(PatternSideToggle, "PatternSideToggle");
 function VisualEditStandby({
   panel,
   hint,
   icon
 }) {
-  return React44__namespace.createElement(
+  return React45__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -36050,12 +36113,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React44__namespace.createElement("span", {
+    icon ? React45__namespace.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React44__namespace.createElement("span", null, hint)
+    React45__namespace.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -36083,25 +36146,25 @@ var VISUAL_EDIT_TABS = [
 var keyOf = /* @__PURE__ */ __name((at, mini) => `${at}:${mini ?? ""}`, "keyOf");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React44__namespace.useState(null);
-  const [read5, setRead] = React44__namespace.useState(null);
-  const modelRef = React44__namespace.useRef(null);
-  React44__namespace.useEffect(() => {
+  const [model, setModel] = React45__namespace.useState(null);
+  const [read5, setRead] = React45__namespace.useState(null);
+  const modelRef = React45__namespace.useRef(null);
+  React45__namespace.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React44__namespace.useRef(opts);
+  const optsRef = React45__namespace.useRef(opts);
   optsRef.current = opts;
   const viewScale = opts.viewScale ?? UNREFINED;
-  const modelScaleRef = React44__namespace.useRef(UNREFINED);
-  const ownEchoRef = React44__namespace.useRef(null);
-  const patternKeyRef = React44__namespace.useRef(null);
-  const patternKey = React44__namespace.useMemo(() => {
+  const modelScaleRef = React45__namespace.useRef(UNREFINED);
+  const ownEchoRef = React45__namespace.useRef(null);
+  const patternKeyRef = React45__namespace.useRef(null);
+  const patternKey = React45__namespace.useMemo(() => {
     if (!chunk) return patternKeyRef.current = null;
     const key3 = keyOf(chunk.exprRange[0], chunk.miniString);
     if (key3 !== ownEchoRef.current) patternKeyRef.current = key3;
     return patternKeyRef.current;
   }, [chunk]);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -36128,7 +36191,7 @@ function useGridModel(opts) {
     modelRef.current = held2.model;
     setModel(held2.model);
   }, [chunk, viewScale]);
-  const writeModel = React44__namespace.useCallback(
+  const writeModel = React45__namespace.useCallback(
     (next) => {
       if (modelRef.current?.lookOnly) return;
       const o = optsRef.current;
@@ -36145,7 +36208,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  const mutate = React44__namespace.useCallback(
+  const mutate = React45__namespace.useCallback(
     (fn) => {
       const prev = modelRef.current;
       if (prev == null) return;
@@ -36155,8 +36218,8 @@ function useGridModel(opts) {
     },
     [writeModel]
   );
-  const settle = React44__namespace.useCallback((next) => writeModel(next), [writeModel]);
-  const writeMini = React44__namespace.useCallback(
+  const settle = React45__namespace.useCallback((next) => writeModel(next), [writeModel]);
+  const writeMini = React45__namespace.useCallback(
     (mini) => {
       if (modelRef.current?.lookOnly) return;
       applyEdit((fresh, wb) => {
@@ -36201,9 +36264,9 @@ function cycleToStep(cycle, steps, bars, cols, barSteps) {
 }
 __name(cycleToStep, "cycleToStep");
 function usePlayingStep(steps, bars, cols, barSteps) {
-  const [step, setStep] = React44__namespace.useState(null);
+  const [step, setStep] = React45__namespace.useState(null);
   const layoutKey = barSteps?.join(",") ?? "";
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     let raf = 0;
     const counts = layoutKey ? layoutKey.split(",").map(Number) : void 0;
     const tick = /* @__PURE__ */ __name(() => {
@@ -36367,7 +36430,7 @@ function velocityColor(gain) {
   return `hsl(${Math.round(hue)}, 72%, 56%)`;
 }
 __name(velocityColor, "velocityColor");
-function readStored() {
+function readStored2() {
   if (typeof window === "undefined") return DEFAULT_MODE;
   try {
     const v = window.localStorage.getItem(NOTE_COLOR_MODE_KEY);
@@ -36376,31 +36439,31 @@ function readStored() {
     return DEFAULT_MODE;
   }
 }
-__name(readStored, "readStored");
-var current4 = readStored();
-var listeners11 = /* @__PURE__ */ new Set();
+__name(readStored2, "readStored");
+var current5 = readStored2();
+var listeners12 = /* @__PURE__ */ new Set();
 function setMode(mode) {
-  if (mode === current4) return;
-  current4 = mode;
+  if (mode === current5) return;
+  current5 = mode;
   try {
     window.localStorage.setItem(NOTE_COLOR_MODE_KEY, mode);
   } catch {
   }
-  listeners11.forEach((l) => l());
+  listeners12.forEach((l) => l());
 }
 __name(setMode, "setMode");
-function subscribe4(listener) {
-  listeners11.add(listener);
-  return () => listeners11.delete(listener);
+function subscribe5(listener) {
+  listeners12.add(listener);
+  return () => listeners12.delete(listener);
 }
-__name(subscribe4, "subscribe");
+__name(subscribe5, "subscribe");
 function useNoteColorMode() {
-  const mode = React44__namespace.useSyncExternalStore(subscribe4, () => current4, () => DEFAULT_MODE);
+  const mode = React45__namespace.useSyncExternalStore(subscribe5, () => current5, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
 function getNoteColorMode() {
-  return current4;
+  return current5;
 }
 __name(getNoteColorMode, "getNoteColorMode");
 function setNoteColorMode(mode) {
@@ -36408,24 +36471,24 @@ function setNoteColorMode(mode) {
 }
 __name(setNoteColorMode, "setNoteColorMode");
 function subscribeNoteColorMode(listener) {
-  return subscribe4(listener);
+  return subscribe5(listener);
 }
 __name(subscribeNoteColorMode, "subscribeNoteColorMode");
 function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
-  const slotStateRef = React44__namespace.useRef(slotState2);
+  const slotStateRef = React45__namespace.useRef(slotState2);
   slotStateRef.current = slotState2;
-  const onScaleToRef = React44__namespace.useRef(onScaleTo);
+  const onScaleToRef = React45__namespace.useRef(onScaleTo);
   onScaleToRef.current = onScaleTo;
-  const effectRef = React44__namespace.useRef(effect);
+  const effectRef = React45__namespace.useRef(effect);
   effectRef.current = effect;
-  const stableSlotState = React44__namespace.useCallback((t) => slotStateRef.current(t), []);
-  const stableScaleTo = React44__namespace.useCallback((t) => onScaleToRef.current(t), []);
+  const stableSlotState = React45__namespace.useCallback((t) => slotStateRef.current(t), []);
+  const stableScaleTo = React45__namespace.useCallback((t) => onScaleToRef.current(t), []);
   const hasEffect = effect !== void 0;
-  const stableEffect = React44__namespace.useCallback(
+  const stableEffect = React45__namespace.useCallback(
     (t) => effectRef.current?.(t) ?? NO_RESOLUTION_EFFECT,
     []
   );
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (!onResolution) return;
     onResolution(
       steps == null ? null : {
@@ -36436,20 +36499,20 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
       }
     );
   }, [steps, onResolution, stableSlotState, stableScaleTo, hasEffect, stableEffect]);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     return () => onResolution?.(null);
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
 function useViewProver(mini, parse6) {
-  const cacheRef = React44__namespace.useRef({
+  const cacheRef = React45__namespace.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React44__namespace.useRef(parse6);
+  const parseRef = React45__namespace.useRef(parse6);
   parseRef.current = parse6;
   const key3 = mini ?? null;
-  return React44__namespace.useCallback(
+  return React45__namespace.useCallback(
     (scale) => {
       if (key3 == null) return false;
       const c = cacheRef.current;
@@ -36514,9 +36577,9 @@ function ResolutionControl({
   onScaleTo,
   effect
 }) {
-  const [open, setOpen] = React44__namespace.useState(false);
-  const rootRef = React44__namespace.useRef(null);
-  React44__namespace.useEffect(() => {
+  const [open, setOpen] = React45__namespace.useState(false);
+  const rootRef = React45__namespace.useRef(null);
+  React45__namespace.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       if (!rootRef.current?.contains(e.target)) setOpen(false);
@@ -36736,12 +36799,12 @@ function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
 __name(jumpCursorToTrack, "jumpCursorToTrack");
 function useMixerModel() {
   const { editor, editorRef, writerRef: writebackRef } = useActiveWriter();
-  const [derived, setDerived] = React44__namespace.useState(EMPTY_DERIVED);
-  const lastJumpRef = React44__namespace.useRef(null);
-  React44__namespace.useEffect(() => {
+  const [derived, setDerived] = React45__namespace.useState(EMPTY_DERIVED);
+  const lastJumpRef = React45__namespace.useRef(null);
+  React45__namespace.useEffect(() => {
     lastJumpRef.current = null;
   }, [editor]);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (!editor) {
       setDerived(EMPTY_DERIVED);
       return;
@@ -36768,7 +36831,7 @@ function useMixerModel() {
     const sub = model?.onDidChangeContent?.(rederive);
     return () => sub?.dispose?.();
   }, [editor]);
-  const applyToStrip = React44__namespace.useCallback(
+  const applyToStrip = React45__namespace.useCallback(
     (id, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -36786,7 +36849,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToStripAt = React44__namespace.useCallback(
+  const applyToStripAt = React45__namespace.useCallback(
     (anchor, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -36801,7 +36864,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToMaster = React44__namespace.useCallback(
+  const applyToMaster = React45__namespace.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -36812,7 +36875,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToMasterChunk = React44__namespace.useCallback(
+  const applyToMasterChunk = React45__namespace.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -36836,12 +36899,12 @@ function useMixerModel() {
     },
     []
   );
-  const beginGesture = React44__namespace.useCallback(() => openGesture(writebackRef.current), [writebackRef]);
-  const endGesture = React44__namespace.useCallback(() => closeGesture(writebackRef.current), [writebackRef]);
-  const [selectedId, setSelectedId] = React44__namespace.useState(null);
-  const stripsRef = React44__namespace.useRef(EMPTY_DERIVED.strips);
+  const beginGesture = React45__namespace.useCallback(() => openGesture(writebackRef.current), [writebackRef]);
+  const endGesture = React45__namespace.useCallback(() => closeGesture(writebackRef.current), [writebackRef]);
+  const [selectedId, setSelectedId] = React45__namespace.useState(null);
+  const stripsRef = React45__namespace.useRef(EMPTY_DERIVED.strips);
   stripsRef.current = derived.strips;
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (!editor) {
       setSelectedId(null);
       return;
@@ -36870,7 +36933,7 @@ function useMixerModel() {
     const sub = editor.onDidChangeCursorPosition?.(recompute);
     return () => sub?.dispose?.();
   }, [editor, derived.strips]);
-  const selectTrack = React44__namespace.useCallback((id) => {
+  const selectTrack = React45__namespace.useCallback((id) => {
     const ed = editorRef.current;
     if (!ed) return;
     const model = ed.getModel?.();
@@ -36903,8 +36966,8 @@ function StripColorPopover({
   onReset,
   onClose
 }) {
-  const ref = React44__namespace.useRef(null);
-  React44__namespace.useEffect(() => {
+  const ref = React45__namespace.useRef(null);
+  React45__namespace.useEffect(() => {
     const onDown = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) onClose();
     }, "onDown");
@@ -37050,12 +37113,12 @@ __name(StripColorPopover, "StripColorPopover");
 function PatternTrackChip() {
   const { chunk } = useActiveChunk();
   const { strips, applyToStripAt } = useMixerModel();
-  const [fileId, setFileId] = React44__namespace.useState(() => getActiveFileId());
-  React44__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React45__namespace.useState(() => getActiveFileId());
+  React45__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
-  const [colorAnchor, setColorAnchor] = React44__namespace.useState(null);
-  const [renaming, setRenaming] = React44__namespace.useState(false);
-  const settledRef = React44__namespace.useRef(false);
+  const [colorAnchor, setColorAnchor] = React45__namespace.useState(null);
+  const [renaming, setRenaming] = React45__namespace.useState(false);
+  const settledRef = React45__namespace.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {
     settledRef.current = false;
     setRenaming(true);
@@ -37224,13 +37287,13 @@ function setColumnGain(model, stepIndex, gain) {
 __name(setColumnGain, "setColumnGain");
 var CLICK_SLOP_PX = 4;
 function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
-  const selfRef = React44__namespace.useRef(null);
-  const [frame, setFrame] = React44__namespace.useState(null);
-  const [added, setAdded] = React44__namespace.useState(0);
-  const [engaged, setEngaged] = React44__namespace.useState(false);
-  const dragRef = React44__namespace.useRef(null);
-  const swallowClick = React44__namespace.useRef(false);
-  const measure = React44__namespace.useCallback(() => {
+  const selfRef = React45__namespace.useRef(null);
+  const [frame, setFrame] = React45__namespace.useState(null);
+  const [added, setAdded] = React45__namespace.useState(0);
+  const [engaged, setEngaged] = React45__namespace.useState(false);
+  const dragRef = React45__namespace.useRef(null);
+  const swallowClick = React45__namespace.useRef(false);
+  const measure = React45__namespace.useCallback(() => {
     const grid = gridRef.current;
     const parent = selfRef.current?.offsetParent;
     if (!grid || !parent || cols < 1) return;
@@ -37253,8 +37316,8 @@ function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
       (f) => f && f.left === next.left && f.top === next.top && f.height === next.height && f.pitch === next.pitch && f.maxRight === next.maxRight ? f : next
     );
   }, [gridRef, cellAttr, cols]);
-  React44__namespace.useLayoutEffect(measure);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useLayoutEffect(measure);
+  React45__namespace.useEffect(() => {
     const grid = gridRef.current;
     if (!grid || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => measure());
@@ -37548,7 +37611,7 @@ function fitLabels(boxes) {
 }
 __name(fitLabels, "fitLabels");
 function useRulerFit(rulerRef, labelAttr) {
-  const fit = React44__namespace.useCallback(() => {
+  const fit = React45__namespace.useCallback(() => {
     const root = rulerRef.current;
     if (!root) return;
     const els = [...root.querySelectorAll(`[${labelAttr}]`)];
@@ -37565,10 +37628,10 @@ function useRulerFit(rulerRef, labelAttr) {
 }
 __name(useRulerFit, "useRulerFit");
 function useLayoutFollow(ref, run) {
-  const runRef = React44__namespace.useRef(run);
+  const runRef = React45__namespace.useRef(run);
   runRef.current = run;
-  const observed = React44__namespace.useRef(null);
-  React44__namespace.useLayoutEffect(() => {
+  const observed = React45__namespace.useRef(null);
+  React45__namespace.useLayoutEffect(() => {
     runRef.current();
     const el = ref.current;
     if (observed.current?.el === el) return;
@@ -37579,12 +37642,12 @@ function useLayoutFollow(ref, run) {
     ro.observe(el);
     observed.current = { el, ro };
   });
-  React44__namespace.useEffect(() => () => observed.current?.ro.disconnect(), []);
+  React45__namespace.useEffect(() => () => observed.current?.ro.disconnect(), []);
 }
 __name(useLayoutFollow, "useLayoutFollow");
 var GRID_MODE_KEY = "stave:visualEdit.gridMode";
 var DEFAULT_MODE2 = "exact";
-function readStored2() {
+function readStored3() {
   if (typeof window === "undefined") return DEFAULT_MODE2;
   try {
     const v = window.localStorage.getItem(GRID_MODE_KEY);
@@ -37593,30 +37656,30 @@ function readStored2() {
     return DEFAULT_MODE2;
   }
 }
-__name(readStored2, "readStored");
-var current5 = readStored2();
-var listeners12 = /* @__PURE__ */ new Set();
-function subscribe5(listener) {
-  listeners12.add(listener);
-  return () => listeners12.delete(listener);
+__name(readStored3, "readStored");
+var current6 = readStored3();
+var listeners13 = /* @__PURE__ */ new Set();
+function subscribe6(listener) {
+  listeners13.add(listener);
+  return () => listeners13.delete(listener);
 }
-__name(subscribe5, "subscribe");
+__name(subscribe6, "subscribe");
 function useGridMode() {
-  return React44__namespace.useSyncExternalStore(subscribe5, () => current5, () => DEFAULT_MODE2);
+  return React45__namespace.useSyncExternalStore(subscribe6, () => current6, () => DEFAULT_MODE2);
 }
 __name(useGridMode, "useGridMode");
 function getGridMode() {
-  return current5;
+  return current6;
 }
 __name(getGridMode, "getGridMode");
 function setGridMode(mode) {
-  if (mode === current5) return;
-  current5 = mode;
+  if (mode === current6) return;
+  current6 = mode;
   try {
     window.localStorage.setItem(GRID_MODE_KEY, mode);
   } catch {
   }
-  listeners12.forEach((l) => l());
+  listeners13.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
 function usePatternLength(chunk, model, parse6, writeMini) {
@@ -37624,9 +37687,9 @@ function usePatternLength(chunk, model, parse6, writeMini) {
   const bars = model?.bars ?? 1;
   const gain = chunk ? readChunkGain(chunk) : null;
   const velocity = gain?.mini != null;
-  const parseRef = React44__namespace.useRef(parse6);
+  const parseRef = React45__namespace.useRef(parse6);
   parseRef.current = parse6;
-  const cache3 = React44__namespace.useRef(null);
+  const cache3 = React45__namespace.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null || gain === null) return null;
     const key3 = `${bars}|${velocity}|${mini}`;
@@ -37670,20 +37733,20 @@ function gridInView(scrollLeft, clientWidth, scrollWidth) {
 }
 __name(gridInView, "gridInView");
 function useRulerPan(scrollRef, enabled) {
-  const [inView, setInView] = React44__namespace.useState(ALL_IN_VIEW);
-  const [viewWidth, setViewWidth] = React44__namespace.useState(0);
-  const [scroller, setScroller] = React44__namespace.useState(null);
-  const read5 = React44__namespace.useCallback(() => {
+  const [inView, setInView] = React45__namespace.useState(ALL_IN_VIEW);
+  const [viewWidth, setViewWidth] = React45__namespace.useState(0);
+  const [scroller, setScroller] = React45__namespace.useState(null);
+  const read5 = React45__namespace.useCallback(() => {
     const sc = scrollRef.current;
     const next = enabled && sc ? gridInView(sc.scrollLeft, sc.clientWidth, sc.scrollWidth) : ALL_IN_VIEW;
     setInView((prev) => prev.start === next.start && prev.end === next.end && prev.more === next.more ? prev : next);
     setViewWidth(enabled && sc ? sc.clientWidth : 0);
   }, [scrollRef, enabled]);
-  React44__namespace.useLayoutEffect(() => {
+  React45__namespace.useLayoutEffect(() => {
     if (scrollRef.current !== scroller) setScroller(scrollRef.current);
     read5();
   });
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (!enabled || !scroller) return;
     scroller.addEventListener("scroll", read5, { passive: true });
     window.addEventListener("resize", read5);
@@ -37695,7 +37758,7 @@ function useRulerPan(scrollRef, enabled) {
       observer?.disconnect();
     };
   }, [enabled, scroller, read5]);
-  const onPointerDown = React44__namespace.useCallback(
+  const onPointerDown = React45__namespace.useCallback(
     (e) => {
       const sc = scrollRef.current;
       if (!sc) return;
@@ -38124,7 +38187,7 @@ function reportRefusal(attempted) {
 }
 __name(reportRefusal, "reportRefusal");
 function SequencerGrid({ onResolution } = {}) {
-  const [viewScale, setViewScale] = React44__namespace.useState(UNREFINED);
+  const [viewScale, setViewScale] = React45__namespace.useState(UNREFINED);
   const { chunk, model, read: read5, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
     ...stepGridCodec,
     source: "seq",
@@ -38133,7 +38196,7 @@ function SequencerGrid({ onResolution } = {}) {
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, stepGridCodec.parse, writeMini);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     setViewScale(UNREFINED);
   }, [patternKey]);
   const playingStep = usePlayingStep(
@@ -38144,43 +38207,43 @@ function SequencerGrid({ onResolution } = {}) {
   );
   const [colorMode] = useNoteColorMode();
   const gridMode = useGridMode();
-  const gestureRef = React44__namespace.useRef(null);
-  const gainScoped = React44__namespace.useMemo(() => model ? gainWritable(stepGridCodec, model) : false, [model]);
+  const gestureRef = React45__namespace.useRef(null);
+  const gainScoped = React45__namespace.useMemo(() => model ? gainWritable(stepGridCodec, model) : false, [model]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
-  const isChordChart = React44__namespace.useMemo(
+  const isChordChart = React45__namespace.useMemo(
     () => chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
     [laneKey]
   );
-  const boxes = React44__namespace.useMemo(() => {
+  const boxes = React45__namespace.useMemo(() => {
     if (!model) return null;
     const widths = gridMode === "exact" ? ownStepWidths(linesModel(model, read5)) : /* @__PURE__ */ new Map();
     return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn));
   }, [model, read5, gridMode]);
-  const boxesRef = React44__namespace.useRef(boxes);
+  const boxesRef = React45__namespace.useRef(boxes);
   boxesRef.current = boxes;
   const boxWidth = /* @__PURE__ */ __name((laneIndex) => boxesRef.current?.[laneIndex]?.[0]?.width ?? 1, "boxWidth");
-  const toggleable = React44__namespace.useMemo(
+  const toggleable = React45__namespace.useMemo(
     () => model ? model.lanes.map((lane, li) => {
       const w = boxes?.[li]?.[0]?.width ?? 1;
       return lane.cells.map((c, si) => si % w === 0 && canToggleCell(model, li, si, !isCellOn(c), w));
     }) : null,
     [model, boxes]
   );
-  const placesNotes = React44__namespace.useMemo(
+  const placesNotes = React45__namespace.useMemo(
     () => model && boxes && toggleable ? boxesPlaceNotes(model.lanes, boxes, isCellOn, toggleable) : false,
     [model, boxes, toggleable]
   );
-  const coverage = React44__namespace.useMemo(
+  const coverage = React45__namespace.useMemo(
     () => model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null,
     [model]
   );
-  const stepStarts = React44__namespace.useMemo(() => {
+  const stepStarts = React45__namespace.useMemo(() => {
     if (!model) return null;
     const out = /* @__PURE__ */ new Map();
     for (const [part, cols] of writtenStepStarts(linesModel(model, read5))) out.set(part, new Set(cols));
     return out;
   }, [model, read5]);
-  const resizable = React44__namespace.useMemo(() => {
+  const resizable = React45__namespace.useMemo(() => {
     if (!model) return null;
     return model.lanes.map((lane, li) => {
       const out = /* @__PURE__ */ new Set();
@@ -38193,7 +38256,7 @@ function SequencerGrid({ onResolution } = {}) {
       return out;
     });
   }, [model, boxes]);
-  const paintCell = React44__namespace.useCallback(
+  const paintCell = React45__namespace.useCallback(
     (laneIndex, stepIndex, value) => {
       let refused2 = false;
       const length2 = boxWidth(laneIndex);
@@ -38210,7 +38273,7 @@ function SequencerGrid({ onResolution } = {}) {
     },
     [mutate]
   );
-  const paintOne = React44__namespace.useCallback(
+  const paintOne = React45__namespace.useCallback(
     (laneIndex, stepIndex, value) => {
       if (paintCell(laneIndex, stepIndex, value)) {
         reportRefusal(value ? "Couldn't add that hit" : "Couldn't remove that hit");
@@ -38218,20 +38281,20 @@ function SequencerGrid({ onResolution } = {}) {
     },
     [paintCell]
   );
-  const addVoice = React44__namespace.useCallback(
+  const addVoice = React45__namespace.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React44__namespace.useCallback(
+  const removeVoice = React45__namespace.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
   const canDrawView = useViewProver(chunk?.miniString, stepGridCodec.parse);
-  const scaleToSlots = React44__namespace.useCallback(
+  const scaleToSlots = React45__namespace.useCallback(
     (target) => {
       if (!model) return;
       const press = slotPress(stepGridCodec, model, target, canDrawView);
@@ -38251,7 +38314,7 @@ function SequencerGrid({ onResolution } = {}) {
     // looking closer costs nothing.
     (t) => model ? slotPressCost(stepGridCodec, model, t, canDrawView) : NO_RESOLUTION_EFFECT
   );
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -38287,9 +38350,9 @@ function SequencerGrid({ onResolution } = {}) {
       window.removeEventListener("pointerup", onUp);
     };
   }, [mutate, paintOne, endGesture, gainScoped]);
-  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current6, e) => {
+  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current7, e) => {
     beginGesture();
-    if (current6) {
+    if (current7) {
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
@@ -38334,23 +38397,23 @@ function SequencerGrid({ onResolution } = {}) {
     if (g.mode !== "paint") return;
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
-  const [cursor, setCursor] = React44__namespace.useState(null);
+  const [cursor, setCursor] = React45__namespace.useState(null);
   const rowsN = model?.lanes.length ?? 0;
   const colsN = model?.steps ?? 0;
   const liveCursor = cursor && cursor.row < rowsN && cursor.col < colsN ? cursor : null;
-  const cursorRef = React44__namespace.useRef(liveCursor);
+  const cursorRef = React45__namespace.useRef(liveCursor);
   cursorRef.current = liveCursor;
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React44__namespace.useRef(stmtId);
-  React44__namespace.useEffect(() => {
+  const stmtRef = React45__namespace.useRef(stmtId);
+  React45__namespace.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setCursor(null);
     }
   }, [stmtId]);
-  const focusCursorRef = React44__namespace.useRef(false);
-  const gridRef = React44__namespace.useRef(null);
-  React44__namespace.useEffect(() => {
+  const focusCursorRef = React45__namespace.useRef(false);
+  const gridRef = React45__namespace.useRef(null);
+  React45__namespace.useEffect(() => {
     if (!focusCursorRef.current) return;
     focusCursorRef.current = false;
     gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-seq-cell]')?.focus();
@@ -38423,21 +38486,21 @@ function SequencerGrid({ onResolution } = {}) {
         return false;
     }
   }, "runGesture");
-  const runGestureRef = React44__namespace.useRef(runGesture);
+  const runGestureRef = React45__namespace.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React44__namespace.useEffect(
+  React45__namespace.useEffect(
     () => mountGridGestures(GRID_SCOPE.sequencer, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React44__namespace.useRef(null);
+  const rulerRef = React45__namespace.useRef(null);
   useRulerFit(rulerRef, "data-seq-ruler-label");
   const phoneGrid = usePhoneGrid();
-  const scrollRef = React44__namespace.useRef(null);
+  const scrollRef = React45__namespace.useRef(null);
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone);
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 16;
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
   if (!model) {
-    return React44__namespace.createElement(VisualEditStandby, {
+    return React45__namespace.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && opensStepGrid(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -39013,8 +39076,8 @@ function PianoRollGrid({
   division: division2 = DEFAULT_DIVISION,
   onResolution
 } = {}) {
-  const [viewScale, setViewScale] = React44__namespace.useState(UNREFINED);
-  const [declinedCell, setDeclinedCell] = React44__namespace.useState(null);
+  const [viewScale, setViewScale] = React45__namespace.useState(UNREFINED);
+  const [declinedCell, setDeclinedCell] = React45__namespace.useState(null);
   const { chunk, model, read: read5, mutate, settle, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
     ...pianoRollCodec,
     source: "roll",
@@ -39023,11 +39086,11 @@ function PianoRollGrid({
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, pianoRollCodec.parse, writeMini);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     setViewScale(UNREFINED);
   }, [patternKey]);
-  const dragRef = React44__namespace.useRef(null);
-  const velRef = React44__namespace.useRef(null);
+  const dragRef = React45__namespace.useRef(null);
+  const velRef = React45__namespace.useRef(null);
   const playingStep = usePlayingStep(
     model?.steps ?? 0,
     model?.bars ?? 1,
@@ -39035,21 +39098,21 @@ function PianoRollGrid({
     model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
-  const [hoveredMidi, setHoveredMidi] = React44__namespace.useState(null);
-  const holdMidiRef = React44__namespace.useRef(null);
-  const holdTimerRef = React44__namespace.useRef(null);
-  const onSelectRef = React44__namespace.useRef(onSelect);
+  const [hoveredMidi, setHoveredMidi] = React45__namespace.useState(null);
+  const holdMidiRef = React45__namespace.useRef(null);
+  const holdTimerRef = React45__namespace.useRef(null);
+  const onSelectRef = React45__namespace.useRef(onSelect);
   onSelectRef.current = onSelect;
-  const selectedRef = React44__namespace.useRef(selected);
+  const selectedRef = React45__namespace.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range2, setRange] = React44__namespace.useState(
+  const [range2, setRange] = React45__namespace.useState(
     () => rollContentRange({ notes: [] })
   );
-  const stmtIdRef = React44__namespace.useRef(null);
-  const scrollRef = React44__namespace.useRef(null);
-  const openScrollRef = React44__namespace.useRef(false);
-  React44__namespace.useEffect(() => {
+  const stmtIdRef = React45__namespace.useRef(null);
+  const scrollRef = React45__namespace.useRef(null);
+  const openScrollRef = React45__namespace.useRef(false);
+  React45__namespace.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = rollContentRange(model);
@@ -39085,14 +39148,14 @@ function PianoRollGrid({
     const room = sc.clientHeight - 2 * pad;
     sc.scrollTop = y1 - y0 <= room ? (y0 + y1) / 2 - sc.clientHeight / 2 : y1 + pad - sc.clientHeight;
   });
-  const placesNotes = React44__namespace.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
-  const resizable = React44__namespace.useMemo(() => model ? resizableNotes(model) : null, [model]);
+  const placesNotes = React45__namespace.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
+  const resizable = React45__namespace.useMemo(() => model ? resizableNotes(model) : null, [model]);
   const cols = model ? columnCount(model) : 0;
-  const gainWritable2 = React44__namespace.useMemo(
+  const gainWritable2 = React45__namespace.useMemo(
     () => model ? gainWritable(pianoRollCodec, model) : false,
     [model]
   );
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
@@ -39141,7 +39204,7 @@ function PianoRollGrid({
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
@@ -39196,7 +39259,7 @@ function PianoRollGrid({
       holdTimerRef.current = null;
     }
   }, "stopHold");
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     window.addEventListener("pointerup", stopHold);
     window.addEventListener("pointercancel", stopHold);
     return () => {
@@ -39354,9 +39417,9 @@ function PianoRollGrid({
     }
     return best ?? { row: 0, col: 0 };
   }, "defaultCell");
-  const focusCursorRef = React44__namespace.useRef(false);
-  const gridRef = React44__namespace.useRef(null);
-  React44__namespace.useEffect(() => {
+  const focusCursorRef = React45__namespace.useRef(false);
+  const gridRef = React45__namespace.useRef(null);
+  React45__namespace.useEffect(() => {
     if (!focusCursorRef.current) return;
     const cell = gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-roll-cell]');
     if (!cell) return;
@@ -39461,20 +39524,20 @@ function PianoRollGrid({
         return true;
     }
   }, "runGesture");
-  const runGestureRef = React44__namespace.useRef(runGesture);
+  const runGestureRef = React45__namespace.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React44__namespace.useEffect(
+  React45__namespace.useEffect(
     () => mountGridGestures(GRID_SCOPE.pianoRoll, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React44__namespace.useRef(null);
+  const rulerRef = React45__namespace.useRef(null);
   useRulerFit(rulerRef, "data-roll-ruler-label");
   const phoneGrid = usePhoneGrid();
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone);
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 12;
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
   if (!model) {
-    return React44__namespace.createElement(VisualEditStandby, {
+    return React45__namespace.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && opensPianoRoll(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -40088,13 +40151,13 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React44__namespace.useRef(null);
-  const [editing, setEditing] = React44__namespace.useState(false);
-  const [draftMin, setDraftMin] = React44__namespace.useState("");
-  const [draftMax, setDraftMax] = React44__namespace.useState("");
-  const [popupPos, setPopupPos] = React44__namespace.useState(null);
-  const sliderRef = React44__namespace.useRef(null);
-  const popupRef = React44__namespace.useRef(null);
+  const dragRef = React45__namespace.useRef(null);
+  const [editing, setEditing] = React45__namespace.useState(false);
+  const [draftMin, setDraftMin] = React45__namespace.useState("");
+  const [draftMax, setDraftMax] = React45__namespace.useState("");
+  const [popupPos, setPopupPos] = React45__namespace.useState(null);
+  const sliderRef = React45__namespace.useRef(null);
+  const popupRef = React45__namespace.useRef(null);
   const POPUP_W = 132;
   const openRangeEditor = /* @__PURE__ */ __name(() => {
     if (!onRangeChange) return;
@@ -40110,7 +40173,7 @@ function Knob({
     }
     setEditing(false);
   }, "commitRange");
-  React44__namespace.useLayoutEffect(() => {
+  React45__namespace.useLayoutEffect(() => {
     if (!editing) return;
     const r = sliderRef.current?.getBoundingClientRect();
     if (!r) return;
@@ -40125,7 +40188,7 @@ function Knob({
       )
     });
   }, [editing]);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (!editing) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -40978,12 +41041,12 @@ function AddEffectMenu({
   present,
   onToggle
 }) {
-  const [open, setOpen] = React44__namespace.useState(false);
-  const [query, setQuery] = React44__namespace.useState("");
-  const [pos, setPos] = React44__namespace.useState(null);
-  const btnRef = React44__namespace.useRef(null);
-  const menuRef = React44__namespace.useRef(null);
-  const place = React44__namespace.useCallback(() => {
+  const [open, setOpen] = React45__namespace.useState(false);
+  const [query, setQuery] = React45__namespace.useState("");
+  const [pos, setPos] = React45__namespace.useState(null);
+  const btnRef = React45__namespace.useRef(null);
+  const menuRef = React45__namespace.useRef(null);
+  const place = React45__namespace.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -40997,10 +41060,10 @@ function AddEffectMenu({
       maxHeight
     });
   }, []);
-  React44__namespace.useLayoutEffect(() => {
+  React45__namespace.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -41215,15 +41278,15 @@ function SoundPickerMenu({
   onChange,
   onAudition
 }) {
-  const [open, setOpen] = React44__namespace.useState(false);
-  const [query, setQuery] = React44__namespace.useState("");
-  const [category, setCategory] = React44__namespace.useState(null);
-  const [pos, setPos] = React44__namespace.useState(null);
-  const btnRef = React44__namespace.useRef(null);
-  const menuRef = React44__namespace.useRef(null);
+  const [open, setOpen] = React45__namespace.useState(false);
+  const [query, setQuery] = React45__namespace.useState("");
+  const [category, setCategory] = React45__namespace.useState(null);
+  const [pos, setPos] = React45__namespace.useState(null);
+  const btnRef = React45__namespace.useRef(null);
+  const menuRef = React45__namespace.useRef(null);
   const lc = label.toLowerCase();
   const currentLabel = groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder;
-  const place = React44__namespace.useCallback(() => {
+  const place = React45__namespace.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -41237,17 +41300,17 @@ function SoundPickerMenu({
       maxHeight
     });
   }, []);
-  React44__namespace.useLayoutEffect(() => {
+  React45__namespace.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (open) {
       ensureCatScrollStyle();
       setQuery("");
       setCategory(null);
     }
   }, [open]);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -41758,7 +41821,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners16 = /* @__PURE__ */ new Set();
+  const listeners17 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -41773,18 +41836,18 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners16.forEach((l) => l());
+    listeners17.forEach((l) => l());
   }, "setAccessor");
   const notify6 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners16.forEach((l) => l());
+    listeners17.forEach((l) => l());
   }, "notify");
   const read5 = /* @__PURE__ */ __name(() => cached2, "read");
-  const subscribe9 = /* @__PURE__ */ __name((listener) => {
-    listeners16.add(listener);
-    return () => listeners16.delete(listener);
+  const subscribe10 = /* @__PURE__ */ __name((listener) => {
+    listeners17.add(listener);
+    return () => listeners17.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React44__namespace.useSyncExternalStore(subscribe9, read5, () => null), "useCatalog");
+  const useCatalog = /* @__PURE__ */ __name(() => React45__namespace.useSyncExternalStore(subscribe10, read5, () => null), "useCatalog");
   return { setAccessor, notify: notify6, read: read5, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
@@ -41898,37 +41961,37 @@ function MixerBody({
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
   const knobs = knobsFromChunk(chunk, showGain);
-  const writeKnob = React44__namespace.useCallback(
+  const writeKnob = React45__namespace.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => commit(wb, knobEdit(fresh, entry, value), "knob"));
     },
     [applyEdit]
   );
-  const writeRange = React44__namespace.useCallback(
+  const writeRange = React45__namespace.useCallback(
     (entry, min, max) => {
       applyEdit((fresh, wb) => commit(wb, knobRangeEdit(fresh, entry, min, max), "knob"));
     },
     [applyEdit]
   );
-  const resetRange = React44__namespace.useCallback(
+  const resetRange = React45__namespace.useCallback(
     (entry) => {
       applyEdit((fresh, wb) => commit(wb, knobRangeResetEdit(fresh, entry), "knob"));
     },
     [applyEdit]
   );
-  const toggleEffect = React44__namespace.useCallback(
+  const toggleEffect = React45__namespace.useCallback(
     (e) => {
       applyEdit((fresh, wb) => commit(wb, toggleCallEdit(fresh, effectNames(e), e.method, e.def), "knob"));
     },
     [applyEdit]
   );
-  const removeMethod = React44__namespace.useCallback(
+  const removeMethod = React45__namespace.useCallback(
     (method) => {
       applyEdit((fresh, wb) => commit(wb, removeNamedCall(fresh, method), "knob"));
     },
     [applyEdit]
   );
-  const writeChainMethod = React44__namespace.useCallback(
+  const writeChainMethod = React45__namespace.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
       applyEdit((fresh, wb) => commit(wb, setStringCall(fresh, names, canonical, value), "knob"));
@@ -42107,7 +42170,7 @@ var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function Mixer({ division: division2, onDivisionChange, resolution } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   if (!chunk || chunk.chain.length === 0) {
-    return React44__namespace.createElement(VisualEditStandby, {
+    return React45__namespace.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -42229,24 +42292,24 @@ __name(levelColor, "levelColor");
 var MIN_FRAME_MS = 1e3 / 60;
 var QUERY_WINDOW_CYCLES = 0.01;
 function useTrackMeters() {
-  const elsRef = React44__namespace.useRef(/* @__PURE__ */ new Map());
-  const stateRef = React44__namespace.useRef(/* @__PURE__ */ new Map());
-  const schedulersRef = React44__namespace.useRef(null);
-  const rafRef = React44__namespace.useRef(null);
-  const lastTsRef = React44__namespace.useRef(0);
-  const [fileId, setFileId] = React44__namespace.useState(() => getActiveFileId());
-  React44__namespace.useEffect(() => {
+  const elsRef = React45__namespace.useRef(/* @__PURE__ */ new Map());
+  const stateRef = React45__namespace.useRef(/* @__PURE__ */ new Map());
+  const schedulersRef = React45__namespace.useRef(null);
+  const rafRef = React45__namespace.useRef(null);
+  const lastTsRef = React45__namespace.useRef(0);
+  const [fileId, setFileId] = React45__namespace.useState(() => getActiveFileId());
+  React45__namespace.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React44__namespace.useCallback((captureId, els) => {
+  const register = React45__namespace.useCallback((captureId, els) => {
     if (els) elsRef.current.set(captureId, els);
     else {
       elsRef.current.delete(captureId);
       stateRef.current.delete(captureId);
     }
   }, []);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       schedulersRef.current = schedulersOf(payload);
     }) : (() => {
@@ -42337,13 +42400,13 @@ function useTrackMeters() {
       stateRef.current.clear();
     };
   }, [fileId]);
-  return React44__namespace.useMemo(() => ({ register }), [register]);
+  return React45__namespace.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners13 = /* @__PURE__ */ new Set();
+var listeners14 = /* @__PURE__ */ new Set();
 function read2(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
@@ -42355,7 +42418,7 @@ function toggleSolo(fileId, id) {
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners13.forEach((l) => l());
+  listeners14.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -42369,16 +42432,16 @@ function setPreSoloMutes(fileId, snapshot) {
   else snapshots.set(fileId, snapshot);
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
-function subscribe6(listener) {
-  listeners13.add(listener);
+function subscribe7(listener) {
+  listeners14.add(listener);
   return () => {
-    listeners13.delete(listener);
+    listeners14.delete(listener);
   };
 }
-__name(subscribe6, "subscribe");
+__name(subscribe7, "subscribe");
 function useActiveFileId() {
-  const [id, setId] = React44__namespace.useState(() => getActiveFileId());
-  React44__namespace.useEffect(() => {
+  const [id, setId] = React45__namespace.useState(() => getActiveFileId());
+  React45__namespace.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -42387,8 +42450,8 @@ function useActiveFileId() {
 __name(useActiveFileId, "useActiveFileId");
 function useSoloedIds() {
   const fileId = useActiveFileId();
-  return React44__namespace.useSyncExternalStore(
-    subscribe6,
+  return React45__namespace.useSyncExternalStore(
+    subscribe7,
     () => read2(fileId),
     () => EMPTY
   );
@@ -42397,7 +42460,7 @@ __name(useSoloedIds, "useSoloedIds");
 function useSoloStrips() {
   const fileId = useActiveFileId();
   const soloed = useSoloedIds();
-  const toggle = React44__namespace.useCallback(
+  const toggle = React45__namespace.useCallback(
     (id) => {
       if (fileId) toggleSolo(fileId, id);
     },
@@ -42410,7 +42473,7 @@ __name(useSoloStrips, "useSoloStrips");
 // src/visualEdit/mixer/soloMuteSync.ts
 function useSoloMuteSync() {
   const { soloed, toggle: toggleSet } = useSoloStrips();
-  const toggle = React44__namespace.useCallback(
+  const toggle = React45__namespace.useCallback(
     (id) => {
       const fileId = getActiveFileId();
       const editor = getActiveEditor();
@@ -42438,9 +42501,9 @@ function StripMeter({
   controller,
   horizontal = false
 }) {
-  const fillRef = React44__namespace.useRef(null);
-  const peakRef = React44__namespace.useRef(null);
-  React44__namespace.useEffect(() => {
+  const fillRef = React45__namespace.useRef(null);
+  const peakRef = React45__namespace.useRef(null);
+  React45__namespace.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -42546,14 +42609,14 @@ function ChannelStrip({
   orientation = "vertical"
 }) {
   const horizontal = orientation === "horizontal";
-  const [colorAnchor, setColorAnchor] = React44__namespace.useState(null);
+  const [colorAnchor, setColorAnchor] = React45__namespace.useState(null);
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
-  const [renaming, setRenaming] = React44__namespace.useState(false);
+  const [renaming, setRenaming] = React45__namespace.useState(false);
   const bareLabel = strip.label ?? "";
   const renameSeed = bareLabel !== "" && bareLabel !== "$" ? bareLabel : "";
   const renameEnabled = onRename !== void 0;
-  const settledRef = React44__namespace.useRef(false);
+  const settledRef = React45__namespace.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {
     settledRef.current = false;
     setRenaming(true);
@@ -42574,8 +42637,8 @@ function ChannelStrip({
   const faderEnabled = gain !== null && onGainChange !== void 0;
   const panEnabled = !strip.panForeign && onPanChange !== void 0;
   const panValue = strip.pan ?? 0.5;
-  const faderDrag = React44__namespace.useRef(null);
-  const panDrag = React44__namespace.useRef(null);
+  const faderDrag = React45__namespace.useRef(null);
+  const panDrag = React45__namespace.useRef(null);
   const onFaderDown = /* @__PURE__ */ __name((e) => {
     if (!faderEnabled) return;
     e.preventDefault();
@@ -43164,18 +43227,20 @@ var MIXER_WIDTH = 220;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = chunkSurface(chunk);
-  const gridAlone = usePhone();
-  const [selected, setSelected] = React44__namespace.useState(null);
+  const phone = usePhone();
+  const sideShown = usePatternSideShown();
+  const gridAlone = phone || !sideShown;
+  const [selected, setSelected] = React45__namespace.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React44__namespace.useRef(stmtId);
-  React44__namespace.useEffect(() => {
+  const stmtRef = React45__namespace.useRef(stmtId);
+  React45__namespace.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setSelected(null);
     }
   }, [stmtId]);
-  const [division2, setDivision] = React44__namespace.useState(DEFAULT_DIVISION);
-  const [resolution, setResolution] = React44__namespace.useState(null);
+  const [division2, setDivision] = React45__namespace.useState(DEFAULT_DIVISION);
+  const [resolution, setResolution] = React45__namespace.useState(null);
   const grid = kind === "step" ? /* @__PURE__ */ jsxRuntime.jsx(SequencerGrid, { onResolution: setResolution }) : kind === "roll" ? /* @__PURE__ */ jsxRuntime.jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2, onResolution: setResolution }) : /* @__PURE__ */ jsxRuntime.jsx(
     VisualEditStandby,
     {
@@ -43228,7 +43293,7 @@ function safeLocalStorage5() {
 }
 __name(safeLocalStorage5, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners14 = /* @__PURE__ */ new Set();
+var listeners15 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -43274,19 +43339,19 @@ function toggleExpanded(fileId, id) {
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners14.forEach((l) => l());
+  listeners15.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
-function subscribe7(listener) {
-  listeners14.add(listener);
+function subscribe8(listener) {
+  listeners15.add(listener);
   return () => {
-    listeners14.delete(listener);
+    listeners15.delete(listener);
   };
 }
-__name(subscribe7, "subscribe");
+__name(subscribe8, "subscribe");
 function useActiveFileId2() {
-  const [id, setId] = React44__namespace.useState(() => getActiveFileId());
-  React44__namespace.useEffect(() => {
+  const [id, setId] = React45__namespace.useState(() => getActiveFileId());
+  React45__namespace.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -43295,12 +43360,12 @@ function useActiveFileId2() {
 __name(useActiveFileId2, "useActiveFileId");
 function useExpandedStrips() {
   const fileId = useActiveFileId2();
-  const expanded = React44__namespace.useSyncExternalStore(
-    subscribe7,
+  const expanded = React45__namespace.useSyncExternalStore(
+    subscribe8,
     () => read3(fileId),
     () => EMPTY2
   );
-  const toggle = React44__namespace.useCallback(
+  const toggle = React45__namespace.useCallback(
     (id) => {
       if (fileId) toggleExpanded(fileId, id);
     },
@@ -43341,7 +43406,7 @@ function safeLocalStorage6() {
 }
 __name(safeLocalStorage6, "safeLocalStorage");
 var cached = null;
-var listeners15 = /* @__PURE__ */ new Set();
+var listeners16 = /* @__PURE__ */ new Set();
 function read4() {
   if (cached == null) {
     const ls = safeLocalStorage6();
@@ -43364,27 +43429,27 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners15.forEach((l) => l());
+  listeners16.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
   setMixerZoom(read4() + dir * MIXER_ZOOM_STEP);
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
-function subscribe8(listener) {
-  listeners15.add(listener);
+function subscribe9(listener) {
+  listeners16.add(listener);
   return () => {
-    listeners15.delete(listener);
+    listeners16.delete(listener);
   };
 }
-__name(subscribe8, "subscribe");
+__name(subscribe9, "subscribe");
 function useMixerZoom() {
-  const zoom = React44__namespace.useSyncExternalStore(subscribe8, read4, () => MIXER_ZOOM_DEFAULT);
+  const zoom = React45__namespace.useSyncExternalStore(subscribe9, read4, () => MIXER_ZOOM_DEFAULT);
   return {
     zoom,
     percent: Math.round(zoom * 100),
-    zoomIn: React44__namespace.useCallback(() => nudgeMixerZoom(1), []),
-    zoomOut: React44__namespace.useCallback(() => nudgeMixerZoom(-1), []),
+    zoomIn: React45__namespace.useCallback(() => nudgeMixerZoom(1), []),
+    zoomOut: React45__namespace.useCallback(() => nudgeMixerZoom(-1), []),
     canZoomIn: zoom < MIXER_ZOOM_MAX,
     canZoomOut: zoom > MIXER_ZOOM_MIN
   };
@@ -43458,22 +43523,22 @@ function levelColor2(frac) {
 }
 __name(levelColor2, "levelColor");
 function useMasterMeter() {
-  const elsRef = React44__namespace.useRef(null);
-  const stateRef = React44__namespace.useRef(ZERO_METER);
-  const analyserRef = React44__namespace.useRef(null);
-  const bufRef = React44__namespace.useRef(null);
-  const rafRef = React44__namespace.useRef(null);
-  const lastTsRef = React44__namespace.useRef(0);
-  const [fileId, setFileId] = React44__namespace.useState(() => getActiveFileId());
-  React44__namespace.useEffect(() => {
+  const elsRef = React45__namespace.useRef(null);
+  const stateRef = React45__namespace.useRef(ZERO_METER);
+  const analyserRef = React45__namespace.useRef(null);
+  const bufRef = React45__namespace.useRef(null);
+  const rafRef = React45__namespace.useRef(null);
+  const lastTsRef = React45__namespace.useRef(0);
+  const [fileId, setFileId] = React45__namespace.useState(() => getActiveFileId());
+  React45__namespace.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React44__namespace.useCallback((els) => {
+  const register = React45__namespace.useCallback((els) => {
     elsRef.current = els;
     if (!els) stateRef.current = ZERO_METER;
   }, []);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       analyserRef.current = analyserOf(payload);
     }) : (() => {
@@ -43547,7 +43612,7 @@ function useMasterMeter() {
       stateRef.current = ZERO_METER;
     };
   }, [fileId]);
-  return React44__namespace.useMemo(() => ({ register }), [register]);
+  return React45__namespace.useMemo(() => ({ register }), [register]);
 }
 __name(useMasterMeter, "useMasterMeter");
 var FADER_HEIGHT2 = 80;
@@ -43566,9 +43631,9 @@ function MasterStrip({
   onGestureEnd
 }) {
   const meter = useMasterMeter();
-  const fillRef = React44__namespace.useRef(null);
-  const peakRef = React44__namespace.useRef(null);
-  React44__namespace.useEffect(() => {
+  const fillRef = React45__namespace.useRef(null);
+  const peakRef = React45__namespace.useRef(null);
+  React45__namespace.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -43576,7 +43641,7 @@ function MasterStrip({
     return () => meter.register(null);
   }, [meter]);
   const pos = gainToFaderPos(gain);
-  const drag = React44__namespace.useRef(null);
+  const drag = React45__namespace.useRef(null);
   const onDown = /* @__PURE__ */ __name((e) => {
     if (foreign) return;
     e.preventDefault();
@@ -43857,8 +43922,8 @@ function MixerStrips({
     selectTrack
   } = useMixerModel();
   const meters = useTrackMeters();
-  const [fileId, setFileId] = React44__namespace.useState(() => getActiveFileId());
-  React44__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React45__namespace.useState(() => getActiveFileId());
+  React45__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
   const { expanded, toggle } = useExpandedStrips();
   const masterExpanded = expanded.has(MASTER_EXPAND_ID);
@@ -44151,7 +44216,9 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React44__namespace.createElement(Panel)
+      content: React45__namespace.createElement(Panel),
+      // the Pattern tab's button for its right side panel (#2044)
+      headerActions: tab.id === PATTERN_TAB_ID ? React45__namespace.createElement(PatternSideToggle) : void 0
     });
   }
 }
@@ -44186,24 +44253,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React44__namespace.useState(opts.initial);
-  const [dragging, setDragging] = React44__namespace.useState(false);
-  const startYRef = React44__namespace.useRef(0);
-  const startValueRef = React44__namespace.useRef(opts.initial);
-  const pointerIdRef = React44__namespace.useRef(null);
-  const draggingRef = React44__namespace.useRef(false);
-  const minRef = React44__namespace.useRef(opts.min);
-  const maxRef = React44__namespace.useRef(opts.max);
-  React44__namespace.useEffect(() => {
+  const [value, setValueState] = React45__namespace.useState(opts.initial);
+  const [dragging, setDragging] = React45__namespace.useState(false);
+  const startYRef = React45__namespace.useRef(0);
+  const startValueRef = React45__namespace.useRef(opts.initial);
+  const pointerIdRef = React45__namespace.useRef(null);
+  const draggingRef = React45__namespace.useRef(false);
+  const minRef = React45__namespace.useRef(opts.min);
+  const maxRef = React45__namespace.useRef(opts.max);
+  React45__namespace.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React44__namespace.useCallback((v) => {
+  const setValue = React45__namespace.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React44__namespace.useCallback(
+  const onPointerDown = React45__namespace.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -44218,7 +44285,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React44__namespace.useCallback(
+  const endDrag = React45__namespace.useCallback(
     (e, commit3) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -44233,7 +44300,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React44__namespace.useCallback(
+  const onPointerMove = React45__namespace.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -44249,13 +44316,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React44__namespace.useCallback(
+  const onPointerUp = React45__namespace.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React44__namespace.useCallback(
+  const onPointerCancel = React45__namespace.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -44282,18 +44349,18 @@ function pickActiveTabId(tabs2, chosen) {
 }
 __name(pickActiveTabId, "pickActiveTabId");
 function BottomPanel({ hidden = false } = {}) {
-  const [tabs2, setTabs] = React44__namespace.useState(
+  const [tabs2, setTabs] = React45__namespace.useState(
     () => listBottomPanelTabs()
   );
   const { open, activeTabId: chosenTabId } = useBottomPanelState();
   const setOpen = setBottomPanelOpen;
   const setActiveTabId = setBottomPanelActiveTab;
-  const [height, setHeight] = React44__namespace.useState(readPersistedHeight);
+  const [height, setHeight] = React45__namespace.useState(readPersistedHeight);
   const activeTabId = pickActiveTabId(tabs2, chosenTabId);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     return subscribeToBottomPanelTabs(() => setTabs(listBottomPanelTabs()));
   }, []);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (activeTabId !== chosenTabId) setBottomPanelActiveTab(activeTabId);
   }, [activeTabId, chosenTabId]);
   const drag = useDragResize({
@@ -44308,12 +44375,12 @@ function BottomPanel({ hidden = false } = {}) {
   const layout = usePhoneLayout();
   const sheet = layout === "upright";
   const wholeView = layout === "sideways";
-  const [sheetFull, setSheetFull] = React44__namespace.useState(false);
+  const [sheetFull, setSheetFull] = React45__namespace.useState(false);
   const stop = !open ? "closed" : sheetFull ? "full" : "half";
-  const [pulled, setPulled] = React44__namespace.useState(null);
-  const [room, setRoom] = React44__namespace.useState(null);
-  const spaceRef = React44__namespace.useRef(null);
-  const measureRoom = React44__namespace.useCallback(() => {
+  const [pulled, setPulled] = React45__namespace.useState(null);
+  const [room, setRoom] = React45__namespace.useState(null);
+  const spaceRef = React45__namespace.useRef(null);
+  const measureRoom = React45__namespace.useCallback(() => {
     const parent = spaceRef.current?.parentElement;
     if (!parent) return null;
     const box = parent.getBoundingClientRect();
@@ -44324,7 +44391,7 @@ function BottomPanel({ hidden = false } = {}) {
     return next;
   }, []);
   const drawn = tabs2.length > 0 && !hidden;
-  React44__namespace.useLayoutEffect(() => {
+  React45__namespace.useLayoutEffect(() => {
     if (!(sheet || wholeView) || !drawn) return;
     measureRoom();
     const parent = spaceRef.current?.parentElement;
@@ -44336,7 +44403,7 @@ function BottomPanel({ hidden = false } = {}) {
       observer?.disconnect();
     };
   }, [sheet, wholeView, drawn, open, measureRoom]);
-  const goToStop = React44__namespace.useCallback((next) => {
+  const goToStop = React45__namespace.useCallback((next) => {
     if (next === "closed") {
       setBottomPanelOpen(false);
       return;
@@ -44344,13 +44411,13 @@ function BottomPanel({ hidden = false } = {}) {
     setSheetFull(next === "full");
     setBottomPanelOpen(true);
   }, []);
-  const pullRef = React44__namespace.useRef(null);
-  const swallowClickRef = React44__namespace.useRef(false);
-  const stopRef = React44__namespace.useRef(stop);
+  const pullRef = React45__namespace.useRef(null);
+  const swallowClickRef = React45__namespace.useRef(false);
+  const stopRef = React45__namespace.useRef(stop);
   stopRef.current = stop;
-  const endPullRef = React44__namespace.useRef(null);
-  React44__namespace.useEffect(() => () => endPullRef.current?.(), []);
-  const onStripPointerDown = React44__namespace.useCallback(
+  const endPullRef = React45__namespace.useRef(null);
+  React45__namespace.useEffect(() => () => endPullRef.current?.(), []);
+  const onStripPointerDown = React45__namespace.useCallback(
     (e) => {
       swallowClickRef.current = false;
       if (!sheet || pullRef.current) return;
@@ -44395,25 +44462,25 @@ function BottomPanel({ hidden = false } = {}) {
     },
     [sheet, measureRoom, goToStop]
   );
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const wasOpenOnTabPressRef = React44__namespace.useRef(open);
-  const tabButtonRefs = React44__namespace.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React44__namespace.useCallback(
+  const wasOpenOnTabPressRef = React45__namespace.useRef(open);
+  const tabButtonRefs = React45__namespace.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React45__namespace.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React44__namespace.useCallback((id) => {
+  const focusTab = React45__namespace.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React44__namespace.useCallback(
+  const onTabsKeyDown = React45__namespace.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -44446,6 +44513,7 @@ function BottomPanel({ hidden = false } = {}) {
   const sheetHeight = pulled ?? stopHeights[stop];
   const headerHeight = sheet ? SHEET_HEADER_HEIGHT : HEADER_HEIGHT;
   const bodyDrawn = open || sheet && pulled !== null;
+  const activeHeaderActions = tabs2.find((tab) => tab.id === activeTabId)?.headerActions ?? null;
   if (wholeView) {
     return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
       /* @__PURE__ */ jsxRuntime.jsx("div", { ref: spaceRef, "data-bottom-panel": "strip-space", style: { flex: "0 0 0px" } }),
@@ -44642,6 +44710,7 @@ function BottomPanel({ hidden = false } = {}) {
                   )
                 }
               ),
+              bodyDrawn && activeHeaderActions,
               /* @__PURE__ */ jsxRuntime.jsx(
                 "button",
                 {
@@ -44816,16 +44885,16 @@ function GroupTabBar({
   onSplitDown,
   onCloseGroup
 }) {
-  const scrollRef = React44.useRef(null);
-  const activeTabElRef = React44.useRef(null);
-  const menuBtnRef = React44.useRef(null);
-  const menuRef = React44.useRef(null);
-  const [overflow, setOverflow] = React44.useState({
+  const scrollRef = React45.useRef(null);
+  const activeTabElRef = React45.useRef(null);
+  const menuBtnRef = React45.useRef(null);
+  const menuRef = React45.useRef(null);
+  const [overflow, setOverflow] = React45.useState({
     left: false,
     right: false
   });
-  const [menuOpen, setMenuOpen] = React44.useState(false);
-  React44.useEffect(() => {
+  const [menuOpen, setMenuOpen] = React45.useState(false);
+  React45.useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const update = /* @__PURE__ */ __name(() => {
@@ -44844,12 +44913,12 @@ function GroupTabBar({
       ro?.disconnect();
     };
   }, [group.tabs.length]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     const el = activeTabElRef.current;
     if (!el || typeof el.scrollIntoView !== "function") return;
     el.scrollIntoView({ inline: "nearest", block: "nearest" });
   }, [group.activeTabId]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!menuOpen) return;
     const onDoc = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -45187,7 +45256,7 @@ function GroupTabBar({
   );
 }
 __name(GroupTabBar, "GroupTabBar");
-var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
+var WorkspaceShell = React45.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
   initialTabs = [],
   initialGroups,
   initialLayout,
@@ -45212,28 +45281,28 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
   onCropBackdrop,
   onRevealBackdrop
 }, forwardedRef) {
-  const shellRootRef = React44.useRef(null);
-  const initialState = React44.useRef(
+  const shellRootRef = React45.useRef(null);
+  const initialState = React45.useRef(
     initialGroups !== void 0 && initialLayout !== void 0 && initialLayout.length > 0 && initialActiveGroupId !== void 0 ? {
       groups: new Map(initialGroups),
       layout: initialLayout,
       activeGroupId: initialActiveGroupId
     } : createInitialGroupState(initialTabs)
   );
-  const [groups, setGroups] = React44.useState(
+  const [groups, setGroups] = React45.useState(
     () => initialState.current.groups
   );
-  const [layout, setLayout] = React44.useState(
+  const [layout, setLayout] = React45.useState(
     () => initialState.current.layout
   );
-  const [activeGroupId, setActiveGroupId] = React44.useState(
+  const [activeGroupId, setActiveGroupId] = React45.useState(
     () => initialState.current.activeGroupId
   );
-  const [bgOverrides, setBgOverrides] = React44.useState(
+  const [bgOverrides, setBgOverrides] = React45.useState(
     () => /* @__PURE__ */ new Map()
   );
-  const lastActiveBackdropRef = React44.useRef(null);
-  React44.useEffect(() => {
+  const lastActiveBackdropRef = React45.useRef(null);
+  React45.useEffect(() => {
     const g = groups.get(activeGroupId);
     const resolved = resolveBackdropFileId(g?.backgroundFileId, bgOverrides.get(activeGroupId)) ?? null;
     if (resolved !== lastActiveBackdropRef.current) {
@@ -45241,71 +45310,71 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
       onActiveBackdropChange?.(resolved);
     }
   }, [groups, bgOverrides, activeGroupId, onActiveBackdropChange]);
-  const didMountRef = React44.useRef(false);
-  React44.useEffect(() => {
+  const didMountRef = React45.useRef(false);
+  React45.useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
       return;
     }
     onGroupsChange?.({ groups, layout, activeGroupId });
   }, [groups, layout, activeGroupId, onGroupsChange]);
-  const [dragOverTarget, setDragOverTarget] = React44.useState(null);
-  const [dragOverEdge, setDragOverEdge] = React44.useState(
+  const [dragOverTarget, setDragOverTarget] = React45.useState(null);
+  const [dragOverEdge, setDragOverEdge] = React45.useState(
     null
   );
-  const [tabDragInProgress, setTabDragInProgress] = React44.useState(false);
-  const [pausedPreviews, setPausedPreviews] = React44.useState(
+  const [tabDragInProgress, setTabDragInProgress] = React45.useState(false);
+  const [pausedPreviews, setPausedPreviews] = React45.useState(
     () => /* @__PURE__ */ new Set()
   );
-  const [backdropQuality, setBackdropQualityState] = React44.useState(
+  const [backdropQuality, setBackdropQualityState] = React45.useState(
     () => getBackdropQuality()
   );
-  React44.useEffect(
+  React45.useEffect(
     () => onBackdropQualityChange(setBackdropQualityState),
     []
   );
-  const [backdropOpacity, setBackdropOpacityState] = React44.useState(
+  const [backdropOpacity, setBackdropOpacityState] = React45.useState(
     () => getBackdropOpacity()
   );
-  React44.useEffect(
+  React45.useEffect(
     () => onBackdropOpacityChange(setBackdropOpacityState),
     []
   );
-  const [playVizOnHover, setPlayVizOnHoverState] = React44.useState(
+  const [playVizOnHover, setPlayVizOnHoverState] = React45.useState(
     () => getPlayVizOnHoverEnabled()
   );
-  React44.useEffect(
+  React45.useEffect(
     () => onPlayVizOnHoverChange(setPlayVizOnHoverState),
     []
   );
-  const [hoveredGroupId, setHoveredGroupId] = React44.useState(null);
-  const [backdropVizSpan, setBackdropVizSpanState] = React44.useState(
+  const [hoveredGroupId, setHoveredGroupId] = React45.useState(null);
+  const [backdropVizSpan, setBackdropVizSpanState] = React45.useState(
     () => getBackdropVizSpan()
   );
-  React44.useEffect(
+  React45.useEffect(
     () => onBackdropVizSpanChange(setBackdropVizSpanState),
     []
   );
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
   }, [theme]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     ensureTabbarScrollStyle();
   }, []);
-  const activeTab = React44.useMemo(() => {
+  const activeTab = React45.useMemo(() => {
     const group = groups.get(activeGroupId);
     if (!group || group.activeTabId === null) return null;
     return group.tabs.find((t) => t.id === group.activeTabId) ?? null;
   }, [groups, activeGroupId]);
-  const prevActiveTabRef = React44.useRef(void 0);
-  React44.useEffect(() => {
+  const prevActiveTabRef = React45.useRef(void 0);
+  React45.useEffect(() => {
     if (prevActiveTabRef.current !== activeTab) {
       prevActiveTabRef.current = activeTab;
       onActiveTabChange?.(activeTab);
     }
   }, [activeTab, onActiveTabChange]);
-  const updateGroup = React44.useCallback(
+  const updateGroup = React45.useCallback(
     (groupId, patch) => {
       setGroups((prev) => {
         const existing = prev.get(groupId);
@@ -45317,22 +45386,22 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleTabClick = React44.useCallback(
+  const handleTabClick = React45.useCallback(
     (groupId, tabId) => {
       updateGroup(groupId, (g) => ({ ...g, activeTabId: tabId }));
       setActiveGroupId(groupId);
     },
     [updateGroup]
   );
-  const backdropSourceByFile = React44.useRef(/* @__PURE__ */ new Map());
-  const stopBackdropSource = React44.useCallback((fileId) => {
+  const backdropSourceByFile = React45.useRef(/* @__PURE__ */ new Map());
+  const stopBackdropSource = React45.useCallback((fileId) => {
     const ref = backdropSourceByFile.current.get(fileId);
     if (ref?.kind === "file") {
       findBuiltinExampleSource(ref.fileId)?.stopIfRunning();
     }
     backdropSourceByFile.current.delete(fileId);
   }, []);
-  const stopDisplacedBackdrop = React44.useCallback(
+  const stopDisplacedBackdrop = React45.useCallback(
     (sourceGroupId, tabId, targetGroupId) => {
       if (sourceGroupId === targetGroupId) return;
       const src = groups.get(sourceGroupId);
@@ -45346,7 +45415,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, stopBackdropSource]
   );
-  const handleTabClose = React44.useCallback(
+  const handleTabClose = React45.useCallback(
     (groupId, tabId) => {
       let closedTab = null;
       const existing = groups.get(groupId);
@@ -45425,7 +45494,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout, onTabClose, stopBackdropSource]
   );
-  const handleSplit = React44.useCallback(
+  const handleSplit = React45.useCallback(
     (groupId, direction = "east") => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -45437,7 +45506,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const findNeighborGroupId = React44.useCallback(
+  const findNeighborGroupId = React45.useCallback(
     (closingId) => {
       for (const id of allGroupIds(layout)) {
         if (id !== closingId) return id;
@@ -45446,7 +45515,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [layout]
   );
-  const handleCloseGroup = React44.useCallback(
+  const handleCloseGroup = React45.useCallback(
     (groupId) => {
       const neighborId = findNeighborGroupId(groupId);
       if (!neighborId) return;
@@ -45473,7 +45542,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [findNeighborGroupId, activeGroupId]
   );
-  const splitGroupWithTab = React44.useCallback(
+  const splitGroupWithTab = React45.useCallback(
     (originGroupId, _direction, newTab) => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -45489,7 +45558,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const moveTabToNewQuadrant = React44.useCallback(
+  const moveTabToNewQuadrant = React45.useCallback(
     (sourceGroupId, tabId, targetGroupId, direction) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -45530,7 +45599,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout]
   );
-  const moveTabToNewEdgeGroup = React44.useCallback(
+  const moveTabToNewEdgeGroup = React45.useCallback(
     (sourceGroupId, tabId, position) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -45566,7 +45635,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups]
   );
-  const updateGroupBackground = React44.useCallback(
+  const updateGroupBackground = React45.useCallback(
     (groupId, backgroundFileId) => {
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
@@ -45579,7 +45648,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup, onBackgroundFileChange, stopBackdropSource]
   );
-  const updateGroupOverride = React44.useCallback(
+  const updateGroupOverride = React45.useCallback(
     (groupId, overrideFileId) => {
       setBgOverrides((prev) => {
         const cur = prev.get(groupId) ?? null;
@@ -45592,7 +45661,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const updateGroupBackdropOpacity = React44.useCallback(
+  const updateGroupBackdropOpacity = React45.useCallback(
     (groupId, opacity) => {
       const prev = groups.get(groupId)?.backdropOpacity;
       const nextVal = opacity == null ? void 0 : Math.min(1, Math.max(0, opacity));
@@ -45601,7 +45670,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup]
   );
-  const updateGroupBackdropQuality = React44.useCallback(
+  const updateGroupBackdropQuality = React45.useCallback(
     (groupId, quality) => {
       const prev = groups.get(groupId)?.backdropQuality;
       const nextVal = quality ?? void 0;
@@ -45610,7 +45679,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup]
   );
-  const closeTabById = React44.useCallback(
+  const closeTabById = React45.useCallback(
     (tabId) => {
       let ownerGroupId = null;
       for (const [gid, g] of groups.entries()) {
@@ -45643,7 +45712,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout, handleTabClose]
   );
-  const findTabByFileId = React44.useCallback(
+  const findTabByFileId = React45.useCallback(
     (fileId, kind) => {
       for (const [gid, g] of groups.entries()) {
         for (const t of g.tabs) {
@@ -45656,14 +45725,14 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups]
   );
-  const findGroupWithAnyPreview = React44.useCallback(() => {
+  const findGroupWithAnyPreview = React45.useCallback(() => {
     for (const [gid, g] of groups.entries()) {
       if (g.tabs.some((t) => t.kind === "preview")) return gid;
     }
     return null;
   }, [groups]);
-  const shellActionsRef = React44.useRef(null);
-  const shellActions = React44.useMemo(
+  const shellActionsRef = React45.useRef(null);
+  const shellActions = React45.useMemo(
     () => ({
       addTab: /* @__PURE__ */ __name((groupId, tab) => {
         updateGroup(groupId, (g) => ({
@@ -45684,12 +45753,12 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId, onOpenPopoutPreview]
   );
   shellActionsRef.current = shellActions;
-  const getActiveTab = React44.useCallback(() => activeTab, [activeTab]);
-  const getActiveGroupId = React44.useCallback(() => activeGroupId, [activeGroupId]);
-  const getActiveGroup = React44.useCallback(() => {
+  const getActiveTab = React45.useCallback(() => activeTab, [activeTab]);
+  const getActiveGroupId = React45.useCallback(() => activeGroupId, [activeGroupId]);
+  const getActiveGroup = React45.useCallback(() => {
     return groups.get(activeGroupId) ?? null;
   }, [groups, activeGroupId]);
-  const getPreviewProviderForCommand = React44.useCallback(
+  const getPreviewProviderForCommand = React45.useCallback(
     (language) => {
       const fromRegistry = getPreviewProviderForLanguage(language);
       if (fromRegistry) return fromRegistry;
@@ -45714,7 +45783,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     shellActions,
     getPreviewProvider: getPreviewProviderForCommand
   });
-  const handleEdgeDrop = React44.useCallback(
+  const handleEdgeDrop = React45.useCallback(
     (e, position) => {
       e.preventDefault();
       e.stopPropagation();
@@ -45731,7 +45800,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [moveTabToNewEdgeGroup]
   );
-  const handleEdgeDragOver = React44.useCallback(
+  const handleEdgeDragOver = React45.useCallback(
     (e, position) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -45740,26 +45809,26 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [dragOverEdge]
   );
-  const handleEdgeDragLeave = React44.useCallback(() => {
+  const handleEdgeDragLeave = React45.useCallback(() => {
     setDragOverEdge(null);
   }, []);
-  const onSaveFileRef = React44.useRef(onSaveFile);
+  const onSaveFileRef = React45.useRef(onSaveFile);
   onSaveFileRef.current = onSaveFile;
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
-      const current6 = onSaveFileRef.current;
-      if (!current6) return;
+      const current7 = onSaveFileRef.current;
+      if (!current7) return;
       const tab = activeTab;
       if (!tab || tab.kind !== "editor") return;
       e.preventDefault();
-      current6(tab);
+      current7(tab);
     }, "handler");
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab]);
-  const handleTabDragStart = React44.useCallback(
+  const handleTabDragStart = React45.useCallback(
     (e, groupId, tab) => {
       const payload = { sourceGroupId: groupId, tabId: tab.id };
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
@@ -45768,7 +45837,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     const onDragEnd = /* @__PURE__ */ __name(() => {
       setTabDragInProgress(false);
       setDragOverEdge(null);
@@ -45781,7 +45850,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
       window.removeEventListener("drop", onDragEnd);
     };
   }, []);
-  const computeQuadrant = React44.useCallback(
+  const computeQuadrant = React45.useCallback(
     (e, el) => {
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return "center";
@@ -45806,7 +45875,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleTabBarDrop = React44.useCallback(
+  const handleTabBarDrop = React45.useCallback(
     (e, targetGroupId) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -45880,7 +45949,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [stopDisplacedBackdrop]
   );
-  const handleDropOnGroup = React44.useCallback(
+  const handleDropOnGroup = React45.useCallback(
     (e, targetGroupId) => {
       e.preventDefault();
       e.stopPropagation();
@@ -45951,7 +46020,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [computeQuadrant, groups, moveTabToNewQuadrant, stopDisplacedBackdrop]
   );
-  const renderTabContent = React44.useCallback(
+  const renderTabContent = React45.useCallback(
     (tab, groupId, isActive) => {
       switch (tab.kind) {
         case "editor": {
@@ -45996,24 +46065,24 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
                     }
                   }, "onTogglePausePreview"),
                   onChangePreviewSource: /* @__PURE__ */ __name((nextRef) => {
-                    const current6 = shellActionsRef.current.findTabByFileId(
+                    const current7 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (!current6) return;
-                    updateGroup(current6.groupId, (g) => ({
+                    if (!current7) return;
+                    updateGroup(current7.groupId, (g) => ({
                       ...g,
                       tabs: g.tabs.map(
-                        (t) => t.id === current6.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
+                        (t) => t.id === current7.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
                       )
                     }));
                   }, "onChangePreviewSource"),
                   onOpenPreview: /* @__PURE__ */ __name((selectedSourceRef) => {
-                    const current6 = shellActionsRef.current.findTabByFileId(
+                    const current7 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (current6) {
+                    if (current7) {
                       return;
                     }
                     const sourceRef = selectedSourceRef ?? { kind: "default" };
@@ -46253,7 +46322,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
       onRevealBackdrop
     ]
   );
-  const workspaceSpanBackdrop = React44.useMemo(() => {
+  const workspaceSpanBackdrop = React45.useMemo(() => {
     if (backdropVizSpan !== "workspace") return null;
     for (const gid of allGroupIds(layout)) {
       const g = groups.get(gid);
@@ -46271,7 +46340,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     return null;
   }, [backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity]);
   const workspaceSpanActive = workspaceSpanBackdrop != null;
-  const renderBackdropLayer = React44.useCallback(
+  const renderBackdropLayer = React45.useCallback(
     (params) => {
       const { bgFileId, dataGroupId, quality, opacity, crop, paused } = params;
       const bgProvider = previewProviderFor?.({
@@ -46335,7 +46404,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [previewProviderFor, theme]
   );
-  const renderGroup = React44.useCallback(
+  const renderGroup = React45.useCallback(
     (group) => {
       const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
       const isShellActiveGroup = activeGroupId === group.id;
@@ -46526,11 +46595,11 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
       pausedPreviews
     ]
   );
-  const totalGroupCount = React44.useMemo(
+  const totalGroupCount = React45.useMemo(
     () => allGroupIds(layout).length,
     [layout]
   );
-  const previewTabIds = React44.useMemo(() => {
+  const previewTabIds = React45.useMemo(() => {
     const out = [];
     for (const g of groups.values()) {
       for (const t of g.tabs) {
@@ -46541,7 +46610,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
     }
     return out;
   }, [groups]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     const unsubs = previewTabIds.map(
       ({ tabId, fileId }) => subscribe2(fileId, () => {
         setGroups((prev) => {
@@ -46564,7 +46633,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
       for (const u of unsubs) u();
     };
   }, [previewTabIds]);
-  React44.useImperativeHandle(
+  React45.useImperativeHandle(
     forwardedRef,
     () => ({
       openOrFocusFile: /* @__PURE__ */ __name((fileId, options) => {
@@ -46924,7 +46993,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
                   })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
                     if (column.length === 1) {
                       const g = groups.get(column[0]);
-                      return /* @__PURE__ */ jsxRuntime.jsx(React44__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                      return /* @__PURE__ */ jsxRuntime.jsx(React45__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
                     }
                     return /* @__PURE__ */ jsxRuntime.jsx(
                       SplitPane,
@@ -46932,7 +47001,7 @@ var WorkspaceShell = React44.forwardRef(/* @__PURE__ */ __name(function Workspac
                         direction: "vertical",
                         children: column.map((gid) => {
                           const g = groups.get(gid);
-                          return /* @__PURE__ */ jsxRuntime.jsx(React44__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                          return /* @__PURE__ */ jsxRuntime.jsx(React45__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                         })
                       },
                       `col-${colIdx}-${column.join("+")}`
@@ -48102,14 +48171,14 @@ function LiveCodingEditor({
 }) {
   const isControlled = controlledCode !== void 0;
   const initialCode = controlledCode ?? defaultCode ?? DEFAULT_CODE;
-  const runtimeRef = React44.useRef(null);
-  const [isPlaying, setIsPlaying] = React44.useState(false);
-  const [error, setError] = React44.useState(null);
-  const [bpm, setBpm] = React44.useState(bpmProp);
-  const [autoRefresh, setAutoRefresh] = React44.useState(false);
-  const fileIdRef = React44.useRef(FILE_ID);
-  const [seeded, setSeeded] = React44.useState(false);
-  React44.useEffect(() => {
+  const runtimeRef = React45.useRef(null);
+  const [isPlaying, setIsPlaying] = React45.useState(false);
+  const [error, setError] = React45.useState(null);
+  const [bpm, setBpm] = React45.useState(bpmProp);
+  const [autoRefresh, setAutoRefresh] = React45.useState(false);
+  const fileIdRef = React45.useRef(FILE_ID);
+  const [seeded, setSeeded] = React45.useState(false);
+  React45.useEffect(() => {
     seedWorkspaceFile(
       fileIdRef.current,
       "pattern.strudel",
@@ -48118,7 +48187,7 @@ function LiveCodingEditor({
     );
     setSeeded(true);
   }, []);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!seeded) return;
     const rt = new LiveCodingRuntime(
       fileIdRef.current,
@@ -48154,41 +48223,41 @@ function LiveCodingEditor({
       runtimeRef.current = null;
     };
   }, [seeded, engine]);
-  const autoPlayedRef = React44.useRef(false);
-  React44.useEffect(() => {
+  const autoPlayedRef = React45.useRef(false);
+  React45.useEffect(() => {
     if (!autoPlay || !runtimeRef.current || autoPlayedRef.current) return;
     autoPlayedRef.current = true;
     runtimeRef.current.play();
   }, [autoPlay, seeded]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!isControlled || !seeded) return;
     const file = getFile(fileIdRef.current);
     if (file && controlledCode !== file.content) {
       setContent(fileIdRef.current, controlledCode);
     }
   }, [controlledCode, isControlled, seeded]);
-  const onChangeRef = React44.useRef(onChange);
+  const onChangeRef = React45.useRef(onChange);
   onChangeRef.current = onChange;
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!seeded) return;
     return subscribe2(fileIdRef.current, () => {
       const file = getFile(fileIdRef.current);
       if (file) onChangeRef.current?.(file.content);
     });
   }, [seeded]);
-  const handlePlay = React44.useCallback(() => {
+  const handlePlay = React45.useCallback(() => {
     setError(null);
     runtimeRef.current?.play();
   }, []);
-  const handleStop = React44.useCallback(() => {
+  const handleStop = React45.useCallback(() => {
     runtimeRef.current?.stop();
   }, []);
-  const handleToggleAutoRefresh = React44.useCallback(() => {
+  const handleToggleAutoRefresh = React45.useCallback(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
     rt.setAutoRefresh(!rt.isAutoRefreshEnabled());
   }, []);
-  const chromeForTab = React44.useCallback(
+  const chromeForTab = React45.useCallback(
     (tab) => {
       if (tab.kind !== "editor") return void 0;
       const rt = runtimeRef.current;
@@ -48211,7 +48280,7 @@ function LiveCodingEditor({
     },
     [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra, autoRefresh, handleToggleAutoRefresh]
   );
-  const editorExtrasForTab = React44.useCallback(
+  const editorExtrasForTab = React45.useCallback(
     () => ({
       onPlay: handlePlay,
       onStop: handleStop,
@@ -48259,10 +48328,10 @@ function StrudelEditor({
   onExport,
   engineRef: engineRefProp
 }) {
-  const engineRef = React44.useRef(null);
-  const [bpm, setBpm] = React44.useState(120);
-  const [soundNames, setSoundNames] = React44.useState([]);
-  const [isExporting, setIsExporting] = React44.useState(false);
+  const engineRef = React45.useRef(null);
+  const [bpm, setBpm] = React45.useState(120);
+  const [soundNames, setSoundNames] = React45.useState([]);
+  const [isExporting, setIsExporting] = React45.useState(false);
   function getEngine() {
     if (!engineRef.current) {
       engineRef.current = new StrudelEngine();
@@ -48271,19 +48340,19 @@ function StrudelEditor({
     return engineRef.current;
   }
   __name(getEngine, "getEngine");
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (engineRefProp) {
       engineRefProp.current = engineRef.current;
     }
   });
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     return () => {
       engineRef.current?.dispose();
     };
   }, []);
-  const codeRef = React44.useRef(controlledCode ?? defaultCode);
+  const codeRef = React45.useRef(controlledCode ?? defaultCode);
   codeRef.current = controlledCode ?? defaultCode;
-  const handlePostEvaluate = React44.useCallback((engine2) => {
+  const handlePostEvaluate = React45.useCallback((engine2) => {
     const written = writtenBpm(codeRef.current);
     if (written !== void 0) setBpm(written);
     const strudelEngine = engine2;
@@ -48291,7 +48360,7 @@ function StrudelEditor({
       setSoundNames(strudelEngine.getSoundNames());
     }
   }, [soundNames]);
-  const handleExport = React44.useCallback(async () => {
+  const handleExport = React45.useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
     try {
@@ -48874,7 +48943,7 @@ __name(mountVizRenderer, "mountVizRenderer");
 
 // src/visualizers/useVizRenderer.ts
 function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
-  const rendererRef = React44.useRef(null);
+  const rendererRef = React45.useRef(null);
   const components = {};
   if (hapStream) {
     components.streaming = { hapStream };
@@ -48888,7 +48957,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
   if (rendererRef.current) {
     rendererRef.current.update(components);
   }
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!containerRef.current) return;
     const size = {
       w: containerRef.current.clientWidth || 400,
@@ -48911,7 +48980,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
 }
 __name(useVizRenderer, "useVizRenderer");
 function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
-  const containerRef = React44.useRef(null);
+  const containerRef = React45.useRef(null);
   useVizRenderer(containerRef, source, hapStream, analyser, scheduler);
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
@@ -49069,9 +49138,9 @@ function VizDropdown({
   onNewViz,
   availableComponents
 }) {
-  const [open, setOpen] = React44.useState(false);
-  const ref = React44.useRef(null);
-  React44.useEffect(() => {
+  const [open, setOpen] = React45.useState(false);
+  const ref = React45.useRef(null);
+  React45.useEffect(() => {
     if (!open) return;
     const handler = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) {
@@ -49317,12 +49386,12 @@ function VizEditor({
   previewHeight: _previewHeight = 200,
   theme = "dark"
 }) {
-  const containerRef = React44.useRef(null);
-  const [initialTabs, setInitialTabs] = React44.useState(null);
-  React44.useEffect(() => {
+  const containerRef = React45.useRef(null);
+  const [initialTabs, setInitialTabs] = React45.useState(null);
+  React45.useEffect(() => {
     if (containerRef.current) applyTheme(containerRef.current, theme);
   }, [theme]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     VizPresetStore.getAll().then((presets) => {
       const tabs2 = [];
       for (const preset of presets) {
@@ -49342,7 +49411,7 @@ function VizEditor({
       setInitialTabs(tabs2.length > 0 ? tabs2 : []);
     });
   }, []);
-  const handleSaveFile = React44.useCallback(
+  const handleSaveFile = React45.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return;
@@ -49356,7 +49425,7 @@ function VizEditor({
     },
     [onPresetSaved]
   );
-  const previewProviderFor = React44.useCallback(
+  const previewProviderFor = React45.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return void 0;
@@ -49570,10 +49639,10 @@ function usePopoutPreview({
   onClose,
   theme = "dark"
 }) {
-  const windowRef = React44.useRef(null);
-  const rendererRef = React44.useRef(null);
-  const rafRef = React44.useRef(null);
-  const cleanup = React44.useCallback(() => {
+  const windowRef = React45.useRef(null);
+  const rendererRef = React45.useRef(null);
+  const rafRef = React45.useRef(null);
+  const cleanup = React45.useCallback(() => {
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -49585,7 +49654,7 @@ function usePopoutPreview({
     }
     windowRef.current = null;
   }, []);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!descriptor) {
       cleanup();
       return;
@@ -49644,7 +49713,7 @@ function usePopoutPreview({
       cleanup();
     };
   }, [descriptor?.id]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!rendererRef.current) return;
     const components = {};
     if (hapStream) components.streaming = { hapStream };
@@ -50041,10 +50110,10 @@ function getAssetsMap() {
 __name(getAssetsMap, "getAssetsMap");
 var wiredAssetsMap = null;
 function ensureAssetsObserver() {
-  const current6 = getAssetsMap();
-  if (wiredAssetsMap === current6) return;
-  current6.observe(() => notify5());
-  wiredAssetsMap = current6;
+  const current7 = getAssetsMap();
+  if (wiredAssetsMap === current7) return;
+  current7.observe(() => notify5());
+  wiredAssetsMap = current7;
 }
 __name(ensureAssetsObserver, "ensureAssetsObserver");
 function subscribeToAssets(cb) {
@@ -50552,10 +50621,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React44__namespace.useReducer((x) => x + 1, 0);
-  React44__namespace.useEffect(() => subscribeToHistory(force), []);
-  React44__namespace.useEffect(() => subscribeToRuntimeView(force), []);
-  React44__namespace.useEffect(() => {
+  const [, force] = React45__namespace.useReducer((x) => x + 1, 0);
+  React45__namespace.useEffect(() => subscribeToHistory(force), []);
+  React45__namespace.useEffect(() => subscribeToRuntimeView(force), []);
+  React45__namespace.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -50572,17 +50641,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React44__namespace.useState(null);
-  const [forkName, setForkName] = React44__namespace.useState("");
-  const [committing, setCommitting] = React44__namespace.useState(false);
-  const [commitLabel, setCommitLabel] = React44__namespace.useState("");
-  const [expanded, setExpanded] = React44__namespace.useState(null);
-  const [hovered, setHovered] = React44__namespace.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React44__namespace.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React44__namespace.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React44__namespace.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React45__namespace.useState(null);
+  const [forkName, setForkName] = React45__namespace.useState("");
+  const [committing, setCommitting] = React45__namespace.useState(false);
+  const [commitLabel, setCommitLabel] = React45__namespace.useState("");
+  const [expanded, setExpanded] = React45__namespace.useState(null);
+  const [hovered, setHovered] = React45__namespace.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React45__namespace.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React45__namespace.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React45__namespace.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -51275,17 +51344,17 @@ function barString(v, cells = 8) {
 }
 __name(barString, "barString");
 function StaveInputsPanel({ kind }) {
-  const [open, setOpen] = React44.useState(false);
-  const [liveEnabled, setLiveEnabled] = React44.useState(true);
-  React44.useEffect(() => vizSignalProbe.acquire(), []);
-  React44.useEffect(() => {
+  const [open, setOpen] = React45.useState(false);
+  const [liveEnabled, setLiveEnabled] = React45.useState(true);
+  React45.useEffect(() => vizSignalProbe.acquire(), []);
+  React45.useEffect(() => {
     setLiveEnabled(getVizInputsLiveValuesEnabled());
     return onVizInputsLiveValuesChange(setLiveEnabled);
   }, []);
-  const rows = React44.useMemo(() => buildVizInputRows(kind), [kind]);
-  const liveRows = React44.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
-  const valueRefs = React44.useRef([]);
-  React44.useEffect(() => {
+  const rows = React45.useMemo(() => buildVizInputRows(kind), [kind]);
+  const liveRows = React45.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
+  const valueRefs = React45.useRef([]);
+  React45.useEffect(() => {
     if (!open || !liveEnabled) return;
     if (typeof requestAnimationFrame !== "function") return;
     let raf = 0;
@@ -51471,8 +51540,8 @@ var MODES = [
   { key: "backdrop", label: "backdrop" }
 ];
 function VizSettingsPopover(props) {
-  const ref = React44.useRef(null);
-  React44.useEffect(() => {
+  const ref = React45.useRef(null);
+  React45.useEffect(() => {
     const onDown = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) props.onClose();
     }, "onDown");
@@ -51487,8 +51556,8 @@ function VizSettingsPopover(props) {
       document.removeEventListener("keydown", onKey);
     };
   }, [props]);
-  const [, forceSourcesRerender] = React44.useState(0);
-  React44.useEffect(
+  const [, forceSourcesRerender] = React45.useState(0);
+  React45.useEffect(
     () => workspaceAudioBus.onSourcesChanged(
       () => forceSourcesRerender((n) => n + 1)
     ),
@@ -51782,16 +51851,16 @@ function VizEditorChrome({
   onCropBackdrop,
   onRevealBackdrop
 }) {
-  const [settingsAnchor, setSettingsAnchor] = React44.useState(null);
-  const [liveOn, setLiveOn] = React44.useState(() => getVizLive(file.id));
-  React44.useEffect(() => {
+  const [settingsAnchor, setSettingsAnchor] = React45.useState(null);
+  const [liveOn, setLiveOn] = React45.useState(() => getVizLive(file.id));
+  React45.useEffect(() => {
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = React44.useState({
+  const [selectedSource, setSelectedSource] = React45.useState({
     kind: "default"
   });
-  const handleSourceChange = React44.useCallback(
+  const handleSourceChange = React45.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
@@ -51822,21 +51891,21 @@ function VizEditorChrome({
       selectedSource
     ]
   );
-  const startSelectedBuiltin = React44.useCallback(() => {
+  const startSelectedBuiltin = React45.useCallback(() => {
     if (selectedSource.kind === "file") {
       const builtin = findBuiltinExampleSource(selectedSource.fileId);
       if (builtin) builtin.startIfIdle();
     }
   }, [selectedSource]);
-  const openSidePreview = React44.useCallback(() => {
+  const openSidePreview = React45.useCallback(() => {
     startSelectedBuiltin();
     onOpenPreview(selectedSource);
   }, [startSelectedBuiltin, onOpenPreview, selectedSource]);
   const previewMode = isBackground ? "backdrop" : previewOpen ? "side" : "off";
-  const [placementPref, setPlacementPref] = React44.useState(
+  const [placementPref, setPlacementPref] = React45.useState(
     "backdrop"
   );
-  const handleSetPreviewMode = React44.useCallback(
+  const handleSetPreviewMode = React45.useCallback(
     (next) => {
       if (next !== "off") setPlacementPref(next);
       if (next === previewMode) return;
@@ -51860,7 +51929,7 @@ function VizEditorChrome({
   const buttonState = previewMode === "off" ? "idle" : previewPaused ? "paused" : "running";
   const buttonLabel = buttonState === "running" ? "\u23F8 Pause" : "\u25B6 Play";
   const buttonTitle = buttonState === "running" ? "Pause this viz (side tab or backdrop)" : buttonState === "paused" ? "Resume this viz" : `Play this viz as ${placementPref === "backdrop" ? "backdrop" : "side preview"}`;
-  const activatePreferred = React44.useCallback(() => {
+  const activatePreferred = React45.useCallback(() => {
     if (placementPref === "backdrop") {
       startSelectedBuiltin();
       onToggleBackground(selectedSource);
@@ -51874,7 +51943,7 @@ function VizEditorChrome({
     openSidePreview,
     selectedSource
   ]);
-  const handlePrimaryClick = React44.useCallback(() => {
+  const handlePrimaryClick = React45.useCallback(() => {
     if (previewMode === "off") activatePreferred();
     else onTogglePausePreview?.();
   }, [previewMode, activatePreferred, onTogglePausePreview]);
@@ -52019,7 +52088,7 @@ function createCompiledVizProvider(opts) {
 __name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
   const { file, rendererType, audioSource, hidden, paused, fileId } = props;
-  const { descriptor, compileError } = React44.useMemo(() => {
+  const { descriptor, compileError } = React45.useMemo(() => {
     try {
       const preset = {
         id: file.id,
@@ -52055,9 +52124,9 @@ function CompiledVizMount(props) {
       return { descriptor: null, compileError: message };
     }
   }, [file.id, file.content, file.language, rendererType, file.path]);
-  const containerRef = React44.useRef(null);
-  const rendererRef = React44.useRef(null);
-  const components = React44.useMemo(() => {
+  const containerRef = React45.useRef(null);
+  const rendererRef = React45.useRef(null);
+  const components = React45.useMemo(() => {
     const bag = {};
     if (audioSource?.hapStream) {
       bag.streaming = { hapStream: audioSource.hapStream };
@@ -52089,7 +52158,7 @@ function CompiledVizMount(props) {
     }
     return bag;
   }, [audioSource]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;
     if (!el) return;
@@ -52149,7 +52218,7 @@ function CompiledVizMount(props) {
       }
     };
   }, [descriptor]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r || !r.update) return;
     try {
@@ -52157,7 +52226,7 @@ function CompiledVizMount(props) {
     } catch {
     }
   }, [components]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (hidden) {
@@ -52172,7 +52241,7 @@ function CompiledVizMount(props) {
       }
     }
   }, [hidden]);
-  React44.useEffect(() => {
+  React45.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (paused) {
@@ -52415,13 +52484,13 @@ function silencedNamesFrom(strips, soloed) {
 __name(silencedNamesFrom, "silencedNamesFrom");
 function useSilencedTrackNames() {
   const soloed = useSoloedIds();
-  const [editor, setEditor] = React44__namespace.useState(() => getActiveEditor());
-  const [strips, setStrips] = React44__namespace.useState([]);
-  React44__namespace.useEffect(() => {
+  const [editor, setEditor] = React45__namespace.useState(() => getActiveEditor());
+  const [strips, setStrips] = React45__namespace.useState([]);
+  React45__namespace.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React44__namespace.useEffect(() => {
+  React45__namespace.useEffect(() => {
     if (!editor) {
       setStrips([]);
       return;
@@ -52445,7 +52514,7 @@ function useSilencedTrackNames() {
     const sub = model?.onDidChangeContent?.(rederive);
     return () => sub?.dispose?.();
   }, [editor]);
-  return React44__namespace.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
+  return React45__namespace.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
 }
 __name(useSilencedTrackNames, "useSilencedTrackNames");
 
