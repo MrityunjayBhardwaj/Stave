@@ -885,6 +885,17 @@ export {
   readPersistedOpen,
   readPersistedActiveTabId,
 } from './workspace/bottomPanel/persistence'
+// #2002 — open / closed and the chosen tab, for a control outside the panel that
+// has to show one of its tabs (a phone's view switch) or follow which is showing.
+export {
+  getBottomPanelState,
+  setBottomPanelOpen,
+  setBottomPanelActiveTab,
+  showBottomPanelTab,
+  subscribeToBottomPanelState,
+  useBottomPanelState,
+} from './workspace/bottomPanel/panelState'
+export type { BottomPanelState } from './workspace/bottomPanel/panelState'
 
 // Issue #175 — full workspace-shell state persistence (groups + tabs +
 // pane layout + active group), per-project, via localStorage. The app

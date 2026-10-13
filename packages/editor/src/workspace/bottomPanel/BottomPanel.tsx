@@ -34,13 +34,10 @@ import {
   BOTTOM_PANEL_HEIGHT_MIN,
   BOTTOM_PANEL_HEIGHT_MAX,
   clampHeight,
-  readPersistedActiveTabId,
   readPersistedHeight,
-  readPersistedOpen,
-  writePersistedActiveTabId,
   writePersistedHeight,
-  writePersistedOpen,
 } from './persistence'
+import { setBottomPanelActiveTab, setBottomPanelOpen, useBottomPanelState } from './panelState'
 // Module-side-effect import: registers the placeholder Timeline tab at
 // first bundle load (DA-09 / T-06). PR-B replaces by re-registering the
 // same id (idempotent).
@@ -201,11 +198,12 @@ function renderTabBody(tab: BottomPanelTab): React.ReactNode {
   return tab.content
 }
 
-function pickInitialActiveTabId(
+/** the tab to show: the one last chosen if it is still registered, else the first */
+function pickActiveTabId(
   tabs: readonly BottomPanelTab[],
+  chosen: string | null,
 ): string | null {
-  const stored = readPersistedActiveTabId()
-  if (stored && tabs.some((t) => t.id === stored)) return stored
+  if (chosen && tabs.some((t) => t.id === chosen)) return chosen
   return tabs[0]?.id ?? null
 }
 
@@ -227,33 +225,27 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
   const [tabs, setTabs] = React.useState<readonly BottomPanelTab[]>(() =>
     listBottomPanelTabs(),
   )
-  const [open, setOpen] = React.useState<boolean>(readPersistedOpen)
+  // Open / closed and the chosen tab live in `panelState` (#2002), where a control
+  // outside this component can read and set them; it saves each change itself. The
+  // store's values are read in the first render, so Trap 7 still holds.
+  const { open, activeTabId: chosenTabId } = useBottomPanelState()
+  const setOpen = setBottomPanelOpen
+  const setActiveTabId = setBottomPanelActiveTab
   const [height, setHeight] = React.useState<number>(readPersistedHeight)
-  const [activeTabId, setActiveTabId] = React.useState<string | null>(() =>
-    pickInitialActiveTabId(listBottomPanelTabs()),
-  )
+  const activeTabId = pickActiveTabId(tabs, chosenTabId)
 
   // Subscribe to registry changes so a later registerBottomPanelTab
   // (e.g., PR-B replacing the placeholder) rerenders the bar.
   React.useEffect(() => {
-    return subscribeToBottomPanelTabs(() => {
-      const next = listBottomPanelTabs()
-      setTabs(next)
-      // If the active tab was removed, fall back to the first remaining.
-      setActiveTabId((curr) => {
-        if (curr && next.some((t) => t.id === curr)) return curr
-        return next[0]?.id ?? null
-      })
-    })
+    return subscribeToBottomPanelTabs(() => setTabs(listBottomPanelTabs()))
   }, [])
 
-  // Persist open + activeTabId on change.
+  // The tab shown is the tab chosen. When they differ — nothing chosen yet, or the
+  // chosen tab is no longer registered and the first one stands in — the stand-in
+  // becomes the choice, so every other reader of the store sees what is on screen.
   React.useEffect(() => {
-    writePersistedOpen(open)
-  }, [open])
-  React.useEffect(() => {
-    writePersistedActiveTabId(activeTabId)
-  }, [activeTabId])
+    if (activeTabId !== chosenTabId) setBottomPanelActiveTab(activeTabId)
+  }, [activeTabId, chosenTabId])
 
   // Drag-resize hook (T-05). Commits to React state + persistence on
   // pointerup; live drag updates the hook's internal value only.
@@ -459,7 +451,7 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
           type="button"
           aria-label={open ? 'Hide panel' : 'Show panel'}
           aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => setOpen(!open)}
           style={{
             appearance: 'none',
             border: 'none',
