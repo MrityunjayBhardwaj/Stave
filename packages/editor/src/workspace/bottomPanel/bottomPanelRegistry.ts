@@ -34,6 +34,12 @@ export interface BottomPanelTab {
    * until first activation). PR-A always uses the ReactNode form.
    */
   readonly content: React.ReactNode | (() => React.ReactNode)
+  /**
+   * Controls of this tab's own, drawn at the right end of the header row — beside the
+   * panel's show/hide button — while this tab is the one showing and the panel is open
+   * (#2044: the Pattern tab's side-panel button).
+   */
+  readonly headerActions?: React.ReactNode
 }
 
 type Listener = () => void

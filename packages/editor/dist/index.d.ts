@@ -12959,6 +12959,12 @@ interface BottomPanelTab {
      * until first activation). PR-A always uses the ReactNode form.
      */
     readonly content: React.ReactNode | (() => React.ReactNode);
+    /**
+     * Controls of this tab's own, drawn at the right end of the header row — beside the
+     * panel's show/hide button — while this tab is the one showing and the panel is open
+     * (#2044: the Pattern tab's side-panel button).
+     */
+    readonly headerActions?: React.ReactNode;
 }
 type Listener$2 = () => void;
 /**
@@ -13519,6 +13525,10 @@ declare function runGridGesture(scope: GridScope, id: string, dryRun: boolean): 
  * phone's width. The knobs are still in the Mixer tab; the snap picker and the Slots
  * control have no other home, so on a phone they keep their current value. A tablet has
  * the room and keeps the column, like a desktop.
+ *
+ * Off a phone the column can be put away (#2044): a menu button in the tab's header row
+ * hides it and the grid takes the whole width. Hidden, it is as on a phone — the snap
+ * picker and the Slots control keep their current value.
  *
  * This is pure composition: SequencerGrid / PianoRollGrid / Mixer keep their
  * own binding, write-back and standby behaviour unchanged. Each binds the
