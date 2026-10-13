@@ -68,6 +68,7 @@ import { readChainMethod } from '../../codeView'
 import { ExtendHandle } from './ExtendHandle'
 import { linesModel, rulerLabels, useLayoutFollow, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { usePatternLength } from './usePatternLength'
+import { InViewBar, PHONE_GRID_WIDTH, PHONE_RULER_HEIGHT, PHONE_STEP_MIN, TurnHint, usePhoneGrid, useRulerPan } from './phoneGrid'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
 
@@ -1194,6 +1195,16 @@ export function PianoRollGrid({
   // Above the no-model return: a hook runs on every render or not at all.
   const rulerRef = React.useRef<HTMLDivElement>(null)
   useRulerFit(rulerRef, 'data-roll-ruler-label')
+  // On a phone (#2006): columns a finger can hit, the ruler as the sideways scroll
+  // handle, and a key bed that stays put. See `phoneGrid`.
+  const phoneGrid = usePhoneGrid()
+  const rulerPan = useRulerPan(scrollRef, phoneGrid.phone)
+  /** a column's narrowest width per unit of weight */
+  const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 12
+  /** what keeps a row's key in place while its columns scroll under it */
+  const pinned: React.CSSProperties = phoneGrid.phone
+    ? { position: 'sticky', left: 0, zIndex: 2, background: 'var(--background, #0f0f12)' }
+    : {}
 
   if (!model) {
     return React.createElement(VisualEditStandby, {
@@ -1233,7 +1244,7 @@ export function PianoRollGrid({
   /** a cell's flex box: weighted so a bar of 3 is as wide as a bar of 4 */
   const cellBox = (c: number): React.CSSProperties => {
     const w = layout.weight(c)
-    return { flex: `${w} ${w} 0`, minWidth: 12 * w, maxWidth: 44 * w }
+    return { flex: `${w} ${w} 0`, minWidth: stepMin * w, maxWidth: 44 * w }
   }
 
   return (
@@ -1286,6 +1297,7 @@ export function PianoRollGrid({
         {/* Track identity (#589) — the bound track's colour dot + name. Click the dot to
             recolour, double-click the name to rename. */}
         <PatternTrackChip />
+        <TurnHint show={phoneGrid.upright && rulerPan.inView.more} />
         {/* ONE statement for a view that cannot take a new note (#1070) — the same
             fact the grid states, on the surface that carries 18,386 of the corpus's
             19,098 inert roll placements. Moving, resizing, deleting and velocity
@@ -1323,12 +1335,15 @@ export function PianoRollGrid({
         // panel, styled in globals.css (the editor ships no CSS) — #pattern-scrollbar.
         data-pattern-scroll
         ref={scrollRef}
-        style={{ padding: 16, flex: 1, minHeight: 0, overflow: 'auto', boxSizing: 'border-box' }}
+        // on a phone there is no padding at the top or the left: the ruler and the key
+        // bed are pinned at the padding's edge, and rows scrolling past would show in
+        // the gap beside them
+        style={{ padding: phoneGrid.phone ? '0 16px 16px 0' : 16, flex: 1, minHeight: 0, overflow: 'auto', boxSizing: 'border-box' }}
       >
         <div
           // paddingRight: room for the `+` past the last column (#1824), so a long
           // pattern's cells never grow into it
-          style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 1, width: '100%', paddingRight: 28, boxSizing: 'border-box' }}
+          style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 1, width: '100%', paddingRight: 28, boxSizing: 'border-box', ...(phoneGrid.phone ? PHONE_GRID_WIDTH : {}) }}
           onPointerLeave={() => setHoveredMidi(null)}
         >
           {/* THE RULER (#1841): counts the written steps, `1, 1.2, …, 2`, laid out like a
@@ -1341,8 +1356,31 @@ export function PianoRollGrid({
               the bottom of a 720px viewport, where the drag's press landed on nothing.
               The padding is 16px, so the -13px margin keeps the rows exactly where they
               were before the ruler existed. */}
-          <div ref={rulerRef} data-roll-ruler aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 12, marginTop: -13 }}>
-            <div style={{ width: model.numeric ? 36 : 40, flex: '0 0 auto' }} />
+          {phoneGrid.phone && (
+            // which part of the pattern is on screen: as wide as the panel, not as the
+            // pattern, and it stays put both ways while the rows scroll
+            // (past the key bed and its gap, which is pinned over this row)
+            <div style={{ position: 'sticky', left: (model.numeric ? 36 : 40) + 6, top: 0, zIndex: 4, width: 0, height: 0 }}>
+              <InViewBar inView={rulerPan.inView} width={rulerPan.viewWidth - 16 - (model.numeric ? 36 : 40) - 6} />
+            </div>
+          )}
+          <div
+            ref={rulerRef}
+            data-roll-ruler
+            aria-hidden="true"
+            {...rulerPan.handlers}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-end',
+              gap: 6,
+              // on a phone the ruler is tall enough to hold, so it takes real height and
+              // stays at the top while the pitch rows scroll under it
+              ...(phoneGrid.phone
+                ? { height: PHONE_RULER_HEIGHT, position: 'sticky', top: 0, zIndex: 3, background: 'var(--background, #0f0f12)', touchAction: 'none', cursor: 'grab' }
+                : { height: 12, marginTop: -13 }),
+            }}
+          >
+            <div style={{ width: model.numeric ? 36 : 40, flex: '0 0 auto', alignSelf: 'stretch', ...pinned }} />
             <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
               {Array.from({ length: cols }, (_, c) => {
                 const label = ruler.get(c)
@@ -1408,6 +1446,7 @@ export function PianoRollGrid({
                     fontSize: 9,
                     textAlign: 'right',
                     color: 'var(--foreground, #e6e6ea)',
+                    ...pinned,
                   }}
                 >
                   {tokenForRow(true, midi)}
@@ -1450,6 +1489,8 @@ export function PianoRollGrid({
                     overflow: 'hidden',
                     cursor: 'pointer',
                     touchAction: 'none', // let a touch-drag glissando across keys
+                    // pinned on a phone (#2006); the key keeps its own colour
+                    ...(phoneGrid.phone ? { position: 'sticky', left: 0, zIndex: 2 } : {}),
                   }}
                 >
                   {black && (
