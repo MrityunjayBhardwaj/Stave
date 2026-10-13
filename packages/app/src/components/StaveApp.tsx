@@ -126,7 +126,7 @@ import {
 } from "@stave/editor";
 import { getLogHistory } from "@stave/editor";
 import { SilentCaptureError, describeSkipped } from "@stave/editor";
-import { startAudition } from "@stave/editor";
+import { resolveAsset, startAudition, startClipPreview } from "@stave/editor";
 // #1504 — the project's asset records back the library's "sample" provider.
 import { listAssetRecords, subscribeToAssets } from "@stave/editor";
 // #1785 — this tab's presence, seen by another tab's sound collection.
@@ -1425,7 +1425,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     const unreg = registerAssetProvider(
       createSamplesProvider({
         readRecords: () => listAssetRecords(),
-        startPreview: (name) => startAudition(name),
+        // #2059 — a recording previews once, start to end, not as a re-triggered
+        // 0.22 s note (that is `startAudition`, right for the built-in Sounds).
+        startPreview: async (name) => {
+          const record = listAssetRecords().find((r) => r.name === name);
+          const url = record ? await resolveAsset(record.blobHash) : null;
+          return url ? startClipPreview(url) : undefined;
+        },
         onInsert: (name) => shellRef.current?.assignSoundToCursor(name),
         sizeOf: (hash) => sizes.get(hash),
         onRemove,

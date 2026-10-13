@@ -62,6 +62,8 @@ export interface SavedTake {
    * because a take that exists is worth more than an exception.
    */
   readonly playable: boolean;
+  /** The name the file asked for, when one of Stave's own sounds has it (#2061). */
+  readonly renamedFrom?: string;
 }
 
 /**
@@ -95,10 +97,14 @@ export async function storeAudio(
       origin,
     );
     addAssetRecord(imported.record);
-    return imported.record;
+    return imported;
   });
-  const playable = await registerAsset(record);
-  return { record, playable };
+  const playable = await registerAsset(record.record);
+  return {
+    record: record.record,
+    playable,
+    ...(record.renamedFrom ? { renamedFrom: record.renamedFrom } : {}),
+  };
 }
 
 /** A recording becomes an asset under a minted positional name. */

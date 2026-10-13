@@ -10,7 +10,7 @@ import { canPauseOfflineRender, piecesOf, renderInPieces } from './pieceRender'
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { planStems, tagTrack } from './stemSplit'
 import { createTransportHold } from './transportHold'
-import { registerBackgroundRender, withOfflineGraph, withUserRender } from './offlineGraph'
+import { onLiveGraph, registerBackgroundRender, withOfflineGraph, withUserRender } from './offlineGraph'
 import { displayRenderRate } from './displayRate'
 import {
   createTrackEnvelopeScheduler,
@@ -1040,6 +1040,9 @@ export class StrudelEngine implements LiveCodingEngine {
     // resolve it fresh on every re-tap.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.superdoughControllerFn = (webaudioMod as any).getSuperdoughAudioController ?? null
+    // #2058 — Stave's superdough patch: stops every sound still playing (Stop).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.stopAllSoundsFn = (webaudioMod as any).stopAllSounds ?? null
 
     // Wrap the native output trigger so we can fan events to HapStream subscribers
     const hapStream = this.hapStream
@@ -1795,6 +1798,9 @@ export class StrudelEngine implements LiveCodingEngine {
     this.followMasterAnalyser()
   }
 
+  /** #2058 — superdough's stop-every-sound (Stave's patch), once audio is up. */
+  private stopAllSoundsFn: ((fade?: number) => number) | null = null
+
   /** the destinationGain node our master analyser is currently tapping. */
   private taggedDestinationGain: AudioNode | null = null
   /** resolves superdough's GLOBAL audio controller (the live one). */
@@ -1841,6 +1847,13 @@ export class StrudelEngine implements LiveCodingEngine {
     // the render resumes the transport it paused.
     this.transportHold.cancelResume()
     this.repl?.scheduler?.stop()
+    // #2058 — the scheduler's stop only stops NEW notes. A sample plays its whole
+    // length unless something cuts it, so a long file kept sounding after Stop
+    // (measured: still at full level fifteen seconds later). Fade out what is
+    // playing. Deferred while an offline render borrows superdough's context
+    // (#1733), so the fade lands on the live sounds, not the render's.
+    const stopAll = this.stopAllSoundsFn
+    if (stopAll) onLiveGraph(() => stopAll(0.03))
     this.trackEnvelopes.stopped() // #1731 — stopped: render what is missing or stale
   }
 

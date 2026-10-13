@@ -30,7 +30,7 @@ export interface SamplesProviderDeps {
   /** The project's asset records, live. */
   readRecords: () => readonly SampleRecord[];
   /** Audition one by name; returns a handle to stop it. */
-  startPreview: (name: string) => AssetPreviewHandle;
+  startPreview: (name: string) => AssetPreviewHandle | void | Promise<AssetPreviewHandle | void>;
   /** Round-trip the sample into code at the cursor. */
   onInsert: (name: string) => void;
   /** #1786 — the stored size of a blob, when known. */

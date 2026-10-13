@@ -791,9 +791,11 @@ export type { GridScope, GridGestureId, GridGestureDef, GridKeyMatcher } from '.
 export {
   auditionSound,
   startAudition,
+  startClipPreview,
   AUDITION_ENVELOPE,
   AUDITION_DUR_S,
   type AuditionHandle,
+  type ClipPreviewHandle,
 } from './visualEdit/audition'
 // Locate a runtime error (e.g. soundfont out-of-range, #567) back to the owning
 // track's line by its instrument — the app's onError uses this when the error's

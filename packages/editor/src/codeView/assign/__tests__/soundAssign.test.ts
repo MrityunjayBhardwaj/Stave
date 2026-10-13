@@ -42,10 +42,10 @@ describe('planSoundAssignment (#830)', () => {
   })
 
   describe('no roll chunk → drop a fresh `s("…")` on its own line', () => {
-    it('inserts bare into an empty document (no newline prefix)', () => {
+    it('inserts a `$:` pattern into an empty document (no newline prefix; #2057 — was bare)', () => {
       const plan = planSoundAssignment('', 0, 'piano')
-      expect(plan).toEqual({ kind: 'insert', offset: 0, text: 's("piano")' })
-      expect(apply('', plan)).toBe('s("piano")')
+      expect(plan).toEqual({ kind: 'insert', offset: 0, text: '$: s("piano")' })
+      expect(apply('', plan)).toBe('$: s("piano")')
     })
 
     it('drops onto its OWN line below a comment — never mid-token', () => {
@@ -53,7 +53,7 @@ describe('planSoundAssignment (#830)', () => {
       // inside the comment (`// scratchs("…")`, commented out).
       const doc = '// scratch'
       const plan = planSoundAssignment(doc, doc.length, 'piano')
-      expect(apply(doc, plan)).toBe('// scratch\ns("piano")')
+      expect(apply(doc, plan)).toBe('// scratch\n$: s("piano")')
     })
 
     it('inserts at the END of the cursor line, not at the cursor column', () => {
@@ -80,6 +80,31 @@ describe('planSoundAssignment (#830)', () => {
       const doc = 'setcps(1)\nhello'
       const plan = planSoundAssignment(doc, doc.length, 'piano')
       expect(apply(doc, plan)).toBe('setcps(1)\nhello\ns("piano")')
+    })
+
+    it('in a song of `$:` patterns, the new line is a `$:` pattern too — a bare one never plays (#2057)', () => {
+      const doc = '// my song\n$: s("bd*4")\n'
+      const plan = planSoundAssignment(doc, 3, 'kick')
+      expect(apply(doc, plan)).toBe('// my song\n$: s("kick")\n$: s("bd*4")\n')
+    })
+
+    it('a cursor inside a multi-line `$:` pattern writes after the WHOLE pattern, not inside its arguments (#2057)', () => {
+      const doc = '$: stack(\n  s("hh*8"),\n  s("bd")\n).gain(0.5)\n\n$: note("c")'
+      // cursor on `  s("hh*8"),`
+      const plan = planSoundAssignment(doc, doc.indexOf('hh'), 'kick')
+      expect(apply(doc, plan)).toBe('$: stack(\n  s("hh*8"),\n  s("bd")\n).gain(0.5)\n$: s("kick")\n\n$: note("c")')
+    })
+
+    it('a document with no code yet gets a `$:` pattern (#2057)', () => {
+      const doc = '// scratch'
+      const plan = planSoundAssignment(doc, doc.length, 'kick')
+      expect(apply(doc, plan)).toBe('// scratch\n$: s("kick")')
+    })
+
+    it('a cursor on a blank line inside a `$:` song still writes a `$:` pattern (#2057)', () => {
+      const doc = '$: s("bd")\n\n$: s("hh")'
+      const plan = planSoundAssignment(doc, doc.indexOf('\n\n') + 1, 'kick')
+      expect(apply(doc, plan)).toBe('$: s("bd")\n$: s("kick")\n$: s("hh")')
     })
 
     it('treats a step (drum) chunk as no-roll → new line, leaves it untouched', () => {

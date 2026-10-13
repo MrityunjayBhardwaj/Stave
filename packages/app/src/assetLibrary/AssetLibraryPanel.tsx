@@ -108,16 +108,26 @@ export function AssetLibraryPanel({
   // literal every render, so `[audio]` would rebuild this callback on every
   // render and defeat the memo entirely — the per-render-new-dependency trap.
   // `importFiles` is itself memoised with no deps, so this is stable.
-  const onFiles = useCallback(
-    (files: readonly File[]) => void audio.importFiles(files),
-    [audio.importFiles],
-  );
-  const drop = useAudioDrop(onFiles);
-
   const [query, setQuery] = useState("");
   const [type, setType] = useState<AssetType | null>(null);
   const [source, setSource] = useState<AssetSource | null>(null);
   const [category, setCategory] = useState<string | null>(null);
+
+  const onFiles = useCallback(
+    (files: readonly File[]) =>
+      void audio.importFiles(files).then((added) => {
+        // #2060 — show what was just added. The list was left on whatever it
+        // showed (a fresh Library opens on 1,800 built-in Sounds) and the new
+        // sound sat unseen under the Samples chip.
+        if (added === 0) return;
+        setType("sample");
+        setQuery("");
+        setSource(null);
+        setCategory(null);
+      }),
+    [audio.importFiles],
+  );
+  const drop = useAudioDrop(onFiles);
 
   const filter: AssetFilter = useMemo(
     () => ({ query, type, source, category }),
@@ -206,8 +216,15 @@ export function AssetLibraryPanel({
         }
         token.handle = handle ?? null;
         // Fire-and-forget previews (void handle) clear the "playing" badge
-        // immediately; sustained ones keep it until stop.
+        // immediately; sustained ones keep it until stop, or until they end by
+        // themselves (#2059 — a clip of your own plays once, to its end).
         if (!handle) setPreviewingKey((cur) => (cur === key ? null : cur));
+        else
+          void handle.ended?.then(() => {
+            if (activePreview.current !== token) return;
+            activePreview.current = null;
+            setPreviewingKey((cur) => (cur === key ? null : cur));
+          });
       } catch {
         if (activePreview.current === token) stopPreview();
       }

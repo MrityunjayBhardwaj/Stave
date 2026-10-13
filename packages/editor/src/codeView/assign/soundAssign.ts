@@ -8,6 +8,7 @@
 // here and commits it (`assignmentEdit` → `commitToEditor`); the tested code is
 // the shipped code.
 
+import { parseTopLevel } from '../astParse'
 import { detectChunk } from '../chunkDetect'
 import { setStringCall } from '../chainEdit'
 import { patternKind } from '../patternKind'
@@ -51,19 +52,44 @@ export function planSoundAssignment(
       : { kind: 'replace', range: edit.range, text: edit.text }
   }
 
-  // Line-aware source insert. Compute the cursor's line span in pure string
-  // space: `lineStart` is just past the previous newline (or 0), `lineEnd` is
-  // the next newline (or end of doc) — the position Monaco's `getLineMaxColumn`
-  // resolves to. Insert before that newline so the pattern owns its line.
-  const lineStart = doc.lastIndexOf('\n', offset - 1) + 1
-  const nextNewline = doc.indexOf('\n', offset)
+  // Where the new line goes (#2057): after the WHOLE top-level statement under the
+  // cursor, so a cursor inside a multi-line `$: stack(…)` does not write into its
+  // arguments; with no statement under the cursor (a comment, a blank line), after
+  // the cursor's own line. Line-aware either way: a raw offset lands mid-token or
+  // inside a comment (observed: `// scratch` → `// scratchs("…")`).
+  const statements = parseTopLevel(doc)
+  const under = statements?.find((s: { start: number; end: number }) => s.start <= offset && offset <= s.end)
+  const anchor = under ? under.end : offset
+  const lineStart = doc.lastIndexOf('\n', anchor - 1) + 1
+  const nextNewline = doc.indexOf('\n', anchor)
   const lineEnd = nextNewline === -1 ? doc.length : nextNewline
   const hasContent = doc.slice(lineStart, lineEnd).trim().length > 0
   return {
     kind: 'insert',
     offset: lineEnd,
-    text: `${hasContent ? '\n' : ''}s("${sound}")`,
+    text: `${hasContent ? '\n' : ''}${playsLabelled(doc, statements) ? '$: ' : ''}s("${sound}")`,
   }
+}
+
+/**
+ * Will a new `$:` line be heard in this document (#2057)?
+ *
+ * Strudel plays the labelled patterns when there are any and ignores the value of a
+ * bare expression (`repl.mjs`: the `pPatterns` branch replaces `pattern`); with
+ * none, it plays the LAST bare expression. So a bare `s("…")` dropped into a `$:`
+ * song is never heard, and a `$:` one dropped into a song that is one bare
+ * expression would silence the song. A document with no code yet takes `$:`, the
+ * form the starter songs use.
+ *
+ * ⚠ Known limit: in a song that is one bare expression the line stays bare, and
+ * then it replaces the song when it is the last statement. Neither form adds to such
+ * a song; only rewriting it would.
+ */
+function playsLabelled(doc: string, statements: Array<{ type: string }> | null): boolean {
+  // mid-keystroke the document does not parse: read the lines instead
+  if (!statements) return /^[ \t]*\$:/m.test(doc)
+  if (statements.length === 0) return true
+  return statements.some((s) => s.type === 'LabeledStatement')
 }
 
 /**
