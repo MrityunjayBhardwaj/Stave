@@ -39,6 +39,7 @@ import {
 } from './persistence'
 import { setBottomPanelActiveTab, setBottomPanelOpen, useBottomPanelState } from './panelState'
 import { usePhoneLayout } from '../usePhone'
+import { useKeyboardUp } from '../visibleArea'
 import { TOUCH_BAR_ATTR } from '../runtime/touchBar'
 // Module-side-effect import: registers the placeholder Timeline tab at
 // first bundle load (DA-09 / T-06). PR-B replaces by re-registering the
@@ -482,11 +483,32 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
     [tabs, activeTabId, focusTab],
   )
 
+  // ---- the keyboard (#2004) ----
+  // Upright on a phone, the strip and its sheet give way while the keyboard is up —
+  // unless the keyboard was raised from INSIDE the panel (a name being typed in the
+  // Mixer or the Timeline): taking the panel away then would take the box being typed
+  // in. Read in the render, not in an effect: an effect would run after the panel had
+  // already gone, and the focus with it.
+  const keyboardUp = useKeyboardUp()
+  const [, refocused] = React.useReducer((n: number) => n + 1, 0)
+  React.useEffect(() => {
+    if (!keyboardUp) return
+    // focus moving out of the panel, into the code, while the keyboard stays up
+    document.addEventListener('focusin', refocused)
+    return () => document.removeEventListener('focusin', refocused)
+  }, [keyboardUp])
+  const typingInPanel =
+    keyboardUp && typeof document !== 'undefined' && document.activeElement?.closest('[data-bottom-panel="root"]') != null
+  const givesWayToKeyboard = sheet && keyboardUp && !typingInPanel
+
   // True zero-pixel cost when no tabs are registered (Trap 2).
   if (tabs.length === 0) return null
   // #2022 — after every hook, so hiding and showing never changes their order
   // and the state above survives the gap.
   if (hidden) return null
+  // #2004 — the same for the sheet while the keyboard is up: the strip gives way so the
+  // code has the room, and comes back as it was when the keyboard closes.
+  if (givesWayToKeyboard) return null
 
   // While dragging, render with the live hook value so the drawer
   // visibly resizes; otherwise use the committed height.

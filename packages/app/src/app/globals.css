@@ -148,6 +148,18 @@ html[data-stave-phone] {
   touch-action: manipulation;
 }
 
+/* --- A phone held sideways, typing (#2004) -----------------------------------
+   Sideways a phone is about 360 px tall and its keyboard takes half. With the
+   top bar (48 px) and the editor's Play bar (52 px) both kept, the code was left
+   50 px — two lines. So while the keyboard is up the top bar gives way, as the
+   bottom strip does upright; Play stays, in the editor's own bar. `data-keyboard`
+   is set on the root by the editor package only on a phone, only while the
+   keyboard is up. Upright there is room, and the top bar stays. */
+html[data-keyboard] [data-phone-top-bar][data-phone-top-held="sideways"] {
+  /* the bar sets its own `display` inline, which a plain rule cannot out-rank */
+  display: none !important;
+}
+
 /* Inline viz action icons — show on hover */
 [data-viz-zone]:hover [data-viz-actions] {
   opacity: 1 !important;
