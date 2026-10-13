@@ -278,8 +278,8 @@ export function VizEditorChrome({
       }}
     >
       {/*
-       * Primary transport (#783) — a pure play/pause, always rendered before the
-       * ⚙ gear. "▶ Play" starts the viz in its set placement (backdrop by
+       * Primary transport (#783) — a pure play/pause, always rendered first, before the
+       * live toggle and the ⚙ gear. "▶ Play" starts the viz in its set placement (backdrop by
        * default, or side — chosen in the popover, NOT opened by this button);
        * once running it is "⏸ Pause"/"▶ Play" acting on whichever placement is
        * active (side tab OR backdrop, #781).
@@ -293,6 +293,45 @@ export function VizEditorChrome({
         style={primaryBtnStyle}
       >
         {buttonLabel}
+      </button>
+
+      {/*
+       * Hot reload: togglable badge. On → preview rebuilds on every
+       * debounced content change (default). Off → the preview is
+       * frozen on its last compiled state; the user can keep editing
+       * without seeing intermediate frames. PreviewView observes the
+       * per-file flag and short-circuits its reload effect.
+       *
+       * Sits next to Play (#2046): the two you press while working. The gear
+       * comes after it, at the end.
+       */}
+      <button
+        data-testid="viz-chrome-live-toggle"
+        data-live-mode={liveOn ? 'on' : 'off'}
+        onClick={() => toggleVizLive(file.id)}
+        title={
+          liveOn
+            ? 'Live mode ON — preview re-renders on edit'
+            : 'Live mode OFF — click to resume live updates'
+        }
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '3px 8px',
+          borderRadius: 3,
+          fontSize: 10,
+          fontFamily: 'inherit',
+          cursor: 'pointer',
+          userSelect: 'none',
+          background: liveOn ? 'var(--accent-dim)' : 'none',
+          color: liveOn
+            ? 'var(--accent-strong, var(--accent))'
+            : 'var(--foreground-muted)',
+          border: `1px solid ${liveOn ? 'var(--accent-dim)' : 'var(--border)'}`,
+        }}
+      >
+        {liveOn ? '\u27F3 live' : '\u27F3'}
       </button>
 
       {/*
@@ -337,42 +376,6 @@ export function VizEditorChrome({
         }}
       >
         {'\u2699'}
-      </button>
-
-      {/*
-       * Hot reload: togglable badge. On → preview rebuilds on every
-       * debounced content change (default). Off → the preview is
-       * frozen on its last compiled state; the user can keep editing
-       * without seeing intermediate frames. PreviewView observes the
-       * per-file flag and short-circuits its reload effect.
-       */}
-      <button
-        data-testid="viz-chrome-live-toggle"
-        data-live-mode={liveOn ? 'on' : 'off'}
-        onClick={() => toggleVizLive(file.id)}
-        title={
-          liveOn
-            ? 'Live mode ON — preview re-renders on edit'
-            : 'Live mode OFF — click to resume live updates'
-        }
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          padding: '3px 8px',
-          borderRadius: 3,
-          fontSize: 10,
-          fontFamily: 'inherit',
-          cursor: 'pointer',
-          userSelect: 'none',
-          background: liveOn ? 'var(--accent-dim)' : 'none',
-          color: liveOn
-            ? 'var(--accent-strong, var(--accent))'
-            : 'var(--foreground-muted)',
-          border: `1px solid ${liveOn ? 'var(--accent-dim)' : 'var(--border)'}`,
-        }}
-      >
-        {liveOn ? '\u27F3 live' : '\u27F3'}
       </button>
 
       <div style={{ flex: 1 }} />

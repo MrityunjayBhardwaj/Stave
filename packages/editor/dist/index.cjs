@@ -51980,6 +51980,30 @@ function VizEditorChrome({
           /* @__PURE__ */ jsxRuntime.jsx(
             "button",
             {
+              "data-testid": "viz-chrome-live-toggle",
+              "data-live-mode": liveOn ? "on" : "off",
+              onClick: () => toggleVizLive(file.id),
+              title: liveOn ? "Live mode ON \u2014 preview re-renders on edit" : "Live mode OFF \u2014 click to resume live updates",
+              style: {
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "3px 8px",
+                borderRadius: 3,
+                fontSize: 10,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                userSelect: "none",
+                background: liveOn ? "var(--accent-dim)" : "none",
+                color: liveOn ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+                border: `1px solid ${liveOn ? "var(--accent-dim)" : "var(--border)"}`
+              },
+              children: liveOn ? "\u27F3 live" : "\u27F3"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
               "data-testid": "viz-chrome-settings",
               "data-settings-open": settingsAnchor ? "true" : "false",
               "data-preview-mode": previewMode,
@@ -52004,30 +52028,6 @@ function VizEditorChrome({
                 border: `1px solid ${settingsAnchor || previewMode !== "off" ? "var(--accent-dim)" : "var(--border)"}`
               },
               children: "\u2699"
-            }
-          ),
-          /* @__PURE__ */ jsxRuntime.jsx(
-            "button",
-            {
-              "data-testid": "viz-chrome-live-toggle",
-              "data-live-mode": liveOn ? "on" : "off",
-              onClick: () => toggleVizLive(file.id),
-              title: liveOn ? "Live mode ON \u2014 preview re-renders on edit" : "Live mode OFF \u2014 click to resume live updates",
-              style: {
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                padding: "3px 8px",
-                borderRadius: 3,
-                fontSize: 10,
-                fontFamily: "inherit",
-                cursor: "pointer",
-                userSelect: "none",
-                background: liveOn ? "var(--accent-dim)" : "none",
-                color: liveOn ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
-                border: `1px solid ${liveOn ? "var(--accent-dim)" : "var(--border)"}`
-              },
-              children: liveOn ? "\u27F3 live" : "\u27F3"
             }
           ),
           /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1 } })
