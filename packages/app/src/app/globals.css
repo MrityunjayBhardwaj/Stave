@@ -130,6 +130,24 @@ body {
   color: var(--text-body);
 }
 
+/* --- A phone: the page itself stays put (#2007) ------------------------------
+   Only the editor and the panels scroll. Without this an iPhone drags the whole
+   page — top bar and all — when a scroll reaches its end, and bounces it back.
+   `manipulation` keeps panning and pinch-zoom (an accessibility need) and drops
+   the double-tap zoom, which otherwise fires on two quick taps on a step.
+
+   `data-stave-phone` is set by the app from the one rule for "is this a phone"
+   (the editor's `isPhone`: a finger for a pointer, a screen under 600 px on its
+   short side). A tablet and a desktop never get it, so nothing here reaches them. */
+html[data-stave-phone],
+html[data-stave-phone] body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+html[data-stave-phone] {
+  touch-action: manipulation;
+}
+
 /* Inline viz action icons — show on hover */
 [data-viz-zone]:hover [data-viz-actions] {
   opacity: 1 !important;

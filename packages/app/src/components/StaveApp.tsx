@@ -226,6 +226,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const phone = usePhone();
   // #2003 — sideways, a phone gets a view switch in its top bar and a shorter drawer
   const phoneSideways = usePhoneLayout() === "sideways";
+  // #2007 — the page-level rules for a phone (no page scroll, no double-tap zoom) are
+  // CSS on the document root, switched by this one attribute.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (phone) root.setAttribute("data-stave-phone", "");
+    else root.removeAttribute("data-stave-phone");
+    return () => root.removeAttribute("data-stave-phone");
+  }, [phone]);
   const [activePanelId, setActivePanelId] = useState<string | null>(() => (isPhone() ? null : "explorer"));
   // The drawer's Menu tab is the drawer's own, not a panel: it has no rail button and
   // must not be left selected for a rail that cannot show it.

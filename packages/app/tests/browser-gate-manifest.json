@@ -927,6 +927,10 @@
     "runs": "touch",
     "why": "runs on the touch projects (phone, phone-sideways, tablet), which the gate names beside chromium"
   },
+  "touch-safe-area.spec.ts": {
+    "runs": "touch",
+    "why": "runs on the touch projects (phone, phone-sideways, tablet), which the gate names beside chromium"
+  },
   "touch-pattern-steps.spec.ts": {
     "runs": "touch",
     "why": "runs on the touch projects (phone, phone-sideways, tablet) and on iphone, which the gate names beside chromium"
