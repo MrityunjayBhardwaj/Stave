@@ -188,10 +188,6 @@ export function StartScreen({
                 <LinkIcon />
                 <span style={styles.itemName}>Documentation</span>
               </a>
-              <a style={styles.item} href={introWatchUrl} target="_blank" rel="noopener noreferrer">
-                <LinkIcon />
-                <span style={styles.itemName}>Intro film on YouTube</span>
-              </a>
               <a style={styles.item} href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
                 <LinkIcon />
                 <span style={styles.itemName}>Source on GitHub</span>
