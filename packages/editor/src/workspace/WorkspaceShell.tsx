@@ -166,6 +166,7 @@ import {
 } from './groupLayout'
 import { findBuiltinExampleSource } from './builtinExampleSources'
 import { BottomPanel } from './bottomPanel/BottomPanel'
+import { SymbolRow } from './SymbolRow'
 import { bottomPanelHiddenForTab } from './bottomPanel/hiddenForTab'
 
 /**
@@ -3387,6 +3388,11 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
        * replace by re-registering under the same id (idempotent).
        */}
       <BottomPanel hidden={bottomPanelHiddenForTab(activeTab)} />
+
+      {/* #2005 — pattern symbols above a phone's keyboard. Last in the column, so it
+          sits where the shell ends: on the keyboard's top edge. Draws nothing unless
+          the keyboard is up on an upright phone with the cursor in a code file. */}
+      <SymbolRow />
 
       {/*
        * Guide line overlay — a shell-level element that previews where
