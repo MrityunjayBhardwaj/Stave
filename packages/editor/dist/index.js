@@ -50455,6 +50455,29 @@ async function pruneEphemeralArtifacts() {
   ]);
 }
 __name(pruneEphemeralArtifacts, "pruneEphemeralArtifacts");
+
+// src/workspace/runtime/touchBar.ts
+var DESKTOP_BAR_HEIGHT = 40;
+var TOUCH = 44;
+var PHONE_BAR_HEIGHT = TOUCH + 8;
+var TOUCH_BAR_ATTR = "data-touch-bar";
+var touchBarStyleInjected = false;
+function ensureTouchBarStyle() {
+  if (touchBarStyleInjected) return;
+  if (typeof document === "undefined") return;
+  const el = document.createElement("style");
+  el.setAttribute("data-stave-style", "touch-bar");
+  el.textContent = `[${TOUCH_BAR_ATTR}] button{min-height:${TOUCH}px;min-width:${TOUCH}px;justify-content:center;flex-shrink:0;white-space:nowrap}`;
+  document.head.appendChild(el);
+  touchBarStyleInjected = true;
+}
+__name(ensureTouchBarStyle, "ensureTouchBarStyle");
+function useTouchBar() {
+  const phone = usePhone();
+  if (phone) ensureTouchBarStyle();
+  return phone ? { height: PHONE_BAR_HEIGHT, attrs: { [TOUCH_BAR_ATTR]: "" } } : { height: DESKTOP_BAR_HEIGHT, attrs: {} };
+}
+__name(useTouchBar, "useTouchBar");
 function LiveModeToggle({
   autoRefresh,
   onToggle
@@ -50546,15 +50569,17 @@ function StrudelChrome(ctx) {
     stopAtEnd,
     onToggleStopAtEnd
   } = ctx;
+  const bar2 = useTouchBar();
   return /* @__PURE__ */ jsxs(
     "div",
     {
       "data-strudel-runtime-chrome": "root",
+      ...bar2.attrs,
       style: {
         display: "flex",
         alignItems: "center",
         gap: 8,
-        height: 40,
+        height: bar2.height,
         padding: "0 12px",
         background: "var(--surface)",
         borderBottom: "1px solid var(--border)",
@@ -50647,15 +50672,17 @@ var STRUDEL_RUNTIME = {
 };
 function SonicPiChrome(ctx) {
   const { isPlaying, error, bpm, onPlay, onStop, chromeExtras } = ctx;
+  const bar2 = useTouchBar();
   return /* @__PURE__ */ jsxs(
     "div",
     {
       "data-sonicpi-runtime-chrome": "root",
+      ...bar2.attrs,
       style: {
         display: "flex",
         alignItems: "center",
         gap: 8,
-        height: 40,
+        height: bar2.height,
         padding: "0 12px",
         background: "var(--surface)",
         borderBottom: "1px solid var(--border)",

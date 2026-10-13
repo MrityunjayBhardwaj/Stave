@@ -24,7 +24,7 @@ import {
   updateVizConfig,
   type VizQualityLevel,
 } from '../visualizers/vizConfig'
-import { TOUCH_POINTER_QUERY } from '../visualEdit/panels/usePhone'
+import { TOUCH_POINTER_QUERY } from './usePhone'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MonacoEditor = any

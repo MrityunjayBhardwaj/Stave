@@ -9,46 +9,33 @@ import { readDrawnSongFrame } from "../state/drawnSongFrame";
 import { transportReadout } from "./transportReadout";
 
 /**
- * The phone's top bar (#2001): the four things a hand needs while the code is on
- * screen, each at least 44 px tall — the drawer, which file this is and where the song
- * has got to, whether the last evaluation worked, and Play.
+ * The phone's top bar (#2001, #2035): the button that opens the drawer, which file
+ * this is, and where the song has got to.
  *
  * The desktop's menu bar puts eleven controls in a 28 px strip; on a 390 px screen
  * most of them are off its right edge and the rest are too small to hit. Everything
- * that strip holds and this one does not — the menus, the full readout, the frame-rate
- * and audio lamps, the time signature — is in the drawer.
+ * that strip holds and this one does not — the menus, the full readout, the status,
+ * frame-rate and audio lamps, the time signature — is in the drawer.
  *
- * PLAY IS PRESSED HERE, NOT ASKED FOR. `onPlay` must reach the runtime before anything
- * waits: a phone browser starts audio only for what runs inside the tap (#1987).
+ * There is no Play here (#2035). The editor's own bar, just below, has it beside live
+ * mode and the backdrop picker, sized for a finger; a second one up here was the same
+ * button twice.
  */
 
 const TOUCH = 44;
 
 interface PhoneTopBarProps {
   readonly fileName: string | null;
-  readonly isPlaying: boolean;
-  /** false when the tab in front has nothing to play (a markdown file, no file) */
-  readonly canPlay: boolean;
-  readonly onPlay: () => void;
-  readonly onStop: () => void;
   readonly onOpenDrawer: () => void;
   readonly getSongPosition: () => number | null;
   readonly getCps: () => number | null;
-  readonly evalError: string | null;
-  readonly onEvalLamp: () => void;
 }
 
 export function PhoneTopBar({
   fileName,
-  isPlaying,
-  canPlay,
-  onPlay,
-  onStop,
   onOpenDrawer,
   getSongPosition,
   getCps,
-  evalError,
-  onEvalLamp,
 }: PhoneTopBarProps) {
   const cycleMode = useRulerUnits() === "cycles";
   const meter = useDisplayMeter();
@@ -83,27 +70,6 @@ export function PhoneTopBar({
         <span style={styles.line} ref={lineRef} data-phone-top="readout" />
       </div>
 
-      <button
-        type="button"
-        style={styles.square}
-        data-phone-top="lamp"
-        data-stave-eval-lamp={evalError ? "error" : "ok"}
-        aria-label={evalError ? `Evaluation failed: ${evalError}. Show the error` : "No evaluation errors. Open the Console"}
-        onClick={onEvalLamp}
-      >
-        <span style={{ ...styles.dot, ...(evalError ? styles.dotErr : {}) }} />
-      </button>
-
-      <button
-        type="button"
-        style={{ ...styles.play, ...(isPlaying ? styles.playOn : {}), ...(canPlay ? {} : styles.playOff) }}
-        data-phone-top="play"
-        aria-label={isPlaying ? "Stop" : "Play"}
-        disabled={!canPlay}
-        onClick={isPlaying ? onStop : onPlay}
-      >
-        <Icon name={isPlaying ? "debug-stop" : "play"} size="18px" />
-      </button>
     </div>
   );
 }
@@ -162,36 +128,5 @@ const styles: Record<string, React.CSSProperties> = {
     fontVariantNumeric: "tabular-nums",
     fontFamily: 'var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace)',
     color: "var(--text-secondary)",
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: "50%",
-    background: "var(--text-muted)",
-  },
-  dotErr: {
-    background: "#ff8080",
-    boxShadow: "0 0 6px rgba(255,128,128,0.6)",
-  },
-  play: {
-    width: 56,
-    height: TOUCH,
-    flex: "none",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 22,
-    border: "none",
-    background: "var(--accent, #7c7cff)",
-    color: "#fff",
-    cursor: "pointer",
-  },
-  playOn: {
-    background: "var(--bg-hover)",
-    color: "var(--text-primary)",
-  },
-  playOff: {
-    opacity: 0.4,
-    cursor: "default",
   },
 };

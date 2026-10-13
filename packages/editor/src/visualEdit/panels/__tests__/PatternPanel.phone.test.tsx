@@ -19,7 +19,7 @@ vi.mock('../VisualEditStandby', () => ({ VisualEditStandby: () => <div data-stan
 vi.mock('../../mixer/MixerPanel', () => ({ MixerPanel: () => <div data-mixer-body /> }))
 
 import { PatternPanel } from '../PatternPanel'
-import { PHONE_SHORT_SIDE_PX, TOUCH_POINTER_QUERY } from '../usePhone'
+import { PHONE_SHORT_SIDE_PX, TOUCH_POINTER_QUERY } from '../../../workspace/usePhone'
 
 interface Device {
   finger(next: boolean): void
