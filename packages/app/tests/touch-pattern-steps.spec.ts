@@ -88,11 +88,30 @@ function facts(page: Page, grid: string, name: string): Promise<GridFacts> {
 
 /** press on the ruler and drag `dx` px (negative brings later steps in) */
 async function dragRuler(page: Page, ruler: string, dx: number): Promise<void> {
-  const box = await page.locator(ruler).boundingBox()
+  // Press where the ruler IS: wait until two looks at it agree, and check the press lands
+  // on it. A press that misses lands on a step, and a drag on a step is the grid's — it
+  // scrolls nothing, which would read here as a ruler that does not work.
+  let box = await page.locator(ruler).boundingBox()
+  await expect
+    .poll(async () => {
+      const again = await page.locator(ruler).boundingBox()
+      const same = box !== null && again !== null && again.y === box.y && again.height === box.height
+      box = again
+      return same
+    })
+    .toBe(true)
   expect(box, 'the ruler has no box').not.toBeNull()
   // the ruler is as long as the pattern, so most of it is off screen: press the part that is on it
   const x = (await page.evaluate(() => window.innerWidth)) * 0.7
   const y = box!.y + box!.height / 2
+  const pressed = await page.evaluate(
+    ([sel, px, py]) => {
+      const hit = document.elementFromPoint(px as number, py as number)
+      return hit !== null && hit.closest(sel as string) !== null
+    },
+    [ruler.split(' ').pop()!, x, y],
+  )
+  expect(pressed, 'the press is not on the ruler').toBe(true)
   await page.mouse.move(x, y)
   await page.mouse.down()
   for (let i = 1; i <= 8; i++) await page.mouse.move(x + (dx * i) / 8, y)

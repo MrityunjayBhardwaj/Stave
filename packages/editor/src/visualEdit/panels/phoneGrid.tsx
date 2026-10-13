@@ -104,6 +104,11 @@ export function useRulerPan(scrollRef: React.RefObject<HTMLElement | null>, enab
       const sc = scrollRef.current
       if (!sc) return
       if (e.pointerType === 'mouse' && e.button !== 0) return
+      // The press is this drag's alone. Left to its default, a pressed mouse dragged
+      // past the grid's edge starts the browser's own scroll-towards-the-pointer, which
+      // runs the grid back the other way while this moves it forward (observed in
+      // WebKit, 2026-10-13: the position swinging 367 → 0 → 367 within one drag).
+      e.preventDefault()
       const pointerId = e.pointerId
       const startX = e.clientX
       const startLeft = sc.scrollLeft

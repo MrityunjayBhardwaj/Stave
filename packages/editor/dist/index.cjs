@@ -37700,6 +37700,7 @@ function useRulerPan(scrollRef, enabled) {
       const sc = scrollRef.current;
       if (!sc) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.preventDefault();
       const pointerId = e.pointerId;
       const startX = e.clientX;
       const startLeft = sc.scrollLeft;
