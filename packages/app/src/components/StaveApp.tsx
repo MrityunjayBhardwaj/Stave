@@ -142,7 +142,7 @@ import { removedButFailedMessage, removedMessage } from "../assetLibrary/freeSpa
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
 import { mountVizPreview } from "@stave/editor";
 import { getFile } from "@stave/editor";
-import { usePhone, isPhone, usePhoneLayout } from "@stave/editor";
+import { usePhone, isPhone, usePhoneLayout, startVisibleArea } from "@stave/editor";
 import { createSamplesProvider } from "../assetLibrary/samplesProvider";
 import { createVizProvider } from "../assetLibrary/vizProvider";
 import { planVizLibFiles, VIZ_LIB_ROOT, type VizLibItem } from "../assetLibrary/vizLibrary";
@@ -226,6 +226,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const phone = usePhone();
   // #2003 — sideways, a phone gets a view switch in its top bar and a shorter drawer
   const phoneSideways = usePhoneLayout() === "sideways";
+  // #2004 — follow the on-screen keyboard: the editor package writes the height still
+  // showing onto the document root, and the shell (page.tsx) is that tall. A plain
+  // function, not a hook: an app component must not call the editor's hooks.
+  useEffect(() => {
+    startVisibleArea();
+  }, []);
   // #2007 — the page-level rules for a phone (no page scroll, no double-tap zoom) are
   // CSS on the document root, switched by this one attribute.
   useEffect(() => {

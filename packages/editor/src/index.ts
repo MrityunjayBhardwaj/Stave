@@ -424,6 +424,9 @@ export { getGridMode, setGridMode, useGridMode, type GridMode } from './visualEd
 // #2000 — the one rule for "is this a phone", so the app's shell asks what the Pattern tab asks
 export { usePhone, isPhone, usePhoneLayout, phoneLayout } from './workspace/usePhone'
 export type { PhoneLayout } from './workspace/usePhone'
+// the on-screen keyboard on a phone (#2004): the app starts it; the shell reads its CSS variables
+export { startVisibleArea, useKeyboardUp, getVisibleArea } from './workspace/visibleArea'
+export type { VisibleArea } from './workspace/visibleArea'
 export type { EditorTheme, ResolvedTheme, SignalAliasMap } from './workspace/editorRegistry'
 export {
   saveSnapshot,
