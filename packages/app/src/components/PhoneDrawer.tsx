@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { usePhoneLayout } from "@stave/editor";
 import { listPanels, subscribeToPanels, type Panel } from "../panels/registry";
 import { Icon } from "./Icon";
 import type { Menu, MenuEntry } from "./menuModel";
@@ -47,10 +46,11 @@ interface PhoneDrawerProps {
   readonly menus: readonly Menu[];
   /** drawn at the top of the Menu tab: the full transport readout */
   readonly readout: React.ReactNode;
+  /** the phone is held sideways: spend one row above the panel, not two (#2003) */
+  readonly sideways?: boolean;
 }
 
-export function PhoneDrawer({ openOn, projectName, onSelect, onClose, renderPanel, menus, readout }: PhoneDrawerProps) {
-  const layout = usePhoneLayout();
+export function PhoneDrawer({ openOn, projectName, onSelect, onClose, renderPanel, menus, readout, sideways = false }: PhoneDrawerProps) {
   const [tick, setTick] = useState(0);
   useEffect(() => subscribeToPanels(() => setTick((t) => t + 1)), []);
   const panels: Panel[] = React.useMemo(() => listPanels(), [tick]);
@@ -76,7 +76,7 @@ export function PhoneDrawer({ openOn, projectName, onSelect, onClose, renderPane
   // Held sideways (#2003) the screen is about 360 px tall, and a row for the project's
   // name above a row of tabs is a quarter of it. So sideways there is one row: the
   // tabs, with Close at its end. The project's name is at the top of the Menu tab.
-  const oneRow = layout === "sideways";
+  const oneRow = sideways;
 
   if (openOn === null) return null;
 

@@ -142,7 +142,7 @@ import { removedButFailedMessage, removedMessage } from "../assetLibrary/freeSpa
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
 import { mountVizPreview } from "@stave/editor";
 import { getFile } from "@stave/editor";
-import { usePhone, isPhone } from "@stave/editor";
+import { usePhone, isPhone, usePhoneLayout } from "@stave/editor";
 import { createSamplesProvider } from "../assetLibrary/samplesProvider";
 import { createVizProvider } from "../assetLibrary/vizProvider";
 import { planVizLibFiles, VIZ_LIB_ROOT, type VizLibItem } from "../assetLibrary/vizLibrary";
@@ -224,6 +224,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // is how a phone starts. One state for both, so everything below that opens a panel
   // by name (the eval lamp, File History, the sound picker) opens the drawer on it.
   const phone = usePhone();
+  // #2003 — sideways, a phone gets a view switch in its top bar and a shorter drawer
+  const phoneSideways = usePhoneLayout() === "sideways";
   const [activePanelId, setActivePanelId] = useState<string | null>(() => (isPhone() ? null : "explorer"));
   // The drawer's Menu tab is the drawer's own, not a panel: it has no rail button and
   // must not be left selected for a rail that cannot show it.
@@ -2000,6 +2002,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         <PhoneTopBar
           fileName={activeFile ? (activeFile.path.split("/").pop() ?? activeFile.path) : null}
           onOpenDrawer={openPhoneDrawer}
+          sideways={phoneSideways}
           getSongPosition={transport.getSongPosition}
           getCps={transport.getCps}
         />
@@ -2023,6 +2026,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             setActivePanelId(id);
           }}
           onClose={closePhoneDrawer}
+          sideways={phoneSideways}
           renderPanel={renderPanel}
           menus={buildMenus(menuActions)}
           readout={

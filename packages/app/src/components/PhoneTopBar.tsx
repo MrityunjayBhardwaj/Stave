@@ -7,7 +7,6 @@ import {
   showBottomPanelTab,
   subscribeToBottomPanelTabs,
   useBottomPanelState,
-  usePhoneLayout,
 } from "@stave/editor";
 import { Icon } from "./Icon";
 import { useRulerUnits } from "../state/rulerUnits";
@@ -83,6 +82,8 @@ function ViewSwitch() {
 interface PhoneTopBarProps {
   readonly fileName: string | null;
   readonly onOpenDrawer: () => void;
+  /** the phone is held sideways: the bar also carries the view switch (#2003) */
+  readonly sideways: boolean;
   readonly getSongPosition: () => number | null;
   readonly getCps: () => number | null;
 }
@@ -90,10 +91,10 @@ interface PhoneTopBarProps {
 export function PhoneTopBar({
   fileName,
   onOpenDrawer,
+  sideways,
   getSongPosition,
   getCps,
 }: PhoneTopBarProps) {
-  const sideways = usePhoneLayout() === "sideways";
   const cycleMode = useRulerUnits() === "cycles";
   const meter = useDisplayMeter();
 
