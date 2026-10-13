@@ -228,22 +228,31 @@ body {
    style only the webkit pseudo-elements for Chromium (the app's engine); Firefox
    falls back to its own non-overlay scrollbar, which is already always-visible
    when scrollable. The editor package ships no CSS, so the rule lives here and
-   targets the editor's `data-pattern-scroll` attribute. */
-[data-pattern-scroll]::-webkit-scrollbar {
+   targets the editor's `data-pattern-scroll` attribute.
+
+   The Mixer tab's row of channel strips (`data-mixer-strips`) gets the same bar
+   (#2042): with more tracks than fit, the rest are off the right edge, and an
+   overlay bar that hides itself left a mouse no way to reach them and nothing
+   to say they were there. */
+[data-pattern-scroll]::-webkit-scrollbar,
+[data-mixer-strips]::-webkit-scrollbar {
   width: 12px;
   height: 12px;
 }
-[data-pattern-scroll]::-webkit-scrollbar-track {
+[data-pattern-scroll]::-webkit-scrollbar-track,
+[data-mixer-strips]::-webkit-scrollbar-track {
   background: transparent;
 }
-[data-pattern-scroll]::-webkit-scrollbar-thumb {
+[data-pattern-scroll]::-webkit-scrollbar-thumb,
+[data-mixer-strips]::-webkit-scrollbar-thumb {
   background: var(--border-strong, #3a3a5a);
   border-radius: 6px;
   /* a transparent inset border slims the thumb and keeps it off the edges */
   border: 3px solid transparent;
   background-clip: padding-box;
 }
-[data-pattern-scroll]::-webkit-scrollbar-thumb:hover {
+[data-pattern-scroll]::-webkit-scrollbar-thumb:hover,
+[data-mixer-strips]::-webkit-scrollbar-thumb:hover {
   background: var(--border-stronger, #4a4a6a);
   background-clip: padding-box;
 }
