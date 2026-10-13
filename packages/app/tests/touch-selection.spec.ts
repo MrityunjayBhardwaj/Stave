@@ -15,13 +15,16 @@ import { bootApp } from './_appBoot'
 const userSelect = (el: Locator): Promise<string> => el.evaluate((n) => getComputedStyle(n).userSelect)
 
 test.describe('what a finger can select (#1993)', () => {
-  test('the interface cannot be selected; the code and a text field can', async ({ page }) => {
+  test('the interface cannot be selected; the code and a text field can', async ({ page }, testInfo) => {
     await bootApp(page)
     expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true)
 
     // the interface: a transport button, a bottom-panel tab, the page's own body text
     const play = page.locator('button:has-text("Play")').first()
-    const tab = page.locator('[data-bottom-panel="root"]').locator('role=tab').first()
+    // (held sideways the panel has no tabs of its own: its views are chosen from the
+    // top bar's switch, #2003, and that is the tab a finger meets there)
+    const tabs = testInfo.project.name === 'phone-sideways' ? '[data-phone-view-switch]' : '[data-bottom-panel="root"]'
+    const tab = page.locator(tabs).locator('role=tab').first()
     await expect(play).toBeVisible()
     await expect(tab).toHaveCount(1)
     expect(await userSelect(play)).toBe('none')

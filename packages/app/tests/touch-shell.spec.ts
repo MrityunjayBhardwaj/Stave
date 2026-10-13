@@ -56,7 +56,7 @@ test.describe('the shell on a phone (#2000, #2001)', () => {
     await expect(page.locator('[data-phone-drawer]')).toHaveCount(0)
   })
 
-  test('the top bar is the menu button and the file, with no Play or status dot of its own', async ({ page }) => {
+  test('the top bar is the menu button and the file, with no Play or status dot of its own', async ({ page }, testInfo) => {
     await bootApp(page)
 
     // nothing in the top strip of the page runs off the screen — whatever is drawn there
@@ -77,8 +77,10 @@ test.describe('the shell on a phone (#2000, #2001)', () => {
     // the file's name, and under it where the song is and how fast
     await expect(bar.locator('[data-phone-top="file"]')).not.toHaveText('')
     await expect(bar.locator('[data-phone-top="readout"]')).toHaveText(/(BAR|CYC) .+ · .+ (BPM|CPS)/)
-    // the menu button is the only thing in it to press (#2035)
-    await expect(bar.locator('button')).toHaveCount(1)
+    // the menu button is the only thing in it to press (#2035) — beside, on a phone held
+    // sideways, the view switch (#2003), which has a spec of its own
+    await expect(bar.locator('button:not([data-phone-view])')).toHaveCount(1)
+    await expect(bar.locator('[data-phone-view]')).toHaveCount(testInfo.project.name === 'phone-sideways' ? 4 : 0)
     // the desktop's menu bar is not drawn as well
     await expect(page.getByRole('button', { name: 'File', exact: true })).toHaveCount(0)
   })

@@ -44116,7 +44116,9 @@ function BottomPanel({ hidden = false } = {}) {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  const sheet = usePhoneLayout() === "upright";
+  const layout = usePhoneLayout();
+  const sheet = layout === "upright";
+  const wholeView = layout === "sideways";
   const [sheetFull, setSheetFull] = React43__namespace.useState(false);
   const stop = !open ? "closed" : sheetFull ? "full" : "half";
   const [pulled, setPulled] = React43__namespace.useState(null);
@@ -44134,7 +44136,7 @@ function BottomPanel({ hidden = false } = {}) {
   }, []);
   const drawn = tabs2.length > 0 && !hidden;
   React43__namespace.useLayoutEffect(() => {
-    if (!sheet || !drawn) return;
+    if (!(sheet || wholeView) || !drawn) return;
     measureRoom();
     const parent = spaceRef.current?.parentElement;
     window.addEventListener("resize", measureRoom);
@@ -44144,7 +44146,7 @@ function BottomPanel({ hidden = false } = {}) {
       window.removeEventListener("resize", measureRoom);
       observer?.disconnect();
     };
-  }, [sheet, drawn, open, measureRoom]);
+  }, [sheet, wholeView, drawn, open, measureRoom]);
   const goToStop = React43__namespace.useCallback((next) => {
     if (next === "closed") {
       setBottomPanelOpen(false);
@@ -44255,6 +44257,61 @@ function BottomPanel({ hidden = false } = {}) {
   const sheetHeight = pulled ?? stopHeights[stop];
   const headerHeight = sheet ? SHEET_HEADER_HEIGHT : HEADER_HEIGHT;
   const bodyDrawn = open || sheet && pulled !== null;
+  if (wholeView) {
+    return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntime.jsx("div", { ref: spaceRef, "data-bottom-panel": "strip-space", style: { flex: "0 0 0px" } }),
+      /* @__PURE__ */ jsxRuntime.jsx(
+        "div",
+        {
+          "data-bottom-panel": "root",
+          "data-whole-view": open ? "open" : "closed",
+          role: "region",
+          "aria-label": "Bottom panel",
+          hidden: !open,
+          style: {
+            display: open ? "flex" : "none",
+            flexDirection: "column",
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            top: room?.top ?? 0,
+            zIndex: SHEET_Z_INDEX,
+            background: "var(--background, #0f0f12)",
+            color: "var(--foreground, #e6e6ec)",
+            overflow: "hidden"
+          },
+          children: open && /* @__PURE__ */ jsxRuntime.jsx(
+            "div",
+            {
+              "data-bottom-panel": "body",
+              style: { flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" },
+              children: tabs2.map((tab) => {
+                const selected = tab.id === activeTabId;
+                return /* @__PURE__ */ jsxRuntime.jsx(
+                  "div",
+                  {
+                    role: "tabpanel",
+                    "aria-label": tab.title,
+                    hidden: !selected,
+                    style: {
+                      display: selected ? "flex" : "none",
+                      flexDirection: "column",
+                      flex: 1,
+                      minHeight: 0,
+                      overflow: "auto"
+                    },
+                    children: renderTabBody(tab)
+                  },
+                  tab.id
+                );
+              })
+            }
+          )
+        }
+      )
+    ] });
+  }
   const panel = /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -52788,6 +52845,7 @@ exports.patternToJSON = patternToJSON;
 exports.peaksForSample = peaksForSample;
 exports.peekAssetUrl = peekAssetUrl;
 exports.perf = perf;
+exports.phoneLayout = phoneLayout;
 exports.pickCountSectionArms = countSectionArms2;
 exports.pickDuplicateArm = duplicateArm;
 exports.pickInsertArm = insertArm2;
@@ -52989,6 +53047,7 @@ exports.useBottomPanelState = useBottomPanelState;
 exports.useGridMode = useGridMode;
 exports.useNoteColorMode = useNoteColorMode;
 exports.usePhone = usePhone;
+exports.usePhoneLayout = usePhoneLayout;
 exports.usePopoutPreview = usePopoutPreview;
 exports.useSilencedTrackNames = useSilencedTrackNames;
 exports.useTrackMetaMap = useTrackMetaMap;

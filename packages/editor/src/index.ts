@@ -422,7 +422,8 @@ export {
 } from './visualEdit/panels/noteColor'
 export { getGridMode, setGridMode, useGridMode, type GridMode } from './visualEdit/panels/gridMode'
 // #2000 — the one rule for "is this a phone", so the app's shell asks what the Pattern tab asks
-export { usePhone, isPhone } from './workspace/usePhone'
+export { usePhone, isPhone, usePhoneLayout, phoneLayout } from './workspace/usePhone'
+export type { PhoneLayout } from './workspace/usePhone'
 export type { EditorTheme, ResolvedTheme, SignalAliasMap } from './workspace/editorRegistry'
 export {
   saveSnapshot,

@@ -46,9 +46,11 @@ interface PhoneDrawerProps {
   readonly menus: readonly Menu[];
   /** drawn at the top of the Menu tab: the full transport readout */
   readonly readout: React.ReactNode;
+  /** the phone is held sideways: spend one row above the panel, not two (#2003) */
+  readonly sideways?: boolean;
 }
 
-export function PhoneDrawer({ openOn, projectName, onSelect, onClose, renderPanel, menus, readout }: PhoneDrawerProps) {
+export function PhoneDrawer({ openOn, projectName, onSelect, onClose, renderPanel, menus, readout, sideways = false }: PhoneDrawerProps) {
   const [tick, setTick] = useState(0);
   useEffect(() => subscribeToPanels(() => setTick((t) => t + 1)), []);
   const panels: Panel[] = React.useMemo(() => listPanels(), [tick]);
@@ -71,21 +73,32 @@ export function PhoneDrawer({ openOn, projectName, onSelect, onClose, renderPane
     return () => document.removeEventListener("keydown", onKey);
   }, [openOn, onClose]);
 
+  // Held sideways (#2003) the screen is about 360 px tall, and a row for the project's
+  // name above a row of tabs is a quarter of it. So sideways there is one row: the
+  // tabs, with Close at its end. The project's name is at the top of the Menu tab.
+  const oneRow = sideways;
+
   if (openOn === null) return null;
+
+  const closeButton = (
+    <button type="button" style={styles.iconButton} aria-label="Close" data-phone-drawer-close onClick={onClose}>
+      <Icon name="close" size="18px" />
+    </button>
+  );
 
   return (
     <div style={styles.layer} data-phone-drawer-layer>
       {/* a tap beside the drawer closes it */}
       <div style={styles.scrim} data-phone-drawer-scrim onClick={onClose} />
       <div style={styles.drawer} data-phone-drawer role="dialog" aria-label="Project and menus">
-        <div style={styles.head}>
-          <span style={styles.project} data-phone-drawer-project>
-            {projectName}
-          </span>
-          <button type="button" style={styles.iconButton} aria-label="Close" data-phone-drawer-close onClick={onClose}>
-            <Icon name="close" size="18px" />
-          </button>
-        </div>
+        {!oneRow && (
+          <div style={styles.head}>
+            <span style={styles.project} data-phone-drawer-project>
+              {projectName}
+            </span>
+            {closeButton}
+          </div>
+        )}
 
         <div style={styles.tabs} role="tablist" aria-label="Panels" data-phone-drawer-tabs>
           {panels.map((p) => {
@@ -130,11 +143,17 @@ export function PhoneDrawer({ openOn, projectName, onSelect, onClose, renderPane
           >
             <Icon name="ellipsis" size="20px" />
           </button>
+          {oneRow && closeButton}
         </div>
 
         <div style={styles.body} data-phone-drawer-body={openOn}>
           {openOn === PHONE_MENU_TAB ? (
             <div style={styles.menuScroll}>
+              {oneRow && (
+                <div style={{ ...styles.project, flex: "none", padding: "10px 16px 0" }} data-phone-drawer-project>
+                  {projectName}
+                </div>
+              )}
               <div style={styles.readout} data-phone-drawer-readout>
                 {/* the desktop's readout is one row about 520 px long; here its cells
                     wrap onto as many rows as the drawer needs, so none is cut off */}

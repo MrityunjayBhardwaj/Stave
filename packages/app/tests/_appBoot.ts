@@ -120,7 +120,9 @@ export async function bootApp(page: Page, opts: BootOptions = {}): Promise<void>
  * fixture (#1753 — a reload followed by a seed read the starter song).
  */
 export async function waitForEditorLoaded(page: Page): Promise<void> {
-  await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 30_000 })
+  // attached, not visible: on a phone held sideways the panel draws nothing until one
+  // of its views is chosen (#2003), and the shell is up all the same
+  await page.locator('[data-bottom-panel="root"]').waitFor({ state: 'attached', timeout: 30_000 })
 
   // Monaco exists…
   await page.waitForFunction(
