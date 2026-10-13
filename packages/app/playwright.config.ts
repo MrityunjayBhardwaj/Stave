@@ -65,7 +65,7 @@ const TOUCH_SPECS = ['**/touch-*.spec.ts']
  * other touch specs lean on things only Chromium was observed to do (the audio
  * stand-in), so they stay off it rather than fail for the wrong reason.
  */
-const TOUCH_LAYOUT_SPECS = ['**/touch-shell.spec.ts', '**/touch-panel-sheet.spec.ts', '**/touch-pattern-steps.spec.ts', '**/touch-safe-area.spec.ts', '**/touch-keyboard.spec.ts']
+const TOUCH_LAYOUT_SPECS = ['**/touch-shell.spec.ts', '**/touch-panel-sheet.spec.ts', '**/touch-pattern-steps.spec.ts', '**/touch-safe-area.spec.ts', '**/touch-keyboard.spec.ts', '**/touch-symbol-row.spec.ts']
 
 export default defineConfig({
   testDir: './tests',

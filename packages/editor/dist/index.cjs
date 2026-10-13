@@ -44884,6 +44884,89 @@ function BottomPanel({ hidden = false } = {}) {
   ] });
 }
 __name(BottomPanel, "BottomPanel");
+var SYMBOL_ROW_KEYS = ["~", "*", '"', "[", "]", "<", ">", "(", ")"];
+var NOT_CODE = /* @__PURE__ */ new Set(["markdown", "plaintext"]);
+var TOUCH3 = 44;
+function codeEditorBeingTyped() {
+  const editor = getActiveEditor();
+  if (!editor?.hasTextFocus?.()) return null;
+  const language = editor.getModel?.()?.getLanguageId?.();
+  if (!language || NOT_CODE.has(language)) return null;
+  return editor;
+}
+__name(codeEditorBeingTyped, "codeEditorBeingTyped");
+function typeSymbol(text) {
+  const editor = codeEditorBeingTyped();
+  if (!editor) return false;
+  editor.pushUndoStop?.();
+  editor.trigger?.("symbol-row", "type", { text });
+  editor.pushUndoStop?.();
+  return true;
+}
+__name(typeSymbol, "typeSymbol");
+function SymbolRow() {
+  const upright = usePhoneLayout() === "upright";
+  const keyboardUp = useKeyboardUp();
+  const [, focusMoved] = React46__namespace.useReducer((n) => n + 1, 0);
+  React46__namespace.useEffect(() => {
+    if (!keyboardUp) return;
+    document.addEventListener("focusin", focusMoved);
+    document.addEventListener("focusout", focusMoved);
+    return () => {
+      document.removeEventListener("focusin", focusMoved);
+      document.removeEventListener("focusout", focusMoved);
+    };
+  }, [keyboardUp]);
+  if (!upright || !keyboardUp || !codeEditorBeingTyped()) return null;
+  const keepFocus = /* @__PURE__ */ __name((e) => e.preventDefault(), "keepFocus");
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "div",
+    {
+      "data-symbol-row": true,
+      role: "toolbar",
+      "aria-label": "Pattern symbols",
+      onPointerDown: keepFocus,
+      onMouseDown: keepFocus,
+      style: {
+        display: "flex",
+        flex: "0 0 auto",
+        height: TOUCH3,
+        background: "var(--surface, #17172a)",
+        borderTop: "1px solid var(--border, #2a2a3e)",
+        // the keys are dragged over by a thumb on its way to the keyboard: no page gesture starts here
+        touchAction: "none",
+        userSelect: "none"
+      },
+      children: SYMBOL_ROW_KEYS.map((k) => /* @__PURE__ */ jsxRuntime.jsx(
+        "button",
+        {
+          type: "button",
+          tabIndex: -1,
+          "data-symbol-key": k,
+          "aria-label": `Type ${k}`,
+          onClick: () => typeSymbol(k),
+          style: {
+            appearance: "none",
+            flex: "1 1 0",
+            minWidth: 0,
+            height: "100%",
+            border: "none",
+            borderRight: "1px solid var(--border, #2a2a3e)",
+            background: "transparent",
+            color: "var(--foreground, #e6e6ec)",
+            fontFamily: "var(--font-mono), ui-monospace, monospace",
+            fontSize: 18,
+            cursor: "pointer",
+            padding: 0
+          },
+          children: k
+        },
+        k
+      ))
+    }
+  );
+}
+__name(SymbolRow, "SymbolRow");
 
 // src/workspace/vizLanguages.ts
 var VIZ_LANGUAGES = ["p5js", "hydra", "glsl"];
@@ -47116,6 +47199,7 @@ var WorkspaceShell = React46.forwardRef(/* @__PURE__ */ __name(function Workspac
           }
         ),
         /* @__PURE__ */ jsxRuntime.jsx(BottomPanel, { hidden: bottomPanelHiddenForTab(activeTab) }),
+        /* @__PURE__ */ jsxRuntime.jsx(SymbolRow, {}),
         tabDragInProgress && dragOverTarget && /* @__PURE__ */ jsxRuntime.jsx(
           QuadrantGuideOverlay,
           {
