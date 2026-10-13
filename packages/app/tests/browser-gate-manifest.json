@@ -915,6 +915,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "touch-panel-sheet.spec.ts": {
+    "runs": "touch",
+    "why": "runs on the touch projects (phone, phone-sideways, tablet) and on iphone, which the gate names beside chromium"
+  },
   "touch-pattern-tab.spec.ts": {
     "runs": "touch",
     "why": "runs on the touch projects (phone, phone-sideways, tablet), which the gate names beside chromium"

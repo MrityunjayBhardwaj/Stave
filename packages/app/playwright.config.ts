@@ -60,12 +60,12 @@ const MEASUREMENT_SPECS = [
  */
 const TOUCH_SPECS = ['**/touch-*.spec.ts']
 /**
- * The one touch spec that also runs on an iPhone under WebKit: the layout. Safari is
+ * The touch specs that also run on an iPhone under WebKit: the layout ones. Safari is
  * where most phones will meet the app and it lays out differently from Chromium. The
  * other touch specs lean on things only Chromium was observed to do (the audio
  * stand-in), so they stay off it rather than fail for the wrong reason.
  */
-const TOUCH_LAYOUT_SPECS = ['**/touch-shell.spec.ts']
+const TOUCH_LAYOUT_SPECS = ['**/touch-shell.spec.ts', '**/touch-panel-sheet.spec.ts']
 
 export default defineConfig({
   testDir: './tests',

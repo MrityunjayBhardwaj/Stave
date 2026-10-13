@@ -18,7 +18,8 @@ const DESKTOP_BAR_HEIGHT = 40
 const TOUCH = 44
 const PHONE_BAR_HEIGHT = TOUCH + 8
 
-const TOUCH_BAR_ATTR = 'data-touch-bar'
+/** on the bar's root while it is sized for a finger; the bottom panel's sheet stops under it */
+export const TOUCH_BAR_ATTR = 'data-touch-bar'
 
 let touchBarStyleInjected = false
 function ensureTouchBarStyle(): void {

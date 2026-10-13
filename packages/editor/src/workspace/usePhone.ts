@@ -31,20 +31,42 @@ export function isPhone(): boolean {
   return Math.min(s.width, s.height) < PHONE_SHORT_SIDE_PX
 }
 
+function subscribe(changed: () => void): () => void {
+  const mql = pointerQuery()
+  if (!mql) return () => undefined
+  mql.addEventListener('change', changed)
+  // a folding phone opened flat becomes a tablet: its screen changes with a resize.
+  // Turning a phone is a resize too.
+  window.addEventListener('resize', changed)
+  return () => {
+    mql.removeEventListener('change', changed)
+    window.removeEventListener('resize', changed)
+  }
+}
+
 export function usePhone(): boolean {
-  return React.useSyncExternalStore(
-    (changed) => {
-      const mql = pointerQuery()
-      if (!mql) return () => undefined
-      mql.addEventListener('change', changed)
-      // a folding phone opened flat becomes a tablet: its screen changes with a resize
-      window.addEventListener('resize', changed)
-      return () => {
-        mql.removeEventListener('change', changed)
-        window.removeEventListener('resize', changed)
-      }
-    },
-    isPhone,
-    () => false,
-  )
+  return React.useSyncExternalStore(subscribe, isPhone, () => false)
+}
+
+/** not a phone; or a phone, and which way it is being held */
+export type PhoneLayout = 'none' | 'upright' | 'sideways'
+
+/**
+ * Which way up is the phone (#2002)?
+ *
+ * Asked of the window's WIDTH against the screen's short side: upright, the window is
+ * as wide as the short side; sideways, it is wider. Not asked of the window's shape —
+ * an on-screen keyboard makes an upright phone's window wider than it is tall, and the
+ * phone has not been turned. Not asked of the screen's own width and height either:
+ * some browsers report those turned with the phone and some do not (an iPhone's stay
+ * 390 x 844 either way up).
+ */
+export function phoneLayout(): PhoneLayout {
+  if (!isPhone()) return 'none'
+  const s = window.screen
+  return window.innerWidth > Math.min(s.width, s.height) ? 'sideways' : 'upright'
+}
+
+export function usePhoneLayout(): PhoneLayout {
+  return React.useSyncExternalStore(subscribe, phoneLayout, () => 'none' as const)
 }
