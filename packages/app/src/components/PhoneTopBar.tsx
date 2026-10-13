@@ -2,11 +2,12 @@
 
 import React, { useEffect, useRef, useSyncExternalStore } from "react";
 import {
+  getBottomPanelState,
   listBottomPanelTabs,
   setBottomPanelOpen,
   showBottomPanelTab,
+  subscribeToBottomPanelState,
   subscribeToBottomPanelTabs,
-  useBottomPanelState,
 } from "@stave/editor";
 import { Icon } from "./Icon";
 import { useRulerUnits } from "../state/rulerUnits";
@@ -57,7 +58,10 @@ const getPanelTabs = () => panelTabs;
  */
 function ViewSwitch() {
   const tabs = useSyncExternalStore(subscribeToPanelTabs, getPanelTabs, getPanelTabs);
-  const { open, activeTabId } = useBottomPanelState();
+  // subscribed with THIS package's React, through the store's plain functions: a hook
+  // exported by the editor package runs on the editor's copy of React, which the app's
+  // unit tests do not render with
+  const { open, activeTabId } = useSyncExternalStore(subscribeToBottomPanelState, getBottomPanelState, getBottomPanelState);
   const chosen = open ? activeTabId ?? tabs[0]?.id ?? CODE_VIEW : CODE_VIEW;
   const entries = [{ id: CODE_VIEW, title: "Code" }, ...tabs.map((t) => ({ id: t.id, title: t.title }))];
   return (
