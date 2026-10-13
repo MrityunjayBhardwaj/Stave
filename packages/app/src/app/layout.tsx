@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 // Self-hosted brand font. next/font/local emits the @font-face + a
@@ -101,6 +102,11 @@ export default function RootLayout({
           <div className="spinner" />
         </div>
         {children}
+        {/* Page views for the project's Vercel Analytics tab (#2055): no cookies,
+            nothing from the editor. Production builds only: in development the
+            component fetches a debug script from va.vercel-scripts.com and logs
+            every view, on every page load of every browser spec. */}
+        {process.env.NODE_ENV === "production" && <Analytics />}
       </body>
     </html>
   );
