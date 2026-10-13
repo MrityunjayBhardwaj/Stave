@@ -65,6 +65,12 @@ const CLOSED_HEIGHT = HEADER_HEIGHT + 1 // +1 for the 1px top border
 //
 // The editor never changes size for it, so closing the sheet leaves the code
 // exactly where it was.
+//
+// Held SIDEWAYS (#2003) the same phone has no height for a strip or a half
+// sheet. There the panel draws no header at all: which view is showing is chosen
+// from a switch in the app's top bar, through `panelState`, and an open panel is
+// its body alone, filling everything under the Play bar. Closed, it draws nothing
+// — that is the Code view.
 // ---------------------------------------------------------------------------
 
 /** the smallest control a finger hits reliably */
@@ -313,7 +319,10 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
   })
 
   // ---- the sheet (a phone held upright, #2002) ----
-  const sheet = usePhoneLayout() === 'upright'
+  const layout = usePhoneLayout()
+  const sheet = layout === 'upright'
+  /** a phone held sideways: no header, and an open panel is the whole view (#2003) */
+  const wholeView = layout === 'sideways'
   const [sheetFull, setSheetFull] = React.useState(false)
   const stop: SheetStop = !open ? 'closed' : sheetFull ? 'full' : 'half'
   /** the sheet's height while a finger is pulling it; null otherwise */
@@ -335,7 +344,7 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
 
   const drawn = tabs.length > 0 && !hidden
   React.useLayoutEffect(() => {
-    if (!sheet || !drawn) return
+    if (!(sheet || wholeView) || !drawn) return
     measureRoom()
     const parent = spaceRef.current?.parentElement
     window.addEventListener('resize', measureRoom)
@@ -347,7 +356,7 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
     }
     // `open`: the Play bar comes and goes with the file in front, so look again each
     // time the sheet is about to be drawn open
-  }, [sheet, drawn, open, measureRoom])
+  }, [sheet, wholeView, drawn, open, measureRoom])
 
   const goToStop = React.useCallback((next: SheetStop) => {
     if (next === 'closed') {
@@ -490,6 +499,63 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
   const sheetHeight = pulled ?? stopHeights[stop]
   const headerHeight = sheet ? SHEET_HEADER_HEIGHT : HEADER_HEIGHT
   const bodyDrawn = open || (sheet && pulled !== null)
+
+  if (wholeView) {
+    // The space keeps the panel's parent findable for `measureRoom`; it takes no room.
+    return (
+      <>
+        <div ref={spaceRef} data-bottom-panel="strip-space" style={{ flex: '0 0 0px' }} />
+        <div
+          data-bottom-panel="root"
+          data-whole-view={open ? 'open' : 'closed'}
+          role="region"
+          aria-label="Bottom panel"
+          hidden={!open}
+          style={{
+            display: open ? 'flex' : 'none',
+            flexDirection: 'column',
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            top: room?.top ?? 0,
+            zIndex: SHEET_Z_INDEX,
+            background: 'var(--background, #0f0f12)',
+            color: 'var(--foreground, #e6e6ec)',
+            overflow: 'hidden',
+          }}
+        >
+          {open && (
+            <div
+              data-bottom-panel="body"
+              style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            >
+              {tabs.map((tab) => {
+                const selected = tab.id === activeTabId
+                return (
+                  <div
+                    key={tab.id}
+                    role="tabpanel"
+                    aria-label={tab.title}
+                    hidden={!selected}
+                    style={{
+                      display: selected ? 'flex' : 'none',
+                      flexDirection: 'column',
+                      flex: 1,
+                      minHeight: 0,
+                      overflow: 'auto',
+                    }}
+                  >
+                    {renderTabBody(tab)}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </>
+    )
+  }
 
   const panel = (
     <div
