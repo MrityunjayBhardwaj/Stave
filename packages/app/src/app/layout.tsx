@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 
@@ -19,6 +19,17 @@ export const metadata: Metadata = {
   title: "Stave — Engine-agnostic live coding editor",
   description:
     "Engine-agnostic live coding editor — any engine, any viz, any synth",
+};
+
+// `viewport-fit=cover` (#2007): a phone only reports its notch and home indicator
+// (`env(safe-area-inset-*)`) to a page that asks to be laid out under them; without
+// it those read as zero and the browser letterboxes the page instead. The app's shell
+// then pads itself by the insets (page.tsx). No `maximum-scale` and no
+// `user-scalable`: pinch-zooming the whole page is an accessibility need.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
