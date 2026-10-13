@@ -74,7 +74,9 @@ export function recordsToAssets(
 ): Asset[] {
   return records
     .map((record) => ({
-      type: "sample" as const,
+      // #2062 — a sound like any other, whose source is you: it is listed under
+      // Sounds → User, beside the shipped sounds rather than under a type of its own.
+      type: "sound" as const,
       // Keyed by the RECORD id, not the name: the shell keys rows on
       // `${type}:${id}`, and a rename must move a row rather than replace it
       // with a different-looking one.
@@ -97,8 +99,8 @@ export function recordsToAssets(
 /** Build the provider. `list` reads live, so a new take appears without a remount. */
 export function createSamplesProvider(deps: SamplesProviderDeps): AssetProvider {
   return {
-    type: "sample",
-    label: "Samples",
+    type: "sound",
+    label: "Your audio",
     // No `isLoading`: unlike sounds, which fill from a CDN after engine
     // warm-up, the project's own records are present the moment the document
     // has synced — and the document has synced before this component renders.

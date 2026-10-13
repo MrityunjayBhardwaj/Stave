@@ -88,6 +88,7 @@ import { registerPanel } from "../panels/registry";
 import { AssetLibraryPanel } from "../assetLibrary/AssetLibraryPanel";
 import { registerAssetProvider, notifyAssetProvidersChanged } from "../assetLibrary/registry";
 import { createSoundsProvider } from "../assetLibrary/soundsProvider";
+import type { AssetProvider } from "../assetLibrary/types";
 import {
   listWorkspaceFiles,
   subscribeToFileList,
@@ -268,6 +269,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // each shows its size. A counter, so each request remounts the panel onto
   // that chip even when the Library is already open on another.
   const [libraryOpenedFor, setLibraryOpenedFor] = useState(0);
+  // #2062 — the project's own audio as Library rows, read by the Sounds provider
+  const ownAudioRef = useRef<AssetProvider | null>(null);
   const openLibraryAtYourSounds = useCallback(() => {
     setLibraryOpenedFor((n) => n + 1);
     setActivePanelId("library");
@@ -1285,6 +1288,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         readDict,
         startPreview: (sound) => startAudition(sound),
         onInsert: (sound) => shellRef.current?.assignSoundToCursor(sound),
+        // #2062 — your audio is listed with the sounds, as yours
+        ownAudio: () => ownAudioRef.current?.list() ?? [],
       }),
     );
     let lastCount = -1;
@@ -1422,7 +1427,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       }
       await refreshSizes();
     };
-    const unreg = registerAssetProvider(
+    // #2062 — not registered as a type of its own: the Sounds provider lists these
+    // rows (Sounds → User). Published here, then the Library is told to re-list.
+    ownAudioRef.current = (
       createSamplesProvider({
         readRecords: () => listAssetRecords(),
         // #2059 — a recording previews once, start to end, not as a re-triggered
@@ -1435,8 +1442,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onInsert: (name) => shellRef.current?.assignSoundToCursor(name),
         sizeOf: (hash) => sizes.get(hash),
         onRemove,
-      }),
+      })
     );
+    notifyAssetProvidersChanged();
+    const unreg = () => {
+      ownAudioRef.current = null;
+      notifyAssetProvidersChanged();
+    };
     void refreshSizes();
     const unsub = subscribeToAssets(() => {
       notifyAssetProvidersChanged();
@@ -1938,7 +1950,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         {id === "library" && (
           <AssetLibraryPanel
             key={libraryOpenedFor}
-            initialType={libraryOpenedFor > 0 ? "sample" : undefined}
+            initialType={libraryOpenedFor > 0 ? "sound" : undefined}
+            initialSource={libraryOpenedFor > 0 ? "user" : undefined}
           />
         )}
         {id === "console" && <ConsolePanel />}

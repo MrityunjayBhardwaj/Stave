@@ -89,12 +89,15 @@ const SOURCE_LABELS: Record<AssetSource, string> = {
 
 export function AssetLibraryPanel({
   initialType,
+  initialSource,
 }: {
   /**
    * #1787 — the type chip to open on, when present (the storage notice opens
    * the Library on your own sounds, sizes shown). Otherwise the first type.
    */
   initialType?: AssetType;
+  /** the source filter to open on (#2062 — your audio is Sounds → User) */
+  initialSource?: AssetSource;
 }) {
   // Re-render on any provider registration / catalog change.
   const [tick, setTick] = useState(0);
@@ -110,7 +113,7 @@ export function AssetLibraryPanel({
   // `importFiles` is itself memoised with no deps, so this is stable.
   const [query, setQuery] = useState("");
   const [type, setType] = useState<AssetType | null>(null);
-  const [source, setSource] = useState<AssetSource | null>(null);
+  const [source, setSource] = useState<AssetSource | null>(initialSource ?? null);
   const [category, setCategory] = useState<string | null>(null);
 
   const onFiles = useCallback(
@@ -120,9 +123,9 @@ export function AssetLibraryPanel({
         // showed (a fresh Library opens on 1,800 built-in Sounds) and the new
         // sound sat unseen under the Samples chip.
         if (added === 0) return;
-        setType("sample");
+        setType("sound");
         setQuery("");
-        setSource(null);
+        setSource("user");
         setCategory(null);
       }),
     [audio.importFiles],

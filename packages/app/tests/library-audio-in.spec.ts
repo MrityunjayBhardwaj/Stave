@@ -112,7 +112,7 @@ async function addAudio(page: Page, filename: string, bytes: Buffer): Promise<st
 }
 
 /** The Library row for one of your sounds — found WITHOUT touching a filter. */
-const row = (page: Page, name: string) => page.locator('[data-asset-row^="sample:"]', { hasText: name }).first()
+const row = (page: Page, name: string) => page.locator('[data-asset-row^="sound:"]', { hasText: name }).first()
 
 /** Put the editor's cursor at the start of `line`. */
 async function cursorAt(page: Page, line: number): Promise<void> {
@@ -131,6 +131,26 @@ test.describe('your own audio, brought in through the Library', () => {
     await boot(page)
     const name = await addAudio(page, 'shown.wav', wav(1.37))
     await expect(row(page, name)).toBeVisible({ timeout: 5_000 })
+  })
+
+  test('your sound is under Sounds → User, chosen by hand (#2062)', async ({ page }) => {
+    await boot(page)
+    const name = await addAudio(page, 'mine.wav', wav(1.37))
+    // away from what the import chose, then back by the two chips a person would press
+    await page.locator('[data-filter="asset-type-filter"] [data-chip="all"]').click()
+    await page.locator('[data-filter="asset-type-filter"] [data-chip="sound"]').click()
+    await page.locator('[data-filter="asset-source-filter"] [data-chip="user"]').click()
+    await page.locator('[data-asset-search]').fill(name)
+    await expect(row(page, name)).toBeVisible({ timeout: 5_000 })
+  })
+
+  test("your sound is not listed among Stave's own sounds (#2062)", async ({ page }) => {
+    await boot(page)
+    const name = await addAudio(page, 'notbuiltin.wav', wav(1.37))
+    await page.locator('[data-filter="asset-source-filter"] [data-chip="built-in"]').click()
+    await page.locator('[data-asset-search]').fill(name)
+    await page.waitForTimeout(500)
+    expect(await page.locator('[data-asset-row]', { hasText: name }).count()).toBe(0)
   })
 
   test('Insert in a song of `$:` patterns writes a line that plays (#2057)', async ({ page }) => {
