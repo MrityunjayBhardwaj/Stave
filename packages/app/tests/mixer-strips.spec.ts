@@ -8,7 +8,7 @@
  * and content in the DOM (always rendered, scrollable) rather than fixed screen
  * coordinates.
  */
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, chromium, type Page } from '@playwright/test'
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
@@ -1437,5 +1437,73 @@ test.describe('a strip joins the slot the engine assigned (#1174)', () => {
     expect(p['#0']).toBeGreaterThan(60)
     expect(p['#1']).toBeGreaterThan(15)
     expect(p['#1']).toBeLessThan(60)
+  })
+})
+
+test.describe('Mixer strip row: reaching the strips that do not fit (#2042)', () => {
+  // Playwright starts its headless browser with `--hide-scrollbars`, which draws no
+  // scrollbar whatever the page's CSS says. These two tests are about a scrollbar, so
+  // they start a browser of their own without that flag and measure the real layout.
+  async function withScrollbars(baseURL: string | undefined, run: (page: Page) => Promise<void>): Promise<void> {
+    const browser = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] })
+    try {
+      const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 720 } })
+      await run(await context.newPage())
+    } finally {
+      await browser.close()
+    }
+  }
+
+  const rowBar = (page: Page): Promise<{ bar: number; scrollLeft: number; scrollWidth: number; clientWidth: number }> =>
+    page.evaluate(() => {
+      const el = document.querySelector('[data-bottom-panel-tab="mixer-console"] [data-mixer-strips]') as HTMLElement
+      // the row has a 1 px bottom border; anything more between its outer and inner height is a scrollbar
+      return {
+        bar: el.offsetHeight - el.clientHeight - 1,
+        scrollLeft: el.scrollLeft,
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      }
+    })
+
+  test('more strips than fit: a scrollbar is drawn under them, and dragging it shows the last strip', async ({ baseURL }) => {
+    await withScrollbars(baseURL, async (page) => {
+      await boot(page)
+      await setStrudelCode(page, Array.from({ length: 8 }, (_, i) => `$: s("bd*${i + 1}").gain(0.5)`).join('\n') + '\n')
+      const mixer = await openMixer(page)
+      await expect(mixer.locator('[data-mixer-strip-group]')).toHaveCount(8)
+
+      const before = await rowBar(page)
+      expect(before.scrollWidth, 'the fixture must overflow the row').toBeGreaterThan(before.clientWidth)
+      expect(before.bar, 'a scrollbar that takes room under the strips').toBeGreaterThanOrEqual(8)
+
+      // drag the bar's thumb: it starts at the row's left end, in the bar's own strip of pixels
+      const row = (await mixer.locator('[data-mixer-strips]').boundingBox())!
+      const y = row.y + row.height - 1 - before.bar / 2
+      await page.mouse.move(row.x + 40, y)
+      await page.mouse.down()
+      await page.mouse.move(row.x + row.width - 10, y, { steps: 12 })
+      await page.mouse.up()
+
+      const after = await rowBar(page)
+      expect(after.scrollLeft).toBeGreaterThan(0)
+      // the last strip's right edge is inside the row (the drawer is short, so its foot
+      // is cut off below — sideways is what this asks)
+      const last = (await mixer.locator('[data-mixer-strip-group]').last().boundingBox())!
+      expect(last.x + last.width).toBeLessThanOrEqual(row.x + row.width)
+      expect(last.x).toBeGreaterThanOrEqual(row.x)
+    })
+  })
+
+  test('strips that fit: no scrollbar', async ({ baseURL }) => {
+    await withScrollbars(baseURL, async (page) => {
+      await boot(page)
+      await setStrudelCode(page, '$: s("bd*4").gain(0.5)\n$: s("hh*8").gain(0.5)\n')
+      const mixer = await openMixer(page)
+      await expect(mixer.locator('[data-mixer-strip-group]')).toHaveCount(2)
+      const m = await rowBar(page)
+      expect(m.scrollWidth).toBeLessThanOrEqual(m.clientWidth)
+      expect(m.bar).toBe(0)
+    })
   })
 })
