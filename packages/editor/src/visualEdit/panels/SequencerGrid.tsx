@@ -58,6 +58,7 @@ import {
 import { useGridMode } from './gridMode'
 import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
+import { InViewBar, PHONE_GRID_WIDTH, PHONE_RULER_HEIGHT, PHONE_STEP_MIN, TurnHint, usePhoneGrid, useRulerPan } from './phoneGrid'
 import {
   GRID_SCOPE,
   isCursorMove,
@@ -656,6 +657,17 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // Above the no-model return: a hook runs on every render or not at all.
   const rulerRef = React.useRef<HTMLDivElement>(null)
   useRulerFit(rulerRef, 'data-seq-ruler-label')
+  // On a phone (#2006): steps a finger can hit, the ruler as the sideways scroll
+  // handle, and row names that stay put. See `phoneGrid`.
+  const phoneGrid = usePhoneGrid()
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const rulerPan = useRulerPan(scrollRef, phoneGrid.phone)
+  /** a step's narrowest width per unit of weight */
+  const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 16
+  /** what keeps a row's name in place while its steps scroll under it */
+  const pinned: React.CSSProperties = phoneGrid.phone
+    ? { position: 'sticky', left: 0, zIndex: 2, background: 'var(--background, #0f0f12)' }
+    : {}
 
   if (!model) {
     return React.createElement(VisualEditStandby, {
@@ -682,6 +694,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
 
   return (
     <div
+      ref={scrollRef}
       // Cell pointerdowns call preventDefault (blocks default focus), so focus the
       // pressed cell in the capture phase — the cursor moves there (#1802).
       onPointerDownCapture={(e) => {
@@ -704,7 +717,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
       // styled in globals.css (the editor ships no CSS) — #pattern-scrollbar.
       data-pattern-scroll
       style={{
-        padding: 16,
+        // on a phone there is no padding on the left: a pinned row name sticks at the
+        // edge of the padding, and steps scrolling past would show in the gap beside it
+        padding: phoneGrid.phone ? '16px 16px 16px 0' : 16,
         height: '100%',
         overflow: 'auto',
         outline: 'none',
@@ -713,14 +728,29 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
       }}
     >
       {/* paddingRight: room for the `+` past the last column (#1824) */}
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4, width: '100%', paddingRight: 28, boxSizing: 'border-box' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4, width: '100%', paddingRight: 28, boxSizing: 'border-box', ...(phoneGrid.phone ? PHONE_GRID_WIDTH : {}) }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 4,
+            // on a phone this line is the panel's width and stays put while the steps
+            // scroll. (44: the panel's 16 px on the right and this box's own 28 — a line
+            // any wider would itself make the grid wider than the screen.)
+            ...(phoneGrid.phone
+              ? { justifyContent: 'flex-start', position: 'sticky', left: 0, width: Math.max(0, rulerPan.viewWidth - 44), paddingLeft: 16, boxSizing: 'border-box' }
+              : {}),
+          }}
+        >
           {/* Track identity (#589) — the bound track's colour dot + name; click
               the dot to recolour, double-click the name to rename. */}
           {/* "Slots" moved to the Pattern inspector (#601); the Note Color toggle
               moved to the editor Settings tab (#602). Both are lifted/owned
               elsewhere now — the header just carries the track identity chip. */}
           <PatternTrackChip />
+          <TurnHint show={phoneGrid.upright && rulerPan.inView.more} />
         </div>
         {/* ONE statement for a view that cannot take a new note, rather than a
             grid of dead cells with no reason on them (#1070). The notes that are
@@ -775,8 +805,29 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             Laid out exactly like a row — the header's width, the same weights and bar
             gaps — so each label sits over its own column. Visual only: hidden from the
             accessibility tree, where every cell already names its step. */}
-        <div ref={rulerRef} data-seq-ruler aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 12 }}>
-          <div style={{ width: 96, flex: '0 0 auto' }} />
+        {phoneGrid.phone && (
+          // which part of the pattern is on screen. It sits over the top of the ruler
+          // and stays put while the ruler's numbers scroll under it; its width is the
+          // panel's, not the pattern's.
+          // (104: past the row names' column and its gap, which is pinned over this row)
+          <div style={{ position: 'sticky', left: 104, width: 0, height: 0, marginBottom: -4 }}>
+            <InViewBar inView={rulerPan.inView} width={rulerPan.viewWidth - 16 - 104} />
+          </div>
+        )}
+        <div
+          ref={rulerRef}
+          data-seq-ruler
+          aria-hidden="true"
+          {...rulerPan.handlers}
+          style={{
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: 8,
+            height: phoneGrid.phone ? PHONE_RULER_HEIGHT : 12,
+            ...(phoneGrid.phone ? { touchAction: 'none', cursor: 'grab' } : {}),
+          }}
+        >
+          <div style={{ width: 96, flex: '0 0 auto', alignSelf: 'stretch', ...pinned }} />
           <div style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
             {Array.from({ length: model.steps }, (_, c) => {
               const label = ruler.get(c)
@@ -789,7 +840,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                   data-seq-col={`ruler:${c}`}
                   style={{
                     flex: `${layout.weight(c)} ${layout.weight(c)} 0`,
-                    minWidth: 16 * layout.weight(c),
+                    minWidth: stepMin * layout.weight(c),
                     maxWidth: 56 * layout.weight(c),
                     marginLeft: layout.barStart(c) ? 8 : 0,
                     position: 'relative',
@@ -829,7 +880,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             style={{ display: 'flex', alignItems: 'center', gap: 8 }}
           >
             {/* The voice's name and its remove button are the row's header. */}
-            <div role="rowheader" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
+            <div role="rowheader" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto', alignSelf: 'stretch', ...pinned }}>
             {/* Per-voice label only — the colour dot was removed (#589); the track's
                 identity colour lives in the PatternTrackChip up top, so a separate
                 drumVoices palette here would read as a second, conflicting colour code. */}
@@ -948,7 +999,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     style={{
                       display: 'flex',
                       flex: `${weight} ${weight} ${gaps}px`,
-                      minWidth: 16 * weight + gaps,
+                      minWidth: stepMin * weight + gaps,
                       maxWidth: 56 * weight + gaps,
                       // subtle gap at each bar boundary
                       marginLeft: layout.barStart(stepIndex) ? 8 : 0,
