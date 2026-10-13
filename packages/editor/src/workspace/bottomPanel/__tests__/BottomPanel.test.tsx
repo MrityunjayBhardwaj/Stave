@@ -45,6 +45,7 @@ import {
   __resetBottomPanelRegistryForTest,
   registerBottomPanelTab,
 } from '../bottomPanelRegistry'
+import { __resetBottomPanelStateForTest } from '../panelState'
 import {
   BOTTOM_PANEL_ACTIVE_TAB_KEY,
   BOTTOM_PANEL_HEIGHT_KEY,
@@ -60,11 +61,14 @@ beforeEach(() => {
   // "Timeline" tab into "zero tabs registered" assertions.
   __resetBottomPanelRegistryForTest()
   window.localStorage.clear()
+  // after the clear: the store reads localStorage afresh on its next use, as a page load does
+  __resetBottomPanelStateForTest()
 })
 
 afterEach(() => {
   __resetBottomPanelRegistryForTest()
   window.localStorage.clear()
+  __resetBottomPanelStateForTest()
 })
 
 function registerStubTab(

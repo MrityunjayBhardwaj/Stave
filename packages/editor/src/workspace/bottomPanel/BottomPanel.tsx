@@ -34,13 +34,12 @@ import {
   BOTTOM_PANEL_HEIGHT_MIN,
   BOTTOM_PANEL_HEIGHT_MAX,
   clampHeight,
-  readPersistedActiveTabId,
   readPersistedHeight,
-  readPersistedOpen,
-  writePersistedActiveTabId,
   writePersistedHeight,
-  writePersistedOpen,
 } from './persistence'
+import { setBottomPanelActiveTab, setBottomPanelOpen, useBottomPanelState } from './panelState'
+import { usePhoneLayout } from '../usePhone'
+import { TOUCH_BAR_ATTR } from '../runtime/touchBar'
 // Module-side-effect import: registers the placeholder Timeline tab at
 // first bundle load (DA-09 / T-06). PR-B replaces by re-registering the
 // same id (idempotent).
@@ -53,6 +52,57 @@ import './visualEditSeed'
 const HEADER_HEIGHT = 28
 const RESIZE_HANDLE_HEIGHT = 4
 const CLOSED_HEIGHT = HEADER_HEIGHT + 1 // +1 for the 1px top border
+
+// ---------------------------------------------------------------------------
+// The sheet — a phone held upright (#2002).
+//
+// There the panel does not take its height out of the editor's. Its strip of tabs
+// keeps a fixed place at the bottom of the screen, tall enough for a finger, and an
+// open panel lies OVER the code as a sheet: half the height, or all of it up to the
+// editor's Play bar. The strip is the sheet's top edge and its handle — pulled up
+// it goes closed → half → full, pulled down the other way. Nothing inside the
+// panel's body moves the sheet; a drag there is the Timeline's or a grid's own.
+//
+// The editor never changes size for it, so closing the sheet leaves the code
+// exactly where it was.
+// ---------------------------------------------------------------------------
+
+/** the smallest control a finger hits reliably */
+const TOUCH = 44
+const SHEET_HEADER_HEIGHT = TOUCH + 4
+const SHEET_CLOSED_HEIGHT = SHEET_HEADER_HEIGHT + 1 // +1 for the 1px top border
+/** a half sheet is never so short that its panel has nothing to show */
+const SHEET_MIN_BODY = 120
+/** a pull shorter than this is a tap that wobbled, and leaves the sheet where it was */
+const SHEET_PULL_SLOP = 8
+/** a pull at least this long moves the sheet one stop */
+const SHEET_PULL_STEP = 24
+/** above the editor and everything Monaco lays inside it; below the phone's drawer */
+const SHEET_Z_INDEX = 100
+
+type SheetStop = 'closed' | 'half' | 'full'
+const SHEET_STOPS: readonly SheetStop[] = ['closed', 'half', 'full']
+
+/** the room the sheet has: its parent's height, and how far down the Play bar ends */
+interface SheetRoom {
+  readonly height: number
+  readonly top: number
+}
+
+/** how tall the sheet is at each stop, strip included */
+export function sheetHeights(room: SheetRoom): Record<SheetStop, number> {
+  const full = Math.max(SHEET_CLOSED_HEIGHT, Math.round(room.height - room.top))
+  const half = Math.min(full, Math.max(SHEET_CLOSED_HEIGHT + SHEET_MIN_BODY, Math.round(room.height / 2)))
+  return { closed: SHEET_CLOSED_HEIGHT, half, full }
+}
+
+/** where a pull of `dy` px (up is positive) that began at `from` leaves the sheet */
+export function sheetStopAfterPull(from: SheetStop, dy: number): SheetStop {
+  const i = SHEET_STOPS.indexOf(from)
+  if (dy >= SHEET_PULL_STEP) return SHEET_STOPS[Math.min(i + 1, SHEET_STOPS.length - 1)]
+  if (dy <= -SHEET_PULL_STEP) return SHEET_STOPS[Math.max(i - 1, 0)]
+  return from
+}
 
 // ---------------------------------------------------------------------------
 // useDragResize — pointer-event-based vertical resize hook (DA-03 / T-05).
@@ -201,11 +251,12 @@ function renderTabBody(tab: BottomPanelTab): React.ReactNode {
   return tab.content
 }
 
-function pickInitialActiveTabId(
+/** the tab to show: the one last chosen if it is still registered, else the first */
+function pickActiveTabId(
   tabs: readonly BottomPanelTab[],
+  chosen: string | null,
 ): string | null {
-  const stored = readPersistedActiveTabId()
-  if (stored && tabs.some((t) => t.id === stored)) return stored
+  if (chosen && tabs.some((t) => t.id === chosen)) return chosen
   return tabs[0]?.id ?? null
 }
 
@@ -227,33 +278,27 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
   const [tabs, setTabs] = React.useState<readonly BottomPanelTab[]>(() =>
     listBottomPanelTabs(),
   )
-  const [open, setOpen] = React.useState<boolean>(readPersistedOpen)
+  // Open / closed and the chosen tab live in `panelState` (#2002), where a control
+  // outside this component can read and set them; it saves each change itself. The
+  // store's values are read in the first render, so Trap 7 still holds.
+  const { open, activeTabId: chosenTabId } = useBottomPanelState()
+  const setOpen = setBottomPanelOpen
+  const setActiveTabId = setBottomPanelActiveTab
   const [height, setHeight] = React.useState<number>(readPersistedHeight)
-  const [activeTabId, setActiveTabId] = React.useState<string | null>(() =>
-    pickInitialActiveTabId(listBottomPanelTabs()),
-  )
+  const activeTabId = pickActiveTabId(tabs, chosenTabId)
 
   // Subscribe to registry changes so a later registerBottomPanelTab
   // (e.g., PR-B replacing the placeholder) rerenders the bar.
   React.useEffect(() => {
-    return subscribeToBottomPanelTabs(() => {
-      const next = listBottomPanelTabs()
-      setTabs(next)
-      // If the active tab was removed, fall back to the first remaining.
-      setActiveTabId((curr) => {
-        if (curr && next.some((t) => t.id === curr)) return curr
-        return next[0]?.id ?? null
-      })
-    })
+    return subscribeToBottomPanelTabs(() => setTabs(listBottomPanelTabs()))
   }, [])
 
-  // Persist open + activeTabId on change.
+  // The tab shown is the tab chosen. When they differ — nothing chosen yet, or the
+  // chosen tab is no longer registered and the first one stands in — the stand-in
+  // becomes the choice, so every other reader of the store sees what is on screen.
   React.useEffect(() => {
-    writePersistedOpen(open)
-  }, [open])
-  React.useEffect(() => {
-    writePersistedActiveTabId(activeTabId)
-  }, [activeTabId])
+    if (activeTabId !== chosenTabId) setBottomPanelActiveTab(activeTabId)
+  }, [activeTabId, chosenTabId])
 
   // Drag-resize hook (T-05). Commits to React state + persistence on
   // pointerup; live drag updates the hook's internal value only.
@@ -266,6 +311,110 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
       writePersistedHeight(v)
     },
   })
+
+  // ---- the sheet (a phone held upright, #2002) ----
+  const sheet = usePhoneLayout() === 'upright'
+  const [sheetFull, setSheetFull] = React.useState(false)
+  const stop: SheetStop = !open ? 'closed' : sheetFull ? 'full' : 'half'
+  /** the sheet's height while a finger is pulling it; null otherwise */
+  const [pulled, setPulled] = React.useState<number | null>(null)
+  const [room, setRoom] = React.useState<SheetRoom | null>(null)
+  /** the strip-sized space kept in the layout, whose parent is the room the sheet has */
+  const spaceRef = React.useRef<HTMLDivElement | null>(null)
+
+  const measureRoom = React.useCallback((): SheetRoom | null => {
+    const parent = spaceRef.current?.parentElement
+    if (!parent) return null
+    const box = parent.getBoundingClientRect()
+    const bar = parent.querySelector(`[${TOUCH_BAR_ATTR}]`)
+    const top = bar ? Math.max(0, bar.getBoundingClientRect().bottom - box.top) : 0
+    const next = { height: box.height, top }
+    setRoom((prev) => (prev && prev.height === next.height && prev.top === next.top ? prev : next))
+    return next
+  }, [])
+
+  const drawn = tabs.length > 0 && !hidden
+  React.useLayoutEffect(() => {
+    if (!sheet || !drawn) return
+    measureRoom()
+    const parent = spaceRef.current?.parentElement
+    window.addEventListener('resize', measureRoom)
+    const observer = parent && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => measureRoom()) : null
+    if (parent && observer) observer.observe(parent)
+    return () => {
+      window.removeEventListener('resize', measureRoom)
+      observer?.disconnect()
+    }
+    // `open`: the Play bar comes and goes with the file in front, so look again each
+    // time the sheet is about to be drawn open
+  }, [sheet, drawn, open, measureRoom])
+
+  const goToStop = React.useCallback((next: SheetStop) => {
+    if (next === 'closed') {
+      setBottomPanelOpen(false)
+      return
+    }
+    setSheetFull(next === 'full')
+    setBottomPanelOpen(true)
+  }, [])
+
+  // A pull on the strip. Followed on the window, not by capturing the pointer: a
+  // captured pointer's click lands on the strip instead of the tab under the finger,
+  // and a plain tap on a tab has to stay a tap on that tab.
+  const pullRef = React.useRef<{ pointerId: number; startY: number; from: SheetStop; heights: Record<SheetStop, number>; moved: boolean } | null>(null)
+  /** set when a pull ends, so the click the browser makes of it does not also press a tab */
+  const swallowClickRef = React.useRef(false)
+  const stopRef = React.useRef(stop)
+  stopRef.current = stop
+  const endPullRef = React.useRef<(() => void) | null>(null)
+  React.useEffect(() => () => endPullRef.current?.(), [])
+
+  const onStripPointerDown = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      swallowClickRef.current = false
+      if (!sheet || pullRef.current) return
+      if (e.pointerType === 'mouse' && e.button !== 0) return
+      const measured = measureRoom()
+      if (!measured) return
+      const heights = sheetHeights(measured)
+      pullRef.current = { pointerId: e.pointerId, startY: e.clientY, from: stopRef.current, heights, moved: false }
+
+      const move = (ev: PointerEvent): void => {
+        const pull = pullRef.current
+        if (!pull || ev.pointerId !== pull.pointerId) return
+        const dy = pull.startY - ev.clientY
+        if (!pull.moved && Math.abs(dy) < SHEET_PULL_SLOP) return
+        pull.moved = true
+        setPulled(Math.max(pull.heights.closed, Math.min(pull.heights.full, pull.heights[pull.from] + dy)))
+      }
+      const finish = (ev: PointerEvent, settle: boolean): void => {
+        const pull = pullRef.current
+        if (!pull || ev.pointerId !== pull.pointerId) return
+        end()
+        if (!pull.moved) return
+        swallowClickRef.current = true
+        setPulled(null)
+        if (settle) goToStop(sheetStopAfterPull(pull.from, pull.startY - ev.clientY))
+      }
+      const up = (ev: PointerEvent): void => finish(ev, true)
+      const cancel = (ev: PointerEvent): void => finish(ev, false)
+      const end = (): void => {
+        pullRef.current = null
+        endPullRef.current = null
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', up)
+        window.removeEventListener('pointercancel', cancel)
+      }
+      endPullRef.current = () => {
+        end()
+        setPulled(null)
+      }
+      window.addEventListener('pointermove', move)
+      window.addEventListener('pointerup', up)
+      window.addEventListener('pointercancel', cancel)
+    },
+    [sheet, measureRoom, goToStop],
+  )
 
   // pagehide flush — defense against unload race for a not-yet-committed
   // drag (e.g., user grabs handle then closes tab without releasing).
@@ -334,25 +483,34 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
   // visibly resizes; otherwise use the committed height.
   const renderHeight = drag.dragging ? drag.value : height
 
-  return (
+  // The sheet's height: where a pull has it right now, else its stop's. Before the
+  // room has been measured (the first paint) an open sheet is drawn at half the
+  // window, which is what half the room comes to within a few pixels.
+  const stopHeights = sheetHeights(room ?? { height: typeof window === 'undefined' ? 0 : window.innerHeight, top: 0 })
+  const sheetHeight = pulled ?? stopHeights[stop]
+  const headerHeight = sheet ? SHEET_HEADER_HEIGHT : HEADER_HEIGHT
+  const bodyDrawn = open || (sheet && pulled !== null)
+
+  const panel = (
     <div
       data-bottom-panel="root"
+      data-sheet={sheet ? stop : undefined}
       role="region"
       aria-label="Bottom panel"
       style={{
         display: 'flex',
         flexDirection: 'column',
-        flexBasis: open ? renderHeight : CLOSED_HEIGHT,
-        flexShrink: 0,
-        flexGrow: 0,
+        ...(sheet
+          ? { position: 'absolute', left: 0, right: 0, bottom: 0, height: sheetHeight, zIndex: SHEET_Z_INDEX }
+          : { flexBasis: open ? renderHeight : CLOSED_HEIGHT, flexShrink: 0, flexGrow: 0, position: 'relative' }),
         borderTop: '1px solid var(--border-subtle, rgba(255,255,255,0.08))',
         background: 'var(--background, #0f0f12)',
         color: 'var(--foreground, #e6e6ec)',
         overflow: 'hidden',
-        position: 'relative',
+        boxSizing: sheet ? 'border-box' : undefined,
       }}
     >
-      {open && (
+      {open && !sheet && (
         <div
           data-bottom-panel="resize-handle"
           role="separator"
@@ -379,15 +537,30 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
       )}
       <div
         data-bottom-panel="header"
+        // on a phone the whole strip is the sheet's handle (#2002)
+        onPointerDown={sheet ? onStripPointerDown : undefined}
+        onClickCapture={
+          sheet
+            ? (e) => {
+                // the click a browser makes at the end of a pull is not a press on a tab
+                if (!swallowClickRef.current) return
+                swallowClickRef.current = false
+                e.preventDefault()
+                e.stopPropagation()
+              }
+            : undefined
+        }
         style={{
-          height: HEADER_HEIGHT,
-          minHeight: HEADER_HEIGHT,
+          height: headerHeight,
+          minHeight: headerHeight,
           display: 'flex',
           alignItems: 'stretch',
-          borderBottom: open
+          borderBottom: bodyDrawn
             ? '1px solid var(--border-subtle, rgba(255,255,255,0.06))'
             : 'none',
           flex: '0 0 auto',
+          // the pull is the strip's; the browser must not scroll or go back with it
+          touchAction: sheet ? 'none' : undefined,
         }}
       >
         <div
@@ -397,7 +570,7 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
           style={{
             display: 'flex',
             alignItems: 'stretch',
-            flex: 1,
+            flex: sheet ? '0 1 auto' : 1,
             minWidth: 0,
             overflow: 'hidden',
           }}
@@ -428,7 +601,11 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
                   // Clicking a closed-drawer tab opens the drawer in
                   // addition to selecting; matches VSCode's terminal
                   // header behavior.
-                  if (!open) setOpen(true)
+                  if (!open) {
+                    // a sheet opened from its strip opens at half (#2002)
+                    setSheetFull(false)
+                    setOpen(true)
+                  }
                   setActiveTabId(tab.id)
                 }}
                 style={{
@@ -438,8 +615,9 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
                   color: selected
                     ? 'var(--foreground, #e6e6ec)'
                     : 'var(--foreground-muted, #a0a0aa)',
-                  padding: '0 12px',
-                  fontSize: 12,
+                  padding: sheet ? '0 14px' : '0 12px',
+                  minWidth: sheet ? TOUCH : undefined,
+                  fontSize: sheet ? 14 : 12,
                   fontFamily:
                     'system-ui, -apple-system, "Segoe UI", sans-serif',
                   cursor: 'pointer',
@@ -454,26 +632,50 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
             )
           })}
         </div>
+        {sheet && (
+          // The pull handle: the part of the strip that is nothing else. It is not a
+          // button — there is nothing to press — and the tabs and the toggle beside
+          // it pull the sheet just the same.
+          <div
+            data-bottom-panel="sheet-handle"
+            aria-hidden="true"
+            style={{ flex: 1, minWidth: TOUCH, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <span
+              style={{
+                width: 36,
+                height: 4,
+                borderRadius: 2,
+                background: 'var(--foreground-muted, #a0a0aa)',
+                opacity: 0.6,
+              }}
+            />
+          </div>
+        )}
         <button
           data-bottom-panel="toggle"
           type="button"
           aria-label={open ? 'Hide panel' : 'Show panel'}
           aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            if (!open) setSheetFull(false)
+            setOpen(!open)
+          }}
           style={{
             appearance: 'none',
             border: 'none',
             background: 'transparent',
             color: 'var(--foreground-muted, #a0a0aa)',
             padding: '0 10px',
+            minWidth: sheet ? TOUCH : undefined,
             cursor: 'pointer',
-            fontSize: 12,
+            fontSize: sheet ? 14 : 12,
           }}
         >
           {open ? '▾' : '▴'}
         </button>
       </div>
-      {open && (
+      {bodyDrawn && (
         <div
           data-bottom-panel="body"
           style={{
@@ -507,5 +709,15 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
         </div>
       )}
     </div>
+  )
+
+  if (!sheet) return panel
+  return (
+    <>
+      {/* The strip's place in the layout. It never changes height, so the editor
+          above it never does either, whatever the sheet is doing over it. */}
+      <div ref={spaceRef} data-bottom-panel="strip-space" style={{ flex: `0 0 ${SHEET_CLOSED_HEIGHT}px` }} />
+      {panel}
+    </>
   )
 }
