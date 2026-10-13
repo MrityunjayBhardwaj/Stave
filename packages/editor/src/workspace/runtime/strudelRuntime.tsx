@@ -50,6 +50,7 @@ import type {
   ChromeContext,
   LiveCodingRuntimeProvider,
 } from '../types'
+import { useTouchBar } from './touchBar'
 
 /**
  * Live-mode toggle — clickable badge that mirrors the viz-chrome "live"
@@ -186,14 +187,16 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
     stopAtEnd,
     onToggleStopAtEnd,
   } = ctx
+  const bar = useTouchBar()
   return (
     <div
       data-strudel-runtime-chrome="root"
+      {...bar.attrs}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: 8,
-        height: 40,
+        height: bar.height,
         padding: '0 12px',
         background: 'var(--surface)',
         borderBottom: '1px solid var(--border)',

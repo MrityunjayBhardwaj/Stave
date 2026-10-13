@@ -98,7 +98,7 @@ import {
   setContent,
   revealLineInFile,
 } from "@stave/editor";
-import StrudelEditorClient, { type BounceHandle, type TransportHandle } from "./StrudelEditorClient";
+import StrudelEditorClient, { type BounceHandle } from "./StrudelEditorClient";
 import { BounceModal, type BounceState } from "./BounceModal";
 import type { BounceSizing } from "./songLength";
 import { DocsSearchPalette } from "./DocsSearchPalette";
@@ -609,8 +609,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // lives in StrudelEditorClient's runtime map. Same shape as `shellRef`: we
   // own the ref, the child attaches the handle.
   const bounceRef = useRef<BounceHandle | null>(null);
-  // #2001 — Play/Stop for the active tab, for the phone's top bar.
-  const transportRef = useRef<TransportHandle | null>(null);
   const [bounceOpen, setBounceOpen] = useState(false);
   const [bounceState, setBounceState] = useState<BounceState>({ phase: "choosing" });
   // #1631 — whether the active file's bounce renders offline. Read when the
@@ -2001,16 +1999,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       {phone ? (
         <PhoneTopBar
           fileName={activeFile ? (activeFile.path.split("/").pop() ?? activeFile.path) : null}
-          isPlaying={transport.isPlaying}
-          canPlay={activeFile?.language === "strudel" || activeFile?.language === "sonicpi"}
-          // straight to the runtime, inside the tap (#1987)
-          onPlay={() => transportRef.current?.play()}
-          onStop={() => transportRef.current?.stop()}
           onOpenDrawer={openPhoneDrawer}
           getSongPosition={transport.getSongPosition}
           getCps={transport.getCps}
-          evalError={transport.evalError}
-          onEvalLamp={onEvalLamp}
         />
       ) : (
         // Backdrop selection moved to the per-tab pattern-bar dropdown (#347);
@@ -2071,7 +2062,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 projectId={activeProject.id}
                 shellRef={shellRef}
                 bounceRef={bounceRef}
-                transportRef={transportRef}
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}
                 onCodeBackdropChange={handleCodeBackdropChange}

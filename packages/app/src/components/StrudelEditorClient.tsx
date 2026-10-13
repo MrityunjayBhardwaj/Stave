@@ -279,18 +279,6 @@ export interface BounceResult {
   skipped: SkippedSounds[];
 }
 
-/**
- * Play and Stop for the tab in front (#2001) — what the phone's top bar presses.
- *
- * `play` reaches the runtime before anything waits. A phone browser starts audio only
- * for what runs inside the tap (#1987), so this must stay a plain call: no promise, no
- * effect, no state update in front of it.
- */
-export interface TransportHandle {
-  play(): void;
-  stop(): void;
-}
-
 export interface BounceHandle {
   /** True when the active tab has a runtime that can bounce by either path. */
   canBounce(): boolean;
@@ -369,8 +357,6 @@ interface StrudelEditorClientProps {
    * ref, this component attaches to it.
    */
   bounceRef?: React.RefObject<BounceHandle | null>;
-  /** #2001 — Play/Stop for the active tab, attached the same way as `bounceRef`. */
-  transportRef?: React.RefObject<TransportHandle | null>;
   onActiveFileChange?: (fileId: string | null) => void;
   /**
    * Reports the runtime state (playing / bpm / error) for the currently
@@ -598,7 +584,6 @@ export default function StrudelEditorClient({
   projectId,
   shellRef,
   bounceRef,
-  transportRef,
   onActiveFileChange,
   onActiveRuntimeStateChange,
   onTabContextMenu,
@@ -2013,26 +1998,6 @@ export default function StrudelEditorClient({
       if (bounceRef.current === handle) bounceRef.current = null;
     };
   }, [bounceRef]);
-
-  // #2001 — Play/Stop for whichever tab is active WHEN PRESSED, by the same handlers
-  // the tab's own Play button calls.
-  useEffect(() => {
-    if (!transportRef) return;
-    const handle: TransportHandle = {
-      play: () => {
-        const fid = activeFileIdRef.current;
-        if (fid) handlePlay(fid);
-      },
-      stop: () => {
-        const fid = activeFileIdRef.current;
-        if (fid) handleStop(fid);
-      },
-    };
-    transportRef.current = handle;
-    return () => {
-      if (transportRef.current === handle) transportRef.current = null;
-    };
-  }, [transportRef, handlePlay, handleStop]);
 
   // #977 — visibility poll for eval-on-load. The snapshot cadence effect covers
   // file switches + edits, and onRequestSnapshot covers a cold song-view entry —

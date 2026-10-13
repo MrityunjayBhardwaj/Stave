@@ -40,6 +40,7 @@ import type {
   ChromeContext,
   LiveCodingRuntimeProvider,
 } from '../types'
+import { useTouchBar } from './touchBar'
 
 /**
  * Transport chrome for `.sonicpi` files. Identical visual shape to the
@@ -50,14 +51,16 @@ import type {
  */
 function SonicPiChrome(ctx: ChromeContext): React.ReactElement {
   const { isPlaying, error, bpm, onPlay, onStop, chromeExtras } = ctx
+  const bar = useTouchBar()
   return (
     <div
       data-sonicpi-runtime-chrome="root"
+      {...bar.attrs}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: 8,
-        height: 40,
+        height: bar.height,
         padding: '0 12px',
         background: 'var(--surface)',
         borderBottom: '1px solid var(--border)',

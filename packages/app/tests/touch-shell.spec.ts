@@ -1,10 +1,13 @@
 /**
- * The shell on a phone and on a tablet (#2000, #2001, pinned by #2014).
+ * The shell on a phone and on a tablet (#2000, #2001, #2035, pinned by #2014).
  *
  * On a phone the desktop's row — rail, side panel, editor — left the code about a
  * hundred pixels, and the menu bar ran off the right edge of the screen. So on a phone
  * the editor takes the whole width, the rail and side panel and menus live in a drawer
- * that opens over it, and the top bar holds four things a finger can hit.
+ * that opens over it, and the top bar holds the menu button and the file's name.
+ *
+ * Play is not in the top bar (#2035). It is in the editor's own bar, beside live mode
+ * and the backdrop picker, where the desktop has it — one Play, big enough for a finger.
  *
  * A tablet is not a phone: it keeps the desktop's rail, side panel and menu bar, and
  * the last test says so.
@@ -12,7 +15,7 @@
  * This file also runs on an iPhone under WebKit, where the layout engine differs.
  */
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp } from './_appBoot'
+import { bootApp, seedCode } from './_appBoot'
 
 const PHONES = ['phone', 'phone-sideways', 'iphone']
 /** every panel the desktop's rail opens */
@@ -53,7 +56,7 @@ test.describe('the shell on a phone (#2000, #2001)', () => {
     await expect(page.locator('[data-phone-drawer]')).toHaveCount(0)
   })
 
-  test('the top bar is four things, each on screen and big enough for a finger', async ({ page }) => {
+  test('the top bar is the menu button and the file, with no Play or status dot of its own', async ({ page }) => {
     await bootApp(page)
 
     // nothing in the top strip of the page runs off the screen — whatever is drawn there
@@ -64,20 +67,46 @@ test.describe('the shell on a phone (#2000, #2001)', () => {
     const bar = page.locator('[data-phone-top-bar]')
     await expect(bar).toBeVisible()
     const width = await screenWidth(page)
-    for (const part of ['drawer', 'lamp', 'play']) {
-      const control = bar.locator(`[data-phone-top="${part}"]`)
-      await expect(control, part).toBeVisible()
-      const box = await control.boundingBox()
-      expect(box!.height, `${part} height`).toBeGreaterThanOrEqual(44)
-      expect(box!.width, `${part} width`).toBeGreaterThanOrEqual(44)
-      expect(box!.x, `${part} left`).toBeGreaterThanOrEqual(0)
-      expect(box!.x + box!.width, `${part} right`).toBeLessThanOrEqual(width)
-    }
+    const drawer = bar.locator('[data-phone-top="drawer"]')
+    await expect(drawer).toBeVisible()
+    const box = await drawer.boundingBox()
+    expect(box!.height).toBeGreaterThanOrEqual(44)
+    expect(box!.width).toBeGreaterThanOrEqual(44)
+    expect(box!.x).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width)
     // the file's name, and under it where the song is and how fast
     await expect(bar.locator('[data-phone-top="file"]')).not.toHaveText('')
     await expect(bar.locator('[data-phone-top="readout"]')).toHaveText(/(BAR|CYC) .+ · .+ (BPM|CPS)/)
+    // the menu button is the only thing in it to press (#2035)
+    await expect(bar.locator('button')).toHaveCount(1)
     // the desktop's menu bar is not drawn as well
     await expect(page.getByRole('button', { name: 'File', exact: true })).toHaveCount(0)
+  })
+
+  test("there is one Play, in the editor's bar, and everything in that bar fits a finger (#2035)", async ({ page }) => {
+    await bootApp(page)
+    const width = await screenWidth(page)
+
+    // every visible button on the page that offers Play, by its words or its label
+    const plays = await page.evaluate(() =>
+      [...document.querySelectorAll('button')]
+        .filter((b) => b.getBoundingClientRect().width > 0)
+        .filter((b) => /^(\S+ )?Play$/.test((b.textContent ?? '').trim()) || b.getAttribute('aria-label') === 'Play')
+        .map((b) => b.getAttribute('data-testid') ?? b.getAttribute('data-phone-top') ?? 'unnamed'),
+    )
+    expect(plays).toEqual(['strudel-chrome-transport'])
+
+    const controls = page.locator('[data-strudel-runtime-chrome="root"] button')
+    expect(await controls.count()).toBeGreaterThanOrEqual(3)
+    for (let i = 0; i < (await controls.count()); i++) {
+      const control = controls.nth(i)
+      const name = (await control.getAttribute('data-testid')) ?? (await control.textContent()) ?? `button ${i}`
+      const box = await control.boundingBox()
+      expect(box!.height, `${name} height`).toBeGreaterThanOrEqual(44)
+      expect(box!.width, `${name} width`).toBeGreaterThanOrEqual(44)
+      expect(box!.x, `${name} left`).toBeGreaterThanOrEqual(0)
+      expect(box!.x + box!.width, `${name} right`).toBeLessThanOrEqual(width)
+    }
   })
 
   test('the drawer holds every panel the rail opens, and closes on a tap beside it', async ({ page }) => {
@@ -155,10 +184,20 @@ test.describe('the shell on a phone (#2000, #2001)', () => {
     await expect(page.locator('[role="dialog"][aria-label="Stave settings"]')).toBeVisible()
   })
 
-  test('the status lamp opens the Console in the drawer', async ({ page }) => {
+  test('a failed evaluation says so on screen, with nothing opened (#2035)', async ({ page }) => {
     await bootApp(page)
-    await page.locator('[data-phone-top="lamp"]').tap()
-    await expect(page.locator('[data-phone-drawer] [data-phone-drawer-body="console"]')).toBeVisible()
+    await seedCode(page, '$: s("bd").thisIsNotAStrudelMethod()\n')
+    await page.locator('[data-testid="strudel-chrome-transport"]').tap()
+
+    const message = page.locator('[data-testid="strudel-chrome-error"]')
+    await expect(message).toBeVisible({ timeout: 15_000 })
+    await expect(message).not.toHaveText('')
+    const box = await message.boundingBox()
+    // enough of it to read, and none of it past the edge of the screen
+    expect(box!.width).toBeGreaterThan(60)
+    expect(box!.x).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(await screenWidth(page))
+    await expect(page.locator('[data-phone-drawer]')).toHaveCount(0)
   })
 })
 
@@ -176,5 +215,8 @@ test.describe('the shell on a tablet (#2000, #2001)', () => {
     expect(Math.round(rail!.width)).toBe(44)
     const editor = await page.locator('.monaco-editor').first().boundingBox()
     expect(editor!.width).toBeLessThan((await screenWidth(page)) - 44)
+    // and the editor's bar is the desktop's: 40 px, not grown for a finger (#2035)
+    const editorBar = await page.locator('[data-strudel-runtime-chrome="root"]').boundingBox()
+    expect(Math.round(editorBar!.height)).toBe(40)
   })
 })

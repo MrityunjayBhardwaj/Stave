@@ -27,7 +27,7 @@ import * as React from 'react'
 import { CODE_UNDO_ACTIVE, CODE_UNDO_ATTR } from '../../workspace/codeUndo'
 
 import { useActiveChunk } from './useActiveChunk'
-import { usePhone } from './usePhone'
+import { usePhone } from '../../workspace/usePhone'
 import { chunkSurface } from '../../codeView'
 import { SequencerGrid } from './SequencerGrid'
 import { PianoRollGrid } from './PianoRollGrid'

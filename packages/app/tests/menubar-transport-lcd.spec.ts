@@ -13,6 +13,12 @@ async function boot(page: Page): Promise<void> {
     },
     { timeout: 15_000 },
   )
+  // the mount, not just the text: a seed written before it is not heard (#2036)
+  await page.waitForFunction(() => {
+    const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId: () => string } | null }> } } }).monaco
+    const language = m?.editor?.getEditors?.()?.[0]?.getModel()?.getLanguageId()
+    return language !== undefined && language !== 'plaintext'
+  }, undefined, { timeout: 30_000 })
 }
 
 const LCD = '[data-stave-transport-lcd]'

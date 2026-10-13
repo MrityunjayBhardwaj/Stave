@@ -45,6 +45,12 @@ async function boot(page: Page, code: string, lane: string): Promise<void> {
     },
     { timeout: 20_000 },
   )
+  // the mount, not just the text: a seed written before it is not heard (#2036)
+  await page.waitForFunction(() => {
+    const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId: () => string } | null }> } } }).monaco
+    const language = m?.editor?.getEditors?.()?.[0]?.getModel()?.getLanguageId()
+    return language !== undefined && language !== 'plaintext'
+  }, undefined, { timeout: 30_000 })
   await page.evaluate((c) => {
     const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string; setValue: (s: string) => void } | null; focus: () => void }> } } }).monaco
     const eds = m?.editor?.getEditors?.() ?? []

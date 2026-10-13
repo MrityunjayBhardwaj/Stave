@@ -141,6 +141,22 @@ export async function waitForEditorLoaded(page: Page): Promise<void> {
     },
     { timeout: 30_000 },
   )
+  // …and the editor has finished MOUNTING. The text arrives before the mount does: for a
+  // moment the model holds the file while it is still `plaintext`, and a seed written in
+  // that moment changes the model and nothing else — the app never hears of it, so Play
+  // runs the file as it was (#2036: WebKit, 3 runs in 6). The language is set by the same
+  // mount that starts the app listening, so it is the sign that a change will be heard.
+  await page.waitForFunction(
+    () => {
+      const m = (window as unknown as {
+        monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId: () => string } | null }> } }
+      }).monaco
+      const eds = m?.editor?.getEditors?.() ?? []
+      const language = eds[0]?.getModel()?.getLanguageId()
+      return language !== undefined && language !== 'plaintext'
+    },
+    { timeout: 30_000 },
+  )
 }
 
 /**

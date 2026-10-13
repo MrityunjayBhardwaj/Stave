@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { registerEditor, unregisterEditor, revealLineInFile, revealOffsetInFile, revealTakesFocus } from '../editorRegistry'
-import { TOUCH_POINTER_QUERY } from '../../visualEdit/panels/usePhone'
+import { TOUCH_POINTER_QUERY } from '../usePhone'
 
 interface Pos {
   lineNumber: number

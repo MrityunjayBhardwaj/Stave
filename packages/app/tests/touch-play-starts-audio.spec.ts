@@ -119,13 +119,10 @@ async function tapPlayAndCheck(page: Page, whichPlay: (page: Page) => Locator): 
 
 test.describe('a tap on Play asks for audio inside the tap (#1987)', () => {
   test('Play asks while its own click is being handled, and the touch listener asks before it', async ({ page }) => {
-    await tapPlayAndCheck(page, (p) => p.locator('button:has-text("Play")').first())
-  })
-
-  test("the phone top bar's Play does too (#2001)", async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name === 'tablet', 'a tablet has the desktop menu bar, which has no Play')
-    await tapPlayAndCheck(page, (p) => p.locator('[data-phone-top="play"]'))
+    // the editor's Play: the only one there is, on a phone as on a tablet (#2035)
+    const play = (p: Page): Locator => p.locator('[data-testid="strudel-chrome-transport"]')
+    await tapPlayAndCheck(page, play)
     // and it really played: the same button now offers Stop
-    await expect(page.locator('[data-phone-top="play"]')).toHaveAttribute('aria-label', 'Stop', { timeout: 15_000 })
+    await expect(play(page)).toHaveText(/Stop/, { timeout: 15_000 })
   })
 })
