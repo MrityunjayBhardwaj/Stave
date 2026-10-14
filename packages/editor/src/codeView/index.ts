@@ -200,7 +200,7 @@ export {
   listSectionParts as listArrangeSectionParts,
 } from './arrange'
 export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from './arrange'
-export { planSoundAssignment } from './assign/soundAssign'
+export { planSoundAssignment, cyclesToPlayThrough } from './assign/soundAssign'
 export { planVizAssignment } from './assign/vizAssign'
 export { assignmentEdit } from './assign/soundAssign'
 export { captionEdit, shapeEdit, shapeOptions, rateEditable } from './automation/captionEdit'

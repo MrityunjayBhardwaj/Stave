@@ -32,6 +32,8 @@ export { fixedParameters, fixedToStepsEdit } from './codeView'
 export type { FixedParameter } from './codeView'
 // #1602 — a stepped parameter's step count, and the song length it would give.
 export { stepCountEdit, previewRepeat, songPeriodOf, arrangedRepeatCycles, songEnd, songEndOf } from './codeView'
+// #2070 — how many cycles a clip needs to play through; the Library's Insert writes `.slow(N)`
+export { cyclesToPlayThrough } from './codeView'
 export type { StepCountEdit, LanePeriod } from './codeView'
 // #1611 — a shape swap across periodicity, and the song it would give.
 export { previewShapeSwap } from './codeView'
