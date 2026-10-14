@@ -12,7 +12,7 @@ import { parseTopLevel } from '../astParse'
 import { detectChunk } from '../chunkDetect'
 import { setStringCall } from '../chainEdit'
 import { patternKind } from '../patternKind'
-import { isMutedLabel } from '../ir/trackId'
+import { bareExpressionOf } from '../bareExpression'
 import type { OffsetEdit } from '../writeback'
 
 /**
@@ -36,12 +36,15 @@ export type SoundAssignPlan =
  *    comment (observed: `// scratch` → `// scratchs("…")`), so the insert goes
  *    at the END of the cursor's line, prefixed with a newline only when that
  *    line already has content. Double-quoted: a standalone `s("…")` is
- *    idiomatic mini-notation.
+ *    idiomatic mini-notation. `slow` (#2070, from `cyclesToPlayThrough`) is
+ *    written as `.slow(N)` on that new line only: a note pattern keeps its
+ *    own rhythm when its sound is set.
  */
 export function planSoundAssignment(
   doc: string,
   offset: number,
   sound: string,
+  slow?: number,
 ): SoundAssignPlan | null {
   if (!sound) return null
 
@@ -69,37 +72,49 @@ export function planSoundAssignment(
   return {
     kind: 'insert',
     offset: lineEnd,
-    text: `${hasContent ? '\n' : ''}${form.labelled ? '$: ' : ''}s("${sound}")`,
+    text: `${hasContent ? '\n' : ''}${form.labelled ? '$: ' : ''}s("${sound}")${slow ? `.slow(${slow})` : ''}`,
     ...(form.label !== undefined ? { label: form.label } : {}),
   }
 }
 
 /**
+ * How many cycles a clip of `seconds` needs to play through at `cps`, or null when
+ * it fits in one (#2070). Strudel starts a sample once per event and lets it play to
+ * its end, so `s("take")` with a take longer than a cycle starts a new copy over the
+ * one still playing, every cycle. `.slow(N)` makes one event N cycles long: the clip
+ * plays through, and starts again on the first cycle boundary after it ends. Rounded
+ * up to whole cycles so it stays on the bar; a hair over a cycle (a decoder's padding)
+ * still counts as one. Unknown length → null, the plain line.
+ */
+export function cyclesToPlayThrough(seconds: number | undefined, cps: number): number | null {
+  if (seconds === undefined || !(seconds > 0) || !(cps > 0)) return null
+  const cycles = seconds * cps
+  return cycles <= 1 + CYCLE_SLACK ? null : Math.ceil(cycles - CYCLE_SLACK)
+}
+
+/** How far past a whole cycle a clip may run and still count as that many cycles. */
+const CYCLE_SLACK = 1e-3
+
+/**
  * How to write the new line so it is heard, and the song still is (#2057, #2066).
- *
- * Strudel plays the live labelled patterns when there are any and ignores the value
- * of a bare expression (`repl.mjs`: the `pPatterns` branch replaces `pattern`); with
- * none, it plays the LAST statement (`transpiler.mjs` returns it). A muted label
- * (`_$:`, `name_:`) registers nothing (`Pattern.p` returns `silence` for an id that
- * starts or ends with `_`). So:
+ * Which line a song plays is `bareExpressionOf`'s to say. So:
  *  - a live label anywhere, or no code yet → the new line is `$:`;
- *  - else, the last statement a bare expression → that expression is what plays,
- *    and a new line of either form would silence it (a `$:` one registers a label,
- *    a bare one becomes the last statement): label it too (`label` is where its
- *    `$: ` goes), and write the new line as `$:` — both play;
- *  - else (the last statement is a muted label: the song plays nothing) → `$:`.
+ *  - else, the song plays a bare expression → a new line of either form would
+ *    silence it (a `$:` one registers a label, a bare one becomes the last
+ *    statement): label it too (`label` is where its `$: ` goes), and write the
+ *    new line as `$:` — both play;
+ *  - else (the song plays nothing: its last statement is a muted label or a
+ *    setup call) → `$:`.
  * The Library's Insert is the only caller; nothing else rewrites a line of yours.
  */
 function newLineForm(
   doc: string,
-  statements: Array<{ type: string; start: number; label?: { name: string } }> | null,
+  statements: Parameters<typeof bareExpressionOf>[0] | null,
 ): { labelled: boolean; label?: number } {
   // mid-keystroke the document does not parse: read the lines instead
   if (!statements) return { labelled: /^[ \t]*\$:/m.test(doc) }
-  const live = statements.some((s) => s.type === 'LabeledStatement' && !isMutedLabel(s.label?.name))
-  const last = statements[statements.length - 1]
-  if (!live && last?.type === 'ExpressionStatement') return { labelled: true, label: last.start }
-  return { labelled: true }
+  const bare = bareExpressionOf(statements)
+  return bare === null ? { labelled: true } : { labelled: true, label: bare }
 }
 
 /**

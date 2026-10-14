@@ -130,7 +130,7 @@ import { getLogHistory } from "@stave/editor";
 import { SilentCaptureError, describeSkipped } from "@stave/editor";
 import { resolveAsset, startAudition, startClipPreview } from "@stave/editor";
 // #1504 — the project's asset records back the library's "sample" provider.
-import { listAssetRecords, subscribeToAssets } from "@stave/editor";
+import { cyclesToPlayThrough, listAssetRecords, subscribeToAssets } from "@stave/editor";
 // #1785 — this tab's presence, seen by another tab's sound collection.
 import { holdTabPresence } from "@stave/editor";
 // #1786 — remove one of your sounds, and see what each one takes.
@@ -1445,7 +1445,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           const url = record ? await resolveAsset(record.blobHash) : null;
           return url ? startClipPreview(url) : undefined;
         },
-        onInsert: (name) => shellRef.current?.assignSoundToCursor(name),
+        // #2070 — a clip longer than a cycle plays through before it starts again:
+        // its length in cycles at the tempo playing now (Strudel's 0.5 before any).
+        onInsert: (name) => {
+          const record = listAssetRecords().find((r) => r.name === name);
+          const slow = cyclesToPlayThrough(record?.duration, getCpsRef.current() ?? 0.5);
+          shellRef.current?.assignSoundToCursor(name, slow ? { slow } : undefined);
+        },
         sizeOf: (hash) => sizes.get(hash),
         onRemove,
       })

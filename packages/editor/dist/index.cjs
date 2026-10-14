@@ -12642,8 +12642,28 @@ function listSectionParts(doc, call) {
 }
 __name(listSectionParts, "listSectionParts");
 
+// src/codeView/bareExpression.ts
+var SETUP_CALLS = /* @__PURE__ */ new Set(["samples", "setcps", "setCps", "setcpm", "setCpm", "hush"]);
+function bareExpressionOf(statements) {
+  if (statements.some((s) => s.type === "LabeledStatement" && !isMutedLabel(s.label?.name))) return null;
+  const last = statements[statements.length - 1];
+  if (last?.type !== "ExpressionStatement") return null;
+  const e = last.expression;
+  if (e?.type === "AwaitExpression") return null;
+  if (e?.type === "CallExpression" && e.callee?.type === "Identifier" && SETUP_CALLS.has(e.callee.name ?? "")) {
+    return null;
+  }
+  return last.start;
+}
+__name(bareExpressionOf, "bareExpressionOf");
+function playsBareExpression(code) {
+  const statements = parseTopLevel(code);
+  return statements ? bareExpressionOf(statements) : null;
+}
+__name(playsBareExpression, "playsBareExpression");
+
 // src/codeView/assign/soundAssign.ts
-function planSoundAssignment(doc, offset, sound) {
+function planSoundAssignment(doc, offset, sound, slow) {
   if (!sound) return null;
   const chunk = detectChunk(doc, offset);
   if (chunk && patternKind(chunk) === "roll") {
@@ -12661,17 +12681,22 @@ function planSoundAssignment(doc, offset, sound) {
   return {
     kind: "insert",
     offset: lineEnd,
-    text: `${hasContent ? "\n" : ""}${form.labelled ? "$: " : ""}s("${sound}")`,
+    text: `${hasContent ? "\n" : ""}${form.labelled ? "$: " : ""}s("${sound}")${slow ? `.slow(${slow})` : ""}`,
     ...form.label !== void 0 ? { label: form.label } : {}
   };
 }
 __name(planSoundAssignment, "planSoundAssignment");
+function cyclesToPlayThrough(seconds, cps) {
+  if (seconds === void 0 || !(seconds > 0) || !(cps > 0)) return null;
+  const cycles = seconds * cps;
+  return cycles <= 1 + CYCLE_SLACK ? null : Math.ceil(cycles - CYCLE_SLACK);
+}
+__name(cyclesToPlayThrough, "cyclesToPlayThrough");
+var CYCLE_SLACK = 1e-3;
 function newLineForm(doc, statements) {
   if (!statements) return { labelled: /^[ \t]*\$:/m.test(doc) };
-  const live = statements.some((s) => s.type === "LabeledStatement" && !isMutedLabel(s.label?.name));
-  const last = statements[statements.length - 1];
-  if (!live && last?.type === "ExpressionStatement") return { labelled: true, label: last.start };
-  return { labelled: true };
+  const bare = bareExpressionOf(statements);
+  return bare === null ? { labelled: true } : { labelled: true, label: bare };
 }
 __name(newLineForm, "newLineForm");
 function assignmentEdit(plan) {
@@ -47134,14 +47159,14 @@ var WorkspaceShell = React46.forwardRef(/* @__PURE__ */ __name(function Workspac
           quality: g?.backdropQuality ?? backdropQuality
         };
       }, "getBackdropSettings"),
-      assignSoundToCursor: /* @__PURE__ */ __name((sound) => {
+      assignSoundToCursor: /* @__PURE__ */ __name((sound, opts) => {
         if (!sound) return;
         const editor = getActiveEditor();
         const model = editor?.getModel();
         const pos = editor?.getPosition();
         if (!editor || !model || !pos) return;
         const offset = model.getOffsetAt(pos);
-        const plan = planSoundAssignment(model.getValue(), offset, sound);
+        const plan = planSoundAssignment(model.getValue(), offset, sound, opts?.slow);
         if (!plan) return;
         commitToEditor(editor, assignmentEdit(plan), "mixer");
       }, "assignSoundToCursor"),
@@ -53183,6 +53208,7 @@ exports.createWorkspaceFile = createWorkspaceFile;
 exports.crossClassShapes = crossClassShapes;
 exports.cycleEditorTheme = cycleEditorTheme;
 exports.cycleFingerprints = cycleFingerprints;
+exports.cyclesToPlayThrough = cyclesToPlayThrough;
 exports.deleteAsset = deleteAsset;
 exports.deleteProject = deleteProject;
 exports.deleteSnapshot = deleteSnapshot;
@@ -53417,6 +53443,7 @@ exports.pitchToMidi = pitchToMidi;
 exports.placeNote = placeNote;
 exports.planAssetImport = planAssetImport;
 exports.playedSoundName = playedSoundName;
+exports.playsBareExpression = playsBareExpression;
 exports.positionOfValue = positionOfValue;
 exports.previewProviderRegistry = previewProviderRegistry;
 exports.previewRepeat = previewRepeat;
