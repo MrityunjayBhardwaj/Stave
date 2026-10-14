@@ -120,8 +120,12 @@ export interface ClipPreviewHandle extends AuditionHandle {
   readonly ended: Promise<void>
 }
 
-/** decoded clips by URL — a second preview of the same clip does not decode again */
-const decodedClips = new Map<string, Promise<AudioBuffer>>()
+/**
+ * The clip previewed last, decoded — a second preview of it does not decode again.
+ * Only one is kept (#2063): a decoded clip is ~10 MB a minute, so keeping every clip
+ * previewed held a long take in memory until the page reloaded.
+ */
+let lastClip: { url: string; decoded: Promise<AudioBuffer> } | null = null
 
 export function startClipPreview(url: string, gain = AUDITION_ENVELOPE.gain): ClipPreviewHandle {
   let stopped = false
@@ -144,13 +148,18 @@ export function startClipPreview(url: string, gain = AUDITION_ENVELOPE.gain): Cl
     const ctx = getAudioContext()
     // The click is the user gesture that unlocks a suspended context.
     void ctx.resume()
-    let decoded = decodedClips.get(url)
+    let decoded = lastClip?.url === url ? lastClip.decoded : undefined
     if (!decoded) {
       decoded = fetch(url)
         .then((r) => r.arrayBuffer())
         .then((bytes) => ctx.decodeAudioData(bytes))
-      decodedClips.set(url, decoded)
-      decoded.catch(() => decodedClips.delete(url))
+      const clip = { url, decoded }
+      lastClip = clip
+      // A clip that will not decode is tried again next time — unless another
+      // clip has been previewed since, which is the one kept now.
+      decoded.catch(() => {
+        if (lastClip === clip) lastClip = null
+      })
     }
     decoded.then(
       (buffer) => {
