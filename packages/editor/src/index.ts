@@ -66,6 +66,8 @@ export { StrudelEngine } from './engine/StrudelEngine'
 // needs both to tell "the engine cannot start" apart from every other runtime
 // error and offer the reload that is the only thing that recovers it (#1218).
 export { isBootStepFailure, type BootStepFailure } from './engine/StrudelEngine'
+// #2015 — whether Play takes the phone's audio (plays through the silent switch, stops other apps' music)
+export { setTakesPhoneAudio } from './engine/audioStart'
 export { DemoEngine } from './engine/DemoEngine'
 export { SonicPiEngine } from './engine/sonicpi'
 export type { LiveCodingEngine, EngineComponents, IRComponent } from './engine/LiveCodingEngine'

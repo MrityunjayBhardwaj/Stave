@@ -53,6 +53,7 @@ import {
 } from "../signalAliasRows";
 import { getRulerUnits, setRulerUnits, type RulerUnits } from "../../state/rulerUnits";
 import { getMenubarLcdEnabled, setMenubarLcdEnabled } from "../../state/menubarLcd";
+import { getTakesPhoneAudio, setTakesPhoneAudioSetting } from "../../state/takesPhoneAudio";
 import { getVizPreviewHeight, setVizPreviewHeight } from "../../state/vizPreviewHeight";
 import { Switch } from "./Switch";
 import { SettingRow } from "./SettingRow";
@@ -94,6 +95,7 @@ const ADAPTERS: Record<string, SettingAdapter> = {
   },
   trackColourBar: { get: getTrackColourBarsEnabled, set: (v) => setTrackColourBarsEnabled(Boolean(v)) },
   menubarLcd: { get: getMenubarLcdEnabled, set: (v) => setMenubarLcdEnabled(Boolean(v)) },
+  takesPhoneAudio: { get: getTakesPhoneAudio, set: (v) => setTakesPhoneAudioSetting(Boolean(v)) },
   gridMode: { get: getGridMode, set: (v) => setGridMode(v as GridMode) },
   noteColor: { get: getNoteColorMode, set: (v) => setNoteColorMode(v as NoteColorMode) },
   rulerUnits: { get: getRulerUnits, set: (v) => setRulerUnits(v as RulerUnits) },

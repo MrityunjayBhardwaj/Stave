@@ -136,6 +136,14 @@ export const SECTION_DEFS: readonly SettingsSectionDef[] = [
       { key: "playVizOnHover", name: "Play viz on hover", description: "In split panes, freeze non-focused backdrops and play them only while hovered — saves GPU with many panes. Off: every pane's backdrop stays live.", kind: "switch" },
     ],
   },
+  {
+    id: "sound",
+    navLabel: "Sound",
+    title: "Sound",
+    fields: [
+      { key: "takesPhoneAudio", name: "Play through the silent switch", description: "On a phone: Stave is heard with the ring/silent switch on, and music from other apps stops when you press Play. Off: other apps keep playing alongside Stave, and the silent switch mutes it.", kind: "switch" },
+    ],
+  },
   { id: "modules", navLabel: "Modules", title: "Strudel modules", custom: "modules" },
   { id: "aliases", navLabel: "Signal Aliases", title: "Signal Aliases", custom: "aliases" },
 ];
