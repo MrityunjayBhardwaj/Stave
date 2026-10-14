@@ -169,4 +169,11 @@ describe('planSoundAssignment (#830)', () => {
       expect(Array.isArray(edits) ? edits.length : 1).toBe(2)
     })
   })
+
+  it('a song ending in a setup call plays nothing, so nothing is labelled', () => {
+    const doc = 's("bd")\nsamples("github:x/y")\n'
+    expect(apply(doc, planSoundAssignment(doc, doc.length, 'inserted'))).toBe(
+      's("bd")\nsamples("github:x/y")\n$: s("inserted")',
+    )
+  })
 })

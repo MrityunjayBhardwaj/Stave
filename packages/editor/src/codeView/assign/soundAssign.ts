@@ -12,7 +12,7 @@ import { parseTopLevel } from '../astParse'
 import { detectChunk } from '../chunkDetect'
 import { setStringCall } from '../chainEdit'
 import { patternKind } from '../patternKind'
-import { isMutedLabel } from '../ir/trackId'
+import { bareExpressionOf } from '../bareExpression'
 import type { OffsetEdit } from '../writeback'
 
 /**
@@ -76,30 +76,24 @@ export function planSoundAssignment(
 
 /**
  * How to write the new line so it is heard, and the song still is (#2057, #2066).
- *
- * Strudel plays the live labelled patterns when there are any and ignores the value
- * of a bare expression (`repl.mjs`: the `pPatterns` branch replaces `pattern`); with
- * none, it plays the LAST statement (`transpiler.mjs` returns it). A muted label
- * (`_$:`, `name_:`) registers nothing (`Pattern.p` returns `silence` for an id that
- * starts or ends with `_`). So:
+ * Which line a song plays is `bareExpressionOf`'s to say. So:
  *  - a live label anywhere, or no code yet → the new line is `$:`;
- *  - else, the last statement a bare expression → that expression is what plays,
- *    and a new line of either form would silence it (a `$:` one registers a label,
- *    a bare one becomes the last statement): label it too (`label` is where its
- *    `$: ` goes), and write the new line as `$:` — both play;
- *  - else (the last statement is a muted label: the song plays nothing) → `$:`.
+ *  - else, the song plays a bare expression → a new line of either form would
+ *    silence it (a `$:` one registers a label, a bare one becomes the last
+ *    statement): label it too (`label` is where its `$: ` goes), and write the
+ *    new line as `$:` — both play;
+ *  - else (the song plays nothing: its last statement is a muted label or a
+ *    setup call) → `$:`.
  * The Library's Insert is the only caller; nothing else rewrites a line of yours.
  */
 function newLineForm(
   doc: string,
-  statements: Array<{ type: string; start: number; label?: { name: string } }> | null,
+  statements: Parameters<typeof bareExpressionOf>[0] | null,
 ): { labelled: boolean; label?: number } {
   // mid-keystroke the document does not parse: read the lines instead
   if (!statements) return { labelled: /^[ \t]*\$:/m.test(doc) }
-  const live = statements.some((s) => s.type === 'LabeledStatement' && !isMutedLabel(s.label?.name))
-  const last = statements[statements.length - 1]
-  if (!live && last?.type === 'ExpressionStatement') return { labelled: true, label: last.start }
-  return { labelled: true }
+  const bare = bareExpressionOf(statements)
+  return bare === null ? { labelled: true } : { labelled: true, label: bare }
 }
 
 /**

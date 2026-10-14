@@ -32,6 +32,8 @@ export { fixedParameters, fixedToStepsEdit } from './codeView'
 export type { FixedParameter } from './codeView'
 // #1602 — a stepped parameter's step count, and the song length it would give.
 export { stepCountEdit, previewRepeat, songPeriodOf, arrangedRepeatCycles, songEnd, songEndOf } from './codeView'
+// #2067 — where the bare expression a song plays starts, for the notice that says so
+export { playsBareExpression } from './codeView'
 export type { StepCountEdit, LanePeriod } from './codeView'
 // #1611 — a shape swap across periodicity, and the song it would give.
 export { previewShapeSwap } from './codeView'
