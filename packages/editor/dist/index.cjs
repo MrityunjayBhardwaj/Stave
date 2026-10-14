@@ -12642,6 +12642,26 @@ function listSectionParts(doc, call) {
 }
 __name(listSectionParts, "listSectionParts");
 
+// src/codeView/bareExpression.ts
+var SETUP_CALLS = /* @__PURE__ */ new Set(["samples", "setcps", "setCps", "setcpm", "setCpm", "hush"]);
+function bareExpressionOf(statements) {
+  if (statements.some((s) => s.type === "LabeledStatement" && !isMutedLabel(s.label?.name))) return null;
+  const last = statements[statements.length - 1];
+  if (last?.type !== "ExpressionStatement") return null;
+  const e = last.expression;
+  if (e?.type === "AwaitExpression") return null;
+  if (e?.type === "CallExpression" && e.callee?.type === "Identifier" && SETUP_CALLS.has(e.callee.name ?? "")) {
+    return null;
+  }
+  return last.start;
+}
+__name(bareExpressionOf, "bareExpressionOf");
+function playsBareExpression(code) {
+  const statements = parseTopLevel(code);
+  return statements ? bareExpressionOf(statements) : null;
+}
+__name(playsBareExpression, "playsBareExpression");
+
 // src/codeView/assign/soundAssign.ts
 function planSoundAssignment(doc, offset, sound, slow) {
   if (!sound) return null;
@@ -12675,10 +12695,8 @@ __name(cyclesToPlayThrough, "cyclesToPlayThrough");
 var CYCLE_SLACK = 1e-3;
 function newLineForm(doc, statements) {
   if (!statements) return { labelled: /^[ \t]*\$:/m.test(doc) };
-  const live = statements.some((s) => s.type === "LabeledStatement" && !isMutedLabel(s.label?.name));
-  const last = statements[statements.length - 1];
-  if (!live && last?.type === "ExpressionStatement") return { labelled: true, label: last.start };
-  return { labelled: true };
+  const bare = bareExpressionOf(statements);
+  return bare === null ? { labelled: true } : { labelled: true, label: bare };
 }
 __name(newLineForm, "newLineForm");
 function assignmentEdit(plan) {
@@ -53415,6 +53433,7 @@ exports.pitchToMidi = pitchToMidi;
 exports.placeNote = placeNote;
 exports.planAssetImport = planAssetImport;
 exports.playedSoundName = playedSoundName;
+exports.playsBareExpression = playsBareExpression;
 exports.positionOfValue = positionOfValue;
 exports.previewProviderRegistry = previewProviderRegistry;
 exports.previewRepeat = previewRepeat;

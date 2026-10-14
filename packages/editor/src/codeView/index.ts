@@ -201,6 +201,7 @@ export {
 } from './arrange'
 export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from './arrange'
 export { planSoundAssignment, cyclesToPlayThrough } from './assign/soundAssign'
+export { playsBareExpression } from './bareExpression'
 export { planVizAssignment } from './assign/vizAssign'
 export { assignmentEdit } from './assign/soundAssign'
 export { captionEdit, shapeEdit, shapeOptions, rateEditable } from './automation/captionEdit'
