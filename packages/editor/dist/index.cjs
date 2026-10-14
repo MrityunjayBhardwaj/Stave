@@ -12657,21 +12657,27 @@ function planSoundAssignment(doc, offset, sound) {
   const nextNewline = doc.indexOf("\n", anchor);
   const lineEnd = nextNewline === -1 ? doc.length : nextNewline;
   const hasContent = doc.slice(lineStart, lineEnd).trim().length > 0;
+  const form = newLineForm(doc, statements);
   return {
     kind: "insert",
     offset: lineEnd,
-    text: `${hasContent ? "\n" : ""}${playsLabelled(doc, statements) ? "$: " : ""}s("${sound}")`
+    text: `${hasContent ? "\n" : ""}${form.labelled ? "$: " : ""}s("${sound}")`,
+    ...form.label !== void 0 ? { label: form.label } : {}
   };
 }
 __name(planSoundAssignment, "planSoundAssignment");
-function playsLabelled(doc, statements) {
-  if (!statements) return /^[ \t]*\$:/m.test(doc);
-  if (statements.length === 0) return true;
-  return statements.some((s) => s.type === "LabeledStatement");
+function newLineForm(doc, statements) {
+  if (!statements) return { labelled: /^[ \t]*\$:/m.test(doc) };
+  const live = statements.some((s) => s.type === "LabeledStatement" && !isMutedLabel(s.label?.name));
+  const last = statements[statements.length - 1];
+  if (!live && last?.type === "ExpressionStatement") return { labelled: true, label: last.start };
+  return { labelled: true };
 }
-__name(playsLabelled, "playsLabelled");
+__name(newLineForm, "newLineForm");
 function assignmentEdit(plan) {
-  return plan.kind === "replace" ? { range: plan.range, text: plan.text } : { range: [plan.offset, plan.offset], text: plan.text };
+  if (plan.kind === "replace") return { range: plan.range, text: plan.text };
+  const insert = { range: [plan.offset, plan.offset], text: plan.text };
+  return plan.label === void 0 ? insert : [{ range: [plan.label, plan.label], text: "$: " }, insert];
 }
 __name(assignmentEdit, "assignmentEdit");
 

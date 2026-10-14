@@ -167,6 +167,26 @@ test.describe('your own audio, brought in through the Library', () => {
     expect(await startsOf(page, 1.37), 'the inserted sound must be heard at least once in 4 s').toBeGreaterThan(0)
   })
 
+  test('Insert in a song that plays a bare expression keeps it playing (#2066)', async ({ page }) => {
+    await boot(page)
+    const bare = await addAudio(page, 'bare.wav', wav(1.37))
+    const inserted = await addAudio(page, 'inserted.wav', wav(2, 330))
+    // the muted label registers nothing, so the song is its bare line
+    await seedCode(page, `_$: s("hh*2")\ns("${bare}")\n`)
+    await cursorAt(page, 2)
+    const r = row(page, inserted)
+    await r.hover()
+    await r.locator('[data-asset-insert]').click()
+    await evalCode(page)
+    await page.waitForTimeout(4_000)
+    await stopCode(page)
+    // Before: the new `$:` line was heard and the song's own line went silent (0).
+    expect(
+      Math.min(await startsOf(page, 1.37), await startsOf(page, 2)),
+      'starts in 4 s of the song line and the inserted line, whichever is fewer',
+    ).toBeGreaterThan(0)
+  })
+
   test('Stop silences a long sample that is still playing (#2058)', async ({ page }) => {
     await boot(page)
     const name = await addAudio(page, 'long.wav', wav(20))
