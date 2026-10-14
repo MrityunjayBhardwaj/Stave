@@ -807,6 +807,23 @@ test.describe('#1627 — an offline render while the transport plays', () => {
     await expectNoUncaught(page)
   })
 
+  test('a Stop pressed during the render leaves the rendered file whole (#2064)', async ({ page }) => {
+    // Stop fades out every sound superdough is playing (#2058). During a render
+    // superdough's context is the RENDER's, so an unguarded fade lands on the
+    // bounce's own notes and the file goes quiet from the press onward.
+    test.setTimeout(120000)
+    await openApp(page)
+    const control = await callRenderWhilePlaying(page, LIVE_WHILE_RENDERING, LONG_RENDER, LONG_RENDER_SECS, true)
+    const out = await callRenderWhilePlaying(page, LIVE_WHILE_RENDERING, LONG_RENDER, LONG_RENDER_SECS, true, 'stop')
+    console.log(describeRenderWhilePlaying('stop-mid-render-file', out))
+    if (!control.ok || !out.ok) throw new Error(`probe failed: ${control.error ?? ''} ${out.error ?? ''}`)
+    if (out.pressedAtMs === undefined) throw new Error('Stop was never pressed inside the render')
+    const diff = maxSampleDiff(readWav(out.renderWav!).mono, readWav(control.renderWav!).mono)
+    console.log(`[#2064 stop-mid-render] maxSampleDiff vs no Stop = ${diff}`)
+    requireRenderSpannedTicks('#2064 stop-mid-render', out.renderMs, diff)
+    expect(diff).toBeLessThan(1e-4)
+  })
+
   test('a Play pressed during the render starts after it, and none of it lands in the file', async ({
     page,
   }) => {

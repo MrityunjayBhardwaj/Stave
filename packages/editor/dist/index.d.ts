@@ -4540,6 +4540,8 @@ declare class StrudelEngine implements LiveCodingEngine {
     play(): void;
     /** #2058 — superdough's stop-every-sound (Stave's patch), once audio is up. */
     private stopAllSoundsFn;
+    /** #2064 — moves on every Play and Stop, so a deferred fade knows it is stale. */
+    private transportGeneration;
     /** the destinationGain node our master analyser is currently tapping. */
     private taggedDestinationGain;
     /** resolves superdough's GLOBAL audio controller (the live one). */
