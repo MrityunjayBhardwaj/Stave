@@ -39146,7 +39146,7 @@ function startAudition(sound, note = "c4") {
   };
 }
 __name(startAudition, "startAudition");
-var decodedClips = /* @__PURE__ */ new Map();
+var lastClip = null;
 function startClipPreview(url, gain = AUDITION_ENVELOPE.gain) {
   let stopped = false;
   let source = null;
@@ -39167,11 +39167,14 @@ function startClipPreview(url, gain = AUDITION_ENVELOPE.gain) {
   try {
     const ctx = webaudio.getAudioContext();
     void ctx.resume();
-    let decoded = decodedClips.get(url);
+    let decoded = lastClip?.url === url ? lastClip.decoded : void 0;
     if (!decoded) {
       decoded = fetch(url).then((r) => r.arrayBuffer()).then((bytes) => ctx.decodeAudioData(bytes));
-      decodedClips.set(url, decoded);
-      decoded.catch(() => decodedClips.delete(url));
+      const clip2 = { url, decoded };
+      lastClip = clip2;
+      decoded.catch(() => {
+        if (lastClip === clip2) lastClip = null;
+      });
     }
     decoded.then(
       (buffer) => {
