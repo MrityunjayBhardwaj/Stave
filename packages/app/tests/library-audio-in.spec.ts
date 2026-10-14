@@ -187,6 +187,21 @@ test.describe('your own audio, brought in through the Library', () => {
     ).toBeGreaterThan(0)
   })
 
+  test('Insert of a clip longer than a cycle plays it through before it starts again', async ({ page }) => {
+    await boot(page)
+    await seedCode(page, '// my song\n')
+    const name = await addAudio(page, 'take.wav', wav(20))
+    await cursorAt(page, 1)
+    const r = row(page, name)
+    await r.hover()
+    await r.locator('[data-asset-insert]').click()
+    await evalCode(page)
+    await page.waitForTimeout(5_000)
+    await stopCode(page)
+    // Before: a copy started every cycle, on top of the one still playing (3 in 5 s).
+    expect(await startsOf(page, 20), 'starts of the 20 s clip in 5 s of play').toBe(1)
+  })
+
   test('Stop silences a long sample that is still playing (#2058)', async ({ page }) => {
     await boot(page)
     const name = await addAudio(page, 'long.wav', wav(20))

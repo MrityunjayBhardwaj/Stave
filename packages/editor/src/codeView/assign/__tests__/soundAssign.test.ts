@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 import {
   assignmentEdit,
+  cyclesToPlayThrough,
   planSoundAssignment,
   type SoundAssignPlan,
 } from '../soundAssign'
@@ -175,5 +176,48 @@ describe('planSoundAssignment (#830)', () => {
     expect(apply(doc, planSoundAssignment(doc, doc.length, 'inserted'))).toBe(
       's("bd")\nsamples("github:x/y")\n$: s("inserted")',
     )
+  })
+
+  describe('a clip longer than a cycle plays through before it starts again (#2070)', () => {
+    it('writes `.slow(N)` on the new line', () => {
+      const doc = '$: s("hh*2")\n'
+      expect(apply(doc, planSoundAssignment(doc, 0, 'take', 10))).toBe('$: s("hh*2")\n$: s("take").slow(10)\n')
+    })
+
+    it('without a length, writes the plain line', () => {
+      const doc = '$: s("hh*2")\n'
+      expect(apply(doc, planSoundAssignment(doc, 0, 'take'))).toBe('$: s("hh*2")\n$: s("take")\n')
+    })
+
+    it('a note pattern under the cursor gets its sound and keeps its own rhythm', () => {
+      const doc = 'note("c4 e4 g4")'
+      expect(apply(doc, planSoundAssignment(doc, 5, 'take', 10))).toBe(`note("c4 e4 g4").sound('take')`)
+    })
+  })
+})
+
+describe('cyclesToPlayThrough (#2070)', () => {
+  it('a 20 s clip at 0.5 cycles a second is 10 cycles', () => {
+    expect(cyclesToPlayThrough(20, 0.5)).toBe(10)
+  })
+
+  it('rounds up to a whole cycle, so the clip starts again on the bar', () => {
+    expect(cyclesToPlayThrough(5, 0.5)).toBe(3)
+  })
+
+  it('a clip of one cycle or less needs no slowing', () => {
+    expect([cyclesToPlayThrough(2, 0.5), cyclesToPlayThrough(1.37, 0.5)]).toEqual([null, null])
+  })
+
+  it("a hair over a whole cycle (a decoder's padding) counts as that cycle", () => {
+    expect([cyclesToPlayThrough(2.001, 0.5), cyclesToPlayThrough(8.001, 0.5)]).toEqual([null, 4])
+  })
+
+  it('an unknown or broken length or tempo writes the plain line', () => {
+    expect([
+      cyclesToPlayThrough(undefined, 0.5),
+      cyclesToPlayThrough(Number.NaN, 0.5),
+      cyclesToPlayThrough(20, 0),
+    ]).toEqual([null, null, null])
   })
 })

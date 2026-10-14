@@ -36,12 +36,15 @@ export type SoundAssignPlan =
  *    comment (observed: `// scratch` → `// scratchs("…")`), so the insert goes
  *    at the END of the cursor's line, prefixed with a newline only when that
  *    line already has content. Double-quoted: a standalone `s("…")` is
- *    idiomatic mini-notation.
+ *    idiomatic mini-notation. `slow` (#2070, from `cyclesToPlayThrough`) is
+ *    written as `.slow(N)` on that new line only: a note pattern keeps its
+ *    own rhythm when its sound is set.
  */
 export function planSoundAssignment(
   doc: string,
   offset: number,
   sound: string,
+  slow?: number,
 ): SoundAssignPlan | null {
   if (!sound) return null
 
@@ -69,10 +72,28 @@ export function planSoundAssignment(
   return {
     kind: 'insert',
     offset: lineEnd,
-    text: `${hasContent ? '\n' : ''}${form.labelled ? '$: ' : ''}s("${sound}")`,
+    text: `${hasContent ? '\n' : ''}${form.labelled ? '$: ' : ''}s("${sound}")${slow ? `.slow(${slow})` : ''}`,
     ...(form.label !== undefined ? { label: form.label } : {}),
   }
 }
+
+/**
+ * How many cycles a clip of `seconds` needs to play through at `cps`, or null when
+ * it fits in one (#2070). Strudel starts a sample once per event and lets it play to
+ * its end, so `s("take")` with a take longer than a cycle starts a new copy over the
+ * one still playing, every cycle. `.slow(N)` makes one event N cycles long: the clip
+ * plays through, and starts again on the first cycle boundary after it ends. Rounded
+ * up to whole cycles so it stays on the bar; a hair over a cycle (a decoder's padding)
+ * still counts as one. Unknown length → null, the plain line.
+ */
+export function cyclesToPlayThrough(seconds: number | undefined, cps: number): number | null {
+  if (seconds === undefined || !(seconds > 0) || !(cps > 0)) return null
+  const cycles = seconds * cps
+  return cycles <= 1 + CYCLE_SLACK ? null : Math.ceil(cycles - CYCLE_SLACK)
+}
+
+/** How far past a whole cycle a clip may run and still count as that many cycles. */
+const CYCLE_SLACK = 1e-3
 
 /**
  * How to write the new line so it is heard, and the song still is (#2057, #2066).
