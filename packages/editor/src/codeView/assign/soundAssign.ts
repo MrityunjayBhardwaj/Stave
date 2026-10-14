@@ -12,6 +12,7 @@ import { parseTopLevel } from '../astParse'
 import { detectChunk } from '../chunkDetect'
 import { setStringCall } from '../chainEdit'
 import { patternKind } from '../patternKind'
+import { isMutedLabel } from '../ir/trackId'
 import type { OffsetEdit } from '../writeback'
 
 /**
@@ -21,7 +22,7 @@ import type { OffsetEdit } from '../writeback'
  */
 export type SoundAssignPlan =
   | { kind: 'replace'; range: [number, number]; text: string }
-  | { kind: 'insert'; offset: number; text: string }
+  | { kind: 'insert'; offset: number; text: string; label?: number }
 
 /**
  * Decide how to write `sound` at `offset` in `doc`, or return `null` when
@@ -64,46 +65,57 @@ export function planSoundAssignment(
   const nextNewline = doc.indexOf('\n', anchor)
   const lineEnd = nextNewline === -1 ? doc.length : nextNewline
   const hasContent = doc.slice(lineStart, lineEnd).trim().length > 0
+  const form = newLineForm(doc, statements)
   return {
     kind: 'insert',
     offset: lineEnd,
-    text: `${hasContent ? '\n' : ''}${playsLabelled(doc, statements) ? '$: ' : ''}s("${sound}")`,
+    text: `${hasContent ? '\n' : ''}${form.labelled ? '$: ' : ''}s("${sound}")`,
+    ...(form.label !== undefined ? { label: form.label } : {}),
   }
 }
 
 /**
- * Will a new `$:` line be heard in this document (#2057)?
+ * How to write the new line so it is heard, and the song still is (#2057, #2066).
  *
- * Strudel plays the labelled patterns when there are any and ignores the value of a
- * bare expression (`repl.mjs`: the `pPatterns` branch replaces `pattern`); with
- * none, it plays the LAST bare expression. So a bare `s("…")` dropped into a `$:`
- * song is never heard, and a `$:` one dropped into a song that is one bare
- * expression would silence the song. A document with no code yet takes `$:`, the
- * form the starter songs use.
- *
- * ⚠ Known limit: in a song that is one bare expression the line stays bare, and
- * then it replaces the song when it is the last statement. Neither form adds to such
- * a song; only rewriting it would.
+ * Strudel plays the live labelled patterns when there are any and ignores the value
+ * of a bare expression (`repl.mjs`: the `pPatterns` branch replaces `pattern`); with
+ * none, it plays the LAST statement (`transpiler.mjs` returns it). A muted label
+ * (`_$:`, `name_:`) registers nothing (`Pattern.p` returns `silence` for an id that
+ * starts or ends with `_`). So:
+ *  - a live label anywhere, or no code yet → the new line is `$:`;
+ *  - else, the last statement a bare expression → that expression is what plays,
+ *    and a new line of either form would silence it (a `$:` one registers a label,
+ *    a bare one becomes the last statement): label it too (`label` is where its
+ *    `$: ` goes), and write the new line as `$:` — both play;
+ *  - else (the last statement is a muted label: the song plays nothing) → `$:`.
+ * The Library's Insert is the only caller; nothing else rewrites a line of yours.
  */
-function playsLabelled(doc: string, statements: Array<{ type: string }> | null): boolean {
+function newLineForm(
+  doc: string,
+  statements: Array<{ type: string; start: number; label?: { name: string } }> | null,
+): { labelled: boolean; label?: number } {
   // mid-keystroke the document does not parse: read the lines instead
-  if (!statements) return /^[ \t]*\$:/m.test(doc)
-  if (statements.length === 0) return true
-  return statements.some((s) => s.type === 'LabeledStatement')
+  if (!statements) return { labelled: /^[ \t]*\$:/m.test(doc) }
+  const live = statements.some((s) => s.type === 'LabeledStatement' && !isMutedLabel(s.label?.name))
+  const last = statements[statements.length - 1]
+  if (!live && last?.type === 'ExpressionStatement') return { labelled: true, label: last.start }
+  return { labelled: true }
 }
 
 /**
  * The plain edit an assignment plan stands for (#1906). `insert` is a zero-width
  * edit at its offset; `replace` keeps its range — exactly what the writer did
  * with each shape, so a caller hands the result to `commit` without branching on
- * the plan. Takes either planner's result: both share this shape.
+ * the plan. Takes either planner's result: both share this shape. An insert that
+ * also labels the song's playing expression (#2066) is two edits, one write.
  */
 export function assignmentEdit(
   plan:
     | { kind: 'replace'; range: [number, number]; text: string }
-    | { kind: 'insert'; offset: number; text: string },
-): OffsetEdit {
-  return plan.kind === 'replace'
-    ? { range: plan.range, text: plan.text }
-    : { range: [plan.offset, plan.offset], text: plan.text }
+    | { kind: 'insert'; offset: number; text: string; label?: number },
+): OffsetEdit | OffsetEdit[] {
+  if (plan.kind === 'replace') return { range: plan.range, text: plan.text }
+  const insert: OffsetEdit = { range: [plan.offset, plan.offset], text: plan.text }
+  // #2066 — the song's playing expression is labelled in the same write: one undo
+  return plan.label === undefined ? insert : [{ range: [plan.label, plan.label], text: '$: ' }, insert]
 }
