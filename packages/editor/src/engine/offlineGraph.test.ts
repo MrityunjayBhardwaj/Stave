@@ -6,6 +6,7 @@ import {
   onLiveGraph,
   registerBackgroundRender,
   withOfflineGraph,
+  whenGraphFree,
   withUserRender,
   type BackgroundRenderer,
 } from './offlineGraph'
@@ -203,5 +204,49 @@ describe('withUserRender', () => {
       a.dispose()
       b.dispose()
     }
+  })
+})
+
+describe('whenGraphFree (#2064)', () => {
+  it('runs at once, in the same call, when no render holds the graph', () => {
+    let ran = false
+    whenGraphFree(() => {
+      ran = true
+    })
+    expect(ran).toBe(true)
+  })
+
+  it('waits while a render holds the graph, and runs once it lets go', async () => {
+    let release!: () => void
+    const render = withOfflineGraph(() => new Promise<void>((r) => (release = r)))
+    await tick()
+    const order: string[] = []
+    whenGraphFree(() => order.push('free'))
+    await tick()
+    order.push('still rendering')
+    release()
+    await render
+    await tick()
+    expect(order).toEqual(['still rendering', 'free'])
+  })
+
+  it('waits for a render queued behind the one in flight too', async () => {
+    let releaseA!: () => void
+    let releaseB!: () => void
+    const a = withOfflineGraph(() => new Promise<void>((r) => (releaseA = r)))
+    const b = withOfflineGraph(() => new Promise<void>((r) => (releaseB = r)))
+    await tick()
+    let ran = false
+    whenGraphFree(() => {
+      ran = true
+    })
+    releaseA()
+    await a
+    await tick()
+    const afterA = ran
+    releaseB()
+    await b
+    await tick()
+    expect([afterA, ran]).toEqual([false, true])
   })
 })
