@@ -57,6 +57,25 @@ export function withOfflineGraph<T>(render: () => Promise<T>): Promise<T> {
 }
 
 /** Is an offline render borrowing the graph right now? */
+/**
+ * Run `fn` once no offline render holds the graph — at once, in the same call,
+ * when none does (#2064).
+ *
+ * For anything that acts on what superdough is PLAYING rather than starting a
+ * sound: Stop's fade (#2058) reads superdough's context and its live-sound map,
+ * and while a bounce renders both are the bounce's — a fade then lands on the
+ * file being written (measured: the bounced file changed by 0.22 per sample).
+ * Waits out every render queued at the time of the call, not only the one in
+ * flight, because each of them points the globals at its own context.
+ */
+export function whenGraphFree(fn: () => void): void {
+  if (held === 0) {
+    fn()
+    return
+  }
+  void queue.then(fn, fn)
+}
+
 export function offlineGraphBusy(): boolean {
   return held > 0
 }

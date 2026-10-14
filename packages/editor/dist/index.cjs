@@ -14668,11 +14668,14 @@ __name(createTransportHold, "createTransportHold");
 
 // src/engine/offlineGraph.ts
 var queue = Promise.resolve();
+var held = 0;
 function withOfflineGraph(render) {
   const run = queue.then(async () => {
+    held++;
     try {
       return await render();
     } finally {
+      held--;
     }
   });
   queue = run.then(
@@ -14682,6 +14685,14 @@ function withOfflineGraph(render) {
   return run;
 }
 __name(withOfflineGraph, "withOfflineGraph");
+function whenGraphFree(fn) {
+  if (held === 0) {
+    fn();
+    return;
+  }
+  void queue.then(fn, fn);
+}
+__name(whenGraphFree, "whenGraphFree");
 var renderers = /* @__PURE__ */ new Set();
 function registerBackgroundRender(renderer) {
   renderers.add(renderer);
@@ -15974,6 +15985,8 @@ var _StrudelEngine = class _StrudelEngine {
     this.soundMapRef = null;
     /** #2058 — superdough's stop-every-sound (Stave's patch), once audio is up. */
     this.stopAllSoundsFn = null;
+    /** #2064 — moves on every Play and Stop, so a deferred fade knows it is stale. */
+    this.transportGeneration = 0;
     /** the destinationGain node our master analyser is currently tapping. */
     this.taggedDestinationGain = null;
     /** resolves superdough's GLOBAL audio controller (the live one). */
@@ -16636,6 +16649,7 @@ var _StrudelEngine = class _StrudelEngine {
     startAudio(this.audioCtx);
   }
   play() {
+    this.transportGeneration++;
     this.trackEnvelopes.playing();
     if (this.transportHold.requestPlay()) return;
     this.repl?.scheduler?.start();
@@ -16671,7 +16685,14 @@ var _StrudelEngine = class _StrudelEngine {
     this.transportHold.cancelResume();
     this.repl?.scheduler?.stop();
     const stopAll = this.stopAllSoundsFn;
-    if (stopAll) onLiveGraph(() => stopAll(0.03));
+    if (stopAll) {
+      const at = ++this.transportGeneration;
+      whenGraphFree(
+        () => onLiveGraph(() => {
+          if (at === this.transportGeneration) stopAll(0.03);
+        })
+      );
+    }
     this.trackEnvelopes.stopped();
   }
   /**
