@@ -244,6 +244,8 @@ vi.mock('@strudel/webaudio', () => {
     webaudioOutput: vi.fn(),
     registerSynthSounds: vi.fn(),
     registerZZFXSounds: vi.fn(),
+    // Stave's superdough patch (#2058): stop() fades out what is still sounding
+    stopAllSounds: vi.fn(() => 0),
     // Real superdough returns the SAME SuperdoughAudioController singleton on
     // every call. The mock memoizes so tests can inspect the same getOrbit spy
     // the engine itself used during init().

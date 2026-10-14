@@ -33,6 +33,8 @@ export type AssetSource = "built-in" | "user" | "community";
 export interface AssetPreviewHandle {
   /** Stop this preview. Idempotent — safe to call after it already ended. */
   stop: () => void;
+  /** Resolves when the preview ends by itself (a clip played to its end, #2059). */
+  readonly ended?: Promise<void>;
 }
 
 /**

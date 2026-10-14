@@ -27,8 +27,18 @@ function nameList(names: readonly string[]): string {
 export function summarize(summary: ImportSummary): string | null {
   const { saved, rejected, full, failed } = summary;
   const parts: string[] = [];
-  if (saved.length === 1) parts.push(`Added ${saved[0].record.name}`);
-  else if (saved.length > 1) parts.push(`Added ${saved.length} sounds`);
+  // #2061 — a file that took a name Stave's own sound has was given the next free
+  // one. Said every time, or a user types `s("bd")` expecting their file.
+  const own = (from: string) => `“${from}” is one of Stave's own sounds`;
+  if (saved.length === 1) {
+    const { record, renamedFrom } = saved[0];
+    parts.push(`Added ${record.name}${renamedFrom ? ` — ${own(renamedFrom)}` : ""}`);
+  } else if (saved.length > 1) {
+    parts.push(`Added ${saved.length} sounds`);
+    for (const s of saved) {
+      if (s.renamedFrom) parts.push(`${own(s.renamedFrom)}, so that one is ${s.record.name}`);
+    }
+  }
 
   // Named, not counted, while there are few: a user who dropped a folder needs
   // to know WHICH file was skipped to do anything about it.

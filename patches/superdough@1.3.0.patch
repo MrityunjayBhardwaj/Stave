@@ -1,5 +1,5 @@
 diff --git a/dist/index.mjs b/dist/index.mjs
-index da81977b3a8f9cb8af08440c61990437041f69b7..74d39d17111f1cde55572170d270c0a255116f70 100644
+index da81977b3a8f9cb8af08440c61990437041f69b7..48552ac514451dca385a0267c85ace6258b3a4d2 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -24,32 +24,50 @@ function ct(e, t = "superdough") {
@@ -291,7 +291,35 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..74d39d17111f1cde55572170d270c0a2
    }
    return I;
  }
-@@ -1905,7 +1962,7 @@ const No = async (e, t, n, o = 0.5, a = 0.5) => {
+@@ -1553,6 +1610,27 @@ function rc() {
+   ye?.reset(), ne = {}, Le = {};
+ }
+ let Ne = /* @__PURE__ */ new Map();
++// Stave (#2058): stop every sound still playing, fading each out over `fade`
++// seconds. A sample plays its whole length unless something cuts it, and the
++// scheduler's stop only stops NEW notes, so without this a long file keeps
++// sounding after the transport stops. `Ne` is the live-sound map the polyphony
++// limit below already stops sounds from; this is that loop with no limit. A
++// sound scheduled to start later than the fade never starts.
++function __staveStopAllSounds(fade = 0.03) {
++  const n = z().currentTime, P = n + fade;
++  let count = 0;
++  for (const [L, ref] of Ne) {
++    const v = ref.deref();
++    const g = v?.node?.gain;
++    if (g) {
++      try { g.cancelScheduledValues(n); g.setValueAtTime(g.value, n); g.linearRampToValueAtTime(0, P); } catch {}
++    }
++    try { v?.stop?.(P + 0.01); } catch {}
++    Ne.delete(L);
++    count++;
++  }
++  return count;
++}
+ function Ht(e) {
+   return (Array.isArray(e) ? e : [e]).map((t) => t - 1);
+ }
+@@ -1905,7 +1983,7 @@ const No = async (e, t, n, o = 0.5, a = 0.5) => {
      const R = oe.getDjf(f, t);
      c.main.djf = [R];
    }
@@ -300,7 +328,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..74d39d17111f1cde55572170d270c0a2
      const R = Ko(Re, 2 ** (Qe + 5)), X = Ue(Ge, R, 1);
      x.audioNodes.push(X);
    }
-@@ -2297,6 +2354,16 @@ function ko(e = 1, t = 0.05, n = 220, o = 0, a = 0, c = 0.1, s = 0, d = 1, l = 0
+@@ -2297,6 +2375,16 @@ function ko(e = 1, t = 0.05, n = 220, o = 0, a = 0, c = 0.1, s = 0, d = 1, l = 0
      Math.cos(m * C++), g += E - E * u * (1 - (Math.sin(K) + 1) * 1e9 % 2), I && ++I > r && (n += p, F += p, I = 0), h && !(++k % h) && (n = F, l = Q, I ||= 1);
    return N;
  }
@@ -317,7 +345,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..74d39d17111f1cde55572170d270c0a2
  const Po = (e, t) => {
    let {
      s: n,
-@@ -2328,7 +2395,7 @@ const Po = (e, t) => {
+@@ -2328,7 +2416,7 @@ const Po = (e, t) => {
    p = n === "square" ? 0 : p;
    const g = (
      /* ZZFX. */
@@ -326,7 +354,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..74d39d17111f1cde55572170d270c0a2
        0.25,
        // volume
        c,
-@@ -2351,7 +2418,7 @@ const Po = (e, t) => {
+@@ -2351,7 +2439,7 @@ const Po = (e, t) => {
        // sustain volume!
        d,
        Z
@@ -335,7 +363,15 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..74d39d17111f1cde55572170d270c0a2
    ), C = z(), K = C.createBuffer(1, g.length, C.sampleRate);
    K.getChannelData(0).set(g);
    const I = z().createBufferSource();
-@@ -2533,5 +2600,15 @@ export {
+@@ -2437,6 +2525,7 @@ const mc = async (e) => {
+ function Gc(e, t, n, o) {
+   window.postMessage({ time: o, dough: e.value, currentTime: t, duration: e.duration, cps: n });
+ }
++export { __staveStopAllSounds as stopAllSounds };
+ export {
+   $t as DEFAULT_MAX_POLYPHONY,
+   gt as Warpmode,
+@@ -2533,5 +2622,15 @@ export {
    pc as superdoughTrigger,
    Ao as tables,
    Fo as waveformN,

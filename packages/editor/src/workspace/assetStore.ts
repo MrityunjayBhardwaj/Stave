@@ -403,10 +403,15 @@ export async function importAsset(
   } catch {
     duration = undefined
   }
+  // #2061 — every name in the loaded sound map that is not one of the project's own
+  // records is a sound Stave ships, and a record registered under it replaces it.
+  const own = new Set(existing.map((r) => r.name))
+  const builtIn = Object.keys(soundMap.get() ?? {}).filter((n) => !own.has(n))
   const plan = planAssetImport(
     { blobHash: put.hash, filename, mime: blob.type, duration, origin },
     existing,
     deps.mintId ?? (() => crypto.randomUUID()),
+    builtIn,
   )
   return { ...plan, put }
 }

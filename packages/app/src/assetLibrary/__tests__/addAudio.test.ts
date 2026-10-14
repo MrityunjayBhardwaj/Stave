@@ -100,3 +100,23 @@ describe("#1541 — the drop target claims file drags only", () => {
     expect(dragCarriesFiles(undefined)).toBe(false);
   });
 });
+
+describe("#2061 — a file renamed because Stave already has a sound by its name", () => {
+  const renamed = (name: string, from: string) => ({
+    record: { id: name, name, blobHash: "h", mime: "audio/wav" },
+    playable: true,
+    renamedFrom: from,
+  });
+
+  it("says the new name and why, so nobody types the old one expecting the file", () => {
+    expect(summarize(summary({ saved: [renamed("bd_2", "bd")] }))).toBe(
+      "Added bd_2 — “bd” is one of Stave's own sounds",
+    );
+  });
+
+  it("names the renamed ones in a batch", () => {
+    expect(summarize(summary({ saved: [...saved("vox"), renamed("sd_2", "sd")] }))).toBe(
+      "Added 2 sounds; “sd” is one of Stave's own sounds, so that one is sd_2",
+    );
+  });
+});

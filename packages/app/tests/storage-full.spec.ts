@@ -458,8 +458,9 @@ test('#1787 Open Library shows your sounds with their sizes', async ({ page }) =
   await page.locator('[data-storage-full-library]').click({ timeout: 15_000 })
   await page.locator('[data-asset-library]').waitFor({ timeout: 10_000 })
   const shown = {
-    onYourSounds: await page.locator('[data-filter="asset-type-filter"] [data-chip="sample"]').getAttribute('aria-pressed'),
-    size: await page.locator('[data-asset-row^="sample:"] [data-asset-size]').first().innerText({ timeout: 10_000 }),
+    // #2062 — "your sounds" is Sounds → User
+    onYourSounds: await page.locator('[data-filter="asset-source-filter"] [data-chip="user"]').getAttribute('aria-pressed'),
+    size: await page.locator('[data-asset-row^="sound:"] [data-asset-size]').first().innerText({ timeout: 10_000 }),
   }
   expect({ onYourSounds: shown.onYourSounds, sized: /\d(\.\d)? (B|KB|MB)$/.test(shown.size) }).toEqual({
     onYourSounds: 'true',

@@ -12650,17 +12650,26 @@ function planSoundAssignment(doc, offset, sound) {
     const edit = setStringCall(chunk, ["sound", "s"], "sound", sound);
     return edit.range[0] === edit.range[1] ? { kind: "insert", offset: edit.range[0], text: edit.text } : { kind: "replace", range: edit.range, text: edit.text };
   }
-  const lineStart = doc.lastIndexOf("\n", offset - 1) + 1;
-  const nextNewline = doc.indexOf("\n", offset);
+  const statements = parseTopLevel(doc);
+  const under = statements?.find((s) => s.start <= offset && offset <= s.end);
+  const anchor = under ? under.end : offset;
+  const lineStart = doc.lastIndexOf("\n", anchor - 1) + 1;
+  const nextNewline = doc.indexOf("\n", anchor);
   const lineEnd = nextNewline === -1 ? doc.length : nextNewline;
   const hasContent = doc.slice(lineStart, lineEnd).trim().length > 0;
   return {
     kind: "insert",
     offset: lineEnd,
-    text: `${hasContent ? "\n" : ""}s("${sound}")`
+    text: `${hasContent ? "\n" : ""}${playsLabelled(doc, statements) ? "$: " : ""}s("${sound}")`
   };
 }
 __name(planSoundAssignment, "planSoundAssignment");
+function playsLabelled(doc, statements) {
+  if (!statements) return /^[ \t]*\$:/m.test(doc);
+  if (statements.length === 0) return true;
+  return statements.some((s) => s.type === "LabeledStatement");
+}
+__name(playsLabelled, "playsLabelled");
 function assignmentEdit(plan) {
   return plan.kind === "replace" ? { range: plan.range, text: plan.text } : { range: [plan.offset, plan.offset], text: plan.text };
 }
@@ -15963,6 +15972,8 @@ var _StrudelEngine = class _StrudelEngine {
     // — user-registered names always win over the curated alias map.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.soundMapRef = null;
+    /** #2058 — superdough's stop-every-sound (Stave's patch), once audio is up. */
+    this.stopAllSoundsFn = null;
     /** the destinationGain node our master analyser is currently tapping. */
     this.taggedDestinationGain = null;
     /** resolves superdough's GLOBAL audio controller (the live one). */
@@ -16286,6 +16297,7 @@ var _StrudelEngine = class _StrudelEngine {
     audioController.output.destinationGain.connect(this.analyserNode);
     this.taggedDestinationGain = audioController.output.destinationGain;
     this.superdoughControllerFn = webaudioMod.getSuperdoughAudioController ?? null;
+    this.stopAllSoundsFn = webaudioMod.stopAllSounds ?? null;
     const hapStream = this.hapStream;
     const audioCtxRef = audioCtx;
     const wrappedOutput = /* @__PURE__ */ __name(async (hap, deadline, duration, cps, t) => {
@@ -16658,6 +16670,8 @@ var _StrudelEngine = class _StrudelEngine {
   stop() {
     this.transportHold.cancelResume();
     this.repl?.scheduler?.stop();
+    const stopAll = this.stopAllSoundsFn;
+    if (stopAll) onLiveGraph(() => stopAll(0.03));
     this.trackEnvelopes.stopped();
   }
   /**
@@ -39111,6 +39125,56 @@ function startAudition(sound, note = "c4") {
   };
 }
 __name(startAudition, "startAudition");
+var decodedClips = /* @__PURE__ */ new Map();
+function startClipPreview(url, gain = AUDITION_ENVELOPE.gain) {
+  let stopped = false;
+  let source = null;
+  let finish = /* @__PURE__ */ __name(() => {
+  }, "finish");
+  const ended = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const stop = /* @__PURE__ */ __name(() => {
+    if (stopped) return;
+    stopped = true;
+    try {
+      source?.stop();
+    } catch {
+    }
+    finish();
+  }, "stop");
+  try {
+    const ctx = webaudio.getAudioContext();
+    void ctx.resume();
+    let decoded = decodedClips.get(url);
+    if (!decoded) {
+      decoded = fetch(url).then((r) => r.arrayBuffer()).then((bytes) => ctx.decodeAudioData(bytes));
+      decodedClips.set(url, decoded);
+      decoded.catch(() => decodedClips.delete(url));
+    }
+    decoded.then(
+      (buffer) => {
+        if (stopped) return;
+        const out = ctx.createGain();
+        out.gain.value = gain;
+        out.connect(ctx.destination);
+        source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(out);
+        source.onended = () => {
+          out.disconnect();
+          stop();
+        };
+        source.start();
+      },
+      () => stop()
+    );
+  } catch {
+    stop();
+  }
+  return { stop, ended };
+}
+__name(startClipPreview, "startClipPreview");
 var ROLL_HINT = "Click a melody to edit its notes.";
 var RESIZE_ZONE_PX2 = 8;
 var HOLD_RETRIGGER_MS = AUDITION_DUR_S * 1e3;
@@ -50115,11 +50179,12 @@ function nextTakeName(existing) {
   return `${TAKE_NAME_PREFIX}_${highest + 1}`;
 }
 __name(nextTakeName, "nextTakeName");
-function planAssetImport(input, existing, mintId) {
-  const name = uniqueSoundName(
-    soundNameFromFilename(input.filename),
-    existing.map((r) => r.name)
-  );
+function planAssetImport(input, existing, mintId, builtIn = []) {
+  const base = soundNameFromFilename(input.filename);
+  const own = existing.map((r) => r.name);
+  const shipped = new Set(builtIn);
+  const name = uniqueSoundName(base, [...own, ...shipped]);
+  const renamedFrom = name !== base && shipped.has(base) && !own.includes(base) ? base : void 0;
   const record = {
     id: mintId(),
     name,
@@ -50130,7 +50195,8 @@ function planAssetImport(input, existing, mintId) {
   };
   return {
     record,
-    isFirstReference: !existing.some((r) => r.blobHash === input.blobHash)
+    isFirstReference: !existing.some((r) => r.blobHash === input.blobHash),
+    ...renamedFrom ? { renamedFrom } : {}
   };
 }
 __name(planAssetImport, "planAssetImport");
@@ -50276,10 +50342,13 @@ async function importAsset(blob, filename, existing = [], deps = {}, origin) {
   } catch {
     duration = void 0;
   }
+  const own = new Set(existing.map((r) => r.name));
+  const builtIn = Object.keys(webaudio.soundMap.get() ?? {}).filter((n) => !own.has(n));
   const plan = planAssetImport(
     { blobHash: put.hash, filename, mime: blob.type, duration, origin },
     existing,
-    deps.mintId ?? (() => crypto.randomUUID())
+    deps.mintId ?? (() => crypto.randomUUID()),
+    builtIn
   );
   return { ...plan, put };
 }
@@ -53444,6 +53513,7 @@ exports.soundNameFromFilename = soundNameFromFilename;
 exports.soundfontGroupLabel = soundfontGroupLabel;
 exports.splitArm = splitArm;
 exports.startAudition = startAudition;
+exports.startClipPreview = startClipPreview;
 exports.startHistoryDriver = startHistoryDriver;
 exports.startSampleSound = startSampleSound;
 exports.startVisibleArea = startVisibleArea;
