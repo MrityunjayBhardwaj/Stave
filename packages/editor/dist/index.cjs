@@ -12643,7 +12643,7 @@ function listSectionParts(doc, call) {
 __name(listSectionParts, "listSectionParts");
 
 // src/codeView/assign/soundAssign.ts
-function planSoundAssignment(doc, offset, sound) {
+function planSoundAssignment(doc, offset, sound, slow) {
   if (!sound) return null;
   const chunk = detectChunk(doc, offset);
   if (chunk && patternKind(chunk) === "roll") {
@@ -12661,11 +12661,18 @@ function planSoundAssignment(doc, offset, sound) {
   return {
     kind: "insert",
     offset: lineEnd,
-    text: `${hasContent ? "\n" : ""}${form.labelled ? "$: " : ""}s("${sound}")`,
+    text: `${hasContent ? "\n" : ""}${form.labelled ? "$: " : ""}s("${sound}")${slow ? `.slow(${slow})` : ""}`,
     ...form.label !== void 0 ? { label: form.label } : {}
   };
 }
 __name(planSoundAssignment, "planSoundAssignment");
+function cyclesToPlayThrough(seconds, cps) {
+  if (seconds === void 0 || !(seconds > 0) || !(cps > 0)) return null;
+  const cycles = seconds * cps;
+  return cycles <= 1 + CYCLE_SLACK ? null : Math.ceil(cycles - CYCLE_SLACK);
+}
+__name(cyclesToPlayThrough, "cyclesToPlayThrough");
+var CYCLE_SLACK = 1e-3;
 function newLineForm(doc, statements) {
   if (!statements) return { labelled: /^[ \t]*\$:/m.test(doc) };
   const live = statements.some((s) => s.type === "LabeledStatement" && !isMutedLabel(s.label?.name));
@@ -47124,14 +47131,14 @@ var WorkspaceShell = React46.forwardRef(/* @__PURE__ */ __name(function Workspac
           quality: g?.backdropQuality ?? backdropQuality
         };
       }, "getBackdropSettings"),
-      assignSoundToCursor: /* @__PURE__ */ __name((sound) => {
+      assignSoundToCursor: /* @__PURE__ */ __name((sound, opts) => {
         if (!sound) return;
         const editor = getActiveEditor();
         const model = editor?.getModel();
         const pos = editor?.getPosition();
         if (!editor || !model || !pos) return;
         const offset = model.getOffsetAt(pos);
-        const plan = planSoundAssignment(model.getValue(), offset, sound);
+        const plan = planSoundAssignment(model.getValue(), offset, sound, opts?.slow);
         if (!plan) return;
         commitToEditor(editor, assignmentEdit(plan), "mixer");
       }, "assignSoundToCursor"),
@@ -53173,6 +53180,7 @@ exports.createWorkspaceFile = createWorkspaceFile;
 exports.crossClassShapes = crossClassShapes;
 exports.cycleEditorTheme = cycleEditorTheme;
 exports.cycleFingerprints = cycleFingerprints;
+exports.cyclesToPlayThrough = cyclesToPlayThrough;
 exports.deleteAsset = deleteAsset;
 exports.deleteProject = deleteProject;
 exports.deleteSnapshot = deleteSnapshot;
