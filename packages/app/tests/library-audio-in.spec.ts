@@ -209,6 +209,40 @@ test.describe('your own audio, brought in through the Library', () => {
     expect(await startsOf(page, 2), 'starts of the 2 s clip in 3 s of preview').toBe(1)
   })
 
+  test('previewing another clip lets the previous one go (#2063)', async ({ page }) => {
+    // Every decode the page makes, by the decoded length — a clip decoded again
+    // is one the preview did not keep.
+    await page.addInitScript(() => {
+      const w = window as unknown as { __decodes: number[] }
+      w.__decodes = []
+      const decode = BaseAudioContext.prototype.decodeAudioData
+      BaseAudioContext.prototype.decodeAudioData = function (this: BaseAudioContext, ...a: Parameters<typeof decode>) {
+        return decode.apply(this, a).then((b) => {
+          w.__decodes.push(Math.round(b.duration * 100) / 100)
+          return b
+        })
+      } as typeof decode
+    })
+    await boot(page)
+    const first = await addAudio(page, 'first.wav', wav(2))
+    const second = await addAudio(page, 'second.wav', wav(3, 330))
+    const preview = async (name: string, seconds: number) => {
+      const before = await startsOf(page, seconds)
+      const r = row(page, name)
+      await r.hover()
+      await r.locator('[data-asset-preview]').click()
+      await expect.poll(() => startsOf(page, seconds), { timeout: 15_000 }).toBe(before + 1)
+    }
+    const decodesOfFirst = () =>
+      page.evaluate(() => (window as unknown as { __decodes: number[] }).__decodes.filter((d) => Math.abs(d - 2) < 0.02).length)
+    await preview(first, 2)
+    await preview(second, 3)
+    const before = await decodesOfFirst()
+    await preview(first, 2)
+    // Kept every clip: 0 more. Keeps only the last: the first was let go, so it decodes once more.
+    expect((await decodesOfFirst()) - before, 'decodes of the first clip when previewed again after the second').toBe(1)
+  })
+
   test("a file named like one of Stave's own sounds does not replace it (#2061)", async ({ page }) => {
     await boot(page)
     // the shipped sounds are loaded by the engine's warm-up; wait for `bd` to exist

@@ -304,6 +304,7 @@ import { StrudelEngine, isBootStepFailure, type BootStepFailure } from './Strude
 import type { LiveCodingEngine } from './LiveCodingEngine'
 import type { HapEvent } from './HapStream'
 import { Pattern } from '@strudel/core'
+import { withOfflineGraph } from './offlineGraph'
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -1269,5 +1270,54 @@ describe('StrudelEngine live output applies the shared alias step (#1635)', () =
     } finally {
       get.mockImplementation(() => ({}))
     }
+  })
+})
+
+// #2064 — Stop's fade (#2058) acts on superdough's context and live-sound map,
+// which a bounce borrows while it renders. The fade waits for the graph.
+describe('StrudelEngine.stop() fades out on the live graph only (#2064)', () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0))
+  async function stopAllSpy() {
+    const wa = (await import('@strudel/webaudio')) as unknown as { stopAllSounds: ReturnType<typeof vi.fn> }
+    wa.stopAllSounds.mockClear()
+    return wa.stopAllSounds
+  }
+
+  it('with no render, the fade happens at once', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    const stopAll = await stopAllSpy()
+    engine.stop()
+    expect(stopAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('during a render, the fade waits until the render lets go of the graph', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    const stopAll = await stopAllSpy()
+    let release!: () => void
+    const render = withOfflineGraph(() => new Promise<void>((r) => (release = r)))
+    await tick()
+    engine.stop()
+    const during = stopAll.mock.calls.length
+    release()
+    await render
+    await tick()
+    expect([during, stopAll.mock.calls.length]).toEqual([0, 1])
+  })
+
+  it('a Play pressed before the render lets go drops the fade, or it would cut the new notes', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    const stopAll = await stopAllSpy()
+    let release!: () => void
+    const render = withOfflineGraph(() => new Promise<void>((r) => (release = r)))
+    await tick()
+    engine.stop()
+    engine.play()
+    release()
+    await render
+    await tick()
+    expect(stopAll).not.toHaveBeenCalled()
   })
 })
