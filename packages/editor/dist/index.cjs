@@ -13720,15 +13720,25 @@ function startAudio(ctx) {
   }
 }
 __name(startAudio, "startAudio");
+var takesPhoneAudio = true;
+var declared = false;
 function declarePlayback(nav = globalThis.navigator) {
   const session = nav?.audioSession;
-  if (!session || session.type === "playback") return;
+  if (!session) return;
+  declared = true;
+  const type = takesPhoneAudio ? "playback" : "ambient";
+  if (session.type === type) return;
   try {
-    session.type = "playback";
+    session.type = type;
   } catch {
   }
 }
 __name(declarePlayback, "declarePlayback");
+function setTakesPhoneAudio(on, nav = globalThis.navigator) {
+  takesPhoneAudio = on;
+  if (declared) declarePlayback(nav);
+}
+__name(setTakesPhoneAudio, "setTakesPhoneAudio");
 var GESTURES = ["pointerdown", "pointerup", "touchend", "keydown"];
 function startAudioOnNextGesture(ctx, target = globalThis.document) {
   if (!target) return () => void 0;
@@ -13786,8 +13796,8 @@ function extractLoc(hap) {
   return out.length > 0 ? out : void 0;
 }
 __name(extractLoc, "extractLoc");
-function declaredOnly(loc, declared) {
-  const kept = loc.filter((l) => declared.has(`${l.start}:${l.end}`));
+function declaredOnly(loc, declared2) {
+  const kept = loc.filter((l) => declared2.has(`${l.start}:${l.end}`));
   return kept.length > 0 ? kept : void 0;
 }
 __name(declaredOnly, "declaredOnly");
@@ -38067,8 +38077,8 @@ function normalizeChord(chord, opts = {}) {
   return [...MODIFIER_ORDER.filter((m) => mods.has(m)), key3].join("+");
 }
 __name(normalizeChord, "normalizeChord");
-function chordMatches(eventChord, declared, opts = {}) {
-  return normalizeChord(eventChord, opts) === normalizeChord(declared, opts);
+function chordMatches(eventChord, declared2, opts = {}) {
+  return normalizeChord(eventChord, opts) === normalizeChord(declared2, opts);
 }
 __name(chordMatches, "chordMatches");
 
@@ -53513,6 +53523,7 @@ exports.setPlayVizOnHoverEnabled = setPlayVizOnHoverEnabled;
 exports.setSignalAliases = setSignalAliases;
 exports.setSoundCatalogAccessor = setSoundCatalogAccessor;
 exports.setSubfolderOrder = setSubfolderOrder;
+exports.setTakesPhoneAudio = setTakesPhoneAudio;
 exports.setTierFlag = setTierFlag;
 exports.setTrackColourBarsEnabled = setTrackColourBarsEnabled;
 exports.setTrackMeta = setTrackMeta;

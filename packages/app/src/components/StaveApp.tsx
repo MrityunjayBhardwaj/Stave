@@ -106,6 +106,7 @@ import { DocsSearchPalette } from "./DocsSearchPalette";
 import { isPerfOverlayToggle } from "./perfToggleKey";
 import { MusicalTimeline } from "./MusicalTimeline";
 import { startSongAnalysis } from "../state/songAnalysis";
+import { applyStoredTakesPhoneAudio } from "../state/takesPhoneAudio";
 import {
   registerBottomPanelTab,
   readPersistedOpen,
@@ -232,6 +233,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // function, not a hook: an app component must not call the editor's hooks.
   useEffect(() => {
     startVisibleArea();
+  }, []);
+  // #2015 — whether Play takes the phone's audio is a setting; the engine reads it on
+  // every Play, so it needs the stored choice before the first one.
+  useEffect(() => {
+    applyStoredTakesPhoneAudio();
   }, []);
   // #2007 — the page-level rules for a phone (no page scroll, no double-tap zoom) are
   // CSS on the document root, switched by this one attribute.
