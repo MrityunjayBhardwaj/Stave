@@ -24,6 +24,7 @@ import {
 import { showPrompt, showConfirm, showToast } from "../dialogs/host";
 import { extensionToLanguage, promptAndCreateFile } from "../lib/newFile";
 import { Icon } from "./Icon";
+import { FileTypeIcon, FolderIcon } from "./FileTypeIcon";
 
 interface FileTreeProps {
   projectName: string;
@@ -1161,7 +1162,7 @@ function TreeItem(props: TreeItemProps) {
           }}
         >
           <span style={styles.chevron}>{collapsed ? "▸" : "▾"}</span>
-          <span style={styles.folderIcon}>📁</span>
+          <span style={styles.folderIcon}><FolderIcon /></span>
           <span style={styles.itemName}>{node.name}</span>
         </div>
         {!collapsed &&
@@ -1230,7 +1231,7 @@ function TreeItem(props: TreeItemProps) {
         }
       }}
     >
-      <span style={styles.fileIcon}>{fileIconFor(node.name)}</span>
+      <span style={styles.fileIcon}><FileTypeIcon language={file.language} /></span>
       {isEditing ? (
         <input
           ref={props.inputRef}
@@ -1403,22 +1404,6 @@ function ContextMenu(props: ContextMenuProps) {
   );
 }
 
-// ── Helpers ────────────────────────────────────────────────────────
-
-function fileIconFor(name: string): string {
-  const ext = name.split(".").pop()?.toLowerCase();
-  switch (ext) {
-    case "strudel": return "🎵";
-    case "sonicpi": return "🥁";
-    case "hydra": return "✴️";
-    case "p5":
-    case "p5js": return "✨";
-    case "glsl": return "🌈";
-    case "md": return "📝";
-    default: return "📄";
-  }
-}
-
 // ── Styles ─────────────────────────────────────────────────────────
 
 const styles: Record<string, React.CSSProperties> = {
@@ -1541,11 +1526,15 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--text-muted)",
   },
   folderIcon: {
-    fontSize: 12,
+    display: "flex",
+    marginRight: 2,
+    color: "var(--text-icon)",
   },
   fileIcon: {
-    fontSize: 12,
+    display: "flex",
     marginLeft: 10, // align files under folder-chevron column
+    marginRight: 2,
+    color: "var(--text-icon)",
   },
   itemName: {
     overflow: "hidden",
