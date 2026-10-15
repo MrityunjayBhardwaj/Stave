@@ -21,7 +21,7 @@ import type { WorkspaceFile } from "@stave/editor";
 type Language = WorkspaceFile["language"];
 
 const LOGOS: Partial<Record<Language, string>> = {
-  strudel: "/file-icons/strudel.svg",
+  strudel: "/file-icons/strudel.png",
   p5js: "/file-icons/p5.svg",
   hydra: "/file-icons/hydra.svg",
   glsl: "/file-icons/glsl.svg",
