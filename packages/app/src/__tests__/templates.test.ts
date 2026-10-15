@@ -7,6 +7,7 @@ import {
   createWorkspaceFile,
   getFile,
   deleteWorkspaceFile,
+  getChildOrder,
 } from "@stave/editor";
 import {
   PITCHWHEEL_P5_UNTIL_2021,
@@ -15,7 +16,7 @@ import {
   SPIRAL_P5_UNTIL_2021,
   SPIRAL_P5_FIRST,
 } from "../retiredPresetSources";
-import { TEMPLATES, getTemplateFiles, FULL_SONG_CODE, seedMissingPresetFiles } from "../templates";
+import { TEMPLATES, getTemplateFiles, FULL_SONG_CODE, seedMissingPresetFiles, seedProjectFromTemplate } from "../templates";
 
 describe("project templates", () => {
   // getTemplateFiles answers an id it does not know with the Starter files.
@@ -92,5 +93,48 @@ describe("bundled sketches in an existing project (#2021)", () => {
     seedMissingPresetFiles();
     expect(getFile(idOf("pitchwheel"))?.content).toBe(PITCHWHEEL_P5_CODE);
     expect(getFile(idOf("spiral"))?.content).toBe(SPIRAL_P5_CODE);
+  });
+});
+
+describe("each template is a sound project of its own (#2076)", () => {
+  // The bundled visualisers every project carries (seedMissingPresetFiles).
+  const presetIds = new Set(
+    getTemplateFiles("starter").filter((f) => f.meta?.presetId !== undefined).map((f) => f.id),
+  );
+  const ownFiles = (id: string) => getTemplateFiles(id).filter((f) => !presetIds.has(f.id));
+
+  it("control: the bundled visualisers are found, and only under preset/viz", () => {
+    expect(presetIds.size).toBeGreaterThan(10);
+    for (const f of getTemplateFiles("starter")) {
+      if (presetIds.has(f.id)) expect(f.path.startsWith("preset/viz/"), f.path).toBe(true);
+    }
+  });
+
+  it("a template's own files sit at the root, not among the presets", () => {
+    for (const t of TEMPLATES) {
+      for (const f of ownFiles(t.id)) expect(f.path, `${t.id}: ${f.path}`).not.toContain("/");
+    }
+  });
+
+  it("no template's own file takes a bundled visualiser's id", () => {
+    for (const t of TEMPLATES) {
+      for (const f of getTemplateFiles(t.id)) {
+        if (presetIds.has(f.id)) expect(f.path.startsWith("preset/viz/"), `${t.id}: ${f.path}`).toBe(true);
+      }
+    }
+  });
+
+  it("no two templates start the same project", () => {
+    const seen = new Map<string, string>();
+    for (const t of TEMPLATES) {
+      const key = JSON.stringify(ownFiles(t.id).map((f) => [f.language, f.content]));
+      expect(seen.get(key), `${t.id} repeats ${seen.get(key)}`).toBeUndefined();
+      seen.set(key, t.id);
+    }
+  });
+
+  it("a new project lists its own files above the preset folder", () => {
+    seedProjectFromTemplate("song");
+    expect(getChildOrder("")).toEqual(["f:song.strudel", "d:preset"]);
   });
 });

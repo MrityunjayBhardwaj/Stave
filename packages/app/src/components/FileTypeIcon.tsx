@@ -28,11 +28,18 @@ const LOGOS: Partial<Record<Language, string>> = {
   sonicpi: "/file-icons/sonicpi.svg",
 };
 
-const box: React.CSSProperties = { width: 14, height: 14, flex: "none", display: "block" };
+const boxOf = (size: number): React.CSSProperties => ({ width: size, height: size, flex: "none", display: "block" });
 
-export function FileTypeIcon({ language }: { language: Language | undefined }): React.ReactElement {
+export function FileTypeIcon({
+  language,
+  size = 14,
+}: {
+  language: Language | undefined;
+  size?: number;
+}): React.ReactElement {
+  const box = boxOf(size);
   const logo = language ? LOGOS[language] : undefined;
-  if (logo) return <img src={logo} alt="" aria-hidden width={14} height={14} style={box} draggable={false} />;
+  if (logo) return <img src={logo} alt="" aria-hidden width={size} height={size} style={box} draggable={false} />;
   if (language === "markdown") {
     return (
       <svg viewBox="0 0 208 128" style={box} aria-hidden fill="currentColor">
@@ -55,7 +62,7 @@ export function FileTypeIcon({ language }: { language: Language | undefined }): 
 /** A folder, in the theme's icon colour. */
 export function FolderIcon(): React.ReactElement {
   return (
-    <svg viewBox="0 0 24 24" style={box} aria-hidden fill="none" stroke="currentColor" strokeWidth={1.8}>
+    <svg viewBox="0 0 24 24" style={boxOf(14)} aria-hidden fill="none" stroke="currentColor" strokeWidth={1.8}>
       <path d="M3 6h6l2 2h10v11H3z" />
     </svg>
   );
