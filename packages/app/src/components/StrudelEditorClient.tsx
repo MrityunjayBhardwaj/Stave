@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
 import { reportBootFailure } from "../dialogs/bootFailureNotice";
 import { promptAndCreateFile } from "../lib/newFile";
+import { isPlaceholder } from "../lib/fileTreeOps";
 import { BackdropPopover } from "./BackdropPopover";
 import {
   TIMELINE_EVAL_WAIT_MS,
@@ -1834,7 +1835,10 @@ export default function StrudelEditorClient({
       const handle = shellRef?.current;
       if (!handle) return;
       for (const id of removed) handle.closeTabsForFile(id);
-      for (const id of added) handle.openOrFocusFile(id);
+      // An empty folder's hidden placeholder is not something to edit: it
+      // opened as an empty, unnamed-looking tab on every New folder (#2089).
+      const placeholders = new Set(listWorkspaceFiles().filter((f) => isPlaceholder(f.path)).map((f) => f.id));
+      for (const id of added) if (!placeholders.has(id)) handle.openOrFocusFile(id);
     });
   }, [shellRef]);
 

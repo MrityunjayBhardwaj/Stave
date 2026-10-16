@@ -23,6 +23,19 @@ import {
 } from "@stave/editor";
 import { showPrompt, showConfirm, showToast } from "../dialogs/host";
 import { extensionToLanguage, promptAndCreateFile } from "../lib/newFile";
+import {
+  KEEP,
+  foldersEmptiedBy,
+  foldersUnder,
+  nameOf,
+  nextFreeCopyPath,
+  parentOf,
+  pathTaken,
+  placeItem,
+  renameFolder,
+  where,
+  type DragItem,
+} from "../lib/fileTreeOps";
 import { Icon } from "./Icon";
 import { FileTypeIcon, FolderIcon } from "./FileTypeIcon";
 
@@ -369,6 +382,57 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     });
   }, []);
 
+  // The children of a folder in the order the tree is SHOWING them. A drop
+  // starts from this, so it never reorders what the user didn't touch (#2089 —
+  // it used to rebuild the order by itself and scrambled the folder).
+  const shownOrder = useCallback(
+    (folderPath: string): string[] => {
+      let level: TreeNode[] = tree;
+      if (folderPath) {
+        for (const seg of folderPath.split("/")) {
+          const next = level.find((n) => n.kind === "folder" && n.name === seg);
+          if (!next?.children) return [];
+          level = next.children;
+        }
+      }
+      return level
+        .filter((n) => n.kind === "folder" || n.name !== KEEP)
+        .map((n) => (n.kind === "folder" ? "d:" + n.name : "f:" + n.file!.id));
+    },
+    [tree],
+  );
+
+  // A folder's saved orders are keyed by its path: when it moves or is renamed,
+  // its own and every sub-folder's go to the new path with it (#2089).
+  const carryOrders = useCallback(
+    (from: string, to: string) => {
+      const stores = [
+        [getChildOrder, setChildOrder],
+        [getFolderOrder, setFolderOrder],
+        [getSubfolderOrder, setSubfolderOrder],
+      ] as const;
+      for (const path of foldersUnder(files, from)) {
+        const dest = to + path.slice(from.length);
+        for (const [get, set] of stores) {
+          const saved = get(path);
+          if (saved.length > 0) {
+            set(dest, saved);
+            set(path, []);
+          }
+        }
+      }
+    },
+    [files],
+  );
+
+  // Folders exist through their files: one emptied by a move or a delete the
+  // user didn't aim at it gets the hidden placeholder an empty new folder has.
+  const keepFolders = useCallback((folders: string[]) => {
+    folders.forEach((folder, i) => {
+      createWorkspaceFile(`file_${Date.now()}_${i}_keep`, `${folder}/${KEEP}`, "", "markdown");
+    });
+  }, []);
+
   const startRename = useCallback((file: WorkspaceFile) => {
     setEditingFileId(file.id);
     const parts = file.path.split("/");
@@ -389,6 +453,12 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     const parts = file.path.split("/");
     parts[parts.length - 1] = editValue.trim();
     const newPath = parts.join("/");
+    // Two files with one path can't be told apart (#2090).
+    if (newPath !== file.path && pathTaken(files, newPath, new Set([file.id]))) {
+      showToast(`"${nameOf(newPath)}" already exists in ${where(parentOf(newPath))}.`, "error");
+      setEditingFileId(null);
+      return;
+    }
     renameWorkspaceFile(editingFileId, newPath);
     setEditingFileId(null);
   }, [editingFileId, editValue, files]);
@@ -397,12 +467,9 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     const file = files.find((f) => f.id === fileId);
     if (!file) return;
     setContextMenu(null);
-    const dot = file.path.lastIndexOf(".");
-    const slash = file.path.lastIndexOf("/");
-    // "foo/bar.strudel" → "foo/bar copy.strudel"; "bar" → "bar copy"
-    const newPath = dot > slash
-      ? `${file.path.slice(0, dot)} copy${file.path.slice(dot)}`
-      : `${file.path} copy`;
+    // "foo/bar.strudel" → "foo/bar copy.strudel", then "foo/bar copy 2.strudel"…
+    // — never a name that is already taken (#2090).
+    const newPath = nextFreeCopyPath(files, file.path);
     const id = `file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     createWorkspaceFile(id, newPath, file.content, file.language, file.meta as Record<string, unknown> | undefined);
   }, [files]);
@@ -429,8 +496,12 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
       confirmLabel: "Delete",
       danger: true,
     });
-    if (ok) deleteWorkspaceFile(fileId);
-  }, [files]);
+    if (!ok) return;
+    withStructBatch(() => {
+      keepFolders(foldersEmptiedBy(files, new Set([fileId])));
+      deleteWorkspaceFile(fileId);
+    });
+  }, [files, keepFolders]);
 
   const handleBulkDelete = useCallback(async () => {
     const ids = Array.from(selectedFileIds);
@@ -444,36 +515,39 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     });
     if (!ok) return;
     withStructBatch(() => {
+      keepFolders(foldersEmptiedBy(files, new Set(ids)));
       for (const id of ids) deleteWorkspaceFile(id);
     });
     setSelectedFileIds(new Set());
-  }, [selectedFileIds]);
+  }, [selectedFileIds, files, keepFolders]);
 
-  // Folder rename — cascade-rename every file whose path starts with
-  // `oldPath + "/"` (plus the .keep placeholder), swapping the prefix.
+  // Folder rename — cascade-rename every file under the folder, swapping the
+  // prefix. Its saved orders (its own and every sub-folder's) and its place in
+  // its parent's order go with it (#2089); a name a sibling has is refused (#2090).
   const handleRenameFolder = useCallback(async (oldPath: string) => {
-    const oldName = oldPath.split("/").pop() ?? "";
-    const parentPath = oldPath.includes("/")
-      ? oldPath.slice(0, oldPath.lastIndexOf("/"))
-      : "";
     setContextMenu(null);
     const newName = await showPrompt({
       title: "Rename folder",
-      initialValue: oldName,
+      initialValue: nameOf(oldPath),
       placeholder: "Folder name",
       confirmLabel: "Rename",
     });
-    if (!newName || !newName.trim() || newName === oldName) return;
-    const newPath = parentPath ? `${parentPath}/${newName.trim()}` : newName.trim();
+    const plan = renameFolder(files, oldPath, newName ?? "");
+    if (!plan.ok) {
+      if (plan.reason) showToast(plan.reason, "error");
+      return;
+    }
     withStructBatch(() => {
-      for (const f of files) {
-        if (f.path === oldPath || f.path.startsWith(oldPath + "/")) {
-          const suffix = f.path.slice(oldPath.length);
-          renameWorkspaceFile(f.id, `${newPath}${suffix}`);
-        }
-      }
+      carryOrders(plan.carryOrders.from, plan.carryOrders.to);
+      for (const r of plan.renames) renameWorkspaceFile(r.id, r.path);
+      const { parent, from, to } = plan.parentEntry;
+      const order = getChildOrder(parent);
+      if (order.includes(from)) setChildOrder(parent, order.map((e) => (e === from ? to : e)));
+      const subOrder = getSubfolderOrder(parent);
+      const oldName = from.slice(2);
+      if (subOrder.includes(oldName)) setSubfolderOrder(parent, subOrder.map((n) => (n === oldName ? to.slice(2) : n)));
     });
-  }, [files]);
+  }, [files, carryOrders]);
 
   // Folder delete — cascade-delete every file under the folder.
   const handleDeleteFolder = useCallback(async (path: string) => {
@@ -494,10 +568,11 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     });
     if (ok) {
       withStructBatch(() => {
+        keepFolders(foldersEmptiedBy(files, new Set(doomed.map((f) => f.id)), path));
         for (const f of doomed) deleteWorkspaceFile(f.id);
       });
     }
-  }, [files]);
+  }, [files, keepFolders]);
 
   const handleNewFile = useCallback(
     (folderPath = "") => promptAndCreateFile(folderPath),
@@ -514,9 +589,13 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     // Folders are implicit — create a .keep placeholder file so the folder
     // appears in the tree and persists to IDB. The user can delete it later.
     const folderName = name.trim();
-    const path = parentPath ? `${parentPath}/${folderName}/.keep` : `${folderName}/.keep`;
+    const folderPath = parentPath ? `${parentPath}/${folderName}` : folderName;
+    if (pathTaken(listWorkspaceFiles(), folderPath)) {
+      showToast(`"${folderName}" already exists in ${where(parentPath)}.`, "error");
+      return;
+    }
     const id = `file_${Date.now()}_keep`;
-    createWorkspaceFile(id, path, "", "markdown");
+    createWorkspaceFile(id, `${folderPath}/${KEEP}`, "", "markdown");
   }, []);
 
   // ── Drag-drop move (files + folders) ────────────────────────────────
@@ -542,72 +621,30 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     position: "above" | "below";
   } | null>(null);
 
-  // Move a file into a folder (or root if targetFolderPath is ""). No-op
-  // if the file is already directly in that folder. Also migrates the
-  // file's fileOrder entry from the source folder's order array to the
-  // target folder's (append at end) so within-folder ordering stays
-  // consistent after a cross-folder drop (#15).
-  const moveFileToFolder = useCallback(
-    (fileId: string, targetFolderPath: string) => {
-      const file = files.find((f) => f.id === fileId);
-      if (!file) return;
-      const fileName = file.path.split("/").pop()!;
-      const newPath = targetFolderPath
-        ? `${targetFolderPath}/${fileName}`
-        : fileName;
-      if (newPath === file.path) return;
-      const oldFolder = file.path.includes("/")
-        ? file.path.slice(0, file.path.lastIndexOf("/"))
-        : "";
-      // Batch all three mutations into ONE transaction so undo reverts
-      // the cross-folder move as a single step (instead of 3 separate
-      // ones).
-      withStructBatch(() => {
-        renameWorkspaceFile(fileId, newPath);
-        if (oldFolder === targetFolderPath) return;
-        const sourceOrder = getFolderOrder(oldFolder);
-        if (sourceOrder.includes(fileId)) {
-          setFolderOrder(oldFolder, sourceOrder.filter((id) => id !== fileId));
-        }
-        const targetOrder = getFolderOrder(targetFolderPath);
-        if (!targetOrder.includes(fileId)) {
-          setFolderOrder(targetFolderPath, [...targetOrder, fileId]);
-        }
-      });
-    },
-    [files],
-  );
-
-  // Move a folder (and all its contents) into another folder. Preserves
-  // hierarchy: "sketches/foo.strudel" dropped onto "assets/" becomes
-  // "assets/sketches/foo.strudel". Prevents dropping a folder into itself
-  // or any of its descendants.
-  const moveFolderToFolder = useCallback(
-    (sourceFolderPath: string, targetFolderPath: string) => {
-      if (
-        targetFolderPath === sourceFolderPath ||
-        targetFolderPath.startsWith(sourceFolderPath + "/")
-      ) {
-        return; // can't drop into self or descendant
+  // Put a dragged file or folder into `targetParent`, next to `anchor` (or
+  // just into the folder when `anchor` is null). Moves it there if it lives
+  // elsewhere — refused when the name is taken — and keeps the folder it
+  // leaves when that was its last item. One undo step.
+  const place = useCallback(
+    (item: DragItem, targetParent: string, anchor: string | null, position: "above" | "below") => {
+      const plan = placeItem({ files, item, targetParent, anchor, position, shownOrder });
+      if (!plan.ok) {
+        if (plan.reason) showToast(plan.reason, "error");
+        return;
       }
-      const folderName = sourceFolderPath.split("/").pop()!;
-      const newPrefix = targetFolderPath
-        ? `${targetFolderPath}/${folderName}`
-        : folderName;
-      if (newPrefix === sourceFolderPath) return; // no-op
-      const affected = files.filter(
-        (f) => f.path === sourceFolderPath || f.path.startsWith(sourceFolderPath + "/"),
-      );
-      // Batch so the whole folder move is ONE undo step.
       withStructBatch(() => {
-        for (const f of affected) {
-          const suffix = f.path.slice(sourceFolderPath.length);
-          const newPath = `${newPrefix}${suffix}`;
-          renameWorkspaceFile(f.id, newPath);
+        if (plan.carryOrders) carryOrders(plan.carryOrders.from, plan.carryOrders.to);
+        for (const r of plan.renames) renameWorkspaceFile(r.id, r.path);
+        if (plan.keepFolder) keepFolders([plan.keepFolder]);
+        if (plan.leftParent) {
+          const { parent, entry } = plan.leftParent;
+          const left = getChildOrder(parent);
+          if (left.includes(entry)) setChildOrder(parent, left.filter((e) => e !== entry));
         }
+        if (plan.order) setChildOrder(plan.order.parent, plan.order.entries);
       });
     },
-    [files],
+    [files, shownOrder, carryOrders, keepFolders],
   );
 
   const handleDragStart = useCallback(
@@ -700,8 +737,12 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
         showToast(`Skipped "${f.name}" — unsupported extension ".${ext}"`, "error");
         continue;
       }
-      const text = await f.text();
       const path = targetFolderPath ? `${targetFolderPath}/${f.name}` : f.name;
+      if (pathTaken(listWorkspaceFiles(), path)) {
+        showToast(`Skipped "${f.name}" — it already exists in ${where(targetFolderPath)}.`, "error");
+        continue;
+      }
+      const text = await f.text();
       const id = `file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       createWorkspaceFile(id, path, text, language);
     }
@@ -733,198 +774,61 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     [],
   );
 
-  // Compute the parent folder path of a file (everything except the last
-  // segment). Root returns "".
-  const folderPathOf = useCallback((filePath: string) => {
-    const i = filePath.lastIndexOf("/");
-    return i < 0 ? "" : filePath.slice(0, i);
-  }, []);
+  const readDragItem = (e: React.DragEvent): DragItem | null => {
+    const raw = e.dataTransfer.getData("application/stave-tree-item");
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as DragItem;
+    } catch {
+      return null;
+    }
+  };
 
-  /**
-   * Unified child reorder — moves `sourceEntry` relative to
-   * `anchorEntry` at the same folder level. Both entries use the
-   * `"d:name"` / `"f:id"` encoding. Writes to `childOrder`, which
-   * supports interleaved folders and files.
-   */
-  const reorderChildWithin = useCallback(
-    (
-      parentPath: string,
-      sourceEntry: string,
-      anchorEntry: string,
-      position: "above" | "below",
-    ) => {
-      if (sourceEntry === anchorEntry) return;
-      // Build the current child order — seed from existing childOrder,
-      // or synthesise from the tree (folders-first then files).
-      const prefix = parentPath ? parentPath + "/" : "";
-      const folderNames = new Set<string>();
-      const fileEntries: string[] = [];
-      for (const f of files) {
-        if (!f.path.startsWith(prefix)) continue;
-        const rest = f.path.slice(prefix.length);
-        const slash = rest.indexOf("/");
-        if (slash >= 0) {
-          folderNames.add(rest.slice(0, slash));
-        } else if (!f.path.endsWith("/.keep")) {
-          fileEntries.push("f:" + f.id);
-        }
-      }
-      const folderEntries = [...folderNames].sort().map((n) => "d:" + n);
-
-      // If childOrder already exists, use it as seed. Otherwise
-      // synthesise from subfolderOrder + fileOrder, or alphabetical.
-      let existing = getChildOrder(parentPath);
-      if (existing.length === 0) {
-        // Build from legacy ordering
-        const subOrder = getSubfolderOrder(parentPath);
-        const fileOrder = getFolderOrder(parentPath);
-
-        let orderedFolders = folderEntries;
-        if (subOrder.length > 0) {
-          const idx = new Map(subOrder.map((n, i) => [n, i]));
-          orderedFolders = [...folderEntries].sort((a, b) => {
-            const na = a.slice(2), nb = b.slice(2);
-            const ia = idx.get(na) ?? Infinity, ib = idx.get(nb) ?? Infinity;
-            return ia - ib;
-          });
-        }
-
-        let orderedFiles = fileEntries;
-        if (fileOrder.length > 0) {
-          const idx = new Map(fileOrder.map((id, i) => [id, i]));
-          orderedFiles = [...fileEntries].sort((a, b) => {
-            const ia = idx.get(a.slice(2)) ?? Infinity, ib = idx.get(b.slice(2)) ?? Infinity;
-            return ia - ib;
-          });
-        }
-
-        existing = [...orderedFolders, ...orderedFiles];
-      }
-
-      // Ensure source and anchor are in the list
-      const allEntries = new Set(existing);
-      for (const e of [...folderEntries, ...fileEntries]) allEntries.add(e);
-      const base = [...allEntries].filter((e) => {
-        if (e.startsWith("d:")) return folderNames.has(e.slice(2));
-        if (e.startsWith("f:")) return fileEntries.includes(e);
-        return false;
-      });
-
-      const without = base.filter((e) => e !== sourceEntry);
-      const anchorIdx = without.indexOf(anchorEntry);
-      if (anchorIdx < 0) return;
-      const insertAt = position === "above" ? anchorIdx : anchorIdx + 1;
-      const next = [
-        ...without.slice(0, insertAt),
-        sourceEntry,
-        ...without.slice(insertAt),
-      ];
-      setChildOrder(parentPath, next);
-    },
-    [files],
-  );
-
-  // Legacy wrappers used by handleDrop and handleDropOnFile
-  const reorderFolderWithin = useCallback(
-    (sourcePath: string, anchorPath: string, position: "above" | "below") => {
-      const parentOf = (p: string) => { const i = p.lastIndexOf("/"); return i < 0 ? "" : p.slice(0, i); };
-      const nameOf = (p: string) => { const i = p.lastIndexOf("/"); return i < 0 ? p : p.slice(i + 1); };
-      const parent = parentOf(sourcePath);
-      if (parent !== parentOf(anchorPath)) return;
-      reorderChildWithin(parent, "d:" + nameOf(sourcePath), "d:" + nameOf(anchorPath), position);
-    },
-    [reorderChildWithin],
-  );
-
-  const reorderFileWithin = useCallback(
-    (fileId: string, anchorId: string, position: "above" | "below") => {
-      if (fileId === anchorId) return;
-      const source = files.find((f) => f.id === fileId);
-      const anchor = files.find((f) => f.id === anchorId);
-      if (!source || !anchor) return;
-      const folder = folderPathOf(source.path);
-      if (folder !== folderPathOf(anchor.path)) return;
-      reorderChildWithin(folder, "f:" + fileId, "f:" + anchorId, position);
-    },
-    [files, folderPathOf, reorderChildWithin],
-  );
-
+  // A drop on a FILE row: the item lands in that file's folder, above or below
+  // it by which half of the row the pointer is in — whichever folder it came
+  // from (#2089). Read from the drop itself, not from the last dragover.
   const handleDropOnFile = useCallback(
     (e: React.DragEvent, targetFileId: string) => {
       e.preventDefault();
       e.stopPropagation();
-      const raw = e.dataTransfer.getData("application/stave-tree-item");
-      setBetweenTarget(null);
-      if (!raw) return;
-      try {
-        const payload = JSON.parse(raw) as
-          | { kind: "file"; fileId: string }
-          | { kind: "folder"; folderPath: string };
-        const position = betweenTarget?.position ?? "below";
-        if (payload.kind === "file") {
-          reorderFileWithin(payload.fileId, targetFileId, position);
-        } else {
-          // Folder dropped on a file row — reorder the folder relative
-          // to the file within their shared parent level.
-          const targetFile = files.find((f) => f.id === targetFileId);
-          if (!targetFile) return;
-          const parentPath = folderPathOf(targetFile.path);
-          reorderChildWithin(parentPath, "d:" + payload.folderPath.split("/").pop()!, "f:" + targetFileId, position);
-        }
-      } catch {
-        /* ignore */
-      }
+      handleDragLeaveTree();
+      const item = readDragItem(e);
+      const target = files.find((f) => f.id === targetFileId);
+      if (!item || !target) return;
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const position = e.clientY < rect.top + rect.height / 2 ? "above" : "below";
+      place(item, parentOf(target.path), "f:" + targetFileId, position);
     },
-    [betweenTarget, reorderFileWithin, reorderChildWithin, files, folderPathOf],
+    [files, place, handleDragLeaveTree],
   );
 
+  // A drop on a FOLDER row (or on the list itself, `targetFolderPath` ""):
+  // the top / bottom quarter of a row places the item beside the folder, the
+  // middle puts it inside; the list puts it at the top level. Files from the
+  // desktop are imported into the folder.
   const handleDrop = useCallback(
     (e: React.DragEvent, targetFolderPath: string) => {
       e.preventDefault();
       e.stopPropagation();
-      // Native OS file drop — import and return.
+      handleDragLeaveTree();
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        setDropTarget(null);
-        setBetweenFolderTarget(null);
         void importNativeFiles(e.dataTransfer.files, targetFolderPath);
         return;
       }
-      const raw = e.dataTransfer.getData("application/stave-tree-item");
-      const pendingBetween = betweenFolderTarget;
-      setBetweenFolderTarget(null);
-      if (!raw) return;
-      try {
-        const payload = JSON.parse(raw) as
-          | { kind: "file"; fileId: string }
-          | { kind: "folder"; folderPath: string };
-        // Between-zone active on a folder row → reorder (not nest).
-        if (pendingBetween && pendingBetween.folderPath === targetFolderPath) {
-          const anchorEntry = "d:" + targetFolderPath.split("/").pop()!;
-          const parentOf = (p: string) => { const i = p.lastIndexOf("/"); return i < 0 ? "" : p.slice(0, i); };
-          const parentPath = parentOf(targetFolderPath);
-
-          if (payload.kind === "folder") {
-            reorderFolderWithin(payload.folderPath, targetFolderPath, pendingBetween.position);
-          } else {
-            // File dropped on the edge of a folder row → reorder file
-            // relative to the folder at their shared parent level.
-            reorderChildWithin(parentPath, "f:" + payload.fileId, anchorEntry, pendingBetween.position);
-          }
-          setDropTarget(null);
-          return;
-        }
-        // Middle zone or no between → nest into folder.
-        if (payload.kind === "file") {
-          moveFileToFolder(payload.fileId, targetFolderPath);
-        } else if (payload.kind === "folder") {
-          moveFolderToFolder(payload.folderPath, targetFolderPath);
-        }
-      } catch {
-        /* ignore malformed payload */
+      const item = readDragItem(e);
+      if (!item) return;
+      if (targetFolderPath === "") {
+        place(item, "", null, "below");
+        return;
       }
-      setDropTarget(null);
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      const quarter = rect.height / 4;
+      if (y < quarter) place(item, parentOf(targetFolderPath), "d:" + nameOf(targetFolderPath), "above");
+      else if (y > rect.height - quarter) place(item, parentOf(targetFolderPath), "d:" + nameOf(targetFolderPath), "below");
+      else place(item, targetFolderPath, null, "below");
     },
-    [moveFileToFolder, moveFolderToFolder, betweenFolderTarget, reorderFolderWithin, reorderChildWithin, importNativeFiles],
+    [place, importNativeFiles, handleDragLeaveTree],
   );
 
   return (
@@ -983,6 +887,9 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
           }
         }}
         onDrop={(e) => handleDrop(e, "")}
+        // A drag that ends without a drop (Escape, released outside) clears
+        // its highlight; dragend bubbles from the dragged row (#2089).
+        onDragEnd={handleDragLeaveTree}
         onContextMenu={(e) => {
           // Only fire for the empty root area — if the click landed on a
           // child row, that row's own handler stops propagation first.
