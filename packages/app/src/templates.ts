@@ -217,10 +217,12 @@ export interface TemplateFile {
   content: string;
   language: WorkspaceLanguage;
   meta?: Record<string, unknown>;
-  /** How each of the song's tracks draws on the Song timeline, by track name
-   *  (a label, or d1, d2… for each `$:`): every track Bars, a vocal Waveform.
-   *  Saved when the project is made, so a track whose default would change
-   *  once its sound loads (a piano's sample outlasts a bar, #2079) does not. */
+  /** How each of the song's NAMED tracks draws on the Song timeline: every
+   *  track Bars, a vocal Waveform. Saved when the project is made, so a track
+   *  whose default would change once its sound loads (a piano's sample
+   *  outlasts a bar, #2079) does not. Never a `$:` track's d1, d2…: that name
+   *  is only "the first `$:`", so a type saved for it would stick to whatever
+   *  track the user writes first. Songs of `$:` tracks rely on the default. */
   trackDisplays?: Record<string, TrackDisplay>;
 }
 
@@ -272,7 +274,6 @@ function makeStarterFiles(): TemplateFile[] {
       id: "pattern.strudel",
       path: "pattern.strudel",
       content: STRUDEL_CODE,
-      trackDisplays: { d1: "bars", d2: "bars", d3: "bars" },
       language: "strudel",
     },
     // NOTE: the Sonic Pi preset file is intentionally omitted from this build —
@@ -318,7 +319,6 @@ function makeStrudelOnlyFiles(): TemplateFile[] {
       id: "pattern.strudel",
       path: "pattern.strudel",
       content: STRUDEL_SKETCH_CODE,
-      trackDisplays: { d1: "bars", d2: "bars" },
       language: "strudel",
     },
   ];

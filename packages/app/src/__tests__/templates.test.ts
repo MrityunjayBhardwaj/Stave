@@ -158,16 +158,27 @@ describe("template tracks open as Bars, a vocal as Waveform", () => {
   const strudelFiles = () =>
     TEMPLATES.flatMap((t) => getTemplateFiles(t.id).filter((f) => f.language === "strudel").map((f) => ({ t: t.id, f })));
 
-  it("every track of every template song is saved as Bars, except the Full Song's voice", () => {
+  it("every named track of the Full Song is saved as Bars, except its voice as Waveform", () => {
+    seedProjectFromTemplate("song");
+    const f = getTemplateFiles("song")[0];
+    const names = trackNames(f.content);
+    expect(names).toEqual(["drums", "bass", "keys", "lead", "voice"]);
+    for (const name of names) {
+      expect(getTrackMeta(f.id, name).display, name).toBe(name === "voice" ? "waveform" : "bars");
+    }
+  });
+
+  it("saves nothing for a `$:` track, whose d1, d2… name follows whatever is written first", () => {
     expect(strudelFiles().length).toBeGreaterThanOrEqual(3); // Starter, Strudel Sketch, Full Song
     for (const { t, f } of strudelFiles()) {
+      for (const name of Object.keys(f.trackDisplays ?? {})) expect(name, `${t} ${name}`).not.toMatch(/^d\d+$/);
+    }
+    // The Starter and the Sketch are all `$:` tracks: seeding saves no type, so
+    // a song written over them later is not held to these tracks' types.
+    for (const t of ["starter", "strudel"]) {
       seedProjectFromTemplate(t);
-      const names = trackNames(f.content);
-      expect(names.length, `${t} has tracks`).toBeGreaterThan(0);
-      for (const name of names) {
-        const want = t === "song" && name === "voice" ? "waveform" : "bars";
-        expect(getTrackMeta(f.id, name).display, `${t} ${name}`).toBe(want);
-      }
+      const f = getTemplateFiles(t).find((x) => x.language === "strudel")!;
+      for (const name of trackNames(f.content)) expect(getTrackMeta(f.id, name).display, `${t} ${name}`).toBeUndefined();
     }
   });
 
