@@ -26,9 +26,9 @@ function cardFor(name: string): Element {
 describe("template icons (#2076)", () => {
   it("the New Project cards show the logos of the files each template creates", () => {
     render(<TemplateModal open onClose={() => {}} onCreate={() => {}} />);
-    expect(logosIn(cardFor("Starter"))).toEqual(["strudel.svg", "p5.svg", "hydra.svg"]);
-    expect(logosIn(cardFor("Strudel Sketch"))).toEqual(["strudel.svg"]);
-    expect(logosIn(cardFor("Full Song"))).toEqual(["strudel.svg"]);
+    expect(logosIn(cardFor("Starter"))).toEqual(["strudel.png", "p5.svg", "hydra.svg"]);
+    expect(logosIn(cardFor("Strudel Sketch"))).toEqual(["strudel.png"]);
+    expect(logosIn(cardFor("Full Song"))).toEqual(["strudel.png"]);
     expect(logosIn(cardFor("Hydra Visual"))).toEqual(["hydra.svg"]);
     // Blank creates nothing of its own: a plain page, drawn, no logo.
     expect(logosIn(cardFor("Blank"))).toEqual([]);
@@ -47,7 +47,7 @@ describe("template icons (#2076)", () => {
     );
     const rows = [...document.querySelectorAll('[data-start-screen="template"]')];
     expect(rows.map((r) => r.textContent)).toEqual(TEMPLATES.map((t) => t.name));
-    expect(logosIn(rows[0])).toEqual(["strudel.svg", "p5.svg", "hydra.svg"]);
+    expect(logosIn(rows[0])).toEqual(["strudel.png", "p5.svg", "hydra.svg"]);
     expect(logosIn(rows[TEMPLATES.findIndex((t) => t.id === "hydra")])).toEqual(["hydra.svg"]);
   });
 });
