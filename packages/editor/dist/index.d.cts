@@ -9831,7 +9831,8 @@ declare function subscribeToZoneOverrides(fileId: string, cb: Subscriber$1): () 
  *  - `collapsed`: chevron state (default = expanded; users notice collapse by absence)
  *  - `display`: how the track's Song timeline lane draws (#1738) — `waveform`
  *    (its audio: a sample's file, a synth's own render) or `bars` (notes only).
- *    Absent means `waveform`.
+ *    Absent means the default (#2079): `bars`, unless every note on the track
+ *    plays an audio file longer than a bar, such as a vocal take.
  */
 interface TrackMeta {
     color?: string;

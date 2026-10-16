@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { chooseDisplay, shownDisplay } from './_laneType'
 
 import { bootApp, seedCode, waitForEditorLoaded } from './_appBoot'
 
@@ -117,14 +118,6 @@ async function stopTransport(page: Page): Promise<void> {
   await page.locator('[data-full-song="playhead"]').waitFor({ state: 'detached', timeout: 10_000 })
 }
 
-async function chooseDisplay(page: Page, laneKey: string, display: 'waveform' | 'bars'): Promise<void> {
-  await page.locator(`[data-full-song-lane="${laneKey}"]`).getByText(laneKey, { exact: true }).click({ button: 'right' })
-  const menu = page.locator(`[data-full-song-lane-menu="${laneKey}"]`)
-  await menu.locator('[data-full-song-lane-menu-type]').hover()
-  await menu.locator(`[data-full-song-lane-menu-display="${display}"]`).click()
-  await expect(menu).toHaveCount(0)
-}
-
 async function waitForEnvelopes(page: Page, want: string, timeout = 20_000): Promise<void> {
   await expect.poll(() => envelopes(page), { timeout }).toBe(want)
 }
@@ -135,6 +128,7 @@ async function playsAtOnceDuringRender(page: Page, tag: string): Promise<void> {
   // flight when Play is pressed.
   const code = 'setcps(0.5)\n$: arrange([256, note("c3*8 e3*8").s("sawtooth").lpf(1200)])'
   await seedCode(page, code)
+  await chooseDisplay(page, 'd1', 'waveform')
   await waitForEnvelopes(page, 'd1:fresh', 60_000)
 
   // Baseline: evaluate-and-play with no render running.
@@ -166,6 +160,7 @@ test.describe('synth lane envelope (#1731)', () => {
   test('a stopped synth lane draws an envelope that follows its gain; a drum lane draws none', async ({ page }) => {
     // One sustained note per cycle, getting louder each cycle.
     await seedCode(page, 'setcps(0.5)\n$: note("c3").s("sine").gain("<0.1 0.4 0.7 1>")\n$: s("bd*4")')
+    await chooseDisplay(page, 'd1', 'waveform')
     await waitForEnvelopes(page, 'd1:fresh')
     const quiet = await inkRows(page, 'd1', 0)
     // Cycle 2 (gain 0.7), not 3: a four-cycle song has no tick for cycle 4 to
@@ -180,9 +175,26 @@ test.describe('synth lane envelope (#1731)', () => {
     expect(loud - quiet).toBeGreaterThanOrEqual(4)
   })
 
+  test('with no type saved, a synth lane and a drum lane draw as Bars, and their menus say so (#2079)', async ({ page }) => {
+    await seedCode(page, 'setcps(0.5)\n$: note("c3").s("sine").gain("<0.1 0.4 0.7 1>")\n$: s("bd*4")')
+    await page.locator('[data-full-song-lane="d2"]').waitFor({ timeout: 20_000 })
+    // The synth track is still rendered, last, so choosing Waveform draws at
+    // once (#1748), but nothing is drawn while it is Bars.
+    await expect.poll(() => held(page), { timeout: 30_000 }).toBe('d1')
+    expect(await envelopes(page)).toBe('')
+    expect(await shownDisplay(page, 'd1')).toBe('bars')
+    expect(await shownDisplay(page, 'd2')).toBe('bars')
+    // CONTROL — saving Waveform draws it, and the menu follows.
+    await chooseDisplay(page, 'd1', 'waveform')
+    await waitForEnvelopes(page, 'd1:fresh')
+    expect(await shownDisplay(page, 'd1')).toBe('waveform')
+  })
+
   test('an edit while playing marks only that track stale, and stopping renders it again', async ({ page }) => {
     const before = 'setcps(0.5)\n$: note("c3*2").s("sawtooth")\n$: note("e2").s("square")'
     await seedCode(page, before)
+    await chooseDisplay(page, 'd1', 'waveform')
+    await chooseDisplay(page, 'd2', 'waveform')
     await waitForEnvelopes(page, 'd1:fresh d2:fresh')
 
     await page.locator('.monaco-editor').first().click()
@@ -286,6 +298,11 @@ test.describe('synth lane envelope (#1731)', () => {
     // pass, so the first four are drawn and the fifth is named.
     const part = (n: string) => `$: arrange([256, note("${n}*2").s("sawtooth")])`
     await seedCode(page, ['setcps(0.5)', part('c3'), part('e3'), part('g3'), part('b3'), part('d4')].join('\n'))
+    await chooseDisplay(page, 'd1', 'waveform')
+    await chooseDisplay(page, 'd2', 'waveform')
+    await chooseDisplay(page, 'd3', 'waveform')
+    await chooseDisplay(page, 'd4', 'waveform')
+    await chooseDisplay(page, 'd5', 'waveform')
     await waitForEnvelopes(page, 'd1:fresh d2:fresh d3:fresh d4:fresh', 90_000)
     const notice = page.locator('[data-full-song-envelope-over-cap]')
     await expect(notice).toHaveAttribute('data-full-song-envelope-over-cap', '1')
@@ -294,6 +311,8 @@ test.describe('synth lane envelope (#1731)', () => {
   test('a track set to Bars from its header menu draws notes only, and stays so after a reload (#1738)', async ({ page }) => {
     const code = 'setcps(0.5)\n$: note("c3").s("sine").gain("<0.1 0.4 0.7 1>")\n$: note("e2").s("square")'
     await seedCode(page, code)
+    await chooseDisplay(page, 'd1', 'waveform')
+    await chooseDisplay(page, 'd2', 'waveform')
     await waitForEnvelopes(page, 'd1:fresh d2:fresh')
     const shaped = (await inkRows(page, 'd1', 2)) - (await inkRows(page, 'd1', 0))
     expect(shaped).toBeGreaterThanOrEqual(4) // PRECONDITION: the render is drawn
@@ -335,6 +354,8 @@ test.describe('synth lane envelope (#1731)', () => {
     // bar height (#1744), and a gain swell, so the shape differs cycle to cycle.
     const code = 'setcps(0.5)\n$: note("<c3 e3 g3 c4>").s("sine").gain("<0.1 0.4 0.7 1>")\n$: note("e2").s("square")'
     await seedCode(page, code)
+    await chooseDisplay(page, 'd1', 'waveform')
+    await chooseDisplay(page, 'd2', 'waveform')
     await waitForEnvelopes(page, 'd1:fresh d2:fresh')
     await page.locator('[data-full-song-lane-expand="d1"]').click()
     await expect(page.locator('[data-full-song-lane="d1"]')).toHaveAttribute('data-expanded', 'true')
@@ -355,6 +376,8 @@ test.describe('synth lane envelope (#1731)', () => {
   test('a Bars track has a render ready, so Waveform chosen while playing draws at once (#1748)', async ({ page }) => {
     const code = 'setcps(0.5)\n$: note("c3").s("sine").gain("<0.1 0.4 0.7 1>")\n$: note("e2").s("square")'
     await seedCode(page, code)
+    await chooseDisplay(page, 'd1', 'waveform')
+    await chooseDisplay(page, 'd2', 'waveform')
     await waitForEnvelopes(page, 'd1:fresh d2:fresh')
     await chooseDisplay(page, 'd1', 'bars')
     await waitForEnvelopes(page, 'd2:fresh')
@@ -384,6 +407,7 @@ test.describe('synth lane envelope (#1731)', () => {
   test('a Waveform track with no render yet says it draws when stopped, while playing (#1748)', async ({ page }) => {
     const one = 'setcps(0.5)\n$: note("c3").s("sine")'
     await seedCode(page, one)
+    await chooseDisplay(page, 'd1', 'waveform')
     await waitForEnvelopes(page, 'd1:fresh')
     await expect(page.locator('[data-full-song-envelope-waiting]')).toHaveCount(0)
 
@@ -394,6 +418,7 @@ test.describe('synth lane envelope (#1731)', () => {
     await seedCode(page, `${one}\n$: note("e2").s("square")`)
     await page.locator('.monaco-editor').first().click()
     await page.keyboard.press(`${MOD}+Enter`)
+    await chooseDisplay(page, 'd2', 'waveform')
     const notice = page.locator('[data-full-song-envelope-waiting]')
     await expect(notice).toHaveAttribute('data-full-song-envelope-waiting', 'd2', { timeout: 10_000 })
     await expect(notice).toHaveText('1 track draws when stopped')
@@ -441,6 +466,7 @@ test.describe('synth lane envelope where a render cannot pause (#1771)', () => {
     await bootApp(page, { drawer: { tabId: 'musical-timeline', height: 360 } })
     expect(await page.evaluate(() => typeof OfflineAudioContext.prototype.suspend)).toBe('undefined')
     await seedCode(page, SONG)
+    await chooseDisplay(page, 'd1', 'waveform')
     await waitForEnvelopes(page, 'd1:fresh')
     const count = await renders(page)
     const quiet = await inkRows(page, 'd1', 4)
@@ -461,6 +487,7 @@ test.describe('synth lane envelope where a render cannot pause (#1771)', () => {
     await page.addInitScript(countRenders, false)
     await bootApp(page, { drawer: { tabId: 'musical-timeline', height: 360 } })
     await seedCode(page, SONG)
+    await chooseDisplay(page, 'd1', 'waveform')
     await waitForEnvelopes(page, 'd1:fresh')
     expect(await renders(page)).toBe(1)
   })

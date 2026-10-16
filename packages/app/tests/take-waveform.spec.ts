@@ -1,7 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
+import { chooseDisplay, shownDisplay } from './_laneType'
 
 import { bootApp, seedCode } from './_appBoot'
-import { readInk, firstMark, allMarks } from './_waveformInk'
+import { readInk, firstMark, allMarks, markVariation, alternatingWav } from './_waveformInk'
 
 /**
  * The instrument for #1506 — a take draws its waveform on the Song timeline.
@@ -235,6 +236,8 @@ test.describe('a take is visible on the Song timeline', () => {
       timeout: 30_000,
     })
     await page.locator('[data-full-song-canvas]').waitFor({ timeout: 20_000 })
+    // #2079 — a 1 s take is shorter than a bar, so its lane defaults to Bars; save Waveform.
+    await chooseDisplay(page, 'd1', 'waveform')
 
     // A tall row so the shape has amplitude to spend. The DEFAULT row height is
     // covered by a unit arm; here the point is the pixels, and a 30px mark makes
@@ -322,6 +325,8 @@ test.describe('a take is visible on the Song timeline', () => {
       timeout: 30_000,
     })
     await page.locator('[data-full-song-canvas]').waitFor({ timeout: 20_000 })
+    // #2079 — a 1 s take is shorter than a bar, so its lane defaults to Bars; save Waveform.
+    await chooseDisplay(page, 'd1', 'waveform')
 
     // PRECONDITION: collapsed, the shape is there. Without it an expanded reading
     // of 1 could mean "the take never drew", not "expanding flattened it".
@@ -384,6 +389,8 @@ test.describe('a take is visible on the Song timeline', () => {
       timeout: 30_000,
     })
     await page.locator('[data-full-song-canvas]').waitFor({ timeout: 20_000 })
+    // #2079 — a 1 s take is shorter than a bar, so its lane defaults to Bars; save Waveform.
+    await chooseDisplay(page, 'vox', 'waveform')
 
     const lane = page.locator('[data-full-song-lane]').first()
     await expect(lane).toHaveAttribute('data-expanded', 'false')
@@ -471,6 +478,8 @@ test.describe('a take is visible on the Song timeline', () => {
       timeout: 30_000,
     })
     await page.locator('[data-full-song-canvas]').waitFor({ timeout: 20_000 })
+    // #2079 — a 1 s take is shorter than a bar, so its lane defaults to Bars; save Waveform.
+    await chooseDisplay(page, 'd1', 'waveform')
 
     // PRECONDITION, asserted rather than assumed: the base canvas really is
     // drawing a shape here. Without this the coverage reading below would be
@@ -570,6 +579,8 @@ test.describe('a take is visible on the Song timeline', () => {
       timeout: 30_000,
     })
     await page.locator('[data-full-song-canvas]').waitFor({ timeout: 20_000 })
+    // #2079 — a 1 s take is shorter than a bar, so its lane defaults to Bars; save Waveform.
+    await chooseDisplay(page, 'd1', 'waveform')
 
     // Wait for the decode to land and BOTH marks to be drawn.
     await expect
@@ -609,4 +620,55 @@ test.describe('a take is visible on the Song timeline', () => {
     expect(errors).toEqual([])
   })
 
+
+  test('with no type saved, a long take draws its waveform and a short one draws a bar (#2079)', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await bootWithTimeline(page)
+    await page.evaluate(() => (window as ProbeWindow).__staveAssetProbe!.reset())
+
+    // A 4 s take, loud and silent by turns each half second: longer than a bar
+    // (2 s at the starting tempo), so a recording, like a vocal.
+    const importTake = (base64: string, name: string) =>
+      page.evaluate(
+        async ([b, n]) => {
+          const p = (window as ProbeWindow).__staveAssetProbe!
+          const res = await p.import(b, 'audio/wav', n, await p.docList())
+          await p.docAdd(res.record)
+          return res.record.name
+        },
+        [base64, name] as const,
+      )
+    expect(await importTake(alternatingWav(48000, 4, 0.5).toString('base64'), 'take_long.wav')).toBe('take_long')
+    expect(await importTake(loudThenSilentWav(), 'take_short.wav')).toBe('take_short')
+
+    const open = async (code: string, sound: string) => {
+      await seedCode(page, code)
+      await page.evaluate(() => {
+        try {
+          localStorage.setItem('stave:musicalTimeline.subRowHeight', '48')
+        } catch {
+          /* ignore */
+        }
+      })
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForFunction(() => Boolean((window as ProbeWindow).__staveAssetProbe), { timeout: 30_000 })
+      await page.waitForFunction((n) => (window as ProbeWindow).__staveAssetProbe!.inSoundMap(n), sound, { timeout: 30_000 })
+      await page.locator('[data-full-song-canvas]').waitFor({ timeout: 20_000 })
+    }
+
+    // Nothing is saved for either lane: only the file's length decides.
+    await open('$: s("take_long")', 'take_long')
+    await expect
+      .poll(async () => markVariation(firstMark(await readInk(page))), { timeout: 30_000 })
+      .toBeGreaterThan(3)
+    expect(await shownDisplay(page, 'd1')).toBe('waveform')
+
+    // CONTROL — the same code on a 1 s take is a bar, and its menu says Bars.
+    await open('$: s("take_short")', 'take_short')
+    await expect.poll(async () => firstMark(await readInk(page)).length, { timeout: 30_000 }).toBeGreaterThan(20)
+    expect(await shownDisplay(page, 'd1')).toBe('bars')
+    expect(markVariation(firstMark(await readInk(page)))).toBeLessThan(1.5)
+    expect(errors).toEqual([])
+  })
 })

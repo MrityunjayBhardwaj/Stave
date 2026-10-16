@@ -33,6 +33,7 @@
  * break is the whole reason the spec exists.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { chooseDisplay } from './_laneType'
 import { writeFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -111,6 +112,9 @@ test('a recorded take appears on the timeline with no further interaction', asyn
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.waitForFunction(() => Boolean((window as ProbeWindow).__staveAssetProbe), { timeout: 30_000 })
   await page.locator('[data-full-song-canvas]').waitFor({ timeout: 20_000 })
+  // #2079 — a 1.6 s take is shorter than a bar, so its lane defaults to Bars;
+  // save Waveform, as a musician who wants to see the take would.
+  await chooseDisplay(page, 'd1', 'waveform')
 
   // PRECONDITION 1: a mark is actually drawn. Without this the "it varies now"
   // reading below could be satisfied by a lane that simply appeared.

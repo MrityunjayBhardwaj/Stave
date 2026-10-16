@@ -76,7 +76,7 @@ import {
 } from '@stave/editor'
 import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
 import { rowHeightForEdge } from './musicalTimeline/rowEdgeResize'
-import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeNotices, envelopeTrackIds, markAudioLanes, markBarsLanes, sampleKey, type SceneActivity } from './musicalTimeline/timelineScene'
+import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeNotices, envelopeTrackIds, longRecordingLanes, markAudioLanes, markBarsLanes, sampleKey, type SceneActivity } from './musicalTimeline/timelineScene'
 import {
   nextWindowOriginFor,
   clampSeekToWindow,
@@ -286,10 +286,10 @@ export interface FullSongTimelineProps {
   /** Clear a track's custom colour → fall back to the palette (Phase D, #581).
    *  Receives the lane's DISPLAY NAME. */
   readonly onResetTrackColor?: (displayName: string) => void
-  /** #1738 — display names of tracks set to draw as BARS (notes only, no
-   *  waveform or render), from the per-file `TrackMeta` store. Absent → every
-   *  lane draws its default, `waveform`. */
-  readonly barsNames?: ReadonlySet<string>
+  /** #1738 — the lane type each track saved (Waveform or Bars), by display
+   *  name, from the per-file `TrackMeta` store. A track with none draws as
+   *  Bars unless it plays a long recording (#2079). */
+  readonly trackDisplays?: ReadonlyMap<string, TrackDisplay>
   /** #1738 — save a track's lane type, chosen from its header menu. Receives
    *  the lane's DISPLAY NAME, the same key as its colour. Absent → the menu has
    *  no Type entry. */
@@ -518,7 +518,7 @@ const EXTEND_AUTOSCROLL_STEP_PX = 7
 
 /** #1738 — no lane set to Bars; one ref-stable empty set, so the scene memo
  *  does not see a new identity per render. */
-const NO_BARS: ReadonlySet<string> = new Set()
+const NO_DISPLAYS: ReadonlyMap<string, TrackDisplay> = new Map()
 const NO_WAITING: readonly string[] = []
 /** #1750 — height of the grab strip centred on each edge between two tracks. */
 const ROW_EDGE_GRAB = 6
@@ -1259,13 +1259,25 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // #1730 — which lanes are audio tracks, asked of the sample registry. Its own
   // memo, re-asked when the waveform epoch moves: a take registers its name
   // when the project's assets load, which can land after the scene was built.
-  const { waveforms, waveformsEpoch, trackEnvelopes, barsNames } = props
-  // #1738 — a lane the user set to Bars is flagged first, so it is never an
+  const { waveforms, waveformsEpoch, trackEnvelopes, trackDisplays } = props
+  // #2079 — the lanes that play long recordings, which default to Waveform.
+  // Re-asked when a file's length can have become known: the epoch (a project
+  // asset decoded) and the decode tick (a sample decoded by playing). Joined
+  // into a string so an unchanged answer keeps its identity and a tick that
+  // changes nothing never rebuilds the scene.
+  const [decodeTick, setDecodeTick] = useState(0)
+  const longKey = useMemo(
+    () => [...longRecordingLanes(baseScene, waveforms)].join('\n'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the epoch and tick are the re-ask signals
+    [baseScene, waveforms, waveformsEpoch, decodeTick],
+  )
+  const longRecordings = useMemo(() => new Set(longKey === '' ? [] : longKey.split('\n')), [longKey])
+  // #1738 — a lane that draws as Bars is flagged first, so it is never an
   // audio lane and its track is never rendered.
   const audioScene = useMemo(
-    () => markAudioLanes(markBarsLanes(baseScene, barsNames ?? NO_BARS), waveforms?.isFileBacked),
+    () => markAudioLanes(markBarsLanes(baseScene, trackDisplays ?? NO_DISPLAYS, longRecordings), waveforms?.isFileBacked),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the epoch is the re-ask signal
-    [baseScene, barsNames, waveforms, waveformsEpoch],
+    [baseScene, trackDisplays, longRecordings, waveforms, waveformsEpoch],
   )
   const trackIdByLane = marks.trackIdByLane
   const [envelopeTick, setEnvelopeTick] = useState(0)
@@ -1315,15 +1327,24 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // keeps a timer alive for the life of the view. One re-ask still runs when
   // either stops, catching a decode that finished at the very end.
   const decodeCanLand = songPos != null || envelopeStatus?.rendering != null
-  const [decodeTick, setDecodeTick] = useState(0)
   useEffect(() => {
     if (waveforms == null) return
     // #1764 — keyed by the file each mark plays, the same key the draw reads:
     // a banked kit still loading must count as missing even when the plain
     // sound of the same name has loaded.
+    // #2079 — and the files of a lane drawn as Bars only by default: its type
+    // turns to Waveform once its files are known to be long, which they can
+    // only be known to be once decoded. A lane SAVED as Bars is never watched.
+    const fileBacked = waveforms.isFileBacked
     const keys = new Map<string, SampleRef>()
     for (const lane of audioScene.lanes) {
-      if (lane.audio !== true) continue
+      const maybeLong =
+        lane.bars === true &&
+        fileBacked != null &&
+        trackDisplays?.get(lane.displayName) !== 'bars' &&
+        lane.notes.length > 0 &&
+        lane.notes.every((n) => n.sample != null && fileBacked(n.sample))
+      if (lane.audio !== true && !maybeLong) continue
       for (const n of lane.notes) if (n.sample != null) keys.set(sampleKey(n.sample), n.sample)
     }
     const missing = () => {
@@ -1348,7 +1369,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     return () => clearInterval(id)
     // `audioScene`, not `scene`: an envelope landing changes the scene but not
     // which audio lanes wait for a decode.
-  }, [audioScene, waveforms, decodeCanLand])
+  }, [audioScene, waveforms, decodeCanLand, trackDisplays])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind
@@ -3625,7 +3646,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             y={laneMenu.y}
             anchor={laneMenu.anchor}
             trackName={laneMenu.name}
-            display={barsNames?.has(laneMenu.name) ? 'bars' : 'waveform'}
+            display={laneByKey.get(laneMenu.laneKey)?.bars === true ? 'bars' : 'waveform'}
             onSetDisplay={
               onSetTrackDisplay ? (display) => onSetTrackDisplay(laneMenu.name, display) : undefined
             }

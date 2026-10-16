@@ -452,13 +452,14 @@ export function MusicalTimeline(
     }
     return m
   }, [trackMeta])
-  // #1738 — tracks whose lane draws as BARS (notes only), from the same store.
-  const barsNames = React.useMemo(() => {
-    const names = new Set<string>()
+  // #1738 — the lane type each track saved (Waveform or Bars), from the same
+  // store. A track with none takes the default (#2079), decided in the view.
+  const trackDisplays = React.useMemo(() => {
+    const m = new Map<string, TrackDisplay>()
     for (const [name, meta] of trackMeta) {
-      if (meta.display === 'bars') names.add(name)
+      if (meta.display) m.set(name, meta.display)
     }
-    return names
+    return m
   }, [trackMeta])
 
   // #731 — the display names of tracks that read as silenced (muted, or dimmed by
@@ -1176,7 +1177,7 @@ export function MusicalTimeline(
           onRenameLane={handleRenameLane}
           selectedStatementOffset={selectedStatementOffset}
           customColorByName={customColorByName}
-          barsNames={barsNames}
+          trackDisplays={trackDisplays}
           onSetTrackDisplay={handleSetTrackDisplay}
           onSetTrackColor={handleSetTrackColor}
           onResetTrackColor={handleResetTrackColor}
