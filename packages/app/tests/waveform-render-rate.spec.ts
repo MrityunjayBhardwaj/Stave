@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 
 import { bootApp, seedCode } from './_appBoot'
+import { chooseDisplay } from './_laneType'
 
 /**
  * #1759 — a synth track that plays nothing but plain oscillators draws from a
@@ -23,6 +24,37 @@ async function attr(page: Page, name: string): Promise<string> {
 
 const osc = (name: string, sound: string) =>
   `${name}: arrange([187, note("<c3 e3 g3 b3>*4").s("${sound}").lpf(1200).gain(0.3)])`
+
+/**
+ * #2079 — a synth lane with no saved type draws as Bars, so save Waveform for
+ * every lane through its menu, then reload. The reload drops every render and
+ * every count the init scripts keep, and scrolls back to the top, so the test
+ * starts from the same untouched page as before; the saved types survive it.
+ */
+async function saveWaveformThenReload(page: Page, lanes: readonly string[]): Promise<void> {
+  for (const lane of lanes) {
+    await page.locator(`[data-full-song-lane="${lane}"]`).waitFor({ state: 'attached', timeout: 30_000 })
+    // The label gutter follows the grid's scroll and cannot be scrolled itself,
+    // so scroll the GRID until the lane's name is on screen, as a user would.
+    await page.evaluate((key) => {
+      const grid = document.querySelector('[data-full-song="grid"]') as HTMLElement
+      const row = document.querySelector(`[data-full-song-lane="${key}"]`) as HTMLElement
+      grid.scrollTop += row.getBoundingClientRect().top - grid.getBoundingClientRect().top
+    }, lane)
+    await expect
+      .poll(() =>
+        page.evaluate((key) => {
+          const grid = document.querySelector('[data-full-song="grid"]')!.getBoundingClientRect()
+          const r = document.querySelector(`[data-full-song-lane="${key}"]`)!.getBoundingClientRect()
+          return r.top >= grid.top - 1 && r.bottom <= grid.bottom + 1
+        }, lane),
+      )
+      .toBe(true)
+    await chooseDisplay(page, lane, 'waveform')
+  }
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.locator(`[data-full-song-lane="${lanes[0]}"]`).waitFor({ timeout: 30_000 })
+}
 
 test('a long song of oscillator tracks draws every one, from 24 kHz renders (#1759)', async ({ page }) => {
   test.setTimeout(180_000)
@@ -52,6 +84,7 @@ test('a long song of oscillator tracks draws every one, from 24 kHz renders (#17
       'mixed: arrange([187, note("c3 e3").s("<sawtooth bd>")])',
     ].join('\n'),
   )
+  await saveWaveformThenReload(page, ['bass', 'keys', 'pad', 'lead', 'mixed'])
   await expect
     .poll(() => attr(page, 'data-full-song-envelopes'), { timeout: 120_000 })
     .toBe('bass:fresh keys:fresh pad:fresh lead:fresh mixed:fresh')
@@ -108,6 +141,7 @@ for (const liveRate of [44100, 48000]) test(`scrolling a long song brings the la
   expect(await page.evaluate(() => new AudioContext().sampleRate)).toBe(liveRate)
   const names = Array.from({ length: 12 }, (_, i) => `t${String(i + 1).padStart(2, '0')}`)
   await seedCode(page, ['setcps(0.5)', ...names.map((n) => osc(n, 'sawtooth'))].join('\n'))
+  await saveWaveformThenReload(page, names)
 
   const fresh = async () => (await attr(page, 'data-full-song-envelopes')).split(' ').filter((x) => x.endsWith(':fresh')).map((x) => x.split(':')[0])
   const inView = () =>
