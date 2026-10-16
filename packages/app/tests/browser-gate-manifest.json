@@ -631,6 +631,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "mixer-menu-scroll.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "mixer-strips.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
