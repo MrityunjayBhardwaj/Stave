@@ -25504,7 +25504,8 @@ function ensureUndoManager() {
   const files = doc.getMap("files");
   const fileOrder = doc.getMap("fileOrder");
   const subfolderOrder = doc.getMap("subfolderOrder");
-  const um = new Y3.UndoManager([files, fileOrder, subfolderOrder], {
+  const childOrder = doc.getMap("childOrder");
+  const um = new Y3.UndoManager([files, fileOrder, subfolderOrder, childOrder], {
     trackedOrigins: /* @__PURE__ */ new Set([STRUCT_ORIGIN]),
     captureTimeout: 300
   });

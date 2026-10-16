@@ -6,7 +6,8 @@
  * double-undo and cause confusing UX.
  *
  * The scope is the set of top-level Y maps (files / fileOrder /
- * subfolderOrder). The `trackedOrigins` is a sentinel Symbol — structural
+ * subfolderOrder / childOrder — the last is where the Files panel writes
+ * every reorder, so without it ⌘Z never undid one, #2089). The `trackedOrigins` is a sentinel Symbol — structural
  * ops wrap their `doc.transact` calls with this origin so content-typing
  * transactions (which use `null` / framework origins) are ignored.
  */
@@ -45,12 +46,13 @@ function ensureUndoManager(): Y.UndoManager {
   const files = doc.getMap('files') as Y.Map<Y.Map<unknown>>
   const fileOrder = doc.getMap('fileOrder') as Y.Map<Y.Array<string>>
   const subfolderOrder = doc.getMap('subfolderOrder') as Y.Map<Y.Array<string>>
+  const childOrder = doc.getMap('childOrder') as Y.Map<Y.Array<string>>
   // Include every existing inner file-map in the scope so deep changes
   // to a file's `path` / `meta` fields are captured too. Y.UndoManager's
   // scope check compares `transaction.changedParentTypes` against
   // `scope` by direct match — ancestors don't auto-bubble — so we have
   // to track inner maps explicitly.
-  const um = new Y.UndoManager([files, fileOrder, subfolderOrder], {
+  const um = new Y.UndoManager([files, fileOrder, subfolderOrder, childOrder], {
     trackedOrigins: new Set([STRUCT_ORIGIN]),
     captureTimeout: 300,
   })

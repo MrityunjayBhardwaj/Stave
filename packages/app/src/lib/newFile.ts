@@ -1,5 +1,6 @@
-import { createWorkspaceFile, type WorkspaceFile } from "@stave/editor";
+import { createWorkspaceFile, listWorkspaceFiles, type WorkspaceFile } from "@stave/editor";
 import { showPrompt, showToast } from "../dialogs/host";
+import { pathTaken, where } from "./fileTreeOps";
 
 /**
  * Map a (lower-cased) file extension to a workspace language. Single source
@@ -104,6 +105,11 @@ export async function promptAndCreateFile(folderPath = ""): Promise<void> {
       `Unknown file extension ".${ext}". Supported: .strudel, .sonicpi, .hydra, .p5, .glsl, .md`,
       "error",
     );
+    return;
+  }
+  // Two files with one path can't be told apart (#2090).
+  if (pathTaken(listWorkspaceFiles(), path)) {
+    showToast(`"${trimmedName}" already exists in ${where(folderPath)}.`, "error");
     return;
   }
   const id = `file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
