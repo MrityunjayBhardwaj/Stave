@@ -754,11 +754,21 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     setBetweenFolderTarget(null);
   }, []);
 
-  // Dragover on a FILE row — decide whether this is a reorder (within
-  // same folder) vs a folder-drop. We always call preventDefault so the
-  // drop event can fire. Above midpoint → insert above; below → below.
+  // Dragover on a FILE row — the item will land in this file's folder, above
+  // or below the row by which half the pointer is in. We always call
+  // preventDefault so the drop event can fire. Desktop files highlight the
+  // folder they will be imported into.
   const handleDragOverFile = useCallback(
     (e: React.DragEvent, targetFileId: string) => {
+      if (e.dataTransfer.types.includes("Files")) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "copy";
+        const target = files.find((f) => f.id === targetFileId);
+        setBetweenTarget(null);
+        setDropTarget(target && parentOf(target.path) ? parentOf(target.path) : "__root__");
+        return;
+      }
       if (!e.dataTransfer.types.includes("application/stave-tree-item")) return;
       e.preventDefault();
       e.stopPropagation();
@@ -771,7 +781,7 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
       });
       setDropTarget(null);
     },
-    [],
+    [files],
   );
 
   const readDragItem = (e: React.DragEvent): DragItem | null => {
@@ -792,14 +802,21 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
       e.preventDefault();
       e.stopPropagation();
       handleDragLeaveTree();
-      const item = readDragItem(e);
       const target = files.find((f) => f.id === targetFileId);
-      if (!item || !target) return;
+      if (!target) return;
+      // Files from the desktop land in the row's folder too — this handler
+      // used to swallow them (#2089).
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        void importNativeFiles(e.dataTransfer.files, parentOf(target.path));
+        return;
+      }
+      const item = readDragItem(e);
+      if (!item) return;
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const position = e.clientY < rect.top + rect.height / 2 ? "above" : "below";
       place(item, parentOf(target.path), "f:" + targetFileId, position);
     },
-    [files, place, handleDragLeaveTree],
+    [files, place, importNativeFiles, handleDragLeaveTree],
   );
 
   // A drop on a FOLDER row (or on the list itself, `targetFolderPath` ""):

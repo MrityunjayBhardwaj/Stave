@@ -145,6 +145,17 @@ test.describe('rearranging (#2089)', () => {
     await expect.poll(() => folderRow(page, 'preset').evaluate((el) => (el as HTMLElement).style.background)).toBe('')
   })
 
+  test('a desktop file dropped on a file row is imported into that file\'s folder', async ({ page }) => {
+    await open(page)
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll('[data-file-tree-item]')].find((r) => r.textContent?.includes('kaleidoscope.hydra'))!
+      const dt = new DataTransfer()
+      dt.items.add(new File(['// from the desktop'], 'mine.p5'))
+      for (const type of ['dragenter', 'dragover', 'drop']) row.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }))
+    })
+    await expect.poll(() => vizFiles(page)).toContain('mine.p5')
+  })
+
   test('a new folder does not open its hidden placeholder in a tab', async ({ page }) => {
     await open(page)
     const language = () =>
