@@ -10,6 +10,9 @@ import {
   seedWorkspaceFile,
   setContent,
   setChildOrder,
+  getTrackMeta,
+  setTrackMeta,
+  type TrackDisplay,
   bundledPresetId,
   workspaceFileIdForPreset,
   isVizLanguage,
@@ -214,6 +217,13 @@ export interface TemplateFile {
   content: string;
   language: WorkspaceLanguage;
   meta?: Record<string, unknown>;
+  /** How each of the song's NAMED tracks draws on the Song timeline: every
+   *  track Bars, a vocal Waveform. Saved when the project is made, so a track
+   *  whose default would change once its sound loads (a piano's sample
+   *  outlasts a bar, #2079) does not. Never a `$:` track's d1, d2…: that name
+   *  is only "the first `$:`", so a type saved for it would stick to whatever
+   *  track the user writes first. Songs of `$:` tracks rely on the default. */
+  trackDisplays?: Record<string, TrackDisplay>;
 }
 
 export interface ProjectTemplate {
@@ -320,6 +330,7 @@ function makeFullSongFiles(): TemplateFile[] {
       id: "song.strudel",
       path: "song.strudel",
       content: FULL_SONG_CODE,
+      trackDisplays: { drums: "bars", bass: "bars", keys: "bars", lead: "bars", voice: "waveform" },
       language: "strudel",
     },
   ];
@@ -414,6 +425,10 @@ export function seedProjectFromTemplate(templateId: string): void {
   const files = getTemplateFiles(templateId);
   for (const f of files) {
     seedWorkspaceFile(f.id, f.path, f.content, f.language, f.meta);
+    // A type already saved is the user's choice: seeding again never changes it.
+    for (const [track, display] of Object.entries(f.trackDisplays ?? {})) {
+      if (getTrackMeta(f.id, track).display === undefined) setTrackMeta(f.id, track, { display });
+    }
   }
   // The project's own files come first, above the bundled visualisers every
   // project carries in preset/ (#2076); folders would otherwise sort first.
