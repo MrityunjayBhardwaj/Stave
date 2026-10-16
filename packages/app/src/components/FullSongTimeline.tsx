@@ -1414,11 +1414,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const inView = new Set(inViewKey === '' ? [] : inViewKey.split('\u0000'))
     trackEnvelopes?.request(envelopeTrackIds(audioScene, trackIdByLane, inView), loopCycles)
   }, [trackEnvelopes, audioScene, trackIdByLane, loopCycles, inViewKey])
-  // #1750 — drag the edge between two track names to set the row height. The
-  // edge grabbed stays under the pointer: every lane above it scales with the
-  // one shared setting, so the height is solved against the layout
-  // (`rowHeightForEdge`), not moved by the pointer's delta. `offset` keeps the
-  // grab point: a press a few px off the edge must not jump it to the pointer.
+  // #1750 — drag the edge below a track name (#2084: the last one's too) to
+  // set the row height. The edge grabbed stays under the pointer: every lane
+  // above it scales with the one shared setting, so the height is solved
+  // against the layout (`rowHeightForEdge`), not moved by the pointer's delta.
+  // `offset` keeps the grab point: a press a few px off the edge must not jump
+  // it to the pointer.
   const rowEdgeDragRef = useRef<{ index: number; offset: number; written: number } | null>(null)
   const [hoverRowEdge, setHoverRowEdge] = useState<string | null>(null)
   const [dragRowEdge, setDragRowEdge] = useState<string | null>(null)
@@ -3611,10 +3612,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                 </div>
               )
             })}
-            {/* #1750 — a grab strip on each edge between two tracks. Over the
+            {/* #1750 — a grab strip on the edge below each track. Over the
                 rows, not inside them: a row clips its content, and the strip
-                straddles the edge. */}
-            {layout.boxes.slice(0, -1).map((box, i) => {
+                straddles the edge. #2084 — the last track's too, so a song with
+                one track can resize its rows. */}
+            {layout.boxes.map((box, i) => {
               const active = dragRowEdge === box.laneKey || (dragRowEdge == null && hoverRowEdge === box.laneKey)
               return (
                 <div
