@@ -12,6 +12,7 @@
  */
 import * as React from 'react'
 import { createPortal } from 'react-dom'
+import { useAnchorScroll } from './anchorScroll'
 import type { KnobRange } from './knobRanges'
 import { positionOfValue, snapToStep, valueAtPosition } from './knobScale'
 
@@ -93,8 +94,7 @@ export function Knob({
   }
 
   // Place the portal off the dial's rect; flip above when cramped below.
-  React.useLayoutEffect(() => {
-    if (!editing) return
+  const placePopup = React.useCallback((): void => {
     const r = sliderRef.current?.getBoundingClientRect()
     if (!r) return
     const margin = 8
@@ -107,10 +107,14 @@ export function Knob({
         Math.min(r.left + r.width / 2 - POPUP_W / 2, window.innerWidth - POPUP_W - margin),
       ),
     })
-  }, [editing])
+  }, [])
 
-  // Dismiss on outside click, Escape, resize, or any ancestor scroll — a fixed
-  // popup would otherwise drift from the dial (mirrors AddEffectMenu).
+  React.useLayoutEffect(() => {
+    if (editing) placePopup()
+  }, [editing, placePopup])
+
+  // Dismiss on outside click or resize. An ancestor scroll moves the popup
+  // with its dial and closes it once the dial leaves view (#2088).
   React.useEffect(() => {
     if (!editing) return
     const onDown = (e: MouseEvent): void => {
@@ -119,20 +123,16 @@ export function Knob({
       setEditing(false)
     }
     const dismiss = (): void => setEditing(false)
-    const onScroll = (e: Event): void => {
-      const t = e.target
-      if (t instanceof Node && popupRef.current?.contains(t)) return
-      setEditing(false)
-    }
     document.addEventListener('mousedown', onDown)
     window.addEventListener('resize', dismiss)
-    window.addEventListener('scroll', onScroll, true)
     return () => {
       document.removeEventListener('mousedown', onDown)
       window.removeEventListener('resize', dismiss)
-      window.removeEventListener('scroll', onScroll, true)
     }
   }, [editing])
+
+  const closePopup = React.useCallback((): void => setEditing(false), [])
+  useAnchorScroll(editing, sliderRef, popupRef, placePopup, closePopup)
 
   const pos = toPosition(value, range)
   // sweep the indicator across a 270° arc (−135° … +135°)
