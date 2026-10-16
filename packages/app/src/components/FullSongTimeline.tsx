@@ -1414,11 +1414,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const inView = new Set(inViewKey === '' ? [] : inViewKey.split('\u0000'))
     trackEnvelopes?.request(envelopeTrackIds(audioScene, trackIdByLane, inView), loopCycles)
   }, [trackEnvelopes, audioScene, trackIdByLane, loopCycles, inViewKey])
-  // #1750 — drag the edge between two track names to set the row height. The
-  // edge grabbed stays under the pointer: every lane above it scales with the
-  // one shared setting, so the height is solved against the layout
-  // (`rowHeightForEdge`), not moved by the pointer's delta. `offset` keeps the
-  // grab point: a press a few px off the edge must not jump it to the pointer.
+  // #1750 — drag the edge below a track name (#2084: the last one's too) to
+  // set the row height. The edge grabbed stays under the pointer: every lane
+  // above it scales with the one shared setting, so the height is solved
+  // against the layout (`rowHeightForEdge`), not moved by the pointer's delta.
+  // `offset` keeps the grab point: a press a few px off the edge must not jump
+  // it to the pointer.
   const rowEdgeDragRef = useRef<{ index: number; offset: number; written: number } | null>(null)
   const [hoverRowEdge, setHoverRowEdge] = useState<string | null>(null)
   const [dragRowEdge, setDragRowEdge] = useState<string | null>(null)
@@ -3611,11 +3612,16 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                 </div>
               )
             })}
-            {/* #1750 — a grab strip on each edge between two tracks. Over the
+            {/* #1750 — a grab strip on the edge below each track. Over the
                 rows, not inside them: a row clips its content, and the strip
-                straddles the edge. */}
-            {layout.boxes.slice(0, -1).map((box, i) => {
+                straddles the edge. #2084 — the last track's too, so a song with
+                one track can resize its rows. Its strip is only the half above
+                the edge: a half below would make the names column taller than
+                the grid, and the two must scroll alike (#645). */}
+            {layout.boxes.map((box, i) => {
               const active = dragRowEdge === box.laneKey || (dragRowEdge == null && hoverRowEdge === box.laneKey)
+              const last = i === layout.boxes.length - 1
+              const grab = last ? ROW_EDGE_GRAB / 2 : ROW_EDGE_GRAB
               return (
                 <div
                   key={`row-edge-${box.laneKey}`}
@@ -3625,7 +3631,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   aria-orientation="horizontal"
                   aria-label="Resize the timeline's rows"
                   title="Drag to resize the timeline's rows"
-                  style={{ ...styles.rowEdge, top: box.top + box.height - ROW_EDGE_GRAB / 2 }}
+                  style={{ ...styles.rowEdge, top: box.top + box.height - ROW_EDGE_GRAB / 2, height: grab }}
                   onPointerEnter={() => setHoverRowEdge(box.laneKey)}
                   onPointerLeave={() => setHoverRowEdge((k) => (k === box.laneKey ? null : k))}
                   onPointerDown={(e) => onRowEdgeDown(e, i, box.laneKey)}
@@ -3633,7 +3639,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   onPointerUp={onRowEdgeEnd}
                   onPointerCancel={onRowEdgeEnd}
                 >
-                  {active && <div style={styles.rowEdgeLine} />}
+                  {active && <div style={{ ...styles.rowEdgeLine, top: last ? grab - 2 : styles.rowEdgeLine.top }} />}
                 </div>
               )
             })}

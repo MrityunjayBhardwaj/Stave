@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { chooseDisplay } from './_laneType'
 
 import { bootApp, seedCode, evalCode, stopCode } from './_appBoot'
 
@@ -84,6 +85,8 @@ test('a drum lane draws the kit and the sample number it plays (#1764)', async (
 
   const drawn = async (code: string): Promise<number[]> => {
     await seedCode(page, code)
+    // #2079 — a drum lane is Bars by default; its drawn file is what is read.
+    await chooseDisplay(page, 'd1', 'waveform')
     await evalCode(page)
     await page.waitForTimeout(4500)
     await stopCode(page)
@@ -147,6 +150,8 @@ test('an aliased drum name draws the file it plays, and a registered one wins (#
 
   const drawn = async (code: string): Promise<number[]> => {
     await seedCode(page, code)
+    // #2079 — a drum lane is Bars by default; its drawn file is what is read.
+    await chooseDisplay(page, 'd1', 'waveform')
     await evalCode(page)
     await page.waitForTimeout(4500)
     await stopCode(page)
