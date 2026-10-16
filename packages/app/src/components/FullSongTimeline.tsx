@@ -3615,9 +3615,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             {/* #1750 — a grab strip on the edge below each track. Over the
                 rows, not inside them: a row clips its content, and the strip
                 straddles the edge. #2084 — the last track's too, so a song with
-                one track can resize its rows. */}
+                one track can resize its rows. Its strip is only the half above
+                the edge: a half below would make the names column taller than
+                the grid, and the two must scroll alike (#645). */}
             {layout.boxes.map((box, i) => {
               const active = dragRowEdge === box.laneKey || (dragRowEdge == null && hoverRowEdge === box.laneKey)
+              const last = i === layout.boxes.length - 1
+              const grab = last ? ROW_EDGE_GRAB / 2 : ROW_EDGE_GRAB
               return (
                 <div
                   key={`row-edge-${box.laneKey}`}
@@ -3627,7 +3631,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   aria-orientation="horizontal"
                   aria-label="Resize the timeline's rows"
                   title="Drag to resize the timeline's rows"
-                  style={{ ...styles.rowEdge, top: box.top + box.height - ROW_EDGE_GRAB / 2 }}
+                  style={{ ...styles.rowEdge, top: box.top + box.height - ROW_EDGE_GRAB / 2, height: grab }}
                   onPointerEnter={() => setHoverRowEdge(box.laneKey)}
                   onPointerLeave={() => setHoverRowEdge((k) => (k === box.laneKey ? null : k))}
                   onPointerDown={(e) => onRowEdgeDown(e, i, box.laneKey)}
@@ -3635,7 +3639,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   onPointerUp={onRowEdgeEnd}
                   onPointerCancel={onRowEdgeEnd}
                 >
-                  {active && <div style={styles.rowEdgeLine} />}
+                  {active && <div style={{ ...styles.rowEdgeLine, top: last ? grab - 2 : styles.rowEdgeLine.top }} />}
                 </div>
               )
             })}
