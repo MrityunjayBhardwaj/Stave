@@ -1,136 +1,191 @@
 <div align="center">
 
-# Stave Code
+# Stave
 
-**A live-coding studio for [Strudel](https://strudel.cc), [Sonic Pi](https://sonic-pi.net), [p5.js](https://p5js.org), and [Hydra](https://hydra.ojack.xyz) — Monaco-grade editing, inline visualizers, and a real workspace around your music and visuals.**
+**A music studio for [Strudel](https://strudel.cc), in your browser. Write the song as code, then arrange it on a Timeline, edit it on a grid and mix it on a console. Every change in a view is written back into your code.**
 
-![Stave Code screenshot](assets/v2_0_scrst.jpeg)
+![Stave with the Full Song template open: the code above, the song's five tracks on the Timeline below](assets/v0_5_scrst.jpeg)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)](https://react.dev/)
 [![Strudel](https://img.shields.io/badge/Strudel-1.x-a855f7)](https://strudel.cc)
 
+**[stave.live](https://stave.live)** · [Docs](https://stave.live/docs/) · [Contributing](CONTRIBUTING.md)
+
 </div>
 
 ---
 
-## Overview
+## What it is
 
-Live coding deserves a better workspace than a single text box on a webpage.
+Strudel is a wonderful way to make music: a few lines of code and a loop is playing. Turning those lines into a whole song is harder. You have to work out in your head where each part starts, how loud each track is, and which step a drum hit lands on.
 
-Stave Code is a full editor for Strudel, Sonic Pi, p5.js, and Hydra — a VS Code-grade shell (tabs, split panes, command palette, search, activity bar, zen mode) wrapped around runtimes that are tightly integrated with `@strudel/core` and `@strudel/webaudio`. No iframe boundary. Your patterns, your visualizers, your project files, all in one place — local-first, with Yjs under the hood so your work keeps working even when the network doesn't.
+Stave puts the views of a music studio next to your code:
 
-Inline visualizers are the centerpiece: drop `.viz("spectrum")` after any `$:` pattern and the visualizer renders *between the code lines*, right under the pattern that feeds it. Name a visualizer, reuse it, hot-reload the canvas as you edit — the feedback loop between sound and image stays unbroken.
+- **Timeline:** the whole song, section by section.
+- **Pattern:** the steps or notes of the line you're on.
+- **Mixer:** a channel strip for every track.
 
-> **Stave Code** is part of the Stave family. A separate product, **Stave Studio** (node-based synth creation + visual patching), is planned as its own repo when the time is right. This repo stays focused on the text-first live-coding experience.
+You can work in any of them. Drag a section, paint a drum step or pull a fader, and Stave rewrites your code to match. Type in the code, and the views redraw. The code is still the song, so you can read it, copy it, share it, or keep writing it by hand.
+
+Your projects are saved in your browser. There's no account and no server.
 
 ---
 
 ## Try it
 
-**Hosted:** [stave.live](https://stave.live)
+Open **[stave.live](https://stave.live)**. The start screen offers a few templates:
 
-**Local:**
+| Template | What you get |
+|---|---|
+| **Full Song** | A finished 48-bar song: drums, bass, keys, a flute hook and a sung line written as notes. This is the quickest way to see the Timeline, Pattern and Mixer at work. |
+| **Starter** | A Strudel pattern playing through the built-in p5.js and Hydra visualisers. |
+| **Strudel Sketch** | A short pattern to start writing on. |
+| **Hydra Visual** | An audio-reactive Hydra sketch. |
+| **Blank** | An empty project. |
 
-```bash
-git clone https://github.com/MrityunjayBhardwaj/stave-code.git
-cd stave-code
-pnpm install
-pnpm dev          # http://localhost:3000
-```
-
-Prereqs: Node 18+, pnpm 9+.
-
----
-
-## What's in it
-
-### Editor
-
-| Feature | Status |
-|---------|--------|
-| VS Code-parity shell — tabs, splits, command palette, activity bar, status bar, zen mode | ✅ |
-| Monaco language support — syntax highlighting, bracket matching, autocomplete, hover docs | ✅ |
-| Global search — across files, symbols, commands, and history | ✅ |
-| Keyboard shortcuts overlay + customizable bindings | ✅ |
-| Breadcrumbs, multi-select, tab context menu, settings gear | ✅ |
-
-### Audio
-
-| Feature | Status |
-|---------|--------|
-| Strudel runtime, no iframe — direct `@strudel/core` + `@strudel/webaudio` integration | ✅ |
-| Sonic Pi runtime via `sonicPiWeb` (CDN SynthDefs) | ✅ runtime, per-track analysers pending |
-| Active-note highlighting — source chars glow in sync with the scheduler | ✅ |
-| Sound autocompletion — `s("…")` suggests every Dirt-Samples and synth name | ✅ |
-| Per-track AnalyserNode producer — each `$:` pattern gets its own side-tap | ✅ |
-| Runtime error surfacing — scheduler-time errors land in the editor, not just the console | ✅ |
-
-### Visualizers
-
-| Feature | Status |
-|---------|--------|
-| Inline `.viz("name")` — renders between code lines, under the pattern that feeds it | ✅ |
-| Named visualizer files (`.p5`, `.hydra`) — reusable, referenced by name | ✅ |
-| Hot-reload on viz file save | ✅ |
-| Per-instance crop overrides — two `$:` blocks using the same viz don't clobber each other | ✅ |
-| Built-in visualizers — pianoroll, oscilloscope, spectrum analyser, spiral, pitchwheel | ✅ |
-| Edit + crop action buttons on every inline zone | ✅ |
-
-### Workspace
-
-| Feature | Status |
-|---------|--------|
-| Local-first project storage — Yjs + y-indexeddb, no server required | ✅ |
-| Multi-file projects with folders, drag-reorder, bracket-aware outline | ✅ |
-| Version history — save / restore / delete snapshots, auto-snapshot on idle | ✅ |
-| Import / export project as `.zip` | ✅ |
-| Theme system — unified tokens, light/dark with instant propagation | ✅ |
-
-### Export
-
-| Feature | Status |
-|---------|--------|
-| WAV export — offline fast-render via `OfflineAudioContext` (~50× realtime) | ✅ |
-| Multi-stem export — render each pattern to a separate WAV in parallel | ✅ |
-
----
-
-## A tiny example
-
-Open a fresh Strudel file and paste:
+Or paste this into a new `.strudel` file and press Play:
 
 ```js
 $: note("c3 e3 g3 b3").s("sine").gain(0.7).viz("spectrum")
 $: s("bd*4, ~ cp").gain(0.9).viz("scope")
 ```
 
-You get two independent inline visualizers, each side-tapping its own pattern — not the master mix. Click the crop icon on either one to frame the part you care about. Save. It persists.
+Each `$:` line is a track. It gets its own strip in the Mixer, its own row on the Timeline and its own visualiser, drawn right under the line.
 
 ---
 
-## Repo structure
+## What you can do
+
+### Arrange: the Timeline
+
+- See the whole song, every track, with a playhead you can click to jump to any point.
+- Work with sections:
+
+  | To | Press |
+  |---|---|
+  | Duplicate a section | ⌘D |
+  | Split a section in two | S |
+  | Delete a section and leave a gap | Delete |
+  | Delete a section and close the gap | ⌘⇧⌫ |
+  | Insert an empty section | ⌘I |
+  | Rename a section | F2 |
+  | Point a section at a different part | P |
+
+- Drag on the ruler to loop a stretch.
+- Draw each track as **Bars** or as a **Waveform**, and give it a colour.
+- Automate a parameter over the song in a lane under the track.
+
+### Edit: the Pattern tab
+
+The Pattern tab follows your cursor. It shows the line you're on as a grid:
+
+- **Drum lines** open as a step sequencer. Click a step to turn it on or off, and drag up or down to set how hard it hits.
+- **Chord lines** open as a chord chart.
+- **Melodies** open as a piano roll. Place, move and resize notes, and hold one down to hear it.
+- **Slots** sets how fine the grid is: halve it, double it, or pick 4, 8, 16, 32 or 64 steps.
+
+Next to the grid is a column with the track's sound picker (you can hear each sound before choosing it), its effect knobs and an **Add effect** menu.
+
+### Mix: the Mixer
+
+- A channel strip for every track, with fader, pan, meter, mute and solo.
+- Open a strip to see all its effect knobs.
+- A Master strip for the whole mix.
+
+The fader writes `.gain`, pan writes `.pan`, and mute and solo mute tracks in the code itself, so what you hear is what the code says.
+
+### Sounds and visuals: the Library
+
+- Search every sound Stave knows and hear it before you use it. Insert a sound into your code at the cursor.
+- **Bring in your own audio:** drop a file onto the Library, choose one, or record a take from your microphone.
+- Add ready-made visual sketches to your project and use them with `.viz("Name")`.
+
+### Visualisers
+
+- Add `.viz("…")` to a track and the visualiser draws between the code lines, fed by that track alone, not the whole mix. Built in: `pianoroll`, `wordfall`, `scope`, `fscope`, `spectrum`, `spiral` and `pitchwheel`, plus Hydra and GLSL ones.
+- Write your own as `.p5`, `.hydra` or `.glsl` (ShaderToy-style) files. A new file starts with a short sketch that already reacts to the music, and it reloads as you type.
+- Put a visual behind your code as a backdrop, or pop the preview out into its own window.
+
+### Save and share
+
+- **Bounce to WAV:** the whole mix, or one file per track (stems) in a zip.
+- **Copy Share Link:** the whole project goes into the link itself, so nothing is uploaded. The link doesn't carry audio files; export a `.zip` for those.
+- **Export and import** a project as a `.zip`, audio included.
+- **Version History** lets you restore, fork or compare earlier versions of a project.
+
+### On a phone or tablet
+
+On a phone the code takes the whole screen:
+
+- The sidebar and menus move into a drawer.
+- Timeline, Pattern and Mixer open as a sheet over the code. Held sideways, you switch between them from the top bar.
+- A row of pattern symbols (`~ * " [ ] < > ( )`) sits above the keyboard.
+- A setting decides whether Play takes over the phone's audio or plays alongside your other apps.
+
+### The editor
+
+Stave is built on Monaco, the editor inside VS Code:
+
+- Tabs, split panes and a command palette.
+- Search across files, and search the docs.
+- Autocomplete for every sound name, and hover docs.
+- While a pattern plays, the notes that are sounding light up in the code.
+- Errors show up in the code, not only in a console.
+- Zen mode and keyboard shortcuts you can change.
+
+### Not there yet
+
+- **Sonic Pi:** you can create a `.sonicpi` file and get syntax highlighting, but its engine isn't bundled in this build, so it doesn't play yet.
+
+---
+
+## Run it locally
+
+You need Node 20 or newer and pnpm 9 or newer.
+
+```bash
+git clone https://github.com/MrityunjayBhardwaj/stave-code.git
+cd stave-code
+pnpm install
+pnpm dev          # the app on http://localhost:3000, the docs on http://localhost:4321/docs/
+```
+
+Tests:
+
+```bash
+pnpm --filter @stave/editor exec vitest run    # editor unit tests
+pnpm --filter @stave/app test                  # app unit tests
+pnpm gate:editing:browser:quick                # a short Playwright run
+```
+
+`pnpm gate:editing` runs the full set, including browser tests on desktop, phone and tablet sizes.
+
+---
+
+## How the code is laid out
 
 ```
 stave-code/
 ├── packages/
-│   ├── editor/          # @stave/editor — React component library (tsup)
+│   ├── editor/     # @stave/editor: the studio's core (React + TypeScript, built with tsup)
 │   │   └── src/
-│   │       ├── engine/              # Strudel + Sonic Pi runtimes, per-track analysers
-│   │       ├── monaco/              # Language, diagnostics, highlighting
-│   │       ├── visualizers/         # Inline viz view-zone pipeline
-│   │       ├── workspace/           # Yjs-backed file store, tabs, splits
-│   │       └── ir/                  # Pattern IR (early — see project docs)
-│   └── app/             # Next.js 16 demo app (Turbopack) — what stave.live runs
-└── assets/              # Screenshots, branding
+│   │       ├── engine/       # Strudel playback, offline render, WAV and stems, recording
+│   │       ├── codeView/     # reads a song's structure from the code, and writes edits back
+│   │       ├── visualEdit/   # the Pattern tab's grids and knobs, and the Mixer
+│   │       ├── visualizers/  # inline .viz() visualisers: p5.js, Hydra, GLSL
+│   │       ├── monaco/       # the Strudel language: highlighting, completions, hover docs
+│   │       ├── workspace/    # files and folders (Yjs + IndexedDB), tabs, panels, history
+│   │       └── theme/        # colours and the editor theme
+│   ├── app/        # the Next.js app that runs stave.live: Timeline, Library, menus, phone layout
+│   └── docs/       # the docs site (Astro Starlight), served at stave.live/docs
+└── assets/         # screenshots
 ```
 
----
+### Using the editor in your own app
 
-## Embedding
-
-Stave Code is the hosted studio, but the editor core ships as a library too. If you want to drop the editing experience into your own React app:
+`@stave/editor` isn't published to npm yet. Inside this workspace you can drop the editor into any React page:
 
 ```tsx
 import { StrudelEditor } from '@stave/editor'
@@ -148,40 +203,36 @@ export default function App() {
 }
 ```
 
-### Key props
-
-| Prop | Type | Description |
-|------|------|-------------|
-| `code` | `string` | Controlled code value |
-| `defaultCode` | `string` | Initial uncontrolled code |
-| `onChange` | `(code: string) => void` | Code change callback |
-| `onPlay` / `onStop` | `() => void` | Playback lifecycle callbacks |
-| `onError` | `(err: Error) => void` | Eval and runtime error callback |
-| `onExport` | `(blob: Blob) => Promise<string>` | Custom export handler (e.g. CDN upload) |
+| Prop | Type | What it does |
+|------|------|--------------|
+| `code` | `string` | The code, controlled |
+| `defaultCode` | `string` | The starting code, uncontrolled |
+| `onChange` | `(code: string) => void` | Called when the code changes |
+| `onPlay` / `onStop` | `() => void` | Called when playback starts and stops |
+| `onError` | `(err: Error) => void` | Called on evaluation and runtime errors |
+| `onExport` | `(blob: Blob, stemName?: string) => Promise<string>` | Handle an exported WAV yourself (for example, upload it) |
 | `theme` | `'dark' \| 'light' \| StrudelTheme` | Editor theme |
-| `engineRef` | `MutableRefObject<StrudelEngine>` | Direct engine access |
+| `engineRef` | `MutableRefObject<StrudelEngine>` | Direct access to the engine |
 
 ---
 
-## Stack
+## Built with
 
-- **Editor** — [Monaco Editor](https://microsoft.github.io/monaco-editor/) via `@monaco-editor/react`, view-zones for inline viz
-- **Audio** — [Strudel](https://strudel.cc) (`@strudel/core`, `@strudel/webaudio`, `@strudel/mini`, `@strudel/tonal`, `@strudel/xen`, `@strudel/midi`, `@strudel/soundfonts`), `sonicPiWeb` for Sonic Pi
-- **Visualizers** — p5.js, Hydra
-- **Persistence** — Yjs + y-indexeddb (local-first CRDT)
-- **Framework** — React 19, Next.js 16 (Turbopack)
-- **Tooling** — TypeScript, pnpm workspaces, tsup, Vitest, Playwright
+- **Editor:** [Monaco](https://microsoft.github.io/monaco-editor/)
+- **Audio:** [Strudel](https://strudel.cc) (`@strudel/core`, `@strudel/webaudio`, `@strudel/mini`, `@strudel/tonal`, `@strudel/soundfonts` and friends)
+- **Visuals:** [p5.js](https://p5js.org), [Hydra](https://hydra.ojack.xyz), GLSL
+- **Storage:** [Yjs](https://yjs.dev) + IndexedDB, local-first
+- **App:** React 19, Next.js 16
+- **Tooling:** TypeScript, pnpm workspaces, Turborepo, tsup, Vitest, Playwright
 
 ---
 
 ## Contributing
 
-Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the DCO signoff, PR workflow, and what not to commit.
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the DCO sign-off, the PR workflow and what not to commit.
 
-This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
-
-For security vulnerabilities, see [SECURITY.md](SECURITY.md).
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). To report a security problem, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-GNU Affero General Public License v3.0 — see [LICENSE](LICENSE)
+GNU Affero General Public License v3.0. See [LICENSE](LICENSE).
