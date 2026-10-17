@@ -13,7 +13,7 @@
  * commands (layering).
  */
 
-import { chordFromEvent, chordMatches } from "@stave/editor";
+import { chordFromEvent, chordMatches, isMacPlatform } from "@stave/editor";
 import { executeCommand, listCommands, getCommand, type Command } from "./registry";
 
 const STORAGE_KEY = "stave:keybindings";
@@ -217,15 +217,38 @@ function isEditableContext(e: KeyboardEvent): boolean {
 }
 
 /**
+ * True when focus is in the code itself (Monaco's text input), not in one of
+ * Monaco's own boxes such as Find or Rename, which are plain text fields (#2100).
+ */
+function isCodeEditorContext(e: KeyboardEvent): boolean {
+  const target = e.target as HTMLElement | null;
+  if (!target?.closest?.(".monaco-editor")) return false;
+  return !target.closest(".find-widget, .rename-box, .monaco-inputbox");
+}
+
+/**
+ * A keystroke that cannot type text (#2100): ⌘ held on a Mac; Ctrl held
+ * without Alt elsewhere. Ctrl+Alt is how Windows reports AltGr, which types
+ * characters (AltGr+Z is "ż" on the Polish Programmers layout), so it never
+ * counts, even though the chord builder turns it into mod+alt+z.
+ */
+function cannotTypeText(e: KeyboardEvent): boolean {
+  if (isMacPlatform()) return e.metaKey;
+  return e.ctrlKey && !e.altKey;
+}
+
+/**
  * Install a global keydown listener that matches the pressed chord
  * against every registered command's keybinding and executes the first
- * match. Commands can opt out of the editable-context guard by setting
- * `allowInEditable: true` on the declared binding (future — not needed
- * yet). Returns an unsubscribe.
+ * match. Returns an unsubscribe.
  */
 export function installKeybindingDispatcher(): () => void {
   const onKey = (e: KeyboardEvent) => {
     const editable = isEditableContext(e);
+    // In the code, a key the editor uses (⌘Z, ⌘/, ⌘D …) never gets here:
+    // Monaco handles it and stops it. So whatever arrives from the code and
+    // cannot type text is an app shortcut the editor left alone (#2100).
+    const appKeyInCode = editable && !e.defaultPrevented && isCodeEditorContext(e) && cannotTypeText(e);
     const chord = eventToChord(e);
     for (const cmd of listCommands()) {
       // A scoped command belongs to its panel, which matches its own keys
@@ -233,16 +256,12 @@ export function installKeybindingDispatcher(): () => void {
       // wherever focus happens to be (#1795).
       if (cmd.scope) continue;
       if (!getKeybindingsFor(cmd).some((b) => chordMatches(chord, b))) continue;
-      // Deferral rule: any command whose id starts with `stave.editor.`
-      // is meant for editor-context commands that should NOT run when
-      // the user is NOT in an editable context. All other commands run
-      // regardless, EXCEPT we stay out of the way when focus is in an
-      // INPUT / TEXTAREA / contentEditable so the user can type freely
-      // (Monaco, rename input, etc.). The command itself can override
-      // by declaring `mod+shift+<x>` which is rare in text input.
-      if (editable) {
-        // Allow only palette / quick-open style modals in editable
-        // context — those are explicitly global.
+      // Stay out of the way when focus is in an INPUT / TEXTAREA /
+      // contentEditable so the user can type freely (a rename box, a search
+      // field). Three things still pass: the palette and quick open, which
+      // are explicitly global, and in the code, an app shortcut the editor
+      // doesn't use (appKeyInCode).
+      if (editable && !appKeyInCode) {
         if (!cmd.id.startsWith("stave.palette.") && cmd.id !== "stave.quickOpen") {
           continue;
         }
