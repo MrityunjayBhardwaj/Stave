@@ -1725,7 +1725,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       id: "stave.view.zen",
       title: "Toggle Zen / Perform Mode",
       category: "View",
-      description: "Hide menu bar, activity bar, and status bar. Esc to exit.",
+      description: "Hide the activity bar and side panel, and go full screen. Esc to exit.",
       keybinding: "mod+alt+z",
       run: () => setZenMode((z) => !z),
     }));
