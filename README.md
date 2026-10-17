@@ -2,148 +2,183 @@
 
 # Stave
 
-**A music studio for [Strudel](https://strudel.cc), in your browser. Write the song as code, then arrange it on a Timeline, edit it on a grid and mix it on a console. Every change in a view is written back into your code.**
+### Make a whole song in Strudel, and see it like a DAW.
 
-![Stave playing a song: the code over a GLSL backdrop, the arranged tracks on the Timeline below](assets/v0_5_scrst.jpeg)
+Write music as code. Arrange it on a Timeline, paint beats on a grid, mix it on a console,<br/>
+and make visuals that move with every kick. Every change you make in a view is written back into your code.
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)](https://react.dev/)
-[![Strudel](https://img.shields.io/badge/Strudel-1.x-a855f7)](https://strudel.cc)
+**[Open Stave →](https://stave.live)** &nbsp;·&nbsp; [▶ Watch the launch video](https://www.youtube.com/watch?v=LoVfu-FCTAg) &nbsp;·&nbsp; [Docs](https://stave.live/docs/)
 
-**[stave.live](https://stave.live)** · [Docs](https://stave.live/docs/) · [Contributing](CONTRIBUTING.md)
+<br/>
+
+<a href="https://www.youtube.com/watch?v=LoVfu-FCTAg"><img src="assets/v0_5_scrst_play.jpg" alt="Stave playing a song, with a play button: click to watch the launch video" /></a>
+
+<sub>Free and open source · Runs in your browser · Nothing to install · No account</sub>
 
 </div>
 
 ---
 
-## What it is
+## The problem
 
-Strudel is a wonderful way to make music: a few lines of code and a loop is playing. Turning those lines into a whole song is harder. You have to work out in your head where each part starts, how loud each track is, and which step a drum hit lands on.
+[Strudel](https://strudel.cc) is a joyful way to make music: type one line and a beat starts playing. Then it gets hard.
 
-Stave puts the views of a music studio next to your code:
+- **A loop isn't a song.** Code has no overview. You can't see where the chorus starts, how long the verse runs, or where you are right now. You have to keep the whole song in your head.
+- **Code doesn't show you what it plays.** `"bd [~ bd] ~ bd"` is a drum beat, but you have to read it to hear it. If you're new to code, every change is a guess. If you come from a DAW, there's no grid to paint on and no fader to pull.
+- **Visuals can't hear the music properly.** Audio-reactive visuals usually listen to the finished mix and guess from the loudness: "that low thump was probably the kick". And they live in a different tool, so your music and your visuals drift apart.
 
-- **Timeline:** the whole song, section by section.
-- **Pattern:** the steps or notes of the line you're on.
-- **Mixer:** a channel strip for every track.
+## How Stave solves it
 
-You can work in any of them. Drag a section, paint a drum step or pull a fader, and Stave rewrites your code to match. Type in the code, and the views redraw. The code is still the song, so you can read it, copy it, share it, or keep writing it by hand.
+**Stave is a studio built around your Strudel code.** It keeps your code and gives it the views a music producer expects: a Timeline, a step grid and piano roll, a Mixer, and visuals that know exactly what the music is doing.
 
-Your projects are saved in your browser. There's no account and no server.
+**It works both ways.** Pull a fader and the `.gain` in your code changes. Click a step on the grid and the beat in your code changes. Type a new note and the grid redraws. Your code is always the song, so you can still read it, share it, and learn from it. The views just stop you from having to imagine it.
 
 ---
 
-## Try it
+## How it works
 
-Open **[stave.live](https://stave.live)**. The start screen offers a few templates:
+### 1. Code it
 
-| Template | What you get |
-|---|---|
-| **Full Song** | A finished 48-bar song: drums, bass, keys, a flute hook and a sung line written as notes. This is the quickest way to see the Timeline, Pattern and Mixer at work. |
-| **Starter** | A Strudel pattern playing through the built-in p5.js and Hydra visualisers. |
-| **Strudel Sketch** | A short pattern to start writing on. |
-| **Hydra Visual** | An audio-reactive Hydra sketch. |
-| **Blank** | An empty project. |
+Write Strudel in a real editor. It's Monaco, the editor inside VS Code, so you get autocomplete for every sound, hover docs, and errors shown right in the code. While the song plays, the notes that are sounding light up. Each `$:` line, or each name you give a part (`drums:`, `bass:`), is a track.
 
-Or paste this into a new `.strudel` file and press Play:
+### 2. Arrange it
+
+![The Timeline: each track's sections laid out across the song, with a playhead](assets/readme/timeline.jpg)
+
+The **Timeline** shows your whole song, track by track and section by section.
+
+- Duplicate a chorus, split a verse, insert a gap, rename a section, or drag a stretch to loop it.
+- Draw a parameter's automation across the song, like a filter opening up over eight bars.
+- Each section is an `arrange(...)` entry in your code, and editing one rewrites it there.
+
+### 3. Shape it
+
+<p>
+  <img src="assets/readme/pattern-grid.jpg" width="49%" alt="The Pattern tab's step grid: kick, hi-hat and clap lanes" />
+  <img src="assets/readme/piano-roll.jpg" width="49%" alt="The piano roll: a bassline's notes on a keyboard grid" />
+</p>
+
+The **Pattern** tab follows your cursor and shows that line as a grid:
+
+- **Drum lines** become a step sequencer. Click a step to turn it on or off, and drag up or down to set how hard it hits.
+- **Melodies** become a piano roll. Place, move and stretch notes, and hold one down to hear it.
+- **Chord lines** become a chord chart.
+
+Every click rewrites the mini-notation in your code. Watching it change is the fastest way to learn what `"bd*4, hh*16"` means.
+
+### 4. Mix it
+
+![The Mixer: drums and bass channel strips with pan and faders, a low-pass effect, and the Master strip](assets/readme/mixer.jpg)
+
+The **Mixer** gives every track a channel strip: fader, pan, meter, mute and solo, plus a chain of effects (reverb, delay, filters and more) and a Master strip. The fader writes `.gain`, an effect writes `.lpf(800)`, and mute and solo mute tracks in the code itself, so what you hear is always what the code says.
+
+### 5. See it
+
+![An audio-reactive visual under the code: a robot guitarist playing along, next to a chord diagram](assets/readme/visuals.jpg)
+
+Visuals in Stave don't guess from the loudness. Stave knows every note your code plays, and it hands that to your sketch:
+
+- `sig.kick`, `sig.snare`, `sig.hat`, `sig.clap`… jump to 1 the moment that drum plays, then fade.
+- `sig('bd')` follows one sound, and `sig.track('$0')` follows one track.
+- `sig.fft`, `sig.wave`, `sig.bass` and `sig.treble` are there too, when you want the sound itself.
+
+Here's a whole audio-reactive sketch. Make a file called `kick.p5`, paste this and save:
+
+```js
+function setup() {
+  createCanvas(stave.width, stave.height)
+}
+
+function draw() {
+  background(10, 10, 20, 60)
+  noStroke()
+  fill(120, 220, 255)
+  circle(width / 2, height / 2, 20 + sig.kick * 120)
+}
+```
+
+Then point a track at it with `$: s("bd*4, ~ cp").viz("kick")`. The circle jumps on every kick, drawn right under that line of code. Change the beat and the visual follows, because both come from the same pattern.
+
+- **Write sketches in p5.js, Hydra or GLSL** (ShaderToy-style). A new visual file starts with a sketch that already reacts, and it reloads when you save.
+- **Put any visual behind your code** as a backdrop, or pop it out into its own window for a projector or a second screen.
+- **Start from ready-made ones.** There are built-in visualisers (`pianoroll`, `scope`, `spectrum`, `spiral` and more), and sketches in the Library you can add with one click.
+
+### 6. Share it
+
+![The Bounce to WAV dialog: whole song or a fixed length, as a mix or as stems](assets/readme/bounce.jpg)
+
+- **Bounce** the whole song to WAV, as one mix or as one file per track (stems).
+- **Copy a share link.** The whole project goes into the link itself, so nothing is uploaded.
+- **Export a `.zip`** with your audio included, or roll back with version history.
+
+---
+
+## Start in 30 seconds
+
+1. Open **[stave.live](https://stave.live)**.
+2. Pick **Full Song**. It's a finished 48-bar track with drums, bass, keys, a flute hook and a sung melody.
+3. Press **Play**, then open the **Timeline**, **Pattern** and **Mixer** tabs at the bottom and start poking around.
+
+Or start from nothing. Make a new `.strudel` file, paste this, and press <kbd>Ctrl</kbd>+<kbd>Enter</kbd>:
 
 ```js
 $: note("c3 e3 g3 b3").s("sine").gain(0.7).viz("spectrum")
 $: s("bd*4, ~ cp").gain(0.9).viz("scope")
 ```
 
-Each `$:` line is a track. It gets its own strip in the Mixer, its own row on the Timeline and its own visualiser, drawn right under the line.
+Each `$:` line is a track. It gets its own row on the Timeline, its own strip in the Mixer, and a visualiser drawn right under the line.
 
 ---
 
-## What you can do
+## Who it's for
 
-### Arrange: the Timeline
+**🌱 You're new to Strudel, or new to code.** Start from a song that already works. Click a step on the drum grid and watch the code change. You learn the language by seeing what each part does.
 
-- See the whole song, every track, with a playhead you can click to jump to any point.
-- Work with sections:
+**🎛️ You make music in a DAW.** Arrange, sequence and mix are all where you'd look for them. Underneath is a pattern language that makes variations and generative ideas a one-line change.
 
-  | To | Press |
-  |---|---|
-  | Duplicate a section | ⌘D |
-  | Split a section in two | S |
-  | Delete a section and leave a gap | Delete |
-  | Delete a section and close the gap | ⌘⇧⌫ |
-  | Insert an empty section | ⌘I |
-  | Rename a section | F2 |
-  | Point a section at a different part | P |
+**⌨️ You live-code already.** Keep writing everything by hand. Stave just shows you what's playing, where you are in the song, and how loud each part is, and it stays out of the way.
 
-- Drag on the ruler to loop a stretch.
-- Draw each track as **Bars** or as a **Waveform**, and give it a colour.
-- Automate a parameter over the song in a lane under the track.
-
-### Edit: the Pattern tab
-
-The Pattern tab follows your cursor. It shows the line you're on as a grid:
-
-- **Drum lines** open as a step sequencer. Click a step to turn it on or off, and drag up or down to set how hard it hits.
-- **Chord lines** open as a chord chart.
-- **Melodies** open as a piano roll. Place, move and resize notes, and hold one down to hear it.
-- **Slots** sets how fine the grid is: halve it, double it, or pick 4, 8, 16, 32 or 64 steps.
-
-Next to the grid is a column with the track's sound picker (you can hear each sound before choosing it), its effect knobs and an **Add effect** menu.
-
-### Mix: the Mixer
-
-- A channel strip for every track, with fader, pan, meter, mute and solo.
-- Open a strip to see all its effect knobs.
-- A Master strip for the whole mix.
-
-The fader writes `.gain`, pan writes `.pan`, and mute and solo mute tracks in the code itself, so what you hear is what the code says.
-
-### Sounds and visuals: the Library
-
-- Search every sound Stave knows and hear it before you use it. Insert a sound into your code at the cursor.
-- **Bring in your own audio:** drop a file onto the Library, choose one, or record a take from your microphone.
-- Add ready-made visual sketches to your project and use them with `.viz("Name")`.
-
-### Visualisers
-
-- Add `.viz("…")` to a track and the visualiser draws between the code lines, fed by that track alone, not the whole mix. Built in: `pianoroll`, `wordfall`, `scope`, `fscope`, `spectrum`, `spiral` and `pitchwheel`, plus Hydra and GLSL ones.
-- Write your own as `.p5`, `.hydra` or `.glsl` (ShaderToy-style) files. A new file starts with a short sketch that already reacts to the music, and it reloads as you type.
-- Put a visual behind your code as a backdrop, or pop the preview out into its own window.
-
-### Save and share
-
-- **Bounce to WAV:** the whole mix, or one file per track (stems) in a zip.
-- **Copy Share Link:** the whole project goes into the link itself, so nothing is uploaded. The link doesn't carry audio files; export a `.zip` for those.
-- **Export and import** a project as a `.zip`, audio included.
-- **Version History** lets you restore, fork or compare earlier versions of a project.
-
-### On a phone or tablet
-
-On a phone the code takes the whole screen:
-
-- The sidebar and menus move into a drawer.
-- Timeline, Pattern and Mixer open as a sheet over the code. Held sideways, you switch between them from the top bar.
-- A row of pattern symbols (`~ * " [ ] < > ( )`) sits above the keyboard.
-- A setting decides whether Play takes over the phone's audio or plays alongside your other apps.
-
-### The editor
-
-Stave is built on Monaco, the editor inside VS Code:
-
-- Tabs, split panes and a command palette.
-- Search across files, and search the docs.
-- Autocomplete for every sound name, and hover docs.
-- While a pattern plays, the notes that are sounding light up in the code.
-- Errors show up in the code, not only in a console.
-- Zen mode and keyboard shortcuts you can change.
-
-### Not there yet
-
-- **Sonic Pi:** you can create a `.sonicpi` file and get syntax highlighting, but its engine isn't bundled in this build, so it doesn't play yet.
+**🌈 You make visuals.** Your sketch gets the actual beat, every kick, snare and note, not a guess from the volume. Write in p5.js, Hydra or GLSL, and send it to a projector in its own window.
 
 ---
 
-## Run it locally
+## And also
 
-You need Node 20 or newer and pnpm 9 or newer.
+- 🔊 **A sound library.** Search every sound and hear it before you use it. Drop in your own audio, or record a take from your mic.
+- 📱 **Phones and tablets.** Stave has its own layout for small screens, with a row of pattern symbols above the keyboard.
+- 🧭 **Templates.** Start from a full song, a short sketch, a Hydra visual or a blank page.
+
+**Not there yet:** Sonic Pi files open and get highlighting, but they don't play yet.
+
+---
+
+## Free, and yours
+
+- **No sign-up.** Open the page and make music.
+- **No ads, no paywall.** Everything above is free.
+- **Your projects stay in your browser.** No server holds your songs. A share link carries the project inside the link itself.
+- **The music you make is yours.** The licence covers Stave's code, not your songs.
+- **Open source** under AGPL-3.0, like Strudel.
+- **The only measurement:** anonymous page-view counts through Vercel Web Analytics. It sets no cookies and reads nothing from the editor.
+
+---
+
+## Make Stave better with us
+
+You don't need to write code to help:
+
+- 🐛 **Tell us what broke or confused you.** [Open an issue](https://github.com/MrityunjayBhardwaj/stave-code/issues/new). A screenshot and the code you were playing help a lot.
+- 💡 **Tell us what you wish it did.** Feature ideas from people making real songs shape what gets built next.
+- 🎶 **Share what you make.** A song made in Stave is the best bug report and the best demo.
+
+If you do write code, issues marked [**good first issue**](https://github.com/MrityunjayBhardwaj/stave-code/labels/good%20first%20issue) and [**help wanted**](https://github.com/MrityunjayBhardwaj/stave-code/labels/help%20wanted) are a good place to start. [CONTRIBUTING.md](CONTRIBUTING.md) covers the rest. Everyone here follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+<details>
+<summary><b>Run Stave on your own machine</b></summary>
+
+<br/>
+
+You need Node 20+ and pnpm 9+.
 
 ```bash
 git clone https://github.com/MrityunjayBhardwaj/stave-code.git
@@ -160,11 +195,14 @@ pnpm --filter @stave/app test                  # app unit tests
 pnpm gate:editing:browser:quick                # a short Playwright run
 ```
 
-`pnpm gate:editing` runs the full set, including browser tests on desktop, phone and tablet sizes.
+`pnpm gate:editing` runs everything, including browser tests at desktop, phone and tablet sizes.
 
----
+</details>
 
-## How the code is laid out
+<details>
+<summary><b>How the code is laid out</b></summary>
+
+<br/>
 
 ```
 stave-code/
@@ -183,9 +221,16 @@ stave-code/
 └── assets/         # screenshots
 ```
 
-### Using the editor in your own app
+Built with Monaco, Strudel, p5.js, Hydra, Yjs, React 19 and Next.js 16, plus TypeScript, pnpm, Turborepo, Vitest and Playwright.
 
-`@stave/editor` isn't published to npm yet. Inside this workspace you can drop the editor into any React page:
+</details>
+
+<details>
+<summary><b>Use the editor in your own React app</b></summary>
+
+<br/>
+
+`@stave/editor` isn't published to npm yet. Inside this workspace:
 
 ```tsx
 import { StrudelEditor } from '@stave/editor'
@@ -205,34 +250,25 @@ export default function App() {
 
 | Prop | Type | What it does |
 |------|------|--------------|
-| `code` | `string` | The code, controlled |
-| `defaultCode` | `string` | The starting code, uncontrolled |
+| `code` / `defaultCode` | `string` | Controlled or starting code |
 | `onChange` | `(code: string) => void` | Called when the code changes |
 | `onPlay` / `onStop` | `() => void` | Called when playback starts and stops |
 | `onError` | `(err: Error) => void` | Called on evaluation and runtime errors |
-| `onExport` | `(blob: Blob, stemName?: string) => Promise<string>` | Handle an exported WAV yourself (for example, upload it) |
+| `onExport` | `(blob: Blob, stemName?: string) => Promise<string>` | Handle an exported WAV yourself |
 | `theme` | `'dark' \| 'light' \| StrudelTheme` | Editor theme |
 | `engineRef` | `MutableRefObject<StrudelEngine>` | Direct access to the engine |
 
----
-
-## Built with
-
-- **Editor:** [Monaco](https://microsoft.github.io/monaco-editor/)
-- **Audio:** [Strudel](https://strudel.cc) (`@strudel/core`, `@strudel/webaudio`, `@strudel/mini`, `@strudel/tonal`, `@strudel/soundfonts` and friends)
-- **Visuals:** [p5.js](https://p5js.org), [Hydra](https://hydra.ojack.xyz), GLSL
-- **Storage:** [Yjs](https://yjs.dev) + IndexedDB, local-first
-- **App:** React 19, Next.js 16
-- **Tooling:** TypeScript, pnpm workspaces, Turborepo, tsup, Vitest, Playwright
+</details>
 
 ---
 
-## Contributing
+## Thank you
 
-Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the DCO sign-off, the PR workflow and what not to commit.
+Stave stands on the shoulders of some wonderful projects:
 
-This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). To report a security problem, see [SECURITY.md](SECURITY.md).
+- [Strudel](https://strudel.cc) and the TidalCycles community, who made patterns this much fun.
+- [Hydra](https://hydra.ojack.xyz), [p5.js](https://p5js.org) and [Monaco](https://microsoft.github.io/monaco-editor/), for the visuals and the editor.
 
 ## License
 
-GNU Affero General Public License v3.0. See [LICENSE](LICENSE).
+[GNU AGPL v3.0](LICENSE). To report a security problem, see [SECURITY.md](SECURITY.md).
