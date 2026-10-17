@@ -7,7 +7,7 @@
 Write music as code. Arrange it on a Timeline, paint beats on a grid, mix it on a console,<br/>
 and make visuals that move with every kick. Every change you make in a view is written back into your code.
 
-**[Open Stave →](https://stave.live)** &nbsp;·&nbsp; [▶ Watch the launch video](https://www.youtube.com/watch?v=LoVfu-FCTAg) &nbsp;·&nbsp; [Docs](https://stave.live/docs/)
+**[Open Stave →](https://stave.live)** &nbsp;·&nbsp; [Docs](https://stave.live/docs/)
 
 <br/>
 
