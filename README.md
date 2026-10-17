@@ -2,7 +2,7 @@
 
 # Stave
 
-### Make a whole song in Strudel, and see it like a DAW.
+### Make a whole song in Strudel. Shape it like a DAW. Watch it come alive.
 
 Write music as code. Arrange it on a Timeline, paint beats on a grid, mix it on a console,<br/>
 and make visuals that move with every kick. Every change you make in a view is written back into your code.
@@ -148,7 +148,7 @@ Each `$:` line is a track. It gets its own row on the Timeline, its own strip in
 - 📱 **Phones and tablets.** Stave has its own layout for small screens, with a row of pattern symbols above the keyboard.
 - 🧭 **Templates.** Start from a full song, a short sketch, a Hydra visual or a blank page.
 
-**Not there yet:** Sonic Pi files open and get highlighting, but they don't play yet.
+**Coming next: Sonic Pi.** Stave's Sonic Pi support comes from [SonicWeb](https://github.com/MrityunjayBhardwaj/SonicWeb), our port of Sonic Pi to the browser: the same `play`, `sleep` and `live_loop`, with SuperCollider synthesis. You can already play with it on its own at [sonicweb.cc](https://sonicweb.cc). Inside Stave, `.sonicpi` files open with highlighting, but they don't play yet: the engine isn't bundled into this build.
 
 ---
 
@@ -267,7 +267,9 @@ export default function App() {
 Stave stands on the shoulders of some wonderful projects:
 
 - [Strudel](https://strudel.cc) and the TidalCycles community, who made patterns this much fun.
-- [Hydra](https://hydra.ojack.xyz), [p5.js](https://p5js.org) and [Monaco](https://microsoft.github.io/monaco-editor/), for the visuals and the editor.
+- [Hydra](https://hydra.ojack.xyz), [p5.js](https://p5js.org) and GLSL shaders in the style of [ShaderToy](https://www.shadertoy.com), for the visuals.
+- [Sonic Pi](https://sonic-pi.net), which Stave brings to the browser through [SonicWeb](https://github.com/MrityunjayBhardwaj/SonicWeb) and [SuperSonic](https://github.com/samaaron/supersonic).
+- [Monaco](https://microsoft.github.io/monaco-editor/), the editor at the heart of VS Code.
 
 ## License
 
