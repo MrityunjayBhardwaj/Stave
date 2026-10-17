@@ -268,7 +268,7 @@ Stave stands on the shoulders of some wonderful projects:
 
 - [Strudel](https://strudel.cc) and the TidalCycles community, who made patterns this much fun.
 - [Hydra](https://hydra.ojack.xyz), [p5.js](https://p5js.org) and GLSL shaders in the style of [ShaderToy](https://www.shadertoy.com), for the visuals.
-- [Sonic Pi](https://sonic-pi.net), and [SuperSonic](https://github.com/samaaron/supersonic), which our sister project [Sonic Web](https://github.com/MrityunjayBhardwaj/SonicWeb) builds on to run Sonic Pi in the browser.
+- [Sonic Pi](https://sonic-pi.net) and [SuperSonic](https://github.com/samaaron/supersonic), for live-coded music and the synth engine that runs it in the browser.
 - [Monaco](https://microsoft.github.io/monaco-editor/), the editor at the heart of VS Code.
 
 ## License
