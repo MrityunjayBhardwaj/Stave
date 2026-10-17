@@ -31,15 +31,16 @@ The top-bar **set bg ▾** button opens a popover with: swap, opacity, quality l
 
 ## Presets
 
-`.p5` / `.hydra` files become named viz presets automatically. The preset name is the filename with its extension stripped. All built-ins (`scope`, `fscope`, `spectrum`, `spiral`, `pitchwheel`, `wordfall`, `kaleidoscope`, `Piano Roll`) ship as editable workspace files under `preset/viz/`.
+`.p5`, `.hydra` and `.glsl` files become named visuals automatically. The name is the file name without its extension. The built-ins (`scope`, `fscope`, `spectrum`, `spiral`, `pitchwheel`, `wordfall`, `kaleidoscope`, `Piano Roll` and others) ship as editable files under `preset/viz/`. The [Library](/studio/library/)'s Viz shelf has more you can add with one click.
 
-## Host globals
+## What a visual can read
 
-Inside a `.p5` file:
+Stave knows every note your code plays, and it hands that to the visual:
 
-- `stave.scheduler` — query upcoming / past events.
-- `stave.analyser` — `getByteFrequencyData` / `getByteTimeDomainData` tapped at the attached pattern.
-- `stave.hapStream` — raw event feed.
-- `stave.width` / `stave.height` — device-pixel-correct canvas size.
+- **Drum hits:** `sig.kick`, `sig.snare`, `sig.hat` and the other drums jump to 1 the moment that drum plays, then fade.
+- **One sound or one track:** `sig('bd')` and `sig.track('$0')`.
+- **The sound of the mix:** `sig.rms`, `sig.bass`, `sig.mid`, `sig.treble`, and the arrays `sig.fft` and `sig.wave`.
 
-Inside a `.hydra` file, `s.a.fft[i]` gives audio-reactive bins.
+In Hydra the same values are functions on `stave.sig`, such as `stave.sig.kick()`. In GLSL they're uniforms such as `uKick`, plus the `iChannel0` audio texture.
+
+[Make visuals react](/guides/reactive-visuals/) walks through all of it with examples for p5.js, Hydra and GLSL.

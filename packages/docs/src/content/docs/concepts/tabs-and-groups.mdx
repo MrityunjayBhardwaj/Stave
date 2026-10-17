@@ -1,37 +1,59 @@
 ---
-title: Tabs and groups
-description: VS Code-style 2D tab layout — split editors horizontally or vertically, drag tabs between groups.
+title: Tabs, panels and shortcuts
+description: Split editors, drag tabs between groups, the activity bar, the bottom panel and the keyboard shortcuts.
 ---
 
-Stave's workspace is a 2D grid of **groups**, each containing a stack of **tabs**. Every file renders inside a tab; tabs can be dragged between groups; groups can be split horizontally or vertically.
+Stave's workspace is a grid of **groups**, each holding a stack of **tabs**. Every file opens in a tab. Tabs can be dragged between groups, and groups can be split side by side or one above the other.
 
 ## Splitting
 
-- **⌘\\** — split the active group to the right.
-- **⌘⇧\\** — split the active group down (new row inside the same column).
+- **⌘\\**: split the editor to the right.
+- **⌘⇧\\**: split the editor down.
 
 ## Moving tabs
 
-Drag a tab's header onto another group. Dropping on:
+Drag a tab's header onto another group. Dropping it on:
 
-- **The tab strip** appends the tab at the drop position.
-- **The N / S / E / W quadrant** of a group body splits and places the tab in the new pane.
-- **The group centre** merges into the existing tab stack.
-- **The left / right edge** of the whole shell spawns a new column.
+- **the tab strip** puts the tab at that position.
+- **the top, bottom, left or right of a group** splits that group and puts the tab in the new half.
+- **the middle of a group** adds it to that group's tabs.
+- **the left or right edge of the window** makes a new column.
 
 ## Activity bar
 
-The narrow bar on the far left switches the sidebar panel:
+The narrow bar on the far left switches the side panel:
 
-- **Explorer** (Files) — project tree.
-- **Search** — full-text search across every file.
-- **Version History** — snapshots.
-- **Outline** — `$:` blocks / function names in the active file.
+- **Files**: your project's files and folders.
+- **Search**: search across every file.
+- **History**: [Version History](/concepts/projects/#version-history).
+- **Library**: sounds, your audio and ready-made visuals. See [Library](/studio/library/).
+- **Console**: errors and warnings, with a count badge when there are any.
 
-Toggle the sidebar with **⌘B**.
+**⌘B** shows or hides the side panel.
+
+## Bottom panel
+
+The panel at the bottom holds the studio: **[Timeline](/studio/timeline/)**, **[Pattern](/studio/pattern/)** and **[Mixer](/studio/mixer/)**. Drag its top edge to resize it. It hides while the active tab is a visual file.
+
+## Keyboard shortcuts
+
+| Shortcut | What it does |
+|---|---|
+| **⌘Enter** | Play / evaluate |
+| **⌘.** | Stop |
+| **⌘⇧P** | Show all commands |
+| **⌘P** | Quick open a file |
+| **⌘⇧F** | Search in files |
+| **⌘⇧D** | Search the documentation |
+| **⌘/** | Keyboard shortcuts |
+| **⌘N** / **⌘O** | New project / open project |
+| **⌘Z** / **⌘⇧Z** | Undo / redo |
+| **⌘B** | Show or hide the side panel |
+| **⌘=** / **⌘-** | Bigger / smaller editor text |
+| **⌘⌥Z** | Zen mode |
+
+On Windows and Linux, use **Ctrl** for **⌘**. **⌘/** lists every shortcut. Click one to change it, or use **Reset all keybindings** to go back to the defaults. Editor keys like Play and Stop can be searched there but not changed. The Timeline has its own keys for sections; see [Timeline](/studio/timeline/#sections).
 
 ## Zen mode
 
-**⌘⌥Z** enters Zen Mode — menu bar, sidebar, status bar, activity bar all hide; the editor fills the viewport; `requestFullscreen` fires. Press **Esc** to exit.
-
-Intended for performing; all commands still work via the palette (**⌘⇧P**).
+**⌘⌥Z** enters Zen mode, for performing. The menu bar, side panel and activity bar hide, the editor fills the screen, and the browser goes full screen. Press **Esc** to leave. Every command still works from **⌘⇧P**.

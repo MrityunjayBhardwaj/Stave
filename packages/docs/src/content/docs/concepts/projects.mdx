@@ -1,39 +1,49 @@
 ---
 title: Projects
-description: Local-first workspaces with CRDT sync, auto-snapshots, and share links.
+description: Local-first projects, version history, share links and .zip archives.
 ---
 
-A Stave **project** is a collection of files, a layout, and a pinned backdrop. Everything persists to your browser's IndexedDB — no account, no server.
+A Stave **project** is a set of files and folders, your audio, and a layout. Everything is saved in your browser. There's no account and no server.
 
 ## File kinds
 
-| Extension | Runtime |
+| Extension | What it is |
 |---|---|
-| `.strudel` | Strudel pattern |
-| `.sonicpi` | Sonic Pi pattern |
-| `.p5` | p5.js sketch (also usable as a named viz) |
-| `.hydra` | Hydra chain (also usable as a named viz) |
-| `.md` | Markdown — notes |
+| `.strudel` | A Strudel song or pattern. This is what plays. |
+| `.p5` | A p5.js sketch, also usable as a named visual |
+| `.hydra` | A Hydra sketch, also usable as a named visual |
+| `.glsl` | A GLSL shader in the ShaderToy style, also usable as a named visual |
+| `.sonicpi` | Sonic Pi code. It opens with highlighting but [doesn't play in this build yet](/runtimes/sonicpi/). |
+| `.md` | Notes |
 
-Pattern files (`.strudel`, `.sonicpi`) drive audio. Viz files (`.p5`, `.hydra`) can be opened as their own tab **and** referenced by name from `.viz("…")` calls inside patterns.
+Visual files (`.p5`, `.hydra`, `.glsl`) open as their own tab, and they can also be used by name from `.viz("…")` in a Strudel file. A new visual file starts with a short sketch that already reacts to the music.
 
-## Sync model
+Make a file with the **New file** button in the Files panel or the **+** at the end of the tab bar. Include the extension in the name. Two files in one folder can't share a name.
 
-Every project is a Yjs document. Changes propagate to other open tabs instantly over a BroadcastChannel. Disconnect, edit offline, reconnect — the CRDT merges cleanly.
+## The Files panel
 
-## Snapshots
+- Drag files and folders to reorder them, or onto a folder to move them there.
+- **⌘Z** undoes a move or a reorder.
+- Drop a file from your desktop onto the panel to bring it in.
+- **Duplicate** makes "copy", then "copy 2", and so on.
 
-- **Auto** — every 60 seconds of idle, Stave captures a named snapshot (`auto-14:32`). The last 10 are retained.
-- **Manual** — save a named snapshot from the Version History panel. Manual snapshots are never pruned.
-- **Restore** — any snapshot can be restored non-destructively (a new auto-snapshot captures the pre-restore state first).
+## Version History
+
+Open it from **File › Version History…** or the history icon in the activity bar.
+
+- Stave saves a version on its own a few seconds after you stop typing.
+- The panel shows the project's history as a graph. Each version can be **Restored**, **Forked** into a new project, or **Viewed**, and you can open a diff of any file.
+- To see one file's history, right-click it in the Files panel and choose **File History**.
 
 ## Share links
 
-File menu → **Copy Share Link**. Produces a fragment URL like `https://stave.live/#share=eJxb…` containing the compressed project. Paste into a chat. The recipient visits the URL, sees an "Import shared project?" prompt.
+**File › Copy Share Link** puts the whole project into a link like `https://stave.live/#share=…`. Whoever opens it is asked "Import shared project?".
 
-Share URLs are purely client-side — they contain the full project data, they don't point at anything on a server.
+- The project lives in the part of the link after `#`, which browsers never send to a server.
+- A share link carries your files, not your audio. To send audio as well, export a `.zip`.
+- A project too big for a link (over 2 MB before compression) asks you to export a `.zip` instead.
 
-## Import / export
+## Import and export
 
-- **Export** → `.zip` with every file, preserving the directory structure.
-- **Import** → drop a `.zip` on the sidebar or use File → Import.
+- **File › Export as .zip** saves every file and folder, plus the audio you recorded or brought in.
+- **File › Import from .zip…** opens one. You can also open an archive from the start screen.
