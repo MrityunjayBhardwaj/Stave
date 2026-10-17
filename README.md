@@ -4,7 +4,7 @@
 
 **A music studio for [Strudel](https://strudel.cc), in your browser. Write the song as code, then arrange it on a Timeline, edit it on a grid and mix it on a console. Every change in a view is written back into your code.**
 
-![Stave with the Full Song template open: the code above, the song's five tracks on the Timeline below](assets/v0_5_scrst.jpeg)
+![Stave playing a song: the code over a GLSL backdrop, the arranged tracks on the Timeline below](assets/v0_5_scrst.jpeg)
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
