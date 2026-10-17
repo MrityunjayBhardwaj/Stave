@@ -9,7 +9,7 @@ import type { RecentProjectEntry } from "../recentProjects";
  * construction rather than by somebody remembering.
  */
 
-export const GITHUB_REPO_URL = "https://github.com/MrityunjayBhardwaj/stave-code";
+export const GITHUB_REPO_URL = "https://github.com/MrityunjayBhardwaj/Stave";
 
 /** What the menus can do, and the few facts their labels and greying depend on. */
 export interface MenuActions {
@@ -118,7 +118,7 @@ export function buildMenus(a: MenuActions): Menu[] {
       label: "View",
       items: [
         item(a.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar", a.onToggleSidebar, { shortcut: "⌘B" }),
-        item(a.zenMode ? "Exit Zen Mode" : "Zen Mode (Fullscreen)", a.onToggleZenMode, { shortcut: "⌘K Z" }),
+        item(a.zenMode ? "Exit Zen Mode" : "Zen Mode (Fullscreen)", a.onToggleZenMode, { shortcut: "⌘⌥Z" }),
       ],
     },
     {
