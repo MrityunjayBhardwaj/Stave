@@ -167,11 +167,11 @@ Each `$:` line is a track. It gets its own row on the Timeline, its own strip in
 
 You don't need to write code to help:
 
-- 🐛 **Tell us what broke or confused you.** [Open an issue](https://github.com/MrityunjayBhardwaj/stave-code/issues/new). A screenshot and the code you were playing help a lot.
+- 🐛 **Tell us what broke or confused you.** [Open an issue](https://github.com/MrityunjayBhardwaj/Stave/issues/new). A screenshot and the code you were playing help a lot.
 - 💡 **Tell us what you wish it did.** Feature ideas from people making real songs shape what gets built next.
 - 🎶 **Share what you make.** A song made in Stave is the best bug report and the best demo.
 
-If you do write code, issues marked [**good first issue**](https://github.com/MrityunjayBhardwaj/stave-code/labels/good%20first%20issue) and [**help wanted**](https://github.com/MrityunjayBhardwaj/stave-code/labels/help%20wanted) are a good place to start. [CONTRIBUTING.md](CONTRIBUTING.md) covers the rest. Everyone here follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+If you do write code, issues marked [**good first issue**](https://github.com/MrityunjayBhardwaj/Stave/labels/good%20first%20issue) and [**help wanted**](https://github.com/MrityunjayBhardwaj/Stave/labels/help%20wanted) are a good place to start. [CONTRIBUTING.md](CONTRIBUTING.md) covers the rest. Everyone here follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 <details>
 <summary><b>Run Stave on your own machine</b></summary>
@@ -181,8 +181,8 @@ If you do write code, issues marked [**good first issue**](https://github.com/Mr
 You need Node 20+ and pnpm 9+.
 
 ```bash
-git clone https://github.com/MrityunjayBhardwaj/stave-code.git
-cd stave-code
+git clone https://github.com/MrityunjayBhardwaj/Stave.git
+cd Stave
 pnpm install
 pnpm dev          # the app on http://localhost:3000, the docs on http://localhost:4321/docs/
 ```
@@ -205,7 +205,7 @@ pnpm gate:editing:browser:quick                # a short Playwright run
 <br/>
 
 ```
-stave-code/
+Stave/
 ├── packages/
 │   ├── editor/     # @stave/editor: the studio's core (React + TypeScript, built with tsup)
 │   │   └── src/
