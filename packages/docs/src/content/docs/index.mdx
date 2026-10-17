@@ -1,9 +1,9 @@
 ---
-title: Stave Code
-description: Browser-native live-coding editor for music and visuals — one workspace, four runtimes.
+title: Stave
+description: A music studio for Strudel in your browser. Write the song as code, then arrange, edit, mix and visualise it.
 template: splash
 hero:
-  tagline: Live-code music and visuals side-by-side. No install, no toolchain — it's a URL.
+  tagline: Make a whole song in Strudel. Shape it like a DAW. Watch it come alive. No install, no account. It's a URL.
   actions:
     - text: Get started
       # Absolute — the Hero override (src/components/Hero.astro) base-prefixes
@@ -13,7 +13,7 @@ hero:
       icon: right-arrow
       variant: primary
     - text: View on GitHub
-      link: https://github.com/MrityunjayBhardwaj/stave-code
+      link: https://github.com/MrityunjayBhardwaj/Stave
       icon: external
       variant: minimal
 ---
@@ -22,27 +22,31 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 ## What Stave is
 
-Stave is a browser IDE for **live-coded music and visuals**. It runs four runtimes in one workspace — patterns (Strudel, Sonic Pi) and graphics (p5.js, Hydra) — so a piece of music and the visual that reacts to it can live in adjacent tabs and talk to each other through a shared event stream.
+Stave is a studio built around your [Strudel](https://strudel.cc) code. You write the song as code, and Stave gives it the views a music producer expects: a **Timeline** for the whole song, a **Pattern** grid for the line you're on, a **Mixer** for every track, and **visuals** that react to every note.
 
-Everything runs locally. Projects are stored in your browser (IndexedDB + CRDT), and a share link is a fragment URL you can drop into chat.
+It works both ways. Pull a fader and the `.gain` in your code changes. Click a step on the grid and the beat in your code changes. Type a new note and the grid redraws. Your code is always the song.
+
+Everything runs in your browser. Projects are stored there too, and a share link carries the whole project inside the link itself.
 
 <CardGrid>
-  <Card title="Pattern runtimes" icon="pencil">
-    **Strudel** — concise JavaScript pattern algebra. **Sonic Pi** — Ruby-flavoured imperative sound.
+  <Card title="Arrange" icon="seti:clock">
+    The [Timeline](/studio/timeline/) shows your whole song, section by section. Duplicate a chorus, split a verse, loop a stretch, automate a filter.
   </Card>
-  <Card title="Visual runtimes" icon="seti:tsconfig">
-    **p5.js** — full creative-coding surface with Stave host globals injected. **Hydra** — chainable video synth.
+  <Card title="Shape" icon="pencil">
+    The [Pattern](/studio/pattern/) tab turns the line under your cursor into a step grid, a piano roll or a chord chart.
   </Card>
-  <Card title="Named viz attachments" icon="setting">
-    `.viz("name")` at the end of a pattern attaches a visualizer. Renders inline beneath the code or fullscreen as a backdrop.
+  <Card title="Mix" icon="setting">
+    The [Mixer](/studio/mixer/) gives every track a strip: fader, pan, meter, mute, solo and effects.
   </Card>
-  <Card title="Share + save" icon="rocket">
-    Auto-snapshots every minute. Manual named snapshots. Share link fits in a chat message. No account required.
+  <Card title="See it" icon="star">
+    [Visuals](/guides/reactive-visuals/) in p5.js, Hydra or GLSL know exactly when each kick, snare and note plays.
   </Card>
 </CardGrid>
 
 ## Next steps
 
-- **[Getting started](/getting-started/)** — five minutes, from URL to sound.
-- **[Runtimes](/runtimes/strudel/)** — tutorials per language.
-- **API reference** — every symbol Stave recognises: [p5.js](/reference/p5/) · [Hydra](/reference/hydra/) · [Sonic Pi](/reference/sonicpi/).
+- **[Getting started](/getting-started/)**: from the start screen to a playing song in two minutes.
+- **[Studio](/studio/timeline/)**: the Timeline, Pattern, Mixer and Library.
+- **[Make visuals react](/guides/reactive-visuals/)**: `sig.kick`, `sig('bd')` and friends.
+- **[Runtimes](/runtimes/strudel/)**: a page per language.
+- **API reference**: every symbol Stave recognises for [p5.js](/reference/p5/), [Hydra](/reference/hydra/) and [Sonic Pi](/reference/sonicpi/).
