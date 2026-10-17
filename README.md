@@ -68,7 +68,7 @@ Every click rewrites the mini-notation in your code. Watching it change is the f
 
 ### 4. Mix it
 
-![The Mixer: drums and bass channel strips with pan and faders, a low-pass effect, and the Master strip](assets/readme/mixer.jpg)
+![The Mixer: five channel strips with live meters, the lead strip open with reverb and low-pass knobs, and the Master strip](assets/readme/mixer.jpg)
 
 The **Mixer** gives every track a channel strip: fader, pan, meter, mute and solo, plus a chain of effects (reverb, delay, filters and more) and a Master strip. The fader writes `.gain`, an effect writes `.lpf(800)`, and mute and solo mute tracks in the code itself, so what you hear is always what the code says.
 
