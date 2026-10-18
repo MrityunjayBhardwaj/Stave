@@ -54,8 +54,7 @@ browser tab — and resumes it the moment it's visible again. It comes back exac
 where it left off; you don't need to do anything.
 
 For a visual left off-screen a long time, the **Off-screen viz teardown** setting
-(under **Performance**)
-(on by default) goes further and *frees its memory and GPU context* after ~60s,
+(under **Performance**, on by default) goes further and *frees its memory and GPU context* after ~60s,
 re-creating it when you scroll back. Turn it off if you'd rather visuals stay
 instantly resident at the cost of more memory.
 
