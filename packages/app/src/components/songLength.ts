@@ -32,6 +32,11 @@
  * continuously modulated control — which is the defect this file's own dialog
  * was filed for.
  *
+ * #2109 moved them again, at the same 256 cycles: 70 carry a period and 68 have
+ * none, because a song with a track that never comes back round (noise, a sweep
+ * that folds past the limit) no longer borrows the loop of the tracks that do.
+ * The dialog asks for a length on those, where it used to offer that loop.
+ *
  * ── WHY TWO EDITOR FUNCTIONS ARE STILL HANDED IN ──────────────────────────────
  * Until #1938 the app's tests could not load the `@stave/editor` main entry, so
  * every editor function this file used was injected. #1943 imports what the tests

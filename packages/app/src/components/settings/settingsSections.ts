@@ -115,7 +115,7 @@ export const SECTION_DEFS: readonly SettingsSectionDef[] = [
       { key: "noteColor", name: "Note colour", description: "How pattern-grid notes are coloured.", kind: "select", options: NOTE_COLOR_OPTIONS },
       { key: "rulerUnits", name: "Ruler units", description: "Timeline ruler numbering: Strudel cycles, or DAW-style bars & beats.", kind: "select", options: RULER_UNITS_OPTIONS },
       { key: "timelineSubRow", name: "Timeline sub-row height", description: "Height of expanded per-voice lanes.", kind: "slider", min: 12, max: 48, unit: "px" },
-      { key: "songCycleLimit", name: "Longest timeline", description: "How many cycles the timeline looks through for your song to repeat. A song that hasn't repeated by then is drawn this long. Songs with an arrange(...) always show in full.", kind: "slider", min: SONG_CYCLE_LIMIT_MIN, max: SONG_CYCLE_LIMIT_MAX, step: SONG_CYCLE_LIMIT_STEP, unit: " cycles" },
+      { key: "songCycleLimit", name: "Longest timeline", description: "How many cycles the timeline looks through for your song to repeat. A song that hasn't come back round by then shows this many cycles at a time, and moves on as it plays.", kind: "slider", min: SONG_CYCLE_LIMIT_MIN, max: SONG_CYCLE_LIMIT_MAX, step: SONG_CYCLE_LIMIT_STEP, unit: " cycles" },
     ],
   },
   {

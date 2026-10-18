@@ -141,7 +141,7 @@ export interface MusicalTimelineProps {
    * #1107 — the capture keys of every track the engine registered, the same ids
    * `getTimelineEvents` stamps as `trackId`. Lets the analysis refuse a period
    * accepted before a declared track has been heard at all. Optional: without it
-   * the analysis makes no claim about tracks it has not seen (the #1104 rule).
+   * the analysis makes no claim about tracks it has not seen.
    */
   readonly getSongTrackIds?: () => string[]
   /**
