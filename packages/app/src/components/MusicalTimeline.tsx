@@ -95,6 +95,7 @@ import { FullSongTimeline } from './FullSongTimeline'
 import { showConfirm } from '../dialogs/host'
 import { createSongCollector } from './musicalTimeline/songCollector'
 import { readSongAnalysis, subscribeSongAnalysis } from '../state/songAnalysis'
+import { getSongCycleLimit } from '../state/songCycleLimit'
 import { createWaveformSource } from '../audio/waveformSource'
 import { subscribeWaveformsReady } from '../audio/waveformWarm'
 import {
@@ -664,7 +665,14 @@ export function MusicalTimeline(
         getTimelineEventsBand: getTimelineEventsBandRef.current,
         getSongTrackIds: getSongTrackIdsRef.current,
       })
-      return previewShapeSwap(ir, automation, next, { collectFn, hasUnheardTrack, signal })
+      // #2109 — over the song analysis's own limit, or the preview answers a
+      // different horizon from the one the swap will be drawn on.
+      return previewShapeSwap(ir, automation, next, {
+        collectFn,
+        hasUnheardTrack,
+        signal,
+        capCycles: getSongCycleLimit(),
+      })
     },
     [],
   )

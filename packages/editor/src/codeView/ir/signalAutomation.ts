@@ -587,6 +587,34 @@ export function signalTimeAt(a: SignalAutomation, time: number): number | null {
  * feeds.
  */
 export function signalCarryingParamKeys(ir: PatternIR | null | undefined): ReadonlySet<string> {
+  return paramKeysCarrying(ir, ANY_SIGNAL)
+}
+
+/**
+ * Does any control here move by a signal that never comes back round — `rand`,
+ * `perlin`, `time`, the mouse (#2109)?
+ *
+ * The same unconditional reader as `signalCarryingParamKeys`, asked of the kind:
+ * `stack(s("bd").gain(sine.slow(8)), s("hh").gain(time.range(.2, .8)))` has a `time`
+ * no curve reader draws, and it keeps the song from ever repeating all the same.
+ */
+export function carriesUnrepeatingSignal(
+  ir: PatternIR | null | undefined,
+  // A shape-swap preview (#1611) asks about the song AFTER the swap: the curve whose
+  // shape starts at `at` is read as `kind`.
+  swap?: { readonly at: number; readonly kind: SignalKind },
+): boolean {
+  const kindOf = (n: SignalNode): SignalKind =>
+    swap !== undefined && n.loc?.[0]?.start === swap.at ? swap.kind : n.kind
+  return paramKeysCarrying(ir, (n) => !hasTruePeriod(kindOf(n))).size > 0
+}
+
+const ANY_SIGNAL = (): boolean => true
+
+function paramKeysCarrying(
+  ir: PatternIR | null | undefined,
+  match: (signal: SignalNode) => boolean,
+): ReadonlySet<string> {
   const keys = new Set<string>()
   if (!ir) return keys
   const stack: PatternIR[] = [ir]
@@ -597,24 +625,24 @@ export function signalCarryingParamKeys(ir: PatternIR | null | undefined): Reado
     seen.add(node)
     if (node.tag === 'Param' && typeof node.key === 'string' && node.key.length > 0) {
       const value: unknown = node.value
-      if (value && typeof value === 'object' && carriesSignal(value)) keys.add(node.key)
+      if (value && typeof value === 'object' && carriesSignal(value, match)) keys.add(node.key)
     }
     for (const child of childNodes(node)) stack.push(child)
   }
   return keys
 }
 
-/** Does this subtree contain a `Signal` anywhere? Deliberately unconditional —
- *  no allowlist, no closed-form requirement — because ANY signal underneath a
- *  control means that control moves. */
-function carriesSignal(value: unknown, depth = 0): boolean {
+/** Does this subtree contain a `Signal` (one `match` accepts) anywhere? Deliberately
+ *  unconditional — no allowlist, no closed-form requirement — because ANY signal
+ *  underneath a control means that control moves. */
+function carriesSignal(value: unknown, match: (signal: SignalNode) => boolean, depth = 0): boolean {
   if (!value || typeof value !== 'object' || depth > 24) return false
-  if (Array.isArray(value)) return value.some((v) => carriesSignal(v, depth + 1))
+  if (Array.isArray(value)) return value.some((v) => carriesSignal(v, match, depth + 1))
   const o = value as Record<string, unknown>
-  if (o.tag === 'Signal') return true
+  if (o.tag === 'Signal' && match(o as unknown as SignalNode)) return true
   for (const [key, child] of Object.entries(o)) {
     if (SKIP_KEYS.has(key)) continue
-    if (carriesSignal(child, depth + 1)) return true
+    if (carriesSignal(child, match, depth + 1)) return true
   }
   return false
 }

@@ -404,7 +404,7 @@ export type SweepDetector = DetectPeriodFn | { readonly perDocument: DetectorFac
  *  150-document sweep. */
 export type StructuralContext = Omit<DocumentContext, 'hasUnheardTrack'>
 
-const NO_SIGNALS: SignalDimensions = { keys: new Set<string>(), periods: [] }
+const NO_SIGNALS: SignalDimensions = { keys: new Set<string>(), periods: [], noise: false }
 
 export function documentContext(name: string, code: string): StructuralContext {
   try {
@@ -437,6 +437,8 @@ export async function periodOfTracks(
   tracks: readonly SongTrack[],
   detector?: SweepDetector,
   structural?: StructuralContext,
+  /** #2109 — the limit the app passes; omitted, the analysis's own default. */
+  capCycles?: number,
 ): Promise<Omit<PeriodVerdict, 'name' | 'ok' | 'error'>> {
   let events = 0
   const collect = trackCollector(tracks)
@@ -478,6 +480,7 @@ export async function periodOfTracks(
     // given. Without this the shipped rule never fires here and the pinned
     // baseline would silently describe the PREVIOUS rule.
     signals: structural?.signals,
+    capCycles,
   })
   const shipped = new Set(analysis.lanes.map((l) => l.laneKey))
   return {
@@ -500,6 +503,7 @@ export async function periodOfDocument(
   code: string,
   name: string,
   detector?: SweepDetector,
+  capCycles?: number,
 ): Promise<PeriodVerdict> {
   const r = await evalSongTracks(code)
   if (!r.ok) {
@@ -520,7 +524,7 @@ export async function periodOfDocument(
     return {
       name,
       ok: true,
-      ...(await periodOfTracks(r.tracks, detector, documentContext(name, code))),
+      ...(await periodOfTracks(r.tracks, detector, documentContext(name, code), capCycles)),
     }
   } catch (e: unknown) {
     return {
@@ -545,10 +549,10 @@ export async function periodOfDocument(
  * Pass one to price a CANDIDATE rule over the same documents through the same
  * loop, so the two sweeps differ in exactly one function.
  */
-export async function sweepCorpus(detector?: SweepDetector): Promise<PeriodVerdict[]> {
+export async function sweepCorpus(detector?: SweepDetector, capCycles?: number): Promise<PeriodVerdict[]> {
   const corpus = await loadCorpus()
   const out: PeriodVerdict[] = []
-  for (const { name, code } of corpus) out.push(await periodOfDocument(code, name, detector))
+  for (const { name, code } of corpus) out.push(await periodOfDocument(code, name, detector, capCycles))
   return out
 }
 

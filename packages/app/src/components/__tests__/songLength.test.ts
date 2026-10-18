@@ -188,14 +188,24 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     expect(await measureSongLength(both(bd), depsWith(onsets))).toEqual({ kind: 'loop', periodCycles: 12 })
   })
 
-  it('a loop with a track that never repeats keeps the span it was offered before (#1599)', async () => {
-    // No whole-song repeat can be vouched for when one track never loops, so the
-    // offer stays where it was: the span of the tracks that do (#1104 abstention).
+  it('a loop with a track that never repeats has no loop to offer (#2109)', async () => {
+    // The song never comes back round while one track never loops, so there is no
+    // length to vouch for and the dialog asks. Until #2109 it was offered the span
+    // of the tracks that do loop (#1104 abstention): 8 here, a third of nothing.
     const onsets = Array.from({ length: 300 }, (_, c) => [
       { ...ev(c, `a${c % 8}`), trackId: 'd1' },
       { ...ev(c, `n${c}`), trackId: 'd2' },
     ]).flat() as IREvent[]
-    expect(await measureSongLength(both(bd), depsWith(onsets))).toEqual({ kind: 'loop', periodCycles: 8 })
+    expect(await measureSongLength(both(bd), depsWith(onsets))).toEqual({ kind: 'unknown', why: 'no-period' })
+  })
+
+  it("measures as far as the timeline's limit and no further (#2109)", async () => {
+    // A 96-cycle loop: found when the limit reaches past it, unmeasurable below it
+    // — the same answer the timeline gives at that limit ("64+ cycles").
+    const onsets = Array.from({ length: 300 }, (_, c) => ev(c, `a${c % 96}`))
+    const at = (capCycles: number) => measureSongLength(both(bd), { ...depsWith(onsets), capCycles })
+    expect(await at(256)).toEqual({ kind: 'loop', periodCycles: 96 })
+    expect(await at(64)).toEqual({ kind: 'unknown', why: 'no-period' })
   })
 
   it('an aperiodic document is `no-period` — NEVER the horizon it stopped at', async () => {

@@ -134,6 +134,9 @@ export interface SongLengthDeps {
     opts: AnalyzeSongOptions,
   ) => Promise<SongAnalysis>
   readonly createCollector: (ir: PatternIR) => SongCollectorParts
+  /** How far the analysis may look (#2109) — the timeline's own limit. Omitted,
+   *  the analysis's default applies. */
+  readonly capCycles?: number
 }
 
 /**
@@ -195,6 +198,7 @@ export async function measureSongLength(
       // #1465 — this is the dialog the issue was filed against: automating a
       // control with a continuous signal dropped the document to "pick a length".
       signals: signalDimensionsOf(sources.analysis),
+      capCycles: deps.capCycles,
     })
   } catch {
     return { kind: 'unknown', why: 'no-period' }

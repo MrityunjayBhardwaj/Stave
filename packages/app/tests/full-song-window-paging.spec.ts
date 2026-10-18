@@ -61,6 +61,9 @@ async function boot(page: Page): Promise<void> {
       // the per-lane onset cycles the view actually collected — which is the
       // one readout that can tell "no marks" from "marks in the wrong place".
       localStorage.setItem('stave:debug.timelineMarks', '1')
+      // #2109 — this spec's songs are built around a 256-cycle first window (`SPAN`).
+      // Paging at the default limit of 64 is `full-song-cycle-limit.spec.ts`.
+      localStorage.setItem('stave:songCycleLimit', '256')
     } catch {
       /* ignore */
     }

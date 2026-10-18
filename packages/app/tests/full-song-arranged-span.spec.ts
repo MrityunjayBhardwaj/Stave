@@ -39,6 +39,10 @@ async function boot(page: Page): Promise<void> {
       localStorage.setItem('stave:bottomPanel.open', 'true')
       localStorage.setItem('stave:bottomPanel.activeTabId', 'musical-timeline')
       localStorage.setItem('stave:debug.timelineMarks', '1')
+      // #2109 — these songs run to 150 cycles; this spec is about spanning a declared
+      // end, so the limit must hold it (the default of 64 pages a longer song instead,
+      // which `full-song-cycle-limit.spec.ts` covers).
+      localStorage.setItem('stave:songCycleLimit', '256')
     } catch { /* ignore */ }
   })
   await page.goto('/', { waitUntil: 'domcontentloaded' })

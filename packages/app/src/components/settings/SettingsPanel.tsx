@@ -54,6 +54,7 @@ import {
 import { getRulerUnits, setRulerUnits, type RulerUnits } from "../../state/rulerUnits";
 import { getMenubarLcdEnabled, setMenubarLcdEnabled } from "../../state/menubarLcd";
 import { getTakesPhoneAudio, setTakesPhoneAudioSetting } from "../../state/takesPhoneAudio";
+import { getSongCycleLimit, setSongCycleLimit } from "../../state/songCycleLimit";
 import { getVizPreviewHeight, setVizPreviewHeight } from "../../state/vizPreviewHeight";
 import { Switch } from "./Switch";
 import { SettingRow } from "./SettingRow";
@@ -100,6 +101,7 @@ const ADAPTERS: Record<string, SettingAdapter> = {
   noteColor: { get: getNoteColorMode, set: (v) => setNoteColorMode(v as NoteColorMode) },
   rulerUnits: { get: getRulerUnits, set: (v) => setRulerUnits(v as RulerUnits) },
   timelineSubRow: { get: getMusicalTimelineSubRowHeight, set: (v) => setMusicalTimelineSubRowHeight(Number(v)) },
+  songCycleLimit: { get: getSongCycleLimit, set: (v) => setSongCycleLimit(Number(v)) },
   inlineVizButtons: { get: getInlineVizActionSize, set: (v) => setInlineVizActionSize(Number(v)) },
   vizPreviewHeight: { get: getVizPreviewHeight, set: (v) => setVizPreviewHeight(Number(v)) },
   vizQuality: { get: getVizQuality, set: (v) => setVizQuality(v as VizQualityLevel) },
@@ -242,6 +244,7 @@ export function SettingsPanel({ query }: SettingsPanelProps) {
             type="range"
             min={f.min}
             max={f.max}
+            step={f.step}
             value={v}
             aria-label={f.name}
             data-testid={`setting-${f.key}`}

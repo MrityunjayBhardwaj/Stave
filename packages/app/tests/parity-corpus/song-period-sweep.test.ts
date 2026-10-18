@@ -55,6 +55,15 @@
  * below the cap, no period was lost and none collapsed to 1 — so aperiodic-at-cap
  * went 69 → 49.
  *
+ * ── AND #2109 TOOK IT BACK ───────────────────────────────────────────────────
+ * The cap became the user's limit (64 by default) and the view pages past it, so
+ * the sliver abstention was answering is gone. A lane that has not come round now
+ * vetoes at the cap too, as does noise on the source-informed path, and a sweep
+ * that folds past the cap: the song reads "N+ cycles". Re-pinned: 31 documents
+ * moved, every one from a loop to the cap (37 → 68) — none to another period.
+ * `detectDisplayPeriodAtCap` is gone; the abstention test below keeps its own copy
+ * as a priced candidate.
+ *
  * The candidates NOT taken, and the reasoning that killed them, are in
  * `song-period-abstention.test.ts`, which prices them against a frozen
  * pre-decision copy of this baseline. Read it before proposing a new rule here:
@@ -193,7 +202,7 @@ describe('Song display period — corpus baseline (#1102)', () => {
         // three of the seven are periods #1104 recovered, given back because a span
         // excluding a track is a loop claim the document does not support, and
         // #1105 already made the aperiodic display an honest one.
-        `  aperiodic-at-cap ${evaluated.filter((v) => v.reachedCap).length}   (53 pre-#1102 → 69 post-#1102 → 49 post-#1104 → 56 post-#1107 → 37 post-#1465 → 37 post-#1617)`,
+        `  aperiodic-at-cap ${evaluated.filter((v) => v.reachedCap).length}   (53 pre-#1102 → 69 post-#1102 → 49 post-#1104 → 56 post-#1107 → 37 post-#1465 → 37 post-#1617 → 68 post-#2109)`,
         `  period 1          ${evaluated.filter((v) => v.period === 1).length}   (21 pre-#1102 → 19 post-#1102, unmoved by #1104 and #1617)`,
         // A document that produced NO events is not an aperiodic document — it is
         // a document the sweep saw nothing of, and `analyzeSong` short-circuits it

@@ -784,10 +784,13 @@ declare function songExtent(ir: PatternIR | null): SongExtent;
  * sense this module measures. Swept over 150 real tunes, that took documents
  * landing on the cap from 53 to 69 of the 142 that evaluate.
  *
- * A lane being aperiodic no longer makes the SONG aperiodic (#1104). Once the
- * progressive horizon is exhausted such lanes ABSTAIN and the span comes from
- * the lanes that do loop, which is #488's phasing rule applied to the case the
- * veto used to cover — see `detectDisplayPeriodAtCap`. That returned 20 of the
+ * ⚠ #2109 PUT THE VETO BACK AT THE CAP. From #1104 a lane with no loop ABSTAINED
+ * once the horizon was exhausted, and the span came from the lanes that did loop —
+ * because the alternative was a sliver on a 256-cycle timeline. The limit is now
+ * the user's (64 by default) and the view pages past it, so a song with a lane
+ * that has not come round reads "N+ cycles" and pages instead: abstaining at a
+ * 64-cycle limit drew 11 corpus songs as loops shorter than they are (a 72-cycle
+ * song as a 16-cycle loop). What follows is the history. Abstention returned 20 of the
  * 69 to a real period, so the swept figure was then 49. ⚠ #1107 later moved it
  * to 56 — see the sweep test's own tally line, which carries the whole chain
  * (53 pre-#1102 → 69 post-#1102 → 49 post-#1104 → 56 post-#1107 → 37 post-#1465).
@@ -1039,8 +1042,8 @@ interface ShapeSwap {
  *    is the onset's phase in THAT song period. The first reading here, "noise never comes
  *    back", was wrong on an archive document sweeping at `sine.slow(0.015)`: switched to
  *    perlin it repeats at 36, and a never-repeating stand-in said 12;
- * — and with the signals read as `next`. Every rule that picks the length (the veto
- * below the cap, abstention at it, the source-informed fold, the whole-song repeat) is
+ * — and with the signals read as `next`. Every rule that picks the length (the veto,
+ * the source-informed fold, the whole-song repeat) is
  * then the one that will run after the edit, and not a second copy of it.
  *
  * Measured against the swapped SOURCE through the engine and the same analysis
@@ -1055,16 +1058,16 @@ interface ShapeSwap {
  * waveform, a song period that is not an exact fraction, or no collector. `opts` are the
  * caller's own collector and presence check: the ones its analysis runs with.
  */
-declare function previewShapeSwap(ir: PatternIR | null, a: SignalAutomation, next: SignalKind, opts: Pick<AnalyzeSongOptions, 'collectFn' | 'hasUnheardTrack' | 'signal' | 'yieldFn'>): Promise<SongAnalysis | null>;
+declare function previewShapeSwap(ir: PatternIR | null, a: SignalAutomation, next: SignalKind, opts: Pick<AnalyzeSongOptions, 'collectFn' | 'hasUnheardTrack' | 'signal' | 'yieldFn' | 'capCycles'>): Promise<SongAnalysis | null>;
 /**
  * THE display-period rule — the combine step plus the two plausibility clauses,
  * in ONE definition so the decision that ends the analysis cannot be made by a
  * different rule than the one that drove it ([[P403]]).
  *
- * ── THE COMBINE STEP is situation-aware (#1104) ──────────────────────────────
- * At the cap the veto has nowhere to grow and lanes with no loop of their own
- * ABSTAIN; below it the veto stands, because a `null` there is what buys the
- * next doubling. `detectDisplayPeriodAtCap`'s own header carries that argument.
+ * ── THE COMBINE STEP is the veto, at every horizon (#2109) ───────────────────
+ * Below the cap a `null` is what buys the next doubling; at the cap it is the
+ * answer — the song does not come back round within the limit, so it reads
+ * "N+ cycles" and pages. (#1104 let lanes abstain at the cap; see the header.)
  *
  * ── THE PLAUSIBILITY CLAUSES (#1107) ─────────────────────────────────────────
  * A detected period can be true of everything the analysis has HEARD and still
@@ -1077,9 +1080,8 @@ declare function previewShapeSwap(ir: PatternIR | null, a: SignalAutomation, nex
  *     six tracks first sound at cycles 16, 32, 56, 95, 128 and 159. Nothing here
  *     can detect that, because those events have not been collected — only the
  *     caller knows the document declares tracks it has not heard from, so it is
- *     asked (`hasUnheardTrack`). Gated to `horizon < cap` for the same reason
- *     abstention is gated to the cap: below it a `null` is the signal that grows
- *     the horizon, and at the cap there is nowhere left to grow, so an unheard
+ *     asked (`hasUnheardTrack`). Gated to `horizon < cap` because below it a
+ *     `null` is the signal that grows the horizon, and at the cap there is nowhere left to grow, so an unheard
  *     track must not be able to block an answer forever. That bound is what
  *     makes the clause verdict-NEUTRAL for a track that is simply silent: six
  *     corpus documents register a pattern that never sounds in 256 cycles, and
@@ -1118,6 +1120,11 @@ interface SignalDimensions {
      *  `hasTruePeriod`. Empty means "this document is modulated, but by nothing
      *  that comes back", which is a different answer from "not modulated". */
     readonly periods: readonly number[];
+    /** Is a key driven by a signal that NEVER comes back within a song's limit —
+     *  `rand`, `perlin`, `time`, the mouse (#2109)? Such a document has no loop to
+     *  find, so it reads as "N+ cycles" and pages, rather than as the loop of
+     *  whatever is left once that key is set aside. */
+    readonly noise: boolean;
 }
 /**
  * Read `SignalDimensions` off a document's IR. The caller holds the IR;

@@ -2189,6 +2189,16 @@ function signalTimeAt(a, time) {
 }
 __name(signalTimeAt, "signalTimeAt");
 function signalCarryingParamKeys(ir) {
+  return paramKeysCarrying(ir, ANY_SIGNAL);
+}
+__name(signalCarryingParamKeys, "signalCarryingParamKeys");
+function carriesUnrepeatingSignal(ir, swap) {
+  const kindOf2 = /* @__PURE__ */ __name((n) => swap !== void 0 && n.loc?.[0]?.start === swap.at ? swap.kind : n.kind, "kindOf");
+  return paramKeysCarrying(ir, (n) => !hasTruePeriod(kindOf2(n))).size > 0;
+}
+__name(carriesUnrepeatingSignal, "carriesUnrepeatingSignal");
+var ANY_SIGNAL = /* @__PURE__ */ __name(() => true, "ANY_SIGNAL");
+function paramKeysCarrying(ir, match) {
   const keys = /* @__PURE__ */ new Set();
   if (!ir) return keys;
   const stack = [ir];
@@ -2199,21 +2209,21 @@ function signalCarryingParamKeys(ir) {
     seen.add(node);
     if (node.tag === "Param" && typeof node.key === "string" && node.key.length > 0) {
       const value = node.value;
-      if (value && typeof value === "object" && carriesSignal(value)) keys.add(node.key);
+      if (value && typeof value === "object" && carriesSignal(value, match)) keys.add(node.key);
     }
     for (const child of childNodes2(node)) stack.push(child);
   }
   return keys;
 }
-__name(signalCarryingParamKeys, "signalCarryingParamKeys");
-function carriesSignal(value, depth = 0) {
+__name(paramKeysCarrying, "paramKeysCarrying");
+function carriesSignal(value, match, depth = 0) {
   if (!value || typeof value !== "object" || depth > 24) return false;
-  if (Array.isArray(value)) return value.some((v) => carriesSignal(v, depth + 1));
+  if (Array.isArray(value)) return value.some((v) => carriesSignal(v, match, depth + 1));
   const o = value;
-  if (o.tag === "Signal") return true;
+  if (o.tag === "Signal" && match(o)) return true;
   for (const [key3, child] of Object.entries(o)) {
     if (SKIP_KEYS2.has(key3)) continue;
-    if (carriesSignal(child, depth + 1)) return true;
+    if (carriesSignal(child, match, depth + 1)) return true;
   }
   return false;
 }
@@ -6551,7 +6561,8 @@ async function previewShapeSwap(ir, a, next, opts) {
   const standIn = standInFor(a, next);
   if (standIn === null) return null;
   const standInPeriod = standInPeriodOf(a, next);
-  const pastCap = !hasTruePeriod(next) && standInPeriod !== null && standInPeriod > DEFAULT_CAP;
+  const cap = opts.capCycles ?? DEFAULT_CAP;
+  const pastCap = !hasTruePeriod(next) && standInPeriod !== null && standInPeriod > cap;
   if (!pastCap && sharesItsControl(ir, a)) return null;
   const key3 = a.paramKey;
   return analyzeSong(ir, {
@@ -6597,27 +6608,6 @@ function repeatBeside(lanePeriods, cap, period) {
   return repeat !== null && repeat % period === 0 ? repeat : null;
 }
 __name(repeatBeside, "repeatBeside");
-var MIN_ABSTAINED_PERIOD = 4;
-function detectDisplayPeriodAtCap(events, horizon) {
-  const byLane = eventsByLane(events);
-  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
-  let maxPeriod = 0;
-  let answered = 0;
-  let abstained = false;
-  for (const laneEvents of byLane.values()) {
-    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
-    if (p === null) {
-      abstained = true;
-      continue;
-    }
-    answered++;
-    if (p > maxPeriod) maxPeriod = p;
-  }
-  if (answered === 0 || maxPeriod <= 0) return null;
-  if (abstained && maxPeriod < MIN_ABSTAINED_PERIOD) return null;
-  return maxPeriod;
-}
-__name(detectDisplayPeriodAtCap, "detectDisplayPeriodAtCap");
 function spanCoversEveryLane(events, period) {
   const inSpan = /* @__PURE__ */ new Set();
   const all = /* @__PURE__ */ new Set();
@@ -6635,6 +6625,7 @@ function signalDimensionsOf(ir, swap) {
   const audible = audibleTracks(ir);
   const periods = [];
   const keys = /* @__PURE__ */ new Set();
+  let noise = false;
   for (const t of audible) {
     for (const a of signalAutomations(t)) {
       const kind = swap !== void 0 && a.spans.shape?.start === swap.at ? swap.kind : a.kind;
@@ -6643,8 +6634,9 @@ function signalDimensionsOf(ir, swap) {
       if (song !== null) periods.push(song);
     }
     for (const k of signalCarryingParamKeys(t)) keys.add(k);
+    if (carriesUnrepeatingSignal(t, swap)) noise = true;
   }
-  return { keys, periods };
+  return { keys, periods, noise };
 }
 __name(signalDimensionsOf, "signalDimensionsOf");
 function arrangedRepeatCycles(ir, arrangedCycles, cap = DEFAULT_CAP, signalPeriods = signalDimensionsOf(ir).periods) {
@@ -6762,14 +6754,14 @@ function foldWithSignalPeriods(period, periods, cap) {
   let folded = period;
   for (const q of periods) {
     const next = rationalLcm(folded, q);
-    if (next === null || !Number.isFinite(next) || next > cap) return period;
+    if (next === null || !Number.isFinite(next) || next > cap) return null;
     folded = next;
   }
   return folded;
 }
 __name(foldWithSignalPeriods, "foldWithSignalPeriods");
 function displayPeriodRule(events, horizon, cap, hasUnheardTrack, signals) {
-  const period = horizon >= cap ? detectDisplayPeriodAtCap(events, horizon) : detectDisplayPeriod(events, horizon);
+  const period = detectDisplayPeriod(events, horizon);
   if (period !== null) {
     if (hasUnheardTrack && horizon < cap) return null;
     if (!spanCoversEveryLane(events, period)) return null;
@@ -6781,11 +6773,12 @@ __name(displayPeriodRule, "displayPeriodRule");
 function signalInformedPeriod(events, horizon, cap, signals) {
   if (horizon < cap) return null;
   if (!signals || signals.keys.size === 0) return null;
+  if (signals.noise) return null;
   const stripped = events.map((ev) => withoutKeys(ev, signals.keys));
-  const structural = detectDisplayPeriodAtCap(stripped, horizon);
+  const structural = detectDisplayPeriod(stripped, horizon);
   if (structural === null) return null;
   const folded = foldWithSignalPeriods(structural, signals.periods, cap);
-  if (!spanCoversEveryLane(events, folded)) return null;
+  if (folded === null || !spanCoversEveryLane(events, folded)) return null;
   return folded;
 }
 __name(signalInformedPeriod, "signalInformedPeriod");
@@ -6915,6 +6908,12 @@ async function analyzeSong(ir, opts = {}) {
   const end = songEnd(ir, cap, opts.signals?.periods);
   const declaredLength = end.kind === "arranged" && end.cycles > 0 ? end.cycles : null;
   const declaredEnd = declaredLength !== null && declaredLength > 0 && Math.ceil(declaredLength) <= cap ? declaredLength : null;
+  if (declaredLength !== null && declaredEnd === null) {
+    if (!await collectUpTo(cap)) {
+      return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap, steppedKeys);
+    }
+    return analyzeEvents(events, cap, true, () => null, cap, steppedKeys);
+  }
   const measured = await measure();
   if (declaredEnd === null || signal?.aborted) return measured;
   if (!await collectUpTo(Math.ceil(declaredEnd))) return measured;

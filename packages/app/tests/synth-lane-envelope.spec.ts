@@ -154,6 +154,11 @@ async function playsAtOnceDuringRender(page: Page, tag: string): Promise<void> {
 
 test.describe('synth lane envelope (#1731)', () => {
   test.beforeEach(async ({ page }) => {
+    // #2109 — several songs here are 256-cycle arrangements, rendered whole; at the
+    // default limit of 64 the timeline would draw them a 64-cycle window at a time.
+    await page.addInitScript(() => {
+      try { localStorage.setItem('stave:songCycleLimit', '256') } catch { /* ignore */ }
+    })
     await bootApp(page, { drawer: { tabId: 'musical-timeline', height: 360 } })
   })
 

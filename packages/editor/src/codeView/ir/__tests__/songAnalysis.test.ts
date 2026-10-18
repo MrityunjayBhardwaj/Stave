@@ -6,7 +6,6 @@ import {
   cycleFingerprints,
   detectPeriod,
   detectDisplayPeriod,
-  detectDisplayPeriodAtCap,
   computeSections,
   analyzeEvents,
   analyzeSong,
@@ -186,86 +185,54 @@ describe('detectDisplayPeriod (#488 — max single-lane, not lcm)', () => {
   })
 })
 
-describe('detectDisplayPeriodAtCap (#1104 — a lane with no loop abstains, at the cap only)', () => {
-  const lanesOf = (specs: Array<[string, number]>, horizon: number): IREvent[] => {
+describe('#2109 — at the limit, a lane that has not come round leaves the song "N+"', () => {
+  const run = (collect: (s: number, e: number) => IREvent[], capCycles: number, ir: unknown = null) =>
+    analyzeSong(ir as never, { collectFn: collect, yieldFn: async () => {}, capCycles })
+  const lanes = (specs: Array<[string, number]>, lfo = false) => (s: number, e: number): IREvent[] => {
     const out: IREvent[] = []
-    for (let c = 0; c < horizon; c++) for (const [lane, p] of specs) out.push(ev(c, lane, c % p))
+    for (let c = s; c < e; c++) {
+      for (const [lane, p] of specs) out.push(ev(c, lane, c % p))
+      // A control that changes every cycle and never repeats — the real mechanism.
+      if (lfo) out.push({ ...ev(c, 'lfo'), gain: 0.1 + c / 512 })
+    }
     return out
   }
-  /** A lane whose value changes EVERY cycle and never repeats — the real
-   *  mechanism, an LFO-modulated control, not a synthetic "no period" flag. */
-  const modulated = (lane: string, horizon: number): IREvent[] =>
-    Array.from({ length: horizon }, (_, c) => ({ ...ev(c, lane), gain: 0.1 + c / (horizon * 2) }))
 
-  it('spans the answering lanes when one lane never repeats', () => {
-    const events = [...lanesOf([['a', 8]], 64), ...modulated('lfo', 64)]
-    // The veto rule is the contrast arm: it discards lane `a`'s measured 8.
-    expect(detectDisplayPeriod(events, 64)).toBeNull()
-    expect(detectDisplayPeriodAtCap(events, 64)).toBe(8)
+  it('a lane that never repeats beside one that loops: no loop inside the limit, not the loop beside it', async () => {
+    // #1104 drew this as the 8-cycle loop, the never-repeating lane abstaining.
+    const a = await run(lanes([['a', 8]], true), 64)
+    expect(a.periodCycles).toBeNull()
+    expect(a.displaySpan).toEqual({ kind: 'capped', cycles: 64 })
   })
 
-  it('still takes the MAX over the lanes that answered (#488 unchanged)', () => {
-    const events = [...lanesOf([['a', 5], ['b', 4]], 64), ...modulated('lfo', 64)]
-    expect(detectDisplayPeriodAtCap(events, 64)).toBe(5)
+  it('the control: with every lane coming round, the longest loop is the span', async () => {
+    const a = await run(lanes([['hh', 4], ['pad', 12]]), 64)
+    expect(a.displaySpan).toEqual({ kind: 'loop', cycles: 12 })
   })
 
-  it('refuses an abstained answer below the floor, so an ostinato cannot set the span', () => {
-    // The measured failure: the arpeggio answers 2, the melody abstains. A
-    // 2-cycle span is as wrong as a 256-cycle one, so this stays aperiodic.
-    const events = [...lanesOf([['arp', 2]], 64), ...modulated('melody', 64)]
-    expect(detectDisplayPeriodAtCap(events, 64)).toBeNull()
+  it('a fast lane still cannot answer before a slow one resolves, below the cap', async () => {
+    // `hh` confirms at 8, `pad` not until 24: the veto below the cap is what lets `pad`
+    // resolve. With the never-repeating lane beside them the answer is "N+", not 4.
+    const a = await run(lanes([['hh', 4], ['pad', 12]], true), 64)
+    expect(a.displaySpan).toEqual({ kind: 'capped', cycles: 64 })
   })
 
-  it('applies the floor ONLY to an abstained answer — an honest short period stands', () => {
-    // Nothing abstains here, so this rule agreed with the veto rule and must not
-    // overrule it: refusing 2 would push a legitimately short song to the cap.
-    const events = lanesOf([['a', 2], ['b', 2]], 64)
-    expect(detectDisplayPeriod(events, 64)).toBe(2)
-    expect(detectDisplayPeriodAtCap(events, 64)).toBe(2)
+  it('a loop is found once the limit holds it twice: 40 at a limit of 128, "N+" at 64', async () => {
+    expect((await run(lanes([['pad', 40]]), 128)).displaySpan).toEqual({ kind: 'loop', cycles: 40 })
+    expect((await run(lanes([['pad', 40]]), 64)).displaySpan).toEqual({ kind: 'capped', cycles: 64 })
   })
 
-  it('returns null when EVERY lane is modulated — genuinely aperiodic', () => {
-    const events = [...modulated('x', 64), ...modulated('y', 64)]
-    expect(detectDisplayPeriodAtCap(events, 64)).toBeNull()
-  })
-
-  it('agrees with the veto rule whenever no lane abstains', () => {
-    for (const specs of [
-      [['a', 5], ['b', 4]],
-      [['a', 4], ['b', 4]],
-      [['a', 8], ['b', 2]],
-    ] as Array<Array<[string, number]>>) {
-      const events = lanesOf(specs, 64)
-      expect(detectDisplayPeriodAtCap(events, 64)).toBe(detectDisplayPeriod(events, 64))
-    }
-  })
-
-  it('is reached ONLY at the cap, so a fast lane cannot answer before a slow one resolves', async () => {
-    // THE REGRESSION THIS ARM EXISTS FOR, and its fixture is chosen so that
-    // abstaining too early gives a DIFFERENT answer rather than the same answer
-    // sooner — an earlier version asserted only the final period and stayed green
-    // when the at-cap gate was deleted, which made it decoration.
-    //
-    // `hh` loops every 4 and confirms at horizon 8. `pad` loops every 12 and
-    // cannot confirm until 24. `lfo` never repeats. Abstaining below the cap
-    // answers 4 at the very first horizon — the fast lane's loop mistaken for the
-    // song's. Holding the veto until the cap lets `pad` resolve and answers 12.
+  it('an arrangement longer than the limit reads "N+", not the loop its first section plays', async () => {
+    const ir = parseStrudel('$: arrange([80, s("bd*2")], [20, s("hh*4")])')
+    // 80 cycles of `bd`, then `hh`: the first 64 repeat every cycle.
     const collect = (s: number, e: number): IREvent[] => {
       const out: IREvent[] = []
-      for (let c = s; c < e; c++) {
-        out.push(ev(c, 'hh', c % 4))
-        out.push(ev(c, 'pad', c % 12))
-        out.push({ ...ev(c, 'lfo'), gain: 0.1 + c / 512 })
-      }
+      for (let c = s; c < e; c++) out.push(ev(c, c < 80 ? 'bd' : 'hh', 0))
       return out
     }
-    const a = await analyzeSong(null, {
-      collectFn: collect,
-      yieldFn: async () => {},
-      capCycles: 64,
-    })
-    expect(a.periodCycles).toBe(12) // the slow lane's loop, not the hi-hat's 4
-    expect(a.displaySpan).toEqual({ kind: 'loop', cycles: 12 })
+    expect((await run(collect, 64, ir)).displaySpan).toEqual({ kind: 'capped', cycles: 64 })
+    // The control: inside the limit it spans its declared end, as it always has.
+    expect((await run(collect, 128, ir)).displaySpan).toEqual({ kind: 'arranged', cycles: 100 })
   })
 })
 
@@ -411,19 +378,17 @@ describe('displayPeriodRule (#1107 — a period that leaves a track empty is not
   // its fingerprints repeat with its own period q, the span is the max over
   // answering lanes so q <= span, and a repeating non-empty lane therefore sounds
   // somewhere in [0, q). So the clause can only ever fire on an ABSTAINING lane —
-  // which means only at the cap, since below it an abstaining lane still vetoes.
-  // The corpus agrees exactly: the clause moves 0 documents below the cap and 3 at it.
+  // and since #2109 no lane abstains at any horizon, so the veto refuses first
+  // everywhere and the clause guards only an injected `detectPeriodFn`.
   it('a late-entering lane abstains, so below the cap the veto refuses first', () => {
     const events = [...lane('early', 4, 0, 64), ...lane('late', 4, 4, 64)]
     expect(detectDisplayPeriod(events, 64)).toBeNull()
     expect(displayPeriodRule(events, 64, 256, false)).toBeNull()
   })
 
-  it('refuses AT the cap, where abstention would otherwise ship the span', () => {
+  it('refuses AT the cap too, where #1104 let the late lane abstain (#2109)', () => {
     const events = [...lane('early', 4, 0, 256), ...lane('late', 4, 4, 256)]
-    // the at-cap combine rule answers 4 on its own — `late` abstains and phases
-    expect(detectDisplayPeriodAtCap(events, 256)).toBe(4)
-    // …but a 4-cycle span never reaches `late`, whose first onset is cycle 4
+    expect(detectDisplayPeriod(events, 256)).toBeNull()
     expect(displayPeriodRule(events, 256, 256, false)).toBeNull()
   })
 
@@ -510,7 +475,7 @@ describe('displayPeriodRule — source-informed exclusion + fold (#1465)', () =>
   const modulate = (events: IREvent[]): IREvent[] =>
     events.map((e, i) => ({ ...e, gain: 0.1 + i / 1000 }))
 
-  const dims = (periods: number[], keys = ['gain']) => ({ keys: new Set(keys), periods })
+  const dims = (periods: number[], keys = ['gain'], noise = false) => ({ keys: new Set(keys), periods, noise })
 
   it("the issue's example: a swept gain costs the period, and the rule gives it back", () => {
     // `s("bd*8")` — one lane, identical every cycle — with a 4-cycle gain LFO.
@@ -544,10 +509,19 @@ describe('displayPeriodRule — source-informed exclusion + fold (#1465)', () =>
     expect(displayPeriodRule(modulate(structural('bd', 8)), CAP, CAP, false, dims([]))).toBe(8)
   })
 
-  it('keeps the structural span when the honest fold would exceed the cap', () => {
-    // lcm(8, 63) = 504, far past the cap. A true period nobody can display is
-    // not an improvement on a usable one — `foldWithSignalPeriods` argues this.
-    expect(displayPeriodRule(modulate(structural('bd', 8)), CAP, CAP, false, dims([63]))).toBe(8)
+  it('has no period when the honest fold would exceed the cap: the song pages (#2109)', () => {
+    // lcm(8, 63) = 504, far past the cap: the song does not come back round within
+    // the limit. Until #2109 this answered the unfolded 8 — a span the audio does
+    // not repeat at, kept only because the alternative was a 256-cycle sliver.
+    expect(displayPeriodRule(modulate(structural('bd', 8)), CAP, CAP, false, dims([63]))).toBeNull()
+    // The control: a fold that fits the cap is still taken.
+    expect(displayPeriodRule(modulate(structural('bd', 8)), CAP, CAP, false, dims([3]))).toBe(24)
+  })
+
+  it('has no period when a control moves by noise, which never comes back (#2109)', () => {
+    // The same structure and the same sweep, with noise beside it on the document.
+    expect(displayPeriodRule(modulate(structural('bd', 8)), CAP, CAP, false, dims([4]))).toBe(8)
+    expect(displayPeriodRule(modulate(structural('bd', 8)), CAP, CAP, false, dims([4], ['gain'], true))).toBeNull()
   })
 
   it('can only ADD — it never touches a document that already answered', () => {
