@@ -10,8 +10,8 @@ The **Library** is in the activity bar on the left. It holds every sound Stave k
 ## Finding things
 
 - **Search assets…** searches everything.
-- The type filter shows **All**, **Sounds**, **Viz**, **Snippets** or **Samples**.
-- The source filter shows **All**, **Built-in**, **User** or **Community**.
+- The type filter shows **All**, **Sounds** or **Viz**.
+- Once you've added audio of your own, a source filter appears: **All**, **Built-in** or **User**.
 - The category chips narrow it further, with a count on each.
 
 Sounds are grouped as **Drums** (one group per drum machine), **Synths**, **Soundfonts**, **Wavetables**, **Samples** and **Your audio**.
@@ -43,10 +43,12 @@ Your audio is stored in your browser, next to the project. **Export as .zip** in
 
 ## Visuals
 
-The **Viz** filter lists finished sketches, like the ones from the launch video. **+** (**Add to workspace**) copies one into your project under `viz_lib/<Name>/`, so you can use it right away:
+The **Viz** filter lists finished sketches, like the ones from the launch video. Hover over one and press **+** (**Add to workspace**) to copy it into your project under `viz_lib/<Name>/`. Stave opens its file in a tab, and you can use it right away:
 
 ```js
 $: s("bd*4, hh*8").viz("Tunnel")
 ```
 
-Open its files to see how it works, or change it. See [Make visuals react](/guides/reactive-visuals/) to write your own.
+![The Library's Viz filter on the left, and the Tunnel visual playing under the code that uses it](../../../assets/studio/library.jpg)
+
+Its file is yours to read or change. See [Make visuals react](/guides/reactive-visuals/) to write your own.
