@@ -1344,33 +1344,36 @@ test('switching a sweep to noise and back says what the song length becomes, and
   await page.locator('[data-full-song-lane-expand]').first().click()
   await page.waitForTimeout(800)
 
-  // (1) sine → perlin: the label names the new length, and the evaluated song has it.
+  // (1) sine → perlin: the label says the song will have no length, and the evaluated
+  // song has none — #2109: noise never comes back, so it reads "64+" and pages, drawn
+  // the default limit's 64 bars at a time. (Until #2109 this offered the 4-bar line.)
   expect(await openShapeMenu(page), 'no press on the caption opened the shape menu').toBe(true)
-  expect(await shapeOptionText(page, 'perlin')).toBe('perlin · song repeats every 4 bars (was 16)')
+  expect(await shapeOptionText(page, 'perlin')).toBe('perlin · song length unknown')
   await menu.selectOption('perlin')
   await expect.poll(() => readDoc(page), { timeout: 5_000 }).toBe(PERLIN)
-  await expect.poll(() => barsOnView(page), { timeout: 20_000 }).toBe(4)
+  await expect.poll(() => barsOnView(page), { timeout: 20_000 }).toBe(64)
 
   // (2) The reverse, on the same document.
   await page.waitForTimeout(800)
   expect(await openShapeMenu(page), 'the shape menu did not reopen on the noise curve').toBe(true)
-  expect(await shapeOptionText(page, 'sine')).toBe('sine · song repeats every 16 bars (was 4)')
+  expect(await shapeOptionText(page, 'sine')).toBe('sine · song repeats every 16 bars')
   await menu.selectOption('sine')
   await expect.poll(() => readDoc(page), { timeout: 5_000 }).toBe(SINE)
   await expect.poll(() => barsOnView(page), { timeout: 20_000 }).toBe(16)
 
-  // (3) A lane that loops by itself: the label says nothing changes, and nothing does.
+  // (3) A lane that loops by itself: its sweep turned to noise no longer comes back
+  // round either (#2109), and the label says so BEFORE the write, and the view follows.
   const SELF = '$: s("<bd sd cp hh>*4").cutoff(sine.range(200, 2000))'
   await setSongAndEval(page, SELF)
   await expect.poll(() => readDoc(page), { timeout: 5_000 }).toBe(SELF)
   await page.waitForTimeout(1500)
-  const selfBars = await barsOnView(page)
+  // A 1-cycle loop, drawn at the bare-loop floor — short of the window it will page in.
+  expect(await barsOnView(page)).toBeLessThan(64)
   expect(await openShapeMenu(page), 'the shape menu did not open on the self-looping lane').toBe(true)
-  expect(await shapeOptionText(page, 'perlin')).toBe('perlin · same song length')
+  expect(await shapeOptionText(page, 'perlin')).toBe('perlin · song length unknown')
   await menu.selectOption('perlin')
   await expect.poll(() => readDoc(page), { timeout: 5_000 }).toBe(SELF.replace('sine', 'perlin'))
-  await page.waitForTimeout(1500)
-  expect(await barsOnView(page), 'the view moved on a swap labelled as changing nothing').toBe(selfBars)
+  await expect.poll(() => barsOnView(page), { timeout: 20_000 }).toBe(64)
 
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })

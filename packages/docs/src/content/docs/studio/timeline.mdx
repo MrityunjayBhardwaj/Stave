@@ -17,6 +17,14 @@ The **Timeline** tab shows your whole song: one row per track, each row split in
 - **Fit** zooms out to the whole song. **−** and **+** zoom out and in, and **⌘ + mouse wheel** zooms around the pointer. A plain wheel scrolls sideways.
 - **Drag the edge below a track** to make the rows taller or shorter.
 
+## How long the song is
+
+A song with an `arrange(...)` is as long as its arrangement. Anything else, Stave works out by listening for the song to come back round, and shows one pass of it.
+
+A song that hasn't come back round within 64 cycles shows **64+ cycles**, with "no repeat · showing first 64 cycles" above the tracks, and moves on to the next 64 as it plays. A control moved by `rand`, `perlin` or `time` never comes back, so a song with one always does this. An arrangement longer than 64 cycles is shown 64 at a time too.
+
+To look further, raise **Settings › Pattern & Timeline › Longest timeline**, up to 256 cycles. A loop is found once it has played twice within that limit, so a 40-cycle loop needs a limit of 80 or more.
+
 ## Looping a stretch
 
 The thin strip along the top of the ruler is the loop.

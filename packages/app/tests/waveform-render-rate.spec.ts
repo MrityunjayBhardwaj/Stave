@@ -18,6 +18,15 @@ import { chooseDisplay } from './_laneType'
  *     caches a decoded sample at the rate of the first context to load it.
  */
 
+// #2109 — the songs here are 187-cycle arrangements, rendered whole against the
+// budget; at the default limit of 64 the timeline would draw them a 64-cycle window
+// at a time and the budget would never be reached.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    try { localStorage.setItem('stave:songCycleLimit', '256') } catch { /* ignore */ }
+  })
+})
+
 async function attr(page: Page, name: string): Promise<string> {
   return page.evaluate((a) => document.querySelector(`[${a}]`)?.getAttribute(a) ?? '', name)
 }

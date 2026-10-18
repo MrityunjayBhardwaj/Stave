@@ -215,6 +215,10 @@
     "runs": "gate",
     "why": "point a section at a different part (#1560) \u2014 the primitives are unit-covered, but whether a musician can reach them at all is only observable in the running app"
   },
+  "full-song-cycle-limit.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "full-song-note-names.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"

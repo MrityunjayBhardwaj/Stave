@@ -103,6 +103,7 @@ import { reportWriteRefusal } from "../lib/writeRefusal";
 import { noticeBareExpression, storedTold } from "../lib/bareExpressionNotice";
 import { showToast } from "../dialogs/host";
 import { effectiveLoopRange, subscribeLoopState } from "../state/loopRange";
+import { getSongCycleLimit } from "../state/songCycleLimit";
 import { createSongCollector } from "./musicalTimeline/songCollector";
 import { measureSongLength, type BounceSizing } from "./songLength";
 import {
@@ -2005,6 +2006,8 @@ export default function StrudelEditorClient({
                 getSongTrackIds: () =>
                   runtimesRef.current.get(fid!)?.getSongTrackIds?.() ?? [],
               }),
+            // #2109 — the timeline's limit, so the dialog and the timeline agree.
+            capCycles: getSongCycleLimit(),
           },
           signal,
         );

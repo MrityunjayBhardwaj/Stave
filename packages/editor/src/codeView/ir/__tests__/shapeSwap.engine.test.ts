@@ -93,16 +93,19 @@ const SWEEP = (shape: string, rate = '.slow(16)') => `s("bd*8").cutoff(${shape}$
 describe('#1611 — a cross-class swap is previewed as the song it gives', () => {
   it.each([
     // [label, tracks, next, length before, length after (the engine)]
-    ['sine beside a 4-bar line → perlin', [SWEEP('sine'), LOOP4], 'perlin', 16, 4],
-    ['perlin beside a 4-bar line → sine', [SWEEP('perlin'), LOOP4], 'sine', 4, 16],
-    ['sine alone → perlin', [SWEEP('sine')], 'perlin', 16, 1],
-    ['perlin alone → sine', [SWEEP('perlin')], 'sine', 1, 16],
-    ['sine beside a 2-bar line → rand', [SWEEP('sine'), LOOP2], 'rand', 16, 2],
-    ['rand.slow(6) on gain beside a 4-bar line → tri', ['s("bd*8").gain(rand.slow(6))', LOOP4], 'tri', 4, 12],
-    ['under a whole-track slow → perlin', [`${SWEEP('sine', '.slow(4)')}.slow(2)`, LOOP4], 'perlin', 8, 4],
-    ['inside an arrangement section → perlin', [`arrange([3, ${SWEEP('sine', '.slow(4)')}], [1, s("hh*8")])`], 'perlin', 16, 4],
-    ['inside an arrangement section, perlin → saw', [`arrange([3, ${SWEEP('perlin', '.slow(4)')}], [1, s("hh*8")])`], 'saw', 4, 16],
-    ['a lane that loops by itself: nothing changes', ['s("<bd sd cp hh>*4").cutoff(sine.range(200, 2000))'], 'perlin', 1, 1],
+    // #2109 — noise never comes back, so a song it moves has no length to offer
+    // ('unknown': it reads "N+ cycles" and pages). Until #2109 it was offered the
+    // loop of what the noise moves over: 4 beside a 4-bar line, 1 alone.
+    ['sine beside a 4-bar line → perlin', [SWEEP('sine'), LOOP4], 'perlin', 16, 'unknown'],
+    ['perlin beside a 4-bar line → sine', [SWEEP('perlin'), LOOP4], 'sine', 'unknown', 16],
+    ['sine alone → perlin', [SWEEP('sine')], 'perlin', 16, 'unknown'],
+    ['perlin alone → sine', [SWEEP('perlin')], 'sine', 'unknown', 16],
+    ['sine beside a 2-bar line → rand', [SWEEP('sine'), LOOP2], 'rand', 16, 'unknown'],
+    ['rand.slow(6) on gain beside a 4-bar line → tri', ['s("bd*8").gain(rand.slow(6))', LOOP4], 'tri', 'unknown', 12],
+    ['under a whole-track slow → perlin', [`${SWEEP('sine', '.slow(4)')}.slow(2)`, LOOP4], 'perlin', 8, 'unknown'],
+    ['inside an arrangement section → perlin', [`arrange([3, ${SWEEP('sine', '.slow(4)')}], [1, s("hh*8")])`], 'perlin', 16, 'unknown'],
+    ['inside an arrangement section, perlin → saw', [`arrange([3, ${SWEEP('perlin', '.slow(4)')}], [1, s("hh*8")])`], 'saw', 'unknown', 16],
+    ['a lane that loops by itself, its sweep turned to noise', ['s("<bd sd cp hh>*4").cutoff(sine.range(200, 2000))'], 'perlin', 1, 'unknown'],
   ] as const)('%s', async (_label, tracks, next, before, after) => {
     const r = await swap(tracks, next)
     expect(lengthOf(r.current), 'the song before').toBe(before)
@@ -114,9 +117,10 @@ describe('#1611 — a cross-class swap is previewed as the song it gives', () =>
   }, 180_000)
 
   it('the control: the preview needs BOTH the stand-in and the swapped signals', async () => {
-    // Beside a 4-bar line, sine → perlin gives 4. Each half alone keeps the old 16.
+    // Beside a 4-bar line, sine → perlin gives no length (#2109). Each half alone keeps
+    // the old 16.
     const r = await swap([SWEEP('sine'), LOOP4], 'perlin')
-    expect(lengthOf(r.preview)).toBe(4)
+    expect(lengthOf(r.preview)).toBe('unknown')
 
     // Signals swapped, events untouched: the sweep's lane still repeats at 16.
     const eventsUntouched = await analyzeSong(r.ir, {
@@ -128,7 +132,7 @@ describe('#1611 — a cross-class swap is previewed as the song it gives', () =>
 
     // Alone, the stand-in with the signals read as written folds the old 16 back in.
     const alone = await swap([SWEEP('sine')], 'perlin')
-    expect(lengthOf(alone.preview)).toBe(1)
+    expect(lengthOf(alone.preview)).toBe('unknown')
     const keyOf = alone.a.paramKey
     const signalsUnswapped = await analyzeSong(alone.ir, {
       collectFn: (s, e) =>
