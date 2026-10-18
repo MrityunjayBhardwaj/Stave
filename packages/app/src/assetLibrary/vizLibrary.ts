@@ -26,7 +26,7 @@
  *  of a runtime `@stave/editor` import (which the app's tests could not load
  *  until #1938). */
 import { BAKED_VIZ_THUMBNAILS } from "./vizThumbnails.data";
-import { RAIN_DRIVE_GLSL_CODE } from "./vizSources/rainDrive";
+import { NIGHT_DRIVE_GLSL_CODE } from "./vizSources/nightDrive";
 import { ROBOT_GUITARIST_P5_CODE } from "./vizSources/robotGuitarist";
 import { SUNSET_DRIVE_P5_CODE } from "./vizSources/sunsetDrive";
 import { TUNNEL_GLSL_CODE } from "./vizSources/tunnel";
@@ -144,11 +144,11 @@ export const VIZ_LIBRARY: readonly VizLibItem[] = [
     thumbnail: BAKED_VIZ_THUMBNAILS["pulse-grid"],
   },
   {
-    id: "rain-drive",
-    name: "Rain Drive",
+    id: "night-drive",
+    name: "Night Drive",
     renderer: "glsl",
-    files: [{ relPath: "Rain Drive.glsl", content: RAIN_DRIVE_GLSL_CODE, language: "glsl" }],
-    thumbnail: BAKED_VIZ_THUMBNAILS["rain-drive"],
+    files: [{ relPath: "Night Drive.glsl", content: NIGHT_DRIVE_GLSL_CODE, language: "glsl" }],
+    thumbnail: BAKED_VIZ_THUMBNAILS["night-drive"],
   },
   {
     id: "tunnel",
