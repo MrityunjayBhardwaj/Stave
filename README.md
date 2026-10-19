@@ -153,7 +153,7 @@ Each `$:` line is a track. It gets its own row on the Timeline, its own strip in
 Stave is at **0.5**, its first beta. The full [roadmap](https://stave.live/docs/roadmap/) has the details; in short:
 
 - **0.6: nested patterns and 3D visuals.** The Pattern grids draw a pattern's own divisions, and zoom opens each level of nesting. three.js joins p5.js, Hydra and GLSL for visuals. Plus a round of bug fixes across the Timeline, the grids and the Mixer.
-- **0.7: Sonic Pi.** Stave's Sonic Pi support comes from our sister project [Sonic Web](https://github.com/MrityunjayBhardwaj/SonicWeb): Sonic Pi in the browser, built on [SuperSonic](https://github.com/samaaron/supersonic), with the same `play`, `sleep` and `live_loop`. You can already play with it on its own at [sonicweb.cc](https://sonicweb.cc). Inside Stave today, `.sonicpi` files open with highlighting but don't play yet.
+- **0.7: Sonic Pi and MIDI out.** Stave's Sonic Pi support comes from our sister project [Sonic Web](https://github.com/MrityunjayBhardwaj/SonicWeb): Sonic Pi in the browser, built on [SuperSonic](https://github.com/samaaron/supersonic), with the same `play`, `sleep` and `live_loop`. You can already play with it on its own at [sonicweb.cc](https://sonicweb.cc). Inside Stave today, `.sonicpi` files open with highlighting but don't play yet. MIDI output, which today only works from code, gets a device list, a send switch per track and mixer knobs that send CC.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: Roadmap
-description: What's coming after the 0.5 beta. Nested patterns, three.js visuals and bug fixes in 0.6, then Sonic Pi in 0.7.
+description: What's coming after the 0.5 beta. Nested patterns, three.js visuals and bug fixes in 0.6, then Sonic Pi and MIDI out in 0.7.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -63,7 +63,9 @@ Keyboard and code:
 - Zen mode gets a Windows and Linux shortcut that isn't taken by Ctrl+Alt ([#2103](https://github.com/MrityunjayBhardwaj/Stave/issues/2103)).
 - A part named in a non-Latin script, like `const 前奏 = s("bd")`, shows on the Timeline like any other ([#1922](https://github.com/MrityunjayBhardwaj/Stave/issues/1922)).
 
-## 0.6 → 0.7: Sonic Pi, through Sonic Web
+## 0.6 → 0.7: Sonic Pi and MIDI out
+
+### Sonic Pi, through Sonic Web
 
 Stave's Sonic Pi support comes from our sister project [Sonic Web](https://github.com/MrityunjayBhardwaj/SonicWeb): Sonic Pi in the browser, built on [SuperSonic](https://github.com/samaaron/supersonic), with the same `play`, `sleep` and `live_loop`. You can play with it on its own today at [sonicweb.cc](https://sonicweb.cc). In 0.7 it comes inside Stave ([#173](https://github.com/MrityunjayBhardwaj/Stave/issues/173)):
 
@@ -74,11 +76,20 @@ Stave's Sonic Pi support comes from our sister project [Sonic Web](https://githu
 
 See [Sonic Pi](/runtimes/sonicpi/) for how the language works in Stave.
 
+### MIDI out, set up from the app
+
+MIDI output works today, but only from code: you switch it on in **Settings › Modules**, reload, and type your device's name exactly into `.midi("…")`. In 0.7 it gets the controls you'd expect from a DAW ([#749](https://github.com/MrityunjayBhardwaj/Stave/issues/749)):
+
+- **Pick a device from a list** of the MIDI outputs your computer reports, instead of typing its name.
+- **A send switch per track**, so you choose which tracks play your synth or drum machine.
+- **Mixer knobs that send MIDI CC**, so turning a knob in Stave moves the matching control on your gear.
+- **Clear feedback**: whether MIDI is on, which devices were found, and what to do when the browser hasn't been given permission.
+
 ## After 0.7
 
 Further out, without a release number yet:
 
-- **MIDI.** Play the keyboard on your desk into Stave and record what you play ([#1706](https://github.com/MrityunjayBhardwaj/Stave/issues/1706)), choose MIDI devices from a list ([#749](https://github.com/MrityunjayBhardwaj/Stave/issues/749)), and export a pattern as a MIDI file ([#344](https://github.com/MrityunjayBhardwaj/Stave/issues/344)). MIDI output already works: turn it on in **Settings › Modules**.
+- **More MIDI.** Turn a knob on your controller to move a Stave control, play the keyboard on your desk into Stave and record what you play ([#1706](https://github.com/MrityunjayBhardwaj/Stave/issues/1706)), and export a pattern as a MIDI file ([#344](https://github.com/MrityunjayBhardwaj/Stave/issues/344)).
 - **OSC**, for sending to SuperCollider and other tools ([#126](https://github.com/MrityunjayBhardwaj/Stave/issues/126)).
 
 Something missing that you need? [Open an issue](https://github.com/MrityunjayBhardwaj/Stave/issues/new) and tell us what you were trying to make.
