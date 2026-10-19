@@ -511,6 +511,26 @@ const PICK_CHOICE = 'PickChoice'
  * never a choice: it is the method's receiver, or a bare argument of the function.
  */
 function pickChoiceUnder(expr: any, pos: number): { lit: any; pick: any } | null {
+  for (const { pick, choices } of pickCallsOnSpine(expr)) {
+    for (const el of choices) {
+      if (isMiniString(el) && pos >= el.start && pos <= el.end) return { lit: el, pick }
+    }
+  }
+  return null
+}
+
+/**
+ * Every `pick`-family call on `expr`'s callee spine, with its choices: the elements
+ * of a list argument and the values of an object argument, in source order. The one
+ * place that decides what a choice is, so the string lookup (`pickChoiceUnder`) and
+ * the call lookup (`pickSectionUnder`) cannot disagree about it (#2121).
+ *
+ * Walks the spine (like `collectChain`) rather than the whole tree, so a pick NESTED
+ * inside another combinator is found only when it lies on the chain under the
+ * cursor: the enclosing `innermostChainUnder` recursion has already narrowed to it.
+ */
+function pickCallsOnSpine(expr: any): { pick: any; choices: any[] }[] {
+  const out: { pick: any; choices: any[] }[] = []
   let node = expr
   while (node && node.type === 'CallExpression') {
     const callee = node.callee
@@ -519,21 +539,18 @@ function pickChoiceUnder(expr: any, pos: number): { lit: any; pick: any } | null
         ? !callee.computed && callee.property.type === 'Identifier' && PICK_METHODS.has(callee.property.name)
         : callee.type === 'Identifier' && PICK_FUNCTIONS.has(callee.name)
     if (isPick) {
+      const choices: any[] = []
       for (const arg of node.arguments) {
-        const choices =
-          arg?.type === 'ArrayExpression'
-            ? arg.elements
-            : arg?.type === 'ObjectExpression'
-              ? arg.properties.map((p: any) => (p?.type === 'Property' ? p.value : null))
-              : []
-        for (const el of choices) {
-          if (isMiniString(el) && pos >= el.start && pos <= el.end) return { lit: el, pick: node }
+        if (arg?.type === 'ArrayExpression') choices.push(...arg.elements)
+        else if (arg?.type === 'ObjectExpression') {
+          for (const p of arg.properties) choices.push(p?.type === 'Property' ? p.value : null)
         }
       }
+      out.push({ pick: node, choices })
     }
     node = callee.type === 'MemberExpression' ? callee.object : null
   }
-  return null
+  return out
 }
 
 /** A string literal a mini pattern can be read from: quotes, or a backtick string
@@ -590,46 +607,21 @@ function buildPickChoiceChunk(doc: string, t: any, outer: [number, number]): Chu
 }
 
 /**
- * The section pattern under `pos` inside a `pick*({…})` object argument, or null.
- * A `pick`-family method call takes an object whose property VALUES
- * are the section patterns (`{verse: s("…"), chorus: s("…")}`); a cursor inside
- * one of those values binds THAT section's inner chain — the same descent
- * `chainArgUnder` does for a `stack`/`arrange` arm (#667). The `<…>` control
- * string and the property KEYS are not sections: a cursor there returns null so
- * the outer statement stays selected (the control is a Timeline concern, #463).
- *
- * Walks the callee spine (like `collectChain`) rather than recursing the whole
- * tree, so a `pick*` NESTED inside another combinator is found only when it lies
- * on the chain under `pos` (the enclosing `innermostChainUnder` recursion has
- * already narrowed to that arm).
+ * The choice under `pos` that is written as a call, or null: `{verse: s("…")}` in an
+ * object (#667), or `[s("…"), note("…")]` in a list (#2121), of any `pick`-family
+ * call in either form. A cursor inside one binds THAT choice's own chain, the same
+ * descent `chainArgUnder` does for a `stack`/`arrange` arm. The selector and the
+ * property keys are not choices: a cursor there returns null so the outer statement
+ * stays selected (the selector is a Timeline concern, #463). A string choice is
+ * `pickChoiceUnder`'s.
  */
 function pickSectionUnder(expr: any, pos: number): any {
-  let node = expr
-  while (node && node.type === 'CallExpression') {
-    const callee = node.callee
-    if (
-      callee.type === 'MemberExpression' &&
-      !callee.computed &&
-      callee.property.type === 'Identifier' &&
-      PICK_METHODS.has(callee.property.name)
-    ) {
-      const obj = node.arguments.find((a: any) => a && a.type === 'ObjectExpression')
-      if (obj) {
-        for (const prop of obj.properties) {
-          const val = prop && prop.type === 'Property' ? prop.value : null
-          if (
-            val &&
-            val.type === 'CallExpression' &&
-            typeof val.start === 'number' &&
-            pos >= val.start &&
-            pos <= val.end
-          ) {
-            return val
-          }
-        }
+  for (const { choices } of pickCallsOnSpine(expr)) {
+    for (const el of choices) {
+      if (el?.type === 'CallExpression' && typeof el.start === 'number' && pos >= el.start && pos <= el.end) {
+        return el
       }
     }
-    node = callee.type === 'MemberExpression' ? callee.object : null
   }
   return null
 }

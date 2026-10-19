@@ -775,23 +775,35 @@ function innermostChainUnder(doc, expr, pos, bindings, outerHead = null) {
 __name(innermostChainUnder, "innermostChainUnder");
 var PICK_CHOICE = "PickChoice";
 function pickChoiceUnder(expr, pos) {
+  for (const { pick, choices } of pickCallsOnSpine(expr)) {
+    for (const el of choices) {
+      if (isMiniString(el) && pos >= el.start && pos <= el.end) return { lit: el, pick };
+    }
+  }
+  return null;
+}
+__name(pickChoiceUnder, "pickChoiceUnder");
+function pickCallsOnSpine(expr) {
+  const out = [];
   let node = expr;
   while (node && node.type === "CallExpression") {
     const callee = node.callee;
     const isPick = callee.type === "MemberExpression" ? !callee.computed && callee.property.type === "Identifier" && PICK_METHODS.has(callee.property.name) : callee.type === "Identifier" && PICK_FUNCTIONS.has(callee.name);
     if (isPick) {
+      const choices = [];
       for (const arg of node.arguments) {
-        const choices = arg?.type === "ArrayExpression" ? arg.elements : arg?.type === "ObjectExpression" ? arg.properties.map((p) => p?.type === "Property" ? p.value : null) : [];
-        for (const el of choices) {
-          if (isMiniString(el) && pos >= el.start && pos <= el.end) return { lit: el, pick: node };
+        if (arg?.type === "ArrayExpression") choices.push(...arg.elements);
+        else if (arg?.type === "ObjectExpression") {
+          for (const p of arg.properties) choices.push(p?.type === "Property" ? p.value : null);
         }
       }
+      out.push({ pick: node, choices });
     }
     node = callee.type === "MemberExpression" ? callee.object : null;
   }
-  return null;
+  return out;
 }
-__name(pickChoiceUnder, "pickChoiceUnder");
+__name(pickCallsOnSpine, "pickCallsOnSpine");
 function isMiniString(node) {
   if (!node || typeof node.start !== "number") return false;
   if (node.type === "Literal") return typeof node.value === "string";
@@ -826,21 +838,12 @@ function buildPickChoiceChunk(doc, t, outer) {
 }
 __name(buildPickChoiceChunk, "buildPickChoiceChunk");
 function pickSectionUnder(expr, pos) {
-  let node = expr;
-  while (node && node.type === "CallExpression") {
-    const callee = node.callee;
-    if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && PICK_METHODS.has(callee.property.name)) {
-      const obj = node.arguments.find((a) => a && a.type === "ObjectExpression");
-      if (obj) {
-        for (const prop of obj.properties) {
-          const val = prop && prop.type === "Property" ? prop.value : null;
-          if (val && val.type === "CallExpression" && typeof val.start === "number" && pos >= val.start && pos <= val.end) {
-            return val;
-          }
-        }
+  for (const { choices } of pickCallsOnSpine(expr)) {
+    for (const el of choices) {
+      if (el?.type === "CallExpression" && typeof el.start === "number" && pos >= el.start && pos <= el.end) {
+        return el;
       }
     }
-    node = callee.type === "MemberExpression" ? callee.object : null;
   }
   return null;
 }
