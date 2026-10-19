@@ -152,3 +152,41 @@ describe('chunkDetect — a string choice of a pick is the pattern (#2118)', () 
     expect(knobsFromChunk(detectAllChunks(doc)[0]).map((k) => k.method)).toEqual(['slow', 'lpf'])
   })
 })
+
+describe('chunkDetect — a choice written as a call (#2121)', () => {
+  /** the source the chunk's statementRange covers */
+  const span = (doc: string, c: ChunkInfo) => doc.slice(c.statementRange[0], c.statementRange[1])
+
+  it('a call inside a list binds that call, with the method form', () => {
+    const doc = '$: irand(2).segment(1).pick([s("bd ~ sd ~").bank("tr909"), note("c e g").s("piano")])'
+    const c = detectChunk(doc, at(doc, 'c e g'))!
+    expect({ head: c.headFn, mini: c.miniString, span: span(doc, c) }).toEqual({
+      head: 'note',
+      mini: 'c e g',
+      span: 'note("c e g").s("piano")',
+    })
+    expect(opens(c)).toBe(true)
+  })
+
+  it('and with the function form, in a list or an object', () => {
+    const list = '$: pick(irand(2).segment(1), [s("bd sd"), s("hh*8")])'
+    expect(span(list, detectChunk(list, at(list, 'hh*8'))!)).toBe('s("hh*8")')
+    const obj = '$: pick("<a b>", {a: s("bd sd"), b: note("c e")})'
+    expect(span(obj, detectChunk(obj, at(obj, 'c e'))!)).toBe('note("c e")')
+  })
+
+  it('every name of the family binds a call in an object, and never the selector', () => {
+    const names = ['pick', 'pickmod', 'pickOut', 'pickmodOut', 'pickRestart', 'pickmodRestart', 'pickReset',
+      'pickmodReset', 'inhabit', 'inhabitmod', 'pickSqueeze', 'pickmodSqueeze']
+    for (const name of names) {
+      const doc = `$: "<a b>".${name}({a: s("bd sd"), b: s("hh*4")})`
+      expect(span(doc, detectChunk(doc, at(doc, 'hh*4'))!), name).toBe('s("hh*4")')
+      expect(detectChunk(doc, doc.indexOf('<a b>') + 2)!.miniString, `${name} selector`).not.toBe('hh*4')
+    }
+  })
+
+  it('a method .squeeze is the operator alias: a call inside it is not a choice', () => {
+    const doc = '$: note("c e").squeeze([s("bd sd")])'
+    expect(detectChunk(doc, at(doc, 'bd sd'))!.miniString).toBe('c e')
+  })
+})
