@@ -652,6 +652,7 @@ function detectChunk(doc, pos) {
         if (decl?.id?.type !== "Identifier" || !decl.init) return null;
         const initTarget = innermostChainUnder(doc, decl.init, pos, bindings);
         if (initTarget.type === PICK_CHOICE) return buildPickChoiceChunk(doc, initTarget, [node.start, node.end]);
+        if (initTarget.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, initTarget, [node.start, node.end]);
         return initTarget === decl.init ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings, false, getIndex) : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true, getIndex);
       }
       let label = null;
@@ -664,6 +665,7 @@ function detectChunk(doc, pos) {
       const topExpr = body.expression;
       const target = innermostChainUnder(doc, topExpr, pos, bindings);
       if (target.type === PICK_CHOICE) return buildPickChoiceChunk(doc, target, [node.start, node.end]);
+      if (target.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, target, [node.start, node.end]);
       return target === topExpr ? buildMaybeResolved(doc, topExpr, label, [node.start, node.end], bindings, false, getIndex) : buildMaybeResolved(doc, target, null, [target.start, target.end], bindings, true, getIndex);
     }
   }
@@ -758,6 +760,8 @@ __name(resolveMini, "resolveMini");
 function innermostChainUnder(doc, expr, pos, bindings, outerHead = null) {
   const choice = pickChoiceUnder(expr, pos);
   if (choice) return { type: PICK_CHOICE, expr, outerHead, ...choice };
+  const rhythm = structRhythmUnder(expr, pos);
+  if (rhythm) return { type: STRUCT_RHYTHM, expr, lit: rhythm };
   const pickSection = pickSectionUnder(expr, pos);
   if (pickSection) return innermostChainUnder(doc, pickSection, pos, bindings);
   const headOut = { ref: null };
@@ -837,6 +841,46 @@ function buildPickChoiceChunk(doc, t, outer) {
   return info;
 }
 __name(buildPickChoiceChunk, "buildPickChoiceChunk");
+var STRUCT_RHYTHM = "StructRhythm";
+function structRhythmUnder(expr, pos) {
+  let node = expr;
+  while (node && node.type === "CallExpression") {
+    const callee = node.callee;
+    if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && callee.property.name === "struct") {
+      const arg = node.arguments[0];
+      if (arg && typeof arg.start === "number" && pos >= arg.start && pos <= arg.end) {
+        if (isMiniString(arg)) return arg;
+        const choice = pickChoiceUnder(arg, pos);
+        if (choice) return choice.lit;
+      }
+    }
+    node = callee.type === "MemberExpression" ? callee.object : null;
+  }
+  return null;
+}
+__name(structRhythmUnder, "structRhythmUnder");
+function buildStructRhythmChunk(doc, t, outer) {
+  const chain = collectChain(doc, t.expr, { ref: null });
+  const lit = [t.lit.start, t.lit.end];
+  const info = {
+    statementRange: lit,
+    statementText: doc.slice(lit[0], lit[1]),
+    exprRange: [t.expr.start, t.expr.end],
+    label: null,
+    headFn: "struct",
+    miniRange: [lit[0] + 1, lit[1] - 1],
+    miniString: doc.slice(lit[0] + 1, lit[1] - 1),
+    miniVia: "literal",
+    miniAnchor: { range: outer, text: doc.slice(outer[0], outer[1]) },
+    chain: [{ name: "struct", args: [], range: lit }, ...chain.slice(1)],
+    type: "unknown",
+    nested: false,
+    structRhythm: true
+  };
+  info.type = classifyChunk(info);
+  return info;
+}
+__name(buildStructRhythmChunk, "buildStructRhythmChunk");
 function pickSectionUnder(expr, pos) {
   for (const { choices } of pickCallsOnSpine(expr)) {
     for (const el of choices) {
@@ -12293,6 +12337,7 @@ function rollUnlessChordChart(mini) {
 __name(rollUnlessChordChart, "rollUnlessChordChart");
 function chunkSurface(chunk) {
   if (!chunk || chunk.miniString === null) return patternKind(chunk);
+  if (chunk.structRhythm) return "step";
   if (!patternKind(chunk) && chunk.miniVia !== "resolver") return null;
   return routeSurface(chunk.headFn, chunk.miniString);
 }
@@ -12830,7 +12875,7 @@ __name(rateEdit, "rateEdit");
 
 // src/codeView/notation/gainEdit.ts
 function readChunkGain(chunk) {
-  if (chunk.pickChoice) return { mini: null, numeric: null, foreign: true };
+  if (chunk.pickChoice || chunk.structRhythm) return { mini: null, numeric: null, foreign: true };
   const call = playingCall(chunk, ["gain"]);
   if (!call) return { mini: null, numeric: null, foreign: false };
   const arg = call.args[0];
