@@ -173,11 +173,13 @@ describe("template tracks open as Bars, a vocal as Waveform", () => {
     for (const { t, f } of strudelFiles()) {
       for (const name of Object.keys(f.trackDisplays ?? {})) expect(name, `${t} ${name}`).not.toMatch(/^d\d+$/);
     }
-    // The Starter and the Sketch are all `$:` tracks: seeding saves no type, so
+    // The Starter and the Sketch name their tracks (#2112) but save no type, so
     // a song written over them later is not held to these tracks' types.
+    const expected: Record<string, string[]> = { starter: ["melody", "bass", "drums"], strudel: ["drums", "bass"] };
     for (const t of ["starter", "strudel"]) {
       seedProjectFromTemplate(t);
       const f = getTemplateFiles(t).find((x) => x.language === "strudel")!;
+      expect(trackNames(f.content), t).toEqual(expected[t]);
       for (const name of trackNames(f.content)) expect(getTrackMeta(f.id, name).display, `${t} ${name}`).toBeUndefined();
     }
   });

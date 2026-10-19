@@ -46,18 +46,18 @@ export const STRUDEL_CODE = `// Strudel — Declarative pattern algebra
 
 setcps(130/240)
 
-$: stack(
+melody: stack(
   note("c4 e4 g4 b4 c5 b4 g4 e4")
     .s("sawtooth").gain(0.3).lpf(2400).release(0.12),
   note("e3 g3 b3 e4")
     .s("sine").gain(0.15).release(0.3)
 ).viz("pianoroll")
 
-$: note("<c2 [g2 c2] f2 [g2 eb2]>")
-  .s("square").gain(0.4).lpf(500).release(0.2)
+bass: note("<c2 [g2 c2] f2 [g2 eb2]>")
+  .s("square").gain(0.4).lpf(sine.range(300, 900).slow(4)).release(0.2)
   .viz("pitchwheel")
 
-$: stack(
+drums: stack(
   s("hh*8").gain(0.3),
   s("bd [~ bd] ~ bd").gain(0.5),
   s("~ sd ~ [sd cp]").gain(0.4)
@@ -70,9 +70,9 @@ export const STRUDEL_SKETCH_CODE = `// A Strudel sketch — Ctrl+Enter to play �
 
 setcps(0.5)
 
-$: s("bd ~ sd ~, hh*8").gain(0.6)
+drums: s("bd ~ sd ~, hh*8").gain(0.6)
 
-$: note("<c3 eb3 g3 f3>")
+bass: note("<c3 eb3 g3 f3>")
   .s("sawtooth").lpf(900).release(0.2)`;
 
 export const SONIC_PI_CODE = `# Sonic Pi — Imperative play/sleep/live_loop
