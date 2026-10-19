@@ -31,7 +31,8 @@ import type { ChunkGain, GainWrite } from './model'
 export function readChunkGain(chunk: ChunkInfo): ChunkGain {
   // One choice of a `pick` shares its chain with the others (#2118): no `.gain` on it
   // is this choice's own, so velocity hands off instead of writing over all of them.
-  if (chunk.pickChoice) return { mini: null, numeric: null, foreign: true }
+  // A `.struct` rhythm line is the same (#2120): the chain's `.gain` is the track's.
+  if (chunk.pickChoice || chunk.structRhythm) return { mini: null, numeric: null, foreign: true }
   const call = playingCall(chunk, ['gain'])
   if (!call) return { mini: null, numeric: null, foreign: false }
   const arg = call.args[0]

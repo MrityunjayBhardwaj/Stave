@@ -92,6 +92,11 @@ interface ChunkInfo {
      *  whole track's, shared by every choice, so a per-note `.gain("…")` written for
      *  this choice would play over the others; `readChunkGain` reads it as foreign. */
     pickChoice?: true;
+    /** Set on the chunk for a rhythm line: the string in `.struct("…")`, or one string
+     *  choice of a `pick` inside it (#2120). The line says WHEN the track plays, so it
+     *  opens in the step grid; the chain plays the track's content, so like `pickChoice`
+     *  its `.gain` is not this line's own. */
+    structRhythm?: true;
 }
 
 /**
