@@ -36,7 +36,7 @@ import { SoundPickerMenu } from './SoundPickerMenu'
 import { ResolutionControl, type ResolutionControlProps } from './ResolutionControl'
 import { patternKind, rollShape } from '../../codeView'
 import { type Division, DIVISIONS, isRepresentable, stepsPerBar } from './division'
-import { readChainMethod } from '../../codeView'
+import { readChainMethod, chooserEnd } from '../../codeView'
 import { INSTRUMENTS, DRUM_KITS } from './soundCatalog'
 import { useSoundCatalog, useDrumKitCatalog } from '../../workspace/soundRegistry'
 import { auditionSound } from '../audition'
@@ -88,7 +88,9 @@ function rangeInfo(call: ChainCall): { customRange?: { min: number; max: number 
  */
 export function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry[] {
   const knobs: KnobEntry[] = []
+  const chooser = chooserEnd(chunk.chain)
   chunk.chain.forEach((call, chainIndex) => {
+    if (chainIndex < chooser) return // builds the number a `pick` chooses by, not a control (#2118)
     if (call.name === 'pan') return // pan lives on the strip pan row
     if (call.name === 'gain' && !includeGain) return // gain lives on the strip fader
     const numericArgs = call.args

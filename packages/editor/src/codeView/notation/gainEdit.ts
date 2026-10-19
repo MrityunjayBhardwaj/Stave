@@ -29,6 +29,9 @@ import type { ChunkGain, GainWrite } from './model'
  *   - any other arg         → { foreign:true }  (a signal/expr — hands off)
  */
 export function readChunkGain(chunk: ChunkInfo): ChunkGain {
+  // One choice of a `pick` shares its chain with the others (#2118): no `.gain` on it
+  // is this choice's own, so velocity hands off instead of writing over all of them.
+  if (chunk.pickChoice) return { mini: null, numeric: null, foreign: true }
   const call = playingCall(chunk, ['gain'])
   if (!call) return { mini: null, numeric: null, foreign: false }
   const arg = call.args[0]

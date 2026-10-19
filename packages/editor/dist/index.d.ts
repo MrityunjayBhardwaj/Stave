@@ -88,6 +88,10 @@ interface ChunkInfo {
      *  voice's isn't, so only there does the inspector surface gain. Always false
      *  for `detectAllChunks` (every chunk there is top-level). */
     nested: boolean;
+    /** Set on the chunk for one string choice of a `pick` (#2118). Its chain is the
+     *  whole track's, shared by every choice, so a per-note `.gain("…")` written for
+     *  this choice would play over the others; `readChunkGain` reads it as foreign. */
+    pickChoice?: true;
 }
 
 /**

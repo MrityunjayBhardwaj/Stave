@@ -589,7 +589,27 @@ function attempt(doc, index, reachable, unit, proposals) {
 __name(attempt, "attempt");
 
 // src/codeView/chunkDetect.ts
-var PICK_METHODS = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
+var PICK_METHODS = /* @__PURE__ */ new Set([
+  "pick",
+  "pickmod",
+  "pickOut",
+  "pickmodOut",
+  "pickRestart",
+  "pickmodRestart",
+  "pickReset",
+  "pickmodReset",
+  "inhabit",
+  "inhabitmod",
+  "pickSqueeze",
+  "pickmodSqueeze"
+]);
+var PICK_FUNCTIONS = /* @__PURE__ */ new Set([...PICK_METHODS, "squeeze"]);
+var CONTENT_HEADS = /* @__PURE__ */ new Set(["note", "n", "s", "sound"]);
+function chooserEnd(chain) {
+  const at = chain.findIndex((c, i) => i > 0 && PICK_METHODS.has(c.name));
+  return at < 0 ? 0 : at;
+}
+__name(chooserEnd, "chooserEnd");
 function isChunkFresh(doc, chunk) {
   if (doc.slice(chunk.statementRange[0], chunk.statementRange[1]) !== chunk.statementText) {
     return false;
@@ -657,6 +677,7 @@ function detectChunk(doc, pos) {
         const decl = decls[0];
         if (decl?.id?.type !== "Identifier" || !decl.init) return null;
         const initTarget = innermostChainUnder(doc, decl.init, pos, bindings);
+        if (initTarget.type === PICK_CHOICE) return buildPickChoiceChunk(doc, initTarget, [node.start, node.end]);
         return initTarget === decl.init ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings, false, getIndex) : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true, getIndex);
       }
       let label = null;
@@ -668,6 +689,7 @@ function detectChunk(doc, pos) {
       if (body.type !== "ExpressionStatement") return null;
       const topExpr = body.expression;
       const target = innermostChainUnder(doc, topExpr, pos, bindings);
+      if (target.type === PICK_CHOICE) return buildPickChoiceChunk(doc, target, [node.start, node.end]);
       return target === topExpr ? buildMaybeResolved(doc, topExpr, label, [node.start, node.end], bindings, false, getIndex) : buildMaybeResolved(doc, target, null, [target.start, target.end], bindings, true, getIndex);
     }
   }
@@ -759,21 +781,76 @@ function resolveMini(doc, info, getIndex) {
   info.miniAnchor = anchor;
 }
 __name(resolveMini, "resolveMini");
-function innermostChainUnder(doc, expr, pos, bindings) {
+function innermostChainUnder(doc, expr, pos, bindings, outerHead = null) {
+  const choice = pickChoiceUnder(expr, pos);
+  if (choice) return { type: PICK_CHOICE, expr, outerHead, ...choice };
   const pickSection = pickSectionUnder(expr, pos);
   if (pickSection) return innermostChainUnder(doc, pickSection, pos, bindings);
   const headOut = { ref: null };
   collectChain(doc, expr, headOut);
   const head = headOut.ref;
   if (!head || !Array.isArray(head.arguments)) return expr;
+  const heads = CONTENT_HEADS.has(head.callee.name) ? head.callee.name : null;
   for (const arg of head.arguments) {
     const inner = chainArgUnder(arg, pos, bindings);
     if (inner && inner.type === "Identifier") return inner;
-    if (inner) return innermostChainUnder(doc, inner, pos, bindings);
+    if (inner) return innermostChainUnder(doc, inner, pos, bindings, heads);
   }
   return expr;
 }
 __name(innermostChainUnder, "innermostChainUnder");
+var PICK_CHOICE = "PickChoice";
+function pickChoiceUnder(expr, pos) {
+  let node = expr;
+  while (node && node.type === "CallExpression") {
+    const callee = node.callee;
+    const isPick = callee.type === "MemberExpression" ? !callee.computed && callee.property.type === "Identifier" && PICK_METHODS.has(callee.property.name) : callee.type === "Identifier" && PICK_FUNCTIONS.has(callee.name);
+    if (isPick) {
+      for (const arg of node.arguments) {
+        const choices = arg?.type === "ArrayExpression" ? arg.elements : arg?.type === "ObjectExpression" ? arg.properties.map((p) => p?.type === "Property" ? p.value : null) : [];
+        for (const el of choices) {
+          if (isMiniString(el) && pos >= el.start && pos <= el.end) return { lit: el, pick: node };
+        }
+      }
+    }
+    node = callee.type === "MemberExpression" ? callee.object : null;
+  }
+  return null;
+}
+__name(pickChoiceUnder, "pickChoiceUnder");
+function isMiniString(node) {
+  if (!node || typeof node.start !== "number") return false;
+  if (node.type === "Literal") return typeof node.value === "string";
+  return node.type === "TemplateLiteral" && node.expressions.length === 0;
+}
+__name(isMiniString, "isMiniString");
+function buildPickChoiceChunk(doc, t, outer) {
+  const chain = collectChain(doc, t.expr, { ref: null });
+  const at = chain.findIndex((c) => c.range[1] === t.pick.end);
+  const after = at < 0 ? [] : chain.slice(at + 1);
+  const converter = after.find((c) => CONTENT_HEADS.has(c.name) && c.args.length === 0);
+  const headFn = converter?.name ?? t.outerHead ?? null;
+  const lit = [t.lit.start, t.lit.end];
+  const pickName = at < 0 ? "pick" : chain[at].name;
+  const info = {
+    statementRange: lit,
+    statementText: doc.slice(lit[0], lit[1]),
+    exprRange: [t.expr.start, t.expr.end],
+    label: null,
+    headFn,
+    miniRange: [lit[0] + 1, lit[1] - 1],
+    miniString: doc.slice(lit[0] + 1, lit[1] - 1),
+    miniVia: "literal",
+    miniAnchor: { range: outer, text: doc.slice(outer[0], outer[1]) },
+    chain: [{ name: headFn ?? pickName, args: [], range: lit }, ...after],
+    type: "unknown",
+    nested: false,
+    pickChoice: true
+  };
+  info.type = classifyChunk(info);
+  return info;
+}
+__name(buildPickChoiceChunk, "buildPickChoiceChunk");
 function pickSectionUnder(expr, pos) {
   let node = expr;
   while (node && node.type === "CallExpression") {
@@ -12776,6 +12853,7 @@ __name(rateEdit, "rateEdit");
 
 // src/codeView/notation/gainEdit.ts
 function readChunkGain(chunk) {
+  if (chunk.pickChoice) return { mini: null, numeric: null, foreign: true };
   const call = playingCall(chunk, ["gain"]);
   if (!call) return { mini: null, numeric: null, foreign: false };
   const arg = call.args[0];
@@ -42127,7 +42205,9 @@ function rangeInfo(call) {
 __name(rangeInfo, "rangeInfo");
 function knobsFromChunk(chunk, includeGain = false) {
   const knobs = [];
+  const chooser = chooserEnd(chunk.chain);
   chunk.chain.forEach((call, chainIndex) => {
+    if (chainIndex < chooser) return;
     if (call.name === "pan") return;
     if (call.name === "gain" && !includeGain) return;
     const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);

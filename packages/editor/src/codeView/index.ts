@@ -34,6 +34,7 @@ export {
   classifyChunk,
   collectChain,
   toArg,
+  chooserEnd,
 } from './chunkDetect'
 export type { ChunkInfo, ChainCall, ChainArg, ChunkType } from './chunkDetect'
 export {
