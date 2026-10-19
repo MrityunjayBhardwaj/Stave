@@ -54,7 +54,7 @@ melody: stack(
 ).viz("pianoroll")
 
 bass: note("<c2 [g2 c2] f2 [g2 eb2]>")
-  .s("square").gain(0.4).lpf(sine.range(300, 900).slow(4)).release(0.2)
+  .s("square").gain(0.4).lpf(500).release(0.2)
   .viz("pitchwheel")
 
 drums: stack(
