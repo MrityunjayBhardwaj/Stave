@@ -1,0 +1,48 @@
+# Runs on every pull request and every push to main: install from the lockfile,
+# build the app (which builds the editor and the docs and typechecks the shipped
+# code), then both unit suites.
+#
+# Not here yet, on purpose:
+# - `tsc --noEmit` over the test files: 74 errors on main, all in tests (#2124).
+# - The browser suite: 279 Playwright spec files (about 1,000 tests) needing a dev
+#   server and real audio; it stays a manual gate for now.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # Version comes from package.json's packageManager field.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm turbo run build --filter=@stave/app
+
+      - name: Editor unit tests
+        run: pnpm --filter @stave/editor test
+
+      - name: App unit tests
+        run: pnpm --filter @stave/app test
