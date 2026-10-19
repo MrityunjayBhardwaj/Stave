@@ -26,7 +26,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      # Full history, so origin/main exists: the modelling ratchet and the
+      # code-view boundary tests check that their lists only shrink against it.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Version comes from package.json's packageManager field.
       - uses: pnpm/action-setup@v4
