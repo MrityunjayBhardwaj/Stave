@@ -37,7 +37,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # The app suite passes only on Node 25 today: on 22, tests leak state
+          # into each other through localStorage (#2126).
+          node-version: 25
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
