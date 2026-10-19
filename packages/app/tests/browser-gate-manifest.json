@@ -699,6 +699,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "pattern-pick-choice.spec.ts": {
+    "runs": "gate",
+    "why": "a line chosen by pick (#2118) \u2014 the cursor lookup is unit-covered; that a click into the line opens it and a cell click writes only that line is only observable in the running app"
+  },
   "piano-roll-column-cover.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
