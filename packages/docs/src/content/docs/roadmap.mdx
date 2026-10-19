@@ -23,6 +23,7 @@ A Strudel pattern can split a beat, then split each piece again: `hh [hh hh] hh 
 - **Generators get their own handles.** Change `bd(3,8)` to `bd(5,8)`, or `hh*8` to `hh*6`, by its numbers, without the pattern being written out note by note.
 - **Edit at the level you're on.** Insert or remove a step inside a group ([#1828](https://github.com/MrityunjayBhardwaj/Stave/issues/1828)), and remove a whole bar from a longer pattern ([#1835](https://github.com/MrityunjayBhardwaj/Stave/issues/1835)).
 - **Comma patterns, each part at its own steps.** In `bd ~ sd ~, hh*8` the drums and the hi-hats keep their own step sizes, and you can add a hit on either one ([#1855](https://github.com/MrityunjayBhardwaj/Stave/issues/1855), [#1853](https://github.com/MrityunjayBhardwaj/Stave/issues/1853), [#1849](https://github.com/MrityunjayBhardwaj/Stave/issues/1849)).
+- **Lines chosen with `pick` open in the grid.** With the cursor in one of the lines a `pick` chooses between, the Pattern tab shows that line on its own and edits only it, whatever does the choosing ([#2118](https://github.com/MrityunjayBhardwaj/Stave/issues/2118)).
 - **Weighted steps beside a group** (`bd@3 [sd sd]`) no longer make the grid fall back to reading the pattern note by note ([#1862](https://github.com/MrityunjayBhardwaj/Stave/issues/1862)).
 
 ### three.js visuals
