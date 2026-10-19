@@ -45,6 +45,7 @@ export default defineConfig({
           label: 'Start here',
           items: [
             { label: 'Getting started', link: '/getting-started/' },
+            { label: 'Roadmap', link: '/roadmap/' },
           ],
         },
         {
