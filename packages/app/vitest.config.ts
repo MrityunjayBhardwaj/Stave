@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // #2126 — a fresh localStorage/sessionStorage per test, the same on every Node.
+    setupFiles: ['./vitest.setup.ts'],
     // Exclude Playwright specs (they live under packages/app/tests/) — they
     // import from `@playwright/test` and are not vitest-runnable.
     //

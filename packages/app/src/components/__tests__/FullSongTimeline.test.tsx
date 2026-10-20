@@ -861,9 +861,10 @@ describe('FullSongTimeline — resize a bare loop (#662, set display span; optio
     sections: [{ startCycle: 0, endCycle: 1, laneKeys: ['bd'] }],
   }
 
-  // This test env ships a `window.localStorage` whose methods are non-functional,
-  // so install a real Map-backed Storage (mirrors timelineCameraPersistence.test)
-  // — the bare span override round-trips through it. Fresh per test → isolation.
+  // Every test already gets fresh in-memory storage from vitest.setup.ts (#2126).
+  // This suite installs its own Map-backed Storage on top (the idiom of
+  // timelineCameraPersistence.test, from before that setup existed); the bare
+  // span override round-trips through it. Fresh per test → isolation.
   let originalStorage: PropertyDescriptor | undefined
   beforeEach(() => {
     originalStorage = Object.getOwnPropertyDescriptor(window, 'localStorage')
@@ -1930,6 +1931,10 @@ describe('FullSongTimeline — automate a fixed value from its lane (#1601)', ()
     extra: Partial<React.ComponentProps<typeof FullSongTimeline>>,
     expand = true,
   ) {
+    // #2126 — a fresh timeline each time: the camera saves expanded lanes, so a
+    // second render in the same test would start expanded and the click below
+    // would collapse it. (It passed on Node 25 only because nothing got saved.)
+    window.localStorage.clear()
     const source = `s("bd*2").${method}(${raw})`
     const ir = {
       tag: 'Stack',
