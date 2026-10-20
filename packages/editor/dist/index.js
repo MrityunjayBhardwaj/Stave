@@ -652,7 +652,7 @@ function detectChunk(doc, pos) {
         if (decl?.id?.type !== "Identifier" || !decl.init) return null;
         const initTarget = innermostChainUnder(doc, decl.init, pos, bindings);
         if (initTarget.type === PICK_CHOICE) return buildPickChoiceChunk(doc, initTarget, [node.start, node.end]);
-        if (initTarget.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, initTarget, [node.start, node.end], getIndex);
+        if (initTarget.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, initTarget, [node.start, node.end], bindings, getIndex);
         return initTarget === decl.init ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings, false, getIndex) : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true, getIndex);
       }
       let label = null;
@@ -665,7 +665,7 @@ function detectChunk(doc, pos) {
       const topExpr = body.expression;
       const target = innermostChainUnder(doc, topExpr, pos, bindings);
       if (target.type === PICK_CHOICE) return buildPickChoiceChunk(doc, target, [node.start, node.end]);
-      if (target.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, target, [node.start, node.end], getIndex);
+      if (target.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, target, [node.start, node.end], bindings, getIndex);
       return target === topExpr ? buildMaybeResolved(doc, topExpr, label, [node.start, node.end], bindings, false, getIndex) : buildMaybeResolved(doc, target, null, [target.start, target.end], bindings, true, getIndex);
     }
   }
@@ -808,6 +808,11 @@ function pickCallsOnSpine(expr) {
   return out;
 }
 __name(pickCallsOnSpine, "pickCallsOnSpine");
+function miniText(doc, node, bindings) {
+  const lit = node?.type === "Identifier" ? resolveBinding(node, bindings)?.rhs : node;
+  return isMiniString(lit) ? doc.slice(lit.start + 1, lit.end - 1) : null;
+}
+__name(miniText, "miniText");
 function isMiniString(node) {
   if (!node || typeof node.start !== "number") return false;
   if (node.type === "Literal") return typeof node.value === "string";
@@ -849,9 +854,9 @@ function structRhythmUnder(expr, pos) {
     if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && callee.property.name === "struct") {
       const arg = node.arguments[0];
       if (arg && typeof arg.start === "number" && pos >= arg.start && pos <= arg.end) {
-        if (isMiniString(arg)) return { lit: arg, receiver: callee.object };
+        if (isMiniString(arg)) return { lit: arg, receiver: callee.object, struct: node };
         const choice = pickChoiceUnder(arg, pos);
-        if (choice) return { lit: choice.lit, receiver: callee.object };
+        if (choice) return { lit: choice.lit, receiver: callee.object, struct: node };
       }
     }
     node = callee.type === "MemberExpression" ? callee.object : null;
@@ -859,8 +864,17 @@ function structRhythmUnder(expr, pos) {
   return null;
 }
 __name(structRhythmUnder, "structRhythmUnder");
-function buildStructRhythmChunk(doc, t, outer, getIndex) {
+function buildStructRhythmChunk(doc, t, outer, bindings, getIndex) {
   const over = buildChunkFromExpr(doc, t.receiver, null, outer, false, getIndex);
+  const masks = [];
+  for (let node = t.expr; node && node !== t.struct && node.type === "CallExpression"; ) {
+    const callee = node.callee;
+    if (callee.type !== "MemberExpression") break;
+    if (!callee.computed && callee.property.type === "Identifier" && callee.property.name === "mask") {
+      masks.unshift(miniText(doc, node.arguments[0], bindings));
+    }
+    node = callee.object;
+  }
   const chain = collectChain(doc, t.expr, { ref: null });
   const lit = [t.lit.start, t.lit.end];
   const info = {
@@ -877,7 +891,7 @@ function buildStructRhythmChunk(doc, t, outer, getIndex) {
     type: "unknown",
     nested: false,
     structRhythm: true,
-    structOver: { headFn: over.headFn, miniString: over.miniString }
+    structOver: { headFn: over.headFn, miniString: over.miniString, masks }
   };
   info.type = classifyChunk(info);
   return info;
@@ -8526,16 +8540,23 @@ function miniPieces(mini$1, cyc) {
   return asked(mini$1, mini(mini$1)).pieces(cyc);
 }
 __name(miniPieces, "miniPieces");
-function structHits(values2, rhythm, cyc) {
+function structHits(values2, rhythm, cyc, masks = []) {
   const pat = mini(values2).struct(mini(rhythm));
+  const masked = masks.reduce((p, m) => p.mask(mini(m)), pat);
+  const sounding = /* @__PURE__ */ new Set();
+  for (const h of masked.queryArc(cyc, cyc + 1)) {
+    if ((h.hasOnset?.() ?? false) && h.whole) sounding.add(onsetKey(h.whole.begin, h.value));
+  }
   const out = [];
   for (const h of pat.queryArc(cyc, cyc + 1)) {
     if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
-    out.push({ begin: h.whole.begin, end: h.whole.end, value: h.value });
+    const silenced = masks.length > 0 && !sounding.has(onsetKey(h.whole.begin, h.value));
+    out.push({ begin: h.whole.begin, end: h.whole.end, value: h.value, silenced });
   }
   return out;
 }
 __name(structHits, "structHits");
+var onsetKey = /* @__PURE__ */ __name((t, value) => `${t.toFraction?.() ?? t.valueOf()}\0${JSON.stringify(value)}`, "onsetKey");
 
 // src/codeView/notation/perBar.ts
 var MAX_SHARED_STEPS = 4096;
@@ -10500,7 +10521,7 @@ function readGridOnsets(pat, cyc) {
   };
 }
 __name(readGridOnsets, "readGridOnsets");
-var onsetKey = /* @__PURE__ */ __name((o) => JSON.stringify(o.map((x) => [Math.round(x.pos * ONSET_GRID), [...x.atoms].sort()]).sort()), "onsetKey");
+var onsetKey2 = /* @__PURE__ */ __name((o) => JSON.stringify(o.map((x) => [Math.round(x.pos * ONSET_GRID), [...x.atoms].sort()]).sort()), "onsetKey");
 function projectStepGrid(src0, viewScale = UNREFINED) {
   const src = src0.trim();
   if (src === "") return no("not-a-pattern");
@@ -10512,7 +10533,7 @@ function projectStepGrid(src0, viewScale = UNREFINED) {
   }
   const whole2 = isWholeAlternation(src) ? unwrapAlternation(src) : null;
   if (isWholeAlternation(src) && whole2 === null) return no("element-tiling");
-  const probed = playedBars(pat, readGridOnsets, onsetKey, MAX_PROJECT_BARS);
+  const probed = playedBars(pat, readGridOnsets, onsetKey2, MAX_PROJECT_BARS);
   if (!probed.ok) return probed;
   const perCycle = probed.perCycle;
   const bars = perCycle.length;
@@ -10657,11 +10678,11 @@ function projectionEditSafe(model, perBar2, bars, base, probeCols) {
     for (let bb = 0; bb < bars; bb++) {
       const got = gridOnsets(edited, bb);
       if (got === null) return false;
-      if (onsetKey(got) !== onsetKey(expectedFor(bb))) return false;
+      if (onsetKey2(got) !== onsetKey2(expectedFor(bb))) return false;
     }
     const wrap = gridOnsets(edited, bars);
     if (wrap === null) return false;
-    if (onsetKey(wrap) !== onsetKey(expectedFor(0))) return false;
+    if (onsetKey2(wrap) !== onsetKey2(expectedFor(0))) return false;
   }
   return true;
 }
@@ -10737,7 +10758,7 @@ function projectStepGridByLeaf(src0) {
   } catch {
     return no("not-a-pattern");
   }
-  const probed = playedBars(pat, readGridOnsets, onsetKey, LEAF_PROJECT_BARS.grid);
+  const probed = playedBars(pat, readGridOnsets, onsetKey2, LEAF_PROJECT_BARS.grid);
   if (!probed.ok) return probed;
   const perCycle = probed.perCycle;
   const bars = perCycle.length;
@@ -10836,10 +10857,10 @@ function leafEditSafe(model, perBar2, bars) {
       const want = leafExpected(ls.cols, perBar2, bars, anchor.span, text === "~" ? null : text);
       for (let b = 0; b < bars; b++) {
         const got = gridOnsets(edited, b);
-        if (got === null || onsetKey(got) !== onsetKey(want[b])) return false;
+        if (got === null || onsetKey2(got) !== onsetKey2(want[b])) return false;
       }
       const wrap = gridOnsets(edited, bars);
-      if (wrap === null || onsetKey(wrap) !== onsetKey(want[0])) return false;
+      if (wrap === null || onsetKey2(wrap) !== onsetKey2(want[0])) return false;
     }
   }
   return true;
@@ -11924,7 +11945,7 @@ var whole = /* @__PURE__ */ __name((x) => {
   const r = Math.round(x);
   return Math.abs(x - r) < 1e-9 ? r : null;
 }, "whole");
-function rhythmChart(chords, rhythm, model, parse6) {
+function rhythmChart(chords, rhythm, model, parse6, masks = []) {
   if (chords === null || model === null) return NONE;
   if (model.barSteps) return NONE;
   const rhythmBars = model.bars ?? 1;
@@ -11933,16 +11954,27 @@ function rhythmChart(chords, rhythm, model, parse6) {
   const chordsRead = parse6(chords);
   if (!chordsRead.ok) return NONE;
   const chordBars = chordsRead.model.bars ?? 1;
-  const bars = lcmOf([rhythmBars, chordBars]);
+  const readMasks = masks.filter((m) => m !== null);
+  const maskBars = [];
+  for (const m of readMasks) {
+    const p = maskPeriod(m);
+    if (p === null) {
+      return { ok: false, reason: `The .mask(\u2026) on this track doesn\u2019t repeat within ${RHYTHM_CHART_MAX_BARS} bars, so it can\u2019t be drawn on the rhythm.` };
+    }
+    maskBars.push(p);
+  }
+  const bars = lcmOf([rhythmBars, chordBars, ...maskBars]);
   if (bars > RHYTHM_CHART_MAX_BARS) {
+    const mask = maskBars.length ? ` and the mask every ${lcmOf(maskBars)}` : "";
     return {
       ok: false,
-      reason: `The chords repeat every ${chordBars} bar${chordBars === 1 ? "" : "s"} and the rhythm every ${rhythmBars}, so together they come round after ${bars} bars, more than the ${RHYTHM_CHART_MAX_BARS} this grid draws.`
+      reason: `The chords repeat every ${chordBars} bar${chordBars === 1 ? "" : "s"}, the rhythm every ${rhythmBars}${mask}, so together they come round after ${bars} bars, more than the ${RHYTHM_CHART_MAX_BARS} this grid draws.`
     };
   }
   const cols = bars * colsPerBar;
   const sounding = Array.from({ length: cols }, () => []);
   const hits = Array.from({ length: cols }, () => []);
+  const silenced = Array.from({ length: cols }, () => []);
   try {
     for (let b = 0; b < bars; b++) {
       for (const p of miniPieces(chords, b)) {
@@ -11954,12 +11986,13 @@ function rhythmChart(chords, rhythm, model, parse6) {
           if (!sounding[at].includes(value)) sounding[at].push(value);
         }
       }
-      for (const h of structHits(chords, rhythm, b)) {
+      for (const h of structHits(chords, rhythm, b, readMasks)) {
         const c = whole((h.begin.valueOf() - b) * colsPerBar);
         if (c === null) {
           return { ok: false, reason: "This rhythm plays between the grid\u2019s steps, so the chords can\u2019t be drawn on it." };
         }
         hits[b * colsPerBar + c].push(nameOf(h.value));
+        if (h.silenced) silenced[b * colsPerBar + c].push(nameOf(h.value));
       }
     }
   } catch {
@@ -11982,9 +12015,26 @@ function rhythmChart(chords, rhythm, model, parse6) {
     return on !== hits[c].length > 0;
   });
   const lookOnly = model.lookOnly ? model.lookOnly.reason : disagrees ? "this rhythm\u2019s steps are written in a way the grid reads differently from how they play" : null;
-  return { ok: true, chart: { bars, colsPerBar, rows, strip, sounding, hits, rhythmCol, lookOnly } };
+  const maskUnread = readMasks.length < masks.length;
+  return { ok: true, chart: { bars, colsPerBar, rows, strip, sounding, hits, silenced, maskUnread, rhythmCol, lookOnly } };
 }
 __name(rhythmChart, "rhythmChart");
+function maskPeriod(mask) {
+  const prints = [];
+  try {
+    for (let c = 0; c < PROJECTION_PERIOD_BOUNDS.probe; c++) {
+      prints.push(
+        miniPieces(mask, c).map((p2) => `${p2.begin.valueOf() - c}:${p2.end.valueOf() - c}:${nameOf(p2.value)}`).join(" ")
+      );
+    }
+  } catch {
+    return null;
+  }
+  if (prints.every((p2) => p2 === "")) return 1;
+  const p = detectPeriod(prints);
+  return p !== null && p <= RHYTHM_CHART_MAX_BARS ? p : null;
+}
+__name(maskPeriod, "maskPeriod");
 
 // src/codeView/notation/resolution.ts
 var MAX_RESOLUTION_STEPS = 256;
@@ -12405,6 +12455,7 @@ __name(chordLanes, "chordLanes");
 // src/codeView/surface/surfaceRoute.ts
 function routeSurface(headFn, mini) {
   if (headFn === "s" || headFn === "sound") return "step";
+  if (headFn === "chord") return "step";
   if (headFn === "note" || headFn === "n") return memoised(headFn, mini, rollUnlessChordChart);
   const roll = parsePianoRoll(mini);
   if (roll.ok) return "roll";
@@ -12434,10 +12485,11 @@ __name(rollUnlessChordChart, "rollUnlessChordChart");
 function chunkSurface(chunk) {
   if (!chunk || chunk.miniString === null) return patternKind(chunk);
   if (chunk.structRhythm) return "step";
-  if (!patternKind(chunk) && chunk.miniVia !== "resolver") return null;
+  if (!patternKind(chunk) && chunk.miniVia !== "resolver" && !LITERAL_CONTENT_HEADS.has(chunk.headFn ?? "")) return null;
   return routeSurface(chunk.headFn, chunk.miniString);
 }
 __name(chunkSurface, "chunkSurface");
+var LITERAL_CONTENT_HEADS = /* @__PURE__ */ new Set(["chord"]);
 function opensStepGrid(chunk) {
   return chunkSurface(chunk) === "step";
 }
@@ -38580,9 +38632,10 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
   const gestureRef = React48.useRef(null);
   const gainScoped = React48.useMemo(() => model ? gainWritable(stepGridCodec, model) : false, [model]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
+  const chordHead = chunk?.headFn === "chord";
   const isChordChart = React48.useMemo(
-    () => chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
-    [laneKey]
+    () => chordHead || chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
+    [chordHead, laneKey]
   );
   const boxes = React48.useMemo(() => {
     if (!model) return null;
@@ -39311,7 +39364,7 @@ function RhythmChartGrid({ onResolution }) {
     eligible: opensStepGrid
   });
   const result = React48.useMemo(
-    () => chunk?.structRhythm && chunk.miniString !== null ? rhythmChart(chunk.structOver?.miniString ?? null, chunk.miniString, model, parseChords) : { ok: false, reason: null },
+    () => chunk?.structRhythm && chunk.miniString !== null ? rhythmChart(chunk.structOver?.miniString ?? null, chunk.miniString, model, parseChords, chunk.structOver?.masks) : { ok: false, reason: null },
     [chunk, model]
   );
   const toggleable = React48.useMemo(() => {
@@ -39393,7 +39446,11 @@ function RhythmChartGrid({ onResolution }) {
       },
       children: /* @__PURE__ */ jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 4 }, children: [
         /* @__PURE__ */ jsx("div", { style: { marginBottom: 4 }, children: /* @__PURE__ */ jsx(PatternTrackChip, {}) }),
-        /* @__PURE__ */ jsx("div", { "data-rhythm-chart-line": true, style: { fontSize: 11, color: muted3, paddingBottom: 2 }, children: chart.lookOnly ? lookOnlyLine({ reason: chart.lookOnly }) : "This rhythm line plays the chords. A click turns a step on or off in this line, in every bar it plays." }),
+        /* @__PURE__ */ jsxs("div", { "data-rhythm-chart-line": true, style: { fontSize: 11, color: muted3, paddingBottom: 2 }, children: [
+          chart.lookOnly ? lookOnlyLine({ reason: chart.lookOnly }) : "This rhythm line plays the chords. A click turns a step on or off in this line, in every bar it plays.",
+          chart.silenced.some((s) => s.length > 0) && " Hollow steps are silenced by .mask(\u2026) in that bar.",
+          chart.maskUnread && " This track\u2019s .mask(\u2026) isn\u2019t drawn here: it isn\u2019t written as a string."
+        ] }),
         /* @__PURE__ */ jsxs("div", { role: "grid", "aria-label": "Chords on the rhythm", style: { display: "flex", flexDirection: "column", gap: 4, minWidth: "min-content" }, children: [
           /* @__PURE__ */ jsxs("div", { "aria-hidden": "true", style: { display: "flex", gap: 8, height: 12 }, children: [
             /* @__PURE__ */ jsx("div", { style: { width: 72, flex: "0 0 auto", ...pinned } }),
@@ -39448,17 +39505,19 @@ function RhythmChartGrid({ onResolution }) {
               /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 2, flex: 1 }, children: Array.from({ length: cols }, (_, c) => {
                 const hit = chart.hits[c].includes(row);
                 const own = chart.sounding[c].includes(row);
-                const canToggle = own && (toggleable?.[chart.rhythmCol(c)] ?? false);
+                const hollow = chart.silenced[c].includes(row);
+                const canToggle = own && !hollow && (toggleable?.[chart.rhythmCol(c)] ?? false);
                 return /* @__PURE__ */ jsx("div", { role: "gridcell", style: { display: "flex", ...colStyle(c) }, children: /* @__PURE__ */ jsx(
                   "button",
                   {
                     type: "button",
                     "data-rhythm-cell": `${r}:${c}`,
                     "data-rhythm-other": own ? void 0 : "true",
+                    "data-rhythm-silenced": hollow ? "true" : void 0,
                     "aria-pressed": hit,
                     "aria-disabled": canToggle ? void 0 : true,
-                    "aria-label": `${row} bar ${Math.floor(c / chart.colsPerBar) + 1} step ${c % chart.colsPerBar + 1}`,
-                    title: !own ? `${row} isn't playing here.` : chart.lookOnly ? lookOnlyLine({ reason: chart.lookOnly }) : void 0,
+                    "aria-label": `${row} bar ${Math.floor(c / chart.colsPerBar) + 1} step ${c % chart.colsPerBar + 1}${hollow ? ", silenced by .mask" : ""}`,
+                    title: !own ? `${row} isn't playing here.` : hollow ? "Silenced by .mask(\u2026) in this bar. The step plays in the bars the mask lets through; change the mask in the code." : chart.lookOnly ? lookOnlyLine({ reason: chart.lookOnly }) : void 0,
                     onClick: () => {
                       if (canToggle) toggle(c);
                     },
@@ -39467,8 +39526,8 @@ function RhythmChartGrid({ onResolution }) {
                       height: 22,
                       padding: 0,
                       borderRadius: 3,
-                      border: "1px solid var(--border, #3a3a42)",
-                      background: hit ? color : "var(--background-elevated, #26262c)",
+                      border: hollow ? `2px solid ${color}` : "1px solid var(--border, #3a3a42)",
+                      background: hit && !hollow ? color : "var(--background-elevated, #26262c)",
                       opacity: own ? 1 : 0.3,
                       cursor: canToggle ? "pointer" : "default"
                     }

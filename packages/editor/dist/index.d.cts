@@ -103,6 +103,9 @@ interface ChunkInfo {
     structOver?: {
         headFn: string | null;
         miniString: string | null;
+        /** each `.mask(…)` after `.struct`, in chain order: its string (through a const
+         *  too), or null when it is not written as one */
+        masks: Array<string | null>;
     };
 }
 
@@ -3359,6 +3362,10 @@ declare function routeSurface(headFn: string | null, mini: string): Surface;
  * non-content head (`lpf("0 1 2")`) has always landed in standby, and moving it
  * is a separate decision with its own measurement — this is the wiring of
  * admission, not a re-route of everything that owns a string.
+ *
+ * That decision has been made for one head: `chord`, whose string IS the music
+ * (#2142, measured at `LITERAL_CONTENT_HEADS`). A `.struct` rhythm line opens on
+ * its own rule (#2120).
  */
 declare function chunkSurface(chunk: ChunkInfo | null): PatternKind;
 

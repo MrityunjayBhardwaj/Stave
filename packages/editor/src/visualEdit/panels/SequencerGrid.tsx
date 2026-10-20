@@ -195,9 +195,12 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // relabel them all. Memoized on the lane names rather than the model, since
   // every drag rebuilds the model and none of them renames a lane.
   const laneKey = model ? model.lanes.map((l) => l.sound).join('\u0000') : ''
+  // A `chord(…)` head says so itself (#2142): `<C F G>` is a chord chart there, though
+  // its lanes spell like notes and so never force the reading on their own.
+  const chordHead = chunk?.headFn === 'chord'
   const isChordChart = React.useMemo(
-    () => chordLanes(laneKey === '' ? [] : laneKey.split('\u0000')),
-    [laneKey],
+    () => chordHead || chordLanes(laneKey === '' ? [] : laneKey.split('\u0000')),
+    [chordHead, laneKey],
   )
 
   // THE BOXES EACH ROW IS DRAWN AS (#1855). LCM: one per column. Exact: a row whose
