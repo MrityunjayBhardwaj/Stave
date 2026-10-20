@@ -1252,7 +1252,7 @@ export interface LookOnly {
 }
 
 /** the one line a panel shows over a look-only view — said once, for both grids */
-export const lookOnlyLine = (l: LookOnly): string => `Look only — ${l.reason}. Edit it in the code.`
+export const lookOnlyLine = (l: Pick<LookOnly, 'reason'>): string => `Look only — ${l.reason}. Edit it in the code.`
 
 /**
  * WHY a view declined a pattern — the gate that actually stopped it (#990).

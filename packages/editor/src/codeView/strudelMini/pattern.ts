@@ -103,6 +103,42 @@ function asked(mini: string, pat: Queryable): MarkedPattern {
 }
 
 /**
+ * Every piece of what `mini` plays that falls in cycle `cyc`, a step that began in an
+ * earlier cycle included (#2120: a chord strip names the chord sounding in each bar).
+ * THROWS what Strudel throws.
+ */
+export function miniPieces(mini: string, cyc: number): MiniPiece[] {
+  return asked(mini, reifyMini(mini) as Queryable).pieces(cyc)
+}
+
+/** one onset of `values.struct(rhythm)`: when, and which value it plays */
+export interface StructHit {
+  begin: MiniTime
+  end: MiniTime
+  value: unknown
+}
+
+/**
+ * What `values` plays to the rhythm `rhythm` (#2120): Strudel's own
+ * `mini(values).struct(mini(rhythm))`, every onset in cycle `cyc`. Which rhythm steps
+ * are hits is Strudel's rule, not ours: `"1 0"` has one hit and `"t f"` has two,
+ * because `.struct` keeps a step whose value is truthy.
+ *
+ * No locations: each hit's would mix the two strings' coordinates.
+ *
+ * THROWS what Strudel throws.
+ */
+export function structHits(values: string, rhythm: string, cyc: number): StructHit[] {
+  const pat = (reifyMini(values) as { struct(r: unknown): Queryable }).struct(reifyMini(rhythm))
+  const out: StructHit[] = []
+  for (const h of pat.queryArc(cyc, cyc + 1)) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue
+    out.push({ begin: h.whole.begin, end: h.whole.end, value: h.value })
+  }
+  return out
+}
+
+/**
  * One piece of a hap inside the cycle asked for: the part of it that falls in the cycle,
  * and the whole it is a piece of. Unlike a hit it need not START here — a step longer
  * than a bar shows up in every bar it covers.

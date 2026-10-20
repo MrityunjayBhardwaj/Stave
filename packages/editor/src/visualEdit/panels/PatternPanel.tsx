@@ -35,6 +35,7 @@ import { usePhone } from '../../workspace/usePhone'
 import { usePatternSideShown } from './patternSide'
 import { chunkSurface } from '../../codeView'
 import { SequencerGrid } from './SequencerGrid'
+import { RhythmChartGrid } from './RhythmChartGrid'
 import { PianoRollGrid } from './PianoRollGrid'
 import { MixerPanel } from '../mixer/MixerPanel'
 import { VisualEditStandby } from './VisualEditStandby'
@@ -84,7 +85,8 @@ export function PatternPanel(): React.ReactElement {
 
   const grid =
     kind === 'step' ? (
-      <SequencerGrid onResolution={setResolution} />
+      // a `.struct` rhythm line draws the chords it times (#2120)
+      chunk?.structRhythm ? <RhythmChartGrid onResolution={setResolution} /> : <SequencerGrid onResolution={setResolution} />
     ) : kind === 'roll' ? (
       <PianoRollGrid selected={selected} onSelect={setSelected} division={division} onResolution={setResolution} />
     ) : (

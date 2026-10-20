@@ -705,7 +705,7 @@
   },
   "pattern-struct-rhythm.spec.ts": {
     "runs": "gate",
-    "why": "a .struct rhythm line (#2120) \u2014 the cursor lookup is unit-covered; that a click into the line opens it and a step click writes only that line is only observable in the running app"
+    "why": "a .struct rhythm line (#2120) \u2014 the lookup and the chart against Strudel are unit-covered; that a click into the line draws its chords on it, and a step click writes only that line, is only observable in the running app"
   },
   "piano-roll-column-cover.spec.ts": {
     "runs": "gate",
