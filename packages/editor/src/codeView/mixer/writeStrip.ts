@@ -88,7 +88,7 @@ export function isValidTrackLabel(name: string): boolean {
 /**
  * The edit an inline rename makes — write the user's chosen `name:` label into
  * the code (#580, Phase C). Renaming is the ONLY way a descriptive name reaches
- * the file: the display never auto-names (the `d{N}` friction prompts THIS edit).
+ * the file: the display never auto-names (the positional `Track N` friction prompts THIS edit).
  *
  *  - named   (`bass:`)  → replace the label with `newLabel` (`lead: …`);
  *  - anon    (`$:`, label `'$'`) → replace the `$` → INSERT a name (`drums: …`);

@@ -21,7 +21,7 @@ function sceneOf(raw: SceneNote[], pitchMin: number | null = null, pitchMax: num
     lanes: [
       {
         laneKey: 'a',
-        displayName: 'a',
+        displayName: 'a', shownName: 'a',
         color: '#f00',
         density: [1, 1],
         notes,

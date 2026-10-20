@@ -156,7 +156,7 @@ test('a custom colour overrides the palette in BOTH the Timeline and the Mixer (
     })
   await expect.poll(async () => (await readStrips()).bass).toBe(chosenRgb)
   // The uncoloured strip stays on the palette (and equals its own lane colour).
-  expect((await readStrips()).d2).toBe(d2Rgb)
+  expect((await readStrips())['Track 2']).toBe(d2Rgb) // #2151: shown as `Track 2`, id d2
 
   expect(errors, errors.join('\n')).toEqual([])
 })
