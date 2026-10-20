@@ -19,19 +19,19 @@ and make visuals that move with every kick. Every change you make in a view is w
 
 ---
 
-## The problem
+## Why Stave
 
-[Strudel](https://strudel.cc) is a joyful way to make music: type one line and a beat starts playing. Then it gets hard.
+[Strudel](https://strudel.cc) is a joyful way to make music: type one line and a beat starts playing. Stave is for when that line grows into a whole song, and you'd like to see it as well as hear it.
 
-- **A loop isn't a song.** Code has no overview. You can't see where the chorus starts, how long the verse runs, or where you are right now. You have to keep the whole song in your head.
-- **Code doesn't show you what it plays.** `"bd [~ bd] ~ bd"` is a drum beat, but you have to read it to hear it. If you're new to code, every change is a guess. If you come from a DAW, there's no grid to paint on and no fader to pull.
-- **Visuals can't hear the music properly.** Audio-reactive visuals usually listen to the finished mix and guess from the loudness: "that low thump was probably the kick". And they live in a different tool, so your music and your visuals drift apart.
+- **See the whole song.** A Timeline lays out every track and section, shows where the chorus starts and how long the verse runs, and follows the playhead as it plays.
+- **See what each line plays.** `"bd [~ bd] ~ bd"` appears as a drum grid you can click, and a melody as a piano roll you can drag. It's a friendly way in if you're new to code, and familiar ground if you come from a DAW.
+- **Visuals that follow the notes.** Your sketches receive every kick, snare and note straight from the pattern, so the music and the visuals stay in step, in one place.
 
-## How Stave solves it
+## How it fits together
 
 **Stave is a studio built around your Strudel code.** It keeps your code and gives it the views a music producer expects: a Timeline, a step grid and piano roll, a Mixer, and visuals that know exactly what the music is doing.
 
-**It works both ways.** Pull a fader and the `.gain` in your code changes. Click a step on the grid and the beat in your code changes. Type a new note and the grid redraws. Your code is always the song, so you can still read it, share it, and learn from it. The views just stop you from having to imagine it.
+**It works both ways.** Pull a fader and the `.gain` in your code changes. Click a step on the grid and the beat in your code changes. Type a new note and the grid redraws. Your code is always the song, so you can still read it, share it, and learn from it. The views let you see it too.
 
 ---
 
@@ -39,7 +39,7 @@ and make visuals that move with every kick. Every change you make in a view is w
 
 ### 1. Code it
 
-Write Strudel in a real editor. It's Monaco, the editor inside VS Code, so you get autocomplete for every sound, hover docs, and errors shown right in the code. While the song plays, the notes that are sounding light up. Each `$:` line, or each name you give a part (`drums:`, `bass:`), is a track.
+Write Strudel in Monaco, the editor inside VS Code, with autocomplete for every sound, hover docs, and errors shown right in the code. While the song plays, the notes that are sounding light up. Each `$:` line, or each name you give a part (`drums:`, `bass:`), is a track.
 
 ### 2. Arrange it
 
@@ -76,7 +76,7 @@ The **Mixer** gives every track a channel strip: fader, pan, meter, mute and sol
 
 ![An audio-reactive visual under the code: a robot guitarist playing along, next to a chord diagram](assets/readme/visuals.jpg)
 
-Visuals in Stave don't guess from the loudness. Stave knows every note your code plays, and it hands that to your sketch:
+Stave knows every note your code plays, and it hands each one to your sketch:
 
 - `sig.kick`, `sig.snare`, `sig.hat`, `sig.clap`… jump to 1 the moment that drum plays, then fade.
 - `sig('bd')` follows one sound, and `sig.track('$0')` follows one track.
@@ -138,7 +138,7 @@ Each `$:` line is a track. It gets its own row on the Timeline, its own strip in
 
 **⌨️ You live-code already.** Keep writing everything by hand. Stave just shows you what's playing, where you are in the song, and how loud each part is, and it stays out of the way.
 
-**🌈 You make visuals.** Your sketch gets the actual beat, every kick, snare and note, not a guess from the volume. Write in p5.js, Hydra or GLSL, and send it to a projector in its own window.
+**🌈 You make visuals.** Your sketch gets every kick, snare and note as it plays. Write in p5.js, Hydra or GLSL, and send it to a projector in its own window.
 
 ---
 

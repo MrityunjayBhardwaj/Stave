@@ -36,7 +36,7 @@ The first release, and Stave's public beta. There were no releases before it, so
 ### See: visuals
 
 - Sketches in p5.js, Hydra and GLSL (ShaderToy-style), reloaded when you save.
-- Visuals get the music from the pattern, not the loudness: `sig.kick`, `sig.snare`, `sig.hat` and the rest fire the moment that drum plays. `sig('bd')` follows one sound and `sig.track('$0')` one track, and `sig.fft`, `sig.wave`, `sig.bass` and `sig.treble` are there for the sound itself.
+- Visuals get the music straight from the pattern: `sig.kick`, `sig.snare`, `sig.hat` and the rest fire the moment that drum plays. `sig('bd')` follows one sound and `sig.track('$0')` one track, and `sig.fft`, `sig.wave`, `sig.bass` and `sig.treble` are there for the sound itself.
 - `.viz("name")` draws a visual under its line of code, fed by that track alone.
 - Built-in visualisers: `pianoroll`, `scope`, `spectrum`, `spiral`, `pitchwheel`, `wordfall` and more, plus ready-made sketches in the Library.
 - Put any visual behind your code as a backdrop, or pop it out into its own window.
