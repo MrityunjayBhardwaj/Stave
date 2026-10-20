@@ -38,9 +38,25 @@ import { test, expect, type Page } from '@playwright/test'
  * One REQUIRED module chunk, held open. The transpiler is the cleanest target:
  * it is a single `await import()` on its own line rather than one of eight
  * inside a `Promise.all`, so a stall here is unambiguous about which await is
- * hanging. Its dev chunk name carries `@strudel_transpiler` percent-encoded.
+ * hanging.
+ *
+ * The chunk is found by what it DEFINES, not by its name. This spec used to
+ * match `*strudel_transpiler*`, and Next 16.3 renamed dev chunks to hashes
+ * (`node_modules__pnpm_12cirh3._.js`), so the glob matched nothing and the
+ * spec failed its own non-vacuity check (#2132). A chunk that defines the
+ * transpiler module is the target under either naming.
+ *
+ * Two chunks define it: its own, and the larger one `@strudel/mondo` loads in
+ * the "strudel modules" step. Holding that one would stall the wrong step, so a
+ * chunk that also defines mondo is let through. Measured on Next 16.2.1 and
+ * 16.3.8: exactly one chunk passes this test on each.
  */
-const TRANSPILER_CHUNK_GLOB = '**/_next/static/chunks/*strudel_transpiler*'
+const CHUNK_GLOB = '**/_next/static/chunks/*.js'
+const definesModule = (body: string, path: string) =>
+  body.includes(`${path} [app-client] (ecmascript)", ((`)
+const isTranspilerChunk = (body: string) =>
+  definesModule(body, '@strudel/transpiler/dist/index.mjs') &&
+  !definesModule(body, '@strudel/mondo/dist/mondough.mjs')
 
 const SONG = 'arrange([2, s("bd")], [2, s("hh")])'
 
@@ -90,8 +106,12 @@ test.describe('engine boot fails loudly on a stalled REQUIRED module import (#12
     test.setTimeout(120_000)
 
     let stallHits = 0
-    // Held open: never fulfilled, never aborted.
-    await page.route(TRANSPILER_CHUNK_GLOB, () => {
+    // Every other chunk passes through untouched; the transpiler's is held
+    // open: never fulfilled, never aborted.
+    await page.route(CHUNK_GLOB, async (route) => {
+      const response = await route.fetch()
+      const body = await response.text()
+      if (!isTranspilerChunk(body)) return route.fulfill({ response, body })
       stallHits += 1
       /* deliberately never settled — this IS the defect's trigger */
     })
