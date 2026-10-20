@@ -52,7 +52,7 @@ const AUTO: SignalAutomation = {
   lo: 0, hi: 1, ranged: true, boundsAsWritten: true, offset: 0, spans: NO_SPANS, placements: [[]],
 }
 const LANE: SceneLane = {
-  laneKey: 'd1', displayName: 'd1', color: '#7af', density: [1, 1, 1, 1],
+  laneKey: 'd1', displayName: 'd1', shownName: 'Track 1', color: '#7af', density: [1, 1, 1, 1],
   notes: [], pitchMin: null, pitchMax: null, voices: [], clips: [],
   sourceOffset: null, arrangeOffset: null, labelOffset: null,
   automations: [{ automation: AUTO, timeAt: signalTimeAt }], stepped: [],

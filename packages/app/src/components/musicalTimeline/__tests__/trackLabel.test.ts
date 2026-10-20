@@ -6,7 +6,7 @@
  * source there yields the label (`bass`, `lead`, `d3`) or anonymous (`$`).
  */
 import { describe, it, expect } from 'vitest'
-import { resolveLaneName } from '../trackLabel'
+import { resolveLaneName, resolveLaneShownName } from '../trackLabel'
 // The reader is the editor's since #1921; this file pins the timeline's use of it.
 import { labelAtOffset } from '@stave/editor'
 
@@ -75,5 +75,25 @@ describe('a non-Latin label is read like any other (#1683)', () => {
     const doc = '節奏: s("bd*4")\ndrums: s("hh")'
     expect(labelAtOffset(doc, 0)).toBe('節奏')
     expect(labelAtOffset(doc, doc.indexOf('drums'))).toBe('drums')
+  })
+})
+
+describe('resolveLaneShownName — what a lane header shows (#2151)', () => {
+  it('anonymous lanes show `Track N`; named lanes and a written `d3:` show their label', () => {
+    expect(resolveLaneShownName('d2', 34, SONG)).toBe('Track 2') // `$: s("bd*4")`
+    expect(resolveLaneShownName('d1', 0, SONG)).toBe('bass')
+    expect(resolveLaneShownName('d3', 47, SONG)).toBe('d3') // the user wrote `d3:`
+  })
+
+  it('keeps the name it would have shown before for every named lane', () => {
+    for (const [key, at] of [['d1', 0], ['d3', 47], ['d5', 74]] as const) {
+      expect(resolveLaneShownName(key, at, SONG)).toBe(resolveLaneName(key, at, SONG))
+    }
+  })
+
+  it('a lane with no source provenance still shows `Track N` for a positional key', () => {
+    expect(resolveLaneShownName('d4', null, SONG)).toBe('Track 4')
+    expect(resolveLaneShownName('d4', 61, null)).toBe('Track 4')
+    expect(resolveLaneShownName('chords', null, SONG)).toBe('chords')
   })
 })

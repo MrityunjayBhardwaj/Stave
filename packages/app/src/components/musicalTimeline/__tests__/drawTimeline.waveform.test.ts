@@ -73,7 +73,7 @@ function sceneWith(raw: SceneNote[]): TimelineScene {
     lanes: [
       {
         laneKey: 'drums',
-        displayName: 'drums',
+        displayName: 'drums', shownName: 'drums',
         color: LANE_COLOR,
         density: [1, 0, 0, 0],
         notes,

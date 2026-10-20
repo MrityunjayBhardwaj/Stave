@@ -21,7 +21,7 @@ import { readChainMethod, readNumberCall } from '../chainMethod'
 import { trackIdentity } from '../trackColor'
 import { type GainState, readGainState } from './gain'
 import { NON_TRACK_HEADS } from '../ir/statementHeads'
-import { trackIdsFromLabels, isMutedLabel, labelName } from '../ir/trackId'
+import { trackIdsFromLabels, isMutedLabel, labelName, shownTrackName } from '../ir/trackId'
 import { parseStrudel } from '../ir/parseStrudel'
 
 /** which surface a strip's pattern belongs to (mirrors `ChunkType` + groups). */
@@ -49,6 +49,9 @@ export interface StripModel {
    * label (`d1`), else the instrument sample (`hh`) the Song Timeline lanes by,
    * else the head fn / `Track N`. Matches the Timeline lane header for the track. */
   name: string
+  /** what the strip SHOWS (#2151): `Track 1` for an unnamed `d1`, else `name`.
+   * Text only — colour and saved per-track settings stay keyed by `name`. */
+  shownName: string
   /** head function (`s`, `note`, `stack`, …) — drives the source summary line */
   headFn: string | null
   /** the head call's mini-notation string, for the summary line */
@@ -237,7 +240,8 @@ function isForeign(chunk: ChunkInfo, name: string): boolean {
  *    label too, so both read `bass`.)
  *  - **Anonymous `$:`** → `d{ordinal}`, its 1-based position among tracks — the
  *    SAME positional id the engine gives the hap (`trackId`) that the Timeline
- *    lanes by. So an unnamed track reads `d1`/`d2`/… identically in both views.
+ *    lanes by. So an unnamed track is `d1`/`d2`/… identically in both views, and
+ *    both show it as `Track 1`/`Track 2`/… (`shownName`, #2151).
  *
  * `d{ordinal}` is deliberately NOT descriptive — it is the friction that nudges
  * the user to rename the track (write a `name:` label) when they want a
@@ -334,9 +338,9 @@ function buildStripModel(
   // they can't diverge from each other or from the Song Timeline. A named track
   // keys on its label (`bass`); an anonymous `$:` keys on `d{ordinal}` — the same
   // positional id the engine gives the hap the Timeline lanes by — so an unnamed
-  // track reads `d1`/`d2` identically in both views (and stays distinct from a
-  // same-sample sibling). The marker-stripped label is still kept for the
-  // `label`/muted/muteable fields.
+  // track is `d1`/`d2` identically in both views, shown as `Track 1`/`Track 2`
+  // (#2151), and stays distinct from a same-sample sibling. The marker-stripped
+  // label is still kept for the `label`/muted/muteable fields.
   const identity = trackIdentity(displayKey)
   return {
     id,
@@ -344,6 +348,7 @@ function buildStripModel(
     kind,
     label: labelName(chunk.label), // the strip's stable identity across a mute toggle
     name: identity.name,
+    shownName: shownTrackName(identity.name, labelName(chunk.label)),
     headFn: chunk.headFn,
     miniString: chunk.miniString,
     source,

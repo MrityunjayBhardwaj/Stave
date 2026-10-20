@@ -11,7 +11,7 @@ import type { SceneLane, SceneNote, SceneVoice } from '../timelineScene'
 function lane(key: string, notes: SceneNote[], voices: SceneVoice[], pitchMin: number | null, pitchMax: number | null, extra: Partial<SceneLane> = {}): SceneLane {
   return {
     laneKey: key,
-    displayName: key,
+    displayName: key, shownName: key,
     color: '#0af',
     density: [1, 1],
     notes,
