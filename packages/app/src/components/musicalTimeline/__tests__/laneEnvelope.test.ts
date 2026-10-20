@@ -136,6 +136,19 @@ describe('envelopeTrackIds — which tracks to render (#1731)', () => {
     expect(envelopeTrackIds(scene, byLane)).toEqual(['$1', '$0'])
   })
 
+  it('never asks for the track behind a Bars lane of files: its Waveform view is the files, not a render (#2138)', () => {
+    const scene = sceneOf([
+      lane('d1', synth, { bars: true }),
+      lane('d2', synth, { bars: true, files: true }),
+    ])
+    const byLane = new Map([
+      ['d1', '$0'],
+      ['d2', '$1'],
+    ])
+    // The Bars synth lane is still asked for (#1748); the Bars drum lane is not.
+    expect(envelopeTrackIds(scene, byLane)).toEqual(['$0'])
+  })
+
   it('asks for nothing without the lane→track join', () => {
     expect(envelopeTrackIds(sceneOf([lane('d1', synth)]), undefined)).toEqual([])
   })
