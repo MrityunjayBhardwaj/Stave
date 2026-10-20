@@ -17,7 +17,7 @@ import { TemplateIcon } from "./TemplateIcon";
 
 interface StartScreenProps {
   open: boolean;
-  /** shown in the corner of the picture, e.g. "0.1.0" */
+  /** shown in the corner of the picture, e.g. "0.5.0" */
   version: string;
   /** the project that is open behind the screen */
   activeProject: ProjectMeta;
