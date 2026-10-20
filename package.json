@@ -24,7 +24,7 @@
     "typescript": "^5.4.0"
   },
   "engines": {
-    "node": ">=20",
+    "node": ">=22.12",
     "pnpm": ">=9"
   },
   "packageManager": "pnpm@9.0.0",
