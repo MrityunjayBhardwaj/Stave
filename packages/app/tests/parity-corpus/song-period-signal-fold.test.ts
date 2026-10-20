@@ -74,9 +74,19 @@ interface Row {
  *  gained. No period was lost: each is resolved earlier, by a rule the fold defers to.
  *  Pinned as a set
  *  rather than a count so a swap — one document lost, another gained — cannot
- *  read as no change at all. */
-const RECOVERED = 15
-const SINGLE_LANE_RECOVERIES = 4
+ *  read as no change at all.
+ *
+ *  ⚠ 0 SINCE #2109, by decision rather than by regression. A song that does not come
+ *  back round within the limit now reads "N+ cycles" and pages, and every one of the
+ *  15 was such a song: 9 were moved only by noise (`rand`, `perlin`), which never comes
+ *  back; 2 folded past the cap and were handed their unfolded structure; the rest stood
+ *  on a stripped reading where #1104 let a lane abstain. All 15 now read "256+" — see
+ *  the re-pinned `SONG-PERIOD-BASELINE.json`. The fold itself still answers where a
+ *  sweep's period fits the cap (`songAnalysis.test.ts`, "a fold that fits the cap"),
+ *  and the safety arms below still hold it to never changing, destroying or
+ *  lengthening anything. */
+const RECOVERED = 0
+const SINGLE_LANE_RECOVERIES = 0
 
 describe('Song display period — source-informed exclusion + fold (#1465)', () => {
   it.skipIf(!hasCorpusArchive())(

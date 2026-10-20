@@ -17,6 +17,7 @@ import {
   type TimelineCamera,
 } from "../components/musicalTimeline/timelineCameraPersistence";
 import { publishSongFrame } from "./drawnSongFrame";
+import { getSongCycleLimit, subscribeSongCycleLimit } from "./songCycleLimit";
 
 /**
  * The whole-song analysis of the current document (#385), run whether or not
@@ -95,7 +96,14 @@ export function startSongAnalysis(accessors: SongCollectorAccessors): () => void
     inFlight = signal;
     // #1465 — what the SOURCE says is continuously modulated. Read here because
     // only the caller holds the IR; the rule that uses it is `displayPeriodRule`.
-    analyzeSong(ir, { signal, collectFn, hasUnheardTrack, signals: signalDimensionsOf(ir) })
+    // #2109 — the user's limit on how far to look, not the analysis's own 256.
+    analyzeSong(ir, {
+      signal,
+      collectFn,
+      hasUnheardTrack,
+      signals: signalDimensionsOf(ir),
+      capCycles: getSongCycleLimit(),
+    })
       .then((result) => {
         if (!signal.aborted) set(result, ir);
       })
@@ -115,10 +123,14 @@ export function startSongAnalysis(accessors: SongCollectorAccessors): () => void
     publishFrame();
   });
   const unsubscribe = subscribeIRSnapshot(run);
+  // #2109 — a new limit changes the answer for the SAME document, so re-run it
+  // now rather than waiting for the next evaluation.
+  const unsubscribeLimit = subscribeSongCycleLimit(() => run(getIRSnapshot()));
   // Trap NEW-4: a snapshot published before we subscribed is picked up here.
   run(getIRSnapshot());
   return () => {
     unsubscribeCamera();
+    unsubscribeLimit();
     unsubscribe();
     if (inFlight) inFlight.aborted = true;
     inFlight = null;

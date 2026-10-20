@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
 import { reportBootFailure } from "../dialogs/bootFailureNotice";
 import { promptAndCreateFile } from "../lib/newFile";
+import { isPlaceholder } from "../lib/fileTreeOps";
 import { BackdropPopover } from "./BackdropPopover";
 import {
   TIMELINE_EVAL_WAIT_MS,
@@ -96,9 +97,13 @@ import {
   type SongExtent,
   type SkippedSounds,
   type BouncedStem,
+  revealLineInFile,
 } from "@stave/editor";
 import { reportWriteRefusal } from "../lib/writeRefusal";
+import { noticeBareExpression, storedTold } from "../lib/bareExpressionNotice";
+import { showToast } from "../dialogs/host";
 import { effectiveLoopRange, subscribeLoopState } from "../state/loopRange";
+import { getSongCycleLimit } from "../state/songCycleLimit";
 import { createSongCollector } from "./musicalTimeline/songCollector";
 import { measureSongLength, type BounceSizing } from "./songLength";
 import {
@@ -150,6 +155,9 @@ const END_OF_SONG_POLL_MS = 50;
 // the Song timeline / IR Inspector track the source as the user types without
 // thrashing analyzeSong on every keystroke. ~one comfortable typing pause.
 const SNAPSHOT_REFRESH_DEBOUNCE_MS = 300;
+
+/** #2067 — the songs already told that they play a bare expression (once per song). */
+const bareExpressionTold = storedTold();
 
 /**
  * Parse the file's current source into IR and publish an IRSnapshot for the
@@ -1296,6 +1304,14 @@ export default function StrudelEditorClient({
       const fileNow = getFile(fileId);
       const runtimeId: RuntimeId = fileNow?.language === "sonicpi" ? "sonicpi" : "strudel";
       emitFixed({ runtime: runtimeId, source: fileNow?.path ?? fileId });
+      // #2067 — once per song: a song playing a bare expression is told that a
+      // `$:` track is how Stave shows it best. Advice only; a click shows the line.
+      if (runtimeId === "strudel" && !isViewing()) {
+        noticeBareExpression(fileId, evaluatedCode, {
+          show: (message, line) => showToast(message, "info", 10_000, () => revealLineInFile(fileId, line)),
+          told: bareExpressionTold,
+        });
+      }
       // Per-eval commit (file-history Phase F, #196 / RESEARCH Q1): an eval is
       // an intentional checkpoint, so capture the state that produced this
       // sound — bypassing the significance floor. No-op if nothing changed
@@ -1820,7 +1836,10 @@ export default function StrudelEditorClient({
       const handle = shellRef?.current;
       if (!handle) return;
       for (const id of removed) handle.closeTabsForFile(id);
-      for (const id of added) handle.openOrFocusFile(id);
+      // An empty folder's hidden placeholder is not something to edit: it
+      // opened as an empty, unnamed-looking tab on every New folder (#2089).
+      const placeholders = new Set(listWorkspaceFiles().filter((f) => isPlaceholder(f.path)).map((f) => f.id));
+      for (const id of added) if (!placeholders.has(id)) handle.openOrFocusFile(id);
     });
   }, [shellRef]);
 
@@ -1987,6 +2006,8 @@ export default function StrudelEditorClient({
                 getSongTrackIds: () =>
                   runtimesRef.current.get(fid!)?.getSongTrackIds?.() ?? [],
               }),
+            // #2109 — the timeline's limit, so the dialog and the timeline agree.
+            capCycles: getSongCycleLimit(),
           },
           signal,
         );

@@ -166,6 +166,7 @@ import {
 } from './groupLayout'
 import { findBuiltinExampleSource } from './builtinExampleSources'
 import { BottomPanel } from './bottomPanel/BottomPanel'
+import { SymbolRow } from './SymbolRow'
 import { bottomPanelHiddenForTab } from './bottomPanel/hiddenForTab'
 
 /**
@@ -397,9 +398,10 @@ export interface WorkspaceShellHandle {
    * (mirrors the Mixer picker); otherwise inserts a fresh `s("x")` at the
    * cursor. No-op when there's no active editor. Detects the chunk fresh from
    * the active editor at call time — it does NOT depend on the Pattern/Mixer
-   * panel being open.
+   * panel being open. `slow` (#2070) is written as `.slow(N)` on a fresh line,
+   * for a clip longer than a cycle.
    */
-  assignSoundToCursor(sound: string): void
+  assignSoundToCursor(sound: string, opts?: { slow?: number }): void
   /** Attach `.viz("name")` to the pattern chunk under the cursor (Asset Library
    *  viz insert). Returns true if it wrote, false when there's no pattern under
    *  the cursor (nothing to attach to) so the caller can guide the user. */
@@ -3130,7 +3132,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           quality: g?.backdropQuality ?? backdropQuality,
         }
       },
-      assignSoundToCursor: (sound: string) => {
+      assignSoundToCursor: (sound: string, opts?: { slow?: number }) => {
         if (!sound) return
         // Reach the live editor through the registry singleton, NOT the
         // Mixer's `useActiveChunk` (which only exists while that panel is
@@ -3146,7 +3148,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         // offset can't land mid-token or inside a comment) — lives in the pure
         // `planSoundAssignment` helper so it can be unit-tested (#830). Detect
         // is fresh at call time, which also sidesteps the freshness guard.
-        const plan = planSoundAssignment(model.getValue(), offset, sound)
+        const plan = planSoundAssignment(model.getValue(), offset, sound, opts?.slow)
         if (!plan) return
         commitToEditor(editor, assignmentEdit(plan), 'mixer')
       },
@@ -3387,6 +3389,11 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
        * replace by re-registering under the same id (idempotent).
        */}
       <BottomPanel hidden={bottomPanelHiddenForTab(activeTab)} />
+
+      {/* #2005 — pattern symbols above a phone's keyboard. Last in the column, so it
+          sits where the shell ends: on the keyboard's top edge. Draws nothing unless
+          the keyboard is up on an upright phone with the cursor in a code file. */}
+      <SymbolRow />
 
       {/*
        * Guide line overlay — a shell-level element that previews where

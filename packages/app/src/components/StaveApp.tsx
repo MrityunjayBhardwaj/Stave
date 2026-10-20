@@ -88,6 +88,7 @@ import { registerPanel } from "../panels/registry";
 import { AssetLibraryPanel } from "../assetLibrary/AssetLibraryPanel";
 import { registerAssetProvider, notifyAssetProvidersChanged } from "../assetLibrary/registry";
 import { createSoundsProvider } from "../assetLibrary/soundsProvider";
+import type { AssetProvider } from "../assetLibrary/types";
 import {
   listWorkspaceFiles,
   subscribeToFileList,
@@ -105,6 +106,7 @@ import { DocsSearchPalette } from "./DocsSearchPalette";
 import { isPerfOverlayToggle } from "./perfToggleKey";
 import { MusicalTimeline } from "./MusicalTimeline";
 import { startSongAnalysis } from "../state/songAnalysis";
+import { applyStoredTakesPhoneAudio } from "../state/takesPhoneAudio";
 import {
   registerBottomPanelTab,
   readPersistedOpen,
@@ -126,9 +128,9 @@ import {
 } from "@stave/editor";
 import { getLogHistory } from "@stave/editor";
 import { SilentCaptureError, describeSkipped } from "@stave/editor";
-import { startAudition } from "@stave/editor";
+import { resolveAsset, startAudition, startClipPreview } from "@stave/editor";
 // #1504 — the project's asset records back the library's "sample" provider.
-import { listAssetRecords, subscribeToAssets } from "@stave/editor";
+import { cyclesToPlayThrough, listAssetRecords, subscribeToAssets } from "@stave/editor";
 // #1785 — this tab's presence, seen by another tab's sound collection.
 import { holdTabPresence } from "@stave/editor";
 // #1786 — remove one of your sounds, and see what each one takes.
@@ -142,7 +144,7 @@ import { removedButFailedMessage, removedMessage } from "../assetLibrary/freeSpa
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
 import { mountVizPreview } from "@stave/editor";
 import { getFile } from "@stave/editor";
-import { usePhone, isPhone, usePhoneLayout } from "@stave/editor";
+import { usePhone, isPhone, usePhoneLayout, startVisibleArea } from "@stave/editor";
 import { createSamplesProvider } from "../assetLibrary/samplesProvider";
 import { createVizProvider } from "../assetLibrary/vizProvider";
 import { planVizLibFiles, VIZ_LIB_ROOT, type VizLibItem } from "../assetLibrary/vizLibrary";
@@ -226,6 +228,25 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const phone = usePhone();
   // #2003 — sideways, a phone gets a view switch in its top bar and a shorter drawer
   const phoneSideways = usePhoneLayout() === "sideways";
+  // #2004 — follow the on-screen keyboard: the editor package writes the height still
+  // showing onto the document root, and the shell (page.tsx) is that tall. A plain
+  // function, not a hook: an app component must not call the editor's hooks.
+  useEffect(() => {
+    startVisibleArea();
+  }, []);
+  // #2015 — whether Play takes the phone's audio is a setting; the engine reads it on
+  // every Play, so it needs the stored choice before the first one.
+  useEffect(() => {
+    applyStoredTakesPhoneAudio();
+  }, []);
+  // #2007 — the page-level rules for a phone (no page scroll, no double-tap zoom) are
+  // CSS on the document root, switched by this one attribute.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (phone) root.setAttribute("data-stave-phone", "");
+    else root.removeAttribute("data-stave-phone");
+    return () => root.removeAttribute("data-stave-phone");
+  }, [phone]);
   const [activePanelId, setActivePanelId] = useState<string | null>(() => (isPhone() ? null : "explorer"));
   // The drawer's Menu tab is the drawer's own, not a panel: it has no rail button and
   // must not be left selected for a rail that cannot show it.
@@ -254,6 +275,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // each shows its size. A counter, so each request remounts the panel onto
   // that chip even when the Library is already open on another.
   const [libraryOpenedFor, setLibraryOpenedFor] = useState(0);
+  // #2062 — the project's own audio as Library rows, read by the Sounds provider
+  const ownAudioRef = useRef<AssetProvider | null>(null);
   const openLibraryAtYourSounds = useCallback(() => {
     setLibraryOpenedFor((n) => n + 1);
     setActivePanelId("library");
@@ -1271,6 +1294,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         readDict,
         startPreview: (sound) => startAudition(sound),
         onInsert: (sound) => shellRef.current?.assignSoundToCursor(sound),
+        // #2062 — your audio is listed with the sounds, as yours
+        ownAudio: () => ownAudioRef.current?.list() ?? [],
       }),
     );
     let lastCount = -1;
@@ -1408,15 +1433,34 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       }
       await refreshSizes();
     };
-    const unreg = registerAssetProvider(
+    // #2062 — not registered as a type of its own: the Sounds provider lists these
+    // rows (Sounds → User). Published here, then the Library is told to re-list.
+    ownAudioRef.current = (
       createSamplesProvider({
         readRecords: () => listAssetRecords(),
-        startPreview: (name) => startAudition(name),
-        onInsert: (name) => shellRef.current?.assignSoundToCursor(name),
+        // #2059 — a recording previews once, start to end, not as a re-triggered
+        // 0.22 s note (that is `startAudition`, right for the built-in Sounds).
+        startPreview: async (name) => {
+          const record = listAssetRecords().find((r) => r.name === name);
+          const url = record ? await resolveAsset(record.blobHash) : null;
+          return url ? startClipPreview(url) : undefined;
+        },
+        // #2070 — a clip longer than a cycle plays through before it starts again:
+        // its length in cycles at the tempo playing now (Strudel's 0.5 before any).
+        onInsert: (name) => {
+          const record = listAssetRecords().find((r) => r.name === name);
+          const slow = cyclesToPlayThrough(record?.duration, getCpsRef.current() ?? 0.5);
+          shellRef.current?.assignSoundToCursor(name, slow ? { slow } : undefined);
+        },
         sizeOf: (hash) => sizes.get(hash),
         onRemove,
-      }),
+      })
     );
+    notifyAssetProvidersChanged();
+    const unreg = () => {
+      ownAudioRef.current = null;
+      notifyAssetProvidersChanged();
+    };
     void refreshSizes();
     const unsub = subscribeToAssets(() => {
       notifyAssetProvidersChanged();
@@ -1681,7 +1725,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       id: "stave.view.zen",
       title: "Toggle Zen / Perform Mode",
       category: "View",
-      description: "Hide menu bar, activity bar, and status bar. Esc to exit.",
+      description: "Hide the activity bar and side panel, and go full screen. Esc to exit.",
       keybinding: "mod+alt+z",
       run: () => setZenMode((z) => !z),
     }));
@@ -1918,7 +1962,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         {id === "library" && (
           <AssetLibraryPanel
             key={libraryOpenedFor}
-            initialType={libraryOpenedFor > 0 ? "sample" : undefined}
+            initialType={libraryOpenedFor > 0 ? "sound" : undefined}
+            initialSource={libraryOpenedFor > 0 ? "user" : undefined}
           />
         )}
         {id === "console" && <ConsolePanel />}

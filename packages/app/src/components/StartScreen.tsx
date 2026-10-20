@@ -13,6 +13,7 @@ import {
 } from "../startScreen";
 import type { ProjectTemplate } from "../templates";
 import { GITHUB_REPO_URL } from "./MenuBar";
+import { TemplateIcon } from "./TemplateIcon";
 
 interface StartScreenProps {
   open: boolean;
@@ -134,7 +135,7 @@ export function StartScreen({
                   onClick={() => onNewFromTemplate(t)}
                   data-start-screen="template"
                 >
-                  <NewIcon />
+                  <TemplateIcon templateId={t.id} />
                   <span style={styles.itemName}>{t.name}</span>
                 </button>
               ))}
@@ -219,7 +220,6 @@ const icon = {
   strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
   "aria-hidden": true, style: { flex: "none", color: "var(--text-icon)" } as React.CSSProperties,
 };
-const NewIcon = () => (<svg {...icon}><path d="M14 3H6v18h12V7z" /><path d="M14 3v4h4" /><path d="M12 11v6M9 14h6" /></svg>);
 const FileIcon = () => (<svg {...icon}><path d="M14 3H6v18h12V7z" /><path d="M14 3v4h4" /></svg>);
 const FolderIcon = () => (<svg {...icon}><path d="M3 6h6l2 2h10v11H3z" /></svg>);
 const ArchiveIcon = () => (<svg {...icon}><path d="M4 4h16v4H4z" /><path d="M5 8v12h14V8" /><path d="M10 12h4" /></svg>);

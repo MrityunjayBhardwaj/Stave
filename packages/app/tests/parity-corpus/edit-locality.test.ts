@@ -78,7 +78,7 @@ const corpus: { minis: { mini: string }[] } = JSON.parse(
 )
 
 interface KEl {
-  location_?: { start?: { offset?: number } }
+  location_?: { start?: { offset?: number }; end?: { offset?: number } }
 }
 interface KPat {
   type_?: string

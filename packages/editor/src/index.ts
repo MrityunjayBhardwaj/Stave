@@ -32,6 +32,10 @@ export { fixedParameters, fixedToStepsEdit } from './codeView'
 export type { FixedParameter } from './codeView'
 // #1602 — a stepped parameter's step count, and the song length it would give.
 export { stepCountEdit, previewRepeat, songPeriodOf, arrangedRepeatCycles, songEnd, songEndOf } from './codeView'
+// #2070 — how many cycles a clip needs to play through; the Library's Insert writes `.slow(N)`
+export { cyclesToPlayThrough } from './codeView'
+// #2067 — where the bare expression a song plays starts, for the notice that says so
+export { playsBareExpression } from './codeView'
 export type { StepCountEdit, LanePeriod } from './codeView'
 // #1611 — a shape swap across periodicity, and the song it would give.
 export { previewShapeSwap } from './codeView'
@@ -62,6 +66,8 @@ export { StrudelEngine } from './engine/StrudelEngine'
 // needs both to tell "the engine cannot start" apart from every other runtime
 // error and offer the reload that is the only thing that recovers it (#1218).
 export { isBootStepFailure, type BootStepFailure } from './engine/StrudelEngine'
+// #2015 — whether Play takes the phone's audio (plays through the silent switch, stops other apps' music)
+export { setTakesPhoneAudio } from './engine/audioStart'
 export { DemoEngine } from './engine/DemoEngine'
 export { SonicPiEngine } from './engine/sonicpi'
 export type { LiveCodingEngine, EngineComponents, IRComponent } from './engine/LiveCodingEngine'
@@ -424,6 +430,9 @@ export { getGridMode, setGridMode, useGridMode, type GridMode } from './visualEd
 // #2000 — the one rule for "is this a phone", so the app's shell asks what the Pattern tab asks
 export { usePhone, isPhone, usePhoneLayout, phoneLayout } from './workspace/usePhone'
 export type { PhoneLayout } from './workspace/usePhone'
+// the on-screen keyboard on a phone (#2004): the app starts it; the shell reads its CSS variables
+export { startVisibleArea, useKeyboardUp, getVisibleArea } from './workspace/visibleArea'
+export type { VisibleArea } from './workspace/visibleArea'
 export type { EditorTheme, ResolvedTheme, SignalAliasMap } from './workspace/editorRegistry'
 export {
   saveSnapshot,
@@ -788,9 +797,11 @@ export type { GridScope, GridGestureId, GridGestureDef, GridKeyMatcher } from '.
 export {
   auditionSound,
   startAudition,
+  startClipPreview,
   AUDITION_ENVELOPE,
   AUDITION_DUR_S,
   type AuditionHandle,
+  type ClipPreviewHandle,
 } from './visualEdit/audition'
 // Locate a runtime error (e.g. soundfont out-of-range, #567) back to the owning
 // track's line by its instrument — the app's onError uses this when the error's

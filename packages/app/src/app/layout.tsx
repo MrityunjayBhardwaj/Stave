@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 // Self-hosted brand font. next/font/local emits the @font-face + a
@@ -19,6 +20,17 @@ export const metadata: Metadata = {
   title: "Stave — Engine-agnostic live coding editor",
   description:
     "Engine-agnostic live coding editor — any engine, any viz, any synth",
+};
+
+// `viewport-fit=cover` (#2007): a phone only reports its notch and home indicator
+// (`env(safe-area-inset-*)`) to a page that asks to be laid out under them; without
+// it those read as zero and the browser letterboxes the page instead. The app's shell
+// then pads itself by the insets (page.tsx). No `maximum-scale` and no
+// `user-scalable`: pinch-zooming the whole page is an accessibility need.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -90,6 +102,11 @@ export default function RootLayout({
           <div className="spinner" />
         </div>
         {children}
+        {/* Page views for the project's Vercel Analytics tab (#2055): no cookies,
+            nothing from the editor. Production builds only: in development the
+            component fetches a debug script from va.vercel-scripts.com and logs
+            every view, on every page load of every browser spec. */}
+        {process.env.NODE_ENV === "production" && <Analytics />}
       </body>
     </html>
   );

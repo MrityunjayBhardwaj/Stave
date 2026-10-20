@@ -38,10 +38,10 @@ describe("recordsToAssets", () => {
     expect(asset.code).toBe("chorus");
   });
 
-  it("tags a take as a user sample so the source filter can find it", () => {
+  it("lists a take as a sound whose source is the user, so Sounds → User finds it (#2062 — was its own type)", () => {
     const [asset] = recordsToAssets([record()], deps);
     expect({ type: asset.type, source: asset.source }).toEqual({
-      type: "sample",
+      type: "sound",
       source: "user",
     });
   });

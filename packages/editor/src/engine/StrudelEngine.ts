@@ -10,7 +10,7 @@ import { canPauseOfflineRender, piecesOf, renderInPieces } from './pieceRender'
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { planStems, tagTrack } from './stemSplit'
 import { createTransportHold } from './transportHold'
-import { registerBackgroundRender, withOfflineGraph, withUserRender } from './offlineGraph'
+import { onLiveGraph, registerBackgroundRender, whenGraphFree, withOfflineGraph, withUserRender } from './offlineGraph'
 import { displayRenderRate } from './displayRate'
 import {
   createTrackEnvelopeScheduler,
@@ -1040,6 +1040,9 @@ export class StrudelEngine implements LiveCodingEngine {
     // resolve it fresh on every re-tap.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.superdoughControllerFn = (webaudioMod as any).getSuperdoughAudioController ?? null
+    // #2058 — Stave's superdough patch: stops every sound still playing (Stop).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.stopAllSoundsFn = (webaudioMod as any).stopAllSounds ?? null
 
     // Wrap the native output trigger so we can fan events to HapStream subscribers
     const hapStream = this.hapStream
@@ -1779,6 +1782,7 @@ export class StrudelEngine implements LiveCodingEngine {
   }
 
   play(): void {
+    this.transportGeneration++ // #2064 — a fade deferred by an earlier Stop no longer applies
     // #1731 — a display render never makes Play wait for the whole track: it is
     // aborted here, stops being fed at its next pause, and the Play deferred
     // below starts then.
@@ -1794,6 +1798,11 @@ export class StrudelEngine implements LiveCodingEngine {
     // itself lives in the document as `all(x => x.mul(postgain()))` (#792/#794/#1711), not here.
     this.followMasterAnalyser()
   }
+
+  /** #2058 — superdough's stop-every-sound (Stave's patch), once audio is up. */
+  private stopAllSoundsFn: ((fade?: number) => number) | null = null
+  /** #2064 — moves on every Play and Stop, so a deferred fade knows it is stale. */
+  private transportGeneration = 0
 
   /** the destinationGain node our master analyser is currently tapping. */
   private taggedDestinationGain: AudioNode | null = null
@@ -1841,6 +1850,22 @@ export class StrudelEngine implements LiveCodingEngine {
     // the render resumes the transport it paused.
     this.transportHold.cancelResume()
     this.repl?.scheduler?.stop()
+    // #2058 — the scheduler's stop only stops NEW notes. A sample plays its whole
+    // length unless something cuts it, so a long file kept sounding after Stop
+    // (measured: still at full level fifteen seconds later). Fade out what is
+    // playing — on the LIVE graph: while a bounce renders, superdough's context
+    // and its live-sound map are the bounce's, and the fade would land in the file
+    // (#2064). So it waits for every render to let go, and is dropped if Play was
+    // pressed in the meantime, or it would cut the new notes.
+    const stopAll = this.stopAllSoundsFn
+    if (stopAll) {
+      const at = ++this.transportGeneration
+      whenGraphFree(() =>
+        onLiveGraph(() => {
+          if (at === this.transportGeneration) stopAll(0.03)
+        }),
+      )
+    }
     this.trackEnvelopes.stopped() // #1731 — stopped: render what is missing or stale
   }
 

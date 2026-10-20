@@ -15,11 +15,13 @@
  * Positioning/dismiss logic mirrors AddEffectMenu: portaled to <body> and
  * placed off the trigger's viewport rect (the Mixer-console drawer is
  * `overflow:hidden`, so an in-flow menu would clip), flips up when cramped, and
- * closes on outside-click / Escape / resize / ancestor-scroll.
+ * closes on outside-click / Escape / resize. An ancestor scroll moves it with
+ * its trigger and closes it only when the trigger leaves view (#2088).
  */
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 
+import { useAnchorScroll } from './anchorScroll'
 import type { SoundGroup } from './soundCatalog'
 import { categoryCounts, filterGroups, totalOptions } from './soundPickerFilter'
 
@@ -108,25 +110,20 @@ export function SoundPickerMenu({
       if (e.key === 'Escape') setOpen(false)
     }
     const dismiss = (): void => setOpen(false)
-    // Only an OUTSIDE scroll dismisses (the menu's own list scroll must not) —
-    // same guard as AddEffectMenu; the menu is portaled to <body> so its list is
-    // the only in-menu scroll target.
-    const onScroll = (e: Event): void => {
-      const t = e.target
-      if (t instanceof Node && menuRef.current?.contains(t)) return
-      setOpen(false)
-    }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
     window.addEventListener('resize', dismiss)
-    window.addEventListener('scroll', onScroll, true)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
       window.removeEventListener('resize', dismiss)
-      window.removeEventListener('scroll', onScroll, true)
     }
   }, [open])
+
+  // An outside scroll keeps the menu on its trigger, and closes it only once
+  // the trigger has scrolled out of view (#2088).
+  const close = React.useCallback((): void => setOpen(false), [])
+  useAnchorScroll(open, btnRef, menuRef, place, close)
 
   const pick = (v: string): void => {
     onChange(v)

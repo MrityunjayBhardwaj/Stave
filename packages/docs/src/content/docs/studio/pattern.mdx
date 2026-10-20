@@ -1,0 +1,72 @@
+---
+title: Pattern
+description: Edit the line under your cursor as a step sequencer, a piano roll or a chord chart, with its sound and effects alongside.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+![The step sequencer: kick, hi-hat and clap lanes](../../../assets/studio/pattern-grid.jpg)
+
+The **Pattern** tab follows your cursor. Put the cursor on a line of code and Pattern shows it as a grid. Every click rewrites that line's mini-notation, so watching the code change is a quick way to learn what `"bd*4, hh*16"` means.
+
+- A line that plays sounds, like `s("bd*4, hh*8")`, opens as a **step sequencer**.
+- A line that plays notes, like `note("c3 e3 g3")`, opens as a **piano roll**.
+- A line whose lanes are chords opens as a **chord chart**.
+
+A track that chooses between lines with `pick` (or `inhabit` or `squeeze`) opens one line at a time. Put the cursor in one of the lines and Pattern shows that line on its own. An edit changes that line only, and the choosing stays as you wrote it. Its velocity lane is read-only, because the track's `.gain` is shared by every line.
+
+```js
+const bass = irand(3).segment(1).slow(64).pick([
+  "<[e1 ~ ~ e2 ~ ~ e1 ~] [a1 ~ ~ a2 ~ ~ a1 ~]>",   // cursor here: this line opens
+  "<[e1 ~ e1 ~ ~ e2 ~ d2] [a1 ~ a1 ~ ~ a2 ~ g2]>",
+]).note().s("gm_slap_bass_1")
+```
+
+## Step sequencer
+
+- **Click** a step to turn it on or off. **Drag** across steps to paint several at once.
+- **Drag a lit step down or up** to make it softer or harder. This writes a `.gain("…")` alongside the beat, and takes it away again when every step is back to normal.
+- **Drag the end of a step** to make it last longer.
+- **+ add voice…** adds a lane: Kick, Snare, Rim, Clap, Hi-Hat, Open Hat, toms, Crash, Ride, Shaker, Cowbell, Perc or Tambourine. **×** removes a lane.
+- **+** after the last step adds a bar. Click it to continue the pattern, or drag it to add empty bars.
+
+From the keyboard, the arrow keys move between steps, **'** or **Enter** turns a step on or off, and **Delete** clears it.
+
+## Piano roll
+
+![The piano roll: a bassline's notes on a keyboard grid](../../../assets/studio/piano-roll.jpg)
+
+- **Click** an empty cell to place a note. Click a note to remove it.
+- **Drag** a note to move it in time or pitch. **Drag its right edge** to make it longer.
+- **Press and hold a key** on the keyboard at the side to hear it. Drag across the keys for a glissando.
+- The **vel** lane underneath sets how hard each note is hit.
+- **⌘-click** a cell to select it, then **⌘C** and **⌘V** to copy and paste.
+
+From the keyboard, **⌥ + arrows** move the selected note, **⌥⇧↑ / ⌥⇧↓** move it an octave, and **⌥⇧← / ⌥⇧→** make it shorter or longer.
+
+## Slots: how fine the grid is
+
+**Slots ÷2 [16] ×2** sets how many steps the grid shows. Double-click the number for 4, 8, 16, 32 or 64. The tooltip tells you what a change will do:
+
+- **view only**: your pattern is unchanged, you're just looking closer.
+- **rewrites your file, keeps timing**: the notation changes but everything plays the same.
+- **snaps notes to the grid (changes timing)**: shown with a **~** before it, so you know.
+
+Settings › Pattern & Timeline › **Grid** chooses between **Exact** (each line's own divisions) and **LCM (shared grid)** (one grid every lane fits).
+
+## Sound and effects
+
+The column on the right edits the same track:
+
+- **Instrument** (for melodies) picks the sound. Picking one plays it, and **▶** previews it again.
+- **Kit** (for drums) picks the drum machine. It writes `.bank(…)`.
+- **Snap** (piano roll) sets where notes land: Grid, 1/4, 1/8, 1/16 or triplets.
+- **+ Reverb**, **+ Delay** and **+ Low-pass** add the effect and a knob. Click again to take it away.
+- **＋ More ▾** has the rest: room size, delay time and feedback, high-pass, band-pass, resonance, distortion, waveshape, bitcrush, coarse, attack, decay, sustain, release, speed, pitch shift, accelerate, slow, fast and degrade.
+- **Drag a knob** to change it, **×** removes it, and **double-click** it to set its range.
+
+**☰** in the tab row hides and shows this column.
+
+<Aside type="note" title="Look only">
+Some lines can't be edited note by note. For example, every hit may come from the same piece of text, so changing one would change them all. Pattern still shows them, marked **Look only**, with the reason. Edit those in the code.
+</Aside>

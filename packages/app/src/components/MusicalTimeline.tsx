@@ -95,6 +95,7 @@ import { FullSongTimeline } from './FullSongTimeline'
 import { showConfirm } from '../dialogs/host'
 import { createSongCollector } from './musicalTimeline/songCollector'
 import { readSongAnalysis, subscribeSongAnalysis } from '../state/songAnalysis'
+import { getSongCycleLimit } from '../state/songCycleLimit'
 import { createWaveformSource } from '../audio/waveformSource'
 import { subscribeWaveformsReady } from '../audio/waveformWarm'
 import {
@@ -140,7 +141,7 @@ export interface MusicalTimelineProps {
    * #1107 — the capture keys of every track the engine registered, the same ids
    * `getTimelineEvents` stamps as `trackId`. Lets the analysis refuse a period
    * accepted before a declared track has been heard at all. Optional: without it
-   * the analysis makes no claim about tracks it has not seen (the #1104 rule).
+   * the analysis makes no claim about tracks it has not seen.
    */
   readonly getSongTrackIds?: () => string[]
   /**
@@ -452,13 +453,14 @@ export function MusicalTimeline(
     }
     return m
   }, [trackMeta])
-  // #1738 — tracks whose lane draws as BARS (notes only), from the same store.
-  const barsNames = React.useMemo(() => {
-    const names = new Set<string>()
+  // #1738 — the lane type each track saved (Waveform or Bars), from the same
+  // store. A track with none takes the default (#2079), decided in the view.
+  const trackDisplays = React.useMemo(() => {
+    const m = new Map<string, TrackDisplay>()
     for (const [name, meta] of trackMeta) {
-      if (meta.display === 'bars') names.add(name)
+      if (meta.display) m.set(name, meta.display)
     }
-    return names
+    return m
   }, [trackMeta])
 
   // #731 — the display names of tracks that read as silenced (muted, or dimmed by
@@ -663,7 +665,14 @@ export function MusicalTimeline(
         getTimelineEventsBand: getTimelineEventsBandRef.current,
         getSongTrackIds: getSongTrackIdsRef.current,
       })
-      return previewShapeSwap(ir, automation, next, { collectFn, hasUnheardTrack, signal })
+      // #2109 — over the song analysis's own limit, or the preview answers a
+      // different horizon from the one the swap will be drawn on.
+      return previewShapeSwap(ir, automation, next, {
+        collectFn,
+        hasUnheardTrack,
+        signal,
+        capCycles: getSongCycleLimit(),
+      })
     },
     [],
   )
@@ -1176,7 +1185,7 @@ export function MusicalTimeline(
           onRenameLane={handleRenameLane}
           selectedStatementOffset={selectedStatementOffset}
           customColorByName={customColorByName}
-          barsNames={barsNames}
+          trackDisplays={trackDisplays}
           onSetTrackDisplay={handleSetTrackDisplay}
           onSetTrackColor={handleSetTrackColor}
           onResetTrackColor={handleResetTrackColor}

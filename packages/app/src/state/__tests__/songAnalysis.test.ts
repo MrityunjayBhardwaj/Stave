@@ -23,14 +23,19 @@ const snapshots = {
   },
 }
 /** Each call to analyzeSong, left pending until the test settles it. */
-const runs: Array<{ ir: unknown; signal: { aborted: boolean }; resolve: (a: unknown) => void }> = []
+const runs: Array<{
+  ir: unknown
+  signal: { aborted: boolean }
+  capCycles: number | undefined
+  resolve: (a: unknown) => void
+}> = []
 /** What the structural walk reports: an arrangement unless a test says bare. */
 let walkLanes: Lane[] = [{ armByCycle: [0] }]
 
 vi.mock('@stave/editor', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@stave/editor')>()),
-  analyzeSong: (ir: unknown, opts: { signal: { aborted: boolean } }) =>
-    new Promise((resolve) => runs.push({ ir, signal: opts.signal, resolve })),
+  analyzeSong: (ir: unknown, opts: { signal: { aborted: boolean }; capCycles?: number }) =>
+    new Promise((resolve) => runs.push({ ir, signal: opts.signal, capCycles: opts.capCycles, resolve })),
   getIRSnapshot: () => snapshots.current,
   subscribeIRSnapshot: (l: (s: Snapshot) => void) => {
     snapshots.listeners.add(l)
@@ -60,6 +65,7 @@ vi.mock('../../components/musicalTimeline/timelineCameraPersistence', () => ({
 
 const { startSongAnalysis, readSongAnalysis, subscribeSongAnalysis } = await import('../songAnalysis')
 const { readDrawnSongFrame, publishDrawnSongFrame } = await import('../drawnSongFrame')
+const { getSongCycleLimit, setSongCycleLimit, SONG_CYCLE_LIMIT_DEFAULT } = await import('../songCycleLimit')
 
 const analysis = (cycles: number, kind: 'arranged' | 'loop' | 'capped' = 'arranged') =>
   ({ displaySpan: { kind, cycles } }) as unknown
@@ -74,6 +80,7 @@ beforeEach(() => {
   camera.saved = null
   camera.listeners.clear()
   publishDrawnSongFrame(null)
+  setSongCycleLimit(SONG_CYCLE_LIMIT_DEFAULT)
 })
 afterEach(() => stop?.())
 
@@ -149,6 +156,44 @@ describe('song analysis at the app (#1726)', () => {
     await flush()
     expect(seen).toHaveBeenCalled()
     unsubscribe()
+  })
+})
+
+describe('how far the analysis looks (#2109)', () => {
+  it("passes the user's limit, 64 cycles by default, not the analysis's own 256", () => {
+    expect(getSongCycleLimit()).toBe(64)
+    snapshots.current = { source: 'a', ir: 'IR-a' }
+    stop = startSongAnalysis({})
+    expect(runs.map((r) => r.capCycles)).toEqual([64])
+  })
+
+  it('a new limit re-runs the SAME document at once, keeping its result until the new one lands', async () => {
+    snapshots.current = { source: 'a', ir: 'IR-a' }
+    stop = startSongAnalysis({})
+    runs[0].resolve(analysis(64, 'capped'))
+    await flush()
+    setSongCycleLimit(128)
+    expect(runs.map((r) => r.capCycles)).toEqual([64, 128])
+    expect(runs[1].ir).toBe('IR-a')
+    expect(readSongAnalysis()).toEqual(analysis(64, 'capped'))
+    runs[1].resolve(analysis(96, 'loop'))
+    await flush()
+    expect(readSongAnalysis()).toEqual(analysis(96, 'loop'))
+  })
+
+  it('a limit set mid-analysis aborts the run in flight', () => {
+    snapshots.current = { source: 'a', ir: 'IR-a' }
+    stop = startSongAnalysis({})
+    setSongCycleLimit(32)
+    expect(runs[0].signal.aborted).toBe(true)
+    expect(runs[1].capCycles).toBe(32)
+  })
+
+  it('after stopping, a new limit starts nothing', () => {
+    snapshots.current = { source: 'a', ir: 'IR-a' }
+    startSongAnalysis({})()
+    setSongCycleLimit(32)
+    expect(runs).toHaveLength(1)
   })
 })
 

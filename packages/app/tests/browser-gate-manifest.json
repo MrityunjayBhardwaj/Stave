@@ -15,6 +15,10 @@
     "runs": "gate",
     "why": "collected by the gate — it runs the whole chromium project"
   },
+  "bare-expression-notice.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "b-preflight-coep.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
@@ -159,6 +163,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "file-tree-rearrange.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "full-song-analysis-eval.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
@@ -206,6 +214,10 @@
   "full-song-assign-part.spec.ts": {
     "runs": "gate",
     "why": "point a section at a different part (#1560) \u2014 the primitives are unit-covered, but whether a musician can reach them at all is only observable in the running app"
+  },
+  "full-song-cycle-limit.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
   "full-song-note-names.spec.ts": {
     "runs": "gate",
@@ -563,6 +575,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "library-audio-in.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "live-banks.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
@@ -623,6 +639,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "mixer-menu-scroll.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "mixer-strips.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
@@ -674,6 +694,18 @@
   "phase3-cinema.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "phone-audio-setting.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "pattern-pick-choice.spec.ts": {
+    "runs": "gate",
+    "why": "a line chosen by pick (#2118) \u2014 the cursor lookup is unit-covered; that a click into the line opens it and a cell click writes only that line is only observable in the running app"
+  },
+  "pattern-struct-rhythm.spec.ts": {
+    "runs": "gate",
+    "why": "a .struct rhythm line (#2120) \u2014 the cursor lookup is unit-covered; that a click into the line opens it and a step click writes only that line is only observable in the running app"
   },
   "piano-roll-column-cover.spec.ts": {
     "runs": "gate",
@@ -919,11 +951,19 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "touch-keyboard.spec.ts": {
+    "runs": "touch",
+    "why": "runs on the touch projects (phone, phone-sideways, tablet), which the gate names beside chromium"
+  },
   "touch-panel-sheet.spec.ts": {
     "runs": "touch",
     "why": "runs on the touch projects (phone, phone-sideways, tablet) and on iphone, which the gate names beside chromium"
   },
   "touch-pattern-tab.spec.ts": {
+    "runs": "touch",
+    "why": "runs on the touch projects (phone, phone-sideways, tablet), which the gate names beside chromium"
+  },
+  "touch-safe-area.spec.ts": {
     "runs": "touch",
     "why": "runs on the touch projects (phone, phone-sideways, tablet), which the gate names beside chromium"
   },
@@ -944,6 +984,10 @@
     "why": "runs on the touch projects (phone, phone-sideways, tablet) and on iphone, which the gate names beside chromium"
   },
   "touch-sideways-views.spec.ts": {
+    "runs": "touch",
+    "why": "runs on the touch projects (phone, phone-sideways, tablet), which the gate names beside chromium"
+  },
+  "touch-symbol-row.spec.ts": {
     "runs": "touch",
     "why": "runs on the touch projects (phone, phone-sideways, tablet), which the gate names beside chromium"
   },

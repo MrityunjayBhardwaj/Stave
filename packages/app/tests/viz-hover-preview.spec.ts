@@ -151,8 +151,10 @@ test.describe('Asset Library — viz preview height setting (#838)', () => {
 
   test('the grid reflows: small cards share a row, large cards stack', async ({ page }) => {
     await boot(page)
-    const prism = () => page.locator('[data-viz-preview-box="viz:prism"]')
-    const pulse = () => page.locator('[data-viz-preview-box="viz:pulse-grid"]')
+    // The first two cards on the shelf, whichever they are: only neighbours can
+    // share a row, and which packages are neighbours changes as the shelf grows.
+    const prism = () => page.locator('[data-viz-preview-box^="viz:"]').nth(0)
+    const pulse = () => page.locator('[data-viz-preview-box^="viz:"]').nth(1)
 
     // Small height → narrow cards → two per row (same y, side by side).
     await openSettingsViz(page)

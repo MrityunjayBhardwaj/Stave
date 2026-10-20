@@ -1,4 +1,5 @@
 import { test, expect, type Page, type CDPSession } from '@playwright/test'
+import { chooseDisplay } from './_laneType'
 import { execFileSync } from 'node:child_process'
 
 import { bootApp, seedCode } from './_appBoot'
@@ -54,9 +55,19 @@ async function liveOfflineContexts(cdp: CDPSession): Promise<number> {
   return result.value as number
 }
 
+/**
+ * #2079 — a synth lane with no saved type draws as Bars, though it is still
+ * rendered; save Waveform for each lane in `lanes` ("d1:fresh d2:fresh") so the
+ * drawn envelopes can be waited on. Choosing it again is a no-op.
+ */
+async function saveWaveform(page: Page, lanes: string): Promise<void> {
+  for (const lane of lanes.split(' ')) await chooseDisplay(page, lane.split(':')[0], 'waveform')
+}
+
 /** Seed `code` and wait until every lane's envelope has been rendered for it. */
 async function drawn(page: Page, code: string, lanes: string): Promise<void> {
   await seedCode(page, code)
+  await saveWaveform(page, lanes)
   await expect.poll(() => envelopes(page), { timeout: 60_000 }).toBe(lanes)
   await expect.poll(() => rendering(page), { timeout: 10_000 }).toBe('')
 }
@@ -122,6 +133,7 @@ async function redrawn(page: Page, code: string, lanes: string): Promise<void> {
   await seedCode(page, code)
   await expect.poll(() => rendering(page), { timeout: 30_000, intervals: [25] }).not.toBe('')
   await expect.poll(() => rendering(page), { timeout: 120_000 }).toBe('')
+  await saveWaveform(page, lanes)
   await expect.poll(() => envelopes(page), { timeout: 30_000 }).toBe(lanes)
 }
 

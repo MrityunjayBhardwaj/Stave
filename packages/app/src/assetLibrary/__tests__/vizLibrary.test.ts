@@ -12,7 +12,7 @@ describe("VIZ_LIBRARY corpus (#834)", () => {
     expect(VIZ_LIBRARY.map((i) => [i.name, i.renderer])).toEqual([
       ["Prism", "glsl"],
       ["Pulse Grid", "glsl"],
-      ["Rain Drive", "glsl"],
+      ["Night Drive", "glsl"],
       ["Tunnel", "glsl"],
       ["Robot Guitarist", "p5"],
       ["Sunset Drive", "p5"],

@@ -1,0 +1,73 @@
+# Install from the lockfile, build the app (which builds the editor and the docs
+# and typechecks the shipped code), then both unit suites.
+#
+# Two depths, one job:
+# - On a pull request, the app suite skips `tests/parity-corpus/`. Those 51
+#   files run against the Strudel corpus and are nearly all of the suite's 37
+#   minutes here; the other 112 files take seconds. This is the check a PR
+#   waits on.
+# - On every push to main, every night, and on demand, the full suite runs,
+#   corpus included, so a corpus regression is caught within a merge or a day.
+#   The corpus can come back to every PR once it is fast (#2034).
+#
+# Not here yet, on purpose:
+# - `tsc --noEmit` over the editor's test files: 63 errors on main, all in tests (#2124).
+#   The app's tests already typecheck: `next build` checks them.
+# - The browser suite: 279 Playwright spec files (about 1,000 tests) needing a dev
+#   server and real audio; it stays a manual gate for now.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # A newer push to a PR replaces the older run; runs on main always finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: ${{ github.event_name == 'pull_request' && 'Build and unit tests' || 'Build and full unit suite' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 60 }}
+    steps:
+      # Full history, so origin/main exists: the modelling ratchet and the
+      # code-view boundary tests check that their lists only shrink against it.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Version comes from package.json's packageManager field.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The app suite passes only on Node 25 today: on 22, tests leak state
+          # into each other through localStorage (#2126).
+          node-version: 25
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm turbo run build --filter=@stave/app
+
+      - name: Editor unit tests
+        run: pnpm --filter @stave/editor test
+
+      # `run test`, not `test`: pnpm's own `test` command rejects `--exclude`.
+      - name: App unit tests (without the corpus)
+        if: github.event_name == 'pull_request'
+        run: pnpm --filter @stave/app run test --exclude 'tests/parity-corpus/**'
+
+      - name: App unit tests
+        if: github.event_name != 'pull_request'
+        run: pnpm --filter @stave/app test

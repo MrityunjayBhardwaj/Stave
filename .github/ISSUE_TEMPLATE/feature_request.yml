@@ -1,0 +1,41 @@
+name: ✨ An idea
+description: Something Stave should do, or do differently.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome. Please check the [roadmap](https://stave.live/docs/roadmap/) first, in case it's already on the way.
+  - type: textarea
+    id: making
+    attributes:
+      label: What you were trying to make
+      description: Start from the music or the visual, not the feature. What were you doing when you wished Stave could do this?
+      placeholder: I was building up a drum fill over four bars and wanted the last bar to speed up.
+    validations:
+      required: true
+  - type: textarea
+    id: friction
+    attributes:
+      label: What got in the way
+      description: What you had to do instead, or where you got stuck.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you'd like
+      description: How you picture it working. If another tool does it well, such as a DAW or strudel.cc, say which and how.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where in Stave
+      options:
+        - Code editor
+        - Timeline
+        - Pattern grids
+        - Mixer
+        - Library and sounds
+        - Visuals (p5.js, Hydra, GLSL)
+        - Phones and tablets
+        - Something else

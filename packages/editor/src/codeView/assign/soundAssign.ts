@@ -8,9 +8,11 @@
 // here and commits it (`assignmentEdit` → `commitToEditor`); the tested code is
 // the shipped code.
 
+import { parseTopLevel } from '../astParse'
 import { detectChunk } from '../chunkDetect'
 import { setStringCall } from '../chainEdit'
 import { patternKind } from '../patternKind'
+import { bareExpressionOf } from '../bareExpression'
 import type { OffsetEdit } from '../writeback'
 
 /**
@@ -20,7 +22,7 @@ import type { OffsetEdit } from '../writeback'
  */
 export type SoundAssignPlan =
   | { kind: 'replace'; range: [number, number]; text: string }
-  | { kind: 'insert'; offset: number; text: string }
+  | { kind: 'insert'; offset: number; text: string; label?: number }
 
 /**
  * Decide how to write `sound` at `offset` in `doc`, or return `null` when
@@ -34,12 +36,15 @@ export type SoundAssignPlan =
  *    comment (observed: `// scratch` → `// scratchs("…")`), so the insert goes
  *    at the END of the cursor's line, prefixed with a newline only when that
  *    line already has content. Double-quoted: a standalone `s("…")` is
- *    idiomatic mini-notation.
+ *    idiomatic mini-notation. `slow` (#2070, from `cyclesToPlayThrough`) is
+ *    written as `.slow(N)` on that new line only: a note pattern keeps its
+ *    own rhythm when its sound is set.
  */
 export function planSoundAssignment(
   doc: string,
   offset: number,
   sound: string,
+  slow?: number,
 ): SoundAssignPlan | null {
   if (!sound) return null
 
@@ -51,33 +56,81 @@ export function planSoundAssignment(
       : { kind: 'replace', range: edit.range, text: edit.text }
   }
 
-  // Line-aware source insert. Compute the cursor's line span in pure string
-  // space: `lineStart` is just past the previous newline (or 0), `lineEnd` is
-  // the next newline (or end of doc) — the position Monaco's `getLineMaxColumn`
-  // resolves to. Insert before that newline so the pattern owns its line.
-  const lineStart = doc.lastIndexOf('\n', offset - 1) + 1
-  const nextNewline = doc.indexOf('\n', offset)
+  // Where the new line goes (#2057): after the WHOLE top-level statement under the
+  // cursor, so a cursor inside a multi-line `$: stack(…)` does not write into its
+  // arguments; with no statement under the cursor (a comment, a blank line), after
+  // the cursor's own line. Line-aware either way: a raw offset lands mid-token or
+  // inside a comment (observed: `// scratch` → `// scratchs("…")`).
+  const statements = parseTopLevel(doc)
+  const under = statements?.find((s: { start: number; end: number }) => s.start <= offset && offset <= s.end)
+  const anchor = under ? under.end : offset
+  const lineStart = doc.lastIndexOf('\n', anchor - 1) + 1
+  const nextNewline = doc.indexOf('\n', anchor)
   const lineEnd = nextNewline === -1 ? doc.length : nextNewline
   const hasContent = doc.slice(lineStart, lineEnd).trim().length > 0
+  const form = newLineForm(doc, statements)
   return {
     kind: 'insert',
     offset: lineEnd,
-    text: `${hasContent ? '\n' : ''}s("${sound}")`,
+    text: `${hasContent ? '\n' : ''}${form.labelled ? '$: ' : ''}s("${sound}")${slow ? `.slow(${slow})` : ''}`,
+    ...(form.label !== undefined ? { label: form.label } : {}),
   }
+}
+
+/**
+ * How many cycles a clip of `seconds` needs to play through at `cps`, or null when
+ * it fits in one (#2070). Strudel starts a sample once per event and lets it play to
+ * its end, so `s("take")` with a take longer than a cycle starts a new copy over the
+ * one still playing, every cycle. `.slow(N)` makes one event N cycles long: the clip
+ * plays through, and starts again on the first cycle boundary after it ends. Rounded
+ * up to whole cycles so it stays on the bar; a hair over a cycle (a decoder's padding)
+ * still counts as one. Unknown length → null, the plain line.
+ */
+export function cyclesToPlayThrough(seconds: number | undefined, cps: number): number | null {
+  if (seconds === undefined || !(seconds > 0) || !(cps > 0)) return null
+  const cycles = seconds * cps
+  return cycles <= 1 + CYCLE_SLACK ? null : Math.ceil(cycles - CYCLE_SLACK)
+}
+
+/** How far past a whole cycle a clip may run and still count as that many cycles. */
+const CYCLE_SLACK = 1e-3
+
+/**
+ * How to write the new line so it is heard, and the song still is (#2057, #2066).
+ * Which line a song plays is `bareExpressionOf`'s to say. So:
+ *  - a live label anywhere, or no code yet → the new line is `$:`;
+ *  - else, the song plays a bare expression → a new line of either form would
+ *    silence it (a `$:` one registers a label, a bare one becomes the last
+ *    statement): label it too (`label` is where its `$: ` goes), and write the
+ *    new line as `$:` — both play;
+ *  - else (the song plays nothing: its last statement is a muted label or a
+ *    setup call) → `$:`.
+ * The Library's Insert is the only caller; nothing else rewrites a line of yours.
+ */
+function newLineForm(
+  doc: string,
+  statements: Parameters<typeof bareExpressionOf>[0] | null,
+): { labelled: boolean; label?: number } {
+  // mid-keystroke the document does not parse: read the lines instead
+  if (!statements) return { labelled: /^[ \t]*\$:/m.test(doc) }
+  const bare = bareExpressionOf(statements)
+  return bare === null ? { labelled: true } : { labelled: true, label: bare }
 }
 
 /**
  * The plain edit an assignment plan stands for (#1906). `insert` is a zero-width
  * edit at its offset; `replace` keeps its range — exactly what the writer did
  * with each shape, so a caller hands the result to `commit` without branching on
- * the plan. Takes either planner's result: both share this shape.
+ * the plan. Takes either planner's result: both share this shape. An insert that
+ * also labels the song's playing expression (#2066) is two edits, one write.
  */
 export function assignmentEdit(
   plan:
     | { kind: 'replace'; range: [number, number]; text: string }
-    | { kind: 'insert'; offset: number; text: string },
-): OffsetEdit {
-  return plan.kind === 'replace'
-    ? { range: plan.range, text: plan.text }
-    : { range: [plan.offset, plan.offset], text: plan.text }
+    | { kind: 'insert'; offset: number; text: string; label?: number },
+): OffsetEdit | OffsetEdit[] {
+  if (plan.kind === 'replace') return { range: plan.range, text: plan.text }
+  const insert: OffsetEdit = { range: [plan.offset, plan.offset], text: plan.text }
+  // #2066 — the song's playing expression is labelled in the same write: one undo
+  return plan.label === undefined ? insert : [{ range: [plan.label, plan.label], text: '$: ' }, insert]
 }

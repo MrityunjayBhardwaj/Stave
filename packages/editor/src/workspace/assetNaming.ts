@@ -152,6 +152,12 @@ export interface AssetImportPlan {
    * is derived from the other and neither is a proxy for the other.
    */
   readonly isFirstReference: boolean
+  /**
+   * The name the file asked for when a sound Stave ships already has it (#2061):
+   * the record took the next free one instead. Absent otherwise — including when
+   * the clash was with the project's own audio, which is the ordinary `_2` case.
+   */
+  readonly renamedFrom?: string
 }
 
 /** The measured facts about an incoming file, before it becomes a record. */
@@ -186,11 +192,19 @@ export function planAssetImport(
   input: AssetImportInput,
   existing: readonly AssetRecord[],
   mintId: () => string,
+  /**
+   * The names of the sounds Stave ships (#2061). A record registered under one
+   * of them REPLACES it — `bd.wav` made every `s("bd")` in the project play the
+   * file — so they count as taken. The caller reads them off the loaded sound
+   * map; empty when nothing has loaded yet, and then nothing is protected.
+   */
+  builtIn: Iterable<string> = [],
 ): AssetImportPlan {
-  const name = uniqueSoundName(
-    soundNameFromFilename(input.filename),
-    existing.map((r) => r.name),
-  )
+  const base = soundNameFromFilename(input.filename)
+  const own = existing.map((r) => r.name)
+  const shipped = new Set(builtIn)
+  const name = uniqueSoundName(base, [...own, ...shipped])
+  const renamedFrom = name !== base && shipped.has(base) && !own.includes(base) ? base : undefined
   const record: AssetRecord = {
     id: mintId(),
     name,
@@ -202,5 +216,6 @@ export function planAssetImport(
   return {
     record,
     isFirstReference: !existing.some((r) => r.blobHash === input.blobHash),
+    ...(renamedFrom ? { renamedFrom } : {}),
   }
 }

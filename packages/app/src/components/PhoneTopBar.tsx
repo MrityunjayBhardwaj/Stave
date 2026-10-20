@@ -120,7 +120,7 @@ export function PhoneTopBar({
   }, []);
 
   return (
-    <div style={styles.bar} data-phone-top-bar>
+    <div style={styles.bar} data-phone-top-bar data-phone-top-held={sideways ? "sideways" : "upright"}>
       <button type="button" style={styles.square} aria-label="Open project and menus" data-phone-top="drawer" onClick={onOpenDrawer}>
         <Icon name="menu" size="20px" />
       </button>
@@ -146,10 +146,9 @@ const styles: Record<string, React.CSSProperties> = {
     flex: "none",
     minHeight: TOUCH + 4,
     boxSizing: "border-box",
-    // a notch at the top, or at either side when the phone is turned
-    paddingTop: "env(safe-area-inset-top)",
-    paddingLeft: "max(2px, env(safe-area-inset-left))",
-    paddingRight: "max(6px, env(safe-area-inset-right))",
+    // the notch is the shell's to clear (#2007, page.tsx); this is only the bar's own edge
+    paddingLeft: 2,
+    paddingRight: 6,
     background: "var(--bg-chrome)",
     borderBottom: "1px solid var(--border-subtle)",
     color: "var(--text-chrome)",

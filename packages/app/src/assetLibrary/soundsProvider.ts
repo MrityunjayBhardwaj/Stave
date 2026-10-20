@@ -33,6 +33,14 @@ export interface SoundsProviderDeps {
   startPreview: (sound: string) => AssetPreviewHandle;
   /** Round-trip the sound into code at the cursor (assign or insert). */
   onInsert: (sound: string) => void;
+  /**
+   * The project's own audio, as rows (#2062) — `recordsToAssets`, with size,
+   * remove and the clip preview. Every one is ALSO in the sound map (that is how
+   * `s()` reaches it), and the map says nothing about who made a sound, so
+   * without this the file is listed as a built-in sound and Sounds → User is
+   * empty. Its names are taken out of the built-in rows and these rows go in.
+   */
+  ownAudio?: () => readonly Asset[];
 }
 
 /** Title-case a bare id: `sawtooth` → `Sawtooth`. */
@@ -147,7 +155,12 @@ export function createSoundsProvider(deps: SoundsProviderDeps) {
         cachedCount = count;
         cached = soundMapToAssets(dict, deps);
       }
-      return cached;
+      // Read live, not cached: a record added, renamed or removed does not always
+      // change the map's size, and the list is a handful of rows.
+      const own = deps.ownAudio?.() ?? [];
+      if (own.length === 0) return cached;
+      const ownNames = new Set(own.map((a) => a.code ?? a.id));
+      return [...own, ...cached.filter((a) => !ownNames.has(a.id))];
     },
     isLoading: () => {
       const d = deps.readDict();

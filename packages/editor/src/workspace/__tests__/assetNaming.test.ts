@@ -247,3 +247,30 @@ describe('planAssetImport', () => {
     expect('duration' in plan.record).toBe(false)
   })
 })
+
+describe('planAssetImport — a built-in sound name is taken (#2061)', () => {
+  const input = { blobHash: 'h1', filename: 'bd.wav', mime: 'audio/wav' }
+  let n = 0
+  const ids = () => `id${++n}`
+
+  it("a file named like a built-in sound gets the next free name, so it cannot replace Stave's own", () => {
+    const plan = planAssetImport(input, [], ids, ['bd', 'sd', 'bd_2'])
+    expect(plan.record.name).toBe('bd_3')
+  })
+
+  it('says which built-in name it stepped around, so the message can tell the user', () => {
+    const plan = planAssetImport(input, [], ids, ['bd'])
+    expect(plan.renamedFrom).toBe('bd')
+  })
+
+  it('a clash with your OWN audio is not a built-in clash (it has said nothing about those since #1500)', () => {
+    const own: AssetRecord = { id: 'x', name: 'bd', blobHash: 'h0', mime: 'audio/wav' }
+    const plan = planAssetImport(input, [own], ids, [])
+    expect([plan.record.name, plan.renamedFrom]).toEqual(['bd_2', undefined])
+  })
+
+  it('a name no built-in sound has is kept as it is', () => {
+    const plan = planAssetImport(input, [], ids, ['sd', 'hh'])
+    expect([plan.record.name, plan.renamedFrom]).toEqual(['bd', undefined])
+  })
+})

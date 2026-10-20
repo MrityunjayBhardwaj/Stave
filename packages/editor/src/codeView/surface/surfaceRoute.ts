@@ -172,6 +172,9 @@ function rollUnlessChordChart(mini: string): Surface {
  */
 export function chunkSurface(chunk: ChunkInfo | null): PatternKind {
   if (!chunk || chunk.miniString === null) return patternKind(chunk)
+  // A `.struct` rhythm line is hits and rests whatever the track plays (#2120). It is
+  // decided here and not in `patternKind`, which the mixer reads as the track's kind.
+  if (chunk.structRhythm) return 'step'
   // WHETHER to ask is still the head's question plus the resolver scoping; WHICH
   // surface is `routeSurface`'s, for every chunk we ask about. It used to short
   // out here and return `patternKind`'s answer directly for a content head,

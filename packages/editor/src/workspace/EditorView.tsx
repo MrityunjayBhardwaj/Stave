@@ -41,6 +41,7 @@ import { useHighlighting } from '../monaco/useHighlighting'
 import { useBreakpoints } from '../monaco/useBreakpoints'
 import { useTrackColourBars } from '../monaco/useTrackColourBars'
 import { registerEditor, unregisterEditor, applyPersistedEditorOptions, registerMonacoNamespace, setActiveEditor } from './editorRegistry'
+import { getVisibleArea, subscribeToVisibleArea } from './visibleArea'
 import {
   setEvalError,
   clearEvalErrors,
@@ -395,6 +396,40 @@ export function EditorView({
         clearStrudelLintMarkers(monaco, model)
       })
     }
+
+    // #2004 — on a phone, when the keyboard opens the editor gets shorter, and the
+    // line that was tapped can be left under where the editor now ends. Bring the
+    // cursor's line back into view, for the editor that is being typed in. Monaco
+    // keeps it in view by itself from then on, as it does while typing anywhere.
+    //
+    // The pinned scope lines at the top of the editor ("sticky scroll") are put away
+    // while the keyboard is up. Every reveal leaves room for the most of them there
+    // can be — five lines, 110 px — whether or not any is showing; held sideways the
+    // editor is shorter than that, and the line "revealed" landed below its edge
+    // (measured: a 98 px editor, the cursor's line at 110). They come back, as they
+    // were set, when the keyboard closes.
+    let stickyBeforeKeyboard: unknown = null
+    const stickyOption = monaco.editor?.EditorOption?.stickyScroll
+    const stopWatchingKeyboard = subscribeToVisibleArea(() => {
+      const up = getVisibleArea().keyboardUp
+      if (stickyOption !== undefined) {
+        if (up && stickyBeforeKeyboard === null) {
+          stickyBeforeKeyboard = editor.getOption?.(stickyOption) ?? null
+          editor.updateOptions?.({ stickyScroll: { enabled: false } })
+        } else if (!up && stickyBeforeKeyboard !== null) {
+          editor.updateOptions?.({ stickyScroll: stickyBeforeKeyboard })
+          stickyBeforeKeyboard = null
+        }
+      }
+      if (!up || !editor.hasTextFocus?.()) return
+      requestAnimationFrame(() => {
+        // measure the new, shorter box now, not when the resize observer gets to it
+        editor.layout?.()
+        const at = editor.getPosition?.()
+        if (at) editor.revealPosition?.(at)
+      })
+    })
+    editor.onDidDispose?.(stopWatchingKeyboard)
 
     onMount?.(editor, monaco)
   }

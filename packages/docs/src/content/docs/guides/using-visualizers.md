@@ -29,15 +29,16 @@ different visuals at once.
 
 ## Quality and resolution
 
-Open **Settings** (the gear) → the viz rows. Two controls trade smoothness for
-detail:
+Open **File › Editor Settings...** and find the **Visualization** section. Two
+controls trade smoothness for detail:
 
-- **Viz quality** — **High**, **Balanced**, or **Performance**. This scales both
+- **Quality** — **High**, **Balanced**, or **Performance**. This scales both
   the render resolution *and*, for sketches that support it, their drawing density
   (how much detail they draw). Drop to **Performance** if visuals stutter or the
   fans spin up; it's the one knob that helps every viz type.
-- **Inline viz res** — the exact backing resolution for inline visuals
-  (256–1024 px, or a custom value). Higher is crisper but costs more **fill**.
+- **Custom resolution** (marked **Advanced**, under Quality) — overrides the
+  preset's render resolution: 256, 512, 768 or 1024 px, or a custom value.
+  Higher is crisper but costs more **fill**.
   This helps shader- and fill-heavy visuals; it makes little difference to
   line-drawing sketches (those are limited by how many lines they draw, not
   pixels — that's what *quality*'s density does).
@@ -53,7 +54,7 @@ browser tab — and resumes it the moment it's visible again. It comes back exac
 where it left off; you don't need to do anything.
 
 For a visual left off-screen a long time, the **Off-screen viz teardown** setting
-(on by default) goes further and *frees its memory and GPU context* after ~60s,
+(under **Performance**, on by default) goes further and *frees its memory and GPU context* after ~60s,
 re-creating it when you scroll back. Turn it off if you'd rather visuals stay
 instantly resident at the cost of more memory.
 
@@ -80,8 +81,8 @@ throttle timing; keep the tab audible (or foreground) across silent sections.
   `if (stave.scheduler) { … }`.
 
 **It lags or stutters.**
-- Set **Viz quality** to **Performance**.
-- Lower **Inline viz res** if it's a shader or fill-heavy visual.
+- Set **Quality** to **Performance**.
+- Lower **Custom resolution** if it's a shader or fill-heavy visual.
 - If it's a line-mesh sketch, the fix is drawing *fewer segments* — see
   [Writing fast viz sketches](/guides/viz-performance/).
 - Watch the audio: if playback gets choppy when a visual is on screen, that visual

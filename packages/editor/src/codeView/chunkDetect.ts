@@ -22,10 +22,33 @@ import { SpanIndex } from './miniSource/spanRole'
 // acorn's node types are intentionally loose; we walk untyped nodes here.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-/** The `pick`/`pickRestart`/`pickReset` family: a `"<…>".pickRestart({…})` call
- * whose object argument's property VALUES are the section patterns (#463/#667).
- * A cursor inside one of those values binds THAT section's inner chain. */
-const PICK_METHODS: ReadonlySet<string> = new Set(['pick', 'pickRestart', 'pickReset'])
+/** The `pick` family as METHODS (`sel.pick(choices)`), every name Strudel 1.2.6
+ * registers in `pick.mjs` except the `pickF` pair, whose choices are functions. The
+ * choices are an object (`{verse: s("…")}`, #463/#667) or a list (`["…", "…"]`,
+ * #2118); a cursor inside one binds THAT choice. `inhabit`/`pickSqueeze` squeeze a
+ * choice into the selecting event instead of playing it whole, but the choice is
+ * still the text the author wrote, so it is still what the cursor names. */
+const PICK_METHODS: ReadonlySet<string> = new Set([
+  'pick', 'pickmod', 'pickOut', 'pickmodOut', 'pickRestart', 'pickmodRestart',
+  'pickReset', 'pickmodReset', 'inhabit', 'inhabitmod', 'pickSqueeze', 'pickmodSqueeze',
+])
+/** The same family called as a plain FUNCTION (`pick(sel, choices)`), plus
+ * `squeeze`, which exists only in this form: as a method, `.squeeze` is the
+ * operator alias (`pat.squeeze(other)` = `pat.set.squeeze(other)`), not a choice. */
+const PICK_FUNCTIONS: ReadonlySet<string> = new Set([...PICK_METHODS, 'squeeze'])
+/** The calls that say what a bare string plays: notes or sounds (#2118). */
+const CONTENT_HEADS: ReadonlySet<string> = new Set(['note', 'n', 's', 'sound'])
+
+/**
+ * Where a chain's CHOOSER ends: the index of its first `pick`-family method, or 0
+ * when there is none. The calls before it (`irand(3).segment(1).slow(64)`, or a
+ * helper like `roll(3, 1)`) build the number that picks a choice. They are not the
+ * track's controls, so the mixer does not offer them as knobs (#2118).
+ */
+export function chooserEnd(chain: readonly ChainCall[]): number {
+  const at = chain.findIndex((c, i) => i > 0 && PICK_METHODS.has(c.name))
+  return at < 0 ? 0 : at
+}
 
 /** Coarse hint for which editor a chunk can open. Panels still read the
  * structured fields below to decide what they can actually edit. */
@@ -102,6 +125,15 @@ export interface ChunkInfo {
    *  voice's isn't, so only there does the inspector surface gain. Always false
    *  for `detectAllChunks` (every chunk there is top-level). */
   nested: boolean
+  /** Set on the chunk for one string choice of a `pick` (#2118). Its chain is the
+   *  whole track's, shared by every choice, so a per-note `.gain("…")` written for
+   *  this choice would play over the others; `readChunkGain` reads it as foreign. */
+  pickChoice?: true
+  /** Set on the chunk for a rhythm line: the string in `.struct("…")`, or one string
+   *  choice of a `pick` inside it (#2120). The line says WHEN the track plays, so it
+   *  opens in the step grid; the chain plays the track's content, so like `pickChoice`
+   *  its `.gain` is not this line's own. */
+  structRhythm?: true
 }
 
 // Re-exported so every existing `from './chunkDetect'` import keeps resolving;
@@ -244,6 +276,8 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
         // re-anchor (`pos` = the declaration start) sits outside the init, so it
         // resolves to the whole RHS — exactly the render-time chunk.
         const initTarget = innermostChainUnder(doc, decl.init, pos, bindings)
+        if (initTarget.type === PICK_CHOICE) return buildPickChoiceChunk(doc, initTarget, [node.start, node.end])
+        if (initTarget.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, initTarget, [node.start, node.end])
         return initTarget === decl.init
           ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings, false, getIndex)
           : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true, getIndex)
@@ -257,6 +291,8 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
       if (body.type !== 'ExpressionStatement') return null
       const topExpr = body.expression
       const target = innermostChainUnder(doc, topExpr, pos, bindings)
+      if (target.type === PICK_CHOICE) return buildPickChoiceChunk(doc, target, [node.start, node.end])
+      if (target.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, target, [node.start, node.end])
       // The top-level statement keeps its full range (incl. the `$:` label) so
       // the freshness guard watches the whole statement; a nested target is
       // anchored to its own expression span and carries no label. A bare-ref
@@ -435,7 +471,20 @@ function resolveMini(doc: string, info: ChunkInfo, getIndex: () => SpanIndex | n
  * args are Literals, not CallExpressions, so a cursor on them keeps the
  * enclosing chain.
  */
-function innermostChainUnder(doc: string, expr: any, pos: number, bindings?: BindingIndex): any {
+function innermostChainUnder(
+  doc: string,
+  expr: any,
+  pos: number,
+  bindings?: BindingIndex,
+  outerHead: string | null = null,
+): any {
+  // A string choice of a `pick`-family call (#2118). It is not a chain at all, so
+  // it comes back as a marker `detectChunk` builds its own chunk from.
+  const choice = pickChoiceUnder(expr, pos)
+  if (choice) return { type: PICK_CHOICE, expr, outerHead, ...choice }
+  // The rhythm line in a `.struct(…)` (#2120): also a string, also its own marker.
+  const rhythm = structRhythmUnder(expr, pos)
+  if (rhythm) return { type: STRUCT_RHYTHM, expr, lit: rhythm }
   // A `pick*({…})` section value is a chain the panels can bind, but the pick
   // receiver is a string literal (not an identifier head), so the combinator-arg
   // path below never reaches it — check the pick object first (#667).
@@ -445,31 +494,141 @@ function innermostChainUnder(doc: string, expr: any, pos: number, bindings?: Bin
   collectChain(doc, expr, headOut)
   const head = headOut.ref
   if (!head || !Array.isArray(head.arguments)) return expr
+  // `s("a b".inhabit({a: "bd(3,8)"}))`: the choices are bare strings and the call
+  // around them is what says they are sounds, so it travels down with the descent.
+  const heads = CONTENT_HEADS.has(head.callee.name) ? head.callee.name : null
   for (const arg of head.arguments) {
     const inner = chainArgUnder(arg, pos, bindings)
     // A bare-ref arm (`stack(beat, …)`) has no chain to descend, so return it
     // directly — detectChunk resolves it to the binding's voice (#866).
     if (inner && inner.type === 'Identifier') return inner
-    if (inner) return innermostChainUnder(doc, inner, pos, bindings)
+    if (inner) return innermostChainUnder(doc, inner, pos, bindings, heads)
   }
   return expr
 }
 
+/** The marker `innermostChainUnder` returns for a string choice of a `pick`. */
+const PICK_CHOICE = 'PickChoice'
+
 /**
- * The section pattern under `pos` inside a `pick*({…})` object argument, or null.
- * A `pick`/`pickRestart`/`pickReset` call takes an object whose property VALUES
- * are the section patterns (`{verse: s("…"), chorus: s("…")}`); a cursor inside
- * one of those values binds THAT section's inner chain — the same descent
- * `chainArgUnder` does for a `stack`/`arrange` arm (#667). The `<…>` control
- * string and the property KEYS are not sections: a cursor there returns null so
- * the outer statement stays selected (the control is a Timeline concern, #463).
+ * The string choice under `pos` in a `pick`-family call on `expr`'s callee spine,
+ * or null (#2118). Covers both forms, `sel.pick(["…", "…"])` and
+ * `pick(sel, ["…", "…"])`, and both shapes of choices, a list or an object's
+ * values. A choice written as a call (`{verse: s("…")}`) is `pickSectionUnder`'s.
  *
- * Walks the callee spine (like `collectChain`) rather than recursing the whole
- * tree, so a `pick*` NESTED inside another combinator is found only when it lies
- * on the chain under `pos` (the enclosing `innermostChainUnder` recursion has
- * already narrowed to that arm).
+ * Nothing about the selector is read, so any chooser works: a helper of any name,
+ * `irand(3).segment(1)`, or a literal `"<0 1 2>"`. The selector's own string is
+ * never a choice: it is the method's receiver, or a bare argument of the function.
  */
-function pickSectionUnder(expr: any, pos: number): any {
+function pickChoiceUnder(expr: any, pos: number): { lit: any; pick: any } | null {
+  for (const { pick, choices } of pickCallsOnSpine(expr)) {
+    for (const el of choices) {
+      if (isMiniString(el) && pos >= el.start && pos <= el.end) return { lit: el, pick }
+    }
+  }
+  return null
+}
+
+/**
+ * Every `pick`-family call on `expr`'s callee spine, with its choices: the elements
+ * of a list argument and the values of an object argument, in source order. The one
+ * place that decides what a choice is, so the string lookup (`pickChoiceUnder`) and
+ * the call lookup (`pickSectionUnder`) cannot disagree about it (#2121).
+ *
+ * Walks the spine (like `collectChain`) rather than the whole tree, so a pick NESTED
+ * inside another combinator is found only when it lies on the chain under the
+ * cursor: the enclosing `innermostChainUnder` recursion has already narrowed to it.
+ */
+function pickCallsOnSpine(expr: any): { pick: any; choices: any[] }[] {
+  const out: { pick: any; choices: any[] }[] = []
+  let node = expr
+  while (node && node.type === 'CallExpression') {
+    const callee = node.callee
+    const isPick =
+      callee.type === 'MemberExpression'
+        ? !callee.computed && callee.property.type === 'Identifier' && PICK_METHODS.has(callee.property.name)
+        : callee.type === 'Identifier' && PICK_FUNCTIONS.has(callee.name)
+    if (isPick) {
+      const choices: any[] = []
+      for (const arg of node.arguments) {
+        if (arg?.type === 'ArrayExpression') choices.push(...arg.elements)
+        else if (arg?.type === 'ObjectExpression') {
+          for (const p of arg.properties) choices.push(p?.type === 'Property' ? p.value : null)
+        }
+      }
+      out.push({ pick: node, choices })
+    }
+    node = callee.type === 'MemberExpression' ? callee.object : null
+  }
+  return out
+}
+
+/** A string literal a mini pattern can be read from: quotes, or a backtick string
+ *  with nothing interpolated (an interpolation would make the text not the pattern). */
+function isMiniString(node: any): boolean {
+  if (!node || typeof node.start !== 'number') return false
+  if (node.type === 'Literal') return typeof node.value === 'string'
+  return node.type === 'TemplateLiteral' && node.expressions.length === 0
+}
+
+/**
+ * The chunk for one string choice of a `pick` (#2118): that string is the pattern.
+ *
+ * - `miniRange` is the string, so the grid reads and writes that choice and nothing
+ *   else; the selector and the other choices stay as written.
+ * - `headFn` says what the string plays. A bare string plays whatever the chain
+ *   AFTER the pick makes of it (`.note()`, `.s()` with no argument), or failing
+ *   that the call the pick sits inside (`s("a".inhabit({a: "bd"}))`). With neither,
+ *   it is null and the panels stay in standby, as before.
+ * - `chain` is a stand-in head plus the calls after the pick, so the mixer edits the
+ *   track's own controls and never the selector's arguments. `MixerBody` never
+ *   edits index 0, the same convention `adaptMasterChunk` relies on.
+ * - `exprRange` is the whole chain, so an added effect goes at its end.
+ * - `statementRange` is the string itself, so `applyEdit`'s re-detect at its start
+ *   lands back on this choice. The whole statement is guarded through `miniAnchor`,
+ *   because the mixer writes outside the string.
+ * - `pickChoice` keeps the velocity lane off the shared `.gain` (see the field).
+ */
+function buildPickChoiceChunk(doc: string, t: any, outer: [number, number]): ChunkInfo {
+  const chain = collectChain(doc, t.expr, { ref: null })
+  const at = chain.findIndex((c) => c.range[1] === t.pick.end)
+  const after = at < 0 ? [] : chain.slice(at + 1)
+  const converter = after.find((c) => CONTENT_HEADS.has(c.name) && c.args.length === 0)
+  const headFn: string | null = converter?.name ?? t.outerHead ?? null
+  const lit: [number, number] = [t.lit.start, t.lit.end]
+  const pickName = at < 0 ? 'pick' : chain[at].name
+  const info: ChunkInfo = {
+    statementRange: lit,
+    statementText: doc.slice(lit[0], lit[1]),
+    exprRange: [t.expr.start, t.expr.end],
+    label: null,
+    headFn,
+    miniRange: [lit[0] + 1, lit[1] - 1],
+    miniString: doc.slice(lit[0] + 1, lit[1] - 1),
+    miniVia: 'literal',
+    miniAnchor: { range: outer, text: doc.slice(outer[0], outer[1]) },
+    chain: [{ name: headFn ?? pickName, args: [], range: lit }, ...after],
+    type: 'unknown',
+    nested: false,
+    pickChoice: true,
+  }
+  info.type = classifyChunk(info)
+  return info
+}
+
+/** The marker `innermostChainUnder` returns for a rhythm line in a `.struct(…)`. */
+const STRUCT_RHYTHM = 'StructRhythm'
+
+/**
+ * The rhythm line under `pos` in a `.struct(…)` on `expr`'s callee spine, or null
+ * (#2120): the argument itself when it is a string, or the string choice under `pos`
+ * of a `pick` written as the argument (`.struct(roll(3, 3).pick(["x ~", "~ x"]))`).
+ *
+ * `.struct` takes its timing from this argument and its values from the chain, so the
+ * argument is a pattern the grid can draw on its own. `.mask` is not here on purpose:
+ * it keeps the chain's timing and only silences, which the plan shows but does not edit.
+ */
+function structRhythmUnder(expr: any, pos: number): any {
   let node = expr
   while (node && node.type === 'CallExpression') {
     const callee = node.callee
@@ -477,25 +636,68 @@ function pickSectionUnder(expr: any, pos: number): any {
       callee.type === 'MemberExpression' &&
       !callee.computed &&
       callee.property.type === 'Identifier' &&
-      PICK_METHODS.has(callee.property.name)
+      callee.property.name === 'struct'
     ) {
-      const obj = node.arguments.find((a: any) => a && a.type === 'ObjectExpression')
-      if (obj) {
-        for (const prop of obj.properties) {
-          const val = prop && prop.type === 'Property' ? prop.value : null
-          if (
-            val &&
-            val.type === 'CallExpression' &&
-            typeof val.start === 'number' &&
-            pos >= val.start &&
-            pos <= val.end
-          ) {
-            return val
-          }
-        }
+      const arg = node.arguments[0]
+      if (arg && typeof arg.start === 'number' && pos >= arg.start && pos <= arg.end) {
+        if (isMiniString(arg)) return arg
+        const choice = pickChoiceUnder(arg, pos)
+        if (choice) return choice.lit
       }
     }
     node = callee.type === 'MemberExpression' ? callee.object : null
+  }
+  return null
+}
+
+/**
+ * The chunk for a rhythm line (#2120). Built like a pick choice's (see
+ * `buildPickChoiceChunk` for why each range is what it is), with two differences:
+ *
+ * - `headFn` is `struct`, the call that reads the string. It is not a content head, so
+ *   nothing treats the line as notes or sounds; `chunkSurface` opens it in the step grid.
+ * - `chain` keeps every call after the head behind a stand-in, because the calls
+ *   before `.struct` (`.voicing()`, an `.lpf`) are the track's controls as much as the
+ *   ones after it. Only the content head is left out, and `MixerBody` never edits index 0.
+ */
+function buildStructRhythmChunk(doc: string, t: any, outer: [number, number]): ChunkInfo {
+  const chain = collectChain(doc, t.expr, { ref: null })
+  const lit: [number, number] = [t.lit.start, t.lit.end]
+  const info: ChunkInfo = {
+    statementRange: lit,
+    statementText: doc.slice(lit[0], lit[1]),
+    exprRange: [t.expr.start, t.expr.end],
+    label: null,
+    headFn: 'struct',
+    miniRange: [lit[0] + 1, lit[1] - 1],
+    miniString: doc.slice(lit[0] + 1, lit[1] - 1),
+    miniVia: 'literal',
+    miniAnchor: { range: outer, text: doc.slice(outer[0], outer[1]) },
+    chain: [{ name: 'struct', args: [], range: lit }, ...chain.slice(1)],
+    type: 'unknown',
+    nested: false,
+    structRhythm: true,
+  }
+  info.type = classifyChunk(info)
+  return info
+}
+
+/**
+ * The choice under `pos` that is written as a call, or null: `{verse: s("…")}` in an
+ * object (#667), or `[s("…"), note("…")]` in a list (#2121), of any `pick`-family
+ * call in either form. A cursor inside one binds THAT choice's own chain, the same
+ * descent `chainArgUnder` does for a `stack`/`arrange` arm. The selector and the
+ * property keys are not choices: a cursor there returns null so the outer statement
+ * stays selected (the selector is a Timeline concern, #463). A string choice is
+ * `pickChoiceUnder`'s.
+ */
+function pickSectionUnder(expr: any, pos: number): any {
+  for (const { choices } of pickCallsOnSpine(expr)) {
+    for (const el of choices) {
+      if (el?.type === 'CallExpression' && typeof el.start === 'number' && pos >= el.start && pos <= el.end) {
+        return el
+      }
+    }
   }
   return null
 }

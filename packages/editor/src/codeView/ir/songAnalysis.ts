@@ -28,10 +28,13 @@
  * sense this module measures. Swept over 150 real tunes, that took documents
  * landing on the cap from 53 to 69 of the 142 that evaluate.
  *
- * A lane being aperiodic no longer makes the SONG aperiodic (#1104). Once the
- * progressive horizon is exhausted such lanes ABSTAIN and the span comes from
- * the lanes that do loop, which is #488's phasing rule applied to the case the
- * veto used to cover — see `detectDisplayPeriodAtCap`. That returned 20 of the
+ * ⚠ #2109 PUT THE VETO BACK AT THE CAP. From #1104 a lane with no loop ABSTAINED
+ * once the horizon was exhausted, and the span came from the lanes that did loop —
+ * because the alternative was a sliver on a 256-cycle timeline. The limit is now
+ * the user's (64 by default) and the view pages past it, so a song with a lane
+ * that has not come round reads "N+ cycles" and pages instead: abstaining at a
+ * 64-cycle limit drew 11 corpus songs as loops shorter than they are (a 72-cycle
+ * song as a 16-cycle loop). What follows is the history. Abstention returned 20 of the
  * 69 to a real period, so the swept figure was then 49. ⚠ #1107 later moved it
  * to 56 — see the sweep test's own tally line, which carries the whole chain
  * (53 pre-#1102 → 69 post-#1102 → 49 post-#1104 → 56 post-#1107 → 37 post-#1465).
@@ -60,7 +63,7 @@
 import type { PatternIR } from './PatternIR'
 import type { IREvent } from './IREvent'
 import { eventValueKey } from './eventValueKey'
-import { signalAutomations, signalCarryingParamKeys, signalWriters, hasTruePeriod, isNoiseKind, type SignalAutomation, type SignalKind } from './signalAutomation'
+import { signalAutomations, signalCarryingParamKeys, carriesUnrepeatingSignal, signalWriters, hasTruePeriod, isNoiseKind, type SignalAutomation, type SignalKind } from './signalAutomation'
 import { isSectionWindow, type TimeStep } from './parameterRoutes'
 import { steppedAutomations } from './steppedAutomation'
 import { songExtent, type SongExtent } from './songExtent'
@@ -525,8 +528,8 @@ const NOISE_SEED_CYCLES = 300
  *    is the onset's phase in THAT song period. The first reading here, "noise never comes
  *    back", was wrong on an archive document sweeping at `sine.slow(0.015)`: switched to
  *    perlin it repeats at 36, and a never-repeating stand-in said 12;
- * — and with the signals read as `next`. Every rule that picks the length (the veto
- * below the cap, abstention at it, the source-informed fold, the whole-song repeat) is
+ * — and with the signals read as `next`. Every rule that picks the length (the veto,
+ * the source-informed fold, the whole-song repeat) is
  * then the one that will run after the edit, and not a second copy of it.
  *
  * Measured against the swapped SOURCE through the engine and the same analysis
@@ -545,7 +548,7 @@ export async function previewShapeSwap(
   ir: PatternIR | null,
   a: SignalAutomation,
   next: SignalKind,
-  opts: Pick<AnalyzeSongOptions, 'collectFn' | 'hasUnheardTrack' | 'signal' | 'yieldFn'>,
+  opts: Pick<AnalyzeSongOptions, 'collectFn' | 'hasUnheardTrack' | 'signal' | 'yieldFn' | 'capCycles'>,
 ): Promise<SongAnalysis | null> {
   const at = a.spans.shape?.start
   const collect = opts.collectFn
@@ -555,7 +558,9 @@ export async function previewShapeSwap(
   // Toward noise that only comes back past the cap, the other writers cannot matter: the
   // lane repeats within no horizon either way (`sharesItsControl`).
   const standInPeriod = standInPeriodOf(a, next)
-  const pastCap = !hasTruePeriod(next) && standInPeriod !== null && standInPeriod > DEFAULT_CAP
+  // The cap the analysis below runs to — the caller's, when it passes one (#2109).
+  const cap = opts.capCycles ?? DEFAULT_CAP
+  const pastCap = !hasTruePeriod(next) && standInPeriod !== null && standInPeriod > cap
   if (!pastCap && sharesItsControl(ir, a)) return null
   const key = a.paramKey
   return analyzeSong(ir, {
@@ -639,10 +644,9 @@ function withValue(ev: IREvent, key: string, value: unknown): IREvent {
  *
  * ⚠ NO PRODUCTION RULE REACHES THE NON-DIVISOR NULL. Every production span is one
  * lane's own period, which divides the LCM. The two rules that look like they
- * could differ cannot get here with a number: the abstaining rule answers only by
- * skipping a lane with no loop (`detectDisplayPeriodAtCap`), and the
- * source-informed retry runs only after the structural rules found none — both
- * leave a lane without a period, so `wholeSongRepeat` is already null. The check
+ * could differ cannot get here with a number: the source-informed retry runs only
+ * after the structural rules found none, which leaves a lane without a period, so
+ * `wholeSongRepeat` is already null. The check
  * guards the injected `detectPeriodFn` seam the sweeps pass candidates through.
  */
 function repeatBeside(
@@ -656,100 +660,12 @@ function repeatBeside(
 }
 
 /**
- * A display span shorter than this is not accepted from an ABSTAINED reading.
- * Private on purpose: the rule is exported, the number is not, so no caller can
- * re-ask the question with a literal of its own.
- *
- * Not a tuned value — it names a GAP in the corpus. Across the 150 real tunes
- * the spans this rule recovers begin at 6 cycles and the ones it must refuse are
- * all exactly 2; nothing lands on 3, 4 or 5. Thresholds of 3, 4 and 6 were each
- * swept and produce the identical partition (20 recovered, 0 short, 0 cost), so
- * the choice inside that gap is not load-bearing. `song-period-abstention.test.ts`
- * keeps all three arms so a future corpus that closes the gap fails there instead
- * of making this number matter silently.
- */
-const MIN_ABSTAINED_PERIOD = 4
-
-/**
- * The display period once the progressive horizon is EXHAUSTED: lanes with no
- * loop of their own abstain instead of vetoing (#1104).
- *
- * ── WHY THIS EXISTS ──────────────────────────────────────────────────────────
- * `detectDisplayPeriod` holds two rules that disagree. Its grounded one (#488,
- * from real DAW manuals) is that lanes of differing lengths PHASE — show the
- * max, never the lcm, because a 4-cycle track repeats happily inside a 5-cycle
- * view. Its other one is `if (p === null) return null`: a single lane with NO
- * loop discards every other lane's measured period and sends the whole document
- * to the 256-cycle cap. Measured over the corpus, that was 69 of 142 documents —
- * about half — drawn as a sliver on a timeline 256 cycles wide.
- *
- * If a 4-cycle lane can phase inside a 5-cycle view, so can a lane that never
- * repeats. A continuously modulated control (`.cutoff(sine)`) makes every cycle
- * genuinely differ, so "no loop" is the true answer about THAT LANE and not
- * about the song's structure.
- *
- * ── WHY ONLY AT THE CAP, which is the whole design ────────────────────────────
- * Below the cap a `null` from the period rule is not a defect — it is the signal
- * that DOUBLES the horizon, i.e. it is how a slow lane gets room to resolve.
- * Abstaining early answers with whatever short lane happens to have resolved and
- * the document never grows to where its real loop would have been found. Measured:
- * abstaining unconditionally sent 14 documents to period 1 — the single stretched
- * clip #1102 was filed for — and destroyed 5 correct periods (12→1, 10→1, 8→1,
- * 7→1, 6→1). So the rule is only ever asked once growth is exhausted. A derived
- * exclusion rule has to share the horizon of the detection it feeds.
- *
- * ── WHY A FLOOR ON THE PERIOD, and not on which lanes answered ───────────────
- * Even at the cap, an abstained max can be set by an ostinato while the content
- * abstains: six documents recovered to a 2-cycle span whose answering lanes were
- * the arpeggios and whose silent ones were the melody and bass. Three rules that
- * tested WHICH lanes answered were swept and all failed — requiring the densest
- * lane to answer, and requiring an event-share majority, each refused 15 sound
- * recoveries while still keeping 4 of the 6, because when the ostinato is the
- * denser lane no composition test can tell it from content. The floor below is
- * what works: the answer must itself be long enough to be a structural loop.
- *
- * Swept consequence: 20 documents leave the cap for a real period (6, 8, 14, 16,
- * 23, 24, 28, 32×4, 48×2, 64, 96×3); nothing changes below the cap, no period is
- * lost, and none collapse to 1. The 49 that remained (56 after #1107) were
- * aperiodic by every reading THEN and belong to the display question, not to this
- * rule — but see #1465, which prices a source-informed exclusion reaching 19 of
- * them, including 5 single-lane documents this rule cannot help by construction.
- */
-export function detectDisplayPeriodAtCap(
-  events: readonly IREvent[],
-  horizon: number,
-): number | null {
-  const byLane = eventsByLane(events)
-  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon))
-  let maxPeriod = 0
-  let answered = 0
-  let abstained = false
-  for (const laneEvents of byLane.values()) {
-    const p = detectPeriod(cycleFingerprints(laneEvents, horizon))
-    if (p === null) {
-      abstained = true
-      continue
-    }
-    answered++
-    if (p > maxPeriod) maxPeriod = p
-  }
-  if (answered === 0 || maxPeriod <= 0) return null // every lane modulated — truly aperiodic
-  // The floor guards an ABSTAINED answer only. With every lane answering this
-  // rule agreed with `detectDisplayPeriod` and has no standing to overrule it —
-  // and because `null` here means "the document is aperiodic", refusing an
-  // honest short period would push a legitimately 1- or 2-cycle song to the cap,
-  // manufacturing the very defect this function exists to remove.
-  if (abstained && maxPeriod < MIN_ABSTAINED_PERIOD) return null
-  return maxPeriod
-}
-
-/**
  * Does `[0, period)` contain at least one onset from every lane the events show?
  *
  * A span that leaves a whole track empty is not that song's loop. This is the
  * SECOND clause of the plausibility rule (#1107) and it is a test on the ANSWER,
  * not on which lanes answered — the family PV256 measured and refused, where
- * `detectDisplayPeriodAtCap` was already forced to choose between an ostinato
+ * #1104's abstaining rule was already forced to choose between an ostinato
  * and the content it plays under. Here nothing is compared to anything: either a
  * lane appears inside the accepted span or the span does not describe it.
  *
@@ -777,10 +693,10 @@ function spanCoversEveryLane(events: readonly IREvent[], period: number): boolea
  * in ONE definition so the decision that ends the analysis cannot be made by a
  * different rule than the one that drove it ([[P403]]).
  *
- * ── THE COMBINE STEP is situation-aware (#1104) ──────────────────────────────
- * At the cap the veto has nowhere to grow and lanes with no loop of their own
- * ABSTAIN; below it the veto stands, because a `null` there is what buys the
- * next doubling. `detectDisplayPeriodAtCap`'s own header carries that argument.
+ * ── THE COMBINE STEP is the veto, at every horizon (#2109) ───────────────────
+ * Below the cap a `null` is what buys the next doubling; at the cap it is the
+ * answer — the song does not come back round within the limit, so it reads
+ * "N+ cycles" and pages. (#1104 let lanes abstain at the cap; see the header.)
  *
  * ── THE PLAUSIBILITY CLAUSES (#1107) ─────────────────────────────────────────
  * A detected period can be true of everything the analysis has HEARD and still
@@ -793,9 +709,8 @@ function spanCoversEveryLane(events: readonly IREvent[], period: number): boolea
  *     six tracks first sound at cycles 16, 32, 56, 95, 128 and 159. Nothing here
  *     can detect that, because those events have not been collected — only the
  *     caller knows the document declares tracks it has not heard from, so it is
- *     asked (`hasUnheardTrack`). Gated to `horizon < cap` for the same reason
- *     abstention is gated to the cap: below it a `null` is the signal that grows
- *     the horizon, and at the cap there is nowhere left to grow, so an unheard
+ *     asked (`hasUnheardTrack`). Gated to `horizon < cap` because below it a
+ *     `null` is the signal that grows the horizon, and at the cap there is nowhere left to grow, so an unheard
  *     track must not be able to block an answer forever. That bound is what
  *     makes the clause verdict-NEUTRAL for a track that is simply silent: six
  *     corpus documents register a pattern that never sounds in 256 cycles, and
@@ -834,6 +749,11 @@ export interface SignalDimensions {
    *  `hasTruePeriod`. Empty means "this document is modulated, but by nothing
    *  that comes back", which is a different answer from "not modulated". */
   readonly periods: readonly number[]
+  /** Is a key driven by a signal that NEVER comes back within a song's limit —
+   *  `rand`, `perlin`, `time`, the mouse (#2109)? Such a document has no loop to
+   *  find, so it reads as "N+ cycles" and pages, rather than as the loop of
+   *  whatever is left once that key is set aside. */
+  readonly noise: boolean
 }
 
 /**
@@ -861,6 +781,7 @@ export function signalDimensionsOf(ir: PatternIR | null | undefined, swap?: Shap
   const audible = audibleTracks(ir)
   const periods: number[] = []
   const keys = new Set<string>()
+  let noise = false
   for (const t of audible) {
     for (const a of signalAutomations(t)) {
       // Its key stays in `keys` whichever shape it is read as: noise and a waveform
@@ -871,8 +792,10 @@ export function signalDimensionsOf(ir: PatternIR | null | undefined, swap?: Shap
       if (song !== null) periods.push(song)
     }
     for (const k of signalCarryingParamKeys(t)) keys.add(k)
+    // Read off the source, not the drawn curves, so an undrawn `time` counts too.
+    if (carriesUnrepeatingSignal(t, swap)) noise = true
   }
-  return { keys, periods }
+  return { keys, periods, noise }
 }
 
 /**
@@ -1134,9 +1057,11 @@ function rationalLcm(x: number, y: number): number | null {
  * a whole number of periods of the LFO. So fold the structural period up to the
  * least common multiple of itself and every signal that repeats.
  *
- * ⚠ WHEN THE FOLD EXCEEDS THE CAP, THE STRUCTURAL PERIOD IS RETURNED UNFOLDED,
- * and it is worth being plain that this returns a span the audio does not repeat
- * at. Measured over the corpus, two documents fold to 792 and 1,801,800 cycles —
+ * ⚠ WHEN THE FOLD EXCEEDS THE CAP THERE IS NO PERIOD (#2109): the song does not
+ * come back round within the limit, so it reads "N+ cycles" and pages. Until #2109
+ * the structural period was returned unfolded instead — a span the audio does not
+ * repeat at, kept because the alternative was a 256-cycle sliver. With the limit a
+ * paged window (64 by default) that trade is gone. The history, for the record: Measured over the corpus, two documents fold to 792 and 1,801,800 cycles —
  * periods that are true and useless, and the honest alternative for them is not
  * a bigger number but the aperiodic notice, which is what production gave them
  * before this rule existed. Handing back the structural span keeps them at a
@@ -1152,7 +1077,7 @@ function foldWithSignalPeriods(
   period: number,
   periods: readonly number[],
   cap: number,
-): number {
+): number | null {
   // The result stays a whole number of cycles, and that is a property rather
   // than a hope: `period` is a cycle count, so it enters as `a/1`, and
   // `lcm(a/1, c/d) = lcm(a, c) / gcd(1, d) = lcm(a, c)`. A denominator can
@@ -1162,7 +1087,7 @@ function foldWithSignalPeriods(
   let folded = period
   for (const q of periods) {
     const next = rationalLcm(folded, q)
-    if (next === null || !Number.isFinite(next) || next > cap) return period
+    if (next === null || !Number.isFinite(next) || next > cap) return null
     folded = next
   }
   return folded
@@ -1175,7 +1100,11 @@ export function displayPeriodRule(
   hasUnheardTrack: boolean,
   signals?: SignalDimensions,
 ): number | null {
-  const period = horizon >= cap ? detectDisplayPeriodAtCap(events, horizon) : detectDisplayPeriod(events, horizon)
+  // #2109 — the same rule at the cap as below it: every lane must have come round.
+  // A lane that has not (a long loop, a slow sweep, noise) leaves the song without a
+  // loop inside the limit, and it reads "N+ cycles" and pages. #1104's abstaining
+  // rule let the lanes that had repeated decide instead.
+  const period = detectDisplayPeriod(events, horizon)
   if (period !== null) {
     if (hasUnheardTrack && horizon < cap) return null
     if (!spanCoversEveryLane(events, period)) return null
@@ -1230,11 +1159,13 @@ function signalInformedPeriod(
 ): number | null {
   if (horizon < cap) return null
   if (!signals || signals.keys.size === 0) return null
+  // #2109 — noise never comes back, so there is no loop to fold it into.
+  if (signals.noise) return null
   const stripped = events.map((ev) => withoutKeys(ev, signals.keys))
-  const structural = detectDisplayPeriodAtCap(stripped, horizon)
+  const structural = detectDisplayPeriod(stripped, horizon)
   if (structural === null) return null
   const folded = foldWithSignalPeriods(structural, signals.periods, cap)
-  if (!spanCoversEveryLane(events, folded)) return null
+  if (folded === null || !spanCoversEveryLane(events, folded)) return null
   return folded
 }
 
@@ -1515,10 +1446,9 @@ export async function analyzeSong(
    * by every terminal `analyzeEvents`, so the decision that ends the analysis
    * cannot be made by a different rule than the one that drove it.
    *
-   * Situation-aware rather than fixed: at the cap the veto has nowhere to grow
-   * and lanes abstain (#1104); below it the veto stands, because that is what
-   * buys the next doubling. Both that choice and the two plausibility clauses
-   * live in `displayPeriodRule`, whose header carries the argument. Written as
+   * The veto at every horizon (#2109): below the cap a `null` buys the next
+   * doubling, at it the song reads "N+ cycles". That and the two plausibility
+   * clauses live in `displayPeriodRule`, whose header carries the argument. Written as
    * an explicit conditional, never `opts.detectPeriodFn?.(…) ?? …` — `null` is a
    * meaningful verdict here and `??` would silently swap an injected rule for the
    * production one whenever it answered "aperiodic".
@@ -1571,8 +1501,8 @@ export async function analyzeSong(
       // length tracks phase; the view spans the longest one. `null` until EVERY
       // active lane has looped at least twice within the horizon, so we keep
       // growing until the slowest lane resolves (or the cap forces aperiodic).
-      // `periodRule` picks the veto below the cap and abstention at it (#1104);
-      // its own doc carries why. Stated once, there.
+      // `periodRule` is the veto at every horizon (#2109); its own doc carries
+      // why. Stated once, there.
       const period = periodRule(events, horizon)
       if (period !== null) {
         // Trim the analysis to exactly ONE display loop. The full-song view spans
@@ -1619,13 +1549,22 @@ export async function analyzeSong(
   // reading, the one play-once stops at and the bounce renders (#1936). Spanning the
   // bare `Σ weight` there would hide every pass after the first: a section stepping
   // `<.2 .9>` per appearance plays .9 on bar 7 of an 8-bar song whose structure is 4
-  // bars (#1585). Past the cap one collection cannot reach it, and the song keeps the
-  // measured span (capped, then paged).
+  // bars (#1585). Past the cap one collection cannot reach it: see #2109 below.
   const end = songEnd(ir, cap, opts.signals?.periods)
   const declaredLength = end.kind === 'arranged' && end.cycles > 0 ? end.cycles : null
   const declaredEnd =
     declaredLength !== null && declaredLength > 0 && Math.ceil(declaredLength) <= cap ? declaredLength : null
 
+  // #2109 — an arrangement longer than the limit is a song that does not come back
+  // round within it, whatever its first bars repeat at: an 80-bar `bd` section ahead
+  // of an `hh` one would otherwise read as a 1-cycle loop. It reads "N+ cycles" and
+  // pages, like any other song past the limit.
+  if (declaredLength !== null && declaredEnd === null) {
+    if (!(await collectUpTo(cap))) {
+      return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap, steppedKeys)
+    }
+    return analyzeEvents(events, cap, true, () => null, cap, steppedKeys)
+  }
   const measured = await measure()
   if (declaredEnd === null || signal?.aborted) return measured
   // The measurement may have stopped short of the end (a period confirmed at bar 8

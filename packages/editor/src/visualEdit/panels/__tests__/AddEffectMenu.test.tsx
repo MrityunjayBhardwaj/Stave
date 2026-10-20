@@ -6,8 +6,9 @@
  * anchor would drift. But the menu's own list is `overflowY:auto`, and the
  * dismiss listener is a capture-phase window `scroll` handler — so without an
  * origin guard, scrolling the list itself closes the menu and the user can't
- * browse the long tail. These tests pin BOTH sides: self-scroll survives,
- * ancestor scroll dismisses.
+ * browse the long tail. These tests pin both sides: self-scroll survives,
+ * an ancestor scroll moves the menu with its trigger and dismisses it only
+ * once the trigger is out of view (#2088).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as React from 'react'
@@ -37,10 +38,40 @@ describe('AddEffectMenu — scroll-dismiss scope', () => {
     expect(document.querySelector('[data-mixer-add-effect-menu]')).not.toBeNull()
   })
 
-  it('an ancestor / page scroll DOES dismiss it (fixed anchor would drift)', () => {
-    openMenu()
+  // #2088 — an outside scroll closes the menu only when it took the trigger
+  // out of view; one that moved it keeps the menu on it; one that did not move
+  // it at all (the late event of a scroll from BEFORE the open) is ignored.
+  function placeTrigger(top: number): void {
+    const btn = screen.getByRole('button', { name: /More/ })
+    btn.getBoundingClientRect = () =>
+      ({ top, left: 100, bottom: top + 24, right: 220, width: 120, height: 24, x: 100, y: top, toJSON: () => ({}) }) as DOMRect
+  }
+  const menuTop = (): string =>
+    (document.querySelector('[data-mixer-add-effect-menu]') as HTMLElement).style.top
+
+  it('a page scroll that did not move the trigger leaves it open (#2088)', () => {
+    render(<AddEffectMenu present={new Set()} onToggle={vi.fn()} />)
+    placeTrigger(300)
+    fireEvent.click(screen.getByRole('button', { name: /More/ }))
+    fireEvent.scroll(window)
     expect(document.querySelector('[data-mixer-add-effect-menu]')).not.toBeNull()
-    // A scroll originating outside the menu (window/page) closes it.
+  })
+
+  it('a page scroll that moved the trigger keeps the menu on it (#2088)', () => {
+    render(<AddEffectMenu present={new Set()} onToggle={vi.fn()} />)
+    placeTrigger(300)
+    fireEvent.click(screen.getByRole('button', { name: /More/ }))
+    expect(menuTop()).toBe('328px')
+    placeTrigger(250)
+    fireEvent.scroll(window)
+    expect(menuTop()).toBe('278px')
+  })
+
+  it('a page scroll that took the trigger out of view DOES dismiss it (fixed anchor would drift)', () => {
+    render(<AddEffectMenu present={new Set()} onToggle={vi.fn()} />)
+    placeTrigger(300)
+    fireEvent.click(screen.getByRole('button', { name: /More/ }))
+    placeTrigger(-40)
     fireEvent.scroll(window)
     expect(document.querySelector('[data-mixer-add-effect-menu]')).toBeNull()
   })

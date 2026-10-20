@@ -102,3 +102,84 @@ export function startAudition(sound: string, note = 'c4'): AuditionHandle {
     },
   }
 }
+
+/**
+ * Preview a recording once, from its start to its end (#2059) — the Library's play
+ * button on a sound of your own.
+ *
+ * {@link startAudition} re-triggers a 0.22 s note every 0.22 s: right for a synth
+ * (a held key), wrong for a recording, where it played the opening fifth of a
+ * second over and over and never the clip. A recording is heard as it is: decoded
+ * from its URL and played straight through on the shared context, so `stop()`
+ * ends this preview and nothing else — not the song, if one is playing.
+ *
+ * `ended` resolves when the clip finishes by itself or is stopped. Never throws:
+ * a URL that will not decode resolves `ended` and plays nothing.
+ */
+export interface ClipPreviewHandle extends AuditionHandle {
+  readonly ended: Promise<void>
+}
+
+/**
+ * The clip previewed last, decoded — a second preview of it does not decode again.
+ * Only one is kept (#2063): a decoded clip is ~10 MB a minute, so keeping every clip
+ * previewed held a long take in memory until the page reloaded.
+ */
+let lastClip: { url: string; decoded: Promise<AudioBuffer> } | null = null
+
+export function startClipPreview(url: string, gain = AUDITION_ENVELOPE.gain): ClipPreviewHandle {
+  let stopped = false
+  let source: AudioBufferSourceNode | null = null
+  let finish: () => void = () => {}
+  const ended = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  const stop = () => {
+    if (stopped) return
+    stopped = true
+    try {
+      source?.stop()
+    } catch {
+      /* not started, or already ended */
+    }
+    finish()
+  }
+  try {
+    const ctx = getAudioContext()
+    // The click is the user gesture that unlocks a suspended context.
+    void ctx.resume()
+    let decoded = lastClip?.url === url ? lastClip.decoded : undefined
+    if (!decoded) {
+      decoded = fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((bytes) => ctx.decodeAudioData(bytes))
+      const clip = { url, decoded }
+      lastClip = clip
+      // A clip that will not decode is tried again next time — unless another
+      // clip has been previewed since, which is the one kept now.
+      decoded.catch(() => {
+        if (lastClip === clip) lastClip = null
+      })
+    }
+    decoded.then(
+      (buffer) => {
+        if (stopped) return
+        const out = ctx.createGain()
+        out.gain.value = gain
+        out.connect(ctx.destination)
+        source = ctx.createBufferSource()
+        source.buffer = buffer
+        source.connect(out)
+        source.onended = () => {
+          out.disconnect()
+          stop()
+        }
+        source.start()
+      },
+      () => stop(),
+    )
+  } catch {
+    stop()
+  }
+  return { stop, ended }
+}

@@ -9,6 +9,10 @@
 import {
   seedWorkspaceFile,
   setContent,
+  setChildOrder,
+  getTrackMeta,
+  setTrackMeta,
+  type TrackDisplay,
   bundledPresetId,
   workspaceFileIdForPreset,
   isVizLanguage,
@@ -42,22 +46,34 @@ export const STRUDEL_CODE = `// Strudel — Declarative pattern algebra
 
 setcps(130/240)
 
-$: stack(
+melody: stack(
   note("c4 e4 g4 b4 c5 b4 g4 e4")
     .s("sawtooth").gain(0.3).lpf(2400).release(0.12),
   note("e3 g3 b3 e4")
     .s("sine").gain(0.15).release(0.3)
 ).viz("pianoroll")
 
-$: note("<c2 [g2 c2] f2 [g2 eb2]>")
+bass: note("<c2 [g2 c2] f2 [g2 eb2]>")
   .s("square").gain(0.4).lpf(500).release(0.2)
   .viz("pitchwheel")
 
-$: stack(
+drums: stack(
   s("hh*8").gain(0.3),
   s("bd [~ bd] ~ bd").gain(0.5),
   s("~ sd ~ [sd cp]").gain(0.4)
 ).viz("wordfall")`;
+
+/** Strudel Sketch (#2076): a short, plain pattern to start writing on. The
+ *  Starter is the tour (STRUDEL_CODE, wired to the visualisers); this is the
+ *  quiet page. */
+export const STRUDEL_SKETCH_CODE = `// A Strudel sketch — Ctrl+Enter to play · Ctrl+. to stop
+
+setcps(0.5)
+
+drums: s("bd ~ sd ~, hh*8").gain(0.6)
+
+bass: note("<c3 eb3 g3 f3>")
+  .s("sawtooth").lpf(900).release(0.2)`;
 
 export const SONIC_PI_CODE = `# Sonic Pi — Imperative play/sleep/live_loop
 # Ctrl+Enter to play · Ctrl+. to stop
@@ -201,13 +217,19 @@ export interface TemplateFile {
   content: string;
   language: WorkspaceLanguage;
   meta?: Record<string, unknown>;
+  /** How each of the song's NAMED tracks draws on the Song timeline: every
+   *  track Bars, a vocal Waveform. Saved when the project is made, so a track
+   *  whose default would change once its sound loads (a piano's sample
+   *  outlasts a bar, #2079) does not. Never a `$:` track's d1, d2…: that name
+   *  is only "the first `$:`", so a type saved for it would stick to whatever
+   *  track the user writes first. Songs of `$:` tracks rely on the default. */
+  trackDisplays?: Record<string, TrackDisplay>;
 }
 
 export interface ProjectTemplate {
   id: string;
   name: string;
   description: string;
-  icon: string; // emoji
   files: TemplateFile[];
 }
 
@@ -218,8 +240,9 @@ const hydraPresetId = () => bundledPresetId("Piano Roll Hydra", "hydra");
 // ── Templates ─────────────────────────────────────────────────────────
 
 /**
- * Starter — the full workspace with Strudel, Sonic Pi, p5.js, and Hydra.
- * Matches the previous hardcoded default. Best for exploring all engines.
+ * Starter — a Strudel pattern playing through the built-in p5.js and Hydra
+ * visualisers. Its viz files are also the bundled visualisers every project
+ * carries in preset/viz (seedMissingPresetFiles). Best for exploring.
  */
 function makeStarterFiles(): TemplateFile[] {
   const p5Id = p5PresetId();
@@ -246,10 +269,10 @@ function makeStarterFiles(): TemplateFile[] {
   };
 
   return [
-    // Music presets
+    // The song: the project's own file, at the root (#2076).
     {
       id: "pattern.strudel",
-      path: "preset/music/pattern.strudel",
+      path: "pattern.strudel",
       content: STRUDEL_CODE,
       language: "strudel",
     },
@@ -295,7 +318,7 @@ function makeStrudelOnlyFiles(): TemplateFile[] {
     {
       id: "pattern.strudel",
       path: "pattern.strudel",
-      content: STRUDEL_CODE,
+      content: STRUDEL_SKETCH_CODE,
       language: "strudel",
     },
   ];
@@ -307,20 +330,22 @@ function makeFullSongFiles(): TemplateFile[] {
       id: "song.strudel",
       path: "song.strudel",
       content: FULL_SONG_CODE,
+      trackDisplays: { drums: "bars", bass: "bars", keys: "bars", lead: "bars", voice: "waveform" },
       language: "strudel",
     },
   ];
 }
 
+// The sketch is a file of its own (#2076). It used to take the Piano Roll
+// (Hydra) preset's id, which hid that preset from preset/viz and made editing
+// the sketch rewrite the visualiser `.viz("Piano Roll (Hydra)")` plays.
 function makeHydraOnlyFiles(): TemplateFile[] {
-  const hydraId = hydraPresetId();
   return [
     {
-      id: workspaceFileIdForPreset(hydraId),
+      id: "sketch.hydra",
       path: "sketch.hydra",
       content: PIANOROLL_HYDRA_CODE,
       language: "hydra",
-      meta: { presetId: hydraId },
     },
   ];
 }
@@ -341,15 +366,13 @@ export const TEMPLATES: ProjectTemplate[] = [
     id: "starter",
     name: "Starter",
     description:
-      "The full workspace — Strudel, p5.js, and Hydra files. Best for exploring.",
-    icon: "✨",
+      "A Strudel pattern playing through the built-in p5.js and Hydra visualisers. Best for exploring.",
     files: [], // filled lazily via getTemplateFiles
   },
   {
     id: "strudel",
     name: "Strudel Sketch",
-    description: "Just a Strudel pattern file. Pure declarative music.",
-    icon: "🎵",
+    description: "A short Strudel pattern to start writing on.",
     files: [],
   },
   {
@@ -357,22 +380,19 @@ export const TEMPLATES: ProjectTemplate[] = [
     name: "Full Song",
     description:
       "A finished 48-bar song: drums, bass, keys, a flute hook and a sung line written as notes.",
-    icon: "🎼",
     files: [],
   },
   // Sonic Pi template hidden in this build — engine not vendored yet (#171).
   {
     id: "hydra",
     name: "Hydra Visual",
-    description: "Just a Hydra shader sketch. Audio-reactive visuals.",
-    icon: "✴️",
+    description: "A Hydra sketch of its own. Audio-reactive visuals.",
     files: [],
   },
   {
     id: "blank",
     name: "Blank",
-    description: "Empty project. Add your own files from the sidebar.",
-    icon: "📄",
+    description: "No files of your own yet. Add them from the sidebar.",
     files: [],
   },
 ];
@@ -405,7 +425,23 @@ export function seedProjectFromTemplate(templateId: string): void {
   const files = getTemplateFiles(templateId);
   for (const f of files) {
     seedWorkspaceFile(f.id, f.path, f.content, f.language, f.meta);
+    // A type already saved is the user's choice: seeding again never changes it.
+    for (const [track, display] of Object.entries(f.trackDisplays ?? {})) {
+      if (getTrackMeta(f.id, track).display === undefined) setTrackMeta(f.id, track, { display });
+    }
   }
+  // The project's own files come first, above the bundled visualisers every
+  // project carries in preset/ (#2076); folders would otherwise sort first.
+  const own = files.filter((f) => !f.path.includes("/")).map((f) => `f:${f.id}`);
+  if (own.length > 0) setChildOrder("", [...own, "d:preset"]);
+}
+
+/**
+ * The kinds of file a template creates, in the order it lists them: what its
+ * card shows (#2076). Blank creates none.
+ */
+export function templateLanguages(templateId: string): WorkspaceLanguage[] {
+  return [...new Set(getTemplateFiles(templateId).map((f) => f.language))];
 }
 
 /** The fixed sketch each retired source became (#2021) — see retiredPresetSources.ts. */
