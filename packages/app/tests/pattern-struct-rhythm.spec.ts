@@ -91,13 +91,14 @@ test.describe('#2120 — a .struct rhythm line', () => {
     const drawer = page.locator('[data-bottom-panel="root"]')
     const hits = LINE_2.split(' ').filter((s) => s === 'x').length
     // the strip names the chord in each bar, and each chord has its row
-    await expect(drawer.locator('[data-rhythm-chord]')).toHaveText(['Em9', 'A13'])
+    await expect(drawer.locator('[data-rhythm-chord]')).toHaveText(['Em9', 'A13', 'Em9', 'A13'])
     await expect(drawer.locator('[data-rhythm-row]')).toHaveCount(2)
-    await expect(drawer.locator('[data-rhythm-cell^="0:"]')).toHaveCount(32)
-    // Em9 plays the line's hits in bar 1, A13 in bar 2; each is greyed in the other's bar
-    await expect(drawer.locator('[data-rhythm-cell^="0:"][aria-pressed="true"]')).toHaveCount(hits)
-    await expect(drawer.locator('[data-rhythm-cell^="1:"][aria-pressed="true"]')).toHaveCount(hits)
-    await expect(drawer.locator('[data-rhythm-cell^="0:"][data-rhythm-other]')).toHaveCount(16)
+    // four bars: the chords repeat every 2 and the mask `<1 1 0 1>` every 4
+    await expect(drawer.locator('[data-rhythm-cell^="0:"]')).toHaveCount(64)
+    // Em9 plays the line's hits in bars 1 and 3, A13 in bars 2 and 4; each is greyed in the other's
+    await expect(drawer.locator('[data-rhythm-cell^="0:"][aria-pressed="true"]')).toHaveCount(2 * hits)
+    await expect(drawer.locator('[data-rhythm-cell^="1:"][aria-pressed="true"]')).toHaveCount(2 * hits)
+    await expect(drawer.locator('[data-rhythm-cell^="0:"][data-rhythm-other]')).toHaveCount(32)
     await expect(drawer.locator('[data-rhythm-cell="0:1"]')).toHaveAttribute('aria-pressed', 'true')
     await expect(drawer.locator('[data-rhythm-cell="1:17"]')).toHaveAttribute('aria-pressed', 'true')
   })
@@ -128,6 +129,35 @@ test.describe('#2120 — a .struct rhythm line', () => {
     await expect.poll(() => code(page)).not.toBe(SONG)
     expect((await code(page)).split('\n')[6]).toBe(`    "${LINE_2.replace(/^~/, 'x')}",`)
   })
+})
+
+test('#2120 — the .mask silences bar 3: its hits are hollow, and a click there writes nothing', async ({ page }) => {
+  await boot(page)
+  await seed(page, SONG)
+  await clickInto(page, LINE_2)
+  const drawer = page.locator('[data-bottom-panel="root"]')
+  const hits = LINE_2.split(' ').filter((s) => s === 'x').length
+  await expect(drawer.locator('[data-rhythm-chart-line]')).toContainText('Hollow steps are silenced by .mask(…)')
+  // bar 3 is Em9's (columns 32–47), and every hit there is silenced; no other bar's is
+  await expect(drawer.locator('[data-rhythm-silenced]')).toHaveCount(hits)
+  const hollow = drawer.locator('[data-rhythm-cell="0:33"]')
+  await expect(hollow).toHaveAttribute('data-rhythm-silenced', 'true')
+  await expect(hollow).toHaveAttribute('aria-disabled', 'true')
+  await expect(drawer.locator('[data-rhythm-cell="0:1"]')).not.toHaveAttribute('data-rhythm-silenced', 'true')
+  // forced past Playwright's own wait for an enabled control; then the live control writes
+  await hollow.click({ force: true })
+  await drawer.locator('[data-rhythm-cell="1:16"]').click()
+  await expect.poll(() => code(page)).not.toBe(SONG)
+  expect((await code(page)).split('\n')[6]).toBe(`    "${LINE_2.replace(/^~/, 'x')}",`)
+})
+
+test('#2142 — a chord progression written inside chord("…") opens as a chord chart', async ({ page }) => {
+  await boot(page)
+  await seed(page, '$: chord("<Em9 A13>").voicing().s("piano")')
+  await clickInto(page, 'chord("<Em9')
+  const drawer = page.locator('[data-bottom-panel="root"]')
+  await expect(drawer.locator('[data-seq-chord-chart]')).toContainText('each lane is a chord')
+  await expect(drawer.locator('[data-seq-voice]')).toHaveText(['Em9', 'A13'])
 })
 
 test('#2120 — on the chords, the chord chart says where its rhythm is', async ({ page }) => {

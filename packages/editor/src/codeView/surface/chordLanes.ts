@@ -146,6 +146,8 @@ export function forcesChordReading(token: string): boolean {
  * is exactly as readable as three samples. Zero units in either corpus have this
  * shape, so it costs nothing measurable today; what would change the answer is a
  * corpus where it appears, and the fix then is a signal that is not the tokens.
+ * One such signal exists now: a `chord(…)` head, which the step grid takes as a
+ * caption by itself (#2142). This function still answers for the tokens alone.
  */
 export function chordLanes(laneSounds: readonly string[]): boolean {
   return (

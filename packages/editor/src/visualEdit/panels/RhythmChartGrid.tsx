@@ -5,7 +5,8 @@
  * chord sounding in each bar, as Logic's Chord track does, and each chord has a row lit
  * on the steps where the rhythm plays it. A step outside a chord's own time is greyed
  * on its row. Clicking a step turns it on or off in the rhythm line and nowhere else,
- * so the change shows in every bar that line plays.
+ * so the change shows in every bar that line plays. A hit a `.mask(…)` silences is
+ * drawn hollow and is not clickable in that bar; the mask is edited in the code.
  *
  * What is drawn is asked of Strudel (`rhythmChart`); the write is the step grid's
  * (`toggleCell` on the line's own model). When there is no chart to draw (no chords
@@ -40,7 +41,7 @@ export function RhythmChartGrid({ onResolution }: RhythmChartGridProps): React.R
   const result = React.useMemo(
     () =>
       chunk?.structRhythm && chunk.miniString !== null
-        ? rhythmChart(chunk.structOver?.miniString ?? null, chunk.miniString, model, parseChords)
+        ? rhythmChart(chunk.structOver?.miniString ?? null, chunk.miniString, model, parseChords, chunk.structOver?.masks)
         : ({ ok: false, reason: null } as const),
     [chunk, model],
   )
@@ -144,6 +145,8 @@ export function RhythmChartGrid({ onResolution }: RhythmChartGridProps): React.R
           {chart.lookOnly
             ? lookOnlyLine({ reason: chart.lookOnly })
             : 'This rhythm line plays the chords. A click turns a step on or off in this line, in every bar it plays.'}
+          {chart.silenced.some((s) => s.length > 0) && ' Hollow steps are silenced by .mask(…) in that bar.'}
+          {chart.maskUnread && ' This track’s .mask(…) isn’t drawn here: it isn’t written as a string.'}
         </div>
         {/* only the grid is as wide as its steps; the lines above wrap at the panel's width */}
         <div role="grid" aria-label="Chords on the rhythm" style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 'min-content' }}>
@@ -220,20 +223,25 @@ export function RhythmChartGrid({ onResolution }: RhythmChartGridProps): React.R
                   {Array.from({ length: cols }, (_, c) => {
                     const hit = chart.hits[c].includes(row)
                     const own = chart.sounding[c].includes(row)
-                    const canToggle = own && (toggleable?.[chart.rhythmCol(c)] ?? false)
+                    // a hit a `.mask` silences here: the step plays in the bars it lets through
+                    const hollow = chart.silenced[c].includes(row)
+                    const canToggle = own && !hollow && (toggleable?.[chart.rhythmCol(c)] ?? false)
                     return (
                       <div key={c} role="gridcell" style={{ display: 'flex', ...colStyle(c) }}>
                         <button
                           type="button"
                           data-rhythm-cell={`${r}:${c}`}
                           data-rhythm-other={own ? undefined : 'true'}
+                          data-rhythm-silenced={hollow ? 'true' : undefined}
                           aria-pressed={hit}
                           aria-disabled={canToggle ? undefined : true}
-                          aria-label={`${row} bar ${Math.floor(c / chart.colsPerBar) + 1} step ${(c % chart.colsPerBar) + 1}`}
+                          aria-label={`${row} bar ${Math.floor(c / chart.colsPerBar) + 1} step ${(c % chart.colsPerBar) + 1}${hollow ? ', silenced by .mask' : ''}`}
                           title={
                             !own
                               ? `${row} isn't playing here.`
-                              : chart.lookOnly
+                              : hollow
+                                ? 'Silenced by .mask(…) in this bar. The step plays in the bars the mask lets through; change the mask in the code.'
+                                : chart.lookOnly
                                 ? lookOnlyLine({ reason: chart.lookOnly })
                                 : undefined
                           }
@@ -245,8 +253,8 @@ export function RhythmChartGrid({ onResolution }: RhythmChartGridProps): React.R
                             height: 22,
                             padding: 0,
                             borderRadius: 3,
-                            border: '1px solid var(--border, #3a3a42)',
-                            background: hit ? color : 'var(--background-elevated, #26262c)',
+                            border: hollow ? `2px solid ${color}` : '1px solid var(--border, #3a3a42)',
+                            background: hit && !hollow ? color : 'var(--background-elevated, #26262c)',
                             opacity: own ? 1 : 0.3,
                             cursor: canToggle ? 'pointer' : 'default',
                           }}

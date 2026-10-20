@@ -18,6 +18,11 @@
  * sounds over. Where they disagree (`"1 0 1 1"`: the grid reads `0` as a hit, Strudel
  * as a rest) the chart is still drawn from Strudel and says it is look only.
  *
+ * A `.mask(…)` after the `.struct` silences some of the rhythm's hits (the clav's
+ * `.mask("<1 1 0 1>")` drops every third bar). Those hits are drawn hollow and are not
+ * clickable there: the step plays in the bars the mask lets through, and the mask
+ * itself is edited in the code. Which hits it silences is Strudel's answer too.
+ *
  * The strings drawn are the ones written. A call on the chords before `.struct` that
  * moves time (`.fast(2)`) is not applied, as on every other grid in the tab.
  *
@@ -28,6 +33,7 @@ import type { ParseResult, StepGridModel } from './model'
 import { isCellOn } from './model'
 import { PROJECTION_PERIOD_BOUNDS } from './parse'
 import { lcmOf } from './perBar'
+import { detectPeriod } from '../ir/songAnalysis'
 
 /** the most bars the chart draws: the step grid's own limit */
 export const RHYTHM_CHART_MAX_BARS = PROJECTION_PERIOD_BOUNDS.leaf.grid
@@ -44,6 +50,10 @@ export interface RhythmChart {
   sounding: string[][]
   /** per column, the chords hit there */
   hits: string[][]
+  /** per column, the chords hit there that a `.mask` silences: a subset of `hits` */
+  silenced: string[][]
+  /** a `.mask` on the track is not written as a string, so what it silences is not drawn */
+  maskUnread: boolean
   /** the rhythm line's column a chart column is written through */
   rhythmCol: (col: number) => number
   /** null when a click can write the line; otherwise why not, in the user's words */
@@ -76,6 +86,7 @@ export function rhythmChart(
   rhythm: string,
   model: StepGridModel | null,
   parse: (mini: string) => ParseResult<StepGridModel>,
+  masks: ReadonlyArray<string | null> = [],
 ): RhythmChartResult {
   if (chords === null || model === null) return NONE
   // a rhythm whose bars have different column counts has no one column width to share
@@ -86,12 +97,22 @@ export function rhythmChart(
   const chordsRead = parse(chords)
   if (!chordsRead.ok) return NONE
   const chordBars = chordsRead.model.bars ?? 1
-  const bars = lcmOf([rhythmBars, chordBars])
+  const readMasks = masks.filter((m): m is string => m !== null)
+  const maskBars: number[] = []
+  for (const m of readMasks) {
+    const p = maskPeriod(m)
+    if (p === null) {
+      return { ok: false, reason: `The .mask(…) on this track doesn’t repeat within ${RHYTHM_CHART_MAX_BARS} bars, so it can’t be drawn on the rhythm.` }
+    }
+    maskBars.push(p)
+  }
+  const bars = lcmOf([rhythmBars, chordBars, ...maskBars])
   if (bars > RHYTHM_CHART_MAX_BARS) {
+    const mask = maskBars.length ? ` and the mask every ${lcmOf(maskBars)}` : ''
     return {
       ok: false,
       reason:
-        `The chords repeat every ${chordBars} bar${chordBars === 1 ? '' : 's'} and the rhythm every ${rhythmBars}, ` +
+        `The chords repeat every ${chordBars} bar${chordBars === 1 ? '' : 's'}, the rhythm every ${rhythmBars}${mask}, ` +
         `so together they come round after ${bars} bars, more than the ${RHYTHM_CHART_MAX_BARS} this grid draws.`,
     }
   }
@@ -99,6 +120,7 @@ export function rhythmChart(
   const cols = bars * colsPerBar
   const sounding: string[][] = Array.from({ length: cols }, () => [])
   const hits: string[][] = Array.from({ length: cols }, () => [])
+  const silenced: string[][] = Array.from({ length: cols }, () => [])
   try {
     for (let b = 0; b < bars; b++) {
       for (const p of miniPieces(chords, b)) {
@@ -111,12 +133,13 @@ export function rhythmChart(
           if (!sounding[at].includes(value)) sounding[at].push(value)
         }
       }
-      for (const h of structHits(chords, rhythm, b)) {
+      for (const h of structHits(chords, rhythm, b, readMasks)) {
         const c = whole((h.begin.valueOf() - b) * colsPerBar)
         if (c === null) {
           return { ok: false, reason: 'This rhythm plays between the grid’s steps, so the chords can’t be drawn on it.' }
         }
         hits[b * colsPerBar + c].push(nameOf(h.value))
+        if (h.silenced) silenced[b * colsPerBar + c].push(nameOf(h.value))
       }
     }
   } catch {
@@ -148,5 +171,30 @@ export function rhythmChart(
     : disagrees
       ? 'this rhythm’s steps are written in a way the grid reads differently from how they play'
       : null
-  return { ok: true, chart: { bars, colsPerBar, rows, strip, sounding, hits, rhythmCol, lookOnly } }
+  const maskUnread = readMasks.length < masks.length
+  return { ok: true, chart: { bars, colsPerBar, rows, strip, sounding, hits, silenced, maskUnread, rhythmCol, lookOnly } }
+}
+
+/**
+ * How many bars a mask takes to repeat, asked of what Strudel plays: each cycle's
+ * pieces, compared by the Song view's own `detectPeriod`. A mask that is silent
+ * throughout repeats every bar. Null when it does not repeat within the probe (or
+ * Strudel cannot query it).
+ */
+function maskPeriod(mask: string): number | null {
+  const prints: string[] = []
+  try {
+    for (let c = 0; c < PROJECTION_PERIOD_BOUNDS.probe; c++) {
+      prints.push(
+        miniPieces(mask, c)
+          .map((p) => `${p.begin.valueOf() - c}:${p.end.valueOf() - c}:${nameOf(p.value)}`)
+          .join(' '),
+      )
+    }
+  } catch {
+    return null
+  }
+  if (prints.every((p) => p === '')) return 1
+  const p = detectPeriod(prints)
+  return p !== null && p <= RHYTHM_CHART_MAX_BARS ? p : null
 }

@@ -76,6 +76,9 @@ export type Surface = Exclude<PatternKind, null>
  */
 export function routeSurface(headFn: string | null, mini: string): Surface {
   if (headFn === 's' || headFn === 'sound') return 'step'
+  // `chord("…")` holds chord symbols whatever they look like (#2142). Asking the roll
+  // first read `<C F G>` as three notes, since bare triads spell like pitches.
+  if (headFn === 'chord') return 'step'
   if (headFn === 'note' || headFn === 'n') return memoised(headFn, mini, rollUnlessChordChart)
   // The head is silent — ask the surface that can discriminate word patterns.
   // `step` here means "the grid is the right place to ASK", not "the grid will
@@ -169,6 +172,10 @@ function rollUnlessChordChart(mini: string): Surface {
  * non-content head (`lpf("0 1 2")`) has always landed in standby, and moving it
  * is a separate decision with its own measurement — this is the wiring of
  * admission, not a re-route of everything that owns a string.
+ *
+ * That decision has been made for one head: `chord`, whose string IS the music
+ * (#2142, measured at `LITERAL_CONTENT_HEADS`). A `.struct` rhythm line opens on
+ * its own rule (#2120).
  */
 export function chunkSurface(chunk: ChunkInfo | null): PatternKind {
   if (!chunk || chunk.miniString === null) return patternKind(chunk)
@@ -181,9 +188,23 @@ export function chunkSurface(chunk: ChunkInfo | null): PatternKind {
   // which was harmless while the two agreed by construction and stopped being so
   // the moment a melodic head could route to the grid (#1243). One decision, one
   // expression of it — the same property #1250 had to restore one layer down.
-  if (!patternKind(chunk) && chunk.miniVia !== 'resolver') return null
+  if (!patternKind(chunk) && chunk.miniVia !== 'resolver' && !LITERAL_CONTENT_HEADS.has(chunk.headFn ?? '')) return null
   return routeSurface(chunk.headFn, chunk.miniString)
 }
+
+/**
+ * Heads whose own string argument is the music, beside the content heads
+ * `patternKind` knows (#2142). `chord("<Em9 A13>")` opened nothing while
+ * `chord(v)` opened the chord chart, because only a string found through a name was
+ * routed on its content.
+ *
+ * MEASURED before choosing, over the 150 saved tunes (621 chunks): 61 head-call
+ * literals open nothing. 18 are `chord`. The rest are not patterns to draw: `samples`
+ * URLs (35), a user's own function (`spagda`, 3), and one each of `gain`, `register`,
+ * `pm`, `stack` and `s_polymeterSteps`. A filter or gain value (`lpf("0 1 2")`) stays
+ * in standby, as the scoping above says.
+ */
+const LITERAL_CONTENT_HEADS: ReadonlySet<string> = new Set(['chord'])
 
 /**
  * Does this chunk belong to the step grid / to the piano roll?

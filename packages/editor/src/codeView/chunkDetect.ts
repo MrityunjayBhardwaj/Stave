@@ -137,7 +137,13 @@ export interface ChunkInfo {
   /** On a rhythm line's chunk: the head and mini string of the chain `.struct` is
    *  called on, the content the line times (`chord`, `<Em9 A13>`). The Pattern tab
    *  draws that content on the line (#2120). Read-only: nothing writes through it. */
-  structOver?: { headFn: string | null; miniString: string | null }
+  structOver?: {
+    headFn: string | null
+    miniString: string | null
+    /** each `.mask(…)` after `.struct`, in chain order: its string (through a const
+     *  too), or null when it is not written as one */
+    masks: Array<string | null>
+  }
 }
 
 // Re-exported so every existing `from './chunkDetect'` import keeps resolving;
@@ -281,7 +287,7 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
         // resolves to the whole RHS — exactly the render-time chunk.
         const initTarget = innermostChainUnder(doc, decl.init, pos, bindings)
         if (initTarget.type === PICK_CHOICE) return buildPickChoiceChunk(doc, initTarget, [node.start, node.end])
-        if (initTarget.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, initTarget, [node.start, node.end], getIndex)
+        if (initTarget.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, initTarget, [node.start, node.end], bindings, getIndex)
         return initTarget === decl.init
           ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings, false, getIndex)
           : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true, getIndex)
@@ -296,7 +302,7 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
       const topExpr = body.expression
       const target = innermostChainUnder(doc, topExpr, pos, bindings)
       if (target.type === PICK_CHOICE) return buildPickChoiceChunk(doc, target, [node.start, node.end])
-      if (target.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, target, [node.start, node.end], getIndex)
+      if (target.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, target, [node.start, node.end], bindings, getIndex)
       // The top-level statement keeps its full range (incl. the `$:` label) so
       // the freshness guard watches the whole statement; a nested target is
       // anchored to its own expression span and carries no label. A bare-ref
@@ -569,6 +575,12 @@ function pickCallsOnSpine(expr: any): { pick: any; choices: any[] }[] {
 
 /** A string literal a mini pattern can be read from: quotes, or a backtick string
  *  with nothing interpolated (an interpolation would make the text not the pattern). */
+/** a string argument's text, quotes excluded, followed through a const; else null */
+function miniText(doc: string, node: any, bindings: BindingIndex): string | null {
+  const lit = node?.type === 'Identifier' ? resolveBinding(node, bindings)?.rhs : node
+  return isMiniString(lit) ? doc.slice(lit.start + 1, lit.end - 1) : null
+}
+
 function isMiniString(node: any): boolean {
   if (!node || typeof node.start !== 'number') return false
   if (node.type === 'Literal') return typeof node.value === 'string'
@@ -645,9 +657,9 @@ function structRhythmUnder(expr: any, pos: number): any {
     ) {
       const arg = node.arguments[0]
       if (arg && typeof arg.start === 'number' && pos >= arg.start && pos <= arg.end) {
-        if (isMiniString(arg)) return { lit: arg, receiver: callee.object }
+        if (isMiniString(arg)) return { lit: arg, receiver: callee.object, struct: node }
         const choice = pickChoiceUnder(arg, pos)
-        if (choice) return { lit: choice.lit, receiver: callee.object }
+        if (choice) return { lit: choice.lit, receiver: callee.object, struct: node }
       }
     }
     node = callee.type === 'MemberExpression' ? callee.object : null
@@ -669,9 +681,20 @@ function buildStructRhythmChunk(
   doc: string,
   t: any,
   outer: [number, number],
+  bindings: BindingIndex,
   getIndex: () => SpanIndex | null,
 ): ChunkInfo {
   const over = buildChunkFromExpr(doc, t.receiver, null, outer, false, getIndex)
+  // the `.mask(…)` calls after `.struct`, outermost first on the spine, so reversed
+  const masks: Array<string | null> = []
+  for (let node = t.expr; node && node !== t.struct && node.type === 'CallExpression'; ) {
+    const callee = node.callee
+    if (callee.type !== 'MemberExpression') break
+    if (!callee.computed && callee.property.type === 'Identifier' && callee.property.name === 'mask') {
+      masks.unshift(miniText(doc, node.arguments[0], bindings))
+    }
+    node = callee.object
+  }
   const chain = collectChain(doc, t.expr, { ref: null })
   const lit: [number, number] = [t.lit.start, t.lit.end]
   const info: ChunkInfo = {
@@ -688,7 +711,7 @@ function buildStructRhythmChunk(
     type: 'unknown',
     nested: false,
     structRhythm: true,
-    structOver: { headFn: over.headFn, miniString: over.miniString },
+    structOver: { headFn: over.headFn, miniString: over.miniString, masks },
   }
   info.type = classifyChunk(info)
   return info

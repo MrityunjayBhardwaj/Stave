@@ -344,7 +344,10 @@ const POPULATION = {
   // ⚠ 220 -> 217 at #1849: three units on which no view opened now open (the stacks it reads
   // part by part), so they leave the set of units only evaluation admits.
   // ⚠ newlyAdmitted 217 -> 215 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-  newlyAdmitted: 215,
+  // ⚠ newlyAdmitted 215 -> 201 at #2142 (a progression written in `chord("…")` opens in the
+  // Pattern tab): fourteen distinct `chord` strings now open a chord chart, so they leave the
+  // set of units only evaluation admits. Only this field moved, as at #1240 and #1849.
+  newlyAdmitted: 201,
 }
 
 /**
@@ -382,8 +385,13 @@ const ALL_RESOLVED = { coreServed: 509, transfers: 440, untransferable: 27, unve
  * alone.
  *
  * ⚠ MOVED 76/7 → 77/6 at #1010 P4c — one of the four above falls in this slice.
+ *
+ * ⚠ MOVED 32/22/1/9 → 21/12/1/8 at #2142, the same shape as #1240 and for the same
+ * reason: `chord("…")` literals now open the chord chart, so fourteen minis left this
+ * slice (215 → 201), and they were mostly ones a writer already serves. `ALL_RESOLVED`
+ * above is UNMOVED in the same run (509/440/27/42), so only the partition moved.
  */
-const NEWLY_ADMITTED = { coreServed: 32, transfers: 22, untransferable: 1, unverified: 9 }
+const NEWLY_ADMITTED = { coreServed: 21, transfers: 12, untransferable: 1, unverified: 8 }
 
 /**
  * The sibling arm's headline, pinned here too even though it is DERIVED from
