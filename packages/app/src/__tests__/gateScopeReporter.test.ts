@@ -100,10 +100,12 @@ describe('#1183 — the gate reporter states the population it actually covered'
     expect(out).not.toContain('scope: the WHOLE configured package')
   }, 120_000)
 
-  it('a filter matching NO files produces no scope line at all — vitest exits first', () => {
-    // The honest limit, pinned so nobody re-asserts otherwise: with zero matches
-    // vitest prints "No test files found" and exits before any reporter hook runs.
-    // An absent scope line therefore does NOT mean "nothing was narrowed".
+  it('a filter matching NO files is reported as 0 of N, not left silent', () => {
+    // Until vitest 4 this was the honest limit: with zero matches vitest printed
+    // "No test files found" and exited before any reporter hook ran, so there was
+    // no scope line at all. Vitest 4 still calls `onTestRunEnd` (#2154), so the
+    // narrowing is now stated. Pinned both ways: the "0 of" line must be there,
+    // and it must not read as the whole package.
     //
     // ⚠ ZERO MATCHES IS SUMMONED DIRECTLY, NOT VIA `--changed HEAD` (#1192). That was
     // the first version, and it asks GIT what changed: with a clean tree nothing has,
@@ -114,7 +116,8 @@ describe('#1183 — the gate reporter states the population it actually covered'
     // from the environment.
     const out = runVitest(['no-such-file.test.ts'])
     expect(out).toContain('No test files found')
-    expect(out).not.toContain('scope:')
+    expect(out).toContain('scope: a SUBSET — this run covered 0 of the 2 file(s)')
+    expect(out).not.toContain('scope: the WHOLE configured package')
   }, 120_000)
 
   it('a run that executes nothing says so, instead of reading as a pass', () => {

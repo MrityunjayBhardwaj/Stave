@@ -19,8 +19,7 @@ import type * as Monaco from 'monaco-editor'
  */
 function makeRegisterSpy() {
   return vi.fn<
-    [string, Monaco.languages.CompletionItemProvider],
-    Monaco.IDisposable
+    (language: string, provider: Monaco.languages.CompletionItemProvider) => Monaco.IDisposable
   >(() => ({ dispose: vi.fn() }))
 }
 

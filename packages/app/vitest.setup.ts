@@ -12,7 +12,23 @@
  * makes each test's storage its own. A test that installs its own storage (to
  * spy on it, or to make it throw) still can: it replaces this one for itself.
  */
-import { beforeEach } from 'vitest'
+import { beforeEach, expect, vi } from 'vitest'
+
+/**
+ * #2154 — the corpus tests get a 5-minute timeout; every other test keeps 5 s.
+ *
+ * Corpus tests are synchronous sweeps over hundreds of real tunes. Under a full
+ * run they take up to ~50 s each (measured 2026-10-20: 52 of them past 5 s,
+ * median 11 s). Vitest 1 never failed them: it only noticed a timeout when its
+ * timer fired, and a synchronous test never lets it fire. Vitest 4 also fails a
+ * test that FINISHES late (vitest#2920), so they need a real limit. It is set
+ * per FILE here rather than in the config, because the other `vitest.*.config.ts`
+ * files `mergeConfig` this one and a `projects` split would change all of them.
+ */
+const CORPUS_TEST_TIMEOUT_MS = 300_000
+if (expect.getState().testPath?.replace(/\\/g, '/').includes('/tests/parity-corpus/')) {
+  vi.setConfig({ testTimeout: CORPUS_TEST_TIMEOUT_MS })
+}
 
 class MemoryStorage implements Storage {
   private items = new Map<string, string>()

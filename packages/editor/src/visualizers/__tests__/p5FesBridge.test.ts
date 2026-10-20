@@ -50,7 +50,7 @@ describe('installP5FesBridge', () => {
 
   it('routes FES messages through emitLog with runtime=p5, level=warn', async () => {
     installP5FesBridge()
-    const spy = vi.fn<[LogEntry | null, readonly LogEntry[]], void>()
+    const spy = vi.fn<(latest: LogEntry | null, all: readonly LogEntry[]) => void>()
     subscribeLog(spy)
     ;(p5 as unknown as P5Static)._fesLogger?.(
       '\n🌸 p5.js says: Did you mean `ellipse`?',

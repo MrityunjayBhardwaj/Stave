@@ -25,9 +25,9 @@ describe('#1627 — StrudelEngine transport methods go through the render hold',
     /* eslint-disable @typescript-eslint/no-explicit-any */
     const s: FakeScheduler = {
       started,
-      start: vi.fn<any[], any>(async () => { s.started = true }),
-      pause: vi.fn<any[], any>(() => { s.started = false }),
-      stop: vi.fn<any[], any>(() => { s.started = false }),
+      start: vi.fn<(...args: any[]) => any>(async () => { s.started = true }),
+      pause: vi.fn<(...args: any[]) => any>(() => { s.started = false }),
+      stop: vi.fn<(...args: any[]) => any>(() => { s.started = false }),
     }
     /* eslint-enable @typescript-eslint/no-explicit-any */
     return s

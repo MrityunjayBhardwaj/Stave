@@ -68,15 +68,15 @@ const onPlatform = (p: string) => {
   platform = vi.spyOn(window.navigator, "platform", "get").mockReturnValue(p);
 };
 
-let sidebar: Mock<[], void>;
-let zen: Mock<[], void>;
-let palette: Mock<[], void>;
+let sidebar: Mock<() => void>;
+let zen: Mock<() => void>;
+let palette: Mock<() => void>;
 
 beforeEach(() => {
   onPlatform("MacIntel");
-  sidebar = vi.fn<[], void>();
-  zen = vi.fn<[], void>();
-  palette = vi.fn<[], void>();
+  sidebar = vi.fn<() => void>();
+  zen = vi.fn<() => void>();
+  palette = vi.fn<() => void>();
   cleanup.push(registerCommand({ id: "test2100.sidebar", title: "Sidebar", keybinding: "mod+b", run: sidebar }));
   cleanup.push(registerCommand({ id: "test2100.zen", title: "Zen", keybinding: "mod+alt+z", run: zen }));
   cleanup.push(registerCommand({ id: "stave.palette.test2100", title: "Palette", keybinding: "mod+shift+p", run: palette }));
@@ -116,7 +116,7 @@ describe("on a Mac", () => {
   });
 
   it("a chord without ⌘ does not run from the code: ⌥K types ˚", () => {
-    const option = vi.fn<[], void>();
+    const option = vi.fn<() => void>();
     cleanup.push(registerCommand({ id: "test2100.option", title: "Option", keybinding: "alt+k", run: option }));
     press(codeInput(), { key: "˚", code: "KeyK", altKey: true });
     expect(option).toHaveBeenCalledTimes(0);

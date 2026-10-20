@@ -38,6 +38,10 @@ export default defineConfig({
     // ⚠ Running `vitest` DIRECTLY bypasses the guard and keeps the 4288 MB
     // default — which is the configuration the failure was observed on.
     //
+    // Since vitest 4 (#2154) files run in forked processes rather than worker
+    // threads; they inherit `NODE_OPTIONS` the same way (re-measured 8384 MB vs
+    // 4288 MB), so the guard still sets the ceiling.
+    //
     // ⚠ Lowering `maxThreads` would make this WORSE, not better: fewer workers
     // means more files each, and files-per-worker is exactly what accumulates.
 
