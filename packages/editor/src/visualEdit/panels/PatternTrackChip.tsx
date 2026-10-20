@@ -123,8 +123,8 @@ export function PatternTrackChip(): React.ReactElement | null {
         <button
           type="button"
           data-pattern-track-dot
-          aria-label={`Change colour of ${strip.name}`}
-          title={`${strip.name} — click to change colour`}
+          aria-label={`Change colour of ${strip.shownName}`}
+          title={`${strip.shownName} — click to change colour`}
           onClick={(e) => setColorAnchor(e.currentTarget.getBoundingClientRect())}
           style={{
             width: 9,
@@ -191,7 +191,7 @@ export function PatternTrackChip(): React.ReactElement | null {
       ) : (
         <span
           data-pattern-track-name
-          title={`${strip.name} — double-click to rename`}
+          title={`${strip.shownName} — double-click to rename`}
           onDoubleClick={openRename}
           style={{
             fontSize: 11,
@@ -204,7 +204,7 @@ export function PatternTrackChip(): React.ReactElement | null {
             cursor: 'text',
           }}
         >
-          {strip.name}
+          {strip.shownName}
         </span>
       )}
     </div>

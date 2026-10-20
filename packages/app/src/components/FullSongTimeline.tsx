@@ -1528,16 +1528,16 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // #1738 — the track menu (Type ▸ Waveform / Bars, Rename), opened by a
   // double-click or right-click on a lane header, at the pointer.
   const [laneMenu, setLaneMenu] = useState<
-    { laneKey: string; name: string; x: number; y: number; anchor: HTMLElement } | null
+    { laneKey: string; name: string; shownName: string; x: number; y: number; anchor: HTMLElement } | null
   >(null)
   const closeLaneMenu = useCallback(() => setLaneMenu(null), [])
   const openLaneMenu = useCallback(
-    (e: React.MouseEvent<HTMLElement>, laneKey: string, name: string) => {
+    (e: React.MouseEvent<HTMLElement>, laneKey: string, name: string, shownName: string) => {
       const control = (e.target as HTMLElement).closest('button, input')
       if (control && e.currentTarget.contains(control)) return
       e.preventDefault()
       e.stopPropagation()
-      setLaneMenu({ laneKey, name, x: e.clientX, y: e.clientY, anchor: e.currentTarget })
+      setLaneMenu({ laneKey, name, shownName, x: e.clientX, y: e.clientY, anchor: e.currentTarget })
     },
     [],
   )
@@ -3279,7 +3279,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             role="status"
             style={styles.fallbackNotice}
             title={`A synth track's waveform is drawn from a render of it, and renders only run while the transport is stopped. Not rendered yet: ${waitingLanes
-              .map((key) => scene.lanes.find((l) => l.laneKey === key)?.displayName ?? key)
+              .map((key) => scene.lanes.find((l) => l.laneKey === key)?.shownName ?? key)
               .join(', ')}.`}
           >
             {waitingLanes.length === 1 ? '1 track draws when stopped' : `${waitingLanes.length} tracks draw when stopped`}
@@ -3394,8 +3394,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               // the lane has no scene entry (defensive — should always match).
               const lane = laneByKey.get(box.laneKey)
               const displayName = lane?.displayName ?? box.laneKey
+              // #2151 — the TEXT a header shows (`Track 1` for an unnamed `d1`).
+              // Everything keyed on the track — saved colour and type, the faded
+              // set, rename — keeps using `displayName`.
+              const shownName = lane?.shownName ?? displayName
               const dotColor = lane?.color ?? trackIdentity(box.laneKey).color
-              const headerName = subRows ? `${displayName} · ${subRows[0].label}` : displayName
+              const headerName = subRows ? `${shownName} · ${subRows[0].label}` : shownName
               // Inline rename (#580, Phase C): renameable when a write handler is
               // wired AND the lane has a statement anchor. The seed is the current
               // label for a named track, EMPTY for an anonymous `d{N}` (its
@@ -3443,7 +3447,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                     ...(isSelected ? styles.laneRowSelected : null),
                     ...(isSilenced ? styles.laneRowSilenced : null),
                   }}
-                  title={isWaiting ? `${displayName} — its waveform draws when the transport stops` : displayName}
+                  title={isWaiting ? `${shownName} — its waveform draws when the transport stops` : shownName}
                 >
                   <div
                     data-full-song-lane-select={selectEnabled ? box.laneKey : undefined}
@@ -3452,21 +3456,21 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                       height: headerHeight,
                       cursor: selectEnabled ? 'pointer' : undefined,
                     }}
-                    title={selectEnabled ? `${displayName} — click to jump to its code` : undefined}
+                    title={selectEnabled ? `${shownName} — click to jump to its code` : undefined}
                     onClick={
                       selectEnabled ? () => onSelectLane!(selectOffset!) : undefined
                     }
                     // #1738 — double-click or right-click opens the track menu at
                     // the pointer. Not from the header's own controls (caret, ∿,
                     // #, colour dot) or the rename input, which keep their gestures.
-                    onDoubleClick={menuEnabled ? (e) => openLaneMenu(e, box.laneKey, displayName) : undefined}
-                    onContextMenu={menuEnabled ? (e) => openLaneMenu(e, box.laneKey, displayName) : undefined}
+                    onDoubleClick={menuEnabled ? (e) => openLaneMenu(e, box.laneKey, displayName, shownName) : undefined}
+                    onContextMenu={menuEnabled ? (e) => openLaneMenu(e, box.laneKey, displayName, shownName) : undefined}
                   >
                     <button
                       type="button"
                       data-full-song-lane-expand={box.laneKey}
                       aria-pressed={box.expanded}
-                      aria-label={box.expanded ? `Collapse ${displayName}` : `Expand ${displayName} to view its notes`}
+                      aria-label={box.expanded ? `Collapse ${shownName}` : `Expand ${shownName} to view its notes`}
                       onClick={(e) => {
                         // Caret keeps its own meaning (expand + bind); don't also
                         // fire the header's jump (#610).
@@ -3481,8 +3485,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                       <button
                         type="button"
                         data-full-song-lane-automate={box.laneKey}
-                        aria-label={`Automate a parameter of ${displayName}`}
-                        title={`${displayName} — automate a parameter`}
+                        aria-label={`Automate a parameter of ${shownName}`}
+                        title={`${shownName} — automate a parameter`}
                         onClick={(e) => {
                           // Opens the menu only — not the header's jump (#610).
                           e.stopPropagation()
@@ -3502,8 +3506,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                       <button
                         type="button"
                         data-full-song-lane-steps={box.laneKey}
-                        aria-label={`Change how many steps a parameter of ${displayName} has`}
-                        title={`${displayName} — change a parameter's step count`}
+                        aria-label={`Change how many steps a parameter of ${shownName} has`}
+                        title={`${shownName} — change a parameter's step count`}
                         onClick={(e) => {
                           // Opens the menu only — not the header's jump (#610).
                           e.stopPropagation()
@@ -3531,8 +3535,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                         type="button"
                         data-full-song-lane-dot={box.laneKey}
                         data-full-song-lane-swatch={box.laneKey}
-                        aria-label={`Change colour of ${displayName}`}
-                        title={`${displayName} — click to change colour`}
+                        aria-label={`Change colour of ${shownName}`}
+                        title={`${shownName} — click to change colour`}
                         onClick={(e) => {
                           // Dot opens the colour picker only — not the #610 jump.
                           e.stopPropagation()
@@ -3592,8 +3596,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                       />
                     ) : (
                       <span
+                        // #2151 — the track's id, for finding its name by identity:
+                        // the TEXT is `Track 1` for an unnamed `d1`.
+                        data-full-song-lane-name={box.laneKey}
                         style={styles.laneName}
-                        title={menuEnabled ? `${displayName} — double-click or right-click for the track menu` : undefined}
+                        title={menuEnabled ? `${shownName} — double-click or right-click for the track menu` : undefined}
                       >
                         {headerName}
                       </span>
@@ -3652,6 +3659,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             y={laneMenu.y}
             anchor={laneMenu.anchor}
             trackName={laneMenu.name}
+            shownName={laneMenu.shownName}
             display={laneByKey.get(laneMenu.laneKey)?.bars === true ? 'bars' : 'waveform'}
             onSetDisplay={
               onSetTrackDisplay ? (display) => onSetTrackDisplay(laneMenu.name, display) : undefined
@@ -4408,7 +4416,10 @@ const styles = {
   // The lane identity row (caret + dot + name). Sits on sub-row 0 when the lane
   // is expanded into voices; fills the box otherwise.
   laneHeader: {
-    padding: '5px 8px 0',
+    // #2151 — 4px on the right, not 8: an unnamed track's NUMBER is what tells it
+    // apart, and with 8 the ellipsis ate it from `Track 10` on (measured: the name
+    // needs 48 px and had 45). The left stays 8 so the voice rows still line up.
+    padding: '5px 4px 0 8px',
     display: 'flex',
     // Top-align so the dot/name sit at the lane's TOP edge — when a lane is
     // expanded (taller) the label still lines up with the canvas row top.

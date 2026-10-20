@@ -26,8 +26,11 @@ export interface TrackLaneMenuProps {
   /** The lane header the menu was opened on. A scroll closes the menu only when
    *  it moves this element — see the effect below. */
   readonly anchor: HTMLElement
-  /** The track's display name, for the menu's accessible label. */
+  /** The track's display name: the key the menu is found by. */
   readonly trackName: string
+  /** What the track's header shows (#2151, `Track 1` for an unnamed `d1`), for
+   *  the menu's accessible label. Absent → `trackName`. */
+  readonly shownName?: string
   /** The lane's current type. */
   readonly display: TrackDisplay
   /** Absent → no Type entry (the timeline has nowhere to save it). */
@@ -49,6 +52,7 @@ export function TrackLaneMenu({
   y,
   anchor,
   trackName,
+  shownName = trackName,
   display,
   onSetDisplay,
   onRename,
@@ -102,7 +106,7 @@ export function TrackLaneMenu({
     <div
       ref={ref}
       role="menu"
-      aria-label={`${trackName} track menu`}
+      aria-label={`${shownName} track menu`}
       data-full-song-lane-menu={trackName}
       style={{ ...styles.menu, left, top }}
       // The menu is mounted beside the grid; keep its clicks out of the header's

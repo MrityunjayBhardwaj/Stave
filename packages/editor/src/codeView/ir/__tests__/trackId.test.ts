@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { trackIdFromLabel, trackIdsFromLabels, isMutedLabel, splitMuteMarker, isIdentifier, isWritableName, labelName, labelAtOffset, sectionNameAt, LABEL_HEAD } from '../trackId'
+import { trackIdFromLabel, trackIdsFromLabels, isMutedLabel, splitMuteMarker, isIdentifier, isWritableName, labelName, labelAtOffset, sectionNameAt, shownTrackName, LABEL_HEAD } from '../trackId'
 import { parseStrudel } from '../parseStrudel'
 import type { PatternIR } from '../PatternIR'
 
@@ -302,5 +302,35 @@ describe('one rule for a name (#1921)', () => {
     expect(sectionNameAt(doc, [doc.indexOf('前奏'), doc.indexOf('前奏') + 2])).toBe('前奏')
     expect(sectionNameAt(doc, [t2, doc.lastIndexOf(']') - 1])).toBeNull()
     expect(sectionNameAt(doc, [5, 2])).toBeNull()
+  })
+})
+
+describe('shownTrackName — what an unnamed track shows (#2151)', () => {
+  it('an unnamed track shows `Track N` for its positional `d{N}`', () => {
+    expect(shownTrackName('d1', null)).toBe('Track 1')
+    expect(shownTrackName('d12', undefined)).toBe('Track 12')
+  })
+
+  it('a track the user labelled `d2:` keeps showing `d2`', () => {
+    expect(shownTrackName('d2', 'd2')).toBe('d2')
+  })
+
+  it('a named track shows its name', () => {
+    expect(shownTrackName('bass', 'bass')).toBe('bass')
+  })
+
+  it('a name that is not positional is shown as it is, label or not', () => {
+    // A producer id or a fallback lane key has no label to read and no number to show.
+    expect(shownTrackName('bass', null)).toBe('bass')
+    expect(shownTrackName('d0', null)).toBe('d0')
+    expect(shownTrackName('d01', null)).toBe('d01')
+    expect(shownTrackName('dx', null)).toBe('dx')
+  })
+
+  it('follows the id a collision moved: the 2nd track under a written `d2:` is `Track 3`', () => {
+    const labels = ['d2', '$']
+    const ids = trackIdsFromLabels(labels)
+    expect(ids).toEqual(['d2', 'd3'])
+    expect(ids.map((id, i) => shownTrackName(id, labelName(labels[i])))).toEqual(['d2', 'Track 3'])
   })
 })

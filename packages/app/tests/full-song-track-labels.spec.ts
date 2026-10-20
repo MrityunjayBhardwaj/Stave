@@ -58,6 +58,8 @@ const SONG = [
 // (This spec used to assert keys of `d1…d6` regardless of label — the model
 // before #138 gave named tracks a positional id too. It hasn't for a long time.)
 const EXPECTED_NAMES = ['bass', 'd2', 'd3', 'd4', 'lead', 'd6']
+// What each header SHOWS (#2151): `Track N` for an unnamed track; `d3:` is a label the user wrote.
+const EXPECTED_SHOWN = ['bass', 'Track 2', 'd3', 'Track 4', 'lead', 'Track 6']
 
 test('Song Timeline shows track labels and matches the Mixer (named + anon)', async ({ page }) => {
   const errors: string[] = []
@@ -86,8 +88,8 @@ test('Song Timeline shows track labels and matches the Mixer (named + anon)', as
   // The lane KEY is the track's identity — the label for a named track, `d{N}` for
   // an anonymous one — and it is what the live overlay matches haps on.
   expect(timeline.map((l) => l.key)).toEqual(EXPECTED_NAMES)
-  // The DISPLAY name resolves to the same identity.
-  expect(timeline.map((l) => l.name)).toEqual(EXPECTED_NAMES)
+  // The header shows the label, or `Track N` for an unnamed track (#2151).
+  expect(timeline.map((l) => l.name)).toEqual(EXPECTED_SHOWN)
 
   // ── Mixer console: strip names + dot colours, in track order.
   const root = page.locator('[data-bottom-panel="root"]')
@@ -107,7 +109,7 @@ test('Song Timeline shows track labels and matches the Mixer (named + anon)', as
   )
 
   // Mixer names equal the timeline names (one identity per track) …
-  expect(mixer.map((m) => m.name)).toEqual(EXPECTED_NAMES)
+  expect(mixer.map((m) => m.name)).toEqual(EXPECTED_SHOWN)
   // … and per-track the dot COLOUR matches across views (one shared palette).
   for (let i = 0; i < EXPECTED_NAMES.length; i++) {
     expect(timeline[i].dot, `lane ${EXPECTED_NAMES[i]} dot colour`).toBe(mixer[i].dot)

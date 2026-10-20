@@ -22,7 +22,7 @@ import type { SampleRegion } from './waveformLane'
 import type { WaveformSource } from './drawTimeline'
 import { trackIdentity } from '@stave/editor'
 import { containingAnchor } from './laneIdentity'
-import { resolveLaneName } from './trackLabel'
+import { resolveLaneName, resolveLaneShownName } from './trackLabel'
 import { resolveSectionName } from './sectionLabel'
 import type { DeclaredTrack } from './trackOrder'
 import type { SignalAutomation, TrackEnvelopeStatus } from '@stave/editor'
@@ -219,6 +219,10 @@ export interface SceneLane {
    *  `$:`. The lane's IDENTITY stays `laneKey` (drives the live overlay match);
    *  only this name — and `color`, derived from it — resolves to the label. */
   readonly displayName: string
+  /** What the header SHOWS (#2151): `Track 1` for an unnamed `d1`, else
+   *  `displayName`. Text only — saved per-track settings, the colour and the
+   *  faded-lane set all stay keyed by `displayName`. */
+  readonly shownName: string
   readonly color: string
   /** `onsetsByCycle` — onset count per integer cycle. ⚠ The ONE window-relative
    *  array on the scene: `density[i]` is cycle `windowOriginCycles + i`. */
@@ -637,6 +641,7 @@ export function buildTimelineScene(
     return {
       laneKey,
       displayName,
+      shownName: resolveLaneShownName(laneKey, marks.labelOffsetByLane.get(laneKey), code),
       color: trackIdentity(displayName, customColorByName?.get(displayName)).color,
       density,
       notes,

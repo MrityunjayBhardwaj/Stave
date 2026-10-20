@@ -332,7 +332,7 @@ test.describe('synth lane envelope (#1731)', () => {
     expect(shaped).toBeGreaterThanOrEqual(4) // PRECONDITION: the render is drawn
 
     // Right-click the name area → Type ▸ shows Waveform checked → pick Bars.
-    const header = page.locator('[data-full-song-lane="d1"]').getByText('d1', { exact: true })
+    const header = page.locator('[data-full-song-lane-name="d1"]')
     await header.click({ button: 'right' })
     const menu = page.locator('[data-full-song-lane-menu="d1"]')
     await expect(menu).toBeVisible()
@@ -354,7 +354,7 @@ test.describe('synth lane envelope (#1731)', () => {
     await waitForEnvelopes(page, 'd2:fresh', 30_000)
     // A DOUBLE-click this time: its first click jumps to the code and the editor
     // scrolls, which must not close the menu it opens.
-    await page.locator('[data-full-song-lane="d1"]').getByText('d1', { exact: true }).dblclick()
+    await page.locator('[data-full-song-lane-name="d1"]').dblclick()
     const again = page.locator('[data-full-song-lane-menu="d1"]')
     await again.locator('[data-full-song-lane-menu-type]').hover()
     await expect(again.locator('[data-full-song-lane-menu-display="bars"]')).toHaveAttribute('aria-checked', 'true')
@@ -379,7 +379,7 @@ test.describe('synth lane envelope (#1731)', () => {
     console.log(`[#1745] expanded ink rows: quiet cycle ${quiet}, loud cycle ${loud}`)
     await page.locator('[data-full-song-canvas]').screenshot({ path: 'test-results/synth-lane-expanded-shape.png' })
 
-    await page.locator('[data-full-song-lane="d1"]').getByText('d1', { exact: true }).click({ button: 'right' })
+    await page.locator('[data-full-song-lane-name="d1"]').click({ button: 'right' })
     const menu = page.locator('[data-full-song-lane-menu="d1"]')
     await menu.locator('[data-full-song-lane-menu-type]').hover()
     await menu.locator('[data-full-song-lane-menu-display="bars"]').click()

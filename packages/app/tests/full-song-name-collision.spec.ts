@@ -58,6 +58,8 @@ async function typeSongAndEval(page: Page, code: string): Promise<void> {
  */
 const SONG = ['d2: s("bd*2")', '$: s("hh*4")', '$: s("cp*2")'].join('\n')
 const EXPECTED_NAMES = ['d2', 'd3', 'd4']
+// What each SHOWS (#2151): the user's own `d2:` label, then `Track N` for the unnamed two.
+const EXPECTED_SHOWN = ['d2', 'Track 3', 'Track 4']
 
 test('a d2: label does not swallow the unlabelled tracks under it', async ({ page }) => {
   const errors: string[] = []
@@ -86,7 +88,7 @@ test('a d2: label does not swallow the unlabelled tracks under it', async ({ pag
   // missing row is not.
   expect(timeline).toHaveLength(3)
   expect(timeline.map((l) => l.key)).toEqual(EXPECTED_NAMES)
-  expect(timeline.map((l) => l.name)).toEqual(EXPECTED_NAMES)
+  expect(timeline.map((l) => l.name)).toEqual(EXPECTED_SHOWN)
 
   // ── Mixer console: the same three tracks, the same three names.
   const root = page.locator('[data-bottom-panel="root"]')
@@ -105,7 +107,7 @@ test('a d2: label does not swallow the unlabelled tracks under it', async ({ pag
     })),
   )
 
-  expect(mixer.map((m) => m.name)).toEqual(EXPECTED_NAMES)
+  expect(mixer.map((m) => m.name)).toEqual(EXPECTED_SHOWN)
 
   // Distinct names are only half of it — the name is also the colour seed, so a
   // collision painted two different tracks the same colour in BOTH views.
@@ -223,7 +225,7 @@ test('a trailing `_` reads as muted, and unmuting removes it', async ({ page }) 
       muted: e.hasAttribute('data-mixer-strip-muted'),
     })),
   )
-  expect(strips.map((s) => s.name)).toEqual(['drums', 'd2', 'd3', 'bass'])
+  expect(strips.map((s) => s.name)).toEqual(['drums', 'Track 2', 'Track 3', 'bass']) // #2151
   expect(strips.map((s) => s.muted)).toEqual([true, true, true, false])
 
   // The real gesture: Unmute on the strip removes the marker the label HAS.
@@ -289,7 +291,7 @@ test('an unnamed track under a commented one has one name in both views', async 
     })),
   )
   // no strip for the commented line; the `bd` track reads `d2`, as on the timeline
-  expect(mixer.map((m) => m.name)).toEqual(['d2', 'kick'])
+  expect(mixer.map((m) => m.name)).toEqual(['Track 2', 'kick']) // #2151: the id is d2
   expect(timeline[1].dot).toMatch(/^rgb/)
   expect(mixer[0].dot).toBe(timeline[1].dot)
   expect(mixer[1].dot).toBe(timeline[2].dot)
@@ -329,7 +331,7 @@ test('a statement that never plays has no Mixer strip', async ({ page }) => {
   await mixerPanel.locator('[data-mixer-strip-name]').first().waitFor({ timeout: 10_000 })
   const mixer = await mixerPanel.locator('[data-mixer-strip-name]').allTextContents()
   // one strip per track that plays, named as on the timeline
-  expect(mixer).toEqual(['d1', 'hats'])
+  expect(mixer).toEqual(['Track 1', 'hats']) // #2151: the id is d1
 
   expect(errors, errors.join('\n')).toEqual([])
 })

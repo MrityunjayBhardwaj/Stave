@@ -44,6 +44,23 @@ export function trackIdFromLabel(label: string | undefined, index: number): stri
   return labelName(label) ?? `d${index + 1}`
 }
 
+/**
+ * The name a track SHOWS on screen (#2151): `Track N` for an unnamed track, else
+ * its name. `name` is the track's id-shaped name (`d1`, `bass`); `label` is the
+ * name the user wrote, or null when they wrote none.
+ *
+ * ⚠ DISPLAY ONLY. `name` stays the key for everything else — the id, the
+ * deterministic colour, the saved custom colour and lane type (`setTrackMeta`),
+ * the faded-lane set — so none of that moves. A space can't appear in a label,
+ * so `Track 1` never reads like a name the user could have written; and a
+ * written `d2:` has a label, so it keeps showing `d2`.
+ */
+export function shownTrackName(name: string, label: string | null | undefined): string {
+  if (label) return name
+  const positional = /^d([1-9]\d*)$/.exec(name)
+  return positional ? `Track ${positional[1]}` : name
+}
+
 /** One JavaScript identifier, as a regex source (#1683) — `節奏` as much as `drums`. */
 const IDENTIFIER = String.raw`[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*`
 const WHOLE_IDENTIFIER = new RegExp(`^${IDENTIFIER}$`, 'u')
