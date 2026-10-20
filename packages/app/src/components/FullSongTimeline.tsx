@@ -4416,7 +4416,10 @@ const styles = {
   // The lane identity row (caret + dot + name). Sits on sub-row 0 when the lane
   // is expanded into voices; fills the box otherwise.
   laneHeader: {
-    padding: '5px 8px 0',
+    // #2151 — 4px on the right, not 8: an unnamed track's NUMBER is what tells it
+    // apart, and with 8 the ellipsis ate it from `Track 10` on (measured: the name
+    // needs 48 px and had 45). The left stays 8 so the voice rows still line up.
+    padding: '5px 4px 0 8px',
     display: 'flex',
     // Top-align so the dot/name sit at the lane's TOP edge — when a lane is
     // expanded (taller) the label still lines up with the canvas row top.

@@ -261,3 +261,22 @@ test('an unnamed track shows "Track N" in the timeline and the Mixer; its id, an
   expect(await strudelSource(page)).toBe(song) // nothing was written into the code
   expect(errors, errors.join('\n')).toEqual([])
 })
+
+test('"Track 10" and on fit their timeline header — the number is not cut off (#2151)', async ({ page }) => {
+  await bootShell(page, 'musical-timeline')
+  const song = Array.from({ length: 12 }, (_, i) => `$: s("cp*${i + 1}")`).join('\n')
+  await page.evaluate((c) => {
+    const eds = (window as unknown as { monaco: { editor: { getEditors: () => Array<{ getModel: () => { setValue: (s: string) => void }; focus: () => void }> } } }).monaco.editor.getEditors()
+    eds[0]!.getModel().setValue(c)
+    eds[0]!.focus()
+  }, song)
+  await page.keyboard.press(`${MOD}+Enter`)
+  const names = page.locator('[data-full-song-lane-name]')
+  await expect(names).toHaveCount(12, { timeout: 15_000 })
+  await expect(names.last()).toHaveText('Track 12')
+  const clipped = await names.evaluateAll((els) =>
+    els.filter((e) => e.scrollWidth > e.clientWidth).map((e) => e.textContent),
+  )
+  expect(clipped).toEqual([])
+})
+
