@@ -3,6 +3,9 @@ contact_links:
   - name: 📖 Docs
     url: https://stave.live/docs/
     about: How the Timeline, Pattern grids, Mixer and visuals work.
+  - name: 💬 Questions and ideas
+    url: https://github.com/MrityunjayBhardwaj/Stave/discussions
+    about: Ask how to do something, share an idea, or show what you made.
   - name: 🗺️ Roadmap
     url: https://stave.live/docs/roadmap/
     about: What's coming in the next releases.
