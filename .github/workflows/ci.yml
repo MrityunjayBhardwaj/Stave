@@ -11,7 +11,8 @@
 #   The corpus can come back to every PR once it is fast (#2034).
 #
 # Not here yet, on purpose:
-# - `tsc --noEmit` over the test files: 74 errors on main, all in tests (#2124).
+# - `tsc --noEmit` over the editor's test files: 63 errors on main, all in tests (#2124).
+#   The app's tests already typecheck: `next build` checks them.
 # - The browser suite: 279 Playwright spec files (about 1,000 tests) needing a dev
 #   server and real audio; it stays a manual gate for now.
 name: CI
