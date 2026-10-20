@@ -418,9 +418,24 @@ export interface TuneReport {
   tuneClass: 'fully' | 'partial' | 'knobs-only' | 'code-only' | 'no-musical-units' | 'unparseable'
 }
 
+/** One refused unit, kept so a reason can be checked against its inputs (#2152). */
+export interface BrokenInput {
+  file: string
+  head: string
+  mini: string
+}
+
 export interface Measurement {
   tunes: TuneReport[]
   brokenReasons: Map<string, number>
+  /**
+   * The units behind each `brokenReasons` count, under the same key, so the
+   * list for a reason is exactly as long as its count. #903 audited this
+   * histogram by adding temporary logging to see the strings; two "missing
+   * features" turned out to work and a decimal point read as a feature. The
+   * inputs are part of the output so that check needs no code change.
+   */
+  brokenInputs: Map<string, BrokenInput[]>
   codeOnlyHeads: Map<string, number>
 }
 
@@ -446,6 +461,7 @@ export interface Measurement {
 export function measureDocs(docs: { name: string; code: string }[]): Measurement {
   const tunes: TuneReport[] = []
   const brokenReasons = new Map<string, number>()
+  const brokenInputs = new Map<string, BrokenInput[]>()
   const codeOnlyHeads = new Map<string, number>()
   const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1)
 
@@ -461,7 +477,7 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
 
     let note = 0, clip = 0, master = 0, broken = 0, knobs = 0, codeOnly = 0, setup = 0, nonMusical = 0
     let noteSingle = 0
-    for (const { status: s } of allUnits) {
+    for (const { unit, status: s } of allUnits) {
       switch (s.status) {
         case 'setup': setup++; break
         case 'non-musical': nonMusical++; break
@@ -470,7 +486,16 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
         case 'clip': clip++; break
         case 'master': master++; break
         case 'knobs': knobs++; break
-        case 'note-broken': broken++; bump(brokenReasons, blockerKey(s)); break
+        case 'note-broken': {
+          broken++
+          const key = blockerKey(s)
+          bump(brokenReasons, key)
+          // `note-broken` is only returned once a mini string was parsed, so it is never null here.
+          const list = brokenInputs.get(key) ?? []
+          list.push({ file: name, head: s.head, mini: unit.miniString ?? '' })
+          brokenInputs.set(key, list)
+          break
+        }
         case 'code-only': codeOnly++; bump(codeOnlyHeads, s.head); break
       }
     }
@@ -488,7 +513,7 @@ export function measureDocs(docs: { name: string; code: string }[]): Measurement
       noteBroken: broken, knobs, codeOnly, structurallyEditable: structural, tuneClass,
     })
   }
-  return { tunes, brokenReasons, codeOnlyHeads }
+  return { tunes, brokenReasons, brokenInputs, codeOnlyHeads }
 }
 
 const pct = (x: number, d: number) => (d === 0 ? '0.0' : ((100 * x) / d).toFixed(1))
@@ -669,6 +694,8 @@ export function resultJson(m: Measurement, extra: Record<string, unknown> = {}) 
       structurallyEditablePct: a.structuralPct,
     },
     brokenReasons: Object.fromEntries(rank(m.brokenReasons)),
+    // Same keys, same order as `brokenReasons`.
+    brokenInputs: Object.fromEntries(rank(m.brokenReasons).map(([k]) => [k, m.brokenInputs.get(k) ?? []])),
     codeOnlyHeads: Object.fromEntries(rank(m.codeOnlyHeads)),
     perTune: m.tunes,
   }

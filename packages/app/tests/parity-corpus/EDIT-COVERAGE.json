@@ -32,6 +32,43 @@
     "step: resolution": 1,
     "step: no-leaf-anchor": 1
   },
+  "brokenInputs": {
+    "step: wrong-surface": [
+      {
+        "file": "bakery-144-paren-root.strudel",
+        "head": "mul",
+        "mini": "1*1, 2*2, 3*3, ... 16*16"
+      }
+    ],
+    "roll: wrong-surface": [
+      {
+        "file": "bakery-152-block-comment.strudel",
+        "head": "note",
+        "mini": "<C:major D:minor>"
+      }
+    ],
+    "step: unstable-period": [
+      {
+        "file": "bakery-903-patterned-variant.strudel",
+        "head": "sound",
+        "mini": "~ sd:[<1 3>/16]"
+      }
+    ],
+    "step: resolution": [
+      {
+        "file": "bakery-G3-backtick.strudel",
+        "head": "sound",
+        "mini": "\n<bd*3 [hh:1 hh:1 hh:1]*2 casio:2 - hh:1>*4 ,\n< - - - metal:1 - >*4"
+      }
+    ],
+    "step: no-leaf-anchor": [
+      {
+        "file": "meltingsubmarine.strudel",
+        "head": "s",
+        "mini": "bd:5,[~ <sd:1!3 sd:1(3,4,3)>],hh27(3,4,1)"
+      }
+    ]
+  },
   "codeOnlyHeads": {
     "chord": 3
   },

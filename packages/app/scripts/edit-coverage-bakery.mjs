@@ -122,7 +122,13 @@ async function main() {
   console.log('# === BLOCKERS — note-broken (offered a grid/roll, no round-trip) ===')
   const br = Object.entries(result.brokenReasons ?? {})
   if (br.length === 0) console.log('#   (none)')
-  else for (const [k, c] of br) console.log(`#   [${c}x] ${k}`)
+  else {
+    for (const [k, c] of br) {
+      // One input per reason, so the label can be checked by eye; the full lists are in the result file.
+      const first = result.brokenInputs?.[k]?.[0]
+      console.log(`#   [${c}x] ${k}${first ? `   e.g. ${first.head}(${JSON.stringify(first.mini)})` : ''}`)
+    }
+  }
   console.log('')
   console.log('# === BLOCKERS — code-only heads (no view editor) ===')
   const ch = Object.entries(result.codeOnlyHeads ?? {}).slice(0, 15)
