@@ -186,6 +186,15 @@ test.describe('synth lane envelope (#1731)', () => {
     // The synth track is still rendered, last, so choosing Waveform draws at
     // once (#1748), but nothing is drawn while it is Bars.
     await expect.poll(() => held(page), { timeout: 30_000 }).toBe('d1')
+    // #2138 — and it STAYS 'd1'. The drum lane plays only files, so its track is
+    // never rendered, Bars or not. Reaching 'd1' once proved nothing: before the
+    // fix the drum track was rendered ~300 ms after the synth's, and this poll
+    // passed only when it happened to land in that gap. So watch for the drum
+    // lane joining, over longer than the engine's 700 ms debounce between renders.
+    for (const until = Date.now() + 3_000; Date.now() < until; ) {
+      expect(await held(page), 'the drum lane got a render it can never draw').toBe('d1')
+      await page.waitForTimeout(50)
+    }
     expect(await envelopes(page)).toBe('')
     expect(await shownDisplay(page, 'd1')).toBe('bars')
     expect(await shownDisplay(page, 'd2')).toBe('bars')

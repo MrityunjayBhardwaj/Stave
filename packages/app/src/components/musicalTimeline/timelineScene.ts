@@ -199,6 +199,12 @@ export interface SceneLane {
    *  Set by `markAudioLanes`, never by `buildTimelineScene`, which knows the
    *  events but not which names are files. Absent means false. */
   readonly audio?: boolean
+  /** #2138 — every mark on this lane plays an audio file, whatever the lane's
+   *  display. `audio` is this AND Waveform; a Bars lane of files is `files`
+   *  but not `audio`. Its track is never rendered (`envelopeTrackIds`): its
+   *  Waveform view is the files' own shape, so a render would never be drawn.
+   *  Set by `markAudioLanes`. Absent means false. */
+  readonly files?: boolean
   /** #1738 — this track draws as BARS: no waveform inside its marks, no
    *  audio-lane clip body, no rendered envelope. Set by `markBarsLanes`, which
    *  runs before `markAudioLanes`: from the type the user saved, or, with none
@@ -878,13 +884,13 @@ export function markAudioLanes(
   }
   let changed = false
   const lanes = scene.lanes.map((lane) => {
-    const audio =
-      lane.bars !== true &&
-      lane.notes.length > 0 &&
-      lane.notes.every((n) => n.sample != null && backed(n.sample))
-    if ((lane.audio === true) === audio) return lane
+    // #2138 — asked of every lane, Bars too: a Bars lane of files is not an
+    // audio lane, but it must not have its track rendered either.
+    const files = lane.notes.length > 0 && lane.notes.every((n) => n.sample != null && backed(n.sample))
+    const audio = files && lane.bars !== true
+    if ((lane.audio === true) === audio && (lane.files === true) === files) return lane
     changed = true
-    return { ...lane, audio }
+    return { ...lane, audio, files }
   })
   return changed ? { ...scene, lanes } : scene
 }
@@ -917,8 +923,10 @@ export function attachEnvelopes(
 }
 
 /**
- * The engine tracks to render: the track behind every lane with marks that is
- * not an audio lane, each once. Waveform lanes first, then Bars lanes (#1748);
+ * The engine tracks to render: the track behind every lane with marks that does
+ * not play only files, each once. A lane of files draws the files' own shape as
+ * Waveform, so its track's render would never be drawn; that holds for a Bars
+ * lane of files too, which is why this asks `files`, not `audio` (#2138). Waveform lanes first, then Bars lanes (#1748);
  * within each, the lanes in `inView` first (#1760), then the rest, in lane order.
  *
  * The engine spends its render budget in this order, so on a song too long to
@@ -940,7 +948,7 @@ export function envelopeTrackIds(
   for (const bars of [false, true]) {
     for (const visible of [true, false]) {
       for (const lane of scene.lanes) {
-        if (lane.audio === true || (lane.bars === true) !== bars || lane.notes.length === 0) continue
+        if (lane.audio === true || lane.files === true || (lane.bars === true) !== bars || lane.notes.length === 0) continue
         if (inView.has(lane.laneKey) !== visible) continue
         const id = trackIdByLane.get(lane.laneKey)
         if (id != null && !out.includes(id)) out.push(id)

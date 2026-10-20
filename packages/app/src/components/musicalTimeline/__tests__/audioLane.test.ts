@@ -153,6 +153,13 @@ describe('markBarsLanes — a track set to Bars (#1738)', () => {
     const wave = markBarsLanes(sceneOf(take), set('waveform'), LONG)
     expect(markAudioLanes(wave, files('take_1')).lanes[0].audio).toBe(true)
   })
+
+  it('a Bars lane of files is still flagged as files, so its track is not rendered (#2138)', () => {
+    const bars = markBarsLanes(sceneOf(take), set('bars'), LONG)
+    expect(markAudioLanes(bars, files('take_1')).lanes[0].files).toBe(true)
+    // CONTROL — a Bars lane whose mark is NOT a file is not flagged.
+    expect(markAudioLanes(bars, files()).lanes[0].files ?? false).toBe(false)
+  })
 })
 
 describe('the default type (#2079): Bars, unless the lane is a long recording', () => {
