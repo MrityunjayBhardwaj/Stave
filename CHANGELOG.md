@@ -2,7 +2,7 @@
 
 What's in each version of Stave. What's coming next is on the [roadmap](https://stave.live/docs/roadmap/).
 
-## 0.5.0 (unreleased)
+## 0.5.0 (2026-10-20)
 
 The first release, and Stave's public beta. There were no releases before it, so this entry lists everything Stave does today.
 
