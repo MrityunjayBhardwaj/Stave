@@ -32,8 +32,13 @@ function model(m: string): StepGridModel {
   if (r.lookOnly) return r.lookOnly
   throw new Error(`grid declined ${m}: ${r.reason}`)
 }
-function chart(chords: string | null, rhythm: string, m: StepGridModel | null = model(rhythm)): RhythmChart {
-  const r = rhythmChart(chords, rhythm, m, parse)
+function chart(
+  chords: string | null,
+  rhythm: string,
+  m: StepGridModel | null = model(rhythm),
+  masks: Array<string | null> = [],
+): RhythmChart {
+  const r = rhythmChart(chords, rhythm, m, parse, masks)
   if (!r.ok) throw new Error(`no chart: ${r.reason}`)
   return r.chart
 }
@@ -125,7 +130,42 @@ describe('rhythmChart — the chords on a rhythm line (#2120)', () => {
     expect(r).toEqual({
       ok: false,
       reason:
-        'The chords repeat every 5 bars and the rhythm every 3, so together they come round after 15 bars, more than the 12 this grid draws.',
+        'The chords repeat every 5 bars, the rhythm every 3, so together they come round after 15 bars, more than the 12 this grid draws.',
+    })
+  })
+
+  it('draws the song’s .mask: bar 3 of every 4 silenced, as Strudel plays it', () => {
+    const c = detectChunk(SONG, SONG.indexOf(LINE) + 3)!
+    expect(c.structOver!.masks).toEqual(['<1 1 0 1>'])
+    const ch = chart(c.structOver!.miniString, c.miniString!, model(LINE), c.structOver!.masks)
+    expect(ch.bars).toBe(4)
+    expect(ch.maskUnread).toBe(false)
+    // what Strudel plays once the mask is applied, for two periods
+    const pat = (mini('<Em9 A13>') as any).struct(mini(LINE)).mask(mini('<1 1 0 1>'))
+    const sounding = new Set<number>()
+    for (const h of pat.queryArc(0, 2 * ch.bars)) if (h.hasOnset()) sounding.add(Math.round(h.whole.begin.valueOf() * 16) % 64)
+    for (let col = 0; col < 64; col++) {
+      const live = ch.hits[col].filter((v) => !ch.silenced[col].includes(v))
+      expect(live.length > 0, `column ${col}`).toBe(sounding.has(col))
+    }
+    // every hit of bar 3 is silenced, and no other
+    const bar = (b: number) => ch.silenced.slice(b * 16, b * 16 + 16).flat().length
+    expect([bar(0), bar(1), bar(2), bar(3)]).toEqual([0, 0, 9, 0])
+  })
+
+  it('says a mask it cannot read is not drawn, and draws the rest', () => {
+    const ch = chart('<Em9 A13>', 'x ~ x x', model('x ~ x x'), [null])
+    expect(ch.maskUnread).toBe(true)
+    expect(ch.silenced.flat()).toEqual([])
+  })
+
+  it('counts the mask in the bars the chart needs, and refuses past the cap', () => {
+    expect(chart('<Em9 A13>', 'x x', model('x x'), ['<1 0 1>']).bars).toBe(6)
+    const r = rhythmChart('<Em9 A13>', 'x x', model('x x'), parse, ['<1 1 1 1 1 1 0>'])
+    expect(r).toEqual({
+      ok: false,
+      reason:
+        'The chords repeat every 2 bars, the rhythm every 1 and the mask every 7, so together they come round after 14 bars, more than the 12 this grid draws.',
     })
   })
 

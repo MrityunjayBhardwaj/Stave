@@ -11,7 +11,7 @@ The **Pattern** tab follows your cursor. Put the cursor on a line of code and Pa
 
 - A line that plays sounds, like `s("bd*4, hh*8")`, opens as a **step sequencer**.
 - A line that plays notes, like `note("c3 e3 g3")`, opens as a **piano roll**.
-- A line whose lanes are chords opens as a **chord chart**.
+- A line whose lanes are chords, like `chord("<Em9 A13>")`, opens as a **chord chart**.
 
 A track that chooses between lines with `pick` (or `inhabit` or `squeeze`) opens one line at a time. Put the cursor in one of the lines and Pattern shows that line on its own. An edit changes that line only, and the choosing stays as you wrote it. Its velocity lane is read-only, because the track's `.gain` is shared by every line.
 
@@ -20,6 +20,19 @@ const bass = irand(3).segment(1).slow(64).pick([
   "<[e1 ~ ~ e2 ~ ~ e1 ~] [a1 ~ ~ a2 ~ ~ a1 ~]>",   // cursor here: this line opens
   "<[e1 ~ e1 ~ ~ e2 ~ d2] [a1 ~ a1 ~ ~ a2 ~ g2]>",
 ]).note().s("gm_slap_bass_1")
+```
+
+Chords that play to a rhythm written with `.struct` open on that rhythm. Put the cursor in the rhythm string and Pattern draws the chords on its steps:
+
+- A strip on top names the chord in each bar.
+- Each chord has a row, lit on the steps where the rhythm plays it.
+- A click turns a step on or off in that rhythm string, so the change shows in every bar it plays.
+- Steps that a `.mask(…)` silences are drawn hollow. Change the mask in the code.
+
+```js
+const clav = chord("<Em9 A13>").voicing()
+  .struct("~ x x ~ x ~ x x ~ x ~ x x ~ x ~")   // cursor here: the chords on this rhythm
+  .s("gm_clavinet").mask("<1 1 0 1>")
 ```
 
 ## Step sequencer

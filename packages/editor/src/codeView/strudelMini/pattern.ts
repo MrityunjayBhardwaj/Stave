@@ -116,6 +116,8 @@ export interface StructHit {
   begin: MiniTime
   end: MiniTime
   value: unknown
+  /** a `.mask` after the `.struct` silences it: it is a step of the rhythm that does not sound */
+  silenced: boolean
 }
 
 /**
@@ -126,17 +128,33 @@ export interface StructHit {
  *
  * No locations: each hit's would mix the two strings' coordinates.
  *
+ * `masks` are the `.mask(…)` strings after the `.struct`, applied in order. A hit is
+ * `silenced` when Strudel plays no onset of the same value at the same time once they
+ * are applied (#2120): `.mask` keeps a step where its own value is truthy, by
+ * Strudel's rule, not ours.
+ *
  * THROWS what Strudel throws.
  */
-export function structHits(values: string, rhythm: string, cyc: number): StructHit[] {
-  const pat = (reifyMini(values) as { struct(r: unknown): Queryable }).struct(reifyMini(rhythm))
+export function structHits(values: string, rhythm: string, cyc: number, masks: readonly string[] = []): StructHit[] {
+  type Structable = Queryable & { struct(r: unknown): Structable; mask(m: unknown): Structable }
+  const pat = (reifyMini(values) as Structable).struct(reifyMini(rhythm))
+  const masked = masks.reduce((p, m) => p.mask(reifyMini(m)), pat)
+  const sounding = new Set<string>()
+  for (const h of masked.queryArc(cyc, cyc + 1)) {
+    if ((h.hasOnset?.() ?? false) && h.whole) sounding.add(onsetKey(h.whole.begin, h.value))
+  }
   const out: StructHit[] = []
   for (const h of pat.queryArc(cyc, cyc + 1)) {
     if (!(h.hasOnset?.() ?? false) || !h.whole) continue
-    out.push({ begin: h.whole.begin, end: h.whole.end, value: h.value })
+    const silenced = masks.length > 0 && !sounding.has(onsetKey(h.whole.begin, h.value))
+    out.push({ begin: h.whole.begin, end: h.whole.end, value: h.value, silenced })
   }
   return out
 }
+
+/** an onset's identity across two queries: its exact time and its value */
+const onsetKey = (t: MiniTime, value: unknown): string =>
+  `${t.toFraction?.() ?? t.valueOf()}\u0000${JSON.stringify(value)}`
 
 /**
  * One piece of a hap inside the cycle asked for: the part of it that falls in the cycle,

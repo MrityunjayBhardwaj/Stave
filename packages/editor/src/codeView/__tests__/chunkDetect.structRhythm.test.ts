@@ -77,8 +77,13 @@ describe('chunkDetect — a .struct rhythm line is the pattern (#2120)', () => {
 
   it('a rhythm line carries the chords it times, found where the track writes them', () => {
     // through the const `vamp`, and from a literal
-    expect(detectChunk(SONG, at(SONG, LINES[1]))!.structOver).toEqual({ headFn: 'chord', miniString: '<Em9 A13>' })
-    expect(detectChunk(PLAIN, at(PLAIN, 'x ~ x x'))!.structOver).toEqual({ headFn: 'chord', miniString: '<Em9 A13>' })
+    // with the `.mask` after `.struct`, through the const `clavM`
+    expect(detectChunk(SONG, at(SONG, LINES[1]))!.structOver).toEqual({ headFn: 'chord', miniString: '<Em9 A13>', masks: ['<1 1 0 1>'] })
+    expect(detectChunk(PLAIN, at(PLAIN, 'x ~ x x'))!.structOver).toEqual({ headFn: 'chord', miniString: '<Em9 A13>', masks: [] })
+    // a mask written inline; one that is not a string is kept as null, in chain order;
+    // a mask BEFORE `.struct` belongs to the chords, not this list
+    const masked = '$: chord("<Em9 A13>").mask("1 0").struct("x ~ x x").mask("<1 0>").mask(sine.range(0, 1))'
+    expect(detectChunk(masked, at(masked, 'x ~ x x'))!.structOver!.masks).toEqual(['<1 0>', null])
     // nothing to time: the chords are not a string the tab can read
     const bare = '$: chord(irand(4)).struct("x ~ x x")'
     expect(detectChunk(bare, at(bare, 'x ~ x x'))!.structOver?.miniString).toBeNull()
