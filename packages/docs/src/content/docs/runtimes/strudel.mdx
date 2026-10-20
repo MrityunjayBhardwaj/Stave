@@ -57,6 +57,16 @@ $: stack(
 setcps(130/240)  // 130 BPM assuming 4 beats per cycle
 ```
 
+## Sliders
+
+`slider(value, min, max, step)` draws a slider in the code, just before its number. Drag it while the pattern plays: you hear the new value straight away, the number in the code follows, and the whole drag undoes in one step.
+
+```js
+$: s("bd*8").lpf(slider(1200, 200, 4000)).gain(slider(0.5))
+```
+
+`min` and `max` default to 0 and 1. The sliders appear when the file plays, and each new evaluation draws them again.
+
 ## Full function reference
 
 The full Strudel function list lives in the upstream docs at [strudel.cc/learn](https://strudel.cc/learn/) — signatures, descriptions, and runnable examples. (A Stave-local Strudel reference will follow once the symbol index is vendored.)

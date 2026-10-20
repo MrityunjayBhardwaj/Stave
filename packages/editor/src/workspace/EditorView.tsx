@@ -38,6 +38,7 @@ import { useWorkspaceFile } from './useWorkspaceFile'
 import { ensureWorkspaceLanguages, toMonacoLanguage } from './languages'
 import { workspaceAudioBus } from './WorkspaceAudioBus'
 import { useHighlighting } from '../monaco/useHighlighting'
+import { addInlineSliders, type InlineSlidersHandle } from '../monaco/inlineSliders'
 import { useBreakpoints } from '../monaco/useBreakpoints'
 import { useTrackColourBars } from '../monaco/useTrackColourBars'
 import { registerEditor, unregisterEditor, applyPersistedEditorOptions, registerMonacoNamespace, setActiveEditor } from './editorRegistry'
@@ -144,6 +145,8 @@ export function EditorView({
 
   // Inline view zone handle — owned by the bus subscription effect.
   const viewZoneHandleRef = useRef<InlineZoneHandle | null>(null)
+  // #345 — the `slider(…)` widgets, owned by the same effect.
+  const sliderHandleRef = useRef<InlineSlidersHandle | null>(null)
   // Keep the last engine payload so we can remount viz zones when a
   // referenced viz preset is re-saved (hot reload).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -232,6 +235,17 @@ export function EditorView({
           // but frozen so the user sees the last frame.
           viewZoneHandleRef.current?.pause()
         }
+
+        // #345 — each evaluation's sliders replace the last; a stop (null) keeps
+        // them, since they still move the number the next play reads.
+        if (payload && editorRef.current && monacoRef.current) {
+          sliderHandleRef.current?.cleanup()
+          sliderHandleRef.current = addInlineSliders(
+            editorRef.current,
+            monacoRef.current,
+            payload.inlineViz?.sliders ?? [],
+          )
+        }
       },
     )
 
@@ -240,6 +254,8 @@ export function EditorView({
       lastPayloadRef.current = null
       viewZoneHandleRef.current?.cleanup()
       viewZoneHandleRef.current = null
+      sliderHandleRef.current?.cleanup()
+      sliderHandleRef.current = null
     }
   }, [fileId, editorReady])
 

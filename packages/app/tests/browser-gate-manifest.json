@@ -707,6 +707,10 @@
     "runs": "gate",
     "why": "a .struct rhythm line (#2120) \u2014 the lookup and the chart against Strudel are unit-covered; that a click into the line draws its chords on it, and a step click writes only that line, is only observable in the running app"
   },
+  "inline-slider.spec.ts": {
+    "runs": "gate",
+    "why": "Strudel's slider(\u2026) in the code (#345) \u2014 the vendored half and the number write are unit-covered; that the slider sits on its number as the text moves, that a drag is heard before release, and that the drag is one undo step, is only observable in the running editor"
+  },
   "piano-roll-column-cover.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"

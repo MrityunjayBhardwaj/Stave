@@ -21,6 +21,12 @@ type EvalBehavior =
 
 let evalBehavior: EvalBehavior = 'two-anon'
 
+// #345 — what the transpiler reports for `$: s("bd").gain(slider(0.5, 0, 1))._pianoroll()`
+const SLIDER_WIDGETS = [
+  { type: 'slider', from: 23, to: 26, value: '0.5', min: 0, max: 1 },
+  { type: '_pianoroll', to: 47, index: 0 },
+]
+
 // Captured onEvalError callback from webaudioRepl construction
 let capturedOnEvalError: ((err: Error) => void) | null = null
 
@@ -117,6 +123,8 @@ vi.mock('@strudel/core', () => {
     // not enough to make the mock's omission harmless.
     setStringParser: vi.fn(),
     pure: vi.fn((v: unknown) => v),
+    // #345 — the vendored `sliderWithID` is built over these at boot.
+    ref: vi.fn(),
   }
 })
 
@@ -179,7 +187,11 @@ vi.mock('@strudel/webaudio', () => {
         // does before it resolves. `unknown-locs` is a runtime with no such state.
         repl.state = code === 'unknown-locs'
           ? undefined
-          : { miniLocations: code === 'declared-locs' ? [[9, 17]] : [] }
+          : {
+              miniLocations: code === 'declared-locs' ? [[9, 17]] : [],
+              // #345 — the transpiler's widgets, kept beside the spans (`repl.mjs:275`)
+              widgets: code === 'sliders' ? SLIDER_WIDGETS : [],
+            }
 
         if (code === 'declared-locs' || code === 'unknown-locs') {
           // #1619 — a stray quoted-space span FIRST ([1,7), what `.color('sienna')`
@@ -624,6 +636,37 @@ describe('StrudelEngine .viz() backdrop flag (#364)', () => {
     // Inline request registered for the track; no backdrop promotion.
     expect(inlineViz?.vizRequests.get('$0')?.vizId).toBe('spectrum')
     expect(inlineViz?.backdropRequest).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #345 — `slider(…)`: the transpiler's slider widgets reach the editor through
+// `components.inlineViz.sliders`, as the repl reported them.
+// ---------------------------------------------------------------------------
+
+describe('StrudelEngine slider widgets (#345)', () => {
+  beforeEach(() => {
+    patternInstanceCounter = 0
+    capturedOnEvalError = null
+    evalBehavior = 'one-named'
+    vi.clearAllMocks()
+  })
+
+  it('publishes the sliders of the last evaluate, without the other widgets', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('sliders')
+    expect(engine.components.inlineViz?.sliders).toEqual([SLIDER_WIDGETS[0]])
+  })
+
+  it('keeps them when an evaluate fails, and drops them when one succeeds without any', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('sliders')
+    await engine.evaluate('error-code')
+    expect(engine.components.inlineViz?.sliders).toEqual([SLIDER_WIDGETS[0]])
+    await engine.evaluate('one-named')
+    expect(engine.components.inlineViz?.sliders).toBeUndefined()
   })
 })
 

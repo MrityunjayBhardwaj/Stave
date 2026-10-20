@@ -13065,6 +13065,17 @@ function gridWriteEdits(fresh, mini, gain) {
 }
 __name(gridWriteEdits, "gridWriteEdits");
 
+// src/codeView/sliderEdit.ts
+function sliderEdit(doc, span, value) {
+  if (!Number.isFinite(value)) return null;
+  const [start, end] = span;
+  if (start < 0 || end > doc.length || end <= start) return null;
+  const text = doc.slice(start, end);
+  if (text !== text.trim() || parseTypedNumber(text) === null) return null;
+  return { range: [start, end], text: formatNumber(value) };
+}
+__name(sliderEdit, "sliderEdit");
+
 // src/codeView/notation/gridCodec.ts
 var stepGridCodec = {
   parse: parseStepGrid,
@@ -15940,6 +15951,27 @@ function isInsideLoop(songCycle, loop) {
 }
 __name(isInsideLoop, "isInsideLoop");
 
+// src/engine/vendored/slider.ts
+var sliderValues = {};
+function sliderFunctions({ ref, pure }) {
+  const slider = /* @__PURE__ */ __name((value) => {
+    console.warn("slider will only work when the transpiler is used... passing value as is");
+    return pure(value);
+  }, "slider");
+  const sliderWithID = /* @__PURE__ */ __name((id, value, _min, _max) => {
+    sliderValues[id] = value;
+    return ref(() => sliderValues[id]);
+  }, "sliderWithID");
+  return { slider, sliderWithID };
+}
+__name(sliderFunctions, "sliderFunctions");
+var sliderId = /* @__PURE__ */ __name((from) => `slider_${from}`, "sliderId");
+function sliderWidgets(widgets) {
+  if (!Array.isArray(widgets)) return [];
+  return widgets.filter((w) => w?.type === "slider");
+}
+__name(sliderWidgets, "sliderWidgets");
+
 // src/engine/StrudelEngine.ts
 function isQueryablePattern(p) {
   return !!p && typeof p.queryArc === "function";
@@ -16211,6 +16243,10 @@ var _StrudelEngine = class _StrudelEngine {
     // `trackSchedulers`), and these are the spans those patterns' haps were located
     // against. Null = unknown, which filters nothing.
     this.lastDeclaredLocations = null;
+    // #345 — the `slider(…)` calls the last SUCCESSFUL evaluate's transpiler reported, as
+    // it reported them. Kept on a failed evaluate for the same reason as the spans above:
+    // the patterns still playing read those sliders' values.
+    this.lastSliders = [];
     /**
      * #1344 — what the last SUCCESSFUL evaluate handed the repl to play, with the
      * seek and loop in force at that moment (the `.p` hook wrapped the pattern in
@@ -16414,7 +16450,7 @@ var _StrudelEngine = class _StrudelEngine {
     ]));
     await required(
       "evalScope",
-      () => coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod)
+      () => coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod, sliderFunctions(coreMod))
     );
     if (this.tierFlags?.midi) {
       const enableWebMidi = midiMod?.enableWebMidi;
@@ -16855,6 +16891,7 @@ var _StrudelEngine = class _StrudelEngine {
         this.lastPatternIR = parseStrudel(code);
         this.lastIRNodeLocLookup = this.lastPatternIR ? buildNodeLocIndex(this.lastPatternIR) : null;
         this.lastDeclaredLocations = declaredLocationKeys(this.repl?.state?.miniLocations) ?? null;
+        this.lastSliders = sliderWidgets(this.repl?.state?.widgets);
         this.loadedRender = {
           pattern: isQueryablePattern(playedPattern) ? playedPattern : null,
           transportOffset,
@@ -16905,10 +16942,11 @@ var _StrudelEngine = class _StrudelEngine {
       trackSchedulers: this.trackSchedulers
     };
     const hasInlineViz = this.vizRequests.size > 0 && this.lastEvaluatedCode;
-    if (hasInlineViz || this.backdropVizRequest) {
+    if (hasInlineViz || this.backdropVizRequest || this.lastSliders.length > 0) {
       bag.inlineViz = {
         vizRequests: hasInlineViz ? this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode) : /* @__PURE__ */ new Map(),
-        backdropRequest: this.backdropVizRequest ? { vizId: this.backdropVizRequest, options: this.backdropVizOptions ?? void 0 } : void 0
+        backdropRequest: this.backdropVizRequest ? { vizId: this.backdropVizRequest, options: this.backdropVizOptions ?? void 0 } : void 0,
+        sliders: this.lastSliders.length > 0 ? this.lastSliders : void 0
       };
     }
     if (this.lastPatternIR) {
@@ -29388,6 +29426,14 @@ var STRUDEL_DOCS = {
     // No dedicated #setcps anchor — the tempo section that documents it.
     sourceUrl: "https://strudel.cc/understand/cycles/#setting-cpm"
   },
+  slider: {
+    signature: "slider(value, min = 0, max = 1, step?)",
+    description: "Draw a slider in the code that moves value between min and max while it plays.",
+    example: 's("bd*8").gain(slider(0.5, 0, 1))'
+    // No reference entry on strudel.cc (the 47 pages its docs navigation links,
+    // searched 2026-10-20; it appears only inside examples on /understand/pitch/), so
+    // no sourceUrl — it falls back to meta.docsBaseUrl, as `every` does.
+  },
   stack: {
     signature: "stack(...patterns)",
     description: "Play multiple patterns simultaneously (vertical stack).",
@@ -32152,6 +32198,104 @@ function useHighlighting(editor, hapStream) {
 }
 __name(useHighlighting, "useHighlighting");
 
+// src/monaco/inlineSliders.ts
+var SLIDER_WIDTH_PX = 64;
+var GAP_PX = SLIDER_WIDTH_PX + 4;
+var styleInjected = false;
+function ensureSliderStyle() {
+  if (styleInjected || typeof document === "undefined") return;
+  styleInjected = true;
+  const style = document.createElement("style");
+  style.textContent = `
+    .stave-slider-gap { display: inline-block; width: ${GAP_PX}px; }
+    .stave-slider { display: inline-flex; align-items: center; }
+    .stave-slider input { width: ${SLIDER_WIDTH_PX}px; margin: 0; accent-color: rgb(var(--accent-rgb, 139, 92, 246)); }
+  `;
+  document.head.appendChild(style);
+}
+__name(ensureSliderStyle, "ensureSliderStyle");
+function addInlineSliders(editor, monaco, sliders) {
+  const model = editor.getModel();
+  if (!model || sliders.length === 0) return null;
+  const doc = model.getValue();
+  const placed = sliders.filter((w) => w.to <= doc.length && (w.value === void 0 || doc.slice(w.from, w.to) === w.value));
+  if (placed.length === 0) return null;
+  ensureSliderStyle();
+  const writer = createWriter(editor);
+  const rangeOf = /* @__PURE__ */ __name((start, end) => {
+    const a = model.getPositionAt(start);
+    const b = model.getPositionAt(end);
+    return new monaco.Range(a.lineNumber, a.column, b.lineNumber, b.column);
+  }, "rangeOf");
+  const decoration = /* @__PURE__ */ __name((range2) => ({
+    range: range2,
+    options: {
+      before: { content: "\xA0", inlineClassName: "stave-slider-gap" },
+      stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges
+    }
+  }), "decoration");
+  const spans = editor.createDecorationsCollection(placed.map((w) => decoration(rangeOf(w.from, w.to))));
+  const widgets = placed.map((w, i) => {
+    const id = sliderId(w.from);
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = String(w.min);
+    input.max = String(w.max);
+    input.step = String(w.step ?? (w.max - w.min) / 1e3);
+    input.value = doc.slice(w.from, w.to);
+    input.setAttribute("aria-label", `slider from ${w.min} to ${w.max}`);
+    const dom = document.createElement("span");
+    dom.className = "stave-slider";
+    dom.dataset.staveSlider = id;
+    dom.appendChild(input);
+    let dragging = false;
+    const endDrag = /* @__PURE__ */ __name(() => {
+      if (!dragging) return;
+      dragging = false;
+      closeGesture(writer);
+    }, "endDrag");
+    input.addEventListener("pointerdown", () => {
+      dragging = true;
+      openGesture(writer);
+      window.addEventListener("pointerup", endDrag, { once: true });
+      window.addEventListener("pointercancel", endDrag, { once: true });
+    });
+    input.addEventListener("input", () => {
+      const range2 = spans.getRange(i);
+      if (!range2 || !writer) return;
+      const span = [model.getOffsetAt(range2.getStartPosition()), model.getOffsetAt(range2.getEndPosition())];
+      const edit = sliderEdit(model.getValue(), span, Number(input.value));
+      if (!edit || commit(writer, edit, "slider") !== "written") return;
+      const ranges = spans.getRanges();
+      ranges[i] = rangeOf(span[0], span[0] + edit.text.length);
+      spans.set(ranges.map(decoration));
+      editor.layoutContentWidget(widgets[i]);
+      sliderValues[id] = Number(edit.text);
+    });
+    return {
+      getId: /* @__PURE__ */ __name(() => `stave.slider.${id}`, "getId"),
+      getDomNode: /* @__PURE__ */ __name(() => dom, "getDomNode"),
+      getPosition: /* @__PURE__ */ __name(() => {
+        const range2 = spans.getRange(i);
+        return range2 && !range2.isEmpty() ? { position: range2.getStartPosition(), preference: [monaco.editor.ContentWidgetPositionPreference.EXACT] } : null;
+      }, "getPosition")
+    };
+  });
+  for (const widget of widgets) editor.addContentWidget(widget);
+  const relayout = editor.onDidChangeModelContent(() => {
+    for (const widget of widgets) editor.layoutContentWidget(widget);
+  });
+  return {
+    cleanup() {
+      relayout.dispose();
+      closeGesture(writer);
+      for (const widget of widgets) editor.removeContentWidget(widget);
+      spans.clear();
+    }
+  };
+}
+__name(addInlineSliders, "addInlineSliders");
+
 // src/engine/timelineCapture.ts
 var DEFAULT_CAPACITY = 30;
 var entries = [];
@@ -34397,6 +34541,7 @@ function EditorView({
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const viewZoneHandleRef = useRef(null);
+  const sliderHandleRef = useRef(null);
   const lastPayloadRef = useRef(null);
   const [hapStream, setHapStream] = useState(null);
   const [breakpointStore, setBreakpointStore] = useState(null);
@@ -34433,6 +34578,14 @@ function EditorView({
         } else if (payload === null) {
           viewZoneHandleRef.current?.pause();
         }
+        if (payload && editorRef.current && monacoRef.current) {
+          sliderHandleRef.current?.cleanup();
+          sliderHandleRef.current = addInlineSliders(
+            editorRef.current,
+            monacoRef.current,
+            payload.inlineViz?.sliders ?? []
+          );
+        }
       }
     );
     return () => {
@@ -34440,6 +34593,8 @@ function EditorView({
       lastPayloadRef.current = null;
       viewZoneHandleRef.current?.cleanup();
       viewZoneHandleRef.current = null;
+      sliderHandleRef.current?.cleanup();
+      sliderHandleRef.current = null;
     };
   }, [fileId, editorReady]);
   useEffect(() => {

@@ -70,6 +70,8 @@ export type WriteSource =
   // inspector's knobs do, from a different surface with a different failure
   // mode, and a Console line that cannot tell them apart is not an instrument.
   | 'region.trim'
+  // #345 — a `slider(…)` drawn in the code itself, moving its own number.
+  | 'slider'
 
 /** A single replacement, addressed by absolute pre-edit doc offsets. */
 export interface OffsetEdit {

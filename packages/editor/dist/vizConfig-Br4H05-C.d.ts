@@ -696,6 +696,21 @@ interface StaveUniforms {
     [customAlias: string]: any;
 }
 
+/**
+ * One slider as the transpiler reports it in `widgets`
+ * (@strudel/transpiler@1.2.6, transpiler.mjs:91-100): `from`/`to` are the
+ * value argument's offsets in the evaluated code.
+ */
+interface SliderWidgetConfig {
+    type: 'slider';
+    from: number;
+    to: number;
+    value: string;
+    min: number;
+    max: number;
+    step?: number;
+}
+
 /** Real-time hap event stream for visualizers and highlighting. */
 interface StreamingComponent {
     hapStream: HapStream;
@@ -751,6 +766,12 @@ interface InlineVizComponent {
         vizId: string;
         options?: VizOptionsBag;
     };
+    /**
+     * #345 — the `slider(…)` calls in the evaluated code, as Strudel's transpiler
+     * reported them (offsets into that code). The editor draws one slider on each.
+     * Absent when there are none.
+     */
+    sliders?: readonly SliderWidgetConfig[];
 }
 /** Pattern IR derived from the last successful evaluate(). */
 interface IRComponent {
