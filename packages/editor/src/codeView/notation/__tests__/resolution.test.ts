@@ -973,13 +973,18 @@ describe('#1239 resolution — an unrepresentable fold refuses instead of throwi
   const parts = (n: number) =>
     Array.from({ length: n }, (_, i) => `${i + 1}*${i + 1}`).join(', ')
 
+  // ⚠ This arm takes ~21 s on its own (measured 2026-10-20, M-series laptop), so
+  // it carries its own timeout. It always took that long: vitest 1 only failed a
+  // test when its timer fired, and a synchronous loop never lets it fire, so the
+  // 5 s default never applied. Vitest 4 also fails a test that FINISHES past its
+  // timeout (vitest#2920), which is what surfaced it.
   it('does not throw at any part count, on either surface', () => {
     for (let n = 1; n <= 100; n++) {
       const mini = parts(n)
       expect(() => parseStepGrid(mini), `step @ ${n} parts`).not.toThrow()
       expect(() => parsePianoRoll(mini), `roll @ ${n} parts`).not.toThrow()
     }
-  })
+  }, 90_000)
 
   it('refuses past the cap with a stated gate, not with an exception', () => {
     // 43 is where it used to die; 100 is the real corpus tune's own width.

@@ -30,6 +30,10 @@
  * `NODE_OPTIONS` on the parent does work — measured, 4288 MB → 8384 MB inside a
  * worker — because worker threads inherit it as their default resource limit.
  *
+ * Since vitest 4 (#2154) test files run in forked child PROCESSES by default, not
+ * worker threads. The same `NODE_OPTIONS` still reaches them: re-measured
+ * 2026-10-20, a test sees 8384 MB through this wrapper and 4288 MB without it.
+ *
  * Why raising it is a fix and not a postponement: no single test file needs
  * anything close to the limit (heaviest measured alone: 893 MB). The exhaustion
  * comes from ACCUMULATION across the ~10 files each worker handles, which is

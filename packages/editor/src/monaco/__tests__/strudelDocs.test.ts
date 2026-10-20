@@ -65,8 +65,7 @@ describe('STRUDEL_DOCS', () => {
  */
 function makeHoverSpy() {
   return vi.fn<
-    [string, Monaco.languages.HoverProvider],
-    Monaco.IDisposable
+    (language: string, provider: Monaco.languages.HoverProvider) => Monaco.IDisposable
   >(() => ({ dispose: vi.fn() }))
 }
 
