@@ -1,6 +1,9 @@
 import { test, expect, type Page } from '@playwright/test'
 
 import { bootApp } from './_appBoot'
+// The probe's own type. Each spec used to declare its own copy of this global,
+// and the copies clashed once `next build` began type-checking the tests.
+import type { AssetProbe } from '../src/e2e/assetProbe'
 
 /**
  * The instrument for #1504 — record a take in the browser.
@@ -44,18 +47,9 @@ interface DocRecord {
   duration?: number
 }
 
-interface PageProbe {
-  reset(): Promise<void>
-  docList(): Promise<DocRecord[]>
-  docRename(id: string, name: string): Promise<string | null>
-  resolve(hash: string): Promise<string | null>
-  inSoundMap(name: string): boolean
-  decode(url: string): Promise<{ duration: number; sampleRate: number }>
-}
-
 declare global {
   interface Window {
-    __staveAssetProbe?: PageProbe
+    __staveAssetProbe?: AssetProbe
   }
 }
 
