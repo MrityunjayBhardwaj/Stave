@@ -48,13 +48,12 @@
  * declared, independently of what caused it. Verified for two unrelated mechanisms:
  * positional CLI paths (1 of 87) and `--shard=1/2` (1 of 2, 50.0%).
  *
- * ⚠ ONE NARROWING IT CANNOT REPORT, STATED BECAUSE AN EARLIER DRAFT OF THIS COMMENT
- * CLAIMED OTHERWISE. If a filter matches NO files at all — `--changed HEAD` with
- * nothing changed — vitest prints "No test files found" and exits before any
- * reporter hook runs, so this file stays silent rather than saying "0 of N". The
- * silence is vitest's, not a judgement of ours, and it is the one case where a
- * narrowed run produces no scope line. Do not read the absence of a scope line as
- * the absence of narrowing.
+ * A filter that matches NO files at all (`--changed HEAD` with nothing changed)
+ * is reported too, as "a SUBSET — 0 of N". Until vitest 4 it was not: vitest 1
+ * printed "No test files found" and exited before any reporter hook ran, so this
+ * file stayed silent there. Vitest 4 still calls `onTestRunEnd` in that case
+ * (#2154), and the gate's own test pins the "0 of N" line so a return of the
+ * silence shows up as a red test rather than as a missing line nobody notices.
  *
  * NOTHING IS HARDCODED, ESPECIALLY NOT A TOTAL. Its sibling
  * `gate-population-reporter.ts` makes the same point for the browser gate
@@ -64,7 +63,7 @@
  * totals drift in days. This file prints counts and the command to re-derive them.
  */
 
-import type { File, Reporter, Task, Vitest } from 'vitest'
+import type { Reporter, TestModule, Vitest } from 'vitest/node'
 
 interface Tally {
   collected: number
@@ -73,18 +72,19 @@ interface Tally {
   skipped: number
 }
 
-/** Walk the task tree — suites nest, and only leaf tasks are tests. */
-function tally(tasks: Task[], acc: Tally): Tally {
-  for (const task of tasks) {
-    if (task.type === 'suite') {
-      tally(task.tasks ?? [], acc)
-      continue
+/**
+ * Count every test in the run. `allTests()` walks nested suites itself, so this
+ * sees exactly the leaf tests the task-tree walk did before vitest 4 (#2154).
+ */
+function tally(modules: ReadonlyArray<TestModule>, acc: Tally): Tally {
+  for (const module of modules) {
+    for (const test of module.children.allTests()) {
+      acc.collected += 1
+      const state = test.result().state
+      if (state === 'passed') acc.passed += 1
+      else if (state === 'failed') acc.failed += 1
+      else acc.skipped += 1
     }
-    acc.collected += 1
-    const state = task.result?.state
-    if (state === 'pass') acc.passed += 1
-    else if (state === 'fail') acc.failed += 1
-    else acc.skipped += 1
   }
   return acc
 }
@@ -116,7 +116,7 @@ class VitestScopeReporter implements Reporter {
       const glob = (project as { globTestFiles?: () => Promise<unknown> }).globTestFiles
       if (typeof glob !== 'function') return null
       const result = await glob.call(project)
-      // 1.6.1 returns a plain array; other lines return { testFiles, … }.
+      // 1.6.1 returned a plain array; vitest 4 returns { testFiles, … }.
       const list = Array.isArray(result)
         ? result
         : (result as { testFiles?: unknown[] } | null)?.testFiles
@@ -126,11 +126,9 @@ class VitestScopeReporter implements Reporter {
     return total
   }
 
-  async onFinished(files: File[] = []): Promise<void> {
-    const counts = tally(
-      files.flatMap((f) => f.tasks ?? []),
-      { collected: 0, passed: 0, failed: 0, skipped: 0 },
-    )
+  // Vitest 4 no longer calls `onFinished`; `onTestRunEnd` is the run-end hook (#2154).
+  async onTestRunEnd(files: ReadonlyArray<TestModule> = []): Promise<void> {
+    const counts = tally(files, { collected: 0, passed: 0, failed: 0, skipped: 0 })
     const executed = counts.passed + counts.failed
     const include = this.ctx?.config?.include ?? []
     const namePattern = this.ctx?.config?.testNamePattern

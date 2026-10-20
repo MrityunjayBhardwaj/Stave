@@ -37,6 +37,6 @@
     "monaco-editor": "^0.50.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^1.6.0"
+    "vitest": "^4.1.12"
   }
 }

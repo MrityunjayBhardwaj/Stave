@@ -37,8 +37,8 @@ import { IRInspectorPanel } from "../IRInspectorPanel";
 
 let mockCurrent: IRSnapshot | null = null;
 const mockListeners = new Set<(s: IRSnapshot | null) => void>();
-const revealLineInFileMock = vi.fn<[string, number], void>();
-const setCaptureCapacityMock = vi.fn<[number], void>();
+const revealLineInFileMock = vi.fn<(fileId: string, line: number) => void>();
+const setCaptureCapacityMock = vi.fn<(capacity: number) => void>();
 
 vi.mock("@stave/editor", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@stave/editor")>()),

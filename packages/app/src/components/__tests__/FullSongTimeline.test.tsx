@@ -9,7 +9,7 @@
  * type), so no module mock is needed. A MockResizeObserver supplies the grid
  * width (jsdom ships none), mirroring MusicalTimeline.test.tsx.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest'
 import * as React from 'react'
 import { act, render, cleanup, fireEvent } from '@testing-library/react'
 import type { SongAnalysis } from '@stave/editor'
@@ -153,7 +153,7 @@ function renderFull(overrides?: Partial<React.ComponentProps<typeof FullSongTime
     ...overrides,
   }
   const utils = render(<FullSongTimeline {...props} />)
-  return { ...utils, onSeek: props.onSeek as ReturnType<typeof vi.fn> }
+  return { ...utils, onSeek: props.onSeek as Mock<(...args: any[]) => any> }
 }
 
 describe('FullSongTimeline', () => {
@@ -401,7 +401,7 @@ describe('FullSongTimeline — trim a clip (drag right edge → set-weight, #437
   // two clips, arm 0 over [0,2) and arm 1 over [2,4). At zoom 1 the period (4)
   // fits 800px → 200px/cycle, so arm 0's right edge sits at x=400. We grab just
   // inside it, drag to cycle 3, and expect a set-weight to 3 for arm 0.
-  function renderTrimmable(onTrimClip: ReturnType<typeof vi.fn>) {
+  function renderTrimmable(onTrimClip: Mock<(...args: any[]) => any>) {
     const utils = renderFull({ ir: {} as never, onTrimClip })
     const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
     // jsdom has no layout — supply the grid rect the content-space math reads.
@@ -501,7 +501,7 @@ describe('FullSongTimeline — delete a clip (select body + Delete → remove-ar
   // real clips (arm 0 [0,2), arm 1 [2,4)) at 200px/cycle, so arm 0's body centre
   // sits at x≈200 and arm 1's at x≈600 (bd row y≈10). The hh lane carries no
   // armIndex events, so it gets ONE implicit clip (armIndex −1, not deletable).
-  function renderDeletable(onDeleteClip: ReturnType<typeof vi.fn>) {
+  function renderDeletable(onDeleteClip: Mock<(...args: any[]) => any>) {
     const utils = renderFull({ ir: {} as never, onDeleteClip })
     const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
     grid.getBoundingClientRect = () =>
@@ -579,7 +579,7 @@ describe('FullSongTimeline — move a clip (drag body → reorder; bare clip = n
   // Reorder fixture: the same two-arm bd lane (arm 0 [0,2), arm 1 [2,4)) at
   // 200px/cycle. Dragging arm 0's body (x≈200) right into arm 1's span (x≈600 =
   // cycle 3) reorders it to slot 1.
-  function renderReorderable(onMoveClip: ReturnType<typeof vi.fn>) {
+  function renderReorderable(onMoveClip: Mock<(...args: any[]) => any>) {
     const utils = renderFull({ ir: {} as never, onMoveClip })
     const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
     grid.getBoundingClientRect = () =>
@@ -587,7 +587,7 @@ describe('FullSongTimeline — move a clip (drag body → reorder; bare clip = n
     return { ...utils, grid }
   }
   // Wrap fixture: a BARE track (no armIndex) → one implicit clip spanning [0,4).
-  function renderWrappable(onMoveClip: ReturnType<typeof vi.fn>) {
+  function renderWrappable(onMoveClip: Mock<(...args: any[]) => any>) {
     const utils = renderFull({ ir: { bare: true } as never, onMoveClip })
     const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
     grid.getBoundingClientRect = () =>
@@ -660,7 +660,7 @@ describe('FullSongTimeline — move a clip (drag body → reorder; bare clip = n
 })
 
 describe('FullSongTimeline — duplicate a clip (select + ⌘/Ctrl-D → insert arm, #386)', () => {
-  function renderDuplicatable(onDuplicateClip: ReturnType<typeof vi.fn>) {
+  function renderDuplicatable(onDuplicateClip: Mock<(...args: any[]) => any>) {
     const utils = renderFull({ ir: {} as never, onDuplicateClip })
     const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
     grid.getBoundingClientRect = () =>
@@ -742,7 +742,7 @@ describe('FullSongTimeline — duplicate a clip (select + ⌘/Ctrl-D → insert 
 })
 
 describe('FullSongTimeline — split a clip (select + S → split arm at midpoint, #386)', () => {
-  function renderSplittable(onSplitClip: ReturnType<typeof vi.fn>) {
+  function renderSplittable(onSplitClip: Mock<(...args: any[]) => any>) {
     const utils = renderFull({ ir: {} as never, onSplitClip })
     const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
     grid.getBoundingClientRect = () =>
@@ -1050,7 +1050,7 @@ describe('FullSongTimeline — trim a REGION (drag a mark edge → .begin/.end, 
   const REGION_EVENTS = TRIM_EVENTS.map((e) => ({ ...e, trackId: 'bd' }))
 
   function renderRegion(
-    onTrimRegion: ReturnType<typeof vi.fn>,
+    onTrimRegion: Mock<(...args: any[]) => any>,
     extra?: Partial<React.ComponentProps<typeof FullSongTimeline>>,
   ) {
     // ⚠ `getTimelineEvents` IS LOAD-BEARING HERE, and its absence is why the
@@ -1362,7 +1362,7 @@ describe('FullSongTimeline loop locators (#1570)', () => {
 
 describe('FullSongTimeline — point a section at a different part (select + P → chooser, #1560)', () => {
   function renderChoosable(
-    onAssignSectionPart: ReturnType<typeof vi.fn>,
+    onAssignSectionPart: Mock<(...args: any[]) => any>,
     parts: string[] = ['bass', 'lead'],
   ) {
     const sectionParts = vi.fn(() => parts)
