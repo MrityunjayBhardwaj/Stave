@@ -189,7 +189,7 @@ If you do write code, issues marked [**good first issue**](https://github.com/Mr
 
 <br/>
 
-You need Node 20+ and pnpm 9+.
+You need Node 22.12+ and pnpm 9+.
 
 ```bash
 git clone https://github.com/MrityunjayBhardwaj/Stave.git

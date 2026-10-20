@@ -1,9 +1,9 @@
 ---
 // Override of Starlight's Hero component.
 //
-// Starlight renders splash-page hero action links verbatim (Hero.astro:54 —
-// `<LinkButton href={action.link}>`), with NO `base` prefix — so a hero
-// `link: /getting-started/` ships as `/getting-started/` and, under
+// Starlight renders splash-page hero action links verbatim
+// (`<LinkButton href={action.link}>` in its Hero.astro), with NO `base` prefix,
+// so a hero `link: /getting-started/` ships as `/getting-started/` and, under
 // `base: /docs/`, leaves the docs entirely. The rehype plugin can't reach it
 // (frontmatter isn't in the markdown AST).
 //
@@ -13,6 +13,11 @@
 // relative link, survives Next's trailing-slash stripping in the prod route
 // handler that serves the site (a relative `getting-started/` resolved against
 // the slash-stripped `/docs` → `/getting-started` → 404).
+//
+// #2133 — Starlight 0.32+ no longer passes route data to components as props:
+// its Hero reads `Astro.locals.starlightRoute.entry`. So the prefixed actions
+// go onto the route data, where the default Hero reads them. (Editing
+// `Astro.props`, as this did before, silently stopped working.)
 import Default from '@astrojs/starlight/components/Hero.astro'
 
 const base = import.meta.env.BASE_URL // '/docs/' (or '/' under STAVE_DOCS_BASE=/)
@@ -25,22 +30,19 @@ function withBase(link) {
   return b.slice(0, -1) + link
 }
 
-// Clone props with prefixed action links; leave everything else untouched.
-const entry = Astro.props.entry
-const hero = entry?.data?.hero
-const props =
-  hero?.actions?.length > 0
-    ? {
-        ...Astro.props,
-        entry: {
-          ...entry,
-          data: {
-            ...entry.data,
-            hero: { ...hero, actions: hero.actions.map((a) => ({ ...a, link: withBase(a.link) })) },
-          },
-        },
-      }
-    : Astro.props
+// Replace the route's entry with one whose action links are prefixed; leave
+// everything else untouched.
+const route = Astro.locals.starlightRoute
+const hero = route.entry?.data?.hero
+if (hero?.actions?.length > 0) {
+  route.entry = {
+    ...route.entry,
+    data: {
+      ...route.entry.data,
+      hero: { ...hero, actions: hero.actions.map((a) => ({ ...a, link: withBase(a.link) })) },
+    },
+  }
+}
 ---
 
-<Default {...props} />
+<Default />

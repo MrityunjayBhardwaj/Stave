@@ -31,9 +31,7 @@ export default defineConfig({
       components: {
         Hero: './src/components/Hero.astro',
       },
-      social: {
-        github: 'https://github.com/MrityunjayBhardwaj/Stave',
-      },
+      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/MrityunjayBhardwaj/Stave' }],
       editLink: {
         baseUrl:
           'https://github.com/MrityunjayBhardwaj/Stave/edit/main/packages/docs/',
@@ -59,7 +57,7 @@ export default defineConfig({
         },
         {
           label: 'Core concepts',
-          autogenerate: { directory: 'concepts' },
+          items: [{ autogenerate: { directory: 'concepts' } }],
         },
         {
           label: 'Runtimes',
@@ -73,7 +71,7 @@ export default defineConfig({
         },
         {
           label: 'Guides',
-          autogenerate: { directory: 'guides' },
+          items: [{ autogenerate: { directory: 'guides' } }],
         },
         {
           label: 'API reference',
