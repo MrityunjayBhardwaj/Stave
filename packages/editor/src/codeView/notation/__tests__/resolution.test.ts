@@ -973,18 +973,24 @@ describe('#1239 resolution — an unrepresentable fold refuses instead of throwi
   const parts = (n: number) =>
     Array.from({ length: n }, (_, i) => `${i + 1}*${i + 1}`).join(', ')
 
-  // ⚠ This arm takes ~21 s on its own (measured 2026-10-20, M-series laptop), so
-  // it carries its own timeout. It always took that long: vitest 1 only failed a
-  // test when its timer fired, and a synchronous loop never lets it fire, so the
-  // 5 s default never applied. Vitest 4 also fails a test that FINISHES past its
-  // timeout (vitest#2920), which is what surfaced it.
+  // ⚠ This arm is slow because the piano roll is: nearly all of it is
+  // `parsePianoRoll`, about 0.4 s a call at 100 parts. It carries its own timeout.
+  // It always took this long: vitest 1 only failed a test when its timer fired, and
+  // a synchronous loop never lets it fire, so the 5 s default never applied.
+  // Vitest 4 also fails a test that FINISHES past its timeout (vitest#2920).
+  //
+  // Measured 2026-10-21 (#2159): 21.2 s on an M-series laptop before `rollKey`
+  // stopped re-stringifying on every comparison, 15.0 s after. CI's runner took
+  // 98.5 s for the 21.2 s version (×4.65), so ~70 s is expected there now; the
+  // budget leaves room for a slow runner. What is left is each roll projection
+  // querying the pattern on its own.
   it('does not throw at any part count, on either surface', () => {
     for (let n = 1; n <= 100; n++) {
       const mini = parts(n)
       expect(() => parseStepGrid(mini), `step @ ${n} parts`).not.toThrow()
       expect(() => parsePianoRoll(mini), `roll @ ${n} parts`).not.toThrow()
     }
-  }, 90_000)
+  }, 180_000)
 
   it('refuses past the cap with a stated gate, not with an exception', () => {
     // 43 is where it used to die; 100 is the real corpus tune's own width.

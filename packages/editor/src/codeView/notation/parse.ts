@@ -3509,9 +3509,16 @@ function readRollOnsets(pat: MiniPattern, cyc: number): Read<RollOnset[]> {
   return { ok: true, onsets: out }
 }
 
+// #2159 — the same order a bare `.sort()` gives (each tuple compared as its
+// `String()`), with that string built once per note instead of on every
+// comparison: a 100-part roll spent ~43% of its parse in this sort.
 const rollKey = (o: Array<{ pos: number; dur: number; pitch: string }>): string =>
   JSON.stringify(
-    o.map((x) => [Math.round(x.pos * ONSET_GRID), Math.round(x.dur * ONSET_GRID), x.pitch]).sort(),
+    o
+      .map((x) => [Math.round(x.pos * ONSET_GRID), Math.round(x.dur * ONSET_GRID), x.pitch] as const)
+      .map((t) => ({ t, s: String(t) }))
+      .sort((a, b) => (a.s < b.s ? -1 : a.s > b.s ? 1 : 0))
+      .map(({ t }) => t),
   )
 
 /** the roll's probe pitches — same single-atom requirement as `PROBE_SOUND` (#994) */
