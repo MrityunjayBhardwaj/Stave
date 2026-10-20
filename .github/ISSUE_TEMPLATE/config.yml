@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 Docs
+    url: https://stave.live/docs/
+    about: How the Timeline, Pattern grids, Mixer and visuals work.
+  - name: 🗺️ Roadmap
+    url: https://stave.live/docs/roadmap/
+    about: What's coming in the next releases.
+  - name: 🔒 Report a security problem
+    url: https://github.com/MrityunjayBhardwaj/Stave/security/policy
+    about: Please don't open a public issue for a vulnerability. See how to report it privately.

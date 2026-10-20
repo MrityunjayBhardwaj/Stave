@@ -24,12 +24,14 @@
  * interchangeable and a figure measured on one predicts nothing about another.
  */
 import { describe, it, expect } from 'vitest'
-import { loadCorpus } from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
+import { hasCorpusArchive, loadCorpus } from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
 import { parseStrudel } from '../../../editor/src/codeView/ir/parseStrudel'
 import { signalAutomations } from '../../../editor/src/codeView/ir/signalAutomation'
 
 describe('signal span census over the sweep corpus', () => {
-  it('pins where a control can write, and proves the insert path is reachable', async () => {
+  // The sweep corpus lives in the gitignored `.bakery-runs` archive, so a fresh
+  // checkout (and CI) skips this, as the other corpus tests do.
+  it.skipIf(!hasCorpusArchive())('pins where a control can write, and proves the insert path is reachable', async () => {
     const docs = await loadCorpus()
     let parsed = 0
     let automations = 0
