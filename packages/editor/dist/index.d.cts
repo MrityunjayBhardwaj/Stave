@@ -97,6 +97,13 @@ interface ChunkInfo {
      *  opens in the step grid; the chain plays the track's content, so like `pickChoice`
      *  its `.gain` is not this line's own. */
     structRhythm?: true;
+    /** On a rhythm line's chunk: the head and mini string of the chain `.struct` is
+     *  called on, the content the line times (`chord`, `<Em9 A13>`). The Pattern tab
+     *  draws that content on the line (#2120). Read-only: nothing writes through it. */
+    structOver?: {
+        headFn: string | null;
+        miniString: string | null;
+    };
 }
 
 /**
@@ -13422,8 +13429,10 @@ declare function Mixer({ division, onDivisionChange, resolution }?: MixerProps):
 interface SequencerGridProps {
     /** lift the grid-resolution ("Slots") control to the Pattern inspector (#601) */
     onResolution?: (r: ResolutionControlProps | null) => void;
+    /** a sentence shown over the grid: why a rhythm line is drawn without its chords (#2120) */
+    notice?: string | null;
 }
-declare function SequencerGrid({ onResolution }?: SequencerGridProps): React.ReactElement;
+declare function SequencerGrid({ onResolution, notice }?: SequencerGridProps): React.ReactElement;
 
 /**
  * inspector — the Pattern grids' selection key + the shared `.gain` (velocity)

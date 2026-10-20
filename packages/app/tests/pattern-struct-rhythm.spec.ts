@@ -1,11 +1,11 @@
 /**
- * #2120 — a rhythm line in `.struct(…)` opens in the Pattern tab, and a step click
- * stays in it.
+ * #2120 — a rhythm line in `.struct(…)` opens in the Pattern tab with the chords it
+ * plays drawn on it, and a step click stays in the line.
  *
  * Before the fix a cursor in a rhythm line bound the chords (`chord(vamp)`), so the
- * line the musician was looking at could not be edited from the grid. The unit suite
- * covers the lookup; this covers the gesture: click into the line, see its steps,
- * click one, and find only that line changed in the code.
+ * line the musician was looking at could not be edited from the grid. The unit suites
+ * cover the lookup and the chart against Strudel; this covers the gesture: click into
+ * the line, see the chords on it, click a step, and find only that line changed.
  */
 import { test, expect, type Page } from '@playwright/test'
 
@@ -87,16 +87,24 @@ test.describe('#2120 — a .struct rhythm line', () => {
     await clickInto(page, LINE_2)
   })
 
-  test('opens as a one-lane step grid with its own hits', async ({ page }) => {
+  test('draws the chords on the line under the cursor', async ({ page }) => {
     const drawer = page.locator('[data-bottom-panel="root"]')
-    await expect(drawer.locator('[data-seq-cell^="0:"]')).toHaveCount(16)
-    await expect(drawer.locator('[data-seq-cell^="1:"]')).toHaveCount(0)
-    await expect(drawer.locator('[data-seq-cell^="0:"][aria-pressed="true"]')).toHaveCount(LINE_2.split(' ').filter((s) => s === 'x').length)
+    const hits = LINE_2.split(' ').filter((s) => s === 'x').length
+    // the strip names the chord in each bar, and each chord has its row
+    await expect(drawer.locator('[data-rhythm-chord]')).toHaveText(['Em9', 'A13'])
+    await expect(drawer.locator('[data-rhythm-row]')).toHaveCount(2)
+    await expect(drawer.locator('[data-rhythm-cell^="0:"]')).toHaveCount(32)
+    // Em9 plays the line's hits in bar 1, A13 in bar 2; each is greyed in the other's bar
+    await expect(drawer.locator('[data-rhythm-cell^="0:"][aria-pressed="true"]')).toHaveCount(hits)
+    await expect(drawer.locator('[data-rhythm-cell^="1:"][aria-pressed="true"]')).toHaveCount(hits)
+    await expect(drawer.locator('[data-rhythm-cell^="0:"][data-rhythm-other]')).toHaveCount(16)
+    await expect(drawer.locator('[data-rhythm-cell="0:1"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(drawer.locator('[data-rhythm-cell="1:17"]')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  test('a click on an empty step changes that line and nothing else', async ({ page }) => {
+  test('a click on an empty step in bar 2 changes that line and nothing else', async ({ page }) => {
     const drawer = page.locator('[data-bottom-panel="root"]')
-    await drawer.locator('[data-seq-cell="0:0"]').click()
+    await drawer.locator('[data-rhythm-cell="1:16"]').click()
     await expect.poll(() => code(page)).not.toBe(SONG)
     const after = await code(page)
     const changed = SONG.split('\n').flatMap((l, i) => (l === after.split('\n')[i] ? [] : [i + 1]))
@@ -104,5 +112,47 @@ test.describe('#2120 — a .struct rhythm line', () => {
       changed: [7],
       line7: `    "${LINE_2.replace(/^~/, 'x')}",`,
     })
+    // and it shows in both bars
+    await expect(drawer.locator('[data-rhythm-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(drawer.locator('[data-rhythm-cell="1:16"]')).toHaveAttribute('aria-pressed', 'true')
   })
+
+  test('a greyed step is not that chord’s, and a click there writes nothing', async ({ page }) => {
+    const drawer = page.locator('[data-bottom-panel="root"]')
+    const cell = drawer.locator('[data-rhythm-cell="0:16"]')
+    await expect(cell).toHaveAttribute('aria-disabled', 'true')
+    // forced: an inert cell is skipped by Playwright's own wait, which is the point
+    await cell.click({ force: true })
+    // the live control: the same click one row down writes
+    await drawer.locator('[data-rhythm-cell="1:16"]').click()
+    await expect.poll(() => code(page)).not.toBe(SONG)
+    expect((await code(page)).split('\n')[6]).toBe(`    "${LINE_2.replace(/^~/, 'x')}",`)
+  })
+})
+
+test('#2120 — on the chords, the chord chart says where its rhythm is', async ({ page }) => {
+  await boot(page)
+  await seed(page, SONG)
+  await clickInto(page, 'chord(vamp)')
+  const drawer = page.locator('[data-bottom-panel="root"]')
+  await expect(drawer.locator('[data-seq-chord-chart]')).toContainText('.struct(…)')
+  await expect(drawer.locator('[data-rhythm-chart]')).toHaveCount(0)
+})
+
+test('#2120 — a rhythm bound to a name has no line to open, so the chart does not point at one', async ({ page }) => {
+  await boot(page)
+  // the chords through a name: a `chord("…")` literal opens no chart at all yet (#2142)
+  await seed(page, 'const rh = "x ~ x x"\nconst v = "<Em9 A13>"\n$: chord(v).voicing().struct(rh).s("piano")')
+  await clickInto(page, 'chord(v)')
+  const chart = page.locator('[data-bottom-panel="root"] [data-seq-chord-chart]')
+  await expect(chart).toHaveText('Chord chart — each lane is a chord, not a sound.')
+})
+
+test('#2120 — chords and a rhythm that come round past 12 bars say why they are not drawn together', async ({ page }) => {
+  await boot(page)
+  await seed(page, '$: chord("<Em9 A13 Dm7 G7 Cmaj7>").voicing()\n  .struct(\n    "<[x ~] [~ x] [x x]>"\n  ).s("piano")')
+  await clickInto(page, '"<[x ~]')
+  const drawer = page.locator('[data-bottom-panel="root"]')
+  await expect(drawer.locator('[data-seq-notice]')).toContainText('come round after 15 bars, more than the 12 this grid draws')
+  await expect(drawer.locator('[data-rhythm-chart]')).toHaveCount(0)
 })

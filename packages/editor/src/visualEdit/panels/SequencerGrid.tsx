@@ -105,12 +105,24 @@ function reportRefusal(attempted: string): void {
   })
 }
 
+/**
+ * Is this call a `.struct` whose rhythm a cursor can open (#2120)? Only the forms the
+ * lookup takes: a string, or a `pick` list of strings. A rhythm bound to a name or built
+ * by a function opens nothing yet (#2128), so the chord chart must not point at it.
+ */
+function opensRhythmLine(call: { name: string; args: { raw: string }[] }): boolean {
+  const raw = call.args[0]?.raw ?? ''
+  return call.name === 'struct' && (/^["'`]/.test(raw) || /\.pick\w*\(\s*\[\s*["'`]/.test(raw))
+}
+
 export interface SequencerGridProps {
   /** lift the grid-resolution ("Slots") control to the Pattern inspector (#601) */
   onResolution?: (r: ResolutionControlProps | null) => void
+  /** a sentence shown over the grid: why a rhythm line is drawn without its chords (#2120) */
+  notice?: string | null
 }
 
-export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.ReactElement {
+export function SequencerGrid({ onResolution, notice = null }: SequencerGridProps = {}): React.ReactElement {
   // How finely this panel DRAWS the pattern (#1057). Purely a view: nothing here
   // reaches the document until an actual edit is made, and the first write absorbs
   // it (`useGridModel` → `absorbViewScale`).
@@ -772,6 +784,14 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             }}
           >
             Chord chart — each lane is a chord, not a sound.
+            {/* #2120: the rhythm these chords play to is a line of its own */}
+            {chunk?.chain.some(opensRhythmLine) &&
+              ' They play to the rhythm in .struct(…): click into a rhythm line to see them on it and edit it.'}
+          </div>
+        )}
+        {notice && (
+          <div data-seq-notice style={{ fontSize: 11, color: 'var(--foreground-muted, #a0a0aa)', paddingBottom: 2 }}>
+            {notice}
           </div>
         )}
         {lookOnly && (

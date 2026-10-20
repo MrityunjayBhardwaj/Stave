@@ -134,6 +134,10 @@ export interface ChunkInfo {
    *  opens in the step grid; the chain plays the track's content, so like `pickChoice`
    *  its `.gain` is not this line's own. */
   structRhythm?: true
+  /** On a rhythm line's chunk: the head and mini string of the chain `.struct` is
+   *  called on, the content the line times (`chord`, `<Em9 A13>`). The Pattern tab
+   *  draws that content on the line (#2120). Read-only: nothing writes through it. */
+  structOver?: { headFn: string | null; miniString: string | null }
 }
 
 // Re-exported so every existing `from './chunkDetect'` import keeps resolving;
@@ -277,7 +281,7 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
         // resolves to the whole RHS — exactly the render-time chunk.
         const initTarget = innermostChainUnder(doc, decl.init, pos, bindings)
         if (initTarget.type === PICK_CHOICE) return buildPickChoiceChunk(doc, initTarget, [node.start, node.end])
-        if (initTarget.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, initTarget, [node.start, node.end])
+        if (initTarget.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, initTarget, [node.start, node.end], getIndex)
         return initTarget === decl.init
           ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings, false, getIndex)
           : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true, getIndex)
@@ -292,7 +296,7 @@ export function detectChunk(doc: string, pos: number): ChunkInfo | null {
       const topExpr = body.expression
       const target = innermostChainUnder(doc, topExpr, pos, bindings)
       if (target.type === PICK_CHOICE) return buildPickChoiceChunk(doc, target, [node.start, node.end])
-      if (target.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, target, [node.start, node.end])
+      if (target.type === STRUCT_RHYTHM) return buildStructRhythmChunk(doc, target, [node.start, node.end], getIndex)
       // The top-level statement keeps its full range (incl. the `$:` label) so
       // the freshness guard watches the whole statement; a nested target is
       // anchored to its own expression span and carries no label. A bare-ref
@@ -484,7 +488,7 @@ function innermostChainUnder(
   if (choice) return { type: PICK_CHOICE, expr, outerHead, ...choice }
   // The rhythm line in a `.struct(…)` (#2120): also a string, also its own marker.
   const rhythm = structRhythmUnder(expr, pos)
-  if (rhythm) return { type: STRUCT_RHYTHM, expr, lit: rhythm }
+  if (rhythm) return { type: STRUCT_RHYTHM, expr, ...rhythm }
   // A `pick*({…})` section value is a chain the panels can bind, but the pick
   // receiver is a string literal (not an identifier head), so the combinator-arg
   // path below never reaches it — check the pick object first (#667).
@@ -623,6 +627,7 @@ const STRUCT_RHYTHM = 'StructRhythm'
  * The rhythm line under `pos` in a `.struct(…)` on `expr`'s callee spine, or null
  * (#2120): the argument itself when it is a string, or the string choice under `pos`
  * of a `pick` written as the argument (`.struct(roll(3, 3).pick(["x ~", "~ x"]))`).
+ * `receiver` is the chain `.struct` is called on, the content the line times.
  *
  * `.struct` takes its timing from this argument and its values from the chain, so the
  * argument is a pattern the grid can draw on its own. `.mask` is not here on purpose:
@@ -640,9 +645,9 @@ function structRhythmUnder(expr: any, pos: number): any {
     ) {
       const arg = node.arguments[0]
       if (arg && typeof arg.start === 'number' && pos >= arg.start && pos <= arg.end) {
-        if (isMiniString(arg)) return arg
+        if (isMiniString(arg)) return { lit: arg, receiver: callee.object }
         const choice = pickChoiceUnder(arg, pos)
-        if (choice) return choice.lit
+        if (choice) return { lit: choice.lit, receiver: callee.object }
       }
     }
     node = callee.type === 'MemberExpression' ? callee.object : null
@@ -660,7 +665,13 @@ function structRhythmUnder(expr: any, pos: number): any {
  *   before `.struct` (`.voicing()`, an `.lpf`) are the track's controls as much as the
  *   ones after it. Only the content head is left out, and `MixerBody` never edits index 0.
  */
-function buildStructRhythmChunk(doc: string, t: any, outer: [number, number]): ChunkInfo {
+function buildStructRhythmChunk(
+  doc: string,
+  t: any,
+  outer: [number, number],
+  getIndex: () => SpanIndex | null,
+): ChunkInfo {
+  const over = buildChunkFromExpr(doc, t.receiver, null, outer, false, getIndex)
   const chain = collectChain(doc, t.expr, { ref: null })
   const lit: [number, number] = [t.lit.start, t.lit.end]
   const info: ChunkInfo = {
@@ -677,6 +688,7 @@ function buildStructRhythmChunk(doc: string, t: any, outer: [number, number]): C
     type: 'unknown',
     nested: false,
     structRhythm: true,
+    structOver: { headFn: over.headFn, miniString: over.miniString },
   }
   info.type = classifyChunk(info)
   return info

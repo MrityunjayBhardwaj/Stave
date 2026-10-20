@@ -75,6 +75,15 @@ describe('chunkDetect — a .struct rhythm line is the pattern (#2120)', () => {
     expect(chunkSurface(c)).toBe('step')
   })
 
+  it('a rhythm line carries the chords it times, found where the track writes them', () => {
+    // through the const `vamp`, and from a literal
+    expect(detectChunk(SONG, at(SONG, LINES[1]))!.structOver).toEqual({ headFn: 'chord', miniString: '<Em9 A13>' })
+    expect(detectChunk(PLAIN, at(PLAIN, 'x ~ x x'))!.structOver).toEqual({ headFn: 'chord', miniString: '<Em9 A13>' })
+    // nothing to time: the chords are not a string the tab can read
+    const bare = '$: chord(irand(4)).struct("x ~ x x")'
+    expect(detectChunk(bare, at(bare, 'x ~ x x'))!.structOver?.miniString).toBeNull()
+  })
+
   it('a cursor anywhere else in the track binds what it bound before', () => {
     // the chooser, the sound, the mask: none of them is a rhythm line.
     for (const needle of ['roll(3, 3)', 'gm_clavinet', 'mask(clavM']) {
