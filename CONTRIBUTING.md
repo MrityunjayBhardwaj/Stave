@@ -26,6 +26,14 @@ git commit --amend -s
 
 ## How to Contribute
 
+### Finding something to work on
+
+- [**good first issue**](https://github.com/MrityunjayBhardwaj/Stave/labels/good%20first%20issue): small, self-contained changes. Each one has a comment saying where the code lives and how to check your change.
+- [**help wanted**](https://github.com/MrityunjayBhardwaj/Stave/labels/help%20wanted): bigger or less charted, and very welcome.
+- The **area** labels (`area: timeline`, `area: pattern`, `area: mixer`, `area: visuals` and so on) narrow the list to the part of Stave you know.
+
+Comment on an issue before you start, so two people don't take the same one.
+
 ### Reporting Bugs
 
 1. Search [existing issues](https://github.com/MrityunjayBhardwaj/stave/issues) first
@@ -146,4 +154,4 @@ This project follows the [Contributor Covenant Code of Conduct](./CODE_OF_CONDUC
 
 ## Questions?
 
-Open an issue or start a discussion. We're happy to help.
+Ask in [Discussions](https://github.com/MrityunjayBhardwaj/Stave/discussions). [SUPPORT.md](./SUPPORT.md) says where each kind of question goes. We're happy to help.
