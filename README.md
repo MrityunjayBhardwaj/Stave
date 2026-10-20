@@ -9,6 +9,12 @@ and make visuals that move with every kick. Every change you make in a view is w
 
 **[Open Stave →](https://stave.live)** &nbsp;·&nbsp; [Docs](https://stave.live/docs/)
 
+[![CI](https://github.com/MrityunjayBhardwaj/Stave/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MrityunjayBhardwaj/Stave/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/MrityunjayBhardwaj/Stave?include_prereleases&sort=semver)](https://github.com/MrityunjayBhardwaj/Stave/releases)
+[![License: AGPL-3.0](https://img.shields.io/github/license/MrityunjayBhardwaj/Stave)](LICENSE)
+[![Ask in Discussions](https://img.shields.io/badge/ask-in%20Discussions-blue)](https://github.com/MrityunjayBhardwaj/Stave/discussions)
+[![Good first issues](https://img.shields.io/github/issues/MrityunjayBhardwaj/Stave/good%20first%20issue?label=good%20first%20issues&color=7057ff)](https://github.com/MrityunjayBhardwaj/Stave/labels/good%20first%20issue)
+
 <br/>
 
 <a href="https://www.youtube.com/watch?v=LoVfu-FCTAg"><img src="assets/v0_5_scrst_play.jpg" alt="Stave playing a song, with a play button: click to watch the launch video" /></a>
