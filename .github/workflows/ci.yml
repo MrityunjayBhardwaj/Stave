@@ -50,9 +50,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # The app suite passes only on Node 25 today: on 22, tests leak state
-          # into each other through localStorage (#2126).
-          node-version: 25
+          # The active LTS. Each app test gets fresh storage (vitest.setup.ts), so
+          # the suites pass on 22, 24 and 25 alike (#2126).
+          node-version: 24
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile

@@ -30,9 +30,10 @@ const cropA: CropRegion = { x: 0.1, y: 0, w: 0.68, h: 1 }
 const cropB: CropRegion = { x: 0, y: 0.25, w: 1, h: 0.5 }
 
 /**
- * jsdom here ships a `window.localStorage` whose methods are non-functional
- * (`clear is not a function`), so every storage-backed suite in this package
- * installs its own — same idiom as `timelineCameraPersistence.test.ts`.
+ * Every test already gets fresh in-memory storage from `vitest.setup.ts` (#2126).
+ * Before that, the storage a test got depended on the Node version and could be
+ * non-functional (`clear is not a function`), so this suite installs its own —
+ * same idiom as `timelineCameraPersistence.test.ts`.
  */
 function installStorage(): void {
   const map = new Map<string, string>()
