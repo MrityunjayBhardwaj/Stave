@@ -659,3 +659,22 @@ describe('stripContainingOffset — owning strip for a nested chunk (#727)', () 
     expect(stripContainingOffset(stripsOf(PLAYER), 99999)).toBeUndefined()
   })
 })
+
+describe('shownName — what a strip shows (#2151)', () => {
+  it('unnamed strips show `Track N`; named ones, and a written `d2:`, show their name', () => {
+    const src = '$: s("bd*4")\nbass: note("c2")\nd2: s("hh*8")\n_$: s("cp")'
+    const strips = stripsOf(src)
+    expect(strips.map((s) => s.name)).toEqual(['d1', 'bass', 'd2', 'd4'])
+    expect(strips.map((s) => s.shownName)).toEqual(['Track 1', 'bass', 'd2', 'Track 4'])
+  })
+
+  it('only the shown text changes: the name and colour stay keyed on `d1`', () => {
+    const [strip] = stripsOf('$: s("bd*4")')
+    expect(strip!.name).toBe('d1')
+    expect(strip!.color).toBe(colorForTrack('d1'))
+  })
+
+  it('a bare document with no labels shows `Track 1`', () => {
+    expect(stripsOf('s("bd*4")').map((s) => s.shownName)).toEqual(['Track 1'])
+  })
+})

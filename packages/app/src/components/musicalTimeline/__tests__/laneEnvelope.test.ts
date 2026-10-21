@@ -52,7 +52,7 @@ const synth: SceneNote[] = [{ cycle: 0, end: 0.5, pitch: 48, gain: 1, voice: 'sa
 function lane(key: string, notes: SceneNote[], extra: Partial<SceneLane> = {}): SceneLane {
   return {
     laneKey: key,
-    displayName: key,
+    displayName: key, shownName: key,
     color: '#0af',
     density: [1, 1, 1, 1],
     notes,

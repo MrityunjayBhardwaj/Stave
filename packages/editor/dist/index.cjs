@@ -4669,6 +4669,12 @@ function trackIdFromLabel(label, index) {
   return labelName(label) ?? `d${index + 1}`;
 }
 __name(trackIdFromLabel, "trackIdFromLabel");
+function shownTrackName(name, label) {
+  if (label) return name;
+  const positional = /^d([1-9]\d*)$/.exec(name);
+  return positional ? `Track ${positional[1]}` : name;
+}
+__name(shownTrackName, "shownTrackName");
 var IDENTIFIER = String.raw`[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*`;
 var WHOLE_IDENTIFIER = new RegExp(`^${IDENTIFIER}$`, "u");
 function isIdentifier(text) {
@@ -8056,6 +8062,7 @@ function buildStripModel(chunk, index, displayKey, id, captureId) {
     label: labelName(chunk.label),
     // the strip's stable identity across a mute toggle
     name: identity.name,
+    shownName: shownTrackName(identity.name, labelName(chunk.label)),
     headFn: chunk.headFn,
     miniString: chunk.miniString,
     source,
@@ -11408,7 +11415,7 @@ function readRollOnsets(pat, cyc) {
 }
 __name(readRollOnsets, "readRollOnsets");
 var rollKey = /* @__PURE__ */ __name((o) => JSON.stringify(
-  o.map((x) => [Math.round(x.pos * ONSET_GRID), Math.round(x.dur * ONSET_GRID), x.pitch]).sort()
+  o.map((x) => [Math.round(x.pos * ONSET_GRID), Math.round(x.dur * ONSET_GRID), x.pitch]).map((t) => ({ t, s: String(t) })).sort((a, b) => a.s < b.s ? -1 : a.s > b.s ? 1 : 0).map(({ t }) => t)
 ), "rollKey");
 var PROBE_NOTE = "c9";
 var PROBE_NUM = "999";
@@ -37772,8 +37779,8 @@ function PatternTrackChip() {
           {
             type: "button",
             "data-pattern-track-dot": true,
-            "aria-label": `Change colour of ${strip.name}`,
-            title: `${strip.name} \u2014 click to change colour`,
+            "aria-label": `Change colour of ${strip.shownName}`,
+            title: `${strip.shownName} \u2014 click to change colour`,
             onClick: (e) => setColorAnchor(e.currentTarget.getBoundingClientRect()),
             style: {
               width: 9,
@@ -37841,7 +37848,7 @@ function PatternTrackChip() {
           "span",
           {
             "data-pattern-track-name": true,
-            title: `${strip.name} \u2014 double-click to rename`,
+            title: `${strip.shownName} \u2014 double-click to rename`,
             onDoubleClick: openRename,
             style: {
               fontSize: 11,
@@ -37853,7 +37860,7 @@ function PatternTrackChip() {
               whiteSpace: "nowrap",
               cursor: "text"
             },
-            children: strip.name
+            children: strip.shownName
           }
         )
       ]
@@ -43759,8 +43766,8 @@ function ChannelStrip({
               {
                 type: "button",
                 "data-mixer-strip-dot": true,
-                "aria-label": `Change colour of ${strip.name}`,
-                title: `${strip.name} \u2014 click to change colour`,
+                "aria-label": `Change colour of ${strip.shownName}`,
+                title: `${strip.shownName} \u2014 click to change colour`,
                 onClick: (e) => setColorAnchor(e.currentTarget.getBoundingClientRect()),
                 style: {
                   width: 8,
@@ -43828,7 +43835,7 @@ function ChannelStrip({
               "span",
               {
                 "data-mixer-strip-name": true,
-                title: renameEnabled ? `${strip.name} \u2014 double-click to rename` : strip.name,
+                title: renameEnabled ? `${strip.shownName} \u2014 double-click to rename` : strip.shownName,
                 onDoubleClick: renameEnabled ? openRename : void 0,
                 style: {
                   flex: 1,
@@ -43840,7 +43847,7 @@ function ChannelStrip({
                   opacity: strip.muted ? 0.45 : 1,
                   cursor: renameEnabled ? "text" : "default"
                 },
-                children: strip.name
+                children: strip.shownName
               }
             )
           ] }),
@@ -43850,7 +43857,7 @@ function ChannelStrip({
               {
                 type: "button",
                 "data-mixer-strip-mute": true,
-                "aria-label": `${strip.muted ? "Unmute" : "Mute"} ${strip.name}`,
+                "aria-label": `${strip.muted ? "Unmute" : "Mute"} ${strip.shownName}`,
                 "aria-pressed": strip.muted,
                 disabled: !muteEnabled,
                 onClick: () => onMuteToggle?.(),
@@ -43878,7 +43885,7 @@ function ChannelStrip({
               {
                 type: "button",
                 "data-mixer-strip-solo": true,
-                "aria-label": `${soloed ? "Unsolo" : "Solo"} ${strip.name}`,
+                "aria-label": `${soloed ? "Unsolo" : "Solo"} ${strip.shownName}`,
                 "aria-pressed": soloed,
                 onClick: () => onSoloToggle(),
                 title: soloed ? "Unsolo" : "Solo (hear this alone)",
@@ -43904,7 +43911,7 @@ function ChannelStrip({
               {
                 type: "button",
                 "data-mixer-strip-expand": true,
-                "aria-label": `${expanded ? "Collapse" : "Expand"} ${strip.name}`,
+                "aria-label": `${expanded ? "Collapse" : "Expand"} ${strip.shownName}`,
                 "aria-expanded": expanded,
                 onClick: () => onToggleExpand(),
                 title: expanded ? "Collapse channel" : "Expand channel",
@@ -54227,6 +54234,7 @@ exports.shapeEdit = shapeEdit;
 exports.shapeOptions = shapeOptions;
 exports.shellStateKeyFor = shellStateKeyFor;
 exports.showBottomPanelTab = showBottomPanelTab;
+exports.shownTrackName = shownTrackName;
 exports.signalAutomations = signalAutomations;
 exports.signalCarryingParamKeys = signalCarryingParamKeys;
 exports.signalDimensionsOf = signalDimensionsOf;

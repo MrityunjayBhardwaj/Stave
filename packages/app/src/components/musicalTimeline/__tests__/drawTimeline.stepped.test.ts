@@ -71,7 +71,7 @@ const signal = (paramKey: string): SignalAutomation => ({
 })
 
 const lane = (stepped: readonly SceneStepped[], automations: readonly SignalAutomation[] = []): SceneLane => ({
-  laneKey: 'd1', displayName: 'd1', color: '#7af', density: [1, 1, 1, 1],
+  laneKey: 'd1', displayName: 'd1', shownName: 'Track 1', color: '#7af', density: [1, 1, 1, 1],
   notes: [], pitchMin: null, pitchMax: null, voices: [], clips: [],
   sourceOffset: null, arrangeOffset: null, labelOffset: null,
   automations: automations.map((automation) => ({ automation, timeAt: signalTimeAt })), stepped,

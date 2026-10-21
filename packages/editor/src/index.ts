@@ -9,7 +9,7 @@ export type { LaneSkeleton, LaneItem, WalkWindow } from './codeView'
 export { analyzeSong, analyzeEvents, accumulateLanes, cycleFingerprints, detectPeriod, computeSections, laneKeyOf, analyzeWindow, accumulateLanesInWindow, computeSectionsInWindow } from './codeView'
 export type { SongAnalysis, DisplaySpan, LaneActivity, SongSection, AnalyzeSongOptions, WindowAnalysis, AnalyzeWindowOptions } from './codeView'
 export { songExtent } from './codeView'
-export { labelAtOffset, sectionNameAt } from './codeView'
+export { labelAtOffset, sectionNameAt, shownTrackName } from './codeView'
 // the one track palette, read by the Mixer and the Song timeline (#1943 retired the app's copy)
 export { trackIdentity, TRACK_PALETTE_32 } from './codeView'
 export { signalDimensionsOf } from './codeView'
