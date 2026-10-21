@@ -11389,7 +11389,7 @@ function readRollOnsets(pat, cyc) {
 }
 __name(readRollOnsets, "readRollOnsets");
 var rollKey = /* @__PURE__ */ __name((o) => JSON.stringify(
-  o.map((x) => [Math.round(x.pos * ONSET_GRID), Math.round(x.dur * ONSET_GRID), x.pitch]).sort()
+  o.map((x) => [Math.round(x.pos * ONSET_GRID), Math.round(x.dur * ONSET_GRID), x.pitch]).map((t) => ({ t, s: String(t) })).sort((a, b) => a.s < b.s ? -1 : a.s > b.s ? 1 : 0).map(({ t }) => t)
 ), "rollKey");
 var PROBE_NOTE = "c9";
 var PROBE_NUM = "999";
