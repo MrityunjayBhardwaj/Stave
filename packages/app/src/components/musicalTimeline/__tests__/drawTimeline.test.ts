@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { drawTimeline, laneRenderMode, COARSEN_PX, MIN_MARK_W, type DrawTransform, type DrawTheme } from '../drawTimeline'
+import { drawTimeline, laneRenderMode, COARSEN_PX, MIN_MARK_W, MARK_GAP_PX, type DrawTransform, type DrawTheme } from '../drawTimeline'
 import { DEFAULT_METER } from '../../../lib/meter'
 import { computeLaneLayout } from '../laneLayout'
 import type { TimelineScene, SceneNote } from '../timelineScene'
@@ -193,8 +193,29 @@ describe('drawTimeline', () => {
     const short = marks.find((r) => Math.abs(r.x - 0) < 1)!
     const long = marks.find((r) => Math.abs(r.x - 1000) < 1)! // cycle 1 → x=1000
     expect(short.w).toBe(MIN_MARK_W) // floored
-    expect(long.w).toBe(1000) // (2 − 1) cycles × 1000 px/cycle
+    expect(long.w).toBe(1000 - MARK_GAP_PX) // (2 − 1) cycles × 1000 px/cycle, less the gap before the next mark
     expect(long.w).toBeGreaterThan(short.w)
+  })
+
+  it('leaves a gap between back-to-back marks that land on whole pixels (#2157)', () => {
+    // 16 hits a cycle at 224 px/cycle: every mark is exactly 14 px and starts on
+    // a whole pixel. Butted together they drew as one solid bar, the same as a
+    // single note held for the whole cycle.
+    const run: TimelineScene = {
+      ...scene,
+      lanes: [{
+        ...scene.lanes[0],
+        notes: Array.from({ length: 16 }, (_, i) => ({ cycle: i / 16, end: (i + 1) / 16, pitch: 60, gain: 1 })),
+      }],
+    }
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, run, { scrollLeft: 0, contentWidth: 224 * 4, viewportWidth: 224 * 4, meter: DEFAULT_METER }, theme, flat)
+    const marks = rects.filter((r) => r.h === 4).sort((a, b) => a.x - b.x)
+    expect(marks).toHaveLength(16) // PRECONDITION: marks mode, one rect per hit
+    for (let i = 1; i < marks.length; i++) {
+      // A whole pixel of background, not a fraction that only anti-aliases.
+      expect(marks[i].x - (marks[i - 1].x + marks[i - 1].w)).toBeGreaterThanOrEqual(1)
+    }
   })
 
   it('places each voice of an expanded multi-voice lane on its own sub-band baseline (#424)', () => {

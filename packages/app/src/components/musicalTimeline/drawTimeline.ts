@@ -124,6 +124,12 @@ const CLIP_CAPTION_TOP_PAD_Y = 1
  *  stays clickable — mirrors the live view's `MIN_BLOCK_PX` (timeAxis.ts). */
 export const MIN_MARK_W = 2
 
+/** Space (px) left at the end of every PAINTED mark, so notes that play back to
+ *  back still read as separate hits (#2157). Without it, marks whose edges land
+ *  on whole pixels butt together and a run of sixteen draws as one solid bar —
+ *  identical to a single long note. The density cells already do the same. */
+export const MARK_GAP_PX = 1
+
 /**
  * Where a mark's audio shape comes from (#1506), or absent for a timeline that
  * draws marks alone — every existing caller.
@@ -381,8 +387,9 @@ export function drawTimeline(
         lane.envelope != null && lane.bars !== true ? [] : null
       for (const band of laneMarkBands(lane, box)) {
         for (const n of band.notes) {
-          const r = markRect(n, band, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
-          if (!r) continue
+          const slot = markRect(n, band, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
+          if (!slot) continue
+          const r = paintedMarkRect(slot)
           const alpha = 0.4 + 0.6 * Math.min(1, Math.max(0, n.gain))
           ctx.globalAlpha = alpha
           ctx.fillRect(r.x, r.y, r.w, r.h)
@@ -1222,6 +1229,8 @@ function hasPitchSpread(pMin: number | null, pMax: number | null): boolean {
  * pitch, or a single-pitch voice where `pMax === pMin`) sit on the band's centre
  * baseline. Width is DURATION-proportional (mirrors the live view's
  * `eventToRect`), floored at `MIN_MARK_W` so a zero-duration trigger still shows.
+ * This is the note's TIME on screen, which the edge-trim hit test and its drag
+ * scale read (`regionEdge`); what gets painted is `paintedMarkRect` of it.
  * PURE — shared by the base draw and the live overlay so both agree pixel-for-
  * pixel on where a mark sits.
  */
@@ -1247,6 +1256,20 @@ export function markRect(
     y = bandTop + bandH / 2
   }
   return { x, y, w, h: markH }
+}
+
+/**
+ * The bar actually painted for a mark: its `markRect` less `MARK_GAP_PX` at the
+ * end, so back-to-back notes stay apart (#2157). Never narrower than
+ * `MIN_MARK_W`, and a mark already at the floor keeps its width.
+ *
+ * Painting only. The gap is not time: a click or a trim drag still reads the
+ * note's whole `markRect`, so an 80px drag over a 200px note is still 0.4 of it.
+ * The base draw and the live overlay both paint through this, so a lit mark
+ * still covers its base mark exactly.
+ */
+export function paintedMarkRect<R extends { x: number; y: number; w: number; h: number }>(r: R): R {
+  return { ...r, w: Math.max(Math.min(r.w, MIN_MARK_W), r.w - MARK_GAP_PX) }
 }
 
 /**
@@ -1486,7 +1509,9 @@ function drawEnvelopeInBars(
       if (col != null) fillEnvelopeColumn(ctx, x, col, centreY, halfH)
     }
     ctx.globalAlpha = ENVELOPE_ALPHA
-    for (let x = x1; x < covered.length && covered[x] === 0; x++) {
+    // A tail stops short of the next bar's gap (#2157): run into it and the 1px
+    // that keeps back-to-back bars apart fills back in.
+    for (let x = x1; x < covered.length && covered[x] === 0 && covered[x + MARK_GAP_PX] !== 1; x++) {
       const col = read.at(x)
       if (col == null) break
       fillEnvelopeColumn(ctx, x, col, centreY, halfH)
