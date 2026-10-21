@@ -379,7 +379,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     return subscribeLog((entry) => {
       if (!entry) return;
       if (entry.level !== "error") return;
-      const text = entry.suggestion
+      // #2170 — "try" only names a symbol; a hint's example or link has no name.
+      const text = entry.suggestion?.name
         ? `${entry.message} → try \`${entry.suggestion.name}\``
         : entry.message;
       // Clicking the toast body shows the entry where it came from.

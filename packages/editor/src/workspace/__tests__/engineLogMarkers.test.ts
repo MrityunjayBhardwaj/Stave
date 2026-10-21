@@ -234,4 +234,28 @@ describe('installEngineLogMarkers', () => {
 
     unregisterEditor(file.id, editor)
   })
+
+  // #2170 — a hint that is not about one symbol carries a suggestion with no name
+  // (for its example, or its link); the marker must not offer to "try" nothing.
+  it('says no "try" when the suggestion names no symbol', async () => {
+    const editor = makeFakeEditor()
+    const file = createWorkspaceFile('f-nosym', 'b.strudel', '', 'strudel')
+    registerEditor(file.id, editor)
+    installEngineLogMarkers()
+
+    emitLog({
+      level: 'error',
+      runtime: 'strudel',
+      source: 'b.strudel',
+      line: 1,
+      message: '`gamepad` is part of Strudel, but it isn\'t in Stave yet.',
+      suggestion: { name: '', linkLabel: '#128', docsUrl: 'https://github.com/MrityunjayBhardwaj/stave/issues/128' },
+    })
+    await flush()
+
+    const [, , markers] = setModelMarkers.mock.calls[0]
+    expect(markers[0].message).toBe('`gamepad` is part of Strudel, but it isn\'t in Stave yet.')
+
+    unregisterEditor(file.id, editor)
+  })
 })

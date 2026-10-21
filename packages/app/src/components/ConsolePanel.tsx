@@ -152,8 +152,11 @@ export function ConsolePanel(): React.ReactElement {
         const ts = new Date(e.ts).toISOString().slice(11, 19);
         const rt = RUNTIME_LABELS[e.runtime] ?? e.runtime;
         const src = e.source ? ` (${e.source})` : "";
-        const sug = e.suggestion
+        // #2170 — "try" only names a symbol; a hint's link copies as its address.
+        const sug = e.suggestion?.name
           ? ` [try ${e.suggestion.name}]`
+          : e.suggestion?.linkLabel
+          ? ` [see ${e.suggestion.docsUrl}]`
           : "";
         return `[${ts}] [${e.level.toUpperCase()}] [${rt}]${src} ${e.message}${sug}`;
       })
@@ -352,7 +355,7 @@ export function ConsolePanel(): React.ReactElement {
                 >
                   <span style={styles.suggestionArrow}>↪</span>
                   <code style={styles.suggestionName}>
-                    {e.suggestion.name}
+                    {e.suggestion.name || e.suggestion.linkLabel}
                   </code>
                   {e.suggestion.description && (
                     <span style={styles.suggestionDesc}>

@@ -42,6 +42,12 @@ export interface CommonMistake {
   /** Optional inline example, rendered below the hint. */
   example?: string
   /**
+   * #2167 — where to read more when the hint is not about one symbol (a
+   * tracking issue, an outside page). Becomes the suggestion row's link;
+   * a hint attached to a symbol links to that symbol's docs instead.
+   */
+  link?: { label: string; url: string; description?: string }
+  /**
    * Confidence weight for ranking. Default 1. Bump for runtimes where
    * the curated hint is clearly better than the algorithmic suggestion.
    */
