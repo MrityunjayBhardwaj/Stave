@@ -36,6 +36,7 @@ import { installMiniStringParser } from './stringParser'
 import { resolveBareCaptureId } from './bareCapture'
 import { normalizeLoopRange, type LoopRange } from './transportFrame'
 import { STRUDEL_VIZ_METHODS } from './strudelVizMethods'
+import { sliderFunctions, sliderWidgets, type SliderWidgetConfig } from './vendored/slider'
 
 type HapHandler = (event: HapEvent) => void
 
@@ -565,6 +566,10 @@ export class StrudelEngine implements LiveCodingEngine {
   // `trackSchedulers`), and these are the spans those patterns' haps were located
   // against. Null = unknown, which filters nothing.
   private lastDeclaredLocations: ReadonlySet<string> | null = null
+  // #345 — the `slider(…)` calls the last SUCCESSFUL evaluate's transpiler reported, as
+  // it reported them. Kept on a failed evaluate for the same reason as the spans above:
+  // the patterns still playing read those sliders' values.
+  private lastSliders: SliderWidgetConfig[] = []
   /**
    * #1344 — what the last SUCCESSFUL evaluate handed the repl to play, with the
    * seek and loop in force at that moment (the `.p` hook wrapped the pattern in
@@ -793,8 +798,10 @@ export class StrudelEngine implements LiveCodingEngine {
     // into document.body (id="test-canvas") the first time any draw function runs.
     // Stave uses its own visualizer system, so strudel's canvas draw functions
     // (pianoroll, drawFrequencyScope, etc.) are not exposed to user code.
+    // #345 — `slider(…)`: the transpiler rewrites it to `sliderWithID`, which Strudel
+    // ships in its CodeMirror package; the two functions are vendored instead.
     await required('evalScope', () =>
-      coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod),
+      coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod, sliderFunctions(coreMod)),
     )
 
     // Phase 20-14 β-4: thread the `midi` tier flag through engine init.
@@ -1666,6 +1673,8 @@ export class StrudelEngine implements LiveCodingEngine {
         // before its `evaluate` resolves, so these are THIS evaluate's spans.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         this.lastDeclaredLocations = declaredLocationKeys((this.repl as any)?.state?.miniLocations) ?? null
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        this.lastSliders = sliderWidgets((this.repl as any)?.state?.widgets)
         // #1344 — the pattern the repl PLAYS, after Strudel's own `$:` stacking,
         // solo selection and `all(...)`/`each(...)` (`repl.mjs:230-262`), none of
         // which the per-track captures above see. The two snapshots are the
@@ -1731,7 +1740,7 @@ export class StrudelEngine implements LiveCodingEngine {
     // EITHER an inline viz request OR a code-driven backdrop request, so a
     // bare `.scope()` (backdrop, no inline `.viz()`) still surfaces.
     const hasInlineViz = this.vizRequests.size > 0 && this.lastEvaluatedCode
-    if (hasInlineViz || this.backdropVizRequest) {
+    if (hasInlineViz || this.backdropVizRequest || this.lastSliders.length > 0) {
       bag.inlineViz = {
         vizRequests: hasInlineViz
           ? this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode!)
@@ -1739,6 +1748,7 @@ export class StrudelEngine implements LiveCodingEngine {
         backdropRequest: this.backdropVizRequest
           ? { vizId: this.backdropVizRequest, options: this.backdropVizOptions ?? undefined }
           : undefined,
+        sliders: this.lastSliders.length > 0 ? this.lastSliders : undefined,
       }
     }
     // Expose Pattern IR if available. `irEvents` is retained on the component

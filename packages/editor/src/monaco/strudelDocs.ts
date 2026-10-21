@@ -92,6 +92,14 @@ export const STRUDEL_DOCS: Record<string, RuntimeDoc> = {
     // No dedicated #setcps anchor — the tempo section that documents it.
     sourceUrl: 'https://strudel.cc/understand/cycles/#setting-cpm',
   },
+  slider: {
+    signature: 'slider(value, min = 0, max = 1, step?)',
+    description: 'Draw a slider in the code that moves value between min and max while it plays.',
+    example: 's("bd*8").gain(slider(0.5, 0, 1))',
+    // No reference entry on strudel.cc (the 47 pages its docs navigation links,
+    // searched 2026-10-20; it appears only inside examples on /understand/pitch/), so
+    // no sourceUrl — it falls back to meta.docsBaseUrl, as `every` does.
+  },
   stack: {
     signature: 'stack(...patterns)',
     description: 'Play multiple patterns simultaneously (vertical stack).',

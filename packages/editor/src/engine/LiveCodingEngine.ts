@@ -2,6 +2,7 @@ import type { HapStream } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
 import type { PatternIR } from '../codeView'
 import type { IREvent } from '../codeView'
+import type { SliderWidgetConfig } from './vendored/slider'
 
 // ---------------------------------------------------------------------------
 // Engine Component Bags
@@ -59,6 +60,12 @@ export interface InlineVizComponent {
    * (e.g. "scope", "pianoroll"). Absent when no such method was called.
    */
   backdropRequest?: { vizId: string; options?: VizOptionsBag }
+  /**
+   * #345 — the `slider(…)` calls in the evaluated code, as Strudel's transpiler
+   * reported them (offsets into that code). The editor draws one slider on each.
+   * Absent when there are none.
+   */
+  sliders?: readonly SliderWidgetConfig[]
 }
 
 /** Pattern IR derived from the last successful evaluate(). */

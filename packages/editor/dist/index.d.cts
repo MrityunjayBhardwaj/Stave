@@ -1,5 +1,5 @@
-import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-uloi4fUx.cjs';
-export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-uloi4fUx.cjs';
+import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-Br4H05-C.cjs';
+export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-Br4H05-C.cjs';
 import * as Monaco from 'monaco-editor';
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
@@ -1472,7 +1472,7 @@ declare function analyzeWindow(originCycle: number, spanCycles: number, opts?: A
  * set right now" (`isCommitting`), never by value (#1914). It documents the
  * caller; no listener switches on it.
  */
-type WriteSource = 'knob' | 'seq' | 'roll' | 'arrange.weights' | 'arrange.structure' | 'transport' | 'mixer' | 'rename' | 'automation' | 'region.trim';
+type WriteSource = 'knob' | 'seq' | 'roll' | 'arrange.weights' | 'arrange.structure' | 'transport' | 'mixer' | 'rename' | 'automation' | 'region.trim' | 'slider';
 /** A single replacement, addressed by absolute pre-edit doc offsets. */
 interface OffsetEdit {
     /** absolute [start, end) offsets in the document as it was when detected */
@@ -4484,6 +4484,7 @@ declare class StrudelEngine implements LiveCodingEngine {
     private lastPatternIR;
     private lastIRNodeLocLookup;
     private lastDeclaredLocations;
+    private lastSliders;
     /**
      * #1344 — what the last SUCCESSFUL evaluate handed the repl to play, with the
      * seek and loop in force at that moment (the `.p` hook wrapped the pattern in

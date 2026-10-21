@@ -208,6 +208,7 @@ export { planVizAssignment } from './assign/vizAssign'
 export { assignmentEdit } from './assign/soundAssign'
 export { captionEdit, shapeEdit, shapeOptions, rateEditable } from './automation/captionEdit'
 export { gridWriteEdits, readChunkGain, gainUnchanged } from './notation/gainEdit'
+export { sliderEdit } from './sliderEdit'
 export {
   stepGridCodec,
   pianoRollCodec,
