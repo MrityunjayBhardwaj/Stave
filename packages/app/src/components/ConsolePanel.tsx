@@ -346,8 +346,10 @@ export function ConsolePanel(): React.ReactElement {
               </div>
               <div style={styles.message}>{e.message}</div>
               {e.suggestion && (
+                // #2172 — a hint with only an example has no address; an empty
+                // href would open this page again, so it is drawn without one.
                 <a
-                  href={e.suggestion.docsUrl}
+                  href={e.suggestion.docsUrl || undefined}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={styles.suggestion}
