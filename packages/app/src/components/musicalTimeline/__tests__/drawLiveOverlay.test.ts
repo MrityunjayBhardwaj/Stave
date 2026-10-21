@@ -7,7 +7,7 @@ import {
   MAX_LIT_DISTANCE_CYCLES,
   type LiveOverlayTheme,
 } from '../drawLiveOverlay'
-import { laneMarkBands, markRect, COARSEN_PX, type WaveformSource } from '../drawTimeline'
+import { laneMarkBands, markRect, paintedMarkRect, COARSEN_PX, type WaveformSource } from '../drawTimeline'
 import { MIN_WAVEFORM_H } from '../waveformLane'
 import { computeLaneLayout } from '../laneLayout'
 import { NO_VOICE, type TimelineScene, type SceneNote } from '../timelineScene'
@@ -109,6 +109,11 @@ function sceneFixture(): TimelineScene {
 
 // Wide transform → pxPerCycle = 4000/4 = 1000 ≫ COARSEN_PX → marks mode.
 const WIDE = { scrollLeft: 0, contentWidth: 4000, viewportWidth: 4000 }
+
+/** What the base canvas paints for a mark: its slot less the gap before the
+ *  next one (#2157). The lit mark is drawn over THIS, not over the slot. */
+const paintedOf = <R extends { x: number; y: number; w: number; h: number }>(r: R | null) =>
+  r == null ? null : paintedMarkRect(r)
 
 describe('markSig', () => {
   it('keys by voice+pitch, with null collapsing to the empty segment', () => {
@@ -239,7 +244,7 @@ describe('drawLiveOverlay', () => {
     drawLiveOverlay(ctx, scene, WIDE, layout, 1.2, new Set(['saw|60']), THEME)
     // The base geometry for note0 in lane 0.
     const band = laneMarkBands(scene.lanes[0], layout.boxes[0])[0]
-    const baseRect = markRect(scene.lanes[0].notes[0], band, 1000, 4000, 0, 4, (c) => c * 1000)
+    const baseRect = paintedOf(markRect(scene.lanes[0].notes[0], band, 1000, 4000, 0, 4, (c) => c * 1000))
     expect(baseRect).not.toBeNull()
     // The bright CORE (second of glow+core) shares the base rect's x/y/w/h.
     const core = rects[1]
@@ -255,7 +260,7 @@ describe('a lit mark over a waveform is outlined, not covered (#1508)', () => {
   /** The base geometry of note0 — the rectangle both canvases share. */
   function baseRectFor(scene: TimelineScene, layout: ReturnType<typeof layoutFor>) {
     const band = laneMarkBands(scene.lanes[0], layout.boxes[0])[0]
-    const r = markRect(scene.lanes[0].notes[0], band, 1000, 4000, 0, 4, (c) => c * 1000)
+    const r = paintedOf(markRect(scene.lanes[0].notes[0], band, 1000, 4000, 0, 4, (c) => c * 1000))
     expect(r).not.toBeNull()
     return r!
   }
@@ -322,7 +327,7 @@ describe('a lit mark over a waveform is outlined, not covered (#1508)', () => {
     const scene = sceneFixture()
     const layout = computeLaneLayout(scene.lanes, new Set(), 25, 96)
     const band = laneMarkBands(scene.lanes[0], layout.boxes[0])[0]
-    const r = markRect(scene.lanes[0].notes[0], band, 1000, 4000, 0, 4, (c) => c * 1000)
+    const r = paintedOf(markRect(scene.lanes[0].notes[0], band, 1000, 4000, 0, 4, (c) => c * 1000))
     expect(r).not.toBeNull()
     expect(r!.h).toBeGreaterThanOrEqual(MIN_WAVEFORM_H) // precondition: it DOES draw
     const { ctx, rects, strokes } = mockCtx()
@@ -378,7 +383,7 @@ describe('a lit mark over a waveform is outlined, not covered (#1508)', () => {
     const scene = sceneFixture()
     const layout = computeLaneLayout(scene.lanes, new Set(), 22, 96)
     const band = laneMarkBands(scene.lanes[0], layout.boxes[0])[0]
-    const r = markRect(scene.lanes[0].notes[0], band, 1000, 4000, 0, 4, (c) => c * 1000)
+    const r = paintedOf(markRect(scene.lanes[0].notes[0], band, 1000, 4000, 0, 4, (c) => c * 1000))
     // Precondition, asserted so this arm cannot pass for the wrong reason: the
     // mark really is below the height gate at this row size.
     expect(r).not.toBeNull()

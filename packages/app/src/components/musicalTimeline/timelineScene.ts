@@ -66,7 +66,9 @@ export interface SceneNote {
   readonly cycle: number
   /** Fractional song cycle of the offset (event `end`), `≥ cycle`. The mark's
    *  width is `(end − cycle) × pxPerCycle` — DURATION-proportional, mirroring the
-   *  live view's note blocks (`eventToRect`), not a fixed dab. */
+   *  live view's note blocks (`eventToRect`), not a fixed dab. The bar painted
+   *  for it is 1px shorter, so back-to-back notes stay apart
+   *  (`paintedMarkRect`, #2157). */
   readonly end: number
   /** MIDI pitch for in-lane vertical placement, or null for percussive events. */
   readonly pitch: number | null
