@@ -126,6 +126,27 @@ describe('STRUDEL_RUNTIME renderChrome', () => {
     expect(getByTestId('strudel-chrome-error').textContent).toBe('parse error: line 3')
   })
 
+  it('the badge shows the error as the Console words it, whole in its tooltip (#2177)', () => {
+    const words = '`gamepad` is part of Strudel (it reads a game controller), but it isn\'t in Stave yet.'
+    const { getByTestId } = render(
+      STRUDEL_RUNTIME.renderChrome(
+        makeCtx({ error: new Error('gamepad is not defined'), errorMessage: words }),
+      ) as React.ReactElement,
+    )
+    const badge = getByTestId('strudel-chrome-error')
+    expect(badge.textContent).toBe(words)
+    expect(badge.getAttribute('title')).toBe(words)
+  })
+
+  it('without wording, the badge shows the raw message, in its tooltip too (#2177)', () => {
+    const { getByTestId } = render(
+      STRUDEL_RUNTIME.renderChrome(makeCtx({ error: new Error('nots is not defined') })) as React.ReactElement,
+    )
+    const badge = getByTestId('strudel-chrome-error')
+    expect(badge.textContent).toBe('nots is not defined')
+    expect(badge.getAttribute('title')).toBe('nots is not defined')
+  })
+
   it('renders chromeExtras when provided', () => {
     const extras = <button data-testid="extras-export">Export</button>
     const { getByTestId } = render(

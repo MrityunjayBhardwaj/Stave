@@ -302,7 +302,8 @@ export function TransportLCD({
       title={evalError ?? "No evaluation errors"}
       aria-label={
         evalError
-          ? `Evaluation failed: ${evalError}. Show the error`
+          ? // the error is a sentence now (#2177), and may end in its own `.` or `?`
+            `Evaluation failed: ${/[.?!]$/.test(evalError) ? evalError : `${evalError}.`} Show the error`
           : "No evaluation errors. Open the Console"
       }
       onClick={onEvalLamp}

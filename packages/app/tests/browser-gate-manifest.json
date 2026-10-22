@@ -155,6 +155,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "eval-error-words.spec.ts": {
+    "runs": "gate",
+    "why": "The error badge above the code and the eval lamp say what the toast and the Console say (#2177): a Strudel feature Stave has not got, a typo with its suggestion and an unknown method each show the same sentence in the badge, its tooltip, the lamp's tooltip and label, and the toast; a fixed document clears the badge and the lamp."
+  },
   "file-history.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
