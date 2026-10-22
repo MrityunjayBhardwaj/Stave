@@ -52,6 +52,7 @@ import {
   emitFixed,
   formatFriendlyError,
   parseMessageLocation,
+  locateMiniParseError,
   statementOffsetForSource,
   resolveAlias,
   publishIRSnapshot,
@@ -1245,9 +1246,10 @@ export default function StrudelEditorClient({
       if (typeof locateSource === "string" && typeof src === "string") {
         const offset = statementOffsetForSource(src, locateSource);
         if (offset != null) {
-          const before = src.slice(0, offset);
-          locatedLine = before.split("\n").length; // 1-based
-          locatedColumn = offset - before.lastIndexOf("\n"); // 1-based
+          // The LINE only: this names the track, not a token in it, and a squiggle
+          // now covers just the token at its column (#2180), which here would be
+          // the `$` of `$:`. With no column the track's whole line is marked.
+          locatedLine = src.slice(0, offset).split("\n").length; // 1-based
         }
       }
       // Parser SYNTAX errors embed an offset-free "(line:col)" in the message
@@ -1255,9 +1257,11 @@ export default function StrudelEditorClient({
       // e.g. line 5 → "(5:11)"). This is safe to feed the marker bridge + toast,
       // unlike the transpiler-wrapper stack line dropped above. Range-check
       // against the file so a stray trailing "(n:n)" in some other message can't
-      // point at a nonexistent line.
+      // point at a nonexistent line. A mini-notation parse error names only a
+      // line, and not always the right one, so it is located at the string
+      // Strudel's parser rejects instead (#2174).
       if (locatedLine == null && typeof src === "string") {
-        const msgLoc = parseMessageLocation(parts.message);
+        const msgLoc = parseMessageLocation(parts.message) ?? locateMiniParseError(err.message, src);
         if (msgLoc && msgLoc.line >= 1 && msgLoc.line <= src.split("\n").length) {
           locatedLine = msgLoc.line;
           locatedColumn = msgLoc.column;

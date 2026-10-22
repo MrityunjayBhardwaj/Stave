@@ -282,15 +282,30 @@ describe('parseStackLocation', () => {
 })
 
 describe('parseMessageLocation', () => {
-  it('extracts the trailing (line:col) from an acorn syntax-error message', () => {
+  it('extracts the trailing (line:col) from an acorn syntax-error message, column counted from 1', () => {
     expect(parseMessageLocation('Unexpected token (3:11)')).toEqual({
       line: 3,
-      column: 11,
+      column: 12,
     })
     expect(parseMessageLocation('Unexpected token (5:11)')).toEqual({
       line: 5,
-      column: 11,
+      column: 12,
     })
+  })
+
+  it('lands on the character the real parser rejected (#2179)', async () => {
+    const { parse } = await import('acorn')
+    for (const [code, bad] of [
+      ['s("bd").gain(0.5]', ']'],
+      ['$: s("bd")\n$: s("hh"))', ')'],
+      ['note("c e")\n  .s("piano") .lpf(800) foo', 'f'],
+    ] as const) {
+      let message = ''
+      try { parse(code, { ecmaVersion: 'latest' }) } catch (e) { message = (e as Error).message }
+      const loc = parseMessageLocation(message)
+      expect(loc, message).not.toBeNull()
+      expect(code.split('\n')[loc!.line - 1][loc!.column - 1], message).toBe(bad)
+    }
   })
 
   it('returns null when there is no trailing (line:col) pair', () => {
@@ -308,7 +323,7 @@ describe('parseMessageLocation', () => {
     // A real trailing pair after other text still matches.
     expect(parseMessageLocation('Unexpected token, expected ; (7:4)')).toEqual({
       line: 7,
-      column: 4,
+      column: 5,
     })
   })
 })
