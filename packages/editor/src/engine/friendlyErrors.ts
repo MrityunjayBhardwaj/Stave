@@ -114,6 +114,10 @@ export function parseStackLocation(
  * "(2)" or a parenthetical elsewhere in the text can't false-positive.
  * Returns `null` when the message carries no such trailing pair. Callers
  * should still range-check the line against the target file.
+ *
+ * #2179 — acorn counts columns from 0 and the editor from 1, so the column is
+ * returned one higher than the message prints it. Read as-is, the squiggle and
+ * the jump started one character before the mistake (`0.5]` marked the `5`).
  */
 export function parseMessageLocation(
   message: unknown,
@@ -121,7 +125,7 @@ export function parseMessageLocation(
   if (typeof message !== 'string') return null
   const m = message.match(/\((\d+):(\d+)\)\s*$/)
   if (!m) return null
-  return { line: parseInt(m[1], 10), column: parseInt(m[2], 10) }
+  return { line: parseInt(m[1], 10), column: parseInt(m[2], 10) + 1 }
 }
 
 /**
