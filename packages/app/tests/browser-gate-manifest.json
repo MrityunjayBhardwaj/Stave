@@ -171,6 +171,10 @@
     "runs": "gate",
     "why": "A sound that isn't loaded is underlined where the code names it (#2187): the note that couldn't play carries where its sound was written, so `bdd` in `s(\"sd bdd\")` gets the squiggle and its Console row the line."
   },
+  "safari-error-line.spec.ts": {
+    "runs": "gate",
+    "why": "In WebKit (Safari) an error while the code runs is underlined at the word, as in Chrome and Firefox (#2189): WebKit's stack has no position for code made by `new Function`, so the position comes from the error's own line and column, one past the token, and the evaluate wrapper is measured in WebKit too. Runs in WebKit (`browserName: 'webkit'`), so it needs Playwright's WebKit installed."
+  },
   "file-history.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"

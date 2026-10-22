@@ -15674,6 +15674,12 @@ function parseStackLocation(err) {
   const ffDynamic = stack.match(/ line \d+ > (?:Function|eval):(\d+):(\d+)/);
   if (ffDynamic)
     return { line: parseInt(ffDynamic[1], 10), column: parseInt(ffDynamic[2], 10) };
+  if (typeof err === "object" && err !== null && !/^\s+at /m.test(stack)) {
+    const { line, column, sourceURL } = err;
+    if (typeof line === "number" && Number.isInteger(line) && line >= 1 && typeof column === "number" && Number.isInteger(column) && column >= 1 && !sourceURL) {
+      return { line, column: Math.max(1, column - 1) };
+    }
+  }
   return null;
 }
 __name(parseStackLocation, "parseStackLocation");
@@ -15986,8 +15992,8 @@ async function measureEvalFrame() {
   const second = await stackPositionOf(`0;
 ${PROBE}()`);
   if (!first || !second) return null;
-  if (second.line !== first.line + 1 || second.column !== 1) return null;
-  return { headerLines: first.line - 1, firstLineColumns: first.column - 1 };
+  if (second.line !== first.line + 1 || first.column <= second.column) return null;
+  return { headerLines: first.line - 1, firstLineColumns: first.column - second.column };
 }
 __name(measureEvalFrame, "measureEvalFrame");
 var BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

@@ -49,13 +49,17 @@ const PROBE = '__staveEvalFrameProbe__'
  * Throw from line 1 and from line 2 of code wrapped like `safeEval` wraps it,
  * and read back where the stack puts each throw. Null when the two disagree
  * with a plain shift, which turns the mapping off.
+ *
+ * The same call starts each line, so the difference of the two columns is the
+ * wrapper's prefix whichever character an engine points at: V8 and Firefox
+ * point at the call's start, Safari at its `(` (#2189).
  */
 export async function measureEvalFrame(): Promise<EvalFrameShape | null> {
   const first = await stackPositionOf(`${PROBE}()`)
   const second = await stackPositionOf(`0;\n${PROBE}()`)
   if (!first || !second) return null
-  if (second.line !== first.line + 1 || second.column !== 1) return null
-  return { headerLines: first.line - 1, firstLineColumns: first.column - 1 }
+  if (second.line !== first.line + 1 || first.column <= second.column) return null
+  return { headerLines: first.line - 1, firstLineColumns: first.column - second.column }
 }
 
 const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
