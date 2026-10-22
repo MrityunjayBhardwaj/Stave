@@ -159,6 +159,10 @@
     "runs": "gate",
     "why": "The error badge above the code and the eval lamp say what the toast and the Console say (#2177): a Strudel feature Stave has not got, a typo with its suggestion and an unknown method each show the same sentence in the badge, its tooltip, the lamp's tooltip and label, and the toast; a fixed document clears the badge and the lamp."
   },
+  "play-time-error-line.spec.ts": {
+    "runs": "gate",
+    "why": "An error thrown while a pattern plays is underlined where it was written (#2188): `.fmap(v => v.nope.x)` gets the squiggle under `x` and its Console row the line, read back through the source map of the playing code."
+  },
   "unknown-sound-line.spec.ts": {
     "runs": "gate",
     "why": "A sound that isn't loaded is underlined where the code names it (#2187): the note that couldn't play carries where its sound was written, so `bdd` in `s(\"sd bdd\")` gets the squiggle and its Console row the line."

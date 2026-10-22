@@ -502,7 +502,7 @@ export class StrudelEngine implements LiveCodingEngine {
   /** Notes handed to superdough after their start time, which it drops (#1348). */
   private lateNotes = 0
   /** Above zero while the scheduler's own query runs (#2173). See `watchSkippedTicks`. */
-  private schedulerQuery = { depth: 0 }
+  private schedulerQuery: SchedulerQuery = { depth: 0 }
   /** takes off the `strudel.log` listener that raises play-time errors (#2173) */
   private stopListeningForPlayErrors: (() => void) | null = null
   private analyserNode: AnalyserNode | null = null
@@ -525,7 +525,7 @@ export class StrudelEngine implements LiveCodingEngine {
   // #2187 — the transpile of the code now playing: the last evaluate that
   // succeeded. A note's locations are offsets into this code, not into
   // whatever was evaluated (and failed) since.
-  private playing: { code: string } | null = null
+  private playing: { code: string; run?: (options: Record<string, unknown>) => unknown; options?: Record<string, unknown> } | null = null
   // Sound names registered after init() — used for editor autocompletion
   private loadedSoundNames: string[] = []
   // Per-track PatternSchedulers captured during the last evaluate() call.
@@ -1203,7 +1203,10 @@ export class StrudelEngine implements LiveCodingEngine {
     this.stopListeningForPlayErrors = listenForPlayTimeErrors(
       STRUDEL_LOG_EVENT,
       this.schedulerQuery,
-      (error) => this.runtimeErrorHandler?.(error),
+      (error) => {
+        this.placeInPlayingCode(error)
+        this.runtimeErrorHandler?.(error)
+      },
     )
 
     // Phase 20-14 α-4: vendor upstream `piano.mjs` chain method. Side-effect
@@ -1611,7 +1614,7 @@ export class StrudelEngine implements LiveCodingEngine {
         // new-pattern hap can emit (no await between here and return).
         this.evalEpoch++
         this.hapStream.setEpoch(this.evalEpoch)
-        this.playing = { code }
+        this.playing = ran?.code === code ? ran : { code }
 
         // #1094 — A BARE DOCUMENT SOUNDS THROUGH THE REPL'S OTHER BRANCH.
         // Strudel picks what to play two ways: with at least one `.p()` it stacks
@@ -2753,6 +2756,28 @@ export class StrudelEngine implements LiveCodingEngine {
   }
 
 
+  /**
+   * #2188 — where in the playing code an error raised while it plays was
+   * thrown: its stack read back through a source map of that code, as #2175
+   * does for an evaluate. Tagged with the code it refers to, which the app
+   * checks against the file before using it.
+   */
+  private placeInPlayingCode(error: Error): void {
+    const playing = this.playing
+    if (!playing?.run || (error as Error & { staveLocation?: unknown }).staveLocation) return
+    const at = locateEvalError(
+      error,
+      () => playing.run!({ ...playing.options, sourceMap: true }) as { map?: { mappings: string } },
+      this.evalFrame,
+    )
+    if (at) {
+      Object.assign(error as Error & { staveLocation?: { line: number; column: number }; staveLocationCode?: string }, {
+        staveLocation: at,
+        staveLocationCode: playing.code,
+      })
+    }
+  }
+
   /** Register a handler for runtime audio errors (fires during scheduling, not evaluation). */
   setRuntimeErrorHandler(handler: (err: Error) => void): void {
     this.runtimeErrorHandler = handler
@@ -2915,7 +2940,7 @@ export class StrudelEngine implements LiveCodingEngine {
  * played, not from a visualiser or the quiet timeline evaluate.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function watchSkippedTicks(scheduler: any, onDropped: (notes: number) => void, inQuery?: { depth: number }): void {
+export function watchSkippedTicks(scheduler: any, onDropped: (notes: number) => void, inQuery?: SchedulerQuery): void {
   if (!scheduler || typeof scheduler !== 'object') return
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let stored: any = scheduler.pattern ? watched(scheduler.pattern, onDropped, inQuery) : scheduler.pattern
@@ -2931,10 +2956,24 @@ export function watchSkippedTicks(scheduler: any, onDropped: (notes: number) => 
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function watched(pat: any, onDropped: (notes: number) => void, inQuery?: { depth: number }): any {
+function watched(pat: any, onDropped: (notes: number) => void, inQuery?: SchedulerQuery): any {
   if (typeof pat.queryArc !== 'function') return pat
   let expected: number | null = null
   const w = Object.create(pat)
+  // #2188 — Strudel's `queryArc` catches what `this.query` throws and logs only
+  // the message, so the error's stack (where in the user's code it happened)
+  // was lost. Running `queryArc` with `this` = `w` sends that call through
+  // here, which keeps the error itself for the play-time listener, then lets
+  // Strudel catch it exactly as before.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  w.query = function (state: any) {
+    try {
+      return pat.query(state)
+    } catch (err) {
+      if (inQuery) inQuery.lastError = err
+      throw err
+    }
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   w.queryArc = function (begin: number, end: number, state?: any) {
     if (state?.cyclist !== 'cyclist') return pat.queryArc(begin, end, state)
@@ -2950,7 +2989,7 @@ function watched(pat: any, onDropped: (notes: number) => void, inQuery?: { depth
         }
       }
       expected = end
-      return pat.queryArc(begin, end, state)
+      return pat.queryArc.call(w, begin, end, state)
     } finally {
       if (inQuery) inQuery.depth--
     }
@@ -2966,17 +3005,30 @@ function watched(pat: any, onDropped: (notes: number) => void, inQuery?: { depth
 export const STRUDEL_LOG_EVENT = 'strudel.log'
 
 /**
+ * #2173 — `depth` is above zero while the scheduler's own query runs.
+ * #2188 — `lastError` is the error that query threw, kept before Strudel
+ * catches it, so the listener can hand on the error and not just its message.
+ */
+export interface SchedulerQuery {
+  depth: number
+  lastError?: unknown
+}
+
+/**
  * #2173 — the error a `strudel.log` entry reports, or `null` when it is not one
  * Stave should raise. Strudel's `errorLogger` writes `[origin] error: message`
  * (`@strudel/core/logger.mjs`). `[eval]` entries are left out: an evaluate
  * error already reaches Stave through `onEvalError`, and raising it here too
  * would show it twice.
  */
-export function playTimeErrorFrom(detail: unknown): Error | null {
+export function playTimeErrorFrom(detail: unknown, caught?: unknown): Error | null {
   const message = (detail as { message?: unknown } | null)?.message
   if (typeof message !== 'string') return null
   const m = message.match(/^\[([^\]]+)\] error: ([\s\S]+)$/)
   if (!m || m[1] === 'eval') return null
+  // #2188 — the error itself, when the scheduler's query kept it, so its stack
+  // can say where in the code it was thrown. Only the one this entry reports.
+  if (caught instanceof Error && caught.message === m[2]) return caught
   return new Error(m[2])
 }
 
@@ -2988,13 +3040,14 @@ export function playTimeErrorFrom(detail: unknown): Error | null {
  */
 export function listenForPlayTimeErrors(
   logKey: string,
-  inQuery: { depth: number },
+  inQuery: SchedulerQuery,
   onError: (error: Error) => void,
 ): () => void {
   if (typeof document === 'undefined') return () => {}
   const onLog = (event: Event) => {
     if (inQuery.depth === 0) return
-    const error = playTimeErrorFrom((event as CustomEvent).detail)
+    const error = playTimeErrorFrom((event as CustomEvent).detail, inQuery.lastError)
+    inQuery.lastError = undefined
     if (error) onError(error)
   }
   document.addEventListener(logKey, onLog)
