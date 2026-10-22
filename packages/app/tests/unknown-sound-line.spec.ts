@@ -45,5 +45,7 @@ test('once the file is edited, the still-playing error is not placed on the old 
   // the old code keeps failing on `bdd` every cycle; those repeats carry no line
   const unplaced = page.locator(ROW).filter({ hasText: 'bdd' }).and(page.locator(':not([data-line])'))
   await expect(unplaced).toHaveCount(1, { timeout: 15_000 })
-  await expect(page.locator(ROW).filter({ hasText: 'bdd' }).and(page.locator('[data-line="3"]'))).toHaveCount(1)
+  // the first row's line follows the code it named, which moved down one (#2184)
+  await expect(page.locator(ROW).filter({ hasText: 'bdd' }).and(page.locator('[data-line="4"]'))).toHaveCount(1)
+  await expect(page.locator(ROW).filter({ hasText: 'bdd' }).and(page.locator('[data-line="3"]'))).toHaveCount(0)
 })

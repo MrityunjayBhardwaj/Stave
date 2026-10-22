@@ -163,6 +163,10 @@
     "runs": "gate",
     "why": "A sound that isn't loaded is underlined where the code names it (#2187): the note that couldn't play carries where its sound was written, so `bdd` in `s(\"sd bdd\")` gets the squiggle and its Console row the line."
   },
+  "error-follows-edits.spec.ts": {
+    "runs": "gate",
+    "why": "An error's squiggle follows the code around it (#2184): typing lines above it moves the Console row's line and where clicking the row goes; fixing the underlined word takes the squiggle off without running again, and an edit elsewhere on the line leaves it on (#2185)."
+  },
   "file-history.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
