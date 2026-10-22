@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
+  '@strudel/transpiler@1.2.6':
+    hash: wfc4bcwutfj4jlfoznpam5gxna
+    path: patches/@strudel__transpiler@1.2.6.patch
   superdough@1.3.0:
     hash: l3amb3vht3artmncpzve6vk7ie
     path: patches/superdough@1.3.0.patch
@@ -143,7 +146,7 @@ importers:
         version: 1.2.6
       '@strudel/transpiler':
         specifier: ^1.0.0
-        version: 1.2.6
+        version: 1.2.6(patch_hash=wfc4bcwutfj4jlfoznpam5gxna)
       '@strudel/webaudio':
         specifier: ^1.0.0
         version: 1.3.0
@@ -6282,7 +6285,7 @@ snapshots:
   '@strudel/mondo@1.1.6':
     dependencies:
       '@strudel/core': 1.2.6
-      '@strudel/transpiler': 1.2.6
+      '@strudel/transpiler': 1.2.6(patch_hash=wfc4bcwutfj4jlfoznpam5gxna)
       mondolang: 1.1.2
 
   '@strudel/soundfonts@1.3.0':
@@ -6299,7 +6302,7 @@ snapshots:
       chord-voicings: 0.0.1
       webmidi: 3.1.14
 
-  '@strudel/transpiler@1.2.6':
+  '@strudel/transpiler@1.2.6(patch_hash=wfc4bcwutfj4jlfoznpam5gxna)':
     dependencies:
       '@strudel/core': 1.2.6
       '@strudel/mini': 1.2.6

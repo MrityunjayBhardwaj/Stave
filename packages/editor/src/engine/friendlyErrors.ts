@@ -98,6 +98,17 @@ export function parseStackLocation(
     /@(?:<anonymous>|debugger eval|eval):(\d+):(\d+)/,
   )
   if (ff) return { line: parseInt(ff[1], 10), column: parseInt(ff[2], 10) }
+  // Firefox: code made by `new Function` / `eval` names the script that made
+  // it, then " line N > Function:LINE:COL" (or "> eval:LINE:COL"), nesting
+  // one "line N >" per level — e.g. Strudel's evaluate:
+  //   "anonymous/<@http://…/strudel_core.js line 4321 > Function:3:188".
+  // The `> Function:` / `> eval:` token is Firefox's marker for dynamic code,
+  // as `<anonymous>` is V8's, so a bundled "chunk.js:4321:23" frame never
+  // matches. Like V8, the body starts on line 3 (measured), so callers'
+  // offsets hold.
+  const ffDynamic = stack.match(/ line \d+ > (?:Function|eval):(\d+):(\d+)/)
+  if (ffDynamic)
+    return { line: parseInt(ffDynamic[1], 10), column: parseInt(ffDynamic[2], 10) }
   return null
 }
 

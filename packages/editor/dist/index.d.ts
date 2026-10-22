@@ -4495,6 +4495,8 @@ declare class StrudelEngine implements LiveCodingEngine {
     private initPromise;
     private evalResolve;
     private runtimeErrorHandler;
+    private lastTranspile;
+    private evalFrame;
     private loadedSoundNames;
     private trackSchedulers;
     private songPatterns;

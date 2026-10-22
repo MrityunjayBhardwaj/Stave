@@ -60,7 +60,12 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
 
 type RuntimeFilter = "all" | RuntimeId;
 
-export function ConsolePanel(): React.ReactElement {
+export function ConsolePanel({
+  onReveal,
+}: {
+  /** #2182 — go to an entry's line; the same handler the error toast uses. */
+  onReveal?: (entry: LogEntry) => void;
+} = {}): React.ReactElement {
   const [entries, setEntries] = useState<readonly LogEntry[]>(getLogHistory);
   const [runtimeFilter, setRuntimeFilter] = useState<RuntimeFilter>("all");
   const [levelFilter, setLevelFilter] = useState<
@@ -301,13 +306,31 @@ export function ConsolePanel(): React.ReactElement {
         {filtered.map((e) => {
           const time = new Date(e.ts).toISOString().slice(11, 19);
           const isExpanded = expanded.has(e.id);
+          // #2182 — a row that knows its line takes you there. Clicks on the
+          // hint link or the stack toggle keep their own job, and a drag that
+          // selects the message's text doesn't count as a click.
+          const reveal = onReveal && e.source && e.line != null
+            ? () => onReveal(e)
+            : undefined;
           return (
             <div
               key={e.id}
               data-testid="console-row"
               data-level={e.level}
               data-runtime={e.runtime}
-              style={styles.row}
+              data-line={e.line ?? undefined}
+              style={reveal ? { ...styles.row, cursor: "pointer" } : styles.row}
+              title={reveal ? `Go to line ${e.line}` : undefined}
+              role={reveal ? "link" : undefined}
+              tabIndex={reveal ? 0 : undefined}
+              onClick={reveal && ((ev) => {
+                if ((ev.target as Element).closest("a, button")) return;
+                if (window.getSelection()?.toString()) return;
+                reveal();
+              })}
+              onKeyDown={reveal && ((ev) => {
+                if (ev.key === "Enter" && ev.target === ev.currentTarget) reveal();
+              })}
             >
               <div style={styles.rowHead}>
                 <span style={styles.time}>{time}</span>

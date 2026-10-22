@@ -257,6 +257,36 @@ describe('parseStackLocation', () => {
     ).toEqual({ line: 3, column: 1 })
   })
 
+  it('parses a Firefox `new Function` frame (Strudel evaluate in Firefox)', () => {
+    // Recorded from Firefox running `note("e3").s("sine").gin(0.15)` in Stave.
+    const chunk = 'http://localhost:3312/_next/static/chunks/1bs0_%40strudel_core_03drhn3._.js'
+    expect(
+      parseStackLocation({
+        stack:
+          `anonymous/<@${chunk} line 4321 > Function:3:188\n` +
+          `anonymous@${chunk} line 4321 > Function:3:251\n` +
+          `Bn@${chunk}:4321:23\n` +
+          `On@${chunk}:4331:24`,
+      }),
+    ).toEqual({ line: 3, column: 188 })
+  })
+
+  it('parses a nested Firefox dynamic frame, eval inside eval', () => {
+    expect(
+      parseStackLocation({
+        stack: '@debugger eval code line 302 > eval line 7 > eval:2:1',
+      }),
+    ).toEqual({ line: 2, column: 1 })
+  })
+
+  it('does NOT read a plain Firefox bundled frame as user code', () => {
+    expect(
+      parseStackLocation({
+        stack: 'Bn@http://localhost:3312/_next/static/chunks/core.js:4321:23\nOn@http://localhost:3312/x.js:4331:24',
+      }),
+    ).toBeNull()
+  })
+
   it('returns null when no frame matches', () => {
     expect(parseStackLocation({ stack: 'nothing relevant' })).toBeNull()
     expect(parseStackLocation({})).toBeNull()
