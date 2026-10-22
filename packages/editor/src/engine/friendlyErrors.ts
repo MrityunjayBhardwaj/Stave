@@ -522,13 +522,16 @@ export function formatFriendlyError(
             example: hit.mistake.example ?? hit.symbol.doc.example,
             description: hit.symbol.doc.description,
           }
-        : hit.mistake.example
+        : hit.mistake.example || hit.mistake.link
         ? {
             // Global mistake without a symbol — synthesise a minimal
-            // suggestion so downstream UI still surfaces the example.
+            // suggestion so downstream UI still surfaces the example,
+            // and the hint's own link when it has one (#2167).
             name: '',
-            docsUrl: '',
+            linkLabel: hit.mistake.link?.label,
+            docsUrl: hit.mistake.link?.url ?? '',
             example: hit.mistake.example,
+            description: hit.mistake.link?.description,
           }
         : undefined
       return {

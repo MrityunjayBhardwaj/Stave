@@ -12769,8 +12769,13 @@ type RuntimeId = 'strudel' | 'sonicpi' | 'p5' | 'hydra' | 'glsl'
  * render it the same way.
  */
 interface LogSuggestion {
-    /** Canonical symbol name (e.g. `noise`). */
+    /**
+     * Canonical symbol name (e.g. `noise`) — empty when the hint is not about
+     * one symbol, so "try `name`" is never said of something else (#2170).
+     */
     name: string;
+    /** #2167 — what the link reads as when it is not a symbol's docs (`#2169`). */
+    linkLabel?: string;
     /** In-app docs page for the suggested symbol. */
     docsUrl: string;
     /** One-line example if the DocsIndex carried one. */
@@ -14143,6 +14148,16 @@ interface CommonMistake {
     hint: string;
     /** Optional inline example, rendered below the hint. */
     example?: string;
+    /**
+     * #2167 — where to read more when the hint is not about one symbol (a
+     * tracking issue, an outside page). Becomes the suggestion row's link;
+     * a hint attached to a symbol links to that symbol's docs instead.
+     */
+    link?: {
+        label: string;
+        url: string;
+        description?: string;
+    };
     /**
      * Confidence weight for ranking. Default 1. Bump for runtimes where
      * the curated hint is clearly better than the algorithmic suggestion.

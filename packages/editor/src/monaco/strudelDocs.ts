@@ -1,6 +1,7 @@
 import type * as Monaco from 'monaco-editor'
 import type { DocsIndex, RuntimeDoc } from './docs/types'
 import { createHoverProvider } from './docs/providers'
+import { notInStaveMistakes } from './docs/strudelNotInStave'
 
 // ---------------------------------------------------------------------------
 // Strudel function documentation
@@ -437,6 +438,8 @@ export const STRUDEL_DOCS_INDEX: DocsIndex = {
       hint: 'Looks like a drum name — wrap it in a string: `s("bd")`.',
       example: 's("bd sd hh sd")',
     },
+    // #2167 — Strudel features Stave has not got yet say so, and link their issue.
+    ...notInStaveMistakes(),
   ],
   meta: {
     source: 'hand-curated',

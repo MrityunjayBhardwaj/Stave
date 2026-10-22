@@ -102,7 +102,8 @@ function applyEntry(entry: LogEntry): void {
     {
       line: entry.line,
       column: entry.column,
-      message: entry.suggestion
+      // #2170 — "try" only names a symbol; a hint without one says just the hint.
+      message: entry.suggestion?.name
         ? `${entry.message} — try \`${entry.suggestion.name}\``
         : entry.message,
       severity,

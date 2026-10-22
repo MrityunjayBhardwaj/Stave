@@ -32,8 +32,13 @@ export type RuntimeId =
  * render it the same way.
  */
 export interface LogSuggestion {
-  /** Canonical symbol name (e.g. `noise`). */
+  /**
+   * Canonical symbol name (e.g. `noise`) — empty when the hint is not about
+   * one symbol, so "try `name`" is never said of something else (#2170).
+   */
   name: string
+  /** #2167 — what the link reads as when it is not a symbol's docs (`#2169`). */
+  linkLabel?: string
   /** In-app docs page for the suggested symbol. */
   docsUrl: string
   /** One-line example if the DocsIndex carried one. */

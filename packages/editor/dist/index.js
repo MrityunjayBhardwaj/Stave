@@ -15838,12 +15838,15 @@ function formatFriendlyError(err, runtime, options = {}) {
         ),
         example: hit.mistake.example ?? hit.symbol.doc.example,
         description: hit.symbol.doc.description
-      } : hit.mistake.example ? {
+      } : hit.mistake.example || hit.mistake.link ? {
         // Global mistake without a symbol — synthesise a minimal
-        // suggestion so downstream UI still surfaces the example.
+        // suggestion so downstream UI still surfaces the example,
+        // and the hint's own link when it has one (#2167).
         name: "",
-        docsUrl: "",
-        example: hit.mistake.example
+        linkLabel: hit.mistake.link?.label,
+        docsUrl: hit.mistake.link?.url ?? "",
+        example: hit.mistake.example,
+        description: hit.mistake.link?.description
       } : void 0;
       return {
         message: appendAlias(hit.mistake.hint),
@@ -29371,6 +29374,116 @@ function registerStrudelLanguage(monaco) {
 }
 __name(registerStrudelLanguage, "registerStrudelLanguage");
 
+// src/monaco/docs/strudelNotInStave.ts
+var ISSUES = "https://github.com/MrityunjayBhardwaj/stave/issues/";
+var STRUDEL_NOT_IN_STAVE = [
+  { what: "sends patterns to SuperCollider over OSC", issue: 126, methods: ["osc"] },
+  {
+    what: "plays patterns through Csound",
+    issue: 124,
+    names: ["loadCsound", "loadcsound", "loadCSound", "loadOrc"],
+    methods: ["csound", "csoundm"]
+  },
+  { what: "sends patterns to an MQTT broker", issue: 130, methods: ["mqtt"] },
+  { what: "sends patterns to a serial device, such as a microcontroller", issue: 127, methods: ["serial"] },
+  { what: "reads a game controller", issue: 128, names: ["gamepad"] },
+  {
+    what: "reads the device's motion sensors",
+    issue: 129,
+    names: [
+      "enableMotion",
+      "accelerationX",
+      "accelerationY",
+      "accelerationZ",
+      "accX",
+      "accY",
+      "accZ",
+      "gravityX",
+      "gravityY",
+      "gravityZ",
+      "gravX",
+      "gravY",
+      "gravZ",
+      "rotationAlpha",
+      "rotationBeta",
+      "rotationGamma",
+      "rotationX",
+      "rotationY",
+      "rotationZ",
+      "rotA",
+      "rotB",
+      "rotG",
+      "rotX",
+      "rotY",
+      "rotZ",
+      "orientationAlpha",
+      "orientationBeta",
+      "orientationGamma",
+      "orientationA",
+      "orientationB",
+      "orientationG",
+      "orientationX",
+      "orientationY",
+      "orientationZ",
+      "oriA",
+      "oriB",
+      "oriG",
+      "oriX",
+      "oriY",
+      "oriZ",
+      "absoluteOrientationAlpha",
+      "absoluteOrientationBeta",
+      "absoluteOrientationGamma",
+      "absoluteOrientationX",
+      "absoluteOrientationY",
+      "absoluteOrientationZ",
+      "absOriA",
+      "absOriB",
+      "absOriG",
+      "absOriX",
+      "absOriY",
+      "absOriZ"
+    ]
+  },
+  { what: "runs code written in Tidal syntax", issue: 125, names: ["tidal", "initTidal"] },
+  {
+    what: "draws Hydra visuals from inside Strudel code",
+    issue: 2169,
+    names: ["initHydra", "clearHydra", "H"],
+    meanwhile: "Hydra runs in Stave from a `.hydra` file."
+  },
+  { what: "styles the highlighted code", issue: 2168, methods: ["markcss"] }
+];
+function hintFor(row, shown) {
+  const base = `${shown} is part of Strudel (it ${row.what}), but it isn't in Stave yet.`;
+  return row.meanwhile ? `${base} ${row.meanwhile}` : base;
+}
+__name(hintFor, "hintFor");
+function notInStaveMistakes(rows = STRUDEL_NOT_IN_STAVE) {
+  const out = [];
+  for (const row of rows) {
+    const link = { label: `#${row.issue}`, url: `${ISSUES}${row.issue}`, description: "Follow it in Stave" };
+    for (const name of row.names ?? []) {
+      out.push({
+        // Chrome, Edge and Firefox say "x is not defined"; Safari says "Can't find variable: x".
+        detect: { kind: "message", match: new RegExp(`^(?:${name} is not defined|Can't find variable: ${name})$`) },
+        hint: hintFor(row, `\`${name}\``),
+        link
+      });
+    }
+    for (const method of row.methods ?? []) {
+      out.push({
+        // "s(...).mqtt is not a function" (Chrome, Firefox); Safari spells the receiver out.
+        detect: { kind: "message", match: new RegExp(`\\.${method} is not a function`) },
+        hint: hintFor(row, `\`.${method}()\``),
+        link
+      });
+    }
+  }
+  return out;
+}
+__name(notInStaveMistakes, "notInStaveMistakes");
+
 // src/monaco/strudelDocs.ts
 var VIZ_FEEDBACK_URL = "https://strudel.cc/learn/visual-feedback/";
 var VIZ_KINDS = {
@@ -29770,7 +29883,9 @@ var STRUDEL_DOCS_INDEX = {
       },
       hint: 'Looks like a drum name \u2014 wrap it in a string: `s("bd")`.',
       example: 's("bd sd hh sd")'
-    }
+    },
+    // #2167 — Strudel features Stave has not got yet say so, and link their issue.
+    ...notInStaveMistakes()
   ],
   meta: {
     source: "hand-curated",
@@ -53331,7 +53446,8 @@ function applyEntry(entry) {
     {
       line: entry.line,
       column: entry.column,
-      message: entry.suggestion ? `${entry.message} \u2014 try \`${entry.suggestion.name}\`` : entry.message,
+      // #2170 — "try" only names a symbol; a hint without one says just the hint.
+      message: entry.suggestion?.name ? `${entry.message} \u2014 try \`${entry.suggestion.name}\`` : entry.message,
       severity,
       owner: OWNER
     }
