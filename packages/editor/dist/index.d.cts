@@ -4462,6 +4462,10 @@ declare class StrudelEngine implements LiveCodingEngine {
     private stopAskingForAudio;
     /** Notes handed to superdough after their start time, which it drops (#1348). */
     private lateNotes;
+    /** Above zero while the scheduler's own query runs (#2173). See `watchSkippedTicks`. */
+    private schedulerQuery;
+    /** takes off the `strudel.log` listener that raises play-time errors (#2173) */
+    private stopListeningForPlayErrors;
     private analyserNode;
     private hapStream;
     private evalEpoch;
