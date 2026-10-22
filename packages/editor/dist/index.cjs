@@ -1067,7 +1067,7 @@ var IR = {
   seq: /* @__PURE__ */ __name((...children) => ({ tag: "Seq", children }), "seq"),
   // Rest-spread: cannot accept trailing meta?. Desugar / root sites that need
   // metadata use literal construction `{ tag: 'Stack', tracks, loc, userMethod }`.
-  stack: /* @__PURE__ */ __name((...tracks) => ({ tag: "Stack", tracks }), "stack"),
+  stack: /* @__PURE__ */ __name((...tracks2) => ({ tag: "Stack", tracks: tracks2 }), "stack"),
   choice: /* @__PURE__ */ __name((p, then, else_ = { tag: "Pure" }, meta) => attachMeta({ tag: "Choice", p, then, else_ }, meta), "choice"),
   every: /* @__PURE__ */ __name((n, body, default_, meta) => attachMeta({ tag: "Every", n, body, default_ }, meta), "every"),
   // Rest-spread: cannot accept trailing meta?. Sites needing metadata use
@@ -4538,9 +4538,9 @@ function patternToNode(pat, loc, isSample, baseOffset, input) {
     return items.length === 0 ? null : { tag: "Cycle", items, loc };
   }
   if (align === "stack" || align === "polymeter") {
-    const tracks = voices.map((v) => buildSeq(layerElements(v), isSample, baseOffset, input)).filter((s) => s.length > 0).map((s) => s.length === 1 ? s[0] : IR.seq(...s));
-    if (tracks.length === 0) return null;
-    return tracks.length === 1 ? tracks[0] : { tag: "Stack", tracks, loc };
+    const tracks2 = voices.map((v) => buildSeq(layerElements(v), isSample, baseOffset, input)).filter((s) => s.length > 0).map((s) => s.length === 1 ? s[0] : IR.seq(...s));
+    if (tracks2.length === 0) return null;
+    return tracks2.length === 1 ? tracks2[0] : { tag: "Stack", tracks: tracks2, loc };
   }
   const children = buildSeq(elementsOf(pat.children), isSample, baseOffset, input);
   if (children.length === 0) return null;
@@ -5141,7 +5141,7 @@ __name(parseStrudelRecorded, "parseStrudelRecorded");
 function parseDocument(code, opts, record) {
   if (!code.trim()) return IR.pure();
   try {
-    const tracks = extractTracks(code);
+    const tracks2 = extractTracks(code);
     const numbers = collectNumericBindings(code);
     const top = /* @__PURE__ */ __name((text, offset, bindings) => {
       if (!record) return parseExpression(text, offset, void 0, bindings, opts, numbers);
@@ -5156,8 +5156,8 @@ function parseDocument(code, opts, record) {
       record?.push({ raw: IR.pure(), mini: IR.pure() });
       return IR.pure();
     }, "silent");
-    const trackBindings = tracks.length > 0 ? collectTopLevelBindings(code, 0, numbers)?.bindings ?? void 0 : void 0;
-    if (tracks.length === 0) {
+    const trackBindings = tracks2.length > 0 ? collectTopLevelBindings(code, 0, numbers)?.bindings ?? void 0 : void 0;
+    if (tracks2.length === 0) {
       const stripped = stripParserPrelude(code);
       if (!stripped.body.trim()) {
         return IR.track("d1", silent());
@@ -5216,12 +5216,12 @@ function parseDocument(code, opts, record) {
       const inner = top(stripped.body.trim(), innerOffset, void 0);
       return IR.track("d1", inner);
     }
-    if (!tracks.some((t) => !t.commented && !isMutedLabel(t.label))) {
-      const bare = bareStatementsBesideLabels(code, tracks);
+    if (!tracks2.some((t) => !t.commented && !isMutedLabel(t.label))) {
+      const bare = bareStatementsBesideLabels(code, tracks2);
       if (bare.length > 0) {
         const labelIds = trackIdsFromLabels(
-          tracks.map((t) => t.label),
-          tracks.map((t) => t.commented)
+          tracks2.map((t) => t.label),
+          tracks2.map((t) => t.commented)
         );
         const taken = new Set(labelIds);
         const bareIds = bare.map(() => {
@@ -5235,7 +5235,7 @@ function parseDocument(code, opts, record) {
           return next === void 0 ? t.end : Math.min(t.end, next.offset);
         }, "endOf");
         const rows = [
-          ...tracks.map((t, i) => ({ kind: "label", at: t.dollarStart, t, id: labelIds[i] })),
+          ...tracks2.map((t, i) => ({ kind: "label", at: t.dollarStart, t, id: labelIds[i] })),
           ...bare.map((s, i) => ({ kind: "bare", at: s.offset, s, id: bareIds[i] }))
         ].sort((a, b) => a.at - b.at);
         return IR.stack(
@@ -5256,8 +5256,8 @@ function parseDocument(code, opts, record) {
         );
       }
     }
-    if (tracks.length === 1) {
-      const t = tracks[0];
+    if (tracks2.length === 1) {
+      const t = tracks2[0];
       const body = t.commented ? silent() : top(t.expr, t.offset, trackBindings);
       const trackId0 = trackIdFromLabel(t.label, 0);
       return IR.track(trackId0, body, {
@@ -5265,11 +5265,11 @@ function parseDocument(code, opts, record) {
       }, { muted: isMutedLabel(t.label), commented: t.commented });
     }
     const trackIds = trackIdsFromLabels(
-      tracks.map((t) => t.label),
-      tracks.map((t) => t.commented)
+      tracks2.map((t) => t.label),
+      tracks2.map((t) => t.commented)
     );
     return IR.stack(
-      ...tracks.map((t, i) => {
+      ...tracks2.map((t, i) => {
         const body = t.commented ? silent() : top(t.expr, t.offset, trackBindings);
         const trackId = trackIds[i];
         return IR.track(trackId, body, {
@@ -5283,11 +5283,11 @@ function parseDocument(code, opts, record) {
   }
 }
 __name(parseDocument, "parseDocument");
-function bareStatementsBesideLabels(code, tracks) {
+function bareStatementsBesideLabels(code, tracks2) {
   const stmts = stripSideEffectStatements(splitTopLevelStatements(code, 0));
   const owned = /* @__PURE__ */ new Set();
   stmts.forEach((s, i) => {
-    const t = tracks.find((t2) => !t2.commented && s.offset >= t2.dollarStart && s.offset <= t2.offset);
+    const t = tracks2.find((t2) => !t2.commented && s.offset >= t2.dollarStart && s.offset <= t2.offset);
     if (!t) return;
     owned.add(i);
     if (s.offset + s.text.length <= t.offset) owned.add(i + 1);
@@ -5495,7 +5495,7 @@ function commentedLabelIsTrack(code, afterColon) {
 }
 __name(commentedLabelIsTrack, "commentedLabelIsTrack");
 function extractTracks(code) {
-  const tracks = [];
+  const tracks2 = [];
   const dollarRe = /^[ \t]*(\/\/[ \t]*)?([\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*)\s*:/gmu;
   const starts = [];
   let stmtExtents = null;
@@ -5535,13 +5535,13 @@ function extractTracks(code) {
     const { dollarStart, bodyStart, commented, label } = starts[i];
     const end = i + 1 < starts.length ? starts[i + 1].dollarStart : code.length;
     if (commented) {
-      tracks.push({ expr: "", offset: bodyStart, dollarStart, end, commented: true, label });
+      tracks2.push({ expr: "", offset: bodyStart, dollarStart, end, commented: true, label });
       continue;
     }
     const slice = code.slice(bodyStart, end);
-    tracks.push({ expr: slice, offset: bodyStart, dollarStart, end, commented: false, label });
+    tracks2.push({ expr: slice, offset: bodyStart, dollarStart, end, commented: false, label });
   }
-  return tracks;
+  return tracks2;
 }
 __name(extractTracks, "extractTracks");
 function skipWhitespaceAndLineComments(src, pos) {
@@ -5849,15 +5849,15 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts, numbers) {
       const inner = trimmed.slice(openIdx + 1, closeIdx);
       const innerAbsOffset = baseOffset + leadingWs + openIdx + 1;
       const argsWithOffsets = splitArgsWithOffsets(inner);
-      const tracks = argsWithOffsets.map(
+      const tracks2 = argsWithOffsets.map(
         (a) => parseExpression(a.value, innerAbsOffset + a.offset, void 0, bindings, opts, numbers)
       );
-      if (tracks.length === 0) return IR.pure();
-      if (tracks.length === 1) return tracks[0];
+      if (tracks2.length === 0) return IR.pure();
+      if (tracks2.length === 1) return tracks2[0];
       const trimmedAbs = baseOffset + leadingWs;
       return {
         tag: "Stack",
-        tracks,
+        tracks: tracks2,
         loc: [{ start: trimmedAbs, end: trimmedAbs + closeIdx + 1 }],
         userMethod: "stack"
       };
@@ -6034,22 +6034,22 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
     case "layer": {
       const argList = splitArgs(args);
       if (argList.length === 0) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
-      const tracks = [];
+      const tracks2 = [];
       for (const funcStr of argList) {
         const trimmed = funcStr.trim();
         if (!trimmed) {
-          tracks.push(ir);
+          tracks2.push(ir);
           continue;
         }
         const transformOffset = offsetOfSubArg(args, trimmed, baseOffset);
         const track = parseTransform(trimmed, ir, transformOffset, bindings, numbers);
         if (track === null) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
-        tracks.push(track);
+        tracks2.push(track);
       }
       const [layerStart, layerEnd] = callSiteRange;
       return {
         tag: "Stack",
-        tracks,
+        tracks: tracks2,
         loc: [{ start: layerStart, end: layerEnd }],
         userMethod: method
         // 'layer' — D-08 exact-token from the switch label
@@ -6797,8 +6797,8 @@ function signalDimensionsOf(ir, swap) {
 __name(signalDimensionsOf, "signalDimensionsOf");
 function arrangedRepeatCycles(ir, arrangedCycles, cap = DEFAULT_CAP, signalPeriods = signalDimensionsOf(ir).periods) {
   if (!(arrangedCycles > 0) || !Number.isFinite(arrangedCycles)) return arrangedCycles;
-  const tracks = audibleTracks(ir);
-  const named2 = tracks.filter((t) => t.tag === "Track" && typeof t.trackId === "string");
+  const tracks2 = audibleTracks(ir);
+  const named2 = tracks2.filter((t) => t.tag === "Track" && typeof t.trackId === "string");
   const audible = named2.length > 0 ? new Set(named2.map((t) => t.trackId)) : null;
   const periods = [arrangedCycles];
   for (const a of steppedAutomations(ir)) {
@@ -6846,9 +6846,9 @@ __name(songPeriodOf, "songPeriodOf");
 function audibleTracks(ir) {
   if (!ir) return [];
   const roots = ir.tag === "Stack" ? ir.tracks : [ir];
-  const tracks = roots.filter((n) => n?.tag === "Track");
-  if (tracks.length === 0) return [ir];
-  return tracks.filter((t) => t.tag !== "Track" || t.muted !== true);
+  const tracks2 = roots.filter((n) => n?.tag === "Track");
+  if (tracks2.length === 0) return [ir];
+  return tracks2.filter((t) => t.tag !== "Track" || t.muted !== true);
 }
 __name(audibleTracks, "audibleTracks");
 function withoutKeys(ev, keys) {
@@ -7279,10 +7279,10 @@ function validateNode(raw, path) {
     }
     case "Stack": {
       requireArray(node, "tracks", path);
-      const tracks = node.tracks.map(
+      const tracks2 = node.tracks.map(
         (t, i) => validateNode(t, `${path}.tracks[${i}]`)
       );
-      return { tag: "Stack", tracks };
+      return { tag: "Stack", tracks: tracks2 };
     }
     case "Play": {
       requireField(node, "note", ["string", "number"], path);
@@ -7999,11 +7999,11 @@ function unjoinableId(index) {
   return `~$${index}`;
 }
 __name(unjoinableId, "unjoinableId");
-function bareCaptureIdFor(tracks) {
-  if (tracks.length === 0) return null;
-  if (tracks.some((t) => t.label !== null && !isMutedLabel(t.label))) return null;
-  if (tracks[tracks.length - 1].label !== null) return null;
-  return `$${tracks.length - 1}`;
+function bareCaptureIdFor(tracks2) {
+  if (tracks2.length === 0) return null;
+  if (tracks2.some((t) => t.label !== null && !isMutedLabel(t.label))) return null;
+  if (tracks2[tracks2.length - 1].label !== null) return null;
+  return `$${tracks2.length - 1}`;
 }
 __name(bareCaptureIdFor, "bareCaptureIdFor");
 var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
@@ -25132,7 +25132,7 @@ ${log2.trim()}`);
    *  at its current contents (or zero) and the shader still animates off iTime.
    *  `events` carries the per-frame pattern-event uniforms (#284); omit → all 0.
    *  `tracks` carries the per-track signal uniforms (#297); omit → no tracks. */
-  draw(audio, state6, events, tracks) {
+  draw(audio, state6, events, tracks2) {
     if (this.disposed) return;
     const gl = this.gl;
     const w = Math.max(1, Math.round(state6.width));
@@ -25177,7 +25177,7 @@ ${log2.trim()}`);
     for (const [name, loc] of this.uEvents) {
       if (loc) gl.uniform1f(loc, ev[name]);
     }
-    const tr = tracks ?? ZERO_GLSL_TRACKS;
+    const tr = tracks2 ?? ZERO_GLSL_TRACKS;
     if (this.uTrackCount) gl.uniform1i(this.uTrackCount, tr.count);
     if (this.uTrackA) gl.uniform3fv(this.uTrackA, tr.a);
     if (this.uTrackB) gl.uniform3fv(this.uTrackB, tr.b);
@@ -25277,19 +25277,19 @@ var _GLSLVizRenderer = class _GLSLVizRenderer extends VizRendererBase {
       perf.begin("glsl.draw");
       try {
         let events;
-        let tracks;
+        let tracks2;
         if (this.bus) {
           this.bus.tick();
           this.bus.refreshActive(this.bus.now());
           this.bus.readAudio();
           events = readGLSLEvents(this.bus);
-          tracks = readGLSLTracks(this.bus);
+          tracks2 = readGLSLTracks(this.bus);
         }
         this.program.draw(
           this.analyser,
           { width: this.size.w, height: this.size.h, timeMs: now2 - this.startMs },
           events,
-          tracks
+          tracks2
         );
       } finally {
         perf.end("glsl.draw");
@@ -30307,18 +30307,19 @@ function setLineMarker(monaco, model, opts) {
     const startLine = line ?? 1;
     const endLine = line ?? lineCount;
     const { startColumn, endColumn } = line ? errorColumns(model, line, opts.column) : { startColumn: 1, endColumn: model.getLineMaxColumn(endLine) };
-    monaco.editor.setModelMarkers(model, opts.owner ?? MARKER_OWNER, [
-      {
-        severity,
-        message: opts.message,
-        startLineNumber: startLine,
-        startColumn,
-        endLineNumber: endLine,
-        endColumn
-      }
-    ]);
+    const marker = {
+      severity,
+      message: opts.message,
+      startLineNumber: startLine,
+      startColumn,
+      endLineNumber: endLine,
+      endColumn
+    };
+    monaco.editor.setModelMarkers(model, opts.owner ?? MARKER_OWNER, [marker]);
+    return marker;
   } catch (markerError) {
     console.warn("[stave] setLineMarker failed, skipped:", markerError);
+    return null;
   }
 }
 __name(setLineMarker, "setLineMarker");
@@ -53781,6 +53782,120 @@ var OWNER = "stave-log";
 var installed2 = false;
 var activeMarkers = /* @__PURE__ */ new Set();
 var markerKey = /* @__PURE__ */ __name((runtime, fileId) => `${runtime}:${fileId}`, "markerKey");
+var tracks = /* @__PURE__ */ new Map();
+var positionListeners = /* @__PURE__ */ new Set();
+var isTrackable = /* @__PURE__ */ __name((model) => typeof model?.deltaDecorations === "function" && typeof model.getDecorationRange === "function" && typeof model.onDidChangeContent === "function", "isTrackable");
+function notifyPositions() {
+  for (const listener of positionListeners) {
+    try {
+      listener();
+    } catch {
+    }
+  }
+}
+__name(notifyPositions, "notifyPositions");
+function untrack(fileId) {
+  const track = tracks.get(fileId);
+  if (!track) return;
+  tracks.delete(fileId);
+  track.stop();
+  try {
+    track.model.deltaDecorations(track.placed.map((p) => p.decorationId), []);
+  } catch {
+  }
+  notifyPositions();
+}
+__name(untrack, "untrack");
+function onEdited(fileId, track) {
+  const monaco = getMonacoNamespace();
+  let dropped = false;
+  let moved = false;
+  for (const p of track.placed) {
+    const range2 = track.model.getDecorationRange(p.decorationId);
+    const line = range2?.startLineNumber ?? p.line;
+    if (line !== p.line) {
+      p.line = line;
+      moved = true;
+    }
+    if (!p.shown) continue;
+    if (!range2 || track.model.getValueInRange(range2) !== p.text) {
+      p.shown = false;
+      dropped = true;
+    }
+  }
+  if (dropped) {
+    const still = track.placed.filter((p) => p.shown).map((p) => ({ ...p.marker, ...track.model.getDecorationRange(p.decorationId) }));
+    monaco?.editor?.setModelMarkers?.(track.model, OWNER, still);
+    if (still.length === 0) activeMarkers.forEach((key3) => key3.endsWith(`:${fileId}`) && activeMarkers.delete(key3));
+  }
+  if (moved) notifyPositions();
+}
+__name(onEdited, "onEdited");
+function trackPlaced(fileId, model, entry, marker) {
+  if (!isTrackable(model)) return;
+  let track = tracks.get(fileId);
+  if (track && track.model !== model) {
+    untrack(fileId);
+    track = void 0;
+  }
+  const monaco = getMonacoNamespace();
+  const stickiness = monaco?.editor?.TrackedRangeStickiness?.NeverGrowsWhenTypingAtEdges ?? 1;
+  const range2 = {
+    startLineNumber: marker.startLineNumber,
+    startColumn: marker.startColumn,
+    endLineNumber: marker.endLineNumber,
+    endColumn: marker.endColumn
+  };
+  const [decorationId] = model.deltaDecorations(
+    track ? track.placed.map((p) => p.decorationId) : [],
+    [{ range: range2, options: { stickiness } }]
+  );
+  const placed = {
+    entryId: entry.id,
+    at: `${entry.line}:${entry.column ?? ""}:${entry.message}`,
+    decorationId,
+    text: model.getValueInRange(range2),
+    marker,
+    shown: true,
+    line: range2.startLineNumber
+  };
+  if (track) {
+    track.placed = [placed];
+  } else {
+    const t = { model, placed: [placed], stop: /* @__PURE__ */ __name(() => {
+    }, "stop") };
+    const sub = model.onDidChangeContent(() => onEdited(fileId, t));
+    const gone = model.onWillDispose?.(() => untrack(fileId));
+    t.stop = () => {
+      sub.dispose();
+      gone?.dispose();
+    };
+    tracks.set(fileId, t);
+  }
+  notifyPositions();
+}
+__name(trackPlaced, "trackPlaced");
+function errorPositionNow(entryId) {
+  for (const track of tracks.values()) {
+    const p = track.placed.find((q) => q.entryId === entryId);
+    if (!p) continue;
+    try {
+      const range2 = track.model.getDecorationRange(p.decorationId);
+      return range2 ? { line: range2.startLineNumber, column: range2.startColumn } : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+__name(errorPositionNow, "errorPositionNow");
+function subscribeErrorPositions(listener) {
+  positionListeners.add(listener);
+  return () => {
+    positionListeners.delete(listener);
+  };
+}
+__name(subscribeErrorPositions, "subscribeErrorPositions");
 function findFileIdForSource(source) {
   const files = listWorkspaceFiles();
   const byPath = files.find((f) => f.path === source);
@@ -53809,7 +53924,15 @@ function applyEntry(entry) {
   const lineCount = model.getLineCount?.() ?? 0;
   if (entry.line < 1 || entry.line > lineCount) return;
   const severity = entry.level;
-  setLineMarker(
+  const track = tracks.get(fileId);
+  const placedBefore = track?.placed.find((p) => p.entryId === entry.id);
+  if (placedBefore && placedBefore.at === `${entry.line}:${entry.column ?? ""}:${entry.message}`) {
+    if (placedBefore.shown) return;
+    const cols = errorColumns(resolved.model, entry.line, entry.column);
+    const there = track.model.getValueInRange({ startLineNumber: entry.line, endLineNumber: entry.line, ...cols });
+    if (there !== placedBefore.text) return;
+  }
+  const marker = setLineMarker(
     resolved.monaco,
     resolved.model,
     {
@@ -53822,6 +53945,7 @@ function applyEntry(entry) {
     }
   );
   activeMarkers.add(markerKey(entry.runtime, fileId));
+  if (marker) trackPlaced(fileId, resolved.model, entry, marker);
 }
 __name(applyEntry, "applyEntry");
 function clearForFix(marker) {
@@ -53839,6 +53963,7 @@ function clearForFix(marker) {
         );
       }
       activeMarkers.delete(key3);
+      untrack(fileId2);
     }
     return;
   }
@@ -53852,6 +53977,7 @@ function clearForFix(marker) {
     OWNER
   );
   activeMarkers.delete(markerKey(marker.runtime, fileId));
+  untrack(fileId);
 }
 __name(clearForFix, "clearForFix");
 function installEngineLogMarkers() {
@@ -54359,6 +54485,7 @@ exports.emitFixed = emitFixed;
 exports.emitLog = emitLog;
 exports.emptyFrame = emptyFrame;
 exports.enterRuntimeView = enterRuntimeView;
+exports.errorPositionNow = errorPositionNow;
 exports.exitRuntimeView = exitRuntimeView;
 exports.extractReferenceIdentifier = extractReferenceIdentifier;
 exports.fileHistory = fileHistory;
@@ -54722,6 +54849,7 @@ exports.steppedAutomations = steppedAutomations;
 exports.stopSampleSound = stopSampleSound;
 exports.structuralWalk = structuralWalk;
 exports.subscribeCapture = subscribeCapture;
+exports.subscribeErrorPositions = subscribeErrorPositions;
 exports.subscribeFixed = subscribeFixed;
 exports.subscribeIRSnapshot = subscribeIRSnapshot;
 exports.subscribeLog = subscribeLog;

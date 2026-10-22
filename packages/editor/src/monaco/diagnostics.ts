@@ -131,7 +131,8 @@ export function clearEvalErrors(
  *
  * Line/column validation mirrors `setEvalError`: values outside the
  * model's range fall back to a full-document marker. Any residual
- * Monaco throw is swallowed (hetvabhasa P37).
+ * Monaco throw is swallowed (hetvabhasa P37). Returns the marker it
+ * placed, or null when it placed none.
  */
 export function setLineMarker(
   monaco: typeof Monaco,
@@ -143,7 +144,7 @@ export function setLineMarker(
     severity?: 'error' | 'warn' | 'info'
     owner?: string
   }
-): void {
+): Monaco.editor.IMarkerData | null {
   try {
     const lineCount = model.getLineCount()
     const line =
@@ -166,19 +167,20 @@ export function setLineMarker(
       ? errorColumns(model, line, opts.column)
       : { startColumn: 1, endColumn: model.getLineMaxColumn(endLine) }
 
-    monaco.editor.setModelMarkers(model, opts.owner ?? MARKER_OWNER, [
-      {
-        severity,
-        message: opts.message,
-        startLineNumber: startLine,
-        startColumn,
-        endLineNumber: endLine,
-        endColumn,
-      },
-    ])
+    const marker = {
+      severity,
+      message: opts.message,
+      startLineNumber: startLine,
+      startColumn,
+      endLineNumber: endLine,
+      endColumn,
+    }
+    monaco.editor.setModelMarkers(model, opts.owner ?? MARKER_OWNER, [marker])
+    return marker
   } catch (markerError) {
     // eslint-disable-next-line no-console
     console.warn('[stave] setLineMarker failed, skipped:', markerError)
+    return null
   }
 }
 
