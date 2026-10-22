@@ -795,6 +795,10 @@
     "runs": "gate",
     "why": "Exact grid mode (#1855), the default: each part of a comma pattern is drawn at its own steps (`~ sd ~ sd, hh*8` shows the snare as 4 boxes, each over two hat cells) and a click fills one whole own step, so the cells LCM locks on a coarser part (#1853) write the part's own spelling. Pins box count and alignment, the whole-step write in one bar only, keys stepping over a box, the Settings \u203a Grid switch redrawing an open grid both ways, and LCM unchanged as the control."
   },
+  "pattern-nested-steps.spec.ts": {
+    "runs": "gate",
+    "why": "Exact grid (#1861): a written step that holds several hits is drawn as one step with its hits inside (`[~ bd]`, `hh*8` as one step of 8), and a plain step a sibling cuts into columns is one box with faint halves. Pins which steps group in each row, that a grouped step's edges still fall on the other rows' columns, that clicks inside a step and on a faint half write what they always wrote, and LCM plus one-column steps unchanged as controls."
+  },
   "pattern-side-toggle.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"

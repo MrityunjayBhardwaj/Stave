@@ -48,6 +48,7 @@ import { ExtendHandle } from './ExtendHandle'
 import {
   boxLengths,
   boxesPlaceNotes,
+  groupBoxesBySteps,
   linesModel,
   ownStepWidths,
   rowBoxes,
@@ -300,6 +301,22 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     for (const [part, cols] of writtenStepStarts(linesModel(model, read))) out.set(part, new Set(cols))
     return out
   }, [model, read])
+
+  // EACH ROW AS ITS WRITTEN STEPS (#1861, Exact). A step spanning several boxes is drawn as
+  // one: `hh*8` one step holding 8 small boxes, `bd` in `bd hh*2 sd cp` one box with faint
+  // halves. Edges from the step lines above; plain-or-not from the part's coverage, never
+  // the text. LCM draws every box on its own, as it always has.
+  const stepGroups = React.useMemo(() => {
+    if (!model || !boxes || !coverage) return null
+    return model.lanes.map((lane, li) => {
+      const part = lane.part ?? 0
+      const starts = gridMode === 'exact' ? stepStarts?.get(part) : undefined
+      const owners = model.lanes.flatMap((l, i) =>
+        (l.part ?? 0) === part ? [(c: number) => coverage[i]?.[c]?.start] : [],
+      )
+      return groupBoxesBySteps(boxes[li], starts ? [...starts].sort((a, b) => a - b) : undefined, model.steps, owners)
+    })
+  }, [model, boxes, coverage, stepStarts, gridMode])
 
   // PROVE BEFORE OFFER, at the length handle (#1053) — the same rule the cell already
   // applies, asked of `resizeCell` itself so the handle cannot promise a drag the writer
@@ -950,7 +967,16 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
             )}
             </div>
             <div role="none" style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
-              {(boxes?.[laneIndex] ?? []).map(({ start: stepIndex, width: w }) => {
+              {(stepGroups?.[laneIndex] ?? []).map((g) => {
+                // ONE BOX — `solo` as it has always been drawn; `inner` a small box inside a
+                // step that holds several (#1861); `plain` one column of a step drawn as a
+                // single box, its gaps showing as faint halves.
+                const cellFor = (
+                  { start: stepIndex, width: w }: { start: number; width: number },
+                  variant: 'solo' | 'inner' | 'plain',
+                  /** a plain step's first/last column carries the step's rounded corner */
+                  ends: { first: boolean; last: boolean } = { first: true, last: true },
+                ) => {
                 // ONE BOX, `w` columns from `stepIndex` (#1855): a column in LCM, one of
                 // the part's own steps in Exact. Everything below reads the box's first
                 // column — a box only exists where no hit starts inside it (`rowBoxes`).
@@ -1018,20 +1044,20 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                     key={stepIndex}
                     role="gridcell"
                     aria-selected={isCursor}
-                    data-seq-step-start={stepStart ? 'true' : undefined}
+                    data-seq-step-start={variant === 'solo' && stepStart ? 'true' : undefined}
                     style={{
                       display: 'flex',
                       flex: `${weight} ${weight} ${gaps}px`,
                       minWidth: stepMin * weight + gaps,
                       maxWidth: 56 * weight + gaps,
                       // subtle gap at each bar boundary
-                      marginLeft: layout.barStart(stepIndex) ? 8 : 0,
+                      marginLeft: variant === 'solo' && layout.barStart(stepIndex) ? 8 : 0,
                       // THREE LINE WEIGHTS (#1841): a bar is the 8px gap above; a written
                       // step fills the 2px gap before it with a line; a plain column
                       // leaves that gap empty. Drawn as a shadow INTO the gap rather than
                       // as extra width, because rows of different parts start steps at
                       // different columns and a real gap would push their columns apart.
-                      boxShadow: stepStart ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined,
+                      boxShadow: variant === 'solo' && stepStart ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined,
                     }}
                   >
                   <button
@@ -1123,13 +1149,23 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                     style={{
                       position: 'relative',
                       width: '100%',
-                      height: 22,
+                      // a small box inside a step that holds several, as the design draws it
+                      height: variant === 'inner' ? 14 : 22,
+                      alignSelf: 'center',
                       padding: 0,
                       overflow: 'hidden',
-                      border: isPlaying
-                        ? '1px solid var(--foreground, #e6e6ea)'
-                        : '1px solid var(--border, #3a3a42)',
-                      borderRadius: 3,
+                      border:
+                        variant === 'plain'
+                          ? 'none'
+                          : isPlaying
+                            ? '1px solid var(--foreground, #e6e6ea)'
+                            : '1px solid var(--border, #3a3a42)',
+                      borderRadius:
+                        variant === 'plain'
+                          ? `${ends.first ? 3 : 0}px ${ends.last ? 3 : 0}px ${ends.last ? 3 : 0}px ${ends.first ? 3 : 0}px`
+                          : variant === 'inner'
+                            ? 2
+                            : 3,
                       background: isPlaying
                         ? 'var(--background, #34343c)'
                         : 'var(--background-elevated, #26262c)',
@@ -1168,7 +1204,22 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                             colorMode === 'velocity'
                               ? velocityColor(gainScoped ? gain : 1)
                               : voice.color,
-                          opacity: held ? 0.7 : 1,
+                          // one plain step is one note: its columns are not a second trigger
+                          opacity: held && variant !== 'plain' ? 0.7 : 1,
+                          pointerEvents: 'none',
+                        }}
+                      />
+                    )}
+                    {variant === 'plain' && isPlaying && (
+                      // A plain step's columns draw no border, so the playing column is marked by
+                      // a frame drawn over its fill — the note is an absolutely placed child and
+                      // would paint over the button's own outline.
+                      <span
+                        data-seq-playing-frame
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          border: '1px solid var(--foreground, #e6e6ea)',
                           pointerEvents: 'none',
                         }}
                       />
@@ -1213,6 +1264,56 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                       />
                     )}
                   </button>
+                  </div>
+                )
+                }
+                // A step of one box, or one a bar line would cut, is drawn box by box — inside the
+                // SAME keyed wrapper, laid out as nothing (`display: contents`). An edit can turn a
+                // grouped step into single boxes (`[bd ~ sd ~]` → `bd _ sd ~`); with a different
+                // parent React would replace the focused cell and the next key would go nowhere.
+                const grouped = g.boxes.length > 1 && !g.boxes.slice(1).some((b) => layout.barStart(b.start))
+                if (!grouped) {
+                  return (
+                    <div key={`step-${g.from}`} role="none" style={{ display: 'contents' }}>
+                      {g.boxes.map((b) => cellFor(b, 'solo'))}
+                    </div>
+                  )
+                }
+                let weight = 0
+                for (let c = g.from; c < g.to; c++) weight += layout.weight(c)
+                const gaps = 2 * (g.to - g.from - 1)
+                const stepStart =
+                  g.from > 0 && !layout.barStart(g.from) && !!stepStarts?.get(lane.part ?? 0)?.has(g.from)
+                return (
+                  <div
+                    key={`step-${g.from}`}
+                    role="none"
+                    data-seq-step={g.plain ? 'plain' : 'holds'}
+                    data-seq-step-start={stepStart ? 'true' : undefined}
+                    style={{
+                      display: 'flex',
+                      gap: 2,
+                      height: 22,
+                      // exactly the space its boxes take drawn one by one, so its edges and
+                      // its boxes' edges fall on the other rows' columns
+                      flex: `${weight} ${weight} ${gaps}px`,
+                      minWidth: stepMin * weight + gaps,
+                      maxWidth: 56 * weight + gaps,
+                      marginLeft: layout.barStart(g.from) ? 8 : 0,
+                      // an outline takes no space, so it cannot push a column
+                      outline: '1px solid var(--border, #3a3a42)',
+                      borderRadius: g.plain ? 3 : 4,
+                      // NOT overflow-hidden: the focus ring is drawn just outside a cell, and
+                      // clipping it here hid the keyboard cursor on a filled column
+                      // plain: the gaps between its columns read as faint halves; a step that
+                      // holds several: a darker well its small boxes sit in
+                      background: g.plain ? 'var(--border, #3a3a42)' : 'var(--background, #1e1e24)',
+                      boxShadow: stepStart ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined,
+                    }}
+                  >
+                    {g.boxes.map((b, i) =>
+                      cellFor(b, g.plain ? 'plain' : 'inner', { first: i === 0, last: i === g.boxes.length - 1 }),
+                    )}
                   </div>
                 )
               })}
