@@ -50,7 +50,7 @@ import { useTouchBar } from './touchBar'
  * threading flags through a shared component.
  */
 function SonicPiChrome(ctx: ChromeContext): React.ReactElement {
-  const { isPlaying, error, bpm, onPlay, onStop, chromeExtras } = ctx
+  const { isPlaying, error, errorMessage, bpm, onPlay, onStop, chromeExtras } = ctx
   const bar = useTouchBar()
   return (
     <div
@@ -105,7 +105,7 @@ function SonicPiChrome(ctx: ChromeContext): React.ReactElement {
       {error && (
         <span
           data-testid="sonicpi-chrome-error"
-          title={error.message}
+          title={errorMessage ?? error.message}
           style={{
             maxWidth: 240,
             overflow: 'hidden',
@@ -119,7 +119,7 @@ function SonicPiChrome(ctx: ChromeContext): React.ReactElement {
             border: '1px solid rgba(248,113,113,0.3)',
           }}
         >
-          {error.message}
+          {errorMessage ?? error.message}
         </span>
       )}
 

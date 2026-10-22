@@ -589,6 +589,14 @@ function trackEnvelopeHandle(runtime: () => LiveCodingRuntime | undefined): Trac
   };
 }
 
+/**
+ * #2177 — a runtime's error as it is shown: the words the Console and the toast use,
+ * or the raw message for an error that arrived without them. `null` when there is none.
+ */
+export function shownError(st: { error: Error | null; errorMessage?: string }): string | null {
+  return st.error ? (st.errorMessage ?? st.error.message) : null;
+}
+
 export default function StrudelEditorClient({
   projectId,
   shellRef,
@@ -1042,6 +1050,12 @@ export default function StrudelEditorClient({
     // Cycle/Loop, user-set, default OFF. Only consulted for a document with a
     // definite end; everything else already loops.
     stopAtEnd?: boolean;
+    // #2177 — `error` as the Console and the toast word it (`formatFriendlyError`),
+    // written together with `error` by `onError`, the only writer of a non-null
+    // one. The error badge and the eval lamp show this; the raw `error` stays for
+    // what treats it as an error (the editor's squiggle). Read only beside a
+    // non-null `error` (`shownError`), so a cleared error leaves nothing to show.
+    errorMessage?: string;
   }>>(new Map());
   // Latest-value ref so the content-change subscription (#457, below) can read
   // the active file's play/live state without re-binding the subscription on
@@ -1166,12 +1180,6 @@ export default function StrudelEditorClient({
       // toast below still happen, because they are where a developer looks;
       // this adds the one surface that carries the only action that works.
       reportBootFailure(err);
-      setRuntimeStates(prev => {
-        const next = new Map(prev);
-        const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
-        next.set(fileId, { ...cur, error: err });
-        return next;
-      });
       // Pipe into the shared event store so toast / status-bar / console
       // panel / Monaco markers can all react. Runtime identity comes from
       // the workspace file's language (strudel | sonicpi — no other
@@ -1188,12 +1196,26 @@ export default function StrudelEditorClient({
         getLastAliasResolutions?: () => ReadonlyArray<{ from: string; to: string }>;
       };
       const aliasResolutions = engineWithAlias.getLastAliasResolutions?.();
-      const parts = formatFriendlyError(err, runtimeId, {
-        index,
-        aliasContext: runtimeId === "strudel"
-          ? { resolutions: aliasResolutions, lookupAlias: resolveAlias }
-          : undefined,
-      });
+      // #2177 — the error and its wording land together, so the badge and the lamp
+      // say what the Console and the toast say. `finally`: should the wording itself
+      // throw, the error is still recorded (raw), as it was before it waited for it.
+      let parts: ReturnType<typeof formatFriendlyError> | undefined;
+      try {
+        parts = formatFriendlyError(err, runtimeId, {
+          index,
+          aliasContext: runtimeId === "strudel"
+            ? { resolutions: aliasResolutions, lookupAlias: resolveAlias }
+            : undefined,
+        });
+      } finally {
+        const errorMessage = parts?.message;
+        setRuntimeStates(prev => {
+          const next = new Map(prev);
+          const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
+          next.set(fileId, { ...cur, error: err, errorMessage });
+          return next;
+        });
+      }
       // Strudel routes user code through `@strudel/transpiler`, which
       // rewrites `$:` sugar into method calls and wraps everything in
       // an async IIFE. The resulting wrapper offset is NOT constant —
@@ -1590,6 +1612,7 @@ export default function StrudelEditorClient({
       file,
       isPlaying: state.isPlaying,
       error: state.error,
+      errorMessage: state.error ? state.errorMessage : undefined,
       bpm: state.bpm,
       onPlay: () => handlePlay(tab.fileId),
       onStop: () => handleStop(tab.fileId),
@@ -2064,7 +2087,7 @@ export default function StrudelEditorClient({
       fileId: fid,
       isPlaying: st.isPlaying,
       bpm: st.bpm,
-      error: st.error ? st.error.message : null,
+      error: shownError(st),
       getCycle: () =>
         runtimesRef.current.get(accessorFid)?.getCurrentCycle?.() ?? null,
       // The tempo the SCHEDULER is running at — never `getBpm()` in other units
@@ -2249,7 +2272,7 @@ export default function StrudelEditorClient({
           fileId: fid,
           isPlaying: st.isPlaying,
           bpm: st.bpm,
-          error: st.error ? st.error.message : null,
+          error: shownError(st),
           getCycle: () =>
             runtimesRef.current
               .get(accessorFid)

@@ -8118,6 +8118,12 @@ interface ChromeContext {
     /** Current evaluation / runtime error, if any. */
     readonly error: Error | null;
     /**
+     * `error` as the Console and the toast word it (#2177) — what the chrome shows.
+     * Omitted by an embedder that does not word errors; the chrome then shows
+     * `error.message`.
+     */
+    readonly errorMessage?: string;
+    /**
      * Beats-per-minute display value. Built-in per U8 — the runtime extracts
      * BPM from the engine where available; the chrome only renders. May be
      * `undefined` if BPM is not yet known or is not applicable.

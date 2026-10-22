@@ -178,6 +178,7 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
   const {
     isPlaying,
     error,
+    errorMessage,
     bpm,
     onPlay,
     onStop,
@@ -264,7 +265,8 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
       {error && (
         <span
           data-testid="strudel-chrome-error"
-          title={error.message}
+          // the badge cuts a long sentence off; its tooltip has all of it (#2177)
+          title={errorMessage ?? error.message}
           style={{
             maxWidth: 240,
             overflow: 'hidden',
@@ -278,7 +280,7 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
             border: '1px solid rgba(248,113,113,0.3)',
           }}
         >
-          {error.message}
+          {errorMessage ?? error.message}
         </span>
       )}
     </div>

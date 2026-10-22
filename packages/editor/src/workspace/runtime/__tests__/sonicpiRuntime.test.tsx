@@ -103,6 +103,18 @@ describe('SONICPI_RUNTIME renderChrome', () => {
     expect(getByTestId('sonicpi-chrome-error').textContent).toBe('synth not found: dx7')
   })
 
+  it('the badge shows the error as the Console words it, whole in its tooltip (#2177)', () => {
+    const words = '`dx7` is not a synth. Did you mean `dsaw`?'
+    const { getByTestId } = render(
+      SONICPI_RUNTIME.renderChrome(
+        makeCtx({ error: new Error('synth not found: dx7'), errorMessage: words }),
+      ) as React.ReactElement,
+    )
+    const badge = getByTestId('sonicpi-chrome-error')
+    expect(badge.textContent).toBe(words)
+    expect(badge.getAttribute('title')).toBe(words)
+  })
+
   it('renders chromeExtras when provided', () => {
     const extras = <span data-testid="extras-bpm-input">extras</span>
     const { getByTestId } = render(

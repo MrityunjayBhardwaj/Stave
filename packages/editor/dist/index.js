@@ -52365,6 +52365,7 @@ function StrudelChrome(ctx) {
   const {
     isPlaying,
     error,
+    errorMessage,
     bpm,
     onPlay,
     onStop,
@@ -52448,7 +52449,7 @@ function StrudelChrome(ctx) {
           "span",
           {
             "data-testid": "strudel-chrome-error",
-            title: error.message,
+            title: errorMessage ?? error.message,
             style: {
               maxWidth: 240,
               overflow: "hidden",
@@ -52461,7 +52462,7 @@ function StrudelChrome(ctx) {
               borderRadius: 4,
               border: "1px solid rgba(248,113,113,0.3)"
             },
-            children: error.message
+            children: errorMessage ?? error.message
           }
         )
       ]
@@ -52476,7 +52477,7 @@ var STRUDEL_RUNTIME = {
   renderChrome: /* @__PURE__ */ __name((ctx) => /* @__PURE__ */ jsx(StrudelChrome, { ...ctx }), "renderChrome")
 };
 function SonicPiChrome(ctx) {
-  const { isPlaying, error, bpm, onPlay, onStop, chromeExtras } = ctx;
+  const { isPlaying, error, errorMessage, bpm, onPlay, onStop, chromeExtras } = ctx;
   const bar2 = useTouchBar();
   return /* @__PURE__ */ jsxs(
     "div",
@@ -52535,7 +52536,7 @@ function SonicPiChrome(ctx) {
           "span",
           {
             "data-testid": "sonicpi-chrome-error",
-            title: error.message,
+            title: errorMessage ?? error.message,
             style: {
               maxWidth: 240,
               overflow: "hidden",
@@ -52548,7 +52549,7 @@ function SonicPiChrome(ctx) {
               borderRadius: 4,
               border: "1px solid rgba(248,113,113,0.3)"
             },
-            children: error.message
+            children: errorMessage ?? error.message
           }
         ),
         chromeExtras && /* @__PURE__ */ jsx(
