@@ -159,6 +159,10 @@
     "runs": "gate",
     "why": "The error badge above the code and the eval lamp say what the toast and the Console say (#2177): a Strudel feature Stave has not got, a typo with its suggestion and an unknown method each show the same sentence in the badge, its tooltip, the lamp's tooltip and label, and the toast; a fixed document clears the badge and the lamp."
   },
+  "unknown-sound-line.spec.ts": {
+    "runs": "gate",
+    "why": "A sound that isn't loaded is underlined where the code names it (#2187): the note that couldn't play carries where its sound was written, so `bdd` in `s(\"sd bdd\")` gets the squiggle and its Console row the line."
+  },
   "file-history.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"

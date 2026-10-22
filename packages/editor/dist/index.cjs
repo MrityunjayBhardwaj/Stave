@@ -16051,6 +16051,19 @@ function locateEvalError(err, transpileWithMap, shape) {
   return originalPositionFor(mappings, line, column);
 }
 __name(locateEvalError, "locateEvalError");
+function positionOf(code, offset) {
+  const before = code.slice(0, offset);
+  const lineStart = before.lastIndexOf("\n") + 1;
+  return { line: before.split("\n").length, column: offset - lineStart + 1 };
+}
+__name(positionOf, "positionOf");
+function locateSoundName(code, locations, sound) {
+  if (typeof sound !== "string" || !sound || !Array.isArray(locations)) return null;
+  const named2 = locations.filter(({ start, end }) => start >= 0 && end <= code.length && code.slice(start, end) === sound);
+  if (new Set(named2.map((l) => l.start)).size !== 1) return null;
+  return positionOf(code, named2[0].start);
+}
+__name(locateSoundName, "locateSoundName");
 
 // src/engine/stringParser.ts
 function installMiniStringParser(deps) {
@@ -16353,6 +16366,10 @@ var _StrudelEngine = class _StrudelEngine {
     // result, so an error thrown while the code runs can be mapped to its line.
     this.lastTranspile = null;
     this.evalFrame = null;
+    // #2187 — the transpile of the code now playing: the last evaluate that
+    // succeeded. A note's locations are offsets into this code, not into
+    // whatever was evaluated (and failed) since.
+    this.playing = null;
     // Sound names registered after init() — used for editor autocompletion
     this.loadedSoundNames = [];
     // Per-track PatternSchedulers captured during the last evaluate() call.
@@ -16831,6 +16848,15 @@ var _StrudelEngine = class _StrudelEngine {
             error.staveLocateSource = instrument;
           }
         }
+        if (this.playing && /^sound \S+ not found/.test(error.message)) {
+          const at = locateSoundName(this.playing.code, hap?.context?.locations, hap?.value?.s);
+          if (at) {
+            Object.assign(error, {
+              staveLocation: at,
+              staveLocationCode: this.playing.code
+            });
+          }
+        }
         this.runtimeErrorHandler?.(error);
       }
     }, "wrappedOutput");
@@ -17042,6 +17068,7 @@ var _StrudelEngine = class _StrudelEngine {
       if (!result.error) {
         this.evalEpoch++;
         this.hapStream.setEpoch(this.evalEpoch);
+        this.playing = { code };
         const bareId = capturedSongPatterns.size === 0 && isQueryablePattern(playedPattern) ? resolveBareCaptureId(code) : null;
         if (bareId !== null) {
           capturedSongPatterns.set(bareId, playedPattern);

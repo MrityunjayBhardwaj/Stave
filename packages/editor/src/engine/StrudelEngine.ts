@@ -32,7 +32,7 @@ import { getTierFlags, type TierFlags } from './tierFlags'
 import { aliasSoundValue } from './aliases'
 import { canOpenAudioFrame, offlineContextInFrame } from './audioFrame'
 import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
-import { locateEvalError, measureEvalFrame, type EvalFrameShape } from './evalErrorLocation'
+import { locateEvalError, locateSoundName, measureEvalFrame, type EvalFrameShape } from './evalErrorLocation'
 import { installMiniStringParser } from './stringParser'
 import { resolveBareCaptureId } from './bareCapture'
 import { normalizeLoopRange, type LoopRange } from './transportFrame'
@@ -522,6 +522,10 @@ export class StrudelEngine implements LiveCodingEngine {
   // result, so an error thrown while the code runs can be mapped to its line.
   private lastTranspile: { code: string; options: Record<string, unknown>; run: (options: Record<string, unknown>) => unknown } | null = null
   private evalFrame: EvalFrameShape | null = null
+  // #2187 — the transpile of the code now playing: the last evaluate that
+  // succeeded. A note's locations are offsets into this code, not into
+  // whatever was evaluated (and failed) since.
+  private playing: { code: string } | null = null
   // Sound names registered after init() — used for editor autocompletion
   private loadedSoundNames: string[] = []
   // Per-track PatternSchedulers captured during the last evaluate() call.
@@ -1155,6 +1159,19 @@ export class StrudelEngine implements LiveCodingEngine {
             ;(error as Error & { staveLocateSource?: string }).staveLocateSource = instrument
           }
         }
+        // #2187 — superdough's "sound bdd not found! Is it loaded?" (or
+        // `tr909_bdd` with a bank): the note says where in the playing code its
+        // sound was named. `staveLocationCode` is that code, so the app uses
+        // the place only while the file still reads the same.
+        if (this.playing && /^sound \S+ not found/.test(error.message)) {
+          const at = locateSoundName(this.playing.code, hap?.context?.locations, hap?.value?.s)
+          if (at) {
+            Object.assign(error as Error & { staveLocation?: { line: number; column: number }; staveLocationCode?: string }, {
+              staveLocation: at,
+              staveLocationCode: this.playing.code,
+            })
+          }
+        }
         this.runtimeErrorHandler?.(error)
       }
     }
@@ -1594,6 +1611,7 @@ export class StrudelEngine implements LiveCodingEngine {
         // new-pattern hap can emit (no await between here and return).
         this.evalEpoch++
         this.hapStream.setEpoch(this.evalEpoch)
+        this.playing = { code }
 
         // #1094 — A BARE DOCUMENT SOUNDS THROUGH THE REPL'S OTHER BRANCH.
         // Strudel picks what to play two ways: with at least one `.p()` it stacks

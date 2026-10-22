@@ -140,3 +140,31 @@ export function locateEvalError(
   if (typeof mappings !== 'string') return null
   return originalPositionFor(mappings, line, column)
 }
+
+/** a 0-based character offset in `code` as a 1-based line and column */
+function positionOf(code: string, offset: number): { line: number; column: number } {
+  const before = code.slice(0, offset)
+  const lineStart = before.lastIndexOf('\n') + 1
+  return { line: before.split('\n').length, column: offset - lineStart + 1 }
+}
+
+/**
+ * #2187 — where `code` names the sound a played note couldn't find. The note
+ * carries the places in the code its values came from (`hap.context.locations`,
+ * offsets into the code that was evaluated; a sample number `bdd:3` is a place
+ * of its own). The place whose text is the sound's name is where it was
+ * written. The places don't say which control they belong to, so when two
+ * read the same (`note("e").s("e")`) neither is chosen. Null too when none
+ * does: the name came from a plain string or from code, not mini-notation.
+ */
+export function locateSoundName(
+  code: string,
+  locations: ReadonlyArray<{ start: number; end: number }> | undefined,
+  sound: unknown,
+): { line: number; column: number } | null {
+  if (typeof sound !== 'string' || !sound || !Array.isArray(locations)) return null
+  const named = locations.filter(({ start, end }) =>
+    start >= 0 && end <= code.length && code.slice(start, end) === sound)
+  if (new Set(named.map((l) => l.start)).size !== 1) return null
+  return positionOf(code, named[0].start)
+}
