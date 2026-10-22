@@ -108,6 +108,23 @@ export function miniTree(mini: string): KPattern {
   return ast
 }
 
+/**
+ * #2174 — where krill stops reading `mini`, as an offset into `mini`, or `null` when
+ * it parses. krill reports where it gave up, not what it was waiting to close: a
+ * stray `]` is found at the `]`, but an unclosed `[` or a trailing `*` at
+ * `mini.length`, the end of the string.
+ */
+export function miniParseFailure(mini: string): number | null {
+  try {
+    krillParse('"' + mini + '"')
+    return null
+  } catch (e) {
+    const offset = (e as { location?: { start?: { offset?: unknown } } }).location?.start?.offset
+    // krill's offsets count the opening quote added above.
+    return typeof offset === 'number' ? Math.min(Math.max(offset - 1, 0), mini.length) : null
+  }
+}
+
 /** one step of a row to mark: which child, the marker's text, and whether its ops stay */
 export interface StepMark {
   child: number

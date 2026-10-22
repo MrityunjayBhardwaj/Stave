@@ -52,6 +52,7 @@ import {
   emitFixed,
   formatFriendlyError,
   parseMessageLocation,
+  locateMiniParseError,
   statementOffsetForSource,
   resolveAlias,
   publishIRSnapshot,
@@ -1233,9 +1234,11 @@ export default function StrudelEditorClient({
       // e.g. line 5 → "(5:11)"). This is safe to feed the marker bridge + toast,
       // unlike the transpiler-wrapper stack line dropped above. Range-check
       // against the file so a stray trailing "(n:n)" in some other message can't
-      // point at a nonexistent line.
+      // point at a nonexistent line. A mini-notation parse error names only a
+      // line, and not always the right one, so it is located at the string
+      // Strudel's parser rejects instead (#2174).
       if (locatedLine == null && typeof src === "string") {
-        const msgLoc = parseMessageLocation(parts.message);
+        const msgLoc = parseMessageLocation(parts.message) ?? locateMiniParseError(err.message, src);
         if (msgLoc && msgLoc.line >= 1 && msgLoc.line <= src.split("\n").length) {
           locatedLine = msgLoc.line;
           locatedColumn = msgLoc.column;
