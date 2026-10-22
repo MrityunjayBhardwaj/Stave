@@ -1195,20 +1195,26 @@ export default function StrudelEditorClient({
         getLastAliasResolutions?: () => ReadonlyArray<{ from: string; to: string }>;
       };
       const aliasResolutions = engineWithAlias.getLastAliasResolutions?.();
-      const parts = formatFriendlyError(err, runtimeId, {
-        index,
-        aliasContext: runtimeId === "strudel"
-          ? { resolutions: aliasResolutions, lookupAlias: resolveAlias }
-          : undefined,
-      });
       // #2177 — the error and its wording land together, so the badge and the lamp
-      // say what the Console and the toast say.
-      setRuntimeStates(prev => {
-        const next = new Map(prev);
-        const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
-        next.set(fileId, { ...cur, error: err, errorMessage: parts.message });
-        return next;
-      });
+      // say what the Console and the toast say. `finally`: should the wording itself
+      // throw, the error is still recorded (raw), as it was before it waited for it.
+      let parts: ReturnType<typeof formatFriendlyError> | undefined;
+      try {
+        parts = formatFriendlyError(err, runtimeId, {
+          index,
+          aliasContext: runtimeId === "strudel"
+            ? { resolutions: aliasResolutions, lookupAlias: resolveAlias }
+            : undefined,
+        });
+      } finally {
+        const errorMessage = parts?.message;
+        setRuntimeStates(prev => {
+          const next = new Map(prev);
+          const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
+          next.set(fileId, { ...cur, error: err, errorMessage });
+          return next;
+        });
+      }
       // Strudel routes user code through `@strudel/transpiler`, which
       // rewrites `$:` sugar into method calls and wraps everything in
       // an async IIFE. The resulting wrapper offset is NOT constant —
