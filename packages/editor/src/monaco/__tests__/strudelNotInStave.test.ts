@@ -9,7 +9,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { formatFriendlyError } from '../../engine/friendlyErrors'
 import { STRUDEL_DOCS_INDEX } from '../strudelDocs'
-import { STRUDEL_NOT_IN_STAVE } from '../docs/strudelNotInStave'
+import { STRUDEL_NOT_IN_STAVE, inertMethodNames, inertNotice } from '../../engine/strudelNotInStave'
 import { sliderFunctions } from '../../engine/vendored/slider'
 
 const format = (err: Error) => formatFriendlyError(err, 'strudel', { index: STRUDEL_DOCS_INDEX })
@@ -50,6 +50,35 @@ describe('Strudel features not in Stave yet', () => {
       "`.edoScale()` is part of Strudel (it builds scales that split the octave into any number of equal steps), but it isn't in Stave yet.",
     )
     expect(r.suggestion?.docsUrl).toBe('https://github.com/MrityunjayBhardwaj/stave/issues/121')
+  })
+
+  it('#2191 — `getDrawContext`, in the words Chrome used in Stave, says what to use instead', () => {
+    const r = format(new ReferenceError('getDrawContext is not defined'))
+    expect(r.message).toBe(
+      "`getDrawContext` is part of Strudel (it draws on Strudel's own full-screen canvas), but it isn't in Stave yet. " +
+        'Stave draws patterns with `.pianoroll()`, `.scope()` and its other visuals, and a `.p5` file draws anything else.',
+    )
+    expect(r.suggestion?.docsUrl).toBe('https://github.com/MrityunjayBhardwaj/stave/issues/2191')
+  })
+
+  it('#2191 — a method that runs but draws nowhere gets a notice saying what is heard', () => {
+    expect(inertNotice('animate')).toEqual({
+      message:
+        "`.animate()` is part of Strudel (it draws on Strudel's own full-screen canvas), but it isn't in Stave yet. " +
+        'As in Strudel, the pattern it draws makes no sound, and here nothing is drawn. ' +
+        'Stave draws patterns with `.pianoroll()`, `.scope()` and its other visuals, and a `.p5` file draws anything else.',
+      link: { label: '#2191', url: 'https://github.com/MrityunjayBhardwaj/stave/issues/2191', description: 'Follow it in Stave' },
+      returns: 'silence',
+    })
+    const onPaint = inertNotice('onPaint')
+    expect(onPaint?.message).toContain('`.onPaint()` is part of Strudel')
+    expect(onPaint?.message).toContain('The sound still plays, but nothing is drawn.')
+    expect(onPaint?.returns).toBe('pattern')
+    // control: an ordinary method, a missing one that fails on its own, and an
+    // Object.prototype name get none
+    expect(inertNotice('fast')).toBeNull()
+    expect(inertNotice('mqtt')).toBeNull()
+    expect(inertNotice('toString')).toBeNull()
   })
 
   it('`H` no longer gets "Did you mean `s`?"', () => {
@@ -117,5 +146,12 @@ describe('no row names something Stave already has', () => {
       ...(row.methods ?? []).filter((m) => typeof proto[m] === 'function').map((m) => `.${m}`),
     ])
     expect(present).toEqual([])
+
+    // #2191 — the inert methods are the other way round: they exist (webaudio
+    // imports @strudel/draw), which is why they cannot fail and must warn instead.
+    // One that stops existing belongs under `methods`, where its own error speaks.
+    const inert = inertMethodNames()
+    expect(inert).toEqual(['animate', 'onPaint'])
+    expect(inert.filter((m) => typeof proto[m] !== 'function')).toEqual([])
   })
 })
