@@ -20,9 +20,11 @@ import React, {
 } from "react";
 import {
   clearLog,
+  errorPositionNow,
   getLogHistory,
   subscribeLog,
   getFixedMarkers,
+  subscribeErrorPositions,
   subscribeFixed,
   makeFixedKey,
   type LogEntry,
@@ -96,6 +98,10 @@ export function ConsolePanel({
       setFixedMarkers(new Map(markers));
     });
   }, []);
+
+  // #2184 — a row's line follows its squiggle as the code above it is edited.
+  const [, setPositionsMoved] = useState(0);
+  useEffect(() => subscribeErrorPositions(() => setPositionsMoved((n) => n + 1)), []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -309,7 +315,8 @@ export function ConsolePanel({
           // #2182 — a row that knows its line takes you there. Clicks on the
           // hint link or the stack toggle keep their own job, and a drag that
           // selects the message's text doesn't count as a click.
-          const reveal = onReveal && e.source && e.line != null
+          const line = errorPositionNow(e.id)?.line ?? e.line;
+          const reveal = onReveal && e.source && line != null
             ? () => onReveal(e)
             : undefined;
           return (
@@ -318,9 +325,9 @@ export function ConsolePanel({
               data-testid="console-row"
               data-level={e.level}
               data-runtime={e.runtime}
-              data-line={e.line ?? undefined}
+              data-line={line ?? undefined}
               style={reveal ? { ...styles.row, cursor: "pointer" } : styles.row}
-              title={reveal ? `Go to line ${e.line}` : undefined}
+              title={reveal ? `Go to line ${line}` : undefined}
               role={reveal ? "link" : undefined}
               tabIndex={reveal ? 0 : undefined}
               onClick={reveal && ((ev) => {
@@ -354,7 +361,7 @@ export function ConsolePanel({
                 {e.source && (
                   <span style={styles.source} title={e.source}>
                     {shortenPath(e.source)}
-                    {e.line ? `:${e.line}` : ""}
+                    {line ? `:${line}` : ""}
                   </span>
                 )}
                 {(e.count ?? 1) > 1 && (
