@@ -287,6 +287,36 @@ describe('parseStackLocation', () => {
     ).toBeNull()
   })
 
+  describe('Safari, whose stack has no position for runtime-made code (#2189)', () => {
+    // Recorded from WebKit running `$: s("cp").fooo()` through Strudel's
+    // evaluate: "@" frames, and `line`/`column` on the error itself, the
+    // column one past the token at fault (`fooo⟨(⟩`).
+    const safari = (extra: Record<string, unknown> = {}) => ({
+      message: "s(m('cp', 5)).fooo is not a function.",
+      stack: '@\n@http://localhost:3312/_next/static/chunks/strudel_core.js:4331:26\n@http://localhost:3312/_next/static/chunks/strudel_core.js:7244:56',
+      line: 3,
+      column: 52,
+      ...extra,
+    })
+
+    it('reads the error’s own line, and the column back inside the token', () => {
+      expect(parseStackLocation(safari())).toEqual({ line: 3, column: 51 })
+    })
+
+    it('a throw from a bundled script (it has a sourceURL) has no line', () => {
+      expect(parseStackLocation(safari({ sourceURL: 'http://localhost:3312/x.js' }))).toBeNull()
+    })
+
+    it('a V8 error that happens to carry line/column fields is not read as Safari’s', () => {
+      expect(parseStackLocation(safari({ stack: 'Error: x\n    at foo (http://localhost/x.js:1:2)' }))).toBeNull()
+    })
+
+    it('fields that are not positions are ignored', () => {
+      expect(parseStackLocation(safari({ line: '3' }))).toBeNull()
+      expect(parseStackLocation(safari({ column: 0 }))).toBeNull()
+    })
+  })
+
   it('returns null when no frame matches', () => {
     expect(parseStackLocation({ stack: 'nothing relevant' })).toBeNull()
     expect(parseStackLocation({})).toBeNull()

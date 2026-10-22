@@ -109,6 +109,27 @@ export function parseStackLocation(
   const ffDynamic = stack.match(/ line \d+ > (?:Function|eval):(\d+):(\d+)/)
   if (ffDynamic)
     return { line: parseInt(ffDynamic[1], 10), column: parseInt(ffDynamic[2], 10) }
+  // Safari (JavaScriptCore): the stack has no position for code made by
+  // `new Function` / `eval` (just "@" frames), but the error itself carries
+  // `line` and `column` of where it was thrown, with `sourceURL` left empty
+  // for such code (#2189). A throw from a bundled script has a `sourceURL`,
+  // so it never counts. V8's "    at " frames rule out another engine's error
+  // that happens to have `line`/`column` fields.
+  // Safari's column is one PAST the token at fault, where V8 and Firefox give
+  // its start (measured on the same code: `gin⟨(⟩`, `undefinedThing⟨)⟩`,
+  // `nope⟨.⟩x`). One back is inside the token, which is what both readers
+  // need: a squiggle takes the word at its column (#2180), and the source map
+  // (#2175) finds the token's own entry rather than the enclosing call's.
+  if (typeof err === 'object' && err !== null && !/^\s+at /m.test(stack)) {
+    const { line, column, sourceURL } = err as { line?: unknown; column?: unknown; sourceURL?: unknown }
+    if (
+      typeof line === 'number' && Number.isInteger(line) && line >= 1 &&
+      typeof column === 'number' && Number.isInteger(column) && column >= 1 &&
+      !sourceURL
+    ) {
+      return { line, column: Math.max(1, column - 1) }
+    }
+  }
   return null
 }
 

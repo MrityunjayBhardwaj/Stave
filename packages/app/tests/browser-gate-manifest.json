@@ -159,6 +159,10 @@
     "runs": "gate",
     "why": "The error badge above the code and the eval lamp say what the toast and the Console say (#2177): a Strudel feature Stave has not got, a typo with its suggestion and an unknown method each show the same sentence in the badge, its tooltip, the lamp's tooltip and label, and the toast; a fixed document clears the badge and the lamp."
   },
+  "safari-error-line.spec.ts": {
+    "runs": "gate",
+    "why": "In WebKit (Safari) an error while the code runs is underlined at the word, as in Chrome and Firefox (#2189): WebKit's stack has no position for code made by `new Function`, so the position comes from the error's own line and column, one past the token, and the evaluate wrapper is measured in WebKit too. Runs in WebKit (`browserName: 'webkit'`), so it needs Playwright's WebKit installed."
+  },
   "file-history.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
