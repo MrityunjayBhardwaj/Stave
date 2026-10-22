@@ -6,6 +6,7 @@ import {
   clearLineMarkers,
   refreshStrudelLintMarkers,
   clearStrudelLintMarkers,
+  errorColumns,
 } from '../diagnostics'
 import type * as Monaco from 'monaco-editor'
 
@@ -401,5 +402,79 @@ describe('clearStrudelLintMarkers', () => {
       'stave-strudel-lint',
       [],
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// errorColumns (#2180) — a squiggle covers the word or symbol at fault
+// ---------------------------------------------------------------------------
+
+/**
+ * A model over real text whose `getWordAtPosition` behaves like Monaco's: it uses
+ * Monaco's default word pattern and, like Monaco, also returns the word that ENDS
+ * at the position (touching it from the left), which `errorColumns` must not take.
+ */
+function makeWordModel(lines: string[]): Monaco.editor.ITextModel {
+  const WORD = /(-?\d*\.\d\w*)|([^`~!@#$%^&*()\-=+[{\]}\\|;:'",.<>/?\s]+)/g
+  return {
+    getLineCount: () => lines.length,
+    getLineMaxColumn: (l: number) => lines[l - 1].length + 1,
+    getLineFirstNonWhitespaceColumn: (l: number) => {
+      const i = lines[l - 1].search(/\S/)
+      return i < 0 ? 0 : i + 1
+    },
+    getWordAtPosition: ({ lineNumber, column }: { lineNumber: number; column: number }) => {
+      for (const m of lines[lineNumber - 1].matchAll(WORD)) {
+        const start = (m.index ?? 0) + 1
+        const end = start + m[0].length
+        if (start <= column && column <= end) return { word: m[0], startColumn: start, endColumn: end }
+      }
+      return null
+    },
+  } as unknown as Monaco.editor.ITextModel
+}
+
+const underlined = (line: string, column?: number) => {
+  const { startColumn, endColumn } = errorColumns(makeWordModel([line]), 1, column)
+  return line.slice(startColumn - 1, endColumn - 1)
+}
+
+describe('errorColumns (#2180)', () => {
+  it('underlines the misspelled name, not the rest of the line', () => {
+    expect(underlined('$: s("cp").fooo().gain(0.8)', 12)).toBe('fooo')
+  })
+
+  it('takes the whole word from a column inside it', () => {
+    expect(underlined('$: s("hh").gain(undefinedThing)', 20)).toBe('undefinedThing')
+  })
+
+  it('underlines punctuation as one character, not the word just before it', () => {
+    expect(underlined('s("bd").gain(0.5]', 17)).toBe(']')
+  })
+
+  it('a column at or past the end of the line is its last character', () => {
+    expect(underlined('  .s("piano" .lpf(800)', 23)).toBe(')')
+    expect(underlined('  .s("piano" .lpf(800)', 99)).toBe(')')
+  })
+
+  it('with no column, underlines the line’s code from its first non-blank character', () => {
+    expect(underlined('    .lpf(800)')).toBe('.lpf(800)')
+    expect(underlined('    .lpf(800)', 0)).toBe('.lpf(800)')
+  })
+
+  it('an empty line gets an empty range rather than a bad one', () => {
+    expect(errorColumns(makeWordModel(['']), 1, 3)).toEqual({ startColumn: 1, endColumn: 1 })
+  })
+
+  it('both drawing paths use it', () => {
+    const spy = vi.fn()
+    const monaco = makeMonaco(spy)
+    const model = makeWordModel(['$: s("bd")', '$: s("cp").fooo().gain(0.8)'])
+    setLineMarker(monaco, model, { line: 2, column: 12, message: 'x', owner: 'stave-log' })
+    expect(spy.mock.calls[0][2][0]).toMatchObject({ startLineNumber: 2, startColumn: 12, endColumn: 16 })
+    const err = new Error('fooo is not a function')
+    err.stack = 'TypeError: fooo is not a function\n    at eval (<anonymous>:2:12)'
+    setEvalError(monaco, model, err)
+    expect(spy.mock.calls[1][2][0]).toMatchObject({ startLineNumber: 2, startColumn: 12, endColumn: 16 })
   })
 })

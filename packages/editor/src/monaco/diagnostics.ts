@@ -3,6 +3,34 @@ import type * as Monaco from 'monaco-editor'
 const MARKER_OWNER = 'stave'
 
 /**
+ * #2180 — the columns a squiggle on `line` covers: the word or symbol at `column`,
+ * not the rest of the line. A word is what Monaco calls one (`getWordAtPosition`,
+ * the span a double-click selects), so `.fooo()` underlines `fooo`; anything else
+ * — `]`, `)` — is the one character. A column at or past the end of the line (an
+ * "unexpected end of input") is its last character. With no column, the line's
+ * code from its first non-blank character. `line` must already be in range.
+ */
+export function errorColumns(
+  model: Monaco.editor.ITextModel,
+  line: number,
+  column?: number,
+): { startColumn: number; endColumn: number } {
+  const max = model.getLineMaxColumn(line)
+  if (column == null || !Number.isFinite(column) || column < 1) {
+    return { startColumn: model.getLineFirstNonWhitespaceColumn?.(line) || 1, endColumn: max }
+  }
+  if (max <= 1) return { startColumn: 1, endColumn: 1 }
+  const at = Math.min(column, max - 1)
+  const word = model.getWordAtPosition?.({ lineNumber: line, column: at })
+  // Monaco also returns the word just BEFORE a position (`5` for the `]` in `0.5]`),
+  // so the word counts only when the character at `at` is in it.
+  if (word && word.startColumn <= at && at < word.endColumn) {
+    return { startColumn: word.startColumn, endColumn: word.endColumn }
+  }
+  return { startColumn: at, endColumn: at + 1 }
+}
+
+/**
  * Attempts to extract a line/column from a V8 stack trace produced by eval().
  *
  * V8 format: "at eval (<anonymous>:LINE:COL)" or "at eval (eval at ...:LINE:COL)"
@@ -61,9 +89,7 @@ export function setEvalError(
       return
     }
 
-    const startColumn =
-      loc && Number.isFinite(loc.col) && loc.col >= 1 ? loc.col : 1
-    const endColumn = model.getLineMaxColumn(validLine)
+    const { startColumn, endColumn } = errorColumns(model, validLine, loc?.col)
 
     monaco.editor.setModelMarkers(model, MARKER_OWNER, [
       {
@@ -127,11 +153,6 @@ export function setLineMarker(
       opts.line <= lineCount
         ? opts.line
         : null
-    const col =
-      opts.column != null && Number.isFinite(opts.column) && opts.column >= 1
-        ? opts.column
-        : 1
-
     const severityMap = {
       error: monaco.MarkerSeverity.Error,
       warn: monaco.MarkerSeverity.Warning,
@@ -141,8 +162,9 @@ export function setLineMarker(
 
     const startLine = line ?? 1
     const endLine = line ?? lineCount
-    const startColumn = line ? col : 1
-    const endColumn = model.getLineMaxColumn(endLine)
+    const { startColumn, endColumn } = line
+      ? errorColumns(model, line, opts.column)
+      : { startColumn: 1, endColumn: model.getLineMaxColumn(endLine) }
 
     monaco.editor.setModelMarkers(model, opts.owner ?? MARKER_OWNER, [
       {

@@ -130,6 +130,7 @@ export {
   buildStripModels,
   stripContainingOffset,
 } from './mixer/stripModel'
+export { locateMiniParseError } from './miniSource/miniParseError'
 export type { StripModel } from './mixer/stripModel'
 export { isValidTrackLabel } from './mixer/writeStrip'
 export type { StepLane, ResizeMode } from './notation'

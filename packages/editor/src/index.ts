@@ -807,6 +807,8 @@ export {
 // track's line by its instrument — the app's onError uses this when the error's
 // stack is bundle-only.
 export { statementOffsetForSource } from './codeView'
+// #2174 — a mini-notation parse error, located at the string krill rejects.
+export { locateMiniParseError } from './codeView'
 // Track rename (#580, Phase C) — the pure label-rewrite primitive + its
 // validator, so the app's Song Timeline can rename a lane (the Mixer uses them
 // internally). The edit is an `OffsetEdit`, applied through the commit door.

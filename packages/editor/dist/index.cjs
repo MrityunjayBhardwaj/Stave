@@ -4208,6 +4208,16 @@ function miniTree(mini) {
   return ast;
 }
 __name(miniTree, "miniTree");
+function miniParseFailure(mini) {
+  try {
+    krillParser_js.parse('"' + mini + '"');
+    return null;
+  } catch (e) {
+    const offset = e.location?.start?.offset;
+    return typeof offset === "number" ? Math.min(Math.max(offset - 1, 0), mini.length) : null;
+  }
+}
+__name(miniParseFailure, "miniParseFailure");
 
 // src/codeView/strudelMini/shape.ts
 function argAtom(arg) {
@@ -8128,6 +8138,30 @@ function stripContainingOffset(strips, offset) {
   );
 }
 __name(stripContainingOffset, "stripContainingOffset");
+
+// src/codeView/miniSource/miniParseError.ts
+var MINI_PARSE_ERROR = /^\[mini\] parse error at line (\d+):/;
+function locateMiniParseError(message, doc) {
+  if (typeof message !== "string") return null;
+  const m = message.match(MINI_PARSE_ERROR);
+  if (!m) return null;
+  const reportedLine = parseInt(m[1], 10);
+  const index = SpanIndex.build(doc);
+  if (!index) return null;
+  for (const lit of index.literals) {
+    const transpiled = lit.type === "TemplateLiteral" ? !lit.expressions?.length : doc[lit.start] === '"';
+    if (!transpiled) continue;
+    const [from, to] = literalInterior(lit);
+    const failure = miniParseFailure(doc.slice(from, to));
+    if (failure === null) continue;
+    const at = from + failure;
+    const before = doc.slice(0, at);
+    if (before.split("\n").length !== reportedLine) continue;
+    return { line: reportedLine, column: at - before.lastIndexOf("\n") };
+  }
+  return null;
+}
+__name(locateMiniParseError, "locateMiniParseError");
 
 // src/codeView/chainEdit.ts
 function appendCall(fresh, name, argText) {
@@ -15644,7 +15678,7 @@ function parseMessageLocation(message) {
   if (typeof message !== "string") return null;
   const m = message.match(/\((\d+):(\d+)\)\s*$/);
   if (!m) return null;
-  return { line: parseInt(m[1], 10), column: parseInt(m[2], 10) };
+  return { line: parseInt(m[1], 10), column: parseInt(m[2], 10) + 1 };
 }
 __name(parseMessageLocation, "parseMessageLocation");
 function levenshtein(a, b) {
@@ -30140,6 +30174,20 @@ __name(registerStrudelNoteCompletions, "registerStrudelNoteCompletions");
 
 // src/monaco/diagnostics.ts
 var MARKER_OWNER = "stave";
+function errorColumns(model, line, column) {
+  const max = model.getLineMaxColumn(line);
+  if (column == null || !Number.isFinite(column) || column < 1) {
+    return { startColumn: model.getLineFirstNonWhitespaceColumn?.(line) || 1, endColumn: max };
+  }
+  if (max <= 1) return { startColumn: 1, endColumn: 1 };
+  const at = Math.min(column, max - 1);
+  const word = model.getWordAtPosition?.({ lineNumber: line, column: at });
+  if (word && word.startColumn <= at && at < word.endColumn) {
+    return { startColumn: word.startColumn, endColumn: word.endColumn };
+  }
+  return { startColumn: at, endColumn: at + 1 };
+}
+__name(errorColumns, "errorColumns");
 function parseErrorLocation(error) {
   const stack = error.stack ?? "";
   const match = stack.match(/at eval[^(]*\(.*?:(\d+):(\d+)\)/);
@@ -30158,8 +30206,7 @@ function setEvalError(monaco, model, error) {
       monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
       return;
     }
-    const startColumn = loc && Number.isFinite(loc.col) && loc.col >= 1 ? loc.col : 1;
-    const endColumn = model.getLineMaxColumn(validLine);
+    const { startColumn, endColumn } = errorColumns(model, validLine, loc?.col);
     monaco.editor.setModelMarkers(model, MARKER_OWNER, [
       {
         severity: monaco.MarkerSeverity.Error,
@@ -30187,7 +30234,6 @@ function setLineMarker(monaco, model, opts) {
   try {
     const lineCount = model.getLineCount();
     const line = opts.line != null && Number.isFinite(opts.line) && opts.line >= 1 && opts.line <= lineCount ? opts.line : null;
-    const col = opts.column != null && Number.isFinite(opts.column) && opts.column >= 1 ? opts.column : 1;
     const severityMap = {
       error: monaco.MarkerSeverity.Error,
       warn: monaco.MarkerSeverity.Warning,
@@ -30196,8 +30242,7 @@ function setLineMarker(monaco, model, opts) {
     const severity = severityMap[opts.severity ?? "error"];
     const startLine = line ?? 1;
     const endLine = line ?? lineCount;
-    const startColumn = line ? col : 1;
-    const endColumn = model.getLineMaxColumn(endLine);
+    const { startColumn, endColumn } = line ? errorColumns(model, line, opts.column) : { startColumn: 1, endColumn: model.getLineMaxColumn(endLine) };
     monaco.editor.setModelMarkers(model, opts.owner ?? MARKER_OWNER, [
       {
         severity,
@@ -54391,6 +54436,7 @@ exports.listTiers = listTiers;
 exports.listWorkspaceFiles = listWorkspaceFiles;
 exports.liveCodingRuntimeRegistry = liveCodingRuntimeRegistry;
 exports.loadShellState = loadShellState;
+exports.locateMiniParseError = locateMiniParseError;
 exports.makeFixedKey = makeFixedKey;
 exports.masterGainEdit = masterGainEdit;
 exports.masterMuteEdit = masterMuteEdit;
