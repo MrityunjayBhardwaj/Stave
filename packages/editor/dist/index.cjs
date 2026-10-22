@@ -15671,6 +15671,9 @@ function parseStackLocation(err) {
     /@(?:<anonymous>|debugger eval|eval):(\d+):(\d+)/
   );
   if (ff) return { line: parseInt(ff[1], 10), column: parseInt(ff[2], 10) };
+  const ffDynamic = stack.match(/ line \d+ > (?:Function|eval):(\d+):(\d+)/);
+  if (ffDynamic)
+    return { line: parseInt(ffDynamic[1], 10), column: parseInt(ffDynamic[2], 10) };
   return null;
 }
 __name(parseStackLocation, "parseStackLocation");
