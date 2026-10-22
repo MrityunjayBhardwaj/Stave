@@ -342,13 +342,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // carries a source location, open that file and jump the editor to the line.
   // `entry.line` is the single source of truth — the engine attaches it only
   // when it's RELIABLE (a real source offset, or a parser syntax error's
-  // offset-free "(line:col)"), and deliberately leaves it absent for
-  // transpiler-wrapper stack lines, so those errors just open the Console
-  // without a mis-jump. `source` is a workspace path OR a bare fileId
+  // offset-free "(line:col)", or a stack position mapped back through the
+  // transpiler's source map, #2175), and leaves it absent when it can't be
+  // known, so those errors just open the Console without a mis-jump. `source`
+  // is a workspace path OR a bare fileId
   // (StrudelEditorClient uses `path ?? fileId`), so resolve both. The editor may
   // need a tick to mount if the file wasn't already open — retry a few times.
-  // Shared by an error toast and the control bar's eval lamp (#1348), so the two
-  // cannot come to disagree about where an error is.
+  // Shared by an error toast, the control bar's eval lamp (#1348) and a Console
+  // row (#2182), so they cannot come to disagree about where an error is.
   const revealLogEntry = useCallback((entry: { source?: string; line?: number }) => {
     setActivePanelId("console");
     const { source, line } = entry;
@@ -1967,7 +1968,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             initialSource={libraryOpenedFor > 0 ? "user" : undefined}
           />
         )}
-        {id === "console" && <ConsolePanel />}
+        {id === "console" && <ConsolePanel onReveal={revealLogEntry} />}
         {id === "ir-inspector" && (
           <IRInspectorPanel
             getHapStream={() => getHapStreamRef.current()}
