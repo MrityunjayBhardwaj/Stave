@@ -28,11 +28,11 @@ const STEP_GRID = '[data-bottom-panel-tab="sequencer"]'
 const ROLL = '[data-bottom-panel-tab="piano-roll"]'
 
 /** boot with the fixture, the cursor in a pattern, and the Pattern panel open as this device opens it */
-async function openPattern(page: Page, project: string, line: number): Promise<void> {
+async function openPattern(page: Page, project: string, line: number, code = CODE): Promise<void> {
   await bootApp(page)
   // the dev server's badge sits in the bottom-left corner, over the panel
   await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
-  await seedCode(page, CODE)
+  await seedCode(page, code)
   await page.evaluate((lineNumber) => {
     const m = (window as unknown as {
       monaco: { editor: { getEditors: () => Array<{ setPosition: (p: { lineNumber: number; column: number }) => void }> } }
@@ -250,5 +250,44 @@ test.describe('the grids on a tablet (#2006)', () => {
 
     await page.locator(`${STEP_GRID} [role="row"]`).first().locator('[data-seq-cell]').nth(1).tap()
     await expect.poll(() => editorValue(page)).toBe(AFTER_KICK_2)
+  })
+})
+
+test.describe('a step that holds several hits, on a phone held upright (#1861)', () => {
+  test.beforeEach(({}, testInfo) => {
+    test.skip(!['phone', 'iphone'].includes(testInfo.project.name), 'upright phones only')
+  })
+
+  // the kick and snare rows are four steps with `[~ bd]` holding two; the hat row is ONE
+  // step holding eight, so its columns line up with the other rows only if every step,
+  // grouped or not, is exactly as wide as its columns drawn one by one
+  test('its columns are as wide as every other column, and every row stays in line', async ({ page }, testInfo) => {
+    await openPattern(page, testInfo.project.name, 1, '$: s("bd [~ bd] sd ~, hh*8")\n')
+    await expect(page.locator(STEP_GRID)).toBeVisible()
+    const rows = await page.evaluate((gridSel) => {
+      const root = document.querySelector(gridSel)!
+      return [...root.querySelectorAll('[role="row"]')]
+        .map((row) => ({
+          grouped: row.querySelectorAll('[data-seq-step]').length,
+          cells: [...row.querySelectorAll('[role="gridcell"]')]
+            .map((c) => c.getBoundingClientRect())
+            .map((r) => ({ left: r.left, right: r.right, width: r.width }))
+            .sort((x, y) => x.left - y.left),
+        }))
+        .filter((r) => r.cells.length > 0)
+    }, STEP_GRID)
+    expect(rows.length).toBeGreaterThanOrEqual(3)
+    // the case under test is on screen: rows drawn with grouped steps
+    expect(rows.every((r) => r.grouped > 0)).toBe(true)
+    for (const r of rows) {
+      expect(r.cells.length).toBe(rows[0].cells.length)
+      expect(Math.min(...r.cells.map((c) => c.width))).toBeGreaterThanOrEqual(40)
+      // no column runs into the next one
+      for (let i = 1; i < r.cells.length; i++) expect(r.cells[i].left).toBeGreaterThanOrEqual(r.cells[i - 1].right - 0.5)
+    }
+    // every row's columns fall on the first row's
+    for (const r of rows.slice(1)) {
+      r.cells.forEach((c, i) => expect(Math.abs(c.left - rows[0].cells[i].left)).toBeLessThan(1.5))
+    }
   })
 })

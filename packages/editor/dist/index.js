@@ -38274,6 +38274,31 @@ function boxesPlaceNotes(lanes, boxes, isOn, placeable) {
   return asked2 === 0;
 }
 __name(boxesPlaceNotes, "boxesPlaceNotes");
+function groupBoxesBySteps(boxes, starts, steps, owners) {
+  const alone = /* @__PURE__ */ __name(() => boxes.map((b) => ({ from: b.start, to: b.start + b.width, boxes: [b], plain: true })), "alone");
+  if (!starts || starts.length === 0) return alone();
+  const edges = [.../* @__PURE__ */ new Set([...starts, steps])].filter((c) => c >= 0 && c <= steps).sort((a, b) => a - b);
+  if (edges[0] !== 0) edges.unshift(0);
+  const out = [];
+  let k = 0;
+  for (let i = 0; i + 1 < edges.length; i++) {
+    const [from, to] = [edges[i], edges[i + 1]];
+    const inStep = [];
+    while (k < boxes.length && boxes[k].start < to) {
+      if (boxes[k].start < from || boxes[k].start + boxes[k].width > to) return alone();
+      inStep.push(boxes[k++]);
+    }
+    if (inStep.length === 0) continue;
+    let plain = true;
+    for (const owner of owners) {
+      const first = owner(from);
+      for (let c = from + 1; c < to && plain; c++) plain = owner(c) === first;
+    }
+    out.push({ from, to, boxes: inStep, plain });
+  }
+  return k === boxes.length ? out : alone();
+}
+__name(groupBoxesBySteps, "groupBoxesBySteps");
 function boxLengths(duration, w) {
   const d = Math.round(duration);
   const down = Math.ceil(d / w) - 1;
@@ -38980,6 +39005,17 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     for (const [part, cols] of writtenStepStarts(linesModel(model, read5))) out.set(part, new Set(cols));
     return out;
   }, [model, read5]);
+  const stepGroups = React48.useMemo(() => {
+    if (!model || !boxes || !coverage) return null;
+    return model.lanes.map((lane, li) => {
+      const part = lane.part ?? 0;
+      const starts = gridMode === "exact" ? stepStarts?.get(part) : void 0;
+      const owners = model.lanes.flatMap(
+        (l, i) => (l.part ?? 0) === part ? [(c) => coverage[i]?.[c]?.start] : []
+      );
+      return groupBoxesBySteps(boxes[li], starts ? [...starts].sort((a, b) => a - b) : void 0, model.steps, owners);
+    });
+  }, [model, boxes, coverage, stepStarts, gridMode]);
   const resizable = React48.useMemo(() => {
     if (!model) return null;
     return model.lanes.map((lane, li) => {
@@ -39452,182 +39488,242 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                       }
                     )
                   ] }),
-                  /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: (boxes?.[laneIndex] ?? []).map(({ start: stepIndex, width: w }) => {
-                    const cell = lane.cells[stepIndex];
-                    const on = isCellOn(cell);
-                    const cov = coverage?.[laneIndex]?.[stepIndex];
-                    const held2 = cov !== void 0 && cov.start !== stepIndex;
-                    const isTail = cov !== void 0 && coverage?.[laneIndex]?.[stepIndex + w]?.start !== cov.start;
-                    let extent = cov?.extent ?? 0;
-                    if (cov && w > 1) {
-                      extent = 0;
-                      for (let c = stepIndex; c < stepIndex + w; c++) {
-                        const k = coverage?.[laneIndex]?.[c];
-                        if (k && k.start === cov.start) extent += k.extent;
+                  /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: (stepGroups?.[laneIndex] ?? []).map((g) => {
+                    const cellFor = /* @__PURE__ */ __name(({ start: stepIndex, width: w }, variant, ends = { first: true, last: true }) => {
+                      const cell = lane.cells[stepIndex];
+                      const on = isCellOn(cell);
+                      const cov = coverage?.[laneIndex]?.[stepIndex];
+                      const held2 = cov !== void 0 && cov.start !== stepIndex;
+                      const isTail = cov !== void 0 && coverage?.[laneIndex]?.[stepIndex + w]?.start !== cov.start;
+                      let extent = cov?.extent ?? 0;
+                      if (cov && w > 1) {
+                        extent = 0;
+                        for (let c = stepIndex; c < stepIndex + w; c++) {
+                          const k = coverage?.[laneIndex]?.[c];
+                          if (k && k.start === cov.start) extent += k.extent;
+                        }
+                        extent /= w;
                       }
-                      extent /= w;
-                    }
-                    const resizeStart = cov !== void 0 && isTail && resizable?.[laneIndex]?.has(cov.start) ? cov.start : null;
-                    const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
-                    const isPlaying = playingStep !== null && playingStep >= stepIndex && playingStep < stepIndex + w;
-                    const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true;
-                    const inBox = /* @__PURE__ */ __name((c) => c >= stepIndex && c < stepIndex + w, "inBox");
-                    const isCursor = liveCursor?.row === laneIndex && inBox(liveCursor.col);
-                    const isTab = tabCell.row === laneIndex && inBox(tabCell.col);
-                    let weight = 0;
-                    for (let c = stepIndex; c < stepIndex + w; c++) weight += layout.weight(c);
-                    const gaps = 2 * (w - 1);
-                    const stepNo = /* @__PURE__ */ __name((c) => Math.floor(c / w) + 1, "stepNo");
-                    const stepStart = stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex);
-                    return (
-                      // A gridcell holding one toggle button — `aria-pressed` stays on the
-                      // button, which may carry it; the cursor is the cell's `aria-selected`.
-                      /* @__PURE__ */ jsx(
-                        "div",
-                        {
-                          role: "gridcell",
-                          "aria-selected": isCursor,
-                          "data-seq-step-start": stepStart ? "true" : void 0,
-                          style: {
-                            display: "flex",
-                            flex: `${weight} ${weight} ${gaps}px`,
-                            minWidth: stepMin * weight + gaps,
-                            maxWidth: 56 * weight + gaps,
-                            // subtle gap at each bar boundary
-                            marginLeft: layout.barStart(stepIndex) ? 8 : 0,
-                            // THREE LINE WEIGHTS (#1841): a bar is the 8px gap above; a written
-                            // step fills the 2px gap before it with a line; a plain column
-                            // leaves that gap empty. Drawn as a shadow INTO the gap rather than
-                            // as extra width, because rows of different parts start steps at
-                            // different columns and a real gap would push their columns apart.
-                            boxShadow: stepStart ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
-                          },
-                          children: /* @__PURE__ */ jsxs(
-                            "button",
-                            {
-                              type: "button",
-                              tabIndex: isTab ? 0 : -1,
-                              onFocus: () => {
-                                if (!isCursor) setCursor({ row: laneIndex, col: stepIndex });
-                              },
-                              "aria-pressed": on,
-                              "aria-label": held2 ? `${lane.sound} step ${stepNo(stepIndex)}, held from step ${stepNo(cov.start)}` : `${lane.sound} step ${stepNo(stepIndex)}`,
-                              "data-seq-cell": `${laneIndex}:${stepIndex}`,
-                              "data-seq-box-width": w > 1 ? w : void 0,
-                              "data-gain": on && gainScoped ? gain : void 0,
-                              "data-playing": isPlaying ? "true" : void 0,
-                              "data-seq-cell-inert": canToggle ? void 0 : "true",
-                              "aria-disabled": canToggle ? void 0 : true,
-                              title: lookOnly ? lookOnlyLine(lookOnly) : canToggle ? void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
-                              onPointerDown: (e) => {
-                                e.preventDefault();
-                                setCursor({ row: laneIndex, col: stepIndex });
-                                if (resizeStart !== null) {
-                                  const rect = e.currentTarget.getBoundingClientRect();
-                                  const barW = clamp012(extent) * rect.width;
-                                  const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4));
-                                  if (e.clientX - rect.left >= barW - zone) {
-                                    onResizeDown(laneIndex, resizeStart);
-                                    return;
-                                  }
-                                }
-                                if (!canToggle) return;
-                                onCellDown(laneIndex, stepIndex, on, e);
-                              },
-                              onPointerEnter: () => onCellEnter(laneIndex, stepIndex, w),
-                              style: {
-                                position: "relative",
-                                width: "100%",
-                                height: 22,
-                                padding: 0,
-                                overflow: "hidden",
-                                border: isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
-                                borderRadius: 3,
-                                background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-                                cursor: !canToggle ? "default" : gainScoped && on ? "ns-resize" : "pointer"
-                              },
-                              children: [
-                                cov && // Two orthogonal axes on one bar, which is how a DAW draws a
-                                // note: WIDTH is how much of this column the note sounds for
-                                // (#1056), HEIGHT is velocity, bottom-anchored and full when
-                                // neutral — so a length-1 note at neutral gain is the same
-                                // solid square it has always been. The hue is the voice
-                                // colour (#471), or a velocity ramp when View ▸ Note Color =
-                                // Velocity (#428).
-                                //
-                                // A carried column is dimmed rather than drawn solid, the
-                                // vocabulary the piano roll already ships for the same fact
-                                // (`opacity: on && !isHead ? 0.7 : 1`) — one held note reads
-                                // as one note, and never as a second trigger.
-                                /* @__PURE__ */ jsx(
-                                  "span",
-                                  {
-                                    "data-seq-fill": true,
-                                    "data-seq-sustain": held2 ? "true" : void 0,
-                                    "data-seq-extent": extent !== 1 ? extent.toFixed(4) : void 0,
-                                    style: {
-                                      position: "absolute",
-                                      left: 0,
-                                      bottom: 0,
-                                      // `minWidth` is a floor on the PIXEL, not on the datum: a
-                                      // note whose length rounds to nothing still has to be
-                                      // visible, or the grid would silently lose a trigger it
-                                      // can spell.
-                                      width: `${clamp012(extent) * 100}%`,
-                                      minWidth: held2 ? 0 : 2,
-                                      height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
-                                      background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
-                                      opacity: held2 ? 0.7 : 1,
-                                      pointerEvents: "none"
-                                    }
-                                  }
-                                ),
-                                resizeStart !== null && // THE LENGTH HANDLE (#1053) — the axis #1056 made visible, made
-                                // settable. Same shape as the roll's, because this is the same
-                                // gesture on the other surface and the issue asks the two to agree.
-                                //
-                                // It sits at the BAR's trailing edge rather than the cell's, so a
-                                // note that stops mid-column carries its handle on its own end
-                                // instead of floating in the empty background past it. Width is
-                                // clamped to the bar for the same reason the roll clamps it: a
-                                // handle wider than the note would overhang backwards past the
-                                // note's own start. What that costs a very short note — a very
-                                // small handle — is paid back by the invisible grab zone above.
-                                //
-                                // RENDERED ONLY WHERE A DRAG WOULD DO SOMETHING (`resizable`),
-                                // which is the panel's standing rule for every affordance it draws
-                                // (#1064/#1070): a handle on a note whose every length the writer
-                                // declines is a control the user can press to no effect, and this
-                                // project ranks that worse than not offering it at all.
-                                /* @__PURE__ */ jsx(
-                                  "span",
-                                  {
-                                    "data-seq-resize": `${laneIndex}:${resizeStart}`,
-                                    "aria-label": `resize ${lane.sound} step ${stepNo(resizeStart)}`,
-                                    onPointerDown: (e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
+                      const resizeStart = cov !== void 0 && isTail && resizable?.[laneIndex]?.has(cov.start) ? cov.start : null;
+                      const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
+                      const isPlaying = playingStep !== null && playingStep >= stepIndex && playingStep < stepIndex + w;
+                      const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true;
+                      const inBox = /* @__PURE__ */ __name((c) => c >= stepIndex && c < stepIndex + w, "inBox");
+                      const isCursor = liveCursor?.row === laneIndex && inBox(liveCursor.col);
+                      const isTab = tabCell.row === laneIndex && inBox(tabCell.col);
+                      let weight2 = 0;
+                      for (let c = stepIndex; c < stepIndex + w; c++) weight2 += layout.weight(c);
+                      const gaps2 = 2 * (w - 1);
+                      const stepNo = /* @__PURE__ */ __name((c) => Math.floor(c / w) + 1, "stepNo");
+                      const stepStart2 = stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex);
+                      return (
+                        // A gridcell holding one toggle button — `aria-pressed` stays on the
+                        // button, which may carry it; the cursor is the cell's `aria-selected`.
+                        /* @__PURE__ */ jsx(
+                          "div",
+                          {
+                            role: "gridcell",
+                            "aria-selected": isCursor,
+                            "data-seq-step-start": variant === "solo" && stepStart2 ? "true" : void 0,
+                            style: {
+                              display: "flex",
+                              flex: `${weight2} ${weight2} ${gaps2}px`,
+                              minWidth: stepMin * weight2 + gaps2,
+                              maxWidth: 56 * weight2 + gaps2,
+                              // subtle gap at each bar boundary
+                              marginLeft: variant === "solo" && layout.barStart(stepIndex) ? 8 : 0,
+                              // THREE LINE WEIGHTS (#1841): a bar is the 8px gap above; a written
+                              // step fills the 2px gap before it with a line; a plain column
+                              // leaves that gap empty. Drawn as a shadow INTO the gap rather than
+                              // as extra width, because rows of different parts start steps at
+                              // different columns and a real gap would push their columns apart.
+                              boxShadow: variant === "solo" && stepStart2 ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
+                            },
+                            children: /* @__PURE__ */ jsxs(
+                              "button",
+                              {
+                                type: "button",
+                                tabIndex: isTab ? 0 : -1,
+                                onFocus: () => {
+                                  if (!isCursor) setCursor({ row: laneIndex, col: stepIndex });
+                                },
+                                "aria-pressed": on,
+                                "aria-label": held2 ? `${lane.sound} step ${stepNo(stepIndex)}, held from step ${stepNo(cov.start)}` : `${lane.sound} step ${stepNo(stepIndex)}`,
+                                "data-seq-cell": `${laneIndex}:${stepIndex}`,
+                                "data-seq-box-width": w > 1 ? w : void 0,
+                                "data-gain": on && gainScoped ? gain : void 0,
+                                "data-playing": isPlaying ? "true" : void 0,
+                                "data-seq-cell-inert": canToggle ? void 0 : "true",
+                                "aria-disabled": canToggle ? void 0 : true,
+                                title: lookOnly ? lookOnlyLine(lookOnly) : canToggle ? void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
+                                onPointerDown: (e) => {
+                                  e.preventDefault();
+                                  setCursor({ row: laneIndex, col: stepIndex });
+                                  if (resizeStart !== null) {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const barW = clamp012(extent) * rect.width;
+                                    const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4));
+                                    if (e.clientX - rect.left >= barW - zone) {
                                       onResizeDown(laneIndex, resizeStart);
-                                    },
-                                    style: {
-                                      position: "absolute",
-                                      top: 0,
-                                      bottom: 0,
-                                      right: `${(1 - clamp012(extent)) * 100}%`,
-                                      width: `min(${RESIZE_ZONE_PX}px, ${clamp012(extent) * 100}%)`,
-                                      cursor: "ew-resize",
-                                      background: "var(--foreground, #e6e6ea)",
-                                      opacity: 0.45,
-                                      borderRadius: "0 2px 2px 0"
+                                      return;
                                     }
                                   }
-                                )
-                              ]
-                            }
-                          )
+                                  if (!canToggle) return;
+                                  onCellDown(laneIndex, stepIndex, on, e);
+                                },
+                                onPointerEnter: () => onCellEnter(laneIndex, stepIndex, w),
+                                style: {
+                                  position: "relative",
+                                  width: "100%",
+                                  // a small box inside a step that holds several, as the design draws it
+                                  height: variant === "inner" ? 14 : 22,
+                                  alignSelf: "center",
+                                  padding: 0,
+                                  overflow: "hidden",
+                                  border: variant === "plain" ? "none" : isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                                  borderRadius: variant === "plain" ? `${ends.first ? 3 : 0}px ${ends.last ? 3 : 0}px ${ends.last ? 3 : 0}px ${ends.first ? 3 : 0}px` : variant === "inner" ? 2 : 3,
+                                  background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
+                                  cursor: !canToggle ? "default" : gainScoped && on ? "ns-resize" : "pointer"
+                                },
+                                children: [
+                                  cov && // Two orthogonal axes on one bar, which is how a DAW draws a
+                                  // note: WIDTH is how much of this column the note sounds for
+                                  // (#1056), HEIGHT is velocity, bottom-anchored and full when
+                                  // neutral — so a length-1 note at neutral gain is the same
+                                  // solid square it has always been. The hue is the voice
+                                  // colour (#471), or a velocity ramp when View ▸ Note Color =
+                                  // Velocity (#428).
+                                  //
+                                  // A carried column is dimmed rather than drawn solid, the
+                                  // vocabulary the piano roll already ships for the same fact
+                                  // (`opacity: on && !isHead ? 0.7 : 1`) — one held note reads
+                                  // as one note, and never as a second trigger.
+                                  /* @__PURE__ */ jsx(
+                                    "span",
+                                    {
+                                      "data-seq-fill": true,
+                                      "data-seq-sustain": held2 ? "true" : void 0,
+                                      "data-seq-extent": extent !== 1 ? extent.toFixed(4) : void 0,
+                                      style: {
+                                        position: "absolute",
+                                        left: 0,
+                                        bottom: 0,
+                                        // `minWidth` is a floor on the PIXEL, not on the datum: a
+                                        // note whose length rounds to nothing still has to be
+                                        // visible, or the grid would silently lose a trigger it
+                                        // can spell.
+                                        width: `${clamp012(extent) * 100}%`,
+                                        minWidth: held2 ? 0 : 2,
+                                        height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
+                                        background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
+                                        // one plain step is one note: its columns are not a second trigger
+                                        opacity: held2 && variant !== "plain" ? 0.7 : 1,
+                                        pointerEvents: "none"
+                                      }
+                                    }
+                                  ),
+                                  variant === "plain" && isPlaying && // A plain step's columns draw no border, so the playing column is marked by
+                                  // a frame drawn over its fill — the note is an absolutely placed child and
+                                  // would paint over the button's own outline.
+                                  /* @__PURE__ */ jsx(
+                                    "span",
+                                    {
+                                      "data-seq-playing-frame": true,
+                                      style: {
+                                        position: "absolute",
+                                        inset: 0,
+                                        border: "1px solid var(--foreground, #e6e6ea)",
+                                        pointerEvents: "none"
+                                      }
+                                    }
+                                  ),
+                                  resizeStart !== null && // THE LENGTH HANDLE (#1053) — the axis #1056 made visible, made
+                                  // settable. Same shape as the roll's, because this is the same
+                                  // gesture on the other surface and the issue asks the two to agree.
+                                  //
+                                  // It sits at the BAR's trailing edge rather than the cell's, so a
+                                  // note that stops mid-column carries its handle on its own end
+                                  // instead of floating in the empty background past it. Width is
+                                  // clamped to the bar for the same reason the roll clamps it: a
+                                  // handle wider than the note would overhang backwards past the
+                                  // note's own start. What that costs a very short note — a very
+                                  // small handle — is paid back by the invisible grab zone above.
+                                  //
+                                  // RENDERED ONLY WHERE A DRAG WOULD DO SOMETHING (`resizable`),
+                                  // which is the panel's standing rule for every affordance it draws
+                                  // (#1064/#1070): a handle on a note whose every length the writer
+                                  // declines is a control the user can press to no effect, and this
+                                  // project ranks that worse than not offering it at all.
+                                  /* @__PURE__ */ jsx(
+                                    "span",
+                                    {
+                                      "data-seq-resize": `${laneIndex}:${resizeStart}`,
+                                      "aria-label": `resize ${lane.sound} step ${stepNo(resizeStart)}`,
+                                      onPointerDown: (e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onResizeDown(laneIndex, resizeStart);
+                                      },
+                                      style: {
+                                        position: "absolute",
+                                        top: 0,
+                                        bottom: 0,
+                                        right: `${(1 - clamp012(extent)) * 100}%`,
+                                        width: `min(${RESIZE_ZONE_PX}px, ${clamp012(extent) * 100}%)`,
+                                        cursor: "ew-resize",
+                                        background: "var(--foreground, #e6e6ea)",
+                                        opacity: 0.45,
+                                        borderRadius: "0 2px 2px 0"
+                                      }
+                                    }
+                                  )
+                                ]
+                              }
+                            )
+                          },
+                          stepIndex
+                        )
+                      );
+                    }, "cellFor");
+                    const grouped = g.boxes.length > 1 && !g.boxes.slice(1).some((b) => layout.barStart(b.start));
+                    if (!grouped) {
+                      return /* @__PURE__ */ jsx("div", { role: "none", style: { display: "contents" }, children: g.boxes.map((b) => cellFor(b, "solo")) }, `step-${g.from}`);
+                    }
+                    let weight = 0;
+                    for (let c = g.from; c < g.to; c++) weight += layout.weight(c);
+                    const gaps = 2 * (g.to - g.from - 1);
+                    const stepStart = g.from > 0 && !layout.barStart(g.from) && !!stepStarts?.get(lane.part ?? 0)?.has(g.from);
+                    return /* @__PURE__ */ jsx(
+                      "div",
+                      {
+                        role: "none",
+                        "data-seq-step": g.plain ? "plain" : "holds",
+                        "data-seq-step-start": stepStart ? "true" : void 0,
+                        style: {
+                          display: "flex",
+                          gap: 2,
+                          height: 22,
+                          // exactly the space its boxes take drawn one by one, so its edges and
+                          // its boxes' edges fall on the other rows' columns
+                          flex: `${weight} ${weight} ${gaps}px`,
+                          minWidth: stepMin * weight + gaps,
+                          maxWidth: 56 * weight + gaps,
+                          marginLeft: layout.barStart(g.from) ? 8 : 0,
+                          // an outline takes no space, so it cannot push a column
+                          outline: "1px solid var(--border, #3a3a42)",
+                          borderRadius: g.plain ? 3 : 4,
+                          // NOT overflow-hidden: the focus ring is drawn just outside a cell, and
+                          // clipping it here hid the keyboard cursor on a filled column
+                          // plain: the gaps between its columns read as faint halves; a step that
+                          // holds several: a darker well its small boxes sit in
+                          background: g.plain ? "var(--border, #3a3a42)" : "var(--background, #1e1e24)",
+                          boxShadow: stepStart ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
                         },
-                        stepIndex
-                      )
+                        children: g.boxes.map(
+                          (b, i) => cellFor(b, g.plain ? "plain" : "inner", { first: i === 0, last: i === g.boxes.length - 1 })
+                        )
+                      },
+                      `step-${g.from}`
                     );
                   }) })
                 ]

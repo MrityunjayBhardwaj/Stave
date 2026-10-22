@@ -193,6 +193,62 @@ export function boxesPlaceNotes<C>(
   return asked === 0
 }
 
+/** One written step of a row, as the boxes it is drawn over (#1861). */
+export interface StepGroup {
+  /** `[from, to)` in drawn columns */
+  from: number
+  to: number
+  boxes: { start: number; width: number }[]
+  /**
+   * In every row of the part, one thing sounds through the whole step or nothing does: `bd`
+   * in `bd hh*2 sd cp`, a `~`. Drawn as one box with faint halves. Otherwise the step holds
+   * several hits or rests (`[~ bd]`, `hh*8`, `bd(3,8)`) and is drawn as one step with its
+   * boxes inside it — in every row of the part, as the text writes it for all of them.
+   */
+  plain: boolean
+}
+
+/**
+ * A row's boxes grouped by the written steps they fall in (#1861, Exact). `starts` are the
+ * part's `writtenStepStarts` (drawn columns); `owners` holds, for EVERY row of the part, the
+ * note sounding at a column (its start column, from the grid's own coverage) or undefined for
+ * silence. Whether a step is plain is read off the content, never the text: a written step is
+ * plain when, in each row of the part, all its columns have the same owner — so a row silent
+ * inside a `[…]` step still draws that step as subdivided, as its siblings do.
+ *
+ * Without starts, or when a box would straddle a step edge (the regions and boxes disagree),
+ * every box is its own step — today's drawing.
+ */
+export function groupBoxesBySteps(
+  boxes: readonly { start: number; width: number }[],
+  starts: readonly number[] | undefined,
+  steps: number,
+  owners: readonly ((col: number) => number | undefined)[],
+): StepGroup[] {
+  const alone = (): StepGroup[] => boxes.map((b) => ({ from: b.start, to: b.start + b.width, boxes: [b], plain: true }))
+  if (!starts || starts.length === 0) return alone()
+  const edges = [...new Set([...starts, steps])].filter((c) => c >= 0 && c <= steps).sort((a, b) => a - b)
+  if (edges[0] !== 0) edges.unshift(0)
+  const out: StepGroup[] = []
+  let k = 0
+  for (let i = 0; i + 1 < edges.length; i++) {
+    const [from, to] = [edges[i], edges[i + 1]]
+    const inStep: { start: number; width: number }[] = []
+    while (k < boxes.length && boxes[k].start < to) {
+      if (boxes[k].start < from || boxes[k].start + boxes[k].width > to) return alone()
+      inStep.push(boxes[k++])
+    }
+    if (inStep.length === 0) continue
+    let plain = true
+    for (const owner of owners) {
+      const first = owner(from)
+      for (let c = from + 1; c < to && plain; c++) plain = owner(c) === first
+    }
+    out.push({ from, to, boxes: inStep, plain })
+  }
+  return k === boxes.length ? out : alone()
+}
+
 /**
  * The lengths a note moves to one box longer and one box shorter, in columns, on a row whose
  * boxes are `w` columns wide (#1855) — what the length handle offers and ⌥⇧←/→ writes. On a

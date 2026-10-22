@@ -38,13 +38,16 @@ test.describe('sequencer: step lines and a step ruler (#1841)', () => {
     const seq = await open(page, '$: s("bd [~ bd] sd ~")', 'sequencer')
     expect(await ruler(seq, 'data-seq-ruler-label')).toEqual(['0=1', '2=1.2', '4=1.3', '6=1.4'])
 
-    // a line in the gap before each written step, in every row, and none before a plain column
+    // a line in the gap before each written step, in every row, and none before a plain column.
+    // In Exact a written step of several columns is drawn as one step (#1861), and the line
+    // sits on that step, before its first cell; a one-column step keeps it on its cell.
     const starts = await seq
-      .locator('[role="gridcell"][data-seq-step-start="true"] > [data-seq-cell]')
-      .evaluateAll((els) => els.map((e) => e.getAttribute('data-seq-cell')))
+      .locator('[data-seq-step-start="true"]')
+      .evaluateAll((els) => els.map((e) => e.querySelector('[data-seq-cell]')?.getAttribute('data-seq-cell')))
     expect(starts).toEqual(['0:2', '0:4', '0:6', '1:2', '1:4', '1:6'])
+    const stepOf = (key: string) => seq.locator(`[data-seq-step-start="true"]:has([data-seq-cell="${key}"])`)
+    expect(await lineBefore(stepOf('0:2'))).not.toBe('none')
     const cellBox = (key: string) => seq.locator(`[role="gridcell"]:has(> [data-seq-cell="${key}"])`)
-    expect(await lineBefore(cellBox('0:2'))).not.toBe('none')
     expect(await lineBefore(cellBox('0:1'))).toBe('none')
   })
 
