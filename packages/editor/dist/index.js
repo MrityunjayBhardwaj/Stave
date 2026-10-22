@@ -16853,7 +16853,10 @@ var _StrudelEngine = class _StrudelEngine {
     this.stopListeningForPlayErrors = listenForPlayTimeErrors(
       STRUDEL_LOG_EVENT,
       this.schedulerQuery,
-      (error) => this.runtimeErrorHandler?.(error)
+      (error) => {
+        this.placeInPlayingCode(error);
+        this.runtimeErrorHandler?.(error);
+      }
     );
     await Promise.resolve().then(() => (init_piano(), piano_exports));
     this.initialized = true;
@@ -17042,7 +17045,7 @@ var _StrudelEngine = class _StrudelEngine {
       if (!result.error) {
         this.evalEpoch++;
         this.hapStream.setEpoch(this.evalEpoch);
-        this.playing = { code };
+        this.playing = ran?.code === code ? ran : { code };
         const bareId = capturedSongPatterns.size === 0 && isQueryablePattern(playedPattern) ? resolveBareCaptureId(code) : null;
         if (bareId !== null) {
           capturedSongPatterns.set(bareId, playedPattern);
@@ -17879,6 +17882,27 @@ var _StrudelEngine = class _StrudelEngine {
   getVizRequests() {
     return this.vizRequests;
   }
+  /**
+   * #2188 — where in the playing code an error raised while it plays was
+   * thrown: its stack read back through a source map of that code, as #2175
+   * does for an evaluate. Tagged with the code it refers to, which the app
+   * checks against the file before using it.
+   */
+  placeInPlayingCode(error) {
+    const playing = this.playing;
+    if (!playing?.run || error.staveLocation) return;
+    const at = locateEvalError(
+      error,
+      () => playing.run({ ...playing.options, sourceMap: true }),
+      this.evalFrame
+    );
+    if (at) {
+      Object.assign(error, {
+        staveLocation: at,
+        staveLocationCode: playing.code
+      });
+    }
+  }
   /** Register a handler for runtime audio errors (fires during scheduling, not evaluation). */
   setRuntimeErrorHandler(handler) {
     this.runtimeErrorHandler = handler;
@@ -18015,6 +18039,14 @@ function watched(pat, onDropped, inQuery) {
   if (typeof pat.queryArc !== "function") return pat;
   let expected = null;
   const w = Object.create(pat);
+  w.query = function(state6) {
+    try {
+      return pat.query(state6);
+    } catch (err) {
+      if (inQuery) inQuery.lastError = err;
+      throw err;
+    }
+  };
   w.queryArc = function(begin, end, state6) {
     if (state6?.cyclist !== "cyclist") return pat.queryArc(begin, end, state6);
     if (inQuery) inQuery.depth++;
@@ -18027,7 +18059,7 @@ function watched(pat, onDropped, inQuery) {
         }
       }
       expected = end;
-      return pat.queryArc(begin, end, state6);
+      return pat.queryArc.call(w, begin, end, state6);
     } finally {
       if (inQuery) inQuery.depth--;
     }
@@ -18036,11 +18068,12 @@ function watched(pat, onDropped, inQuery) {
 }
 __name(watched, "watched");
 var STRUDEL_LOG_EVENT = "strudel.log";
-function playTimeErrorFrom(detail) {
+function playTimeErrorFrom(detail, caught) {
   const message = detail?.message;
   if (typeof message !== "string") return null;
   const m = message.match(/^\[([^\]]+)\] error: ([\s\S]+)$/);
   if (!m || m[1] === "eval") return null;
+  if (caught instanceof Error && caught.message === m[2]) return caught;
   return new Error(m[2]);
 }
 __name(playTimeErrorFrom, "playTimeErrorFrom");
@@ -18049,7 +18082,8 @@ function listenForPlayTimeErrors(logKey, inQuery, onError) {
   };
   const onLog = /* @__PURE__ */ __name((event) => {
     if (inQuery.depth === 0) return;
-    const error = playTimeErrorFrom(event.detail);
+    const error = playTimeErrorFrom(event.detail, inQuery.lastError);
+    inQuery.lastError = void 0;
     if (error) onError(error);
   }, "onLog");
   document.addEventListener(logKey, onLog);

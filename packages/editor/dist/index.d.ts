@@ -5063,6 +5063,13 @@ declare class StrudelEngine implements LiveCodingEngine {
      * Empty Map before first evaluate or if no patterns use .viz().
      */
     getVizRequests(): Map<string, string>;
+    /**
+     * #2188 — where in the playing code an error raised while it plays was
+     * thrown: its stack read back through a source map of that code, as #2175
+     * does for an evaluate. Tagged with the code it refers to, which the app
+     * checks against the file before using it.
+     */
+    private placeInPlayingCode;
     /** Register a handler for runtime audio errors (fires during scheduling, not evaluation). */
     setRuntimeErrorHandler(handler: (err: Error) => void): void;
     /** Returns all sound names registered after init() — useful for editor autocompletion. */
