@@ -23,6 +23,8 @@ function makeModel(initial: string) {
   let text = initial
   const decorations = new Map<string, { start: number; end: number }>()
   const listeners = new Set<() => void>()
+  const disposeListeners = new Set<() => void>()
+  let disposed = false
   let next = 0
   const offsetOf = (line: number, column: number): number => {
     const lines = text.split('\n')
@@ -59,6 +61,7 @@ function makeModel(initial: string) {
       })
     },
     getDecorationRange: (id: string): Range | null => {
+      if (disposed) throw new Error('Model is disposed!')
       const d = decorations.get(id)
       if (!d) return null
       const a = posOf(d.start)
@@ -68,6 +71,15 @@ function makeModel(initial: string) {
     onDidChangeContent: (fn: () => void) => {
       listeners.add(fn)
       return { dispose: () => listeners.delete(fn) }
+    },
+    onWillDispose: (fn: () => void) => {
+      disposeListeners.add(fn)
+      return { dispose: () => disposeListeners.delete(fn) }
+    },
+    /** as closing the file does; `quietly` skips telling anyone first */
+    dispose(quietly = false) {
+      if (!quietly) for (const fn of disposeListeners) fn()
+      disposed = true
     },
     /** replace `[at, at + remove)` with `insert`, moving ranges as Monaco does */
     edit(at: number, remove: number, insert: string) {
@@ -124,13 +136,32 @@ describe('#2184 — the error follows the code', () => {
     expect(errorPositionNow(id)).toEqual({ line: 3, column: 26 })
   })
 
-  it('tells listeners when an edit may have moved it', async () => {
+  it('tells listeners when an edit moves it, and only then', async () => {
     await ginError()
     const heard = vi.fn()
     const stop = subscribeErrorPositions(heard)
+    model.edit(model.text().indexOf('0.2'), 3, '0.5') // same line: nothing moved
+    expect(heard).not.toHaveBeenCalled()
     model.edit(0, 0, '\n')
-    expect(heard).toHaveBeenCalled()
+    expect(heard).toHaveBeenCalledTimes(1)
     stop()
+  })
+
+  it('a closed file has nothing to follow, and asking does not throw', async () => {
+    const id = await ginError()
+    const heard = vi.fn()
+    const stop = subscribeErrorPositions(heard)
+    model.dispose()
+    expect(heard).toHaveBeenCalled() // the Console row drops the line it was following
+    expect(errorPositionNow(id)).toBeNull()
+    stop()
+  })
+
+  it('asking about a model disposed without notice does not throw', async () => {
+    const id = await ginError()
+    model.dispose(true)
+    expect(() => errorPositionNow(id)).not.toThrow()
+    expect(errorPositionNow(id)).toBeNull()
   })
 
   it('a repeat of the same error keeps the place it has followed', async () => {

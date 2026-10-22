@@ -75,6 +75,7 @@ interface TrackedModel {
   getDecorationRange(id: string): Range | null
   getValueInRange(range: Range): string
   onDidChangeContent(listener: () => void): { dispose(): void }
+  onWillDispose?(listener: () => void): { dispose(): void }
 }
 interface Placed {
   entryId: string
@@ -86,6 +87,8 @@ interface Placed {
   marker: MarkerData
   /** false once an edit changed the text it covered (#2185) */
   shown: boolean
+  /** the line it was on after the last edit, to tell listeners only when it moved */
+  line: number
 }
 interface Track {
   model: TrackedModel
@@ -127,9 +130,15 @@ function untrack(fileId: string): void {
 function onEdited(fileId: string, track: Track): void {
   const monaco = getMonacoNamespace() as { editor?: { setModelMarkers?: Function } } | null
   let dropped = false
+  let moved = false
   for (const p of track.placed) {
-    if (!p.shown) continue
     const range = track.model.getDecorationRange(p.decorationId)
+    const line = range?.startLineNumber ?? p.line
+    if (line !== p.line) {
+      p.line = line
+      moved = true
+    }
+    if (!p.shown) continue
     if (!range || track.model.getValueInRange(range) !== p.text) {
       p.shown = false
       dropped = true
@@ -142,7 +151,8 @@ function onEdited(fileId: string, track: Track): void {
     monaco?.editor?.setModelMarkers?.(track.model, OWNER, still)
     if (still.length === 0) activeMarkers.forEach((key) => key.endsWith(`:${fileId}`) && activeMarkers.delete(key))
   }
-  notifyPositions()
+  // Typing that moves no error (most keystrokes) re-renders nothing.
+  if (moved) notifyPositions()
 }
 
 /** Follow the squiggle just placed for `entryId`. It replaces the file's last one, as the marker did. */
@@ -174,13 +184,19 @@ function trackPlaced(fileId: string, model: unknown, entry: LogEntry, marker: Ma
     text: model.getValueInRange(range),
     marker,
     shown: true,
+    line: range.startLineNumber,
   }
   if (track) {
     track.placed = [placed]
   } else {
     const t: Track = { model, placed: [placed], stop: () => {} }
     const sub = model.onDidChangeContent(() => onEdited(fileId, t))
-    t.stop = () => sub.dispose()
+    // A closed file's model is disposed, and reading a range off it throws.
+    const gone = model.onWillDispose?.(() => untrack(fileId))
+    t.stop = () => {
+      sub.dispose()
+      gone?.dispose()
+    }
     tracks.set(fileId, t)
   }
   notifyPositions()
@@ -196,8 +212,12 @@ export function errorPositionNow(entryId: string): { line: number; column: numbe
   for (const track of tracks.values()) {
     const p = track.placed.find((q) => q.entryId === entryId)
     if (!p) continue
-    const range = track.model.getDecorationRange(p.decorationId)
-    return range ? { line: range.startLineNumber, column: range.startColumn } : null
+    try {
+      const range = track.model.getDecorationRange(p.decorationId)
+      return range ? { line: range.startLineNumber, column: range.startColumn } : null
+    } catch {
+      return null // a model disposed without telling us: the Console renders this
+    }
   }
   return null
 }

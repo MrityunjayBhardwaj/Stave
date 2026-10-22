@@ -53722,9 +53722,15 @@ __name(untrack, "untrack");
 function onEdited(fileId, track) {
   const monaco = getMonacoNamespace();
   let dropped = false;
+  let moved = false;
   for (const p of track.placed) {
-    if (!p.shown) continue;
     const range2 = track.model.getDecorationRange(p.decorationId);
+    const line = range2?.startLineNumber ?? p.line;
+    if (line !== p.line) {
+      p.line = line;
+      moved = true;
+    }
+    if (!p.shown) continue;
     if (!range2 || track.model.getValueInRange(range2) !== p.text) {
       p.shown = false;
       dropped = true;
@@ -53735,7 +53741,7 @@ function onEdited(fileId, track) {
     monaco?.editor?.setModelMarkers?.(track.model, OWNER, still);
     if (still.length === 0) activeMarkers.forEach((key3) => key3.endsWith(`:${fileId}`) && activeMarkers.delete(key3));
   }
-  notifyPositions();
+  if (moved) notifyPositions();
 }
 __name(onEdited, "onEdited");
 function trackPlaced(fileId, model, entry, marker) {
@@ -53763,7 +53769,8 @@ function trackPlaced(fileId, model, entry, marker) {
     decorationId,
     text: model.getValueInRange(range2),
     marker,
-    shown: true
+    shown: true,
+    line: range2.startLineNumber
   };
   if (track) {
     track.placed = [placed];
@@ -53771,7 +53778,11 @@ function trackPlaced(fileId, model, entry, marker) {
     const t = { model, placed: [placed], stop: /* @__PURE__ */ __name(() => {
     }, "stop") };
     const sub = model.onDidChangeContent(() => onEdited(fileId, t));
-    t.stop = () => sub.dispose();
+    const gone = model.onWillDispose?.(() => untrack(fileId));
+    t.stop = () => {
+      sub.dispose();
+      gone?.dispose();
+    };
     tracks.set(fileId, t);
   }
   notifyPositions();
@@ -53781,8 +53792,12 @@ function errorPositionNow(entryId) {
   for (const track of tracks.values()) {
     const p = track.placed.find((q) => q.entryId === entryId);
     if (!p) continue;
-    const range2 = track.model.getDecorationRange(p.decorationId);
-    return range2 ? { line: range2.startLineNumber, column: range2.startColumn } : null;
+    try {
+      const range2 = track.model.getDecorationRange(p.decorationId);
+      return range2 ? { line: range2.startLineNumber, column: range2.startColumn } : null;
+    } catch {
+      return null;
+    }
   }
   return null;
 }
