@@ -74,9 +74,9 @@
  */
 import { describe, it, expect } from 'vitest'
 import { hasCorpusArchive, loadCorpus } from './songPeriodSweep'
-import { CORPUS_RESTORE_HINT } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
-import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
-import { songExtent } from '../../../editor/src/ir/songExtent'
+import { CORPUS_RESTORE_HINT } from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
+import { parseStrudel } from '../../../editor/src/codeView/ir/parseStrudel'
+import { songExtent } from '../../../editor/src/codeView/ir/songExtent'
 
 /**
  * ⚠ A SKIP THAT MEANS "THIS MACHINE CANNOT RUN IT" READS EXACTLY LIKE A PASS.

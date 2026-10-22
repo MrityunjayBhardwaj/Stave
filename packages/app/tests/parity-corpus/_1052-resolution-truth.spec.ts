@@ -102,20 +102,20 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import type { StepGridModel } from '../../../editor/src/visualEdit/notation/model'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
+import { parseStepGrid } from '../../../editor/src/codeView/notation/parse'
+import type { StepGridModel } from '../../../editor/src/codeView/notation/model'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import { toggleCell } from '../../../editor/src/codeView/notation/place'
 import {
   collapseStepGridToDocument,
   stepSlotState,
   scaleStepGrid,
   canDoubleStepGrid,
-} from '../../../editor/src/visualEdit/notation/resolution'
+} from '../../../editor/src/codeView/notation/resolution'
 import {
   serializeStepGrid,
   serializeStepGridWithExtent,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 import { enginePlayedCycle, HRES, type Note } from './engineEditOracle'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))

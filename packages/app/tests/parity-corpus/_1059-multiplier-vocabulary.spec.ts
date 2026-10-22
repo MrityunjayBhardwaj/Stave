@@ -50,7 +50,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   RESOLUTION_PRESETS,
   freeZoneScale,
@@ -58,12 +58,12 @@ import {
   rollSlotState,
   collapseStepGridToDocument,
   type SlotState,
-} from '../../../editor/src/visualEdit/notation/resolution'
+} from '../../../editor/src/codeView/notation/resolution'
 import {
   documentSteps,
   MAX_VIEW_STEPS,
-} from '../../../editor/src/visualEdit/notation/viewResolution'
-import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/viewResolution'
+import { serializeStepGrid } from '../../../editor/src/codeView/notation/serialize'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

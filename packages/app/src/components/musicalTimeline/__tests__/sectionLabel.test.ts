@@ -10,13 +10,11 @@
  * must fail; with typed offsets they would sail through.
  */
 import { describe, it, expect } from 'vitest'
-import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
-import type { PatternIR } from '../../../../../editor/src/ir/PatternIR'
-import {
-  sectionNameAtRange,
-  resolveSectionName,
-  positionalSectionName,
-} from '../sectionLabel'
+import { parseStrudel } from '@stave/editor'
+import type { PatternIR } from '@stave/editor'
+import { resolveSectionName, positionalSectionName } from '../sectionLabel'
+// The reader is the editor's since #1921 — the same rule a track label uses.
+import { sectionNameAt as sectionNameAtRange } from '@stave/editor'
 
 /** The `Arrange` node anywhere in a parsed document. */
 function findArrange(n: PatternIR | null | undefined): PatternIR | null {
@@ -80,6 +78,12 @@ describe('the name a musician already wrote', () => {
       '[8, verse]',
       '[4, outro]',
     ])
+  })
+
+  it('any identifier is a name, as it is for a track label (#1921)', () => {
+    const code = 'const 前奏 = s("bd")\nconst café = s("hh")\narrange([4, 前奏], [8, café])'
+    const ranges = armRanges(code)
+    expect(ranges.map((r, i) => resolveSectionName(i, r, code))).toEqual(['前奏', 'café'])
   })
 
   it('a cat/slowcat arm is the pattern expression alone, not a tuple', () => {

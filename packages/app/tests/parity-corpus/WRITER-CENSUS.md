@@ -603,13 +603,13 @@ units, 1306 core-served asks (831 grid / 475 roll):
 
 | | cap 4 (shipped) | cap 12 |
 |---|---|---|
-| untransferable asks, both surfaces | 77 | 59 |
-| roll untransferable | 42 | 24 |
-| **the set that actually blocks deleting the core** | 55 | 39 |
+| untransferable asks, both surfaces | 76 | 58 |
+| roll untransferable | 41 | 23 |
+| **the set that actually blocks deleting the core** | 54 | 38 |
 | …of it, grid | 20 | 20 |
-| …of it, roll | 35 | 19 |
+| …of it, roll | 34 | 18 |
 
-**The cap's own contribution is 16 asks** (55 − 39), all of it on the roll: 35 − 19 = 16.
+**The cap's own contribution is 16 asks** (54 − 38), all of it on the roll: 34 − 18 = 16.
 
 **The grid is the control arm** and it is identical to the digit at both caps — 831 asks / 730 transfers / 35 untransferable / blocker 20 at cap 4, and 831 / 730 / 35 / 20 at cap 12. The constant is per-surface and roll-only, so a grid column that moved would mean the sweep had changed something it was not aiming at.
 

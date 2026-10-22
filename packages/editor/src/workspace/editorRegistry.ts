@@ -24,11 +24,7 @@ import {
   updateVizConfig,
   type VizQualityLevel,
 } from '../visualizers/vizConfig'
-// Direct file import (not the visualEdit barrel) so the registry pulls only the
-// lightweight Writeback (monaco types + acorn chunkDetect), never the React
-// panels — useActiveChunk imports getActiveEditor from HERE, so the barrel would
-// be a cycle.
-import { Writeback, type OffsetEdit, type WriteSource } from '../visualEdit/writeback'
+import { TOUCH_POINTER_QUERY } from './usePhone'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MonacoEditor = any
@@ -184,6 +180,23 @@ export function applyEvalSourceTransform(fileId: string, raw: string): string {
 }
 
 /**
+ * Does revealing a place in the code also give the editor keyboard focus (#2017)?
+ *
+ * With a mouse, yes: the editor hides its caret while blurred, so focus is what
+ * makes the jump visible. On a touch device, no: focusing the editor's text field
+ * is what summons the on-screen keyboard, and a reveal is a SELECTION made in the
+ * Timeline, the Mixer or a list — nobody asked to type. There the cursor still
+ * moves and the code still scrolls; the keyboard opens when the code itself is
+ * tapped.
+ *
+ * Every reveal asks this one function, so the three of them cannot drift apart.
+ */
+export function revealTakesFocus(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true
+  return !window.matchMedia(TOUCH_POINTER_QUERY).matches
+}
+
+/**
  * Reveal the given line in the editor for `fileId` and set the cursor
  * at column 1. Returns true if the editor was found. Line numbers are
  * 1-based.
@@ -194,7 +207,7 @@ export function revealLineInFile(fileId: string, line: number): boolean {
   try {
     editor.revealLineInCenter?.(line)
     editor.setPosition?.({ lineNumber: line, column: 1 })
-    editor.focus?.()
+    if (revealTakesFocus()) editor.focus?.()
     return true
   } catch {
     return false
@@ -218,71 +231,10 @@ export function revealOffsetInFile(fileId: string, offset: number): boolean {
     if (!pos) return false
     editor.revealLineInCenter?.(pos.lineNumber)
     editor.setPosition?.(pos)
-    editor.focus?.()
+    if (revealTakesFocus()) editor.focus?.()
     return true
   } catch {
     return false
-  }
-}
-
-/**
- * Why a write-back did not land. Each value names ONE refusal the writer can
- * actually tell apart, because a report that cannot name its cause cannot drive
- * the next decision (#1414) — "the edit was declined" and "the document moved
- * under you" call for opposite responses from a caller, and a bare `false` says
- * neither.
- */
-export type WriteRefusal =
-  /** No editor is registered for `fileId` — typically unmounted mid-gesture. */
-  | 'no-editor'
-  /** The monaco namespace was never captured, so no edit can be constructed. */
-  | 'no-monaco'
-  /** Nothing to write — upstream (usually a serializer) declined the gesture. */
-  | 'no-edits'
-  /** `expectedDoc` no longer matches the live model: the offsets are stale and
-   *  applying them would corrupt unrelated code. RETRYABLE — unlike the rest. */
-  | 'stale-document'
-  /** `Writeback.replaceRanges` threw. */
-  | 'writeback-threw'
-
-/** `'applied'`, or the reason the write-back refused. */
-export type WriteOutcome = 'applied' | WriteRefusal
-
-/**
- * Apply a batch of surgical offset edits to the model of `fileId`'s editor as
- * ONE undo step, tagged with `source`. This is the arrangement timeline's
- * write-back seam: the canvas hands up the edits (built by `visualEdit/arrange`),
- * the registry routes them through the same surgical `Writeback` the panels use,
- * and the runtime's debounced re-eval picks the change up (no explicit eval call
- * needed). PV122 #2.
- *
- * ⚠ RETURNS A REASON, NOT A BOOLEAN, AND THE REASON IS THE POINT (#1414). This
- * function has always refused correctly; every one of its fourteen call sites
- * discarded the answer, so a refused timeline gesture and an applied one were
- * indistinguishable to the user AND to us. A `boolean` could be read; naming the
- * cause is what makes the refusal actionable — and makes "how often does this
- * fire, and which one" a question with an answer. Callers should compare against
- * `'applied'` explicitly: every member of this union is truthy, so a bare
- * `if (result)` is always true and is always a bug.
- */
-export function applyOffsetEditsToFile(
-  fileId: string,
-  edits: OffsetEdit[],
-  source: WriteSource,
-  expectedDoc?: string,
-): WriteOutcome {
-  const editor = editors.get(fileId)
-  if (!editor) return 'no-editor'
-  if (!monacoNs) return 'no-monaco'
-  if (edits.length === 0) return 'no-edits'
-  if (expectedDoc != null && editor.getModel?.()?.getValue?.() !== expectedDoc) {
-    return 'stale-document'
-  }
-  try {
-    new Writeback(editor, monacoNs).replaceRanges(edits, source)
-    return 'applied'
-  } catch {
-    return 'writeback-threw'
   }
 }
 

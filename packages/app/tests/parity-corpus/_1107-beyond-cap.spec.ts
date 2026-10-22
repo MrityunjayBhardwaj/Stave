@@ -23,9 +23,9 @@
  * time.
  */
 import { describe, it } from 'vitest'
-import type { IREvent } from '../../../editor/src/ir/IREvent'
+import type { IREvent } from '../../../editor/src/codeView/ir/IREvent'
 import { normalizeStrudelHap } from '../../../editor/src/engine/NormalizedHap'
-import { evalSongTracks, loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
+import { evalSongTracks, loadCorpus } from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
 
 const CAP = 256
 const BEYOND = 1024

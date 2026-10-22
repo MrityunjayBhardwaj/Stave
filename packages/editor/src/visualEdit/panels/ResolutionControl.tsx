@@ -87,9 +87,10 @@ import * as React from 'react'
 
 import {
   RESOLUTION_PRESETS,
+  NO_RESOLUTION_EFFECT,
   type GridResolutionEffect,
   type SlotState,
-} from '../notation/resolution'
+} from '../../codeView'
 
 /**
  * Lift a grid's resolution control up to the Pattern inspector (#601). The grid
@@ -111,9 +112,9 @@ export function useLiftResolution(
   onScaleTo: (target: number) => void,
   onResolution?: (r: ResolutionControlProps | null) => void,
   /**
-   * LAST AND OPTIONAL because it is a surface's offer, not an obligation (#1061). The
-   * grid has a sub-column floor to declare; the piano roll carries duration natively and
-   * has none, so it passes nothing and the copy falls back to the mechanism alone.
+   * LAST AND OPTIONAL because it is a surface's offer, not an obligation (#1061). Both
+   * grids pass one (the roll since #1933); a surface that passes nothing gets copy that
+   * falls back to the mechanism alone.
    * Held behind the same ref as the other two so it always reads the CURRENT model —
    * the lift re-fires on a `steps` change, and a plain closure would keep answering
    * about the model the grid had when it last resized.
@@ -128,12 +129,12 @@ export function useLiftResolution(
   effectRef.current = effect
   const stableSlotState = React.useCallback((t: number) => slotStateRef.current(t), [])
   const stableScaleTo = React.useCallback((t: number) => onScaleToRef.current(t), [])
-  // `undefined` has to survive the wrapper, or the roll would advertise an effect
+  // `undefined` has to survive the wrapper, or a surface that passes none would advertise an effect
   // reporter that answers with zeros — a claim of "no consequence" where the truth is
   // "not asked". The two must stay distinguishable at the prop.
   const hasEffect = effect !== undefined
   const stableEffect = React.useCallback(
-    (t: number) => effectRef.current?.(t) ?? { lengthened: 0, snapped: 0, merged: 0 },
+    (t: number) => effectRef.current?.(t) ?? NO_RESOLUTION_EFFECT,
     [],
   )
 
@@ -215,9 +216,8 @@ export interface ResolutionControlProps {
    * coarsening can keep timing and still lengthen notes, or move timing and lengthen
    * nothing. Folding both into one label would hide whichever the user cared about.
    *
-   * Optional, and the copy degrades to the mechanism alone without it: the piano roll
-   * carries note duration natively, so it has no sub-column floor to report. Supplying
-   * it is what a surface does when it has an effect to declare, not a requirement.
+   * Optional, and the copy degrades to the mechanism alone without it. The step grid
+   * and the piano roll (#1933) both supply it.
    */
   effect?: (target: number) => GridResolutionEffect
 }
@@ -253,15 +253,30 @@ function describeTarget(target: number, state: SlotState, effect?: GridResolutio
       // wording rather than promise something we have not asked about.
       const keepsTiming =
         state === 'lossless' || (effect !== undefined && effect.snapped === 0 && effect.merged === 0)
-      const n = effect?.lengthened ?? 0
-      const longer = n > 0 ? `, and makes ${n} note${n === 1 ? '' : 's'} longer` : ''
+      const lengths = lengthChange(effect)
       return keepsTiming
-        ? `${target} slots — rewrites your file, keeps timing${longer}`
-        : `${target} slots — rewrites your file and snaps notes to the grid (changes timing)${longer}`
+        ? `${target} slots — rewrites your file, keeps timing${lengths}`
+        : `${target} slots — rewrites your file and snaps notes to the grid (changes timing)${lengths}`
     }
     default:
       return `${target} slots — unavailable`
   }
+}
+
+/**
+ * The length clause: how many notes the press makes longer and how many shorter (#1948),
+ * each named only when it happens. They are separate counts because they are separate
+ * losses — a note held at one column sounds longer, a note cut to the next onset or to its
+ * chord's shortest length sounds shorter — and one press can do both.
+ */
+function lengthChange(effect?: GridResolutionEffect): string {
+  const notes = (n: number): string => `${n} note${n === 1 ? '' : 's'}`
+  const longer = effect?.lengthened ?? 0
+  const shorter = effect?.shortened ?? 0
+  if (longer > 0 && shorter > 0) return `, and makes ${notes(longer)} longer and ${notes(shorter)} shorter`
+  if (longer > 0) return `, and makes ${notes(longer)} longer`
+  if (shorter > 0) return `, and makes ${notes(shorter)} shorter`
+  return ''
 }
 
 /** shared visual language for anything that names a target */
@@ -345,6 +360,7 @@ export function ResolutionControl({
             : describeTarget(target, state, eff)
         }
         data-resolution-lengthens={(eff?.lengthened ?? 0) > 0 ? 'true' : undefined}
+        data-resolution-shortens={(eff?.shortened ?? 0) > 0 ? 'true' : undefined}
         disabled={!pressable(state)}
         onClick={() => {
           if (target !== null && pressable(state)) onScaleTo(target)
@@ -461,6 +477,7 @@ export function ResolutionControl({
                 // from the DOM, so a spec asserts the CONSEQUENCE the user was promised
                 // rather than re-deriving it from the pattern that came back.
                 data-resolution-lengthens={(eff?.lengthened ?? 0) > 0 ? 'true' : undefined}
+                data-resolution-shortens={(eff?.shortened ?? 0) > 0 ? 'true' : undefined}
                 aria-selected={state === 'active'}
                 aria-label={`${preset} slots`}
                 title={describeTarget(preset, state, eff)}

@@ -33,17 +33,17 @@ import { describe, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   serializeStepGridWithExtent,
   serializePianoRoll,
-} from '../../../editor/src/visualEdit/notation/serialize'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/serialize'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
 import type {
   StepGridModel,
   PianoRollModel,
   StepCell,
-} from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

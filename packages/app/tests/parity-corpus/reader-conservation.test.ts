@@ -47,7 +47,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { readGridOnsets, rollOnsets, type Onset } from '../../../editor/src/visualEdit/notation/parse'
+import { miniPattern, type MiniPattern } from '../../../editor/src/codeView/strudelMini/pattern'
+import { readGridOnsets, rollOnsets, type Onset } from '../../../editor/src/codeView/notation/parse'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -85,7 +86,7 @@ function playedCount(pat: unknown, cyc: number): number | null {
 
 interface Arm {
   /** records the reader returned for an accepted unit, or null if it refused */
-  kept: (pat: unknown, cyc: number) => number | null
+  kept: (pat: MiniPattern, cyc: number) => number | null
 }
 
 const GRID: Arm = {
@@ -121,14 +122,18 @@ function sweepUncached(arm: Arm): Result {
   let played = 0
   const violations: string[] = []
   for (const mini of minis) {
+    // the readers are asked through the adapter; the count they are held to is taken
+    // from Strudel directly, so the two sides do not share a reader
     let pat: unknown
+    let asked: MiniPattern
     try {
       pat = reifyMini(mini)
+      asked = miniPattern(mini)
     } catch {
       continue
     }
     for (const cyc of CYCLES) {
-      const k = arm.kept(pat, cyc)
+      const k = arm.kept(asked, cyc)
       if (k === null) continue // the reader REFUSED — a gate verdict, measured elsewhere
       const p = playedCount(pat, cyc)
       if (p === null) continue
@@ -206,7 +211,7 @@ describe('#1036 — an accepted unit keeps every note the engine played', () => 
 
     let kept = 0
     let accepted = 0
-    const pat = reifyMini(outlier[0])
+    const pat = miniPattern(outlier[0])
     for (const cyc of CYCLES) {
       const r = rollOnsets(pat, cyc)
       if (r === null) continue

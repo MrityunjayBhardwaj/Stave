@@ -1,46 +1,58 @@
 // Pattern IR — universal music representation
-export type { IREvent, SourceLocation, IRPattern } from './ir'
-export { merge, transpose, timestretch, filter, scaleGain } from './ir'
-export type { PatternIR, PlayParams } from './ir'
-export { IR, toStrudel, patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './ir'
-export { structuralWalk, aggregateLaneItems, wholeWalkWindow, rootStackArms, armSourceSpan } from './ir'
-export type { LaneSkeleton, LaneItem, WalkWindow } from './ir'
+export type { IREvent, SourceLocation, IRPattern } from './codeView'
+export { merge, transpose, timestretch, filter, scaleGain } from './codeView'
+export type { PatternIR, PlayParams } from './codeView'
+export { IR, toStrudel, patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './codeView'
+export { structuralWalk, aggregateLaneItems, wholeWalkWindow, rootStackArms, armSourceSpan } from './codeView'
+export type { LaneSkeleton, LaneItem, WalkWindow } from './codeView'
 // Full-song analysis (#385)
-export { analyzeSong, analyzeEvents, accumulateLanes, cycleFingerprints, detectPeriod, computeSections, laneKeyOf, analyzeWindow, accumulateLanesInWindow, computeSectionsInWindow } from './ir'
-export type { SongAnalysis, DisplaySpan, LaneActivity, SongSection, AnalyzeSongOptions, WindowAnalysis, AnalyzeWindowOptions } from './ir'
-export { songExtent } from './ir'
-export { signalDimensionsOf } from './ir'
-export type { SignalDimensions } from './ir'
-export type { SongExtent } from './ir'
-export { parseMini, parseStrudel, classifyLiteralRhs } from './ir'
+export { analyzeSong, analyzeEvents, accumulateLanes, cycleFingerprints, detectPeriod, computeSections, laneKeyOf, analyzeWindow, accumulateLanesInWindow, computeSectionsInWindow } from './codeView'
+export type { SongAnalysis, DisplaySpan, LaneActivity, SongSection, AnalyzeSongOptions, WindowAnalysis, AnalyzeWindowOptions } from './codeView'
+export { songExtent } from './codeView'
+export { labelAtOffset, sectionNameAt, shownTrackName } from './codeView'
+// the one track palette, read by the Mixer and the Song timeline (#1943 retired the app's copy)
+export { trackIdentity, TRACK_PALETTE_32 } from './codeView'
+export { signalDimensionsOf } from './codeView'
+export type { SignalDimensions } from './codeView'
+export type { SongExtent } from './codeView'
+export { parseMini, parseStrudel, classifyLiteralRhs } from './codeView'
 
 // #1464 Stage 1's IR reader, re-exported for the timeline lane that draws it
 // (moved out of @stave/app by #1489 so `songAnalysis` can reach it too).
-export { signalAutomations, signalCarryingParamKeys, signalTimeAt, shapeAlternatives, crossClassShapes } from './ir'
-export type { SignalAutomation, SignalKind, SignalSpans, UnboundedSignalKind } from './ir'
+export { signalAutomations, signalCarryingParamKeys, signalTimeAt, shapeAlternatives, crossClassShapes } from './codeView'
+export type { SignalAutomation, SignalKind, SignalSpans, UnboundedSignalKind } from './codeView'
+// #1886 — what the lane's caption writes: a typed bound or rate, a chosen shape.
+export { captionEdit, shapeEdit, shapeOptions, rateEditable } from './codeView'
+export type { CaptionFieldKind } from './codeView'
 // #1463 Stage 1 — the stepped class, for the same lane.
-export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './ir'
-export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp } from './ir'
+export { steppedAutomations, stepIndexAtCycle, stepValueEdit, stepTextEdit } from './codeView'
+export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp } from './codeView'
 // #1600 — a fixed value a lane can start automating.
-export { fixedParameters, fixedToStepsEdit } from './ir'
-export type { FixedParameter } from './ir'
+export { fixedParameters, fixedToStepsEdit } from './codeView'
+export type { FixedParameter } from './codeView'
 // #1602 — a stepped parameter's step count, and the song length it would give.
-export { stepCountEdit, previewRepeat, songPeriodOf, arrangedRepeatCycles } from './ir'
-export type { StepCountEdit, LanePeriod } from './ir'
+export { stepCountEdit, previewRepeat, songPeriodOf, arrangedRepeatCycles, songEnd, songEndOf } from './codeView'
+// #2070 — how many cycles a clip needs to play through; the Library's Insert writes `.slow(N)`
+export { cyclesToPlayThrough } from './codeView'
+// #2067 — where the bare expression a song plays starts, for the notice that says so
+export { playsBareExpression } from './codeView'
+export type { StepCountEdit, LanePeriod } from './codeView'
 // #1611 — a shape swap across periodicity, and the song it would give.
-export { previewShapeSwap } from './ir'
-export type { ShapeSwap } from './ir'
+export { previewShapeSwap } from './codeView'
+export type { ShapeSwap } from './codeView'
 
 // #1387 — the IR Inspector's intermediate views, derived from parseStrudel.
 // Re-exported from the top-level barrel so the app can import it from
 // "@stave/editor" — Phase 19-02 hit a sub-barrel-only export missing from
 // dist/index.cjs. Replaces the four `run*Stage` passes (#79).
-export { parseStrudelStages } from './ir'
-export type { NamedStage } from './ir'
+export { parseStrudelStages } from './codeView'
+export type { NamedStage } from './codeView'
+export { buildStrudelPasses } from './codeView'
+export type { NamedPass } from './codeView'
 
 // Pass runner — runtime-neutral IR→IR transform machinery
-export type { Pass } from './ir'
-export { runPasses } from './ir'
+export type { Pass } from './codeView'
+export { runPasses } from './codeView'
 
 // Main components
 export { StrudelEditor } from './StrudelEditor'
@@ -54,6 +66,8 @@ export { StrudelEngine } from './engine/StrudelEngine'
 // needs both to tell "the engine cannot start" apart from every other runtime
 // error and offer the reload that is the only thing that recovers it (#1218).
 export { isBootStepFailure, type BootStepFailure } from './engine/StrudelEngine'
+// #2015 — whether Play takes the phone's audio (plays through the silent switch, stops other apps' music)
+export { setTakesPhoneAudio } from './engine/audioStart'
 export { DemoEngine } from './engine/DemoEngine'
 export { SonicPiEngine } from './engine/sonicpi'
 export type { LiveCodingEngine, EngineComponents, IRComponent } from './engine/LiveCodingEngine'
@@ -83,6 +97,19 @@ export type { SkippedSounds } from './engine/renderPatternOffline'
 export type { TrackEnvelopeAccess, TrackEnvelopeView, TrackEnvelopeStatus } from './engine/trackEnvelopes'
 export { LiveRecorder } from './engine/LiveRecorder'
 export { noteToMidi } from './engine/noteToMidi'
+// The value↔position map a knob and a stepped lane share (#1581), and the one chord
+// builder (#1799). Each used to ship as its own bundle entry because the app could not
+// load this one in its tests; since #1938 it can, and #1943 retired those entries.
+export { positionOfValue, valueAtPosition, snapToStep, type KnobScaleKind } from './visualEdit/panels/knobScale'
+export {
+  chordFromEvent,
+  chordMatches,
+  isModifierOnlyKey,
+  isMacPlatform,
+  normalizeChord,
+  tokenForCode,
+  type ChordOptions,
+} from './keys/chord'
 
 // Theme
 export type { StrudelTheme } from './theme/tokens'
@@ -298,11 +325,12 @@ export {
   resetUndoManager,
   withStructBatch,
 } from './workspace/undoManager'
-export type { WriteOutcome, WriteRefusal } from './workspace/editorRegistry'
+// #1906 / #1911 — the file route of the code↔view commit door; the Song Timeline's
+// gestures and the app's backdrop write commit through it, and name its refusals.
+export { commitToFile, type WriteOutcome, type WriteRefusal } from './codeView'
 export {
   revealLineInFile,
   revealOffsetInFile,
-  applyOffsetEditsToFile,
   // #641 — the app's Song Timeline derives its selected lane from the editor
   // caret (the same selection bus the Mixer uses, V-mixer-18); it needs to read
   // the active editor + which file it edits.
@@ -399,6 +427,12 @@ export {
   type NoteColorMode,
 } from './visualEdit/panels/noteColor'
 export { getGridMode, setGridMode, useGridMode, type GridMode } from './visualEdit/panels/gridMode'
+// #2000 — the one rule for "is this a phone", so the app's shell asks what the Pattern tab asks
+export { usePhone, isPhone, usePhoneLayout, phoneLayout } from './workspace/usePhone'
+export type { PhoneLayout } from './workspace/usePhone'
+// the on-screen keyboard on a phone (#2004): the app starts it; the shell reads its CSS variables
+export { startVisibleArea, useKeyboardUp, getVisibleArea } from './workspace/visibleArea'
+export type { VisibleArea } from './workspace/visibleArea'
 export type { EditorTheme, ResolvedTheme, SignalAliasMap } from './workspace/editorRegistry'
 export {
   saveSnapshot,
@@ -681,7 +715,7 @@ export {
   docParses,
   isChunkFresh,
   classifyChunk,
-  Writeback,
+  type Writeback,
   formatNumber,
   normalizeEdits,
   applyEdits,
@@ -763,18 +797,20 @@ export type { GridScope, GridGestureId, GridGestureDef, GridKeyMatcher } from '.
 export {
   auditionSound,
   startAudition,
+  startClipPreview,
   AUDITION_ENVELOPE,
   AUDITION_DUR_S,
   type AuditionHandle,
+  type ClipPreviewHandle,
 } from './visualEdit/audition'
 // Locate a runtime error (e.g. soundfont out-of-range, #567) back to the owning
 // track's line by its instrument — the app's onError uses this when the error's
 // stack is bundle-only.
-export { statementOffsetForSource } from './visualEdit/mixer/stripModel'
+export { statementOffsetForSource } from './codeView'
 // Track rename (#580, Phase C) — the pure label-rewrite primitive + its
 // validator, so the app's Song Timeline can rename a lane (the Mixer uses them
-// internally). `StripEdit` is the surgical {range,text} the caller applies.
-export { renameEdit, isValidTrackLabel, type StripEdit } from './visualEdit/mixer/writeStrip'
+// internally). The edit is an `OffsetEdit`, applied through the commit door.
+export { renameEdit, isValidTrackLabel } from './codeView'
 // Region trim (#1527) — the pure write decisions for the slice of a sample file
 // a mark plays, so the app's Song Timeline can turn a dragged mark edge into
 // `.begin(0.25)`. `readRegionControl` is exported alongside because the caller
@@ -783,15 +819,13 @@ export { renameEdit, isValidTrackLabel, type StripEdit } from './visualEdit/mixe
 export {
   readRegion,
   readRegionControl,
-  regionControlEdit,
   regionTrimEdit,
   MIN_REGION_SPAN,
   MULTI_VOICE_HEADS,
   type RegionControl,
-  type RegionEdit,
   type RegionTrimRefusal,
   type RegionTrimResult,
-} from './visualEdit/regionTrim'
+} from './codeView'
 // Master-strip code counterpart (#792) — the pure `all(x=>…)` write path the app
 // wires to the "set backdrop" UI (viz) and the Mixer uses internally (gain).
 export {
@@ -807,13 +841,13 @@ export {
   MASTER_UNITY_GAIN,
   type MasterAll,
   type MasterGainState,
-} from './visualEdit/mixer/masterEdit'
+} from './codeView'
 // The display names of the OTHER tracks in a doc (#585) — the set the Song
 // Timeline's rename handler passes to `renameEdit` as `takenNames` so a rename
 // can't silently create a duplicate track name (which would collide on the
 // meter join + the colour-override key). The Mixer/Pattern chip derive this from
 // their already-loaded `strips`; the Timeline has only the code, so it calls this.
-export { otherTrackNames } from './visualEdit/mixer/stripModel'
+export { otherTrackNames } from './codeView'
 // Per-eval trackMeta cleanup (#583) — the app calls this on each successful
 // evaluate to drop colour overrides for tracks that no longer exist (keys the
 // current track set from the same `buildStripModels` projection the Mixer uses).
@@ -863,6 +897,17 @@ export {
   readPersistedOpen,
   readPersistedActiveTabId,
 } from './workspace/bottomPanel/persistence'
+// #2002 — open / closed and the chosen tab, for a control outside the panel that
+// has to show one of its tabs (a phone's view switch) or follow which is showing.
+export {
+  getBottomPanelState,
+  setBottomPanelOpen,
+  setBottomPanelActiveTab,
+  showBottomPanelTab,
+  subscribeToBottomPanelState,
+  useBottomPanelState,
+} from './workspace/bottomPanel/panelState'
+export type { BottomPanelState } from './workspace/bottomPanel/panelState'
 
 // Issue #175 — full workspace-shell state persistence (groups + tabs +
 // pane layout + active group), per-project, via localStorage. The app

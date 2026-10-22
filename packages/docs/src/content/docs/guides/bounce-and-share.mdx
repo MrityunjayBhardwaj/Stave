@@ -1,0 +1,38 @@
+---
+title: Bounce and share
+description: Export your song as a WAV or as stems, send it as a link, or save the whole project as a .zip.
+sidebar:
+  order: 1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Bounce to WAV
+
+![The Bounce to WAV dialog: whole song or a fixed length, as a mix or as stems](../../../assets/studio/bounce.jpg)
+
+**File › Bounce to WAV…** turns your song into an audio file.
+
+1. **Choose how much.** Under **This song**, pick **Whole song**, or a number of repeats for a song that loops. Or pick **a fixed length**: 8s, 16s, 30s, 60s, 120s or 300s.
+2. **Choose Mix or Stems.**
+   - **Mix** is one WAV of the whole song: `<project>.wav`.
+   - **Stems** is one WAV per track, all the same length and lined up with the mix, in a zip: `<project>-stems.zip`, with files named `01-drums.wav`, `02-bass.wav` and so on, in song order. Tracks that make no sound are left out.
+3. **Start Bounce.**
+
+Most songs render **faster than real time**, and you can **Cancel** at any point. When a song can't be rendered that way, Stave records it as it plays instead, showing how far it's got. **Stop** then keeps what's been recorded so far. Stems need the faster render, so they're only offered when it's available.
+
+<Aside type="note">
+Playback stops while a song renders. The longest bounce is an hour (10 minutes when recording live). For stems, that hour is shared between the tracks.
+</Aside>
+
+## Share a link
+
+**File › Copy Share Link** copies a link with the whole project inside it. Paste it anywhere. Whoever opens it is asked **Import shared project?**, and gets their own copy.
+
+- Nothing is uploaded. The project lives in the part of the link after `#`, which browsers never send to a server.
+- The link carries your files, not your audio. If the song uses audio you recorded or brought in, send a `.zip` instead.
+- A very big project (over 2 MB before compression) won't fit in a link, and Stave suggests a `.zip`.
+
+## Save the project as a .zip
+
+**File › Export as .zip** saves every file and folder, plus your audio. **File › Import from .zip…** opens one, and so does **Open a project archive…** on the start screen. This is the way to back up a project, move it to another browser, or send it with its audio.

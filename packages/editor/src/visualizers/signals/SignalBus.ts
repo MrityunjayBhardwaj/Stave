@@ -29,8 +29,8 @@
  */
 
 import { noteToMidi } from '../../engine/noteToMidi'
-import type { IRPattern } from '../../ir/IRPattern'
-import type { IREvent } from '../../ir/IREvent'
+import type { IRPattern } from '../../codeView'
+import type { IREvent } from '../../codeView'
 import { ALIAS_MAP } from './aliasMap'
 
 /** Minimal shape the `.env` feed consumes off a HapStream event.

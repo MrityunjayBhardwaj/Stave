@@ -85,20 +85,20 @@ import {
   evalLocations,
   hasCorpusArchive,
   loadCorpus,
-} from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
+} from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
 import {
   admitProposals,
   QUERY_CYCLES,
-} from '../../../editor/src/visualEdit/miniSource/evalProposals'
-import { resolveMiniSource } from '../../../editor/src/visualEdit/miniSource/resolveMiniSource'
-import { SpanIndex } from '../../../editor/src/visualEdit/miniSource/spanRole'
+} from '../../../editor/src/codeView/miniSource/evalProposals'
+import { resolveMiniSource } from '../../../editor/src/codeView/miniSource/resolveMiniSource'
+import { SpanIndex } from '../../../editor/src/codeView/miniSource/spanRole'
 import {
   parseStepGridCore,
   parsePianoRollCore,
   projectStepGridDerived,
   projectPianoRollDerived,
-} from '../../../editor/src/visualEdit/notation/parse'
-import type { PianoRollModel, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/parse'
+import type { PianoRollModel, StepGridModel } from '../../../editor/src/codeView/notation/model'
 import { GRID_SURFACE, ROLL_SURFACE, probeEdit } from './engineEditOracle'
 
 const NO_CORE_REFUSAL = { ok: false as const, reason: '(core served this — no refusal)' }
@@ -343,7 +343,11 @@ const POPULATION = {
   // no resolver. Left at 220, verified in the same run as the wiring.
   // ⚠ 220 -> 217 at #1849: three units on which no view opened now open (the stacks it reads
   // part by part), so they leave the set of units only evaluation admits.
-  newlyAdmitted: 217,
+  // ⚠ newlyAdmitted 217 -> 215 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+  // ⚠ newlyAdmitted 215 -> 201 at #2142 (a progression written in `chord("…")` opens in the
+  // Pattern tab): fourteen distinct `chord` strings now open a chord chart, so they leave the
+  // set of units only evaluation admits. Only this field moved, as at #1240 and #1849.
+  newlyAdmitted: 201,
 }
 
 /**
@@ -357,7 +361,8 @@ const POPULATION = {
  */
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
 // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-const ALL_RESOLVED = { coreServed: 509, transfers: 439, untransferable: 28, unverified: 42 }
+// ⚠ transfers 439 -> 440, untransferable 28 -> 27 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const ALL_RESOLVED = { coreServed: 509, transfers: 440, untransferable: 27, unverified: 42 }
 
 /**
  * the counterfactual over ONLY the slice `mini-corpus.json` does not contain
@@ -380,8 +385,13 @@ const ALL_RESOLVED = { coreServed: 509, transfers: 439, untransferable: 28, unve
  * alone.
  *
  * ⚠ MOVED 76/7 → 77/6 at #1010 P4c — one of the four above falls in this slice.
+ *
+ * ⚠ MOVED 32/22/1/9 → 21/12/1/8 at #2142, the same shape as #1240 and for the same
+ * reason: `chord("…")` literals now open the chord chart, so fourteen minis left this
+ * slice (215 → 201), and they were mostly ones a writer already serves. `ALL_RESOLVED`
+ * above is UNMOVED in the same run (509/440/27/42), so only the partition moved.
  */
-const NEWLY_ADMITTED = { coreServed: 32, transfers: 22, untransferable: 1, unverified: 9 }
+const NEWLY_ADMITTED = { coreServed: 21, transfers: 12, untransferable: 1, unverified: 8 }
 
 /**
  * The sibling arm's headline, pinned here too even though it is DERIVED from
@@ -393,7 +403,8 @@ const NEWLY_ADMITTED = { coreServed: 32, transfers: 22, untransferable: 1, unver
 // drawn per bar are untransferable (the derived projections still cap at 64 columns).
 // ⚠ 1096/1275 -> 1106/1303 at #1849 — writer-census.test.ts's own figures, which this arm must equal.
 // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-const MINI_CORPUS_ARM = { transfers: 1107, asks: 1306 }
+// ⚠ transfers 1107 -> 1108 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const MINI_CORPUS_ARM = { transfers: 1108, asks: 1306 }
 // ⚠ MOVED 1041/1204 -> 1096/1273 at #1242, when the harvest gained the product's own
 // resolver and the corpus went 1535 -> 1633 units. The pin FIRED again, which is what
 // it is for: +69 asks and +55 transfers, both upward, so the rate falls 86.5% -> 86.1%

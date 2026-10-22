@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // vitest 1.x takes the ARGUMENT TUPLE and the return type, not a function type
 // — the single-type-parameter form is vitest 2 syntax and compiles to nonsense
 // here while the suite still runs green.
-const warmSamplePeaks = vi.fn<[readonly string[]], Promise<string[]>>()
+const warmSamplePeaks = vi.fn<(names: readonly string[]) => Promise<string[]>>()
 
-vi.mock('@stave/editor', () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   warmSamplePeaks: (names: readonly string[]) => warmSamplePeaks(names),
 }))
 

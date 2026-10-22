@@ -20,27 +20,35 @@
  * `serializeGain`/`applyGain` are supplied, every `mutate` writes the mini AND
  * the coordinated gain edit (replace an existing string `.gain` arg, insert
  * `.gain("…")` after the expression, or remove our `.gain` when all-neutral) as
- * ONE `replaceRanges` — a single undo step. The model is reseeded when EITHER
- * the mini OR the `.gain` changes externally. We only ever touch a `.gain`
- * whose arg is a grid-aligned string we authored; a numeric `.gain(0.8)` knob
- * or an unaligned/broadcast `.gain("0.8")` is left byte-identical.
+ * ONE `commit` — a single undo step. The model is reseeded when EITHER
+ * the mini OR the `.gain` changes externally. WHICH BYTES that write changes is
+ * not decided here: `gridWriteEdits` (`codeView/notation/gainEdit`, #1887) builds
+ * the edit list and this hook hands it to `commit` (#1909).
  *
- * Built on `useActiveChunk` (the active-editor → chunk → writeback layer).
+ * Nor are keep-or-reseed and the write plan: `reconcileGrid` and `gridWritePlan`
+ * (`codeView/notation/gridCodec`, #1942) answer both. This hook holds the state,
+ * the refs, the gesture and the `commit` call.
+ *
+ * Built on `useActiveChunk` (the active-editor → chunk layer).
  */
 import * as React from 'react'
 
-import type { ChunkInfo } from '../chunkDetect'
-import type { ChunkGain, GainWrite, ParseResult } from '../notation/model'
-import { UNREFINED, absorbViewScale, type ViewScale } from '../notation/viewResolution'
-import type { OffsetEdit, WriteSource } from '../writeback'
+import type { ChunkInfo } from '../../codeView'
+import type { NotationCodec } from '../../codeView'
+import { UNREFINED, type ViewScale } from '../../codeView'
+import { commit, type WriteSource } from '../../codeView'
+import { gridWriteEdits, readChunkGain, reconcileGrid, gridWritePlan } from '../../codeView'
 import { useActiveChunk } from './useActiveChunk'
 
-export interface GridModelOptions<M> {
+/**
+ * The panel's codec (`stepGridCodec` / `pianoRollCodec`, #1942) plus what only the
+ * panel knows: its source tag, which chunks are its own, and its view scale.
+ */
+export interface GridModelOptions<M> extends NotationCodec<M> {
   /** writeback source tag for this panel's edits */
   source: WriteSource
   /** does this chunk belong to this panel? (head function / shape gate) */
   eligible: (chunk: ChunkInfo) => boolean
-  parse: (mini: string, viewScale: ViewScale) => ParseResult<M>
   /**
    * How finely to DRAW the chunk (#1057). A change here re-parses at the new scale
    * and writes nothing — that is the free zone's whole mechanism. Defaults to the
@@ -56,25 +64,6 @@ export interface GridModelOptions<M> {
    * view must stay where they put it (see `collapseToDocument`).
    */
   onViewScaleConsumed?: () => void
-  /**
-   * Express a model drawn at a finer view at the DOCUMENT's own resolution, or
-   * `null` when the edit really used a column the document does not have (#1057).
-   *
-   * A write consults this FIRST, so that only a write which NEEDS the finer
-   * spelling respells the file. Omitting it restores the previous behaviour —
-   * every write spells what was drawn — which is what keeps a caller that never
-   * refines behaving exactly as it did.
-   */
-  collapseToDocument?: (model: M) => M | null
-  /** model → mini, or null when the model can't be expressed in the subset */
-  serialize: (model: M) => string | null
-  /**
-   * Read an existing `.gain` (scalar or per-column) onto the freshly-parsed
-   * model. Omit to opt the panel out of velocity entirely.
-   */
-  applyGain?: (model: M, gain: ChunkGain) => M
-  /** model → what to do with the `.gain` method (write / clear / skip) */
-  serializeGain?: (model: M) => GainWrite
 }
 
 export interface GridModel<M> {
@@ -107,56 +96,22 @@ export interface GridModel<M> {
   writeMini: (mini: string) => void
   beginGesture: () => void
   endGesture: () => void
+  /**
+   * Which pattern is under the panel, for state that belongs to one pattern — a
+   * refined view (#1117/#1119). Changes when the cursor moves to another pattern or
+   * the text changes for any reason EXCEPT this panel's own write (#1964): every note
+   * edit changes the text, and a zoom the user's own click threw away is the bug. Any
+   * other change still counts — a scale carried onto text the user typed can refuse
+   * to draw it at all (a 64-step pattern at ×8 needs more than 256 columns).
+   */
+  patternKey: string | null
 }
 
-/**
- * Read a chunk's `.gain` argument into a normalized `ChunkGain`:
- *   - no `.gain`            → { mini:null, numeric:null, foreign:false }
- *   - scalar `.gain(0.4)`   → { numeric:0.4 }   (a uniform base — velocity reads it)
- *   - string `.gain("…")`   → { mini:inner }    (per-column; applyGain checks alignment)
- *   - any other arg         → { foreign:true }  (a signal/expr — hands off)
- */
-function readChunkGain(chunk: ChunkInfo): ChunkGain {
-  const call = chunk.chain.find((c) => c.name === 'gain')
-  const arg = call?.args[0]
-  if (!call || !arg) return { mini: null, numeric: null, foreign: false }
-  if (arg.numeric !== null) return { mini: null, numeric: arg.numeric, foreign: false }
-  if (/^["'`]/.test(arg.raw)) return { mini: arg.raw.slice(1, -1), numeric: null, foreign: false }
-  return { mini: null, numeric: null, foreign: true } // some other expression
-}
+/** Where the pattern starts and what it says — see {@link GridModel.patternKey}. */
+const keyOf = (at: number, mini: string | null): string => `${at}:${mini ?? ''}`
 
-/** is the `.gain` arg one velocity manages (a scalar number or a string)? */
-function managedGainArg(chunk: ChunkInfo): { call: ChunkInfo['chain'][number]; argRange: [number, number] } | null {
-  const call = chunk.chain.find((c) => c.name === 'gain')
-  const arg = call?.args[0]
-  if (!call || !arg) return null
-  if (arg.numeric !== null || /^["'`]/.test(arg.raw)) return { call, argRange: arg.range }
-  return null
-}
 
-/** the gain edits for one `mutate`, given the model's `GainWrite` intent */
-function gainEdits(fresh: ChunkInfo, g: GainWrite): OffsetEdit[] {
-  if (g.kind === 'skip') return []
-  const managed = managedGainArg(fresh)
-  if (g.kind === 'clear') {
-    // remove ONLY a `.gain` we manage (scalar/string); absent/foreign → nothing
-    return managed ? [{ range: managed.call.range, text: '' }] : []
-  }
-  const lit = g.quoted ? `"${g.value}"` : g.value
-  // replace the whole managed arg in place (swaps scalar↔string as needed)…
-  if (managed) return [{ range: managed.argRange, text: lit }]
-  // …else append `.gain(…)` after the expression (the Mixer's quick-transform idiom)
-  return [{ range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${lit})` }]
-}
-
-/** does prev's gain intent already match the chunk's current `.gain`? */
-function gainUnchanged(g: GainWrite, cur: ChunkGain): boolean {
-  if (g.kind === 'skip') return true // not managing it → never force a reseed
-  if (g.kind === 'clear') return cur.mini === null && cur.numeric === null
-  return g.quoted ? cur.mini === g.value : cur.numeric !== null && cur.numeric === parseFloat(g.value)
-}
-
-export function useGridModel<M extends { viewScale?: ViewScale }>(
+export function useGridModel<M extends { viewScale?: ViewScale; lookOnly?: unknown }>(
   opts: GridModelOptions<M>,
 ): GridModel<M> {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk()
@@ -187,6 +142,17 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
   // source — retaining a ×2 model for a ×1 view, with no error anywhere.
   const modelScaleRef = React.useRef<ViewScale>(UNREFINED)
 
+  // The key this panel's last write will come back as, and the key it is standing in
+  // for. An echo of our own write keeps the pattern's key (#1964).
+  const ownEchoRef = React.useRef<string | null>(null)
+  const patternKeyRef = React.useRef<string | null>(null)
+  const patternKey = React.useMemo(() => {
+    if (!chunk) return (patternKeyRef.current = null)
+    const key = keyOf(chunk.exprRange[0], chunk.miniString)
+    if (key !== ownEchoRef.current) patternKeyRef.current = key
+    return patternKeyRef.current
+  }, [chunk])
+
   React.useEffect(() => {
     const o = optsRef.current
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
@@ -195,37 +161,27 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
       setRead(null)
       return
     }
-    const parsed = o.parse(chunk.miniString, viewScale)
-    if (!parsed.ok) {
+    // Keep the in-progress model only when the mini, the `.gain` AND the scale it
+    // was drawn at all still match; any external change to either — or any change
+    // to how finely we are drawing — reseeds. Decided by `reconcileGrid`.
+    const held = reconcileGrid(
+      o,
+      chunk.miniString,
+      readChunkGain(chunk),
+      viewScale,
+      modelRef.current,
+      modelScaleRef.current,
+    )
+    if (!held) {
       modelRef.current = null
       setModel(null)
       setRead(null)
       return
     }
-    setRead(parsed.model)
-    const chunkGain = readChunkGain(chunk)
-    const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain) : parsed.model
-
-    // Keep the in-progress model only when the mini, the `.gain` AND the scale it
-    // was drawn at all still match; any external change to either — or any change
-    // to how finely we are drawing — reseeds.
-    const prev = modelRef.current
-    // ASKED THE WAY THE WRITE ASKS IT. A refined model does not serialize to the
-    // document's bytes — it serializes to the drawn spelling — so comparing it
-    // directly would call every refined model "changed" and reseed on every frame
-    // of a velocity drag. The honest question is the one `mutate` answers: what
-    // would this model WRITE? (#1057)
-    const asWritten = prev == null ? null : (o.collapseToDocument?.(prev) ?? prev)
-    const sameMini = asWritten != null && o.serialize(asWritten) === chunk.miniString
-    const sameGain =
-      prev == null || !o.serializeGain
-        ? true
-        : gainUnchanged(o.serializeGain(prev), chunkGain)
-    const sameScale = modelScaleRef.current === viewScale
-    const next = prev && sameMini && sameGain && sameScale ? prev : fresh
+    setRead(held.read)
     modelScaleRef.current = viewScale
-    modelRef.current = next
-    setModel(next)
+    modelRef.current = held.model
+    setModel(held.model)
   }, [chunk, viewScale])
 
   /**
@@ -236,35 +192,27 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
    */
   const writeModel = React.useCallback(
     (next: M): void => {
+      // THE DOOR IS SHUT WHILE THE HELD MODEL IS LOOK-ONLY (#1975), whatever `next` says
+      // about itself. The ops already decline on such a model; this is for a transform
+      // that builds its result from scratch and so loses the mark — `next` would then
+      // look like an ordinary sourceless model and be rebuilt into the document. Asked of
+      // the model the panel is SHOWING, because that is the one the user is looking at.
+      if (modelRef.current?.lookOnly) return
       const o = optsRef.current
-      // WHAT RESOLUTION SHOULD THIS WRITE SPELL? Only an edit that used a column
-      // the document does not have needs the finer one; a velocity drag does not,
-      // and respelling for it rewrites the file to record how closely someone was
-      // looking (#1057). Asked once, here, rather than per op — and asked of the
-      // real ÷k guard rather than predicted, the same discipline `slotState` uses.
-      const atDocument = o.collapseToDocument ? o.collapseToDocument(next) : null
-      const spellsRefinement = atDocument === null
-      const toWrite = atDocument ?? next
-      const mini = o.serialize(toWrite)
-      if (mini == null) return // inexpressible — leave the document untouched
-      // The refinement is absorbed ONLY when the write actually spelled it. When
-      // the write went out at the document's own resolution the file's spelling
-      // did not change, so the marker and the panel's scale both stay put — and
-      // the model on screen stays the one the user is looking at.
-      const written = spellsRefinement ? absorbViewScale(next) : next
-      if (spellsRefinement) modelScaleRef.current = UNREFINED
-      modelRef.current = written
-      setModel(written)
-      if (spellsRefinement) o.onViewScaleConsumed?.()
+      // Which resolution this write spells, its bytes, and the model kept on screen:
+      // `gridWritePlan` decides all three (#1057, #1942).
+      const plan = gridWritePlan(o, next)
+      if (plan == null) return // inexpressible — leave the document untouched
+      // The refinement is absorbed ONLY when the write actually spelled it, so the
+      // panel's scale is dropped only then.
+      if (plan.spellsRefinement) modelScaleRef.current = UNREFINED
+      modelRef.current = plan.written
+      setModel(plan.written)
+      if (plan.spellsRefinement) o.onViewScaleConsumed?.()
       applyEdit((fresh, wb) => {
-        if (!fresh.miniRange) return
-        const edits: OffsetEdit[] = [{ range: fresh.miniRange, text: mini }]
-        // ⚠ THE SAME MODEL as the mini. These read `next` and `toWrite` separately
-        // once, and the gain mini was widened to the drawn column count while the
-        // notation was not — two ranges disagreeing about the document's resolution.
-        if (o.serializeGain) edits.push(...gainEdits(fresh, o.serializeGain(toWrite)))
-        // One pushEditOperations → the mini and its `.gain` are one undo step.
-        wb.replaceRanges(edits, o.source)
+        ownEchoRef.current = keyOf(fresh.exprRange[0], plan.mini)
+        // One commit → the mini and its `.gain` are one undo step.
+        commit(wb, gridWriteEdits(fresh, plan.mini, plan.gain), o.source)
       })
     },
     [applyEdit],
@@ -287,13 +235,13 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
   /** See {@link GridModel.writeMini}. One edit, so one undo step. */
   const writeMini = React.useCallback(
     (mini: string): void => {
+      if (modelRef.current?.lookOnly) return // same door, the text route (#1975)
       applyEdit((fresh, wb) => {
-        if (!fresh.miniRange) return
-        wb.replaceRanges([{ range: fresh.miniRange, text: mini }], optsRef.current.source)
+        commit(wb, gridWriteEdits(fresh, mini, null), optsRef.current.source)
       })
     },
     [applyEdit],
   )
 
-  return { model, read, chunk, mutate, settle, writeMini, beginGesture, endGesture }
+  return { model, read, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey }
 }

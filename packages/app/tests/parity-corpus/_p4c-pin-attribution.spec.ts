@@ -14,7 +14,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid, parseStepGridCore } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parseStepGridCore } from '../../../editor/src/codeView/notation/parse'
 import { parseStepGrid as baseParseStepGrid } from './__p4c_base__/parse'
 
 const here = path.dirname(fileURLToPath(import.meta.url))

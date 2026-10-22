@@ -17,11 +17,11 @@ export {
   docParses,
   isChunkFresh,
   classifyChunk,
-} from './chunkDetect'
-export type { ChunkInfo, ChainCall, ChainArg, ChunkType } from './chunkDetect'
+} from '../codeView'
+export type { ChunkInfo, ChainCall, ChainArg, ChunkType } from '../codeView'
 
-export { Writeback, formatNumber, normalizeEdits, applyEdits } from './writeback'
-export type { WriteSource, OffsetEdit } from './writeback'
+export { type Writeback, formatNumber, normalizeEdits, applyEdits } from '../codeView'
+export type { WriteSource, OffsetEdit } from '../codeView'
 
 export {
   detectArrangeAt,
@@ -31,8 +31,8 @@ export {
   reorderArm,
   insertArm,
   insertSilenceArm,
-  renameSection as renameArrangeSection,
-  countSectionArms as countArrangeSectionArms,
+  renameArrangeSection,
+  countArrangeSectionArms,
   removeArm,
   silenceArm,
   wrapBare,
@@ -40,28 +40,28 @@ export {
   materializeBareSplit,
   splitArm,
   setArmPattern,
-  listSectionParts as listArrangeSectionParts,
-} from './arrange'
-export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from './arrange'
+  listArrangeSectionParts,
+} from '../codeView'
+export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from '../codeView'
 
 // #463 Stage 2 — pick* section-clip write-back. Same op names as `arrange`
 // (setWeight/splitArm/…), so they're re-exported aliased as `pick*`.
-export { detectPickControlAt, detectAllPickControls } from './pickControl'
-export type { PickControl, PickControlArm, PickMethod, PickSectionEntry } from './pickControl'
+export { detectPickControlAt, detectAllPickControls } from '../codeView'
+export type { PickControl, PickControlArm, PickMethod, PickSectionEntry } from '../codeView'
 export {
-  setWeight as pickSetWeight,
-  splitArm as pickSplitArm,
-  removeArm as pickRemoveArm,
-  silenceArm as pickSilenceArm,
-  reorderArm as pickReorderArm,
-  insertArm as pickInsertArm,
-  insertSilenceArm as pickInsertSilenceArm,
-  duplicateArm as pickDuplicateArm,
-  renameSection as pickRenameSection,
-  countSectionArms as pickCountSectionArms,
-  setArmHead as pickSetArmHead,
-  listSectionParts as pickListSectionParts,
-} from './pickControl'
+  pickSetWeight,
+  pickSplitArm,
+  pickRemoveArm,
+  pickSilenceArm,
+  pickReorderArm,
+  pickInsertArm,
+  pickInsertSilenceArm,
+  pickDuplicateArm,
+  pickRenameSection,
+  pickCountSectionArms,
+  pickSetArmHead,
+  pickListSectionParts,
+} from '../codeView'
 
 export {
   parseStepGrid,
@@ -74,7 +74,7 @@ export {
   placeNote,
   resizeGrid,
   resizeRoll,
-} from './notation'
+} from '../codeView'
 export type {
   StepGridModel,
   StepLane,
@@ -82,7 +82,7 @@ export type {
   RollNote,
   ParseResult,
   ResizeMode,
-} from './notation'
+} from '../codeView'
 
 export { VisualEditStandby } from './panels/VisualEditStandby'
 export type { VisualEditStandbyProps } from './panels/VisualEditStandby'
@@ -100,11 +100,11 @@ export {
 } from './panels/gridGestures'
 export type { GridScope, GridGestureId, GridGestureDef, GridKeyMatcher } from './panels/gridGestures'
 export { PatternPanel } from './panels/PatternPanel'
-export { patternKind, isStepChunk, isRollChunk } from './panels/patternKind'
-export type { PatternKind } from './panels/patternKind'
+export { patternKind, isStepChunk, isRollChunk } from '../codeView'
+export type { PatternKind } from '../codeView'
 // #1240 — the CONTENT-aware router. Kept out of `patternKind` so that module
 // stays free of the notation parser (see both files' headers).
-export { chunkSurface, routeSurface, type Surface } from './panels/surfaceRoute'
+export { chunkSurface, routeSurface, type Surface } from '../codeView'
 export { useActiveChunk } from './panels/useActiveChunk'
 export type { ActiveChunk } from './panels/useActiveChunk'
 export { useGridModel } from './panels/useGridModel'

@@ -7,22 +7,10 @@ export default defineConfig({
   // each entry a self-contained bundle; `p5` is `import()`'d lazily inside the
   // host (PV70 condition 1 — shim before p5 eval) so the final app bundler (Next)
   // emits it as the worker's own sub-chunk.
-  // A THIRD entry (#1581): the value↔position map two packages share. The app's
-  // stepped lane may not import the barrel at runtime — that drags a CommonJS
-  // dependency into its test loader — so the map ships as its own tiny,
-  // dependency-free bundle (`@stave/editor/knobScale`), the same arrangement the
-  // worker entry uses for the same reason.
-  // A FOURTH (#1679), for the same reason: what a track's label means — its id
-  // and its mute marker — read by the app's timeline without the barrel.
-  // A FIFTH (#1799), for the same reason: the one chord builder, read by the
-  // app's command dispatcher and Shortcuts panel.
-  entry: [
-    'src/index.ts',
-    'src/visualizers/worker/index.ts',
-    'src/visualEdit/panels/knobScale.ts',
-    'src/ir/trackId.ts',
-    'src/keys/chord.ts',
-  ],
+  // Four more entries (knobScale #1581, trackId #1679, chord #1799, noteToMidi #1928)
+  // existed only because the app's TESTS could not load the main entry; #1938 fixed
+  // that, and #1943 retired them. Their names are on the main entry.
+  entry: ['src/index.ts', 'src/visualizers/worker/index.ts'],
   format: ['esm', 'cjs'],
   dts: true,
   sourcemap: true,

@@ -1,6 +1,7 @@
 import type * as Monaco from 'monaco-editor'
 import type { DocsIndex, RuntimeDoc } from './docs/types'
 import { createHoverProvider } from './docs/providers'
+import { notInStaveMistakes } from './docs/strudelNotInStave'
 
 // ---------------------------------------------------------------------------
 // Strudel function documentation
@@ -91,6 +92,14 @@ export const STRUDEL_DOCS: Record<string, RuntimeDoc> = {
     example: 'setcps(0.5)',
     // No dedicated #setcps anchor — the tempo section that documents it.
     sourceUrl: 'https://strudel.cc/understand/cycles/#setting-cpm',
+  },
+  slider: {
+    signature: 'slider(value, min = 0, max = 1, step?)',
+    description: 'Draw a slider in the code that moves value between min and max while it plays.',
+    example: 's("bd*8").gain(slider(0.5, 0, 1))',
+    // No reference entry on strudel.cc (the 47 pages its docs navigation links,
+    // searched 2026-10-20; it appears only inside examples on /understand/pitch/), so
+    // no sourceUrl — it falls back to meta.docsBaseUrl, as `every` does.
   },
   stack: {
     signature: 'stack(...patterns)',
@@ -429,6 +438,8 @@ export const STRUDEL_DOCS_INDEX: DocsIndex = {
       hint: 'Looks like a drum name — wrap it in a string: `s("bd")`.',
       example: 's("bd sd hh sd")',
     },
+    // #2167 — Strudel features Stave has not got yet say so, and link their issue.
+    ...notInStaveMistakes(),
   ],
   meta: {
     source: 'hand-curated',

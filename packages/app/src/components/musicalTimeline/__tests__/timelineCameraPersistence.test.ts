@@ -4,9 +4,10 @@ import {
   saveTimelineCamera,
 } from '../timelineCameraPersistence'
 
-// This jsdom config ships a `window.localStorage` object whose methods are all
-// undefined (non-functional). Install a real Map-backed Storage so the
-// round-trip assertions exercise actual IO; restore it afterwards.
+// Every test already gets fresh in-memory storage from vitest.setup.ts (#2126);
+// before that, the storage a test got depended on the Node version and could be
+// non-functional. This file still installs its own Map-backed Storage, so the
+// round-trip assertions exercise actual IO, and restores it afterwards.
 function installStorage(): Storage {
   const map = new Map<string, string>()
   const storage: Storage = {
@@ -96,7 +97,8 @@ describe('timelineCameraPersistence (#501/U4)', () => {
   })
 
   it('never throws when the platform localStorage is non-functional', () => {
-    // Mirror this env's default: an object whose methods are undefined.
+    // An object whose methods are undefined, as Node 25's own localStorage is
+    // without --localstorage-file, and as a browser that blocks storage can be.
     Object.defineProperty(window, 'localStorage', {
       value: {} as Storage,
       configurable: true,

@@ -58,8 +58,8 @@
  * a key the engine never wrote, nothing throws, and a meter shows the neighbour's
  * level.
  */
-import { detectAllChunks } from '../visualEdit/chunkDetect'
-import { bareCaptureIdFor, isTrackChunk } from '../visualEdit/mixer/stripModel'
+import { detectAllChunks } from '../codeView/chunkDetect'
+import { bareCaptureIdFor, isTrackChunk } from '../codeView/mixer/stripModel'
 
 /**
  * The captureId a bare document's played pattern belongs to, or `null` when the

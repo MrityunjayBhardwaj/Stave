@@ -31,7 +31,7 @@ import fs from 'node:fs'
 import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   canMoveNote,
   canRemoveNote,
@@ -41,12 +41,12 @@ import {
   removeNote,
   resizableNotes,
   resizeNote,
-} from '../../../editor/src/visualEdit/notation/place'
+} from '../../../editor/src/codeView/notation/place'
 import {
   serializePianoRoll,
   serializePianoRollWithExtent,
-} from '../../../editor/src/visualEdit/notation/serialize'
-import type { PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/serialize'
+import type { PianoRollModel } from '../../../editor/src/codeView/notation/model'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -61,13 +61,17 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 // resize, delete and move shows every OTHER unit's answer byte-identical, so the
 // aggregates below moved by those three alone.
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const ROLL_UNITS = 600
+// ⚠ 600 -> 602 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const ROLL_UNITS = 602
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const ROLL_ASKS = 131514
+// ⚠ 131514 -> 131829 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const ROLL_ASKS = 131829
 // ⚠ 17710 -> 14392 at #1849: FEWER refusals — the 18 rolls #1849 moves from the leaf reading to the core used to refuse every placement.
-const ROLL_REFUSED = 14392
+// ⚠ 14392 -> 14707 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const ROLL_REFUSED = 14707
 // ⚠ MOVED at #1849: a hash over EVERY answer, so the 28 units whose models #1849 changed move it. Every other unit's model is byte-identical to main's (corpus diff, parseStepGrid/parsePianoRoll), and the answers are functions of the model, so no old unit's answer can have moved.
-const ROLL_ANSWERS = 'cd40e47393a72b43'
+// ⚠ 'cd40e47393a72b43' -> '68f7549fa04582e8' at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const ROLL_ANSWERS = '68f7549fa04582e8'
 
 /** the durations are the axis the previous instrument lacked — see the header */
 const DURATIONS = [1, 2, 4]
@@ -129,11 +133,14 @@ const aggregate = (answers: Map<string, string>): string => {
 
 /** measured 2026-08-24 on the same tree, resizing every note the roll holds */
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const RESIZE_UNITS = 599
+// ⚠ 599 -> 601 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const RESIZE_UNITS = 601
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const RESIZE_ASKS = 16542
+// ⚠ 16542 -> 16605 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const RESIZE_ASKS = 16605
 // ⚠ MOVED at #1849: a hash over EVERY answer, so the 28 units whose models #1849 changed move it. Every other unit's model is byte-identical to main's (corpus diff, parseStepGrid/parsePianoRoll), and the answers are functions of the model, so no old unit's answer can have moved.
-const RESIZE_ANSWERS = 'ab4edf6c547572ea'
+// ⚠ 'ab4edf6c547572ea' -> '3fb5656dac214a8a' at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const RESIZE_ANSWERS = '3fb5656dac214a8a'
 
 /**
  * ⚠ THE PLURAL CONTRACT, PINNED — NOT A DEFECT (#1321). Twenty asks move a second note,
@@ -394,9 +401,11 @@ describe('surface isolation — the roll, every placement it can be asked', () =
 
 /** measured 2026-08-24 on studio_v0.2.0 + the delete writer */
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const DELETE_UNITS = 599
+// ⚠ 599 -> 601 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const DELETE_UNITS = 601
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const DELETE_ASKS = 5514
+// ⚠ 5514 -> 5535 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const DELETE_ASKS = 5535
 
 /**
  * ⚠ PINNED WITH ITS ARGUMENT, because a bare number here reads as a defect and is not one.
@@ -411,10 +420,12 @@ const DELETE_ASKS = 5514
  * the writer lost reach and that is a regression.
  */
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const DELETE_REFUSED = 357
+// ⚠ 357 -> 371 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const DELETE_REFUSED = 371
 
 // ⚠ MOVED at #1849: a hash over EVERY answer, so the 28 units whose models #1849 changed move it. Every other unit's model is byte-identical to main's (corpus diff, parseStepGrid/parsePianoRoll), and the answers are functions of the model, so no old unit's answer can have moved.
-const DELETE_ANSWERS = 'abc11daae41289a2'
+// ⚠ 'abc11daae41289a2' -> '671b1a574daea6c6' at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const DELETE_ANSWERS = '671b1a574daea6c6'
 
 interface DeleteSweep extends Sweep {
   /** asks whose written bytes serialize to null — must be 0, the whole point of the op */
@@ -577,16 +588,21 @@ describe('surface isolation — the roll, every delete it can be asked', () => {
  * earlier measurement read 1,176 lost writes that no user could ever have performed.
  */
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const MOVE_UNITS = 599
+// ⚠ 599 -> 601 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const MOVE_UNITS = 601
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const MOVE_ASKS = 172646
+// ⚠ 172646 -> 173273 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const MOVE_ASKS = 173273
 // ⚠ 3652 -> 3559 at #1827 (each bar drawn at its own step count): fewer refusals — the two re-drawn units have no half-cells
 // left to drop a note on, net of the arrival's own refusals.
-const MOVE_REFUSED = 3559
+// ⚠ 3559 -> 3573 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const MOVE_REFUSED = 3573
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const MOVE_REBUILDS = 169087
+// ⚠ 169087 -> 169700 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const MOVE_REBUILDS = 169700
 // ⚠ MOVED at #1849: a hash over EVERY answer, so the 28 units whose models #1849 changed move it. Every other unit's model is byte-identical to main's (corpus diff, parseStepGrid/parsePianoRoll), and the answers are functions of the model, so no old unit's answer can have moved.
-const MOVE_ANSWERS = '22cd306d4a0fc965'
+// ⚠ '22cd306d4a0fc965' -> '4777cf23d3ac1efc' at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const MOVE_ANSWERS = '4777cf23d3ac1efc'
 
 interface MoveSweep extends Sweep {
   unspellable: number
@@ -724,9 +740,11 @@ describe('surface isolation — the roll, every move a pointer can make', () => 
 
 /** measured 2026-08-25 on `f60985dc`, over the same units every other roll sweep uses */
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const OFFER_UNITS = 599
+// ⚠ 599 -> 601 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const OFFER_UNITS = 601
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const OFFER_NOTES = 5514
+// ⚠ 5514 -> 5535 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const OFFER_NOTES = 5535
 /**
  * ⚠ THIS PIN IS A THIRD OF THE SURFACE, AND #1322 WAS FILED AT 93.
  *
@@ -744,7 +762,8 @@ const OFFER_NOTES = 5514
 // ⚠ 1861 -> 1881 at #1827 (each bar drawn at its own step count): 20 of the arrival's notes cannot lengthen without running
 // into the next note, and a drag can resize none of them.
 // ⚠ 1881 -> 1782 at #1849: FEWER notes with no writable length — the leaf reading could lengthen none of the notes on the rolls #1849 moves to the core, which lengthens most.
-const OFFER_INERT = 1782
+// ⚠ 1782 -> 1813 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const OFFER_INERT = 1813
 
 /**
  * The exhaustive form of the question the panel asks cheaply: is there ANY column the

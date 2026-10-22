@@ -14,6 +14,8 @@
  * (Modules by `assertTierSchemaCoverage`).
  */
 
+import { SONG_CYCLE_LIMIT_MAX, SONG_CYCLE_LIMIT_MIN, SONG_CYCLE_LIMIT_STEP } from "../../state/songCycleLimit";
+
 export type SettingKind = "switch" | "slider" | "select";
 
 export interface SelectOption {
@@ -30,6 +32,8 @@ export interface SettingFieldDef {
   /** slider */
   readonly min?: number;
   readonly max?: number;
+  /** slider increment; 1 when omitted. */
+  readonly step?: number;
   readonly unit?: string;
   /** select */
   readonly options?: readonly SelectOption[];
@@ -111,6 +115,7 @@ export const SECTION_DEFS: readonly SettingsSectionDef[] = [
       { key: "noteColor", name: "Note colour", description: "How pattern-grid notes are coloured.", kind: "select", options: NOTE_COLOR_OPTIONS },
       { key: "rulerUnits", name: "Ruler units", description: "Timeline ruler numbering: Strudel cycles, or DAW-style bars & beats.", kind: "select", options: RULER_UNITS_OPTIONS },
       { key: "timelineSubRow", name: "Timeline sub-row height", description: "Height of expanded per-voice lanes.", kind: "slider", min: 12, max: 48, unit: "px" },
+      { key: "songCycleLimit", name: "Longest timeline", description: "How many cycles the timeline looks through for your song to repeat. A song that hasn't come back round by then shows this many cycles at a time, and moves on as it plays.", kind: "slider", min: SONG_CYCLE_LIMIT_MIN, max: SONG_CYCLE_LIMIT_MAX, step: SONG_CYCLE_LIMIT_STEP, unit: " cycles" },
     ],
   },
   {
@@ -134,6 +139,14 @@ export const SECTION_DEFS: readonly SettingsSectionDef[] = [
       { key: "adaptivePerf", name: "Adaptive performance", description: "GPU-budget governor auto-throttles heavy viz to protect the frame rate.", kind: "switch" },
       { key: "vizTeardown", name: "Off-screen viz teardown", description: "Free memory and GPU contexts 60s after a viz scrolls off-screen.", kind: "switch" },
       { key: "playVizOnHover", name: "Play viz on hover", description: "In split panes, freeze non-focused backdrops and play them only while hovered — saves GPU with many panes. Off: every pane's backdrop stays live.", kind: "switch" },
+    ],
+  },
+  {
+    id: "sound",
+    navLabel: "Sound",
+    title: "Sound",
+    fields: [
+      { key: "takesPhoneAudio", name: "Play through the silent switch", description: "On a phone: Stave is heard with the ring/silent switch on, and music from other apps stops when you press Play. Off: other apps keep playing alongside Stave, and the silent switch mutes it.", kind: "switch" },
     ],
   },
   { id: "modules", navLabel: "Modules", title: "Strudel modules", custom: "modules" },

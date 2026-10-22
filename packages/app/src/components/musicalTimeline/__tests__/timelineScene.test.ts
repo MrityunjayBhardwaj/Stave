@@ -126,7 +126,7 @@ describe('buildTimelineScene', () => {
   })
 
   it('resolves the display NAME + colour from the source label (#579 STEP 2)', async () => {
-    const { paletteForTrack, trackIndexOf } = await import('../colors')
+    const { trackIdentity } = await import('@stave/editor')
     // Two lanes keyed positionally (`d1`,`d2`) as the live engine does. `d1` is a
     // NAMED `bass:` track; `d2` is anonymous `$:`. Source + per-lane dollarPos:
     //   `bass: s("bd")`  → offset 0
@@ -148,14 +148,14 @@ describe('buildTimelineScene', () => {
     const d2 = scene.lanes.find((l) => l.laneKey === 'd2')!
     // Named track: name + colour resolve to the LABEL, not `d1`.
     expect(d1.displayName).toBe('bass')
-    expect(d1.color).toBe(paletteForTrack(trackIndexOf('bass'), 'bass'))
+    expect(d1.color).toBe(trackIdentity('bass').color)
     // Anonymous track: name + colour stay positional `d2`.
     expect(d2.displayName).toBe('d2')
-    expect(d2.color).toBe(paletteForTrack(trackIndexOf('d2'), 'd2'))
+    expect(d2.color).toBe(trackIdentity('d2').color)
   })
 
   it('layers a custom-colour override over the palette, keyed by display name (#581)', async () => {
-    const { paletteForTrack, trackIndexOf } = await import('../colors')
+    const { trackIdentity } = await import('@stave/editor')
     const code = 'bass: s("bd")\n$: s("hh")'
     const analysis: SongAnalysis = {
       periodCycles: 1,
@@ -198,7 +198,7 @@ describe('buildTimelineScene', () => {
       new Map(),
     )
     expect(noOverride.lanes.find((l) => l.laneKey === 'd1')!.color).toBe(
-      paletteForTrack(trackIndexOf('bass'), 'bass'),
+      trackIdentity('bass').color,
     )
   })
 
@@ -287,7 +287,7 @@ describe('buildTimelineScene', () => {
 })
 
 // `collectNoteMarks` (timelineMarks.ts) needs the runtime `collectCycles` from
-// `@stave/editor`, whose CJS `gifenc` dep breaks vitest's loader — so it isn't
+// `@stave/editor`, whose CJS `gifenc` dep broke vitest's loader until #1938 — so it isn't
 // unit-tested here (importing it would pull the editor bundle into this suite).
 // Its null-IR guard is trivial; the real collection path is covered by the
 // Playwright spec against a real evaluated song.

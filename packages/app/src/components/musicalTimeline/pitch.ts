@@ -13,8 +13,10 @@
  *   4. evt.params.freq        — chained `.freq(...)` Param (whitelist add
  *                               in α-1 / D-06; pre-α-1 always undefined).
  *
- * String values go through `noteStringToMidi`; numeric values are MIDI
- * directly except `freq` which routes through `freqToMidi`.
+ * String values go through the editor's `noteToMidi`, the one note-name
+ * reader, whose grammar is Strudel's (`cs3`, `ef3` and a bare `g` all read,
+ * #1928); numeric values are MIDI directly except `freq` which routes through
+ * `freqToMidi`.
  *
  * `n` interpretation: in Strudel, `.n(N)` is a scale-degree offset when a
  *  `.scale(...)` is attached, otherwise a direct MIDI number. v1 chrome
@@ -23,45 +25,7 @@
  *  notes.
  */
 
-import type { IREvent } from '@stave/editor'
-
-/** Semitone offset of each natural note from C in an octave. C=0, D=2, …, B=11. */
-const NOTE_OFFSET: Record<string, number> = {
-  C: 0,
-  D: 2,
-  E: 4,
-  F: 5,
-  G: 7,
-  A: 9,
-  B: 11,
-}
-
-/**
- * Convert a Strudel-style note string ("c4", "C#5", "Bb-1") to a MIDI
- * integer. Returns null on parse failure.
- *
- * Inverse of `midiToName(n)` at MusicalTimeline.tsx:96-103. The two share
- * the convention C4 = MIDI 60.
- *
- * Permits:
- *   - case-insensitive note letter (`c4` ≡ `C4`).
- *   - single accidental `#` or `b` (no doubled — `##` / `bb` out of scope).
- *   - signed octave (`Bb-1` → MIDI 10).
- *
- * Does NOT permit: micro-tonal `+50c`, ASCII alternative accidentals, or
- * pitch-class-without-octave forms.
- */
-export function noteStringToMidi(s: string): number | null {
-  const m = s.match(/^([A-Ga-g])([#b]?)(-?\d+)$/)
-  if (!m) return null
-  const letter = m[1].toUpperCase()
-  const base = NOTE_OFFSET[letter]
-  if (base === undefined) return null
-  const accidental = m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0
-  const octave = parseInt(m[3], 10)
-  if (!Number.isFinite(octave)) return null
-  return (octave + 1) * 12 + base + accidental
-}
+import { noteToMidi, type IREvent } from '@stave/editor'
 
 /**
  * Convert frequency (Hz) to MIDI (float). 440 Hz → 69 (A4). Useful for
@@ -100,7 +64,7 @@ export function extractPitch(evt: IREvent): ExtractedPitch | null {
       return { source: 'note', midi: evt.note }
     }
     if (typeof evt.note === 'string') {
-      const m = noteStringToMidi(evt.note)
+      const m = noteToMidi(evt.note)
       if (m !== null) return { source: 'note', midi: m }
     }
   }
@@ -122,7 +86,7 @@ export function extractPitch(evt: IREvent): ExtractedPitch | null {
       return { source, midi }
     }
     if (typeof v === 'string') {
-      const midi = noteStringToMidi(v)
+      const midi = noteToMidi(v)
       if (midi !== null) return { source, midi }
     }
     return null

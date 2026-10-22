@@ -18,9 +18,9 @@ import { describe, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid, parseStepGridCore } from '../../../editor/src/visualEdit/notation/parse'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import type { StepGridModel, PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
+import { parseStepGrid, parseStepGridCore } from '../../../editor/src/codeView/notation/parse'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import type { StepGridModel, PianoRollModel } from '../../../editor/src/codeView/notation/model'
 import {
   probeEdit,
   GRID_SURFACE,

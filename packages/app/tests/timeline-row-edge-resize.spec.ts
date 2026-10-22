@@ -3,7 +3,9 @@ import { test, expect, type Page } from '@playwright/test'
 import { bootApp, seedCode } from './_appBoot'
 
 /**
- * #1750 — drag the edge between two track names to resize the Timeline's rows.
+ * #1750 — drag the edge below a track name to resize the Timeline's rows: the
+ * edge between two tracks, or (#2084) the last track's own bottom edge, so a
+ * song with one track can resize its rows too.
  *
  * The drag writes the ONE shared row-height setting (12–48 px, saved per
  * browser), so every lane follows it and the value survives a reload. The edge
@@ -51,8 +53,8 @@ test.describe('timeline row edge resize (#1750)', () => {
     await edge.hover()
     expect(await edge.evaluate((el) => getComputedStyle(el).cursor)).toBe('row-resize')
     await expect(edge).toHaveAttribute('data-active', 'true')
-    // The last track has no edge below it to drag.
-    await expect(page.locator('[data-full-song-row-edge="d3"]')).toHaveCount(0)
+    // #2084 — the last track's bottom edge can be dragged too.
+    await expect(page.locator('[data-full-song-row-edge="d3"]')).toHaveCount(1)
 
     // Down 15 px: one row above the edge, so the row grows by 15.
     const down = await dragEdge(page, 'd1', 15)
@@ -93,5 +95,28 @@ test.describe('timeline row edge resize (#1750)', () => {
     expect(await rowHeight(page, 'd2')).toBe(35)
     const after = (await edge.boundingBox())!
     expect(Math.abs(after.y + after.height / 2 - down.releaseY)).toBeLessThanOrEqual(1.5)
+  })
+
+  test('a song with ONE track resizes its rows by the edge below it (#2084)', async ({ page }) => {
+    await seedCode(page, 'setcps(0.5)\n$: note("c3 e3").s("sine")')
+    await page.locator('[data-full-song-lane="d1"]').waitFor({ timeout: 30_000 })
+    expect(await rowHeight(page, 'd1')).toBe(25) // PRECONDITION: the default
+
+    const edge = page.locator('[data-full-song-row-edge="d1"]')
+    await expect(edge).toHaveCount(1)
+    await edge.hover()
+    expect(await edge.evaluate((el) => getComputedStyle(el).cursor)).toBe('row-resize')
+
+    // Down 15 px: the one row grows by 15, and the edge ends under the pointer.
+    const down = await dragEdge(page, 'd1', 15)
+    expect(await rowHeight(page, 'd1')).toBe(40)
+    expect(await saved(page)).toBe('40')
+    const after = (await edge.boundingBox())!
+    expect(Math.abs(after.y + after.height / 2 - down.releaseY)).toBeLessThanOrEqual(1)
+
+    // And back up, past the minimum: it stops there.
+    await dragEdge(page, 'd1', -100)
+    expect(await rowHeight(page, 'd1')).toBe(12)
+    expect(await saved(page)).toBe('12')
   })
 })

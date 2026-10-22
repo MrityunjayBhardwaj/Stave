@@ -81,7 +81,7 @@ describe('#1113 — an underscore-prefixed probe is not collected by the editor 
     // The negative arm below passes if vitest collects nothing FOR ANY REASON —
     // a bad path, a broken binary, a wrong cwd. This proves the same call collects
     // a real file, so "nothing collected" means excluded rather than broken.
-    const out = collect('src/ir/__tests__/arrange-materialize-haps.test.ts')
+    const out = collect('src/codeView/ir/__tests__/arrange-materialize-haps.test.ts')
     expect(out).not.toContain('No test files found')
     expect(out).toContain('1 passed')
   }, 120_000)

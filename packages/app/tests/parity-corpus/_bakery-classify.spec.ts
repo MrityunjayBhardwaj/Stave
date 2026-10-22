@@ -16,7 +16,7 @@
  */
 import { describe, it } from 'vitest'
 import fs from 'node:fs'
-import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
+import { parseStrudel } from '../../../editor/src/codeView/ir/parseStrudel'
 import { classifyFallback } from './classifyFallback'
 
 const SAMPLES = process.env.BAKERY_SAMPLES

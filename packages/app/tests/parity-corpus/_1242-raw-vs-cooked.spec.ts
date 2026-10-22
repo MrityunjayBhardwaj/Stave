@@ -29,8 +29,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { unitsWithStatus } from './editCoverage'
-import { parseTopLevel } from '../../../editor/src/visualEdit/chunkDetect'
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseTopLevel } from '../../../editor/src/codeView/chunkDetect'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

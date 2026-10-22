@@ -29,14 +29,14 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parsePianoRoll, parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
+import { parsePianoRoll, parseStepGrid } from '../../../editor/src/codeView/notation/parse'
 import {
   columnCount,
   columnOverlap,
   isCellOn,
   rollContentRange,
-} from '../../../editor/src/visualEdit/notation/model'
-import { midiToPitch, pitchToMidi } from '../../../editor/src/visualEdit/notation/pitch'
+} from '../../../editor/src/codeView/notation/model'
+import { midiToPitch, pitchToMidi } from '../../../editor/src/codeView/notation/pitch'
 import { ungatedPlace, ungatedToggle } from './ungatedOps'
 import {
   canPlaceNote,
@@ -45,12 +45,12 @@ import {
   placeNote,
   toggleCell,
   viewPlacesNotes,
-} from '../../../editor/src/visualEdit/notation/place'
+} from '../../../editor/src/codeView/notation/place'
 import {
   serializePianoRoll,
   serializeStepGain,
   serializeStepGrid,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 import { boxLengths, boxesPlaceNotes, ownStepWidths, rowBoxes } from '../../../editor/src/visualEdit/panels/writtenSteps'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -248,12 +248,14 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     // ⚠ 4466/4172 -> 4135/3841 at #1849: the leaf path loses the cells of the 4 grids #1849 moves to the core — 331 asks, all refused on the leaf path, so the 294 it takes are unmoved.
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-    ).toEqual({ asks: 4023, refused: 3729 })
+    // ⚠ asks 4023 -> 4132, refused 3729 -> 3838 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+    ).toEqual({ asks: 4132, refused: 3838 })
     expect(
       { asks: by.alt.asks, refused: by.alt.refused },
       'alt path — 512 → 0 refused',
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    ).toEqual({ asks: 3934, refused: 0 })
+    // ⚠ asks 3934 -> 3825 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+    ).toEqual({ asks: 3825, refused: 0 })
     expect(
       { leaf: by.leaf.units, alt: by.alt.units, element: by.element.units },
       'parseable units per path',
@@ -261,7 +263,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       // ⚠ element 874 -> 875 at #1827 (each bar drawn at its own step count): the newly opened drum grid.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-    ).toEqual({ leaf: 80, alt: 61, element: 885 })
+    // ⚠ alt 61 -> 59, leaf 80 -> 82 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+    ).toEqual({ leaf: 82, alt: 59, element: 885 })
 
     // The residual's SHAPE is asserted in its own test below, not here — an assertion
     // that sits after a failing one never runs, so bundling it into this body would
@@ -569,7 +572,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // resolver, so every figure here is over a wider population. Upward only.
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-    expect(leafViews, 'leaf grids in the corpus').toBe(80)
+    // ⚠ 80 -> 82 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+    expect(leafViews, 'leaf grids in the corpus').toBe(82)
     // WHAT THE PATH RULE WOULD HAVE SAID, pinned as the delta rather than described:
     // it answered `false` on all 82. 20 of them now answer `true` — the 18 that take
     // a note on a rest column, plus 2 with no empty cell to ask about.
@@ -601,7 +605,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       // ⚠ 508 -> 509 at #1827: the newly opened drum grid, which takes a note too.
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-    ).toEqual([519, 519])
+    // ⚠ 519 -> 517 at #1974 (a hit is anchored on the note that wrote it): the grids `[c eb g <f bb>](3,8,<0 1>)` and `{c [f g] d# d}%2` go element -> leaf writer, and a leaf-written view is offered no finer — store probes/timing-facts-1974/anchor-move.
+    ).toEqual([517, 517])
   })
 
   /**
@@ -665,7 +670,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // above is the check that this is a real gain rather than a view that still refuses
     // claiming otherwise, and it is still empty over the same swept rows.
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-    expect(saidNo, 'rolls answering "places nothing"').toBe(38)
+    // ⚠ 38 -> 40 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+    expect(saidNo, 'rolls answering "places nothing"').toBe(40)
     expect(rowsSwept, 'padded-range placements swept on them').toBeGreaterThan(1000)
   })
 
@@ -778,13 +784,17 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       // `<c2*2 g2*5 [a g]>` / `<0 [0 1] 0 [0 1 0]>` drawn per bar with far fewer cells
       // than their shared grids had. `saidNothing` and the disagreements are UNMOVED.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused). `saidNothing` FALLS 56 -> 38: the 18 rolls it moves off the leaf reading now take a note.
-      rolls: 602,
+      // ⚠ rolls 602 -> 604 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      rolls: 604,
       // ⚠ 57 -> 56 at #1312 — the same single view as the arm above, seen from the probe
       // side. `rolls`, `probeAsks` and `fullSurfaceAsks` are UNMOVED: this widening opened
       // no new document, it only let an existing one accept a placement.
-      saidNothing: 38,
-      probeAsks: 46481,
-      fullSurfaceAsks: 135089,
+      // ⚠ saidNothing 38 -> 40 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      saidNothing: 40,
+      // ⚠ probeAsks 46481 -> 46600 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      probeAsks: 46600,
+      // ⚠ fullSurfaceAsks 135089 -> 135509 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      fullSurfaceAsks: 135509,
     })
   })
 

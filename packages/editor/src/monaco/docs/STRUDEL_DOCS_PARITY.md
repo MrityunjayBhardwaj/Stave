@@ -51,7 +51,7 @@ aliases { pickSqueeze: 'inhabit'} ┘         (DocsIndex)              │  crea
 | The data map | `monaco/strudelDocs.ts` | `STRUDEL_DOCS`, `VIZ_KINDS`→`VIZ_ENTRIES`, `STRUDEL_DOCS_INDEX`, `registerStrudelHover` |
 | The doc shape + resolver | `monaco/docs/types.ts` | `RuntimeDoc` (`sourceUrl?`), `DocsIndex` (`aliases?`), `resolveDoc` |
 | Hover + completion factories | `monaco/docs/providers.ts` | `createHoverProvider`, `renderHoverContents`, `createDotCompletionProvider` |
-| Registration | `monaco/StrudelMonaco.tsx` | calls `registerStrudelHover(monaco)` |
+| Registration | `workspace/languages.ts` | `ensureWorkspaceLanguages` calls `registerStrudelHover(m)` |
 | Box-width CSS | `app/src/app/globals.css` | `.monaco-hover` width cap + code wrap |
 
 **Resolution contract** (`resolveDoc`): direct key → alias key → `null`. **There is no JSDoc/runtime fallback.** This is the crux: an absent key produces *nothing*, not an error — so gaps are invisible until a user reports "why no hover?"

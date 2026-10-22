@@ -5,7 +5,7 @@
  * The pixels are read back off the real canvas in `synth-lane-envelope.spec.ts`.
  */
 import { describe, it, expect } from 'vitest'
-import { ENVELOPE_ALPHA, ENVELOPE_STALE_ALPHA, drawTimeline, type DrawTheme, type DrawTransform } from '../drawTimeline'
+import { ENVELOPE_ALPHA, ENVELOPE_STALE_ALPHA, MARK_GAP_PX, drawTimeline, type DrawTheme, type DrawTransform } from '../drawTimeline'
 import { computeLaneLayout, lanesInView } from '../laneLayout'
 import { DEFAULT_METER } from '../../../lib/meter'
 import {
@@ -52,7 +52,7 @@ const synth: SceneNote[] = [{ cycle: 0, end: 0.5, pitch: 48, gain: 1, voice: 'sa
 function lane(key: string, notes: SceneNote[], extra: Partial<SceneLane> = {}): SceneLane {
   return {
     laneKey: key,
-    displayName: key,
+    displayName: key, shownName: key,
     color: '#0af',
     density: [1, 1, 1, 1],
     notes,
@@ -134,6 +134,19 @@ describe('envelopeTrackIds — which tracks to render (#1731)', () => {
       ['d3', '$0'],
     ])
     expect(envelopeTrackIds(scene, byLane)).toEqual(['$1', '$0'])
+  })
+
+  it('never asks for the track behind a Bars lane of files: its Waveform view is the files, not a render (#2138)', () => {
+    const scene = sceneOf([
+      lane('d1', synth, { bars: true }),
+      lane('d2', synth, { bars: true, files: true }),
+    ])
+    const byLane = new Map([
+      ['d1', '$0'],
+      ['d2', '$1'],
+    ])
+    // The Bars synth lane is still asked for (#1748); the Bars drum lane is not.
+    expect(envelopeTrackIds(scene, byLane)).toEqual(['$0'])
   })
 
   it('asks for nothing without the lane→track join', () => {
@@ -227,6 +240,8 @@ describe('drawTimeline — a collapsed synth lane draws its envelope INSIDE its 
    *  in the gridline colour. */
   const columns = (rects: Rect[]) => rects.filter((r) => r.w === 1 && (r.style === '#0af' || r.style === theme.clipCaption))
   const inX = (rects: Rect[], x0: number, x1: number) => rects.filter((r) => r.x >= x0 && r.x < x1)
+  /** A one-cycle bar: the 100 px slot less the gap before the next mark (#2157). */
+  const BAR_W = 100 - MARK_GAP_PX
   /** The bar drawn for a note starting at `x` (lane colour, full width). */
   const barAt = (rects: Rect[], x: number, w: number) => rects.find((r) => r.x === x && r.w === w && r.style === '#0af')!
 
@@ -253,12 +268,12 @@ describe('drawTimeline — a collapsed synth lane draws its envelope INSIDE its 
     const layout = computeLaneLayout(scene.lanes, new Set(), 48, 88)
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
-    const low = barAt(rects, 0, 100)
-    const high = barAt(rects, 100, 100)
+    const low = barAt(rects, 0, BAR_W)
+    const high = barAt(rects, 100, BAR_W)
     expect(low.y).toBeGreaterThan(high.y) // PRECONDITION: two heights
     for (const [bar, x0] of [[low, 0], [high, 100]] as const) {
-      const cols = inX(columns(rects), x0, x0 + 100)
-      expect(cols).toHaveLength(100)
+      const cols = inX(columns(rects), x0, x0 + bar.w)
+      expect(cols).toHaveLength(bar.w)
       for (const c of cols) {
         expect(c.y).toBeGreaterThanOrEqual(bar.y - 1e-6)
         expect(c.y + c.h).toBeLessThanOrEqual(bar.y + bar.h + 1e-6)
@@ -272,7 +287,7 @@ describe('drawTimeline — a collapsed synth lane draws its envelope INSIDE its 
     const layout = computeLaneLayout(scene.lanes, new Set(), 48, 88)
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
-    const bar = barAt(rects, 0, 100)
+    const bar = barAt(rects, 0, BAR_W)
     expect(bar.h).toBeLessThan(layout.boxes[0].height - 6)
     expect(inX(columns(rects), 0, 100)[0].h).toBeCloseTo(bar.h, 5)
   })
@@ -291,7 +306,7 @@ describe('drawTimeline — a collapsed synth lane draws its envelope INSIDE its 
     drawTimeline(ctx, scene, transform, theme, layout)
     const held = inX(columns(rects), 50, 51) // mid-note: column 12
     expect(held).toHaveLength(1)
-    expect(held[0].h).toBeCloseTo(barAt(rects, 0, 100).h, 5)
+    expect(held[0].h).toBeCloseTo(barAt(rects, 0, BAR_W).h, 5)
   })
 
   it('draws over its bar, on a recessed bed, so the bar does not hide it', () => {
@@ -299,8 +314,8 @@ describe('drawTimeline — a collapsed synth lane draws its envelope INSIDE its 
     const layout = computeLaneLayout(scene.lanes, new Set(), 48, 88)
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
-    const bar = rects.findIndex((r) => r.x === 0 && r.w === 100 && r.style === '#0af')
-    const bed = rects.findIndex((r, i) => i > bar && r.x === 0 && r.w === 100 && r.style === theme.background)
+    const bar = rects.findIndex((r) => r.x === 0 && r.w === BAR_W && r.style === '#0af')
+    const bed = rects.findIndex((r, i) => i > bar && r.x === 0 && r.w === BAR_W && r.style === theme.background)
     const firstColumn = rects.findIndex((r) => r.w === 1 && r.x === 0 && r.style === '#0af')
     expect(bed).toBeGreaterThan(bar)
     expect(firstColumn).toBeGreaterThan(bed)
@@ -329,9 +344,11 @@ describe('drawTimeline — a collapsed synth lane draws its envelope INSIDE its 
     const layout = computeLaneLayout(scene.lanes, new Set(), 60, 88)
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
-    const bar = barAt(rects, 0, 50)
-    const tail = inX(columns(rects), 50, 400)
-    expect(tail).toHaveLength(50) // x 50..99, then silence
+    const bar = barAt(rects, 0, 50 - MARK_GAP_PX)
+    // From the bar's end through x 99, then silence. With no bar after it, the
+    // tail runs through the gap: the sound is still there.
+    const tail = inX(columns(rects), bar.w, 400)
+    expect(tail).toHaveLength(100 - bar.w)
     for (const c of tail) {
       expect(c.alpha).toBeCloseTo(ENVELOPE_ALPHA, 9)
       expect(c.y + c.h / 2).toBeCloseTo(bar.y + bar.h / 2, 5)
@@ -348,8 +365,11 @@ describe('drawTimeline — a collapsed synth lane draws its envelope INSIDE its 
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
     const faint = columns(rects).filter((c) => Math.abs(c.alpha - ENVELOPE_ALPHA) < 1e-9)
-    expect(Math.min(...faint.map((c) => c.x))).toBe(50)
-    expect(faint.filter((c) => c.x < 200).every((c) => c.x < 100)).toBe(true)
+    expect(Math.min(...faint.map((c) => c.x))).toBe(50 - MARK_GAP_PX)
+    expect(faint.filter((c) => c.x < 200 - MARK_GAP_PX).every((c) => c.x < 100)).toBe(true)
+    // …and stops short of the gap before it, which would otherwise fill back in
+    // and join the two bars (#2157).
+    expect(columns(rects).some((c) => c.x === 100 - MARK_GAP_PX)).toBe(false)
   })
 
   it('a stale envelope draws in the muted caption colour', () => {
@@ -358,7 +378,7 @@ describe('drawTimeline — a collapsed synth lane draws its envelope INSIDE its 
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
     const cols = inX(columns(rects), 0, 200)
-    expect(cols).toHaveLength(200)
+    expect(cols).toHaveLength(200 - MARK_GAP_PX) // all but the gap between the two bars (#2157)
     expect(cols.every((r) => r.style === theme.clipCaption)).toBe(true)
   })
 
@@ -382,13 +402,13 @@ describe('drawTimeline — a collapsed synth lane draws its envelope INSIDE its 
     const layout = computeLaneLayout(scene.lanes, new Set(['d1']), 25, 88, 40)
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
-    const low = barAt(rects, 0, 100)
-    const high = barAt(rects, 100, 100)
+    const low = barAt(rects, 0, BAR_W)
+    const high = barAt(rects, 100, BAR_W)
     expect(low.h).toBe(24) // PRECONDITION: the sub-row bar (#1744), room for a shape
     expect(low.y).toBeGreaterThan(high.y)
     for (const [bar, x0] of [[low, 0], [high, 100]] as const) {
-      const cols = inX(columns(rects), x0, x0 + 100)
-      expect(cols).toHaveLength(100)
+      const cols = inX(columns(rects), x0, x0 + bar.w)
+      expect(cols).toHaveLength(bar.w)
       for (const c of cols) expect(c.y + c.h / 2).toBeCloseTo(bar.y + bar.h / 2, 5)
     }
   })

@@ -16,7 +16,7 @@ import {
   clearIRSnapshot,
   type IRSnapshot,
 } from '../../engine/irInspector'
-import type { IREvent } from '../../ir/IREvent'
+import type { IREvent } from '../../codeView/ir/IREvent'
 
 // ---- Mock factory helpers ----
 

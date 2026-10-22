@@ -21,6 +21,12 @@ type EvalBehavior =
 
 let evalBehavior: EvalBehavior = 'two-anon'
 
+// #345 — what the transpiler reports for `$: s("bd").gain(slider(0.5, 0, 1))._pianoroll()`
+const SLIDER_WIDGETS = [
+  { type: 'slider', from: 23, to: 26, value: '0.5', min: 0, max: 1 },
+  { type: '_pianoroll', to: 47, index: 0 },
+]
+
 // Captured onEvalError callback from webaudioRepl construction
 let capturedOnEvalError: ((err: Error) => void) | null = null
 
@@ -117,6 +123,8 @@ vi.mock('@strudel/core', () => {
     // not enough to make the mock's omission harmless.
     setStringParser: vi.fn(),
     pure: vi.fn((v: unknown) => v),
+    // #345 — the vendored `sliderWithID` is built over these at boot.
+    ref: vi.fn(),
   }
 })
 
@@ -179,7 +187,11 @@ vi.mock('@strudel/webaudio', () => {
         // does before it resolves. `unknown-locs` is a runtime with no such state.
         repl.state = code === 'unknown-locs'
           ? undefined
-          : { miniLocations: code === 'declared-locs' ? [[9, 17]] : [] }
+          : {
+              miniLocations: code === 'declared-locs' ? [[9, 17]] : [],
+              // #345 — the transpiler's widgets, kept beside the spans (`repl.mjs:275`)
+              widgets: code === 'sliders' ? SLIDER_WIDGETS : [],
+            }
 
         if (code === 'declared-locs' || code === 'unknown-locs') {
           // #1619 — a stray quoted-space span FIRST ([1,7), what `.color('sienna')`
@@ -244,6 +256,8 @@ vi.mock('@strudel/webaudio', () => {
     webaudioOutput: vi.fn(),
     registerSynthSounds: vi.fn(),
     registerZZFXSounds: vi.fn(),
+    // Stave's superdough patch (#2058): stop() fades out what is still sounding
+    stopAllSounds: vi.fn(() => 0),
     // Real superdough returns the SAME SuperdoughAudioController singleton on
     // every call. The mock memoizes so tests can inspect the same getOrbit spy
     // the engine itself used during init().
@@ -302,6 +316,7 @@ import { StrudelEngine, isBootStepFailure, type BootStepFailure } from './Strude
 import type { LiveCodingEngine } from './LiveCodingEngine'
 import type { HapEvent } from './HapStream'
 import { Pattern } from '@strudel/core'
+import { withOfflineGraph } from './offlineGraph'
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -621,6 +636,37 @@ describe('StrudelEngine .viz() backdrop flag (#364)', () => {
     // Inline request registered for the track; no backdrop promotion.
     expect(inlineViz?.vizRequests.get('$0')?.vizId).toBe('spectrum')
     expect(inlineViz?.backdropRequest).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #345 — `slider(…)`: the transpiler's slider widgets reach the editor through
+// `components.inlineViz.sliders`, as the repl reported them.
+// ---------------------------------------------------------------------------
+
+describe('StrudelEngine slider widgets (#345)', () => {
+  beforeEach(() => {
+    patternInstanceCounter = 0
+    capturedOnEvalError = null
+    evalBehavior = 'one-named'
+    vi.clearAllMocks()
+  })
+
+  it('publishes the sliders of the last evaluate, without the other widgets', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('sliders')
+    expect(engine.components.inlineViz?.sliders).toEqual([SLIDER_WIDGETS[0]])
+  })
+
+  it('keeps them when an evaluate fails, and drops them when one succeeds without any', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('sliders')
+    await engine.evaluate('error-code')
+    expect(engine.components.inlineViz?.sliders).toEqual([SLIDER_WIDGETS[0]])
+    await engine.evaluate('one-named')
+    expect(engine.components.inlineViz?.sliders).toBeUndefined()
   })
 })
 
@@ -1267,5 +1313,54 @@ describe('StrudelEngine live output applies the shared alias step (#1635)', () =
     } finally {
       get.mockImplementation(() => ({}))
     }
+  })
+})
+
+// #2064 — Stop's fade (#2058) acts on superdough's context and live-sound map,
+// which a bounce borrows while it renders. The fade waits for the graph.
+describe('StrudelEngine.stop() fades out on the live graph only (#2064)', () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0))
+  async function stopAllSpy() {
+    const wa = (await import('@strudel/webaudio')) as unknown as { stopAllSounds: ReturnType<typeof vi.fn> }
+    wa.stopAllSounds.mockClear()
+    return wa.stopAllSounds
+  }
+
+  it('with no render, the fade happens at once', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    const stopAll = await stopAllSpy()
+    engine.stop()
+    expect(stopAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('during a render, the fade waits until the render lets go of the graph', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    const stopAll = await stopAllSpy()
+    let release!: () => void
+    const render = withOfflineGraph(() => new Promise<void>((r) => (release = r)))
+    await tick()
+    engine.stop()
+    const during = stopAll.mock.calls.length
+    release()
+    await render
+    await tick()
+    expect([during, stopAll.mock.calls.length]).toEqual([0, 1])
+  })
+
+  it('a Play pressed before the render lets go drops the fade, or it would cut the new notes', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    const stopAll = await stopAllSpy()
+    let release!: () => void
+    const render = withOfflineGraph(() => new Promise<void>((r) => (release = r)))
+    await tick()
+    engine.stop()
+    engine.play()
+    release()
+    await render
+    await tick()
+    expect(stopAll).not.toHaveBeenCalled()
   })
 })

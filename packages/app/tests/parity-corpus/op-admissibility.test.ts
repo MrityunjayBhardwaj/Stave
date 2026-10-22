@@ -61,12 +61,12 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   serializeStepGrid,
   serializePianoRoll,
   serializeStepGridWithExtent,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 import {
   RESOLUTION_PRESETS,
   canDoubleStepGrid,
@@ -85,15 +85,15 @@ import {
   rollSlotState,
   freeZoneScale,
   type SlotState,
-} from '../../../editor/src/visualEdit/notation/resolution'
-import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
-import { resizeGrid, resizeRoll } from '../../../editor/src/visualEdit/notation/resize'
-import { canResizeCell, resizeCell } from '../../../editor/src/visualEdit/notation/place'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/resolution'
+import { documentSteps } from '../../../editor/src/codeView/notation/viewResolution'
+import { resizeGrid, resizeRoll } from '../../../editor/src/codeView/notation/resize'
+import { canResizeCell, resizeCell } from '../../../editor/src/codeView/notation/place'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
 import type {
   PianoRollModel,
   StepGridModel,
-} from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
-import { detectAllChunks } from '../../chunkDetect'
-import { buildStripModels } from '../stripModel'
+import { detectAllChunks } from '../../../codeView/chunkDetect'
+import { buildStripModels } from '../../../codeView/mixer/stripModel'
 import { countStemTracks, stemFileNames, SONG_LEVEL_STEM_NAME } from '../stemNames'
 import { SONG_LEVEL_STEM } from '../../../engine/stemSplit'
 

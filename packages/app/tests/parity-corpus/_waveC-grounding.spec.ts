@@ -31,7 +31,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
+import { parseStrudel } from '../../../editor/src/codeView/ir/parseStrudel'
 
 const SAMPLES = path.join(
   __dirname,

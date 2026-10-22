@@ -16,6 +16,7 @@ import React, {
   useState,
 } from 'react'
 import { StrudelEngine } from './engine/StrudelEngine'
+import { writtenBpm } from './codeView'
 import type { StrudelTheme } from './theme/tokens'
 import type { VizDescriptor } from './visualizers/types'
 import { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
@@ -116,14 +117,10 @@ export function StrudelEditor({
 
   // BPM extraction + soundNames collection after successful evaluate
   const handlePostEvaluate = useCallback((engine: LiveCodingEngine) => {
-    // Extract BPM from setcps line if present
-    const code = codeRef.current
-    const cpsMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/)
-    if (cpsMatch) {
-      const numerator = parseFloat(cpsMatch[1])
-      const denominator = parseFloat(cpsMatch[2])
-      if (denominator > 0) setBpm(Math.round((numerator / denominator) * 60))
-    }
+    // The tempo the document sets — the one reader, so this readout and the
+    // workspace play bar agree (#1925; this copy multiplied by 60, not 240).
+    const written = writtenBpm(codeRef.current)
+    if (written !== undefined) setBpm(written)
 
     // Collect sound names once for Monaco autocompletion
     const strudelEngine = engine as StrudelEngine

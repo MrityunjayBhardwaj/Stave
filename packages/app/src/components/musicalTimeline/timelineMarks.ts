@@ -3,7 +3,7 @@
  *
  * Split from `timelineScene.ts` because it needs the RUNTIME `collectCycles` /
  * `laneKeyOf` from `@stave/editor` — importing those values pulls the whole
- * editor bundle (and its CJS `gifenc` dep) into vitest, which breaks the loader.
+ * editor bundle into vitest, whose CJS `gifenc` dep broke the loader until #1938.
  * Keeping this in its own file lets `timelineScene.ts` (the pure builder) stay
  * unit-testable without mocking. The real collection path is covered by the
  * Playwright spec against a real evaluated song.

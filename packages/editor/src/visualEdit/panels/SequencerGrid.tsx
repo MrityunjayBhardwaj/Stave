@@ -26,32 +26,23 @@
  */
 import * as React from 'react'
 
-import { parseStepGrid, applyStepGain } from '../notation/parse'
-import { serializeStepGrid, serializeStepGain } from '../notation/serialize'
-import { columnCount, isCellOn, laneCoverage } from '../notation/model'
-import type { StepGridModel } from '../notation/model'
-import { drawnLayout } from '../notation/perBar'
+import { stepGridCodec, gainWritable, slotPress, slotPressCost, NO_RESOLUTION_EFFECT } from '../../codeView'
+import { columnCount, isCellOn, laneCoverage, lookOnlyLine } from '../../codeView'
+import type { StepGridModel } from '../../codeView'
+import { drawnLayout } from '../../codeView'
 import { VisualEditStandby } from './VisualEditStandby'
 import { SEQUENCER_TAB_ID } from './tabs'
-import { opensStepGrid } from './surfaceRoute'
+import { opensStepGrid } from '../../codeView'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
-import { addLane, removeLane } from '../notation/lane'
-import { canResizeCell, canToggleCell, resizeCell, toggleCell } from '../notation/place'
+import { addLane, removeLane } from '../../codeView'
+import { canResizeCell, canToggleCell, resizeCell, toggleCell } from '../../codeView'
 import { DRUM_SOUNDS } from './soundCatalog'
-import { sampleVoice } from './drumVoices'
-import { chordLanes } from './chordLanes'
+import { sampleVoice, chordLanes } from '../../codeView'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
-import {
-  stepSlotState,
-  stepResolutionEffect,
-  quantizeStepGridTo,
-  freeZoneScale,
-  collapseStepGridToDocument,
-} from '../notation/resolution'
-import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
+import { UNREFINED, type ViewScale } from '../../codeView'
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
 import {
@@ -68,6 +59,7 @@ import {
 import { useGridMode } from './gridMode'
 import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
+import { InViewBar, PHONE_GRID_WIDTH, PHONE_RULER_HEIGHT, PHONE_STEP_MIN, TurnHint, usePhoneGrid, useRulerPan } from './phoneGrid'
 import {
   GRID_SCOPE,
   isCursorMove,
@@ -114,38 +106,46 @@ function reportRefusal(attempted: string): void {
   })
 }
 
+/**
+ * Is this call a `.struct` whose rhythm a cursor can open (#2120)? Only the forms the
+ * lookup takes: a string, or a `pick` list of strings. A rhythm bound to a name or built
+ * by a function opens nothing yet (#2128), so the chord chart must not point at it.
+ */
+function opensRhythmLine(call: { name: string; args: { raw: string }[] }): boolean {
+  const raw = call.args[0]?.raw ?? ''
+  return call.name === 'struct' && (/^["'`]/.test(raw) || /\.pick\w*\(\s*\[\s*["'`]/.test(raw))
+}
+
 export interface SequencerGridProps {
   /** lift the grid-resolution ("Slots") control to the Pattern inspector (#601) */
   onResolution?: (r: ResolutionControlProps | null) => void
+  /** a sentence shown over the grid: why a rhythm line is drawn without its chords (#2120) */
+  notice?: string | null
 }
 
-export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.ReactElement {
+export function SequencerGrid({ onResolution, notice = null }: SequencerGridProps = {}): React.ReactElement {
   // How finely this panel DRAWS the pattern (#1057). Purely a view: nothing here
   // reaches the document until an actual edit is made, and the first write absorbs
   // it (`useGridModel` → `absorbViewScale`).
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const { chunk, model, read, mutate, writeMini, beginGesture, endGesture } = useGridModel<StepGridModel>({
+  const { chunk, model, read, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
+    ...stepGridCodec,
     source: 'seq',
     eligible: opensStepGrid,
-    parse: parseStepGrid,
-    serialize: serializeStepGrid,
-    applyGain: applyStepGain,
-    serializeGain: serializeStepGain,
     viewScale,
     onViewScaleConsumed: () => setViewScale(UNREFINED),
-    collapseToDocument: collapseStepGridToDocument,
   })
   // The `+` past the last column: add a bar that continues the pattern, or drag in empty bars (#1824).
-  const length = usePatternLength(chunk, model, parseStepGrid, writeMini)
+  const length = usePatternLength(chunk, model, stepGridCodec.parse, writeMini)
 
   // A refinement belongs to the pattern it was made on. Dropping it when the cursor
   // moves keeps a leftover zoom from deciding whether the NEXT pattern opens at all —
   // four projections refuse a finer view (#1117), so a carried scale could send an
   // perfectly editable pattern to standby with nothing reporting why.
-  const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ''}` : null
+  // The panel's own writes do not count as a new pattern (#1964).
   React.useEffect(() => {
     setViewScale(UNREFINED)
-  }, [chunkKey])
+  }, [patternKey])
 
   // The grid's length is always a whole number of columns, so `columnCount` is `steps`
   // here; it is asked anyway so both panels bound the playhead by the same rule (#1087).
@@ -177,7 +177,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     paintValue: boolean
   } | null>(null)
 
-  // Velocity is offered where the WRITER will write it — asked of `serializeStepGain`
+  // Velocity is offered where the WRITER will write it — `gainWritable` asks `serializeStepGain`
   // itself, the way the roll's `gainWritable` asks `serializeRollGain` (#1089), not
   // predicted beside it (#1839). The prediction that lived here copied the writer's
   // foreign/bars/parts lines and missed its leaf line, so on every leaf-read grid a
@@ -186,7 +186,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // Asked of the CURRENT model: the writer's skips are shape (foreign `.gain`, bars,
   // parts, leaf, unspellable columns), which a gain edit does not move. Memoized on
   // the model, as `mutate` fires every pointermove of the drag it gates.
-  const gainScoped = React.useMemo(() => (model ? serializeStepGain(model).kind !== 'skip' : false), [model])
+  const gainScoped = React.useMemo(() => (model ? gainWritable(stepGridCodec, model) : false), [model])
 
 
   // Is this a CHORD CHART rather than a drum kit (#1241)? Asked of the lane
@@ -196,9 +196,12 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // relabel them all. Memoized on the lane names rather than the model, since
   // every drag rebuilds the model and none of them renames a lane.
   const laneKey = model ? model.lanes.map((l) => l.sound).join('\u0000') : ''
+  // A `chord(…)` head says so itself (#2142): `<C F G>` is a chord chart there, though
+  // its lanes spell like notes and so never force the reading on their own.
+  const chordHead = chunk?.headFn === 'chord'
   const isChordChart = React.useMemo(
-    () => chordLanes(laneKey === '' ? [] : laneKey.split('\u0000')),
-    [laneKey],
+    () => chordHead || chordLanes(laneKey === '' ? [] : laneKey.split('\u0000')),
+    [chordHead, laneKey],
   )
 
   // THE BOXES EACH ROW IS DRAWN AS (#1855). LCM: one per column. Exact: a row whose
@@ -412,7 +415,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // clickable and inert — the defect #1010 P4c had to repair once already.
   // Memoized per mini: the control asks once per preset per render, and a real
   // parse per ask is a per-gesture cost charged at a per-frame rate.
-  const canDrawView = useViewProver(chunk?.miniString, parseStepGrid)
+  const canDrawView = useViewProver(chunk?.miniString, stepGridCodec.parse)
 
   // Grid resolution (#479, #1057): a target in the free zone changes only how
   // finely we DRAW — the document is left byte-identical. Everything else keeps
@@ -420,18 +423,15 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // hits onto the new grid, with a no-op target returning the same model so
   // `useGridModel` skips the write.
   //
-  // The verdict comes from `stepSlotState` — the SAME call that renders the
+  // The verdict comes from `slotPress`, which asks `stepSlotState` — the SAME call that renders the
   // button — so a target cannot be drawn as a view change and then written, or
   // shown as a write and then silently absorbed. One authority, asked twice.
   const scaleToSlots = React.useCallback(
     (target: number): void => {
       if (!model) return
-      if (stepSlotState(model, target, canDrawView) === 'view') {
-        const scale = freeZoneScale(documentSteps(model), target)
-        if (scale !== null) setViewScale(scale)
-        return
-      }
-      mutate((prev) => quantizeStepGridTo(prev, target))
+      const press = slotPress(stepGridCodec, model, target, canDrawView)
+      if (press.kind === 'view') setViewScale(press.scale)
+      else if (press.kind === 'write') mutate((prev) => stepGridCodec.quantizeTo(prev, target))
     },
     [model, canDrawView, mutate],
   )
@@ -440,17 +440,14 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // grid's resolution state to it instead of rendering it in the grid header.
   useLiftResolution(
     model?.steps ?? null,
-    (t) => (model ? stepSlotState(model, t, canDrawView) : 'disabled'),
+    (t) => (model ? stepGridCodec.slotState(model, t, canDrawView) : 'disabled'),
     scaleToSlots,
     onResolution,
     // #1061 — what the press would COST, asked of the very op `scaleToSlots` runs, so
     // the sentence in the tooltip and the write the user gets are the same computation.
     // A free-zone target never reaches the op, and reports nothing, which is correct:
     // looking closer costs nothing.
-    (t) =>
-      model && stepSlotState(model, t, canDrawView) !== 'view'
-        ? stepResolutionEffect(model, t)
-        : { lengthened: 0, snapped: 0, merged: 0 },
+    (t) => (model ? slotPressCost(stepGridCodec, model, t, canDrawView) : NO_RESOLUTION_EFFECT),
   )
 
   React.useEffect(() => {
@@ -570,8 +567,8 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   cursorRef.current = liveCursor
 
   // The cursor belongs to the pattern it was placed on, like the Piano Roll's
-  // selection (PatternPanel). Keyed on the STATEMENT, not `chunkKey` — that one
-  // changes on every edit, and a toggle must not throw the cursor away.
+  // selection (PatternPanel). Keyed on the STATEMENT, not `patternKey` — that one
+  // changes on any edit typed in the code, and that must not throw the cursor away.
   const stmtId = chunk ? chunk.statementRange[0] : null
   const stmtRef = React.useRef<number | null>(stmtId)
   React.useEffect(() => {
@@ -644,6 +641,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   const runGesture = (action: GridAction, dryRun: boolean, fromKey = false): boolean => {
     if (!model || rowsN === 0 || colsN === 0) return false
     const at = cursorRef.current ?? (fromKey ? { row: 0, col: 0 } : null)
+    // A look-only view (#1975) can be walked, and nothing else: an edit key is not
+    // offered, rather than run and refused with a console line on every press.
+    if (model.lookOnly && !isCursorMove(action)) return false
     if (isCursorMove(action)) {
       if (dryRun) return true
       focusCursorRef.current = true
@@ -689,6 +689,17 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // Above the no-model return: a hook runs on every render or not at all.
   const rulerRef = React.useRef<HTMLDivElement>(null)
   useRulerFit(rulerRef, 'data-seq-ruler-label')
+  // On a phone (#2006): steps a finger can hit, the ruler as the sideways scroll
+  // handle, and row names that stay put. See `phoneGrid`.
+  const phoneGrid = usePhoneGrid()
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const rulerPan = useRulerPan(scrollRef, phoneGrid.phone)
+  /** a step's narrowest width per unit of weight */
+  const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 16
+  /** what keeps a row's name in place while its steps scroll under it */
+  const pinned: React.CSSProperties = phoneGrid.phone
+    ? { position: 'sticky', left: 0, zIndex: 2, background: 'var(--background, #0f0f12)' }
+    : {}
 
   if (!model) {
     return React.createElement(VisualEditStandby, {
@@ -703,6 +714,10 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // Each bar may hold its own count of cells (#1827) — the roll's `drawnLayout`, so the
   // two grids agree on where bars start and how wide a cell is.
   const layout = drawnLayout(model, model.steps)
+  // What the MODEL says about itself (#1975). The cells below already grey themselves
+  // out — each asks the op whether it could toggle, and every op declines — so this
+  // only adds the sentence and takes away the controls that are not cells.
+  const lookOnly = model.lookOnly ?? null
   const tabCell = liveCursor ?? { row: 0, col: 0 }
   // The ruler counts the steps of the row you're on — the first row until a cursor
   // exists — because rows from different `,`-parts can split a bar differently (#1841).
@@ -711,6 +726,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
 
   return (
     <div
+      ref={scrollRef}
       // Cell pointerdowns call preventDefault (blocks default focus), so focus the
       // pressed cell in the capture phase — the cursor moves there (#1802).
       onPointerDownCapture={(e) => {
@@ -728,11 +744,14 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
         runGesture(action, false, true)
       }}
       data-bottom-panel-tab="sequencer"
+      data-look-only={lookOnly ? lookOnly.gate : undefined}
       // always-visible (non-overlay) scrollbar when the grid overflows the panel,
       // styled in globals.css (the editor ships no CSS) — #pattern-scrollbar.
       data-pattern-scroll
       style={{
-        padding: 16,
+        // on a phone there is no padding on the left: a pinned row name sticks at the
+        // edge of the padding, and steps scrolling past would show in the gap beside it
+        padding: phoneGrid.phone ? '16px 16px 16px 0' : 16,
         height: '100%',
         overflow: 'auto',
         outline: 'none',
@@ -741,14 +760,29 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
       }}
     >
       {/* paddingRight: room for the `+` past the last column (#1824) */}
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4, width: '100%', paddingRight: 28, boxSizing: 'border-box' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4, width: '100%', paddingRight: 28, boxSizing: 'border-box', ...(phoneGrid.phone ? PHONE_GRID_WIDTH : {}) }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 4,
+            // on a phone this line is the panel's width and stays put while the steps
+            // scroll. (44: the panel's 16 px on the right and this box's own 28 — a line
+            // any wider would itself make the grid wider than the screen.)
+            ...(phoneGrid.phone
+              ? { justifyContent: 'flex-start', position: 'sticky', left: 0, width: Math.max(0, rulerPan.viewWidth - 44), paddingLeft: 16, boxSizing: 'border-box' }
+              : {}),
+          }}
+        >
           {/* Track identity (#589) — the bound track's colour dot + name; click
               the dot to recolour, double-click the name to rename. */}
           {/* "Slots" moved to the Pattern inspector (#601); the Note Color toggle
               moved to the editor Settings tab (#602). Both are lifted/owned
               elsewhere now — the header just carries the track identity chip. */}
           <PatternTrackChip />
+          <TurnHint show={phoneGrid.upright && rulerPan.inView.more} />
         </div>
         {/* ONE statement for a view that cannot take a new note, rather than a
             grid of dead cells with no reason on them (#1070). The notes that are
@@ -770,9 +804,29 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             }}
           >
             Chord chart — each lane is a chord, not a sound.
+            {/* #2120: the rhythm these chords play to is a line of its own */}
+            {chunk?.chain.some(opensRhythmLine) &&
+              ' They play to the rhythm in .struct(…): click into a rhythm line to see them on it and edit it.'}
           </div>
         )}
-        {!placesNotes && (
+        {notice && (
+          <div data-seq-notice style={{ fontSize: 11, color: 'var(--foreground-muted, #a0a0aa)', paddingBottom: 2 }}>
+            {notice}
+          </div>
+        )}
+        {lookOnly && (
+          <div
+            data-seq-look-only
+            style={{
+              fontSize: 11,
+              color: 'var(--foreground-muted, #a0a0aa)',
+              paddingBottom: 2,
+            }}
+          >
+            {lookOnlyLine(lookOnly)}
+          </div>
+        )}
+        {!placesNotes && !lookOnly && (
           <div
             data-seq-no-placement
             style={{
@@ -791,8 +845,29 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             Laid out exactly like a row — the header's width, the same weights and bar
             gaps — so each label sits over its own column. Visual only: hidden from the
             accessibility tree, where every cell already names its step. */}
-        <div ref={rulerRef} data-seq-ruler aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 12 }}>
-          <div style={{ width: 96, flex: '0 0 auto' }} />
+        {phoneGrid.phone && (
+          // which part of the pattern is on screen. It sits over the top of the ruler
+          // and stays put while the ruler's numbers scroll under it; its width is the
+          // panel's, not the pattern's.
+          // (104: past the row names' column and its gap, which is pinned over this row)
+          <div style={{ position: 'sticky', left: 104, width: 0, height: 0, marginBottom: -4 }}>
+            <InViewBar inView={rulerPan.inView} width={rulerPan.viewWidth - 16 - 104} />
+          </div>
+        )}
+        <div
+          ref={rulerRef}
+          data-seq-ruler
+          aria-hidden="true"
+          {...rulerPan.handlers}
+          style={{
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: 8,
+            height: phoneGrid.phone ? PHONE_RULER_HEIGHT : 12,
+            ...(phoneGrid.phone ? { touchAction: 'none', cursor: 'grab' } : {}),
+          }}
+        >
+          <div style={{ width: 96, flex: '0 0 auto', alignSelf: 'stretch', ...pinned }} />
           <div style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
             {Array.from({ length: model.steps }, (_, c) => {
               const label = ruler.get(c)
@@ -805,7 +880,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                   data-seq-col={`ruler:${c}`}
                   style={{
                     flex: `${layout.weight(c)} ${layout.weight(c)} 0`,
-                    minWidth: 16 * layout.weight(c),
+                    minWidth: stepMin * layout.weight(c),
                     maxWidth: 56 * layout.weight(c),
                     marginLeft: layout.barStart(c) ? 8 : 0,
                     position: 'relative',
@@ -845,7 +920,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             style={{ display: 'flex', alignItems: 'center', gap: 8 }}
           >
             {/* The voice's name and its remove button are the row's header. */}
-            <div role="rowheader" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
+            <div role="rowheader" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto', alignSelf: 'stretch', ...pinned }}>
             {/* Per-voice label only — the colour dot was removed (#589); the track's
                 identity colour lives in the PatternTrackChip up top, so a separate
                 drumVoices palette here would read as a second, conflicting colour code. */}
@@ -865,6 +940,8 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             >
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{voice.label}</span>
             </span>
+            {/* a look-only view removes nothing; the space stays so rows keep their ruler */}
+            {lookOnly ? <span style={{ width: 16, flex: '0 0 auto' }} /> : (
             <button
               type="button"
               aria-label={`remove ${lane.sound}`}
@@ -887,6 +964,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             >
               ×
             </button>
+            )}
             </div>
             <div role="none" style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
               {(stepGroups?.[laneIndex] ?? []).map((g) => {
@@ -970,7 +1048,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     style={{
                       display: 'flex',
                       flex: `${weight} ${weight} ${gaps}px`,
-                      minWidth: 16 * weight + gaps,
+                      minWidth: stepMin * weight + gaps,
                       maxWidth: 56 * weight + gaps,
                       // subtle gap at each bar boundary
                       marginLeft: variant === 'solo' && layout.barStart(stepIndex) ? 8 : 0,
@@ -1027,7 +1105,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     // whose text plays in more than one box has no replacement that
                     // removes only this box — all 285 refused erases in the corpus.
                     title={
-                      canToggle
+                      lookOnly
+                        ? lookOnlyLine(lookOnly)
+                        : canToggle
                         ? undefined
                         : on
                           ? model.leafSource
@@ -1242,13 +1322,15 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
           )
         })}
         </div>
-        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-seq-col" cols={model.steps} lastBarCols={layout.lastBarCols} />
+        {!lookOnly && (
+          <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-seq-col" cols={model.steps} lastBarCols={layout.lastBarCols} />
+        )}
         {/* The drum catalogue is the wrong menu for a chord chart — it would
             offer Kick and Snare as things to add to a progression. Withdrawn
             rather than restocked: a chord picker is a different feature, and
             offering the wrong one is worse than offering none. Every other
             gesture in the grid keeps working. */}
-        {!isChordChart && (
+        {!isChordChart && !lookOnly && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
           <span style={{ width: 72, flex: '0 0 auto' }} />
           <select

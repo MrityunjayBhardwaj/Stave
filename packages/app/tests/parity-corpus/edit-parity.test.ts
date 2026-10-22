@@ -3,7 +3,7 @@
  *
  * Sibling of `parity.test.ts`. Where that one gates the TIMELINE parser
  * (`ir/parseStrudel` — "does this tune parse to a structured IR"), this one
- * gates the EDIT path (`visualEdit/notation/parse.ts` + `chunkDetect` — "can a
+ * gates the EDIT path (`codeView/notation/parse.ts` + `chunkDetect` — "can a
  * Stave grid/roll open this tune, and if not, WHY"). Until #903 nothing did:
  * the only instrument that measured editability was `edit-coverage.spec.ts`,
  * and a `.spec.ts` is maintainer-only and never runs in CI.

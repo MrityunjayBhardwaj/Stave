@@ -18,7 +18,7 @@ import { drawTimeline, type DrawTheme, type DrawTransform } from '../drawTimelin
 import { DEFAULT_METER } from '../../../lib/meter'
 import type { TimelineScene, SceneLane } from '../timelineScene'
 import type { SignalAutomation } from '@stave/editor'
-import { signalTimeAt } from '../../../../../editor/src/ir/signalAutomation'
+import { signalTimeAt } from '@stave/editor'
 import { computeLaneLayout, AUTOMATION_MIN_ROW_H, AUTOMATION_MIN_DRAG_BAND_H } from '../laneLayout'
 import { automationBand, automationBandHeight, rowHeightForBandHeight, captionRows, AUTOMATION_PAD_Y, AUTOMATION_MIN_BAND_H } from '../automationCaption'
 
@@ -52,7 +52,7 @@ const AUTO: SignalAutomation = {
   lo: 0, hi: 1, ranged: true, boundsAsWritten: true, offset: 0, spans: NO_SPANS, placements: [[]],
 }
 const LANE: SceneLane = {
-  laneKey: 'd1', displayName: 'd1', color: '#7af', density: [1, 1, 1, 1],
+  laneKey: 'd1', displayName: 'd1', shownName: 'Track 1', color: '#7af', density: [1, 1, 1, 1],
   notes: [], pitchMin: null, pitchMax: null, voices: [], clips: [],
   sourceOffset: null, arrangeOffset: null, labelOffset: null,
   automations: [{ automation: AUTO, timeAt: signalTimeAt }], stepped: [],

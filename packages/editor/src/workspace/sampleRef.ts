@@ -3,7 +3,7 @@
  * chooses it by (#1764). Pure, with type-only imports, so the app's tests can
  * use the real function from source while they mock the editor barrel.
  */
-import type { IREvent } from '../ir/IREvent'
+import type { IREvent } from '../codeView'
 
 /**
  * Which file an event plays, as the subset of a hap the timeline can supply.

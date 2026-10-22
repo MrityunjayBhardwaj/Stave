@@ -21,18 +21,18 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   resizeNote,
   placeNote,
   pasteNote,
   moveNote,
   removeNote,
-} from '../../../editor/src/visualEdit/notation/place'
-import { serializePianoRoll } from '../../../editor/src/visualEdit/notation/serialize'
-import { columnOverlap } from '../../../editor/src/visualEdit/notation/model'
-import { pitchToMidi, midiToPitch } from '../../../editor/src/visualEdit/notation/pitch'
-import type { PianoRollModel, RollNote } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/place'
+import { serializePianoRoll } from '../../../editor/src/codeView/notation/serialize'
+import { columnOverlap } from '../../../editor/src/codeView/notation/model'
+import { pitchToMidi, midiToPitch } from '../../../editor/src/codeView/notation/pitch'
+import type { PianoRollModel, RollNote } from '../../../editor/src/codeView/notation/model'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -45,15 +45,19 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 // 18 lengthenings that would overlap the next note are lossy under the cheap rule and
 // refused by the strict one (1099 -> 1117 both); no other unit's answer moved.
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const UNITS = 599
+// ⚠ 599 -> 601 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const UNITS = 601
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const ASKS = 11028
+// ⚠ 11028 -> 11070 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const ASKS = 11070
 /** what the CHEAP rule ships today: writes whose reopen holds different notes (#1331) */
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const LOSSY_UNDER_DEFAULT = 1146
+// ⚠ 1146 -> 1120 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const LOSSY_UNDER_DEFAULT = 1120
 /** of those, the ones the writer cannot express faithfully at all — it declines */
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const READBACK_REFUSALS = 1146
+// ⚠ 1146 -> 1120 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const READBACK_REFUSALS = 1120
 /**
  * of those, the ones a DIFFERENT rung rescues — measured at ZERO, and the zero is the
  * finding.
@@ -213,14 +217,17 @@ describe('the roll reopens as what it wrote (#1331)', () => {
 // `<c2*2 g2*5 [a g]>` / `<0 [0 1] 0 [0 1 0]>` drawn per bar — no half-cells left to
 // place a note the document cannot keep, so 70 fewer lossy placements.
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const PLACE_ASKS = 35699
+// ⚠ 35699 -> 35769 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const PLACE_ASKS = 35769
 const PLACE_LOSSY_UNDER_DEFAULT = 4306
 /** pastes over a cell that already holds a note — the case placement does not cover */
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const PASTE_ASKS = 5514
+// ⚠ 5514 -> 5535 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const PASTE_ASKS = 5535
 /** 3 that do not parse + 83 that lose notes + 1 rescale */
 // ⚠ 87 -> 88 at #1849: one more paste the REJECTED cheap rule would ship lossy — the control arm, so it only has to stay above zero; the shipped rule refuses it.
-const PASTE_LOSSY_UNDER_DEFAULT = 88
+// ⚠ 88 -> 85 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const PASTE_LOSSY_UNDER_DEFAULT = 85
 
 /** verbatim from PianoRollGrid.tsx — the resolver the panel gates placement on */
 function overlapAt(model: PianoRollModel, midi: number, step: number): RollNote | undefined {
@@ -337,13 +344,15 @@ describe('placement and paste reopen as what they wrote (#1333)', () => {
 /** measured 2026-08-26 on `33c6c166`, one delete per note */
 // ⚠ 5480 -> 5502 at #1827 (each bar drawn at its own step count): the arrival's 22 notes.
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const DELETE_ASKS = 5514
+// ⚠ 5514 -> 5535 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const DELETE_ASKS = 5535
 /** what the CHEAP rule ships: deletes whose reopen holds different notes */
 const DELETE_LOSSY_UNDER_DEFAULT = 5
 /** measured 2026-08-26, each note dragged one column either way and one semitone either way */
 // ⚠ 20587 -> 20671 at #1827 (each bar drawn at its own step count): the arrival's moves.
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const MOVE_ASKS = 20704
+// ⚠ 20704 -> 20784 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const MOVE_ASKS = 20784
 /** what the CHEAP rule ships: moves whose reopen holds different notes */
 const MOVE_LOSSY_UNDER_DEFAULT = 14
 

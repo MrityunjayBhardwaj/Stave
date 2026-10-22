@@ -176,6 +176,35 @@ test('inline viz zone anchors ABOVE a master all(x=>…) line and stays put when
   expect(after!.zoneContentTop).toBeLessThan(after!.line5Top)
 })
 
+// Strudel registers four tempo setters as one (`repl.mjs`: `setCps`/`setcps`,
+// `setCpm`/`setcpm`), so each one ends the block above it, exactly as `all()`
+// does in #797. `setcps` is the control that already held; the other three used
+// to be read as part of the block, and the zone anchored below them (#1927).
+for (const setter of ['setcps(0.5)', 'setCps(0.5)', 'setcpm(30)', 'setCpm(30)']) {
+  test(`inline viz zone anchors ABOVE a following ${setter} line (#1927)`, async ({ page }) => {
+    await setCode(
+      page,
+      `$: stack(\n  note("c e g").s("sawtooth"),\n  note("e g b").s("sawtooth")\n).viz("spectrum")\n${setter}`,
+    )
+    await runCode(page)
+    await expect(page.locator('[data-viz-zone-track]').first()).toBeVisible({ timeout: 6000 })
+    // Computed layout, as in #797: line 5 may be virtualized out under a tall zone.
+    const at = await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ed = (window as any).monaco?.editor?.getEditors?.()?.[0]
+      const zoneEl = document.querySelector('[data-viz-zone-track]')
+      const linesContent = document.querySelector('.lines-content')
+      if (!ed || !zoneEl || !linesContent) return null
+      return {
+        zoneContentTop: zoneEl.getBoundingClientRect().top - linesContent.getBoundingClientRect().top,
+        line5Top: ed.getTopForLineNumber(5),
+      }
+    })
+    expect(at, 'editor + zone must be present').not.toBeNull()
+    expect(at!.zoneContentTop, `the zone sits above the ${setter} line`).toBeLessThan(at!.line5Top)
+  })
+}
+
 test('underscore ._punchcard() and ._tscope() render inline with no error and no fullscreen canvas', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(String(e)))
@@ -242,9 +271,9 @@ test('preset p5 viz draws on a TRANSPARENT surface — a backdrop shows through 
 })
 
 test('pitchwheel tracks pitch (reactive) — note-name haps decode, not freeze on c4 (#216)', async ({ page }) => {
-  // Haps carry note as a NAME string with freq=null; pitchwheel must parse the
-  // name (hapFreq) or the active-note indicator stays pinned to the root every
-  // frame. Reactive ⇒ the bright-blue indicator centroid x must vary over time.
+  // Haps carry note as a NAME string with freq=null (freq is only a written
+  // `.freq()`); pitchwheel must take the pitch from `h.midi` (#1929) or the
+  // active-note indicator stays pinned to the root every frame. Reactive ⇒ the bright-blue indicator centroid x must vary over time.
   await setCode(page, `setcps(0.7)\n$: note("c4 e4 g4 b4 c5 e5 g5 b5").s("sawtooth").viz("pitchwheel")`)
   await runCode(page)
   const canvas = page.locator('[data-viz-zone-track] canvas').first()
@@ -261,6 +290,34 @@ test('pitchwheel tracks pitch (reactive) — note-name haps decode, not freeze o
   expect(valid.length).toBeGreaterThan(2)
   // a frozen pitchwheel has range ~0; reactive sweeps tens of px.
   expect(Math.max(...valid) - Math.min(...valid)).toBeGreaterThan(15)
+})
+
+test('pitchwheel draws cs3, g and ef3 where Strudel plays them (#1929)', async ({ page }) => {
+  // The built-in sketches used to parse note names with their own grammar, which
+  // has no pitch for a sharp written `s`, a name with no octave, or a flat written
+  // `f`: the pitchwheel skipped those notes. They now read the pitch the engine
+  // computed with Strudel's grammar. One held note per run, so the active line is
+  // still while it plays; the bright line's centroid says where it points.
+  const lineAt = async (note: string) => {
+    await setCode(page, `$: note("${note}").s("sawtooth").viz("pitchwheel")`)
+    await runCode(page)
+    await expect(page.locator('[data-viz-zone-track] canvas').first()).toBeVisible({ timeout: 6000 })
+    const samples: number[] = []
+    for (let k = 0; k < 3; k++) {
+      samples.push((await vizPixelStats(page, '[data-viz-zone-track] canvas', { bMin: 181 })).meanX)
+      await page.waitForTimeout(200)
+    }
+    return samples.sort((a, b) => a - b)[1] // median; -1 when no line was drawn
+  }
+  const sharp = await lineAt('c#3')
+  expect(sharp, 'c#3 draws a line (control: the old grammar read it)').toBeGreaterThanOrEqual(0)
+  // Control: the measure tracks pitch, so a semitone below lands elsewhere.
+  expect(Math.abs((await lineAt('c3')) - sharp), 'c3 vs c#3').toBeGreaterThan(5)
+  expect(Math.abs((await lineAt('cs3')) - sharp), 'cs3 lands where c#3 does').toBeLessThan(2)
+  const g3 = await lineAt('g3')
+  expect(Math.abs((await lineAt('g')) - g3), 'g lands where g3 does').toBeLessThan(2)
+  const eb3 = await lineAt('eb3')
+  expect(Math.abs((await lineAt('ef3')) - eb3), 'ef3 lands where eb3 does').toBeLessThan(2)
 })
 
 test('inline crop resolves the preset by name AND renderer — scope.p5 not scope.hydra (#217)', async ({ page }) => {

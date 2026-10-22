@@ -24,13 +24,13 @@ import { describe, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   RESOLUTION_PRESETS,
   stepSlotState,
   rollSlotState,
   type SlotState,
-} from '../../../editor/src/visualEdit/notation/resolution'
+} from '../../../editor/src/codeView/notation/resolution'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

@@ -37,16 +37,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { unitsWithStatus, measureDocs, aggregate, hasKnownContent } from './editCoverage'
-import { chunkSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
-import { chordLanes } from '../../../editor/src/visualEdit/panels/chordLanes'
+import { chunkSurface } from '../../../editor/src/codeView/surface/surfaceRoute'
+import { chordLanes } from '../../../editor/src/codeView/surface/chordLanes'
 import {
   parseStepGrid,
   parsePianoRoll,
   parseStepGridCore,
   parsePianoRollCore,
-} from '../../../editor/src/visualEdit/notation/parse'
-import { hasStructure, isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import { loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
+} from '../../../editor/src/codeView/notation/parse'
+import { hasStructure, isCellOn } from '../../../editor/src/codeView/notation/model'
+import { loadCorpus } from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
 import census from './WRITER-CENSUS.json'
 
 /*

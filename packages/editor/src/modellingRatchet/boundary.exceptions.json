@@ -1,0 +1,73 @@
+{
+  "about": "The code↔view boundary (#1879). \"enforced\": every reach across the boundary that exists today, exact per file — one more is a failure, one fewer is stale. \"declared\": files that convert between code and views in ways no structural rule can see; named and counted, not enforced. Because nothing can see them, the declared list is kept by reading code, so a miss is expected: when one is found, it joins with an \"added\" line. Both lists only shrink: each new enforced reach needs its own line, \"added\": { \"<reach>\": \"#<issue> <why>\" }, and a newly declared file needs \"added\": \"#<issue> <why>\". \"krillReaders\" (#1972): the files outside codeView/strudelMini/ that still read a field of krill's nodes, by top-level function, with exactly how many reads each makes — one more is a failure, one fewer is stale, and a number never goes up without an \"added\" line for that function. See boundary.ts.",
+  "enforced": [
+    {
+      "file": "packages/editor/src/engine/StrudelEngine.ts",
+      "reaches": [
+        "codeView/ir/nodeIdentity#buildNodeLocIndex",
+        "codeView/ir/parseStrudel#parseStrudel"
+      ],
+      "why": "Runs our reader on every evaluate (StrudelEngine.ts:1651) and stamps irNodeId on each hap from its index (:1620, :2524, :2611, and onTrigger via HapStream.ts:135). Breakpoints, the gutter and the IR inspector read that stamp. The id is a hash of the hap's own span, so the engine can compute it without our IR.",
+      "issue": "#1877"
+    },
+    {
+      "file": "packages/editor/src/engine/bareCapture.ts",
+      "reaches": [
+        "codeView/chunkDetect#detectAllChunks",
+        "codeView/mixer/stripModel#bareCaptureIdFor",
+        "codeView/mixer/stripModel#isTrackChunk"
+      ],
+      "why": "The engine reads the document to decide which track a bare statement's pattern belongs to: chunk detection, plus the track numbering in codeView/mixer/stripModel that the mixer joins on. It sits in the engine's runtime import graph, where importing the entry loads the mini-notation parser ahead of the engine test's mock and the suite dies at load.",
+      "issue": "#1882",
+      "added": {
+        "codeView/mixer/stripModel#bareCaptureIdFor": "#1882 the engine already imported this file; it moved into the area in #1884, so the same dependency now crosses the boundary",
+        "codeView/mixer/stripModel#isTrackChunk": "#1882 the engine already imported this file; it moved into the area in #1884, so the same dependency now crosses the boundary"
+      }
+    },
+    {
+      "file": "packages/editor/src/engine/vizLineScan.ts",
+      "reaches": [
+        "codeView/ir/trackId#LABEL_HEAD"
+      ],
+      "why": "A line scanner needs one rule, LABEL_HEAD, and the file that owns it, codeView/ir/trackId.ts, imports nothing (a test keeps it that way). Reaching that leaf adds one dependency-free file to the engine's import graph; the entry would add 44 more codeView modules for one regex (measured 2026-10-04: the engine's graph holds 18 codeView files, the entry's holds 62). A one-rule import from a codeView file that imports nothing is meant to stay (#1880).",
+      "issue": "#1880",
+      "added": {
+        "codeView/ir/trackId#LABEL_HEAD": "#1921 the scanner's own copy of the identifier regex became the shared LABEL_HEAD; the entry route broke StrudelEngine.test's collection, so it reads the leaf"
+      }
+    },
+    {
+      "file": "packages/editor/src/visualizers/blockScan.ts",
+      "reaches": [
+        "codeView/ir/statementHeads#TEMPO_SETTERS",
+        "codeView/ir/trackId#LABEL_HEAD"
+      ],
+      "why": "A line scanner needs two rules, LABEL_HEAD and TEMPO_SETTERS, and the files that own them, codeView/ir/trackId.ts and codeView/ir/statementHeads.ts, import nothing (a test keeps each that way). Reaching those leaves adds two dependency-free files to the engine's import graph; the entry would add dozens more codeView modules for two names (measured 2026-10-04: the engine's graph holds 18 codeView files, the entry's holds 62). A one-rule import from a codeView file that imports nothing is meant to stay (#1880).",
+      "issue": "#1880",
+      "added": {
+        "codeView/ir/trackId#LABEL_HEAD": "#1921 the scanner's own copy of the identifier regex became the shared LABEL_HEAD; the entry route broke StrudelEngine.test's collection, so it reads the leaf",
+        "codeView/ir/statementHeads#TEMPO_SETTERS": "#1927 a tempo setter line ends a block, and the scanner knew only setcps of the four names; it now reads the shared list from codeView/ir/statementHeads.ts, which imports nothing (a test keeps it that way)"
+      }
+    }
+  ],
+  "declared": [],
+  "krillReaders": [
+    {
+      "file": "packages/editor/src/codeView/notation/parse.ts",
+      "why": "The old syntactic reader: it works out steps, slots, chords, ops and alternations from krill's tree by hand. It is the code #1012 exists to delete, so it is not rewritten onto the adapter's nodes. Everything else in this file (the span readers, the projections) asks codeView/strudelMini/.",
+      "issue": "#1012",
+      "functions": {
+        "chordAtoms": 12,
+        "groupSlots": 9,
+        "elementToSteps": 9,
+        "readOps": 8,
+        "altAlternatives": 7,
+        "tokenOf": 6,
+        "tokenize": 6,
+        "expandAltElements": 6,
+        "numArg": 4,
+        "isRestAtom": 2,
+        "isAtom": 1
+      }
+    }
+  ]
+}

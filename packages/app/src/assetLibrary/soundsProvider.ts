@@ -16,6 +16,7 @@
  * `startAudition` (@stave/editor) and `onInsert` to the shell's cursor writer.
  */
 
+import { gmFamily, soundfontGroupLabel } from "@stave/editor";
 import type { Asset, AssetPreviewHandle } from "./types";
 
 /** The minimal shape read off a superdough soundMap entry (mirrors the editor's
@@ -33,18 +34,14 @@ export interface SoundsProviderDeps {
   /** Round-trip the sound into code at the cursor (assign or insert). */
   onInsert: (sound: string) => void;
   /**
-   * GM family for a `gm_*` soundfont key (or null), and the shared
-   * `Soundfonts · <Family>` group label (#807). INJECTED from `@stave/editor`
-   * (`gmFamily` / `soundfontGroupLabel`) rather than imported here, so the pure
-   * mapping stays editor-free and unit-testable — importing the editor barrel
-   * would drag its viz/`gifenc` deps into this provider's tests.
+   * The project's own audio, as rows (#2062) — `recordsToAssets`, with size,
+   * remove and the clip preview. Every one is ALSO in the sound map (that is how
+   * `s()` reaches it), and the map says nothing about who made a sound, so
+   * without this the file is listed as a built-in sound and Sounds → User is
+   * empty. Its names are taken out of the built-in rows and these rows go in.
    */
-  gmFamily: (name: string) => string | null;
-  soundfontGroupLabel: (name: string) => string;
+  ownAudio?: () => readonly Asset[];
 }
-
-/** The soundfont-grouping fns `classify` needs (a subset of the deps). */
-type SoundfontGrouping = Pick<SoundsProviderDeps, "gmFamily" | "soundfontGroupLabel">;
 
 /** Title-case a bare id: `sawtooth` → `Sawtooth`. */
 function titleCase(name: string): string {
@@ -73,7 +70,7 @@ interface Classified {
  * bank; melodic sounds split by type. Unknown types fall through to "Samples"
  * (include-by-default — never silently drop a new upstream type, the P254 rule).
  */
-function classify(name: string, data: SoundMapEntry["data"], sf: SoundfontGrouping): Classified {
+function classify(name: string, data: SoundMapEntry["data"]): Classified {
   const type = data?.type;
   if (data?.tag === "drum-machines") {
     const i = name.lastIndexOf("_");
@@ -88,10 +85,10 @@ function classify(name: string, data: SoundMapEntry["data"], sf: SoundfontGroupi
       // (`Soundfonts · Strings`, `· Brass`, …) instead of one flat group; the
       // family name is also a search tag so "strings" finds them. Bare/unmapped
       // soundfonts fall back to the flat "Soundfonts" label.
-      const family = sf.gmFamily(name);
+      const family = gmFamily(name);
       const tags = ["soundfont", "gm", name];
       if (family) tags.push(family.toLowerCase());
-      return { group: sf.soundfontGroupLabel(name), label: soundfontLabel(name), tags };
+      return { group: soundfontGroupLabel(name), label: soundfontLabel(name), tags };
     }
     case "wavetable":
       return { group: "Wavetables", label: titleCase(name), tags: ["wavetable", name] };
@@ -110,7 +107,7 @@ function classify(name: string, data: SoundMapEntry["data"], sf: SoundfontGroupi
  */
 export function soundMapToAssets(
   dict: SoundMapDict | null | undefined,
-  deps: Pick<SoundsProviderDeps, "startPreview" | "onInsert" | "gmFamily" | "soundfontGroupLabel">,
+  deps: Pick<SoundsProviderDeps, "startPreview" | "onInsert">,
 ): Asset[] {
   if (!dict) return [];
   const assets: Asset[] = [];
@@ -118,7 +115,7 @@ export function soundMapToAssets(
     if (name.startsWith("_")) continue;
     const data = dict[name]?.data;
     if (data?.type === "input") continue;
-    const { group, label, tags } = classify(name, data, deps);
+    const { group, label, tags } = classify(name, data);
     assets.push({
       type: "sound",
       id: name, // the exact string written into s("…") — stable + unique
@@ -158,7 +155,12 @@ export function createSoundsProvider(deps: SoundsProviderDeps) {
         cachedCount = count;
         cached = soundMapToAssets(dict, deps);
       }
-      return cached;
+      // Read live, not cached: a record added, renamed or removed does not always
+      // change the map's size, and the list is a handful of rows.
+      const own = deps.ownAudio?.() ?? [];
+      if (own.length === 0) return cached;
+      const ownNames = new Set(own.map((a) => a.code ?? a.id));
+      return [...own, ...cached.filter((a) => !ownNames.has(a.id))];
     },
     isLoading: () => {
       const d = deps.readDict();

@@ -11,8 +11,8 @@ import { FrameSampleCache } from '../frameSampleCache'
 import { MASTER_KEY, type AnalyserBytes } from '../signalFrame'
 import { MainSignalSampler } from '../signalSampler'
 import type { BusAnalyser } from '../../signals/SignalBus'
-import type { IRPattern } from '../../../ir/IRPattern'
-import type { IREvent } from '../../../ir/IREvent'
+import type { IRPattern } from '../../../codeView/ir/IRPattern'
+import type { IREvent } from '../../../codeView/ir/IREvent'
 
 function bytes(key: string, n: number, seed: number): AnalyserBytes {
   const freq = new Uint8Array(n)

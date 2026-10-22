@@ -4,7 +4,7 @@
  * A document that never calls `.p()` plays its last expression, and the engine
  * captures that pattern under the id an anonymous `$:` would have taken. The
  * rule is decided by `bareCaptureIdFor` in
- * `packages/editor/src/visualEdit/mixer/stripModel.ts` — the mixer owns it,
+ * `packages/editor/src/codeView/mixer/stripModel.ts` — the mixer owns it,
  * because the mixer is what ASSIGNS these ids while numbering its strips.
  *
  * ⚠ THE RULE IS "THE LAST TRACK", `$<n-1>` — NOT `'$0'`. Since #1096 a bare
@@ -24,10 +24,9 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('@stave/editor', () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   structuralWalk: () => [],
-  wholeWalkWindow: (nCycles: number) => ({ originCycle: 0, spanCycles: nCycles }),
-  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 
 import { laneKeyForHap } from '../timelineMarks'
@@ -35,11 +34,11 @@ import { laneKeyForHap } from '../timelineMarks'
 /**
  * The id a SINGLE-statement bare document resolves to — `bareCaptureIdFor`'s
  * `$<n-1>` at n = 1. Kept in step with
- * `packages/editor/src/visualEdit/mixer/stripModel.ts`.
+ * `packages/editor/src/codeView/mixer/stripModel.ts`.
  *
  * ⚠ DELIBERATELY A LITERAL, not an import. Importing the real constant means
- * importing `@stave/editor` in an app test, and the barrel drags gifenc (CJS)
- * in — which is why this file already `vi.mock`s it below. The literal is the
+ * importing `@stave/editor` in an app test, and until #1938 the barrel dragged
+ * gifenc (CJS) in — which is why this file already `vi.mock`s it below. The literal is the
  * price of that mock, so the citation above is the only thing keeping the two
  * sides in step. Re-point it if the rule moves house again.
  */

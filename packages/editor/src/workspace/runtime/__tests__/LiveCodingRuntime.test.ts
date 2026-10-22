@@ -2037,3 +2037,32 @@ describe('offline bounce loads the document in the song frame, then renders it (
     runtime.dispose()
   })
 })
+
+describe('Play asks for audio inside the gesture (#1987)', () => {
+  beforeEach(() => __resetWorkspaceAudioBusForTests())
+
+  it('unlockAudio runs synchronously in play(), before init is even called', async () => {
+    const engine = createMockEngine()
+    const unlock = vi.fn(() => {
+      engine.callLog.push('unlock')
+    })
+    ;(engine as LiveCodingEngine).unlockAudio = unlock
+    const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+    const playing = runtime.play()
+    // NOT awaited yet: whatever has run so far ran inside the caller's turn — the tap
+    expect(unlock).toHaveBeenCalledTimes(1)
+    expect(engine.callLog[0]).toBe('unlock')
+    await playing
+    expect(engine.callLog.indexOf('unlock')).toBeLessThan(engine.callLog.indexOf('init'))
+    runtime.dispose()
+  })
+
+  it('an engine with no audio of its own to start still plays', async () => {
+    const engine = createMockEngine()
+    expect((engine as LiveCodingEngine).unlockAudio).toBeUndefined()
+    const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+    await runtime.play()
+    expect(engine.callLog).toContain('play')
+    runtime.dispose()
+  })
+})

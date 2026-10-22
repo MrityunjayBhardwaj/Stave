@@ -171,7 +171,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { unitsWithStatus, routesToNotation } from './editCoverage'
-import { parseTopLevel } from '../../../editor/src/visualEdit/chunkDetect'
+import { parseTopLevel } from '../../../editor/src/codeView/chunkDetect'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

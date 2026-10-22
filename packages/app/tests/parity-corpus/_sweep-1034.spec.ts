@@ -38,7 +38,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { readGridOnsets, tailToken, type Onset } from '../../../editor/src/visualEdit/notation/parse'
+import { miniPattern } from '../../../editor/src/codeView/strudelMini/pattern'
+import { readGridOnsets, tailToken, type Onset } from '../../../editor/src/codeView/notation/parse'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -77,7 +78,7 @@ function multisets(
   } catch {
     return null
   }
-  const r = readGridOnsets(pat, cyc)
+  const r = readGridOnsets(miniPattern(mini), cyc)
   if (!r.ok) return null
 
   let haps: Array<{

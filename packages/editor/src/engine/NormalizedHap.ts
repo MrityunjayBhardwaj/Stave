@@ -5,7 +5,8 @@
  * so existing code keeps working. New code should import IREvent directly.
  */
 
-import type { IREvent, SourceLocation } from '../ir/IREvent'
+import type { IREvent, SourceLocation } from '../codeView'
+import { noteToMidi } from './noteToMidi'
 
 /** @deprecated Use IREvent from '../ir' instead. */
 export type NormalizedHap = IREvent
@@ -128,6 +129,30 @@ export function declaredLocationKeys(miniLocations: unknown): ReadonlySet<string
 }
 
 /**
+ * #1929 — a hap value's pitch as MIDI, or null when it has none.
+ *
+ * Strudel's `valueToMidi` (`@strudel/core` util.mjs) in Strudel's order: a written
+ * `freq` (through Strudel's own `freqToMidi` formula), else a note name, else a
+ * note number. `note ?? n` is the input, as Strudel's piano roll passes it
+ * (`@strudel/draw/pianoroll.mjs` `getValue`). Where `valueToMidi` throws (no
+ * pitch) or a name is not a note, this is null; names go through the one note
+ * reader, which a test pins to Strudel's.
+ *
+ * Not imported from `@strudel/core`: the engine loads that package only
+ * dynamically, as a bounded boot step, and this runs on every hap. A test pins
+ * this function to `valueToMidi`.
+ */
+export function hapMidi(value: unknown): number | null {
+  if (!value || typeof value !== 'object') return null
+  const v = value as { freq?: unknown; note?: unknown; n?: unknown }
+  if (typeof v.freq === 'number') return (12 * Math.log(v.freq / 440)) / Math.LN2 + 69
+  const note = v.note ?? v.n
+  if (typeof note === 'string') return noteToMidi(note)
+  if (typeof note === 'number') return note
+  return null
+}
+
+/**
  * Convert a raw Strudel hap into an IREvent (NormalizedHap).
  * Handles Fraction objects (Number() coercion), missing fields, and optional value bag.
  *
@@ -171,6 +196,9 @@ export function normalizeStrudelHap(
   }
   // #1764 — kept beside the fold into `note`, which a sample cannot read back.
   if (value?.n != null) event.n = value.n
+  // #1929 — the pitch, so a sketch never parses a note name itself.
+  const midi = hapMidi(value)
+  if (midi !== null) event.midi = midi
   const extracted = extractLoc(hap)
   const loc = extracted && declaredLocations ? declaredOnly(extracted, declaredLocations) : extracted
   if (loc) event.loc = loc

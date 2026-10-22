@@ -15,20 +15,22 @@
  * the other. Merging by value would draw the same line and hand Stage 3 the wrong
  * index.
  *
- * Pure, and it imports only TYPES from the editor's BARREL. A runtime import from
- * it drags a CommonJS dependency into the app's test loader and the file fails to
- * collect — so the range function and the step selection (`stepIndexAtCycle`,
- * which knows the arrangement sections, #1585) are passed IN by the caller that already
+ * Pure. The range function and the step selection (`stepIndexAtCycle`, which
+ * knows the arrangement sections, #1585) are passed IN by the caller that already
  * holds the real one.
  *
- * `@stave/editor/knobScale` is a different door and may be imported at runtime
- * (#1581): it is the editor's own entry for the value↔position map, bundled
- * alone with no dependencies at all, so nothing follows it in. That map is where
- * the mixer knob reads the same three rules — one owner, so a level dragged on a
- * lane and the same control turned on the knob land on the same number.
+ * The value↔position map is the editor's (#1581), the same three rules the mixer
+ * knob reads — one owner, so a level dragged on a lane and the same control turned
+ * on the knob land on the same number.
  */
-import type { FixedParameter, OffsetEdit, SteppedAutomation } from '@stave/editor'
-import { positionOfValue, snapToStep, valueAtPosition } from '@stave/editor/knobScale'
+import {
+  positionOfValue,
+  snapToStep,
+  valueAtPosition,
+  type FixedParameter,
+  type OffsetEdit,
+  type SteppedAutomation,
+} from '@stave/editor'
 import { automationBand, automationBandHeight } from './automationCaption'
 
 /** `value` on the grid of `step`, spelled without float noise — the mixer knob's
@@ -319,11 +321,11 @@ export function stepHitAt(
   return best
 }
 
-/** The shape of `stepValueEdit` — injected, for the reason `RangeFor` is. */
-export type StepValueEdit = (
+/** The shape of `stepTextEdit` — injected, for the reason `RangeFor` is. */
+export type StepTextEdit = (
   a: SteppedAutomation,
   index: number,
-  value: number,
+  text: string,
 ) => OffsetEdit | null
 
 /**
@@ -331,21 +333,14 @@ export type StepValueEdit = (
  * or into NOTHING (#1463 Stage 3).
  *
  * The ONE place a typed step becomes an edit, so a caller cannot skip a rule by
- * building the number itself. This function owns the TEXT: an empty or
- * non-numeric entry writes nothing. `valueEdit` owns the DOCUMENT: an unchanged
- * value writes nothing, only that step's number moves, and a number the reader
- * could not read back is refused.
- *
- * ⚠ `Number('')` IS 0, and so is `Number('  ')`. Clearing the field and pressing
- * Enter would otherwise write a step of ZERO — a plausible value, so a silent
- * corruption rather than a visible error. `captionEdit` met the same trap first.
+ * building the number itself. This function owns only which step the hit names;
+ * `textEdit` owns the text and the document — an empty or non-numeric entry
+ * writes nothing, an unchanged value writes nothing, only that step's number
+ * moves, and a number the reader could not read back is refused (#1918 moved the
+ * text rule beside the caption's, so the two cannot drift).
  */
-export function stepEdit(hit: StepHit, nextText: string, valueEdit: StepValueEdit): OffsetEdit | null {
-  const raw = nextText.trim()
-  if (raw.length === 0) return null
-  const value = Number(raw)
-  if (!Number.isFinite(value)) return null
-  return valueEdit(hit.entry.automation, hit.index, value)
+export function stepEdit(hit: StepHit, nextText: string, textEdit: StepTextEdit): OffsetEdit | null {
+  return textEdit(hit.entry.automation, hit.index, nextText)
 }
 
 /** One flat run of the staircase — a single step, over song-absolute cycles. */

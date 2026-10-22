@@ -26,7 +26,7 @@
  * first of them:
  *
  *   1. WHICH SPAN does this unit own?   `chunkDetect.resolveMini`
- *   2. WHICH SURFACE does that span open?  `panels/surfaceRoute.chunkSurface`
+ *   2. WHICH SURFACE does that span open?  `codeView/surface/surfaceRoute.chunkSurface`
  *
  * `patternKind.isStepChunk` returns `step` the moment `miniString !== null &&
  * headFn === 's'`, so every fixture with a CONTENT head routes at

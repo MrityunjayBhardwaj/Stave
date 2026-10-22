@@ -8,10 +8,10 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { parseStrudel as _parseStrudel } from '../../../../editor/src/ir/parseStrudel'
-import { IR, type PatternIR } from '../../../../editor/src/ir/PatternIR'
+import { parseStrudel as _parseStrudel } from '@stave/editor'
+import { IR, type PatternIR } from '@stave/editor'
 import { summarize, children } from '../IRInspectorChrome'
-import { unwrapD1 } from '../../../../editor/src/ir/__tests__/helpers/unwrapD1'
+import { unwrapD1 } from '../../../../editor/src/codeView/ir/__tests__/helpers/unwrapD1'
 
 // Phase 20-11 γ-4 — drill through the synthetic d1 Track wrapper.
 // Tests asserting on the unwrapped (Code-with-via, Param, ...) shape

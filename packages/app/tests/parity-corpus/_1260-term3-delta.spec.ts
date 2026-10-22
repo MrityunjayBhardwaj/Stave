@@ -38,10 +38,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { unitsWithStatus, measureDocs, aggregate, hasKnownContent } from './editCoverage'
-import { chunkSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import { hasStructure, isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import { loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
+import { chunkSurface } from '../../../editor/src/codeView/surface/surfaceRoute'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
+import { hasStructure, isCellOn } from '../../../editor/src/codeView/notation/model'
+import { loadCorpus } from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
 
 interface Fail {
   doc: string

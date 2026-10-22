@@ -27,7 +27,8 @@ import { dragCarriesFiles, summarize } from "./importMessages";
 export interface AudioImport {
   readonly busy: boolean;
   readonly message: string | null;
-  readonly importFiles: (files: readonly File[]) => Promise<void>;
+  /** resolves to how many files became sounds, so the panel can show them (#2060) */
+  readonly importFiles: (files: readonly File[]) => Promise<number>;
 }
 
 /** Owns the import operation for both gestures. */
@@ -35,8 +36,8 @@ export function useAudioImport(): AudioImport {
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
 
-  const importFiles = React.useCallback(async (files: readonly File[]) => {
-    if (files.length === 0) return;
+  const importFiles = React.useCallback(async (files: readonly File[]): Promise<number> => {
+    if (files.length === 0) return 0;
     setBusy(true);
     setMessage(null);
     try {
@@ -54,8 +55,10 @@ export function useAudioImport(): AudioImport {
         .map((s) => s.record.name);
       if (playable.length > 0) void warmWaveforms(playable);
       setMessage(summarize(summary));
+      return summary.saved.length;
     } catch {
       setMessage("The files could not be added.");
+      return 0;
     } finally {
       setBusy(false);
     }

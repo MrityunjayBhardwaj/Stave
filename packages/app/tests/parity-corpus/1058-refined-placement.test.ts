@@ -53,17 +53,17 @@ import { fileURLToPath } from 'node:url'
 import {
   parsePianoRoll,
   parseStepGrid,
-} from '../../../editor/src/visualEdit/notation/parse'
+} from '../../../editor/src/codeView/notation/parse'
 import {
   serializePianoRoll,
   serializeStepGrid,
   serializeStepGridWithExtent,
-} from '../../../editor/src/visualEdit/notation/serialize'
-import { placeNote, toggleCell } from '../../../editor/src/visualEdit/notation/place'
+} from '../../../editor/src/codeView/notation/serialize'
+import { placeNote, toggleCell } from '../../../editor/src/codeView/notation/place'
 import {
   collapsePianoRollToDocument,
   collapseStepGridToDocument,
-} from '../../../editor/src/visualEdit/notation/resolution'
+} from '../../../editor/src/codeView/notation/resolution'
 import { enginePlayedCycle, HRES, type Note } from './engineEditOracle'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
@@ -204,7 +204,8 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
       // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-      expect(s.admitsFinerView, `k=${k} admits`).toBe(937)
+      // ⚠ 937 -> 935 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      expect(s.admitsFinerView, `k=${k} admits`).toBe(935)
       // Two refusal gates, each saying why by name. `no-finer-view` is the leaf path: a
       // leaf model anchors each note to its own source span, so there is no span to
       // subdivide, and the entry refuses a refine rather than quietly drawing the
@@ -215,7 +216,8 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       expect([...s.refusesFinerView.entries()], `k=${k} gates`).toEqual([
         // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
         // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-        ['no-finer-view', 80],
+        // ⚠ 80 -> 82 at #1974 (a hit is anchored on the note that wrote it): the grids `[c eb g <f bb>](3,8,<0 1>)` and `{c [f g] d# d}%2` go element -> leaf writer, and a leaf-written view is offered no finer — store probes/timing-facts-1974/anchor-move.
+        ['no-finer-view', 82],
         ['view-resolution', 1],
       ])
       // IDENTICAL AT EVERY SCALE, and that is the point rather than a coincidence:
@@ -228,10 +230,12 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       expect({ asks: s.asks.length, ...pathCounts(s) }, `k=${k} asks by path`).toEqual({
         // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
         // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-        asks: 26862,
+        // ⚠ asks 26862 -> 26742 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+        asks: 26742,
         // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
         splice: 22272,
-        alt: 4553,
+        // ⚠ alt 4553 -> 4433 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+        alt: 4433,
         declined: 37,
       })
     }
@@ -769,11 +773,13 @@ describe('#1058 — the roll, gated separately', () => {
       // were UNMOVED. That was inferred from the arrival's shape and never measured, and
       // it was wrong by 3. The figures above are read off a run.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-      expect(opens, `k=${k} opens`).toBe(599)
+      // ⚠ 599 -> 601 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      expect(opens, `k=${k} opens`).toBe(601)
       expect(gates.get('view-resolution'), `k=${k} view refusals`).toBe(k === 2 ? 1 : 2)
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
       expect(admits, `k=${k} admits`).toBe(k === 2 ? 562 : 561)
-      expect(gates.get('no-finer-view'), `k=${k} leaf refusals`).toBe(36)
+      // ⚠ 36 -> 38 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      expect(gates.get('no-finer-view'), `k=${k} leaf refusals`).toBe(38)
       expect(asks, `k=${k} asks`).toBeGreaterThan(4000)
       // the roll's notes carry a duration natively, so a finer column is never
       // unspellable for it the way a `_` run can be for the grid

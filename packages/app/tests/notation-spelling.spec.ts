@@ -300,6 +300,37 @@ test.describe('looking closer and coming back returns the pattern as written (#1
     expect(after).toMatch(/\.gain\("/)
     expect(headMini(after)).toBe('c3 [e3 g3] c4 e4')
   })
+
+  /**
+   * #1964 — a NOTE edit made through a refined view keeps the view. The velocity drag above
+   * changes only `.gain`, so it never saw that the zoom reset whenever the notes' text
+   * changed: the panel took its own edit for a move to another pattern. Main's bundle drew
+   * 4 columns after this click.
+   */
+  test('roll: a note added through a refined view keeps the view (#1964)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 e3 g3 c4")')
+    const drawer = await openPattern(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    const slots = slotsControl(drawer)
+    await expect(roll.locator('[data-vel-col]')).toHaveCount(4)
+
+    await (await preset(slots, 8)).click()
+    await expect(roll.locator('[data-vel-col]')).toHaveCount(8)
+
+    // drawn column 2 is the document's column 1, so the note fits the document as written
+    await roll.locator('[data-roll-cell="60:2"]').click()
+    await expect
+      .poll(() => strudelValue(page), { timeout: 8_000 })
+      .toBe('$: note("c3 [e3,c4] g3 c4")')
+    await page.waitForTimeout(400)
+
+    await expect(roll.locator('[data-vel-col]'), 'the zoom the user set').toHaveCount(8)
+    await expect(slots.locator('[data-resolution-current]')).toHaveAttribute(
+      'data-resolution-current',
+      '8',
+    )
+  })
 })
 
 test.describe('looking closer at an alternation draws it (#1117)', () => {

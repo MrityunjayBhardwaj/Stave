@@ -10,18 +10,19 @@
  * shared content-space transform (PV116) — it knows nothing about canvas, DPR,
  * or scroll. `drawTimeline` consumes it; `SongTimelineCanvas` owns the surface.
  *
- * This module is PURE (only TYPE imports from `@stave/editor`, so it stays out
- * of vitest's CJS-`gifenc` trap). The note-mark COLLECTION — which needs the
+ * This module is PURE (only TYPE imports from `@stave/editor`, which kept it out
+ * of vitest's CJS-`gifenc` trap until #1938 removed the trap). The note-mark COLLECTION — which needs the
  * runtime `collectCycles`/`laneKeyOf` — lives in `timelineMarks.ts`; this
  * builder merges its already-collected output as data.
  */
 
-import type { SampleRef, SongAnalysis, SongSection } from '@stave/editor'
+import type { SampleRef, SongAnalysis, SongSection, TrackDisplay } from '@stave/editor'
 import type { SongWindow } from './songAxis'
 import type { SampleRegion } from './waveformLane'
-import { trackIdentity } from './colors'
+import type { WaveformSource } from './drawTimeline'
+import { trackIdentity } from '@stave/editor'
 import { containingAnchor } from './laneIdentity'
-import { resolveLaneName } from './trackLabel'
+import { resolveLaneName, resolveLaneShownName } from './trackLabel'
 import { resolveSectionName } from './sectionLabel'
 import type { DeclaredTrack } from './trackOrder'
 import type { SignalAutomation, TrackEnvelopeStatus } from '@stave/editor'
@@ -65,7 +66,9 @@ export interface SceneNote {
   readonly cycle: number
   /** Fractional song cycle of the offset (event `end`), `≥ cycle`. The mark's
    *  width is `(end − cycle) × pxPerCycle` — DURATION-proportional, mirroring the
-   *  live view's note blocks (`eventToRect`), not a fixed dab. */
+   *  live view's note blocks (`eventToRect`), not a fixed dab. The bar painted
+   *  for it is 1px shorter, so back-to-back notes stay apart
+   *  (`paintedMarkRect`, #2157). */
   readonly end: number
   /** MIDI pitch for in-lane vertical placement, or null for percussive events. */
   readonly pitch: number | null
@@ -198,10 +201,17 @@ export interface SceneLane {
    *  Set by `markAudioLanes`, never by `buildTimelineScene`, which knows the
    *  events but not which names are files. Absent means false. */
   readonly audio?: boolean
-  /** #1738 — the user set this track to draw as BARS: no waveform inside its
-   *  marks, no audio-lane clip body, no rendered envelope. Set by
-   *  `markBarsLanes`, which runs before `markAudioLanes`. Absent means the
-   *  default, `waveform`. */
+  /** #2138 — every mark on this lane plays an audio file, whatever the lane's
+   *  display. `audio` is this AND Waveform; a Bars lane of files is `files`
+   *  but not `audio`. Its track is never rendered (`envelopeTrackIds`): its
+   *  Waveform view is the files' own shape, so a render would never be drawn.
+   *  Set by `markAudioLanes`. Absent means false. */
+  readonly files?: boolean
+  /** #1738 — this track draws as BARS: no waveform inside its marks, no
+   *  audio-lane clip body, no rendered envelope. Set by `markBarsLanes`, which
+   *  runs before `markAudioLanes`: from the type the user saved, or, with none
+   *  saved, by default unless the lane is a long recording (#2079). Absent
+   *  means Waveform. */
   readonly bars?: boolean
   /** #1731 — the lane's own rendered loudness, for a lane that is not an audio
    *  lane. Set by `attachEnvelopes`; absent when there is no render (yet). */
@@ -211,6 +221,10 @@ export interface SceneLane {
    *  `$:`. The lane's IDENTITY stays `laneKey` (drives the live overlay match);
    *  only this name — and `color`, derived from it — resolves to the label. */
   readonly displayName: string
+  /** What the header SHOWS (#2151): `Track 1` for an unnamed `d1`, else
+   *  `displayName`. Text only — saved per-track settings, the colour and the
+   *  faded-lane set all stay keyed by `displayName`. */
+  readonly shownName: string
   readonly color: string
   /** `onsetsByCycle` — onset count per integer cycle. ⚠ The ONE window-relative
    *  array on the scene: `density[i]` is cycle `windowOriginCycles + i`. */
@@ -629,6 +643,7 @@ export function buildTimelineScene(
     return {
       laneKey,
       displayName,
+      shownName: resolveLaneShownName(laneKey, marks.labelOffsetByLane.get(laneKey), code),
       color: trackIdentity(displayName, customColorByName?.get(displayName)).color,
       density,
       notes,
@@ -774,18 +789,29 @@ function groupVoices(notes: readonly SceneNote[]): SceneVoice[] {
 }
 
 /**
- * Flag each lane the user set to draw as BARS (#1738), by DISPLAY NAME — the
- * key the per-file track settings are stored under, as a custom colour is.
+ * Flag each lane that draws as BARS (#1738).
+ *
+ * A type the user saved wins, keyed by DISPLAY NAME, the key the per-file track
+ * settings are stored under, as a custom colour is. With none saved the lane is
+ * Bars unless it is a long recording (#2079, `longRecordingLanes`): a synth's
+ * render hides its notes and a drum hit's waveform says no more than its bar,
+ * while a vocal or a guitar take is what a waveform is for.
+ *
  * Runs before `markAudioLanes`: a Bars lane is never an audio lane, and
  * `attachEnvelopes` gives it no envelope, so it draws none. Its track is still
  * rendered, last (`envelopeTrackIds`, #1748).
  *
  * Returns the SAME scene when nothing changes, like `markAudioLanes`.
  */
-export function markBarsLanes(scene: TimelineScene, barsNames: ReadonlySet<string>): TimelineScene {
+export function markBarsLanes(
+  scene: TimelineScene,
+  saved: ReadonlyMap<string, TrackDisplay>,
+  longRecordings: ReadonlySet<string>,
+): TimelineScene {
   let changed = false
   const lanes = scene.lanes.map((lane) => {
-    const bars = barsNames.has(lane.displayName)
+    const display = saved.get(lane.displayName) ?? (longRecordings.has(lane.displayName) ? 'waveform' : 'bars')
+    const bars = display === 'bars'
     if ((lane.bars === true) === bars) return lane
     changed = true
     if (!bars) {
@@ -795,6 +821,46 @@ export function markBarsLanes(scene: TimelineScene, barsNames: ReadonlySet<strin
     return { ...lane, bars: true }
   })
   return changed ? { ...scene, lanes } : scene
+}
+
+/**
+ * The display names of lanes that play long recordings (#2079), the lanes whose
+ * type defaults to Waveform.
+ *
+ * Stave can't tell that a file is a voice, but it can tell how long the file is.
+ * A lane is a long recording when every mark on it plays an audio file and every
+ * one of those files lasts longer than one bar (one cycle at the song's tempo).
+ * A drum kit plays files too, but short ones; a synth note plays none. A file
+ * not decoded yet has no length, so it does not count as long: its lane shows
+ * Bars until the length is known.
+ */
+export function longRecordingLanes(
+  scene: TimelineScene,
+  source:
+    | Pick<WaveformSource, 'cps' | 'peaksFor' | 'isFileBacked'>
+    | undefined,
+): ReadonlySet<string> {
+  const names = new Set<string>()
+  const cps = source?.cps
+  if (source?.isFileBacked == null || cps == null || !(cps > 0)) return names
+  const isFileBacked = source.isFileBacked
+  const bar = 1 / cps
+  const memo = new Map<string, boolean>()
+  const long = (sample: SampleRef) => {
+    const key = sampleKey(sample)
+    let got = memo.get(key)
+    if (got === undefined) {
+      got = isFileBacked(sample) && (source.peaksFor(sample)?.duration ?? 0) > bar
+      memo.set(key, got)
+    }
+    return got
+  }
+  for (const lane of scene.lanes) {
+    if (lane.notes.length > 0 && lane.notes.every((n) => n.sample != null && long(n.sample))) {
+      names.add(lane.displayName)
+    }
+  }
+  return names
 }
 
 /**
@@ -825,13 +891,13 @@ export function markAudioLanes(
   }
   let changed = false
   const lanes = scene.lanes.map((lane) => {
-    const audio =
-      lane.bars !== true &&
-      lane.notes.length > 0 &&
-      lane.notes.every((n) => n.sample != null && backed(n.sample))
-    if ((lane.audio === true) === audio) return lane
+    // #2138 — asked of every lane, Bars too: a Bars lane of files is not an
+    // audio lane, but it must not have its track rendered either.
+    const files = lane.notes.length > 0 && lane.notes.every((n) => n.sample != null && backed(n.sample))
+    const audio = files && lane.bars !== true
+    if ((lane.audio === true) === audio && (lane.files === true) === files) return lane
     changed = true
-    return { ...lane, audio }
+    return { ...lane, audio, files }
   })
   return changed ? { ...scene, lanes } : scene
 }
@@ -864,8 +930,10 @@ export function attachEnvelopes(
 }
 
 /**
- * The engine tracks to render: the track behind every lane with marks that is
- * not an audio lane, each once. Waveform lanes first, then Bars lanes (#1748);
+ * The engine tracks to render: the track behind every lane with marks that does
+ * not play only files, each once. A lane of files draws the files' own shape as
+ * Waveform, so its track's render would never be drawn; that holds for a Bars
+ * lane of files too, which is why this asks `files`, not `audio` (#2138). Waveform lanes first, then Bars lanes (#1748);
  * within each, the lanes in `inView` first (#1760), then the rest, in lane order.
  *
  * The engine spends its render budget in this order, so on a song too long to
@@ -887,7 +955,7 @@ export function envelopeTrackIds(
   for (const bars of [false, true]) {
     for (const visible of [true, false]) {
       for (const lane of scene.lanes) {
-        if (lane.audio === true || (lane.bars === true) !== bars || lane.notes.length === 0) continue
+        if (lane.audio === true || lane.files === true || (lane.bars === true) !== bars || lane.notes.length === 0) continue
         if (inView.has(lane.laneKey) !== visible) continue
         const id = trackIdByLane.get(lane.laneKey)
         if (id != null && !out.includes(id)) out.push(id)

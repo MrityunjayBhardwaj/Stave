@@ -20,19 +20,16 @@ import { describe, it, expect, vi } from 'vitest'
 // Same barrel mock as the stack-arms harness next door: no IR events, so lane
 // structure comes from the REAL `structuralWalk` over the REAL IR rather than
 // from collect's events. That is the path that has to carry `armRanges`.
-vi.mock('@stave/editor', async () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   collectCycles: () => [],
-  structuralWalk: (await import('./structuralWalkTestStub')).structuralWalk,
-  wholeWalkWindow: (await import('./structuralWalkTestStub')).wholeWalkWindow,
-  sampleRefOf: (await import('./structuralWalkTestStub')).sampleRefOf,
-  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 
 import { collectNoteMarks } from '../timelineMarks'
 import { buildTimelineScene } from '../timelineScene'
 import { wholeSongWindow } from '../songAxis'
-import { IR, type PatternIR } from '../../../../../editor/src/ir/PatternIR'
-import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
+import { IR, type PatternIR } from '@stave/editor'
+import { parseStrudel } from '@stave/editor'
 
 // The tree the song is drawn from: `parseStrudel` (since #1558).
 const pipeline = (code: string): PatternIR => parseStrudel(code)
@@ -116,6 +113,13 @@ describe('#1391 — the section name reaches the scene', () => {
       expect(c.nameRange, `arm ${c.armIndex} carried no source range`).not.toBeNull()
       expect(SONG.slice(...c.nameRange!)).toMatch(/^\[\s*\d+\s*,/)
     }
+  })
+
+  it('a name is any identifier, as it is for a track label (#1921)', () => {
+    // These read `§1`/`§2` and `§1`/`verse` while the section reader tested names
+    // with an ASCII-only regex of its own.
+    expect(sectionNames(`const 前奏 = s("bd")\nconst 主歌 = s("hh")\narrange([4, 前奏], [8, 主歌])`, 12)).toEqual(['前奏', '主歌'])
+    expect(sectionNames(`const café = s("bd")\nconst verse = s("hh")\narrange([4, café], [8, verse])`, 12)).toEqual(['café', 'verse'])
   })
 
   it('falls back to an ordinal for inline arms, in the same document', () => {

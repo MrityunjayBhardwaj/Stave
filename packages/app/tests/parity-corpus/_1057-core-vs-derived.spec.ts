@@ -27,7 +27,7 @@ import {
   parseStepGridCore,
   parsePianoRoll,
   parsePianoRollCore,
-} from '../../../editor/src/visualEdit/notation/parse'
+} from '../../../editor/src/codeView/notation/parse'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

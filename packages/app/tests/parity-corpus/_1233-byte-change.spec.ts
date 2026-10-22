@@ -25,14 +25,14 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid, parsePianoRoll, parseStepGridCore, parsePianoRollCore } from '../../../editor/src/visualEdit/notation/parse'
-import type { PianoRollModel, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
+import { parseStepGrid, parsePianoRoll, parseStepGridCore, parsePianoRollCore } from '../../../editor/src/codeView/notation/parse'
+import type { PianoRollModel, StepGridModel } from '../../../editor/src/codeView/notation/model'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import { toggleCell } from '../../../editor/src/codeView/notation/place'
 import {
   serializeStepGridWithExtent,
   serializePianoRollWithExtent,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

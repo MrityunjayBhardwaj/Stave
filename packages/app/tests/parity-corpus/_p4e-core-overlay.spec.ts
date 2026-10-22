@@ -34,15 +34,15 @@ import {
   parseStepGrid,
   parseStepGridCore,
   projectStepGridDerived,
-} from '../../../editor/src/visualEdit/notation/parse'
+} from '../../../editor/src/codeView/notation/parse'
 import type {
   LeafSource,
   StepGridModel,
   SurgicalOverlay,
-} from '../../../editor/src/visualEdit/notation/model'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
-import { serializeStepGridWithExtent } from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/model'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import { toggleCell } from '../../../editor/src/codeView/notation/place'
+import { serializeStepGridWithExtent } from '../../../editor/src/codeView/notation/serialize'
 
 /**
  * Wrap resolved spans as an OVERLAY the writer will accept (#1233 made the field lazy).

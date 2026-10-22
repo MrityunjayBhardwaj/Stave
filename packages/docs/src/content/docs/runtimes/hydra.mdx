@@ -19,6 +19,14 @@ s.osc(() => 20 + s.a.fft[0] * 80, 0.1, 0)
 
 ## What Stave adds
 
+- `stave.sig` — the beat, as functions you can pass anywhere Hydra takes a number. `stave.sig.kick()`, `stave.sig.snare()`, `stave.sig.hat()` and the other drums jump to 1 when that drum plays, then fade. `stave.sig.bass()`, `stave.sig.mid()`, `stave.sig.treble()` and `stave.sig.rms()` follow the mix. `stave.sig('bd')` and `stave.sig.track('$0')` follow one sound or one track. Pass the function itself, not its value:
+
+  ```js
+  s.osc(10, 0.1, 0)
+    .scale(() => 1 + stave.sig.kick() * 0.5)   // swells on every kick
+    .out()
+  ```
+
 - `s.a.fft[i]` — an 8-bin FFT tapped at the attached pattern's analyser. Use it in any input argument to drive the visual from audio.
 - `.out()` writes to `o0` by default. Use `o0`..`o3` explicitly when blending multiple chains.
 - `render(o0)` picks a specific buffer to display fullscreen.

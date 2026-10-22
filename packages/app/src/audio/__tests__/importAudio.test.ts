@@ -9,10 +9,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  planAssetImport,
-  type AssetRecord,
-} from "../../../../editor/src/workspace/assetNaming";
+import { planAssetImport, type AssetRecord } from "@stave/editor";
 
 const store = {
   records: [] as AssetRecord[],
@@ -24,13 +21,8 @@ const store = {
 
 let nextId = 0;
 
-vi.mock("@stave/editor", () => ({
-  // The real predicate's rule, not a stub that answers yes: the arms below
-  // throw a real-shaped error and must be told apart from any other failure.
-  isQuotaError: (err: unknown) =>
-    typeof err === "object" &&
-    err !== null &&
-    ["QuotaExceededError", "StorageFullError"].includes((err as { name?: string }).name ?? ""),
+vi.mock("@stave/editor", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@stave/editor")>()),
   // #1785 — the lock only orders the door against a collection; none runs here.
   withSoundRefsLock: <T>(fn: () => Promise<T>) => fn(),
   listAssetRecords: () => store.records,
@@ -65,16 +57,9 @@ vi.mock("@stave/editor", () => ({
     );
     return { ...plan, put: { hash, written: true } };
   },
-  nextTakeName: (existing: Iterable<string>) => {
-    let n = 0;
-    for (const name of existing) {
-      const m = /^take_(\d+)$/.exec(name);
-      if (m) n = Math.max(n, Number(m[1]));
-    }
-    return `take_${n + 1}`;
-  },
 }));
 
+const { StorageFullError } = await import("@stave/editor");
 const {
   importAudioFile,
   importAudioFiles,
@@ -201,7 +186,9 @@ describe("#1541 — several files at once", () => {
     const summary = await importAudioFiles([audioFile("big.wav", "audio/wav", 10)], {
       measureDuration: async (blob) => {
         if (blob.size === 10) {
-          throw Object.assign(new Error("full"), { name: "StorageFullError" });
+          // The error the store really throws (#1779); a plain Error renamed to
+          // look like it is NOT a refusal for space, and the real predicate knows it.
+          throw new StorageFullError(new Error("full"));
         }
         return undefined;
       },

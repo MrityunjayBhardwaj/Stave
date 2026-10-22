@@ -2,8 +2,8 @@
  * Pure health-meter classification for the Transport LCD (#859).
  *
  * Kept in its own module — with NO `@stave/editor` import — so the logic is
- * unit-testable without dragging the editor barrel (gifenc/CJS) into a hermetic
- * app test. TransportLCD imports these; the profiler read stays in the component.
+ * unit-testable without the editor barrel, which an app test could not load
+ * until #1938. TransportLCD imports these; the profiler read stays in the component.
  */
 
 export type HealthClass = "good" | "warn" | "crit";

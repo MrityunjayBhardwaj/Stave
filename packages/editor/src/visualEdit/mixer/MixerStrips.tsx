@@ -23,10 +23,10 @@ import { useSoloMuteSync } from './soloMuteSync'
 import { ChannelStrip } from './ChannelStrip'
 import { ExpandDrawer } from './ExpandDrawer'
 import { MasterStrip } from './MasterStrip'
-import { gainEdit, panEdit, muteEdit, renameEdit } from './writeStrip'
-import { otherTrackNames } from './stripModel'
-import { masterGainEdit, masterMuteEdit } from './masterEdit'
-import { trackIdentity } from '../trackColor'
+import { gainEdit, panEdit, muteEdit, renameEdit, commit } from '../../codeView'
+import { otherTrackNames } from '../../codeView'
+import { masterGainEdit, masterMuteEdit } from '../../codeView'
+import { trackIdentity } from '../../codeView'
 import { getActiveFileId, onActiveEditorChange } from '../../workspace/editorRegistry'
 import { getTrackMeta, setTrackMeta } from '../../workspace/WorkspaceFile'
 import { useTrackMetaMap } from '../../workspace/useTrackMeta'
@@ -167,22 +167,19 @@ export function MixerStrips({
               strip={strip}
               zoom={faceZoom}
               onGainChange={(value) =>
-                applyToStrip(strip.id, (fresh, wb) => {
-                  const e = gainEdit(fresh, value)
-                  if (e) wb.replaceRange(e.range, e.text, 'mixer')
-                })
+                applyToStrip(strip.id, (fresh, wb) =>
+                  commit(wb, gainEdit(fresh, value), 'mixer'),
+                )
               }
               onPanChange={(value) =>
-                applyToStrip(strip.id, (fresh, wb) => {
-                  const e = panEdit(fresh, value)
-                  if (e) wb.replaceRange(e.range, e.text, 'mixer')
-                })
+                applyToStrip(strip.id, (fresh, wb) =>
+                  commit(wb, panEdit(fresh, value), 'mixer'),
+                )
               }
               onMuteToggle={() =>
-                applyToStrip(strip.id, (fresh, wb) => {
-                  const e = muteEdit(fresh, !strip.muted)
-                  if (e) wb.replaceRange(e.range, e.text, 'mixer')
-                })
+                applyToStrip(strip.id, (fresh, wb) =>
+                  commit(wb, muteEdit(fresh, !strip.muted), 'mixer'),
+                )
               }
               onRename={(newLabel) =>
                 // Anchored, NOT id-addressed (#877). A rename changes the strip's
@@ -197,11 +194,12 @@ export function MixerStrips({
                   // `strips` — the same `otherTrackNames` projection the Song
                   // Timeline's rename uses, so both views reject the same set.
                   const taken = new Set(otherTrackNames(doc, fresh.statementRange[0]))
-                  const e = renameEdit(fresh, newLabel, taken)
-                  if (!e) return
-                  wb.replaceRange(e.range, e.text, 'mixer')
+                  // Tagged 'rename' like the track chip and the Song Timeline lane
+                  // — the same gesture from three surfaces is one kind of edit.
+                  if (commit(wb, renameEdit(fresh, newLabel, taken), 'rename') !== 'written') return
                   // Migrate a custom-colour override from the OLD display name to
-                  // the new label so the rename doesn't orphan it (#581).
+                  // the new label so the rename doesn't orphan it (#581) — only once
+                  // the rename is actually in the document.
                   if (fileId) {
                     const prevColor = getTrackMeta(fileId, strip.name).color
                     if (prevColor && strip.name !== newLabel) {
@@ -270,16 +268,10 @@ export function MixerStrips({
           expanded={masterExpanded}
           onToggleExpand={() => toggle(MASTER_EXPAND_ID)}
           onGainChange={(value) =>
-            applyToMaster((doc, wb) => {
-              const e = masterGainEdit(doc, value)
-              if (e) wb.replaceRange(e.range, e.text, 'mixer')
-            })
+            applyToMaster((doc, wb) => commit(wb, masterGainEdit(doc, value), 'mixer'))
           }
           onMuteToggle={() =>
-            applyToMaster((doc, wb) => {
-              const e = masterMuteEdit(doc, !masterMuted)
-              if (e) wb.replaceRange(e.range, e.text, 'mixer')
-            })
+            applyToMaster((doc, wb) => commit(wb, masterMuteEdit(doc, !masterMuted), 'mixer'))
           }
           onGestureStart={beginGesture}
           onGestureEnd={endGesture}

@@ -3,9 +3,8 @@
  *
  * Mirrors MusicalTimeline.test.tsx: mocks @stave/editor's IR snapshot
  * channel via vi.mock so this test owns the publish path. Constructs a
- * real BreakpointStore (the editor barrel exports the runtime class) and
- * a real HapStream (imported directly from the editor source path so
- * vi.mock doesn't intercept it).
+ * real BreakpointStore and a real HapStream: the mock spreads the real
+ * module, so both come through it untouched.
  */
 import {
   describe,
@@ -26,11 +25,9 @@ import type {
   BreakpointStore as BreakpointStoreType,
 } from "@stave/editor";
 
-// Phase 20-06 — import HapStream + BreakpointStore from the editor source
-// path directly so the `vi.mock('@stave/editor', ...)` factory below
-// doesn't intercept them. Same shape as MusicalTimeline.test.tsx:43.
-import { HapStream as HapStreamRuntime } from "../../../../editor/src/engine/HapStream";
-import { BreakpointStore as BreakpointStoreRuntime } from "../../../../editor/src/engine/BreakpointStore";
+// The real runtime classes — the mock below spreads the real module and
+// overrides neither (#1943).
+import { HapStream as HapStreamRuntime, BreakpointStore as BreakpointStoreRuntime } from "@stave/editor";
 const HapStream = HapStreamRuntime as unknown as new () => HapStreamType;
 const BreakpointStore = BreakpointStoreRuntime as unknown as new () => BreakpointStoreType;
 
@@ -40,10 +37,11 @@ import { IRInspectorPanel } from "../IRInspectorPanel";
 
 let mockCurrent: IRSnapshot | null = null;
 const mockListeners = new Set<(s: IRSnapshot | null) => void>();
-const revealLineInFileMock = vi.fn<[string, number], void>();
-const setCaptureCapacityMock = vi.fn<[number], void>();
+const revealLineInFileMock = vi.fn<(fileId: string, line: number) => void>();
+const setCaptureCapacityMock = vi.fn<(capacity: number) => void>();
 
-vi.mock("@stave/editor", () => ({
+vi.mock("@stave/editor", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@stave/editor")>()),
   getIRSnapshot: () => mockCurrent,
   subscribeIRSnapshot: (cb: (s: IRSnapshot | null) => void) => {
     mockListeners.add(cb);

@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import type * as Monaco from 'monaco-editor'
 import type { HapStream, HapEvent } from '../engine/HapStream'
 
-// ---- Base style injection (was previously owned by StrudelMonaco.tsx) ----
+// ---- Base style injection (the hook owns it; no other editor injects it) ----
 let baseStyleInjected = false
 function ensureBaseHighlightStyle(): void {
   if (baseStyleInjected || typeof document === 'undefined') return
@@ -187,9 +187,8 @@ export function useHighlighting(
   useEffect(() => {
     if (!editor || !hapStream) return
 
-    // Ensure the base CSS for .strudel-active-hap exists. Previously
-    // injected by StrudelMonaco.tsx, but the new EditorView doesn't
-    // use StrudelMonaco — so the hook owns its own styles.
+    // Ensure the base CSS for .strudel-active-hap exists. EditorView
+    // injects none of its own, so the hook owns its styles.
     ensureBaseHighlightStyle()
 
     // Fresh subscription — start with no epoch seen and no anchors.

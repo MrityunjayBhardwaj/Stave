@@ -28,7 +28,7 @@
 
 import * as React from 'react'
 import { createPortal } from 'react-dom'
-import { TRACK_PALETTE_32 } from '../trackColor'
+import { TRACK_PALETTE_32 } from '../../codeView'
 
 export interface StripColorPopoverProps {
   /** Anchor rect from the strip dot's `getBoundingClientRect()`. */

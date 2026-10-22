@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const appDir = path.resolve(here, '..')
-const PARSE = path.resolve(appDir, '../editor/src/visualEdit/notation/parse.ts')
+const PARSE = path.resolve(appDir, '../editor/src/codeView/notation/parse.ts')
 
 /**
  * The two halves of `LEAF_PROJECT_BARS`, each with the regex that rewrites ITS field only.

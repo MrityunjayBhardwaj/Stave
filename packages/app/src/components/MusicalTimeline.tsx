@@ -38,7 +38,7 @@ import {
   getIRSnapshot,
   subscribeIRSnapshot,
   revealOffsetInFile,
-  applyOffsetEditsToFile,
+  commitToFile,
   type OffsetEdit,
   type WriteSource,
   type WriteOutcome,
@@ -95,6 +95,7 @@ import { FullSongTimeline } from './FullSongTimeline'
 import { showConfirm } from '../dialogs/host'
 import { createSongCollector } from './musicalTimeline/songCollector'
 import { readSongAnalysis, subscribeSongAnalysis } from '../state/songAnalysis'
+import { getSongCycleLimit } from '../state/songCycleLimit'
 import { createWaveformSource } from '../audio/waveformSource'
 import { subscribeWaveformsReady } from '../audio/waveformWarm'
 import {
@@ -140,7 +141,7 @@ export interface MusicalTimelineProps {
    * #1107 — the capture keys of every track the engine registered, the same ids
    * `getTimelineEvents` stamps as `trackId`. Lets the analysis refuse a period
    * accepted before a declared track has been heard at all. Optional: without it
-   * the analysis makes no claim about tracks it has not seen (the #1104 rule).
+   * the analysis makes no claim about tracks it has not seen.
    */
   readonly getSongTrackIds?: () => string[]
   /**
@@ -452,13 +453,14 @@ export function MusicalTimeline(
     }
     return m
   }, [trackMeta])
-  // #1738 — tracks whose lane draws as BARS (notes only), from the same store.
-  const barsNames = React.useMemo(() => {
-    const names = new Set<string>()
+  // #1738 — the lane type each track saved (Waveform or Bars), from the same
+  // store. A track with none takes the default (#2079), decided in the view.
+  const trackDisplays = React.useMemo(() => {
+    const m = new Map<string, TrackDisplay>()
     for (const [name, meta] of trackMeta) {
-      if (meta.display === 'bars') names.add(name)
+      if (meta.display) m.set(name, meta.display)
     }
-    return names
+    return m
   }, [trackMeta])
 
   // #731 — the display names of tracks that read as silenced (muted, or dimmed by
@@ -601,8 +603,8 @@ export function MusicalTimeline(
   // ── The Song Timeline's ONE write seam (#1414) ──────────────────────────
   //
   // ⚠ WHY THIS EXISTS, AND WHY IT IS A FUNCTION AND NOT A CONVENTION.
-  // `applyOffsetEditsToFile` has always refused correctly and has always said so
-  // — it names five distinct refusals. Every one of its fourteen call sites threw
+  // The file route (now `commitToFile`, #1911) has always refused correctly and has
+  // always said so — it names five distinct refusals. Every one of its fourteen call sites threw
   // the answer away, and twelve of them bailed out one line earlier on an empty
   // edit list without telling anyone either. The result: a clip drag that was
   // REFUSED and one that was APPLIED looked identical, to the user and to us.
@@ -624,7 +626,7 @@ export function MusicalTimeline(
       const fileId = snapshot?.source
       const outcome: WriteOutcome = !fileId
         ? 'no-editor'
-        : applyOffsetEditsToFile(fileId, edits, source, snapshot.code)
+        : commitToFile(fileId, edits, source, snapshot.code)
       // ⚠ `'applied'` compared explicitly. Every member of WriteOutcome is a
       // non-empty string and therefore truthy, so `if (outcome)` is always true.
       // The count this builds up in the Console IS the instrument #1414 asked
@@ -663,7 +665,14 @@ export function MusicalTimeline(
         getTimelineEventsBand: getTimelineEventsBandRef.current,
         getSongTrackIds: getSongTrackIdsRef.current,
       })
-      return previewShapeSwap(ir, automation, next, { collectFn, hasUnheardTrack, signal })
+      // #2109 — over the song analysis's own limit, or the preview answers a
+      // different horizon from the one the swap will be drawn on.
+      return previewShapeSwap(ir, automation, next, {
+        collectFn,
+        hasUnheardTrack,
+        signal,
+        capCycles: getSongCycleLimit(),
+      })
     },
     [],
   )
@@ -673,7 +682,7 @@ export function MusicalTimeline(
   // arm index, and the new whole-cycle weight. We parse the arrangement at that
   // anchor against the SAME snapshot text the offsets came from, build a surgical
   // set-weight edit (cat→arrange promotion handled by the serializer), and route
-  // it through the editor registry's write-back — guarded against a stale model
+  // it through `writeArrange` (the commit door's file route) — guarded against a stale model
   // (`snapshot.code`). The runtime's debounced re-eval then republishes the IR
   // and the timeline re-derives the clip's new extent (PV122 #2/#3).
   const handleTrimClip = React.useCallback(
@@ -772,7 +781,8 @@ export function MusicalTimeline(
   // (which validates + no-ops + preserves a `_` mute marker), and apply it
   // surgically. The debounced re-eval republishes the IR and BOTH views
   // re-resolve the new label (Timeline via the Step 2 dollarPos resolver, Mixer
-  // via `bareLabel`) — so the rename shows everywhere.
+  // via the strip model) — both through the editor's one `labelName` rule
+  // (#1921), so the rename shows everywhere.
   const handleRenameLane = React.useCallback(
     (labelOffset: number, newLabel: string, oldDisplayName: string) => {
       if (!snapshot?.source) return
@@ -1175,7 +1185,7 @@ export function MusicalTimeline(
           onRenameLane={handleRenameLane}
           selectedStatementOffset={selectedStatementOffset}
           customColorByName={customColorByName}
-          barsNames={barsNames}
+          trackDisplays={trackDisplays}
           onSetTrackDisplay={handleSetTrackDisplay}
           onSetTrackColor={handleSetTrackColor}
           onResetTrackColor={handleResetTrackColor}

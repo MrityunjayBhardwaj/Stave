@@ -1,0 +1,110 @@
+---
+title: Make visuals react
+description: Make a p5.js, Hydra or GLSL visual move with every kick, snare and note, using the signals Stave hands it.
+sidebar:
+  order: 0
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+![An audio-reactive visual under the code: a robot guitarist playing along, next to a chord diagram](../../../assets/studio/visuals.jpg)
+
+Stave knows every note your code plays, so it tells your visual exactly when the kick hits, which note just started, and which track played it.
+
+## Your first reactive sketch
+
+1. Make a file called `kick.p5` (the **+** at the end of the tab bar, or **New file** in the Files panel).
+2. Paste this and **save** (⌘S). A visual file reloads when you save it.
+
+   ```js
+   function setup() {
+     createCanvas(stave.width, stave.height)
+   }
+
+   function draw() {
+     background(10, 10, 20, 60)
+     noStroke()
+     fill(120, 220, 255)
+     circle(width / 2, height / 2, 20 + sig.kick * 120)
+   }
+   ```
+
+3. In your Strudel file, point a track at it by name and press **⌘Enter**:
+
+   ```js
+   $: s("bd*4, ~ cp").viz("kick")
+   ```
+
+The circle jumps on every kick, right under that line of code. Change the beat to `bd*8` and the circle follows, because the visual and the music come from the same pattern.
+
+## The signals
+
+| What you want | p5.js | Hydra | GLSL |
+|---|---|---|---|
+| A drum just hit | `sig.kick`, `sig.snare`, `sig.hat`, `sig.openHat`, `sig.clap`, `sig.rim`, `sig.tom` | `stave.sig.kick()` … | `uKick`, `uSnare`, `uHat`, `uOpenHat`, `uClap`, `uRim`, `uTom` |
+| How hard the loudest note was hit | `sig.keyVelocity` | `stave.sig.keyVelocity()` | `uVelocity` |
+| How loud the mix is | `sig.rms`, `sig.bass`, `sig.mid`, `sig.treble` | `stave.sig.rms()` … | `uRms`, `uBass`, `uMid`, `uTreble` |
+| The mix's spectrum and waveform | `sig.fft`, `sig.wave` (arrays) | `s.a.fft[i]` | `iChannel0` (row 0 spectrum, row 1 waveform) |
+| One sound | `sig('bd')` | `stave.sig('bd')` | — |
+| One track | `sig.track('$0')` | `stave.sig.track('$0')` | `staveTrack(i)` |
+
+Every value runs from 0 to 1. A drum signal jumps to 1 the moment that drum plays, then fades back towards 0, so multiplying by it gives you a hit that decays on its own.
+
+<Aside type="tip">
+The drum signals come from the notes your code plays, not from listening to the audio. A kick is still a kick when the bass is loud, and a hi-hat is a hi-hat even if it's quiet. `sig.bass` and `sig.fft` do listen to the sound, for when you want the texture of the mix.
+</Aside>
+
+## The same idea in Hydra
+
+In Hydra the signals are functions. Pass the function itself where Hydra takes a number:
+
+```js
+s.osc(10, 0.1, 0)
+  .scale(() => 1 + stave.sig.kick() * 0.5)   // swells on every kick
+  .out()
+```
+
+## The same idea in GLSL
+
+A GLSL file is a ShaderToy-style `mainImage`. The drum signals are uniforms:
+
+```glsl
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  vec3 col = vec3(0.05, 0.05, 0.1);
+  col += vec3(1.0, 0.2, 0.15) * uKick;   // flash red on the kick
+  fragColor = vec4(col, 1.0);
+}
+```
+
+See [GLSL / ShaderToy](/runtimes/glsl/) for the full list, including `staveTrack(i)` for your own tracks.
+
+## Follow one sound or one track
+
+`sig('bd')` follows every `bd` in the song, whichever track plays it. `sig.track('$0')` follows the first `$:` track. A named track uses its name, as in `sig.track('drums')`. Both give you `.env` (the hit that fades) and `.rms`, plus `.fft` for that sound alone:
+
+```js
+function draw() {
+  background(0, 40)
+  const drums = sig.track('drums')
+  const lead = sig.track('lead')
+  fill(255, 120, 80); circle(width * 0.3, height / 2, 20 + drums.env * 140)
+  fill(80, 200, 255); circle(width * 0.7, height / 2, 20 + lead.env * 140)
+}
+```
+
+`sig.tracks` and `sig.sounds` list the names that are playing right now.
+
+## Where a visual can go
+
+- **Under a line of code**, with `.viz("name")`. Each track can have its own.
+- **Behind your code**, as a backdrop. Use **set bg ▾** in the editor's bar, or right-click a visual file and choose **Set as Background**.
+- **In its own window**, for a projector or a second screen.
+
+## Start from something that works
+
+- Every new `.p5`, `.hydra` and `.glsl` file starts with a short sketch that already reacts.
+- The built-ins (`pianoroll`, `scope`, `spectrum`, `spiral`, `pitchwheel`, `wordfall` and more) live in `preset/viz/`, where you can open and change them.
+- The [Library](/studio/library/)'s **Viz** shelf has finished sketches, like the ones from the launch video, that you can add with one click.
+
+Next: [Using visualizers](/guides/using-visualizers/) covers quality settings, and [Writing fast viz sketches](/guides/viz-performance/) covers keeping heavy sketches smooth.

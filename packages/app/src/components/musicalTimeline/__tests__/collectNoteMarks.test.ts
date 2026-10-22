@@ -7,9 +7,8 @@
  * The evaluated hap carries the RESOLVED note (`"C3"`), which `extractPitch`
  * parses directly — no scale/degree logic needed.
  *
- * `collectNoteMarks` pulls the runtime `collectCycles`/`laneKeyOf` from
- * `@stave/editor` (a CJS-`gifenc`-laden barrel), so — mirroring
- * FullSongTimeline.test.tsx — we mock just those two. The IR events the mock
+ * The mock below is the REAL `@stave/editor` with only the lane structure swapped for a
+ * fixture reduced from the IR events here (#1943). The IR events
  * returns deliberately carry a BARE-INTEGER `note` (`"0"`), which is exactly
  * the case the static IR gets wrong; the eval events carry note NAMES. So a
  * pitched mark can ONLY come from the eval path, making the two paths
@@ -27,17 +26,15 @@ const { IR_EVENTS } = vi.hoisted(() => ({
     { begin: 0, end: 1, trackId: 'd2', dollarPos: 30, note: '0', loc: [{ start: 40, end: 50 }] },
   ],
 }))
-vi.mock('@stave/editor', async () => {
+vi.mock('@stave/editor', async (importOriginal) => {
   // #974 — lane STRUCTURE (incl. `labelOffsetByLane`, the containment anchors these tests
   // exercise) now comes from `structuralWalk`, not collect events. Reduce the SAME IR_EVENTS
   // through the REAL production reducer so d1/d2 keep their dollarPos anchors (PV192).
-  const { skeletonsFromEvents, wholeWalkWindow, sampleRefOf } = await import('./structuralWalkTestStub')
+  const { skeletonsFromEvents } = await import('./structuralWalkTestStub')
   return {
+    ...(await importOriginal<typeof import('@stave/editor')>()),
     structuralWalk: (_ir: unknown, window: { originCycle: number; spanCycles: number }) =>
       skeletonsFromEvents(IR_EVENTS, window),
-    wholeWalkWindow,
-    sampleRefOf,
-    laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
   }
 })
 

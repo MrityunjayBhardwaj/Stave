@@ -19,16 +19,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
-import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
+import { parseStepGrid } from '../../../editor/src/codeView/notation/parse'
+import { serializeStepGrid } from '../../../editor/src/codeView/notation/serialize'
+import { toggleCell } from '../../../editor/src/codeView/notation/place'
 import { ungatedToggle } from './ungatedOps'
-import { scaleCell, isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { scaleCell, isCellOn } from '../../../editor/src/codeView/notation/model'
 import type {
   GridCells,
   StepGridModel,
-} from '../../../editor/src/visualEdit/notation/model'
-import type { ParseResult } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
+import type { ParseResult } from '../../../editor/src/codeView/notation/model'
 import { enginePlayedCycle, HRES, type Note } from './engineEditOracle'
 
 /**

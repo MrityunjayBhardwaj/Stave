@@ -74,7 +74,7 @@ import { fileURLToPath } from 'node:url'
 import {
   parseStepGrid,
   parsePianoRoll,
-} from '../../../editor/src/visualEdit/notation/parse'
+} from '../../../editor/src/codeView/notation/parse'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 

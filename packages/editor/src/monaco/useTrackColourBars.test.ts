@@ -8,9 +8,9 @@
  */
 import { describe, it, expect } from 'vitest'
 import { trackBarSegments, type PositionModel } from './useTrackColourBars'
-import { detectAllChunks } from '../visualEdit/chunkDetect'
-import { buildStripModels } from '../visualEdit/mixer/stripModel'
-import { colorForTrack } from '../visualEdit/trackColor'
+import { detectAllChunks } from '../codeView/chunkDetect'
+import { buildStripModels } from '../codeView/mixer/stripModel'
+import { colorForTrack } from '../codeView/trackColor'
 import type { TrackMeta } from '../workspace/WorkspaceFile'
 
 /** A PositionModel that maps a 0-based char offset → Monaco 1-based position. */

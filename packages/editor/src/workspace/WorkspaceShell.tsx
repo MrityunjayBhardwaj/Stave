@@ -141,14 +141,13 @@ import {
   type BackdropQuality,
   type BackdropVizSpan,
   getActiveEditor,
-  getMonacoNamespace,
 } from './editorRegistry'
 // Cursor-targeted sound assignment (#820) — the Asset Library sidebar writes a
 // `.sound()` / `s()` into the code at the cursor via `assignSoundToCursor`,
 // reusing the same chunk-detection + writeback spine the Mixer picker uses.
-import { Writeback } from '../visualEdit/writeback'
-import { planSoundAssignment } from '../visualEdit/soundAssign'
-import { planVizAssignment } from '../visualEdit/vizAssign'
+import { commitToEditor, assignmentEdit } from '../codeView'
+import { planSoundAssignment } from '../codeView'
+import { planVizAssignment } from '../codeView'
 import type { WorkspaceShellActions } from './commands/CommandRegistry'
 import type {
   WorkspaceGroupState,
@@ -167,6 +166,8 @@ import {
 } from './groupLayout'
 import { findBuiltinExampleSource } from './builtinExampleSources'
 import { BottomPanel } from './bottomPanel/BottomPanel'
+import { SymbolRow } from './SymbolRow'
+import { bottomPanelHiddenForTab } from './bottomPanel/hiddenForTab'
 
 /**
  * Exhaustiveness helper used inside the tab dispatch switch. If TypeScript
@@ -397,9 +398,10 @@ export interface WorkspaceShellHandle {
    * (mirrors the Mixer picker); otherwise inserts a fresh `s("x")` at the
    * cursor. No-op when there's no active editor. Detects the chunk fresh from
    * the active editor at call time — it does NOT depend on the Pattern/Mixer
-   * panel being open.
+   * panel being open. `slow` (#2070) is written as `.slow(N)` on a fresh line,
+   * for a clip longer than a cycle.
    */
-  assignSoundToCursor(sound: string): void
+  assignSoundToCursor(sound: string, opts?: { slow?: number }): void
   /** Attach `.viz("name")` to the pattern chunk under the cursor (Asset Library
    *  viz insert). Returns true if it wrote, false when there's no pattern under
    *  the cursor (nothing to attach to) so the caller can guide the user. */
@@ -3130,16 +3132,15 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           quality: g?.backdropQuality ?? backdropQuality,
         }
       },
-      assignSoundToCursor: (sound: string) => {
+      assignSoundToCursor: (sound: string, opts?: { slow?: number }) => {
         if (!sound) return
         // Reach the live editor through the registry singleton, NOT the
         // Mixer's `useActiveChunk` (which only exists while that panel is
         // mounted) — the sidebar assigns with the Pattern tab closed.
         const editor = getActiveEditor()
-        const monaco = getMonacoNamespace()
         const model = editor?.getModel()
         const pos = editor?.getPosition()
-        if (!editor || !monaco || !model || !pos) return
+        if (!editor || !model || !pos) return
         const offset = model.getOffsetAt(pos)
         // The whole decision — roll chunk under the cursor → set/replace its
         // `.sound()` (chainMethod idiom, single-quoted so PV44 doesn't reify
@@ -3147,11 +3148,9 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         // offset can't land mid-token or inside a comment) — lives in the pure
         // `planSoundAssignment` helper so it can be unit-tested (#830). Detect
         // is fresh at call time, which also sidesteps the freshness guard.
-        const plan = planSoundAssignment(model.getValue(), offset, sound)
+        const plan = planSoundAssignment(model.getValue(), offset, sound, opts?.slow)
         if (!plan) return
-        const wb = new Writeback(editor, monaco)
-        if (plan.kind === 'replace') wb.replaceRange(plan.range, plan.text, 'mixer')
-        else wb.insertAt(plan.offset, plan.text, 'mixer')
+        commitToEditor(editor, assignmentEdit(plan), 'mixer')
       },
       assignVizToCursor: (name: string): boolean => {
         if (!name) return false
@@ -3161,17 +3160,13 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         // write; returns false so the caller can guide the user (a viz decorates
         // a pattern; it can't stand alone).
         const editor = getActiveEditor()
-        const monaco = getMonacoNamespace()
         const model = editor?.getModel()
         const pos = editor?.getPosition()
-        if (!editor || !monaco || !model || !pos) return false
+        if (!editor || !model || !pos) return false
         const offset = model.getOffsetAt(pos)
         const plan = planVizAssignment(model.getValue(), offset, name)
         if (!plan) return false
-        const wb = new Writeback(editor, monaco)
-        if (plan.kind === 'replace') wb.replaceRange(plan.range, plan.text, 'mixer')
-        else wb.insertAt(plan.offset, plan.text, 'mixer')
-        return true
+        return commitToEditor(editor, assignmentEdit(plan), 'mixer') === 'written'
       },
     }),
     [
@@ -3393,7 +3388,12 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
        * `Timeline` tab via `seedTabs.ts`. PR-B (MusicalTimeline) will
        * replace by re-registering under the same id (idempotent).
        */}
-      <BottomPanel />
+      <BottomPanel hidden={bottomPanelHiddenForTab(activeTab)} />
+
+      {/* #2005 — pattern symbols above a phone's keyboard. Last in the column, so it
+          sits where the shell ends: on the keyboard's top edge. Draws nothing unless
+          the keyboard is up on an upright phone with the cursor in a code file. */}
+      <SymbolRow />
 
       {/*
        * Guide line overlay — a shell-level element that previews where

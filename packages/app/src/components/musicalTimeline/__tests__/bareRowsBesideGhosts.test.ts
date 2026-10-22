@@ -14,20 +14,15 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('@stave/editor', async () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   collectCycles: () => [],
-  structuralWalk: (await import('./structuralWalkTestStub')).structuralWalk,
-  wholeWalkWindow: (await import('./structuralWalkTestStub')).wholeWalkWindow,
-  sampleRefOf: (await import('./structuralWalkTestStub')).sampleRefOf,
-  rootStackArms: (await import('./structuralWalkTestStub')).rootStackArms,
-  armSourceSpan: (await import('./structuralWalkTestStub')).armSourceSpan,
-  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 
 import { collectNoteMarks } from '../timelineMarks'
 import { wholeSongWindow } from '../songAxis'
 import { declaredTracks } from '../trackOrder'
-import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
+import { parseStrudel } from '@stave/editor'
 
 /** One hap inside the statement that starts with `stmt`, keyed as the engine keys a bare capture. */
 function hapIn(doc: string, stmt: string, trackId: string) {

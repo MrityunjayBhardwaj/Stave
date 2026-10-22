@@ -21,48 +21,15 @@ const DRUM_EVENTS = [
   { begin: 0.5, end: 0.75, trackId: 'drums', s: 'hh', note: null, gain: 1, loc: [{ start: 10, end: 20 }] },
   { begin: 0.5, end: 0.6, trackId: 'drums', s: 'sd', note: null, gain: 1, loc: [{ start: 10, end: 20 }] },
 ]
-vi.mock('@stave/editor', async () => {
-  // #974 — lane STRUCTURE comes from `structuralWalk` now; the per-voice sub-rows still come
-  // from the collect marks (DRUM_EVENTS). Reduce the SAME events through the REAL reducer (PV192).
-  const { skeletonsFromEvents, wholeWalkWindow, sampleRefOf } = await import(
-    '../musicalTimeline/__tests__/structuralWalkTestStub'
-  )
-  // #1489 moved this reader into the editor, so the barrel mock has to carry it
-  // or the component gets `undefined` and every case here dies in a useMemo —
-  // the exact trap the `wholeWalkWindow` note below already describes. Real
-  // function, from source: it is a pure IR walk, so there is nothing to stub.
-  // #1464 — the caption's shape menu reads its options from `shapeAlternatives`.
-  // #1611 — and its cross-class options from `crossClassShapes`.
-  const { signalAutomations, signalTimeAt, shapeAlternatives, crossClassShapes } = await import('../../../../editor/src/ir/signalAutomation')
-  // #1463 Stage 2 — the component also reads stepped automation and its axis.
-  // #1585 — and each lane entry carries `stepIndexAtCycle`.
-  const { steppedAutomations, stepIndexAtCycle } = await import('../../../../editor/src/ir/steppedAutomation')
-  const { knobRangeFor, hasKnownKnobRange } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
-  // #1601 — the lane's automate menu reads fixed values and writes them as steps.
-  const { fixedParameters, fixedToStepsEdit } = await import('../../../../editor/src/ir/fixedParameters')
-  // #1602 — the lane's step-count chip builds its options and its edit from these.
-  const { stepCountEdit } = await import('../../../../editor/src/ir/stepCount')
-  const { previewRepeat, songPeriodOf } = await import('../../../../editor/src/ir/songAnalysis')
+vi.mock('@stave/editor', async (importOriginal) => {
+  // Everything is the REAL module except the fixtures below (#1943). Lane STRUCTURE
+  // (#974) is DRUM_EVENTS reduced through the real reducer, the same events the
+  // per-voice sub-rows come from.
+  const { skeletonsFromEvents } = await import('../musicalTimeline/__tests__/structuralWalkTestStub')
   return {
-    signalAutomations,
-    signalTimeAt,
-    shapeAlternatives,
-    crossClassShapes,
-    steppedAutomations,
-    stepIndexAtCycle,
-    knobRangeFor,
-    hasKnownKnobRange,
-    fixedParameters,
-    fixedToStepsEdit,
-    stepCountEdit,
-    previewRepeat,
-    songPeriodOf,
+    ...(await importOriginal<typeof import('@stave/editor')>()),
     structuralWalk: (_ir: unknown, window: { originCycle: number; spanCycles: number }) =>
       skeletonsFromEvents(DRUM_EVENTS, window),
-    wholeWalkWindow,
-    // #1764 — every mark names its file through the real one, from source.
-    sampleRefOf,
-    laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
     // #459 — Song view reads the shared timeline row-height setting; mock to 22
     // (the SUB_ROW_HEIGHT these sub-row layout assertions were written for).
     getMusicalTimelineSubRowHeight: () => 22,

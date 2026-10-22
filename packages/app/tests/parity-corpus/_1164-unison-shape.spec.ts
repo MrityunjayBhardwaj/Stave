@@ -38,8 +38,8 @@ import { describe, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import { serializePianoRoll } from '../../../editor/src/visualEdit/notation/serialize'
+import { parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
+import { serializePianoRoll } from '../../../editor/src/codeView/notation/serialize'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus = JSON.parse(fs.readFileSync(path.join(here, 'mini-corpus.json'), 'utf8'))

@@ -16,7 +16,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { readGridOnsets, tailToken } from '../../../editor/src/visualEdit/notation/parse'
+import { miniPattern } from '../../../editor/src/codeView/strudelMini/pattern'
+import { readGridOnsets, tailToken } from '../../../editor/src/codeView/notation/parse'
 import { unitsWithStatus } from './editCoverage'
 
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '.bakery-runs')
@@ -38,7 +39,7 @@ function collapses(mini: string, cyc: number): { token: string; durs: number[] }
   } catch {
     return null
   }
-  const r = readGridOnsets(pat, cyc)
+  const r = readGridOnsets(miniPattern(mini), cyc)
   if (!r.ok) return null
   let haps: Array<{
     hasOnset?: () => boolean

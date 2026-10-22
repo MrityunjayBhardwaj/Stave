@@ -120,7 +120,9 @@ export async function bootApp(page: Page, opts: BootOptions = {}): Promise<void>
  * fixture (#1753 — a reload followed by a seed read the starter song).
  */
 export async function waitForEditorLoaded(page: Page): Promise<void> {
-  await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 30_000 })
+  // attached, not visible: on a phone held sideways the panel draws nothing until one
+  // of its views is chosen (#2003), and the shell is up all the same
+  await page.locator('[data-bottom-panel="root"]').waitFor({ state: 'attached', timeout: 30_000 })
 
   // Monaco exists…
   await page.waitForFunction(
@@ -138,6 +140,22 @@ export async function waitForEditorLoaded(page: Page): Promise<void> {
       }).monaco
       const eds = m?.editor?.getEditors?.() ?? []
       return (eds[0]?.getModel()?.getValue() ?? '').trim().length > 0
+    },
+    { timeout: 30_000 },
+  )
+  // …and the editor has finished MOUNTING. The text arrives before the mount does: for a
+  // moment the model holds the file while it is still `plaintext`, and a seed written in
+  // that moment changes the model and nothing else — the app never hears of it, so Play
+  // runs the file as it was (#2036: WebKit, 3 runs in 6). The language is set by the same
+  // mount that starts the app listening, so it is the sign that a change will be heard.
+  await page.waitForFunction(
+    () => {
+      const m = (window as unknown as {
+        monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId: () => string } | null }> } }
+      }).monaco
+      const eds = m?.editor?.getEditors?.() ?? []
+      const language = eds[0]?.getModel()?.getLanguageId()
+      return language !== undefined && language !== 'plaintext'
     },
     { timeout: 30_000 },
   )

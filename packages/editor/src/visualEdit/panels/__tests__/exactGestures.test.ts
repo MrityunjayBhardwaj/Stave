@@ -10,10 +10,10 @@
  *     `,`-stack and only a stack has a part stretched onto the shared grid.
  */
 import { describe, expect, it } from 'vitest'
-import { parseStepGrid } from '../../notation/parse'
-import { serializeStepGain, serializeStepGrid } from '../../notation/serialize'
-import { canResizeCell, resizeCell } from '../../notation/place'
-import { isCellOn } from '../../notation/model'
+import { parseStepGrid } from '../../../codeView/notation/parse'
+import { serializeStepGain, serializeStepGrid } from '../../../codeView/notation/serialize'
+import { canResizeCell, resizeCell } from '../../../codeView/notation/place'
+import { isCellOn } from '../../../codeView/notation/model'
 import { boxLengths, ownStepWidths } from '../writtenSteps'
 import { moveBoxCursor, moveCursor, type CursorMove } from '../gridGestures'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'

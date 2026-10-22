@@ -46,19 +46,19 @@ import {
   parsePianoRoll,
   projectStepGridDerived,
   projectPianoRollDerived,
-} from '../../../editor/src/visualEdit/notation/parse'
+} from '../../../editor/src/codeView/notation/parse'
 import type {
   LeafSource,
   RollLeafSource,
   PianoRollModel,
   StepGridModel,
   SurgicalOverlay,
-} from '../../../editor/src/visualEdit/notation/model'
-import { scaleStepGrid, scalePianoRoll } from '../../../editor/src/visualEdit/notation/resolution'
+} from '../../../editor/src/codeView/notation/model'
+import { scaleStepGrid, scalePianoRoll } from '../../../editor/src/codeView/notation/resolution'
 import {
   serializeStepGridWithExtent,
   serializePianoRollWithExtent,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 
 /**
  * Wrap resolved spans as an OVERLAY the writer will accept (#1233 made the field lazy).

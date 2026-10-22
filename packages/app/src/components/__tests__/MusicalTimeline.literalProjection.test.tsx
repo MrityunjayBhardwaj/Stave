@@ -34,13 +34,11 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 // Phase 20-17 D-1c — mock @stave/editor BEFORE importing MusicalTimeline.
-// MusicalTimeline.tsx imports from '@stave/editor' at module scope; the
-// barrel pulls in @strudel/draw → gifenc which crashes vitest's module
-// loader (standalone-node env). The same vi.mock pattern is used by
-// MusicalTimeline.test.tsx — we mirror it here, exposing only the
-// minimal surface our test needs (no snapshot/event channels — we call
-// `__test_collectTrackBodies` directly on a hand-built IR).
-vi.mock('@stave/editor', () => ({
+// The mock is the real module with the editor/snapshot channels stubbed —
+// we call `__test_collectTrackBodies` directly on a hand-built IR, so nothing
+// here may reach a live editor.
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   getActiveEditor: () => null,
   getActiveFileId: () => null,
   onActiveEditorChange: () => () => {},
@@ -57,7 +55,7 @@ vi.mock('@stave/editor', () => ({
 
 import { __test_collectTrackBodies } from '../MusicalTimeline'
 // Type-only import — `import type` ensures no runtime entry into the barrel.
-import type { PatternIR } from '../../../../editor/src/ir/PatternIR'
+import type { PatternIR } from '@stave/editor'
 
 function makeLiteralCode(raw: string): PatternIR {
   // Mirror the shape `classifyLiteralRhs` produces in @stave/editor.

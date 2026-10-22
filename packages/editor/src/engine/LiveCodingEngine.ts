@@ -1,7 +1,8 @@
 import type { HapStream } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
-import type { PatternIR } from '../ir/PatternIR'
-import type { IREvent } from '../ir/IREvent'
+import type { PatternIR } from '../codeView'
+import type { IREvent } from '../codeView'
+import type { SliderWidgetConfig } from './vendored/slider'
 
 // ---------------------------------------------------------------------------
 // Engine Component Bags
@@ -59,6 +60,12 @@ export interface InlineVizComponent {
    * (e.g. "scope", "pianoroll"). Absent when no such method was called.
    */
   backdropRequest?: { vizId: string; options?: VizOptionsBag }
+  /**
+   * #345 — the `slider(…)` calls in the evaluated code, as Strudel's transpiler
+   * reported them (offsets into that code). The editor draws one slider on each.
+   * Absent when there are none.
+   */
+  sliders?: readonly SliderWidgetConfig[]
 }
 
 /** Pattern IR derived from the last successful evaluate(). */
@@ -113,6 +120,14 @@ export interface LiveCodingEngine {
 
   /** Start the scheduler / begin playback. */
   play(): void
+
+  /**
+   * Ask the browser to start audio (#1987). Called SYNCHRONOUSLY inside the user's
+   * gesture, before anything is awaited — a phone browser starts audio only when the
+   * page asks from inside a touch. Safe before `init()` and safe to call again.
+   * Optional: an engine with no audio of its own to start leaves it out.
+   */
+  unlockAudio?(): void
 
   /** Stop the scheduler / pause playback. */
   stop(): void

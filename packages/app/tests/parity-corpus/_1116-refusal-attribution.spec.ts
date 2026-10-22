@@ -17,9 +17,9 @@ import {
   parsePianoRollCore,
   projectStepGridDerived,
   projectPianoRollDerived,
-} from '../../../editor/src/visualEdit/notation/parse'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import type { StepGridModel, PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/parse'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import type { StepGridModel, PianoRollModel } from '../../../editor/src/codeView/notation/model'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

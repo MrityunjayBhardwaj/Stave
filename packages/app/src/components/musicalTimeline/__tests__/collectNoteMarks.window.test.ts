@@ -21,17 +21,14 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('@stave/editor', async () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   collectCycles: () => [],
-  structuralWalk: (await import('./structuralWalkTestStub')).structuralWalk,
-  wholeWalkWindow: (await import('./structuralWalkTestStub')).wholeWalkWindow,
-  sampleRefOf: (await import('./structuralWalkTestStub')).sampleRefOf,
-  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 
 import { collectNoteMarks } from '../timelineMarks'
-import { IR, type PatternIR } from '../../../../../editor/src/ir/PatternIR'
-import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
+import { IR, type PatternIR } from '@stave/editor'
+import { parseStrudel } from '@stave/editor'
 
 // The tree the song is drawn from: `parseStrudel` (since #1558).
 const pipeline = (code: string): PatternIR => parseStrudel(code)

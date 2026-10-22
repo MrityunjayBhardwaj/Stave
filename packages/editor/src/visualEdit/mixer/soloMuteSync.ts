@@ -10,64 +10,20 @@
  * hand before solo (snapshotted in `soloStore`), so a pre-existing mute survives a
  * solo→un-solo round-trip instead of being wiped.
  *
- * `reconcileSoloMutes` is the whole policy as a PURE function (unit-tested); the
- * hook wires it to the active editor and writes the markers in one undo step.
+ * The policy and the edits it makes are pure code↔view operations
+ * (`reconcileSoloMutes` / `soloMuteEdits` in `codeView/mixer/writeStrip`, #1909);
+ * this hook wires them to the active editor and commits the markers in one undo
+ * step.
  */
 import * as React from 'react'
 
-import {
-  getActiveEditor,
-  getActiveFileId,
-  getMonacoNamespace,
-} from '../../workspace/editorRegistry'
-import { detectAllChunks } from '../chunkDetect'
-import { Writeback, type OffsetEdit } from '../writeback'
-import { buildStripModels } from './stripModel'
-import { muteEdit } from './writeStrip'
+import { getActiveEditor, getActiveFileId } from '../../workspace/editorRegistry'
+import { commitToEditor, soloMuteEdits } from '../../codeView'
 import {
   getPreSoloMutes,
   setPreSoloMutes,
   useSoloStrips,
 } from './soloStore'
-
-/** The subset of strip facts the reconciliation needs — `id` (solo key + mute
- *  target), whether it currently carries the `_`, and whether it CAN (labelled). */
-export interface SoloStripFacts {
-  id: string
-  muted: boolean
-  muteable: boolean
-}
-
-/**
- * The mute markers the code should have after a solo change, plus the snapshot to
- * carry forward — the entire solo/mute policy in one pure, testable function.
- *
- *  - solo ACTIVE (`newSolo` non-empty): mute every muteable track that ISN'T
- *    soloed; the soloed track(s) go un-muted (audible). The snapshot is captured
- *    on the FIRST activation (the mutes present then) and preserved across further
- *    solo edits, so it always reflects the pre-solo hand-set mutes.
- *  - solo CLEARED (`newSolo` empty): restore the snapshot — the hand-set mutes
- *    from before solo — and drop it. An empty/absent snapshot un-mutes everything.
- *
- * `targetMuted` is the set of ids that should carry `_` afterwards; the caller
- * writes only the strips whose current `muted` differs.
- */
-export function reconcileSoloMutes(
-  strips: readonly SoloStripFacts[],
-  newSolo: ReadonlySet<string>,
-  prevSnapshot: ReadonlySet<string> | null,
-): { targetMuted: Set<string>; nextSnapshot: ReadonlySet<string> | null } {
-  if (newSolo.size > 0) {
-    const snapshot =
-      prevSnapshot ?? new Set(strips.filter((s) => s.muted).map((s) => s.id))
-    const targetMuted = new Set(
-      strips.filter((s) => s.muteable && !newSolo.has(s.id)).map((s) => s.id),
-    )
-    return { targetMuted, nextSnapshot: snapshot }
-  }
-  // Solo cleared → restore the pre-solo mutes (empty set if there were none).
-  return { targetMuted: new Set(prevSnapshot ?? []), nextSnapshot: null }
-}
 
 /**
  * The Mixer's solo hook: `soloed` for the button highlight + a `toggle` that flips
@@ -87,36 +43,19 @@ export function useSoloMuteSync(): {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const editor: any = getActiveEditor()
       const model = editor?.getModel?.()
-      const monaco = getMonacoNamespace()
 
       const newSolo = new Set(soloed)
       if (newSolo.has(id)) newSolo.delete(id)
       else newSolo.add(id)
 
-      if (editor && model && monaco) {
-        const doc = model.getValue()
-        const chunks = detectAllChunks(doc)
-        const strips = buildStripModels(chunks, doc)
-        const { targetMuted, nextSnapshot } = reconcileSoloMutes(
-          strips.map((s) => ({ id: s.id, muted: s.muted, muteable: s.muteable })),
-          newSolo,
-          getPreSoloMutes(fileId),
-        )
-        // Only write the strips whose marker actually changes; batch them as ONE
-        // undo step (and one live re-eval). Offsets come from a single detection —
-        // `replaceRanges` resolves them against the original doc simultaneously.
-        const edits: OffsetEdit[] = []
-        strips.forEach((s) => {
-          if (!s.muteable) return
-          const want = targetMuted.has(s.id)
-          if (want === s.muted) return
-          const e = muteEdit(chunks[s.index], want)
-          if (e) edits.push({ range: e.range, text: e.text })
-        })
-        if (edits.length > 0) {
-          new Writeback(editor, monaco).replaceRanges(edits, 'mixer')
+      if (editor && model) {
+        // Only the strips whose marker actually changes, as ONE undo step (and one
+        // live re-eval). The snapshot moves on even when nothing needed writing —
+        // but not when there was no document to write to.
+        const { edits, nextSnapshot } = soloMuteEdits(model.getValue(), newSolo, getPreSoloMutes(fileId))
+        if (commitToEditor(editor, edits, 'mixer') !== 'no-document') {
+          setPreSoloMutes(fileId, nextSnapshot)
         }
-        setPreSoloMutes(fileId, nextSnapshot)
       }
 
       // Update the in-memory highlight set (the solo button's lit state).

@@ -1,6 +1,6 @@
 {
   "note": "FINGERPRINT of the pinned P4c baseline (`__p4c_base__/`) — a frozen copy of parse/resolution/serialize/model. The probes that import it compare an old tree against the live one, and that delta means something only because this side does not move. A drift here goes UNNOTICED by every probe, because changing a comment leaves behaviour identical — which is exactly how it drifted the one time it did.",
-  "pinnedAt": "#1047 — 99fceeb6 (the commit that created the snapshot)",
+  "pinnedAt": "#1047 — 99fceeb6; re-pinned at #1875 for two import paths only (the code↔view directory move), no behaviour change",
   "regenerate": "node scripts/p4c-base-pin.mjs  <-- a deliberate RE-PIN, never a repair",
   "files": {
     "model.ts": {
@@ -8,8 +8,8 @@
       "sha256": "f2ebc1a355a97ff8e89f1c8707157c65e56ca4ee6b837a0bcb63800df27d39ce"
     },
     "parse.ts": {
-      "bytes": 138131,
-      "sha256": "a58fc6dcc754272ac1775e06f70eda145ec75ba70731f74862ec6c908e7fcfb5"
+      "bytes": 138138,
+      "sha256": "0bc3e54180be8b76f4d0c15703ae0351164fed9db4ec824f098ed1dcd5061b80"
     },
     "resolution.ts": {
       "bytes": 15882,

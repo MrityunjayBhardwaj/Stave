@@ -19,6 +19,7 @@ import { registerBottomPanelTab } from './bottomPanelRegistry'
 import { PatternPanel } from '../../visualEdit/panels/PatternPanel'
 import { MixerConsolePanel } from '../../visualEdit/mixer/MixerConsolePanel'
 import { VISUAL_EDIT_TABS, PATTERN_TAB_ID, MIXER_CONSOLE_TAB_ID } from '../../visualEdit/panels/tabs'
+import { PatternSideToggle } from '../../visualEdit/panels/patternSide'
 
 const PANELS: Record<string, () => React.ReactElement> = {
   [PATTERN_TAB_ID]: PatternPanel,
@@ -37,6 +38,8 @@ export function seedVisualEditTabs(): void {
       title: tab.title,
       icon: tab.icon,
       content: React.createElement(Panel),
+      // the Pattern tab's button for its right side panel (#2044)
+      headerActions: tab.id === PATTERN_TAB_ID ? React.createElement(PatternSideToggle) : undefined,
     })
   }
 }

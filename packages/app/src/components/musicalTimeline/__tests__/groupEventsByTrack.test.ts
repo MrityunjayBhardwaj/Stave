@@ -5,7 +5,7 @@
  * per call (PV34).
  */
 import { describe, it, expect } from 'vitest'
-import type { IREvent } from '../../../../../editor/src/ir/IREvent'
+import type { IREvent } from '@stave/editor'
 import { groupEventsByTrack } from '../groupEventsByTrack'
 
 function evt(partial: Partial<IREvent>): IREvent {

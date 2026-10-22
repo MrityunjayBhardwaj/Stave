@@ -35,9 +35,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import { serializePianoRoll } from '../../../editor/src/visualEdit/notation/serialize'
-import type { PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
+import { parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
+import { serializePianoRoll } from '../../../editor/src/codeView/notation/serialize'
+import type { PianoRollModel } from '../../../editor/src/codeView/notation/model'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -263,7 +263,8 @@ describe('the roll writer emits what the model says, on whole columns and off th
     // nor fractional, so the reason this arm cannot fire is exactly what it was.
     // ⚠ 597 -> 598 at #1827 (each bar drawn at its own step count): `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>` now opens.
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-    expect(rolls).toBe(601)
+    // ⚠ 601 -> 603 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+    expect(rolls).toBe(603)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     expect(flat.length).toBe(98)
     expect(fractionalRolls).toBe(4) // and NONE of the 4 is flat — see the next arm

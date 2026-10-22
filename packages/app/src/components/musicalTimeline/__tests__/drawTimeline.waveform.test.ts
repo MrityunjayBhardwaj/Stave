@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  MARK_GAP_PX,
   WAVEFORM_COLUMN_BUDGET,
   drawTimeline,
   type DrawTheme,
@@ -73,7 +74,7 @@ function sceneWith(raw: SceneNote[]): TimelineScene {
     lanes: [
       {
         laneKey: 'drums',
-        displayName: 'drums',
+        displayName: 'drums', shownName: 'drums',
         color: LANE_COLOR,
         density: [1, 0, 0, 0],
         notes,
@@ -96,7 +97,9 @@ const oneTake: SceneNote[] = [{ cycle: 0, end: 0.25, pitch: null, gain: 1, voice
 
 /** A tall row, so the height gate is open and the width gate is what is tested. */
 const tall = computeLaneLayout(sceneWith(oneTake).lanes, new Set(), 60, 88)
-/** 1000px per cycle → a quarter-cycle mark is 250px wide. */
+/** 1000px per cycle → a quarter-cycle slot is 250px, and its mark is that less
+ *  the gap every mark leaves before the next (#2157). */
+const MARK_W = 250 - MARK_GAP_PX
 const transform: DrawTransform = { scrollLeft: 0, contentWidth: 4000, viewportWidth: 400, meter: DEFAULT_METER }
 
 /** An envelope that is full-scale everywhere, so every column is unmistakable. */
@@ -145,7 +148,7 @@ describe('drawTimeline — waveform tier', () => {
     expect(cols[0].x).toBe(0)
     expect(cols[cols.length - 1].x).toBe(99)
     // Full-scale peaks span the mark's full height, centred on it.
-    expect(cols[0].h).toBeCloseTo(rects.find((r) => r.w === 250)!.h, 6)
+    expect(cols[0].h).toBeCloseTo(rects.find((r) => r.w === MARK_W)!.h, 6)
   })
 
   it('a lane set to Bars draws no waveform, even with its sample decoded (#1738)', () => {
@@ -183,7 +186,7 @@ describe('drawTimeline — waveform tier', () => {
     const { ctx: b, rects: quarter } = mockCtx()
     drawTimeline(b, sceneWith(chopped), transform, theme, tall, undefined, warm)
 
-    expect(waveformColumns(whole)).toHaveLength(250) // the file overruns the mark
+    expect(waveformColumns(whole)).toHaveLength(MARK_W) // the file overruns the mark
     expect(waveformColumns(quarter)).toHaveLength(100) // its quarter does not
   })
 
@@ -250,7 +253,7 @@ describe('drawTimeline — waveform tier', () => {
     const warm: WaveformSource = { cps: 1, peaksFor: () => fullScalePeaks(10) }
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, sceneWith(oneTake), transform, theme, tall, undefined, warm)
-    expect(waveformColumns(rects)).toHaveLength(250)
+    expect(waveformColumns(rects)).toHaveLength(MARK_W)
   })
 
   /**
@@ -268,7 +271,7 @@ describe('drawTimeline — waveform tier', () => {
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, loudest, transform, theme, tall, undefined, warm)
 
-    const bar = rects.find((r) => r.w === 250 && r.style === LANE_COLOR)!
+    const bar = rects.find((r) => r.w === MARK_W && r.style === LANE_COLOR)!
     expect(bar.alpha).toBe(1) // the bar really is opaque at this gain
 
     // A recessed bed exists, exactly as wide as the audio, over the bar's band.
@@ -315,7 +318,7 @@ describe('drawTimeline — waveform tier', () => {
     expect(waveformColumns(rects)).toEqual([])
     expect(rects.some((r) => r.style === LANE_COLOR)).toBe(true)
     // …and the reason is the row, not the source: it is under the height gate.
-    expect(rects.find((r) => r.w === 250)!.h).toBeLessThan(MIN_WAVEFORM_H)
+    expect(rects.find((r) => r.w === MARK_W)!.h).toBeLessThan(MIN_WAVEFORM_H)
   })
 
   /**
@@ -444,7 +447,7 @@ describe('drawTimeline — waveform tier', () => {
     expect(waveformColumns(expanded.rects).length).toBe(waveformColumns(collapsed.rects).length)
     // Not merely "some columns": the mark is as tall as the collapsed one, so
     // expanding never shows less of the take than collapsing does.
-    const barH = (rects: Rect[]) => rects.find((r) => r.w === 250 && r.style === LANE_COLOR)!.h
+    const barH = (rects: Rect[]) => rects.find((r) => r.w === MARK_W && r.style === LANE_COLOR)!.h
     expect(barH(expanded.rects)).toBe(barH(collapsed.rects))
   })
 
@@ -469,7 +472,7 @@ describe('drawTimeline — waveform tier', () => {
     const layout = computeLaneLayout(melodic.lanes, new Set(['drums']), 60, 88, 60)
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, melodic, transform, theme, layout)
-    const bars = rects.filter((r) => r.w === 250 && r.style === LANE_COLOR)
+    const bars = rects.filter((r) => r.w === MARK_W && r.style === LANE_COLOR)
     expect(bars).toHaveLength(2)
     // Sub-row 60 → 60 − 2·2 padding − 12 pitch reserve = 44 px.
     expect(bars.every((r) => r.h === 44)).toBe(true)
@@ -497,7 +500,7 @@ describe('a collapsed audio lane draws each mark as a clip body (#1730)', () => 
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, audioScene(), transform, theme, tall, undefined, warm)
     const widest = Math.max(...beds(rects).map((r) => r.w))
-    expect(widest).toBe(250)
+    expect(widest).toBe(MARK_W)
     // …and lays that bed once: no second, darker bed under the audio.
     expect(beds(rects).length).toBe(1)
     expect(waveformColumns(rects).length).toBe(100)
@@ -513,7 +516,7 @@ describe('a collapsed audio lane draws each mark as a clip body (#1730)', () => 
     const cold: WaveformSource = { cps: 1, peaksFor: () => null }
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, audioScene(), transform, theme, tall, undefined, cold)
-    expect(beds(rects).map((r) => r.w)).toEqual([250])
+    expect(beds(rects).map((r) => r.w)).toEqual([MARK_W])
     expect(waveformColumns(rects).length).toBe(0)
   })
 })

@@ -4,8 +4,8 @@
  * `EditorView` mounts Monaco once per file, not once per workspace. Every
  * mount potentially touches a different language (`strudel`, `sonicpi`,
  * `hydra`, `p5js`). Rather than scatter registration calls across the four
- * legacy monoliths (`LiveCodingEditor`, `StrudelEditor`, `VizEditor`,
- * `StrudelMonaco`), this module exposes one entry point — `ensureWorkspaceLanguages()`
+ * legacy monoliths (`LiveCodingEditor`, `StrudelEditor`, `VizEditor`, and
+ * the deleted `StrudelMonaco`), this module exposes one entry point — `ensureWorkspaceLanguages()`
  * — that every workspace editor calls on Monaco mount.
  *
  * @remarks

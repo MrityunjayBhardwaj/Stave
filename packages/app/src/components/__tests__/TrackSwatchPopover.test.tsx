@@ -17,7 +17,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { act, render, cleanup, fireEvent } from '@testing-library/react'
 import { afterEach } from 'vitest'
 import { TrackSwatchPopover } from '../TrackSwatchPopover'
-import { TRACK_PALETTE_32 } from '../musicalTimeline/colors'
+import { TRACK_PALETTE_32 } from '@stave/editor'
 
 afterEach(() => {
   cleanup()

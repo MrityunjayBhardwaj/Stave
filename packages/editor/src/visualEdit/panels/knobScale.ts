@@ -15,12 +15,6 @@
  * made a step dragged on the lane land on a different number than the same
  * control turned on the knob.
  *
- * ⚠ NO IMPORTS, AND IT MUST STAY THAT WAY. The lane may not import the editor's
- * barrel at runtime — it drags a CommonJS dependency into the app's test loader
- * and the file fails to collect — so this module is published as its own entry
- * (`@stave/editor/knobScale`, the arrangement `@stave/editor/worker` already
- * uses). A dependency added here is a dependency added to that bundle.
- *
  * Pure — no React, no Monaco, no engine.
  */
 

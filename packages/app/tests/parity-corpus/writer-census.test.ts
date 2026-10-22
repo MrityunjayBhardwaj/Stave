@@ -60,13 +60,14 @@ import {
   projectPianoRollDerived,
   tailToken,
   PROJECTION_PERIOD_BOUNDS,
-} from '../../../editor/src/visualEdit/notation/parse'
-import { hasStructure } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/parse'
+import { hasStructure } from '../../../editor/src/codeView/notation/model'
+import { assertRatchet } from '../../../editor/src/modellingRatchet/ratchet'
 import type {
   ParseResult,
   PianoRollModel,
   StepGridModel,
-} from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
 import {
   GRID_SURFACE,
   ROLL_SURFACE,
@@ -543,7 +544,16 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // `bd bd bd bd, - sd - sd, <[cr oh …] [hh oh]*4!3>` transfers; `c2 c2 c2 c2 , < [~ g1 ~ ~] [~ ~ ~ g1] >` is
     // untransferable (`view-unusable`: no derived projection opens it, the core edits it ok); `<G4 A4 Bb4 A4>,Bb3,D3`
     // is unverified (`fully-chorded`: no singleton onset to probe).
-    ).toEqual({ transfers: 1107, untransferable: 77, unverified: 122 })
+    // ⚠ 1107/77/122 -> 1108/76/122 at #1974 (hits are anchored on their written note): one roll ask that had no derived
+    // writer now transfers — the leaf writer can anchor it. Untransferable only fell.
+    ).toEqual({ transfers: 1108, untransferable: 76, unverified: 122 })
+    // The partition above may be re-pinned by any change — which is how untransferable went
+    // 68 → 77 across #1827 and #1849. The ratchet (#1866) lets it only FALL: a rise needs an
+    // exemption naming an issue, appended to modellingRatchet/ledger.json.
+    assertRatchet('writer-census.untransferable', untransferable.length)
+    // …and so may the asks nothing has verified, or an ask could leave `untransferable` by
+    // losing its probe and read as progress (#1872).
+    assertRatchet('writer-census.unverified', all.filter((r) => r.outcome === 'no-probe').length)
     // The reclassification is asserted by MECHANISM as well as by total, so that a
     // future change cannot hold the totals steady while moving asks between buckets.
     // ⚠ 11 → 0 at #1010 P4c. The printer preserves lengths, so nothing in the census
@@ -582,7 +592,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // exists to keep honest is the half that moved, in the good direction this time.
     // ⚠ 684 → 694 at #1849: the ten asks the core newly serves that transfer are all STRUCTURED (`,`-stacks with written steps). WRITER-CENSUS.md's #1849 note says so.
     // ⚠ 694 → 695 at #1849's `<…>` half: the one new transfer (`bd bd bd bd, - sd - sd, <[cr oh …] [hh oh]*4!3>`) is structured.
-    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(695)
+    // ⚠ 695 → 696 at #1974: the one roll ask that newly transfers (see the partition above) is a structured one.
+    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(696)
 
     // THIS USED TO SAY "NOTHING CORRUPTS", and it said why that mattered: both derived
     // writers refuse rather than mis-write, which is what made the untransferable set
@@ -658,7 +669,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // ⚠ structural 59 -> 61 at #1827 (each bar drawn at its own step count): the two core-served units that need 96 shared columns.
     // ⚠ [9, 61] -> [12, 64] at #1849: the three grids it newly opens, each an array-value `no-leaf-anchor` structural ask (WRITER-CENSUS.md).
     // ⚠ [12, 64] -> [12, 65] at #1849's `<…>` half: `c2 c2 c2 c2 , < [~ g1 ~ ~] [~ ~ ~ g1] >`, untransferable (`view-unusable`), is structural and not an array value.
-    expect([p6.both.arrayValue, p6.both.structural]).toEqual([12, 65])
+    // ⚠ [12, 65] -> [12, 64] at #1974: the one roll ask that now transfers was a structural one.
+    expect([p6.both.arrayValue, p6.both.structural]).toEqual([12, 64])
 
     // THE NUMBER P6 IS SCOPED AGAINST, and it is a CONJUNCTION. "46 have a
     // structured core view" and "45 have a verified core edit" are different
@@ -753,7 +765,10 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // that fix the drum grid's edit was filed `corrupt`: the probe deleted the wrong cell.
     // ⚠ 55/55/53 -> 58/56/54 at #1849, from the stacks it opens. Of the new structural rows, the two without a verified core edit are the rolls `0,.1` and `0,.1,7, 6.9` — `no-probe`, decimal `n` values; the blocker set moves by one, on the roll.
     // ⚠ 58/56/54 -> 59/57/55 at #1849's `<…>` half: `c2 c2 c2 c2 , < [~ g1 ~ ~] [~ ~ ~ g1] >` has structure and a core edit the engine oracle verifies, once the writer and the oracle agree on what a delete in a repeated part does. First measured with linked repeats and a repeat-aware oracle; unchanged under bar-by-bar edits with the oracle back to "every other bar untouched".
-    }).toEqual({ coreStructured: 59, coreEdits: 57, both: 55 })
+    // ⚠ 59/57/55 -> 58/56/54 at #1974: the one roll ask the leaf writer can now anchor leaves all three — it transfers, so it is no longer a row here.
+    }).toEqual({ coreStructured: 58, coreEdits: 56, both: 54 })
+    // …and the set that blocks P6 may only fall (#1866): 51 → 55 happened one re-pin at a time.
+    assertRatchet('writer-census.p6-blocker', p6.both.blocker)
 
     // …and the split the whole conjunction exists to keep visible. Asserted here rather
     // than left to the generated document, because the document is an OUTPUT of this run
@@ -761,7 +776,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // ⚠ [18, 33] -> [19, 34] at #1827 — one per surface, the two units the core newly serves per bar.
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     // ⚠ [19, 35] -> [20, 35] at #1849's `<…>` half — grid only: the `c2 … < … >` unit above.
-    expect([p6.grid.blocker, p6.roll.blocker]).toEqual([20, 35])
+    // ⚠ [20, 35] -> [20, 34] at #1974 — roll only: that same ask, which the leaf writer can anchor now.
+    expect([p6.grid.blocker, p6.roll.blocker]).toEqual([20, 34])
   }, 900_000)
 
   /**

@@ -1,16 +1,16 @@
 /**
  * #1602 — the step-count chip's options, through the REAL parser, the real stepped
- * reader and the real editor functions (from source). The analyses are hand-built:
+ * reader and the real editor functions. The analyses are hand-built:
  * the rest periods and the preview arithmetic are pinned against the engine in
  * `@stave/editor` (`stepCount.engine.test.ts`); this file owns what the menu does
  * with them — which counts, in what order, and what each label says.
  */
 import { describe, it, expect } from 'vitest'
 import type { LanePeriod, SongAnalysis } from '@stave/editor'
-import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
-import { steppedAutomations } from '../../../../../editor/src/ir/steppedAutomation'
-import { stepCountEdit } from '../../../../../editor/src/ir/stepCount'
-import { previewRepeat, songPeriodOf } from '../../../../../editor/src/ir/songAnalysis'
+import { parseStrudel } from '@stave/editor'
+import { steppedAutomations } from '@stave/editor'
+import { stepCountEdit } from '@stave/editor'
+import { previewRepeat, songPeriodOf } from '@stave/editor'
 import { sectionLengthOf, stepCountOptions } from '../stepCountMenu'
 
 const deps = { stepCountEdit, previewRepeat, songPeriodOf }

@@ -30,10 +30,7 @@ import type { SongAnalysis, PatternIR, HapStream, IREvent, OffsetEdit, SampleRef
 import {
   captionRows,
   captionHit,
-  captionEdit,
-  shapeEdit,
   shapeMenuOptions,
-  shapeOptions,
   AUTOMATION_LABEL_FONT,
   AUTOMATION_MIN_BAND_H,
   AUTOMATION_PAD_Y,
@@ -75,11 +72,11 @@ import {
   setMusicalTimelineSubRowHeight,
   MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN,
   MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX,
+  trackIdentity,
 } from '@stave/editor'
 import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
-import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
 import { rowHeightForEdge } from './musicalTimeline/rowEdgeResize'
-import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeNotices, envelopeTrackIds, markAudioLanes, markBarsLanes, sampleKey, type SceneActivity } from './musicalTimeline/timelineScene'
+import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeNotices, envelopeTrackIds, longRecordingLanes, markAudioLanes, markBarsLanes, sampleKey, type SceneActivity } from './musicalTimeline/timelineScene'
 import {
   nextWindowOriginFor,
   clampSeekToWindow,
@@ -103,7 +100,7 @@ import {
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
-import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf, shapeAlternatives, crossClassShapes } from '@stave/editor'
+import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepTextEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf, shapeAlternatives, crossClassShapes, captionEdit, shapeEdit, shapeOptions, rateEditable } from '@stave/editor'
 import type { FixedParameter, TrackDisplay } from '@stave/editor'
 import { automatableFixed, automateStepCount, stepAxis, stepDragValue, stepEdit, stepHitAt, stepTravel, stepY, travelledPx, withFineDrag, withStepValue, type StepBand, type StepHit, type StepTravel } from './musicalTimeline/steppedLane'
 import { stepCountOptions, type StepCountGroup } from './musicalTimeline/stepCountMenu'
@@ -289,10 +286,10 @@ export interface FullSongTimelineProps {
   /** Clear a track's custom colour → fall back to the palette (Phase D, #581).
    *  Receives the lane's DISPLAY NAME. */
   readonly onResetTrackColor?: (displayName: string) => void
-  /** #1738 — display names of tracks set to draw as BARS (notes only, no
-   *  waveform or render), from the per-file `TrackMeta` store. Absent → every
-   *  lane draws its default, `waveform`. */
-  readonly barsNames?: ReadonlySet<string>
+  /** #1738 — the lane type each track saved (Waveform or Bars), by display
+   *  name, from the per-file `TrackMeta` store. A track with none draws as
+   *  Bars unless it plays a long recording (#2079). */
+  readonly trackDisplays?: ReadonlyMap<string, TrackDisplay>
   /** #1738 — save a track's lane type, chosen from its header menu. Receives
    *  the lane's DISPLAY NAME, the same key as its colour. Absent → the menu has
    *  no Type entry. */
@@ -521,7 +518,7 @@ const EXTEND_AUTOSCROLL_STEP_PX = 7
 
 /** #1738 — no lane set to Bars; one ref-stable empty set, so the scene memo
  *  does not see a new identity per render. */
-const NO_BARS: ReadonlySet<string> = new Set()
+const NO_DISPLAYS: ReadonlyMap<string, TrackDisplay> = new Map()
 const NO_WAITING: readonly string[] = []
 /** #1750 — height of the grab strip centred on each edge between two tracks. */
 const ROW_EDGE_GRAB = 6
@@ -1262,13 +1259,25 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // #1730 — which lanes are audio tracks, asked of the sample registry. Its own
   // memo, re-asked when the waveform epoch moves: a take registers its name
   // when the project's assets load, which can land after the scene was built.
-  const { waveforms, waveformsEpoch, trackEnvelopes, barsNames } = props
-  // #1738 — a lane the user set to Bars is flagged first, so it is never an
+  const { waveforms, waveformsEpoch, trackEnvelopes, trackDisplays } = props
+  // #2079 — the lanes that play long recordings, which default to Waveform.
+  // Re-asked when a file's length can have become known: the epoch (a project
+  // asset decoded) and the decode tick (a sample decoded by playing). Joined
+  // into a string so an unchanged answer keeps its identity and a tick that
+  // changes nothing never rebuilds the scene.
+  const [decodeTick, setDecodeTick] = useState(0)
+  const longKey = useMemo(
+    () => [...longRecordingLanes(baseScene, waveforms)].join('\n'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the epoch and tick are the re-ask signals
+    [baseScene, waveforms, waveformsEpoch, decodeTick],
+  )
+  const longRecordings = useMemo(() => new Set(longKey === '' ? [] : longKey.split('\n')), [longKey])
+  // #1738 — a lane that draws as Bars is flagged first, so it is never an
   // audio lane and its track is never rendered.
   const audioScene = useMemo(
-    () => markAudioLanes(markBarsLanes(baseScene, barsNames ?? NO_BARS), waveforms?.isFileBacked),
+    () => markAudioLanes(markBarsLanes(baseScene, trackDisplays ?? NO_DISPLAYS, longRecordings), waveforms?.isFileBacked),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the epoch is the re-ask signal
-    [baseScene, barsNames, waveforms, waveformsEpoch],
+    [baseScene, trackDisplays, longRecordings, waveforms, waveformsEpoch],
   )
   const trackIdByLane = marks.trackIdByLane
   const [envelopeTick, setEnvelopeTick] = useState(0)
@@ -1318,15 +1327,24 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // keeps a timer alive for the life of the view. One re-ask still runs when
   // either stops, catching a decode that finished at the very end.
   const decodeCanLand = songPos != null || envelopeStatus?.rendering != null
-  const [decodeTick, setDecodeTick] = useState(0)
   useEffect(() => {
     if (waveforms == null) return
     // #1764 — keyed by the file each mark plays, the same key the draw reads:
     // a banked kit still loading must count as missing even when the plain
     // sound of the same name has loaded.
+    // #2079 — and the files of a lane drawn as Bars only by default: its type
+    // turns to Waveform once its files are known to be long, which they can
+    // only be known to be once decoded. A lane SAVED as Bars is never watched.
+    const fileBacked = waveforms.isFileBacked
     const keys = new Map<string, SampleRef>()
     for (const lane of audioScene.lanes) {
-      if (lane.audio !== true) continue
+      const maybeLong =
+        lane.bars === true &&
+        fileBacked != null &&
+        trackDisplays?.get(lane.displayName) !== 'bars' &&
+        lane.notes.length > 0 &&
+        lane.notes.every((n) => n.sample != null && fileBacked(n.sample))
+      if (lane.audio !== true && !maybeLong) continue
       for (const n of lane.notes) if (n.sample != null) keys.set(sampleKey(n.sample), n.sample)
     }
     const missing = () => {
@@ -1351,7 +1369,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     return () => clearInterval(id)
     // `audioScene`, not `scene`: an envelope landing changes the scene but not
     // which audio lanes wait for a decode.
-  }, [audioScene, waveforms, decodeCanLand])
+  }, [audioScene, waveforms, decodeCanLand, trackDisplays])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind
@@ -1396,11 +1414,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const inView = new Set(inViewKey === '' ? [] : inViewKey.split('\u0000'))
     trackEnvelopes?.request(envelopeTrackIds(audioScene, trackIdByLane, inView), loopCycles)
   }, [trackEnvelopes, audioScene, trackIdByLane, loopCycles, inViewKey])
-  // #1750 — drag the edge between two track names to set the row height. The
-  // edge grabbed stays under the pointer: every lane above it scales with the
-  // one shared setting, so the height is solved against the layout
-  // (`rowHeightForEdge`), not moved by the pointer's delta. `offset` keeps the
-  // grab point: a press a few px off the edge must not jump it to the pointer.
+  // #1750 — drag the edge below a track name (#2084: the last one's too) to
+  // set the row height. The edge grabbed stays under the pointer: every lane
+  // above it scales with the one shared setting, so the height is solved
+  // against the layout (`rowHeightForEdge`), not moved by the pointer's delta.
+  // `offset` keeps the grab point: a press a few px off the edge must not jump
+  // it to the pointer.
   const rowEdgeDragRef = useRef<{ index: number; offset: number; written: number } | null>(null)
   const [hoverRowEdge, setHoverRowEdge] = useState<string | null>(null)
   const [dragRowEdge, setDragRowEdge] = useState<string | null>(null)
@@ -1509,16 +1528,16 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // #1738 — the track menu (Type ▸ Waveform / Bars, Rename), opened by a
   // double-click or right-click on a lane header, at the pointer.
   const [laneMenu, setLaneMenu] = useState<
-    { laneKey: string; name: string; x: number; y: number; anchor: HTMLElement } | null
+    { laneKey: string; name: string; shownName: string; x: number; y: number; anchor: HTMLElement } | null
   >(null)
   const closeLaneMenu = useCallback(() => setLaneMenu(null), [])
   const openLaneMenu = useCallback(
-    (e: React.MouseEvent<HTMLElement>, laneKey: string, name: string) => {
+    (e: React.MouseEvent<HTMLElement>, laneKey: string, name: string, shownName: string) => {
       const control = (e.target as HTMLElement).closest('button, input')
       if (control && e.currentTarget.contains(control)) return
       e.preventDefault()
       e.stopPropagation()
-      setLaneMenu({ laneKey, name, x: e.clientX, y: e.clientY, anchor: e.currentTarget })
+      setLaneMenu({ laneKey, name, shownName, x: e.clientX, y: e.clientY, anchor: e.currentTarget })
     },
     [],
   )
@@ -1894,7 +1913,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const box = layoutRef.current.boxes.find((b) => b.laneKey === laneKey)
       const lane = sceneRef.current.lanes.find((l) => l.laneKey === laneKey)
       if (!box || !lane) return null
-      const rows = captionRows(lane.automations.map((e) => e.automation), box.top, box.height, box.expanded)
+      const rows = captionRows(lane.automations.map((e) => e.automation), box.top, box.height, box.expanded, rateEditable)
       return captionHit(rows, clientX - rect.left, contentY, measureCaption)
     },
     [onEditAutomation],
@@ -1956,7 +1975,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     (clientX: number, clientY: number): CaptionHit | null => {
       const hit = captionAt(clientX, clientY)
       if (!hit || hit.field.kind !== 'param') return null
-      return shapeOptions(hit.row.automation, shapeDeps()).length > 0 ? hit : null
+      return shapeOptions(hit.row.automation).length > 0 ? hit : null
     },
     [captionAt],
   )
@@ -1972,7 +1991,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // select cannot pick a disabled option; this holds the rule for any other path.
       const offered = shapeMenuOptions(a, shapeDeps(), open.preview, null).find((o) => o.kind === value)
       if (!offered || offered.disabled) return
-      const edit = shapeEdit(a, value, current, shapeDeps())
+      const edit = shapeEdit(a, value, current)
       if (edit) onEditAutomation(edit, `automation ${a.paramKey} shape ${value}`)
     },
     [choosingShape, onEditAutomation],
@@ -1998,7 +2017,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const hit = editingCaption
       setEditingCaption(null)
       if (!hit || !onEditAutomation) return
-      const edit = captionEdit(hit, value)
+      const edit = captionEdit(hit.row.automation, hit.field.kind, value)
       if (!edit) return
       onEditAutomation(edit, `automation ${hit.row.automation.paramKey} ${hit.field.kind}`)
     },
@@ -2066,7 +2085,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const editing = editingStep
       setEditingStep(null)
       if (!editing || !onEditAutomation) return
-      const edit = stepEdit(editing.hit, value, stepValueEdit)
+      const edit = stepEdit(editing.hit, value, stepTextEdit)
       if (!edit) return
       onEditAutomation(edit, `automation ${editing.hit.entry.automation.paramKey} step ${editing.hit.index}`)
     },
@@ -2081,7 +2100,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   //
   // ⚠ THE PREVIEW NEVER REACHES THE DOCUMENT. Every pixel of travel redraws the
   // staircase from a copy of the scene (`drawScene`); the edit is written once, on
-  // release, through the typed value's own `stepEdit` → `stepValueEdit` path. A
+  // release, through the typed value's own `stepEdit` → `stepTextEdit` path. A
   // write per pixel would re-evaluate the song on every pointer event and fill the
   // undo history with a hundred steps nobody chose.
   //
@@ -2208,10 +2227,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         return
       }
       if (!onEditAutomation) return
-      // The typed path's own gate: `stepValueEdit` returns null for a value the
+      // The typed path's own gate: `stepTextEdit` returns null for a value the
       // step already holds, so a drag that came back to where it started writes
       // nothing.
-      const edit = stepEdit(drag.hit, String(drag.value), stepValueEdit)
+      const edit = stepEdit(drag.hit, String(drag.value), stepTextEdit)
       if (!edit) return
       onEditAutomation(edit, `automation ${drag.hit.entry.automation.paramKey} step ${drag.hit.index}`)
     },
@@ -3260,7 +3279,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             role="status"
             style={styles.fallbackNotice}
             title={`A synth track's waveform is drawn from a render of it, and renders only run while the transport is stopped. Not rendered yet: ${waitingLanes
-              .map((key) => scene.lanes.find((l) => l.laneKey === key)?.displayName ?? key)
+              .map((key) => scene.lanes.find((l) => l.laneKey === key)?.shownName ?? key)
               .join(', ')}.`}
           >
             {waitingLanes.length === 1 ? '1 track draws when stopped' : `${waitingLanes.length} tracks draw when stopped`}
@@ -3375,8 +3394,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               // the lane has no scene entry (defensive — should always match).
               const lane = laneByKey.get(box.laneKey)
               const displayName = lane?.displayName ?? box.laneKey
-              const dotColor = lane?.color ?? paletteForTrack(trackIndexOf(box.laneKey), box.laneKey)
-              const headerName = subRows ? `${displayName} · ${subRows[0].label}` : displayName
+              // #2151 — the TEXT a header shows (`Track 1` for an unnamed `d1`).
+              // Everything keyed on the track — saved colour and type, the faded
+              // set, rename — keeps using `displayName`.
+              const shownName = lane?.shownName ?? displayName
+              const dotColor = lane?.color ?? trackIdentity(box.laneKey).color
+              const headerName = subRows ? `${shownName} · ${subRows[0].label}` : shownName
               // Inline rename (#580, Phase C): renameable when a write handler is
               // wired AND the lane has a statement anchor. The seed is the current
               // label for a named track, EMPTY for an anonymous `d{N}` (its
@@ -3424,7 +3447,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                     ...(isSelected ? styles.laneRowSelected : null),
                     ...(isSilenced ? styles.laneRowSilenced : null),
                   }}
-                  title={isWaiting ? `${displayName} — its waveform draws when the transport stops` : displayName}
+                  title={isWaiting ? `${shownName} — its waveform draws when the transport stops` : shownName}
                 >
                   <div
                     data-full-song-lane-select={selectEnabled ? box.laneKey : undefined}
@@ -3433,21 +3456,21 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                       height: headerHeight,
                       cursor: selectEnabled ? 'pointer' : undefined,
                     }}
-                    title={selectEnabled ? `${displayName} — click to jump to its code` : undefined}
+                    title={selectEnabled ? `${shownName} — click to jump to its code` : undefined}
                     onClick={
                       selectEnabled ? () => onSelectLane!(selectOffset!) : undefined
                     }
                     // #1738 — double-click or right-click opens the track menu at
                     // the pointer. Not from the header's own controls (caret, ∿,
                     // #, colour dot) or the rename input, which keep their gestures.
-                    onDoubleClick={menuEnabled ? (e) => openLaneMenu(e, box.laneKey, displayName) : undefined}
-                    onContextMenu={menuEnabled ? (e) => openLaneMenu(e, box.laneKey, displayName) : undefined}
+                    onDoubleClick={menuEnabled ? (e) => openLaneMenu(e, box.laneKey, displayName, shownName) : undefined}
+                    onContextMenu={menuEnabled ? (e) => openLaneMenu(e, box.laneKey, displayName, shownName) : undefined}
                   >
                     <button
                       type="button"
                       data-full-song-lane-expand={box.laneKey}
                       aria-pressed={box.expanded}
-                      aria-label={box.expanded ? `Collapse ${displayName}` : `Expand ${displayName} to view its notes`}
+                      aria-label={box.expanded ? `Collapse ${shownName}` : `Expand ${shownName} to view its notes`}
                       onClick={(e) => {
                         // Caret keeps its own meaning (expand + bind); don't also
                         // fire the header's jump (#610).
@@ -3462,8 +3485,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                       <button
                         type="button"
                         data-full-song-lane-automate={box.laneKey}
-                        aria-label={`Automate a parameter of ${displayName}`}
-                        title={`${displayName} — automate a parameter`}
+                        aria-label={`Automate a parameter of ${shownName}`}
+                        title={`${shownName} — automate a parameter`}
                         onClick={(e) => {
                           // Opens the menu only — not the header's jump (#610).
                           e.stopPropagation()
@@ -3483,8 +3506,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                       <button
                         type="button"
                         data-full-song-lane-steps={box.laneKey}
-                        aria-label={`Change how many steps a parameter of ${displayName} has`}
-                        title={`${displayName} — change a parameter's step count`}
+                        aria-label={`Change how many steps a parameter of ${shownName} has`}
+                        title={`${shownName} — change a parameter's step count`}
                         onClick={(e) => {
                           // Opens the menu only — not the header's jump (#610).
                           e.stopPropagation()
@@ -3512,8 +3535,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                         type="button"
                         data-full-song-lane-dot={box.laneKey}
                         data-full-song-lane-swatch={box.laneKey}
-                        aria-label={`Change colour of ${displayName}`}
-                        title={`${displayName} — click to change colour`}
+                        aria-label={`Change colour of ${shownName}`}
+                        title={`${shownName} — click to change colour`}
                         onClick={(e) => {
                           // Dot opens the colour picker only — not the #610 jump.
                           e.stopPropagation()
@@ -3573,8 +3596,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                       />
                     ) : (
                       <span
+                        // #2151 — the track's id, for finding its name by identity:
+                        // the TEXT is `Track 1` for an unnamed `d1`.
+                        data-full-song-lane-name={box.laneKey}
                         style={styles.laneName}
-                        title={menuEnabled ? `${displayName} — double-click or right-click for the track menu` : undefined}
+                        title={menuEnabled ? `${shownName} — double-click or right-click for the track menu` : undefined}
                       >
                         {headerName}
                       </span>
@@ -3593,11 +3619,16 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                 </div>
               )
             })}
-            {/* #1750 — a grab strip on each edge between two tracks. Over the
+            {/* #1750 — a grab strip on the edge below each track. Over the
                 rows, not inside them: a row clips its content, and the strip
-                straddles the edge. */}
-            {layout.boxes.slice(0, -1).map((box, i) => {
+                straddles the edge. #2084 — the last track's too, so a song with
+                one track can resize its rows. Its strip is only the half above
+                the edge: a half below would make the names column taller than
+                the grid, and the two must scroll alike (#645). */}
+            {layout.boxes.map((box, i) => {
               const active = dragRowEdge === box.laneKey || (dragRowEdge == null && hoverRowEdge === box.laneKey)
+              const last = i === layout.boxes.length - 1
+              const grab = last ? ROW_EDGE_GRAB / 2 : ROW_EDGE_GRAB
               return (
                 <div
                   key={`row-edge-${box.laneKey}`}
@@ -3607,7 +3638,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   aria-orientation="horizontal"
                   aria-label="Resize the timeline's rows"
                   title="Drag to resize the timeline's rows"
-                  style={{ ...styles.rowEdge, top: box.top + box.height - ROW_EDGE_GRAB / 2 }}
+                  style={{ ...styles.rowEdge, top: box.top + box.height - ROW_EDGE_GRAB / 2, height: grab }}
                   onPointerEnter={() => setHoverRowEdge(box.laneKey)}
                   onPointerLeave={() => setHoverRowEdge((k) => (k === box.laneKey ? null : k))}
                   onPointerDown={(e) => onRowEdgeDown(e, i, box.laneKey)}
@@ -3615,7 +3646,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   onPointerUp={onRowEdgeEnd}
                   onPointerCancel={onRowEdgeEnd}
                 >
-                  {active && <div style={styles.rowEdgeLine} />}
+                  {active && <div style={{ ...styles.rowEdgeLine, top: last ? grab - 2 : styles.rowEdgeLine.top }} />}
                 </div>
               )
             })}
@@ -3628,7 +3659,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             y={laneMenu.y}
             anchor={laneMenu.anchor}
             trackName={laneMenu.name}
-            display={barsNames?.has(laneMenu.name) ? 'bars' : 'waveform'}
+            shownName={laneMenu.shownName}
+            display={laneByKey.get(laneMenu.laneKey)?.bars === true ? 'bars' : 'waveform'}
             onSetDisplay={
               onSetTrackDisplay ? (display) => onSetTrackDisplay(laneMenu.name, display) : undefined
             }
@@ -4384,7 +4416,10 @@ const styles = {
   // The lane identity row (caret + dot + name). Sits on sub-row 0 when the lane
   // is expanded into voices; fills the box otherwise.
   laneHeader: {
-    padding: '5px 8px 0',
+    // #2151 — 4px on the right, not 8: an unnamed track's NUMBER is what tells it
+    // apart, and with 8 the ellipsis ate it from `Track 10` on (measured: the name
+    // needs 48 px and had 45). The left stays 8 so the voice rows still line up.
+    padding: '5px 4px 0 8px',
     display: 'flex',
     // Top-align so the dot/name sit at the lane's TOP edge — when a lane is
     // expanded (taller) the label still lines up with the canvas row top.

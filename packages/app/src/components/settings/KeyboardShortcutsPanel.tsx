@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { chordFromEvent, isModifierOnlyKey } from "@stave/editor/chord";
+import { chordFromEvent, isModifierOnlyKey } from "@stave/editor";
 import { listCommands, subscribeToCommands, type Command } from "../../commands/registry";
 import {
   keybindingTokens,

@@ -16,7 +16,7 @@
 
 import * as React from 'react'
 // @monaco-editor/react ships React-18 types; cast to any for React 19 JSX
-// (same pattern as StrudelMonaco).
+// (same pattern as EditorView).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { DiffEditor as DiffEditorRaw } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'

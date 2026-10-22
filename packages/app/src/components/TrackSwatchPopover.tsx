@@ -21,7 +21,7 @@
 
 import type * as React from 'react'
 import { useEffect, useRef } from 'react'
-import { TRACK_PALETTE_32 } from './musicalTimeline/colors'
+import { TRACK_PALETTE_32 } from '@stave/editor'
 
 export interface TrackSwatchPopoverProps {
   /** Anchor rect from the row-header swatch button's

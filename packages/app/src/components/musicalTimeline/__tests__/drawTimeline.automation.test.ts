@@ -17,8 +17,8 @@ import { drawTimeline, type DrawTheme, type DrawTransform } from '../drawTimelin
 import { DEFAULT_METER } from '../../../lib/meter'
 import type { TimelineScene, SceneLane } from '../timelineScene'
 import type { SignalAutomation } from '@stave/editor'
-import { signalTimeAt } from '../../../../../editor/src/ir/signalAutomation'
-import { CHAIN_ROOT_RECOGNISER } from '../../../../../editor/src/ir/parseStrudel'
+import { signalTimeAt } from '@stave/editor'
+import { CHAIN_ROOT_RECOGNISER } from '../../../../../editor/src/codeView/ir/parseStrudel'
 import { computeLaneLayout } from '../laneLayout'
 
 const THEME: DrawTheme = {
@@ -69,7 +69,7 @@ const auto = (over: Partial<SignalAutomation> = {}): SignalAutomation => ({
 })
 
 const lane = (automations: readonly SignalAutomation[]): SceneLane => ({
-  laneKey: 'd1', displayName: 'd1', color: '#7af', density: [1, 1, 1, 1],
+  laneKey: 'd1', displayName: 'd1', shownName: 'Track 1', color: '#7af', density: [1, 1, 1, 1],
   notes: [], pitchMin: null, pitchMax: null, voices: [], clips: [],
   sourceOffset: null, arrangeOffset: null, labelOffset: null,
   automations: automations.map((automation) => ({ automation, timeAt: signalTimeAt })), stepped: [],

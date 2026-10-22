@@ -35,9 +35,9 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import { cellOn, clampLane, isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
+import { parseStepGrid } from '../../../editor/src/codeView/notation/parse'
+import { cellOn, clampLane, isCellOn } from '../../../editor/src/codeView/notation/model'
+import { serializeStepGrid } from '../../../editor/src/codeView/notation/serialize'
 import { parseStepGrid as baseParseStepGrid } from './__p4c_base__/parse'
 import {
   cellOn as baseCellOn,

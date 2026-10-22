@@ -33,28 +33,16 @@ function isDrum(s) {
   return DRUM_PREFIXES.some(p => s === p || (s.startsWith(p) && /\\d/.test(s[p.length] || '')))
 }
 
-// Note NAME → MIDI. Returns null for unparseable names (octaveless or
-// sample names) — the caller folds those onto string lanes instead.
-function noteToMidi(n) {
-  if (typeof n === 'number') return Math.round(n)
-  if (typeof n !== 'string') return null
-  const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
-  if (!m) return null
-  const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
-  const acc = m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0
-  return (parseInt(m[3]) + 1) * 12 + base + acc
-}
-
 // Fold-grouping key: a MIDI number for pitched haps, a "_sound" string for
-// unpitched ones. Priority mirrors how Strudel fills a hap (freq is
-// pre-computed from note, so note("c e g") resolves via freq, never NaN).
+// unpitched ones. Priority mirrors Strudel's piano roll: a written freq, then the
+// note. A note NAME's pitch is h.midi, read by the engine with Strudel's own
+// grammar (cs3, g, ef3 included) — a sketch runs sandboxed and cannot import a
+// parser, so it never reads names itself (#1929). A name that is not a note folds
+// onto its own string lane.
 function valueOf(h) {
   if (typeof h.freq === 'number') return Math.round(12 * Math.log2(h.freq / 440) + 69)
   if (typeof h.note === 'number') return h.note
-  if (typeof h.note === 'string') {
-    const mi = noteToMidi(h.note)
-    return mi !== null ? mi : '_' + h.note
-  }
+  if (typeof h.note === 'string') return typeof h.midi === 'number' ? h.midi : '_' + h.note
   if (h.s) return '_' + h.s
   return 0
 }
@@ -266,19 +254,12 @@ function setup() {
   createCanvas(stave.width, stave.height)
   noStroke()
 }
-// Hz from a hap — Strudel leaves note as a NAME string and freq null until
-// superdough renders, so parse the note name to MIDI ourselves.
+// Hz from a hap: a written freq, else the pitch the engine read from the note
+// (h.midi, Strudel's own note grammar — a sketch cannot import a parser, #1929).
 function hapFreq(h) {
   if (typeof h.freq === 'number') return h.freq
-  let n = h.note
-  if (typeof n === 'string') {
-    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
-    if (!m) return null
-    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
-    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)
-  }
-  if (typeof n !== 'number') return null
-  return 440 * pow(2, (n - 69) / 12)
+  if (typeof h.midi === 'number') return 440 * pow(2, (h.midi - 69) / 12)
+  return null
 }
 function draw() {
   clear()
@@ -340,19 +321,12 @@ function setup() {
   pixelDensity(1); noStroke()
   _ensureBuf(width, height)
 }
-// Hz from a hap — Strudel leaves note as a NAME string and freq null until
-// superdough renders, so parse the note name to MIDI ourselves.
+// Hz from a hap: a written freq, else the pitch the engine read from the note
+// (h.midi, Strudel's own note grammar — a sketch cannot import a parser, #1929).
 function hapFreq(h) {
   if (typeof h.freq === 'number') return h.freq
-  let n = h.note
-  if (typeof n === 'string') {
-    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
-    if (!m) return null
-    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
-    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)
-  }
-  if (typeof n !== 'number') return null
-  return 440 * pow(2, (n - 69) / 12)
+  if (typeof h.midi === 'number') return 440 * pow(2, (h.midi - 69) / 12)
+  return null
 }
 function draw() {
   _ensureBuf(width, height)
@@ -404,7 +378,7 @@ function draw() {
 
 export const SPIRAL_P5_CODE = `// Stave p5 viz — Spiral
 function setup() {
-  createCanvas(300, 200)
+  createCanvas(stave.width, stave.height)
   pixelDensity(window.devicePixelRatio || 1)
   noFill()
 }
@@ -445,7 +419,7 @@ function draw() {
 export const PITCHWHEEL_P5_CODE = `// Stave p5 viz — Pitchwheel
 const ROOT_FREQ = 440 * pow(2, (36 - 69) / 12)
 function setup() {
-  createCanvas(300, 200)
+  createCanvas(stave.width, stave.height)
   pixelDensity(window.devicePixelRatio || 1)
 }
 function freq2angle(f) { return 0.5 - (log(f / ROOT_FREQ) / log(2) % 1) }
@@ -453,20 +427,12 @@ function circPos(cx, cy, r, a) {
   const rad = a * TWO_PI
   return [sin(rad) * r + cx, cos(rad) * r + cy]
 }
-// Hz from a hap. Strudel leaves note as a NAME string and freq null until
-// superdough renders, so parse the note name to MIDI ourselves (h.freq is null
-// here — relying on it leaves every note stuck at the default pitch).
+// Hz from a hap: a written freq, else the pitch the engine read from the note
+// (h.midi, Strudel's own note grammar — a sketch cannot import a parser, #1929).
 function hapFreq(h) {
   if (typeof h.freq === 'number') return h.freq
-  let n = h.note
-  if (typeof n === 'string') {
-    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
-    if (!m) return null
-    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
-    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)
-  }
-  if (typeof n !== 'number') return null
-  return 440 * pow(2, (n - 69) / 12)
+  if (typeof h.midi === 'number') return 440 * pow(2, (h.midi - 69) / 12)
+  return null
 }
 function draw() {
   clear()
@@ -474,15 +440,16 @@ function draw() {
   const now = stave.scheduler.now()
   let haps = stave.scheduler.query(now - 0.01, now + 0.01)
   haps = haps.filter(h => h.begin <= now && h.end > now)
-  const sz = min(width, height), r = sz / 2 - 12
+  // u: one unit of the wheel's own size, so marks keep their proportion at any size
+  const sz = min(width, height), u = sz / 200, r = sz / 2 - 12 * u
   const cx = width / 2, cy = height / 2
   noStroke(); fill(117, 186, 255, 64)
   for (let i = 0; i < 12; i++) {
     const a = freq2angle(ROOT_FREQ * pow(2, i / 12))
     const [x, y] = circPos(cx, cy, r, a)
-    circle(x, y, 7)
+    circle(x, y, 7 * u)
   }
-  noFill(); stroke(117, 186, 255, 48); strokeWeight(1)
+  noFill(); stroke(117, 186, 255, 48); strokeWeight(u)
   circle(cx, cy, r * 2)
   for (const h of haps) {
     const freq = hapFreq(h)
@@ -490,10 +457,10 @@ function draw() {
     const a = freq2angle(freq)
     const [x, y] = circPos(cx, cy, r, a)
     const c = h.color ?? '#75baff'
-    stroke(c); strokeWeight(2)
+    stroke(c); strokeWeight(2 * u)
     line(cx, cy, x, y)
     fill(c); noStroke()
-    circle(x, y, 12)
+    circle(x, y, 12 * u)
   }
 }`;
 

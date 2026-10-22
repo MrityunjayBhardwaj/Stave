@@ -4,7 +4,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { readGridOnsets, type Onset } from '../../../editor/src/visualEdit/notation/parse'
+import { miniPattern } from '../../../editor/src/codeView/strudelMini/pattern'
+import { readGridOnsets, type Onset } from '../../../editor/src/codeView/notation/parse'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const minis: string[] = JSON.parse(fs.readFileSync(path.join(dir, 'mini-corpus.json'), 'utf8'))
@@ -21,7 +22,7 @@ function scan(width: number) {
     let pat: unknown
     try { pat = reifyMini(m) } catch { continue }
     for (let cyc = 0; cyc < width; cyc++) {
-      const r = readGridOnsets(pat, cyc)
+      const r = readGridOnsets(miniPattern(m), cyc)
       if (!r.ok) continue
       accepted++
       for (const o of r.onsets as Onset[]) {

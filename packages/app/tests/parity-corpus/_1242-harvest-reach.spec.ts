@@ -53,7 +53,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { unitsWithStatus } from './editCoverage'
-import { parseTopLevel } from '../../../editor/src/visualEdit/chunkDetect'
+import { parseTopLevel } from '../../../editor/src/codeView/chunkDetect'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const runsDir = path.join(here, '.bakery-runs')

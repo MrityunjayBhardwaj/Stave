@@ -19,6 +19,7 @@ import type { LaneLayout } from './laneLayout'
 import {
   laneMarkBands,
   markRect,
+  paintedMarkRect,
   laneRenderMode,
   type ViewTransform,
   type WaveformSource,
@@ -162,8 +163,9 @@ export function drawLiveOverlay(
       if (lit.size === 0) continue
       for (const n of band.notes) {
         if (!lit.has(n)) continue
-        const r = markRect(n, band, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
-        if (!r) continue
+        const slot = markRect(n, band, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
+        if (!slot) continue
+        const r = paintedMarkRect(slot)
         drawLitMark(ctx, r, n.gain, theme, markShowsShape(lane, n, r, waveforms, pxPerCycle))
       }
     }

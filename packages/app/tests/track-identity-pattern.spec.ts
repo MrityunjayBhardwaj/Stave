@@ -244,3 +244,13 @@ test('the chip shows the owning track name when editing a pickRestart section (#
   await placeCursorOn(page, '[bd,sd]')
   await expect(chip(page).locator('[data-pattern-track-name]')).toHaveText('drums')
 })
+
+test('an unnamed track shows "Track N" on the chip (#2151)', async ({ page }) => {
+  await bootPattern(page)
+  await setStrudelCode(page, '$: s("bd sd hh")\nlead: note("c e g")')
+
+  await placeCursorOn(page, 'bd sd')
+  await expect(chip(page).locator('[data-pattern-track-name]')).toHaveText('Track 1')
+  await placeCursorOn(page, 'lead')
+  await expect(chip(page).locator('[data-pattern-track-name]')).toHaveText('lead')
+})

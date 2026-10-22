@@ -1,7 +1,7 @@
 /**
  * Integration test for the parse → snapshot chain that backs the IR Inspector.
- * Mirrors the production wire-up in StrudelEditorClient without going through
- * the React/runtime layer: the three intermediate views come from
+ * Drives the production `buildStrudelPasses` without going through the
+ * React/runtime layer: the three intermediate views come from
  * `parseStrudelStages` (#1387) and the FINAL `Parsed` tab is `parseStrudel`
  * itself (#1558), four tabs in all. Onset events come from Strudel's eval
  * (queryArc) in production; here the structural walk (walkLeafItems) covers the
@@ -12,15 +12,13 @@
  * snap.ir === snap.passes[passes.length - 1].ir.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
-import { parseStrudel, parseStrudelStages } from '../../ir'
-import { walkLeafItems } from '../../ir/structuralWalk'
+import { parseStrudel, buildStrudelPasses } from '../../codeView/ir'
+import { walkLeafItems } from '../../codeView/ir/structuralWalk'
 import { publishIRSnapshot, clearIRSnapshot, type IRSnapshotInput } from '../irInspector'
 import { getCaptureBuffer, __resetCaptureForTest } from '../timelineCapture'
 
-/** The four tabs, built the way `buildStrudelPasses` builds them in the app. */
-function strudelPasses(code: string) {
-  return [...parseStrudelStages(code), { name: 'Parsed', ir: parseStrudel(code) }]
-}
+/** The four tabs, built by the function the app calls (#1940; it used to be a copy). */
+const strudelPasses = (code: string) => buildStrudelPasses(code)
 
 describe('irInspector integration — parse → run', () => {
   it('produces a 4-pass snapshot whose FINAL IR equals parseStrudel output', () => {

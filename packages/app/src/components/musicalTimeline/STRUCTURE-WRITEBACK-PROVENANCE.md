@@ -11,7 +11,7 @@ Every timeline clip gesture — trim / split / delete / move / duplicate — res
 
 ```
 detectArrangeAt(code, pos) + armIndex
-   → setWeight / splitArm / silenceArm / insertArm / reorderArm   (visualEdit/arrange/serialize.ts)
+   → setWeight / splitArm / silenceArm / insertArm / reorderArm   (codeView/arrange/serialize.ts)
    → OffsetEdit[]  →  surgical edit to the source text
 ```
 

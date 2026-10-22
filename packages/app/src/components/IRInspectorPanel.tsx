@@ -49,8 +49,8 @@ const TIMELINE_CAPACITY_MAX = 500;
 const EMPTY_SET: ReadonlySet<string> = Object.freeze(new Set<string>()) as ReadonlySet<string>;
 
 // Phase 20-07 wave γ — module-level CSS injection guard for breakpoint +
-// pulse decoration classes. Mirrors `injectHighlightStyles` at
-// StrudelMonaco.tsx:253-268. Idempotent across multiple panel mounts.
+// pulse decoration classes. Same guard as `ensureBaseHighlightStyle` in
+// the editor's useHighlighting.ts. Idempotent across multiple panel mounts.
 let inspectorBreakpointStylesInjected = false;
 function ensureInspectorBreakpointStyles(): void {
   if (inspectorBreakpointStylesInjected || typeof document === "undefined") return;
@@ -132,7 +132,7 @@ const TAG_COLOR: Record<PatternIR["tag"], string> = {
   Param:    "var(--ir-param, #fb923c)",
   // Phase 20-11 wave γ-3 — Track tag (musician-track-identity wrapper).
   // Slate-400 (#94a3b8) placeholder; the per-track 32-palette
-  // (paletteForTrack/trackIndexOf in musicalTimeline/colors.ts) is the
+  // (the editor's `trackIdentity`, codeView/trackColor.ts) is the
   // identity color in MusicalTimeline. TAG_COLOR is the Inspector-tag chip
   // colour only — a structural neutral that doesn't compete with FX's
   // pink (#ec4899) or Param's orange (#fb923c). 20-12 design-system pass
@@ -159,7 +159,8 @@ const TAG_COLOR: Record<PatternIR["tag"], string> = {
 
 // summarize / children moved to IRInspectorChrome.ts (Phase 20-04 wave δ)
 // — pure helpers extracted so unit tests can import without pulling the
-// full panel + transitive `gifenc` (CommonJS) dependency chain. Imported
+// full panel + transitive `gifenc` (CommonJS) dependency chain, which the
+// app's tests could not load until #1938. Imported
 // at the top of this file and re-exported alongside the import.
 
 function round(n: number): string {

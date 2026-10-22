@@ -9,7 +9,7 @@ import {
   __resetCaptureForTest,
 } from '../timelineCapture'
 import type { IRSnapshot } from '../irInspector'
-import { IR } from '../../ir/PatternIR'
+import { IR } from '../../codeView/ir/PatternIR'
 
 // Mirror irInspector.test.ts:11-22 sample shape; freshen each call so
 // Object.freeze in captureSnapshot doesn't poison cross-test references.

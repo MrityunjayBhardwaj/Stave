@@ -22,6 +22,19 @@ import { render, act } from '@testing-library/react'
 // ── a single-line Monaco stand-in ────────────────────────────────────────────
 let DOC = ''
 let cursorOffset = 0
+// #1909 — what the gesture / own-write cases read: undo boundaries pushed, and the
+// content listeners the hooks subscribe (fired after every edit, as Monaco does).
+let undoStops = 0
+let contentListeners: (() => void)[] = []
+let cursorListeners: (() => void)[] = []
+/** Move the cursor the way Monaco reports it — the panel re-detects the chunk there. */
+const moveCursor = (offset: number): void => {
+  cursorOffset = offset
+  for (const l of [...cursorListeners]) l()
+}
+const fireContentChange = (): void => {
+  for (const l of [...contentListeners]) l()
+}
 
 class FakeRange {
   constructor(
@@ -36,13 +49,19 @@ const fakeModel = {
   getValue: () => DOC,
   getOffsetAt: (p: { column: number }) => p.column - 1,
   getPositionAt: (o: number) => ({ lineNumber: 1, column: o + 1 }),
-  onDidChangeContent: () => ({ dispose: () => {} }),
-  pushStackElement: () => {},
+  onDidChangeContent: (l: () => void) => {
+    contentListeners.push(l)
+    return { dispose: () => (contentListeners = contentListeners.filter((x) => x !== l)) }
+  },
+  pushStackElement: () => {
+    undoStops++
+  },
   pushEditOperations: (_sel: unknown, ops: { range: FakeRange; text: string }[]) => {
     // right-to-left so earlier offsets stay valid, matching Monaco's own semantics
     for (const op of [...ops].sort((a, b) => b.range.startColumn - a.range.startColumn)) {
       DOC = DOC.slice(0, op.range.startColumn - 1) + op.text + DOC.slice(op.range.endColumn - 1)
     }
+    fireContentChange() // inside the edit, while the writer's own-edit flag is up
     return null
   },
 }
@@ -50,8 +69,25 @@ const fakeModel = {
 const fakeEditor = {
   getModel: () => fakeModel,
   getPosition: () => ({ lineNumber: 1, column: cursorOffset + 1 }),
-  onDidChangeCursorPosition: () => ({ dispose: () => {} }),
+  onDidChangeCursorPosition: (l: () => void) => {
+    cursorListeners.push(l)
+    return { dispose: () => (cursorListeners = cursorListeners.filter((x) => x !== l)) }
+  },
 }
+
+// Every chunk detection, with the offset it was asked at — so a test can tell the
+// cursor re-detect (at `cursorOffset`) from the write's own re-read (at the anchor).
+const detectCalls: number[] = []
+vi.mock('../../../codeView', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../codeView')>()
+  return {
+    ...real,
+    detectChunk: (doc: string, offset: number) => {
+      detectCalls.push(offset)
+      return real.detectChunk(doc, offset)
+    },
+  }
+})
 
 vi.mock('../../../workspace/editorRegistry', () => ({
   getActiveEditor: () => fakeEditor,
@@ -61,20 +97,24 @@ vi.mock('../../../workspace/editorRegistry', () => ({
   getFileIdForEditor: () => 'test-file',
 }))
 
-import { parseStepGrid, applyStepGain } from '../../notation/parse'
-import { serializeStepGrid, serializeStepGain } from '../../notation/serialize'
-import { collapseStepGridToDocument } from '../../notation/resolution'
-import { isStepChunk } from '../patternKind'
+import { parseStepGrid, applyStepGain } from '../../../codeView/notation/parse'
+import { serializeStepGrid, serializeStepGain } from '../../../codeView/notation/serialize'
+import { collapseStepGridToDocument } from '../../../codeView/notation/resolution'
+import { isStepChunk } from '../../../codeView/patternKind'
 import { useGridModel } from '../useGridModel'
 import { setColumnGain } from '../inspector'
-import { toggleCell } from '../../notation/place'
-import { UNREFINED, documentSteps, type ViewScale } from '../../notation/viewResolution'
-import type { StepGridModel } from '../../notation/model'
+import { toggleCell } from '../../../codeView/notation/place'
+import { UNREFINED, documentSteps, type ViewScale } from '../../../codeView/notation/viewResolution'
+import type { StepGridModel } from '../../../codeView/notation/model'
 
 // ── a harness wired exactly as `SequencerGrid` wires it ──────────────────────
 interface Handle {
   model: StepGridModel | null
   mutate: (fn: (m: StepGridModel) => StepGridModel) => void
+  settle: (m: StepGridModel) => void
+  writeMini: (mini: string) => void
+  beginGesture: () => void
+  endGesture: () => void
   setViewScale: (s: ViewScale) => void
   viewScale: ViewScale
 }
@@ -82,7 +122,7 @@ let h: Handle
 
 function Harness(): React.ReactElement {
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const { model, mutate } = useGridModel<StepGridModel>({
+  const { model, mutate, settle, writeMini, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
     source: 'seq',
     eligible: isStepChunk,
     parse: parseStepGrid,
@@ -93,7 +133,10 @@ function Harness(): React.ReactElement {
     onViewScaleConsumed: () => setViewScale(UNREFINED),
     collapseToDocument: collapseStepGridToDocument,
   })
-  h = { model, mutate, setViewScale, viewScale }
+  React.useEffect(() => {
+    setViewScale(UNREFINED)
+  }, [patternKey])
+  h = { model, mutate, settle, writeMini, beginGesture, endGesture, setViewScale, viewScale }
   return React.createElement('div')
 }
 
@@ -221,5 +264,195 @@ describe('useGridModel — writing from a refined view (#1057)', () => {
     expect(DOC).not.toBe(afterFirst) // the second edit really did land…
     expect(DOC.startsWith('s("bd ~ sn ~")'), DOC).toBe(true) // …and notation held
     expect(h.viewScale).toBe(2)
+  })
+})
+
+/**
+ * #1909 — the binding under every grid (`useGridModel` on `useActiveChunk`) reaches
+ * the writer only through the door. Two things it must keep doing: a gesture is one
+ * undo step however many cells it writes, and the panel's OWN write never runs the
+ * external-change re-detect (that path is for typed edits and other surfaces).
+ */
+describe('the grid binding through the door (#1909)', () => {
+  beforeEach(() => {
+    DOC = 's("bd ~ sn ~")'
+    cursorOffset = 5
+    undoStops = 0
+    contentListeners = []
+    detectCalls.length = 0
+  })
+
+  it('one write outside a gesture is its own undo step', () => {
+    render(React.createElement(Harness))
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 1, true)))
+    expect(DOC).toBe('s("bd bd sn ~")')
+    expect(undoStops).toBe(2)
+  })
+
+  it('a gesture writing several cells is ONE undo step', () => {
+    render(React.createElement(Harness))
+    act(() => {
+      h.beginGesture()
+      h.mutate((prev) => toggleCell(prev, 0, 1, true))
+      h.mutate((prev) => toggleCell(prev, 0, 3, true))
+      h.endGesture()
+    })
+    expect(DOC).toBe('s("bd bd sn bd")')
+    expect(undoStops).toBe(2) // one boundary opening the gesture, one closing it
+  })
+
+  it("the panel's own write does not re-detect at the cursor; an external edit does", () => {
+    render(React.createElement(Harness))
+    detectCalls.length = 0
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 1, true)))
+    expect(detectCalls.filter((o) => o === cursorOffset)).toEqual([])
+    expect(detectCalls.length).toBeGreaterThan(0) // the write's own re-read, at the anchor
+
+    detectCalls.length = 0
+    act(() => {
+      DOC = 's("hh ~ sn ~")' // a typed edit: no writer is committing
+      fireContentChange()
+    })
+    expect(detectCalls).toContain(cursorOffset)
+  })
+})
+
+/**
+ * #1964 — a zoom belongs to the pattern it was made on, and the panel's OWN edits do not
+ * make it a different pattern. The reset used to be keyed on the pattern's text, and every
+ * note edit changes the text, so clearing a cell while zoomed threw away the zoom and the
+ * kept model with it — and an emptied lane lives only in that model (#1161).
+ *
+ * Every other change still drops the zoom, and the arms below say why it must: a scale
+ * carried onto a different pattern, or onto text typed in the code, can refuse to draw it.
+ */
+describe('a zoom survives the panel’s own edits, and nothing else (#1964)', () => {
+  beforeEach(() => {
+    DOC = 's("bd ~ ~ ~, hh hh hh hh")'
+    cursorOffset = 5
+    contentListeners = []
+    cursorListeners = []
+  })
+
+  const lanes = (): string[] => (h.model?.lanes ?? []).map((l) => l.sound)
+
+  it('a note edit made while zoomed keeps the zoom and the emptied lane', () => {
+    render(React.createElement(Harness))
+    act(() => h.setViewScale(2))
+    expect(h.model?.steps).toBe(8)
+
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 0, false))) // clear bd's only hit
+
+    expect(DOC, 'the edit really landed').toBe('s("~ ~ ~ ~, hh hh hh hh")')
+    expect(h.viewScale, 'the zoom the user set').toBe(2)
+    expect(h.model?.steps).toBe(8)
+    expect(lanes(), 'the emptied lane, kept only in the model').toEqual(['bd', 'hh'])
+  })
+
+  it('CONTROL: the same clear at the document’s own scale keeps the lane too', () => {
+    render(React.createElement(Harness))
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 0, false)))
+    expect(DOC).toBe('s("~ ~ ~ ~, hh hh hh hh")')
+    expect(lanes()).toEqual(['bd', 'hh'])
+  })
+
+  it('an edit typed in the code drops the zoom — a carried ×8 would refuse a 64-step pattern', () => {
+    render(React.createElement(Harness))
+    act(() => h.setViewScale(8))
+    expect(h.model?.steps).toBe(32)
+
+    const long = Array.from({ length: 64 }, (_, i) => (i % 4 === 0 ? 'bd' : '~')).join(' ')
+    act(() => {
+      DOC = `s("${long}")` // typed: no writer is committing
+      fireContentChange()
+    })
+
+    expect(h.viewScale).toBe(UNREFINED)
+    expect(h.model, 'the typed pattern opens').not.toBeNull()
+    expect(h.model?.steps).toBe(64)
+  })
+
+  it('moving the cursor to another pattern drops the zoom (#1117)', () => {
+    DOC = 'stack(s("bd ~ sn ~"), s("hh hh"))'
+    cursorOffset = 10 // inside the first mini
+    render(React.createElement(Harness))
+    act(() => h.setViewScale(2))
+    expect(h.model?.steps).toBe(8)
+
+    act(() => moveCursor(DOC.indexOf('hh') + 1))
+
+    expect(h.viewScale).toBe(UNREFINED)
+    expect(h.model?.steps).toBe(2)
+  })
+
+  it('moving the cursor within the same pattern keeps the zoom', () => {
+    DOC = 'stack(s("bd ~ sn ~"), s("hh hh"))'
+    cursorOffset = 10
+    render(React.createElement(Harness))
+    act(() => h.setViewScale(2))
+
+    act(() => moveCursor(13))
+
+    expect(h.viewScale).toBe(2)
+    expect(h.model?.steps).toBe(8)
+  })
+})
+
+describe('a look-only pattern is held and never written (#1975)', () => {
+  beforeEach(() => {
+    DOC = 's("[hh ~]!16")'
+    cursorOffset = 5
+  })
+
+  /**
+   * A model an op built from scratch: no mark, no source — the rebuild spells it.
+   * Whole-column notes on purpose: `[hh ~]!16` plays half-column ones, which the
+   * rebuild declines for its own reason, and the door would then go untested.
+   */
+  const unmarked = (m: StepGridModel): StepGridModel => ({
+    steps: m.steps,
+    lanes: m.lanes.map((l) => ({ ...l, cells: l.cells.map((c, i) => (i === 0 || !c ? false : { duration: 1 })) })),
+  })
+
+  it('the panel holds what the pattern plays', () => {
+    render(React.createElement(Harness))
+    expect(h.model?.lookOnly?.gate).toBe('view-unusable')
+    expect(h.model?.steps).toBe(16)
+    expect(h.model?.lanes.map((l) => l.sound)).toEqual(['hh'])
+  })
+
+  it('no route through the hook writes: an op, a from-scratch model, a settle, a text rewrite', () => {
+    render(React.createElement(Harness))
+    const before = DOC
+    const held = h.model
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 0, false)))
+    act(() => h.mutate((prev) => setColumnGain(prev, 0, 0.4)))
+    // the case the ops cannot cover: the transform dropped the mark
+    act(() => h.mutate((prev) => unmarked(prev)))
+    act(() => h.settle(unmarked(held as StepGridModel)))
+    act(() => h.writeMini('hh*16'))
+    expect(DOC).toBe(before)
+    expect(h.model, 'and the view on screen is still the played one').toBe(held)
+  })
+
+  it('CONTROL: the same from-scratch model on an editable pattern does write', () => {
+    // If this stayed put too, the arm above would be passing for no reason.
+    DOC = 's("hh hh hh hh")'
+    render(React.createElement(Harness))
+    expect(h.model?.lookOnly).toBeUndefined()
+    act(() => h.mutate((prev) => unmarked(prev)))
+    expect(DOC).toBe('s("~ hh hh hh")')
+  })
+
+  it('typing an editable pattern over it opens the editable grid again', () => {
+    render(React.createElement(Harness))
+    expect(h.model?.lookOnly).toBeDefined()
+    act(() => {
+      DOC = 's("hh ~ hh ~")'
+      fireContentChange()
+    })
+    expect(h.model?.lookOnly).toBeUndefined()
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 1, true)))
+    expect(DOC).toBe('s("hh hh hh ~")')
   })
 })

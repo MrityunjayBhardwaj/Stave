@@ -9,7 +9,7 @@
  * type), so no module mock is needed. A MockResizeObserver supplies the grid
  * width (jsdom ships none), mirroring MusicalTimeline.test.tsx.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest'
 import * as React from 'react'
 import { act, render, cleanup, fireEvent } from '@testing-library/react'
 import type { SongAnalysis } from '@stave/editor'
@@ -20,11 +20,9 @@ import {
   __resetLoopStateForTests,
 } from '../../state/loopRange'
 
-// FullSongTimeline now pulls the editor runtime (collectCycles/laneKeyOf, via
-// timelineMarks) into its import graph; the real module drags in a CJS dep
-// (gifenc) that breaks vitest's loader. These props never pass a real `ir`, so
-// the stubs are loaded but never called — the mini-note collection path is
-// covered by the Playwright spec against a real song.
+// The mock below is the REAL `@stave/editor` with only the collect events and the lane
+// structure swapped for fixtures (#1943). The mini-note collection path on a real song is
+// covered by the Playwright spec.
 // Trim-gesture fixture (#437): an `arrange` song with TWO bd arms — arm 0 over
 // cycles [0,2), arm 1 over [2,4). The events carry `armIndex` + `loc` so
 // collectNoteMarks builds real clips (armIndex ≥ 0 = trimmable). Returned only
@@ -56,61 +54,20 @@ const { TRIM_EVENTS, BARE_EVENTS, NESTED_EVENTS } = vi.hoisted(() => ({
     { begin: 2, end: 3, s: 'hh', trackId: 'song', armIndex: 1, loc: [{ start: 0, end: 58 }] },
   ],
 }))
-vi.mock('@stave/editor', async () => {
-  // #974 — the timeline derives lane STRUCTURE from `structuralWalk`, not collect events. Reduce
-  // the SAME fixture events the collect mock returns, through the REAL production reducer (from
-  // source, no gifenc), so structure + marks stay in sync and the stub can't drift (PV192).
-  // Only vi.hoisted values (the fixtures) are safe to reference here — the factory is hoisted
+vi.mock('@stave/editor', async (importOriginal) => {
+  // Everything is the REAL module except the fixtures below (#1943): the collect
+  // events, and the lane STRUCTURE (#974) reduced from those SAME events through
+  // the real reducer, so structure and marks stay in sync. Only vi.hoisted
+  // values (the fixtures) are safe to reference here — the factory is hoisted
   // above every top-level const, so `eventsForIr` lives inside it.
-  const { skeletonsFromEvents, wholeWalkWindow, sampleRefOf } = await import(
-    '../musicalTimeline/__tests__/structuralWalkTestStub'
-  )
-  // #1489 moved this reader into the editor, so the barrel mock has to carry it
-  // or the component gets `undefined` and every case here dies in a useMemo —
-  // the exact trap the `wholeWalkWindow` note below already describes. Real
-  // function, from source: it is a pure IR walk, so there is nothing to stub.
-  // #1464 — the caption's shape menu reads its options from `shapeAlternatives`.
-  // #1611 — and its cross-class options from `crossClassShapes`.
-  const { signalAutomations, signalTimeAt, shapeAlternatives, crossClassShapes } = await import('../../../../editor/src/ir/signalAutomation')
-  // #1463 Stage 2 — the same trap, twice more: the component now reads stepped
-  // automation and resolves each one's axis. Both real, from source (the knob
-  // table imports nothing but its own control list).
-  // Stage 3 adds the write: a press on a step commits through `stepValueEdit`.
-  // #1585 adds the read: each lane entry carries `stepIndexAtCycle`.
-  const { steppedAutomations, stepValueEdit, stepIndexAtCycle } = await import('../../../../editor/src/ir/steppedAutomation')
-  const { knobRangeFor, hasKnownKnobRange } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
-  // #1601 — the lane's automate menu reads fixed values and writes them as steps.
-  const { fixedParameters, fixedToStepsEdit } = await import('../../../../editor/src/ir/fixedParameters')
-  // #1602 — the lane's step-count chip builds its options and its edit from these.
-  const { stepCountEdit } = await import('../../../../editor/src/ir/stepCount')
-  const { previewRepeat, songPeriodOf } = await import('../../../../editor/src/ir/songAnalysis')
+  const { skeletonsFromEvents } = await import('../musicalTimeline/__tests__/structuralWalkTestStub')
   const eventsForIr = (ir: { bare?: boolean; nested?: boolean } | null) =>
     ir?.bare ? BARE_EVENTS : ir?.nested ? NESTED_EVENTS : ir ? TRIM_EVENTS : []
   return {
-    signalAutomations,
-    signalTimeAt,
-    shapeAlternatives,
-    crossClassShapes,
-    steppedAutomations,
-    stepValueEdit,
-    stepIndexAtCycle,
-    knobRangeFor,
-    hasKnownKnobRange,
-    fixedParameters,
-    fixedToStepsEdit,
-    stepCountEdit,
-    previewRepeat,
-    songPeriodOf,
+    ...(await importOriginal<typeof import('@stave/editor')>()),
     collectCycles: (ir: { bare?: boolean; nested?: boolean } | null) => eventsForIr(ir),
     structuralWalk: (ir: { bare?: boolean; nested?: boolean } | null, window: { originCycle: number; spanCycles: number }) =>
       skeletonsFromEvents(eventsForIr(ir), window),
-    // Production calls this (the bare-song probe). A barrel mock that omits it
-    // hands the component `undefined` — invisible to tsc, because a vi.mock
-    // factory is untyped.
-    wholeWalkWindow,
-    // #1764 — every mark names its file through the real one, from source.
-    sampleRefOf,
-    laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
     // #459 — Song view now reads the shared timeline row-height setting. Mock it
     // to 22 (the height these layout assertions were written for) + a no-op
     // subscribe, mirroring MusicalTimeline.test's mock.
@@ -196,7 +153,7 @@ function renderFull(overrides?: Partial<React.ComponentProps<typeof FullSongTime
     ...overrides,
   }
   const utils = render(<FullSongTimeline {...props} />)
-  return { ...utils, onSeek: props.onSeek as ReturnType<typeof vi.fn> }
+  return { ...utils, onSeek: props.onSeek as Mock<(...args: any[]) => any> }
 }
 
 describe('FullSongTimeline', () => {
@@ -444,7 +401,7 @@ describe('FullSongTimeline — trim a clip (drag right edge → set-weight, #437
   // two clips, arm 0 over [0,2) and arm 1 over [2,4). At zoom 1 the period (4)
   // fits 800px → 200px/cycle, so arm 0's right edge sits at x=400. We grab just
   // inside it, drag to cycle 3, and expect a set-weight to 3 for arm 0.
-  function renderTrimmable(onTrimClip: ReturnType<typeof vi.fn>) {
+  function renderTrimmable(onTrimClip: Mock<(...args: any[]) => any>) {
     const utils = renderFull({ ir: {} as never, onTrimClip })
     const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
     // jsdom has no layout — supply the grid rect the content-space math reads.
@@ -544,7 +501,7 @@ describe('FullSongTimeline — delete a clip (select body + Delete → remove-ar
   // real clips (arm 0 [0,2), arm 1 [2,4)) at 200px/cycle, so arm 0's body centre
   // sits at x≈200 and arm 1's at x≈600 (bd row y≈10). The hh lane carries no
   // armIndex events, so it gets ONE implicit clip (armIndex −1, not deletable).
-  function renderDeletable(onDeleteClip: ReturnType<typeof vi.fn>) {
+  function renderDeletable(onDeleteClip: Mock<(...args: any[]) => any>) {
     const utils = renderFull({ ir: {} as never, onDeleteClip })
     const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
     grid.getBoundingClientRect = () =>
@@ -622,7 +579,7 @@ describe('FullSongTimeline — move a clip (drag body → reorder; bare clip = n
   // Reorder fixture: the same two-arm bd lane (arm 0 [0,2), arm 1 [2,4)) at
   // 200px/cycle. Dragging arm 0's body (x≈200) right into arm 1's span (x≈600 =
   // cycle 3) reorders it to slot 1.
-  function renderReorderable(onMoveClip: ReturnType<typeof vi.fn>) {
+  function renderReorderable(onMoveClip: Mock<(...args: any[]) => any>) {
     const utils = renderFull({ ir: {} as never, onMoveClip })
     const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
     grid.getBoundingClientRect = () =>
@@ -630,7 +587,7 @@ describe('FullSongTimeline — move a clip (drag body → reorder; bare clip = n
     return { ...utils, grid }
   }
   // Wrap fixture: a BARE track (no armIndex) → one implicit clip spanning [0,4).
-  function renderWrappable(onMoveClip: ReturnType<typeof vi.fn>) {
+  function renderWrappable(onMoveClip: Mock<(...args: any[]) => any>) {
     const utils = renderFull({ ir: { bare: true } as never, onMoveClip })
     const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
     grid.getBoundingClientRect = () =>
@@ -703,7 +660,7 @@ describe('FullSongTimeline — move a clip (drag body → reorder; bare clip = n
 })
 
 describe('FullSongTimeline — duplicate a clip (select + ⌘/Ctrl-D → insert arm, #386)', () => {
-  function renderDuplicatable(onDuplicateClip: ReturnType<typeof vi.fn>) {
+  function renderDuplicatable(onDuplicateClip: Mock<(...args: any[]) => any>) {
     const utils = renderFull({ ir: {} as never, onDuplicateClip })
     const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
     grid.getBoundingClientRect = () =>
@@ -785,7 +742,7 @@ describe('FullSongTimeline — duplicate a clip (select + ⌘/Ctrl-D → insert 
 })
 
 describe('FullSongTimeline — split a clip (select + S → split arm at midpoint, #386)', () => {
-  function renderSplittable(onSplitClip: ReturnType<typeof vi.fn>) {
+  function renderSplittable(onSplitClip: Mock<(...args: any[]) => any>) {
     const utils = renderFull({ ir: {} as never, onSplitClip })
     const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
     grid.getBoundingClientRect = () =>
@@ -904,9 +861,10 @@ describe('FullSongTimeline — resize a bare loop (#662, set display span; optio
     sections: [{ startCycle: 0, endCycle: 1, laneKeys: ['bd'] }],
   }
 
-  // This test env ships a `window.localStorage` whose methods are non-functional,
-  // so install a real Map-backed Storage (mirrors timelineCameraPersistence.test)
-  // — the bare span override round-trips through it. Fresh per test → isolation.
+  // Every test already gets fresh in-memory storage from vitest.setup.ts (#2126).
+  // This suite installs its own Map-backed Storage on top (the idiom of
+  // timelineCameraPersistence.test, from before that setup existed); the bare
+  // span override round-trips through it. Fresh per test → isolation.
   let originalStorage: PropertyDescriptor | undefined
   beforeEach(() => {
     originalStorage = Object.getOwnPropertyDescriptor(window, 'localStorage')
@@ -1092,7 +1050,7 @@ describe('FullSongTimeline — trim a REGION (drag a mark edge → .begin/.end, 
   const REGION_EVENTS = TRIM_EVENTS.map((e) => ({ ...e, trackId: 'bd' }))
 
   function renderRegion(
-    onTrimRegion: ReturnType<typeof vi.fn>,
+    onTrimRegion: Mock<(...args: any[]) => any>,
     extra?: Partial<React.ComponentProps<typeof FullSongTimeline>>,
   ) {
     // ⚠ `getTimelineEvents` IS LOAD-BEARING HERE, and its absence is why the
@@ -1404,7 +1362,7 @@ describe('FullSongTimeline loop locators (#1570)', () => {
 
 describe('FullSongTimeline — point a section at a different part (select + P → chooser, #1560)', () => {
   function renderChoosable(
-    onAssignSectionPart: ReturnType<typeof vi.fn>,
+    onAssignSectionPart: Mock<(...args: any[]) => any>,
     parts: string[] = ['bass', 'lead'],
   ) {
     const sectionParts = vi.fn(() => parts)
@@ -1973,6 +1931,10 @@ describe('FullSongTimeline — automate a fixed value from its lane (#1601)', ()
     extra: Partial<React.ComponentProps<typeof FullSongTimeline>>,
     expand = true,
   ) {
+    // #2126 — a fresh timeline each time: the camera saves expanded lanes, so a
+    // second render in the same test would start expanded and the click below
+    // would collapse it. (It passed on Node 25 only because nothing got saved.)
+    window.localStorage.clear()
     const source = `s("bd*2").${method}(${raw})`
     const ir = {
       tag: 'Stack',

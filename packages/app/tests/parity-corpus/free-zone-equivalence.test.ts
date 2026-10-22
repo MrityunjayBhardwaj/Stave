@@ -48,11 +48,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   serializeStepGrid,
   serializePianoRoll,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 import {
   RESOLUTION_PRESETS,
   freeZoneScale,
@@ -60,13 +60,13 @@ import {
   scalePianoRollTo,
   stepSlotState,
   rollSlotState,
-} from '../../../editor/src/visualEdit/notation/resolution'
-import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
+} from '../../../editor/src/codeView/notation/resolution'
+import { documentSteps } from '../../../editor/src/codeView/notation/viewResolution'
 import type {
   PianoRollModel,
   StepGridModel,
-} from '../../../editor/src/visualEdit/notation/model'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -93,7 +93,8 @@ const minis = [...new Set(corpus.minis.map((o) => o.mini.trim()).filter((m) => m
 // ⚠ 2973/1241 -> 3082/1361 at #1242 — the corpus widened 1535 -> 1633 units.
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
 // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-const GRID_DENOMINATOR = 3099
+// ⚠ 3099 -> 3094 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const GRID_DENOMINATOR = 3094
 // ⚠ 1361 -> 1364 at #1312: three more asks reconstruct the denominator because the roll
 // writer answers them instead of declining. The identity this arm checks — offers plus
 // refusals minus old-path declines equals the denominator — is what moved with them, and

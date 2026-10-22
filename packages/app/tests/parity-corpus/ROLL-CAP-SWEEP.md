@@ -56,16 +56,16 @@ Both populations, all 4 caps, the real shipped writers at each value —
 
 | | **4** (shipped) | 6 | 8 | 12 |
 |---|---|---|---|---|
-| **A** reach (transfers) | 89 | 89 | 90 | 90 |
-| **B** transfers | 377 | 379 | 391 | 394 |
-| A views opened by the leaf writer | 36 | 37 | 47 | 48 |
-| B views opened by the leaf writer | 34 | 36 | 48 | 52 |
-| A leaf notes live | 110/294 37.4% | 113/307 36.8% | 172/420 41.0% | 176/432 40.7% |
-| B leaf notes live | 40/60 66.7% | 75/95 78.9% | 211/255 82.7% | 252/307 82.1% |
+| **A** reach (transfers) | 90 | 90 | 91 | 91 |
+| **B** transfers | 378 | 380 | 392 | 395 |
+| A views opened by the leaf writer | 38 | 39 | 49 | 51 |
+| B views opened by the leaf writer | 35 | 37 | 49 | 53 |
+| A leaf notes live | 117/315 37.1% | 120/328 36.6% | 179/441 40.6% | 183/453 40.4% |
+| B leaf notes live | 44/64 68.8% | 79/99 79.8% | 215/259 83.0% | 256/311 82.3% |
 | views that CORRUPT (must be 0) | 0 | 0 | 0 | 0 |
 
-- **Population A's reach moves by 1 ask across the whole range** (89 → 89 → 90 → 90). It is the population production reaches today, and it is the reason the cap has not been raised: the gain there is a rounding error.
-- **Population B gains 17 transfers** (377 → 379 → 391 → 394), every one served by the leaf writer, which is the writer this cap governs. B is a counterfactual until the core is deleted.
+- **Population A's reach moves by 1 ask across the whole range** (90 → 90 → 91 → 91). It is the population production reaches today, and it is the reason the cap has not been raised: the gain there is a rounding error.
+- **Population B gains 17 transfers** (378 → 380 → 392 → 395), every one served by the leaf writer, which is the writer this cap governs. B is a counterfactual until the core is deleted.
 - **Zero views corrupt on either population at any cap**, and zero asks moved to a worse outcome per ask — checked against the shipped-cap rows rather than by netting totals, since an ask lost and an ask gained sum to no change.
 
 The ceiling is 12 and not a round number: `detectPeriod` confirms a period `p` only
@@ -153,13 +153,13 @@ units, 1306 core-served asks (831 grid / 475 roll):
 
 | | cap 4 (shipped) | cap 12 |
 |---|---|---|
-| untransferable asks, both surfaces | 77 | 59 |
-| roll untransferable | 42 | 24 |
-| **the set that actually blocks deleting the core** | 55 | 39 |
+| untransferable asks, both surfaces | 76 | 58 |
+| roll untransferable | 41 | 23 |
+| **the set that actually blocks deleting the core** | 54 | 38 |
 | …of it, grid | 20 | 20 |
-| …of it, roll | 35 | 19 |
+| …of it, roll | 34 | 18 |
 
-**The cap's own contribution is 16 asks** (55 − 39), all of it on the roll: 35 − 19 = 16.
+**The cap's own contribution is 16 asks** (54 − 38), all of it on the roll: 34 − 18 = 16.
 
 **The grid is the control arm** and it is identical to the digit at both caps — 831 asks / 730 transfers / 35 untransferable / blocker 20 at cap 4, and 831 / 730 / 35 / 20 at cap 12. The constant is per-surface and roll-only, so a grid column that moved would mean the sweep had changed something it was not aiming at.
 

@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { TEMPLATES, type ProjectTemplate } from "../templates";
+import { TemplateIcon } from "./TemplateIcon";
 
 interface TemplateModalProps {
   open: boolean;
@@ -61,6 +62,9 @@ export function TemplateModal({ open, onClose, onCreate }: TemplateModalProps) {
               />
             ))}
           </div>
+          <div style={styles.note}>
+            Every project also includes the built-in visualisers in <code>preset/viz</code>, ready to edit.
+          </div>
         </div>
 
         <div style={styles.footer}>
@@ -108,7 +112,7 @@ function TemplateCard({
         ...(selected ? styles.cardSelected : {}),
       }}
     >
-      <div style={styles.cardIcon}>{template.icon}</div>
+      <div style={styles.cardIcon}><TemplateIcon templateId={template.id} size={24} /></div>
       <div style={styles.cardName}>{template.name}</div>
       <div style={styles.cardDesc}>{template.description}</div>
     </button>
@@ -200,7 +204,14 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: "0 0 0 1px var(--accent)",
   },
   cardIcon: {
-    fontSize: 28,
+    display: "flex",
+    height: 28,
+    alignItems: "center",
+  },
+  note: {
+    marginTop: 12,
+    fontSize: 12,
+    color: "var(--text-muted)",
   },
   cardName: {
     fontSize: 14,

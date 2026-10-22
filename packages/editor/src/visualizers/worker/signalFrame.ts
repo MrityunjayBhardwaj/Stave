@@ -90,6 +90,8 @@ export interface RawHapSummary {
   endClipped: number
   note: number | string | null
   freq: number | null
+  /** `IREvent.midi` — the pitch the built-in sketches draw (#1929); null when absent. */
+  midi: number | null
   s: string | null
   gain: number
   velocity: number

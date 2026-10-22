@@ -26,16 +26,16 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { mini as reifyMini } from '@strudel/mini/mini.mjs'
+import { miniPattern, type MiniPattern } from '../../../editor/src/codeView/strudelMini/pattern'
 import {
   gridOnsets,
   parseStepGrid,
   parsePianoRoll,
   rollOnsets,
-} from '../../../editor/src/visualEdit/notation/parse'
-import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
-import { cellOn, isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import type { StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/parse'
+import { serializeStepGrid } from '../../../editor/src/codeView/notation/serialize'
+import { cellOn, isCellOn } from '../../../editor/src/codeView/notation/model'
+import type { StepGridModel } from '../../../editor/src/codeView/notation/model'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -71,9 +71,9 @@ describe('#986 leaf-anchor sweep — a shipped anchor slices to its own token', 
     let checked = 0
     let nonSlicing = 0
     for (const src of minis) {
-      let pat: unknown
+      let pat: MiniPattern
       try {
-        pat = reifyMini(src)
+        pat = miniPattern(src)
       } catch {
         continue
       }
@@ -143,9 +143,9 @@ describe('#986 P1b leaf-anchor sweep — a shipped ROLL anchor slices to its own
     let checked = 0
     let nonSlicing = 0
     for (const src of minis) {
-      let pat: unknown
+      let pat: MiniPattern
       try {
-        pat = reifyMini(src)
+        pat = miniPattern(src)
       } catch {
         continue
       }

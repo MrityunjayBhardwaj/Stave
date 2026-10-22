@@ -63,7 +63,7 @@ import {
   parsePianoRoll,
   parsePianoRollCore,
   projectPianoRollDerived,
-} from '../../../editor/src/visualEdit/notation/parse'
+} from '../../../editor/src/codeView/notation/parse'
 import { ROLL_SURFACE } from './engineEditOracle'
 import {
   readObservation,

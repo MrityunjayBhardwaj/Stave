@@ -5,19 +5,12 @@ import {
   type SoundMapDict,
 } from "../soundsProvider";
 
-// The GM-family grouping is injected (the real fns live in @stave/editor — the
-// map's correctness is covered by gmFamilies.test.ts there). These stubs let the
-// provider's mapping be tested hermetically, without importing the editor barrel.
-const gmFamily = (name: string) => (name === "gm_alto_sax" ? "Reed" : null);
-const soundfontGroupLabel = (name: string) => {
-  const f = gmFamily(name);
-  return f ? `Soundfonts · ${f}` : "Soundfonts";
-};
+// The GM-family grouping is the editor's own (`gmFamily` / `soundfontGroupLabel`,
+// whose map gmFamilies.test.ts covers there); the provider imports it directly now
+// that the app's tests can load the editor's main entry (#1938, #1943).
 const deps = {
   startPreview: () => ({ stop: () => {} }),
   onInsert: () => {},
-  gmFamily,
-  soundfontGroupLabel,
 };
 
 const DICT: SoundMapDict = {

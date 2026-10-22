@@ -27,8 +27,8 @@ import {
   listArrangeSectionParts,
   applyEdits,
 } from '../index'
-import { parseStrudel } from '../../ir'
-import type { PatternIR } from '../../ir'
+import { parseStrudel } from '../../codeView/ir'
+import type { PatternIR } from '../../codeView/ir'
 
 /** Pull the inner expression out of parseStrudel's synthetic `d1` Track. */
 function inner(ir: PatternIR): PatternIR {

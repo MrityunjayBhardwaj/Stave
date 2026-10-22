@@ -26,8 +26,8 @@
  * ## Chrome rendering
  *
  * Same `▶ ⏹ BPM error chromeExtras` shape as `STRUDEL_RUNTIME`. BPM
- * extraction relies on the same `setcps()` regex inside
- * `LiveCodingRuntime`, which Sonic Pi files do not typically use — the
+ * extraction is `LiveCodingRuntime`'s Strudel tempo reader (`codeView/tempo.ts`),
+ * which reads JavaScript setter calls a Sonic Pi file does not contain — the
  * runtime returns `undefined` for `getBpm()` on Sonic Pi code, and the
  * chrome silently omits the BPM display. A future Sonic Pi BPM source
  * (e.g., `use_bpm 120` extraction) is a follow-up task; the chrome's
@@ -40,6 +40,7 @@ import type {
   ChromeContext,
   LiveCodingRuntimeProvider,
 } from '../types'
+import { useTouchBar } from './touchBar'
 
 /**
  * Transport chrome for `.sonicpi` files. Identical visual shape to the
@@ -50,14 +51,16 @@ import type {
  */
 function SonicPiChrome(ctx: ChromeContext): React.ReactElement {
   const { isPlaying, error, bpm, onPlay, onStop, chromeExtras } = ctx
+  const bar = useTouchBar()
   return (
     <div
       data-sonicpi-runtime-chrome="root"
+      {...bar.attrs}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: 8,
-        height: 40,
+        height: bar.height,
         padding: '0 12px',
         background: 'var(--surface)',
         borderBottom: '1px solid var(--border)',

@@ -143,3 +143,33 @@ test.describe('#599 — play-bar BPM reflects the real tempo', () => {
     await expect(bpm).not.toContainText(`${Math.round((expected as number) / 4)} BPM`)
   })
 })
+
+/** TYPE the document and evaluate — the play bar reads the file store, which a
+ *  programmatic setValue does not update (the note the #599 test above carries). */
+async function typeAndEval(page: Page, code: string): Promise<void> {
+  const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
+  await page.locator('.monaco-editor').first().click()
+  await page.keyboard.press(`${MOD}+A`)
+  await page.keyboard.press('Backspace')
+  await page.keyboard.type(code, { delay: 8 })
+  await page.waitForTimeout(400)
+  await page.keyboard.press(`${MOD}+Enter`)
+}
+
+test.describe('#1925 — the play-bar BPM is the tempo the code sets', () => {
+  test('setcpm counts, and a commented-out setter does not', async ({ page }) => {
+    await boot(page)
+    const bpm = page.locator('[data-testid="strudel-chrome-bpm"]')
+    const lcd = page.locator('[data-stave-lcd-tempo]')
+    // setcpm(45) is 0.75 cps — the scheduler's own reading is the reference, and
+    // 0.75 is not Strudel's default 0.5, so the LCD cannot pass by doing nothing.
+    await typeAndEval(page, 'setcpm(45)\n$: s("bd*2")')
+    await expect(lcd).toHaveText('0.75', { timeout: 8000 })
+    await expect(bpm).toHaveText('180 BPM', { timeout: 8000 })
+    // The comment says 0.25; the statement that runs says 0.6. A text match
+    // read the comment (measured: it showed 60 for a 0.5 document).
+    await typeAndEval(page, '// setcps(0.25)\nsetcps(0.6)\n$: s("bd*2")')
+    await expect(lcd).toHaveText('0.60', { timeout: 8000 })
+    await expect(bpm).toHaveText('144 BPM', { timeout: 8000 })
+  })
+})

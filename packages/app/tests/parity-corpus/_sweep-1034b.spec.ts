@@ -13,8 +13,8 @@ import {
   parseStepGridCore,
   parsePianoRoll,
   parsePianoRollCore,
-} from '../../../editor/src/visualEdit/notation/parse'
-import type { StepGridModel, PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/parse'
+import type { StepGridModel, PianoRollModel } from '../../../editor/src/codeView/notation/model'
 import { GRID_SURFACE, ROLL_SURFACE, probeEdit } from './engineEditOracle'
 
 /** the 4 units the first arm found, verbatim */

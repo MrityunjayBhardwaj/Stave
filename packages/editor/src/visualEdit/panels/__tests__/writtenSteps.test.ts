@@ -6,9 +6,9 @@
  * follows the model", not "the drawing follows a second reading of the text".
  */
 import { describe, expect, it } from 'vitest'
-import { parsePianoRoll, parseStepGrid } from '../../notation/parse'
-import { columnCount } from '../../notation/model'
-import { UNREFINED } from '../../notation/viewResolution'
+import { parsePianoRoll, parseStepGrid } from '../../../codeView/notation/parse'
+import { columnCount } from '../../../codeView/notation/model'
+import { UNREFINED } from '../../../codeView/notation/viewResolution'
 import { drawnBarStarts, fitLabels, rulerLabels, writtenStepStarts } from '../writtenSteps'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 

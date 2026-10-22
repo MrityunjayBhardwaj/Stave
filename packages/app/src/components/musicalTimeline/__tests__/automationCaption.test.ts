@@ -8,11 +8,11 @@
  * visible goes wrong. Those tests use a measure function with a known constant
  * advance, so a field's box is arithmetic anyone can check by hand.
  *
- * The EDIT half is where a wrong answer reaches the user's document. Those tests
- * are written as the three properties `captionEdit` exists to enforce — the
- * rounding cannot escape, an unchanged field writes nothing, an unspelled leg
- * inserts rather than replaces — because each is a silent corruption if it
- * regresses, not a visible one.
+ * The EDIT half is where a wrong answer reaches the user's document. What an edit
+ * WRITES is the editor's and is tested beside it (#1886,
+ * `codeView/automation/__tests__/captionEdit.test.ts`). What stays here is the
+ * path INTO it: that a field the caption draws is one the edit will take, and that
+ * the result reads back through the real parser.
  */
 import { describe, it, expect } from 'vitest'
 import type { SignalAutomation } from '@stave/editor'
@@ -20,17 +20,14 @@ import {
   captionRows,
   captionHit,
   captionText,
-  captionEdit,
-  rateEditable,
-  shapeEdit,
   shapeMenuOptions,
-  shapeOptions,
   CAPTION_PAD_X,
   AUTOMATION_PAD_Y,
   AUTOMATION_LABEL_LINE_H,
 } from '../automationCaption'
-import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
-import { signalAutomations, shapeAlternatives, crossClassShapes } from '../../../../../editor/src/ir/signalAutomation'
+import { captionEdit, rateEditable } from '@stave/editor'
+import { parseStrudel } from '@stave/editor'
+import { signalAutomations, shapeAlternatives, crossClassShapes } from '@stave/editor'
 
 const SHAPE_DEPS = { alternatives: shapeAlternatives, crossClass: crossClassShapes }
 
@@ -67,13 +64,13 @@ describe('captionText — what the lane actually says', () => {
 
 describe('captionRows — the three abstentions the draw path already made', () => {
   it('a collapsed lane has no captions to click', () => {
-    expect(captionRows([auto()], 0, 40, false)).toEqual([])
+    expect(captionRows([auto()], 0, 40, false, rateEditable)).toEqual([])
   })
 
   it('a band too short to DRAW has none either', () => {
     // 15px row = 9px band, under the curve's own floor: nothing is painted here,
     // so there is nothing to label.
-    expect(captionRows([auto()], 0, 15, true)).toEqual([])
+    expect(captionRows([auto()], 0, 15, true, rateEditable)).toEqual([])
   })
 
   it('LABELS THE LANE A DRUM TRACK ACTUALLY GETS (#1495)', () => {
@@ -86,7 +83,7 @@ describe('captionRows — the three abstentions the draw path already made', () 
     // the curve's 10px one, which is the whole of the bug: the sweep was drawn
     // and the numbers it swept between were not. Asserting the row is PRESENT
     // and carries all three fields, because an empty array was the old answer.
-    const rows = captionRows([auto()], 0, 25, true)
+    const rows = captionRows([auto()], 0, 25, true, rateEditable)
     expect(rows).toHaveLength(1)
     expect(rows[0].text).toBe('cutoff 200→2000 ~1 bar')
     expect(rows[0].fields.map((f) => f.kind)).toEqual(['param', 'lo', 'hi'])
@@ -96,19 +93,19 @@ describe('captionRows — the three abstentions the draw path already made', () 
     // The setting is clamped to 12..48 (`setMusicalTimelineSubRowHeight`), so
     // these are the real ends of the range, not hypotheticals. The floor has to
     // land inside it or it is not a floor at all.
-    expect(captionRows([auto()], 0, 12, true)).toEqual([]) // 6px band
-    expect(captionRows([auto()], 0, 48, true)).toHaveLength(1) // 42px band
+    expect(captionRows([auto()], 0, 12, true, rateEditable)).toEqual([]) // 6px band
+    expect(captionRows([auto()], 0, 48, true, rateEditable)).toHaveLength(1) // 42px band
   })
 
   it('stops before overflowing the row rather than laying out invisible lines', () => {
     // Room for two lines at 11px each inside a 30px row (pad 3 top).
     const many = [auto({ paramKey: 'a' }), auto({ paramKey: 'b' }), auto({ paramKey: 'c' })]
-    const rows = captionRows(many, 0, 30, true)
+    const rows = captionRows(many, 0, 30, true, rateEditable)
     expect(rows.map((r) => r.automation.paramKey)).toEqual(['a', 'b'])
   })
 
   it('stacks lines from the band inset, one line height apart', () => {
-    const rows = captionRows([auto({ paramKey: 'a' }), auto({ paramKey: 'b' })], 100, 60, true)
+    const rows = captionRows([auto({ paramKey: 'a' }), auto({ paramKey: 'b' })], 100, 60, true, rateEditable)
     expect(rows.map((r) => r.y)).toEqual([
       100 + AUTOMATION_PAD_Y,
       100 + AUTOMATION_PAD_Y + AUTOMATION_LABEL_LINE_H,
@@ -117,7 +114,7 @@ describe('captionRows — the three abstentions the draw path already made', () 
 })
 
 describe('captionHit — a click resolves to one leg', () => {
-  const rows = captionRows([auto()], 0, 60, true) // 'cutoff 200→2000 ~1 bar'
+  const rows = captionRows([auto()], 0, 60, true, rateEditable) // 'cutoff 200→2000 ~1 bar'
   //                                                 0123456789...
 
   it('lands on the parameter name', () => {
@@ -156,93 +153,6 @@ describe('captionHit — a click resolves to one leg', () => {
   })
 })
 
-describe('captionEdit — the three things it exists to enforce', () => {
-  const RANGED = { shape: null, rate: null, range: { start: 30, end: 46 }, chainEnd: 46 }
-  const hitOn = (a: SignalAutomation, kind: 'lo' | 'hi' | 'param') => {
-    const rows = captionRows([a], 0, 60, true)
-    const field = rows[0].fields.find((f) => f.kind === kind)
-    return { row: rows[0], field: field!, box: { x: 0, y: 0, w: 0, h: 0 } }
-  }
-
-  it('(1) the display\'s rounding cannot reach the document', () => {
-    // The caption reads `0.3→1`; the document holds 0.30001. Editing the HIGH
-    // bound must not rewrite the low one to the rounded string beside it.
-    const a = auto({ lo: 0.30001, hi: 1, spans: RANGED })
-    expect(captionText(a)).toBe('cutoff 0.3→1 ~1 bar')
-    expect(captionEdit(hitOn(a, 'hi'), '2')).toEqual({
-      range: [30, 46], text: '.range(0.30001,2)',
-    })
-  })
-
-  it('(2) an unchanged field writes nothing — including a differently spelled same number', () => {
-    const a = auto({ lo: 200, hi: 2000, spans: RANGED })
-    expect(captionEdit(hitOn(a, 'lo'), '200')).toBeNull()
-    expect(captionEdit(hitOn(a, 'lo'), '200.0')).toBeNull()
-    expect(captionEdit(hitOn(a, 'lo'), ' 200 ')).toBeNull()
-  })
-
-  it('(3) a leg the document does not spell INSERTS at chainEnd rather than replacing', () => {
-    // `pan ~0→1` — the bounds are this code's, not the document's, so there is
-    // no `.range()` to overwrite.
-    const a = auto({ paramKey: 'pan', lo: 0, hi: 1, ranged: false,
-      spans: { shape: null, rate: null, range: null, chainEnd: 21 } })
-    expect(captionEdit(hitOn(a, 'hi'), '0.8')).toEqual({
-      range: [21, 21], text: '.range(0,0.8)',
-    })
-  })
-
-  it('refuses a non-numeric entry', () => {
-    const a = auto({ spans: RANGED })
-    expect(captionEdit(hitOn(a, 'lo'), 'loud')).toBeNull()
-    expect(captionEdit(hitOn(a, 'lo'), '')).toBeNull()
-  })
-
-  it('refuses a bound that turns the curve over, or leaves it spanning nothing (#1613)', () => {
-    const a = auto({ lo: 200, hi: 2000, spans: RANGED })
-    expect(captionEdit(hitOn(a, 'hi'), '100')).toBeNull()   // hi below lo
-    expect(captionEdit(hitOn(a, 'hi'), '200')).toBeNull()   // hi equal to lo
-  })
-
-  it('refuses when the automation has nowhere to write at all', () => {
-    const a = auto({ ranged: false, spans: NO_SPANS })
-    expect(captionEdit(hitOn(a, 'hi'), '0.5')).toBeNull()
-  })
-
-  it('the parameter name is a menu anchor, not a typed field', () => {
-    const a = auto({ spans: RANGED })
-    expect(captionEdit(hitOn(a, 'param'), 'gain')).toBeNull()
-  })
-})
-
-describe('a range written high-to-low keeps its direction (#1613)', () => {
-  const RANGED = { shape: null, rate: null, range: { start: 30, end: 46 }, chainEnd: 46 }
-  const hitOn = (a: SignalAutomation, kind: 'lo' | 'hi') => {
-    const rows = captionRows([a], 0, 60, true)
-    return { row: rows[0], field: rows[0].fields.find((f) => f.kind === kind)!, box: { x: 0, y: 0, w: 0, h: 0 } }
-  }
-  const turned = auto({ kind: 'tri', lo: 0.7, hi: 0.3, spans: RANGED })
-
-  it('can be retyped, and stays high-to-low', () => {
-    expect(captionEdit(hitOn(turned, 'hi'), '0.1')).toEqual({ range: [30, 46], text: '.range(0.7,0.1)' })
-    expect(captionEdit(hitOn(turned, 'lo'), '0.9')).toEqual({ range: [30, 46], text: '.range(0.9,0.3)' })
-  })
-
-  it('refuses a bound that would turn it over, or leave it spanning nothing', () => {
-    expect(captionEdit(hitOn(turned, 'hi'), '0.8')).toBeNull()
-    expect(captionEdit(hitOn(turned, 'hi'), '0.7')).toBeNull()
-    // Control: the upright curve refuses the mirror of that, and takes its own direction.
-    const upright = auto({ kind: 'tri', lo: 0.3, hi: 0.7, spans: RANGED })
-    expect(captionEdit(hitOn(upright, 'hi'), '0.2')).toBeNull()
-    expect(captionEdit(hitOn(upright, 'hi'), '0.9')).toEqual({ range: [30, 46], text: '.range(0.3,0.9)' })
-  })
-
-  it('a flat range has no direction yet, so it widens either way', () => {
-    const flat = auto({ lo: 5, hi: 5, spans: RANGED })
-    expect(captionEdit(hitOn(flat, 'hi'), '6')).toEqual({ range: [30, 46], text: '.range(5,6)' })
-    expect(captionEdit(hitOn(flat, 'hi'), '4')).toEqual({ range: [30, 46], text: '.range(5,4)' })
-  })
-})
-
 describe('bounds that are not the range call\'s arguments (#1610)', () => {
   const RANGED = { shape: null, rate: null, range: { start: 30, end: 46 }, chainEnd: 46 }
   const bipolar = auto({ kind: 'sine2', lo: -1600, hi: 2000, boundsAsWritten: false, spans: RANGED })
@@ -251,18 +161,10 @@ describe('bounds that are not the range call\'s arguments (#1610)', () => {
   it('says what plays, marks it as supplied, and offers no field over it', () => {
     expect(captionText(bipolar)).toBe('cutoff ~-1600→2000 ~1 bar')
     // The rate still has somewhere to go; only the bounds are withheld.
-    expect(captionRows([bipolar], 0, 60, true)[0].fields.map((f) => f.kind)).toEqual(['param', 'rate'])
+    expect(captionRows([bipolar], 0, 60, true, rateEditable)[0].fields.map((f) => f.kind)).toEqual(['param', 'rate'])
     // Control: the same curve where the arguments are the bounds.
     expect(captionText(unipolar)).toBe('cutoff 200→2000 ~1 bar')
-    expect(captionRows([unipolar], 0, 60, true)[0].fields.map((f) => f.kind)).toEqual(['param', 'lo', 'hi', 'rate'])
-  })
-
-  it('writes nothing even when handed a bound field, beside a control that writes', () => {
-    const rows = captionRows([unipolar], 0, 60, true)
-    const field = rows[0].fields.find((f) => f.kind === 'hi')!
-    const hit = (a: SignalAutomation) => ({ row: { ...rows[0], automation: a }, field, box: { x: 0, y: 0, w: 0, h: 0 } })
-    expect(captionEdit(hit(unipolar), '3000')).toEqual({ range: [30, 46], text: '.range(200,3000)' })
-    expect(captionEdit(hit(bipolar), '3000')).toBeNull()
+    expect(captionRows([unipolar], 0, 60, true, rateEditable)[0].fields.map((f) => f.kind)).toEqual(['param', 'lo', 'hi', 'rate'])
   })
 
   it('through the real parser: none of these curves offers a bound, and the unipolar control reads back as typed', () => {
@@ -272,11 +174,12 @@ describe('bounds that are not the range call\'s arguments (#1610)', () => {
       '$: s("bd*8").pan(sine2.slow(4))',
       '$: s("bd*8").pan(sine.slow(4).range(0, 2).range(0.2, 0.8))',
     ]) {
-      expect(captionRows([readOne(src)], 0, 60, true)[0].fields.map((f) => f.kind), src).toEqual(['param', 'rate'])
+      expect(captionRows([readOne(src)], 0, 60, true, rateEditable)[0].fields.map((f) => f.kind), src).toEqual(['param', 'rate'])
     }
     const src = '$: s("bd*8").pan(sine.slow(4))'
-    const rows = captionRows([readOne(src)], 0, 60, true)
-    const edit = captionEdit({ row: rows[0], field: rows[0].fields.find((f) => f.kind === 'hi')!, box: { x: 0, y: 0, w: 0, h: 0 } }, '0.8')
+    const rows = captionRows([readOne(src)], 0, 60, true, rateEditable)
+    const field = rows[0].fields.find((f) => f.kind === 'hi')!
+    const edit = captionEdit(rows[0].automation, field.kind, '0.8')
     expect(edit).not.toBeNull()
     const out = src.slice(0, edit!.range[0]) + edit!.text + src.slice(edit!.range[1])
     expect(out).toBe('$: s("bd*8").pan(sine.slow(4).range(0,0.8))')
@@ -297,76 +200,31 @@ describe('the rate field — what it says and where it can be clicked (#1464 Sta
   })
 
   it('a click on the number lands on the rate; the unit is not a field', () => {
-    const rows = captionRows([auto({ periodCycles: 4, lanePeriodCycles: 4, spans: SLOWED })], 0, 60, true)
+    const rows = captionRows([auto({ periodCycles: 4, lanePeriodCycles: 4, spans: SLOWED })], 0, 60, true, rateEditable)
     // 'cutoff 200→2000 4 bars' — the rate number is character 16, the unit 18..21.
     expect(captionHit(rows, xOf(16), AUTOMATION_PAD_Y + 1, measure)?.field).toEqual({ kind: 'rate', text: '4', from: 16, to: 17 })
     expect(captionHit(rows, xOf(19), AUTOMATION_PAD_Y + 1, measure)).toBeNull()
+  })
+
+  it('the rate field comes from the rule handed in: without it the same line is laid out, with no rate field (#1886)', () => {
+    // The draw path passes no rule — it reads text and position only. A hit-test that
+    // forgot to pass one would get exactly this, so the difference is pinned here.
+    const a = auto({ periodCycles: 4, lanePeriodCycles: 4, spans: SLOWED })
+    const drawn = captionRows([a], 0, 60, true)
+    const hit = captionRows([a], 0, 60, true, rateEditable)
+    expect(drawn.map((r) => [r.text, r.y])).toEqual(hit.map((r) => [r.text, r.y]))
+    expect(drawn[0].fields.map((f) => f.kind)).toEqual(['param', 'lo', 'hi'])
+    expect(hit[0].fields.map((f) => f.kind)).toEqual(['param', 'lo', 'hi', 'rate'])
   })
 
   it('shows two composing rates without offering a field over them', () => {
     const ambiguous = auto({ periodCycles: 2, lanePeriodCycles: 2, spans: { shape: null, rate: null, range: null, chainEnd: 40 } })
     expect(captionText(ambiguous)).toBe('cutoff 200→2000 2 bars')
     expect(rateEditable(ambiguous)).toBe(false)
-    expect(captionRows([ambiguous], 0, 60, true)[0].fields.map((f) => f.kind)).toEqual(['param', 'lo', 'hi'])
+    expect(captionRows([ambiguous], 0, 60, true, rateEditable)[0].fields.map((f) => f.kind)).toEqual(['param', 'lo', 'hi'])
     // Control: the same automation with one spelled rate does offer it.
-    expect(captionRows([auto({ periodCycles: 2, lanePeriodCycles: 2, spans: SLOWED })], 0, 60, true)[0].fields.map((f) => f.kind))
+    expect(captionRows([auto({ periodCycles: 2, lanePeriodCycles: 2, spans: SLOWED })], 0, 60, true, rateEditable)[0].fields.map((f) => f.kind))
       .toEqual(['param', 'lo', 'hi', 'rate'])
-  })
-})
-
-describe('captionEdit on the rate — what a typed number writes (#1464 Stage 3)', () => {
-  const SLOWED = { shape: null, rate: { start: 20, end: 28 }, range: null, chainEnd: 40 }
-  const rateHit = (a: SignalAutomation) => {
-    const rows = captionRows([a], 0, 60, true)
-    const field = rows[0].fields.find((f) => f.kind === 'rate')
-    if (!field) throw new Error('no rate field on this fixture')
-    return { row: rows[0], field, box: { x: 0, y: 0, w: 0, h: 0 } }
-  }
-  const spelled = auto({ periodCycles: 4, lanePeriodCycles: 4, spans: SLOWED })
-
-  it('replaces the spelled rate with the typed bars', () => {
-    expect(captionEdit(rateHit(spelled), '8')).toEqual({ range: [20, 28], text: '.slow(8)' })
-  })
-
-  it('writes a whole-number speed-up as fast, and anything else as slow', () => {
-    expect(captionEdit(rateHit(spelled), '0.5')).toEqual({ range: [20, 28], text: '.fast(2)' })
-    expect(captionEdit(rateHit(spelled), '1.5')).toEqual({ range: [20, 28], text: '.slow(1.5)' })
-    expect(captionEdit(rateHit(spelled), '0.4')).toEqual({ range: [20, 28], text: '.slow(0.4)' })
-  })
-
-  it('divides the route\'s time change back out: 8 bars under a whole-track slow(2) writes slow(4)', () => {
-    const a = auto({ periodCycles: 2, lanePeriodCycles: 4, spans: SLOWED })
-    expect(captionEdit(rateHit(a), '8')).toEqual({ range: [20, 28], text: '.slow(4)' })
-  })
-
-  it('inserts a rate the signal does not write, at chainEnd', () => {
-    const a = auto({ lanePeriodCycles: 1, spans: { shape: null, rate: null, range: null, chainEnd: 40 } })
-    expect(captionEdit(rateHit(a), '4')).toEqual({ range: [40, 40], text: '.slow(4)' })
-  })
-
-  it('writes nothing for an unchanged, empty, zero, negative or non-numeric rate', () => {
-    for (const typed of ['4', '4.0', ' 4 ', '', ' ', '0', '-2', 'fast']) {
-      expect(captionEdit(rateHit(spelled), typed), JSON.stringify(typed)).toBeNull()
-    }
-  })
-
-  it('writes nothing it cannot spell exactly: 2 bars under a whole-track slow(3)', () => {
-    const a = auto({ periodCycles: 1, lanePeriodCycles: 3, spans: SLOWED })
-    expect(captionEdit(rateHit(a), '2')).toBeNull()
-    // Control: under the same slow, a number it can spell.
-    expect(captionEdit(rateHit(a), '6')).toEqual({ range: [20, 28], text: '.slow(2)' })
-  })
-
-  it('writes nothing that would read back as a different number of bars, even in few digits', () => {
-    // Under a whole-track fast(5) a 0.25-cycle signal shows 0.05 bars. Typing 0.85 means
-    // `.slow(4.25)`, six digits or fewer, but 4.25 × 0.2 reads back as 0.8500000000000001,
-    // so the next edit would see a changed number the user never typed. Found by a search
-    // over whole-track scales and typed bars, not by reasoning: the precision rule alone
-    // lets 28,515 of 1,378,007 such inputs through.
-    const a = auto({ periodCycles: 0.25, lanePeriodCycles: 0.25 * (1 / 5), spans: SLOWED })
-    expect(captionEdit(rateHit(a), '0.85')).toBeNull()
-    // Control: under the same fast, a number that reads back exactly.
-    expect(captionEdit(rateHit(a), '1')).toEqual({ range: [20, 28], text: '.slow(5)' })
   })
 })
 
@@ -376,10 +234,10 @@ describe('the rate field through the real parser: written, then read back (#1464
   const retype = (src: string, typed: string): string | null => {
     const a = readOne(src)
     expect(a, `no automation read from ${src}`).toBeDefined()
-    const rows = captionRows([a], 0, 60, true)
+    const rows = captionRows([a], 0, 60, true, rateEditable)
     const field = rows[0].fields.find((f) => f.kind === 'rate')
     if (!field) return null
-    const edit = captionEdit({ row: rows[0], field, box: { x: 0, y: 0, w: 0, h: 0 } }, typed)
+    const edit = captionEdit(rows[0].automation, field.kind, typed)
     return edit && apply(src, edit)
   }
 
@@ -398,42 +256,9 @@ describe('the rate field through the real parser: written, then read back (#1464
   })
 })
 
-describe('the shape menu — what the caption\'s name offers and writes (#1464)', () => {
+describe('the shape menu — what the caption\'s name offers (#1611)', () => {
   const SRC = '$: s("bd*8").cutoff(saw.slow(4).range(200, 2000))'
   const readOne = (src: string) => signalAutomations(parseStrudel(src) as never)[0]
-  const apply = (src: string, e: { range: [number, number]; text: string }) => src.slice(0, e.range[0]) + e.text + src.slice(e.range[1])
-
-  it('offers the editor\'s alternatives where the document spells a shape, and none where it does not', () => {
-    expect(shapeOptions(readOne(SRC), SHAPE_DEPS)).toEqual([...shapeAlternatives('saw'), ...crossClassShapes('saw')])
-    expect(shapeOptions(auto({ kind: 'saw', spans: NO_SPANS }), SHAPE_DEPS)).toEqual([])
-  })
-
-  it('replaces the identifier and no other byte, and reads back as the new shape with the same bounds and rate', () => {
-    const a = readOne(SRC)
-    const edit = shapeEdit(a, 'tri', SRC, SHAPE_DEPS)
-    expect(edit).not.toBeNull()
-    const out = apply(SRC, edit!)
-    expect(out).toBe('$: s("bd*8").cutoff(tri.slow(4).range(200, 2000))')
-    const back = readOne(out)
-    expect({ kind: back.kind, lo: back.lo, hi: back.hi, period: back.periodCycles, lane: back.lanePeriodCycles })
-      .toEqual({ kind: 'tri', lo: a.lo, hi: a.hi, period: a.periodCycles, lane: a.lanePeriodCycles })
-  })
-
-  it('writes nothing for the same shape, or a shape the editor does not offer', () => {
-    const a = readOne(SRC)
-    // Control first: an offered shape does write.
-    expect(shapeEdit(a, 'sine', SRC, SHAPE_DEPS)).not.toBeNull()
-    // `perlin` is offered since #1611 — the menu, not this function, holds it until the
-    // song length is said (`shapeMenuOptions`).
-    expect(shapeEdit(a, 'perlin', SRC, SHAPE_DEPS)).not.toBeNull()
-    for (const next of ['saw', 'saw2', 'rand2', 'time', 'cutoff', '']) {
-      expect(shapeEdit(a, next, SRC, SHAPE_DEPS), next).toBeNull()
-    }
-  })
-
-  it('writes nothing where the document spells no shape', () => {
-    expect(shapeEdit(auto({ kind: 'saw', spans: NO_SPANS }), 'tri', SRC, SHAPE_DEPS)).toBeNull()
-  })
 
   it('#1611 — offers noise only once it can say what the swap does to the song\'s length', () => {
     const a = readOne(SRC)
@@ -459,15 +284,5 @@ describe('the shape menu — what the caption\'s name offers and writes (#1464)'
     const a = readOne(src)
     const options = shapeMenuOptions(a, SHAPE_DEPS, { state: 'done', cycles: 16 }, 4)
     expect(options.map((o) => o.label)).toEqual(['rand', ...crossClassShapes('perlin').map((k) => `${k} · song repeats every 16 bars (was 4)`)])
-    const edit = shapeEdit(a, 'sine', src, SHAPE_DEPS)
-    expect(apply(src, edit!)).toBe('$: s("bd*8").cutoff(sine.slow(16).range(200, 2000))')
-  })
-
-  it('writes nothing when the document moved under the open menu', () => {
-    const a = readOne(SRC)
-    // Two characters inserted before the curve: the captured offsets now land on `(s`.
-    expect(shapeEdit(a, 'tri', `  ${SRC}`, SHAPE_DEPS)).toBeNull()
-    // Control: the same bytes at the same place still write.
-    expect(shapeEdit(a, 'tri', SRC, SHAPE_DEPS)).not.toBeNull()
   })
 })

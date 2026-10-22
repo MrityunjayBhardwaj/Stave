@@ -53,24 +53,24 @@ import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 
 // Deep source path, not the `@stave/editor` barrel (same convention as
 // round-trip.test.ts:57 — the barrel drags gifenc/CJS into the ESM resolver).
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   serializeStepGrid,
   serializePianoRoll,
-} from '../../../editor/src/visualEdit/notation/serialize'
-import { resizeRoll } from '../../../editor/src/visualEdit/notation/resize'
+} from '../../../editor/src/codeView/notation/serialize'
+import { resizeRoll } from '../../../editor/src/codeView/notation/resize'
 // The PRODUCTION cell toggle — what a click on a cell actually does. Modelling
 // the edit here instead would be a second oracle for what an edit *is*, and it
 // could not catch a change in the edit: it would quietly keep testing the old
 // one (#1048).
-import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { toggleCell } from '../../../editor/src/codeView/notation/place'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
 import { enginePlayedCycle } from './engineEditOracle'
 import { truePeriod } from './enginePeriod'
 import type {
   PianoRollModel,
   RollNote,
-} from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -78,7 +78,7 @@ const corpus: { minis: { mini: string }[] } = JSON.parse(
 )
 
 interface KEl {
-  location_?: { start?: { offset?: number } }
+  location_?: { start?: { offset?: number }; end?: { offset?: number } }
 }
 interface KPat {
   type_?: string

@@ -1,6 +1,9 @@
 import { test, expect, type Page } from '@playwright/test'
 
 import { bootApp } from './_appBoot'
+// The probe's own type. Each spec used to declare its own copy of this global,
+// and the copies clashed once `next build` began type-checking the tests.
+import type { AssetProbe } from '../src/e2e/assetProbe'
 
 /**
  * The instrument for #1500 — "bring your own audio", Phase 1 of #1352.
@@ -64,37 +67,9 @@ const B_SECONDS = 0.5
 // Probe access
 // ---------------------------------------------------------------------------
 
-/** The probe's surface, as the page exposes it (`src/e2e/assetProbe.ts`). */
-interface PageProbe {
-  reset(): Promise<void>
-  put(base64: string, mime: string): Promise<{ hash: string; written: boolean }>
-  get(hash: string): Promise<string | null>
-  list(): Promise<Array<{ hash: string; mime: string; size: number }>>
-  import(
-    base64: string,
-    mime: string,
-    filename: string,
-    existing: unknown[],
-  ): Promise<{
-    record: { id: string; name: string; blobHash: string; mime: string; duration?: number }
-    isFirstReference: boolean
-    written: boolean
-  }>
-  remove(hash: string): Promise<void>
-  registerAll(records: unknown[]): Promise<string[]>
-  resolve(hash: string): Promise<string | null>
-  concurrentResolve(hash: string, n: number): Promise<{ urls: (string | null)[]; opens: number }>
-  peek(hash: string): Promise<string | null>
-  release(hash: string): Promise<void>
-  register(record: unknown): Promise<boolean>
-  inSoundMap(name: string): boolean
-  soundMapEntry(name: string): { type?: string; samples?: unknown } | null
-  decode(url: string): Promise<{ duration: number; sampleRate: number }>
-}
-
 declare global {
   interface Window {
-    __staveAssetProbe?: PageProbe
+    __staveAssetProbe?: AssetProbe
   }
 }
 

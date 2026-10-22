@@ -1,4 +1,6 @@
 import { startsNamedTrack, startsTopLevelBlockRaw } from '../visualizers/blockScan'
+// the dependency-free leaf, not the entry: see boundary.exceptions.json (#1921)
+import { LABEL_HEAD } from '../codeView/ir/trackId'
 
 export interface VizLineRequest {
   vizId: string
@@ -40,7 +42,7 @@ export function scanVizRequestLines(
     const isAnon = raw.trim().startsWith('$:')
     // Named track: a column-0 labeled statement that isn't the anonymous form.
     // Any JS identifier (#1683): the key must equal the engine's `.p('節奏')`.
-    const namedMatch = isAnon ? null : /^([\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*)\s*:/u.exec(raw)
+    const namedMatch = isAnon ? null : LABEL_HEAD.exec(raw)
     if (!isAnon && !namedMatch) continue
 
     const key = isAnon ? `$${anonIndex++}` : namedMatch![1]
@@ -49,7 +51,7 @@ export function scanVizRequestLines(
     if (!vizId) continue
 
     // Last line of this block: forward to the next top-level block start
-    // (anonymous / setcps / soloed OR another named track). Blank + comment
+    // (anonymous / tempo setter / soloed OR another named track). Blank + comment
     // lines inside the block are allowed.
     let lastLineIdx = i
     for (let j = i + 1; j < lines.length; j++) {

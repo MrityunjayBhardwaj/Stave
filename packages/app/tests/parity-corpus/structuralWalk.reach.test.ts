@@ -14,9 +14,9 @@
  * P319), not this file. Here we assert only the structural floor: mid-edit code still has lanes.
  */
 import { describe, it, expect } from 'vitest'
-import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
-import { structuralWalk, wholeWalkWindow, type LaneSkeleton } from '../../../editor/src/ir/structuralWalk'
-import { IR, type PatternIR } from '../../../editor/src/ir/PatternIR'
+import { parseStrudel } from '../../../editor/src/codeView/ir/parseStrudel'
+import { structuralWalk, wholeWalkWindow, type LaneSkeleton } from '../../../editor/src/codeView/ir/structuralWalk'
+import { IR, type PatternIR } from '../../../editor/src/codeView/ir/PatternIR'
 
 const N = 4
 const walk = (code: string): LaneSkeleton[] => structuralWalk(parseStrudel(code), wholeWalkWindow(N))

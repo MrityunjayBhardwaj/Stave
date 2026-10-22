@@ -17,8 +17,8 @@
 import { describe, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { parseExpression, skipWhitespaceAndLineComments, parseStrudel } from '../../../editor/src/ir/parseStrudel'
-import type { PatternIR } from '../../../editor/src/ir/PatternIR'
+import { parseExpression, skipWhitespaceAndLineComments, parseStrudel } from '../../../editor/src/codeView/ir/parseStrudel'
+import type { PatternIR } from '../../../editor/src/codeView/ir/PatternIR'
 
 // Vendored Wave-0 oracle: the #141 repros live alongside this spec under bakery-runs/
 // (was /tmp/ in the throwaway prototype). Loaded verbatim.

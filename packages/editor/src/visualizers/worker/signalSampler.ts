@@ -15,7 +15,7 @@
  */
 
 import type { BusAnalyser } from '../signals/SignalBus'
-import type { IRPattern } from '../../ir/IRPattern'
+import type { IRPattern } from '../../codeView'
 import type { HapEvent } from '../../engine/HapStream'
 import type { FrameSampleCache } from './frameSampleCache'
 import { perf } from '../../perf/profiler'
@@ -55,6 +55,7 @@ function summariseRawHap(e: {
   endClipped?: number
   note?: number | string | null
   freq?: number | null
+  midi?: number
   s?: string | null
   gain?: number
   velocity?: number
@@ -68,6 +69,7 @@ function summariseRawHap(e: {
     endClipped: e.endClipped ?? end,
     note: e.note ?? null,
     freq: e.freq ?? null,
+    midi: e.midi ?? null,
     s: e.s ?? null,
     gain: e.gain ?? 1,
     velocity: e.velocity ?? 1,

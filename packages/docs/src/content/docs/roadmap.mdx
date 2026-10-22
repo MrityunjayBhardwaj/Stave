@@ -1,0 +1,95 @@
+---
+title: Roadmap
+description: What's coming after the 0.5 beta. Nested patterns, three.js visuals and bug fixes in 0.6, then Sonic Pi and MIDI out in 0.7.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Stave is at **0.5**, its first beta. This page says what comes next and roughly in what order. Each item links to its issue on GitHub, where you can follow the work or say what you need from it.
+
+<Aside type="note" title="A plan, not a promise">
+The order can change when real use shows something matters more. A release ships when its work is good enough to use, not on a date.
+</Aside>
+
+## 0.5 → 0.6: nested patterns and 3D visuals
+
+### Full nested pattern support
+
+A Strudel pattern can split a beat, then split each piece again: `hh [hh hh] hh [hh hh hh]`. Today the Pattern tab draws every bar on one shared grid of equal columns, so a nested pattern is squeezed into columns it doesn't really have, and some are too fine to open at all. In 0.6 the grids follow the pattern itself ([#1832](https://github.com/MrityunjayBhardwaj/Stave/issues/1832)):
+
+- **Each bar is drawn from the pattern's own divisions.** A step that holds smaller steps shows them as small boxes inside it ([#1833](https://github.com/MrityunjayBhardwaj/Stave/issues/1833), [#1834](https://github.com/MrityunjayBhardwaj/Stave/issues/1834)).
+- **Zoom opens each level.** Zoom in and a step opens into its own steps, which you can click. The ruler zooms with it.
+- **Fives and sevens are drawn exactly**, not rounded onto a 1/16 grid.
+- **Generators get their own handles.** Change `bd(3,8)` to `bd(5,8)`, or `hh*8` to `hh*6`, by its numbers, without the pattern being written out note by note.
+- **Edit at the level you're on.** Insert or remove a step inside a group ([#1828](https://github.com/MrityunjayBhardwaj/Stave/issues/1828)), and remove a whole bar from a longer pattern ([#1835](https://github.com/MrityunjayBhardwaj/Stave/issues/1835)).
+- **Comma patterns, each part at its own steps.** In `bd ~ sd ~, hh*8` the drums and the hi-hats keep their own step sizes, and you can add a hit on either one ([#1855](https://github.com/MrityunjayBhardwaj/Stave/issues/1855), [#1853](https://github.com/MrityunjayBhardwaj/Stave/issues/1853), [#1849](https://github.com/MrityunjayBhardwaj/Stave/issues/1849)).
+- **Lines chosen with `pick` open in the grid.** With the cursor in one of the lines a `pick` chooses between, the Pattern tab shows that line on its own and edits only it, whatever does the choosing ([#2118](https://github.com/MrityunjayBhardwaj/Stave/issues/2118)).
+- **Weighted steps beside a group** (`bd@3 [sd sd]`) no longer make the grid fall back to reading the pattern note by note ([#1862](https://github.com/MrityunjayBhardwaj/Stave/issues/1862)).
+
+### three.js visuals
+
+three.js joins p5.js, Hydra and GLSL as a way to write visuals ([#2115](https://github.com/MrityunjayBhardwaj/Stave/issues/2115)). Build a 3D scene, with a camera, lights and meshes, that moves with the actual beat:
+
+- A `.three` file with highlighting, hover docs and completion.
+- The same signals as the other visual runtimes: every kick, snare and note, and the band levels.
+- Works everywhere visuals already do: inline `.viz("…")`, as the editor backdrop, on the Library's Viz shelf, and in its own window for a projector.
+- A starter sketch and a page in these docs.
+
+### Bug fixes
+
+On the Timeline:
+
+- A track that ends in `.viz("…")` loses its automation curve ([#2113](https://github.com/MrityunjayBhardwaj/Stave/issues/2113)).
+- A sweep whose range values step can make the song read shorter than it is ([#2110](https://github.com/MrityunjayBhardwaj/Stave/issues/2110)).
+- A change slower than 24 cycles is drawn as if it never happens ([#1981](https://github.com/MrityunjayBhardwaj/Stave/issues/1981)).
+- An expanded track's name is cut to one letter ([#2107](https://github.com/MrityunjayBhardwaj/Stave/issues/2107)).
+
+In the Pattern grids:
+
+- Dragging velocity on a pattern made of several parts, like `s("bd*4, hh*8")`, does nothing, and nothing says why ([#1891](https://github.com/MrityunjayBhardwaj/Stave/issues/1891)).
+- The velocity lane can't edit a melody longer than one bar ([#1826](https://github.com/MrityunjayBhardwaj/Stave/issues/1826)).
+- At ×2, shortening one note of a two-part step rewrites the pattern and changes nothing ([#1985](https://github.com/MrityunjayBhardwaj/Stave/issues/1985)).
+
+In the Mixer and the Library:
+
+- A mixer dial can write to the wrong call when the same effect appears twice in a row ([#1895](https://github.com/MrityunjayBhardwaj/Stave/issues/1895)).
+- Switching off a doubled effect leaves the other one playing ([#1920](https://github.com/MrityunjayBhardwaj/Stave/issues/1920)).
+- The sound picker adds a second `.sound()` after a variable, and replaces a patterned one without asking ([#1898](https://github.com/MrityunjayBhardwaj/Stave/issues/1898)).
+- **⌘Z** doesn't undo inserting a sound from the Library ([#1816](https://github.com/MrityunjayBhardwaj/Stave/issues/1816)).
+
+Keyboard and code:
+
+- The menus show each shortcut as it's really bound: the one you set in Keyboard Shortcuts, and **Ctrl** rather than **⌘** on Windows and Linux ([#2099](https://github.com/MrityunjayBhardwaj/Stave/issues/2099)).
+- Zen mode gets a Windows and Linux shortcut that isn't taken by Ctrl+Alt ([#2103](https://github.com/MrityunjayBhardwaj/Stave/issues/2103)).
+- A part named in a non-Latin script, like `const 前奏 = s("bd")`, shows on the Timeline like any other ([#1922](https://github.com/MrityunjayBhardwaj/Stave/issues/1922)).
+
+## 0.6 → 0.7: Sonic Pi and MIDI out
+
+### Sonic Pi, through Sonic Web
+
+Stave's Sonic Pi support comes from our sister project [Sonic Web](https://github.com/MrityunjayBhardwaj/SonicWeb): Sonic Pi in the browser, built on [SuperSonic](https://github.com/samaaron/supersonic), with the same `play`, `sleep` and `live_loop`. You can play with it on its own today at [sonicweb.cc](https://sonicweb.cc). In 0.7 it comes inside Stave ([#173](https://github.com/MrityunjayBhardwaj/Stave/issues/173)):
+
+- **`.sonicpi` files play.** Today they open with highlighting, hover docs and completion, but don't make a sound, because the engine isn't part of the build.
+- **A Sonic Pi template** on the start screen.
+- **Visuals react to Sonic Pi too**, with the same signals a Strudel song sends to p5.js, Hydra, GLSL and three.js.
+- **Works on the live site**, not only on a developer's machine.
+
+See [Sonic Pi](/runtimes/sonicpi/) for how the language works in Stave.
+
+### MIDI out, set up from the app
+
+MIDI output works today, but only from code: you switch it on in **Settings › Modules**, reload, and type your device's name exactly into `.midi("…")`. In 0.7 it gets the controls you'd expect from a DAW ([#749](https://github.com/MrityunjayBhardwaj/Stave/issues/749)):
+
+- **Pick a device from a list** of the MIDI outputs your computer reports, instead of typing its name.
+- **A send switch per track**, so you choose which tracks play your synth or drum machine.
+- **Mixer knobs that send MIDI CC**, so turning a knob in Stave moves the matching control on your gear.
+- **Clear feedback**: whether MIDI is on, which devices were found, and what to do when the browser hasn't been given permission.
+
+## After 0.7
+
+Further out, without a release number yet:
+
+- **More MIDI.** Turn a knob on your controller to move a Stave control, play the keyboard on your desk into Stave and record what you play ([#1706](https://github.com/MrityunjayBhardwaj/Stave/issues/1706)), and export a pattern as a MIDI file ([#344](https://github.com/MrityunjayBhardwaj/Stave/issues/344)).
+- **OSC**, for sending to SuperCollider and other tools ([#126](https://github.com/MrityunjayBhardwaj/Stave/issues/126)).
+
+Something missing that you need? [Open an issue](https://github.com/MrityunjayBhardwaj/Stave/issues/new) and tell us what you were trying to make.

@@ -10,8 +10,8 @@ import { describe, it, expect } from 'vitest'
 import { readGLSLEvents, readGLSLTracks } from '../renderers/glslEvents'
 import { MAX_GLSL_TRACKS } from '../renderers/glslCore'
 import { SignalBus, type BusAnalyser } from '../signals/SignalBus'
-import type { IRPattern } from '../../ir/IRPattern'
-import type { IREvent } from '../../ir/IREvent'
+import type { IRPattern } from '../../codeView/ir/IRPattern'
+import type { IREvent } from '../../codeView/ir/IREvent'
 
 function makeEvent(over: Partial<IREvent>): IREvent {
   return {

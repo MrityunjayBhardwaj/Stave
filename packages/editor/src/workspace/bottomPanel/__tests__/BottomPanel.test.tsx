@@ -45,6 +45,7 @@ import {
   __resetBottomPanelRegistryForTest,
   registerBottomPanelTab,
 } from '../bottomPanelRegistry'
+import { __resetBottomPanelStateForTest } from '../panelState'
 import {
   BOTTOM_PANEL_ACTIVE_TAB_KEY,
   BOTTOM_PANEL_HEIGHT_KEY,
@@ -60,11 +61,14 @@ beforeEach(() => {
   // "Timeline" tab into "zero tabs registered" assertions.
   __resetBottomPanelRegistryForTest()
   window.localStorage.clear()
+  // after the clear: the store reads localStorage afresh on its next use, as a page load does
+  __resetBottomPanelStateForTest()
 })
 
 afterEach(() => {
   __resetBottomPanelRegistryForTest()
   window.localStorage.clear()
+  __resetBottomPanelStateForTest()
 })
 
 function registerStubTab(
@@ -328,5 +332,57 @@ describe('BottomPanel — vocabulary regression (Trap 1)', () => {
     for (const label of allAria) {
       expect(label).not.toMatch(FORBIDDEN_NOUNS)
     }
+  })
+})
+
+/**
+ * #2022 — `hidden` draws nothing, and is not the user closing the panel: the
+ * open/closed choice, the active tab and the height all come back untouched.
+ */
+describe('BottomPanel — hidden while the active pane is a visual (#2022)', () => {
+  beforeEach(() => {
+    registerStubTab('a', 'Alpha')
+    registerStubTab('b', 'Beta')
+  })
+
+  it('draws nothing while hidden, header strip included', () => {
+    const { container } = render(<BottomPanel hidden />)
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('an OPEN panel comes back open, on the same tab', () => {
+    const { rerender, container } = render(<BottomPanel />)
+    fireEvent.click(screen.getByRole('button', { name: /show panel/i }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Beta' }))
+    expect(screen.getByRole('tabpanel')).toBeTruthy()
+
+    rerender(<BottomPanel hidden />)
+    expect(container.firstChild).toBeNull()
+    // hiding is not closing: what is remembered still says open
+    expect(window.localStorage.getItem(BOTTOM_PANEL_OPEN_KEY)).toBe('true')
+
+    rerender(<BottomPanel />)
+    expect(screen.getByRole('tabpanel')).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Beta' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByTestId('stub-b')).toBeTruthy()
+  })
+
+  it('a CLOSED panel comes back closed', () => {
+    const { rerender } = render(<BottomPanel />)
+    expect(screen.queryByRole('tabpanel')).toBeNull()
+    rerender(<BottomPanel hidden />)
+    rerender(<BottomPanel />)
+    expect(screen.getByRole('region', { name: /bottom panel/i })).toBeTruthy()
+    expect(screen.queryByRole('tabpanel')).toBeNull()
+    expect(window.localStorage.getItem(BOTTOM_PANEL_OPEN_KEY)).not.toBe('true')
+  })
+
+  it('starting hidden with a remembered open panel shows it open once unhidden', () => {
+    window.localStorage.setItem(BOTTOM_PANEL_OPEN_KEY, 'true')
+    const { rerender, container } = render(<BottomPanel hidden />)
+    expect(container.firstChild).toBeNull()
+    expect(window.localStorage.getItem(BOTTOM_PANEL_OPEN_KEY)).toBe('true')
+    rerender(<BottomPanel />)
+    expect(screen.getByRole('tabpanel')).toBeTruthy()
   })
 })

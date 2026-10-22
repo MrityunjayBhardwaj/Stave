@@ -1,0 +1,50 @@
+name: 🐛 Something's broken
+description: Stave did something it shouldn't, or didn't do something it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to tell us. The more exactly we can see what you saw, the faster it gets fixed.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you do, and what did Stave do? A screenshot or a short screen recording helps a lot.
+      placeholder: I dragged a note in the piano roll and it jumped back to where it was.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      placeholder: The note stays where I dropped it, and the code changes to match.
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: The code
+      description: The smallest piece of code that shows it, if code is involved. It's pasted as-is, so there's no need for backticks.
+      render: js
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to see it again
+      placeholder: |
+        1. Open the Full Song template
+        2. Open the Pattern tab on the bass track
+        3. Drag the first note one step right
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: Chrome 131 on macOS, or Safari on an iPhone 15
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where you ran it
+      description: stave.live, or your own copy (the commit, if you know it).
+      placeholder: stave.live

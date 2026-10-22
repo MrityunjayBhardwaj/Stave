@@ -11,9 +11,9 @@ import { describe, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import { canToggleCell } from '../../../editor/src/visualEdit/notation/place'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { parseStepGrid } from '../../../editor/src/codeView/notation/parse'
+import { canToggleCell } from '../../../editor/src/codeView/notation/place'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

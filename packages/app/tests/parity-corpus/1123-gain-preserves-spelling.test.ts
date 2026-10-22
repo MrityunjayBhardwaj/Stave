@@ -42,20 +42,20 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   serializeStepGrid,
   serializeStepGain,
   serializePianoRoll,
   serializeRollGain,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 import { setColumnGain, setGroupGain } from '../../../editor/src/visualEdit/panels/inspector'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
 import type {
   StepGridModel,
   PianoRollModel,
   GainWrite,
-} from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -177,7 +177,8 @@ const rollSurface: Surface<PianoRollModel> = {
 // notation: `respelled` and `play-changed` stay at 0.
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
 // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-const ASKED = { grid: 1017, roll: 598 }
+// ⚠ roll 598 -> 600 at #1974 (a hit is anchored on the note that wrote it) — store probes/timing-facts-1974/anchor-move: the two rolls that open on the leaf writer.
+const ASKED = { grid: 1017, roll: 600 }
 
 describe('#1123 — a velocity drag leaves the notation alone', () => {
   it('grid', () => {

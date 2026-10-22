@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 const peaksForSample = vi.fn()
 
-vi.mock('@stave/editor', () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   peaksForSample: (ref: unknown) => peaksForSample(ref),
 }))
 

@@ -72,11 +72,11 @@ import { fileURLToPath } from 'node:url'
 import {
   parseStepGrid,
   parsePianoRoll,
-} from '../../../editor/src/visualEdit/notation/parse'
+} from '../../../editor/src/codeView/notation/parse'
 import {
   serializeStepGrid,
   serializePianoRoll,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

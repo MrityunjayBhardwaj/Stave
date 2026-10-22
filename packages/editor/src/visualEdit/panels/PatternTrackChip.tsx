@@ -18,10 +18,10 @@ import * as React from 'react'
 
 import { useActiveChunk } from './useActiveChunk'
 import { useMixerModel } from '../mixer/useMixerModel'
-import { stripContainingOffset, otherTrackNames } from '../mixer/stripModel'
+import { stripContainingOffset, otherTrackNames } from '../../codeView'
 import { StripColorPopover } from '../mixer/StripColorPopover'
-import { renameEdit } from '../mixer/writeStrip'
-import { trackIdentity } from '../trackColor'
+import { renameEdit, commit } from '../../codeView'
+import { trackIdentity } from '../../codeView'
 import { getActiveFileId, onActiveEditorChange } from '../../workspace/editorRegistry'
 import { getTrackMeta, setTrackMeta } from '../../workspace/WorkspaceFile'
 import { useTrackMetaMap } from '../../workspace/useTrackMeta'
@@ -82,9 +82,9 @@ export function PatternTrackChip(): React.ReactElement | null {
       // Reject a rename that would duplicate another track's display name (#585) —
       // read from the FRESH document, the same projection the other views use.
       const taken = new Set(otherTrackNames(doc, fresh.statementRange[0]))
-      const e = renameEdit(fresh, v, taken)
-      if (!e) return // renameEdit validates + no-ops + dup-rejects; → silent revert
-      wb.replaceRange(e.range, e.text, 'rename')
+      // renameEdit validates + no-ops + dup-rejects (→ silent revert); the colour
+      // below moves only once the rename is actually in the document.
+      if (commit(wb, renameEdit(fresh, v, taken), 'rename') !== 'written') return
       // Migrate a custom-colour override from the OLD display name to the new
       // label so the rename doesn't orphan it (#581).
       if (fileId) {
@@ -123,8 +123,8 @@ export function PatternTrackChip(): React.ReactElement | null {
         <button
           type="button"
           data-pattern-track-dot
-          aria-label={`Change colour of ${strip.name}`}
-          title={`${strip.name} — click to change colour`}
+          aria-label={`Change colour of ${strip.shownName}`}
+          title={`${strip.shownName} — click to change colour`}
           onClick={(e) => setColorAnchor(e.currentTarget.getBoundingClientRect())}
           style={{
             width: 9,
@@ -191,7 +191,7 @@ export function PatternTrackChip(): React.ReactElement | null {
       ) : (
         <span
           data-pattern-track-name
-          title={`${strip.name} — double-click to rename`}
+          title={`${strip.shownName} — double-click to rename`}
           onDoubleClick={openRename}
           style={{
             fontSize: 11,
@@ -204,7 +204,7 @@ export function PatternTrackChip(): React.ReactElement | null {
             cursor: 'text',
           }}
         >
-          {strip.name}
+          {strip.shownName}
         </span>
       )}
     </div>

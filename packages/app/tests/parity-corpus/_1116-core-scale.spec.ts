@@ -20,10 +20,10 @@ import { describe, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid, parseStepGridCore } from '../../../editor/src/visualEdit/notation/parse'
-import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import type { StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+import { parseStepGrid, parseStepGridCore } from '../../../editor/src/codeView/notation/parse'
+import { documentSteps } from '../../../editor/src/codeView/notation/viewResolution'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import type { StepGridModel } from '../../../editor/src/codeView/notation/model'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

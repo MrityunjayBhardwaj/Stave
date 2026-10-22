@@ -31,7 +31,7 @@
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { VizRenderer, VizOptions } from '../types'
 import type { BusAnalyser } from '../signals/SignalBus'
-import type { IRPattern } from '../../ir/IRPattern'
+import type { IRPattern } from '../../codeView'
 import { MainSignalSampler } from '../worker/signalSampler'
 import { createPostMessageWriter, type SignalTransportWriter } from '../worker/signalTransport'
 import type { SignalFrameSource } from '../demoSignalSource'

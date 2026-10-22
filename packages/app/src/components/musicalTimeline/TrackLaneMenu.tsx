@@ -16,7 +16,7 @@
  */
 
 import type * as React from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { TrackDisplay } from '@stave/editor'
 
 export interface TrackLaneMenuProps {
@@ -26,8 +26,11 @@ export interface TrackLaneMenuProps {
   /** The lane header the menu was opened on. A scroll closes the menu only when
    *  it moves this element — see the effect below. */
   readonly anchor: HTMLElement
-  /** The track's display name, for the menu's accessible label. */
+  /** The track's display name: the key the menu is found by. */
   readonly trackName: string
+  /** What the track's header shows (#2151, `Track 1` for an unnamed `d1`), for
+   *  the menu's accessible label. Absent → `trackName`. */
+  readonly shownName?: string
   /** The lane's current type. */
   readonly display: TrackDisplay
   /** Absent → no Type entry (the timeline has nowhere to save it). */
@@ -49,6 +52,7 @@ export function TrackLaneMenu({
   y,
   anchor,
   trackName,
+  shownName = trackName,
   display,
   onSetDisplay,
   onRename,
@@ -56,6 +60,15 @@ export function TrackLaneMenu({
 }: TrackLaneMenuProps): React.ReactElement {
   const ref = useRef<HTMLDivElement>(null)
   const [typeOpen, setTypeOpen] = useState(false)
+  // #2082 — the menu grows down from the pointer. Measured once mounted, it
+  // moves up when it would cross the bottom of the window, ending 8 px above
+  // it as its left edge is kept 8 px inside. The Type submenu opens beside the
+  // first row, so it stays within the menu's own height.
+  const [top, setTop] = useState(y)
+  useLayoutEffect(() => {
+    const height = ref.current?.offsetHeight ?? 0
+    setTop(Math.max(8, Math.min(window.innerHeight - 8 - height, y)))
+  }, [y])
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -93,9 +106,9 @@ export function TrackLaneMenu({
     <div
       ref={ref}
       role="menu"
-      aria-label={`${trackName} track menu`}
+      aria-label={`${shownName} track menu`}
       data-full-song-lane-menu={trackName}
-      style={{ ...styles.menu, left, top: y }}
+      style={{ ...styles.menu, left, top }}
       // The menu is mounted beside the grid; keep its clicks out of the header's
       // jump-to-code and the grid's selection handlers.
       onClick={(e) => e.stopPropagation()}

@@ -18,10 +18,10 @@
  */
 import * as React from 'react'
 
-import { parsePianoRoll, applyRollGain } from '../notation/parse'
-import { serializePianoRoll, serializeRollGain } from '../notation/serialize'
-import type { PianoRollModel, RollNote, ColumnOverlap } from '../notation/model'
-import { drawnLayout } from '../notation/perBar'
+import { pianoRollCodec, gainWritable as gainWritableOn, slotPress, slotPressCost, NO_RESOLUTION_EFFECT } from '../../codeView'
+import type { PianoRollModel, RollNote, ColumnOverlap } from '../../codeView'
+import { lookOnlyLine } from '../../codeView'
+import { drawnLayout } from '../../codeView'
 import {
   columnCount,
   columnOverlap,
@@ -29,11 +29,11 @@ import {
   rollContentRange,
   sequentialColumnGroups,
   tailColumn,
-} from '../notation/model'
-import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../notation/pitch'
+} from '../../codeView'
+import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../../codeView'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID } from './tabs'
-import { opensPianoRoll } from './surfaceRoute'
+import { opensPianoRoll } from '../../codeView'
 import { useGridModel } from './useGridModel'
 import { onLiveGraph } from '../../engine/offlineGraph'
 import { emitLog } from '../../engine/engineLog'
@@ -46,17 +46,11 @@ import {
   resizableNotes,
   resizeNote,
   viewPlacesNotes,
-} from '../notation/place'
+} from '../../codeView'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
-import {
-  rollSlotState,
-  quantizePianoRollTo,
-  freeZoneScale,
-  collapsePianoRollToDocument,
-} from '../notation/resolution'
-import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
+import { UNREFINED, type ViewScale } from '../../codeView'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 import { setNoteClip, getNoteClip } from './clipboard'
@@ -70,10 +64,11 @@ import {
   type GridAction,
   type NoteEdit,
 } from './gridGestures'
-import { readChainMethod } from './chainMethod'
+import { readChainMethod } from '../../codeView'
 import { ExtendHandle } from './ExtendHandle'
 import { linesModel, rulerLabels, useLayoutFollow, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { usePatternLength } from './usePatternLength'
+import { InViewBar, PHONE_GRID_WIDTH, PHONE_RULER_HEIGHT, PHONE_STEP_MIN, TurnHint, usePhoneGrid, useRulerPan } from './phoneGrid'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
 
@@ -353,26 +348,22 @@ export function PianoRollGrid({
    * worst case measured here is a sweep down the 13 declined cells of one column.
    */
   const [declinedCell, setDeclinedCell] = React.useState<string | null>(null)
-  const { chunk, model, read, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel<PianoRollModel>({
+  const { chunk, model, read, mutate, settle, writeMini, beginGesture, endGesture, patternKey } = useGridModel<PianoRollModel>({
+    ...pianoRollCodec,
     source: 'roll',
     eligible: opensPianoRoll,
-    parse: parsePianoRoll,
-    serialize: serializePianoRoll,
-    applyGain: applyRollGain,
-    serializeGain: serializeRollGain,
     viewScale,
     onViewScaleConsumed: () => setViewScale(UNREFINED),
-    collapseToDocument: collapsePianoRollToDocument,
   })
   // The `+` past the last column: add a bar that continues the pattern, or drag in empty bars (#1824).
-  const length = usePatternLength(chunk, model, parsePianoRoll, writeMini)
+  const length = usePatternLength(chunk, model, pianoRollCodec.parse, writeMini)
 
   // A refinement belongs to the pattern it was made on — see `SequencerGrid` for
   // why carrying it across a cursor move could send an editable pattern to standby.
-  const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ''}` : null
+  // The panel's own writes do not count as a new pattern (#1964).
   React.useEffect(() => {
     setViewScale(UNREFINED)
-  }, [chunkKey])
+  }, [patternKey])
 
   const dragRef = React.useRef<DragState | null>(null)
   // A velocity-lane drag: vertical drag on a note's bar sets that group's gain.
@@ -556,7 +547,7 @@ export function PianoRollGrid({
    * edit does not move, so the two answers never differ (0 of 2950 corpus columns).
    */
   const gainWritable = React.useMemo(
-    () => (model ? serializeRollGain(model).kind !== 'skip' : false),
+    () => (model ? gainWritableOn(pianoRollCodec, model) : false),
     [model],
   )
 
@@ -1002,7 +993,7 @@ export function PianoRollGrid({
   // PROVE, DON'T PREDICT — ask `parsePianoRoll` whether it really draws this
   // pattern at `scale`, never infer it from the arithmetic (#1117 refuses four).
   // Memoized per mini; the roll's parse is the dearer of the two (1.74ms/ask).
-  const canDrawView = useViewProver(chunk?.miniString, parsePianoRoll)
+  const canDrawView = useViewProver(chunk?.miniString, pianoRollCodec.parse)
 
   // Grid resolution (#479, #1057): a free-zone target changes only how finely we
   // DRAW and leaves the document byte-identical. Everything else is unchanged —
@@ -1012,12 +1003,9 @@ export function PianoRollGrid({
   // renders the button, so the control and the click cannot disagree.
   const scaleToSlots = (target: number): void => {
     if (!model) return
-    if (rollSlotState(model, target, canDrawView) === 'view') {
-      const scale = freeZoneScale(documentSteps(model), target)
-      if (scale !== null) setViewScale(scale)
-      return
-    }
-    mutate((prev) => quantizePianoRollTo(prev, target))
+    const press = slotPress(pianoRollCodec, model, target, canDrawView)
+    if (press.kind === 'view') setViewScale(press.scale)
+    else if (press.kind === 'write') mutate((prev) => pianoRollCodec.quantizeTo(prev, target))
   }
 
   // The "Slots" control now lives in the Pattern inspector (#601) — lift this
@@ -1026,9 +1014,12 @@ export function PianoRollGrid({
   // ref-backed so the lift stays loop-free.)
   useLiftResolution(
     model?.steps ?? null,
-    (t) => (model ? rollSlotState(model, t, canDrawView) : 'disabled'),
+    (t) => (model ? pianoRollCodec.slotState(model, t, canDrawView) : 'disabled'),
     scaleToSlots,
     onResolution,
+    // #1933 — what the press would cost, asked of the op `scaleToSlots` runs. A
+    // free-zone target never reaches the op, so it reports nothing.
+    (t) => (model ? slotPressCost(pianoRollCodec, model, t, canDrawView) : NO_RESOLUTION_EFFECT),
   )
 
   // Rows top to bottom (high pitch first) — the render draws exactly these.
@@ -1161,6 +1152,9 @@ export function PianoRollGrid({
       return true
     }
     if (!at) return false
+    // A look-only view (#1975) can be walked and copied from, and nothing else: an edit
+    // key is not offered, rather than run and refused with a console line each press.
+    if (model.lookOnly && action !== 'copy') return false
     const midi = rows[at.row]
     const note = noteAt(model, midi, at.col)
     if (isNoteEdit(action)) return note ? editNote(note, action, dryRun) : false
@@ -1201,6 +1195,16 @@ export function PianoRollGrid({
   // Above the no-model return: a hook runs on every render or not at all.
   const rulerRef = React.useRef<HTMLDivElement>(null)
   useRulerFit(rulerRef, 'data-roll-ruler-label')
+  // On a phone (#2006): columns a finger can hit, the ruler as the sideways scroll
+  // handle, and a key bed that stays put. See `phoneGrid`.
+  const phoneGrid = usePhoneGrid()
+  const rulerPan = useRulerPan(scrollRef, phoneGrid.phone)
+  /** a column's narrowest width per unit of weight */
+  const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 12
+  /** what keeps a row's key in place while its columns scroll under it */
+  const pinned: React.CSSProperties = phoneGrid.phone
+    ? { position: 'sticky', left: 0, zIndex: 2, background: 'var(--background, #0f0f12)' }
+    : {}
 
   if (!model) {
     return React.createElement(VisualEditStandby, {
@@ -1240,12 +1244,13 @@ export function PianoRollGrid({
   /** a cell's flex box: weighted so a bar of 3 is as wide as a bar of 4 */
   const cellBox = (c: number): React.CSSProperties => {
     const w = layout.weight(c)
-    return { flex: `${w} ${w} 0`, minWidth: 12 * w, maxWidth: 44 * w }
+    return { flex: `${w} ${w} 0`, minWidth: stepMin * w, maxWidth: 44 * w }
   }
 
   return (
     <div
       data-bottom-panel-tab="piano-roll"
+      data-look-only={model.lookOnly ? model.lookOnly.gate : undefined}
       // Focusable, but not a tab stop: the grid's one tab stop is its cursor cell
       // (#1802, ARIA grid pattern).
       tabIndex={-1}
@@ -1292,11 +1297,24 @@ export function PianoRollGrid({
         {/* Track identity (#589) — the bound track's colour dot + name. Click the dot to
             recolour, double-click the name to rename. */}
         <PatternTrackChip />
+        <TurnHint show={phoneGrid.upright && rulerPan.inView.more} />
         {/* ONE statement for a view that cannot take a new note (#1070) — the same
             fact the grid states, on the surface that carries 18,386 of the corpus's
             19,098 inert roll placements. Moving, resizing, deleting and velocity
             all still work on the notes that are here. */}
-        {!placesNotes && (
+        {model.lookOnly && (
+          <div
+            data-roll-look-only
+            style={{
+              fontSize: 11,
+              color: 'var(--foreground-muted, #a0a0aa)',
+              padding: '0 8px 0 0',
+            }}
+          >
+            {lookOnlyLine(model.lookOnly)}
+          </div>
+        )}
+        {!placesNotes && !model.lookOnly && (
           <div
             data-roll-no-placement
             style={{
@@ -1317,12 +1335,15 @@ export function PianoRollGrid({
         // panel, styled in globals.css (the editor ships no CSS) — #pattern-scrollbar.
         data-pattern-scroll
         ref={scrollRef}
-        style={{ padding: 16, flex: 1, minHeight: 0, overflow: 'auto', boxSizing: 'border-box' }}
+        // on a phone there is no padding at the top or the left: the ruler and the key
+        // bed are pinned at the padding's edge, and rows scrolling past would show in
+        // the gap beside them
+        style={{ padding: phoneGrid.phone ? '0 16px 16px 0' : 16, flex: 1, minHeight: 0, overflow: 'auto', boxSizing: 'border-box' }}
       >
         <div
           // paddingRight: room for the `+` past the last column (#1824), so a long
           // pattern's cells never grow into it
-          style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 1, width: '100%', paddingRight: 28, boxSizing: 'border-box' }}
+          style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 1, width: '100%', paddingRight: 28, boxSizing: 'border-box', ...(phoneGrid.phone ? PHONE_GRID_WIDTH : {}) }}
           onPointerLeave={() => setHoveredMidi(null)}
         >
           {/* THE RULER (#1841): counts the written steps, `1, 1.2, …, 2`, laid out like a
@@ -1335,8 +1356,31 @@ export function PianoRollGrid({
               the bottom of a 720px viewport, where the drag's press landed on nothing.
               The padding is 16px, so the -13px margin keeps the rows exactly where they
               were before the ruler existed. */}
-          <div ref={rulerRef} data-roll-ruler aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 12, marginTop: -13 }}>
-            <div style={{ width: model.numeric ? 36 : 40, flex: '0 0 auto' }} />
+          {phoneGrid.phone && (
+            // which part of the pattern is on screen: as wide as the panel, not as the
+            // pattern, and it stays put both ways while the rows scroll
+            // (past the key bed and its gap, which is pinned over this row)
+            <div style={{ position: 'sticky', left: (model.numeric ? 36 : 40) + 6, top: 0, zIndex: 4, width: 0, height: 0 }}>
+              <InViewBar inView={rulerPan.inView} width={rulerPan.viewWidth - 16 - (model.numeric ? 36 : 40) - 6} />
+            </div>
+          )}
+          <div
+            ref={rulerRef}
+            data-roll-ruler
+            aria-hidden="true"
+            {...rulerPan.handlers}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-end',
+              gap: 6,
+              // on a phone the ruler is tall enough to hold, so it takes real height and
+              // stays at the top while the pitch rows scroll under it
+              ...(phoneGrid.phone
+                ? { height: PHONE_RULER_HEIGHT, position: 'sticky', top: 0, zIndex: 3, background: 'var(--background, #0f0f12)', touchAction: 'none', cursor: 'grab' }
+                : { height: 12, marginTop: -13 }),
+            }}
+          >
+            <div style={{ width: model.numeric ? 36 : 40, flex: '0 0 auto', alignSelf: 'stretch', ...pinned }} />
             <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
               {Array.from({ length: cols }, (_, c) => {
                 const label = ruler.get(c)
@@ -1402,6 +1446,7 @@ export function PianoRollGrid({
                     fontSize: 9,
                     textAlign: 'right',
                     color: 'var(--foreground, #e6e6ea)',
+                    ...pinned,
                   }}
                 >
                   {tokenForRow(true, midi)}
@@ -1444,6 +1489,8 @@ export function PianoRollGrid({
                     overflow: 'hidden',
                     cursor: 'pointer',
                     touchAction: 'none', // let a touch-drag glissando across keys
+                    // pinned on a phone (#2006); the key keeps its own colour
+                    ...(phoneGrid.phone ? { position: 'sticky', left: 0, zIndex: 2 } : {}),
                   }}
                 >
                   {black && (
@@ -1480,7 +1527,9 @@ export function PianoRollGrid({
                   // (#1070). A cell holding a note keeps every gesture it had —
                   // move, resize, delete, velocity — and so does ⌘-click, which
                   // selects a paste target without editing anything.
-                  const canPlace = on || placesNotes
+                  // …and on a look-only view (#1975) no cell takes a gesture, a note's
+                  // own included: the same inert cell, for the model's own reason.
+                  const canPlace = !model.lookOnly && (on || placesNotes)
                   // The cell a move drag is over that the writer declines (#1452). Only
                   // ever one at a time, and only during a drag.
                   const dropRefused = declinedCell === `${midi}:${step}`
@@ -1543,7 +1592,9 @@ export function PianoRollGrid({
                       // Removing the handle makes the absence visible; this makes it
                       // legible.
                       title={
-                        !canPlace
+                        model.lookOnly
+                          ? lookOnlyLine(model.lookOnly)
+                          : !canPlace
                           ? 'This pattern edits its existing notes — add notes in the code view.'
                           : resizeInert
                             ? 'This note has no other length the pattern can hold — change its length in the code view.'
@@ -1576,7 +1627,7 @@ export function PianoRollGrid({
                             : black
                               ? 'var(--background, #1c1c20)'
                               : 'var(--background-elevated, #26262c)',
-                        cursor: dropRefused ? 'not-allowed' : 'pointer',
+                        cursor: dropRefused ? 'not-allowed' : model.lookOnly ? 'default' : 'pointer',
                         // The selection ring (#432) is NOT here — see the overlay that
                         // is the cell's last child (#1077).
                       }}
@@ -1740,8 +1791,12 @@ export function PianoRollGrid({
           )
         })}
           </div>
-        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-roll-cell" cols={cols} lastBarCols={layout.lastBarCols} />
-        {gainInScope(model) && (
+        {!model.lookOnly && (
+          <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-roll-cell" cols={cols} lastBarCols={layout.lastBarCols} />
+        )}
+        {/* Not on a look-only view (#1975): its levels are never read from the code, so
+            the lane would draw every note at full level whatever the pattern says. */}
+        {gainInScope(model) && !model.lookOnly && (
           <div
             data-roll-velocity-lane
             // The velocity lane is the last child INSIDE the scroll area, so it

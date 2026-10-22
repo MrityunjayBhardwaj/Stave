@@ -60,8 +60,15 @@ describe("keybinding overrides — persistence", () => {
 
   it("loads persisted overrides at module init (fresh import)", async () => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ "test.undo": "mod+k" }));
+    // Fresh keybindings, NOT a fresh editor: the chord helpers come from `@stave/editor`
+    // (#1943), and evaluating that module twice in one process throws — p5 registers its
+    // colour spaces in colorjs.io, which a module reset does not clear. Hand the re-import
+    // the editor module already loaded, which is all the app ever has.
+    const editor = await import("@stave/editor");
     vi.resetModules();
+    vi.doMock("@stave/editor", () => editor);
     const fresh = await import("../keybindings");
+    vi.doUnmock("@stave/editor");
     expect(
       fresh.getKeybindingFor({ id: "test.undo", title: "Undo", keybinding: "mod+z", run: () => {} }),
     ).toBe("mod+k");

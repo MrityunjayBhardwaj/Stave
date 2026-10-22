@@ -18,8 +18,13 @@
  * This module is pure. It measures nothing itself: callers pass a `measure`
  * function, so the draw path can use its own canvas context and a hit-test can
  * use another, while the field arithmetic stays in one place.
+ *
+ * WHAT A FIELD WRITES IS NOT HERE (#1886). Turning a typed bound, a typed rate or a
+ * chosen shape into a source edit is the editor's `captionEdit` / `shapeEdit`
+ * (`codeView/automation/captionEdit`): this file says where a field is and what it
+ * reads, and never which bytes of the document change.
  */
-import type { SignalAutomation, SignalKind, OffsetEdit } from '@stave/editor'
+import type { CaptionFieldKind, SignalAutomation, SignalKind } from '@stave/editor'
 
 /** 9px monospace, matching the rest of the lane's small type. */
 export const AUTOMATION_LABEL_FONT = '9px ui-monospace, SFMono-Regular, Menlo, monospace'
@@ -46,15 +51,9 @@ export const AUTOMATION_LABEL_LINE_H = 11
 /** Cap height of the 9px face — the clickable height of one caption line. */
 export const AUTOMATION_LABEL_TEXT_H = 10
 
-/** Which leg of the automation a caption field names.
- *
- *  ⚠ `param` IS NOT A TYPED FIELD. It is where the shape menu hangs (#1464),
- *  since the kind has no glyph of its own in the caption, and it is reported so a
- *  caller can tell "on the name" from "on a number". Nothing can be typed into it,
- *  so no text editor may open over it: a field that accepts text and then discards
- *  it is worse than an inert label. `captionEdit` returns null for it; a shape is
- *  written by `shapeEdit`, and only where `shapeOptions` offers one. */
-export type CaptionFieldKind = 'param' | 'lo' | 'hi' | 'rate'
+/** Which leg of the automation a caption field names — the editor's, since it is
+ *  what `captionEdit` is asked to write (`param` is the shape menu's anchor, never typed). */
+export type { CaptionFieldKind }
 
 export interface CaptionField {
   readonly kind: CaptionFieldKind
@@ -66,6 +65,9 @@ export interface CaptionField {
   readonly from: number
   readonly to: number
 }
+
+/** The editor's `rateEditable` — see {@link captionRows}. */
+export type RateEditable = (a: SignalAutomation) => boolean
 
 export interface CaptionRow {
   readonly automation: SignalAutomation
@@ -188,17 +190,6 @@ function rateText(a: SignalAutomation): { mark: string; bars: string; unit: stri
   }
 }
 
-/**
- * Whether a typed rate has somewhere honest to go: one spelled rate to replace, or no
- * rate at all and a place to insert one. Two composing rates have neither — the
- * number is shown, and no field is offered over it.
- */
-export function rateEditable(a: SignalAutomation): boolean {
-  if (a.lanePeriodCycles === null) return false
-  if (a.spans.rate !== null) return true
-  return a.periodCycles === 1 && a.spans.chainEnd !== null
-}
-
 /** The caption line for one automation, exactly as drawn. */
 export function captionText(a: SignalAutomation): string {
   const bounds = `${a.paramKey} ${suppliedMark(a)}${formatBound(a.lo)}→${formatBound(a.hi)}`
@@ -213,12 +204,19 @@ export function captionText(a: SignalAutomation): string {
  * Returns empty for a collapsed lane, a band too short to DRAW, or a lane with
  * no automation — the same three abstentions the draw path already made, kept
  * here so the hit-test cannot believe in a caption that was never painted.
+ *
+ * `rateEditable` is the editor's rule for whether a typed rate has somewhere to go
+ * (#1886 — the same function its `captionEdit` enforces, handed in rather than
+ * imported so this module stays type-only on `@stave/editor`). The FIELDS exist for
+ * the hit-test: the draw path reads each row's text and position only, passes
+ * nothing, and gets no rate field — the line it paints is the same either way.
  */
 export function captionRows(
   automations: readonly SignalAutomation[],
   top: number,
   rowHeight: number,
   expanded: boolean,
+  rateEditable?: RateEditable,
 ): readonly CaptionRow[] {
   if (!expanded || automations.length === 0) return []
   const band = automationBand(top, rowHeight)
@@ -249,13 +247,13 @@ export function captionRows(
     }
 
     // #1464 Stage 3 — ` ~4 bars`. The number alone is the field, as a bound's is, and
-    // only where a typed number can be written (`rateEditable`).
+    // only where a typed number can be written (the editor's `rateEditable`).
     let text = bounds
     const rate = rateText(a)
     if (rate) {
       text = `${bounds} ${rate.mark}${rate.bars} ${rate.unit}`
       const rateFrom = bounds.length + 1 + rate.mark.length
-      if (rateEditable(a)) fields.push({ kind: 'rate', text: rate.bars, from: rateFrom, to: rateFrom + rate.bars.length })
+      if (rateEditable?.(a)) fields.push({ kind: 'rate', text: rate.bars, from: rateFrom, to: rateFrom + rate.bars.length })
     }
 
     rows.push({ automation: a, text, y, fields })
@@ -294,77 +292,6 @@ export function captionHit(
   return null
 }
 
-
-/**
- * Turn "the user typed `nextText` into this caption field" into a source edit,
- * or into NOTHING.
- *
- * ⚠ THIS FUNCTION IS THE ENFORCEMENT, not a comment asking callers to be
- * careful. Three things can only go right because they happen here:
- *
- *  1. THE ROUNDING CANNOT ESCAPE. The untouched bound is written from the
- *     automation's own `lo`/`hi` number, never from the string beside it on
- *     screen — so editing `hi` on a caption reading `0.3→1` cannot quietly
- *     rewrite a `lo` of `0.30001`.
- *  2. AN UNCHANGED FIELD WRITES NOTHING. Re-committing the same value would
- *     otherwise reformat the user's `.range(0.30001,1)` into `.range(0.3,1)`
- *     for free, which is a document edit nobody asked for.
- *  3. A LEG THE DOCUMENT DOES NOT SPELL INSERTS rather than replaces, at the
- *     coordinate the reader supplies. `~pan 0→1` has no `.range()` to overwrite;
- *     the edit appends one. Getting this wrong is not a wrong number, it is a
- *     corrupted expression.
- *
- * Returns null for anything it cannot do honestly: a non-numeric entry, an
- * unchanged value, an inverted or degenerate range, or an automation whose
- * spans give it nowhere to write.
- */
-export function captionEdit(hit: CaptionHit, nextText: string): OffsetEdit | null {
-  const { field, row } = hit
-  const a = row.automation
-  // The parameter name is the shape menu's anchor, not a typed field.
-  if (field.kind === 'param') return null
-  if (field.kind === 'rate') return rateEdit(a, nextText)
-  // #1610 — enforced here, not left to `captionRows` offering no field: on a bipolar
-  // signal, or under an inner range that is not 0..1, the typed pair would play another.
-  if (!a.boundsAsWritten) return null
-
-  const raw = nextText.trim()
-  // ⚠ `Number('')` is 0, not NaN — and so is `Number(' ')`. Without this guard,
-  // clearing the field and committing writes a bound of ZERO into the document,
-  // which is a plausible number and therefore a silent corruption rather than a
-  // visible error. Caught by its own test, not by reading.
-  if (raw.length === 0) return null
-  const next = Number(raw)
-  if (!Number.isFinite(next)) return null
-
-  const lo = field.kind === 'lo' ? next : a.lo
-  const hi = field.kind === 'hi' ? next : a.hi
-  // Unchanged — see (2). Compared as NUMBERS, so `0.30` typed over `0.3` is
-  // correctly no edit at all rather than a rewrite.
-  if (lo === a.lo && hi === a.hi) return null
-  // A range must span something. And it keeps the direction it was written in
-  // (#1613): `range(0.7, 0.3)` plays downward (measured) and is drawn so, and a typed
-  // bound that crossed the other would silently turn the curve over — most likely a
-  // typo. A flat range has no direction yet, so either way widens it.
-  if (hi === lo) return null
-  if (a.hi !== a.lo && hi > lo !== a.hi > a.lo) return null
-
-  // ⚠ `String`, and DELIBERATELY NOT the house `formatNumber` helper, which
-  // exists for drag handlers whose arithmetic produces float noise. There is no
-  // arithmetic here: one bound is the number the user just typed and the other
-  // is the one already in the document. `formatNumber(0.30001)` is `'0.3'` —
-  // running the untouched bound through it would reintroduce exactly the
-  // rounding (1) exists to keep out.
-  const call = `.range(${String(lo)},${String(hi)})`
-  const span = a.spans.range
-  if (span) return { range: [span.start, span.end], text: call }
-
-  // See (3): nothing to replace, so append the call to the whole expression.
-  const at = a.spans.chainEnd
-  if (at === null) return null
-  return { range: [at, at], text: call }
-}
-
 /** The editor's `shapeAlternatives`, injected so this module stays type-only on
  *  `@stave/editor` (the app's tests hand it in from source). */
 export type ShapeAlternatives = (kind: SignalKind) => readonly SignalKind[]
@@ -374,16 +301,6 @@ export type ShapeAlternatives = (kind: SignalKind) => readonly SignalKind[]
 export interface ShapeDeps {
   readonly alternatives: ShapeAlternatives
   readonly crossClass: ShapeAlternatives
-}
-
-/**
- * #1464 — the shapes the caption's name can switch a curve to: the editor's same-class
- * alternatives, then (#1611) the cross-class ones, or none when the document spells no
- * shape to replace. An empty list means no menu opens, and a press on the name reaches
- * what it always reached.
- */
-export function shapeOptions(a: SignalAutomation, deps: ShapeDeps): readonly SignalKind[] {
-  return a.spans.shape === null ? [] : [...deps.alternatives(a.kind), ...deps.crossClass(a.kind)]
 }
 
 /**
@@ -443,74 +360,3 @@ export function shapeMenuOptions(
   }))
   return [...same, ...across]
 }
-
-/**
- * #1464 — "switch this curve to `next`" as an edit, or nothing. It replaces the
- * signal's identifier and no other byte, so the range and the rate stay as written.
- *
- * ⚠ THE CLASS RULE IS ENFORCED HERE, not left to the menu that calls this. A shape the
- * editor does not offer for `a.kind` writes nothing: across polarity it moves the
- * bounds the caption shows (`shapeAlternatives`). Across periodicity it moves the song's
- * length, which is offered (#1611) — but only through `shapeMenuOptions`, which will not
- * let it be chosen before the length is said.
- *
- * ⚠ AND A DOCUMENT THAT MOVED WRITES NOTHING. The menu captures its automation when it
- * opens; if the bytes at the span no longer spell that shape, the offsets belong to
- * another document and replacing them would corrupt it.
- */
-export function shapeEdit(
-  a: SignalAutomation,
-  next: string,
-  source: string,
-  deps: ShapeDeps,
-): OffsetEdit | null {
-  const span = a.spans.shape
-  if (span === null) return null
-  if (!shapeOptions(a, deps).some((k) => k === next)) return null
-  if (source.slice(span.start, span.end) !== a.kind) return null
-  return { range: [span.start, span.end], text: next }
-}
-
-/** The most significant digits a written rate may carry — `0.25` and `1.5` pass,
- *  `0.6666666666666666` (2 bars under a whole-track `.slow(3)`) does not. */
-const RATE_DIGITS = 6
-
-/**
- * #1464 Stage 3 — "the user typed `nextText` bars into the rate field" as an edit, or
- * nothing. The same three rules as the bounds, for the same reasons: nothing typed
- * is not zero, an unchanged number writes nothing, and an unspelled rate inserts.
- *
- * The typed number is the period ON THE LANE; what is written is the signal's own,
- * with the route's whole-track time changes divided back out. A speed-up by a whole
- * number is written `.fast(n)` and anything else `.slow(P)` — the engine plays
- * `.fast(2)` and `.slow(0.5)` identically (probe), and each is what a person writes.
- *
- * ⚠ IT WRITES ONLY WHAT READS BACK AS TYPED. A number that needs more than
- * `RATE_DIGITS` significant digits, or whose period times the route's scale is not
- * exactly the typed bars, writes nothing: a rate the document cannot spell exactly is
- * a rate the lane would show differently the moment it re-reads.
- */
-function rateEdit(a: SignalAutomation, nextText: string): OffsetEdit | null {
-  const shown = a.lanePeriodCycles
-  if (shown === null || !rateEditable(a)) return null
-  const raw = nextText.trim()
-  if (raw.length === 0) return null
-  const bars = Number(raw)
-  if (!Number.isFinite(bars) || bars <= 0 || bars === shown) return null
-
-  // What the route's time changes multiply the signal's own period by.
-  const scale = shown / a.periodCycles
-  const own = bars / scale
-  const speedUp = own < 1 && Number.isInteger(1 / own)
-  const n = speedUp ? 1 / own : own
-  if (Number(n.toPrecision(RATE_DIGITS)) !== n) return null
-  if ((speedUp ? 1 / n : n) * scale !== bars) return null
-  const call = speedUp ? `.fast(${String(n)})` : `.slow(${String(n)})`
-
-  const span = a.spans.rate
-  if (span) return { range: [span.start, span.end], text: call }
-  const at = a.spans.chainEnd
-  if (at === null) return null
-  return { range: [at, at], text: call }
-}
-

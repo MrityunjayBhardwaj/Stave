@@ -16,7 +16,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
-import { parseExpression } from '../../../editor/src/ir/parseStrudel'
+import { parseExpression } from '../../../editor/src/codeView/ir/parseStrudel'
 
 type AnyNode = { tag?: string; via?: unknown } & Record<string, unknown>
 

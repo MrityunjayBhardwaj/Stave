@@ -16,8 +16,8 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
-import { structuralWalk, wholeWalkWindow } from '../../../editor/src/ir/structuralWalk'
+import { parseStrudel } from '../../../editor/src/codeView/ir/parseStrudel'
+import { structuralWalk, wholeWalkWindow } from '../../../editor/src/codeView/ir/structuralWalk'
 
 const N = 4
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))

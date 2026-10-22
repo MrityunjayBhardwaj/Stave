@@ -31,10 +31,10 @@ import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import {
   serializeStepGrid,
   serializePianoRoll,
-} from '../../../editor/src/visualEdit/notation/serialize'
-import { tailToken } from '../../../editor/src/visualEdit/notation/parse'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import type { PianoRollModel, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/serialize'
+import { tailToken } from '../../../editor/src/codeView/notation/parse'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import type { PianoRollModel, StepGridModel } from '../../../editor/src/codeView/notation/model'
 
 export const HRES = 720720
 

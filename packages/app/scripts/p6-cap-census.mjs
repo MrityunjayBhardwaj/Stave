@@ -46,7 +46,7 @@ import { fileURLToPath } from 'node:url'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const appDir = path.resolve(here, '..')
 const repoRoot = path.resolve(appDir, '../..')
-const PARSE = path.resolve(appDir, '../editor/src/visualEdit/notation/parse.ts')
+const PARSE = path.resolve(appDir, '../editor/src/codeView/notation/parse.ts')
 const CORPUS_DIR = path.resolve(appDir, 'tests/parity-corpus')
 const CENSUS_JSON = path.join(CORPUS_DIR, 'WRITER-CENSUS.json')
 const OUT = path.join(CORPUS_DIR, 'P6-CAP12.json')
@@ -91,7 +91,7 @@ const restore = () => {
 
 /** run the census at whatever `parse.ts` currently says, and return the reading it emitted */
 function runCensus(label, expectApplied) {
-  const applied = porcelain().includes('packages/editor/src/visualEdit/notation/parse.ts')
+  const applied = porcelain().includes('packages/editor/src/codeView/notation/parse.ts')
     ? 'YES'
     : 'NO'
   console.log(`\n######## ${label}  applied=${applied} ########`)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { startsTopLevelBlock } from '../blockScan'
+import { startsTopLevelBlock, startsTopLevelBlockRaw } from '../blockScan'
 
 describe('startsTopLevelBlock', () => {
   it('recognizes an audible anonymous track', () => {
@@ -22,6 +22,21 @@ describe('startsTopLevelBlock', () => {
 
   it('recognizes the transport statement', () => {
     expect(startsTopLevelBlock('setcps(90/240).gain(0.3)')).toBe(true)
+  })
+
+  it('recognizes every name Strudel gives the tempo setter, by whole name (#1927)', () => {
+    // `repl.mjs` registers one setter as `setcps`/`setCps` and `setcpm`/`setCpm`.
+    // Only `setcps` ended a block, so a viz zone above `setcpm(30)` anchored below it.
+    for (const line of ['setcps(0.5)', 'setCps(0.5)', 'setcpm(30)', 'setCpm(30)', 'setcpm (30)']) {
+      expect(startsTopLevelBlock(line), line).toBe(true)
+      expect(startsTopLevelBlockRaw(line), line).toBe(true)
+    }
+    // A name that only begins with a setter's name is not one (was a bare startsWith).
+    expect(startsTopLevelBlock('setcpsfoo(1)')).toBe(false)
+    expect(startsTopLevelBlock('setcps')).toBe(false) // no call
+    // Controls, unchanged.
+    expect(startsTopLevelBlockRaw('$: s("bd")')).toBe(true)
+    expect(startsTopLevelBlockRaw('s("bd")')).toBe(false)
   })
 
   it('recognizes a bare expression wrapped by the solo overlay (`/* … */`)', () => {

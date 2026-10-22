@@ -22,11 +22,11 @@ import { describe, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import type { StepGridModel } from '../../../editor/src/visualEdit/notation/model'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { parseStepGrid } from '../../../editor/src/codeView/notation/parse'
+import type { StepGridModel } from '../../../editor/src/codeView/notation/model'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
 import { ungatedToggle } from './ungatedOps'
-import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
+import { serializeStepGrid } from '../../../editor/src/codeView/notation/serialize'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

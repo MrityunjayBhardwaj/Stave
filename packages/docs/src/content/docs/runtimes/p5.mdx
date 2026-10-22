@@ -29,6 +29,35 @@ function draw() {
 }
 ```
 
+## React to the music with `sig`
+
+The easiest way to make a sketch react is `sig`. It's there in every sketch, with no setup:
+
+```js
+function setup() {
+  createCanvas(stave.width, stave.height)
+}
+
+function draw() {
+  background(10, 10, 20, 60)
+  noStroke()
+  fill(120, 220, 255)
+  circle(width / 2, height / 2, 20 + sig.kick * 120)   // jumps on every kick
+}
+```
+
+| Signal | What it is |
+|---|---|
+| `sig.kick` `sig.snare` `sig.hat` `sig.openHat` `sig.clap` `sig.rim` `sig.tom` | 0 to 1: jumps to 1 when that drum plays, then fades |
+| `sig.keyVelocity` | 0 to 1: how hard the loudest note playing right now was hit |
+| `sig.rms` `sig.bass` `sig.mid` `sig.treble` | 0 to 1: the loudness of the mix, overall and by band |
+| `sig.fft` `sig.wave` | arrays: the mix's spectrum and waveform |
+| `sig('bd')` | one sound: `.env`, `.rms`, `.fft[i]` and more |
+| `sig.track('$0')` | one track: the same fields, for that track only |
+| `sig.tracks` `sig.sounds` | the names of the tracks and sounds playing |
+
+The drum signals come from the notes your code plays, not from listening to the audio, so a kick is a kick even when the bass is loud. See [Make visuals react](/guides/reactive-visuals/) for more.
+
 ## Host globals
 
 | Global | What it is |
@@ -37,6 +66,8 @@ function draw() {
 | `stave.analyser` | Web Audio `AnalyserNode` tapped at the attached pattern's orbit |
 | `stave.hapStream` | Raw event feed (same data the scheduler wraps) |
 | `stave.width` / `stave.height` | Device-pixel-correct canvas dimensions |
+| `stave.options` | The object passed to `.viz("name", { … })` |
+| `stave.sig` | The same object as `sig` |
 | `stave.hapStream.on(cb)` | Subscribe to hap trigger events |
 
 <Aside type="tip">

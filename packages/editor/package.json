@@ -1,6 +1,6 @@
 {
   "name": "@stave/editor",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "description": "Engine-agnostic live coding editor — any engine, any viz, any synth",
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -17,21 +17,6 @@
       "types": "./dist/visualizers/worker/index.d.ts",
       "import": "./dist/visualizers/worker/index.js",
       "require": "./dist/visualizers/worker/index.cjs"
-    },
-    "./knobScale": {
-      "types": "./dist/visualEdit/panels/knobScale.d.ts",
-      "import": "./dist/visualEdit/panels/knobScale.js",
-      "require": "./dist/visualEdit/panels/knobScale.cjs"
-    },
-    "./trackId": {
-      "types": "./dist/ir/trackId.d.ts",
-      "import": "./dist/ir/trackId.js",
-      "require": "./dist/ir/trackId.cjs"
-    },
-    "./chord": {
-      "types": "./dist/keys/chord.d.ts",
-      "import": "./dist/keys/chord.js",
-      "require": "./dist/keys/chord.cjs"
     }
   },
   "files": [
@@ -63,7 +48,7 @@
     "@strudel/webaudio": "^1.0.0",
     "@strudel/xen": "^1.0.0",
     "@tonaljs/chord": "^4.10.2",
-  "@types/p5": "1.7.7",
+    "@types/p5": "1.7.7",
     "acorn": "^8.17.0",
     "hydra-synth": "^1.4.0",
     "monaco-editor": "^0.50.0",
@@ -73,6 +58,7 @@
   },
   "devDependencies": {
     "@testing-library/react": "^16.0.0",
+    "@types/node": "^20",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "jsdom": "^24.0.0",
@@ -80,6 +66,6 @@
     "react-dom": "^18.3.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^1.6.0"
+    "vitest": "^4.1.12"
   }
 }

@@ -50,23 +50,23 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   collapseStepGridToDocument,
   collapsePianoRollToDocument,
-} from '../../../editor/src/visualEdit/notation/resolution'
+} from '../../../editor/src/codeView/notation/resolution'
 import {
   serializeStepGrid,
   serializePianoRoll,
-} from '../../../editor/src/visualEdit/notation/serialize'
-import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
-import { toUniformGrid, toUniformRoll } from '../../../editor/src/visualEdit/notation/perBar'
-import { toggleCell, placeNote } from '../../../editor/src/visualEdit/notation/place'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/serialize'
+import { documentSteps } from '../../../editor/src/codeView/notation/viewResolution'
+import { toUniformGrid, toUniformRoll } from '../../../editor/src/codeView/notation/perBar'
+import { toggleCell, placeNote } from '../../../editor/src/codeView/notation/place'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
 import type {
   StepGridModel,
   PianoRollModel,
-} from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -415,7 +415,8 @@ describe('#1117 — coming back from a refined view', () => {
  * no content changed, no width was wrong, and no collapse diverged.
  */
 const GRID_PINS: Record<string, [number, number, number]> = {
-  'alt-element': [61, 61, 0],
+  // ⚠ 61 -> 59 at #1974 (a hit is anchored on the note that wrote it) — store probes/timing-facts-1974/anchor-move: `[c eb g <f bb>](3,8,<0 1>)` and `{c [f g] d# d}%2` are leaf-written now, and a leaf-written view is not offered one step finer.
+  'alt-element': [59, 59, 0],
   'alt-whole': [85, 85, 0],
   // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
   // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).

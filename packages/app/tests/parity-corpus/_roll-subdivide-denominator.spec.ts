@@ -19,13 +19,13 @@ import { describe, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   canDoubleStepGrid,
   canHalveStepGrid,
   canDoublePianoRoll,
   canHalvePianoRoll,
-} from '../../../editor/src/visualEdit/notation/resolution'
+} from '../../../editor/src/codeView/notation/resolution'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const CORPUS = path.join(HERE, 'mini-corpus.json')

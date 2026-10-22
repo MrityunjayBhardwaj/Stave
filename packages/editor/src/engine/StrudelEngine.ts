@@ -1,3 +1,4 @@
+import { declarePlayback, startAudio, startAudioOnNextGesture } from './audioStart'
 import { HapStream } from './HapStream'
 import { BreakpointStore } from './BreakpointStore'
 import { LiveRecorder } from './LiveRecorder'
@@ -9,7 +10,7 @@ import { canPauseOfflineRender, piecesOf, renderInPieces } from './pieceRender'
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { planStems, tagTrack } from './stemSplit'
 import { createTransportHold } from './transportHold'
-import { registerBackgroundRender, withOfflineGraph, withUserRender } from './offlineGraph'
+import { onLiveGraph, registerBackgroundRender, whenGraphFree, withOfflineGraph, withUserRender } from './offlineGraph'
 import { displayRenderRate } from './displayRate'
 import {
   createTrackEnvelopeScheduler,
@@ -24,10 +25,9 @@ import type { HapEvent } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
 import { scanVizRequestLines } from './vizLineScan'
 import type { LiveCodingEngine, EngineComponents } from './LiveCodingEngine'
-import { parseStrudel } from '../ir/parseStrudel'
-import { buildNodeLocIndex } from '../ir/nodeIdentity'
-import type { PatternIR } from '../ir/PatternIR'
-import type { IREvent } from '../ir/IREvent'
+import { parseStrudel } from '../codeView/ir/parseStrudel'
+import { buildNodeLocIndex } from '../codeView/ir/nodeIdentity'
+import type { PatternIR, IREvent } from '../codeView'
 import { getTierFlags, type TierFlags } from './tierFlags'
 import { aliasSoundValue } from './aliases'
 import { canOpenAudioFrame, offlineContextInFrame } from './audioFrame'
@@ -36,6 +36,7 @@ import { installMiniStringParser } from './stringParser'
 import { resolveBareCaptureId } from './bareCapture'
 import { normalizeLoopRange, type LoopRange } from './transportFrame'
 import { STRUDEL_VIZ_METHODS } from './strudelVizMethods'
+import { sliderFunctions, sliderWidgets, type SliderWidgetConfig } from './vendored/slider'
 
 type HapHandler = (event: HapEvent) => void
 
@@ -495,6 +496,8 @@ export class StrudelEngine implements LiveCodingEngine {
    */
   private unregisterBackgroundRender = registerBackgroundRender(this.trackEnvelopes)
   private audioCtx: AudioContext | null = null
+  /** takes off the "start audio on the next gesture" listeners (#1987) */
+  private stopAskingForAudio: (() => void) | null = null
   /** Notes handed to superdough after their start time, which it drops (#1348). */
   private lateNotes = 0
   private analyserNode: AnalyserNode | null = null
@@ -563,6 +566,10 @@ export class StrudelEngine implements LiveCodingEngine {
   // `trackSchedulers`), and these are the spans those patterns' haps were located
   // against. Null = unknown, which filters nothing.
   private lastDeclaredLocations: ReadonlySet<string> | null = null
+  // #345 — the `slider(…)` calls the last SUCCESSFUL evaluate's transpiler reported, as
+  // it reported them. Kept on a failed evaluate for the same reason as the spans above:
+  // the patterns still playing read those sliders' values.
+  private lastSliders: SliderWidgetConfig[] = []
   /**
    * #1344 — what the last SUCCESSFUL evaluate handed the repl to play, with the
    * seek and loop in force at that moment (the `.p` hook wrapped the pattern in
@@ -791,8 +798,10 @@ export class StrudelEngine implements LiveCodingEngine {
     // into document.body (id="test-canvas") the first time any draw function runs.
     // Stave uses its own visualizer system, so strudel's canvas draw functions
     // (pianoroll, drawFrequencyScope, etc.) are not exposed to user code.
+    // #345 — `slider(…)`: the transpiler rewrites it to `sliderWithID`, which Strudel
+    // ships in its CodeMirror package; the two functions are vendored instead.
     await required('evalScope', () =>
-      coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod),
+      coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod, sliderFunctions(coreMod)),
     )
 
     // Phase 20-14 β-4: thread the `midi` tier flag through engine init.
@@ -1008,6 +1017,11 @@ export class StrudelEngine implements LiveCodingEngine {
     this.audioCtx = getAudioContext()
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const audioCtx = this.audioCtx!
+    // #1987 — the context was made at boot, before any gesture, so it is suspended and
+    // nothing upstream resumes it. A Play pressed before this line had no context to
+    // ask; the next touch or key does.
+    this.stopAskingForAudio?.()
+    this.stopAskingForAudio = startAudioOnNextGesture(audioCtx)
 
     // Tap superdough's master output for analysis.
     // connectToDestination() wires a node as a SOURCE into superdough's mix — wrong for
@@ -1033,6 +1047,9 @@ export class StrudelEngine implements LiveCodingEngine {
     // resolve it fresh on every re-tap.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.superdoughControllerFn = (webaudioMod as any).getSuperdoughAudioController ?? null
+    // #2058 — Stave's superdough patch: stops every sound still playing (Stop).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.stopAllSoundsFn = (webaudioMod as any).stopAllSounds ?? null
 
     // Wrap the native output trigger so we can fan events to HapStream subscribers
     const hapStream = this.hapStream
@@ -1656,6 +1673,8 @@ export class StrudelEngine implements LiveCodingEngine {
         // before its `evaluate` resolves, so these are THIS evaluate's spans.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         this.lastDeclaredLocations = declaredLocationKeys((this.repl as any)?.state?.miniLocations) ?? null
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        this.lastSliders = sliderWidgets((this.repl as any)?.state?.widgets)
         // #1344 — the pattern the repl PLAYS, after Strudel's own `$:` stacking,
         // solo selection and `all(...)`/`each(...)` (`repl.mjs:230-262`), none of
         // which the per-track captures above see. The two snapshots are the
@@ -1721,7 +1740,7 @@ export class StrudelEngine implements LiveCodingEngine {
     // EITHER an inline viz request OR a code-driven backdrop request, so a
     // bare `.scope()` (backdrop, no inline `.viz()`) still surfaces.
     const hasInlineViz = this.vizRequests.size > 0 && this.lastEvaluatedCode
-    if (hasInlineViz || this.backdropVizRequest) {
+    if (hasInlineViz || this.backdropVizRequest || this.lastSliders.length > 0) {
       bag.inlineViz = {
         vizRequests: hasInlineViz
           ? this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode!)
@@ -1729,6 +1748,7 @@ export class StrudelEngine implements LiveCodingEngine {
         backdropRequest: this.backdropVizRequest
           ? { vizId: this.backdropVizRequest, options: this.backdropVizOptions ?? undefined }
           : undefined,
+        sliders: this.lastSliders.length > 0 ? this.lastSliders : undefined,
       }
     }
     // Expose Pattern IR if available. `irEvents` is retained on the component
@@ -1761,7 +1781,18 @@ export class StrudelEngine implements LiveCodingEngine {
     return scanVizRequestLines(requests, code, this.vizOptions)
   }
 
+  /**
+   * #1987 — ask the browser to start audio, inside the gesture that asked for Play.
+   * Before `init()` there is no context yet: the listeners `initInternal` installs
+   * cover that case on the next gesture.
+   */
+  unlockAudio(): void {
+    declarePlayback()
+    startAudio(this.audioCtx)
+  }
+
   play(): void {
+    this.transportGeneration++ // #2064 — a fade deferred by an earlier Stop no longer applies
     // #1731 — a display render never makes Play wait for the whole track: it is
     // aborted here, stops being fed at its next pause, and the Play deferred
     // below starts then.
@@ -1777,6 +1808,11 @@ export class StrudelEngine implements LiveCodingEngine {
     // itself lives in the document as `all(x => x.mul(postgain()))` (#792/#794/#1711), not here.
     this.followMasterAnalyser()
   }
+
+  /** #2058 — superdough's stop-every-sound (Stave's patch), once audio is up. */
+  private stopAllSoundsFn: ((fade?: number) => number) | null = null
+  /** #2064 — moves on every Play and Stop, so a deferred fade knows it is stale. */
+  private transportGeneration = 0
 
   /** the destinationGain node our master analyser is currently tapping. */
   private taggedDestinationGain: AudioNode | null = null
@@ -1824,6 +1860,22 @@ export class StrudelEngine implements LiveCodingEngine {
     // the render resumes the transport it paused.
     this.transportHold.cancelResume()
     this.repl?.scheduler?.stop()
+    // #2058 — the scheduler's stop only stops NEW notes. A sample plays its whole
+    // length unless something cuts it, so a long file kept sounding after Stop
+    // (measured: still at full level fifteen seconds later). Fade out what is
+    // playing — on the LIVE graph: while a bounce renders, superdough's context
+    // and its live-sound map are the bounce's, and the fade would land in the file
+    // (#2064). So it waits for every render to let go, and is dropped if Play was
+    // pressed in the meantime, or it would cut the new notes.
+    const stopAll = this.stopAllSoundsFn
+    if (stopAll) {
+      const at = ++this.transportGeneration
+      whenGraphFree(() =>
+        onLiveGraph(() => {
+          if (at === this.transportGeneration) stopAll(0.03)
+        }),
+      )
+    }
     this.trackEnvelopes.stopped() // #1731 — stopped: render what is missing or stale
   }
 
@@ -2462,15 +2514,15 @@ export class StrudelEngine implements LiveCodingEngine {
    * The tempo the scheduler is ACTUALLY running at, in cycles per second, or
    * `null` when there is no scheduler yet (engine not initialised).
    *
-   * ⚠ WHY THIS EXISTS ALONGSIDE `extractBpmFromCode`. That helper regex-matches
-   * a literal `setcps(...)` in the source and is what feeds the status bar's BPM
-   * readout. It cannot see three things the scheduler knows: `setcpm(...)`,
-   * which the repl routes through the same setter (`repl.mjs` — `setCpm = (cpm)
-   * => scheduler.setCps(cpm/60)`); a tempo left at Strudel's default of `0.5`
-   * (`cyclist.mjs:24`) by a document that sets none; and a cps CHANGED mid-
-   * pattern from a hap value (`cyclist.mjs:72-74`). So `undefined` from the
-   * regex means "the code did not spell setcps", never "there is no tempo" —
-   * a distinction that matters the moment anything converts cycles to seconds.
+   * ⚠ WHY THIS EXISTS ALONGSIDE `extractBpmFromCode`. That helper reads the
+   * tempo the CODE sets (`codeView/tempo.ts`, the setter family `setcps`/
+   * `setcpm` and their camel-case twins, #1925) and is what feeds the status
+   * bar's BPM readout. It cannot see two things the scheduler knows: a tempo
+   * left at Strudel's default of `0.5` (`cyclist.mjs:24`) by a document that
+   * sets none, and a cps CHANGED mid-pattern from a hap value
+   * (`cyclist.mjs:72-74`). So `undefined` from it means "the code sets no tempo
+   * it can read", never "there is no tempo" — a distinction that matters the
+   * moment anything converts cycles to seconds.
    *
    * Deliberately NOT folded into `PatternScheduler`: that adapter is consumed by
    * ~10 visualiser modules, and a tempo read does not need their blast radius.
@@ -2657,6 +2709,8 @@ export class StrudelEngine implements LiveCodingEngine {
     // #1627 — like stop(): a render still running must not restart playback
     // (on this repl, or on the one a later init() builds) when it finishes.
     this.transportHold.cancelResume()
+    this.stopAskingForAudio?.()
+    this.stopAskingForAudio = null
     this.trackEnvelopes.dispose()
     this.trackEnvelopeListeners.clear()
     this.unregisterBackgroundRender()

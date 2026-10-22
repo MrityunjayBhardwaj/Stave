@@ -31,11 +31,15 @@ import {
   type TrackEnvelopeAccess,
 } from "@stave/editor";
 import { createTrackEnvelopeRelay } from "../audio/trackEnvelopeRelay";
-import { seedProjectFromTemplate } from "../templates";
+import { TEMPLATES, seedProjectFromTemplate } from "../templates";
 import { exportProjectAsZip } from "../exportProject";
 import { StorageFullNotice } from "./StorageFullNotice";
 import { buildStemsArchive, stemDisplayName } from "../stemsArchive";
 import { importProjectFromZip } from "../importProject";
+import { recentProjectEntries } from "../recentProjects";
+import { StartScreen } from "./StartScreen";
+import appPackage from "../../package.json";
+import { readStartConditions, setStartScreenWanted, showsStartScreen, startScreenWanted } from "../startScreen";
 import {
   buildShareUrl,
   decodeSharePayload,
@@ -44,6 +48,11 @@ import {
   clearShareFragment,
 } from "../shareProject";
 import { MenuBar } from "./MenuBar";
+import { buildMenus, type MenuActions } from "./menuModel";
+import { PhoneTopBar } from "./PhoneTopBar";
+import { PhoneDrawer, PHONE_MENU_TAB } from "./PhoneDrawer";
+import { TransportLCD } from "./TransportLCD";
+import { TimeSignatureControl } from "./TimeSignatureControl";
 import { FileTree, type FileTreeHandle } from "./FileTree";
 import { TemplateModal } from "./TemplateModal";
 import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
@@ -79,6 +88,7 @@ import { registerPanel } from "../panels/registry";
 import { AssetLibraryPanel } from "../assetLibrary/AssetLibraryPanel";
 import { registerAssetProvider, notifyAssetProvidersChanged } from "../assetLibrary/registry";
 import { createSoundsProvider } from "../assetLibrary/soundsProvider";
+import type { AssetProvider } from "../assetLibrary/types";
 import {
   listWorkspaceFiles,
   subscribeToFileList,
@@ -96,6 +106,7 @@ import { DocsSearchPalette } from "./DocsSearchPalette";
 import { isPerfOverlayToggle } from "./perfToggleKey";
 import { MusicalTimeline } from "./MusicalTimeline";
 import { startSongAnalysis } from "../state/songAnalysis";
+import { applyStoredTakesPhoneAudio } from "../state/takesPhoneAudio";
 import {
   registerBottomPanelTab,
   readPersistedOpen,
@@ -117,9 +128,9 @@ import {
 } from "@stave/editor";
 import { getLogHistory } from "@stave/editor";
 import { SilentCaptureError, describeSkipped } from "@stave/editor";
-import { startAudition } from "@stave/editor";
+import { resolveAsset, startAudition, startClipPreview } from "@stave/editor";
 // #1504 — the project's asset records back the library's "sample" provider.
-import { listAssetRecords, subscribeToAssets } from "@stave/editor";
+import { cyclesToPlayThrough, listAssetRecords, subscribeToAssets } from "@stave/editor";
 // #1785 — this tab's presence, seen by another tab's sound collection.
 import { holdTabPresence } from "@stave/editor";
 // #1786 — remove one of your sounds, and see what each one takes.
@@ -130,10 +141,10 @@ import {
   unregisterAsset,
 } from "@stave/editor";
 import { removedButFailedMessage, removedMessage } from "../assetLibrary/freeSpaceMessages";
-import { gmFamily, soundfontGroupLabel } from "@stave/editor";
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
 import { mountVizPreview } from "@stave/editor";
 import { getFile } from "@stave/editor";
+import { usePhone, isPhone, usePhoneLayout, startVisibleArea } from "@stave/editor";
 import { createSamplesProvider } from "../assetLibrary/samplesProvider";
 import { createVizProvider } from "../assetLibrary/vizProvider";
 import { planVizLibFiles, VIZ_LIB_ROOT, type VizLibItem } from "../assetLibrary/vizLibrary";
@@ -166,6 +177,9 @@ interface StaveAppProps {
  * act, short enough that an ignored offer still goes away on its own.
  */
 const SILENT_BOUNCE_TOAST_MS = 20_000;
+
+/** #2019 — the app's own version, shown on the start screen. */
+const APP_VERSION: string = appPackage.version;
 
 function safeFileName(name: string, fallback: string): string {
   return name.replace(/[^a-z0-9_-]+/gi, "_") || fallback;
@@ -206,7 +220,48 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
   // activePanelId drives which registered side-panel is visible. null =
   // activity bar only, no panel. 'explorer' is the legacy file-tree view.
-  const [activePanelId, setActivePanelId] = useState<string | null>("explorer");
+  //
+  // On a phone (#2000) the panels are not beside the editor but in a drawer over it,
+  // and this same state says which one the drawer shows — null = drawer closed, which
+  // is how a phone starts. One state for both, so everything below that opens a panel
+  // by name (the eval lamp, File History, the sound picker) opens the drawer on it.
+  const phone = usePhone();
+  // #2003 — sideways, a phone gets a view switch in its top bar and a shorter drawer
+  const phoneSideways = usePhoneLayout() === "sideways";
+  // #2004 — follow the on-screen keyboard: the editor package writes the height still
+  // showing onto the document root, and the shell (page.tsx) is that tall. A plain
+  // function, not a hook: an app component must not call the editor's hooks.
+  useEffect(() => {
+    startVisibleArea();
+  }, []);
+  // #2015 — whether Play takes the phone's audio is a setting; the engine reads it on
+  // every Play, so it needs the stored choice before the first one.
+  useEffect(() => {
+    applyStoredTakesPhoneAudio();
+  }, []);
+  // #2007 — the page-level rules for a phone (no page scroll, no double-tap zoom) are
+  // CSS on the document root, switched by this one attribute.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (phone) root.setAttribute("data-stave-phone", "");
+    else root.removeAttribute("data-stave-phone");
+    return () => root.removeAttribute("data-stave-phone");
+  }, [phone]);
+  const [activePanelId, setActivePanelId] = useState<string | null>(() => (isPhone() ? null : "explorer"));
+  // The drawer's Menu tab is the drawer's own, not a panel: it has no rail button and
+  // must not be left selected for a rail that cannot show it.
+  const [phoneMenuOpen, setPhoneMenuOpen] = useState(false);
+  // which panel the drawer opens on: the one it was last showing
+  const lastPanelRef = useRef("explorer");
+  if (activePanelId !== null) lastPanelRef.current = activePanelId;
+  const openPhoneDrawer = useCallback(() => {
+    setPhoneMenuOpen(false);
+    setActivePanelId(lastPanelRef.current);
+  }, []);
+  const closePhoneDrawer = useCallback(() => {
+    setPhoneMenuOpen(false);
+    setActivePanelId(null);
+  }, []);
   const sidebarCollapsed = activePanelId === null;
   const setSidebarCollapsed = useCallback((updater: boolean | ((c: boolean) => boolean)) => {
     setActivePanelId((current) => {
@@ -220,12 +275,21 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // each shows its size. A counter, so each request remounts the panel onto
   // that chip even when the Library is already open on another.
   const [libraryOpenedFor, setLibraryOpenedFor] = useState(0);
+  // #2062 — the project's own audio as Library rows, read by the Sounds provider
+  const ownAudioRef = useRef<AssetProvider | null>(null);
   const openLibraryAtYourSounds = useCallback(() => {
     setLibraryOpenedFor((n) => n + 1);
     setActivePanelId("library");
   }, []);
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  // #2019 — the start screen. Decided ONCE, when the app first mounts (which is
+  // after the last project has loaded): it greets an arrival and never appears
+  // mid-session on its own. A share link has its own question to ask instead.
+  const [startScreenOpen, setStartScreenOpen] = useState(() =>
+    showsStartScreen(readStartConditions(readShareFragment() != null)),
+  );
+  const [startScreenAtStart, setStartScreenAtStart] = useState(startScreenWanted);
   const [switcherModalOpen, setSwitcherModalOpen] = useState(false);
   const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -315,7 +379,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     return subscribeLog((entry) => {
       if (!entry) return;
       if (entry.level !== "error") return;
-      const text = entry.suggestion
+      // #2170 — "try" only names a symbol; a hint's example or link has no name.
+      const text = entry.suggestion?.name
         ? `${entry.message} → try \`${entry.suggestion.name}\``
         : entry.message;
       // Clicking the toast body shows the entry where it came from.
@@ -1230,10 +1295,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         readDict,
         startPreview: (sound) => startAudition(sound),
         onInsert: (sound) => shellRef.current?.assignSoundToCursor(sound),
-        // #807 — GM soundfont family grouping, from the shared editor module so
-        // the Mixer picker and this provider label soundfonts identically.
-        gmFamily,
-        soundfontGroupLabel,
+        // #2062 — your audio is listed with the sounds, as yours
+        ownAudio: () => ownAudioRef.current?.list() ?? [],
       }),
     );
     let lastCount = -1;
@@ -1371,15 +1434,34 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       }
       await refreshSizes();
     };
-    const unreg = registerAssetProvider(
+    // #2062 — not registered as a type of its own: the Sounds provider lists these
+    // rows (Sounds → User). Published here, then the Library is told to re-list.
+    ownAudioRef.current = (
       createSamplesProvider({
         readRecords: () => listAssetRecords(),
-        startPreview: (name) => startAudition(name),
-        onInsert: (name) => shellRef.current?.assignSoundToCursor(name),
+        // #2059 — a recording previews once, start to end, not as a re-triggered
+        // 0.22 s note (that is `startAudition`, right for the built-in Sounds).
+        startPreview: async (name) => {
+          const record = listAssetRecords().find((r) => r.name === name);
+          const url = record ? await resolveAsset(record.blobHash) : null;
+          return url ? startClipPreview(url) : undefined;
+        },
+        // #2070 — a clip longer than a cycle plays through before it starts again:
+        // its length in cycles at the tempo playing now (Strudel's 0.5 before any).
+        onInsert: (name) => {
+          const record = listAssetRecords().find((r) => r.name === name);
+          const slow = cyclesToPlayThrough(record?.duration, getCpsRef.current() ?? 0.5);
+          shellRef.current?.assignSoundToCursor(name, slow ? { slow } : undefined);
+        },
         sizeOf: (hash) => sizes.get(hash),
         onRemove,
-      }),
+      })
     );
+    notifyAssetProvidersChanged();
+    const unreg = () => {
+      ownAudioRef.current = null;
+      notifyAssetProvidersChanged();
+    };
     void refreshSizes();
     const unsub = subscribeToAssets(() => {
       notifyAssetProvidersChanged();
@@ -1644,7 +1726,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       id: "stave.view.zen",
       title: "Toggle Zen / Perform Mode",
       category: "View",
-      description: "Hide menu bar, activity bar, and status bar. Esc to exit.",
+      description: "Hide the activity bar and side panel, and go full screen. Esc to exit.",
       keybinding: "mod+alt+z",
       run: () => setZenMode((z) => !z),
     }));
@@ -1832,6 +1914,126 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     });
   };
 
+  // What a panel holds — the same element whether it sits in the desktop's side panel
+  // or in the phone's drawer (#2000).
+  const openFileFromPanel = (fileId: string, intent?: { preview?: boolean }) => {
+    handleOpenFile(fileId, intent);
+    // on a phone the drawer is over the editor: picking a file is asking to see it
+    if (phone) closePhoneDrawer();
+  };
+  const renderPanel = (id: string) => (
+    <>
+        {id === "explorer" && (
+          <FileTree
+            ref={fileTreeRef}
+            projectName={activeProject.name}
+            onOpenFile={openFileFromPanel}
+            activeFileId={activeFileId}
+            onImportZipProject={handleImportZip}
+            onFileHistory={(fileId) => {
+              setFileHistoryTarget(fileId);
+              setActivePanelId("snapshots");
+            }}
+          />
+        )}
+        {id === "search" && (
+          <div style={styles.panelRoot} data-sidebar>
+            <div style={styles.panelHeader}>SEARCH</div>
+            <WorkspaceSearchView
+              ref={searchViewRef}
+              compact
+              onOpenFile={(fileId) => openFileFromPanel(fileId, { preview: true })}
+            />
+          </div>
+        )}
+        {id === "snapshots" && (
+          <div style={styles.panelRoot} data-sidebar>
+            <div style={styles.panelHeader}>VERSION HISTORY</div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <HistoryPanel
+                onOpenHistoryTab={(req) => {
+                shellRef.current?.openHistoryTab(req);
+                // as with a file: the tab it opened is under the drawer
+                if (phone) closePhoneDrawer();
+              }}
+              />
+            </div>
+          </div>
+        )}
+        {id === "library" && (
+          <AssetLibraryPanel
+            key={libraryOpenedFor}
+            initialType={libraryOpenedFor > 0 ? "sound" : undefined}
+            initialSource={libraryOpenedFor > 0 ? "user" : undefined}
+          />
+        )}
+        {id === "console" && <ConsolePanel />}
+        {id === "ir-inspector" && (
+          <IRInspectorPanel
+            getHapStream={() => getHapStreamRef.current()}
+            getBreakpointStore={() => getBreakpointStoreRef.current()}
+            getIsPaused={() => getIsPausedRef.current()}
+            onResume={() => onResumeRef.current()}
+            onPauseChanged={(cb) => onPauseChangedRef.current(cb)}
+          />
+        )}
+    </>
+  );
+
+  // The menus' actions (#2000): one object, drawn by the desktop's menu bar and by the
+  // phone's drawer.
+  const menuActions: MenuActions = {
+    onOpenEditorSettings: () => { setSettingsTab("settings"); setSettingsOpen(true); },
+    onOpenShortcuts: () => { setSettingsTab("keys"); setSettingsOpen(true); },
+    onNewProject: () => setTemplateModalOpen(true),
+    onOpenProject: () => setSwitcherModalOpen(true),
+    recentProjects: recentProjectEntries(projects, activeProject.id),
+    onOpenRecent: doSwitchProject,
+    onOpenStartScreen: () => setStartScreenOpen(true),
+    onRenameProject: handleRenameActiveProject,
+    onExportProject: () => {
+      exportProjectAsZip(activeProject).catch((err) => {
+        console.error("[stave] export failed:", err);
+        showToast("Export failed — see console for details.", "error");
+      });
+    },
+    onImportProject: triggerImportPicker,
+    onBounceToWav: openBounceModal,
+    canBounceToWav: () => bounceRef.current?.canBounce() ?? false,
+    onShareProject: handleShareProject,
+    onVersionHistory: openSnapshotPanel,
+    onToggleSidebar: () => setSidebarCollapsed((c) => !c),
+    sidebarCollapsed,
+    onToggleZenMode: () => setZenMode((z) => !z),
+    zenMode,
+    onUndo: () => { undo(); },
+    onRedo: () => { redo(); },
+    canUndo: undoState.canUndo,
+    canRedo: undoState.canRedo,
+  };
+  // #1348 — the eval lamp: the active file's last evaluation. Pressing it does what
+  // pressing that error's toast does, even after the toast is gone; with no error it
+  // opens the Console.
+  const onEvalLamp = () => {
+    const latest = activeRuntime?.error
+      ? [...getLogHistory()].reverse().find((e) => e.level === "error")
+      : undefined;
+    if (latest) revealLogEntry(latest);
+    else setActivePanelId("console");
+  };
+  // Transport LCD (#857) — same accessors the MusicalTimeline reads. The position is
+  // the SONG position the playhead reads (#1725): the raw `getCycle` counts since Play
+  // and ignores a seek.
+  const transport = {
+    isPlaying: activeRuntime?.isPlaying ?? false,
+    getSongPosition: () => getSongPositionRef.current(),
+    getCps: () => getCpsRef.current(),
+    getAudioHealth: () => getAudioHealthRef.current(),
+    evalError: activeRuntime?.error ?? null,
+    onEvalLamp,
+  };
+  const activeFile = activeFileId ? getFile(activeFileId) : undefined;
+
   return (
     <div style={styles.root}>
       {/* The document's one top-level heading (#889). It is visually hidden: the
@@ -1842,56 +2044,48 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           document with no heading. Keep it here, in the shell, where it cannot be
           swapped out by a setting. */}
       <h1 style={styles.srOnly}>Stave</h1>
-      <MenuBar
+      {phone ? (
+        <PhoneTopBar
+          fileName={activeFile ? (activeFile.path.split("/").pop() ?? activeFile.path) : null}
+          onOpenDrawer={openPhoneDrawer}
+          sideways={phoneSideways}
+          getSongPosition={transport.getSongPosition}
+          getCps={transport.getCps}
+        />
+      ) : (
         // Backdrop selection moved to the per-tab pattern-bar dropdown (#347);
         // the menubar no longer owns it.
-        projectName={activeProject.name}
-        onOpenEditorSettings={() => { setSettingsTab("settings"); setSettingsOpen(true); }}
-        onOpenShortcuts={() => { setSettingsTab("keys"); setSettingsOpen(true); }}
-        onNewProject={() => setTemplateModalOpen(true)}
-        onOpenProject={() => setSwitcherModalOpen(true)}
-        onRenameProject={handleRenameActiveProject}
-        onExportProject={() => {
-          exportProjectAsZip(activeProject).catch((err) => {
-            console.error("[stave] export failed:", err);
-            showToast("Export failed — see console for details.", "error");
-          });
-        }}
-        onImportProject={triggerImportPicker}
-        onBounceToWav={openBounceModal}
-        canBounceToWav={() => bounceRef.current?.canBounce() ?? false}
-        onShareProject={handleShareProject}
-        onVersionHistory={openSnapshotPanel}
-        onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
-        sidebarCollapsed={sidebarCollapsed}
-        onToggleZenMode={() => setZenMode((z) => !z)}
-        zenMode={zenMode}
-        onUndo={() => { undo(); }}
-        onRedo={() => { redo(); }}
-        canUndo={undoState.canUndo}
-        canRedo={undoState.canRedo}
-        // Transport LCD (#857) — same accessors the MusicalTimeline reads. The
-        // position is the SONG position the playhead reads (#1725): the raw
-        // `getCycle` counts since Play and ignores a seek.
-        isPlaying={activeRuntime?.isPlaying ?? false}
-        getSongPosition={() => getSongPositionRef.current()}
-        getCps={() => getCpsRef.current()}
-        getAudioHealth={() => getAudioHealthRef.current()}
-        // #1348 — the eval lamp: the active file's last evaluation. Pressing it
-        // does what pressing that error's toast does, even after the toast is
-        // gone; with no error it opens the Console.
-        evalError={activeRuntime?.error ?? null}
-        onEvalLamp={() => {
-          const latest = activeRuntime?.error
-            ? [...getLogHistory()].reverse().find((e) => e.level === "error")
-            : undefined;
-          if (latest) revealLogEntry(latest);
-          else setActivePanelId("console");
-        }}
-      />
+        <MenuBar projectName={activeProject.name} {...menuActions} {...transport} />
+      )}
+      {phone && (
+        <PhoneDrawer
+          openOn={activePanelId === null ? null : phoneMenuOpen ? PHONE_MENU_TAB : activePanelId}
+          projectName={activeProject.name}
+          onSelect={(id) => {
+            if (id === PHONE_MENU_TAB) {
+              setPhoneMenuOpen(true);
+              return;
+            }
+            setPhoneMenuOpen(false);
+            // as on the rail: History opened here shows the PROJECT, not one file
+            if (id === "snapshots") setFileHistoryTarget(null);
+            setActivePanelId(id);
+          }}
+          onClose={closePhoneDrawer}
+          sideways={phoneSideways}
+          renderPanel={renderPanel}
+          menus={buildMenus(menuActions)}
+          readout={
+            <>
+              <TransportLCD {...transport} />
+              <TimeSignatureControl />
+            </>
+          }
+        />
+      )}
 
       <div style={styles.main} data-stave-main-backdrop={backgroundFileId ? "on" : "off"}>
-        {!zenMode && (
+        {!phone && !zenMode && (
           <ActivityBar
             activePanelId={activePanelId}
             onSelect={(id) => {
@@ -1905,59 +2099,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         {/* One owner for the left region's width (#1367) — switching tabs
             swaps only the content; the width, handle, drag-to-collapse and
             persistence stay put. */}
-        {!zenMode && activePanelId !== null && (
-          <SidePanel onCollapse={() => setActivePanelId(null)}>
-            {activePanelId === "explorer" && (
-              <FileTree
-                ref={fileTreeRef}
-                projectName={activeProject.name}
-                onOpenFile={handleOpenFile}
-                activeFileId={activeFileId}
-                onImportZipProject={handleImportZip}
-                onFileHistory={(fileId) => {
-                  setFileHistoryTarget(fileId);
-                  setActivePanelId("snapshots");
-                }}
-              />
-            )}
-            {activePanelId === "search" && (
-              <div style={styles.panelRoot} data-sidebar>
-                <div style={styles.panelHeader}>SEARCH</div>
-                <WorkspaceSearchView
-                  ref={searchViewRef}
-                  compact
-                  onOpenFile={(id) => handleOpenFile(id, { preview: true })}
-                />
-              </div>
-            )}
-            {activePanelId === "snapshots" && (
-              <div style={styles.panelRoot} data-sidebar>
-                <div style={styles.panelHeader}>VERSION HISTORY</div>
-                <div style={{ flex: 1, minHeight: 0 }}>
-                  <HistoryPanel
-                    onOpenHistoryTab={(req) => shellRef.current?.openHistoryTab(req)}
-                  />
-                </div>
-              </div>
-            )}
-            {activePanelId === "library" && (
-              <AssetLibraryPanel
-                key={libraryOpenedFor}
-                initialType={libraryOpenedFor > 0 ? "sample" : undefined}
-                onClose={() => setActivePanelId(null)}
-              />
-            )}
-            {activePanelId === "console" && <ConsolePanel />}
-            {activePanelId === "ir-inspector" && (
-              <IRInspectorPanel
-                getHapStream={() => getHapStreamRef.current()}
-                getBreakpointStore={() => getBreakpointStoreRef.current()}
-                getIsPaused={() => getIsPausedRef.current()}
-                onResume={() => onResumeRef.current()}
-                onPauseChanged={(cb) => onPauseChangedRef.current(cb)}
-              />
-            )}
-          </SidePanel>
+        {!phone && !zenMode && activePanelId !== null && (
+          <SidePanel onCollapse={() => setActivePanelId(null)}>{renderPanel(activePanelId)}</SidePanel>
         )}
         <div style={styles.editorArea}>
           <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
@@ -2079,6 +2222,36 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onClose={() => setBounceOpen(false)}
         onStart={handleBounceStart}
         onStop={handleBounceStop}
+      />
+
+      <StartScreen
+        open={startScreenOpen}
+        version={APP_VERSION}
+        activeProject={activeProject}
+        projects={projects}
+        templates={TEMPLATES}
+        showAtStart={startScreenAtStart}
+        onShowAtStartChange={(show) => {
+          setStartScreenAtStart(show);
+          setStartScreenWanted(show);
+        }}
+        onClose={() => setStartScreenOpen(false)}
+        onOpenProject={(id) => {
+          setStartScreenOpen(false);
+          void doSwitchProject(id);
+        }}
+        onNewFromTemplate={(template) => {
+          setStartScreenOpen(false);
+          void handleCreateProject(template.name, template.id);
+        }}
+        onBrowseProjects={() => {
+          setStartScreenOpen(false);
+          setSwitcherModalOpen(true);
+        }}
+        onOpenArchive={() => {
+          setStartScreenOpen(false);
+          triggerImportPicker();
+        }}
       />
 
       <TemplateModal

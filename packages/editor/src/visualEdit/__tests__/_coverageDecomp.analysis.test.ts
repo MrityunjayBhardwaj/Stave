@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from 'acorn'
-import { parseStepGrid, parsePianoRoll } from '../notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../codeView/notation/parse'
 
 // Reads the app package's cached Bakery sweep — a dev-only artifact that may be
 // absent on a clean clone / CI. Skip rather than fail when the dir isn't there.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { HapStream, type HapEvent } from '../HapStream'
-import type { IREvent } from '../../ir/IREvent'
+import type { IREvent } from '../../codeView/ir/IREvent'
 
 /**
  * Phase 20-06 — HapStream.emit gains optional `lookup` 6th positional param.

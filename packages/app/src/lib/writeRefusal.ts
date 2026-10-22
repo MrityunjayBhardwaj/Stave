@@ -1,7 +1,7 @@
 /**
  * Reporting a refused surgical write, in ONE place (#1414).
  *
- * `applyOffsetEditsToFile` names five distinct refusals. Two surfaces write
+ * The commit door's file route, `commitToFile`, names five distinct refusals. Two surfaces write
  * through it — the Song Timeline's clip gestures and the Mixer's backdrop write
  * — and before this module they said so in two different voices: one turned the
  * refusal into a sentence, the other leaked the raw enum into a message a user
@@ -60,7 +60,7 @@ export function reportWriteRefusal(
  * perfectly writable as text and still be the wrong thing to write — the value
  * is patterned, the expression stacks several voices, or the lane anchor
  * resolved to an expression that does not own the region the mark is playing.
- * `applyOffsetEditsToFile` would apply every one of those happily.
+ * `commitToFile` would apply every one of those happily.
  *
  * And they matter more than the writer's own do, because the gesture leaves no
  * trace when it declines: the mark snaps back to where it was and the document

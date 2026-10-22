@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
-import type { PianoRollModel, StepGridModel } from '../../notation/model'
-import { cellOn } from '../../notation/model'
+import type { PianoRollModel, StepGridModel } from '../../../codeView/notation/model'
+import { cellOn } from '../../../codeView/notation/model'
 import { gainAtStart, setGroupGain, setColumnGain } from '../inspector'
 
 const roll = (notes: PianoRollModel['notes']): PianoRollModel => ({ steps: 4, notes })

@@ -2,7 +2,7 @@ import type { RefObject } from 'react'
 import type { HapStream } from '../engine/HapStream'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
 import type { NormalizedHap } from '../engine/NormalizedHap'
-import type { IRPattern } from '../ir/IRPattern'
+import type { IRPattern } from '../codeView'
 
 /**
  * PatternScheduler — backward-compatible alias for IRPattern.

@@ -17,7 +17,7 @@
  * HERE so the grid drag writes the SAME `.gain` transform everywhere — one path,
  * no dual-representation drift (PV129).
  */
-import type { PianoRollModel, StepGridModel } from '../notation/model'
+import type { PianoRollModel, StepGridModel } from '../../codeView'
 
 /** The cell a grid has selected, keyed by stable musical identity. */
 export type SelectedNote =
@@ -33,6 +33,7 @@ export function gainAtStart(model: PianoRollModel, start: number): number {
 
 /** set the gain on every note of the group at `start` (chord shares one gain) */
 export function setGroupGain(model: PianoRollModel, start: number, gain: number): PianoRollModel {
+  if (model.lookOnly) return model
   return {
     ...model,
     notes: model.notes.map((n) => (n.start === start ? { ...n, gain } : n)),
@@ -41,6 +42,7 @@ export function setGroupGain(model: PianoRollModel, start: number, gain: number)
 
 /** set one column's velocity (gains default to a neutral 1-filled array) */
 export function setColumnGain(model: StepGridModel, stepIndex: number, gain: number): StepGridModel {
+  if (model.lookOnly) return model
   const gains = model.gains ? [...model.gains] : Array<number>(model.steps).fill(1)
   if (gains[stepIndex] === gain) return model
   gains[stepIndex] = gain

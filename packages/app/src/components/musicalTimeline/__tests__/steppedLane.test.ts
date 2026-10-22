@@ -32,7 +32,7 @@ import {
   type StepAxis,
   type StepBand,
 } from '../steppedLane'
-import { stepIndexAtCycle } from '../../../../../editor/src/ir/steppedAutomation'
+import { stepIndexAtCycle } from '@stave/editor'
 
 describe('stepHitAt — which step a press lands on (Stage 3\'s claim)', () => {
   const LIN: StepAxis = { lo: 0, hi: 1, scale: 'linear', step: 0.01 }
@@ -284,33 +284,20 @@ describe('stepEdit — what typed text may become (Stage 3)', () => {
   }
   const hit = { entry: { automation, axis: LIN, stepAt: stepIndexAtCycle }, index: 1, y: 0 }
   const spy = () => {
-    const calls: [SteppedAutomation, number, number][] = []
-    const edit = (a: SteppedAutomation, index: number, value: number) => {
-      calls.push([a, index, value])
-      return { range: [0, 1] as [number, number], text: String(value) }
+    const calls: [SteppedAutomation, number, string][] = []
+    const edit = (a: SteppedAutomation, index: number, text: string) => {
+      calls.push([a, index, text])
+      return { range: [0, 1] as [number, number], text: text.trim() }
     }
     return { calls, edit }
   }
 
-  it('hands the step\'s own automation, its index and the typed number to the writer', () => {
+  // What the text may be (empty is not zero, words are not numbers) is the
+  // writer's rule now, `stepTextEdit` in the editor, tested beside it (#1918).
+  it('hands the step\'s own automation, its index and the typed text to the writer', () => {
     const { calls, edit } = spy()
     expect(stepEdit(hit, ' 0.4 ', edit)).toEqual({ range: [0, 1], text: '0.4' })
-    expect(calls).toEqual([[automation, 1, 0.4]])
-  })
-
-  it('an empty or blank entry writes nothing — `Number(\'\')` is 0, not NaN', () => {
-    const { calls, edit } = spy()
-    expect(Number('')).toBe(0)
-    expect(stepEdit(hit, '', edit)).toBeNull()
-    expect(stepEdit(hit, '   ', edit)).toBeNull()
-    expect(calls).toEqual([])
-  })
-
-  it('a non-numeric entry writes nothing', () => {
-    const { calls, edit } = spy()
-    expect(stepEdit(hit, 'loud', edit)).toBeNull()
-    expect(stepEdit(hit, 'Infinity', edit)).toBeNull()
-    expect(calls).toEqual([])
+    expect(calls).toEqual([[automation, 1, ' 0.4 ']])
   })
 
   it('passes the writer\'s refusal through rather than inventing an edit', () => {

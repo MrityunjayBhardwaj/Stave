@@ -21,10 +21,15 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { measureDocs, aggregate } from './editCoverage'
 
-const visualEditDir = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../../../editor/src/visualEdit',
+/**
+ * Where shipped editors' detectors live: the views, and the code↔view directory the
+ * editors moved into (#1875). `codeView/ir` is left out, as `ir/` always was: its
+ * `detect*` functions measure a pattern's period, they are not editors.
+ */
+const detectorDirs = ['../../../editor/src/visualEdit', '../../../editor/src/codeView'].map((d) =>
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), d),
 )
+const notEditors = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../editor/src/codeView/ir')
 const harnessPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'editCoverage.ts')
 
 /**
@@ -51,11 +56,12 @@ const NOT_CONSULTED: Record<string, string> = {
   detectBarePattern: 'returns a wrap target for any bare pattern, not a view verdict',
 }
 
-/** `export function detectFoo` across visualEdit, excluding tests. */
+/** `export function detectFoo` across the detector directories, excluding tests. */
 function shippedDetectors(dir: string, out: Set<string> = new Set()): Set<string> {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === '__tests__') continue
     const p = path.join(dir, entry.name)
+    if (p === notEditors) continue
     if (entry.isDirectory()) { shippedDetectors(p, out); continue }
     if (!entry.name.endsWith('.ts')) continue
     for (const m of fs.readFileSync(p, 'utf8').matchAll(/^export function (detect\w+)/gm)) out.add(m[1])
@@ -64,7 +70,7 @@ function shippedDetectors(dir: string, out: Set<string> = new Set()): Set<string
 }
 
 describe('the coverage harness asks every shipped editor', () => {
-  const detectors = shippedDetectors(visualEditDir)
+  const detectors = detectorDirs.reduce((out, d) => shippedDetectors(d, out), new Set<string>())
   const harness = fs.readFileSync(harnessPath, 'utf8')
 
   it('finds the detectors at all (guards the scan itself)', () => {

@@ -61,10 +61,10 @@ import {
   evalLocations,
   hasCorpusArchive,
   loadCorpus,
-} from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
-import { admitProposals, QUERY_CYCLES } from '../../../editor/src/visualEdit/miniSource/evalProposals'
-import { resolveMiniSource } from '../../../editor/src/visualEdit/miniSource/resolveMiniSource'
-import { SpanIndex } from '../../../editor/src/visualEdit/miniSource/spanRole'
+} from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
+import { admitProposals, QUERY_CYCLES } from '../../../editor/src/codeView/miniSource/evalProposals'
+import { resolveMiniSource } from '../../../editor/src/codeView/miniSource/resolveMiniSource'
+import { SpanIndex } from '../../../editor/src/codeView/miniSource/spanRole'
 
 describe('#1240 — the synchronous wiring names the span evaluation would have', () => {
   // `.bakery-runs/` is gitignored — unreviewed third-party tunes (#1307). On a

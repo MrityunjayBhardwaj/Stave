@@ -16,6 +16,13 @@ declare module '@strudel/core' {
   }
 
   export function register(name: string, fn: unknown): void
+
+  /** util.mjs: note name → MIDI, octave 3 when none is written; throws on a non-note. */
+  export function noteToMidi(note: string, defaultOctave?: number): number
+  /** util.mjs: is this string a note name (letter, `#bsf` accidentals, optional octave)? */
+  export function isNote(name: string): boolean
+  /** util.mjs: a hap value's pitch as MIDI — `freq`, else a note name, else a note number; throws when none. */
+  export function valueToMidi(value: { freq?: unknown; note?: unknown }, fallbackValue?: number): number
 }
 
 declare module '@strudel/webaudio' {
@@ -207,6 +214,10 @@ declare module '@strudel/mini/krill-parser.js' {
 declare module '@strudel/mini/mini.mjs' {
   export const mini: (...args: unknown[]) => unknown
   export function miniAllStrings(): void
+  /** krill's tree for a QUOTED mini string; throws a located parse error */
+  export function mini2ast(code: string, start?: number, userCode?: string): unknown
+  /** the pattern a krill tree plays; `code` is the quoted string the tree was parsed from */
+  export function patternifyAST(ast: unknown, code: string, onEnter?: unknown, offset?: number): unknown
   /** krill's whitespace-corrected leaf spans `[from,to]` for a QUOTED mini string */
   export function getLeafLocations(code: string, start?: number, userCode?: string): Array<[number, number]>
 }

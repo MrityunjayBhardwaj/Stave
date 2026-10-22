@@ -46,9 +46,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { parseStepGrid, parseStepGridCore } from '../../../editor/src/visualEdit/notation/parse'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import type { StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+import { parseStepGrid, parseStepGridCore } from '../../../editor/src/codeView/notation/parse'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import type { StepGridModel } from '../../../editor/src/codeView/notation/model'
 import { barRuler, columnAt } from './engineEditOracle'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
@@ -253,7 +253,9 @@ describe('the step cell carries a length the engine actually played', () => {
       // ⚠ syntactic 812 -> 813, cells 5685 -> 5707 at #1827 (each bar drawn at its own step count): the newly opened drum grid's 22 hits.
       // ⚠ syntactic 813 -> 820, derived+leaf 86 -> 82, cells 5707 -> 5739 at #1849: the stacks it opens on the core, every ON cell still agreeing with the engine.
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-    }).toEqual({ syntactic: 823, derived: 115, 'derived+leaf': 80, cells: 5749 })
+    // ⚠ MOVED at #1974 (hits are anchored on their written note): two grids the element writer could only rewrite whole,
+    // `[c eb g <f bb>](3,8,<0 1>)` and `{c [f g] d# d}%2`, are leaf-written now. Same cells, a different path.
+    }).toEqual({ syntactic: 823, derived: 113, 'derived+leaf': 82, cells: 5749 })
   })
 
   it('CONTROL: a reader that returns 1 for every length is caught', () => {

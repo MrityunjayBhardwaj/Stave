@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url'
 
 // Same deep-path import rationale as parity.test.ts:31-38 (the @stave/editor
 // barrel pulls @strudel/draw → gifenc CJS → ESM crash under vite-node).
-import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
+import { parseStrudel } from '../../../editor/src/codeView/ir/parseStrudel'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 

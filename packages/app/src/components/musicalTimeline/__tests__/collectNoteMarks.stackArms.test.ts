@@ -24,30 +24,17 @@
 import { describe, it, expect, vi } from 'vitest'
 
 // No IR events → the pre-eval collect path is empty, which is exactly the #950 situation.
-// STRUCTURE now comes from the REAL `structuralWalk` on the REAL IR these tests build via the
-// real parser — so this file genuinely exercises structuralWalk's comma-arm lane split
-// (#974), not a stub. `laneKeyOf` keeps its real behaviour.
-vi.mock('@stave/editor', async () => ({
+// Everything else is the REAL module — structuralWalk's comma-arm lane split (#974), the
+// arm anchors (#1553), sampleRefOf and laneKeyOf — so only the collect path is a fixture.
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   collectCycles: () => [],
-  structuralWalk: (await import('./structuralWalkTestStub')).structuralWalk,
-  // Production calls this (the whole-song anchor pass); a barrel mock that omits
-  // it hands `undefined` to a call site tsc cannot check, because a vi.mock
-  // factory is untyped.
-  wholeWalkWindow: (await import('./structuralWalkTestStub')).wholeWalkWindow,
-  sampleRefOf: (await import('./structuralWalkTestStub')).sampleRefOf,
-  // #1553 — `declaredTrackAnchors` derives a comma stack's per-arm anchors
-  // from these. Omitted, they are `undefined` at an untyped call site and every
-  // arm anchors at 0, which folds the lanes back together and fails these very
-  // tests for a reason that has nothing to do with the code under test.
-  rootStackArms: (await import('./structuralWalkTestStub')).rootStackArms,
-  armSourceSpan: (await import('./structuralWalkTestStub')).armSourceSpan,
-  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 
 import { collectNoteMarks } from '../timelineMarks'
 import { wholeSongWindow } from '../songAxis'
-import { IR, type PatternIR } from '../../../../../editor/src/ir/PatternIR'
-import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
+import { IR, type PatternIR } from '@stave/editor'
+import { parseStrudel } from '@stave/editor'
 
 // The tree the song is drawn from: `parseStrudel` (since #1558).
 const pipeline = (code: string): PatternIR => parseStrudel(code)

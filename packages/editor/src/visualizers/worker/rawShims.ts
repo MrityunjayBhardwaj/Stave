@@ -17,8 +17,8 @@
  *      analyserRef/schedulerRef contract), builtinP5Code.ts (the consumers).
  */
 
-import type { IRPattern } from '../../ir/IRPattern'
-import type { IREvent } from '../../ir/IREvent'
+import type { IRPattern } from '../../codeView'
+import type { IREvent } from '../../codeView'
 import type { AnalyserBytes, RawSchedulerFrame, RawHapSummary } from './signalFrame'
 
 /**

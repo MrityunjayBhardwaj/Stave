@@ -12,8 +12,8 @@
  * collect is retired). The multi-track fixture is frozen as a committed snapshot.
  */
 import { describe, it, expect } from 'vitest'
-import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
-import { structuralWalk, wholeWalkWindow } from '../../../editor/src/ir/structuralWalk'
+import { parseStrudel } from '../../../editor/src/codeView/ir/parseStrudel'
+import { structuralWalk, wholeWalkWindow } from '../../../editor/src/codeView/ir/structuralWalk'
 
 function walkArmByCycle(code: string, laneKey: string, n: number): Array<number | null> {
   const lane = structuralWalk(parseStrudel(code), wholeWalkWindow(n)).find((l) => l.laneKey === laneKey)

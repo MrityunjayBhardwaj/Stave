@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { defineConfig, devices } from '@playwright/test'
 import { E2E_BASE_URL, E2E_PORT } from './tests/e2e-target'
 
 /**
@@ -46,6 +46,27 @@ const MEASUREMENT_SPECS = [
  * guarded, so the target is imported from one module (`tests/e2e-target.ts`).
  */
 
+/**
+ * Specs that only mean something under a finger (#2014): `touch-*.spec.ts`. They run on
+ * the touch projects below and are kept out of `chromium`, so the desktop suite
+ * collects exactly what it did before.
+ *
+ * What an emulated device IS here: a screen size, a coarse pointer and touch events —
+ * enough for the phone rule (`usePhone`) and the `(pointer: coarse)` styles to answer
+ * as they do on the device. What it is NOT: an on-screen keyboard, a notch, a real
+ * long press, a memory limit, or a browser that refuses audio before a gesture
+ * (headless Chromium starts a context by itself — the sound spec says how it gets
+ * round that). Those stay as real-device checks.
+ */
+const TOUCH_SPECS = ['**/touch-*.spec.ts']
+/**
+ * The touch specs that also run on an iPhone under WebKit: the layout ones. Safari is
+ * where most phones will meet the app and it lays out differently from Chromium. The
+ * other touch specs lean on things only Chromium was observed to do (the audio
+ * stand-in), so they stay off it rather than fail for the wrong reason.
+ */
+const TOUCH_LAYOUT_SPECS = ['**/touch-shell.spec.ts', '**/touch-panel-sheet.spec.ts', '**/touch-pattern-steps.spec.ts', '**/touch-safe-area.spec.ts', '**/touch-keyboard.spec.ts', '**/touch-symbol-row.spec.ts']
+
 export default defineConfig({
   testDir: './tests',
   /**
@@ -79,8 +100,14 @@ export default defineConfig({
       // So the parity-corpus exclusion has to be repeated here, or the vitest-only
       // harnesses get collected again and the gate dies on `require is not defined`
       // before running a single browser test (the #876 breakage, restored by hand).
-      testIgnore: [...VITEST_ONLY, ...MEASUREMENT_SPECS],
+      testIgnore: [...VITEST_ONLY, ...MEASUREMENT_SPECS, ...TOUCH_SPECS],
     },
+    // a phone held upright, the same phone turned sideways, and a tablet (#2014).
+    // `devices[...]` carries the browser (Chromium for all three), so none is named here.
+    { name: 'phone', use: { ...devices['Pixel 7'] }, testMatch: TOUCH_SPECS },
+    { name: 'phone-sideways', use: { ...devices['Pixel 7 landscape'] }, testMatch: TOUCH_SPECS },
+    { name: 'tablet', use: { ...devices['Galaxy Tab S4'] }, testMatch: TOUCH_SPECS },
+    { name: 'iphone', use: { ...devices['iPhone 14'] }, testMatch: TOUCH_LAYOUT_SPECS },
     {
       name: 'measurement',
       use: { browserName: 'chromium' },

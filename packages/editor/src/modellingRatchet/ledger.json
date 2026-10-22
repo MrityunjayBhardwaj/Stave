@@ -1,0 +1,64 @@
+{
+  "about": "The modelling ratchet (#1866, epic #1007). Each count may only fall. A rise needs an appended entry with an \"exemption\" naming an issue. Append, never rewrite. See ratchet.ts.",
+  "counts": {
+    "writer-census.untransferable": {
+      "what": "Core-served asks no derived writer can take over: patterns only the syntactic core (notation/parse.ts) can open or edit correctly, both surfaces.",
+      "measuredBy": "packages/app/tests/parity-corpus/writer-census.test.ts",
+      "history": [
+        {
+          "value": 77,
+          "date": "2026-09-30",
+          "note": "Baseline when the ratchet was added, on origin/main 612772aa over mini-corpus.json. It grew 68 → 70 (#1827), 70 → 76 (#1849), 76 → 77 (#1849's <…> half) before the ratchet existed, each re-pinned in the change that moved it — see #1867."
+        },
+        {
+          "value": 76,
+          "date": "2026-10-08",
+          "note": "#1974: the views' hits are anchored on the note that wrote them (the adapter's joined tree), not on the first place Strudel lists. One roll ask no derived writer could take over now transfers: the leaf writer can anchor it."
+        }
+      ]
+    },
+    "writer-census.unverified": {
+      "what": "Core-served asks with no probe to verify them (outcome `no-probe`): the syntactic core serves them, and nothing has shown a derived writer can — or cannot — take them over.",
+      "measuredBy": "packages/app/tests/parity-corpus/writer-census.test.ts",
+      "history": [
+        {
+          "value": 122,
+          "date": "2026-10-01",
+          "note": "Baseline, on origin/main 612772aa over mini-corpus.json. It grew 109 → 121 (#1849) and 121 → 122 (#1849's <…> half) before it was watched. Watched beside untransferable so an ask cannot leave that count by losing its probe (#1872)."
+        }
+      ]
+    },
+    "writer-census.p6-blocker": {
+      "what": "The set that blocks deleting the syntactic core (P6, #1012): structural untransferable asks whose core view has structure and whose core edit is verified, both surfaces, at the shipped caps LEAF_PROJECT_BARS = { grid: 12, roll: 4 } (exported as PROJECTION_PERIOD_BOUNDS.leaf; the census reads the roll cap from there).",
+      "measuredBy": "packages/app/tests/parity-corpus/writer-census.test.ts",
+      "history": [
+        {
+          "value": 55,
+          "date": "2026-09-30",
+          "note": "Baseline when the ratchet was added (grid 20 + roll 35), on origin/main 612772aa. It grew 51 → 53 (#1827), 53 → 54 (#1849), 54 → 55 (#1849's <…> half) before the ratchet existed — see #1867. A change to either cap moves this count and must be recorded here like any other move."
+        },
+        {
+          "value": 54,
+          "date": "2026-10-08",
+          "note": "#1974 (grid 20 + roll 34): the views' hits are anchored on the note that wrote them, so the leaf writer can take over one roll ask that only the core could edit. Caps unchanged."
+        }
+      ]
+    },
+    "predicate-audit.anchored": {
+      "what": "Anchored regular expressions in ir/parseStrudel.ts that decide what Strudel syntax means (M1, P5 #1011).",
+      "measuredBy": "packages/editor/src/codeView/ir/__tests__/predicateAudit.test.ts",
+      "history": [
+        {
+          "value": 37,
+          "date": "2026-09-30",
+          "note": "Baseline when the ratchet was added, on origin/main 612772aa. #1007's body says 36; PREDICATE-AUDIT.md records the move to 37."
+        },
+        {
+          "value": 36,
+          "date": "2026-10-06",
+          "note": "#1963: stripParserPrelude's PRELUDE_CALL_RE is built from a list that spreads TEMPO_SETTERS instead of spelling the four setters in a literal."
+        }
+      ]
+    }
+  }
+}

@@ -10,10 +10,10 @@
  *     and lasts exactly one of them.
  */
 import { describe, expect, it } from 'vitest'
-import { parseStepGrid } from '../../notation/parse'
-import { serializeStepGrid } from '../../notation/serialize'
-import { canToggleCell, toggleCell } from '../../notation/place'
-import { isCellOn } from '../../notation/model'
+import { parseStepGrid } from '../../../codeView/notation/parse'
+import { serializeStepGrid } from '../../../codeView/notation/serialize'
+import { canToggleCell, toggleCell } from '../../../codeView/notation/place'
+import { isCellOn } from '../../../codeView/notation/model'
 import { ownStepWidths, rowBoxes } from '../writtenSteps'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 

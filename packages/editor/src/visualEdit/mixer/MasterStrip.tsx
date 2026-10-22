@@ -218,6 +218,18 @@ export function MasterStrip({
         </div>
       </div>
 
+      {/* the pan row's place. The master has no pan (#1719), but a channel card
+          has the row, so without it this card is one row shorter and its meter
+          sits that much higher than the channels' (#2027). The row is laid out
+          like the channel's and holds nothing to read or press. */}
+      <div
+        data-mixer-master-pan-place
+        aria-hidden
+        style={{ display: 'flex', fontSize: 10, visibility: 'hidden', userSelect: 'none' }}
+      >
+        <span>pan</span>
+      </div>
+
       {/* fused meter + fader — Logic-style, sharing one dB scale (faderTaper) */}
       <div
         style={{

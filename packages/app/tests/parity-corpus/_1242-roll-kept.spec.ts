@@ -26,7 +26,8 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { rollOnsets } from '../../../editor/src/visualEdit/notation/parse'
+import { miniPattern } from '../../../editor/src/codeView/strudelMini/pattern'
+import { rollOnsets } from '../../../editor/src/codeView/notation/parse'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const CYCLES = Array.from({ length: 16 }, (_, i) => i)
@@ -42,7 +43,7 @@ function keptFor(mini: string): { accepted: number; kept: number } {
   let accepted = 0
   let kept = 0
   for (const cyc of CYCLES) {
-    const r = rollOnsets(pat, cyc)
+    const r = rollOnsets(miniPattern(mini), cyc)
     if (r === null) continue
     let played: number
     try {

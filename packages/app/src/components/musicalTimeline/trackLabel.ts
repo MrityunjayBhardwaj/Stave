@@ -8,7 +8,8 @@
  * it: read the label back from the source at the track's OWN `dollarPos` — the
  * `$:`/`bass:` statement offset the engine already stamps on every event
  * (`IREvent.dollarPos`) — so a NAMED track displays its label (and colours by
- * it) while an ANONYMOUS `$:` keeps `d{N}`.
+ * it) while an ANONYMOUS `$:` keeps `d{N}` (shown as `Track N` since #2151 —
+ * `resolveLaneShownName` below).
  *
  * Using each lane's OWN `dollarPos` (engine provenance) avoids re-deriving a
  * parallel `d{N}` numbering from the source — the assumption that broke this
@@ -17,40 +18,16 @@
  * ordering, no off-by-one. Verified live (#579): for `bass:/$:/d3:/$:/lead:/$:`
  * the lanes' dollarPos point exactly at `bass:`, `$:`, `d3:`, `$:`, `lead:`, `$:`.
  *
- * Anonymous-stays-`d{N}` is deliberate friction: a descriptive name requires an
+ * Anonymous-stays-positional (`Track N` on screen) is deliberate friction: a descriptive name requires an
  * explicit `name:` label — the tool never auto-writes one for display
  * (no-auto-naming principle, #579). The display resolves a label when present;
  * it never creates one.
  *
- * PURE — no React, no IR, no editor barrel — so it stays out of the vitest
- * CJS-`gifenc` trap (P172) and is freely unit-testable. The one editor import is
- * the dependency-free `@stave/editor/trackId` entry, not the barrel (#1679).
+ * Reading the label is the editor's (`labelAtOffset`, since #1921 — the one rule
+ * for what a name is, shared with section names, the Mixer and the rename
+ * validators). This file keeps only the display fallback.
  */
-import { splitMuteMarker } from '@stave/editor/trackId'
-
-/**
- * The label of the labeled statement at `offset` in `code`, or null when the
- * track is anonymous (`$:`) or the offset doesn't resolve to a `<label>:` head.
- *
- * `dollarPos` points at the statement start (verified live #579), so from there
- * the source reads `<label>: <expr>`. Mirrors the Mixer's `bareLabel`: the
- * `_` mute marker (leading or trailing, #1679) is stripped, so a muted `_bass:` still reads `bass`
- * (and a muted anon `_$:` still resolves to anonymous → null).
- */
-export function labelAtOffset(code: string, offset: number): string | null {
-  if (!Number.isFinite(offset) || offset < 0 || offset >= code.length) return null
-  // `dollarPos` is the statement (line) start — tolerate any leading indentation.
-  let i = offset
-  while (i < code.length && /\s/.test(code[i]!)) i++
-  // A labeled statement head: a JS-identifier-ish label (incl. `$`) then `:`.
-  const m = /^([\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*)\s*:/u.exec(code.slice(i)) // any JS identifier (#1683)
-  if (!m) return null
-  const raw = m[1]!
-  // strip the `_` mute marker — either side (#1679); the editor owns what one is
-  const { bare } = splitMuteMarker(raw)
-  if (bare === '' || bare === '$') return null // anonymous `$:` → keep d{N}
-  return bare
-}
+import { labelAtOffset, shownTrackName } from '@stave/editor'
 
 /**
  * A lane's display NAME: the source label when the track is named, else the
@@ -68,4 +45,23 @@ export function resolveLaneName(
 ): string {
   if (code == null || labelOffset == null) return laneKey
   return labelAtOffset(code, labelOffset) ?? laneKey
+}
+
+/**
+ * What a lane's header SHOWS (#2151): `Track 1` for an unnamed `d1`, else the
+ * same name `resolveLaneName` gives. Text only — the colour and the saved
+ * per-track settings stay keyed by `resolveLaneName`.
+ *
+ * Reads the label itself rather than comparing the name with `laneKey`: a track
+ * the user labelled `d2:` has `d2` as both, and it must keep showing `d2`. A lane
+ * with no source provenance has no label to read, so a positional `d{N}` key
+ * there shows as `Track N` too.
+ */
+export function resolveLaneShownName(
+  laneKey: string,
+  labelOffset: number | null | undefined,
+  code: string | null | undefined,
+): string {
+  const label = code == null || labelOffset == null ? null : labelAtOffset(code, labelOffset)
+  return shownTrackName(label ?? laneKey, label)
 }

@@ -14,36 +14,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-/**
- * ⚠ A RESOLUTION SHIM, NOT A BEHAVIOURAL STUB — the distinction is the whole
- * point. Production imports the predicate from the `@stave/editor` barrel,
- * which is right for the app bundle and unloadable in jsdom: the barrel drags
- * `gifenc` (CJS) through an ESM resolver that cannot take its named exports.
- * Every other app test that touches the barrel does it with `import type`,
- * which TypeScript erases, so this is simply the first one to LOAD it.
- *
- * The factory therefore re-exports the REAL predicate from the engine source
- * rather than a hand-written stand-in. A stub would make these arms a second
- * oracle that passes while production's actual check is broken; this way the
- * code under test runs the same function it runs in the browser, reached by a
- * path jsdom can resolve.
- */
-vi.mock('@stave/editor', async () => {
-  // ⚠ THE PATH IS A RUNTIME STRING AND MUST NOT BECOME A TYPE REFERENCE. Typing
-  // this as `typeof import('…/editor/src/engine/StrudelEngine')` pulls the
-  // editor's SOURCE into the app's TypeScript program — which then type-checks
-  // files that are not the app's to check, and surfaces two long-standing
-  // editor errors (`piano.ts`, part of #1204's 63) as app build failures. That
-  // passes `vitest` and fails `next build`, which is the one check that reads
-  // the whole program. Cast the shape instead; the VALUE is still production's
-  // own function, so this stays a resolution shim rather than a stub, and a
-  // removed export fails loudly at the first call.
-  const real = (await vi.importActual('../../../../editor/src/engine/StrudelEngine')) as {
-    isBootStepFailure: (err: unknown) => boolean
-  }
-  return { isBootStepFailure: real.isBootStepFailure }
-})
-
 import { isBootStepFailure } from '@stave/editor'
 import { reportBootFailure, resetBootFailureNotice } from '../bootFailureNotice'
 import {

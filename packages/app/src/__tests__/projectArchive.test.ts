@@ -19,7 +19,7 @@ import type { AssetRecord } from "@stave/editor";
 // has no imports of its own, so this costs nothing and keeps the arms below
 // driving the REAL minting rather than a hand-built record that only looks like
 // one. `samplesProvider` likewise imports nothing at runtime.
-import { planAssetImport } from "../../../editor/src/workspace/assetNaming";
+import { planAssetImport } from "@stave/editor";
 import { recordsToAssets } from "../assetLibrary/samplesProvider";
 
 // ---------------------------------------------------------------------------
@@ -110,7 +110,8 @@ async function fakeHash(blob: Blob): Promise<string> {
   return `h${(h >>> 0).toString(16)}`;
 }
 
-vi.mock("@stave/editor", () => ({
+vi.mock("@stave/editor", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@stave/editor")>()),
   listWorkspaceFiles: () => store.files,
   getFolderOrder: (p: string) => store.folderOrder[p] ?? [],
   getSubfolderOrder: (p: string) => store.subfolderOrder[p] ?? [],

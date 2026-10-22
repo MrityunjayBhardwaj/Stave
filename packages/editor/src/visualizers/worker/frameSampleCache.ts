@@ -27,7 +27,7 @@
  */
 
 import type { BusAnalyser } from '../signals/SignalBus'
-import type { IRPattern } from '../../ir/IRPattern'
+import type { IRPattern } from '../../codeView'
 import type { AnalyserBytes } from './signalFrame'
 
 export class FrameSampleCache {

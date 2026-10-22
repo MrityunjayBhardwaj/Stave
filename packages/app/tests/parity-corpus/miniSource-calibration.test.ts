@@ -74,11 +74,11 @@ import {
   evalLocations,
   hasCorpusArchive,
   loadCorpus,
-} from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
-import { admitProposals } from '../../../editor/src/visualEdit/miniSource/evalProposals'
-import { QUERY_CYCLES } from '../../../editor/src/visualEdit/miniSource/evalProposals'
-import { resolveMiniSource } from '../../../editor/src/visualEdit/miniSource/resolveMiniSource'
-import { SpanIndex } from '../../../editor/src/visualEdit/miniSource/spanRole'
+} from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
+import { admitProposals } from '../../../editor/src/codeView/miniSource/evalProposals'
+import { QUERY_CYCLES } from '../../../editor/src/codeView/miniSource/evalProposals'
+import { resolveMiniSource } from '../../../editor/src/codeView/miniSource/resolveMiniSource'
+import { SpanIndex } from '../../../editor/src/codeView/miniSource/spanRole'
 
 describe('miniSource calibration over 150 real tunes', () => {
   // `.bakery-runs/` is gitignored — unreviewed third-party tunes (#1307). On a
@@ -251,7 +251,12 @@ describe('miniSource calibration over 150 real tunes', () => {
     // distinction above, and that one drops it 600 → 446 — straight past the whole
     // band between the old floor and the new, so no value of it reddens at 600 and
     // passes at 580. The raise rests on the rule, not on a demonstration.
-    expect(known).toBeGreaterThanOrEqual(600)
+    //
+    // ⚠ RAISED 600 → 623 at #2142, observed in the run that moved it (607 on main before it).
+    // `chord("…")` literals now open the chord chart, so 16 units became known-content and
+    // all 16 resolve exactly. Paired with the unoffered floor below, which drops by the
+    // same mechanism.
+    expect(known).toBeGreaterThanOrEqual(623)
     // Exactness: no wrong answers, nothing withheld.
     expect(wrong).toBe(0)
     expect(refused).toBe(0)
@@ -277,6 +282,12 @@ describe('miniSource calibration over 150 real tunes', () => {
     // Set below the observed 51 rather than at it, because the residual is a
     // remainder — it moves with anything that changes routing — while `known`
     // and `exact` are the load-bearing pins. Re-derive both together.
-    expect(unofferedResolved).toBeGreaterThanOrEqual(45)
+    //
+    // ⚠ 45 → 25 at #2142, for the reason #1240 gives above: admitting `chord("…")` literals
+    // consumed 23 units of this pool (76 → 53; observed 51 → 28). 16 opened a view and are
+    // counted in `known` (607 → 623); 7 were asked and refused with a named gate (a
+    // progression that does not repeat within 12 bars, or one chord). Set below the
+    // observed 28, as this remainder always has been.
+    expect(unofferedResolved).toBeGreaterThanOrEqual(25)
   }, 600_000)
 })

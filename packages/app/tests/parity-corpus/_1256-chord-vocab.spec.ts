@@ -17,9 +17,9 @@
 // direct import here fails to resolve. The grammar is reached through
 // `isChordSymbol`, which is the function production actually calls anyway.
 import { describe, it, expect } from 'vitest'
-import { isChordSymbol, chordLanes } from '../../../editor/src/visualEdit/panels/chordLanes'
-import { routeSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
-import { parsePianoRoll, parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
+import { isChordSymbol, chordLanes } from '../../../editor/src/codeView/surface/chordLanes'
+import { routeSurface } from '../../../editor/src/codeView/surface/surfaceRoute'
+import { parsePianoRoll, parseStepGrid } from '../../../editor/src/codeView/notation/parse'
 
 // Every pitch-class × every octave a real tune uses, in the two spellings the
 // corpus actually contains.

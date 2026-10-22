@@ -93,22 +93,22 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import type { PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
+import { parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
+import type { PianoRollModel } from '../../../editor/src/codeView/notation/model'
 import {
   placeNote,
   canPlaceNote,
   viewPlacesNotes,
-} from '../../../editor/src/visualEdit/notation/place'
+} from '../../../editor/src/codeView/notation/place'
 import {
   scalePianoRoll,
   canDoublePianoRoll,
   collapsePianoRollToDocument,
-} from '../../../editor/src/visualEdit/notation/resolution'
+} from '../../../editor/src/codeView/notation/resolution'
 import {
   serializePianoRoll,
   serializePianoRollWithExtent,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

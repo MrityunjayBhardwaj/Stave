@@ -18,7 +18,7 @@
 
 import * as React from 'react'
 // @monaco-editor/react ships React-18 types; cast to any for React 19 JSX
-// (same pattern as StrudelMonaco / HistoryDiffOverlay).
+// (same pattern as EditorView / HistoryDiffOverlay).
 import EditorRaw from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import { snapshotAt, type ProjectHistory, type Commit } from './historyGraph'

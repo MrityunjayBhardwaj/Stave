@@ -26,8 +26,8 @@
 import * as React from 'react'
 
 import { getActiveEditor, onActiveEditorChange } from '../../workspace/editorRegistry'
-import { detectAllChunks } from '../chunkDetect'
-import { buildStripModels } from './stripModel'
+import { detectAllChunks } from '../../codeView'
+import { buildStripModels } from '../../codeView'
 import { useSoloedIds } from './soloStore'
 
 /** The minimal strip facts the fade rule needs: stable `id` (the solo key), the

@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest'
 import { laneMarkBands, markRect } from '../drawTimeline'
 import { computeLaneLayout } from '../laneLayout'
 import type { SampleRef } from '@stave/editor'
-import { markAudioLanes, markBarsLanes, NO_VOICE, type TimelineScene, type SceneNote } from '../timelineScene'
+import { longRecordingLanes, markAudioLanes, markBarsLanes, NO_VOICE, type TimelineScene, type SceneNote } from '../timelineScene'
 
 /** A named mark plays the file of that name unless it says otherwise — what
  *  `timelineMarks` builds for a plain `s` with no bank or number (#1764). */
@@ -21,7 +21,7 @@ function sceneOf(raw: SceneNote[], pitchMin: number | null = null, pitchMax: num
     lanes: [
       {
         laneKey: 'a',
-        displayName: 'a',
+        displayName: 'a', shownName: 'a',
         color: '#f00',
         density: [1, 1],
         notes,
@@ -133,21 +133,95 @@ describe('laneMarkBands — an audio lane in overview (#1730)', () => {
 
 describe('markBarsLanes — a track set to Bars (#1738)', () => {
   const take: SceneNote[] = [{ cycle: 0, end: 1, pitch: null, gain: 1, voice: 'take_1' }]
+  const set = (display: 'bars' | 'waveform') => new Map([['a', display]])
+  const LONG = new Set(['a'])
 
   it('marks the lane whose display name is set to Bars', () => {
-    expect(markBarsLanes(sceneOf(take), new Set(['a'])).lanes[0].bars).toBe(true)
+    expect(markBarsLanes(sceneOf(take), set('bars'), LONG).lanes[0].bars).toBe(true)
   })
 
-  it('returns the SAME scene when no lane is set to Bars', () => {
+  it('returns the SAME scene when no lane is Bars', () => {
     const scene = sceneOf(take)
-    expect(markBarsLanes(scene, new Set())).toBe(scene)
-    expect(markBarsLanes(scene, new Set(['other']))).toBe(scene)
+    expect(markBarsLanes(scene, new Map(), LONG)).toBe(scene)
+    expect(markBarsLanes(scene, set('waveform'), new Set())).toBe(scene)
   })
 
   it('a lane set to Bars is never an audio lane, even when every mark is a file', () => {
-    const bars = markBarsLanes(sceneOf(take), new Set(['a']))
+    const bars = markBarsLanes(sceneOf(take), set('bars'), LONG)
     expect(markAudioLanes(bars, files('take_1')).lanes[0].audio ?? false).toBe(false)
-    // CONTROL — the same lane unset is one.
-    expect(markAudioLanes(sceneOf(take), files('take_1')).lanes[0].audio).toBe(true)
+    // CONTROL — the same lane left on Waveform is one.
+    const wave = markBarsLanes(sceneOf(take), set('waveform'), LONG)
+    expect(markAudioLanes(wave, files('take_1')).lanes[0].audio).toBe(true)
+  })
+
+  it('a Bars lane of files is still flagged as files, so its track is not rendered (#2138)', () => {
+    const bars = markBarsLanes(sceneOf(take), set('bars'), LONG)
+    expect(markAudioLanes(bars, files('take_1')).lanes[0].files).toBe(true)
+    // CONTROL — a Bars lane whose mark is NOT a file is not flagged.
+    expect(markAudioLanes(bars, files()).lanes[0].files ?? false).toBe(false)
+  })
+})
+
+describe('the default type (#2079): Bars, unless the lane is a long recording', () => {
+  const take: SceneNote[] = [{ cycle: 0, end: 1, pitch: null, gain: 1, voice: 'take_1' }]
+
+  it('a lane with no saved type draws as Bars', () => {
+    expect(markBarsLanes(sceneOf(take), new Map(), new Set()).lanes[0].bars).toBe(true)
+  })
+
+  it('a long recording with no saved type keeps its waveform', () => {
+    expect(markBarsLanes(sceneOf(take), new Map(), new Set(['a'])).lanes[0].bars ?? false).toBe(false)
+  })
+
+  it('a saved type wins over the default, both ways', () => {
+    expect(markBarsLanes(sceneOf(take), new Map([['a', 'waveform']]), new Set()).lanes[0].bars ?? false).toBe(false)
+    expect(markBarsLanes(sceneOf(take), new Map([['a', 'bars']]), new Set(['a'])).lanes[0].bars).toBe(true)
+  })
+})
+
+describe('longRecordingLanes — which lanes play long recordings (#2079)', () => {
+  // At 0.5 cycles per second a bar (one cycle) lasts 2 s.
+  const source = (durations: Record<string, number>, cps: number | null = 0.5) => ({
+    cps,
+    isFileBacked: (s: SampleRef) => s.s in durations,
+    peaksFor: (s: SampleRef) =>
+      durations[s.s] === undefined || Number.isNaN(durations[s.s])
+        ? null
+        : { data: new Float32Array(0), columns: 0, duration: durations[s.s] },
+  })
+  const note = (voice: string): SceneNote => ({ cycle: 0, end: 1, pitch: null, gain: 1, voice })
+
+  it('a lane whose every file is longer than a bar is a long recording', () => {
+    expect([...longRecordingLanes(sceneOf([note('vocal')]), source({ vocal: 12 }))]).toEqual(['a'])
+  })
+
+  it('a drum kit (short hits) is not', () => {
+    expect([...longRecordingLanes(sceneOf([note('bd'), note('sd')]), source({ bd: 0.4, sd: 0.3 }))]).toEqual([])
+  })
+
+  it('one short file on the lane makes it not one', () => {
+    expect([...longRecordingLanes(sceneOf([note('vocal'), note('bd')]), source({ vocal: 12, bd: 0.4 }))]).toEqual([])
+  })
+
+  it('a synth note makes it not one', () => {
+    expect([...longRecordingLanes(sceneOf([note('vocal'), note('sawtooth')]), source({ vocal: 12 }))]).toEqual([])
+  })
+
+  it('a file whose length is not known yet does not count as long', () => {
+    expect([...longRecordingLanes(sceneOf([note('vocal')]), source({ vocal: NaN }))]).toEqual([])
+  })
+
+  it('a bar is measured at the song tempo', () => {
+    // 3 s is longer than a bar at 0.5 cps (2 s), shorter than one at 0.25 cps (4 s).
+    expect([...longRecordingLanes(sceneOf([note('loop')]), source({ loop: 3 }, 0.5))]).toEqual(['a'])
+    expect([...longRecordingLanes(sceneOf([note('loop')]), source({ loop: 3 }, 0.25))]).toEqual([])
+    // With no tempo there is no bar to measure against, so nothing is long.
+    // (The app's source always has one: it assumes Strudel's starting tempo.)
+    expect([...longRecordingLanes(sceneOf([note('loop')]), source({ loop: 3 }, null))]).toEqual([])
+  })
+
+  it('an empty lane, or no source at all, has none', () => {
+    expect([...longRecordingLanes(sceneOf([]), source({}))]).toEqual([])
+    expect([...longRecordingLanes(sceneOf([note('vocal')]), undefined)]).toEqual([])
   })
 })

@@ -1,27 +1,23 @@
 /**
  * useActiveChunk — the shared binding every write-back panel sits on.
  *
- * Tracks the active Monaco editor, builds a `Writeback` for it, and detects the
- * Strudel chunk under the cursor — re-detecting on cursor move and on EXTERNAL
- * content changes (typed edits) but never on the panel's own writes (those fire
- * with `writeback.currentSource != null`). Panels get the current `chunk` plus
+ * Takes the active Monaco editor and its writer from `useActiveWriter`, and
+ * detects the Strudel chunk under the cursor — re-detecting on cursor move and on
+ * EXTERNAL content changes (typed edits, another surface's writes) but never on
+ * the panel's own writes (`isCommitting(writer)`). Panels get the current `chunk` plus
  * `applyEdit`, which re-resolves the chunk against the live document right
  * before mutating it (so offsets stay valid even after earlier edits in the
  * same gesture changed a literal's length) and refreshes the display after.
  *
- * This is the single home for the active-editor → chunk → writeback wiring;
+ * This is the single home for the active-editor → chunk wiring;
  * the Mixer, Sequencer, and Piano Roll panels all consume it so the binding
  * logic can't drift between them.
  */
 import * as React from 'react'
 
-import {
-  getActiveEditor,
-  onActiveEditorChange,
-  getMonacoNamespace,
-} from '../../workspace/editorRegistry'
-import { detectChunk, type ChunkInfo } from '../chunkDetect'
-import { Writeback } from '../writeback'
+import { detectChunk, type ChunkInfo } from '../../codeView'
+import { openGesture, closeGesture, isCommitting, type Writeback } from '../../codeView'
+import { useActiveWriter } from '../useActiveWriter'
 
 export interface ActiveChunk {
   /** the chunk under the cursor, or null when there's nothing editable */
@@ -40,26 +36,10 @@ export interface ActiveChunk {
 }
 
 export function useActiveChunk(): ActiveChunk {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [editor, setEditor] = React.useState<any>(() => getActiveEditor())
+  const { editor, editorRef, writerRef } = useActiveWriter()
   const [chunk, setChunk] = React.useState<ChunkInfo | null>(null)
-  const writebackRef = React.useRef<Writeback | null>(null)
-  const editorRef = React.useRef<any>(null) // eslint-disable-line @typescript-eslint/no-explicit-any
   const anchorRef = React.useRef<number | null>(null)
   anchorRef.current = chunk ? chunk.statementRange[0] : null
-
-  // Track the active editor.
-  React.useEffect(() => {
-    setEditor(getActiveEditor())
-    return onActiveEditorChange(() => setEditor(getActiveEditor()))
-  }, [])
-
-  // (Re)build the Writeback when the active editor changes.
-  React.useEffect(() => {
-    editorRef.current = editor
-    const monaco = getMonacoNamespace()
-    writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null
-  }, [editor])
 
   // Detect the chunk under the cursor; re-detect on cursor move + external
   // content changes (ignoring the panel's own tagged writes).
@@ -82,7 +62,7 @@ export function useActiveChunk(): ActiveChunk {
     const subs = [
       editor.onDidChangeCursorPosition?.(redetect),
       model?.onDidChangeContent?.(() => {
-        if (writebackRef.current?.currentSource != null) return // our own edit
+        if (isCommitting(writerRef.current)) return // our own edit
         redetect()
       }),
     ]
@@ -94,7 +74,7 @@ export function useActiveChunk(): ActiveChunk {
   const applyEdit = React.useCallback(
     (mutate: (fresh: ChunkInfo, wb: Writeback) => void): void => {
       const ed = editorRef.current
-      const wb = writebackRef.current
+      const wb = writerRef.current
       const anchor = anchorRef.current
       if (!ed || !wb || anchor == null) return
       const model = ed.getModel?.()
@@ -106,11 +86,11 @@ export function useActiveChunk(): ActiveChunk {
       // the panel reads back what it wrote rather than the pre-edit snapshot.
       setChunk(detectChunk(model.getValue(), anchor))
     },
-    [],
+    [editorRef, writerRef],
   )
 
-  const beginGesture = React.useCallback(() => writebackRef.current?.beginGesture(), [])
-  const endGesture = React.useCallback(() => writebackRef.current?.endGesture(), [])
+  const beginGesture = React.useCallback(() => openGesture(writerRef.current), [writerRef])
+  const endGesture = React.useCallback(() => closeGesture(writerRef.current), [writerRef])
 
   return { chunk, applyEdit, beginGesture, endGesture }
 }

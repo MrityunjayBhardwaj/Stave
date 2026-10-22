@@ -16,8 +16,8 @@ import {
   type BusAnalyser,
 } from '../signals/SignalBus'
 import { ALIAS_MAP } from '../signals/aliasMap'
-import type { IRPattern } from '../../ir/IRPattern'
-import type { IREvent } from '../../ir/IREvent'
+import type { IRPattern } from '../../codeView/ir/IRPattern'
+import type { IREvent } from '../../codeView/ir/IREvent'
 
 /** Build a fake IREvent with sensible defaults; override per test. */
 function makeEvent(over: Partial<IREvent>): IREvent {

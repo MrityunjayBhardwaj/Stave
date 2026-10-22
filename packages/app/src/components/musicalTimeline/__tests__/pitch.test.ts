@@ -2,14 +2,14 @@
  * pitch — Phase 20-12 α-6.
  *
  * Coverage:
- *   - noteStringToMidi: canonical pitches + accidentals + negative octave
+ *   - note names read through the editor's one reader (#1928)
  *   - freqToMidi: A4 / A3 / A5 sanity
  *   - extractPitch: priority order across evt.note + evt.params.{note,n,freq}
  */
 
 import { describe, it, expect } from 'vitest'
 import type { IREvent } from '@stave/editor'
-import { noteStringToMidi, freqToMidi, extractPitch, pitchToY } from '../pitch'
+import { freqToMidi, extractPitch, pitchToY } from '../pitch'
 
 function baseEvent(partial: Partial<IREvent> = {}): IREvent {
   return {
@@ -26,30 +26,23 @@ function baseEvent(partial: Partial<IREvent> = {}): IREvent {
   }
 }
 
-describe('20-12 α-6 — noteStringToMidi', () => {
-  it('c4 → 60 (canonical middle C)', () => {
-    expect(noteStringToMidi('c4')).toBe(60)
+describe('#1928 — a note name reads the way Strudel plays it', () => {
+  const midiOf = (note: string) => extractPitch(baseEvent({ note }))?.midi ?? null
+  it('c4 → 60, C4 → 60, C#5 → 73, Bb3 → 58, Bb-1 → 10', () => {
+    expect([midiOf('c4'), midiOf('C4'), midiOf('C#5'), midiOf('Bb3'), midiOf('Bb-1')]).toEqual([60, 60, 73, 58, 10])
   })
-  it('C4 → 60 (case-insensitive letter)', () => {
-    expect(noteStringToMidi('C4')).toBe(60)
+  it('a sharp written with s, and a name with no octave, have a pitch (they had none before)', () => {
+    expect(midiOf('cs3')).toBe(49)
+    expect(midiOf('ds2')).toBe(39)
+    expect(midiOf('g')).toBe(55)
+    expect(midiOf('C')).toBe(48)
   })
-  it('a4 → 69 (canonical A4)', () => {
-    expect(noteStringToMidi('a4')).toBe(69)
+  it('the same names through a chained .note() param', () => {
+    expect(extractPitch(baseEvent({ params: { note: 'as3' } }))).toEqual({ source: 'params.note', midi: 58 })
   })
-  it('C#5 → 73 (sharp accidental)', () => {
-    expect(noteStringToMidi('C#5')).toBe(73)
-  })
-  it('Bb3 → 58 (flat accidental)', () => {
-    expect(noteStringToMidi('Bb3')).toBe(58)
-  })
-  it('Bb-1 → 10 (negative octave)', () => {
-    expect(noteStringToMidi('Bb-1')).toBe(10)
-  })
-  it('garbage → null', () => {
-    expect(noteStringToMidi('xyz')).toBeNull()
-  })
-  it('empty → null', () => {
-    expect(noteStringToMidi('')).toBeNull()
+  it('a word that is not a note has no pitch', () => {
+    expect(midiOf('xyz')).toBeNull()
+    expect(midiOf('')).toBeNull()
   })
 })
 
@@ -129,7 +122,7 @@ describe('20-12 α-6 — extractPitch', () => {
 
   it('falls through to next source when string is unparseable', () => {
     const evt = baseEvent({ note: null, params: { note: 'xyz', n: 7 } })
-    // params.note 'xyz' fails noteStringToMidi → fall through to params.n.
+    // params.note 'xyz' is not a note name → fall through to params.n.
     expect(extractPitch(evt)).toEqual({ source: 'params.n', midi: 7 })
   })
 

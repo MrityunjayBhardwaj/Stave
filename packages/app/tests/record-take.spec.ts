@@ -1,6 +1,9 @@
 import { test, expect, type Page } from '@playwright/test'
 
 import { bootApp } from './_appBoot'
+// The probe's own type. Each spec used to declare its own copy of this global,
+// and the copies clashed once `next build` began type-checking the tests.
+import type { AssetProbe } from '../src/e2e/assetProbe'
 
 /**
  * The instrument for #1504 — record a take in the browser.
@@ -44,18 +47,9 @@ interface DocRecord {
   duration?: number
 }
 
-interface PageProbe {
-  reset(): Promise<void>
-  docList(): Promise<DocRecord[]>
-  docRename(id: string, name: string): Promise<string | null>
-  resolve(hash: string): Promise<string | null>
-  inSoundMap(name: string): boolean
-  decode(url: string): Promise<{ duration: number; sampleRate: number }>
-}
-
 declare global {
   interface Window {
-    __staveAssetProbe?: PageProbe
+    __staveAssetProbe?: AssetProbe
   }
 }
 
@@ -265,13 +259,17 @@ test('a renamed take answers to its new name after a reload', async ({ page }) =
  * was written first, and it was green for the wrong reason.
  */
 async function filterToSamples(page: Page): Promise<void> {
-  await page.locator('[data-filter="asset-type-filter"] [data-chip="sample"]').click()
+  // #2062 — your audio is listed under Sounds → User (it was a Samples type of its own)
+  const sounds = page.locator('[data-filter="asset-type-filter"] [data-chip="sound"]')
+  if ((await sounds.getAttribute('aria-pressed')) !== 'true') await sounds.click()
+  const user = page.locator('[data-filter="asset-source-filter"] [data-chip="user"]')
+  if ((await user.getAttribute('aria-pressed')) !== 'true') await user.click()
 }
 
 test('the take appears in the library as a user sample', async ({ page }) => {
   await recordOnce(page)
   await filterToSamples(page)
-  await expect(page.locator('[data-asset-row^="sample:"]')).toHaveCount(1, {
+  await expect(page.locator('[data-asset-row^="sound:"]')).toHaveCount(1, {
     timeout: 15_000,
   })
 })
@@ -279,7 +277,7 @@ test('the take appears in the library as a user sample', async ({ page }) => {
 test('the library row carries the take name', async ({ page }) => {
   await recordOnce(page)
   await filterToSamples(page)
-  await expect(page.locator('[data-asset-row^="sample:"]')).toContainText('take_1', {
+  await expect(page.locator('[data-asset-row^="sound:"]')).toContainText('take_1', {
     timeout: 15_000,
   })
 })
@@ -288,7 +286,7 @@ test('a second take adds a second row rather than replacing the first', async ({
   await recordOnce(page)
   await recordOnce(page)
   await filterToSamples(page)
-  await expect(page.locator('[data-asset-row^="sample:"]')).toHaveCount(2, {
+  await expect(page.locator('[data-asset-row^="sound:"]')).toHaveCount(2, {
     timeout: 15_000,
   })
 })
@@ -444,7 +442,7 @@ test('a file that is not audio is skipped while its neighbour still arrives', as
 test('the brought-in sound appears in the library as a user sample', async ({ page }) => {
   await addFiles(page, [{ name: 'guitar.wav', mimeType: 'audio/wav', buffer: wavBytes() }])
   await filterToSamples(page)
-  await expect(page.locator('[data-asset-row^="sample:"]')).toContainText('guitar', {
+  await expect(page.locator('[data-asset-row^="sound:"]')).toContainText('guitar', {
     timeout: 15_000,
   })
 })

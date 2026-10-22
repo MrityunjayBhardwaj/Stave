@@ -16,7 +16,7 @@
  *
  * Drift policy:
  *   - Non-corpus PRs that touch `packages/editor/src/engine/` or
- *     `packages/editor/src/ir/` and incidentally produce a snapshot
+ *     `packages/editor/src/codeView/ir/` and incidentally produce a snapshot
  *     diff MUST call out the diff in the PR body (PLAN §2).
  *   - Snapshot regeneration (`vitest -u`) belongs in a PR titled
  *     `corpus: refresh from upstream SHA <x>` after running γ-3's
@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url'
 // runtime values from the editor follow this same deep-path convention
 // (see e.g. components/__tests__/IRInspectorPanel.test.tsx:32 for the
 // HapStream/BreakpointStore precedent).
-import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
+import { parseStrudel } from '../../../editor/src/codeView/ir/parseStrudel'
 import { normalizeIRShape } from './normalize'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))

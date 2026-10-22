@@ -72,11 +72,11 @@ import {
   parseStepGridCore,
   parsePianoRoll,
   parsePianoRollCore,
-} from '../../../editor/src/visualEdit/notation/parse'
-import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import type { StepGridModel, PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
-import { toUniformGrid, toUniformRoll } from '../../../editor/src/visualEdit/notation/perBar'
+} from '../../../editor/src/codeView/notation/parse'
+import { documentSteps } from '../../../editor/src/codeView/notation/viewResolution'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import type { StepGridModel, PianoRollModel } from '../../../editor/src/codeView/notation/model'
+import { toUniformGrid, toUniformRoll } from '../../../editor/src/codeView/notation/perBar'
 
 /**
  * The document's model in the columns a refine MAGNIFIES. A refined view is one shared
@@ -279,7 +279,8 @@ describe('#1116 the view scale, through the public entries', () => {
       // both are refused a refine (multi-bar views are drawn per bar only at ×1).
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-    ]).toEqual([1018, 601, 823, 474])
+    // ⚠ rolls 601 -> 603 at #1974 (a hit is anchored on the note that wrote it) — store probes/timing-facts-1974/anchor-move.
+    ]).toEqual([1018, 603, 823, 474])
 
     expect(
       grids.filter((m) => JSON.stringify(parseStepGrid(m, 1)) !== JSON.stringify(parseStepGrid(m))),
@@ -320,7 +321,8 @@ describe('#1116 the view scale, through the public entries', () => {
       // ⚠ refused 86 -> 87 at both scales at #1827 (each bar drawn at its own step count): the newly opened drum grid, as `view-resolution`.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
       // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-      937, 81, 937, 81,
+      // ⚠ 937/81 -> 935/83 at both scales at #1974 (a hit is anchored on the note that wrote it) — store probes/timing-facts-1974/anchor-move: the two grids that became leaf-written are refused a finer view (`no-finer-view`).
+      935, 83, 935, 83,
     ])
   })
 
@@ -345,7 +347,8 @@ describe('#1116 the view scale, through the public entries', () => {
     expect([honoured.get(2), refused.get(2), honoured.get(4), refused.get(4)]).toEqual([
       // ⚠ refused +1 at both scales at #1827 (each bar drawn at its own step count): the newly opened roll, as `view-resolution`.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-      564, 37, 563, 38,
+      // ⚠ refused +2 at both scales at #1974 (a hit is anchored on the note that wrote it) — store probes/timing-facts-1974/anchor-move: the two rolls that newly open are leaf-written, so they are refused a finer view.
+      564, 39, 563, 40,
     ])
   })
 

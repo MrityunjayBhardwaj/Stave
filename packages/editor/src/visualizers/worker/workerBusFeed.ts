@@ -22,8 +22,8 @@
  */
 
 import { SignalBus, type BusAnalyser } from '../signals/SignalBus'
-import type { IRPattern } from '../../ir/IRPattern'
-import type { IREvent } from '../../ir/IREvent'
+import type { IRPattern } from '../../codeView'
+import type { IREvent } from '../../codeView'
 import { ALIAS_MAP } from '../signals/aliasMap'
 import {
   MASTER_KEY,

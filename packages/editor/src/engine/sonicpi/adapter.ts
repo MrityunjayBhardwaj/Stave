@@ -14,7 +14,7 @@
  */
 
 // Sonic Pi's engine lives in the sibling `sonicPiWeb` repo, NOT vendored into
-// stave-code yet (#171). A static import broke the production build on a clean
+// this repo yet (#171). A static import broke the production build on a clean
 // clone (the sibling isn't there). Until sonicPiWeb is published as a package,
 // the engine is loaded via an OPAQUE dynamic import — esbuild can't resolve the
 // path at build time, so the bundle builds anywhere — and the Sonic Pi

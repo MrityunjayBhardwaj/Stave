@@ -1,34 +1,19 @@
 /**
- * Test stub for the `structuralWalk` dependency timelineMarks / FullSongTimeline now pull from
- * `@stave/editor`. The app tests mock the whole barrel (it drags CJS `gifenc` into vitest, which
- * breaks the loader — see the mock comments), so they cannot get structuralWalk from it. This
- * re-exports the REAL walk + reducer straight from source (pure, type-only imports, no gifenc),
- * so the mocks derive lane skeletons the SAME way production does — never a hand-rolled copy of
- * the reducer, which would be a second oracle free to drift (PV192).
+ * Test helper: reduce synthetic collect-style events to lane skeletons through the REAL
+ * production reducer, for tests whose `structuralWalk` fixture has no real IR to walk. Since
+ * #1943 the app tests take every other editor name from the real `@stave/editor` (an
+ * `importOriginal` spread), so this file re-exports nothing; it only builds the fixture, and
+ * never a hand-rolled copy of the reducer, which would be a second oracle free to drift.
  */
+// ⚠ BY SOURCE PATH, NEVER `@stave/editor`: this file is loaded INSIDE the tests'
+// `vi.mock('@stave/editor', …)` factories, so importing the module being mocked from here
+// waits on the factory that is waiting on this file — the run hangs, silently (#1943).
 import {
   aggregateLaneItems,
-  structuralWalk,
-  wholeWalkWindow,
-  rootStackArms,
-  armSourceSpan,
   type LaneItem,
   type WalkWindow,
-} from '../../../../../editor/src/ir/structuralWalk'
-import type { IREvent } from '../../../../../editor/src/ir/IREvent'
-
-// `wholeWalkWindow` is re-exported because production calls it (the bare-song
-// probe), and a barrel mock that omits it hands the component `undefined` —
-// which tsc cannot see, since a `vi.mock` factory is untyped.
-// `rootStackArms`/`armSourceSpan` join them for the same reason, and #1553 is
-// the case that proves the reason: `declaredTrackAnchors` derives a comma
-// stack's per-arm anchors from them, so a barrel mock that omits them anchors
-// every arm at 0 and folds the lanes back together — the exact #950 failure,
-// reintroduced by the mock rather than by the code under test.
-export { structuralWalk, wholeWalkWindow, rootStackArms, armSourceSpan }
-// #1764 — every mark names the file it plays through `sampleRefOf`; a mock that
-// omits it hands `timelineMarks` undefined and throws on the first mark.
-export { sampleRefOf } from '../../../../../editor/src/workspace/sampleRef'
+} from '../../../../../editor/src/codeView/ir/structuralWalk'
+import type { IREvent } from '../../../../../editor/src/codeView/ir/IREvent'
 
 /**
  * Reduce collect-style events to lane skeletons exactly as `structuralWalk` aggregates its own

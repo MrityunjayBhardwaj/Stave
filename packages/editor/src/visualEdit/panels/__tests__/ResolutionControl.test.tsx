@@ -24,7 +24,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as React from 'react'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { ResolutionControl } from '../ResolutionControl'
-import type { GridResolutionEffect, SlotState } from '../../notation/resolution'
+import type { GridResolutionEffect, SlotState } from '../../../codeView/notation/resolution'
 
 afterEach(() => cleanup())
 
@@ -210,17 +210,17 @@ function mountWithEffect(
       steps={steps}
       slotState={(t) => table[t] ?? 'disabled'}
       onScaleTo={onScaleTo}
-      effect={(t) => effects[t] ?? { lengthened: 0, snapped: 0, merged: 0 }}
+      effect={(t) => effects[t] ?? { lengthened: 0, snapped: 0, merged: 0, shortened: 0 }}
     />,
   )
 }
 
-const NOTHING: GridResolutionEffect = { lengthened: 0, snapped: 0, merged: 0 }
+const NOTHING: GridResolutionEffect = { lengthened: 0, snapped: 0, merged: 0, shortened: 0 }
 
 describe('ResolutionControl — what a press costs', () => {
   it('a coarsening that only lengthens says so, and still says it keeps timing', () => {
     // the `bd ~ ~ ~ sn ~ ~ ~` → 4 case: every onset stays put, both notes floored
-    mountWithEffect(8, { 4: 'quantize' }, { 4: { lengthened: 2, snapped: 0, merged: 0 } })
+    mountWithEffect(8, { 4: 'quantize' }, { 4: { lengthened: 2, snapped: 0, merged: 0, shortened: 0 } })
     expect(halve().title).toBe('4 slots — rewrites your file, keeps timing, and makes 2 notes longer')
     expect(halve().getAttribute('data-resolution-lengthens')).toBe('true')
   })
@@ -228,7 +228,7 @@ describe('ResolutionControl — what a press costs', () => {
   it('a coarsening that moves onsets AND lengthens declares both', () => {
     // The 5 → 4 case, reached through the PRESET list because an odd count has no ÷2
     // target at all. The two costs are separate facts and the copy carries both.
-    mountWithEffect(5, { 4: 'quantize' }, { 4: { lengthened: 3, snapped: 2, merged: 0 } })
+    mountWithEffect(5, { 4: 'quantize' }, { 4: { lengthened: 3, snapped: 2, merged: 0, shortened: 0 } })
     fireEvent.doubleClick(readout())
     const four = presets().find((b) => b.getAttribute('data-resolution-step') === '4')!
     expect(four.title).toBe(
@@ -243,18 +243,37 @@ describe('ResolutionControl — what a press costs', () => {
     mountWithEffect(16, { 8: 'quantize' }, { 8: NOTHING })
     expect(halve().title).toBe('8 slots — rewrites your file, keeps timing')
     expect(halve().getAttribute('data-resolution-lengthens')).toBeNull()
+    expect(halve().getAttribute('data-resolution-shortens')).toBeNull()
   })
 
   it('CONTROL — a free target costs nothing at all, whatever the effect table says', () => {
     // Looking closer never writes, so the free zone's copy must be untouched by this
     // whole mechanism even if a caller reported an effect for it by mistake.
-    mountWithEffect(8, { 16: 'view' }, { 16: { lengthened: 9, snapped: 9, merged: 9 } })
+    mountWithEffect(8, { 16: 'view' }, { 16: { lengthened: 9, snapped: 9, merged: 9, shortened: 0 } })
     expect(double().title).toBe('16 slots — view only, your pattern is unchanged')
     expect(double().getAttribute('data-resolution-lengthens')).toBe('true')
   })
 
+  it('a press that makes notes shorter says so, with its own marker (#1948)', () => {
+    mountWithEffect(8, { 4: 'quantize' }, { 4: { lengthened: 0, snapped: 1, merged: 0, shortened: 2 } })
+    expect(halve().title).toBe(
+      '4 slots — rewrites your file and snaps notes to the grid (changes timing), and makes 2 notes shorter',
+    )
+    expect(halve().getAttribute('data-resolution-shortens')).toBe('true')
+    expect(halve().getAttribute('data-resolution-lengthens')).toBeNull()
+  })
+
+  it('a press that makes some notes longer and others shorter names both counts', () => {
+    mountWithEffect(8, { 4: 'quantize' }, { 4: { lengthened: 1, snapped: 0, merged: 0, shortened: 1 } })
+    expect(halve().title).toBe(
+      '4 slots — rewrites your file, keeps timing, and makes 1 note longer and 1 note shorter',
+    )
+    expect(halve().getAttribute('data-resolution-lengthens')).toBe('true')
+    expect(halve().getAttribute('data-resolution-shortens')).toBe('true')
+  })
+
   it('one note is singular — the count is read, not pluralised blindly', () => {
-    mountWithEffect(8, { 4: 'quantize' }, { 4: { lengthened: 1, snapped: 0, merged: 0 } })
+    mountWithEffect(8, { 4: 'quantize' }, { 4: { lengthened: 1, snapped: 0, merged: 0, shortened: 0 } })
     expect(halve().title).toBe('4 slots — rewrites your file, keeps timing, and makes 1 note longer')
   })
 

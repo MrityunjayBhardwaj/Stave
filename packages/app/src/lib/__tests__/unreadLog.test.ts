@@ -5,7 +5,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const listeners = new Set<(e: unknown) => void>();
 let history: Array<{ level: string; message: string }> = [];
 
-vi.mock("@stave/editor", () => ({
+vi.mock("@stave/editor", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@stave/editor")>()),
   getLogHistory: () => history,
   subscribeLog: (cb: (e: unknown) => void) => {
     listeners.add(cb);

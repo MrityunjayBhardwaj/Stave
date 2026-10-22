@@ -6,13 +6,13 @@
     "cap": 12,
     "both": {
       "asks": 1306,
-      "transfers": 1124,
-      "untransferable": 59,
+      "transfers": 1125,
+      "untransferable": 58,
       "arrayValue": 12,
-      "structural": 47,
-      "coreStructured": 42,
-      "coreEdits": 40,
-      "blocker": 39
+      "structural": 46,
+      "coreStructured": 41,
+      "coreEdits": 39,
+      "blocker": 38
     },
     "grid": {
       "asks": 831,
@@ -26,26 +26,26 @@
     },
     "roll": {
       "asks": 475,
-      "transfers": 394,
-      "untransferable": 24,
+      "transfers": 395,
+      "untransferable": 23,
       "arrayValue": 0,
-      "structural": 24,
-      "coreStructured": 22,
-      "coreEdits": 20,
-      "blocker": 19
+      "structural": 23,
+      "coreStructured": 21,
+      "coreEdits": 19,
+      "blocker": 18
     }
   },
   "companion": {
     "cap": 4,
     "both": {
       "asks": 1306,
-      "transfers": 1107,
-      "untransferable": 77,
+      "transfers": 1108,
+      "untransferable": 76,
       "arrayValue": 12,
-      "structural": 65,
-      "coreStructured": 59,
-      "coreEdits": 57,
-      "blocker": 55
+      "structural": 64,
+      "coreStructured": 58,
+      "coreEdits": 56,
+      "blocker": 54
     },
     "grid": {
       "asks": 831,
@@ -59,13 +59,13 @@
     },
     "roll": {
       "asks": 475,
-      "transfers": 377,
-      "untransferable": 42,
+      "transfers": 378,
+      "untransferable": 41,
       "arrayValue": 0,
-      "structural": 42,
-      "coreStructured": 39,
-      "coreEdits": 37,
-      "blocker": 35
+      "structural": 41,
+      "coreStructured": 38,
+      "coreEdits": 36,
+      "blocker": 34
     }
   }
 }

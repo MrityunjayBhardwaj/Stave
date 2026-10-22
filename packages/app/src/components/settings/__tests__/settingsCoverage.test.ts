@@ -1,29 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
-
-// Mock the editor barrel (established pattern — see IRInspectorPanel.test):
-// importing the real SettingsPanel would pull @stave/editor's runtime, which
-// transitively loads the CJS `gifenc` module and fails ESM interop under
-// vitest. The adapter functions are never CALLED here — we only read the
-// module-level ADAPTER_KEYS — so no-op stubs suffice.
-vi.mock("@stave/editor", () => {
-  // Explicit stub map — every editor getter/setter SettingsPanel imports.
-  // (A Proxy fallback is unsafe here: returning a fn for `then` makes the
-  // module namespace look like an unresolvable thenable and vitest hangs.)
-  const names = [
-    "getEditorFontSize", "setEditorFontSize", "getEditorMinimap", "toggleEditorMinimap",
-    "getEditorUiIconSize", "setEditorUiIconSize", "getInlineVizActionSize", "setInlineVizActionSize",
-    "getInlineVizResolution", "setInlineVizResolution", "getVizQuality", "setVizQuality",
-    "getInlineVizTeardownEnabled", "setInlineVizTeardownEnabled", "getVizInputsLiveValuesEnabled",
-    "setVizInputsLiveValuesEnabled", "getMusicalTimelineSubRowHeight", "setMusicalTimelineSubRowHeight",
-    "getEditorTheme", "setEditorTheme", "getNoteColorMode", "setNoteColorMode", "getGridMode", "setGridMode", "getTierFlags",
-    "setTierFlag", "listTiers", "getSignalAliases", "setSignalAliases", "getPerfEnabled",
-    "setPerfEnabled", "getAdaptivePerfEnabled", "setAdaptivePerfEnabled", "getTrackColourBarsEnabled",
-    "setTrackColourBarsEnabled", "getPlayVizOnHoverEnabled", "setPlayVizOnHoverEnabled",
-  ];
-  const mod: Record<string, unknown> = {};
-  for (const n of names) mod[n] = () => undefined;
-  return mod;
-});
+import { describe, it, expect } from "vitest";
 
 import { SETTING_FIELD_KEYS, SECTION_DEFS } from "../settingsSections";
 import { ADAPTER_KEYS } from "../SettingsPanel";

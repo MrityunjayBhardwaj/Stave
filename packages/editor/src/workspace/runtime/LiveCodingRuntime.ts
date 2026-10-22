@@ -101,7 +101,7 @@
 import type { TrackEnvelopeAccess } from '../../engine/trackEnvelopes'
 import type { LiveCodingEngine } from '../../engine/LiveCodingEngine'
 import type { HapStream } from '../../engine/HapStream'
-import type { IREvent } from '../../ir/IREvent'
+import { writtenBpm, type IREvent } from '../../codeView'
 import type { BreakpointStore } from '../../engine/BreakpointStore'
 import { BufferedScheduler } from '../../engine/BufferedScheduler'
 // #1570 — the transport frame's arithmetic only. The WRAPS it describes are
@@ -162,46 +162,16 @@ export interface BouncedStem {
 }
 
 /**
- * Parse `setcps(numerator/denominator)` (or `setcps(value)`) out of the
- * given source code and convert to BPM. Returns `undefined` if no
- * `setcps` line is present or the expression is unparseable.
+ * The play bar's BPM for the tempo the document sets, or undefined when it sets
+ * none that can be read — `codeView/tempo.ts writtenBpm`, the one reader (#1925).
+ * It reads the whole setter family (`setcps`/`setCps`/`setcpm`/`setCpm`) from the
+ * parsed statements, so a commented-out setter is not a tempo and the last one
+ * wins. Kept under this name because it is part of the package's public API.
  *
- * Strudel's `setcps` takes cycles-per-second; the conventional Strudel
- * preset uses `setcps(BPM/240)` to mean "BPM at 4 beats per cycle"
- * (240 = 60 seconds × 4 beats). The recovery is therefore
- * BPM = cps × 60 × beatsPerCycle = cps × 240, so for the canonical
- * `setcps(num/denom)` form BPM = (numerator / denominator) × 240 — which,
- * for the standard `/240` preset, reads the numerator straight back as the
- * BPM (`setcps(92/240)` → 92). The earlier code multiplied by 60 only,
- * dropping the ×4 beats-per-cycle factor, so every tempo displayed at ¼ of
- * its true value (92 → 23). This matches the canonical `cpsToBpm`
- * (`app/.../musicalTimeline/timeAxis.ts`: `round(cps * 60 * 4)`) (#599).
- *
- * Lives at module scope (not as a method) so the function is pure +
- * trivially testable + has zero `this`-binding gotchas.
+ * Four quarter notes per cycle: `setcps(92/240)` → 92 (#599).
  */
 export function extractBpmFromCode(code: string): number | undefined {
-  // Match setcps(num/denom) — the canonical Strudel form. Allows whitespace
-  // around tokens. Numerator and denominator are decimal numbers.
-  const fractionMatch = code.match(
-    /setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/,
-  )
-  if (fractionMatch) {
-    const numerator = parseFloat(fractionMatch[1])
-    const denominator = parseFloat(fractionMatch[2])
-    if (denominator > 0 && Number.isFinite(numerator)) {
-      return Math.round((numerator / denominator) * 60 * 4) // cps × 60 × beats/cycle
-    }
-  }
-  // Fall back to setcps(N) — interpret as cps × 60 × 4 beats/cycle.
-  const scalarMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\)/)
-  if (scalarMatch) {
-    const cps = parseFloat(scalarMatch[1])
-    if (Number.isFinite(cps)) {
-      return Math.round(cps * 60 * 4)
-    }
-  }
-  return undefined
+  return writtenBpm(code)
 }
 
 /**
@@ -497,6 +467,10 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
       this.fireOnError(err)
       return { error: err }
     }
+
+    // #1987 — FIRST, and before any await: this is still inside the tap or key press
+    // that asked for Play, which is the only moment some browsers let audio start.
+    this.engine.unlockAudio?.()
 
     // Supersede any earlier in-flight play() and record our generation. After
     // each await below we compare against this — if a stop() or a newer play()
@@ -1169,12 +1143,12 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
    * Strudel engine).
    *
    * ⚠ THIS IS NOT `getBpm()` IN OTHER UNITS. `getBpm()` returns
-   * `extractBpmFromCode`, a regex over the source that matches only a literal
-   * `setcps(...)`; it is `undefined` for a document that sets no tempo, that
-   * uses `setcpm(...)`, or that changes cps mid-pattern — none of which mean
-   * the music has no tempo. Anything converting CYCLES to SECONDS must use
-   * this and not the readout, or it will size a document by a number the
-   * source text happened to spell. See `StrudelEngine.getCps`.
+   * `extractBpmFromCode`, the tempo the code SETS (`codeView/tempo.ts`); it is
+   * `undefined` for a document that sets no tempo it can read, and it cannot see
+   * cps changed mid-pattern — neither of which means the music has no tempo.
+   * Anything converting CYCLES to SECONDS must use this and not the readout, or
+   * it will size a document by a number the source text happened to spell. See
+   * `StrudelEngine.getCps`.
    *
    * Duck-typed on the engine for the same reason `record`/`canRecord` are
    * (#1346): the capability is Strudel-specific and the engine interface is

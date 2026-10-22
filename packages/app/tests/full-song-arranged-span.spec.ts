@@ -26,6 +26,9 @@ type AnalysisProbe = {
 
 /** 100 bars of one repeated bar, then 50 of another: detection confirms period 1. */
 const ARRANGED_150 = 'setcps(0.5)\ndrums: arrange([100, s("bd*4")], [50, s("hh*8")])'
+/** #1723 / #1936 — four bars of structure under a gain stepping `<.2 .9>` by the
+ *  absolute bar: the song first comes back round at 8, where play-once stops. */
+const FOLDED_8 = 'setcps(0.5)\nconst a = s("bd*2").gain("<.2 .9>")\nsong: arrange([2, a], [1, s("hh*2")], [1, a])'
 /** No arrangement — a loop, measured as before. */
 const LOOP = 'setcps(0.5)\nbeat: s("bd*4")'
 
@@ -36,6 +39,10 @@ async function boot(page: Page): Promise<void> {
       localStorage.setItem('stave:bottomPanel.open', 'true')
       localStorage.setItem('stave:bottomPanel.activeTabId', 'musical-timeline')
       localStorage.setItem('stave:debug.timelineMarks', '1')
+      // #2109 — these songs run to 150 cycles; this spec is about spanning a declared
+      // end, so the limit must hold it (the default of 64 pages a longer song instead,
+      // which `full-song-cycle-limit.spec.ts` covers).
+      localStorage.setItem('stave:songCycleLimit', '256')
     } catch { /* ignore */ }
   })
   await page.goto('/', { waitUntil: 'domcontentloaded' })
@@ -102,6 +109,17 @@ test('an arranged song spans the end it declares, not a detected period', async 
   expect(a.lanes[0]!.onsets).toBe(100 * 4 + 50 * 8)
   await expect(page.locator('[data-full-song-period]')).toHaveAttribute('data-full-song-period', 'arranged 150 cycles')
   expect(errors).toEqual([])
+})
+
+test('an arrangement under a parameter that outlasts it spans where play-once stops, not its bare length', async ({ page }) => {
+  // #1936 — the timeline, play-once and the bounce ask one `songEnd`. The structure
+  // is 4 bars; the song is 8, and play-once stops at 8 (playback-that-ends.spec.ts).
+  test.setTimeout(180_000)
+  await boot(page)
+  await evaluateCode(page, FOLDED_8)
+  const a = await settledAnalysisFor(page, 'song')
+  expect(a.displaySpan).toEqual({ kind: 'arranged', cycles: 8 })
+  await expect(page.locator('[data-full-song-period]')).toHaveAttribute('data-full-song-period', 'arranged 8 cycles')
 })
 
 test('control: a document with no arrangement is still a measured loop', async ({ page }) => {

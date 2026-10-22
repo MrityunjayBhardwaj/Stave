@@ -6,7 +6,7 @@
 import { describe, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
+import { parseStrudel } from '../../../editor/src/codeView/ir/parseStrudel'
 
 const SAMPLES = path.join(
   __dirname,
@@ -19,7 +19,7 @@ type AnyNode = { tag?: string; via?: unknown; kind?: string; body?: unknown } & 
 const isBare = (n: AnyNode): boolean =>
   n.tag === 'Code' && n.via === undefined
 
-import { parseExpression } from '../../../editor/src/ir/parseStrudel'
+import { parseExpression } from '../../../editor/src/codeView/ir/parseStrudel'
 
 describe('Wave C diagnose #3 (full program)', () => {
   it('proves chord works: synthetic shape without all() side-effect statement', () => {

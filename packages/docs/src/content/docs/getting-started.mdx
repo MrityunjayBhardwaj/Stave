@@ -1,75 +1,88 @@
 ---
 title: Getting started
-description: From URL to sound in five minutes.
+description: From the start screen to a playing song in two minutes.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
 ## Open Stave
 
-Visit **[stave.live](https://stave.live)** in a Chromium-based browser. A fresh project opens with one Strudel pattern, one Sonic Pi pattern, and a handful of viz presets already loaded.
+Visit **[stave.live](https://stave.live)**. Stave opens on a **start screen** with the intro video, your recent projects, and ways to start:
 
-<Aside type="caution">
-Safari works for pattern audio but Hydra requires WebGL2 which Safari enables behind a flag. Chrome, Edge, Arc, or Brave are the path of least resistance.
+| Template | What you get |
+|---|---|
+| **Full Song** | A finished 48-bar song: drums, bass, keys, a flute hook and a sung line written as notes. The best way to see the studio at work. |
+| **Starter** | A Strudel pattern playing through the built-in p5.js and Hydra visualisers. |
+| **Strudel Sketch** | A short pattern to start writing on. |
+| **Hydra Visual** | An audio-reactive Hydra sketch of its own. |
+| **Blank** | No files of your own yet. Add them from the sidebar. |
+
+You can also open a project archive (`.zip`) or a recent project from here. Come back to it any time from **Help › Start Screen**.
+
+<Aside type="tip">
+Stave runs best in a Chromium browser (Chrome, Edge, Arc, Brave). It also has a layout for [phones and tablets](/guides/phones-and-tablets/).
 </Aside>
 
 ## Play something
 
 <Steps>
 
-1. Click anywhere inside **pattern.strudel**.
+1. Pick **Full Song**.
 
-2. Press **Ctrl+Enter** (or **⌘+Enter** on macOS).
+2. Click in the code and press **Ctrl+Enter** (**⌘+Enter** on a Mac), or press **Play** in the editor's bar.
 
-   The pattern starts playing. You should hear a looping phrase.
+3. Change something. For example, change a `gain(0.4)` to `gain(0.8)` and press **Ctrl+Enter** again. The change plays from the next cycle.
 
-3. Edit a line — for example change `"c4 e4 g4 b4"` to `"c4 e4 g4 c5"`. Press **Ctrl+Enter** again. The change is live on the next cycle boundary.
-
-4. Press **Ctrl+.** (or **⌘+.**) to stop.
+4. Press **Ctrl+.** (**⌘+.**) to stop.
 
 </Steps>
 
-## Switch runtimes
+## Open the studio
 
-The tab bar across the top shows every file in the current project. Click **pattern.sonicpi** to switch to Sonic Pi; click **Piano Roll.p5** to view the p5.js source of the default inline viz; click **scope.hydra** for Hydra.
+At the bottom of the screen are three tabs:
 
-Each file is its own runtime with its own Play button. Running multiple at once is fine — they share the same WebAudio context.
+- **[Timeline](/studio/timeline/)**: the whole song, each track as a row of sections, with a playhead you can click to jump.
+- **[Pattern](/studio/pattern/)**: the line under your cursor as a step grid, a piano roll or a chord chart.
+- **[Mixer](/studio/mixer/)**: a channel strip for every track.
 
-## Attach a viz to a pattern
+Edits in any of them are written back into your code. Try it: open the **Mixer**, pull a fader, and watch the `.gain` in the code change.
 
-Stave's signature move. At the end of any Strudel `$:` block, append `.viz("name")`:
+## Tracks
+
+Each `$:` line is a track, and so is each named part:
+
+```js
+$: s("bd*4, ~ cp")            // a track
+bass: note("c2 eb2 g2 bb1")   // a track called "bass"
+  .s("sawtooth")
+```
+
+Every track gets a row on the Timeline, a strip in the Mixer, and its own colour. A `$:` track shows as **Track 1**, **Track 2** and so on, by where it sits in the song. Rename it from its Mixer strip or its Timeline row to give it a name of your own, which is written into your code.
+
+## Add a visual
+
+At the end of a track, add `.viz("name")`:
 
 ```js
 $: note("c4 e4 g4").s("sawtooth").viz("pianoroll")
 ```
 
-On your next evaluate, an inline viz zone opens beneath that line, rendering the `pianoroll` preset driven by the live hap stream. Drag the bottom edge to resize. Click the crop button to reframe. Any viz file in the project (`preset/viz/*.p5`, `preset/viz/*.hydra`) is addressable by name.
+When you next press **Ctrl+Enter**, a visual opens right under that line, fed by that track alone. Built-in names include `pianoroll`, `scope`, `spectrum`, `spiral`, `pitchwheel` and `wordfall`. Any `.p5`, `.hydra` or `.glsl` file in your project can be used by its name, too. See [Make visuals react](/guides/reactive-visuals/) to write your own.
 
-## Make a viz the backdrop
-
-For fullscreen work, promote any viz to the editor background:
-
-<Steps>
-
-1. Right-click a `.p5` or `.hydra` file in the sidebar → **Set as Background**.
-
-2. The code panel becomes translucent; the viz renders full-viewport behind it.
-
-3. Use the **set bg ▾** button in the top bar to swap, crop, or clear the backdrop.
-
-</Steps>
+To put a visual behind your code, use the **set bg ▾** button in the editor's bar, or right-click a visual file in the sidebar and choose **Set as Background**.
 
 ## Where your work lives
 
-Stave is local-first. Projects are stored in IndexedDB, synced across tabs via CRDT. The File menu gives you:
+Stave saves your projects in your browser. There's no account and no server. The **File** menu has:
 
-- **New / Open / Rename / Delete project**
-- **Import / Export .zip**
-- **Copy share link** — produces a `#share=…` URL that reconstructs the project on any machine
-- **Version History** — auto-snapshot every 60s idle, plus named snapshots on demand
+- **New Project…**, **Open Project…**, **Open Recent**, **Rename Project…**
+- **Version History…**: go back to, fork or compare earlier versions
+- **Import from .zip…** and **Export as .zip**, your audio included
+- **Bounce to WAV…**: the mix, or one file per track. See [Bounce and share](/guides/bounce-and-share/).
+- **Copy Share Link**: the whole project inside a link
 
 ## Next
 
-- Language-specific tutorials: [Strudel](/runtimes/strudel/), [Sonic Pi](/runtimes/sonicpi/), [p5.js](/runtimes/p5/), [Hydra](/runtimes/hydra/)
-- Concepts: [Projects](/concepts/projects/), [Tabs and groups](/concepts/tabs-and-groups/), [Inline viz](/concepts/viz/)
-- API reference — every symbol Stave recognises: [p5.js](/reference/p5/), [Hydra](/reference/hydra/), [Sonic Pi](/reference/sonicpi/)
+- [The Studio](/studio/timeline/): Timeline, Pattern, Mixer and Library
+- [Make visuals react](/guides/reactive-visuals/)
+- Runtimes: [Strudel](/runtimes/strudel/), [p5.js](/runtimes/p5/), [Hydra](/runtimes/hydra/), [GLSL](/runtimes/glsl/)

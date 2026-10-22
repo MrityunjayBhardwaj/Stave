@@ -135,3 +135,30 @@ test('member access: .method( is a call, .property is not (#855)', async ({ page
   expect(typeOf('currentTime')).toContain('identifier')
   expect(typeOf('currentTime')).not.toContain('strudel.function')
 })
+
+test('every tempo setter is coloured as tempo, not only setcps/setCps (#1954)', async ({ page }) => {
+  await boot(page)
+  // setcps is the control: it was coloured before the fix. `plain` is an ordinary identifier.
+  const setters = ['setcps', 'setCps', 'setcpm', 'setCpm']
+  const code = [...setters.map((s) => `${s}(1)`), 'const plain = 1'].join('\n')
+  await setStrudelCode(page, code)
+
+  const tokens = await tokenTypes(page, code)
+  for (const s of setters) {
+    expect(tokens.find((t) => t.text === s)?.type, `${s} token`).toContain('strudel.tempo')
+  }
+
+  // What the user sees: the rendered colour of each name, against the control and a plain word.
+  const colour = (text: string) =>
+    page.evaluate((t) => {
+      const span = [...document.querySelectorAll('.monaco-editor .view-line span span')].find(
+        (el) => el.textContent === t,
+      )
+      return span ? getComputedStyle(span).color : null
+    }, text)
+  const control = await colour('setcps')
+  const plain = await colour('plain')
+  expect(control, 'setcps is rendered').not.toBeNull()
+  expect(control, 'the tempo colour differs from a plain identifier').not.toBe(plain)
+  for (const s of setters) expect(await colour(s), `${s} colour`).toBe(control)
+})

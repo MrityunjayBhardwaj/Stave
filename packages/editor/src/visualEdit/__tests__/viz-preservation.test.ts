@@ -15,13 +15,13 @@ import {
   detectArrangeAt, detectBarePattern,
   setWeight, splitArm, reorderArm, silenceArm, insertArm,
   materializeBareSplit, materializeBareDelete,
-} from '../arrange'
-import { detectPickControlAt } from '../pickControl/parse'
+} from '../../codeView/arrange'
+import { detectPickControlAt } from '../../codeView/pickControl/parse'
 import {
   setWeight as pSetWeight, splitArm as pSplitArm, removeArm as pRemoveArm,
   reorderArm as pReorderArm, duplicateArm as pDuplicateArm,
-} from '../pickControl/serialize'
-import type { OffsetEdit } from '../writeback'
+} from '../../codeView/pickControl/serialize'
+import type { OffsetEdit } from '../../codeView/writeback'
 
 const VIZ = '.viz("pianoroll")'
 

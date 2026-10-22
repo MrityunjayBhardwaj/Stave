@@ -19,9 +19,9 @@ import {
   parseStepGrid,
   parseStepGridCore,
   projectStepGridDerived,
-} from '../../../editor/src/visualEdit/notation/parse'
-import { hasStructure } from '../../../editor/src/visualEdit/notation/model'
-import type { PianoRollModel, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/parse'
+import { hasStructure } from '../../../editor/src/codeView/notation/model'
+import type { PianoRollModel, StepGridModel } from '../../../editor/src/codeView/notation/model'
 import { GRID_SURFACE, liveness, probeEdit } from './engineEditOracle'
 import { truePeriod } from './enginePeriod'
 

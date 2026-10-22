@@ -24,6 +24,10 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 const PACKAGES = [
   { id: 'prism', name: 'Prism' },
   { id: 'pulse-grid', name: 'Pulse Grid' },
+  { id: 'night-drive', name: 'Night Drive' },
+  { id: 'tunnel', name: 'Tunnel' },
+  { id: 'robot-guitarist', name: 'Robot Guitarist' },
+  { id: 'sunset-drive', name: 'Sunset Drive' },
 ]
 
 /** Baked thumbnail HEIGHT (px). The card renders it height-locked with the

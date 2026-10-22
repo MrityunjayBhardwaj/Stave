@@ -15,10 +15,9 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('@stave/editor', () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   structuralWalk: () => [],
-  wholeWalkWindow: (nCycles: number) => ({ originCycle: 0, spanCycles: nCycles }),
-  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 
 import { createSongCollector } from '../songCollector'

@@ -2,6 +2,10 @@ import type * as Monaco from 'monaco-editor'
 import { SONICPI_DOCS_INDEX } from './docs/sonicpi'
 import { buildIdentifierAlternation } from './docs/tokenizer-utils'
 import { JS_KEYWORDS } from './jsKeywords'
+import { TEMPO_SETTERS } from '../codeView'
+
+/** Every name Strudel registers its one tempo setter under, as whole words (#1954). */
+const TEMPO_SETTER_TOKEN = new RegExp(TEMPO_SETTERS.map((n) => `\\b${n}\\b`).join('|'))
 
 export function registerSonicPiLanguage(monaco: typeof Monaco): void {
   const langs = monaco.languages.getLanguages()
@@ -154,8 +158,8 @@ export function registerStrudelLanguage(monaco: typeof Monaco): void {
         // $: pattern-start marker
         [/\$\s*:/, 'strudel.pattern-start'],
 
-        // setcps / setCps tempo
-        [/\bsetcps\b|\bsetCps\b/, 'strudel.tempo'],
+        // tempo: setcps / setCps / setcpm / setCpm, from the one list (#1954)
+        [TEMPO_SETTER_TOKEN, 'strudel.tempo'],
 
         // Note names: c3, eb4, f#2, C#5
         [/\b[a-gA-G][b#]?\d\b/, 'strudel.note'],

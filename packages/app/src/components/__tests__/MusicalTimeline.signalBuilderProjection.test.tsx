@@ -28,10 +28,10 @@
  * sibling would be missing from the collected Map).
  */
 import { describe, it, expect, vi } from 'vitest'
-// Mock @stave/editor BEFORE importing MusicalTimeline — the barrel pulls
-// in @strudel/draw → gifenc which crashes vitest's module loader
-// (standalone-node env). Same pattern as MusicalTimeline.literalProjection.test.tsx.
-vi.mock('@stave/editor', () => ({
+// The real module with the editor/snapshot channels stubbed, so nothing here
+// reaches a live editor. Same as MusicalTimeline.literalProjection.test.tsx.
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   getActiveEditor: () => null,
   getActiveFileId: () => null,
   onActiveEditorChange: () => () => {},
@@ -49,7 +49,7 @@ vi.mock('@stave/editor', () => ({
 import { __test_collectTrackBodies } from '../MusicalTimeline'
 import { projectedLabel, projectedChildren, stripInnerLate } from '../irProjection'
 // Type-only — `import type` ensures no runtime entry into the barrel.
-import type { PatternIR } from '../../../../editor/src/ir/PatternIR'
+import type { PatternIR } from '@stave/editor'
 
 function makeSignal(kind: string, args?: string): PatternIR {
   // Mirror IR.signal's shape — `args` only present when supplied.

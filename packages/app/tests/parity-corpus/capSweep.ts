@@ -24,12 +24,12 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import { hasStructure } from '../../../editor/src/visualEdit/notation/model'
+import { hasStructure } from '../../../editor/src/codeView/notation/model'
 import type {
   ParseResult,
   PianoRollModel,
   StepGridModel,
-} from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
 import { liveness, probeEdit, type Surface } from './engineEditOracle'
 import { truePeriod } from './enginePeriod'
 import type { BlockMarkers } from './generatedDoc'

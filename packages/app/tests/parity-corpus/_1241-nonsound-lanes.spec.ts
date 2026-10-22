@@ -30,11 +30,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { unitsWithStatus } from './editCoverage'
-import { parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import { chunkSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
-import { isStepChunk } from '../../../editor/src/visualEdit/panels/patternKind'
-import { sampleVoice } from '../../../editor/src/visualEdit/panels/drumVoices'
-import { loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
+import { parseStepGrid } from '../../../editor/src/codeView/notation/parse'
+import { chunkSurface } from '../../../editor/src/codeView/surface/surfaceRoute'
+import { isStepChunk } from '../../../editor/src/codeView/patternKind'
+import { sampleVoice } from '../../../editor/src/codeView/surface/drumVoices'
+import { loadCorpus } from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
 
 function report(label: string, docs: { name: string; code: string }[]) {
   let stepUnits = 0

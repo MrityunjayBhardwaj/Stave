@@ -21,9 +21,9 @@
  * carries no written-step regions at all, and gets the same bar-and-column answer.
  */
 import * as React from 'react'
-import type { AltSource, NotationSource } from '../notation/model'
-import { drawnAt, drawnLayout, lcmOf } from '../notation/perBar'
-import { parseStepGrid } from '../notation/parse'
+import type { AltSource, NotationSource } from '../../codeView'
+import { drawnAt, drawnLayout, lcmOf } from '../../codeView'
+import { bracketedBarRegions } from '../../codeView'
 
 /** the fields both grid and roll models share that this module reads */
 export interface WrittenStepsModel {
@@ -67,18 +67,14 @@ function regionStepStarts(r: { from: number; to: number; weight?: number }): num
  * counts that element as one step, but it IS the bar, and the bar is cut the way its
  * content is: `[~ sd ~ sd]` is `~ sd ~ sd` spelled so it fits in `<…>`, and the editor's
  * own bar-by-bar writes produce exactly that spelling (#1849). So the bar draws the steps
- * of its content — asked of the parser (`parseStepGrid` on the text inside the brackets),
- * never re-derived here. A content the parser does not read as one flat part, or whose
- * steps do not land on the region's columns, stays one step.
+ * of its content — `bracketedBarRegions` asks krill whether the region is one bracketed
+ * sequence and the parser what its content is (#1942), never re-derived here. A content
+ * the parser does not read as one flat part, or whose steps do not land on the region's
+ * columns, stays one step.
  */
 function wholeBarStepStarts(r: { raw: string; from: number; to: number }): number[] | null {
-  const text = r.raw.trim()
-  if (!text.startsWith('[') || !text.endsWith(']')) return null
-  const inner = parseStepGrid(text.slice(1, -1))
-  if (!inner.ok) return null
-  const src = inner.model.source
-  if (!src || src.parts.length !== 1 || src.prefix || src.suffix || inner.model.bars) return null
-  const regions = src.parts[0].regions
+  const regions = bracketedBarRegions(r.raw)
+  if (!regions) return null
   const cols = regions[regions.length - 1]?.to
   if (!cols) return null
   const starts = regions.flatMap(regionStepStarts).map((c) => r.from + (c * (r.to - r.from)) / cols)

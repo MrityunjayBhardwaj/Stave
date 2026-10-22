@@ -4,37 +4,19 @@
  *
  * Both rewrites (`notation/lengthen.ts`) are asked of Strudel and then of this
  * panel's own parser when the handle is reached, so it can say "not here,
- * because…" on hover instead of failing after the click.
+ * because…" on hover instead of failing after the click. `lengthenOffers` asks
+ * all of that (#1942); this hook holds the cache and the write.
  */
 import * as React from 'react'
 
 import { emitLog } from '../../engine/engineLog'
-import type { ChunkInfo } from '../chunkDetect'
-import { appendEmptyBars, duplicateBar, type LengthenResult } from '../notation/lengthen'
-import type { ParseResult } from '../notation/model'
-import { UNREFINED, type ViewScale } from '../notation/viewResolution'
+import type { ChunkInfo } from '../../codeView'
+import { lengthenOffers, appendBarsOffer, type LengthenOffers } from '../../codeView'
+import type { ParseResult } from '../../codeView'
+import { readChunkGain, type ViewScale } from '../../codeView'
 
-/**
- * A per-column `.gain("…")` is managed only while each bar is one column, so a
- * longer melody would silently lock its velocity lane. Refused until that lane can
- * follow a multi-bar pattern.
- */
-const VELOCITY_STRING =
-  "its velocities are written per column, and the velocity lane can't follow a longer pattern yet"
-
-const GRID_CANT_SHOW = "the grid couldn't show the longer pattern"
-
-function hasVelocityString(chunk: ChunkInfo): boolean {
-  const arg = chunk.chain.find((c) => c.name === 'gain')?.args[0]
-  return !!arg && /^["'`]/.test(arg.raw)
-}
-
-export interface Verdict {
-  /** click: add one bar that continues the pattern — or why not */
-  duplicate: LengthenResult
-  /** drag: can empty bars be appended at all — or why not */
-  append: LengthenResult
-}
+/** what the handle offers: the two choices, each ok or with the reason it isn't */
+export type Verdict = LengthenOffers
 
 export interface PatternLength {
   /** bars the grid draws the pattern over */
@@ -58,32 +40,18 @@ export function usePatternLength<M extends { bars?: number }>(
 ): PatternLength {
   const mini = model ? (chunk?.miniString ?? null) : null
   const bars = model?.bars ?? 1
-  const velocity = chunk ? hasVelocityString(chunk) : false
+  const gain = chunk ? readChunkGain(chunk) : null
+  // the only part of the `.gain` the offers depend on: is it a per-column string
+  const velocity = gain?.mini != null
   const parseRef = React.useRef(parse)
   parseRef.current = parse
 
-  // The last gate is the grid itself: a rewrite Strudel plays correctly but this
-  // panel would open at a different length — or not at all — is refused, or the
-  // click would send the panel to standby.
-  const check = (r: LengthenResult, wantBars: number): LengthenResult => {
-    if (!r.ok) return r
-    if (velocity) return { ok: false, reason: VELOCITY_STRING }
-    const read = parseRef.current(r.mini, UNREFINED)
-    return read.ok && (read.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW }
-  }
-
   const cache = React.useRef<{ key: string; verdict: Verdict } | null>(null)
   const verdict = (): Verdict | null => {
-    if (mini === null) return null
+    if (mini === null || gain === null) return null
     const key = `${bars}|${velocity}|${mini}`
     if (cache.current?.key !== key) {
-      cache.current = {
-        key,
-        verdict: {
-          duplicate: check(duplicateBar(mini, bars), bars + 1),
-          append: check(appendEmptyBars(mini, bars, 1), bars + 1),
-        },
-      }
+      cache.current = { key, verdict: lengthenOffers(parseRef.current, mini, bars, gain) }
     }
     return cache.current.verdict
   }
@@ -95,8 +63,8 @@ export function usePatternLength<M extends { bars?: number }>(
     else report("Couldn't add a bar that continues the pattern", r.reason)
   }
   const onAddBars = (n: number): void => {
-    if (mini === null || n < 1) return
-    const r = check(appendEmptyBars(mini, bars, n), bars + n)
+    if (mini === null || gain === null || n < 1) return
+    const r = appendBarsOffer(parseRef.current, mini, bars, n, gain)
     if (r.ok) writeMini(r.mini)
     else report(`Couldn't add ${n === 1 ? 'a bar' : `${n} bars`}`, r.reason)
   }

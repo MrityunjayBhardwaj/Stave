@@ -32,8 +32,8 @@ vi.mock('../../workspace/editorRegistry', () => ({
 import { HydraVizRenderer, type HydraStaveBag } from '../renderers/HydraVizRenderer'
 import type { SignalBus } from '../signals/SignalBus'
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
-import type { IRPattern } from '../../ir/IRPattern'
-import type { IREvent } from '../../ir/IREvent'
+import type { IRPattern } from '../../codeView/ir/IRPattern'
+import type { IREvent } from '../../codeView/ir/IREvent'
 
 // Minimal IREvent shape — tests don't need every optional field, and
 // TS's structural typing lets us spread from a partial.

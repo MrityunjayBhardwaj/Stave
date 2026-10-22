@@ -8,8 +8,8 @@
  * sequence of log lines) and the UI semantics are different too —
  * Console keeps history, Inspector keeps only the latest.
  */
-import type { PatternIR } from '../ir/PatternIR'
-import type { IREvent } from '../ir/IREvent'
+import type { PatternIR } from '../codeView'
+import type { IREvent } from '../codeView'
 import type { RuntimeId } from './engineLog'
 import { captureSnapshot } from './timelineCapture'
 

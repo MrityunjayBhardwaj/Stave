@@ -6,81 +6,81 @@
       "cap": 6,
       "A": {
         "asks": 1158,
-        "opened": 128,
-        "leafOpened": 37,
-        "transfers": 89,
-        "noView": 1030,
-        "noProbe": 39,
+        "opened": 130,
+        "leafOpened": 39,
+        "transfers": 90,
+        "noView": 1028,
+        "noProbe": 40,
         "viewCorrupts": 0,
-        "leafStructured": 37,
-        "leafAlive": 113,
-        "leafProbed": 307
+        "leafStructured": 39,
+        "leafAlive": 120,
+        "leafProbed": 328
       },
       "B": {
         "asks": 475,
-        "opened": 435,
-        "leafOpened": 36,
-        "transfers": 379,
-        "noView": 40,
+        "opened": 436,
+        "leafOpened": 37,
+        "transfers": 380,
+        "noView": 39,
         "noProbe": 56,
         "viewCorrupts": 0,
-        "leafStructured": 35,
-        "leafAlive": 75,
-        "leafProbed": 95
+        "leafStructured": 36,
+        "leafAlive": 79,
+        "leafProbed": 99
       }
     },
     {
       "cap": 8,
       "A": {
         "asks": 1158,
-        "opened": 138,
-        "leafOpened": 47,
-        "transfers": 90,
-        "noView": 1020,
-        "noProbe": 48,
+        "opened": 140,
+        "leafOpened": 49,
+        "transfers": 91,
+        "noView": 1018,
+        "noProbe": 49,
         "viewCorrupts": 0,
-        "leafStructured": 47,
-        "leafAlive": 172,
-        "leafProbed": 420
+        "leafStructured": 49,
+        "leafAlive": 179,
+        "leafProbed": 441
       },
       "B": {
         "asks": 475,
-        "opened": 447,
-        "leafOpened": 48,
-        "transfers": 391,
-        "noView": 28,
+        "opened": 448,
+        "leafOpened": 49,
+        "transfers": 392,
+        "noView": 27,
         "noProbe": 56,
         "viewCorrupts": 0,
-        "leafStructured": 46,
-        "leafAlive": 211,
-        "leafProbed": 255
+        "leafStructured": 47,
+        "leafAlive": 215,
+        "leafProbed": 259
       }
     },
     {
       "cap": 12,
       "A": {
         "asks": 1158,
-        "opened": 139,
-        "leafOpened": 48,
-        "transfers": 90,
-        "noView": 1019,
-        "noProbe": 49,
+        "opened": 142,
+        "leafOpened": 51,
+        "transfers": 91,
+        "noView": 1016,
+        "noProbe": 51,
         "viewCorrupts": 0,
-        "leafStructured": 48,
-        "leafAlive": 176,
-        "leafProbed": 432
+        "leafStructured": 51,
+        "leafAlive": 183,
+        "leafProbed": 453
       },
       "B": {
         "asks": 475,
-        "opened": 451,
-        "leafOpened": 52,
-        "transfers": 394,
-        "noView": 24,
+        "opened": 452,
+        "leafOpened": 53,
+        "transfers": 395,
+        "noView": 23,
         "noProbe": 57,
         "viewCorrupts": 0,
-        "leafStructured": 50,
-        "leafAlive": 252,
-        "leafProbed": 307
+        "leafStructured": 51,
+        "leafAlive": 256,
+        "leafProbed": 311
       }
     }
   ],
@@ -88,27 +88,27 @@
     "cap": 4,
     "A": {
       "asks": 1158,
-      "opened": 127,
-      "leafOpened": 36,
-      "transfers": 89,
-      "noView": 1031,
-      "noProbe": 38,
+      "opened": 129,
+      "leafOpened": 38,
+      "transfers": 90,
+      "noView": 1029,
+      "noProbe": 39,
       "viewCorrupts": 0,
-      "leafStructured": 36,
-      "leafAlive": 110,
-      "leafProbed": 294
+      "leafStructured": 38,
+      "leafAlive": 117,
+      "leafProbed": 315
     },
     "B": {
       "asks": 475,
-      "opened": 433,
-      "leafOpened": 34,
-      "transfers": 377,
-      "noView": 42,
+      "opened": 434,
+      "leafOpened": 35,
+      "transfers": 378,
+      "noView": 41,
       "noProbe": 56,
       "viewCorrupts": 0,
-      "leafStructured": 33,
-      "leafAlive": 40,
-      "leafProbed": 60
+      "leafStructured": 34,
+      "leafAlive": 44,
+      "leafProbed": 64
     }
   }
 }

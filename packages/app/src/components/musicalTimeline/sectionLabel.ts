@@ -27,12 +27,11 @@
  * opened about. So the rule is narrow on purpose: a bare identifier is a name,
  * and everything else is unnamed.
  *
- * ⚠ NOT A PARSER, AND IT MUST NOT BECOME ONE. This reads a range the IR already
- * located; it does not go looking for arrangements in text. Widening it to
- * understand expressions would make it a second oracle for a grammar
- * `parseStrudel` already owns — the trap that shipped a whole class of bugs
- * elsewhere in this codebase.
+ * Reading the name is the editor's (`sectionNameAt`, since #1921), so a section
+ * and a track agree on what a name is — `前奏` names either. This file keeps only
+ * the ordinal fallback.
  */
+import { sectionNameAt } from '@stave/editor'
 
 /**
  * The name of an arm that has none: an ORDINAL, never a guess at the music.
@@ -43,38 +42,6 @@
  */
 export function positionalSectionName(armIndex: number): string {
   return `§${armIndex + 1}`
-}
-
-/** A bare JS identifier, and nothing else. */
-const IDENTIFIER = /^[A-Za-z_$][\w$]*$/
-
-/**
- * The section name written at `range`, or `null` when the arm is an inline
- * expression with no name to read.
- *
- * Handles both arm shapes the IR produces:
- *  - `arrange` arms, whose range is the `[n, pattern]` tuple
- *  - `cat` / `slowcat` arms, whose range is the pattern expression alone
- */
-export function sectionNameAtRange(
-  code: string,
-  range: readonly [number, number],
-): string | null {
-  const [start, end] = range
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
-  if (start < 0 || end > code.length || end <= start) return null
-
-  let text = code.slice(start, end).trim()
-
-  // An `arrange` arm is `[n, pattern]`. Reduce it to its pattern half; a
-  // `cat`/`slowcat` arm is already just the pattern and falls straight through.
-  if (text.startsWith('[') && text.endsWith(']')) {
-    const comma = text.indexOf(',')
-    if (comma < 0) return null
-    text = text.slice(comma + 1, -1).trim()
-  }
-
-  return IDENTIFIER.test(text) ? text : null
 }
 
 /**
@@ -97,5 +64,5 @@ export function resolveSectionName(
 ): string {
   const positional = positionalSectionName(armIndex)
   if (code == null || nameRange == null) return positional
-  return sectionNameAtRange(code, nameRange) ?? positional
+  return sectionNameAt(code, nameRange) ?? positional
 }

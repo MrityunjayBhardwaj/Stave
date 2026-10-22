@@ -18,7 +18,7 @@
  */
 
 import type { IREvent } from '@stave/editor'
-import { resolveLaneKey } from './laneIdentity'
+import { laneKeyOf } from '@stave/editor'
 
 export interface TrackGroup {
   /** Track id — never null. `'$default'` is the fallback sentinel. */
@@ -27,7 +27,7 @@ export interface TrackGroup {
 }
 
 /**
- * Group events by their lane key (`resolveLaneKey` = `trackId ?? s ?? '$default'`,
+ * Group events by their lane key (the editor's `laneKeyOf` = `trackId ?? s ?? '$default'`,
  * the single identity source shared with the scene + overlay, #498). Insertion
  * order matches first-seen-key order in the input.
  */
@@ -38,7 +38,7 @@ export function groupEventsByTrack(
   const order: string[] = []
   const buckets = new Map<string, IREvent[]>()
   for (const evt of events) {
-    const key = resolveLaneKey(evt)
+    const key = laneKeyOf(evt)
     let bucket = buckets.get(key)
     if (!bucket) {
       bucket = []

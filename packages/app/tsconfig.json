@@ -31,7 +31,7 @@
     "**/*.mts",
     // Strudel ships NO types, so its imports rely on the editor's ambient
     // declarations — and this program reaches editor SOURCE: `**/*.ts` sweeps in
-    // tests/parity-corpus/*, which deep-import `../../../editor/src/ir/parseStrudel`
+    // tests/parity-corpus/*, which deep-import `../../../editor/src/codeView/ir/parseStrudel`
     // (the barrel drags gifenc/CJS into vite-node, hence the deep path). Those
     // files' own tsconfig is not consulted, so without this line every
     // `@strudel/*` import below them is an implicit `any` and `next build`

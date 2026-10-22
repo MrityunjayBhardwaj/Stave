@@ -24,7 +24,7 @@
  */
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { bjorklund, rotateEuclid } from '../../../../editor/src/ir/euclid'
+import { bjorklund, rotateEuclid } from '../../../../editor/src/codeView/ir/euclid'
 import { serializeByLeaf, serializeStepGrid, serializePianoRoll } from './serialize'
 import type {
   AltRegion,
@@ -46,7 +46,7 @@ import type {
   StepLane,
 } from './model'
 import { cellOn, isCellOn } from './model'
-import { pitchToMidi } from '../../../../editor/src/visualEdit/notation/pitch'
+import { pitchToMidi } from '../../../../editor/src/codeView/notation/pitch'
 
 /**
  * A bare integer (`60`, `0`, `-7`) — a numeric note value for the roll (#469).

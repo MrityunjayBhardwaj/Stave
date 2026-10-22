@@ -52,11 +52,10 @@ const STEM_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
 /**
  * Map a track to its stem color.
  *
- * @deprecated Phase 20-11 — use paletteForTrack(trackIndexOf(trackId), sample)
- * instead. This shim is preserved for back-compat during the 20-11 → 20-12
- * chrome migration. Existing callers (chord-progression demo files, tests)
- * keep working until 20-12 retires this. New call sites SHOULD route through
- * paletteForTrack/trackIndexOf.
+ * @deprecated Phase 20-11 — use the editor's `trackIdentity(trackId).color`
+ * (`@stave/editor`) instead. This shim is preserved for back-compat during the
+ * 20-11 → 20-12 chrome migration. Existing callers (chord-progression demo
+ * files, tests) keep working until 20-12 retires this.
  *
  * @param trackId  the row's stable track id (never null — '$default'
  *                 is the sentinel from groupEventsByTrack)
@@ -77,37 +76,14 @@ export function trackColorFromStem(
 }
 
 /**
- * MIRROR (V-track-1, #579): the palette path below — `TRACK_PALETTE_32`,
- * `trackIndexOf`, `paletteForTrack` (and `stemHueGroup`) — is duplicated in the
- * editor-canonical `packages/editor/src/visualEdit/trackColor.ts` so the Mixer
- * can colour strips by the SAME algorithm (the editor can't import this app
- * file, and this app file can't import the editor barrel — P172). Keep the two
- * in sync: `trackColor.drift.test.ts` fails loudly if they diverge. The editor's
- * `colorForTrack(key)` === the Timeline's `paletteForTrack(trackIndexOf(key), key)`.
- *
- * Phase 20-11 D-03 — TRACK_PALETTE_32. Placeholder palette.
- * 4 stem hues × 8 lightness/saturation steps each — 32 cells total.
- * Exact swatches finalised in 20-12 design-system pass; this v1 keeps the
- * stem-family hue-group convention from 20-02 (drums/bass/pad/melody)
- * layered into 32 cells.
- *
- * Allocation: index `i` → stem-family `i % 4`, shade `Math.floor(i / 4)`.
- * paletteForTrack composes with stemHueGroup(sample) to bias auto-allocated
- * trackIndex toward the sample-derived hue family.
+ * The track palette (`TRACK_PALETTE_32`, `paletteForTrack`, `trackIndexOf`,
+ * `colorForTrack`, `trackIdentity`) lives in the editor's `codeView/trackColor.ts`,
+ * and the app reads it from `@stave/editor`. This file kept a mirrored copy, with a
+ * drift test, until the app's tests could load the editor's main entry (#1938);
+ * #1943 retired it.
  */
-export const TRACK_PALETTE_32: readonly string[] = [
-  // Drums (orange family) — 8 lightness steps
-  '#fed7aa', '#fdba74', '#fb923c', '#f97316', '#ea580c', '#c2410c', '#9a3412', '#7c2d12',
-  // Bass (cyan family) — 8 lightness steps
-  '#a5f3fc', '#67e8f9', '#22d3ee', '#06b6d4', '#0891b2', '#0e7490', '#155e75', '#164e63',
-  // Pad (green family) — 8 lightness steps
-  '#a7f3d0', '#6ee7b7', '#34d399', '#10b981', '#059669', '#047857', '#065f46', '#064e3b',
-  // Melody (purple family) — 8 lightness steps
-  '#ddd6fe', '#c4b5fd', '#a78bfa', '#8b5cf6', '#7c3aed', '#6d28d9', '#5b21b6', '#4c1d95',
-] as const
 
-// FNV-1a 32-bit. Per RESEARCH G5: locally scoped (not imported from
-// collect.ts:fnv1a — keeps presentation directionally clean from IR).
+// FNV-1a 32-bit — a stable string-to-slot hash for the automation palette below.
 function fnv1a32(str: string): number {
   let h = 0x811c9dc5
   for (let i = 0; i < str.length; i++) {
@@ -115,79 +91,6 @@ function fnv1a32(str: string): number {
     h = Math.imul(h, 0x01000193) >>> 0
   }
   return h >>> 0
-}
-
-// Stem-family classifier — internal, mirrors STEM_PATTERNS regex
-// precedence (DV-11) but returns an index 0..3 (drums|bass|pad|melody).
-function stemHueGroup(sample?: string): number {
-  if (!sample) return 3   // unknown → melody slot (matches STEM_FALLBACK)
-  for (let i = 0; i < STEM_PATTERNS.length; i++) {
-    if (STEM_PATTERNS[i][0].test(sample)) return i
-  }
-  return 3
-}
-
-/**
- * Phase 20-11 — map a (trackIndex, sampleHint) to a palette slot.
- * trackIndex: 0-based — `d1` → 0, `d2` → 1, `d33` → 0 (mod 32 wrap).
- * sampleHint: optional first event's `evt.s` for stem-family bias.
- *
- * Allocation: each track gets a base slot derived from trackIndex,
- * biased by the sample's stem hue family — `(trackIndex * 4 + hueGroup) % 32`.
- * Two tracks at adjacent indices visit different hue families before
- * cycling back; consecutive tracks visually distinguishable.
- */
-export function paletteForTrack(trackIndex: number, sampleHint?: string): string {
-  const hueGroup = stemHueGroup(sampleHint)
-  const slot = (((trackIndex * 4 + hueGroup) % 32) + 32) % 32   // safe mod for negative
-  return TRACK_PALETTE_32[slot]
-}
-
-/**
- * Phase 20-11 — map a trackId string to a stable 0..31 index.
- * Auto-name shape (`d1`..`d{N}`): parse digit, return N-1 mod 32.
- * Custom name (.p("custom")): FNV-1a 32-bit hash mod 32. Acceptable
- * for v1; 20-12 lands user-pickable color UI for custom names.
- */
-export function trackIndexOf(trackId: string): number {
-  const m = trackId.match(/^d(\d+)$/)
-  if (m) {
-    const n = parseInt(m[1], 10)
-    if (n >= 1) return ((n - 1) % 32 + 32) % 32
-  }
-  return fnv1a32(trackId) % 32
-}
-
-/**
- * THE canonical track colour from its key — the composed call the Timeline made
- * inline (`paletteForTrack(trackIndexOf(key), key)`). MIRROR of the editor's
- * `trackColor.colorForTrack` (V-track-1); `trackColor.drift.test.ts` guards them.
- */
-export function colorForTrack(key: string): string {
-  return paletteForTrack(trackIndexOf(key), key)
-}
-
-/** A track's resolved visual identity — name + colour from one canonical key.
- *  MIRROR of the editor's `trackColor.TrackIdentity` (V-track-1). */
-export interface TrackIdentity {
-  readonly key: string
-  readonly name: string
-  /** `customColor ?? colorForTrack(key)` (V-track-2, #581). */
-  readonly color: string
-}
-
-/**
- * THE track-identity resolver — MIRROR of the editor's `trackColor.trackIdentity`
- * (V-track-1, #579). Both views (Mixer strip + Song Timeline lane) resolve colour
- * through this ONE function so they can't diverge. Phase D (V-track-2, #581): the
- * optional `customColor` layers a per-track user override on the deterministic
- * palette — `customColor ?? colorForTrack(key)`. The override is persisted per
- * file in the `TrackMeta` Yjs store keyed by the display name (this `key`), never
- * written to the source. `trackColor.drift.test.ts` asserts this mirror matches
- * the editor copy for both the default and the override path.
- */
-export function trackIdentity(key: string, customColor?: string): TrackIdentity {
-  return { key, name: key, color: customColor ?? colorForTrack(key) }
 }
 
 /**

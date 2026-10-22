@@ -46,7 +46,6 @@ struCode/
 │   │   │   │   ├── WavEncoder.ts       # AudioBuffer → WAV Blob (pure TS, no deps)
 │   │   │   │   └── noteToMidi.ts       # Note name → MIDI conversion
 │   │   │   ├── monaco/
-│   │   │   │   ├── StrudelMonaco.tsx   # Monaco editor with strudel language config
 │   │   │   │   ├── language.ts         # Strudel Monaco language definition (tokens, syntax)
 │   │   │   │   ├── completions.ts      # Autocomplete: note names, functions, mini-notation
 │   │   │   │   ├── hover.ts            # Hover docs for Strudel functions

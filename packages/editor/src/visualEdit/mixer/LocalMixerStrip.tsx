@@ -26,7 +26,7 @@ import { useMixerModel } from './useMixerModel'
 import { useTrackMeters } from './useTrackMeters'
 import { useSoloMuteSync } from './soloMuteSync'
 import { ChannelStrip } from './ChannelStrip'
-import { gainEdit, panEdit, muteEdit } from './writeStrip'
+import { gainEdit, panEdit, muteEdit, commit } from '../../codeView'
 
 export function LocalMixerStrip(): React.ReactElement | null {
   const { chunk } = useActiveChunk()
@@ -62,22 +62,19 @@ export function LocalMixerStrip(): React.ReactElement | null {
         showHeader={false}
         orientation="horizontal"
         onGainChange={(value) =>
-          applyToStrip(strip.id, (fresh, wb) => {
-            const e = gainEdit(fresh, value)
-            if (e) wb.replaceRange(e.range, e.text, 'mixer')
-          })
+          applyToStrip(strip.id, (fresh, wb) =>
+            commit(wb, gainEdit(fresh, value), 'mixer'),
+          )
         }
         onPanChange={(value) =>
-          applyToStrip(strip.id, (fresh, wb) => {
-            const e = panEdit(fresh, value)
-            if (e) wb.replaceRange(e.range, e.text, 'mixer')
-          })
+          applyToStrip(strip.id, (fresh, wb) =>
+            commit(wb, panEdit(fresh, value), 'mixer'),
+          )
         }
         onMuteToggle={() =>
-          applyToStrip(strip.id, (fresh, wb) => {
-            const e = muteEdit(fresh, !strip.muted)
-            if (e) wb.replaceRange(e.range, e.text, 'mixer')
-          })
+          applyToStrip(strip.id, (fresh, wb) =>
+            commit(wb, muteEdit(fresh, !strip.muted), 'mixer'),
+          )
         }
         soloed={soloed.has(strip.id)}
         onSoloToggle={() => toggleSolo(strip.id)}

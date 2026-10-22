@@ -4,10 +4,10 @@ import React, { useEffect, useRef } from "react";
 import { perf } from "@stave/editor";
 import { useRulerUnits, toggleRulerUnits } from "../state/rulerUnits";
 import { useDisplayMeter } from "../state/displayMeter";
-import { barBeatTick, cpsToBpm, type DisplayMeter } from "../lib/meter";
 import { healthClass, healthBars, audioHealthReading, type AudioHealthSample } from "./transportLcdHealth";
 import { positionAsDrawn } from "./musicalTimeline/songAxis";
 import { readDrawnSongFrame } from "../state/drawnSongFrame";
+import { transportReadout } from "./transportReadout";
 
 /**
  * TransportLCD (#857) — a backlit hardware-style readout for the menubar's
@@ -132,18 +132,6 @@ function ensureLcdStyles(): void {
 
 const DASH = "—";
 
-/** `042.3` — three integer digits, one fractional. */
-function fmtCycle(c: number): string {
-  const [a, b] = c.toFixed(1).split(".");
-  return `${a.padStart(3, "0")}.${b}`;
-}
-
-/** `011.3.1` — bar·beat·tick, counted in the app's display meter (#1565/#1568). */
-function fmtBar(c: number, meter: DisplayMeter): string {
-  const { bar, beat, tick } = barBeatTick(c, meter);
-  return `${String(bar).padStart(3, "0")}.${beat}.${tick}`;
-}
-
 export function TransportLCD({
   isPlaying,
   getSongPosition,
@@ -223,29 +211,11 @@ export function TransportLCD({
         const cps = getCpsRef.current();
         // #1725 — the same frame and the same wrap the playhead is drawn with.
         const pos = positionAsDrawn(getSongPositionRef.current(), readDrawnSongFrame());
-        const inCycle = cycleModeRef.current;
-
-        if (posRef.current) {
-          posRef.current.textContent =
-            pos === null
-              ? `${DASH} ${DASH}`
-              : inCycle
-                ? fmtCycle(pos.cycle)
-                : fmtBar(pos.cycle, meterRef.current);
-        }
-        if (passRef.current) {
-          passRef.current.textContent = pos?.pass == null ? DASH : String(pos.pass);
-        }
-        if (tempoRef.current) {
-          tempoRef.current.textContent =
-            cps === null
-              ? `${DASH}${DASH}`
-              : inCycle
-                ? cps.toFixed(2)
-                // `cpsToBpm` is null only for a non-finite tempo, which the
-                // dash already describes better than `NaN` did.
-                : (cpsToBpm(cps, meterRef.current)?.toString() ?? `${DASH}${DASH}`);
-        }
+        // the text is worked out in one place, shared with the phone's top bar (#2001)
+        const r = transportReadout(pos, cps, cycleModeRef.current, meterRef.current);
+        if (posRef.current) posRef.current.textContent = r.position;
+        if (passRef.current) passRef.current.textContent = r.pass;
+        if (tempoRef.current) tempoRef.current.textContent = r.tempo;
       }
 
       // Health — coarser (~4Hz). Reuses the canonical profiler when it's on

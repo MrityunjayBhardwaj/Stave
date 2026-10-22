@@ -7,8 +7,8 @@ import {
   type IRSnapshot,
   type IRSnapshotInput,
 } from '../irInspector'
-import { IR } from '../../ir/PatternIR'
-import type { IREvent } from '../../ir/IREvent'
+import { IR } from '../../codeView/ir/PatternIR'
+import type { IREvent } from '../../codeView/ir/IREvent'
 
 const sample = (): IRSnapshotInput => {
   const ir = IR.play('c4')

@@ -19,7 +19,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { SampleSoundScheduler } from '../sampleSound'
-import type { IREvent } from '../../ir/IREvent'
+import type { IREvent } from '../../codeView/ir/IREvent'
 
 // ---------------------------------------------------------------------------
 // Helper

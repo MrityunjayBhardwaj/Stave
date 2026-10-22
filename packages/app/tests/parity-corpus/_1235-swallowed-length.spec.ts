@@ -38,20 +38,20 @@ import {
   parsePianoRollCore,
   projectStepGridDerived,
   projectPianoRollDerived,
-} from '../../../editor/src/visualEdit/notation/parse'
+} from '../../../editor/src/codeView/notation/parse'
 import type {
   LeafSource,
   RollLeafSource,
   StepGridModel,
   PianoRollModel,
   SurgicalOverlay,
-} from '../../../editor/src/visualEdit/notation/model'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import { resizeCell, resizeNote } from '../../../editor/src/visualEdit/notation/place'
+} from '../../../editor/src/codeView/notation/model'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import { resizeCell, resizeNote } from '../../../editor/src/codeView/notation/place'
 import {
   serializeStepGridWithExtent,
   serializePianoRollWithExtent,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 
 /**
  * Wrap resolved spans as an OVERLAY the writer will accept (#1233 made the field lazy).

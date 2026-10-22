@@ -22,21 +22,19 @@ export default defineConfig({
   },
   integrations: [
     starlight({
-      title: 'Stave Code',
+      title: 'Stave',
       description:
-        'Browser-native live-coding editor for music (Strudel, Sonic Pi) and visuals (p5.js, Hydra).',
+        'A music studio for Strudel in your browser: write the song as code, arrange it on a Timeline, edit it on a grid, mix it, and make visuals that react to it.',
       logo: { src: './src/assets/stave.svg' },
       // Override Hero to base-prefix splash action links — Starlight renders
       // them verbatim, and the rehype plugin can't reach frontmatter.
       components: {
         Hero: './src/components/Hero.astro',
       },
-      social: {
-        github: 'https://github.com/MrityunjayBhardwaj/stave-code',
-      },
+      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/MrityunjayBhardwaj/Stave' }],
       editLink: {
         baseUrl:
-          'https://github.com/MrityunjayBhardwaj/stave-code/edit/main/packages/docs/',
+          'https://github.com/MrityunjayBhardwaj/Stave/edit/main/packages/docs/',
       },
       lastUpdated: true,
       pagefind: true,
@@ -45,11 +43,21 @@ export default defineConfig({
           label: 'Start here',
           items: [
             { label: 'Getting started', link: '/getting-started/' },
+            { label: 'Roadmap', link: '/roadmap/' },
+          ],
+        },
+        {
+          label: 'Studio',
+          items: [
+            { label: 'Timeline', link: '/studio/timeline/' },
+            { label: 'Pattern', link: '/studio/pattern/' },
+            { label: 'Mixer', link: '/studio/mixer/' },
+            { label: 'Library', link: '/studio/library/' },
           ],
         },
         {
           label: 'Core concepts',
-          autogenerate: { directory: 'concepts' },
+          items: [{ autogenerate: { directory: 'concepts' } }],
         },
         {
           label: 'Runtimes',
@@ -63,7 +71,7 @@ export default defineConfig({
         },
         {
           label: 'Guides',
-          autogenerate: { directory: 'guides' },
+          items: [{ autogenerate: { directory: 'guides' } }],
         },
         {
           label: 'API reference',

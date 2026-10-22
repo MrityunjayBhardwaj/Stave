@@ -78,8 +78,8 @@ overall sound — `pulse` reads `uKick`/`uSnare`/`uHat`, `glsl` reads `iChannel0
 
 The `u*` uniforms above are fixed named drums. To react to **your own tracks** —
 whatever patterns your program runs, in order — a shader reads `uTrackCount` and
-calls `staveTrack(i)`. This is the GLSL equivalent of `u.track(id)` in the p5 and
-hydra runtimes:
+calls `staveTrack(i)`. This is the GLSL equivalent of `sig.track(id)` in p5.js and
+`stave.sig.track(id)` in Hydra:
 
 ```glsl
 struct StaveTrack { float env, velocity, rms, bass, mid, treble; };
@@ -138,8 +138,9 @@ Beyond the built-ins, you can author your own shaders as `.glsl` files:
 
 A `.glsl` file reads the same uniforms documented above — `iChannel0` for the
 spectrum/waveform and `uKick`/`uSnare`/… for pattern events — so your shader is
-audio- and event-reactive with no extra wiring. New projects ship two examples to
-start from: **Prism** and **Pulse Grid**.
+audio- and event-reactive with no extra wiring. The **Library** panel's Viz shelf
+has shaders to start from — **Prism**, **Pulse Grid**, **Night Drive** and
+**Tunnel** — press `+` on one to add it to your project under `viz_lib/`.
 
 ## When a shader won't compile
 

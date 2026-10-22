@@ -15,11 +15,11 @@ import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parsePianoRoll, parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+import { parsePianoRoll, parseStepGrid } from '../../../editor/src/codeView/notation/parse'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
 // The PRODUCTION cell toggle — see the note at its call site below (#1048).
-import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
-import { serializePianoRoll, serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
+import { toggleCell } from '../../../editor/src/codeView/notation/place'
+import { serializePianoRoll, serializeStepGrid } from '../../../editor/src/codeView/notation/serialize'
 
 const require = createRequire(import.meta.url)
 const here = path.dirname(fileURLToPath(import.meta.url))

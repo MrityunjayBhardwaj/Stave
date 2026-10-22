@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeStrudelHap, declaredLocationKeys } from '../NormalizedHap'
-import type { IREvent } from '../../ir/IREvent'
+import { valueToMidi } from '@strudel/core'
+import { normalizeStrudelHap, declaredLocationKeys, hapMidi } from '../NormalizedHap'
+import type { IREvent } from '../../codeView/ir/IREvent'
 
 describe('normalizeStrudelHap', () => {
   it('extracts all fields from a full Strudel hap with Fraction-like objects', () => {
@@ -273,5 +274,45 @@ describe('20-05 — normalizeStrudelHap resolves irNodeId from snapshot lookup (
     }
     const n = normalizeStrudelHap(hap, undefined, lookup)
     expect(n.irNodeId).toBe('idB')
+  })
+})
+
+describe('hapMidi — a hap value\'s pitch, as Strudel reads it (#1929)', () => {
+  /** Strudel's answer: `valueToMidi` over `{ freq, note: note ?? n }`, null where it throws or reads NaN. */
+  function strudel(value: Record<string, unknown>): number | null {
+    try {
+      const m = valueToMidi({ freq: value.freq, note: value.note ?? value.n })
+      return Number.isFinite(m) ? m : null
+    } catch {
+      return null
+    }
+  }
+  const VALUES: Array<Record<string, unknown>> = [
+    { note: 'c3' }, { note: 'cs3' }, { note: 'g' }, { note: 'ef3' }, { note: 'Bbb2' }, { note: 'c#b3' },
+    { note: 'e#-1' }, { note: 'C' }, { n: 'fs2' }, { n: 3 }, { note: 60 }, { note: 60.5 },
+    { note: 'c3', freq: 440 }, { freq: 261.63 }, { note: 'bd' }, { note: 'Em' }, { note: 'c-' },
+    { s: 'bd' }, { s: 'bd', n: 2 }, {},
+  ]
+
+  it.each(VALUES)('%j matches Strudel\'s valueToMidi', (value) => {
+    const ours = hapMidi(value)
+    const theirs = strudel(value)
+    if (theirs === null) expect(ours).toBeNull()
+    else expect(ours).toBeCloseTo(theirs, 12)
+  })
+
+  it('normalizeStrudelHap carries it as midi, and leaves it off a hap with no pitch', () => {
+    const at = (value: Record<string, unknown>) => normalizeStrudelHap({ whole: { begin: 0, end: 1 }, value })
+    expect(at({ note: 'cs3' }).midi).toBe(49)
+    expect(at({ note: 'g' }).midi).toBe(55)
+    expect(at({ note: 'ef3' }).midi).toBe(51)
+    expect(at({ note: 'c3' }).midi).toBe(48) // control: the old sketch grammar read this one
+    expect(at({ note: 'c3', freq: 440 }).midi).toBe(69) // a written freq wins, as in Strudel
+    expect('midi' in at({ s: 'bd' })).toBe(false)
+    expect('midi' in at({ note: 'bd' })).toBe(false)
+  })
+
+  it('leaves freq meaning what the code wrote: null when only a note is written', () => {
+    expect(normalizeStrudelHap({ whole: { begin: 0, end: 1 }, value: { note: 'cs3' } }).freq).toBeNull()
   })
 })

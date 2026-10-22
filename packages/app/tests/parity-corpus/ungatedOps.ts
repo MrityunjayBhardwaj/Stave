@@ -33,12 +33,12 @@ import {
   cellOn,
   clampLane,
   clampPartAtOnset,
-} from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
 import type {
   PianoRollModel,
   StepCell,
   StepGridModel,
-} from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
 
 /** `toggleCell` without `ifGridSpellable` — builds the model and never refuses. */
 export function ungatedToggle(

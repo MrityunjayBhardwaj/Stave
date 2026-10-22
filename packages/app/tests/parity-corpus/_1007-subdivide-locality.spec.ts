@@ -52,12 +52,12 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import type { StepGridModel } from '../../../editor/src/visualEdit/notation/model'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
-import { scaleStepGrid, canDoubleStepGrid } from '../../../editor/src/visualEdit/notation/resolution'
-import { serializeStepGridWithExtent } from '../../../editor/src/visualEdit/notation/serialize'
+import { parseStepGrid } from '../../../editor/src/codeView/notation/parse'
+import type { StepGridModel } from '../../../editor/src/codeView/notation/model'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import { toggleCell } from '../../../editor/src/codeView/notation/place'
+import { scaleStepGrid, canDoubleStepGrid } from '../../../editor/src/codeView/notation/resolution'
+import { serializeStepGridWithExtent } from '../../../editor/src/codeView/notation/serialize'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

@@ -18,7 +18,7 @@
  */
 import * as React from 'react'
 
-import type { StripModel } from './stripModel'
+import type { StripModel } from '../../codeView'
 import { gainToFaderPos, faderPosToGain, formatDb } from './faderTaper'
 import type { MeterController } from './useTrackMeters'
 import { StripColorPopover } from './StripColorPopover'
@@ -514,8 +514,8 @@ export function ChannelStrip({
             <button
               type="button"
               data-mixer-strip-dot
-              aria-label={`Change colour of ${strip.name}`}
-              title={`${strip.name} — click to change colour`}
+              aria-label={`Change colour of ${strip.shownName}`}
+              title={`${strip.shownName} — click to change colour`}
               onClick={(e) => setColorAnchor(e.currentTarget.getBoundingClientRect())}
               style={{
                 width: 8,
@@ -583,7 +583,7 @@ export function ChannelStrip({
           ) : (
             <span
               data-mixer-strip-name
-              title={renameEnabled ? `${strip.name} — double-click to rename` : strip.name}
+              title={renameEnabled ? `${strip.shownName} — double-click to rename` : strip.shownName}
               onDoubleClick={renameEnabled ? openRename : undefined}
               style={{
                 flex: 1,
@@ -596,7 +596,7 @@ export function ChannelStrip({
                 cursor: renameEnabled ? 'text' : 'default',
               }}
             >
-              {strip.name}
+              {strip.shownName}
             </span>
           )}
         </div>
@@ -604,7 +604,7 @@ export function ChannelStrip({
         <button
           type="button"
           data-mixer-strip-mute
-          aria-label={`${strip.muted ? 'Unmute' : 'Mute'} ${strip.name}`}
+          aria-label={`${strip.muted ? 'Unmute' : 'Mute'} ${strip.shownName}`}
           aria-pressed={strip.muted}
           disabled={!muteEnabled}
           onClick={() => onMuteToggle?.()}
@@ -631,7 +631,7 @@ export function ChannelStrip({
           <button
             type="button"
             data-mixer-strip-solo
-            aria-label={`${soloed ? 'Unsolo' : 'Solo'} ${strip.name}`}
+            aria-label={`${soloed ? 'Unsolo' : 'Solo'} ${strip.shownName}`}
             aria-pressed={soloed}
             onClick={() => onSoloToggle()}
             title={soloed ? 'Unsolo' : 'Solo (hear this alone)'}
@@ -657,7 +657,7 @@ export function ChannelStrip({
           <button
             type="button"
             data-mixer-strip-expand
-            aria-label={`${expanded ? 'Collapse' : 'Expand'} ${strip.name}`}
+            aria-label={`${expanded ? 'Collapse' : 'Expand'} ${strip.shownName}`}
             aria-expanded={expanded}
             onClick={() => onToggleExpand()}
             title={expanded ? 'Collapse channel' : 'Expand channel'}

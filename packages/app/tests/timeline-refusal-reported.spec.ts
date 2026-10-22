@@ -2,14 +2,14 @@
  * A REFUSED Song Timeline gesture names its cause where the user can find it
  * (#1414) — Playwright observation (AnviDev observe gate).
  *
- * WHAT WAS WRONG. `applyOffsetEditsToFile` has always refused correctly and has
+ * WHAT WAS WRONG. The file route (`commitToFile`) has always refused correctly and has
  * always said so, naming five distinct refusals. All fourteen of its call sites
  * discarded the answer, and twelve of them bailed out one line earlier on an
  * empty edit list without telling anyone either. A gesture that was REFUSED and
  * one that was APPLIED were indistinguishable — to the user, and to us.
  *
  * ⚠ WHY THIS SPEC IS THE ONLY ARM THAT CAN SEE THE APP-SIDE SEAM.
- * `editorRegistry.writeOutcome.test.ts` covers the writer's five return values
+ * `codeView/__tests__/commitToFile.test.ts` covers the writer's five return values
  * at unit level and is break-tested. Nothing at unit level mounts
  * `MusicalTimeline`, so nothing else checks that a refusal actually reaches the
  * Console panel with its cause attached. If this spec is deleted, the reporting

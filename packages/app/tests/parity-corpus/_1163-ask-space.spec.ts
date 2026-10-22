@@ -34,15 +34,15 @@ import { describe, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   columnCount,
   columnOverlap,
   rollContentRange,
-} from '../../../editor/src/visualEdit/notation/model'
-import { midiToPitch, pitchToMidi } from '../../../editor/src/visualEdit/notation/pitch'
-import { canPlaceNote, viewPlacesNotes } from '../../../editor/src/visualEdit/notation/place'
-import type { PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
+import { midiToPitch, pitchToMidi } from '../../../editor/src/codeView/notation/pitch'
+import { canPlaceNote, viewPlacesNotes } from '../../../editor/src/codeView/notation/place'
+import type { PianoRollModel } from '../../../editor/src/codeView/notation/model'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus = JSON.parse(fs.readFileSync(path.join(here, 'mini-corpus.json'), 'utf8'))

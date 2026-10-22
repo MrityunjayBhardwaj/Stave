@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectAllChunks } from '../../chunkDetect'
+import { detectAllChunks } from '../../../codeView/chunkDetect'
 import { knobsFromChunk } from '../MixerBody'
 import { customRange } from '../knobRanges'
 
