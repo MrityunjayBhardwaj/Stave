@@ -646,7 +646,7 @@ export {
   getFixedMarkers,
   makeFixedKey,
 } from './engine/engineLog'
-export { installEngineLogMarkers } from './workspace/engineLogMarkers'
+export { installEngineLogMarkers, errorPositionNow, subscribeErrorPositions } from './workspace/engineLogMarkers'
 export { installGlobalErrorCatch } from './engine/globalErrorCatch'
 
 // IR Inspector — observation-only snapshot store for the Transform

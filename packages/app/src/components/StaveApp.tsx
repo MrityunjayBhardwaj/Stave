@@ -64,6 +64,7 @@ import {
   applyPersistedUiIconSize,
   applyPersistedInlineVizActionSize,
   applyPersistedVizQuality,
+  errorPositionNow,
 } from "@stave/editor";
 import { SettingsModal, type SettingsTab } from "./settings/SettingsModal";
 import { CropPopup, createBackdropCropAdapter } from "./CropPopup";
@@ -350,9 +351,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // need a tick to mount if the file wasn't already open — retry a few times.
   // Shared by an error toast, the control bar's eval lamp (#1348) and a Console
   // row (#2182), so they cannot come to disagree about where an error is.
-  const revealLogEntry = useCallback((entry: { source?: string; line?: number }) => {
+  // #2184 — an entry whose squiggle is still in the editor goes to where that
+  // squiggle is now, so code typed above it since the run doesn't send you to
+  // the old line.
+  const revealLogEntry = useCallback((entry: { id?: string; source?: string; line?: number }) => {
     setActivePanelId("console");
-    const { source, line } = entry;
+    const { source } = entry;
+    const line = (entry.id ? errorPositionNow(entry.id)?.line : undefined) ?? entry.line;
     if (!source || line == null) return;
     const files = listWorkspaceFiles();
     const file =
