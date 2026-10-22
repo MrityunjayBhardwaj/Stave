@@ -159,6 +159,10 @@
     "runs": "gate",
     "why": "The error badge above the code and the eval lamp say what the toast and the Console say (#2177): a Strudel feature Stave has not got, a typo with its suggestion and an unknown method each show the same sentence in the badge, its tooltip, the lamp's tooltip and label, and the toast; a fixed document clears the badge and the lamp."
   },
+  "error-follows-edits.spec.ts": {
+    "runs": "gate",
+    "why": "An error's squiggle follows the code around it (#2184): typing lines above it moves the Console row's line and where clicking the row goes; fixing the underlined word takes the squiggle off without running again, and an edit elsewhere on the line leaves it on (#2185)."
+  },
   "file-history.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
