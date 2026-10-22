@@ -16186,6 +16186,10 @@ var _StrudelEngine = class _StrudelEngine {
     this.stopAskingForAudio = null;
     /** Notes handed to superdough after their start time, which it drops (#1348). */
     this.lateNotes = 0;
+    /** Above zero while the scheduler's own query runs (#2173). See `watchSkippedTicks`. */
+    this.schedulerQuery = { depth: 0 };
+    /** takes off the `strudel.log` listener that raises play-time errors (#2173) */
+    this.stopListeningForPlayErrors = null;
     this.analyserNode = null;
     this.hapStream = new HapStream();
     // #339 — monotonic evaluate() generation, stamped onto every emitted hap
@@ -16690,7 +16694,13 @@ var _StrudelEngine = class _StrudelEngine {
     });
     watchSkippedTicks(this.repl.scheduler, (n) => {
       this.lateNotes += n;
-    });
+    }, this.schedulerQuery);
+    this.stopListeningForPlayErrors?.();
+    this.stopListeningForPlayErrors = listenForPlayTimeErrors(
+      STRUDEL_LOG_EVENT,
+      this.schedulerQuery,
+      (error) => this.runtimeErrorHandler?.(error)
+    );
     await Promise.resolve().then(() => (init_piano(), piano_exports));
     this.initialized = true;
   }
@@ -17717,6 +17727,8 @@ var _StrudelEngine = class _StrudelEngine {
     this.transportHold.cancelResume();
     this.stopAskingForAudio?.();
     this.stopAskingForAudio = null;
+    this.stopListeningForPlayErrors?.();
+    this.stopListeningForPlayErrors = null;
     this.trackEnvelopes.dispose();
     this.trackEnvelopeListeners.clear();
     this.unregisterBackgroundRender();
@@ -17821,26 +17833,28 @@ var _StrudelEngine = class _StrudelEngine {
 };
 __name(_StrudelEngine, "StrudelEngine");
 var StrudelEngine = _StrudelEngine;
-function watchSkippedTicks(scheduler, onDropped) {
+function watchSkippedTicks(scheduler, onDropped, inQuery) {
   if (!scheduler || typeof scheduler !== "object") return;
-  let stored = scheduler.pattern ? watched(scheduler.pattern, onDropped) : scheduler.pattern;
+  let stored = scheduler.pattern ? watched(scheduler.pattern, onDropped, inQuery) : scheduler.pattern;
   Object.defineProperty(scheduler, "pattern", {
     configurable: true,
     enumerable: true,
     get: /* @__PURE__ */ __name(() => stored, "get"),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     set: /* @__PURE__ */ __name((pat) => {
-      stored = pat ? watched(pat, onDropped) : pat;
+      stored = pat ? watched(pat, onDropped, inQuery) : pat;
     }, "set")
   });
 }
 __name(watchSkippedTicks, "watchSkippedTicks");
-function watched(pat, onDropped) {
+function watched(pat, onDropped, inQuery) {
   if (typeof pat.queryArc !== "function") return pat;
   let expected = null;
   const w = Object.create(pat);
   w.queryArc = function(begin, end, state6) {
-    if (state6?.cyclist === "cyclist") {
+    if (state6?.cyclist !== "cyclist") return pat.queryArc(begin, end, state6);
+    if (inQuery) inQuery.depth++;
+    try {
       if (expected !== null && begin > expected) {
         try {
           const lost = pat.queryArc(expected, begin, state6).filter((h) => h.hasOnset?.()).length;
@@ -17849,12 +17863,35 @@ function watched(pat, onDropped) {
         }
       }
       expected = end;
+      return pat.queryArc(begin, end, state6);
+    } finally {
+      if (inQuery) inQuery.depth--;
     }
-    return pat.queryArc(begin, end, state6);
   };
   return w;
 }
 __name(watched, "watched");
+var STRUDEL_LOG_EVENT = "strudel.log";
+function playTimeErrorFrom(detail) {
+  const message = detail?.message;
+  if (typeof message !== "string") return null;
+  const m = message.match(/^\[([^\]]+)\] error: ([\s\S]+)$/);
+  if (!m || m[1] === "eval") return null;
+  return new Error(m[2]);
+}
+__name(playTimeErrorFrom, "playTimeErrorFrom");
+function listenForPlayTimeErrors(logKey, inQuery, onError) {
+  if (typeof document === "undefined") return () => {
+  };
+  const onLog = /* @__PURE__ */ __name((event) => {
+    if (inQuery.depth === 0) return;
+    const error = playTimeErrorFrom(event.detail);
+    if (error) onError(error);
+  }, "onLog");
+  document.addEventListener(logKey, onLog);
+  return () => document.removeEventListener(logKey, onLog);
+}
+__name(listenForPlayTimeErrors, "listenForPlayTimeErrors");
 
 // src/visualizers/p5FesBridge.ts
 var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
