@@ -58,6 +58,13 @@ test('a method Stave has not got is named as Strudel names it', async ({ page })
   expect(words).not.toContain('s(...)')
 })
 
+test('#2190 — `.edoScale()` says it is not in Stave yet', async ({ page }) => {
+  await evaluate(page, '$: n("0 1 2").edoScale("C:8")\n')
+  const words = await sameEverywhere(page)
+  expect(words).toContain('`.edoScale()` is part of Strudel')
+  expect(words).not.toContain('is not a function')
+})
+
 test('a message without its own full stop gets one in the lamp label, and only one', async ({ page }) => {
   await evaluate(page, '$: s("bd*2")\n$: s("hh*4"')
   const badge = page.locator(BADGE)

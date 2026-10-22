@@ -29626,7 +29626,14 @@ var STRUDEL_NOT_IN_STAVE = [
     names: ["initHydra", "clearHydra", "H"],
     meanwhile: "Hydra runs in Stave from a `.hydra` file."
   },
-  { what: "styles the highlighted code", issue: 2168, methods: ["markcss"] }
+  { what: "styles the highlighted code", issue: 2168, methods: ["markcss"] },
+  // #2190 — Strudel's REPL loads @strudel/edo; Stave can't until it is published (#121).
+  {
+    what: "builds scales that split the octave into any number of equal steps",
+    issue: 121,
+    names: ["edoScale"],
+    methods: ["edoScale"]
+  }
 ];
 function hintFor(row, shown) {
   const base = `${shown} is part of Strudel (it ${row.what}), but it isn't in Stave yet.`;

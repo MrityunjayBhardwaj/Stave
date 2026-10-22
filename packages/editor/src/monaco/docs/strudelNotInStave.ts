@@ -13,6 +13,8 @@
  * from the published packages (@strudel/osc 1.3.2, csound 1.3.0, mqtt
  * 1.2.6, serial 1.2.6, gamepad 1.2.6, motion 1.2.6, tidal 0.1.0, hydra
  * 1.2.6). `markcss` is a core method that Strudel's editor implements.
+ * `edoScale` is read from @strudel/edo's source (strudel f73b3956), since that
+ * package is not on npm yet.
  *
  * When a feature lands in Stave, delete its row — `strudelNotInStave.test.ts`
  * fails while a row names something Stave's Strudel scope defines.
@@ -71,6 +73,13 @@ export const STRUDEL_NOT_IN_STAVE: readonly NotInStave[] = [
     meanwhile: 'Hydra runs in Stave from a `.hydra` file.',
   },
   { what: 'styles the highlighted code', issue: 2168, methods: ['markcss'] },
+  // #2190 — Strudel's REPL loads @strudel/edo; Stave can't until it is published (#121).
+  {
+    what: 'builds scales that split the octave into any number of equal steps',
+    issue: 121,
+    names: ['edoScale'],
+    methods: ['edoScale'],
+  },
 ]
 
 function hintFor(row: NotInStave, shown: string): string {

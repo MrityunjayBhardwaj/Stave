@@ -44,6 +44,14 @@ describe('Strudel features not in Stave yet', () => {
     expect(format(new ReferenceError('initHydra is not defined')).message).toContain('`.hydra` file')
   })
 
+  it('#2190 — `.edoScale()`, in the words Chrome used in Stave, links #121', () => {
+    const r = format(new TypeError('n(...).edoScale is not a function'))
+    expect(r.message).toBe(
+      "`.edoScale()` is part of Strudel (it builds scales that split the octave into any number of equal steps), but it isn't in Stave yet.",
+    )
+    expect(r.suggestion?.docsUrl).toBe('https://github.com/MrityunjayBhardwaj/stave/issues/121')
+  })
+
   it('`H` no longer gets "Did you mean `s`?"', () => {
     expect(format(new ReferenceError('H is not defined')).message).not.toContain('Did you mean')
   })
