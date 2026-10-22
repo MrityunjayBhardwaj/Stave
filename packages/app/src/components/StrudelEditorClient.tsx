@@ -1272,9 +1272,15 @@ export default function StrudelEditorClient({
       // #2175 — an error thrown while the code ran (`.fooo()`, an undefined
       // name): the engine read its position back through the transpiler's
       // source map. Last, so a location the message itself gives wins.
-      const ranAt = (err as Error & { staveLocation?: { line: number; column: number } })
-        .staveLocation;
+      // #2187 — an error raised while a pattern plays is placed in the code
+      // that is PLAYING (`staveLocationCode`), which the file may no longer
+      // say; then the place is left out rather than put on the wrong text.
+      const { staveLocation: ranAt, staveLocationCode: ranIn } = err as Error & {
+        staveLocation?: { line: number; column: number };
+        staveLocationCode?: string;
+      };
       if (locatedLine == null && ranAt && typeof src === "string"
+        && (ranIn === undefined || ranIn === src)
         && ranAt.line >= 1 && ranAt.line <= src.split("\n").length) {
         locatedLine = ranAt.line;
         locatedColumn = ranAt.column;
