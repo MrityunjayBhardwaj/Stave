@@ -1224,9 +1224,10 @@ export default function StrudelEditorClient({
       if (typeof locateSource === "string" && typeof src === "string") {
         const offset = statementOffsetForSource(src, locateSource);
         if (offset != null) {
-          const before = src.slice(0, offset);
-          locatedLine = before.split("\n").length; // 1-based
-          locatedColumn = offset - before.lastIndexOf("\n"); // 1-based
+          // The LINE only: this names the track, not a token in it, and a squiggle
+          // now covers just the token at its column (#2180), which here would be
+          // the `$` of `$:`. With no column the track's whole line is marked.
+          locatedLine = src.slice(0, offset).split("\n").length; // 1-based
         }
       }
       // Parser SYNTAX errors embed an offset-free "(line:col)" in the message
