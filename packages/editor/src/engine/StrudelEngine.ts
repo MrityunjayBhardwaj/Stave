@@ -32,6 +32,7 @@ import { getTierFlags, type TierFlags } from './tierFlags'
 import { aliasSoundValue } from './aliases'
 import { canOpenAudioFrame, offlineContextInFrame } from './audioFrame'
 import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
+import { locateEvalError, measureEvalFrame, type EvalFrameShape } from './evalErrorLocation'
 import { installMiniStringParser } from './stringParser'
 import { resolveBareCaptureId } from './bareCapture'
 import { normalizeLoopRange, type LoopRange } from './transportFrame'
@@ -517,6 +518,10 @@ export class StrudelEngine implements LiveCodingEngine {
   private evalResolve: ((result: { error?: Error }) => void) | null = null
   // Runtime audio error handler (e.g. "sound X not found" during scheduling)
   private runtimeErrorHandler: ((err: Error) => void) | null = null
+  // #2175 — what the repl last transpiled, and how its evaluate wraps the
+  // result, so an error thrown while the code runs can be mapped to its line.
+  private lastTranspile: { code: string; options: Record<string, unknown>; run: (options: Record<string, unknown>) => unknown } | null = null
+  private evalFrame: EvalFrameShape | null = null
   // Sound names registered after init() — used for editor autocompletion
   private loadedSoundNames: string[] = []
   // Per-track PatternSchedulers captured during the last evaluate() call.
@@ -1154,8 +1159,14 @@ export class StrudelEngine implements LiveCodingEngine {
       }
     }
 
+    // #2175 — note what each evaluate transpiles, so on an error the same code
+    // can be transpiled again with a source map (only then: no cost per eval).
+    this.evalFrame = await measureEvalFrame()
     this.repl = webaudioRepl({
-      transpiler,
+      transpiler: (code: string, options: Record<string, unknown> = {}) => {
+        this.lastTranspile = { code, options, run: (o) => transpiler(code, o) }
+        return transpiler(code, options)
+      },
       defaultOutput: wrappedOutput,
       onEvalError: (err: Error) => {
         this.evalResolve?.({ error: err })
@@ -1558,6 +1569,19 @@ export class StrudelEngine implements LiveCodingEngine {
           }
         })
       })
+
+      // #2175 — an error thrown while the code ran: where it was written, read
+      // back through a source map of the code that ran (`evalErrorLocation`).
+      // Only when the last transpile was this code; otherwise it stays unplaced.
+      const ran = this.lastTranspile
+      if (result.error && ran?.code === code) {
+        const at = locateEvalError(
+          result.error,
+          () => ran.run({ ...ran.options, sourceMap: true }) as { map?: { mappings: string } },
+          this.evalFrame,
+        )
+        if (at) (result.error as Error & { staveLocation?: { line: number; column: number } }).staveLocation = at
+      }
 
       if (!result.error) {
         // #339 — bump the eval generation ONLY on a SUCCESSFUL evaluate, the

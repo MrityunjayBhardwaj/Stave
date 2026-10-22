@@ -1223,7 +1223,9 @@ export default function StrudelEditorClient({
       // or Hydra's) would drift per sketch. We deliberately drop
       // `parts.line` here: the Console row + toast still surface the
       // error, and the engineLogMarkers bridge's out-of-range guard
-      // keeps a bogus stack line from painting the whole file.
+      // keeps a bogus stack line from painting the whole file. The
+      // engine maps that stack position back through a source map of
+      // the code that ran instead (#2175, `staveLocation` below).
       // Sonic Pi's Ruby errors carry user-file lines natively, so the
       // same treatment isn't needed there — but the runtime dispatch
       // here doesn't distinguish, and dropping the line for Sonic Pi
@@ -1262,6 +1264,16 @@ export default function StrudelEditorClient({
           locatedLine = msgLoc.line;
           locatedColumn = msgLoc.column;
         }
+      }
+      // #2175 — an error thrown while the code ran (`.fooo()`, an undefined
+      // name): the engine read its position back through the transpiler's
+      // source map. Last, so a location the message itself gives wins.
+      const ranAt = (err as Error & { staveLocation?: { line: number; column: number } })
+        .staveLocation;
+      if (locatedLine == null && ranAt && typeof src === "string"
+        && ranAt.line >= 1 && ranAt.line <= src.split("\n").length) {
+        locatedLine = ranAt.line;
+        locatedColumn = ranAt.column;
       }
       emitLog({
         level: "error",

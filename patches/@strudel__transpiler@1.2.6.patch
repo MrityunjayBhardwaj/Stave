@@ -1,0 +1,24 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 5145ef44370dd1ac7f884e0c177055820e7cb001..85aa40618d483a86b0f53241ff06a7367e4bbce8 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -146,8 +146,17 @@ function F(e, t = {}) {
+       argument: r
+     };
+   }
+-  let v = D.generate(l);
+-  return n && (v = `(async ()=>{${v}})()`), i ? { output: v, miniLocations: c, widgets: y } : { output: v };
++  // Stave (#2175): with `sourceMap: true`, also return a source map (v3 JSON) from
++  // the generated code back to the input, so an error thrown while the code runs
++  // can be placed where it was written. Off by default; the output is the same.
++  let v, M;
++  if (t.sourceMap) {
++    const g = D.generate(l, { sourceMap: "input", sourceMapWithCode: !0 });
++    v = g.code, M = g.map.toJSON();
++  } else v = D.generate(l);
++  n && (v = `(async ()=>{${v}})()`);
++  const r = i ? { output: v, miniLocations: c, widgets: y } : { output: v };
++  return M && (r.map = M), r;
+ }
+ function R(e) {
+   if (e.type !== "CallExpression") return !1;

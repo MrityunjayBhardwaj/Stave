@@ -15906,6 +15906,89 @@ function formatFriendlyError(err, runtime, options = {}) {
 }
 __name(formatFriendlyError, "formatFriendlyError");
 
+// src/engine/evalErrorLocation.ts
+var wrapLikeSafeEval = /* @__PURE__ */ __name((code) => `"use strict";return ((async ()=>{${code}})())`, "wrapLikeSafeEval");
+async function stackPositionOf(code) {
+  try {
+    await Function(wrapLikeSafeEval(code))();
+  } catch (e) {
+    return parseStackLocation(e);
+  }
+  return null;
+}
+__name(stackPositionOf, "stackPositionOf");
+var PROBE = "__staveEvalFrameProbe__";
+async function measureEvalFrame() {
+  const first = await stackPositionOf(`${PROBE}()`);
+  const second = await stackPositionOf(`0;
+${PROBE}()`);
+  if (!first || !second) return null;
+  if (second.line !== first.line + 1 || second.column !== 1) return null;
+  return { headerLines: first.line - 1, firstLineColumns: first.column - 1 };
+}
+__name(measureEvalFrame, "measureEvalFrame");
+var BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+function decodeSegment(segment) {
+  const values2 = [];
+  let value = 0;
+  let shift = 0;
+  for (const ch of segment) {
+    const digit = BASE64.indexOf(ch);
+    if (digit < 0) return null;
+    value += (digit & 31) << shift;
+    if (digit & 32) {
+      shift += 5;
+    } else {
+      values2.push(value & 1 ? -(value >>> 1) : value >>> 1);
+      value = 0;
+      shift = 0;
+    }
+  }
+  return values2;
+}
+__name(decodeSegment, "decodeSegment");
+function originalPositionFor(mappings, line, column) {
+  const lines = mappings.split(";");
+  if (line < 1 || line > lines.length) return null;
+  let sourceLine = 0;
+  let sourceColumn = 0;
+  let best = null;
+  for (let l = 0; l < line; l++) {
+    let generatedColumn = 0;
+    for (const segment of lines[l].split(",")) {
+      if (!segment) continue;
+      const v = decodeSegment(segment);
+      if (!v || v.length === 0) return null;
+      generatedColumn += v[0];
+      if (v.length < 4) continue;
+      sourceLine += v[2];
+      sourceColumn += v[3];
+      if (l === line - 1 && generatedColumn <= column) {
+        best = { line: sourceLine + 1, column: sourceColumn + 1 };
+      }
+    }
+  }
+  return best;
+}
+__name(originalPositionFor, "originalPositionFor");
+function locateEvalError(err, transpileWithMap, shape) {
+  if (!shape) return null;
+  const at = parseStackLocation(err);
+  if (!at) return null;
+  const line = at.line - shape.headerLines;
+  const column = at.column - 1 - (line === 1 ? shape.firstLineColumns : 0);
+  if (line < 1 || column < 0) return null;
+  let mappings;
+  try {
+    mappings = transpileWithMap().map?.mappings;
+  } catch {
+    return null;
+  }
+  if (typeof mappings !== "string") return null;
+  return originalPositionFor(mappings, line, column);
+}
+__name(locateEvalError, "locateEvalError");
+
 // src/engine/stringParser.ts
 function installMiniStringParser(deps) {
   const { core, mini } = deps;
@@ -16203,6 +16286,10 @@ var _StrudelEngine = class _StrudelEngine {
     this.evalResolve = null;
     // Runtime audio error handler (e.g. "sound X not found" during scheduling)
     this.runtimeErrorHandler = null;
+    // #2175 — what the repl last transpiled, and how its evaluate wraps the
+    // result, so an error thrown while the code runs can be mapped to its line.
+    this.lastTranspile = null;
+    this.evalFrame = null;
     // Sound names registered after init() — used for editor autocompletion
     this.loadedSoundNames = [];
     // Per-track PatternSchedulers captured during the last evaluate() call.
@@ -16684,8 +16771,12 @@ var _StrudelEngine = class _StrudelEngine {
         this.runtimeErrorHandler?.(error);
       }
     }, "wrappedOutput");
+    this.evalFrame = await measureEvalFrame();
     this.repl = webaudioRepl({
-      transpiler,
+      transpiler: /* @__PURE__ */ __name((code, options = {}) => {
+        this.lastTranspile = { code, options, run: /* @__PURE__ */ __name((o) => transpiler(code, o), "run") };
+        return transpiler(code, options);
+      }, "transpiler"),
       defaultOutput: wrappedOutput,
       onEvalError: /* @__PURE__ */ __name((err) => {
         this.evalResolve?.({ error: err });
@@ -16876,6 +16967,15 @@ var _StrudelEngine = class _StrudelEngine {
           }
         });
       });
+      const ran = this.lastTranspile;
+      if (result.error && ran?.code === code) {
+        const at = locateEvalError(
+          result.error,
+          () => ran.run({ ...ran.options, sourceMap: true }),
+          this.evalFrame
+        );
+        if (at) result.error.staveLocation = at;
+      }
       if (!result.error) {
         this.evalEpoch++;
         this.hapStream.setEpoch(this.evalEpoch);
