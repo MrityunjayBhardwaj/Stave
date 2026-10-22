@@ -7,8 +7,8 @@
  * expectation below was read off the model first.
  */
 import { describe, expect, it } from 'vitest'
-import { parseStepGrid } from '../../notation/parse'
-import { isCellOn, laneCoverage } from '../../notation/model'
+import { parseStepGrid } from '../../../codeView/notation/parse'
+import { isCellOn, laneCoverage } from '../../../codeView/notation/model'
 import { groupBoxesBySteps, ownStepWidths, rowBoxes, writtenStepStarts } from '../writtenSteps'
 
 const grid = (mini: string) => {

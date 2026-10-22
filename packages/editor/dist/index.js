@@ -39669,7 +39669,7 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                           // exactly the space its boxes take drawn one by one, so its edges and
                           // its boxes' edges fall on the other rows' columns
                           flex: `${weight} ${weight} ${gaps}px`,
-                          minWidth: 16 * weight + gaps,
+                          minWidth: stepMin * weight + gaps,
                           maxWidth: 56 * weight + gaps,
                           marginLeft: layout.barStart(g.from) ? 8 : 0,
                           // an outline takes no space, so it cannot push a column
