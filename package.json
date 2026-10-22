@@ -20,7 +20,7 @@
     "population": "pnpm --filter @stave/app run population"
   },
   "devDependencies": {
-    "turbo": "^2.0.0",
+    "turbo": "^2.11.10",
     "typescript": "^5.4.0"
   },
   "engines": {
