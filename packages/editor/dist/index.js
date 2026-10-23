@@ -16078,6 +16078,17 @@ function locateSoundName(code, locations, sound) {
   return positionOf(code, named2[0].start);
 }
 __name(locateSoundName, "locateSoundName");
+function locateQuotedValue(code, locations, value, message) {
+  const values2 = typeof value === "string" ? [value] : value && typeof value === "object" ? Object.values(value) : [];
+  const placed = /* @__PURE__ */ new Map();
+  for (const v of values2) {
+    if (typeof v !== "string" || !v || !message.includes(`"${v}"`)) continue;
+    const at = locateSoundName(code, locations, v);
+    if (at) placed.set(v, at);
+  }
+  return placed.size === 1 ? [...placed.values()][0] : null;
+}
+__name(locateQuotedValue, "locateQuotedValue");
 var NOT_PATTERN_RESULT = /* @__PURE__ */ new Set(["queryArc", "query", "firstCycle", "showFirstCycle", "sortHapsByPart", "toString", "valueOf"]);
 function each(node, visit) {
   if (!node || typeof node.type !== "string") return;
@@ -17215,6 +17226,15 @@ var _StrudelEngine = class _StrudelEngine {
         }
         if (this.playing && /^sound \S+ not found/.test(error.message)) {
           const at = locateSoundName(this.playing.code, hap?.context?.locations, hap?.value?.s);
+          if (at) {
+            Object.assign(error, {
+              staveLocation: at,
+              staveLocationCode: this.playing.code
+            });
+          }
+        }
+        if (this.playing && !error.staveLocation) {
+          const at = locateQuotedValue(this.playing.code, hap?.context?.locations, hap?.value, error.message);
           if (at) {
             Object.assign(error, {
               staveLocation: at,
