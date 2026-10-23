@@ -49,13 +49,17 @@ const PROBE = '__staveEvalFrameProbe__'
  * Throw from line 1 and from line 2 of code wrapped like `safeEval` wraps it,
  * and read back where the stack puts each throw. Null when the two disagree
  * with a plain shift, which turns the mapping off.
+ *
+ * The same call starts each line, so the difference of the two columns is the
+ * wrapper's prefix whichever character an engine points at: V8 and Firefox
+ * point at the call's start, Safari at its `(` (#2189).
  */
 export async function measureEvalFrame(): Promise<EvalFrameShape | null> {
   const first = await stackPositionOf(`${PROBE}()`)
   const second = await stackPositionOf(`0;\n${PROBE}()`)
   if (!first || !second) return null
-  if (second.line !== first.line + 1 || second.column !== 1) return null
-  return { headerLines: first.line - 1, firstLineColumns: first.column - 1 }
+  if (second.line !== first.line + 1 || first.column <= second.column) return null
+  return { headerLines: first.line - 1, firstLineColumns: first.column - second.column }
 }
 
 const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -139,4 +143,32 @@ export function locateEvalError(
   }
   if (typeof mappings !== 'string') return null
   return originalPositionFor(mappings, line, column)
+}
+
+/** a 0-based character offset in `code` as a 1-based line and column */
+function positionOf(code: string, offset: number): { line: number; column: number } {
+  const before = code.slice(0, offset)
+  const lineStart = before.lastIndexOf('\n') + 1
+  return { line: before.split('\n').length, column: offset - lineStart + 1 }
+}
+
+/**
+ * #2187 — where `code` names the sound a played note couldn't find. The note
+ * carries the places in the code its values came from (`hap.context.locations`,
+ * offsets into the code that was evaluated; a sample number `bdd:3` is a place
+ * of its own). The place whose text is the sound's name is where it was
+ * written. The places don't say which control they belong to, so when two
+ * read the same (`note("e").s("e")`) neither is chosen. Null too when none
+ * does: the name came from a plain string or from code, not mini-notation.
+ */
+export function locateSoundName(
+  code: string,
+  locations: ReadonlyArray<{ start: number; end: number }> | undefined,
+  sound: unknown,
+): { line: number; column: number } | null {
+  if (typeof sound !== 'string' || !sound || !Array.isArray(locations)) return null
+  const named = locations.filter(({ start, end }) =>
+    start >= 0 && end <= code.length && code.slice(start, end) === sound)
+  if (new Set(named.map((l) => l.start)).size !== 1) return null
+  return positionOf(code, named[0].start)
 }

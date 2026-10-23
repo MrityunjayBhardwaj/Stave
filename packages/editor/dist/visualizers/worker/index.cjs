@@ -1235,6 +1235,12 @@ function parseStackLocation(err) {
   const ffDynamic = stack.match(/ line \d+ > (?:Function|eval):(\d+):(\d+)/);
   if (ffDynamic)
     return { line: parseInt(ffDynamic[1], 10), column: parseInt(ffDynamic[2], 10) };
+  if (typeof err === "object" && err !== null && !/^\s+at /m.test(stack)) {
+    const { line, column, sourceURL } = err;
+    if (typeof line === "number" && Number.isInteger(line) && line >= 1 && typeof column === "number" && Number.isInteger(column) && column >= 1 && !sourceURL) {
+      return { line, column: Math.max(1, column - 1) };
+    }
+  }
   return null;
 }
 __name(parseStackLocation, "parseStackLocation");
