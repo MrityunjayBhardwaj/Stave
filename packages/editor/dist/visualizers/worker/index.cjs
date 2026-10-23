@@ -1168,6 +1168,8 @@ function emitLog(partial) {
   if (existing) {
     existing.ts = Date.now();
     existing.count = (existing.count ?? 1) + 1;
+    if (partial.alongside === void 0) delete existing.alongside;
+    else existing.alongside = partial.alongside;
     queueMicrotask(() => {
       for (const fn of listeners) {
         try {

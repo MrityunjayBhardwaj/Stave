@@ -1285,7 +1285,7 @@ export default function StrudelEditorClient({
         locatedLine = ranAt.line;
         locatedColumn = ranAt.column;
       }
-      emitLog({
+      const ranError = emitLog({
         level: "error",
         runtime: runtimeId,
         source: fileNow?.path ?? fileId,
@@ -1295,6 +1295,32 @@ export default function StrudelEditorClient({
         line: locatedLine,
         column: locatedLine != null ? locatedColumn : parts.column,
       });
+      // #2186 — the run stopped at its first error; the engine read the code for
+      // every other method its patterns don't have. Each gets its own row and
+      // squiggle beside the run's, worded as the run would word it, but only
+      // while the file still says what ran, and not the one the run reported.
+      const { staveMissingMethods: alsoMissing } = err as Error & {
+        staveMissingMethods?: { code: string; missing: Array<{ name: string; receiver: string; line: number; column: number }> };
+      };
+      if (alsoMissing && alsoMissing.code === src) {
+        const reported = locatedLine == null
+          ? alsoMissing.missing.find((m) => err.message.includes(`.${m.name} is not a function`))
+          : alsoMissing.missing.find((m) => m.line === locatedLine && m.column === locatedColumn);
+        for (const m of alsoMissing.missing) {
+          if (m === reported) continue;
+          const also = formatFriendlyError(new TypeError(`${m.receiver}.${m.name} is not a function`), runtimeId, { index });
+          emitLog({
+            level: "error",
+            runtime: runtimeId,
+            source: fileNow?.path ?? fileId,
+            message: also.message,
+            suggestion: also.suggestion,
+            line: m.line,
+            column: m.column,
+            alongside: ranError.id,
+          });
+        }
+      }
     });
     // Live-mode re-eval has no user-driven play() to clear the error state,
     // so a transient syntax error stays visible until stop+play. Clearing on

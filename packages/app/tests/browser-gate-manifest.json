@@ -163,6 +163,10 @@
     "runs": "gate",
     "why": "An error's squiggle follows the code around it (#2184): typing lines above it moves the Console row's line and where clicking the row goes; fixing the underlined word takes the squiggle off without running again, and an edit elsewhere on the line leaves it on (#2185)."
   },
+  "every-missing-method.spec.ts": {
+    "runs": "gate",
+    "why": "Every misspelled method gets a squiggle, not just the first one the run hits (#2186): `.gin` and `.fooo` on two lines are both underlined with a Console row each, methods the app adds (`.pianoroll`, `.scale`, `.bank`, `.viz`) are not marked, and once `.gin` is fixed the run stops at `.fooo`, still underlined."
+  },
   "play-time-error-line.spec.ts": {
     "runs": "gate",
     "why": "An error thrown while a pattern plays is underlined where it was written (#2188): `.fmap(v => v.nope.x)` gets the squiggle under `x` and its Console row the line, read back through the source map of the playing code."
