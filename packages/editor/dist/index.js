@@ -15730,6 +15730,37 @@ function extractReferenceIdentifier(err) {
   return null;
 }
 __name(extractReferenceIdentifier, "extractReferenceIdentifier");
+var SAFARI_NOT_A_FUNCTION = " is not a function. (In '";
+function chromeNotAFunctionWording(message) {
+  const at = message.indexOf(SAFARI_NOT_A_FUNCTION);
+  if (at < 0 || !message.endsWith(")")) return message;
+  const said = message.slice(0, at);
+  let out = "";
+  let depth = 0;
+  let quote = "";
+  for (let i = 0; i < said.length; i++) {
+    const c = said[i];
+    if (quote) {
+      if (depth === 0) out += c;
+      if (c === "\\") {
+        i++;
+        if (depth === 0) out += said[i] ?? "";
+      } else if (c === quote) quote = "";
+      continue;
+    }
+    if (c === "'" || c === '"' || c === "`") quote = c;
+    else if (c === "(") {
+      depth++;
+      continue;
+    } else if (c === ")" && depth > 0) {
+      if (--depth === 0) out += "(...)";
+      continue;
+    }
+    if (depth === 0) out += c;
+  }
+  return `${out.replace(/\[(['"`])([A-Za-z_$][\w$]*)\1\]/g, ".$2")} is not a function`;
+}
+__name(chromeNotAFunctionWording, "chromeNotAFunctionWording");
 var SOUND_NOT_FOUND_PATTERNS = [
   /sound\s+["']?([\w.-]+)["']?\s+not\s+found/i
 ];
@@ -15861,7 +15892,9 @@ function defaultDocsUrl(runtime, name) {
 }
 __name(defaultDocsUrl, "defaultDocsUrl");
 function formatFriendlyError(err, runtime, options = {}) {
-  const rawMessage = typeof err === "object" && err !== null && "message" in err ? String(err.message) : String(err);
+  const rawMessage = chromeNotAFunctionWording(
+    typeof err === "object" && err !== null && "message" in err ? String(err.message) : String(err)
+  );
   const stack = typeof err === "object" && err !== null && "stack" in err && typeof err.stack === "string" ? err.stack : void 0;
   const loc = parseStackLocation(err);
   const identifier = extractReferenceIdentifier(err);
@@ -16343,7 +16376,7 @@ function notInStaveMistakes(rows = STRUDEL_NOT_IN_STAVE) {
     }
     for (const method of row.methods ?? []) {
       out.push({
-        // "s(...).mqtt is not a function" (Chrome, Firefox); Safari spells the receiver out.
+        // "s(...).mqtt is not a function" in every browser; Safari's is reworded to it first (#2196).
         detect: { kind: "message", match: new RegExp(`\\.${method} is not a function`) },
         hint: hintFor(row, `\`.${method}()\``),
         link

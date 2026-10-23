@@ -164,7 +164,7 @@ export function notInStaveMistakes(rows: readonly NotInStave[] = STRUDEL_NOT_IN_
     }
     for (const method of row.methods ?? []) {
       out.push({
-        // "s(...).mqtt is not a function" (Chrome, Firefox); Safari spells the receiver out.
+        // "s(...).mqtt is not a function" in every browser; Safari's is reworded to it first (#2196).
         detect: { kind: 'message', match: new RegExp(`\\.${method} is not a function`) },
         hint: hintFor(row, `\`.${method}()\``),
         link,
