@@ -38,6 +38,7 @@ import { installMiniStringParser } from './stringParser'
 import { resolveBareCaptureId } from './bareCapture'
 import { normalizeLoopRange, type LoopRange } from './transportFrame'
 import { STRUDEL_VIZ_METHODS } from './strudelVizMethods'
+import { inertMethodNames, inertNotice } from './strudelNotInStave'
 import { sliderFunctions, sliderWidgets, type SliderWidgetConfig } from './vendored/slider'
 
 type HapHandler = (event: HapEvent) => void
@@ -1298,7 +1299,7 @@ export class StrudelEngine implements LiveCodingEngine {
 
     // Dynamic import — Pattern is from @strudel/core which is already loaded after init()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { Pattern } = await import('@strudel/core') as any
+    const { Pattern, silence } = await import('@strudel/core') as any
 
     // Save current descriptor (may be value descriptor from previous injectPatternMethods)
     const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern.prototype, 'p')
@@ -1408,6 +1409,38 @@ export class StrudelEngine implements LiveCodingEngine {
               capturedBackdropViz = renderer
               capturedBackdropVizOptions = opts && typeof opts === 'object' ? (opts as Record<string, unknown>) : null
               return this
+            },
+          })
+        }
+
+        // #2191 — `.animate()` / `.onPaint()` exist only because @strudel/webaudio
+        // imports @strudel/draw, and would draw on its canvas behind the app where
+        // nobody can see. Each warns once per evaluation, says what to use instead,
+        // and returns what Strudel's own returns, so what is heard stays Strudel's.
+        const warnedInert = new Set<string>()
+        for (const name of inertMethodNames()) {
+          savedLegacyDescriptors.set(name, Object.getOwnPropertyDescriptor(Pattern.prototype, name))
+          Object.defineProperty(Pattern.prototype, name, {
+            configurable: true,
+            writable: true,
+            value: function(this: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+              const notice = inertNotice(name)
+              if (notice && !warnedInert.has(name)) {
+                warnedInert.add(name)
+                emitLog({
+                  level: 'warn',
+                  runtime: 'strudel',
+                  message: notice.message,
+                  // the same link an error row gets (friendlyErrors' curated-hint suggestion)
+                  suggestion: {
+                    name: '',
+                    linkLabel: notice.link.label,
+                    docsUrl: notice.link.url,
+                    description: notice.link.description,
+                  },
+                })
+              }
+              return notice?.returns === 'silence' ? silence : this
             },
           })
         }

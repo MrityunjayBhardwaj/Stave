@@ -58,6 +58,45 @@ test('a method Stave has not got is named as Strudel names it', async ({ page })
   expect(words).not.toContain('s(...)')
 })
 
+test('#2190 — `.edoScale()` says it is not in Stave yet', async ({ page }) => {
+  await evaluate(page, '$: n("0 1 2").edoScale("C:8")\n')
+  const words = await sameEverywhere(page)
+  expect(words).toContain('`.edoScale()` is part of Strudel')
+  expect(words).not.toContain('is not a function')
+})
+
+test('#2191 — `getDrawContext()` says it is not in Stave, and what to use instead', async ({ page }) => {
+  await evaluate(page, 'const ctx = getDrawContext()\n$: s("bd")\n')
+  const words = await sameEverywhere(page)
+  expect(words).toContain("`getDrawContext` is part of Strudel (it draws on Strudel's own full-screen canvas)")
+  expect(words).toContain('a `.p5` file draws anything else.')
+})
+
+for (const [method, code, heard] of [
+  // Strudel's `.animate()` returns silence: its pattern is drawn, not played
+  ['animate', '$: s("ellipse").x(sine).y(cosine).animate()\n', 'As in Strudel, the pattern it draws makes no sound, and here nothing is drawn.'],
+  ['onPaint', '$: s("bd sd").onPaint((ctx) => { globalThis.__painted = true })\n', 'The sound still plays, but nothing is drawn.'],
+] as const) {
+  test(`#2191 — \`.${method}()\` says nothing is drawn, instead of drawing behind the app`, async ({ page }) => {
+    await evaluate(page, code)
+    const lamp = page.locator(LAMP)
+    await expect(lamp).toHaveAttribute('data-stave-eval-lamp', 'ok', { timeout: 10_000 })
+    await expect(page.locator(BADGE)).toHaveCount(0)
+    await page.locator('[data-activity-bar] [data-panel-id="console"]').click()
+    const row = page.locator('[data-testid="console-row"][data-level="warn"]', { hasText: `\`.${method}()\` is part of Strudel` })
+    await expect(row).toHaveCount(1, { timeout: 10_000 })
+    await expect(row).toContainText(heard)
+    // `s("ellipse")` is a shape, not a sound: nothing went looking for a sample by that name
+    await expect(page.locator('[data-testid="console-row"]', { hasText: 'ellipse' })).toHaveCount(0)
+    const link = row.locator('[data-testid="console-suggestion"]')
+    await expect(link).toHaveAttribute('href', 'https://github.com/MrityunjayBhardwaj/stave/issues/2191')
+    await expect(link).toContainText('#2191')
+    // Strudel's own canvas never appears, and the painter is never handed anything
+    expect(await page.evaluate(() => document.getElementById('test-canvas'))).toBeNull()
+    expect(await page.evaluate(() => (globalThis as { __painted?: boolean }).__painted ?? false)).toBe(false)
+  })
+}
+
 test('a message without its own full stop gets one in the lamp label, and only one', async ({ page }) => {
   await evaluate(page, '$: s("bd*2")\n$: s("hh*4"')
   const badge = page.locator(BADGE)

@@ -1,7 +1,7 @@
 import type * as Monaco from 'monaco-editor'
 import type { DocsIndex, RuntimeDoc } from './docs/types'
 import { createHoverProvider } from './docs/providers'
-import { notInStaveMistakes } from './docs/strudelNotInStave'
+import { notInStaveMistakes } from '../engine/strudelNotInStave'
 
 // ---------------------------------------------------------------------------
 // Strudel function documentation

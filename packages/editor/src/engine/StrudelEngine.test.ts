@@ -18,8 +18,12 @@ type EvalBehavior =
   | 'one-track'    // single anonymous pattern → "$0"
   | 'viz-backdrop-flag'  // `.viz('name', { backdrop: true })` → backdrop slot (#364)
   | 'viz-inline-no-flag' // `.viz('name')` no flag → inline zone (#364 control)
+  | 'inert-draw'         // `.animate()` twice + `.onPaint()` → one warning each (#2191)
 
 let evalBehavior: EvalBehavior = 'two-anon'
+// #2191 — what `.animate()` / `.onPaint()` returned inside the mock evaluate
+let inertReturns: { pattern: unknown; animate: unknown[]; onPaint: unknown } | null = null
+const MOCK_SILENCE = vi.hoisted(() => ({ silence: true }))
 
 // #345 — what the transpiler reports for `$: s("bd").gain(slider(0.5, 0, 1))._pianoroll()`
 const SLIDER_WIDGETS = [
@@ -125,6 +129,8 @@ vi.mock('@strudel/core', () => {
     pure: vi.fn((v: unknown) => v),
     // #345 — the vendored `sliderWithID` is built over these at boot.
     ref: vi.fn(),
+    // #2191 — what the inert `.animate()` returns, as Strudel's own does.
+    silence: MOCK_SILENCE,
   }
 })
 
@@ -234,6 +240,14 @@ vi.mock('@strudel/webaudio', () => {
           const p = new MockPattern()
           ;(p as any).viz('spectrum')
           ;(p as any).p('$')
+        } else if (evalBehavior === 'inert-draw') {
+          const p = new MockPattern()
+          inertReturns = {
+            pattern: p,
+            animate: [(p as any).animate(), (p as any).animate({ smear: 0.2 })],
+            onPaint: (p as any).onPaint(() => {}),
+          }
+          ;(p as any).p('$')
         }
       }),
     }
@@ -317,6 +331,7 @@ import type { LiveCodingEngine } from './LiveCodingEngine'
 import type { HapEvent } from './HapStream'
 import { Pattern } from '@strudel/core'
 import { withOfflineGraph } from './offlineGraph'
+import { getLogHistory, __resetEngineLogForTests } from './engineLog'
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -636,6 +651,67 @@ describe('StrudelEngine .viz() backdrop flag (#364)', () => {
     // Inline request registered for the track; no backdrop promotion.
     expect(inlineViz?.vizRequests.get('$0')?.vizId).toBe('spectrum')
     expect(inlineViz?.backdropRequest).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #2191 — `.animate()` / `.onPaint()` would draw on Strudel's canvas behind the
+// app. They warn once per evaluation, leave the pattern as it was, and never
+// reach Strudel's own method.
+// ---------------------------------------------------------------------------
+
+describe('StrudelEngine methods that would draw where nobody can see (#2191)', () => {
+  const strudelAnimate = vi.fn(function (this: unknown) { return 'drew on the hidden canvas' })
+  const strudelOnPaint = vi.fn(function (this: unknown) { return 'added a painter' })
+
+  beforeEach(() => {
+    patternInstanceCounter = 0
+    capturedOnEvalError = null
+    evalBehavior = 'inert-draw'
+    inertReturns = null
+    vi.clearAllMocks()
+    __resetEngineLogForTests()
+    // what @strudel/draw puts on every pattern when webaudio imports it
+    ;(MockPattern.prototype as any).animate = strudelAnimate
+    ;(MockPattern.prototype as any).onPaint = strudelOnPaint
+  })
+
+  afterEach(() => {
+    const desc = Object.getOwnPropertyDescriptor(MockPattern.prototype, 'p')
+    if (desc?.set) delete (MockPattern.prototype as any).p
+    delete (MockPattern.prototype as any).animate
+    delete (MockPattern.prototype as any).onPaint
+  })
+
+  it('warns once per method, returns what Strudel\'s returns, and restores Strudel\'s methods after', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    const result = await engine.evaluate('inert-draw')
+    expect(result.error).toBeUndefined()
+
+    expect(inertReturns).not.toBeNull()
+    const { pattern, animate, onPaint } = inertReturns!
+    // `.animate()` is drawn, not played, in Strudel too; `.onPaint()` keeps the pattern
+    expect(animate).toEqual([MOCK_SILENCE, MOCK_SILENCE])
+    expect(onPaint).toBe(pattern)
+    expect(strudelAnimate).not.toHaveBeenCalled()
+    expect(strudelOnPaint).not.toHaveBeenCalled()
+
+    const warns = getLogHistory().filter((e) => e.level === 'warn')
+    expect(warns.map((e) => e.message.slice(0, e.message.indexOf(' is part of')))).toEqual(['`.animate()`', '`.onPaint()`'])
+    expect(warns.every((e) => e.count === 1)).toBe(true)
+    expect(warns[0].message).toContain('As in Strudel, the pattern it draws makes no sound, and here nothing is drawn.')
+    expect(warns[1].message).toContain('The sound still plays, but nothing is drawn.')
+    expect(warns[0].suggestion).toEqual({
+      name: '',
+      linkLabel: '#2191',
+      docsUrl: 'https://github.com/MrityunjayBhardwaj/stave/issues/2191',
+      description: 'Follow it in Stave',
+    })
+
+    // outside an evaluation the methods are Strudel's again
+    expect((MockPattern.prototype as any).animate).toBe(strudelAnimate)
+    expect((MockPattern.prototype as any).onPaint).toBe(strudelOnPaint)
   })
 })
 
