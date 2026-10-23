@@ -9,7 +9,8 @@
  * `emitLog` entry point so downstream consumers don't need per-runtime
  * special-casing.
  *
- * The store keeps a bounded history (MAX_HISTORY most recent entries).
+ * The store keeps a bounded history (MAX_HISTORY most recent entries; past
+ * it the oldest info row goes first, then the oldest of any level — #2205).
  * Listeners are fired synchronously on emit so UI surfaces can update
  * in the same microtask as the runtime error handler.
  */
@@ -186,17 +187,18 @@ export function emitLog(
   }
   history.push(entry)
   dedupeIndex.set(key, entry)
-  // Bound the buffer — drop oldest when past the cap. Listeners see
+  // Bound the buffer — drop the oldest when past the cap. Listeners see
   // only the newest entry; they can re-read getLogHistory() if they
   // need the whole window. Evicted entries leave the dedupe index too,
   // so a key can re-appear as a fresh row later (only if it still maps
   // to the evicted entry — a newer entry may have re-claimed the key).
-  if (history.length > MAX_HISTORY) {
-    const removed = history.splice(0, history.length - MAX_HISTORY)
-    for (const r of removed) {
-      const rk = dedupeKey(r)
-      if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk)
-    }
+  // #2205 — info rows go first: a busy `.log()` writes one per note, and
+  // must not push out the errors and warnings it is printed beside.
+  while (history.length > MAX_HISTORY) {
+    const info = history.findIndex((e) => e.level === 'info')
+    const [r] = history.splice(info === -1 ? 0 : info, 1)
+    const rk = dedupeKey(r)
+    if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk)
   }
   // Fire listeners in a microtask so runtime error paths (Strudel
   // onEvalError, Monaco marker commit, etc.) aren't forced to re-enter

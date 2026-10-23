@@ -55,6 +55,33 @@ describe('emitLog', () => {
     expect(h[0].message).toBe('m100')
   })
 
+  it('drops info rows first, so a busy `.log()` keeps the errors and warnings beside it (#2205)', () => {
+    emitLog({ level: 'error', runtime: 'strudel', message: 'the error' })
+    emitLog({ level: 'warn', runtime: 'strudel', message: 'the warning' })
+    for (let i = 0; i < 600; i++) {
+      emitLog({ level: 'info', runtime: 'strudel', message: `[hap] ${i}` })
+    }
+    const h = getLogHistory()
+    expect(h.length).toBe(500)
+    expect(h.slice(0, 2).map((e) => e.message)).toEqual(['the error', 'the warning'])
+    // the newest info rows are the ones kept
+    expect(h[2].message).toBe('[hap] 102')
+    expect(h[h.length - 1].message).toBe('[hap] 599')
+  })
+
+  it('with no info rows left, the oldest of any level goes', () => {
+    for (let i = 0; i < 501; i++) {
+      emitLog({ level: i % 2 ? 'warn' : 'error', runtime: 'strudel', message: `w${i}` })
+    }
+    const h = getLogHistory()
+    expect(h.length).toBe(500)
+    expect(h[0].message).toBe('w1')
+    // an evicted row's key is free again: the same message comes back as a new row
+    emitLog({ level: 'error', runtime: 'strudel', message: 'w0' })
+    expect(getLogHistory().at(-1)?.message).toBe('w0')
+    expect(getLogHistory().at(-1)?.count).toBe(1)
+  })
+
   it('dedupes consecutive identical entries (p5 FES flood defense)', () => {
     const shape = {
       level: 'warn' as const,

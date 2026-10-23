@@ -4250,7 +4250,8 @@ declare class BreakpointStore {
  * `emitLog` entry point so downstream consumers don't need per-runtime
  * special-casing.
  *
- * The store keeps a bounded history (MAX_HISTORY most recent entries).
+ * The store keeps a bounded history (MAX_HISTORY most recent entries; past
+ * it the oldest info row goes first, then the oldest of any level — #2205).
  * Listeners are fired synchronously on emit so UI surfaces can update
  * in the same microtask as the runtime error handler.
  */
