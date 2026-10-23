@@ -14672,12 +14672,11 @@ function emitLog(partial) {
   };
   history.push(entry);
   dedupeIndex.set(key3, entry);
-  if (history.length > MAX_HISTORY) {
-    const removed = history.splice(0, history.length - MAX_HISTORY);
-    for (const r of removed) {
-      const rk = dedupeKey(r);
-      if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
-    }
+  while (history.length > MAX_HISTORY) {
+    const info = history.findIndex((e) => e.level === "info");
+    const [r] = history.splice(info === -1 ? 0 : info, 1);
+    const rk = dedupeKey(r);
+    if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
   }
   queueMicrotask(() => {
     for (const fn of listeners) {

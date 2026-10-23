@@ -95,6 +95,25 @@ test('the `.animate()` warning names its file and line, and is underlined (#2200
   await stopCode(page)
 })
 
+test('a busy `.log()` fills the Console without pushing out the warning beside it (#2205)', async ({ page }) => {
+  // 4 cycles a second × 64 notes, each a row of its own: past the Console's
+  // 500 rows in about two seconds
+  await seedCode(page, 'setcps(4)\n$: s("hh*64").log()\n$: s("bd sd").x(sine).y(cosine).animate()\n')
+  await evalCode(page)
+  await openConsole(page)
+  const warning = page.locator(`${ROW}[data-level="warn"]`).filter({ hasText: '`.animate()` is part of Strudel' })
+  await expect(warning).toHaveCount(1, { timeout: 10_000 })
+  // the oldest note shown now is pushed out later, so the Console did fill…
+  // (the scheduler need not start at cycle 0, so take whichever it is)
+  const oldest = await page.locator(ROW).filter({ hasText: '[hap]' }).first().textContent()
+  const note = oldest?.match(/\[hap\] \S+ → \S+: s:hh/)?.[0]
+  expect(note).toBeTruthy()
+  await expect(page.locator(ROW).filter({ hasText: note! })).toHaveCount(0, { timeout: 15_000 })
+  // …and the warning is still there
+  await expect(warning).toHaveCount(1)
+  await stopCode(page)
+})
+
 test("the timeline's quiet evaluate posts nothing, though it runs the same code (#2200)", async ({ page }) => {
   const logger = watchStrudelLogger(page)
   // the Song timeline evaluates the document quietly, without Play, to draw it
