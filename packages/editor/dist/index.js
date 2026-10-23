@@ -16398,6 +16398,81 @@ function notInStaveMistakes(rows = STRUDEL_NOT_IN_STAVE) {
 }
 __name(notInStaveMistakes, "notInStaveMistakes");
 
+// src/engine/strudelLogBridge.ts
+var LEFT_OUT = [
+  /^\[eval\] /,
+  /^\[cyclist\] (?:start|stop|pause)$/,
+  /^🌀 @strudel\/core loaded 🌀$/,
+  /^\[superdough\] (?:ready|AudioWorklets loaded)$/,
+  /^\[superdough\]: AudioWorklets disabled/,
+  /^\[webaudio\] (?:preloading|start rendering)$/,
+  /^\[superdough\] Deprecation warning: /
+];
+var IN_PROGRESS_TYPES = /* @__PURE__ */ new Set(["load-sample", "load-table"]);
+function strudelLogRow(detail) {
+  const { message, type } = detail ?? {};
+  if (typeof message !== "string" || message.length === 0) return null;
+  if (typeof type === "string" && IN_PROGRESS_TYPES.has(type)) return null;
+  if (LEFT_OUT.some((re) => re.test(message))) return null;
+  const raisedAsError = /^\[[^\]]+\] error: /.test(message);
+  const level = raisedAsError || type === "error" ? "error" : type === "warning" || type === "highlight" ? "warn" : "info";
+  return { level, message, raisedAsError };
+}
+__name(strudelLogRow, "strudelLogRow");
+var CLAIM_RANK = { query: 2, play: 2, evaluate: 1 };
+var owners = /* @__PURE__ */ new Set();
+var anyQuery = { depth: 0 };
+var stopListening = null;
+var COUNTED = /* @__PURE__ */ Symbol.for("stave.strudelLogBridge.counted");
+function countQueries(Pattern2) {
+  const proto = Pattern2?.prototype;
+  if (!proto || typeof proto.queryArc !== "function" || proto[COUNTED]) return;
+  const queryArc = proto.queryArc;
+  proto.queryArc = function(...args) {
+    anyQuery.depth++;
+    try {
+      return queryArc.apply(this, args);
+    } finally {
+      anyQuery.depth--;
+    }
+  };
+  proto[COUNTED] = true;
+}
+__name(countQueries, "countQueries");
+function routeStrudelLog(detail) {
+  const row = strudelLogRow(detail);
+  if (!row) return;
+  let best = null;
+  for (const owner of owners) {
+    const claim = owner.claimLog(detail ?? {});
+    if (claim && (!best || CLAIM_RANK[claim] > CLAIM_RANK[best.claim])) best = { owner, claim };
+  }
+  if (best) {
+    best.owner.takeLog(row, best.claim);
+    return;
+  }
+  if (anyQuery.depth > 0) return;
+  emitLog({ level: row.level, runtime: "strudel", message: row.message });
+}
+__name(routeStrudelLog, "routeStrudelLog");
+function registerStrudelLogOwner(owner, logKey, Pattern2) {
+  countQueries(Pattern2);
+  owners.add(owner);
+  if (!stopListening && typeof document !== "undefined") {
+    const onLog = /* @__PURE__ */ __name((event) => routeStrudelLog(event.detail), "onLog");
+    document.addEventListener(logKey, onLog);
+    stopListening = /* @__PURE__ */ __name(() => document.removeEventListener(logKey, onLog), "stopListening");
+  }
+  return () => {
+    owners.delete(owner);
+    if (owners.size === 0) {
+      stopListening?.();
+      stopListening = null;
+    }
+  };
+}
+__name(registerStrudelLogOwner, "registerStrudelLogOwner");
+
 // src/engine/vendored/slider.ts
 var sliderValues = {};
 function sliderFunctions({ ref, pure }) {
@@ -16565,6 +16640,7 @@ var _StrudelEngine = class _StrudelEngine {
       onResumeError: /* @__PURE__ */ __name((error) => emitLog({
         level: "warn",
         runtime: "strudel",
+        source: this.logSource?.(),
         message: `Playback could not resume after the bounce: ${error instanceof Error ? error.message : String(error)}`
       }), "onResumeError"),
       drain: /* @__PURE__ */ __name(async () => {
@@ -16580,6 +16656,7 @@ var _StrudelEngine = class _StrudelEngine {
           emitLog({
             level: "warn",
             runtime: "strudel",
+            source: this.logSource?.(),
             message: `The bounce started while ${gaveUp} live ${gaveUp === 1 ? "sound was" : "sounds were"} still loading. ${gaveUp === 1 ? "It" : "They"} will not play; the bounce itself is unaffected.`
           });
         }
@@ -16627,6 +16704,21 @@ var _StrudelEngine = class _StrudelEngine {
     this.schedulerQuery = { depth: 0 };
     /** takes off the `strudel.log` listener that raises play-time errors (#2173) */
     this.stopListeningForPlayErrors = null;
+    /** #2201 — stops this engine owning Strudel's messages. See `strudelLogBridge`. */
+    this.stopOwningLogs = null;
+    /** #2201 — above zero while this engine's evaluate runs */
+    this.evaluating = 0;
+    /** #2201 — above zero while this engine hands a note to superdough */
+    this.inOutput = 0;
+    /** #2201 — notes this engine played, so a `.log()` line names its file */
+    this.playedHaps = /* @__PURE__ */ new WeakSet();
+    /**
+     * #2200 #2201 — what the last evaluate had to say, for the app to write once
+     * it knows the evaluate was a real one (see `takeEvalNotices`).
+     */
+    this.evalNotices = { code: "", notices: [] };
+    /** #2200–#2202 — the file this engine plays, as the Console names it */
+    this.logSource = null;
     this.analyserNode = null;
     this.hapStream = new HapStream();
     // #339 — monotonic evaluate() generation, stamped onto every emitted hap
@@ -17113,7 +17205,14 @@ var _StrudelEngine = class _StrudelEngine {
       }
       try {
         if (t < audioCtxRef.currentTime) this.lateNotes++;
-        const triggered = webaudioOutput(hap, deadline, duration, cps, t);
+        if (hap && typeof hap === "object") this.playedHaps.add(hap);
+        this.inOutput++;
+        let triggered;
+        try {
+          triggered = webaudioOutput(hap, deadline, duration, cps, t);
+        } finally {
+          this.inOutput--;
+        }
         this.liveTriggers.track(Promise.resolve(triggered), t);
         return await triggered;
       } catch (err) {
@@ -17171,13 +17270,22 @@ var _StrudelEngine = class _StrudelEngine {
         this.runtimeErrorHandler?.(error);
       }
     );
+    this.stopOwningLogs?.();
+    this.stopOwningLogs = registerStrudelLogOwner(this, STRUDEL_LOG_EVENT, coreMod.Pattern);
     await Promise.resolve().then(() => (init_piano(), piano_exports));
     this.initialized = true;
   }
   async evaluate(code) {
     if (!this.initialized) await this.init();
     return this.trackEnvelopes.exclusive(async () => {
-      const result = await this.evaluateCode(code);
+      this.evalNotices = { code, notices: [] };
+      this.evaluating++;
+      let result;
+      try {
+        result = await this.evaluateCode(code);
+      } finally {
+        this.evaluating--;
+      }
       if (!result.error) this.trackEnvelopes.evaluated();
       return result;
     });
@@ -17215,6 +17323,18 @@ var _StrudelEngine = class _StrudelEngine {
     const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "p");
     const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "viz");
     const savedLegacyDescriptors = /* @__PURE__ */ new Map();
+    const noteForApp = /* @__PURE__ */ __name((notice) => {
+      this.evalNotices.notices.push(notice);
+    }, "noteForApp");
+    const locateCall = /* @__PURE__ */ __name((err) => {
+      const ran = this.lastTranspile;
+      if (!ran || ran.code !== code) return null;
+      return locateEvalError(
+        err,
+        () => ran.run({ ...ran.options, sourceMap: true }),
+        this.evalFrame
+      );
+    }, "locateCall");
     Object.defineProperty(Pattern2.prototype, "p", {
       configurable: true,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17280,9 +17400,9 @@ var _StrudelEngine = class _StrudelEngine {
               const notice = inertNotice(name);
               if (notice && !warnedInert.has(name)) {
                 warnedInert.add(name);
-                emitLog({
+                const at = locateCall(new Error(name));
+                noteForApp({
                   level: "warn",
-                  runtime: "strudel",
                   message: notice.message,
                   // the same link an error row gets (friendlyErrors' curated-hint suggestion)
                   suggestion: {
@@ -17290,7 +17410,8 @@ var _StrudelEngine = class _StrudelEngine {
                     linkLabel: notice.link.label,
                     docsUrl: notice.link.url,
                     description: notice.link.description
-                  }
+                  },
+                  ...at ?? {}
                 });
               }
               return notice?.returns === "silence" ? silence : this;
@@ -17847,6 +17968,7 @@ var _StrudelEngine = class _StrudelEngine {
       emitLog({
         level: "warn",
         runtime: "strudel",
+        source: this.logSource?.(),
         message: `Bounce left out ${left} of ${result.haps} sounds: ` + describeSkipped(result.skipped)
       });
     }
@@ -18257,12 +18379,52 @@ var _StrudelEngine = class _StrudelEngine {
   getSoundNames() {
     return this.loadedSoundNames;
   }
+  /**
+   * #2200–#2202 — the file this engine plays, as the Console names it. The app
+   * knows it; the engine doesn't. Rows the engine writes on its own (play-time
+   * messages, bounce warnings) carry it.
+   */
+  setLogSource(get) {
+    this.logSource = get;
+  }
+  /**
+   * #2200 #2201 — what the last evaluate had to say, and the code it said it
+   * about, handed over once. The app calls this after a real evaluate, AFTER it
+   * marks the file as evaluated cleanly (which hides the file's earlier rows), so
+   * these rows outlive that mark. The timeline's quiet evaluate never calls it,
+   * so nothing it raises while you type reaches the Console.
+   */
+  takeEvalNotices() {
+    const taken = this.evalNotices;
+    this.evalNotices = { code: taken.code, notices: [] };
+    return taken;
+  }
+  /** #2201 — is this Strudel message this engine's? See `strudelLogBridge`. */
+  claimLog(detail) {
+    if (this.schedulerQuery.depth > 0) return "query";
+    if (this.inOutput > 0) return "play";
+    const hap = detail.data?.hap;
+    if (hap && typeof hap === "object" && this.playedHaps.has(hap)) return "play";
+    if (this.evaluating > 0) return "evaluate";
+    return null;
+  }
+  /** #2201 — show one of this engine's Strudel messages. */
+  takeLog(row, claim) {
+    if (row.raisedAsError && claim !== "play") return;
+    if (claim === "evaluate") {
+      this.evalNotices.notices.push({ level: row.level, message: row.message });
+      return;
+    }
+    emitLog({ level: row.level, runtime: "strudel", source: this.logSource?.(), message: row.message });
+  }
   dispose() {
     this.transportHold.cancelResume();
     this.stopAskingForAudio?.();
     this.stopAskingForAudio = null;
     this.stopListeningForPlayErrors?.();
     this.stopListeningForPlayErrors = null;
+    this.stopOwningLogs?.();
+    this.stopOwningLogs = null;
     this.trackEnvelopes.dispose();
     this.trackEnvelopeListeners.clear();
     this.unregisterBackgroundRender();
@@ -38720,7 +38882,7 @@ function boxesPlaceNotes(lanes, boxes, isOn, placeable) {
   return asked2 === 0;
 }
 __name(boxesPlaceNotes, "boxesPlaceNotes");
-function groupBoxesBySteps(boxes, starts, steps, owners) {
+function groupBoxesBySteps(boxes, starts, steps, owners2) {
   const alone = /* @__PURE__ */ __name(() => boxes.map((b) => ({ from: b.start, to: b.start + b.width, boxes: [b], plain: true })), "alone");
   if (!starts || starts.length === 0) return alone();
   const edges = [.../* @__PURE__ */ new Set([...starts, steps])].filter((c) => c >= 0 && c <= steps).sort((a, b) => a - b);
@@ -38736,7 +38898,7 @@ function groupBoxesBySteps(boxes, starts, steps, owners) {
     }
     if (inStep.length === 0) continue;
     let plain = true;
-    for (const owner of owners) {
+    for (const owner of owners2) {
       const first = owner(from);
       for (let c = from + 1; c < to && plain; c++) plain = owner(c) === first;
     }
@@ -39456,10 +39618,10 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     return model.lanes.map((lane, li) => {
       const part = lane.part ?? 0;
       const starts = gridMode === "exact" ? stepStarts?.get(part) : void 0;
-      const owners = model.lanes.flatMap(
+      const owners2 = model.lanes.flatMap(
         (l, i) => (l.part ?? 0) === part ? [(c) => coverage[i]?.[c]?.start] : []
       );
-      return groupBoxesBySteps(boxes[li], starts ? [...starts].sort((a, b) => a - b) : void 0, model.steps, owners);
+      return groupBoxesBySteps(boxes[li], starts ? [...starts].sort((a, b) => a - b) : void 0, model.steps, owners2);
     });
   }, [model, boxes, coverage, stepStarts, gridMode]);
   const resizable = React48.useMemo(() => {

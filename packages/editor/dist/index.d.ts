@@ -4239,6 +4239,137 @@ declare class BreakpointStore {
     private fireChanged;
 }
 
+/**
+ * Shared event store for every runtime's info / warn / error messages.
+ *
+ * Goal: one stream of structured log entries that multiple UI surfaces
+ * subscribe to — toast on new errors, status-bar LED counting new
+ * entries since last opened, Monaco inline markers on the offending
+ * file, and a dedicated Console panel with history + filters. Each
+ * runtime (Strudel, Sonic Pi, p5.js, Hydra) emits through the same
+ * `emitLog` entry point so downstream consumers don't need per-runtime
+ * special-casing.
+ *
+ * The store keeps a bounded history (MAX_HISTORY most recent entries).
+ * Listeners are fired synchronously on emit so UI surfaces can update
+ * in the same microtask as the runtime error handler.
+ */
+type LogLevel = 'info' | 'warn' | 'error';
+type RuntimeId = 'strudel' | 'sonicpi' | 'p5' | 'hydra' | 'glsl'
+/** Stave-itself errors (engine init, host-side failures). */
+ | 'stave';
+/**
+ * "Did you mean X?" hint produced by the friendly-error formatter from
+ * a fuzzy match against the runtime's `DocsIndex`. Carried on the log
+ * entry so every UI surface (toast, console row, Monaco marker) can
+ * render it the same way.
+ */
+interface LogSuggestion {
+    /**
+     * Canonical symbol name (e.g. `noise`) — empty when the hint is not about
+     * one symbol, so "try `name`" is never said of something else (#2170).
+     */
+    name: string;
+    /** #2167 — what the link reads as when it is not a symbol's docs (`#2169`). */
+    linkLabel?: string;
+    /** In-app docs page for the suggested symbol. */
+    docsUrl: string;
+    /** One-line example if the DocsIndex carried one. */
+    example?: string;
+    /** First-sentence description if present. */
+    description?: string;
+}
+interface LogEntry {
+    /** Monotonic-ish unique id — used as React key, preserved through history. */
+    id: string;
+    /** Epoch ms when the entry was emitted. */
+    ts: number;
+    level: LogLevel;
+    runtime: RuntimeId;
+    /** Workspace file path this entry originated from, if known. */
+    source?: string;
+    /** 1-indexed line number inside `source`, if known. */
+    line?: number;
+    column?: number;
+    message: string;
+    suggestion?: LogSuggestion;
+    /** Raw error stack for the "expand stack" fold. */
+    stack?: string;
+    /**
+     * How many times this identical entry has been emitted (1 on first
+     * emit). Repeats — even non-consecutive ones — coalesce into this entry
+     * (same `id`, position kept, `ts` bumped) and increment `count`; the
+     * Console shows a `×N` badge. Without this a per-cycle runtime error
+     * (e.g. a soundfont out-of-range note firing every beat) would flood the
+     * panel with endless rows. (#563) Optional on the wire — `emitLog` always
+     * stamps it (1 on first emit), so a present entry always has it; treat
+     * absent as 1.
+     */
+    count?: number;
+    /**
+     * #2186 — the id of the run's error this one was found beside: a mistake
+     * read from the code that the run never reached. Its squiggle joins that
+     * error's instead of replacing it, and it raises no toast of its own.
+     */
+    alongside?: string;
+}
+type LogListener = (entry: LogEntry | null, history: readonly LogEntry[]) => void;
+/**
+ * Signal that a `(runtime, source)` pair has just evaluated cleanly.
+ * Live-mode filters use the marker timestamp to hide any log entry
+ * emitted BEFORE it — "old errors the user has since fixed".
+ */
+interface FixedMarker {
+    runtime: RuntimeId;
+    /** Workspace file path (or omitted → runtime-wide fix). */
+    source?: string;
+    /** Epoch ms when the fix happened. */
+    ts: number;
+}
+type FixedListener = (marker: FixedMarker, markers: ReadonlyMap<string, number>) => void;
+/**
+ * Emit a log entry. Returns the full entry (with generated id + ts) so
+ * callers can hold a reference for later deduplication or jumping. A
+ * `null` listener signal is reserved for `clearLog` / reset — emitLog
+ * always passes the emitted entry.
+ */
+declare function emitLog(partial: Omit<LogEntry, 'id' | 'ts' | 'count'>): LogEntry;
+/**
+ * Subscribe to every future log entry. Returns an unsubscribe. Does
+ * NOT replay history — consumers that need it should call
+ * `getLogHistory()` on mount.
+ */
+declare function subscribeLog(fn: LogListener): () => void;
+/**
+ * Read the current history in chronological order. Safe to mutate the
+ * returned array; we give back a frozen slice of the internal buffer.
+ */
+declare function getLogHistory(): readonly LogEntry[];
+/**
+ * Empty the history and fire a `null` notification so subscribers can
+ * reset their local state (clear marker maps, zero the LED counter).
+ */
+declare function clearLog(): void;
+/**
+ * Record that `(runtime, source)` just evaluated cleanly. Non-destructive:
+ * history is preserved. Consumers (the Console panel's Live mode) use
+ * the marker timestamp to hide entries emitted before the fix. Called
+ * from the runtime's `onEvaluateSuccess` bridge.
+ */
+declare function emitFixed(input: {
+    runtime: RuntimeId;
+    source?: string;
+}): FixedMarker;
+/**
+ * Subscribe to fix events. Does NOT replay existing markers — call
+ * `getFixedMarkers()` on mount if a starting snapshot is needed.
+ */
+declare function subscribeFixed(fn: FixedListener): () => void;
+/** Read the current fix-marker table. Key format: `${runtime}:${source|*}`. */
+declare function getFixedMarkers(): ReadonlyMap<string, number>;
+/** Key helper exported for consumers that need to build the same key. */
+declare function makeFixedKey(runtime: RuntimeId, source: string | undefined): string;
+
 /** Sounds the render could not play, grouped by the reason superdough gave. */
 interface SkippedSounds {
     reason: string;
@@ -4422,6 +4553,49 @@ interface LoopRange {
     readonly cycles: number;
 }
 
+/**
+ * #2201 — Strudel's own messages in Stave's Console.
+ *
+ * Strudel reports through one logger (`@strudel/core/logger.mjs`): `.log()`
+ * output, warnings about the code (`[tonal] transpose: not a note "foo"`),
+ * samples that fail to load. Its logger dispatches each message on `document`,
+ * and Strudel's own console shows every one (`website/src/repl/components/
+ * useLogger.jsx`, `panel/ConsoleTab.jsx` at f73b3956). Stave showed none of
+ * them, except errors raised while a pattern plays (#2173).
+ *
+ * The event goes to the whole page, and Stave runs one engine per Strudel
+ * file, so ONE listener asks each engine whether the message is its own
+ * (`claimLog`). An engine owns what is raised while its code runs: its
+ * evaluate, its scheduler's query, its output step, or a note it played
+ * (`.log()` carries the note). A message no engine owns is shown without a
+ * file, unless it was raised inside some other query — a visual's, or the
+ * quiet evaluate behind the timeline (#1172) — which Stave can't place, and
+ * which the play-time error path already leaves out for the same reason.
+ */
+
+interface StrudelLogDetail {
+    message?: unknown;
+    type?: unknown;
+    data?: unknown;
+}
+interface StrudelLogRow {
+    level: LogLevel;
+    message: string;
+    /**
+     * Written by Strudel's `errorLogger` (`[origin] error: message`). While a
+     * pattern plays, these are raised as error rows by the play-time path, and
+     * an evaluate's own failure comes back as its result, so an owner shows them
+     * only from its output step.
+     */
+    raisedAsError: boolean;
+}
+/**
+ * How an engine's code was running when the message was raised. A query or an
+ * output step is synchronous, so its claim is certain; an evaluate spans awaits,
+ * during which another file's scheduler can tick, so it yields to them.
+ */
+type LogClaim = 'evaluate' | 'query' | 'play';
+
 type HapHandler = (event: HapEvent) => void;
 /**
  * A required boot step that did not complete. The engine cannot start.
@@ -4487,6 +4661,21 @@ declare class StrudelEngine implements LiveCodingEngine {
     private schedulerQuery;
     /** takes off the `strudel.log` listener that raises play-time errors (#2173) */
     private stopListeningForPlayErrors;
+    /** #2201 — stops this engine owning Strudel's messages. See `strudelLogBridge`. */
+    private stopOwningLogs;
+    /** #2201 — above zero while this engine's evaluate runs */
+    private evaluating;
+    /** #2201 — above zero while this engine hands a note to superdough */
+    private inOutput;
+    /** #2201 — notes this engine played, so a `.log()` line names its file */
+    private playedHaps;
+    /**
+     * #2200 #2201 — what the last evaluate had to say, for the app to write once
+     * it knows the evaluate was a real one (see `takeEvalNotices`).
+     */
+    private evalNotices;
+    /** #2200–#2202 — the file this engine plays, as the Console names it */
+    private logSource;
     private analyserNode;
     private hapStream;
     private evalEpoch;
@@ -5074,6 +5263,27 @@ declare class StrudelEngine implements LiveCodingEngine {
     setRuntimeErrorHandler(handler: (err: Error) => void): void;
     /** Returns all sound names registered after init() — useful for editor autocompletion. */
     getSoundNames(): string[];
+    /**
+     * #2200–#2202 — the file this engine plays, as the Console names it. The app
+     * knows it; the engine doesn't. Rows the engine writes on its own (play-time
+     * messages, bounce warnings) carry it.
+     */
+    setLogSource(get: (() => string | undefined) | null): void;
+    /**
+     * #2200 #2201 — what the last evaluate had to say, and the code it said it
+     * about, handed over once. The app calls this after a real evaluate, AFTER it
+     * marks the file as evaluated cleanly (which hides the file's earlier rows), so
+     * these rows outlive that mark. The timeline's quiet evaluate never calls it,
+     * so nothing it raises while you type reaches the Console.
+     */
+    takeEvalNotices(): {
+        code: string;
+        notices: EvalNotice[];
+    };
+    /** #2201 — is this Strudel message this engine's? See `strudelLogBridge`. */
+    claimLog(detail: StrudelLogDetail): LogClaim | null;
+    /** #2201 — show one of this engine's Strudel messages. */
+    takeLog(row: StrudelLogRow, claim: LogClaim): void;
     dispose(): void;
     /**
      * Query a pattern for its first non-silent hap within [0, lookahead) cycles
@@ -5091,6 +5301,18 @@ declare class StrudelEngine implements LiveCodingEngine {
      * Safe to call repeatedly. No-op if audioController isn't available yet.
      */
     private rebuildTrackAnalysers;
+}
+/**
+ * #2200 #2201 — a Console row an evaluate raised, for the app to write with the
+ * file once the evaluate is known to be real (`takeEvalNotices`). `line` and
+ * `column` are in the evaluated code.
+ */
+interface EvalNotice {
+    level: LogLevel;
+    message: string;
+    suggestion?: LogSuggestion;
+    line?: number;
+    column?: number;
 }
 
 /**
@@ -12783,137 +13005,6 @@ declare function getPresetIdForFile(file: WorkspaceFile): string | undefined;
  * default renderer instead of last-write-wins between p5 and hydra.
  */
 declare function registerPresetAsNamedViz(preset: VizPreset, name?: string): boolean;
-
-/**
- * Shared event store for every runtime's info / warn / error messages.
- *
- * Goal: one stream of structured log entries that multiple UI surfaces
- * subscribe to — toast on new errors, status-bar LED counting new
- * entries since last opened, Monaco inline markers on the offending
- * file, and a dedicated Console panel with history + filters. Each
- * runtime (Strudel, Sonic Pi, p5.js, Hydra) emits through the same
- * `emitLog` entry point so downstream consumers don't need per-runtime
- * special-casing.
- *
- * The store keeps a bounded history (MAX_HISTORY most recent entries).
- * Listeners are fired synchronously on emit so UI surfaces can update
- * in the same microtask as the runtime error handler.
- */
-type LogLevel = 'info' | 'warn' | 'error';
-type RuntimeId = 'strudel' | 'sonicpi' | 'p5' | 'hydra' | 'glsl'
-/** Stave-itself errors (engine init, host-side failures). */
- | 'stave';
-/**
- * "Did you mean X?" hint produced by the friendly-error formatter from
- * a fuzzy match against the runtime's `DocsIndex`. Carried on the log
- * entry so every UI surface (toast, console row, Monaco marker) can
- * render it the same way.
- */
-interface LogSuggestion {
-    /**
-     * Canonical symbol name (e.g. `noise`) — empty when the hint is not about
-     * one symbol, so "try `name`" is never said of something else (#2170).
-     */
-    name: string;
-    /** #2167 — what the link reads as when it is not a symbol's docs (`#2169`). */
-    linkLabel?: string;
-    /** In-app docs page for the suggested symbol. */
-    docsUrl: string;
-    /** One-line example if the DocsIndex carried one. */
-    example?: string;
-    /** First-sentence description if present. */
-    description?: string;
-}
-interface LogEntry {
-    /** Monotonic-ish unique id — used as React key, preserved through history. */
-    id: string;
-    /** Epoch ms when the entry was emitted. */
-    ts: number;
-    level: LogLevel;
-    runtime: RuntimeId;
-    /** Workspace file path this entry originated from, if known. */
-    source?: string;
-    /** 1-indexed line number inside `source`, if known. */
-    line?: number;
-    column?: number;
-    message: string;
-    suggestion?: LogSuggestion;
-    /** Raw error stack for the "expand stack" fold. */
-    stack?: string;
-    /**
-     * How many times this identical entry has been emitted (1 on first
-     * emit). Repeats — even non-consecutive ones — coalesce into this entry
-     * (same `id`, position kept, `ts` bumped) and increment `count`; the
-     * Console shows a `×N` badge. Without this a per-cycle runtime error
-     * (e.g. a soundfont out-of-range note firing every beat) would flood the
-     * panel with endless rows. (#563) Optional on the wire — `emitLog` always
-     * stamps it (1 on first emit), so a present entry always has it; treat
-     * absent as 1.
-     */
-    count?: number;
-    /**
-     * #2186 — the id of the run's error this one was found beside: a mistake
-     * read from the code that the run never reached. Its squiggle joins that
-     * error's instead of replacing it, and it raises no toast of its own.
-     */
-    alongside?: string;
-}
-type LogListener = (entry: LogEntry | null, history: readonly LogEntry[]) => void;
-/**
- * Signal that a `(runtime, source)` pair has just evaluated cleanly.
- * Live-mode filters use the marker timestamp to hide any log entry
- * emitted BEFORE it — "old errors the user has since fixed".
- */
-interface FixedMarker {
-    runtime: RuntimeId;
-    /** Workspace file path (or omitted → runtime-wide fix). */
-    source?: string;
-    /** Epoch ms when the fix happened. */
-    ts: number;
-}
-type FixedListener = (marker: FixedMarker, markers: ReadonlyMap<string, number>) => void;
-/**
- * Emit a log entry. Returns the full entry (with generated id + ts) so
- * callers can hold a reference for later deduplication or jumping. A
- * `null` listener signal is reserved for `clearLog` / reset — emitLog
- * always passes the emitted entry.
- */
-declare function emitLog(partial: Omit<LogEntry, 'id' | 'ts' | 'count'>): LogEntry;
-/**
- * Subscribe to every future log entry. Returns an unsubscribe. Does
- * NOT replay history — consumers that need it should call
- * `getLogHistory()` on mount.
- */
-declare function subscribeLog(fn: LogListener): () => void;
-/**
- * Read the current history in chronological order. Safe to mutate the
- * returned array; we give back a frozen slice of the internal buffer.
- */
-declare function getLogHistory(): readonly LogEntry[];
-/**
- * Empty the history and fire a `null` notification so subscribers can
- * reset their local state (clear marker maps, zero the LED counter).
- */
-declare function clearLog(): void;
-/**
- * Record that `(runtime, source)` just evaluated cleanly. Non-destructive:
- * history is preserved. Consumers (the Console panel's Live mode) use
- * the marker timestamp to hide entries emitted before the fix. Called
- * from the runtime's `onEvaluateSuccess` bridge.
- */
-declare function emitFixed(input: {
-    runtime: RuntimeId;
-    source?: string;
-}): FixedMarker;
-/**
- * Subscribe to fix events. Does NOT replay existing markers — call
- * `getFixedMarkers()` on mount if a starting snapshot is needed.
- */
-declare function subscribeFixed(fn: FixedListener): () => void;
-/** Read the current fix-marker table. Key format: `${runtime}:${source|*}`. */
-declare function getFixedMarkers(): ReadonlyMap<string, number>;
-/** Key helper exported for consumers that need to build the same key. */
-declare function makeFixedKey(runtime: RuntimeId, source: string | undefined): string;
 
 /**
  * Bridge engineLog → Monaco inline markers.
