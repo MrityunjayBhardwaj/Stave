@@ -15965,6 +15965,24 @@ function formatFriendlyError(err, runtime, options = {}) {
       identifier,
       Object.keys(options.index.docs)
     );
+    if (matches[0]?.name === identifier) {
+      const hit = options.index.docs[identifier];
+      const receiver = options.index.receiver;
+      return {
+        message: appendAlias(
+          receiver ? `\`${identifier}\` is on \`${receiver}\` here \u2014 write \`${receiver}.${identifier}(\u2026)\`.` : `\`${identifier}\` is not defined.`
+        ),
+        suggestion: {
+          name: identifier,
+          docsUrl: (options.docsUrlFor ?? defaultDocsUrl)(runtime, identifier),
+          example: hit?.example,
+          description: hit?.description
+        },
+        stack,
+        line: loc?.line,
+        column: loc?.column
+      };
+    }
     if (matches.length > 0) {
       const hit = options.index.docs[matches[0].name];
       const docsUrl = (options.docsUrlFor ?? defaultDocsUrl)(
@@ -19728,7 +19746,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
           return;
         }
         if (d.type === "vizlog") {
-          emitLog(d.entry);
+          emitLog(d.entry.source ? d.entry : { ...d.entry, source: this.name });
           return;
         }
         if (d.type === "ready") {
@@ -25752,6 +25770,11 @@ function readGLSLTracks(bus) {
 __name(readGLSLTracks, "readGLSLTracks");
 
 // src/visualizers/renderers/GLSLVizRenderer.ts
+var REPORTED = /* @__PURE__ */ new WeakSet();
+function isReportedGLSLError(e) {
+  return REPORTED.has(e);
+}
+__name(isReportedGLSLError, "isReportedGLSLError");
 var glslPerfSeq = 0;
 var _GLSLVizRenderer = class _GLSLVizRenderer extends VizRendererBase {
   /** `code` = the user's GLSL source; `name` = the workspace path, used to
@@ -25842,6 +25865,7 @@ var _GLSLVizRenderer = class _GLSLVizRenderer extends VizRendererBase {
         message: err.message,
         line: glslFragmentErrorUserLine(err.message, this.code)
       });
+      REPORTED.add(err);
       onError(err);
     }
   }
@@ -31456,13 +31480,15 @@ var HYDRA_GLOBAL_MISTAKES = [
     // would match `out` to itself as a symbol, but the existing fuzzy
     // path returns "Did you mean out?" which isn't useful.
     detect: { kind: "message", match: /^out is not (?:a function|defined)$/ },
-    hint: "Hydra outputs render by calling `.out()` on a chain \u2014 try `osc().out()`.",
-    example: "osc(20, 0.1, 1.0).out()"
+    hint: "Hydra outputs render by calling `.out()` on a chain \u2014 try `s.osc().out()`.",
+    example: "s.osc(20, 0.1, 1.0).out()"
   }
 ];
 var HYDRA_RAW_INDEX = hydra_default;
 var HYDRA_DOCS_INDEX = {
   ...HYDRA_RAW_INDEX,
+  // A `.hydra` file gets the synth as `s` (hydraCompiler), not as globals.
+  receiver: "s",
   globalMistakes: [
     ...HYDRA_RAW_INDEX.globalMistakes ?? [],
     ...HYDRA_GLOBAL_MISTAKES
@@ -51204,7 +51230,9 @@ async function flushToPreset(fileId, presetId) {
     code: file.content,
     requires: existing?.requires ?? [],
     createdAt: existing?.createdAt ?? now2,
-    updatedAt: now2
+    updatedAt: now2,
+    // Always the file's CURRENT path, so a rename is picked up on the next flush.
+    filePath: file.path
   };
   await VizPresetStore.put(preset);
 }
@@ -51302,6 +51330,7 @@ __name(VizEditor, "VizEditor");
 // src/visualizers/vizCompiler.ts
 function compilePreset(preset) {
   const { id, name, renderer, code, requires } = preset;
+  const source = preset.filePath ?? name;
   if (renderer === "hydra") {
     return {
       id,
@@ -51313,7 +51342,7 @@ function compilePreset(preset) {
       // main-thread fallback) when the flag is on + the browser is capable, else
       // the main-thread HydraVizRenderer. User `.hydra` code is a transferable
       // string, so it can cross to the worker (built-in hydra closures can't yet).
-      factory: /* @__PURE__ */ __name(() => makeHydraRenderer(code, name), "factory")
+      factory: /* @__PURE__ */ __name(() => makeHydraRenderer(code, source), "factory")
     };
   }
   if (renderer === "glsl") {
@@ -51327,7 +51356,7 @@ function compilePreset(preset) {
       // main-thread fallback) when the flag is on + the browser is capable, else
       // the main-thread GLSLVizRenderer. A `.glsl` sketch is the wrapped fragment
       // source — a plain transferable string, so it crosses to the worker cleanly.
-      factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(code, name), "factory")
+      factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(code, source), "factory")
     };
   }
   if (renderer === "p5") {
@@ -51337,14 +51366,14 @@ function compilePreset(preset) {
       renderer: "p5",
       requires,
       ...preset.nativeSize ? { nativeSize: preset.nativeSize } : {},
-      // Pass `name` (the workspace path) as the source so the factory's
+      // Pass the workspace path (`source`) so the factory's
       // runtime-error catch can attribute the engineLog entry back to
       // the file. Without it, a top-level `new Mp()` typo surfaced on
       // the preview canvas but nowhere else — no Console row, no
       // Monaco squiggle.
       // B-3: `makeP5Renderer` returns a worker-offloaded renderer when the flag
       // is on + the browser is capable, else the main-thread P5VizRenderer.
-      factory: /* @__PURE__ */ __name(() => makeP5Renderer(code, name), "factory")
+      factory: /* @__PURE__ */ __name(() => makeP5Renderer(code, source), "factory")
     };
   }
   throw new Error(`Unknown renderer: ${renderer}`);
@@ -54017,6 +54046,7 @@ function CompiledVizMount(props) {
     }
     let mounted2 = null;
     const reportError = /* @__PURE__ */ __name((e) => {
+      if (isReportedGLSLError(e)) return;
       const index = isP5 ? P5_DOCS_INDEX : HYDRA_DOCS_INDEX;
       const parts = formatFriendlyError(e, runtime, { index });
       const offset = isP5 ? getP5LineOffset(file.content) : runtime === "hydra" ? getHydraLineOffset() : 0;
