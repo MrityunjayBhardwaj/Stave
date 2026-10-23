@@ -172,3 +172,26 @@ export function locateSoundName(
   if (new Set(named.map((l) => l.start)).size !== 1) return null
   return positionOf(code, named[0].start)
 }
+
+/**
+ * #2203 — where `code` wrote a value a played note carried that superdough
+ * couldn't read, when the error quotes it: `not a note: "foo"` (superdough
+ * `util.mjs` `noteToMidi`). The quoted value must be one of the note's own
+ * values, and written in exactly one place (as `locateSoundName` decides);
+ * otherwise, or when two values are quoted and placed, nothing is chosen.
+ */
+export function locateQuotedValue(
+  code: string,
+  locations: ReadonlyArray<{ start: number; end: number }> | undefined,
+  value: unknown,
+  message: string,
+): { line: number; column: number } | null {
+  const values = typeof value === 'string' ? [value] : value && typeof value === 'object' ? Object.values(value) : []
+  const placed = new Map<string, { line: number; column: number }>()
+  for (const v of values) {
+    if (typeof v !== 'string' || !v || !message.includes(`"${v}"`)) continue
+    const at = locateSoundName(code, locations, v)
+    if (at) placed.set(v, at)
+  }
+  return placed.size === 1 ? [...placed.values()][0] : null
+}

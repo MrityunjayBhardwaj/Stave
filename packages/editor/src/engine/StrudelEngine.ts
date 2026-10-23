@@ -32,7 +32,7 @@ import { getTierFlags, type TierFlags } from './tierFlags'
 import { aliasSoundValue } from './aliases'
 import { canOpenAudioFrame, offlineContextInFrame } from './audioFrame'
 import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
-import { locateEvalError, locateSoundName, measureEvalFrame, type EvalFrameShape } from './evalErrorLocation'
+import { locateEvalError, locateQuotedValue, locateSoundName, measureEvalFrame, type EvalFrameShape } from './evalErrorLocation'
 import { findMissingPatternMethods, patternRuntimeOf, type MissingMethod } from './missingPatternMethods'
 import { installMiniStringParser } from './stringParser'
 import { resolveBareCaptureId } from './bareCapture'
@@ -1167,6 +1167,17 @@ export class StrudelEngine implements LiveCodingEngine {
         // the place only while the file still reads the same.
         if (this.playing && /^sound \S+ not found/.test(error.message)) {
           const at = locateSoundName(this.playing.code, hap?.context?.locations, hap?.value?.s)
+          if (at) {
+            Object.assign(error as Error & { staveLocation?: { line: number; column: number }; staveLocationCode?: string }, {
+              staveLocation: at,
+              staveLocationCode: this.playing.code,
+            })
+          }
+        }
+        // #2203 — a value the note carried that superdough couldn't read, quoted
+        // in the message (`not a note: "foo"`): the place it was written.
+        if (this.playing && !(error as Error & { staveLocation?: unknown }).staveLocation) {
+          const at = locateQuotedValue(this.playing.code, hap?.context?.locations, hap?.value, error.message)
           if (at) {
             Object.assign(error as Error & { staveLocation?: { line: number; column: number }; staveLocationCode?: string }, {
               staveLocation: at,

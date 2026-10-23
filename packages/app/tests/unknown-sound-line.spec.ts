@@ -2,6 +2,9 @@
  * #2187 — a sound that isn't loaded is marked where the code names it. The note
  * that couldn't play says where its sound came from, so `bdd` is underlined and
  * its Console row takes you to its line.
+ *
+ * #2203 — likewise a note superdough can't read (`not a note: "foo"`) is marked
+ * where the value was written.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { bootApp, seedCode, evalCode } from './_appBoot'
@@ -48,4 +51,13 @@ test('once the file is edited, the still-playing error is not placed on the old 
   // the first row's line follows the code it named, which moved down one (#2184)
   await expect(page.locator(ROW).filter({ hasText: 'bdd' }).and(page.locator('[data-line="4"]'))).toHaveCount(1)
   await expect(page.locator(ROW).filter({ hasText: 'bdd' }).and(page.locator('[data-line="3"]'))).toHaveCount(0)
+})
+
+test('a note superdough cannot read is underlined where it was written (#2203)', async ({ page }) => {
+  await seedCode(page, '$: s("hh*2")\n$: note("c e foo").transpose(2).s("sine")\n')
+  await evalCode(page)
+  await expect.poll(() => squiggles(page), { timeout: 15_000 }).toEqual(['2:14-17 foo'])
+  await page.locator('[data-activity-bar] [data-panel-id="console"]').click()
+  const row = page.locator(ROW).filter({ hasText: 'not a note' }).first()
+  await expect(row).toHaveAttribute('data-line', '2')
 })
