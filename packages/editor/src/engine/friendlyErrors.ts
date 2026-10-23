@@ -631,6 +631,28 @@ export function formatFriendlyError(
       identifier,
       Object.keys(options.index.docs),
     )
+    // #2211 — the name IS one of the index's own, just not in scope here.
+    // Suggesting it back ("Did you mean `osc`?") tells the reader nothing.
+    if (matches[0]?.name === identifier) {
+      const hit = options.index.docs[identifier]
+      const receiver = options.index.receiver
+      return {
+        message: appendAlias(
+          receiver
+            ? `\`${identifier}\` is on \`${receiver}\` here — write \`${receiver}.${identifier}(…)\`.`
+            : `\`${identifier}\` is not defined.`,
+        ),
+        suggestion: {
+          name: identifier,
+          docsUrl: (options.docsUrlFor ?? defaultDocsUrl)(runtime, identifier),
+          example: hit?.example,
+          description: hit?.description,
+        },
+        stack,
+        line: loc?.line,
+        column: loc?.column,
+      }
+    }
     if (matches.length > 0) {
       const hit = options.index.docs[matches[0].name]
       const docsUrl = (options.docsUrlFor ?? defaultDocsUrl)(

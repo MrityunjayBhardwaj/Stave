@@ -95,6 +95,19 @@ describe('seeded commonMistakes — Hydra', () => {
       'hydra',
       { index: HYDRA_DOCS_INDEX },
     )
-    expect(r.message).toContain('osc().out()')
+    // a `.hydra` file reaches Hydra's functions through `s` (#2211)
+    expect(r.message).toContain('`s.osc().out()`')
+    expect(r.suggestion?.example).toBe('s.osc(20, 0.1, 1.0).out()')
+  })
+
+  it("a bare Hydra function says it is on `s`, not \"Did you mean\" the same word (#2211)", () => {
+    const r = formatFriendlyError(new ReferenceError('osc is not defined'), 'hydra', { index: HYDRA_DOCS_INDEX })
+    expect(r.message).toBe('`osc` is on `s` here — write `s.osc(…)`.')
+    expect(r.suggestion?.name).toBe('osc')
+  })
+
+  it('a misspelt Hydra function still gets "Did you mean"', () => {
+    const r = formatFriendlyError(new ReferenceError('osd is not defined'), 'hydra', { index: HYDRA_DOCS_INDEX })
+    expect(r.message).toContain('Did you mean `osc`?')
   })
 })
