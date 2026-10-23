@@ -33,6 +33,7 @@ import { aliasSoundValue } from './aliases'
 import { canOpenAudioFrame, offlineContextInFrame } from './audioFrame'
 import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
 import { locateEvalError, locateSoundName, measureEvalFrame, type EvalFrameShape } from './evalErrorLocation'
+import { findMissingPatternMethods, patternRuntimeOf, type MissingMethod } from './missingPatternMethods'
 import { installMiniStringParser } from './stringParser'
 import { resolveBareCaptureId } from './bareCapture'
 import { normalizeLoopRange, type LoopRange } from './transportFrame'
@@ -1634,6 +1635,15 @@ export class StrudelEngine implements LiveCodingEngine {
           this.evalFrame,
         )
         if (at) (result.error as Error & { staveLocation?: { line: number; column: number } }).staveLocation = at
+      }
+      // #2186 — the run stopped at its first error; read the code for every
+      // method its patterns don't have, judged by this runtime's own patterns.
+      if (result.error) {
+        const missing = findMissingPatternMethods(code, patternRuntimeOf(Pattern))
+        if (missing.length > 0) {
+          (result.error as Error & { staveMissingMethods?: { code: string; missing: MissingMethod[] } })
+            .staveMissingMethods = { code, missing }
+        }
       }
 
       if (!result.error) {

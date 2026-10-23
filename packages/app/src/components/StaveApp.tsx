@@ -385,6 +385,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     return subscribeLog((entry) => {
       if (!entry) return;
       if (entry.level !== "error") return;
+      // #2186 — a mistake found beside the run's error: that error has its toast.
+      if (entry.alongside) return;
       // #2170 — "try" only names a symbol; a hint's example or link has no name.
       const text = entry.suggestion?.name
         ? `${entry.message} → try \`${entry.suggestion.name}\``

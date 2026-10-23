@@ -79,6 +79,8 @@ interface TrackedModel {
 }
 interface Placed {
   entryId: string
+  /** the run's error it was found beside (#2186) */
+  alongside?: string
   /** where the run put it, to tell a repeat of the same entry from a new place */
   at: string
   decorationId: string
@@ -155,8 +157,11 @@ function onEdited(fileId: string, track: Track): void {
   if (moved) notifyPositions()
 }
 
-/** Follow the squiggle just placed for `entryId`. It replaces the file's last one, as the marker did. */
-function trackPlaced(fileId: string, model: unknown, entry: LogEntry, marker: MarkerData): void {
+/**
+ * Follow the squiggle just placed for `entryId`. It replaces the file's others,
+ * as the marker did, except those of its own run (`kept`, #2186).
+ */
+function trackPlaced(fileId: string, model: unknown, entry: LogEntry, marker: MarkerData, kept: Placed[]): void {
   if (!isTrackable(model)) return
   let track = tracks.get(fileId)
   if (track && track.model !== model) {
@@ -174,11 +179,12 @@ function trackPlaced(fileId: string, model: unknown, entry: LogEntry, marker: Ma
     endColumn: marker.endColumn,
   }
   const [decorationId] = model.deltaDecorations(
-    track ? track.placed.map((p) => p.decorationId) : [],
+    track ? track.placed.filter((p) => !kept.includes(p)).map((p) => p.decorationId) : [],
     [{ range, options: { stickiness } }],
   )
   const placed: Placed = {
     entryId: entry.id,
+    alongside: entry.alongside,
     at: `${entry.line}:${entry.column ?? ''}:${entry.message}`,
     decorationId,
     text: model.getValueInRange(range),
@@ -187,7 +193,7 @@ function trackPlaced(fileId: string, model: unknown, entry: LogEntry, marker: Ma
     line: range.startLineNumber,
   }
   if (track) {
-    track.placed = [placed]
+    track.placed = [...kept, placed]
   } else {
     const t: Track = { model, placed: [placed], stop: () => {} }
     const sub = model.onDidChangeContent(() => onEdited(fileId, t))
@@ -303,8 +309,21 @@ function applyEntry(entry: LogEntry): void {
       owner: OWNER,
     },
   )
+  // #2186 — a mistake found beside the run's error joins that run's squiggles,
+  // which `setLineMarker` (one marker per file) has just replaced.
+  const kept = entry.alongside === undefined || !track
+    ? []
+    : track.placed.filter((p) => p.entryId !== entry.id
+      && (p.entryId === entry.alongside || p.alongside === entry.alongside))
+  if (marker && kept.length > 0) {
+    const shown = kept
+      .filter((p) => p.shown)
+      .map((p) => ({ ...p.marker, ...track!.model.getDecorationRange(p.decorationId) }))
+    const monaco = resolved.monaco as { editor: { setModelMarkers: Function } }
+    monaco.editor.setModelMarkers(resolved.model, OWNER, [...shown, marker])
+  }
   activeMarkers.add(markerKey(entry.runtime, fileId))
-  if (marker) trackPlaced(fileId, resolved.model, entry, marker as MarkerData)
+  if (marker) trackPlaced(fileId, resolved.model, entry, marker as MarkerData, kept)
 }
 
 function clearForFix(marker: FixedMarker): void {

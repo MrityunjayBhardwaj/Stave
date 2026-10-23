@@ -74,6 +74,12 @@ export interface LogEntry {
    * absent as 1.
    */
   count?: number
+  /**
+   * #2186 — the id of the run's error this one was found beside: a mistake
+   * read from the code that the run never reached. Its squiggle joins that
+   * error's instead of replacing it, and it raises no toast of its own.
+   */
+  alongside?: string
 }
 
 type LogListener = (
@@ -155,6 +161,10 @@ export function emitLog(
   if (existing) {
     existing.ts = Date.now()
     existing.count = (existing.count ?? 1) + 1
+    // #2186 — a repeat takes this emit's part: a mistake found beside one run's
+    // error can be the error the next run stops at, once the first is fixed.
+    if (partial.alongside === undefined) delete existing.alongside
+    else existing.alongside = partial.alongside
     // Listeners still fire — UIs re-render the row's count/timestamp. They can
     // dedupe via `entry.id` (stable across repeats) if they want one toast.
     queueMicrotask(() => {

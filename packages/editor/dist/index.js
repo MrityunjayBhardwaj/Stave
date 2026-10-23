@@ -11986,13 +11986,13 @@ var whole = /* @__PURE__ */ __name((x) => {
   const r = Math.round(x);
   return Math.abs(x - r) < 1e-9 ? r : null;
 }, "whole");
-function rhythmChart(chords, rhythm, model, parse6, masks = []) {
+function rhythmChart(chords, rhythm, model, parse7, masks = []) {
   if (chords === null || model === null) return NONE;
   if (model.barSteps) return NONE;
   const rhythmBars = model.bars ?? 1;
   const colsPerBar = model.steps / rhythmBars;
   if (!Number.isInteger(colsPerBar) || colsPerBar < 1) return NONE;
-  const chordsRead = parse6(chords);
+  const chordsRead = parse7(chords);
   if (!chordsRead.ok) return NONE;
   const chordBars = chordsRead.model.bars ?? 1;
   const readMasks = masks.filter((m) => m !== null);
@@ -13698,27 +13698,27 @@ function appendEmptyBars(mini, bars, add) {
 __name(appendEmptyBars, "appendEmptyBars");
 var VELOCITY_STRING = "its velocities are written per column, and the velocity lane can't follow a longer pattern yet";
 var GRID_CANT_SHOW = "the grid couldn't show the longer pattern";
-function lengthenOffers(parse6, mini, bars, gain) {
+function lengthenOffers(parse7, mini, bars, gain) {
   return {
-    duplicate: offered(parse6, mini, () => duplicateBar(mini, bars), bars + 1, gain),
-    append: appendBarsOffer(parse6, mini, bars, 1, gain)
+    duplicate: offered(parse7, mini, () => duplicateBar(mini, bars), bars + 1, gain),
+    append: appendBarsOffer(parse7, mini, bars, 1, gain)
   };
 }
 __name(lengthenOffers, "lengthenOffers");
-function appendBarsOffer(parse6, mini, bars, add, gain) {
-  return offered(parse6, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
+function appendBarsOffer(parse7, mini, bars, add, gain) {
+  return offered(parse7, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
 }
 __name(appendBarsOffer, "appendBarsOffer");
 var NOT_EDITABLE_HERE = "the grid can show this pattern but can't edit it; make it longer in the code";
-function offered(parse6, mini, rewrite, wantBars, gain) {
-  if (!parse6(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
-  return readsBack(parse6, rewrite(), wantBars, gain);
+function offered(parse7, mini, rewrite, wantBars, gain) {
+  if (!parse7(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
+  return readsBack(parse7, rewrite(), wantBars, gain);
 }
 __name(offered, "offered");
-function readsBack(parse6, r, wantBars, gain) {
+function readsBack(parse7, r, wantBars, gain) {
   if (!r.ok) return r;
   if (gain.mini !== null) return { ok: false, reason: VELOCITY_STRING };
-  const read5 = parse6(r.mini, UNREFINED);
+  const read5 = parse7(r.mini, UNREFINED);
   return read5.ok && (read5.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
 }
 __name(readsBack, "readsBack");
@@ -14626,6 +14626,8 @@ function emitLog(partial) {
   if (existing) {
     existing.ts = Date.now();
     existing.count = (existing.count ?? 1) + 1;
+    if (partial.alongside === void 0) delete existing.alongside;
+    else existing.alongside = partial.alongside;
     queueMicrotask(() => {
       for (const fn of listeners) {
         try {
@@ -16044,6 +16046,97 @@ function locateSoundName(code, locations, sound) {
   return positionOf(code, named2[0].start);
 }
 __name(locateSoundName, "locateSoundName");
+var NOT_PATTERN_RESULT = /* @__PURE__ */ new Set(["queryArc", "query", "firstCycle", "showFirstCycle", "sortHapsByPart", "toString", "valueOf"]);
+function each(node, visit) {
+  if (!node || typeof node.type !== "string") return;
+  visit(node);
+  for (const key3 of Object.keys(node)) {
+    if (key3 === "loc") continue;
+    const child = node[key3];
+    if (Array.isArray(child)) child.forEach((c) => each(c, visit));
+    else if (child && typeof child === "object" && typeof child.type === "string") each(child, visit);
+  }
+}
+__name(each, "each");
+function declaredNames(program) {
+  const names = /* @__PURE__ */ new Set();
+  const bind = /* @__PURE__ */ __name((pattern) => {
+    if (!pattern) return;
+    if (pattern.type === "Identifier") names.add(pattern.name);
+    else if (pattern.type === "ObjectPattern") pattern.properties.forEach((p) => bind(p.value ?? p.argument));
+    else if (pattern.type === "ArrayPattern") pattern.elements.forEach(bind);
+    else if (pattern.type === "AssignmentPattern") bind(pattern.left);
+    else if (pattern.type === "RestElement") bind(pattern.argument);
+  }, "bind");
+  each(program, (n) => {
+    if (n.type === "VariableDeclarator") bind(n.id);
+    else if (n.type === "FunctionDeclaration" || n.type === "FunctionExpression" || n.type === "ArrowFunctionExpression") {
+      if (n.id) bind(n.id);
+      n.params.forEach(bind);
+    } else if (n.type === "ClassDeclaration" && n.id) bind(n.id);
+    else if (n.type === "CatchClause") bind(n.param);
+    else if (n.type === "ImportSpecifier" || n.type === "ImportDefaultSpecifier" || n.type === "ImportNamespaceSpecifier") bind(n.local);
+  });
+  return names;
+}
+__name(declaredNames, "declaredNames");
+function registeredNames(program) {
+  const names = /* @__PURE__ */ new Set();
+  each(program, (n) => {
+    const [first] = n.type === "CallExpression" ? n.arguments : [];
+    if (n.callee?.type === "Identifier" && n.callee.name === "register" && first?.type === "Literal" && typeof first.value === "string") {
+      names.add(first.value);
+    }
+  });
+  return names;
+}
+__name(registeredNames, "registeredNames");
+var methodName = /* @__PURE__ */ __name((callee) => callee?.type === "MemberExpression" && !callee.computed && !callee.optional && callee.property.type === "Identifier" ? callee.property.name : null, "methodName");
+function findMissingPatternMethods(code, runtime) {
+  let program;
+  try {
+    program = parse(code, { ecmaVersion: "latest", allowAwaitOutsideFunction: true, locations: true });
+  } catch {
+    return [];
+  }
+  const declared2 = declaredNames(program);
+  const registered = registeredNames(program);
+  const known = /* @__PURE__ */ __name((name) => registered.has(name) || runtime.isMethod(name), "known");
+  const isPattern = /* @__PURE__ */ __name((e) => {
+    if (e.type === "Literal") return typeof e.value === "string" && e.raw.startsWith('"');
+    if (e.type === "TemplateLiteral") return e.expressions.length === 0;
+    if (e.type === "Identifier") return !declared2.has(e.name) && runtime.isPatternValue(e.name);
+    if (e.type !== "CallExpression" || e.optional) return false;
+    if (e.callee.type === "Identifier") return !declared2.has(e.callee.name) && runtime.isPatternFunction(e.callee.name);
+    const name = methodName(e.callee);
+    return name !== null && known(name) && !NOT_PATTERN_RESULT.has(name) && isPattern(e.callee.object);
+  }, "isPattern");
+  const written = /* @__PURE__ */ __name((e) => {
+    if (e.type === "Identifier") return e.name;
+    if (e.type === "CallExpression") return `${written(e.callee)}(...)`;
+    if (e.type === "MemberExpression") return `${written(e.object)}.${e.property.name}`;
+    return code.slice(e.start, e.end);
+  }, "written");
+  const missing = [];
+  each(program, (n) => {
+    if (n.type !== "CallExpression" || n.optional) return;
+    const name = methodName(n.callee);
+    if (name === null || known(name) || !isPattern(n.callee.object)) return;
+    const { line, column } = n.callee.property.loc.start;
+    missing.push({ name, receiver: written(n.callee.object), line, column: column + 1 });
+  });
+  return missing.sort((a, b) => a.line - b.line || a.column - b.column);
+}
+__name(findMissingPatternMethods, "findMissingPatternMethods");
+var PATTERN_BUILDERS = /* @__PURE__ */ new Set(["mini", "m", "arrange", "pure", "run", "irand", "chooseCycles", "randcat", "wrandcat", "polymeter", "timecat", "fastcat", "slowcat", "sequence"]);
+function patternRuntimeOf(Pattern2, scope = globalThis) {
+  return {
+    isMethod: /* @__PURE__ */ __name((name) => name in Pattern2.prototype, "isMethod"),
+    isPatternValue: /* @__PURE__ */ __name((name) => scope[name] instanceof Pattern2, "isPatternValue"),
+    isPatternFunction: /* @__PURE__ */ __name((name) => typeof scope[name] === "function" && (name in Pattern2.prototype || PATTERN_BUILDERS.has(name)), "isPatternFunction")
+  };
+}
+__name(patternRuntimeOf, "patternRuntimeOf");
 
 // src/engine/stringParser.ts
 function installMiniStringParser(deps) {
@@ -17236,6 +17329,12 @@ var _StrudelEngine = class _StrudelEngine {
         );
         if (at) result.error.staveLocation = at;
       }
+      if (result.error) {
+        const missing = findMissingPatternMethods(code, patternRuntimeOf(Pattern2));
+        if (missing.length > 0) {
+          result.error.staveMissingMethods = { code, missing };
+        }
+      }
       if (!result.error) {
         this.evalEpoch++;
         this.hapStream.setEpoch(this.evalEpoch);
@@ -17298,11 +17397,11 @@ var _StrudelEngine = class _StrudelEngine {
       } else {
         delete Pattern2.prototype.viz;
       }
-      for (const [methodName, desc] of savedLegacyDescriptors) {
+      for (const [methodName2, desc] of savedLegacyDescriptors) {
         if (desc) {
-          Object.defineProperty(Pattern2.prototype, methodName, desc);
+          Object.defineProperty(Pattern2.prototype, methodName2, desc);
         } else {
-          delete Pattern2.prototype[methodName];
+          delete Pattern2.prototype[methodName2];
         }
       }
     }
@@ -37529,13 +37628,13 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
-function useViewProver(mini, parse6) {
+function useViewProver(mini, parse7) {
   const cacheRef = React48.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React48.useRef(parse6);
-  parseRef.current = parse6;
+  const parseRef = React48.useRef(parse7);
+  parseRef.current = parse7;
   const key3 = mini ?? null;
   return React48.useCallback(
     (scale) => {
@@ -38732,13 +38831,13 @@ function setGridMode(mode) {
   listeners14.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
-function usePatternLength(chunk, model, parse6, writeMini) {
+function usePatternLength(chunk, model, parse7, writeMini) {
   const mini = model ? chunk?.miniString ?? null : null;
   const bars = model?.bars ?? 1;
   const gain = chunk ? readChunkGain(chunk) : null;
   const velocity = gain?.mini != null;
-  const parseRef = React48.useRef(parse6);
-  parseRef.current = parse6;
+  const parseRef = React48.useRef(parse7);
+  parseRef.current = parse7;
   const cache3 = React48.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null || gain === null) return null;
@@ -53889,7 +53988,7 @@ function onEdited(fileId, track) {
   if (moved) notifyPositions();
 }
 __name(onEdited, "onEdited");
-function trackPlaced(fileId, model, entry, marker) {
+function trackPlaced(fileId, model, entry, marker, kept) {
   if (!isTrackable(model)) return;
   let track = tracks.get(fileId);
   if (track && track.model !== model) {
@@ -53905,11 +54004,12 @@ function trackPlaced(fileId, model, entry, marker) {
     endColumn: marker.endColumn
   };
   const [decorationId] = model.deltaDecorations(
-    track ? track.placed.map((p) => p.decorationId) : [],
+    track ? track.placed.filter((p) => !kept.includes(p)).map((p) => p.decorationId) : [],
     [{ range: range2, options: { stickiness } }]
   );
   const placed = {
     entryId: entry.id,
+    alongside: entry.alongside,
     at: `${entry.line}:${entry.column ?? ""}:${entry.message}`,
     decorationId,
     text: model.getValueInRange(range2),
@@ -53918,7 +54018,7 @@ function trackPlaced(fileId, model, entry, marker) {
     line: range2.startLineNumber
   };
   if (track) {
-    track.placed = [placed];
+    track.placed = [...kept, placed];
   } else {
     const t = { model, placed: [placed], stop: /* @__PURE__ */ __name(() => {
     }, "stop") };
@@ -54002,8 +54102,14 @@ function applyEntry(entry) {
       owner: OWNER
     }
   );
+  const kept = entry.alongside === void 0 || !track ? [] : track.placed.filter((p) => p.entryId !== entry.id && (p.entryId === entry.alongside || p.alongside === entry.alongside));
+  if (marker && kept.length > 0) {
+    const shown = kept.filter((p) => p.shown).map((p) => ({ ...p.marker, ...track.model.getDecorationRange(p.decorationId) }));
+    const monaco = resolved.monaco;
+    monaco.editor.setModelMarkers(resolved.model, OWNER, [...shown, marker]);
+  }
   activeMarkers.add(markerKey(entry.runtime, fileId));
-  if (marker) trackPlaced(fileId, resolved.model, entry, marker);
+  if (marker) trackPlaced(fileId, resolved.model, entry, marker, kept);
 }
 __name(applyEntry, "applyEntry");
 function clearForFix(marker) {

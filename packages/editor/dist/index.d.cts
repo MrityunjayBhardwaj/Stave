@@ -12851,6 +12851,12 @@ interface LogEntry {
      * absent as 1.
      */
     count?: number;
+    /**
+     * #2186 — the id of the run's error this one was found beside: a mistake
+     * read from the code that the run never reached. Its squiggle joins that
+     * error's instead of replacing it, and it raises no toast of its own.
+     */
+    alongside?: string;
 }
 type LogListener = (entry: LogEntry | null, history: readonly LogEntry[]) => void;
 /**

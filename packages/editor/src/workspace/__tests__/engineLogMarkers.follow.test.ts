@@ -217,3 +217,73 @@ describe('#2185 — the squiggle comes off when its word is edited', () => {
     expect(lastMarkers()).toMatchObject([{ startLineNumber: 1, startColumn: 26, endColumn: 29 }])
   })
 })
+
+describe('#2186 — mistakes found beside the run\'s error each keep a squiggle', () => {
+  const TWO = '$: s("bd").gin(1)\n$: s("hh").fooo(2)\n'
+  /** the run's error at `gin`, then `fooo` found beside it; their entry ids */
+  async function failedRun(): Promise<{ gin: string; fooo: string }> {
+    const gin = emitLog({ level: 'error', runtime: 'strudel', source: SRC, line: 1, column: 12, message: 's(...).gin is not a function' }).id
+    const fooo = emitLog({ level: 'error', runtime: 'strudel', source: SRC, line: 2, column: 12, message: 's(...).fooo is not a function', alongside: gin }).id
+    await flush()
+    return { gin, fooo }
+  }
+  const words = () => (lastMarkers() as Range[]).map((r) => `${r.startLineNumber}:${r.startColumn} ${model.getValueInRange(r)}`)
+  beforeEach(() => model.edit(0, model.text().length, TWO))
+
+  it('both are underlined, and both follow the code', async () => {
+    const { gin, fooo } = await failedRun()
+    expect(words()).toEqual(['1:12 gin', '2:12 fooo'])
+    model.edit(0, 0, '// drums\n')
+    expect(errorPositionNow(gin)).toEqual({ line: 2, column: 12 })
+    expect(errorPositionNow(fooo)).toEqual({ line: 3, column: 12 })
+  })
+
+  it('a third found beside the run keeps the second as well', async () => {
+    model.edit(model.text().length, 0, '$: s("sd").roomm(1)\n')
+    const { gin } = await failedRun()
+    emitLog({ level: 'error', runtime: 'strudel', source: SRC, line: 3, column: 12, message: 's(...).roomm is not a function', alongside: gin })
+    await flush()
+    expect(words()).toEqual(['1:12 gin', '2:12 fooo', '3:12 roomm'])
+  })
+
+  it('fixing one takes off only its squiggle', async () => {
+    await failedRun()
+    model.edit(model.text().indexOf('fooo'), 4, 'fast')
+    expect(words()).toEqual(['1:12 gin'])
+  })
+
+  it('the same failing run again changes nothing', async () => {
+    const ids = await failedRun()
+    const calls = setModelMarkers.mock.calls.length
+    expect(await failedRun()).toEqual(ids)
+    expect(setModelMarkers.mock.calls.length).toBe(calls)
+  })
+
+  it('a later run\'s error replaces them all, as one error always has', async () => {
+    await failedRun()
+    emitLog({ level: 'error', runtime: 'strudel', source: SRC, line: 2, column: 4, message: 'nope is not defined' })
+    await flush()
+    expect(words()).toEqual(['2:4 s'])
+  })
+
+  it('one found beside a run that placed nothing replaces the last run\'s', async () => {
+    await failedRun()
+    emitLog({ level: 'error', runtime: 'strudel', source: SRC, message: 'no line' })
+    await flush()
+    const unplaced = getLogHistory()[getLogHistory().length - 1].id
+    emitLog({ level: 'error', runtime: 'strudel', source: SRC, line: 2, column: 12, message: 's(...).fasst is not a function', alongside: unplaced })
+    await flush()
+    expect(words()).toEqual(['2:12 fooo']) // the new one alone: `gin`'s is gone
+  })
+
+  it('once the first is fixed, the run stops at the one found beside it, which now stands alone', async () => {
+    const { fooo } = await failedRun()
+    model.edit(model.text().indexOf('gin'), 3, 'gain')
+    // the next run reports `fooo` itself: the log merges it into the same row
+    emitLog({ level: 'error', runtime: 'strudel', source: SRC, line: 2, column: 12, message: 's(...).fooo is not a function' })
+    await flush()
+    const row = getLogHistory().find((e) => e.id === fooo)!
+    expect(row.alongside).toBeUndefined()
+    expect(errorPositionNow(fooo)).toEqual({ line: 2, column: 12 })
+  })
+})
