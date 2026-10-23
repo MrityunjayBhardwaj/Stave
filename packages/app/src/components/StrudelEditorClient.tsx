@@ -1146,6 +1146,31 @@ export default function StrudelEditorClient({
     if (!provider) return null;
 
     const engine = provider.createEngine();
+    // #2200–#2202 — the engine doesn't know its file; the Console names its rows
+    // by it. What an evaluate had to say is written once the evaluate is known to
+    // be a real one (here, after its error rows or its clean mark), because the
+    // timeline's quiet evaluate runs the same engine and must stay silent.
+    const engineLogs = engine as unknown as {
+      setLogSource?: (get: () => string | undefined) => void;
+      takeEvalNotices?: () => { code: string; notices: Array<Omit<Parameters<typeof emitLog>[0], "runtime">> };
+    };
+    engineLogs.setLogSource?.(() => getFile(fileId)?.path ?? fileId);
+    const writeEvalNotices = (runtimeId: RuntimeId) => {
+      const taken = engineLogs.takeEvalNotices?.();
+      if (!taken || taken.notices.length === 0) return;
+      const fileNow = getFile(fileId);
+      // a place in the code that ran is a place in the file only while the file still says it
+      const placed = taken.code === fileNow?.content;
+      for (const n of taken.notices) {
+        emitLog({
+          ...n,
+          runtime: runtimeId,
+          source: fileNow?.path ?? fileId,
+          line: placed ? n.line : undefined,
+          column: placed ? n.column : undefined,
+        });
+      }
+    };
     // Pass the workspace-file subscriber so the runtime's live mode can
     // hook into content changes for debounced re-evaluate. The subscription
     // is installed lazily inside the runtime — no cost until live mode is
@@ -1321,6 +1346,8 @@ export default function StrudelEditorClient({
           });
         }
       }
+      // #2200 — what the run said before it stopped is still true.
+      writeEvalNotices(runtimeId);
     });
     // Live-mode re-eval has no user-driven play() to clear the error state,
     // so a transient syntax error stays visible until stop+play. Clearing on
@@ -1374,6 +1401,8 @@ export default function StrudelEditorClient({
       const fileNow = getFile(fileId);
       const runtimeId: RuntimeId = fileNow?.language === "sonicpi" ? "sonicpi" : "strudel";
       emitFixed({ runtime: runtimeId, source: fileNow?.path ?? fileId });
+      // #2200 #2201 — after the mark, which hides the file's earlier rows.
+      writeEvalNotices(runtimeId);
       // #2067 — once per song: a song playing a bare expression is told that a
       // `$:` track is how Stave shows it best. Advice only; a click shows the line.
       if (runtimeId === "strudel" && !isViewing()) {

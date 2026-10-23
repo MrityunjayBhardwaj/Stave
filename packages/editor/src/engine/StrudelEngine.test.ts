@@ -683,7 +683,7 @@ describe('StrudelEngine methods that would draw where nobody can see (#2191)', (
     delete (MockPattern.prototype as any).onPaint
   })
 
-  it('warns once per method, returns what Strudel\'s returns, and restores Strudel\'s methods after', async () => {
+  it('notes one warning per method for the app, returns what Strudel\'s returns, and restores Strudel\'s methods after', async () => {
     const engine = new StrudelEngine()
     await engine.init()
     const result = await engine.evaluate('inert-draw')
@@ -697,9 +697,16 @@ describe('StrudelEngine methods that would draw where nobody can see (#2191)', (
     expect(strudelAnimate).not.toHaveBeenCalled()
     expect(strudelOnPaint).not.toHaveBeenCalled()
 
-    const warns = getLogHistory().filter((e) => e.level === 'warn')
+    // #2200 — nothing is written by the evaluate itself (the timeline's quiet
+    // evaluate runs it too); the warnings wait for the app to take them
+    expect(getLogHistory()).toEqual([])
+    const taken = engine.takeEvalNotices()
+    expect(taken.code).toBe('inert-draw')
+    const warns = taken.notices
+    expect(warns.map((e) => e.level)).toEqual(['warn', 'warn'])
     expect(warns.map((e) => e.message.slice(0, e.message.indexOf(' is part of')))).toEqual(['`.animate()`', '`.onPaint()`'])
-    expect(warns.every((e) => e.count === 1)).toBe(true)
+    // handed over once
+    expect(engine.takeEvalNotices().notices).toEqual([])
     expect(warns[0].message).toContain('As in Strudel, the pattern it draws makes no sound, and here nothing is drawn.')
     expect(warns[1].message).toContain('The sound still plays, but nothing is drawn.')
     expect(warns[0].suggestion).toEqual({
