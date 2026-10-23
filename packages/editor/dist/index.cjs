@@ -16126,6 +16126,167 @@ function isInsideLoop(songCycle, loop) {
 }
 __name(isInsideLoop, "isInsideLoop");
 
+// src/engine/strudelNotInStave.ts
+var ISSUES = "https://github.com/MrityunjayBhardwaj/stave/issues/";
+var STRUDEL_NOT_IN_STAVE = [
+  { what: "sends patterns to SuperCollider over OSC", issue: 126, methods: ["osc"] },
+  {
+    what: "plays patterns through Csound",
+    issue: 124,
+    names: ["loadCsound", "loadcsound", "loadCSound", "loadOrc"],
+    methods: ["csound", "csoundm"]
+  },
+  { what: "sends patterns to an MQTT broker", issue: 130, methods: ["mqtt"] },
+  { what: "sends patterns to a serial device, such as a microcontroller", issue: 127, methods: ["serial"] },
+  { what: "reads a game controller", issue: 128, names: ["gamepad"] },
+  {
+    what: "reads the device's motion sensors",
+    issue: 129,
+    names: [
+      "enableMotion",
+      "accelerationX",
+      "accelerationY",
+      "accelerationZ",
+      "accX",
+      "accY",
+      "accZ",
+      "gravityX",
+      "gravityY",
+      "gravityZ",
+      "gravX",
+      "gravY",
+      "gravZ",
+      "rotationAlpha",
+      "rotationBeta",
+      "rotationGamma",
+      "rotationX",
+      "rotationY",
+      "rotationZ",
+      "rotA",
+      "rotB",
+      "rotG",
+      "rotX",
+      "rotY",
+      "rotZ",
+      "orientationAlpha",
+      "orientationBeta",
+      "orientationGamma",
+      "orientationA",
+      "orientationB",
+      "orientationG",
+      "orientationX",
+      "orientationY",
+      "orientationZ",
+      "oriA",
+      "oriB",
+      "oriG",
+      "oriX",
+      "oriY",
+      "oriZ",
+      "absoluteOrientationAlpha",
+      "absoluteOrientationBeta",
+      "absoluteOrientationGamma",
+      "absoluteOrientationX",
+      "absoluteOrientationY",
+      "absoluteOrientationZ",
+      "absOriA",
+      "absOriB",
+      "absOriG",
+      "absOriX",
+      "absOriY",
+      "absOriZ"
+    ]
+  },
+  { what: "runs code written in Tidal syntax", issue: 125, names: ["tidal", "initTidal"] },
+  {
+    what: "draws Hydra visuals from inside Strudel code",
+    issue: 2169,
+    names: ["initHydra", "clearHydra", "H"],
+    meanwhile: "Hydra runs in Stave from a `.hydra` file."
+  },
+  { what: "styles the highlighted code", issue: 2168, methods: ["markcss"] },
+  // #2190 — Strudel's REPL loads @strudel/edo; Stave can't until it is published (#121).
+  {
+    what: "builds scales that split the octave into any number of equal steps",
+    issue: 121,
+    names: ["edoScale"],
+    methods: ["edoScale"]
+  },
+  // #2191 — @strudel/draw's own canvas, which the engine leaves out on purpose
+  // (StrudelEngine: "drawMod (@strudel/draw) intentionally excluded"). Its viz
+  // methods (`.pianoroll()` …) are Stave's own (STRUDEL_VIZ_METHODS); these are the rest.
+  {
+    what: "draws on Strudel's own full-screen canvas",
+    issue: 2191,
+    names: [
+      "getDrawContext",
+      "cleanupDraw",
+      "cleanupDrawContext",
+      "getDrawOptions",
+      "drawPianoroll",
+      "getPunchcardPainter",
+      "pianoroll",
+      "__pianoroll",
+      "pitchwheel",
+      "Drawer",
+      "Framer"
+    ],
+    // what each returns is read from @strudel/draw (animate.mjs `return silence`,
+    // draw.mjs `onPaint` → `this.withState(…)`)
+    inertMethods: {
+      animate: { returns: "silence", heard: "As in Strudel, the pattern it draws makes no sound, and here nothing is drawn." },
+      onPaint: { returns: "pattern", heard: "The sound still plays, but nothing is drawn." }
+    },
+    meanwhile: "Stave draws patterns with `.pianoroll()`, `.scope()` and its other visuals, and a `.p5` file draws anything else."
+  }
+];
+function hintFor(row, shown, also) {
+  const base = [`${shown} is part of Strudel (it ${row.what}), but it isn't in Stave yet.`, also, row.meanwhile];
+  return base.filter(Boolean).join(" ");
+}
+__name(hintFor, "hintFor");
+function linkFor(row) {
+  return { label: `#${row.issue}`, url: `${ISSUES}${row.issue}`, description: "Follow it in Stave" };
+}
+__name(linkFor, "linkFor");
+function inertMethodNames(rows = STRUDEL_NOT_IN_STAVE) {
+  return rows.flatMap((row) => Object.keys(row.inertMethods ?? {}));
+}
+__name(inertMethodNames, "inertMethodNames");
+function inertNotice(method, rows = STRUDEL_NOT_IN_STAVE) {
+  for (const row of rows) {
+    const own = row.inertMethods && Object.prototype.hasOwnProperty.call(row.inertMethods, method);
+    const inert = own ? row.inertMethods[method] : void 0;
+    if (inert) return { message: hintFor(row, `\`.${method}()\``, inert.heard), link: linkFor(row), returns: inert.returns };
+  }
+  return null;
+}
+__name(inertNotice, "inertNotice");
+function notInStaveMistakes(rows = STRUDEL_NOT_IN_STAVE) {
+  const out = [];
+  for (const row of rows) {
+    const link = linkFor(row);
+    for (const name of row.names ?? []) {
+      out.push({
+        // Chrome, Edge and Firefox say "x is not defined"; Safari says "Can't find variable: x".
+        detect: { kind: "message", match: new RegExp(`^(?:${name} is not defined|Can't find variable: ${name})$`) },
+        hint: hintFor(row, `\`${name}\``),
+        link
+      });
+    }
+    for (const method of row.methods ?? []) {
+      out.push({
+        // "s(...).mqtt is not a function" (Chrome, Firefox); Safari spells the receiver out.
+        detect: { kind: "message", match: new RegExp(`\\.${method} is not a function`) },
+        hint: hintFor(row, `\`.${method}()\``),
+        link
+      });
+    }
+  }
+  return out;
+}
+__name(notInStaveMistakes, "notInStaveMistakes");
+
 // src/engine/vendored/slider.ts
 var sliderValues = {};
 function sliderFunctions({ ref, pure }) {
@@ -16930,7 +17091,7 @@ var _StrudelEngine = class _StrudelEngine {
       }
       return false;
     }, "probeExplicitOrbit");
-    const { Pattern: Pattern2 } = await import('@strudel/core');
+    const { Pattern: Pattern2, silence } = await import('@strudel/core');
     const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "p");
     const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "viz");
     const savedLegacyDescriptors = /* @__PURE__ */ new Map();
@@ -16986,6 +17147,33 @@ var _StrudelEngine = class _StrudelEngine {
               capturedBackdropViz = renderer;
               capturedBackdropVizOptions = opts && typeof opts === "object" ? opts : null;
               return this;
+            }, "value")
+          });
+        }
+        const warnedInert = /* @__PURE__ */ new Set();
+        for (const name of inertMethodNames()) {
+          savedLegacyDescriptors.set(name, Object.getOwnPropertyDescriptor(Pattern2.prototype, name));
+          Object.defineProperty(Pattern2.prototype, name, {
+            configurable: true,
+            writable: true,
+            value: /* @__PURE__ */ __name(function() {
+              const notice = inertNotice(name);
+              if (notice && !warnedInert.has(name)) {
+                warnedInert.add(name);
+                emitLog({
+                  level: "warn",
+                  runtime: "strudel",
+                  message: notice.message,
+                  // the same link an error row gets (friendlyErrors' curated-hint suggestion)
+                  suggestion: {
+                    name: "",
+                    linkLabel: notice.link.label,
+                    docsUrl: notice.link.url,
+                    description: notice.link.description
+                  }
+                });
+              }
+              return notice?.returns === "silence" ? silence : this;
             }, "value")
           });
         }
@@ -29640,116 +29828,6 @@ function registerStrudelLanguage(monaco) {
   });
 }
 __name(registerStrudelLanguage, "registerStrudelLanguage");
-
-// src/monaco/docs/strudelNotInStave.ts
-var ISSUES = "https://github.com/MrityunjayBhardwaj/stave/issues/";
-var STRUDEL_NOT_IN_STAVE = [
-  { what: "sends patterns to SuperCollider over OSC", issue: 126, methods: ["osc"] },
-  {
-    what: "plays patterns through Csound",
-    issue: 124,
-    names: ["loadCsound", "loadcsound", "loadCSound", "loadOrc"],
-    methods: ["csound", "csoundm"]
-  },
-  { what: "sends patterns to an MQTT broker", issue: 130, methods: ["mqtt"] },
-  { what: "sends patterns to a serial device, such as a microcontroller", issue: 127, methods: ["serial"] },
-  { what: "reads a game controller", issue: 128, names: ["gamepad"] },
-  {
-    what: "reads the device's motion sensors",
-    issue: 129,
-    names: [
-      "enableMotion",
-      "accelerationX",
-      "accelerationY",
-      "accelerationZ",
-      "accX",
-      "accY",
-      "accZ",
-      "gravityX",
-      "gravityY",
-      "gravityZ",
-      "gravX",
-      "gravY",
-      "gravZ",
-      "rotationAlpha",
-      "rotationBeta",
-      "rotationGamma",
-      "rotationX",
-      "rotationY",
-      "rotationZ",
-      "rotA",
-      "rotB",
-      "rotG",
-      "rotX",
-      "rotY",
-      "rotZ",
-      "orientationAlpha",
-      "orientationBeta",
-      "orientationGamma",
-      "orientationA",
-      "orientationB",
-      "orientationG",
-      "orientationX",
-      "orientationY",
-      "orientationZ",
-      "oriA",
-      "oriB",
-      "oriG",
-      "oriX",
-      "oriY",
-      "oriZ",
-      "absoluteOrientationAlpha",
-      "absoluteOrientationBeta",
-      "absoluteOrientationGamma",
-      "absoluteOrientationX",
-      "absoluteOrientationY",
-      "absoluteOrientationZ",
-      "absOriA",
-      "absOriB",
-      "absOriG",
-      "absOriX",
-      "absOriY",
-      "absOriZ"
-    ]
-  },
-  { what: "runs code written in Tidal syntax", issue: 125, names: ["tidal", "initTidal"] },
-  {
-    what: "draws Hydra visuals from inside Strudel code",
-    issue: 2169,
-    names: ["initHydra", "clearHydra", "H"],
-    meanwhile: "Hydra runs in Stave from a `.hydra` file."
-  },
-  { what: "styles the highlighted code", issue: 2168, methods: ["markcss"] }
-];
-function hintFor(row, shown) {
-  const base = `${shown} is part of Strudel (it ${row.what}), but it isn't in Stave yet.`;
-  return row.meanwhile ? `${base} ${row.meanwhile}` : base;
-}
-__name(hintFor, "hintFor");
-function notInStaveMistakes(rows = STRUDEL_NOT_IN_STAVE) {
-  const out = [];
-  for (const row of rows) {
-    const link = { label: `#${row.issue}`, url: `${ISSUES}${row.issue}`, description: "Follow it in Stave" };
-    for (const name of row.names ?? []) {
-      out.push({
-        // Chrome, Edge and Firefox say "x is not defined"; Safari says "Can't find variable: x".
-        detect: { kind: "message", match: new RegExp(`^(?:${name} is not defined|Can't find variable: ${name})$`) },
-        hint: hintFor(row, `\`${name}\``),
-        link
-      });
-    }
-    for (const method of row.methods ?? []) {
-      out.push({
-        // "s(...).mqtt is not a function" (Chrome, Firefox); Safari spells the receiver out.
-        detect: { kind: "message", match: new RegExp(`\\.${method} is not a function`) },
-        hint: hintFor(row, `\`.${method}()\``),
-        link
-      });
-    }
-  }
-  return out;
-}
-__name(notInStaveMistakes, "notInStaveMistakes");
 
 // src/monaco/strudelDocs.ts
 var VIZ_FEEDBACK_URL = "https://strudel.cc/learn/visual-feedback/";
