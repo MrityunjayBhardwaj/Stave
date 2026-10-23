@@ -257,6 +257,50 @@ export function extractReferenceIdentifier(err: unknown): string | null {
   return null
 }
 
+const SAFARI_NOT_A_FUNCTION = " is not a function. (In '"
+
+/**
+ * #2196 — word Safari's "not a function" message the way Chrome and Firefox
+ * do. Safari spells out the code as it ran, transpiled, and says where:
+ *   "note(m('e3 g3', 9)).s(m('sine', 22)).gin is not a function. (In '…(0.15)', '…gin' is undefined)"
+ * where the others say "note(...).s(...).gin is not a function". So each
+ * call's arguments become `(...)`, `['gin']` becomes `.gin`, and the "(In …)"
+ * tail goes (it ends "is undefined", or "is an instance of P" when a pattern
+ * is called). Safari cuts its text at the last "(" even inside a string
+ * (measured: `.fooo("x)", 'y(')` reads `.fooo("x)", 'y`); a call left open
+ * just drops out, back to the method before it. Any other message comes back
+ * as it was.
+ */
+export function chromeNotAFunctionWording(message: string): string {
+  const at = message.indexOf(SAFARI_NOT_A_FUNCTION)
+  if (at < 0 || !message.endsWith(')')) return message
+  const said = message.slice(0, at)
+  let out = ''
+  let depth = 0
+  let quote = ''
+  for (let i = 0; i < said.length; i++) {
+    const c = said[i]
+    if (quote) {
+      if (depth === 0) out += c
+      if (c === '\\') {
+        i++
+        if (depth === 0) out += said[i] ?? ''
+      } else if (c === quote) quote = ''
+      continue
+    }
+    if (c === "'" || c === '"' || c === '`') quote = c
+    else if (c === '(') {
+      depth++
+      continue
+    } else if (c === ')' && depth > 0) {
+      if (--depth === 0) out += '(...)'
+      continue
+    }
+    if (depth === 0) out += c
+  }
+  return `${out.replace(/\[(['"`])([A-Za-z_$][\w$]*)\1\]/g, '.$2')} is not a function`
+}
+
 export interface FormatOptions {
   /** DocsIndex for the runtime the code was running in. */
   index?: DocsIndex
@@ -502,10 +546,11 @@ export function formatFriendlyError(
   runtime: RuntimeId,
   options: FormatOptions = {},
 ): FriendlyErrorParts {
-  const rawMessage =
+  const rawMessage = chromeNotAFunctionWording(
     typeof err === 'object' && err !== null && 'message' in err
       ? String((err as { message: unknown }).message)
-      : String(err)
+      : String(err),
+  )
   const stack =
     typeof err === 'object' &&
     err !== null &&
