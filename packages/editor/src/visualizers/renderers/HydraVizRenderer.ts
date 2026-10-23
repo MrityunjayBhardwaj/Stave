@@ -10,6 +10,7 @@ import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { perf } from '../../perf/profiler'
 import { VizRendererBase } from './VizRendererBase'
+import { reportHydraError } from '../reportedVizErrors'
 
 /** Monotone id source so each hydra instance gets a stable profiler key
  *  (`hydra#1`, …) for per-instance frame/fps tracking (#228). */
@@ -288,7 +289,13 @@ export class HydraVizRenderer extends VizRendererBase {
    * when the pattern runtime swaps underneath.
    */
   private staveBag: HydraStaveBag
-  constructor(private pattern?: HydraPatternFn) {
+  /** @param source the workspace file the sketch came from. When given, the
+   *  renderer writes its own errors to the Console against it (#2219): an
+   *  inline `.viz()` host's onError only logs to the browser console. */
+  constructor(
+    private pattern?: HydraPatternFn,
+    private readonly source = '',
+  ) {
     super()
     // The bag's signal thunks read `this.bus` LIVE each call (the bus instance is
     // stable for the renderer's life; only its scheduler refs swap, in-place, on
@@ -304,6 +311,11 @@ export class HydraVizRenderer extends VizRendererBase {
     onError: (e: Error) => void
   ): void {
     perf.gauge('viz.hydra', 1) // live hydra-instance gauge (#228); -1 in destroy()
+    const hostOnError = onError
+    onError = (e: Error) => {
+      if (this.source) reportHydraError(e, this.source)
+      hostOnError(e)
+    }
     try {
       const config = getVizConfig()
 

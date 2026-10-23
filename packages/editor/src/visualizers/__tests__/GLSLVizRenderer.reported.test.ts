@@ -6,7 +6,8 @@
  * host's onError knows it is already in the Console.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
-import { GLSLVizRenderer, isReportedGLSLError } from '../renderers/GLSLVizRenderer'
+import { GLSLVizRenderer } from '../renderers/GLSLVizRenderer'
+import { isReportedVizError } from '../reportedVizErrors'
 import { __resetEngineLogForTests, getLogHistory } from '../../engine/engineLog'
 
 beforeEach(() => { __resetEngineLogForTests() })
@@ -19,10 +20,10 @@ describe('GLSLVizRenderer — the errors it reports itself', () => {
       .mount(document.createElement('div'), {}, { w: 100, h: 100 }, (e) => errors.push(e))
     expect(errors).toHaveLength(1)
     expect(getLogHistory().map((e) => [e.runtime, e.source])).toEqual([['glsl', 'viz_lib/Prism/Prism.glsl']])
-    expect(isReportedGLSLError(errors[0])).toBe(true)
+    expect(isReportedVizError(errors[0])).toBe(true)
   })
 
   it('an error it did not write is not marked', () => {
-    expect(isReportedGLSLError(new Error('WebGL2 not available'))).toBe(false)
+    expect(isReportedVizError(new Error('WebGL2 not available'))).toBe(false)
   })
 })
