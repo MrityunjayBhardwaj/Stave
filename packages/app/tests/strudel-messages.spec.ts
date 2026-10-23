@@ -54,6 +54,11 @@ test("a Strudel warning about the code reaches the Console, named by its file (#
   await openConsole(page)
   const warned = page.locator(`${ROW}[data-level="warn"]`).filter({ hasText: '[tonal] transpose: not a note "foo"' })
   await expect(warned).toHaveCount(1, { timeout: 10_000 })
+  // The evaluate says it first; keep playing until the scheduler's own query
+  // says it again (Strudel drops a repeat within a second), and the row's count
+  // goes up. Every copy must name the file, so it stays one row.
+  await expect(warned).toContainText(/×[2-9]/, { timeout: 10_000 })
+  await expect(warned).toHaveCount(1)
   await expect(warned).toContainText('pattern.strudel')
   await stopCode(page)
 })
