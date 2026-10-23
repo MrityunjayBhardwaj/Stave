@@ -202,6 +202,8 @@ export async function flushToPreset(
     requires: existing?.requires ?? [],
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
+    // Always the file's CURRENT path, so a rename is picked up on the next flush.
+    filePath: file.path,
   }
 
   await VizPresetStore.put(preset)

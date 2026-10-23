@@ -91,6 +91,7 @@ import type { VizDescriptor } from '../../visualizers/types'
 import type { VizPreset } from '../../visualizers/vizPreset'
 import { compilePreset } from '../../visualizers/vizCompiler'
 import { mountVizRenderer } from '../../visualizers/mountVizRenderer'
+import { isReportedGLSLError } from '../../visualizers/renderers/GLSLVizRenderer'
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { PreviewContext, PreviewEditorChromeContext, PreviewProvider } from '../PreviewProvider'
 import { VizEditorChrome } from './VizEditorChrome'
@@ -357,6 +358,10 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
     }
     let mounted: ReturnType<typeof mountVizRenderer> | null = null
     const reportError = (e: Error): void => {
+      // #2210 — GLSLVizRenderer writes its own row before calling onError: it
+      // alone can map the shader's info-log line back through the wrapper.
+      // Writing it again here added a second row with no line.
+      if (isReportedGLSLError(e)) return
       const index = isP5 ? P5_DOCS_INDEX : HYDRA_DOCS_INDEX
       const parts = formatFriendlyError(e, runtime, { index })
       // The stack trace for p5 / Hydra runtime errors (thrown from
