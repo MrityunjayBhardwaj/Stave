@@ -6217,6 +6217,7 @@ type HydraPatternFn = (synth: any, stave: HydraStaveBag) => void;
  */
 declare class HydraVizRenderer extends VizRendererBase {
     private pattern?;
+    private readonly source;
     private hydra;
     private canvas;
     private analyser;
@@ -6259,7 +6260,10 @@ declare class HydraVizRenderer extends VizRendererBase {
      * when the pattern runtime swaps underneath.
      */
     private staveBag;
-    constructor(pattern?: HydraPatternFn | undefined);
+    /** @param source the workspace file the sketch came from. When given, the
+     *  renderer writes its own errors to the Console against it (#2219): an
+     *  inline `.viz()` host's onError only logs to the browser console. */
+    constructor(pattern?: HydraPatternFn | undefined, source?: string);
     protected onMount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
         w: number;
         h: number;

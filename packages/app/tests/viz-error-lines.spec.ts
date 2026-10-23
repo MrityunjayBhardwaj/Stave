@@ -7,6 +7,9 @@
  *   `viz_lib/Prism/Prism.glsl`, not the visual's name `Prism`.
  * - #2209 — a Hydra error raised in the viz worker names its file.
  * - #2211 — a bare Hydra function says it is on `s`, not "Did you mean" itself.
+ * - #2219 — a Hydra visual used through `.viz()` with an error in its code says so
+ *   (it used to reach only the browser console), and in the preview it is still
+ *   one row.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { bootApp } from './_appBoot'
@@ -152,4 +155,34 @@ test('a bare Hydra function says it is on `s` (#2211)', async ({ page }) => {
   const row = page.locator(ROW).filter({ hasText: '`osc` is on `s` here — write `s.osc(…)`.' })
   await expect(row).toHaveCount(1, { timeout: 10_000 })
   await expect(page.locator(ROW).filter({ hasText: 'Did you mean' })).toHaveCount(0)
+})
+
+test('a Hydra visual used by name with an error in its code reports it against its file (#2219)', async ({ page }) => {
+  // no preview: `.viz()` is the one place it runs, and its host only logged to the browser console
+  const id = await page.evaluate((c) => (window as any).__staveOverrideVizFile('kaleidoscope', c), 's.osc(10)\n  .notAThing()\n  .out()') // eslint-disable-line @typescript-eslint/no-explicit-any
+  expect(id).toBeTruthy()
+  await page.evaluate((i) => (window as any).__staveSaveVizFileById(i), id) // eslint-disable-line @typescript-eslint/no-explicit-any
+  await setCodeIn(page, 'strudel', "$: s(\"bd*4\").viz('kaleidoscope')\n")
+  await page.keyboard.press(`${MOD}+Enter`)
+  await expect.poll(() => logged(page, 'hydra'), { timeout: 15_000 }).toEqual([['preset/viz/kaleidoscope.hydra', 2]])
+  await openConsole(page)
+  await expect(page.locator(ROW).filter({ hasText: 'notAThing is not a function' })).toHaveAttribute('data-line', '2')
+  await page.keyboard.press(`${MOD}+Period`)
+})
+
+test('a Hydra error in the preview is still one row (#2219)', async ({ page }) => {
+  // each main-thread run of the sketch follows a fallback from the worker, which
+  // says so once; the error is raised once per run
+  let runs = 0
+  page.on('console', (m) => { if (m.text().includes('falling back to the main thread')) runs++ })
+  await openKaleidoscopePreview(page, 's.osc(10)\n  .notAThing()\n  .out()')
+  await expect.poll(() => logged(page, 'hydra'), { timeout: 15_000 }).not.toEqual([])
+  await page.waitForTimeout(1000)
+  expect(await logged(page, 'hydra')).toEqual([['preset/viz/kaleidoscope.hydra', 2]])
+  // one write per run: the Console merges an identical second write into the
+  // same row and counts it, so the count is what shows a double write
+  expect(runs).toBeGreaterThan(0)
+  expect(await page.evaluate(() =>
+    ((window as any).__staveGetLog?.() ?? []).filter((e: any) => e.runtime === 'hydra').map((e: any) => e.count))).toEqual([runs]) // eslint-disable-line @typescript-eslint/no-explicit-any
+  await expect.poll(() => squiggles(page, 'hydra')).toEqual([2])
 })
