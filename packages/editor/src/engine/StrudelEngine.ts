@@ -4,7 +4,7 @@ import { BreakpointStore } from './BreakpointStore'
 import { LiveRecorder } from './LiveRecorder'
 import { perf } from '../perf/profiler'
 import { WavEncoder, SilentCaptureError } from './WavEncoder'
-import { emitLog } from './engineLog'
+import { emitLog, type LogLevel, type LogSuggestion } from './engineLog'
 import { renderPatternOffline, describeSkipped, RenderCancelledError, type OfflineGraphDeps, type SkippedSounds } from './renderPatternOffline'
 import { canPauseOfflineRender, piecesOf, renderInPieces } from './pieceRender'
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
@@ -39,6 +39,7 @@ import { resolveBareCaptureId } from './bareCapture'
 import { normalizeLoopRange, type LoopRange } from './transportFrame'
 import { STRUDEL_VIZ_METHODS } from './strudelVizMethods'
 import { inertMethodNames, inertNotice } from './strudelNotInStave'
+import { registerStrudelLogOwner, type LogClaim, type StrudelLogDetail, type StrudelLogRow } from './strudelLogBridge'
 import { sliderFunctions, sliderWidgets, type SliderWidgetConfig } from './vendored/slider'
 
 type HapHandler = (event: HapEvent) => void
@@ -443,6 +444,7 @@ export class StrudelEngine implements LiveCodingEngine {
       emitLog({
         level: 'warn',
         runtime: 'strudel',
+        source: this.logSource?.(),
         message: `Playback could not resume after the bounce: ${error instanceof Error ? error.message : String(error)}`,
       }),
     drain: async () => {
@@ -458,6 +460,7 @@ export class StrudelEngine implements LiveCodingEngine {
         emitLog({
           level: 'warn',
           runtime: 'strudel',
+          source: this.logSource?.(),
           message:
             `The bounce started while ${gaveUp} live ${gaveUp === 1 ? 'sound was' : 'sounds were'} still loading. ` +
             `${gaveUp === 1 ? 'It' : 'They'} will not play; the bounce itself is unaffected.`,
@@ -507,6 +510,21 @@ export class StrudelEngine implements LiveCodingEngine {
   private schedulerQuery: SchedulerQuery = { depth: 0 }
   /** takes off the `strudel.log` listener that raises play-time errors (#2173) */
   private stopListeningForPlayErrors: (() => void) | null = null
+  /** #2201 — stops this engine owning Strudel's messages. See `strudelLogBridge`. */
+  private stopOwningLogs: (() => void) | null = null
+  /** #2201 — above zero while this engine's evaluate runs */
+  private evaluating = 0
+  /** #2201 — above zero while this engine hands a note to superdough */
+  private inOutput = 0
+  /** #2201 — notes this engine played, so a `.log()` line names its file */
+  private playedHaps = new WeakSet<object>()
+  /**
+   * #2200 #2201 — what the last evaluate had to say, for the app to write once
+   * it knows the evaluate was a real one (see `takeEvalNotices`).
+   */
+  private evalNotices: { code: string; notices: EvalNotice[] } = { code: '', notices: [] }
+  /** #2200–#2202 — the file this engine plays, as the Console names it */
+  private logSource: (() => string | undefined) | null = null
   private analyserNode: AnalyserNode | null = null
   private hapStream: HapStream = new HapStream()
   // #339 — monotonic evaluate() generation, stamped onto every emitted hap
@@ -1135,7 +1153,16 @@ export class StrudelEngine implements LiveCodingEngine {
         // superdough's first `await`, i.e. synchronously inside this very call,
         // so the same comparison here counts exactly the notes it drops.
         if (t < audioCtxRef.currentTime) this.lateNotes++
-        const triggered = (webaudioOutput as any)(hap, deadline, duration, cps, t) as Promise<unknown>
+        // #2201 — what superdough logs before its first await, and any `.log()`
+        // line about this note, is this file's.
+        if (hap && typeof hap === 'object') this.playedHaps.add(hap)
+        this.inOutput++
+        let triggered: Promise<unknown>
+        try {
+          triggered = (webaudioOutput as any)(hap, deadline, duration, cps, t) as Promise<unknown>
+        } finally {
+          this.inOutput--
+        }
         this.liveTriggers.track(Promise.resolve(triggered), t)
         return await triggered
       } catch (err) {
@@ -1210,6 +1237,10 @@ export class StrudelEngine implements LiveCodingEngine {
         this.runtimeErrorHandler?.(error)
       },
     )
+    // #2201 — the rest of what Strudel logs, shown in the Console when it is ours.
+    this.stopOwningLogs?.()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.stopOwningLogs = registerStrudelLogOwner(this, STRUDEL_LOG_EVENT, (coreMod as any).Pattern)
 
     // Phase 20-14 α-4: vendor upstream `piano.mjs` chain method. Side-effect
     // import — attaches Pattern.prototype.piano once at boot. evalScope
@@ -1228,7 +1259,16 @@ export class StrudelEngine implements LiveCodingEngine {
     // it waits for any display render to let go (at most one render window), and
     // a successful one re-fingerprints the tracks that render draws.
     return this.trackEnvelopes.exclusive(async () => {
-      const result = await this.evaluateCode(code)
+      // #2200 #2201 — notices are collected per evaluate and handed over by
+      // `takeEvalNotices`. The timeline's quiet evaluate (#1172) never takes them.
+      this.evalNotices = { code, notices: [] }
+      this.evaluating++
+      let result: { error?: Error }
+      try {
+        result = await this.evaluateCode(code)
+      } finally {
+        this.evaluating--
+      }
       if (!result.error) this.trackEnvelopes.evaluated()
       return result
     })
@@ -1310,6 +1350,20 @@ export class StrudelEngine implements LiveCodingEngine {
     // descriptors (some non-underscore forms are live @strudel/webaudio
     // methods) so they restore cleanly after evaluate.
     const savedLegacyDescriptors = new Map<string, PropertyDescriptor | undefined>()
+
+    // #2200 — a notice for the app to write after this evaluate, and where in the
+    // code a call was made: its stack read back through a source map of the code
+    // being evaluated, as an error raised while code runs is (#2175).
+    const noteForApp = (notice: EvalNotice) => { this.evalNotices.notices.push(notice) }
+    const locateCall = (err: Error): { line: number; column: number } | null => {
+      const ran = this.lastTranspile
+      if (!ran || ran.code !== code) return null
+      return locateEvalError(
+        err,
+        () => ran.run({ ...ran.options, sourceMap: true }) as { map?: { mappings: string } },
+        this.evalFrame,
+      )
+    }
 
     // Install setter trap — fires when injectPatternMethods does Pattern.prototype.p = fn
     // This intercepts the assignment so we can wrap Strudel's fn with our capturing logic.
@@ -1427,9 +1481,10 @@ export class StrudelEngine implements LiveCodingEngine {
               const notice = inertNotice(name)
               if (notice && !warnedInert.has(name)) {
                 warnedInert.add(name)
-                emitLog({
+                // #2200 — the call's own stack says where it was written.
+                const at = locateCall(new Error(name))
+                noteForApp({
                   level: 'warn',
-                  runtime: 'strudel',
                   message: notice.message,
                   // the same link an error row gets (friendlyErrors' curated-hint suggestion)
                   suggestion: {
@@ -1438,6 +1493,7 @@ export class StrudelEngine implements LiveCodingEngine {
                     docsUrl: notice.link.url,
                     description: notice.link.description,
                   },
+                  ...(at ?? {}),
                 })
               }
               return notice?.returns === 'silence' ? silence : this
@@ -2331,6 +2387,7 @@ export class StrudelEngine implements LiveCodingEngine {
       emitLog({
         level: 'warn',
         runtime: 'strudel',
+        source: this.logSource?.(),
         message:
           `Bounce left out ${left} of ${result.haps} sounds: ` +
           describeSkipped(result.skipped),
@@ -2831,6 +2888,53 @@ export class StrudelEngine implements LiveCodingEngine {
     return this.loadedSoundNames
   }
 
+  /**
+   * #2200–#2202 — the file this engine plays, as the Console names it. The app
+   * knows it; the engine doesn't. Rows the engine writes on its own (play-time
+   * messages, bounce warnings) carry it.
+   */
+  setLogSource(get: (() => string | undefined) | null): void {
+    this.logSource = get
+  }
+
+  /**
+   * #2200 #2201 — what the last evaluate had to say, and the code it said it
+   * about, handed over once. The app calls this after a real evaluate, AFTER it
+   * marks the file as evaluated cleanly (which hides the file's earlier rows), so
+   * these rows outlive that mark. The timeline's quiet evaluate never calls it,
+   * so nothing it raises while you type reaches the Console.
+   */
+  takeEvalNotices(): { code: string; notices: EvalNotice[] } {
+    const taken = this.evalNotices
+    this.evalNotices = { code: taken.code, notices: [] }
+    return taken
+  }
+
+  /** #2201 — is this Strudel message this engine's? See `strudelLogBridge`. */
+  claimLog(detail: StrudelLogDetail): LogClaim | null {
+    // The query and the output step are synchronous, so a message raised inside
+    // one is certainly this engine's. An evaluate spans awaits, during which a
+    // scheduler tick can run, so it is the weakest claim and checked last.
+    if (this.schedulerQuery.depth > 0) return 'query'
+    if (this.inOutput > 0) return 'play'
+    const hap = (detail.data as { hap?: unknown } | undefined)?.hap
+    if (hap && typeof hap === 'object' && this.playedHaps.has(hap)) return 'play'
+    if (this.evaluating > 0) return 'evaluate'
+    return null
+  }
+
+  /** #2201 — show one of this engine's Strudel messages. */
+  takeLog(row: StrudelLogRow, claim: LogClaim): void {
+    // an evaluate's failure is its result, and a play-time error is raised by
+    // the play-time path (#2173): neither is shown twice
+    if (row.raisedAsError && claim !== 'play') return
+    if (claim === 'evaluate') {
+      this.evalNotices.notices.push({ level: row.level, message: row.message })
+      return
+    }
+    emitLog({ level: row.level, runtime: 'strudel', source: this.logSource?.(), message: row.message })
+  }
+
   dispose(): void {
     // #1627 — like stop(): a render still running must not restart playback
     // (on this repl, or on the one a later init() builds) when it finishes.
@@ -2839,6 +2943,8 @@ export class StrudelEngine implements LiveCodingEngine {
     this.stopAskingForAudio = null
     this.stopListeningForPlayErrors?.()
     this.stopListeningForPlayErrors = null
+    this.stopOwningLogs?.()
+    this.stopOwningLogs = null
     this.trackEnvelopes.dispose()
     this.trackEnvelopeListeners.clear()
     this.unregisterBackgroundRender()
@@ -3046,6 +3152,19 @@ function watched(pat: any, onDropped: (notes: number) => void, inQuery?: Schedul
  * red instead of silently muting #2173.
  */
 export const STRUDEL_LOG_EVENT = 'strudel.log'
+
+/**
+ * #2200 #2201 — a Console row an evaluate raised, for the app to write with the
+ * file once the evaluate is known to be real (`takeEvalNotices`). `line` and
+ * `column` are in the evaluated code.
+ */
+export interface EvalNotice {
+  level: LogLevel
+  message: string
+  suggestion?: LogSuggestion
+  line?: number
+  column?: number
+}
 
 /**
  * #2173 — `depth` is above zero while the scheduler's own query runs.
