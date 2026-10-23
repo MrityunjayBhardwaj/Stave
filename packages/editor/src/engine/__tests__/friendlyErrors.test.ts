@@ -11,7 +11,9 @@ import {
   isSoundfontZoneError,
   soundfontRangeMessage,
   SOUNDFONT_ZONE_HINT,
+  chromeNotAFunctionWording,
 } from '../friendlyErrors'
+import { STRUDEL_DOCS_INDEX } from '../../monaco/strudelDocs'
 
 const FAKE_INDEX: DocsIndex = {
   runtime: 'p5',
@@ -642,5 +644,53 @@ describe('soundfont out-of-range error', () => {
     const err = new Error('no soundfont zone found for preset ')
     const r = formatFriendlyError(err, 'strudel', {})
     expect(r.message).toBe(SOUNDFONT_ZONE_HINT)
+  })
+})
+
+describe("#2196 — Safari's \"not a function\" reads as in Chrome and Firefox", () => {
+  // Recorded from Playwright's WebKit, Chromium and Firefox (1.59.1) running the
+  // same transpiled code; Chromium and Firefox gave the same text for each.
+  const RECORDED: Array<[safari: string, chrome: string]> = [
+    ["note(m('e3 g3', 9)).s(m('sine', 22)).gin is not a function. (In 'note(m('e3 g3', 9)).s(m('sine', 22)).gin(0.15)', 'note(m('e3 g3', 9)).s(m('sine', 22)).gin' is undefined)", 'note(...).s(...).gin is not a function'],
+    ["s(m('bd', 3)).gin is not a function. (In 's(m('bd', 3)).gin(1)', 's(m('bd', 3)).gin' is undefined)", 's(...).gin is not a function'],
+    ["m('bd sd', 0).fasst is not a function. (In 'm('bd sd', 0).fasst(2)', 'm('bd sd', 0).fasst' is undefined)", 'm(...).fasst is not a function'],
+    ["sine.rangee is not a function. (In 'sine.rangee(1, 2)', 'sine.rangee' is undefined)", 'sine.rangee is not a function'],
+    ["stack(s(m('bd',1)), s(m('hh',2))).gian is not a function. (In 'stack(s(m('bd',1)), s(m('hh',2))).gian()', 'stack(s(m('bd',1)), s(m('hh',2))).gian' is undefined)", 'stack(...).gian is not a function'],
+    ["s(m('bd',1))['gin'] is not a function. (In 's(m('bd',1))['gin'](1)', 's(m('bd',1))['gin']' is undefined)", 's(...).gin is not a function'],
+    ["s(`a(b`).gin is not a function. (In 's(`a(b`).gin(1)', 's(`a(b`).gin' is undefined)", 's(...).gin is not a function'],
+    [String.raw`s(m('it\'s (x', 1)).gin is not a function. (In 's(m('it\'s (x', 1)).gin(1)', 's(m('it\'s (x', 1)).gin' is undefined)`, 's(...).gin is not a function'],
+    // calling a pattern: the tail names what it is, not "undefined"
+    ["s(m('bd', 3)) is not a function. (In 's(m('bd', 3))(2)', 's(m('bd', 3))' is an instance of P)", 's(...) is not a function'],
+    // Safari cuts at the last "(" even inside a string: the call left open goes
+    ["s(m('a (b) )', 2)).fooo(\"x)\", 'y is not a function. (In 's(m('a (b) )', 2)).fooo(\"x)\", 'y(')', 's(m('a (b) )', 2)).fooo(\"x)\", 'y' is undefined)", 's(...).fooo is not a function'],
+  ]
+
+  it.each(RECORDED)('%s', (safari, chrome) => {
+    expect(chromeNotAFunctionWording(safari)).toBe(chrome)
+    expect(formatFriendlyError(new TypeError(safari), 'strudel').message).toBe(chrome)
+  })
+
+  it('gets the same hint as Chrome', () => {
+    for (const [safari, chrome] of [
+      ...RECORDED,
+      ["every(3, x => x).p is not a function. (In 'every(3, x => x).p('a')', 'every(3, x => x).p' is undefined)", 'every(...).p is not a function'],
+      ["s(m('bd', 3)).mqtt is not a function. (In 's(m('bd', 3)).mqtt()', 's(m('bd', 3)).mqtt' is undefined)", 's(...).mqtt is not a function'],
+    ] as const) {
+      const fromSafari = formatFriendlyError(new TypeError(safari), 'strudel', { index: STRUDEL_DOCS_INDEX })
+      const fromChrome = formatFriendlyError(new TypeError(chrome), 'strudel', { index: STRUDEL_DOCS_INDEX })
+      expect(fromSafari.message).toBe(fromChrome.message)
+      expect(fromSafari.suggestion).toEqual(fromChrome.suggestion)
+    }
+    // the hinted cases really are hinted, so the comparison above can tell
+    expect(formatFriendlyError(new TypeError('every(...).p is not a function'), 'strudel', { index: STRUDEL_DOCS_INDEX }).message).not.toContain('is not a function')
+  })
+
+  it('leaves every other message as it was', () => {
+    for (const m of [
+      's(...).gin is not a function',
+      "undefined is not an object (evaluating 'a.b')",
+      "Can't find variable: foo",
+      "x is not a function. (In 'x()', 'x' is undefined) and more",
+    ]) expect(chromeNotAFunctionWording(m)).toBe(m)
   })
 })
