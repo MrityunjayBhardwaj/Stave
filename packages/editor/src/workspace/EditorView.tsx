@@ -51,7 +51,7 @@ import {
 } from '../monaco/diagnostics'
 import { addInlineViewZones } from '../visualizers/viewZones'
 import { onNamedVizChanged } from '../visualizers/namedVizRegistry'
-import { subscribeToZoneOverrides } from './WorkspaceFile'
+import { getFile, subscribeToZoneOverrides } from './WorkspaceFile'
 import {
   getViewedContent,
   getViewedCommit,
@@ -361,6 +361,16 @@ export function EditorView({
   const handleMonacoMount = (editor: any, monaco: any): void => {
     editorRef.current = editor
     monacoRef.current = monaco
+    // #2217 — @monaco-editor/react creates the editor in one commit and only
+    // subscribes `onChange` in the next, so an edit made in between reached the
+    // editor but never the file (the preview kept running the old code until
+    // the next edit). By the time this runs, the wrapper has already pushed any
+    // newer file content into the editor, and the subscription follows in the
+    // same flush; text that still differs from the file is that edit.
+    if (!viewing) {
+      const text = editor.getValue?.()
+      if (typeof text === 'string' && text !== getFile(fileId)?.content) setContent(text)
+    }
     setEditorReady(true)
     registerEditor(fileId, editor)
     registerMonacoNamespace(monaco)
