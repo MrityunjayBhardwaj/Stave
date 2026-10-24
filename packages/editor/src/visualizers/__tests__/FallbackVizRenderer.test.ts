@@ -244,4 +244,32 @@ describe('FallbackVizRenderer — startup probation (#247)', () => {
     expect(main.mounted).toBe(true)
     expect(main.paused).toBe(true)
   })
+
+  it('a main renderer that cannot be built goes to onError, not out of the handler (#2220)', () => {
+    // building the main renderer compiles the sketch; a syntax error threw out
+    // of the worker-message handler to the global catch
+    const worker = new FakeWorkerRenderer()
+    const broken = new SyntaxError('Unexpected end of code')
+    const fb = new FallbackVizRenderer(
+      () => worker as unknown as WorkerVizRenderer,
+      () => {
+        throw broken
+      },
+    )
+    const onError = vi.fn()
+    fb.mount(makeContainer(), {}, { w: 100, h: 100 }, onError)
+    expect(() => worker.capturedOnError?.(new Error('compile failed'))).not.toThrow()
+    expect(onError).toHaveBeenCalledWith(broken)
+    expect(worker.destroyed).toBe(true)
+    // what's left is inert: the destroyed worker isn't driven or destroyed again
+    worker.destroyed = false
+    fb.update({})
+    fb.resize(10, 10)
+    fb.pause()
+    fb.resume()
+    fb.destroy()
+    expect(worker.updates).toBe(0)
+    expect(worker.resizes).toEqual([])
+    expect(worker.destroyed).toBe(false)
+  })
 })

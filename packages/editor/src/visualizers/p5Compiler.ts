@@ -19,6 +19,7 @@ import {
   parseStackLocation,
 } from '../engine/friendlyErrors'
 import { P5_DOCS_INDEX } from '../monaco/docs/p5'
+import { VizSyntaxError, locateVizSyntaxError } from './vizSyntaxError'
 
 /**
  * The live `stave` namespace handed to user p5 sketches. Fields are
@@ -263,20 +264,26 @@ export function compileP5Code(code: string, source?: string) {
     : buildLegacyBody(code)
   const lineOffset = getP5LineOffset(code)
 
-  // Pre-validate syntax synchronously. Without this step, the factory
-  // below defers the `new Function(body)` call until p5's instance
-  // constructor invokes the sketch — the internal try/catch there
-  // swallows the SyntaxError into `installErrorSketch`, so the error
-  // only appears on the canvas. By throwing from compileP5Code, the
-  // error propagates up through `compilePreset` into the useMemo
-  // catch in CompiledVizMount where it becomes a proper engineLog
-  // entry (Console row, toast, status-bar chip, Monaco squiggle).
-  // Phase 21 — the body now references a THIRD arg `staveUniforms` (the inner
-  // `with (staveUniforms)` in the full-lifecycle body, and the `staveUniforms.sig`
-  // alias in the legacy draw). Pre-validate with the
-  // same arity as the real compile below or the SyntaxError pre-check would
+  // Pre-validate syntax synchronously, with the same arity as the real compile
+  // below (Phase 21 added the THIRD arg `staveUniforms`) or the check would
   // diverge from the executed function.
-  new Function('p', 'stave', 'staveUniforms', body)
+  //
+  // #2220 — a sketch that doesn't parse doesn't throw from here. The compile
+  // runs when the renderer is built (`makeP5Renderer`), and when the worker
+  // fails first that is inside the fallback's worker-message handler, where a
+  // throw reached only the global catch: a "Stave" row with no file and no line.
+  // Instead the sketch reports the error itself when it mounts, against its file
+  // and on its line in the user's code (V8's SyntaxError has neither), and shows
+  // it on the canvas, the way a top-level error below does. That works wherever
+  // the sketch runs: the preview, `.viz()`, the worker.
+  let syntaxError: VizSyntaxError | null = null
+  try {
+    new Function('p', 'stave', 'staveUniforms', body)
+  } catch (err) {
+    const located = locateVizSyntaxError(code, err)
+    if (!(located instanceof VizSyntaxError)) throw located
+    syntaxError = located
+  }
 
   // P5SketchFactory signature — fourth arg is the container-size ref
   // maintained by the renderer so `stave.width` / `stave.height`
@@ -305,6 +312,18 @@ export function compileP5Code(code: string, source?: string) {
   ) => {
 
     return (p: unknown) => {
+      if (syntaxError) {
+        installErrorSketch(p, syntaxError.message)
+        emitLog({
+          level: 'error',
+          runtime: 'p5',
+          source,
+          message: syntaxError.message,
+          line: syntaxError.line,
+          column: syntaxError.column,
+        })
+        return
+      }
       // The live named-signal uniform object (Phase 21). Read off the ref so a
       // `renderer.update()` that swaps the bus refs is picked up — but in
       // practice the bus instance is stable for the renderer's life and only

@@ -2,6 +2,7 @@ import type {
   HydraPatternFn,
   HydraStaveBag,
 } from './renderers/HydraVizRenderer'
+import { locateVizSyntaxError } from './vizSyntaxError'
 
 /**
  * Compile a `.hydra` source string into a `HydraPatternFn`.
@@ -21,7 +22,12 @@ export function compileHydraCode(code: string): HydraPatternFn {
   // onError promise callback with an emitFixed already fired from
   // compilePreset's success. Pre-validating keeps emitFixed honest:
   // it only fires when we really have a compilable factory.
-  new Function('s', 'stave', code)
+  // #2220 — thrown with its line in the user's file, which V8's lacks.
+  try {
+    new Function('s', 'stave', code)
+  } catch (err) {
+    throw locateVizSyntaxError(code, err)
+  }
   return (s: unknown, stave: HydraStaveBag) => {
     const fn = new Function('s', 'stave', code)
     fn(s, stave)
