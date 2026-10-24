@@ -618,6 +618,19 @@ describe('compileP5Code — compile errors', () => {
     ])
   })
 
+  it.each([
+    ['a syntax error', 'function draw() {\n  background(\n}\n'],
+    ['a top-level runtime error', 'let x = new Mp()\nfunction draw() { background(0) }\n'],
+  ])('%s gets an error canvas the size of the preview, not the window (#2225)', (_, source) => {
+    // In the viz worker the canvas is shown at the preview's size, so one
+    // sized from the window (1024 here) and 160 tall was stretched to fit.
+    const refs = makeRefs({ w: 640, h: 360 })
+    const { p, calls } = makeFakeP5()
+    compileP5Code(source, 'tests/err.p5')(refs.hapStreamRef, refs.analyserRef, refs.schedulerRef, refs.containerSizeRef)(p)
+    ;(p.setup as () => void)()
+    expect(calls.filter((c) => c.method === 'createCanvas').map((c) => c.args)).toEqual([[640, 360]])
+  })
+
   it('bridges draw-time runtime errors to engineLog (the `zoom` typo case)', async () => {
     __resetEngineLogForTests()
     const entries: LogEntry[] = []
