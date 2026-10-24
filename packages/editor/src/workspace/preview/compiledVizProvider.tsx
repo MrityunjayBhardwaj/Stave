@@ -21,11 +21,13 @@
  *      same one the production `useVizRenderer` hook uses), passing
  *      `ctx.audioSource` fields through as the engine component bag.
  *
- * On compile error (the `new Function(...)` path inside `compilePreset`
- * can throw on syntactically invalid user code), the adapter catches the
- * error and returns an error panel instead of a renderer. The panel's
- * shape mirrors the existing `VizEditor.tsx` error panel so the visual
- * cutover at Task 09/10 stays byte-comparable.
+ * If `compilePreset` throws, the adapter catches the error and returns an
+ * error panel instead of a renderer. The panel's shape mirrors the existing
+ * `VizEditor.tsx` error panel so the visual cutover at Task 09/10 stays
+ * byte-comparable. `compilePreset` no longer compiles user code, though: the
+ * renderer factory does, when the descriptor is mounted, so a syntax error
+ * reaches `reportError` below (or, for p5, the sketch reports it itself when
+ * it mounts), with its line in the user's file (#2220).
  *
  * ## Why the mount lives inside a small React component
  *
@@ -227,9 +229,10 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
   // uniquely identifies the compiled output — file.id alone isn't
   // enough because the user may edit the same file.
   //
-  // Errors are captured into state via the try/catch so a syntax
-  // error in user code doesn't unmount the component; instead the
-  // component renders a distinguishable error panel.
+  // Errors are captured into state via the try/catch so a failed
+  // compile doesn't unmount the component; instead the component
+  // renders a distinguishable error panel. (A syntax error in user code
+  // no longer lands here: the code is compiled at mount, #2220.)
   const { descriptor, compileError } = useMemo<{
     descriptor: VizDescriptor | null
     compileError: string | null
