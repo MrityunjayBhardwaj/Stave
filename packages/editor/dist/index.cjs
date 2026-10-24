@@ -16678,6 +16678,16 @@ var TRACK_ENVELOPE_CAP_SECONDS = 1200;
 var TRACK_ENVELOPE_COLUMNS_PER_SECOND = 100;
 var DISPLAY_PIECE_SECONDS = 8;
 var DISPLAY_PIECE_LEAD_SECONDS = 4;
+var prototypeWindow = Promise.resolve();
+function inPrototypeWindow(fn) {
+  const run = prototypeWindow.then(fn, fn);
+  prototypeWindow = run.then(
+    () => void 0,
+    () => void 0
+  );
+  return run;
+}
+__name(inPrototypeWindow, "inPrototypeWindow");
 var _StrudelEngine = class _StrudelEngine {
   constructor() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -17340,7 +17350,7 @@ var _StrudelEngine = class _StrudelEngine {
       this.evaluating++;
       let result;
       try {
-        result = await this.evaluateCode(code);
+        result = await inPrototypeWindow(() => this.evaluateCode(code));
       } finally {
         this.evaluating--;
       }

@@ -1000,7 +1000,7 @@ export { Pitchwheel } from './visualizers/Pitchwheel'
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| `@strudel/core` registers globals on import — may conflict with multiple instances | High | Ensure single engine instance per page. Document constraint. |
+| `@strudel/core` registers globals on import — may conflict with multiple instances | High | A page can hold two engines (the project's, and the Library's snippet preview, #2165). An evaluate patches the shared `Pattern.prototype`, so evaluates take turns across engines (`inPrototypeWindow` in `StrudelEngine.ts`). Still shared: Strudel's scheduler state (`schedulerState.mjs`: time, cps, trigger, started), which follows the newest repl and is read by MIDI keyboard input (`midikeys`) — see #2233. |
 | AudioContext suspended until user gesture | Medium | Detect `ctx.state === 'suspended'`, show "enable audio" prompt |
 | `hap.context.loc` may be undefined for some patterns | Medium | Graceful null checks everywhere; loc is best-effort |
 | Monaco view zones reset on code change (editor re-layout) | Medium | Re-add view zones after each evaluate() in a useEffect |

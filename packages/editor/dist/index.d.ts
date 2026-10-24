@@ -4629,7 +4629,10 @@ declare function isBootStepFailure(err: unknown): err is BootStepFailure;
  * Wraps @strudel/webaudio (which wraps superdough) via webaudioRepl().
  *
  * API surface matches ARCHITECTURE.md.
- * One instance per page. Must be init()'d after a user gesture.
+ * Must be init()'d after a user gesture. Every instance plays through
+ * superdough's one audio context; a page can hold more than one (the project's,
+ * and the Library's preview, #2165), and their evaluates take turns
+ * (`inPrototypeWindow`).
  */
 declare class StrudelEngine implements LiveCodingEngine {
     private repl;

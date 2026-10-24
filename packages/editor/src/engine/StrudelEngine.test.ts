@@ -31,6 +31,10 @@ const SLIDER_WIDGETS = [
   { type: '_pianoroll', to: 47, index: 0 },
 ]
 
+// #2165 — `gated-<track>` codes wait here before running, so a test can hold one
+// engine's evaluate open while another engine evaluates.
+const GATES = new Map<string, Promise<void>>()
+
 // Captured onEvalError callback from webaudioRepl construction
 let capturedOnEvalError: ((err: Error) => void) | null = null
 
@@ -165,6 +169,9 @@ vi.mock('@strudel/webaudio', () => {
         // (2) hush() would run (reset counters) — simulated by starting fresh
         // (3) user code runs — calls pattern.p(id)
 
+        // #2165 — Strudel awaits (prebake, transpile) before it injects and runs
+        if (GATES.has(code)) await GATES.get(code)
+
         // Step 1: Simulate injectPatternMethods assigning Pattern.prototype.p
         const strudelsOwnP = function(this: MockPattern, id: string) {
           // Strudel's own implementation: returns this (simplified)
@@ -199,7 +206,11 @@ vi.mock('@strudel/webaudio', () => {
               widgets: code === 'sliders' ? SLIDER_WIDGETS : [],
             }
 
-        if (code === 'declared-locs' || code === 'unknown-locs') {
+        if (code.startsWith('gated-')) {
+          // one track, named after the code
+          const p = new MockPattern()
+          ;(p as any).p(code.slice('gated-'.length))
+        } else if (code === 'declared-locs' || code === 'unknown-locs') {
           // #1619 — a stray quoted-space span FIRST ([1,7), what `.color('sienna')`
           // gives), then the declared document span ([9,17)).
           const p = new MockPattern()
@@ -404,6 +415,39 @@ describe('StrudelEngine.getTrackSchedulers', () => {
     const after = Object.getOwnPropertyDescriptor(MockPattern.prototype, 'p')
     // Should not be a setter (our intercept should be removed)
     expect(after?.set).toBeUndefined()
+  })
+
+  /**
+   * #2165 — two engines on one page (the project's and the Library's preview).
+   * `Pattern.prototype` is shared, and an evaluate patches it for as long as it
+   * runs; held open together, the second engine's trap caught the FIRST
+   * engine's tracks, and a trap was left on the prototype.
+   */
+  it('two engines evaluating at once each keep their own tracks', async () => {
+    let openA!: () => void
+    let openB!: () => void
+    GATES.set('gated-a', new Promise<void>((r) => { openA = r }))
+    GATES.set('gated-b', new Promise<void>((r) => { openB = r }))
+    try {
+      const a = new StrudelEngine()
+      const b = new StrudelEngine()
+      await a.init()
+      await b.init()
+      const evalA = a.evaluate('gated-a')
+      // let A get as far as its repl (prototype patched), then start B
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+      const evalB = b.evaluate('gated-b')
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+      openA()
+      await evalA
+      openB()
+      await evalB
+      expect([...a.getTrackSchedulers().keys()]).toEqual(['a'])
+      expect([...b.getTrackSchedulers().keys()]).toEqual(['b'])
+      expect(Object.getOwnPropertyDescriptor(MockPattern.prototype, 'p')?.set).toBeUndefined()
+    } finally {
+      GATES.clear()
+    }
   })
 
   it('restores Pattern.prototype.p after eval error (TRACK-02)', async () => {

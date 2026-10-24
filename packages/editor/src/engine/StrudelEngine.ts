@@ -418,11 +418,33 @@ const DISPLAY_PIECE_SECONDS = 8
 const DISPLAY_PIECE_LEAD_SECONDS = 4
 
 /**
+ * #2165 — `Pattern.prototype` is one object for the whole page, and an evaluate
+ * patches it (the `.p` / `.viz` traps below) for as long as it runs, awaiting
+ * Strudel's repl in between. With two engines on a page (the project's, and the
+ * Library's preview), two evaluates held open together nested their traps: the
+ * second engine's caught the first engine's tracks, and restoring in the wrong
+ * order left a trap on the prototype. So the patched window is held by one
+ * evaluate at a time, whichever engine it belongs to.
+ */
+let prototypeWindow: Promise<unknown> = Promise.resolve()
+function inPrototypeWindow<T>(fn: () => Promise<T>): Promise<T> {
+  const run = prototypeWindow.then(fn, fn)
+  prototypeWindow = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
+}
+
+/**
  * Single source of truth for audio in Stave.
  * Wraps @strudel/webaudio (which wraps superdough) via webaudioRepl().
  *
  * API surface matches ARCHITECTURE.md.
- * One instance per page. Must be init()'d after a user gesture.
+ * Must be init()'d after a user gesture. Every instance plays through
+ * superdough's one audio context; a page can hold more than one (the project's,
+ * and the Library's preview, #2165), and their evaluates take turns
+ * (`inPrototypeWindow`).
  */
 export class StrudelEngine implements LiveCodingEngine {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1276,7 +1298,7 @@ export class StrudelEngine implements LiveCodingEngine {
       this.evaluating++
       let result: { error?: Error }
       try {
-        result = await this.evaluateCode(code)
+        result = await inPrototypeWindow(() => this.evaluateCode(code))
       } finally {
         this.evaluating--
       }
