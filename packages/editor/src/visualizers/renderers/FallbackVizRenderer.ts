@@ -123,9 +123,11 @@ export class FallbackVizRenderer implements VizRenderer {
       /* ignore */
     }
     try {
-      // #2220 — building the renderer compiles the sketch, so a sketch that
-      // doesn't parse throws here. This runs from a worker message, so a throw
-      // left uncaught reached only the global catch (no file, no line).
+      // #2220 — building the renderer used to compile the sketch, so a sketch
+      // that didn't parse threw here. p5 and Hydra now report that at mount
+      // instead (#2219), but building a renderer can still throw, and this runs
+      // from a worker message, where a throw left uncaught reaches only the
+      // global catch (no file, no line).
       this.active = this.makeMain()
     } catch (e) {
       // nothing to draw; the worker is already destroyed, and destroying it

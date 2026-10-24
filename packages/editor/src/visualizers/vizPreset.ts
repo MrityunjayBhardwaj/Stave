@@ -33,6 +33,10 @@ export interface VizPreset {
    *  createCanvas(W, H) with specific values you want the inline viz
    *  to respect — the crop region is interpreted in these coords. */
   nativeSize?: { w: number; h: number }
+  /** The workspace file this preset was saved from (set on every flush).
+   *  A visual used by name reports its errors against this file, not
+   *  against `name`, which is only what `.viz("…")` calls it (#2209, #2210). */
+  filePath?: string
 }
 
 // ---------------------------------------------------------------------------

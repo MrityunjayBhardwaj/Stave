@@ -171,6 +171,10 @@
     "runs": "gate",
     "why": "Strudel's own messages reach the Console end to end: `.log()` lines and Strudel's warnings about the code are named by their file (#2201), what Stave already shows another way is left out, the `.animate()` warning carries its file and line with a squiggle while the timeline's quiet evaluate posts nothing (#2200), and a bounce warning names its file (#2202)."
   },
+  "viz-error-lines.spec.ts": {
+    "runs": "gate",
+    "why": "A visual's errors reach the Console end to end: a GLSL compile error is one row with its line and squiggle, and through `.viz(\"Prism\")` it names `viz_lib/Prism/Prism.glsl` rather than the visual's name (#2210); a Hydra error raised in the viz worker names its file and gets its squiggle (#2209); a bare Hydra function says it is on `s` instead of suggesting itself (#2211); a Hydra visual used through `.viz()` with an error in its code reports it against its file, and in the preview it is still one row (#2219)."
+  },
   "every-missing-method.spec.ts": {
     "runs": "gate",
     "why": "Every misspelled method gets a squiggle, not just the first one the run hits (#2186): `.gin` and `.fooo` on two lines are both underlined with a Console row each, methods the app adds (`.pianoroll`, `.scale`, `.bank`, `.viz`) are not marked, and once `.gin` is fixed the run stops at `.fooo`, still underlined."
