@@ -35,6 +35,16 @@ import type { WorkerVizRenderer } from './WorkerVizRenderer'
  *  A throw is caught immediately via onError regardless of this timeout. */
 const PROBATION_MS = 8000
 
+/** What's left when the main-thread renderer couldn't be built (#2220). */
+const INERT: VizRenderer = {
+  mount() {},
+  update() {},
+  resize() {},
+  pause() {},
+  resume() {},
+  destroy() {},
+}
+
 export class FallbackVizRenderer implements VizRenderer {
   private readonly worker: WorkerVizRenderer
   private active: VizRenderer
@@ -112,7 +122,18 @@ export class FallbackVizRenderer implements VizRenderer {
     } catch {
       /* ignore */
     }
-    this.active = this.makeMain()
+    try {
+      // #2220 — building the renderer compiles the sketch, so a sketch that
+      // doesn't parse throws here. This runs from a worker message, so a throw
+      // left uncaught reached only the global catch (no file, no line).
+      this.active = this.makeMain()
+    } catch (e) {
+      // nothing to draw; the worker is already destroyed, and destroying it
+      // again would count its gauges down twice
+      this.active = INERT
+      this.hostOnError?.(e as Error)
+      return
+    }
     if (!this.container) return
     try {
       this.active.mount(

@@ -35,6 +35,26 @@ export function parseTopLevel(doc: string): any[] | null {
   }
 }
 
+/**
+ * Where `code` stops parsing, read as a function body (top-level `return` and
+ * `await` allowed), the way the visual compilers run a sketch (#2220): acorn's
+ * offset, and its line (1-based) and column (0-based). Null when it parses.
+ */
+export function syntaxErrorAt(code: string): { pos: number; line: number; column: number } | null {
+  try {
+    parse(code, {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      allowReturnOutsideFunction: true,
+      allowAwaitOutsideFunction: true,
+    })
+    return null
+  } catch (e) {
+    const { pos, loc } = e as { pos?: unknown; loc?: { line: number; column: number } }
+    return typeof pos === 'number' && loc ? { pos, line: loc.line, column: loc.column } : null
+  }
+}
+
 /** Does the doc parse at all? Distinguishes "no statement here" from "broken doc". */
 export function docParses(doc: string): boolean {
   return parseTopLevel(doc) !== null

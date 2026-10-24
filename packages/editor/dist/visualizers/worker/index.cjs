@@ -1,5 +1,13 @@
 'use strict';
 
+var acorn = require('acorn');
+require('react');
+require('@strudel/mini/krill-parser.js');
+require('@strudel/core/euclid.mjs');
+require('@strudel/core/controls.mjs');
+require('@strudel/mini/mini.mjs');
+require('@tonaljs/chord');
+
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -5498,6 +5506,542 @@ var P5_DOCS_INDEX = {
   ...RAW_INDEX,
   globalMistakes: [...RAW_INDEX.globalMistakes ?? [], ...P5_GLOBAL_MISTAKES]
 };
+function syntaxErrorAt(code) {
+  try {
+    acorn.parse(code, {
+      ecmaVersion: "latest",
+      sourceType: "script",
+      allowReturnOutsideFunction: true,
+      allowAwaitOutsideFunction: true
+    });
+    return null;
+  } catch (e) {
+    const { pos, loc } = e;
+    return typeof pos === "number" && loc ? { pos, line: loc.line, column: loc.column } : null;
+  }
+}
+__name(syntaxErrorAt, "syntaxErrorAt");
+
+// src/codeView/ir/statementHeads.ts
+var TEMPO_SETTERS = ["setcps", "setCps", "setcpm", "setCpm"];
+var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
+  "all",
+  "samples",
+  ...TEMPO_SETTERS,
+  "setbpm",
+  "setBpm",
+  "hush",
+  "useRNG",
+  "setVoicingRange",
+  "initAudio",
+  "aliasBank"
+]);
+new RegExp(
+  `^[ \\t]*(?:${[...NON_TRACK_HEADS].sort((a, b) => b.length - a.length).join("|")})\\s*\\(`
+);
+
+// src/codeView/chunkDetect.ts
+var PICK_METHODS = /* @__PURE__ */ new Set([
+  "pick",
+  "pickmod",
+  "pickOut",
+  "pickmodOut",
+  "pickRestart",
+  "pickmodRestart",
+  "pickReset",
+  "pickmodReset",
+  "inhabit",
+  "inhabitmod",
+  "pickSqueeze",
+  "pickmodSqueeze"
+]);
+/* @__PURE__ */ new Set([...PICK_METHODS, "squeeze"]);
+
+// src/perf/profiler.ts
+var RING = 240;
+var DROP_FACTOR = 2;
+var SLOW_FRAME_MS = 1e3 / 30;
+function nowMs() {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : 0;
+}
+__name(nowMs, "nowMs");
+var _Ring = class _Ring {
+  constructor() {
+    this.buf = [];
+    this.head = 0;
+    /** Total pushed since reset (uncapped) — distinct from retained length. */
+    this.total = 0;
+  }
+  push(v) {
+    if (this.buf.length < RING) this.buf.push(v);
+    else this.buf[this.head] = v;
+    this.head = (this.head + 1) % RING;
+    this.total++;
+  }
+  get last() {
+    if (this.buf.length === 0) return 0;
+    const i = (this.head - 1 + RING) % RING;
+    return this.buf[i] ?? 0;
+  }
+  /** Sorted copy of the retained samples (ascending). */
+  sorted() {
+    return this.buf.slice().sort((a, b) => a - b);
+  }
+  stats() {
+    const n = this.buf.length;
+    if (n === 0) {
+      return { count: 0, mean: 0, p50: 0, p95: 0, p99: 0, max: 0, last: 0 };
+    }
+    const s = this.sorted();
+    let sum = 0;
+    for (const v of this.buf) sum += v;
+    return {
+      count: this.total,
+      mean: sum / n,
+      p50: percentile(s, 0.5),
+      p95: percentile(s, 0.95),
+      p99: percentile(s, 0.99),
+      max: s[n - 1],
+      last: this.last
+    };
+  }
+  /** Median over the retained samples (for the drop-detection threshold). */
+  median() {
+    if (this.buf.length === 0) return 0;
+    return percentile(this.sorted(), 0.5);
+  }
+};
+__name(_Ring, "Ring");
+var Ring = _Ring;
+function percentile(sortedAsc, q) {
+  const n = sortedAsc.length;
+  if (n === 0) return 0;
+  if (n === 1) return sortedAsc[0];
+  const idx = Math.min(n - 1, Math.max(0, Math.ceil(q * n) - 1));
+  return sortedAsc[idx];
+}
+__name(percentile, "percentile");
+var _FrameTracker = class _FrameTracker {
+  constructor() {
+    this.intervals = new Ring();
+    this.lastTs = null;
+    this.dropCount = 0;
+    this.slowCount = 0;
+    this.frameCount = 0;
+  }
+  tick(ts) {
+    this.frameCount++;
+    if (this.lastTs != null) {
+      const dt = ts - this.lastTs;
+      const med = this.intervals.median();
+      if (med > 0 && dt > med * DROP_FACTOR) this.dropCount++;
+      if (dt > SLOW_FRAME_MS) this.slowCount++;
+      this.intervals.push(dt);
+    }
+    this.lastTs = ts;
+  }
+  stats() {
+    const s = this.intervals.stats();
+    return {
+      count: this.frameCount,
+      fps: s.p50 > 0 ? 1e3 / s.p50 : 0,
+      p50: s.p50,
+      p95: s.p95,
+      drops: this.dropCount,
+      slowFrames: this.slowCount
+    };
+  }
+};
+__name(_FrameTracker, "FrameTracker");
+var FrameTracker = _FrameTracker;
+var _Profiler = class _Profiler {
+  constructor() {
+    /** Plain field (not a getter) so the hot-path branch is a bare load. */
+    this._enabled = false;
+    this.startTs = 0;
+    this.sections = /* @__PURE__ */ new Map();
+    this.frames = /* @__PURE__ */ new Map();
+    this.counters = /* @__PURE__ */ new Map();
+    /** Live gauges (current-state counts) — survive reset(), unlike counters. */
+    this.gauges = /* @__PURE__ */ new Map();
+    /** Open spans for begin()/end() keyed by label — last-write-wins (a label
+     *  isn't expected to nest with itself within a frame). */
+    this.open = /* @__PURE__ */ new Map();
+    this.longtaskCount = 0;
+    this.longtaskTotalMs = 0;
+    this.longtaskMaxMs = 0;
+    this.ltObserver = null;
+  }
+  get enabled() {
+    return this._enabled;
+  }
+  /** Turn profiling on/off. Enabling (re)starts the longtask observer and
+   *  stamps the uptime origin; disabling tears the observer down so a disabled
+   *  profiler has no live platform hook. Idempotent. */
+  setEnabled(on) {
+    if (on === this._enabled) return;
+    this._enabled = on;
+    if (on) {
+      this.startTs = nowMs();
+      this.startLongtaskObserver();
+    } else {
+      this.ltObserver?.disconnect();
+      this.ltObserver = null;
+    }
+  }
+  startLongtaskObserver() {
+    if (this.ltObserver) return;
+    if (typeof PerformanceObserver === "undefined") return;
+    try {
+      this.ltObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          this.longtaskCount++;
+          this.longtaskTotalMs += entry.duration;
+          if (entry.duration > this.longtaskMaxMs) this.longtaskMaxMs = entry.duration;
+        }
+      });
+      this.ltObserver.observe({ entryTypes: ["longtask"] });
+    } catch {
+      this.ltObserver = null;
+    }
+  }
+  // ── section timing ────────────────────────────────────────────────────────
+  /** Record a section duration directly (ms). Cheap no-op when disabled. */
+  record(name, ms) {
+    if (!this._enabled) return;
+    let ring = this.sections.get(name);
+    if (!ring) {
+      ring = new Ring();
+      this.sections.set(name, ring);
+    }
+    ring.push(ms);
+  }
+  /** Open a span. Pair with `end(name)`. No-op when disabled. */
+  begin(name) {
+    if (!this._enabled) return;
+    this.open.set(name, nowMs());
+  }
+  /** Close a span opened by `begin(name)` and record its duration. No-op when
+   *  disabled or when no matching open span exists. */
+  end(name) {
+    if (!this._enabled) return;
+    const t0 = this.open.get(name);
+    if (t0 === void 0) return;
+    this.open.delete(name);
+    this.record(name, nowMs() - t0);
+  }
+  /** Time a synchronous function and record it under `name`. Returns the fn's
+   *  result. When disabled, calls the fn with no timing overhead. The fn runs
+   *  even if disabled (it's the real work, not just measurement). */
+  time(name, fn) {
+    if (!this._enabled) return fn();
+    const t0 = nowMs();
+    try {
+      return fn();
+    } finally {
+      this.record(name, nowMs() - t0);
+    }
+  }
+  // ── frames ──────────────────────────────────────────────────────────────
+  /** Record a rendered frame for an instance (e.g. `'p5#3'`). No-op when
+   *  disabled. */
+  frame(instanceId) {
+    if (!this._enabled) return;
+    let ft = this.frames.get(instanceId);
+    if (!ft) {
+      ft = new FrameTracker();
+      this.frames.set(instanceId, ft);
+    }
+    ft.tick(nowMs());
+  }
+  /** Forget an instance's frame history (on renderer destroy) so a dead viz
+   *  doesn't linger in the snapshot. No-op when disabled. */
+  dropFrames(instanceId) {
+    if (!this._enabled) return;
+    this.frames.delete(instanceId);
+  }
+  // ── counters ──────────────────────────────────────────────────────────────
+  /** Add to a CUMULATIVE counter (reset() clears it; rate = value/uptime). */
+  inc(name, by = 1) {
+    if (!this._enabled) return;
+    this.counters.set(name, (this.counters.get(name) ?? 0) + by);
+  }
+  dec(name, by = 1) {
+    if (!this._enabled) return;
+    this.counters.set(name, (this.counters.get(name) ?? 0) - by);
+  }
+  /** Adjust a LIVE GAUGE (current-state count, e.g. mounted viz instances).
+   *  Gauges survive reset() — they reflect what's live now, not samples.
+   *  Use +1 on mount, -1 on destroy. */
+  gauge(name, delta) {
+    if (!this._enabled) return;
+    this.gauges.set(name, (this.gauges.get(name) ?? 0) + delta);
+  }
+  // ── read / reset ────────────────────────────────────────────────────────
+  snapshot() {
+    const sections = {};
+    for (const [name, ring] of this.sections) sections[name] = ring.stats();
+    const frames = {};
+    for (const [id, ft] of this.frames) frames[id] = ft.stats();
+    const counters = {};
+    for (const [name, v] of this.counters) counters[name] = v;
+    const gauges = {};
+    for (const [name, v] of this.gauges) gauges[name] = Math.max(0, v);
+    return {
+      enabled: this._enabled,
+      uptimeMs: this._enabled ? nowMs() - this.startTs : 0,
+      sections,
+      frames,
+      counters,
+      gauges,
+      longtasks: {
+        count: this.longtaskCount,
+        totalMs: this.longtaskTotalMs,
+        maxMs: this.longtaskMaxMs
+      }
+    };
+  }
+  /** Clear all samples/counters but keep the enabled state + observer. Use to
+   *  start a clean measurement window (e.g. before driving a heavy patch). */
+  reset() {
+    this.sections.clear();
+    this.frames.clear();
+    this.counters.clear();
+    this.open.clear();
+    this.longtaskCount = 0;
+    this.longtaskTotalMs = 0;
+    this.longtaskMaxMs = 0;
+    this.startTs = nowMs();
+  }
+};
+__name(_Profiler, "Profiler");
+var Profiler = _Profiler;
+var perf = new Profiler();
+try {
+  const g = globalThis;
+  if (g.__STAVE_PERF__ === true) perf.setEnabled(true);
+  g.__stavePerf = {
+    snapshot: /* @__PURE__ */ __name(() => perf.snapshot(), "snapshot"),
+    reset: /* @__PURE__ */ __name(() => perf.reset(), "reset"),
+    setEnabled: /* @__PURE__ */ __name((on) => perf.setEnabled(on), "setEnabled")
+  };
+} catch {
+}
+
+// src/visualizers/vizFlags.ts
+var VIZ_FLAG_KEYS = {
+  governor: "stave.viz.governor"};
+function read(key) {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+__name(read, "read");
+function enabledByDefault(key) {
+  return read(key) !== "0";
+}
+__name(enabledByDefault, "enabledByDefault");
+function isVizGovernorEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.governor);
+}
+__name(isVizGovernorEnabled, "isVizGovernorEnabled");
+
+// src/visualizers/vizGovernor.ts
+var HEALTHY_MS = 20;
+var JANK_MS = 45;
+var MIN_FPS = 10;
+var EMA_ALPHA = 0.25;
+var STRESS_RAMP_DOWN = 0.012;
+var IDLE_GAP_MS = 400;
+var RES_MIN_SCALE = 0.5;
+var RES_STRESS_ON = 0.5;
+function computeStress(emaMs, healthy = HEALTHY_MS, jank = JANK_MS) {
+  if (emaMs <= healthy) return 0;
+  if (emaMs >= jank) return 1;
+  return (emaMs - healthy) / (jank - healthy);
+}
+__name(computeStress, "computeStress");
+function maxPerFrame(n, stress) {
+  if (n <= 1) return 1;
+  return Math.max(1, Math.round(n * (1 - stress)));
+}
+__name(maxPerFrame, "maxPerFrame");
+function periodFor(n, stress) {
+  if (n <= 1) return 1;
+  return Math.max(1, Math.ceil(n / maxPerFrame(n, stress)));
+}
+__name(periodFor, "periodFor");
+function minGapMs(stress) {
+  if (stress <= 0) return 0;
+  return stress * (1e3 / MIN_FPS);
+}
+__name(minGapMs, "minGapMs");
+function resolutionScaleFor(stress) {
+  if (stress < RES_STRESS_ON) return 1;
+  const t = (stress - RES_STRESS_ON) / (1 - RES_STRESS_ON);
+  const raw = 1 - t * (1 - RES_MIN_SCALE);
+  return Math.max(RES_MIN_SCALE, Math.round(raw * 4) / 4);
+}
+__name(resolutionScaleFor, "resolutionScaleFor");
+var _VizGovernor = class _VizGovernor {
+  constructor() {
+    this.enabled = true;
+    /** Active (looping) renderer id → its stable round-robin offset. */
+    this.registered = /* @__PURE__ */ new Map();
+    this.lastProduce = /* @__PURE__ */ new Map();
+    this.nextOffset = 0;
+    this.frameIndex = 0;
+    this.lastObserveTs = 0;
+    this.emaMs = HEALTHY_MS;
+    this.stress = 0;
+    this.enabled = isVizGovernorEnabled();
+  }
+  /** Register a renderer when its loop STARTS (resume/mount). Idempotent. */
+  register(id) {
+    if (!this.registered.has(id)) this.registered.set(id, this.nextOffset++);
+  }
+  /** Unregister when the loop STOPS (pause/destroy). Resets stress when the last
+   *  viz leaves so a fresh mount starts from a healthy baseline. */
+  unregister(id) {
+    this.registered.delete(id);
+    this.lastProduce.delete(id);
+    if (this.registered.size === 0) {
+      this.stress = 0;
+      this.emaMs = HEALTHY_MS;
+      this.lastObserveTs = 0;
+    }
+  }
+  /** Feed the cadence monitor — call once per rAF tick from EVERY active loop
+   *  (idempotent per timestamp: only the first call for a new `ts` advances the
+   *  frame + updates stress, so N renderers calling with the same ts is fine). */
+  observeFrame(ts) {
+    if (!this.enabled || this.registered.size === 0) return;
+    if (this.lastObserveTs > 0 && ts > this.lastObserveTs) {
+      const d = ts - this.lastObserveTs;
+      if (d > IDLE_GAP_MS) {
+        this.emaMs = HEALTHY_MS;
+      } else {
+        this.emaMs = this.emaMs * (1 - EMA_ALPHA) + d * EMA_ALPHA;
+      }
+      const target = computeStress(this.emaMs);
+      this.stress = target > this.stress ? target : Math.max(target, this.stress - STRESS_RAMP_DOWN);
+      this.frameIndex++;
+      perf.record("viz.governor.stress", Math.round(this.stress * 100));
+    }
+    if (ts > this.lastObserveTs) this.lastObserveTs = ts;
+  }
+  /** Gate: may renderer `id` produce a frame at `ts`? Composed with (and called
+   *  after) the renderer's own backpressure + maxFps checks. */
+  mayProduce(id, ts) {
+    if (!this.enabled) return true;
+    const n = this.registered.size;
+    if (n === 0 || this.stress <= 0) return true;
+    const gap = minGapMs(this.stress);
+    if (gap > 0) {
+      const last = this.lastProduce.get(id) ?? 0;
+      if (last > 0 && ts - last < gap - 1) return false;
+    }
+    if (n > 1) {
+      const period = periodFor(n, this.stress);
+      if (period > 1) {
+        const offset = this.registered.get(id) ?? 0;
+        if ((this.frameIndex + offset) % period !== 0) return false;
+      }
+    }
+    this.lastProduce.set(id, ts);
+    return true;
+  }
+  /** Render-resolution scale (lever 3) the renderer should apply to its backing
+   *  store at the current stress, in `[RES_MIN_SCALE, 1]`. 1 (full) when disabled
+   *  or smooth — so a renderer multiplying its `resize` w,h by this is a total
+   *  no-op in the common case (transparency, PV91). The `WorkerVizRenderer` reads
+   *  this each rAF and re-posts a scaled `resize` only when the quantized step
+   *  changes (the backing-store realloc is relatively expensive). */
+  resolutionScale() {
+    if (!this.enabled || this.stress <= 0) return 1;
+    return resolutionScaleFor(this.stress);
+  }
+  /** Observability / test hook. */
+  state() {
+    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex, resScale: this.resolutionScale() };
+  }
+  /** Live enable/disable (the "Adaptive performance" toggle, persisted via
+   *  editorRegistry under the SAME `stave.viz.governor` key this reads at
+   *  construction). Unlike `_setEnabledForTest` it KEEPS the registered renderers
+   *  (live viz stay tracked) — it only flips the gate. Disabling resets stress so
+   *  the levers release immediately: `mayProduce` returns true and
+   *  `resolutionScale` returns 1, so each WorkerVizRenderer's next tick re-posts a
+   *  full-resolution resize and stops being throttled. Re-enabling lets stress
+   *  rebuild from the live rAF cadence via observeFrame. */
+  setEnabled(on) {
+    this.enabled = on;
+    if (!on) {
+      this.stress = 0;
+      this.emaMs = HEALTHY_MS;
+      this.lastObserveTs = 0;
+    }
+  }
+  /** Test helper — force enabled state (and reset) deterministically. */
+  _setEnabledForTest(on) {
+    this.enabled = on;
+    this.registered.clear();
+    this.lastProduce.clear();
+    this.nextOffset = 0;
+    this.frameIndex = 0;
+    this.lastObserveTs = 0;
+    this.emaMs = HEALTHY_MS;
+    this.stress = 0;
+  }
+};
+__name(_VizGovernor, "VizGovernor");
+var VizGovernor = _VizGovernor;
+new VizGovernor();
+var PERIOD_PROBE = 24;
+var MAX_PROJECT_BARS = 4;
+var LEAF_PROJECT_BARS = { grid: 12, roll: 4 };
+var PROJECTION_PERIOD_BOUNDS = Object.freeze({
+  /** cycles probed when establishing a period */
+  probe: PERIOD_PROBE,
+  /** the largest period any projection may admit — half the probe, because of the doubling */
+  maxVerifiedBars: Math.floor(PERIOD_PROBE / 2),
+  /** the element writer's cap, bounded by re-emit readability rather than by this */
+  element: MAX_PROJECT_BARS,
+  /** the leaf writers' caps, per surface */
+  leaf: Object.freeze({ ...LEAF_PROJECT_BARS })
+});
+
+// src/codeView/notation/rhythmChart.ts
+PROJECTION_PERIOD_BOUNDS.leaf.grid;
+
+// src/visualizers/vizSyntaxError.ts
+var _VizSyntaxError = class _VizSyntaxError extends Error {
+  constructor(message, line, column) {
+    super(message);
+    this.line = line;
+    this.column = column;
+    this.name = "SyntaxError";
+  }
+};
+__name(_VizSyntaxError, "VizSyntaxError");
+var VizSyntaxError = _VizSyntaxError;
+var ENDS_EARLY = "Unexpected end of code";
+function locateVizSyntaxError(code, err) {
+  if (!(err instanceof Error) || err.name !== "SyntaxError" || err instanceof VizSyntaxError) return err;
+  const at = syntaxErrorAt(code);
+  if (at) {
+    const end = code.trimEnd();
+    if (at.pos >= end.length) {
+      const lines = end.split("\n");
+      return new VizSyntaxError(ENDS_EARLY, lines.length, lines[lines.length - 1].length + 1);
+    }
+    return new VizSyntaxError(err.message, at.line, at.column + 1);
+  }
+  return new VizSyntaxError(err.message);
+}
+__name(locateVizSyntaxError, "locateVizSyntaxError");
 
 // src/visualizers/p5Compiler.ts
 function isFullLifecycleSketch(code) {
@@ -5512,7 +6056,14 @@ __name(getP5LineOffset, "getP5LineOffset");
 function compileP5Code(code, source) {
   const body = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
   const lineOffset = getP5LineOffset(code);
-  new Function("p", "stave", "staveUniforms", body);
+  let syntaxError = null;
+  try {
+    new Function("p", "stave", "staveUniforms", body);
+  } catch (err) {
+    const located = locateVizSyntaxError(code, err);
+    if (!(located instanceof VizSyntaxError)) throw located;
+    syntaxError = located;
+  }
   return (hapStreamRef, analyserRef, schedulerRef, containerSizeRef = {
     current: { w: 400, h: 300 }
   }, optionsRef = {
@@ -5521,6 +6072,18 @@ function compileP5Code(code, source) {
     current: makeInertStaveUniforms()
   }) => {
     return (p) => {
+      if (syntaxError) {
+        installErrorSketch(p, syntaxError.message);
+        emitLog({
+          level: "error",
+          runtime: "p5",
+          source,
+          message: syntaxError.message,
+          line: syntaxError.line,
+          column: syntaxError.column
+        });
+        return;
+      }
       const staveUniforms = staveUniformsRef.current ?? makeInertStaveUniforms();
       const stave = {
         get scheduler() {
@@ -5716,7 +6279,11 @@ __name(installErrorSketch, "installErrorSketch");
 
 // src/visualizers/hydraCompiler.ts
 function compileHydraCode(code) {
-  new Function("s", "stave", code);
+  try {
+    new Function("s", "stave", code);
+  } catch (err) {
+    throw locateVizSyntaxError(code, err);
+  }
   return (s, stave) => {
     const fn = new Function("s", "stave", code);
     fn(s, stave);

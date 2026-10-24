@@ -90,6 +90,7 @@ import React, { useEffect, useMemo, useRef } from 'react'
 import type { VizDescriptor } from '../../visualizers/types'
 import type { VizPreset } from '../../visualizers/vizPreset'
 import { compilePreset } from '../../visualizers/vizCompiler'
+import { VizSyntaxError } from '../../visualizers/vizSyntaxError'
 import { mountVizRenderer } from '../../visualizers/mountVizRenderer'
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { PreviewContext, PreviewEditorChromeContext, PreviewProvider } from '../PreviewProvider'
@@ -369,8 +370,11 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
         : runtime === 'hydra'
           ? getHydraLineOffset()
           : 0
-      const line =
-        parts.line != null && offset > 0
+      // #2220 — a syntax error carries its line in the user's file already.
+      const located = e instanceof VizSyntaxError ? e : null
+      const line = located
+        ? located.line
+        : parts.line != null && offset > 0
           ? Math.max(1, parts.line - offset)
           : parts.line
       emitLog({
@@ -381,7 +385,7 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
         suggestion: parts.suggestion,
         stack: parts.stack,
         line,
-        column: parts.column,
+        column: located ? located.column : parts.column,
       })
     }
     try {

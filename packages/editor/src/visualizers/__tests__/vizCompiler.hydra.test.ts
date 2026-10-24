@@ -80,7 +80,9 @@ describe('compileHydraCode — stave bag in eval scope', () => {
 
 describe('compileHydraCode — syntax + line offset', () => {
   it('throws SyntaxError synchronously for malformed source', () => {
-    expect(() => compileHydraCode('osc(')).toThrow(SyntaxError)
+    // by name: #2220's located error extends Error, since on the page the
+    // global SyntaxError is Strudel's parser's
+    expect(() => compileHydraCode('osc(')).toThrow(expect.objectContaining({ name: 'SyntaxError' }))
   })
 
   it('HYDRA_LINE_OFFSET accounts for `new Function` 2-line header', () => {
