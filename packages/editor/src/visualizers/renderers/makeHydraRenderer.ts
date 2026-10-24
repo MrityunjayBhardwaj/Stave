@@ -19,7 +19,7 @@
  */
 
 import type { VizRenderer } from '../types'
-import { HydraVizRenderer } from './HydraVizRenderer'
+import { HydraVizRenderer, type HydraPatternFn } from './HydraVizRenderer'
 import { WorkerVizRenderer } from './WorkerVizRenderer'
 import { FallbackVizRenderer } from './FallbackVizRenderer'
 import { compileHydraCode } from '../hydraCompiler'
@@ -32,7 +32,25 @@ export function makeHydraRenderer(code: string, name: string): VizRenderer {
   return shouldUseWorkerRenderer()
     ? new FallbackVizRenderer(
         () => new WorkerVizRenderer('hydra', code, name),
-        () => new HydraVizRenderer(compileHydraCode(code)),
+        () => mainHydraRenderer(code, name),
       )
-    : new HydraVizRenderer(compileHydraCode(code))
+    : mainHydraRenderer(code, name)
+}
+
+/**
+ * The main-thread renderer for `code`. A sketch that doesn't compile (a syntax
+ * error) becomes one whose pattern throws that error at mount, where the
+ * renderer reports it against `name` (#2219) — thrown here, it reached only the
+ * browser console from an inline `.viz()`, and escaped the fallback's catch.
+ */
+function mainHydraRenderer(code: string, name: string): HydraVizRenderer {
+  let pattern: HydraPatternFn
+  try {
+    pattern = compileHydraCode(code)
+  } catch (e) {
+    pattern = () => {
+      throw e
+    }
+  }
+  return new HydraVizRenderer(pattern, name)
 }

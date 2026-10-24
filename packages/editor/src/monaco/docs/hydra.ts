@@ -30,14 +30,16 @@ const HYDRA_GLOBAL_MISTAKES: CommonMistake[] = [
     // would match `out` to itself as a symbol, but the existing fuzzy
     // path returns "Did you mean out?" which isn't useful.
     detect: { kind: 'message', match: /^out is not (?:a function|defined)$/ },
-    hint: 'Hydra outputs render by calling `.out()` on a chain — try `osc().out()`.',
-    example: 'osc(20, 0.1, 1.0).out()',
+    hint: 'Hydra outputs render by calling `.out()` on a chain — try `s.osc().out()`.',
+    example: 's.osc(20, 0.1, 1.0).out()',
   },
 ]
 
 const HYDRA_RAW_INDEX = RAW as DocsIndex
 export const HYDRA_DOCS_INDEX: DocsIndex = {
   ...HYDRA_RAW_INDEX,
+  // A `.hydra` file gets the synth as `s` (hydraCompiler), not as globals.
+  receiver: 's',
   globalMistakes: [
     ...(HYDRA_RAW_INDEX.globalMistakes ?? []),
     ...HYDRA_GLOBAL_MISTAKES,

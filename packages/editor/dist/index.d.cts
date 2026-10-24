@@ -6217,6 +6217,7 @@ type HydraPatternFn = (synth: any, stave: HydraStaveBag) => void;
  */
 declare class HydraVizRenderer extends VizRendererBase {
     private pattern?;
+    private readonly source;
     private hydra;
     private canvas;
     private analyser;
@@ -6259,7 +6260,10 @@ declare class HydraVizRenderer extends VizRendererBase {
      * when the pattern runtime swaps underneath.
      */
     private staveBag;
-    constructor(pattern?: HydraPatternFn | undefined);
+    /** @param source the workspace file the sketch came from. When given, the
+     *  renderer writes its own errors to the Console against it (#2219): an
+     *  inline `.viz()` host's onError only logs to the browser console. */
+    constructor(pattern?: HydraPatternFn | undefined, source?: string);
     protected onMount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
         w: number;
         h: number;
@@ -8720,6 +8724,10 @@ interface VizPreset {
         w: number;
         h: number;
     };
+    /** The workspace file this preset was saved from (set on every flush).
+     *  A visual used by name reports its errors against this file, not
+     *  against `name`, which is only what `.viz("…")` calls it (#2209, #2210). */
+    filePath?: string;
 }
 /**
  * Reserved prefix for app-bundled demo presets. User-created IDs cannot
@@ -14350,6 +14358,13 @@ interface DocsIndex {
      * Matched after per-symbol `commonMistakes`, before the fuzzy fallback.
      */
     globalMistakes?: CommonMistake[];
+    /**
+     * The object these names are reached through, when they aren't in scope
+     * on their own — Hydra's functions live on `s` in a `.hydra` file. A
+     * ReferenceError for one of them then says how to reach it instead of
+     * suggesting the same word back (#2211).
+     */
+    receiver?: string;
     /** Provenance for sync scripts and staleness checks. */
     meta?: {
         version?: string;

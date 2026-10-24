@@ -25,6 +25,7 @@ import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { createGLSLProgram, type GLSLProgram, type AudioByteSource, type GL2 } from './glslCore'
 import { glslFragmentErrorUserLine } from './glslShaderSource'
+import { markVizErrorReported } from '../reportedVizErrors'
 import { readGLSLEvents, readGLSLTracks } from './glslEvents'
 import { emitLog } from '../../engine/engineLog'
 import { VizRendererBase } from './VizRendererBase'
@@ -116,6 +117,7 @@ export class GLSLVizRenderer extends VizRendererBase {
         message: err.message,
         line: glslFragmentErrorUserLine(err.message, this.code),
       })
+      markVizErrorReported(err) // #2210 — so a host's onError doesn't write it again
       onError(err)
     }
   }
