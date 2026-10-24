@@ -57,12 +57,14 @@ describe('HydraVizRenderer — the errors it reports itself (#2219)', () => {
     expect(isReportedVizError(errors[0])).toBe(true)
   })
 
-  it('a sketch that does not compile is reported at mount, not thrown at construction', async () => {
+  it('a sketch that does not compile is reported at mount, on the line it was located at (#2220)', async () => {
     let renderer: VizRenderer | null = null
     expect(() => { renderer = makeHydraRenderer('s.osc(10).out(', 'preset/viz/kaleidoscope.hydra') }).not.toThrow()
     const errors = await mountAndSettle(renderer!)
-    expect(rows().map(([rt, src]) => [rt, src])).toEqual([['hydra', 'preset/viz/kaleidoscope.hydra']])
-    expect(errors[0]).toBeInstanceOf(SyntaxError)
+    expect(getLogHistory().map((e) => [e.runtime, e.source, e.line, e.column, e.message])).toEqual([
+      ['hydra', 'preset/viz/kaleidoscope.hydra', 1, 15, 'Unexpected end of code'],
+    ])
+    expect(errors[0].name).toBe('SyntaxError')
   })
 
   it('without a file (a built-in sketch) it leaves the error to the host, as before', async () => {

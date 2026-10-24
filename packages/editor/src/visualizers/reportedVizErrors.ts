@@ -12,6 +12,7 @@ import { emitLog } from '../engine/engineLog'
 import { formatFriendlyError } from '../engine/friendlyErrors'
 import { HYDRA_DOCS_INDEX } from '../monaco/docs/hydra'
 import { getHydraLineOffset } from './hydraCompiler'
+import { VizSyntaxError } from './vizSyntaxError'
 
 const REPORTED = new WeakSet<Error>()
 
@@ -28,11 +29,14 @@ export function isReportedVizError(e: Error): boolean {
 /**
  * Write a Hydra sketch's error against `source`, in the words and on the line
  * the preview has always used: the friendly message, and the stack's line
- * counted from the user's file rather than the compiled function's header.
+ * counted from the user's file rather than the compiled function's header —
+ * or, for a syntax error, where it was located in the user's code.
  */
 export function reportHydraError(e: Error, source: string): void {
   const parts = formatFriendlyError(e, 'hydra', { index: HYDRA_DOCS_INDEX })
   const offset = getHydraLineOffset()
+  // #2220 — a syntax error carries its line in the user's file already.
+  const located = e instanceof VizSyntaxError ? e : null
   emitLog({
     level: 'error',
     runtime: 'hydra',
@@ -40,8 +44,10 @@ export function reportHydraError(e: Error, source: string): void {
     message: parts.message,
     suggestion: parts.suggestion,
     stack: parts.stack,
-    line: parts.line != null && offset > 0 ? Math.max(1, parts.line - offset) : parts.line,
-    column: parts.column,
+    line: located
+      ? located.line
+      : parts.line != null && offset > 0 ? Math.max(1, parts.line - offset) : parts.line,
+    column: located ? located.column : parts.column,
   })
   markVizErrorReported(e)
 }
