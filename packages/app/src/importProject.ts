@@ -29,7 +29,8 @@ interface StaveManifest {
 }
 
 /**
- * Import a stave.zip into a NEW project. Returns the created project
+ * Import a project file (`.stave`, or a `.zip` exported before #2231: the
+ * same archive) into a NEW project. Returns the created project
  * metadata. Throws on a malformed archive — caller surfaces the error
  * via a toast.
  */

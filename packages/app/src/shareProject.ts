@@ -136,7 +136,7 @@ export async function buildShareUrl(project: ProjectMeta): Promise<string> {
   const raw = new TextEncoder().encode(json);
   if (raw.byteLength > MAX_RAW_BYTES) {
     throw new Error(
-      `Project too large to share via URL (${(raw.byteLength / 1024).toFixed(0)}KB > 2MB). Export as .zip instead.`,
+      `Project too large to share via URL (${(raw.byteLength / 1024).toFixed(0)}KB > 2MB). Export the project instead.`,
     );
   }
   const zipped = await gzip(raw);
