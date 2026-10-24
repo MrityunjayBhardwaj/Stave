@@ -17,7 +17,8 @@ let notesPlayed = 0;
 
 function previewEngine(): StrudelEngine {
   if (!engine) {
-    engine = new StrudelEngine();
+    // its sliders apart from the project's (same offsets, different files)
+    engine = new StrudelEngine({ sliderScope: "library-preview:" });
     engine.on("hap", () => {
       notesPlayed++;
     });

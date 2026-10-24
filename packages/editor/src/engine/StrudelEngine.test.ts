@@ -206,7 +206,13 @@ vi.mock('@strudel/webaudio', () => {
               widgets: code === 'sliders' ? SLIDER_WIDGETS : [],
             }
 
-        if (code.startsWith('gated-')) {
+        if (code === 'slider-in-eval') {
+          // #2165 — what the transpiled `slider(5, 0, 10)` calls during an evaluate
+          const { sliderFunctions } = await import('./vendored/slider')
+          sliderFunctions({ ref: (r: () => unknown) => r, pure: (v: unknown) => v }).sliderWithID('slider_9', 5)
+          const p = new MockPattern()
+          ;(p as any).p('$')
+        } else if (code.startsWith('gated-')) {
           // one track, named after the code
           const p = new MockPattern()
           ;(p as any).p(code.slice('gated-'.length))
@@ -447,6 +453,24 @@ describe('StrudelEngine.getTrackSchedulers', () => {
       expect(Object.getOwnPropertyDescriptor(MockPattern.prototype, 'p')?.set).toBeUndefined()
     } finally {
       GATES.clear()
+    }
+  })
+
+  it("an engine's sliders are kept under its own scope, only while it evaluates (#2165)", async () => {
+    const { sliderValues } = await import('./vendored/slider')
+    try {
+      const project = new StrudelEngine()
+      const preview = new StrudelEngine({ sliderScope: 'preview:' })
+      await project.init()
+      await preview.init()
+      await preview.evaluate('slider-in-eval')
+      expect(sliderValues['preview:slider_9']).toBe(5)
+      expect('slider_9' in sliderValues).toBe(false)
+      await project.evaluate('slider-in-eval')
+      expect(sliderValues['slider_9']).toBe(5)
+    } finally {
+      delete sliderValues['slider_9']
+      delete sliderValues['preview:slider_9']
     }
   })
 

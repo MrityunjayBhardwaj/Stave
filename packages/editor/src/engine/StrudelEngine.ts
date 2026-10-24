@@ -40,7 +40,7 @@ import { normalizeLoopRange, type LoopRange } from './transportFrame'
 import { STRUDEL_VIZ_METHODS } from './strudelVizMethods'
 import { inertMethodNames, inertNotice } from './strudelNotInStave'
 import { registerStrudelLogOwner, type LogClaim, type StrudelLogDetail, type StrudelLogRow } from './strudelLogBridge'
-import { sliderFunctions, sliderWidgets, type SliderWidgetConfig } from './vendored/slider'
+import { setSliderScope, sliderFunctions, sliderWidgets, type SliderWidgetConfig } from './vendored/slider'
 
 type HapHandler = (event: HapEvent) => void
 
@@ -420,11 +420,11 @@ const DISPLAY_PIECE_LEAD_SECONDS = 4
 /**
  * #2165 — `Pattern.prototype` is one object for the whole page, and an evaluate
  * patches it (the `.p` / `.viz` traps below) for as long as it runs, awaiting
- * Strudel's repl in between. With two engines on a page (the project's, and the
- * Library's preview), two evaluates held open together nested their traps: the
- * second engine's caught the first engine's tracks, and restoring in the wrong
- * order left a trap on the prototype. So the patched window is held by one
- * evaluate at a time, whichever engine it belongs to.
+ * Strudel's repl in between. A page holds several engines (one per Strudel
+ * file, and the Library's preview), and two evaluates held open together nested
+ * their traps: the second engine's caught the first engine's tracks, and
+ * restoring in the wrong order left a trap on the prototype. So the patched
+ * window is held by one evaluate at a time, whichever engine it belongs to.
  */
 let prototypeWindow: Promise<unknown> = Promise.resolve()
 function inPrototypeWindow<T>(fn: () => Promise<T>): Promise<T> {
@@ -442,11 +442,18 @@ function inPrototypeWindow<T>(fn: () => Promise<T>): Promise<T> {
  *
  * API surface matches ARCHITECTURE.md.
  * Must be init()'d after a user gesture. Every instance plays through
- * superdough's one audio context; a page can hold more than one (the project's,
+ * superdough's one audio context; a page holds several (one per Strudel file,
  * and the Library's preview, #2165), and their evaluates take turns
  * (`inPrototypeWindow`).
  */
 export class StrudelEngine implements LiveCodingEngine {
+  /**
+   * @param options.sliderScope where this engine's `slider()` values live
+   *   (`setSliderScope`). '' — the default — is the project's, which the Monaco
+   *   sliders write; the Library's preview engine passes its own (#2165).
+   */
+  constructor(private readonly options: { sliderScope?: string } = {}) {}
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private repl: any = null
   /**
@@ -1298,7 +1305,14 @@ export class StrudelEngine implements LiveCodingEngine {
       this.evaluating++
       let result: { error?: Error }
       try {
-        result = await inPrototypeWindow(() => this.evaluateCode(code))
+        result = await inPrototypeWindow(async () => {
+          setSliderScope(this.options.sliderScope ?? '')
+          try {
+            return await this.evaluateCode(code)
+          } finally {
+            setSliderScope('')
+          }
+        })
       } finally {
         this.evaluating--
       }
