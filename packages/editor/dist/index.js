@@ -78,6 +78,21 @@ function parseTopLevel(doc) {
   }
 }
 __name(parseTopLevel, "parseTopLevel");
+function syntaxErrorAt(code) {
+  try {
+    parse(code, {
+      ecmaVersion: "latest",
+      sourceType: "script",
+      allowReturnOutsideFunction: true,
+      allowAwaitOutsideFunction: true
+    });
+    return null;
+  } catch (e) {
+    const { pos, loc } = e;
+    return typeof pos === "number" && loc ? { pos, line: loc.line, column: loc.column } : null;
+  }
+}
+__name(syntaxErrorAt, "syntaxErrorAt");
 function docParses(doc) {
   return parseTopLevel(doc) !== null;
 }
@@ -19923,6 +19938,20 @@ var WorkerVizRenderer = _WorkerVizRenderer;
 
 // src/visualizers/renderers/FallbackVizRenderer.ts
 var PROBATION_MS = 8e3;
+var INERT = {
+  mount() {
+  },
+  update() {
+  },
+  resize() {
+  },
+  pause() {
+  },
+  resume() {
+  },
+  destroy() {
+  }
+};
 var _FallbackVizRenderer = class _FallbackVizRenderer {
   constructor(makeWorker, makeMain) {
     this.makeMain = makeMain;
@@ -19976,7 +20005,13 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
       this.worker.destroy();
     } catch {
     }
-    this.active = this.makeMain();
+    try {
+      this.active = this.makeMain();
+    } catch (e) {
+      this.active = INERT;
+      this.hostOnError?.(e);
+      return;
+    }
     if (!this.container) return;
     try {
       this.active.mount(
@@ -24116,6 +24151,33 @@ function registerP5Providers(monaco) {
 }
 __name(registerP5Providers, "registerP5Providers");
 
+// src/visualizers/vizSyntaxError.ts
+var _VizSyntaxError = class _VizSyntaxError extends Error {
+  constructor(message, line, column) {
+    super(message);
+    this.line = line;
+    this.column = column;
+    this.name = "SyntaxError";
+  }
+};
+__name(_VizSyntaxError, "VizSyntaxError");
+var VizSyntaxError = _VizSyntaxError;
+var ENDS_EARLY = "Unexpected end of code";
+function locateVizSyntaxError(code, err) {
+  if (!(err instanceof Error) || err.name !== "SyntaxError" || err instanceof VizSyntaxError) return err;
+  const at = syntaxErrorAt(code);
+  if (at) {
+    const end = code.trimEnd();
+    if (at.pos >= end.length) {
+      const lines = end.split("\n");
+      return new VizSyntaxError(ENDS_EARLY, lines.length, lines[lines.length - 1].length + 1);
+    }
+    return new VizSyntaxError(err.message, at.line, at.column + 1);
+  }
+  return new VizSyntaxError(err.message);
+}
+__name(locateVizSyntaxError, "locateVizSyntaxError");
+
 // src/visualizers/p5Compiler.ts
 function isFullLifecycleSketch(code) {
   return /\bfunction\s+(?:draw|setup|preload)\s*\(/.test(code);
@@ -24129,7 +24191,14 @@ __name(getP5LineOffset, "getP5LineOffset");
 function compileP5Code(code, source) {
   const body = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
   const lineOffset = getP5LineOffset(code);
-  new Function("p", "stave", "staveUniforms", body);
+  let syntaxError = null;
+  try {
+    new Function("p", "stave", "staveUniforms", body);
+  } catch (err) {
+    const located = locateVizSyntaxError(code, err);
+    if (!(located instanceof VizSyntaxError)) throw located;
+    syntaxError = located;
+  }
   return (hapStreamRef, analyserRef, schedulerRef, containerSizeRef = {
     current: { w: 400, h: 300 }
   }, optionsRef = {
@@ -24138,6 +24207,18 @@ function compileP5Code(code, source) {
     current: makeInertStaveUniforms()
   }) => {
     return (p) => {
+      if (syntaxError) {
+        installErrorSketch(p, syntaxError.message);
+        emitLog({
+          level: "error",
+          runtime: "p5",
+          source,
+          message: syntaxError.message,
+          line: syntaxError.line,
+          column: syntaxError.column
+        });
+        return;
+      }
       const staveUniforms = staveUniformsRef.current ?? makeInertStaveUniforms();
       const stave = {
         get scheduler() {
@@ -24738,7 +24819,11 @@ var HydraVizRenderer = _HydraVizRenderer;
 
 // src/visualizers/hydraCompiler.ts
 function compileHydraCode(code) {
-  new Function("s", "stave", code);
+  try {
+    new Function("s", "stave", code);
+  } catch (err) {
+    throw locateVizSyntaxError(code, err);
+  }
   return (s, stave) => {
     const fn = new Function("s", "stave", code);
     fn(s, stave);
@@ -53994,7 +54079,8 @@ function CompiledVizMount(props) {
       const index = isP5 ? P5_DOCS_INDEX : HYDRA_DOCS_INDEX;
       const parts = formatFriendlyError(e, runtime, { index });
       const offset = isP5 ? getP5LineOffset(file.content) : runtime === "hydra" ? getHydraLineOffset() : 0;
-      const line = parts.line != null && offset > 0 ? Math.max(1, parts.line - offset) : parts.line;
+      const located = e instanceof VizSyntaxError ? e : null;
+      const line = located ? located.line : parts.line != null && offset > 0 ? Math.max(1, parts.line - offset) : parts.line;
       emitLog({
         level: "error",
         runtime,
@@ -54003,7 +54089,7 @@ function CompiledVizMount(props) {
         suggestion: parts.suggestion,
         stack: parts.stack,
         line,
-        column: parts.column
+        column: located ? located.column : parts.column
       });
     }, "reportError");
     try {

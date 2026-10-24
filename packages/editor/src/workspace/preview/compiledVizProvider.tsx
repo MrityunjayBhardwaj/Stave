@@ -21,11 +21,13 @@
  *      same one the production `useVizRenderer` hook uses), passing
  *      `ctx.audioSource` fields through as the engine component bag.
  *
- * On compile error (the `new Function(...)` path inside `compilePreset`
- * can throw on syntactically invalid user code), the adapter catches the
- * error and returns an error panel instead of a renderer. The panel's
- * shape mirrors the existing `VizEditor.tsx` error panel so the visual
- * cutover at Task 09/10 stays byte-comparable.
+ * If `compilePreset` throws, the adapter catches the error and returns an
+ * error panel instead of a renderer. The panel's shape mirrors the existing
+ * `VizEditor.tsx` error panel so the visual cutover at Task 09/10 stays
+ * byte-comparable. `compilePreset` no longer compiles user code, though: the
+ * renderer factory does, when the descriptor is mounted, so a syntax error
+ * reaches `reportError` below (or, for p5, the sketch reports it itself when
+ * it mounts), with its line in the user's file (#2220).
  *
  * ## Why the mount lives inside a small React component
  *
@@ -90,6 +92,7 @@ import React, { useEffect, useMemo, useRef } from 'react'
 import type { VizDescriptor } from '../../visualizers/types'
 import type { VizPreset } from '../../visualizers/vizPreset'
 import { compilePreset } from '../../visualizers/vizCompiler'
+import { VizSyntaxError } from '../../visualizers/vizSyntaxError'
 import { mountVizRenderer } from '../../visualizers/mountVizRenderer'
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { PreviewContext, PreviewEditorChromeContext, PreviewProvider } from '../PreviewProvider'
@@ -226,9 +229,10 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
   // uniquely identifies the compiled output — file.id alone isn't
   // enough because the user may edit the same file.
   //
-  // Errors are captured into state via the try/catch so a syntax
-  // error in user code doesn't unmount the component; instead the
-  // component renders a distinguishable error panel.
+  // Errors are captured into state via the try/catch so a failed
+  // compile doesn't unmount the component; instead the component
+  // renders a distinguishable error panel. (A syntax error in user code
+  // no longer lands here: the code is compiled at mount, #2220.)
   const { descriptor, compileError } = useMemo<{
     descriptor: VizDescriptor | null
     compileError: string | null
@@ -369,8 +373,11 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
         : runtime === 'hydra'
           ? getHydraLineOffset()
           : 0
-      const line =
-        parts.line != null && offset > 0
+      // #2220 — a syntax error carries its line in the user's file already.
+      const located = e instanceof VizSyntaxError ? e : null
+      const line = located
+        ? located.line
+        : parts.line != null && offset > 0
           ? Math.max(1, parts.line - offset)
           : parts.line
       emitLog({
@@ -381,7 +388,7 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
         suggestion: parts.suggestion,
         stack: parts.stack,
         line,
-        column: parts.column,
+        column: located ? located.column : parts.column,
       })
     }
     try {

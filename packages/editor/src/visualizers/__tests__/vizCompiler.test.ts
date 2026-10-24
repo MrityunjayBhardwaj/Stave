@@ -581,18 +581,41 @@ describe('compileP5Code — legacy mode (backwards compat)', () => {
 // ---------------------------------------------------------------------------
 
 describe('compileP5Code — compile errors', () => {
-  it('throws a SyntaxError synchronously so callers can surface it via engineLog', () => {
-    // An unbalanced brace surfaces as a SyntaxError inside new Function.
-    // We want this to propagate up — the useMemo catch in CompiledVizMount
-    // turns it into a Console row + Monaco squiggle. Swallowing it here
-    // (the old behaviour — drawing the error onto the canvas) meant no
-    // engineLog surface ever saw the error.
+  it('reports a syntax error when the sketch mounts, on its line in the file (#2220)', async () => {
+    // It used to throw from compileP5Code. The compile runs when the renderer
+    // is built, which after a worker failure is inside a worker-message
+    // handler, so the throw reached only the global catch: a "Stave" row with
+    // no file and no line.
+    __resetEngineLogForTests()
     const source = `
       function draw() {
         background(
       }
     `
-    expect(() => compileP5Code(source)).toThrow(SyntaxError)
+    const factory = compileP5Code(source, 'tests/broken.p5')
+    const refs = makeRefs()
+    const sketchFn = factory(refs.hapStreamRef, refs.analyserRef, refs.schedulerRef, refs.containerSizeRef)
+    const { p, calls } = makeFakeP5()
+    sketchFn(p)
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()))
+    const history = getLogHistory()
+    expect(history.map((e) => [e.runtime, e.source, e.line, e.column, e.message])).toEqual([
+      ['p5', 'tests/broken.p5', 4, 7, "Unexpected token '}'"],
+    ])
+    // and the canvas says so too
+    ;(p.draw as () => void)()
+    expect(calls.some((c) => c.method === 'text' && c.args[0] === "Unexpected token '}'")).toBe(true)
+  })
+
+  it('a sketch that ends early says so, after the last thing written (#2220)', async () => {
+    __resetEngineLogForTests()
+    const factory = compileP5Code('function draw() {\n  background(0)\n', 'tests/open.p5')
+    const refs = makeRefs()
+    factory(refs.hapStreamRef, refs.analyserRef, refs.schedulerRef, refs.containerSizeRef)(makeFakeP5().p)
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()))
+    expect(getLogHistory().map((e) => [e.source, e.line, e.column, e.message])).toEqual([
+      ['tests/open.p5', 2, 16, 'Unexpected end of code'],
+    ])
   })
 
   it('bridges draw-time runtime errors to engineLog (the `zoom` typo case)', async () => {
