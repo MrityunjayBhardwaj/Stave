@@ -165,7 +165,7 @@ test.describe('the shell on a phone (#2000, #2001)', () => {
       await expect(drawer.locator(`[data-phone-menu="${menu}"]`), `no ${menu} menu`).toHaveCount(1)
     }
     const labels = await drawer.locator('[data-stave-menu-item]').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()))
-    for (const label of ['New Project...', 'Open Project...', 'Export as .zip', 'Bounce to WAV...', 'Editor Settings...', 'Undo', 'Start Screen']) {
+    for (const label of ['New Project...', 'Open Project...', 'Export as .stave', 'Bounce to WAV...', 'Editor Settings...', 'Undo', 'Start Screen']) {
       expect(labels.some((l) => l.startsWith(label)), `"${label}" is not in the drawer`).toBe(true)
     }
     // the rest of the desktop's readout is here too
