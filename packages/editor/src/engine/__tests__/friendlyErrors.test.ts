@@ -129,6 +129,13 @@ describe('extractReferenceIdentifier', () => {
 })
 
 describe('formatFriendlyError', () => {
+  it('never suggests back the very name that was not defined (#2211)', () => {
+    const r = formatFriendlyError(new ReferenceError('ellipse is not defined'), 'p5', { index: FAKE_INDEX })
+    expect(r.message).toBe('`ellipse` is not defined.')
+    expect(r.message).not.toContain('Did you mean')
+    expect(r.suggestion?.name).toBe('ellipse')
+  })
+
   it('produces a "Did you mean" message for a typo', () => {
     const err = new ReferenceError('stave is not defined')
     const r = formatFriendlyError(err, 'p5', { index: FAKE_INDEX })

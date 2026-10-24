@@ -64,6 +64,7 @@ import {
 import {
   getFile,
   setContent,
+  renameWorkspaceFile,
   __resetWorkspaceFilesForTests,
 } from '../../WorkspaceFile'
 
@@ -234,6 +235,19 @@ describe('flushToPreset', () => {
     expect(stored.createdAt).toBe(555)
     expect(stored.updatedAt).toBeGreaterThanOrEqual(before)
     expect(stored.updatedAt).toBeLessThanOrEqual(after)
+  })
+
+  it("records the file it was saved from, so a visual used by name reports errors against it (#2209, #2210)", async () => {
+    const preset = makePreset({ id: 'path1', name: 'Prism', renderer: 'glsl' })
+    fakeStore.set(preset.id, preset)
+    const fileId = seedFromPreset(preset)
+    await flushToPreset(fileId, preset.id)
+    expect(fakeStore.get(preset.id)?.filePath).toBe(getFile(fileId)?.path)
+    expect(fakeStore.get(preset.id)?.name).toBe('Prism')
+    // after a rename, the next flush records the new path
+    renameWorkspaceFile(fileId, 'viz_lib/Prism/Prism.glsl')
+    await flushToPreset(fileId, preset.id)
+    expect(fakeStore.get(preset.id)?.filePath).toBe('viz_lib/Prism/Prism.glsl')
   })
 
   it('is a no-op when the workspace file does not exist', async () => {

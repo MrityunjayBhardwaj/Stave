@@ -34,6 +34,10 @@ export { compileP5Code, isFullLifecycleSketch, compileHydraCode }
  */
 export function compilePreset(preset: VizPreset): VizDescriptor {
   const { id, name, renderer, code, requires } = preset
+  // Errors are reported against a FILE. A preview's preset is named by its
+  // path already; a visual used by name (`.viz("Prism")`) carries the path it
+  // was saved from in `filePath`, while `name` stays its label (#2209, #2210).
+  const source = preset.filePath ?? name
 
   if (renderer === 'hydra') {
     return {
@@ -46,7 +50,7 @@ export function compilePreset(preset: VizPreset): VizDescriptor {
       // main-thread fallback) when the flag is on + the browser is capable, else
       // the main-thread HydraVizRenderer. User `.hydra` code is a transferable
       // string, so it can cross to the worker (built-in hydra closures can't yet).
-      factory: () => makeHydraRenderer(code, name),
+      factory: () => makeHydraRenderer(code, source),
     }
   }
 
@@ -61,7 +65,7 @@ export function compilePreset(preset: VizPreset): VizDescriptor {
       // main-thread fallback) when the flag is on + the browser is capable, else
       // the main-thread GLSLVizRenderer. A `.glsl` sketch is the wrapped fragment
       // source — a plain transferable string, so it crosses to the worker cleanly.
-      factory: () => makeGLSLRenderer(code, name),
+      factory: () => makeGLSLRenderer(code, source),
     }
   }
 
@@ -72,14 +76,14 @@ export function compilePreset(preset: VizPreset): VizDescriptor {
       renderer: 'p5',
       requires,
       ...(preset.nativeSize ? { nativeSize: preset.nativeSize } : {}),
-      // Pass `name` (the workspace path) as the source so the factory's
+      // Pass the workspace path (`source`) so the factory's
       // runtime-error catch can attribute the engineLog entry back to
       // the file. Without it, a top-level `new Mp()` typo surfaced on
       // the preview canvas but nowhere else — no Console row, no
       // Monaco squiggle.
       // B-3: `makeP5Renderer` returns a worker-offloaded renderer when the flag
       // is on + the browser is capable, else the main-thread P5VizRenderer.
-      factory: () => makeP5Renderer(code, name),
+      factory: () => makeP5Renderer(code, source),
     }
   }
 

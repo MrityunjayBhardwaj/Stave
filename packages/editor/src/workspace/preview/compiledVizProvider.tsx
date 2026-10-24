@@ -26,8 +26,9 @@
  * `VizEditor.tsx` error panel so the visual cutover at Task 09/10 stays
  * byte-comparable. `compilePreset` no longer compiles user code, though: the
  * renderer factory does, when the descriptor is mounted, so a syntax error
- * reaches `reportError` below (or, for p5, the sketch reports it itself when
- * it mounts), with its line in the user's file (#2220).
+ * is reported at mount with its line in the user's file (#2220): a p5 sketch
+ * and a Hydra renderer write the row themselves (#2219), and `reportError`
+ * below writes it for anything else.
  *
  * ## Why the mount lives inside a small React component
  *
@@ -94,6 +95,7 @@ import type { VizPreset } from '../../visualizers/vizPreset'
 import { compilePreset } from '../../visualizers/vizCompiler'
 import { VizSyntaxError } from '../../visualizers/vizSyntaxError'
 import { mountVizRenderer } from '../../visualizers/mountVizRenderer'
+import { isReportedVizError } from '../../visualizers/reportedVizErrors'
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { PreviewContext, PreviewEditorChromeContext, PreviewProvider } from '../PreviewProvider'
 import { VizEditorChrome } from './VizEditorChrome'
@@ -361,6 +363,10 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
     }
     let mounted: ReturnType<typeof mountVizRenderer> | null = null
     const reportError = (e: Error): void => {
+      // #2210, #2219 — the GLSL and Hydra renderers write their own rows before
+      // calling onError (so an inline `.viz()` gets them too); writing one again
+      // here added a second row.
+      if (isReportedVizError(e)) return
       const index = isP5 ? P5_DOCS_INDEX : HYDRA_DOCS_INDEX
       const parts = formatFriendlyError(e, runtime, { index })
       // The stack trace for p5 / Hydra runtime errors (thrown from

@@ -247,7 +247,9 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
           // into the MAIN engineLog so it surfaces in the Console panel + squiggle
           // like the main-thread path. NOT onError → no fallback (post-ready user
           // typo must not tear the worker down). Worker already deduped per error.
-          emitLog(d.entry)
+          // #2209 — the worker's hydra rows (reactive fn, draw()) don't know the
+          // file; this renderer does, and a row needs it for its squiggle.
+          emitLog(d.entry.source ? d.entry : { ...d.entry, source: this.name })
           return
         }
         if (d.type === 'ready') {
