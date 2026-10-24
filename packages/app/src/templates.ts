@@ -12,6 +12,12 @@ import {
   setChildOrder,
   getTrackMeta,
   setTrackMeta,
+  getZoneHeightOverride,
+  setZoneHeightOverride,
+  buildDefaultSnapshot,
+  listWorkspaceFiles,
+  loadShellState,
+  saveShellState,
   type TrackDisplay,
   bundledPresetId,
   workspaceFileIdForPreset,
@@ -38,30 +44,34 @@ import {
   SPIRAL_P5_UNTIL_2021,
   SPIRAL_P5_FIRST,
 } from "./retiredPresetSources";
+import { VIZ_LIBRARY, planVizLibFiles } from "./assetLibrary/vizLibrary";
+import { pinTabBackdropIfUnset } from "./state/tabBackdrops";
 
 // ── Default code snippets ────────────────────────────────────────────
 
-export const STRUDEL_CODE = `// Strudel — Declarative pattern algebra
-// Ctrl+Enter to play · Ctrl+. to stop
+export const STRUDEL_CODE = `// Welcome to Stave! Ctrl+Enter plays, Ctrl+. stops.
+// Each named line is a track: you'll find it in the Mixer and on the Timeline.
 
-setcps(130/240)
+setcps(110/60/4) // 110 bpm
 
-melody: stack(
-  note("c4 e4 g4 b4 c5 b4 g4 e4")
-    .s("sawtooth").gain(0.3).lpf(2400).release(0.12),
-  note("e3 g3 b3 e4")
-    .s("sine").gain(0.15).release(0.3)
-).viz("pianoroll")
+kick: s("bd*4").bank("LinnDrum")
 
-bass: note("<c2 [g2 c2] f2 [g2 eb2]>")
-  .s("square").gain(0.4).lpf(500).release(0.2)
-  .viz("pitchwheel")
+snare: s("~ sd ~ sd").bank("LinnDrum").room(0.6).size(6)
 
-drums: stack(
-  s("hh*8").gain(0.3),
-  s("bd [~ bd] ~ bd").gain(0.5),
-  s("~ sd ~ [sd cp]").gain(0.4)
-).viz("wordfall")`;
+hats: s("[~ hh]*4").bank("LinnDrum").gain(0.5)
+
+bass: note("<[a1 a2]*4 [f1 f2]*4 [c2 c3]*4 [g1 g2]*4>").s("sawtooth")
+  .lpf(slider(900, 200, 3000)) // drag the knob
+  .decay(0.15).sustain(0.3)._pianoroll()
+
+pads: chord("<Am F C G>").voicing().s("supersaw")
+  .lpf(1800).attack(0.3).release(1).gain(0.35).room(0.5)
+  .viz("Sunset Drive", { backdrop: true })
+
+lead: n("<[4 ~ 3 ~ 2 ~ ~ ~] [~ 0 ~ 2 3 ~ 2 ~]>").scale("A4:minor")
+  .s("square").lpf(2500).gain(0.4).delay(0.4).delaytime(3/8)
+  .viz("scope")
+`;
 
 /** Strudel Sketch (#2076): a short, plain pattern to start writing on. The
  *  Starter is the tour (STRUDEL_CODE, wired to the visualisers); this is the
@@ -224,6 +234,17 @@ export interface TemplateFile {
    *  is only "the first `$:`", so a type saved for it would stick to whatever
    *  track the user writes first. Songs of `$:` tracks rely on the default. */
   trackDisplays?: Record<string, TrackDisplay>;
+  /** #2240 — the viz file pinned behind this file's tab when a project is
+   *  made from the template, so it shows before anything is played. */
+  backdrop?: string;
+  /** #2240 — the height (px) of a named track's inline visual, as if the user
+   *  had dragged it there. A ceiling on the fit-to-width height, so two visuals
+   *  of different shapes can sit at one size. */
+  zoneHeights?: Record<string, number>;
+  /** #2240 — open as a tab when the project is made, in the order listed; the
+   *  first one opened is the active tab. Without any, the editor opens the
+   *  project's Strudel file on its own. */
+  openTab?: boolean;
 }
 
 export interface ProjectTemplate {
@@ -243,6 +264,10 @@ const hydraPresetId = () => bundledPresetId("Piano Roll Hydra", "hydra");
  * Starter — a Strudel pattern playing through the built-in p5.js and Hydra
  * visualisers. Its viz files are also the bundled visualisers every project
  * carries in preset/viz (seedMissingPresetFiles). Best for exploring.
+ *
+ * #2240 — it also brings the Viz Library's Sunset Drive, the backdrop the
+ * pattern asks for, at the id and path the Library's `+` writes, so adding it
+ * from the Library later finds it already there.
  */
 function makeStarterFiles(): TemplateFile[] {
   const p5Id = p5PresetId();
@@ -275,6 +300,12 @@ function makeStarterFiles(): TemplateFile[] {
       path: "pattern.strudel",
       content: STRUDEL_CODE,
       language: "strudel",
+      // #2240 — Sunset Drive behind the song from the first second
+      backdrop: sunsetDriveFiles()[0]?.id,
+      // the piano roll and the scope at one size, short enough that the whole
+      // song fits on the first screen (the scope alone fits to 462px at 1280)
+      zoneHeights: { bass: 160, lead: 160 },
+      openTab: true,
     },
     // NOTE: the Sonic Pi preset file is intentionally omitted from this build —
     // its engine (sibling sonicPiWeb repo) is not vendored yet (#171). Re-add
@@ -310,7 +341,22 @@ function makeStarterFiles(): TemplateFile[] {
     // GLSL example shaders (Prism, Pulse Grid) are no longer seeded here — they
     // moved to the curated Viz library (`assetLibrary/vizLibrary.ts`, #834), so
     // the user opts into them via the Library's "Add to workspace" instead.
+    // #2240 — the one Library package the Starter's pattern uses, open in a
+    // tab beside the song so its code is one click away.
+    ...sunsetDriveFiles().map((f) => ({ ...f, openTab: true })),
   ];
+}
+
+/** Sunset Drive, as the Library's `+` would add it (#2240). */
+function sunsetDriveFiles(): TemplateFile[] {
+  const item = VIZ_LIBRARY.find((i) => i.id === "sunset-drive");
+  if (!item) return [];
+  return planVizLibFiles(item).map((f) => ({
+    id: f.workspaceId,
+    path: f.path,
+    content: f.content,
+    language: f.language,
+  }));
 }
 
 function makeStrudelOnlyFiles(): TemplateFile[] {
@@ -421,19 +467,45 @@ export function getTemplateFiles(templateId: string): TemplateFile[] {
  * If files already exist (persisted project), they are returned unchanged —
  * this is idempotent for a given project.
  */
-export function seedProjectFromTemplate(templateId: string): void {
+export function seedProjectFromTemplate(templateId: string, projectId?: string): void {
   const files = getTemplateFiles(templateId);
   for (const f of files) {
     seedWorkspaceFile(f.id, f.path, f.content, f.language, f.meta);
+    // #2240 — a backdrop the template pins; one already chosen stays
+    if (f.backdrop && projectId) pinTabBackdropIfUnset(projectId, f.id, f.backdrop);
+    for (const [track, px] of Object.entries(f.zoneHeights ?? {})) {
+      if (getZoneHeightOverride(f.id, track) === undefined) setZoneHeightOverride(f.id, track, px);
+    }
     // A type already saved is the user's choice: seeding again never changes it.
     for (const [track, display] of Object.entries(f.trackDisplays ?? {})) {
       if (getTrackMeta(f.id, track).display === undefined) setTrackMeta(f.id, track, { display });
     }
   }
+  if (projectId) openTemplateTabs(projectId, files)
   // The project's own files come first, above the bundled visualisers every
   // project carries in preset/ (#2076); folders would otherwise sort first.
   const own = files.filter((f) => !f.path.includes("/")).map((f) => `f:${f.id}`);
   if (own.length > 0) setChildOrder("", [...own, "d:preset"]);
+}
+
+/**
+ * #2240 — the tabs a new project opens with: the template's `openTab` files, in
+ * order, the first one active. Saved as the project's tab layout, which the
+ * editor reads when it mounts; a layout already saved for the project stays.
+ */
+function openTemplateTabs(projectId: string, files: readonly TemplateFile[]): void {
+  const open = files.filter((f) => f.openTab).map((f) => f.id);
+  if (open.length === 0) return;
+  const valid = new Set(listWorkspaceFiles().map((f) => f.id));
+  if (loadShellState(projectId, valid)) return;
+  const base = buildDefaultSnapshot("g-main", open[0]);
+  const group = base.groups.get("g-main")!;
+  const groups = new Map(base.groups);
+  groups.set("g-main", {
+    ...group,
+    tabs: [...group.tabs, ...open.slice(1).map((fileId) => ({ kind: "editor" as const, id: `tab-${fileId}`, fileId }))],
+  });
+  saveShellState(projectId, { ...base, groups });
 }
 
 /**
@@ -461,7 +533,9 @@ const RETIRED_PRESET_SOURCES: ReadonlyMap<string, readonly string[]> = new Map([
 export function seedMissingPresetFiles(): void {
   const starterFiles = makeStarterFiles();
   for (const f of starterFiles) {
-    if (isVizLanguage(f.language)) {
+    // Only the bundled visualisers: the Starter's Library package (#2240) is
+    // the Starter's own, not something every project should gain.
+    if (isVizLanguage(f.language) && f.path.startsWith("preset/")) {
       const file = seedWorkspaceFile(f.id, f.path, f.content, f.language, f.meta);
       if (RETIRED_PRESET_SOURCES.get(f.content)?.includes(file.content)) {
         setContent(f.id, f.content);

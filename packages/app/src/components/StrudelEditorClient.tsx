@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
 import { reportBootFailure } from "../dialogs/bootFailureNotice";
 import { promptAndCreateFile } from "../lib/newFile";
+import { loadPerTabBackdrop, savePerTabBackdrop } from "../state/tabBackdrops";
 import { isPlaceholder } from "../lib/fileTreeOps";
 import { BackdropPopover } from "./BackdropPopover";
 import {
@@ -478,39 +479,6 @@ interface StrudelEditorClientProps {
   onRevealBackdrop?: () => void;
 }
 
-/**
- * #347 — per-TAB backdrop persistence. The backdrop a user pins is stored
- * against the file (tab) it was set from, not the pane — so switching tabs
- * swaps/clears the pane's backdrop to match the active tab. Persisted per
- * project in localStorage as a plain `{ fileId: vizFileId }` map; best-effort.
- */
-function perTabBackdropKey(projectId: string): string {
-  return `stave:perTabBackdrop:${projectId}`;
-}
-function loadPerTabBackdrop(projectId: string): Map<string, string> {
-  if (typeof window === "undefined") return new Map();
-  try {
-    const raw = window.localStorage.getItem(perTabBackdropKey(projectId));
-    if (!raw) return new Map();
-    return new Map(Object.entries(JSON.parse(raw) as Record<string, string>));
-  } catch {
-    return new Map();
-  }
-}
-function savePerTabBackdrop(
-  projectId: string,
-  map: ReadonlyMap<string, string>,
-): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      perTabBackdropKey(projectId),
-      JSON.stringify(Object.fromEntries(map)),
-    );
-  } catch {
-    /* best-effort persistence */
-  }
-}
 
 /**
  * #347 — "set bg" dropdown injected into the pattern (Strudel) chrome bar via

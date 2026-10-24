@@ -10,6 +10,13 @@ import {
   getChildOrder,
   getTrackMeta,
   setTrackMeta,
+  getZoneHeightOverride,
+  setZoneHeightOverride,
+  listWorkspaceFiles,
+  loadShellState,
+  saveShellState,
+  buildDefaultSnapshot,
+  clearShellState,
 } from "@stave/editor";
 import {
   PITCHWHEEL_P5_UNTIL_2021,
@@ -18,7 +25,9 @@ import {
   SPIRAL_P5_UNTIL_2021,
   SPIRAL_P5_FIRST,
 } from "../retiredPresetSources";
-import { TEMPLATES, getTemplateFiles, FULL_SONG_CODE, seedMissingPresetFiles, seedProjectFromTemplate } from "../templates";
+import { TEMPLATES, getTemplateFiles, FULL_SONG_CODE, STRUDEL_CODE, seedMissingPresetFiles, seedProjectFromTemplate } from "../templates";
+import { VIZ_LIBRARY, VIZ_LIB_ROOT, planVizLibFiles } from "../assetLibrary/vizLibrary";
+import { loadPerTabBackdrop, savePerTabBackdrop } from "../state/tabBackdrops";
 
 describe("project templates", () => {
   // getTemplateFiles answers an id it does not know with the Starter files.
@@ -114,7 +123,11 @@ describe("each template is a sound project of its own (#2076)", () => {
 
   it("a template's own files sit at the root, not among the presets", () => {
     for (const t of TEMPLATES) {
-      for (const f of ownFiles(t.id)) expect(f.path, `${t.id}: ${f.path}`).not.toContain("/");
+      for (const f of ownFiles(t.id)) {
+        // a Viz Library package a template brings (#2240) sits where the Library puts it
+        if (f.path.startsWith(`${VIZ_LIB_ROOT}/`)) continue;
+        expect(f.path, `${t.id}: ${f.path}`).not.toContain("/");
+      }
     }
   });
 
@@ -175,7 +188,7 @@ describe("template tracks open as Bars, a vocal as Waveform", () => {
     }
     // The Starter and the Sketch name their tracks (#2112) but save no type, so
     // a song written over them later is not held to these tracks' types.
-    const expected: Record<string, string[]> = { starter: ["melody", "bass", "drums"], strudel: ["drums", "bass"] };
+    const expected: Record<string, string[]> = { starter: ["kick", "snare", "hats", "bass", "pads", "lead"], strudel: ["drums", "bass"] };
     for (const t of ["starter", "strudel"]) {
       seedProjectFromTemplate(t);
       const f = getTemplateFiles(t).find((x) => x.language === "strudel")!;
@@ -202,5 +215,71 @@ describe("template tracks open as Bars, a vocal as Waveform", () => {
     setTrackMeta("song.strudel", "keys", { display: undefined, color: "#ff0000" });
     seedProjectFromTemplate("song");
     expect(getTrackMeta("song.strudel", "keys")).toEqual({ color: "#ff0000", display: "bars" });
+  });
+});
+
+/**
+ * #2240 — the sketch Stave opens with, and what a project made from the Starter
+ * starts with: Sunset Drive behind the song, the two inline visuals at one
+ * height, and Sunset Drive's code open beside the song.
+ */
+describe("the Starter (#2240)", () => {
+  const sunset = planVizLibFiles(VIZ_LIBRARY.find((i) => i.id === "sunset-drive")!)[0];
+  const pid = "starter-test-project";
+  const wipe = () => {
+    for (const f of listWorkspaceFiles()) deleteWorkspaceFile(f.id);
+    localStorage.clear();
+    clearShellState(pid);
+  };
+  beforeEach(wipe);
+
+  it("is six named tracks, with a knob, a piano roll, a scope and Sunset Drive behind it", () => {
+    const tracks = [...STRUDEL_CODE.matchAll(/^(\w+): /gm)].map((m) => m[1]);
+    expect(tracks).toEqual(["kick", "snare", "hats", "bass", "pads", "lead"]);
+    expect(STRUDEL_CODE).toContain("slider(");
+    expect(STRUDEL_CODE).toContain("._pianoroll()");
+    expect(STRUDEL_CODE).toContain('.viz("scope")');
+    expect(STRUDEL_CODE).toContain('.viz("Sunset Drive", { backdrop: true })');
+  });
+
+  it("brings Sunset Drive at the id and path the Library's + would write", () => {
+    const f = getTemplateFiles("starter").find((x) => x.id === sunset.workspaceId);
+    expect(f).toMatchObject({ path: sunset.path, content: sunset.content, language: "p5js" });
+  });
+
+  it("a new project: Sunset Drive pinned behind the song, both visuals at 160px, two tabs", () => {
+    seedProjectFromTemplate("starter", pid);
+    expect([...loadPerTabBackdrop(pid)]).toEqual([["pattern.strudel", sunset.workspaceId]]);
+    expect(getZoneHeightOverride("pattern.strudel", "bass")).toBe(160);
+    expect(getZoneHeightOverride("pattern.strudel", "lead")).toBe(160);
+    const tabs = loadShellState(pid, new Set(listWorkspaceFiles().map((f) => f.id)))!;
+    const group = tabs.groups[tabs.activeGroupId];
+    expect(group.tabs.map((t) => (t as { fileId: string }).fileId)).toEqual(["pattern.strudel", sunset.workspaceId]);
+    expect(group.activeTabId).toBe("tab-pattern.strudel");
+  });
+
+  it("keeps what is already chosen: a backdrop, a height, the tabs", () => {
+    savePerTabBackdrop(pid, new Map([["pattern.strudel", "something-else"]]));
+    seedProjectFromTemplate("starter"); // the files exist, as in a project already open
+    setZoneHeightOverride("pattern.strudel", "lead", 300);
+    saveShellState(pid, buildDefaultSnapshot("g-main", "pattern.strudel"));
+    seedProjectFromTemplate("starter", pid);
+    expect(loadPerTabBackdrop(pid).get("pattern.strudel")).toBe("something-else");
+    expect(getZoneHeightOverride("pattern.strudel", "lead")).toBe(300);
+    expect(getZoneHeightOverride("pattern.strudel", "bass")).toBe(160); // unset, so seeded
+    const tabs = loadShellState(pid, new Set(listWorkspaceFiles().map((f) => f.id)))!;
+    expect(tabs.groups[tabs.activeGroupId].tabs).toHaveLength(1);
+  });
+
+  it("without a project id (a template seeded into a project already open) nothing is pinned or opened", () => {
+    seedProjectFromTemplate("starter");
+    expect(localStorage.length).toBe(0);
+  });
+
+  it("an existing project gains the bundled visualisers, not the Starter's Library package", () => {
+    seedMissingPresetFiles();
+    const paths = listWorkspaceFiles().map((f) => f.path);
+    expect(paths.some((p) => p.startsWith("preset/viz/"))).toBe(true);
+    expect(paths.filter((p) => p.startsWith(`${VIZ_LIB_ROOT}/`))).toEqual([]);
   });
 });
