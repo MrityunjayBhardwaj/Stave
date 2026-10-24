@@ -26,6 +26,14 @@ export type AssetType = "sound" | "viz" | "snippet" | "sample";
 export type AssetSource = "built-in" | "user" | "community";
 
 /**
+ * Who an example is for (#2165). Any asset can carry one — Strudel sketches do
+ * now, p5 and Hydra sketches will — and the Library filters on it the same way
+ * whatever the type. Listed easiest first; that is the chip order.
+ */
+export const SKILL_LEVELS = ["beginner", "intermediate", "advanced"] as const;
+export type SkillLevel = (typeof SKILL_LEVELS)[number];
+
+/**
  * A handle returned by {@link Asset.preview} so the shell can stop an in-flight
  * preview (a sustained/looping audition) when another row starts or the panel
  * closes. Providers whose preview is instantaneous may return a no-op.
@@ -71,6 +79,8 @@ export interface Asset {
   readonly tags: readonly string[];
   /** Optional secondary label (e.g. category / GM family) shown muted. */
   readonly group?: string;
+  /** Who it is for, when it is an example to learn from (#2165). */
+  readonly level?: SkillLevel;
   /**
    * Optional leading thumbnail — a self-contained image URI (`data:…`) rendered
    * in a small square slot at the head of the row. Viz packages ship a baked

@@ -1,6 +1,6 @@
 import { createWorkspaceFile, listWorkspaceFiles, type WorkspaceFile } from "@stave/editor";
 import { showPrompt, showToast } from "../dialogs/host";
-import { pathTaken, where } from "./fileTreeOps";
+import { nextFreeCopyPath, pathTaken, where } from "./fileTreeOps";
 
 /**
  * Map a (lower-cased) file extension to a workspace language. Single source
@@ -112,6 +112,24 @@ export async function promptAndCreateFile(folderPath = ""): Promise<void> {
     showToast(`"${trimmedName}" already exists in ${where(folderPath)}.`, "error");
     return;
   }
-  const id = `file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  createWorkspaceFile(id, path, starterCodeFor(language), language);
+  createWorkspaceFile(newFileId(), path, starterCodeFor(language), language);
+}
+
+function newFileId(): string {
+  return `file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Add a file holding `content` at `path` — or, when that is taken, at its next
+ * free copy (`a copy.strudel`, …), so an existing file is never overwritten
+ * (#2165, a Library sketch added twice). Returns the new file.
+ */
+export function createFileWithContent(
+  path: string,
+  content: string,
+  language: WorkspaceFile["language"],
+): WorkspaceFile {
+  const files = listWorkspaceFiles();
+  const free = pathTaken(files, path) ? nextFreeCopyPath(files, path) : path;
+  return createWorkspaceFile(newFileId(), free, content, language);
 }
