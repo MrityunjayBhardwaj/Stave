@@ -26,8 +26,9 @@
  * `VizEditor.tsx` error panel so the visual cutover at Task 09/10 stays
  * byte-comparable. `compilePreset` no longer compiles user code, though: the
  * renderer factory does, when the descriptor is mounted, so a syntax error
- * reaches `reportError` below (or, for p5, the sketch reports it itself when
- * it mounts), with its line in the user's file (#2220).
+ * is reported at mount with its line in the user's file (#2220): a p5 sketch
+ * and a Hydra renderer write the row themselves (#2219), and `reportError`
+ * below writes it for anything else.
  *
  * ## Why the mount lives inside a small React component
  *
