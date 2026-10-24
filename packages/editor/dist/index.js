@@ -35570,6 +35570,10 @@ function EditorView({
   const handleMonacoMount = /* @__PURE__ */ __name((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+    if (!viewing && (editor.getModel?.()?.getVersionId?.() ?? 1) > 1) {
+      const text = editor.getValue?.();
+      if (typeof text === "string" && text !== getFile(fileId)?.content) setContent2(text);
+    }
     setEditorReady(true);
     registerEditor(fileId, editor);
     registerMonacoNamespace(monaco);
