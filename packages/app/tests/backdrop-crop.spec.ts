@@ -11,6 +11,7 @@
  */
 
 import { test, expect } from '@playwright/test'
+import { clearPinnedBackdrop } from './_appBoot'
 
 async function gotoApp(page: import('@playwright/test').Page) {
   await page.goto('/')
@@ -18,6 +19,8 @@ async function gotoApp(page: import('@playwright/test').Page) {
     timeout: 15000,
   })
   await page.locator('.monaco-editor').waitFor({ timeout: 15000 })
+  // these arms start from a project with no backdrop; the Starter pins one (#2240)
+  await clearPinnedBackdrop(page)
 }
 
 /**

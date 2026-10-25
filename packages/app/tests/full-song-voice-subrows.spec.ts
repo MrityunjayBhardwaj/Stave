@@ -15,60 +15,12 @@
  *   4. No console/page errors; screenshot of the split lane (parity reference vs
  *      the live monitor's leaf-voice sub-rows).
  *
- * INPUT NOTE (as the sibling specs): eval reads the FILE STORE, so the analyzed
- * song is the starter example — assertions are GENERIC (≥1 lane splits into ≥2
+ * INPUT NOTE: the song is the Starter Stave opened with until #2240, seeded
+ * (a drum stack of three voices) — assertions are GENERIC (≥1 lane splits into ≥2
  * voices), never a fixed sample set or pixel.
  */
 import { test, expect, type Page } from '@playwright/test'
-
-const STORAGE_KEYS = {
-  height: 'stave:bottomPanel.height',
-  open: 'stave:bottomPanel.open',
-  activeTabId: 'stave:bottomPanel.activeTabId',
-} as const
-
-const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
-
-async function preOpenDrawer(page: Page): Promise<void> {
-  await page.addInitScript(
-    ([heightKey, openKey, activeKey]: readonly string[]) => {
-      try {
-        window.localStorage.setItem(heightKey, '360')
-        window.localStorage.setItem(openKey, 'true')
-        window.localStorage.setItem(activeKey, 'musical-timeline')
-      } catch {
-        /* ignore */
-      }
-    },
-    [STORAGE_KEYS.height, STORAGE_KEYS.open, STORAGE_KEYS.activeTabId],
-  )
-}
-
-async function bootShell(page: Page): Promise<void> {
-  await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 20_000 })
-  await page.waitForFunction(
-    () => {
-      const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => unknown[] } } }).monaco
-      return (m?.editor?.getEditors?.()?.length ?? 0) > 0
-    },
-    { timeout: 20_000 },
-  )
-}
-
-async function evalStrudel(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const monaco = (window as unknown as { monaco?: { editor?: { getEditors?: () => unknown[] } } }).monaco
-    const editors = (monaco?.editor?.getEditors?.() ?? []) as Array<{
-      getModel: () => { getLanguageId?: () => string } | null
-      focus: () => void
-    }>
-    const target = editors.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? editors[0]
-    target?.focus()
-  })
-  await page.keyboard.press(`${MOD}+Enter`)
-  await page.waitForTimeout(1800)
-}
+import { bootApp, seedCode, evalCode, STARTER_UNTIL_2240 } from './_appBoot'
 
 async function canvasHeight(page: Page): Promise<number> {
   return page.locator('[data-full-song-canvas]').evaluate((el) => (el as HTMLCanvasElement).height)
@@ -81,9 +33,10 @@ test('full-song view: expanding a drum lane splits it into per-voice sub-rows (#
     if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
   })
 
-  await preOpenDrawer(page)
-  await bootShell(page)
-  await evalStrudel(page)
+  await bootApp(page, { drawer: { tabId: 'musical-timeline', height: 360 } })
+  await seedCode(page, STARTER_UNTIL_2240)
+  await evalCode(page)
+  await page.waitForTimeout(1800)
 
   // Enter the full-song view.
   // Song canvas is the only timeline view now (#497/U5) -- wait for it.

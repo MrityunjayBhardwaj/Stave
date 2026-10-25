@@ -1565,7 +1565,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       await switchProject(meta.id);
       await touchProject(meta.id);
       // Seed template files into the new Y.Doc
-      seedProjectFromTemplate(templateId);
+      seedProjectFromTemplate(templateId, meta.id);
       setActiveProject(meta);
       await refreshProjects();
     } finally {
