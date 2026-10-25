@@ -1,6 +1,6 @@
 ---
 title: Bounce and share
-description: Export your song as a WAV or as stems, send it as a link, or save the whole project as a .zip.
+description: Export your song as a WAV or as stems, send it as a link, or save the whole project as a .stave file.
 sidebar:
   order: 1
 ---
@@ -30,9 +30,11 @@ Playback stops while a song renders. The longest bounce is an hour (10 minutes w
 **File › Copy Share Link** copies a link with the whole project inside it. Paste it anywhere. Whoever opens it is asked **Import shared project?**, and gets their own copy.
 
 - Nothing is uploaded. The project lives in the part of the link after `#`, which browsers never send to a server.
-- The link carries your files, not your audio. If the song uses audio you recorded or brought in, send a `.zip` instead.
-- A very big project (over 2 MB before compression) won't fit in a link, and Stave suggests a `.zip`.
+- The link carries your files, not your audio. If the song uses audio you recorded or brought in, send the project file instead.
+- A very big project (over 2 MB before compression) won't fit in a link, and Stave suggests exporting the project instead.
 
-## Save the project as a .zip
+## Save the project as a .stave file
 
-**File › Export as .zip** saves every file and folder, plus your audio. **File › Import from .zip…** opens one, and so does **Open a project archive…** on the start screen. This is the way to back up a project, move it to another browser, or send it with its audio.
+**File › Export as .stave** saves every file and folder, plus your audio. **File › Open Project File…** opens one, and so does **Open a project archive…** on the start screen. This is the way to back up a project, move it to another browser, or send it with its audio.
+
+A `.stave` file is a zip underneath: rename it to `.zip` to look inside. Projects exported as `.zip` by an older Stave still open the same way.

@@ -150,6 +150,7 @@ import { createSamplesProvider } from "../assetLibrary/samplesProvider";
 import { createVizProvider } from "../assetLibrary/vizProvider";
 import { planVizLibFiles, VIZ_LIB_ROOT, type VizLibItem } from "../assetLibrary/vizLibrary";
 import { PerfOverlay } from "./PerfOverlay";
+import { PROJECT_FILE_ACCEPT } from "../projectFile";
 
 interface StaveAppProps {
   initialProject: ProjectMeta;
@@ -1679,7 +1680,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     }));
     unregs.push(registerCommand({
       id: "stave.project.export",
-      title: "Export Project as .zip",
+      title: "Export Project as .stave",
       category: "File",
       run: () => handleExportProject(),
     }));
@@ -1693,7 +1694,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     }));
     unregs.push(registerCommand({
       id: "stave.project.import",
-      title: "Import Project from .zip...",
+      title: "Open Project File...",
       category: "File",
       run: () => triggerImportPicker(),
     }));
@@ -2283,7 +2284,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       <input
         ref={importInputRef}
         type="file"
-        accept=".zip,application/zip"
+        accept={PROJECT_FILE_ACCEPT}
         style={{ display: "none" }}
         onChange={async (e) => {
           const file = e.target.files?.[0];

@@ -38,12 +38,13 @@ import {
 } from "../lib/fileTreeOps";
 import { Icon } from "./Icon";
 import { FileTypeIcon, FolderIcon } from "./FileTypeIcon";
+import { isProjectFileName } from "../projectFile";
 
 interface FileTreeProps {
   projectName: string;
   onOpenFile: (fileId: string, intent?: { preview?: boolean }) => void;
   activeFileId: string | null;
-  /** Called when a user drops a single .zip onto the sidebar. If set,
+  /** Called when a user drops a single project file (.stave, or an older .zip) onto the sidebar. If set,
    *  the tree skips the normal file-by-file import and delegates. */
   onImportZipProject?: (file: File) => void;
   /** Open the Version History panel focused on this file ("File History"). */
@@ -717,18 +718,18 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
   // files under `targetFolderPath` (use "" for root).
   const importNativeFiles = useCallback(async (files: FileList, targetFolderPath: string) => {
     const arr = Array.from(files);
-    // A single .zip drop → project import (when the caller wired it).
-    if (arr.length === 1 && arr[0].name.toLowerCase().endsWith(".zip")) {
+    // A single project file drop → project import (when the caller wired it).
+    if (arr.length === 1 && isProjectFileName(arr[0].name)) {
       if (onImportZipProject) {
         onImportZipProject(arr[0]);
       } else {
-        showToast("Drop a .zip onto the sidebar to import a project.", "error");
+        showToast("Drop a .stave file onto the sidebar to import a project.", "error");
       }
       return;
     }
     for (const f of arr) {
-      if (f.name.toLowerCase().endsWith(".zip")) {
-        showToast(`Skipped "${f.name}" — drop a single .zip to import as a project.`, "error");
+      if (isProjectFileName(f.name)) {
+        showToast(`Skipped "${f.name}" — drop a single .stave file to import as a project.`, "error");
         continue;
       }
       const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
