@@ -182,9 +182,23 @@ describe("StartScreen — the intro film (#2019)", () => {
 
   it("an isolated page that can frame without credentials plays it in place, without credentials", () => {
     browser(true, true);
-    show();
-    press();
+    // #2229 — the frame must be credentialless BEFORE it navigates: the attribute
+    // goes on first, `src` after it. (As a JSX prop, Next's React dropped it.)
+    const order: string[] = [];
+    const set = HTMLIFrameElement.prototype.setAttribute;
+    const spy = vi.spyOn(HTMLIFrameElement.prototype, "setAttribute").mockImplementation(function (this: HTMLIFrameElement, name: string, value: string) {
+      if (name === "credentialless" || name === "src") order.push(name);
+      set.call(this, name, value);
+    });
+    try {
+      show();
+      press();
+    } finally {
+      spy.mockRestore();
+    }
     expect(film()?.hasAttribute("credentialless")).toBe(true);
+    expect(film()?.getAttribute("src")).toBe("https://www.youtube-nocookie.com/embed/LoVfu-FCTAg?autoplay=1&rel=0");
+    expect(order).toEqual(["credentialless", "src"]);
   });
 
   it("an isolated page that cannot opens it on YouTube instead of showing a blank frame", () => {

@@ -163,6 +163,10 @@
     "runs": "gate",
     "why": "An error's squiggle follows the code around it (#2184): typing lines above it moves the Console row's line and where clicking the row goes; fixing the underlined word takes the squiggle off without running again, and an edit elsewhere on the line leaves it on (#2185)."
   },
+  "starter-first-visit.spec.ts": {
+    "runs": "gate",
+    "why": "A first visit opens the Starter as made (#2240): the song and Sunset Drive's code as two tabs, the song active; Sunset Drive pinned behind the song and drawing before anything plays; once it plays, the bass's piano roll and the lead's scope at one height (160px), the knob in the bass line, and no errors."
+  },
   "strudel-messages.spec.ts": {
     "runs": "gate",
     "why": "Strudel's own messages reach the Console end to end: `.log()` lines and Strudel's warnings about the code are named by their file (#2201), what Stave already shows another way is left out, the `.animate()` warning carries its file and line with a squiggle while the timeline's quiet evaluate posts nothing (#2200), and a bounce warning names its file (#2202)."
@@ -924,6 +928,10 @@
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
   "stave.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "start-screen-intro.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },

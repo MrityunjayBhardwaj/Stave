@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { clearPinnedBackdrop } from './_appBoot'
 
 // #347 — "set bg" DROPDOWN on the pattern (Strudel) chrome bar, next to the
 // live toggle. Mirrors the menubar bg-indicator: clicking opens the SAME
@@ -11,6 +12,8 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
   await page.waitForTimeout(1000)
+  // these arms start from a project with no backdrop; the Starter pins one (#2240)
+  await clearPinnedBackdrop(page)
 })
 
 test('set-bg dropdown lives on the pattern chrome bar, next to the live toggle', async ({ page }) => {

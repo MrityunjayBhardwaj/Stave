@@ -37,13 +37,15 @@ test.describe('Stave — WorkspaceShell', () => {
     await expect(shell).toBeVisible({ timeout: 10000 })
   })
 
-  test('fresh load opens a single Strudel tab (#175)', async ({ page }) => {
+  test('fresh load opens the Starter\'s tabs, the song first (#175, #2240)', async ({ page }) => {
     await page.goto('/')
     await page.locator('[data-workspace-shell="root"]').waitFor({ timeout: 15000 })
-    // #175 — the default workspace opens one Strudel tab, not the old tab wall.
+    // #175 — not the old tab wall; #2240 — the song, then the backdrop's code beside it.
     const tabs = page.locator('[data-workspace-tab]')
-    await expect(tabs).toHaveCount(1)
+    await expect(tabs).toHaveCount(2)
     await expect(tabs.first()).toHaveAttribute('data-workspace-tab', 'tab-pattern.strudel')
+    await expect(tabs.first()).toHaveAttribute('data-tab-active', 'true')
+    await expect(tabs.nth(1)).toContainText('Sunset Drive.p5')
   })
 
   test('Monaco editor loads in the first tab', async ({ page }) => {
