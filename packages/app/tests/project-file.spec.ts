@@ -94,8 +94,13 @@ async function dropOnSidebar(page: Page, files: Array<{ name: string; base64: st
   }, files)
 }
 
+/**
+ * The newest toast that isn't the global error catch's. A viz worker closed while it
+ * loads can toast an unrelated `Uncaught …` error during boot (#2245); an import that
+ * fails still shows its own message here.
+ */
 async function lastToast(page: Page): Promise<string> {
-  const toast = page.locator('[data-testid="toast"]').last()
+  const toast = page.locator('[data-testid="toast"]').filter({ hasNotText: /^Uncaught / }).last()
   await toast.waitFor()
   return (await toast.textContent()) ?? ''
 }
