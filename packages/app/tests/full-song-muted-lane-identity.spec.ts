@@ -12,14 +12,8 @@
  * a Mixer mute / a #736 solo writes), eval, read the rendered lane headers — and
  * asserts THREE distinct lanes survive. Pre-fix the muted pair collapse to one.
  */
-import { test, expect, type Page } from '@playwright/test'
-
-const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
-const STORAGE_KEYS = {
-  height: 'stave:bottomPanel.height',
-  open: 'stave:bottomPanel.open',
-  activeTabId: 'stave:bottomPanel.activeTabId',
-} as const
+import { test, expect } from '@playwright/test'
+import { bootApp, seedCode, evalCode } from './_appBoot'
 
 // Three anon `$:` tracks; the middle two carry the `_` mute marker. Pre-fix all
 // three (well, the two muted) collapse to a single `_$` lane.
@@ -32,56 +26,11 @@ _$: s("hh*8").gain(0.3)
 _$: s("~ cp ~ cp").gain(0.4)
 `
 
-async function preOpenDrawer(page: Page): Promise<void> {
-  await page.addInitScript(
-    ([heightKey, openKey, activeKey]: readonly string[]) => {
-      try {
-        window.localStorage.setItem(heightKey, '340')
-        window.localStorage.setItem(openKey, 'true')
-        window.localStorage.setItem(activeKey, 'musical-timeline')
-      } catch {
-        /* ignore */
-      }
-    },
-    [STORAGE_KEYS.height, STORAGE_KEYS.open, STORAGE_KEYS.activeTabId],
-  )
-}
-
-async function bootShell(page: Page): Promise<void> {
-  await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 20_000 })
-  await page.waitForFunction(
-    () =>
-      ((window as unknown as { monaco?: { editor?: { getEditors?: () => unknown[] } } }).monaco?.editor?.getEditors?.()?.length ?? 0) > 0,
-    { timeout: 20_000 },
-  )
-}
-
-async function loadCode(page: Page, src: string): Promise<void> {
-  await page.evaluate((code) => {
-    const eds = ((window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string; setValue?: (v: string) => void } | null; focus: () => void }> } } }).monaco?.editor?.getEditors?.()) ?? []
-    const ed = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
-    ed?.focus()
-    ed?.getModel()?.setValue?.(code)
-  }, src)
-}
-
-async function evalStrudel(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const eds = ((window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string } | null; focus: () => void }> } } }).monaco?.editor?.getEditors?.()) ?? []
-    const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
-    t?.focus()
-  })
-  await page.keyboard.press(`${MOD}+Enter`)
-  await page.waitForTimeout(1800)
-}
-
 test('#737 — two muted `_$:` tracks stay as separate lanes (no collapse)', async ({ page }) => {
-  await preOpenDrawer(page)
-  await bootShell(page)
-  await loadCode(page, CODE)
-  await page.waitForTimeout(600)
-  await evalStrudel(page)
+  // the shared boot waits for the project file to land before seeding (#872)
+  await bootApp(page, { drawer: { tabId: 'musical-timeline', height: 340 } })
+  await seedCode(page, CODE)
+  await evalCode(page)
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
 
   const headers = page.locator('[data-full-song-lane-select]')

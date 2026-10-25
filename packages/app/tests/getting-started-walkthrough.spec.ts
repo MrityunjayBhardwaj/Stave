@@ -6,7 +6,7 @@ import { bootApp, editorValue } from './_appBoot'
  *
  * `packages/docs/src/content/docs/getting-started.mdx` is the first thing a new
  * user follows, and `templates.ts` puts the same promise in the starter file's
- * own header: `// Ctrl+Enter to play · Ctrl+. to stop`. Nothing checked that the
+ * own header: `Ctrl+Enter plays, Ctrl+. stops`. Nothing checked that the
  * product agreed. It did not: Ctrl+Enter was wired as a Play/Stop toggle, so
  * step 3 — "edit a line, press Ctrl+Enter again, the change is live" — STOPPED
  * the music. A fully green gate never noticed, because no spec walked the
@@ -48,7 +48,7 @@ test.describe('docs: getting-started', () => {
     await page.keyboard.press(`${MOD}+Enter`)
     await expect.poll(() => isPlaying(page), { timeout: 10_000 }).toBe(true)
 
-    // "Edit a line — for example change "c4 e4 g4 b4" to "c4 e4 g4 c5"."
+    // "Change something. For example, change a `gain(0.4)` to `gain(0.8)`."
     const edited = await page.evaluate(() => {
       const m = (window as unknown as {
         monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getValue: () => string; setValue: (v: string) => void } | null }> } }
@@ -56,14 +56,14 @@ test.describe('docs: getting-started', () => {
       const model = (m?.editor?.getEditors?.() ?? [])[0]?.getModel()
       if (!model) return false
       const before = model.getValue()
-      const after = before.replace('c4 e4 g4 b4', 'c4 e4 g4 c5')
+      const after = before.replace('gain(0.4)', 'gain(0.8)')
       model.setValue(after)
       return after !== before
     })
     // Guard the fixture itself: if the starter no longer contains that phrase,
     // this test is not exercising the documented edit and must say so.
     expect(edited, 'the starter file no longer contains the line getting-started.mdx tells the user to edit').toBe(true)
-    expect(await editorValue(page)).toContain('c4 e4 g4 c5')
+    expect(await editorValue(page)).toContain('gain(0.8)')
 
     await clickIntoEditor(page)
     await page.keyboard.press(`${MOD}+Enter`)

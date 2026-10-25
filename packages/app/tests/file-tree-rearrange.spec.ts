@@ -8,7 +8,8 @@
  * point.
  *
  * The fresh project: `pattern.strudel`, then `preset/viz/` holding the viz
- * presets, shown alphabetically (fscope.p5, kaleidoscope.hydra, …, wordfall.p5).
+ * presets, shown alphabetically (fscope.p5, kaleidoscope.hydra, …, wordfall.p5),
+ * then `viz_lib/Sunset Drive/`, the Starter's backdrop (#2240).
  */
 import { test, expect, type Locator, type Page } from '@playwright/test'
 
@@ -29,9 +30,23 @@ async function tree(page: Page): Promise<string[]> {
   )
 }
 
+/** What sits directly inside the folder `path`, in the order shown. */
+async function childrenOf(page: Page, path: string): Promise<string[]> {
+  const rows = await tree(page)
+  const at = rows.findIndex((r) => r.trim() === `D ${path}`)
+  if (at < 0) return []
+  const indent = (r: string) => r.length - r.trimStart().length
+  const children: string[] = []
+  for (const r of rows.slice(at + 1)) {
+    if (indent(r) <= indent(rows[at])) break
+    if (indent(r) === indent(rows[at]) + 2) children.push(r.trim())
+  }
+  return children
+}
+
 /** The files of `preset/viz` in the order shown. */
 async function vizFiles(page: Page): Promise<string[]> {
-  return (await tree(page)).filter((r) => r.startsWith('    ') && !r.trim().startsWith('D ')).map((r) => r.trim())
+  return (await childrenOf(page, 'preset/viz')).filter((r) => !r.startsWith('D '))
 }
 
 async function open(page: Page): Promise<void> {
@@ -98,7 +113,7 @@ test.describe('rearranging (#2089)', () => {
   test('a folder dropped beside a file in another folder moves there, and the folder it leaves stays', async ({ page }) => {
     await open(page)
     await dragOnto(page, folderRow(page, 'preset/viz'), fileRow(page, 'pattern.strudel'), 0.2)
-    await expect.poll(async () => (await tree(page)).filter((r) => !r.startsWith(' '))).toEqual(['D viz', 'pattern.strudel', 'D preset'])
+    await expect.poll(async () => (await tree(page)).filter((r) => !r.startsWith(' '))).toEqual(['D viz', 'pattern.strudel', 'D preset', 'D viz_lib'])
     await reload(page)
     expect((await tree(page)).filter((r) => !r.startsWith(' '))).toContain('D preset')
   })
@@ -111,8 +126,7 @@ test.describe('rearranging (#2089)', () => {
 
     await dragToTopLevel(page, folderRow(page, 'preset/viz'))
     await folderRow(page, 'viz').waitFor()
-    const underViz = async () => (await tree(page)).filter((r) => r.startsWith('  ') && !r.startsWith('    ')).map((r) => r.trim())
-    await expect.poll(underViz).toEqual(ordered)
+    await expect.poll(() => childrenOf(page, 'viz')).toEqual(ordered)
 
     await folderRow(page, 'viz').click({ button: 'right' })
     await page.getByRole('button', { name: /^Rename/ }).first().click()
@@ -120,9 +134,9 @@ test.describe('rearranging (#2089)', () => {
     await page.keyboard.type('vis')
     await page.keyboard.press('Enter')
     await folderRow(page, 'vis').waitFor()
-    await expect.poll(underViz).toEqual(ordered)
+    await expect.poll(() => childrenOf(page, 'vis')).toEqual(ordered)
     await reload(page)
-    expect(await underViz()).toEqual(ordered)
+    expect(await childrenOf(page, 'vis')).toEqual(ordered)
   })
 
   test('a drag that ends without a drop leaves no highlight', async ({ page }) => {

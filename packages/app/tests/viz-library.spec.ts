@@ -261,22 +261,33 @@ test.describe('Asset Library — Viz library (#834)', () => {
     }
   })
 
-  test('adding Sunset Drive (the first p5 package) materialises + is recognised (#1992)', async ({ page }) => {
+  test('adding a p5 package materialises + is recognised (#1992)', async ({ page }) => {
     await boot(page)
-    expect(await vizFileId(page, 'Sunset Drive')).toBeNull()
+    expect(await vizFileId(page, 'Robot Guitarist')).toBeNull()
 
+    const panel = await openLibrary(page)
+    await showVizType(page, panel)
+    const robot = panel.locator('[data-asset-row="viz:robot-guitarist"]')
+    await robot.hover()
+    await robot.locator('[data-asset-insert]').click()
+
+    await expect(
+      page.getByText('Added Robot Guitarist → viz_lib/Robot Guitarist/. Use .viz("Robot Guitarist").'),
+    ).toBeVisible()
+    // A `.p5` file is recognised as a viz-language file by the same predicate
+    // the named-viz bridge registers on, as the `.glsl` packages are.
+    expect(await vizFileId(page, 'Robot Guitarist')).not.toBeNull()
+  })
+
+  test('the Starter already carries Sunset Drive, where the Library puts it (#2240)', async ({ page }) => {
+    await boot(page)
+    // the Library keys a package on its stable workspace id, so it finds the Starter's copy
     const panel = await openLibrary(page)
     await showVizType(page, panel)
     const sunset = panel.locator('[data-asset-row="viz:sunset-drive"]')
     await sunset.hover()
     await sunset.locator('[data-asset-insert]').click()
-
-    await expect(
-      page.getByText('Added Sunset Drive → viz_lib/Sunset Drive/. Use .viz("Sunset Drive").'),
-    ).toBeVisible()
-    // A `.p5` file is recognised as a viz-language file by the same predicate
-    // the named-viz bridge registers on, as the `.glsl` packages are.
-    expect(await vizFileId(page, 'Sunset Drive')).not.toBeNull()
+    await expect(page.getByText('Sunset Drive is already in your workspace.')).toBeVisible()
   })
 
   test('adding the same package twice is idempotent (no duplicate)', async ({ page }) => {
