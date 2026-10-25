@@ -54,11 +54,11 @@ export const STRUDEL_CODE = `// Welcome to Stave! Ctrl+Enter plays, Ctrl+. stops
 
 setcps(110/60/4) // 110 bpm
 
-kick: s("bd*4").bank("LinnDrum")
+kick: s("bd*4").bank("LinnDrum").gain(0.5)
 
-snare: s("~ sd ~ sd").bank("LinnDrum").room(0.6).size(6)
+snare: s("~ sd ~ sd").bank("LinnDrum").gain(0.4).room(0.6).size(6)
 
-hats: s("[~ hh]*4").bank("LinnDrum").gain(0.5)
+hats: s("[~ hh]*4").bank("LinnDrum").gain(0.3)
 
 bass: note("<[a1 a2]*4 [f1 f2]*4 [c2 c3]*4 [g1 g2]*4>").s("sawtooth")
   .lpf(slider(900, 200, 3000)) // drag the knob
@@ -237,10 +237,11 @@ export interface TemplateFile {
   /** #2240 — the viz file pinned behind this file's tab when a project is
    *  made from the template, so it shows before anything is played. */
   backdrop?: string;
-  /** #2240 — the height (px) of a named track's inline visual, as if the user
-   *  had dragged it there. A ceiling on the fit-to-width height, so two visuals
-   *  of different shapes can sit at one size. */
-  zoneHeights?: Record<string, number>;
+  /** #2240 — the height (px) of a named track's inline visual, saved the way a
+   *  drag saves it, with the visual's id: a ceiling on the fit-to-width height,
+   *  so two visuals of different shapes can sit at one size, dropped when the
+   *  track's visual changes (`pruneZoneOverrides`). */
+  zoneHeights?: Record<string, { px: number; vizId: string }>;
   /** #2240 — open as a tab when the project is made, in the order listed; the
    *  first one opened is the active tab. Without any, the editor opens the
    *  project's Strudel file on its own. */
@@ -304,7 +305,7 @@ function makeStarterFiles(): TemplateFile[] {
       backdrop: sunsetDriveFiles()[0]?.id,
       // the piano roll and the scope at one size, short enough that the whole
       // song fits on the first screen (the scope alone fits to 462px at 1280)
-      zoneHeights: { bass: 160, lead: 160 },
+      zoneHeights: { bass: { px: 160, vizId: "pianoroll" }, lead: { px: 160, vizId: "scope" } },
       openTab: true,
     },
     // NOTE: the Sonic Pi preset file is intentionally omitted from this build —
@@ -412,7 +413,7 @@ export const TEMPLATES: ProjectTemplate[] = [
     id: "starter",
     name: "Starter",
     description:
-      "A Strudel pattern playing through the built-in p5.js and Hydra visualisers. Best for exploring.",
+      "An outrun groove: drums, bass, pads and lead, a knob, a piano roll, a scope, and Sunset Drive behind it. Best for exploring.",
     files: [], // filled lazily via getTemplateFiles
   },
   {
@@ -467,21 +468,21 @@ export function getTemplateFiles(templateId: string): TemplateFile[] {
  * If files already exist (persisted project), they are returned unchanged —
  * this is idempotent for a given project.
  */
-export function seedProjectFromTemplate(templateId: string, projectId?: string): void {
+export function seedProjectFromTemplate(templateId: string, projectId: string): void {
   const files = getTemplateFiles(templateId);
   for (const f of files) {
     seedWorkspaceFile(f.id, f.path, f.content, f.language, f.meta);
     // #2240 — a backdrop the template pins; one already chosen stays
-    if (f.backdrop && projectId) pinTabBackdropIfUnset(projectId, f.id, f.backdrop);
-    for (const [track, px] of Object.entries(f.zoneHeights ?? {})) {
-      if (getZoneHeightOverride(f.id, track) === undefined) setZoneHeightOverride(f.id, track, px);
+    if (f.backdrop) pinTabBackdropIfUnset(projectId, f.id, f.backdrop);
+    for (const [track, { px, vizId }] of Object.entries(f.zoneHeights ?? {})) {
+      if (getZoneHeightOverride(f.id, track) === undefined) setZoneHeightOverride(f.id, track, px, undefined, vizId);
     }
     // A type already saved is the user's choice: seeding again never changes it.
     for (const [track, display] of Object.entries(f.trackDisplays ?? {})) {
       if (getTrackMeta(f.id, track).display === undefined) setTrackMeta(f.id, track, { display });
     }
   }
-  if (projectId) openTemplateTabs(projectId, files)
+  openTemplateTabs(projectId, files);
   // The project's own files come first, above the bundled visualisers every
   // project carries in preset/ (#2076); folders would otherwise sort first.
   const own = files.filter((f) => !f.path.includes("/")).map((f) => `f:${f.id}`);

@@ -15,6 +15,7 @@
  */
 
 import { test, expect } from '@playwright/test'
+import { clearPinnedBackdrop } from './_appBoot'
 
 async function gotoApp(page: import('@playwright/test').Page) {
   await page.goto('/')
@@ -22,6 +23,8 @@ async function gotoApp(page: import('@playwright/test').Page) {
     timeout: 15000,
   })
   await page.locator('.monaco-editor').waitFor({ timeout: 15000 })
+  // these arms start from a project with no backdrop; the Starter pins one (#2240)
+  await clearPinnedBackdrop(page)
 }
 
 async function clickHydraTab(page: import('@playwright/test').Page) {
@@ -282,9 +285,14 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
     const tabId = await editorTab.getAttribute('data-workspace-tab')
     await page.locator(`[data-testid="tab-close-${tabId}"]`).click()
 
-    // Backdrop layer is gone, and the viz chrome is gone with the tab.
+    // Backdrop layer is gone, and the viz chrome is gone with the tab. What
+    // chrome remains belongs to the tab now active: the Starter's Sunset Drive
+    // tab (#2240) is a viz file too, and shows its own gear when active.
     await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
-    await expect(page.locator('[data-testid="viz-chrome-settings"]')).toHaveCount(0)
+    await expect(page.locator('[data-workspace-tab]').filter({ hasText: 'hydra' })).toHaveCount(0)
+    const active = page.locator('[data-workspace-tab][data-tab-active="true"]')
+    const activeIsViz = /\.(p5|hydra|glsl)\b/.test((await active.first().innerText()) ?? '')
+    await expect(page.locator('[data-testid="viz-chrome-settings"]')).toHaveCount(activeIsViz ? 1 : 0)
   })
 
   // #787 — a playing backdrop FOLLOWS its viz file tab when the tab is dragged

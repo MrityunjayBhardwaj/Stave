@@ -12,6 +12,7 @@ import {
   setTrackMeta,
   getZoneHeightOverride,
   setZoneHeightOverride,
+  pruneZoneOverrides,
   listWorkspaceFiles,
   loadShellState,
   saveShellState,
@@ -149,7 +150,7 @@ describe("each template is a sound project of its own (#2076)", () => {
   });
 
   it("a new project lists its own files above the preset folder", () => {
-    seedProjectFromTemplate("song");
+    seedProjectFromTemplate("song", "test-project");
     expect(getChildOrder("")).toEqual(["f:song.strudel", "d:preset"]);
   });
 });
@@ -172,7 +173,7 @@ describe("template tracks open as Bars, a vocal as Waveform", () => {
     TEMPLATES.flatMap((t) => getTemplateFiles(t.id).filter((f) => f.language === "strudel").map((f) => ({ t: t.id, f })));
 
   it("every named track of the Full Song is saved as Bars, except its voice as Waveform", () => {
-    seedProjectFromTemplate("song");
+    seedProjectFromTemplate("song", "test-project");
     const f = getTemplateFiles("song")[0];
     const names = trackNames(f.content);
     expect(names).toEqual(["drums", "bass", "keys", "lead", "voice"]);
@@ -190,7 +191,7 @@ describe("template tracks open as Bars, a vocal as Waveform", () => {
     // a song written over them later is not held to these tracks' types.
     const expected: Record<string, string[]> = { starter: ["kick", "snare", "hats", "bass", "pads", "lead"], strudel: ["drums", "bass"] };
     for (const t of ["starter", "strudel"]) {
-      seedProjectFromTemplate(t);
+      seedProjectFromTemplate(t, "test-project");
       const f = getTemplateFiles(t).find((x) => x.language === "strudel")!;
       expect(trackNames(f.content), t).toEqual(expected[t]);
       for (const name of trackNames(f.content)) expect(getTrackMeta(f.id, name).display, `${t} ${name}`).toBeUndefined();
@@ -205,15 +206,15 @@ describe("template tracks open as Bars, a vocal as Waveform", () => {
   });
 
   it("seeding again keeps a type the user picked", () => {
-    seedProjectFromTemplate("song");
+    seedProjectFromTemplate("song", "test-project");
     setTrackMeta("song.strudel", "keys", { display: "waveform" });
     setTrackMeta("song.strudel", "voice", { display: "bars" });
-    seedProjectFromTemplate("song");
+    seedProjectFromTemplate("song", "test-project");
     expect(getTrackMeta("song.strudel", "keys").display).toBe("waveform");
     expect(getTrackMeta("song.strudel", "voice").display).toBe("bars");
     // A track with only a colour saved still gets its type, beside the colour.
     setTrackMeta("song.strudel", "keys", { display: undefined, color: "#ff0000" });
-    seedProjectFromTemplate("song");
+    seedProjectFromTemplate("song", "test-project");
     expect(getTrackMeta("song.strudel", "keys")).toEqual({ color: "#ff0000", display: "bars" });
   });
 });
@@ -258,22 +259,27 @@ describe("the Starter (#2240)", () => {
     expect(group.activeTabId).toBe("tab-pattern.strudel");
   });
 
+  it("a seeded height goes when the track's visual changes, as a dragged one does", () => {
+    seedProjectFromTemplate("starter", pid);
+    pruneZoneOverrides("pattern.strudel", new Map([
+      ["bass", { vizId: "pianoroll" }],
+      ["lead", { vizId: "spectrum" }],
+    ]));
+    expect(getZoneHeightOverride("pattern.strudel", "bass")).toBe(160);
+    expect(getZoneHeightOverride("pattern.strudel", "lead")).toBeUndefined();
+  });
+
   it("keeps what is already chosen: a backdrop, a height, the tabs", () => {
     savePerTabBackdrop(pid, new Map([["pattern.strudel", "something-else"]]));
-    seedProjectFromTemplate("starter"); // the files exist, as in a project already open
+    seedProjectFromTemplate("starter", "another-project"); // the files exist; pid's choices are untouched
     setZoneHeightOverride("pattern.strudel", "lead", 300);
     saveShellState(pid, buildDefaultSnapshot("g-main", "pattern.strudel"));
     seedProjectFromTemplate("starter", pid);
     expect(loadPerTabBackdrop(pid).get("pattern.strudel")).toBe("something-else");
     expect(getZoneHeightOverride("pattern.strudel", "lead")).toBe(300);
-    expect(getZoneHeightOverride("pattern.strudel", "bass")).toBe(160); // unset, so seeded
+    expect(getZoneHeightOverride("pattern.strudel", "bass")).toBe(160);
     const tabs = loadShellState(pid, new Set(listWorkspaceFiles().map((f) => f.id)))!;
     expect(tabs.groups[tabs.activeGroupId].tabs).toHaveLength(1);
-  });
-
-  it("without a project id (a template seeded into a project already open) nothing is pinned or opened", () => {
-    seedProjectFromTemplate("starter");
-    expect(localStorage.length).toBe(0);
   });
 
   it("an existing project gains the bundled visualisers, not the Starter's Library package", () => {

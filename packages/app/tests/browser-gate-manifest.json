@@ -165,7 +165,7 @@
   },
   "starter-first-visit.spec.ts": {
     "runs": "gate",
-    "why": "collected by the gate \u2014 it runs the whole chromium project"
+    "why": "A first visit opens the Starter as made (#2240): the song and Sunset Drive's code as two tabs, the song active; Sunset Drive pinned behind the song and drawing before anything plays; once it plays, the bass's piano roll and the lead's scope at one height (160px), the knob in the bass line, and no errors."
   },
   "strudel-messages.spec.ts": {
     "runs": "gate",
