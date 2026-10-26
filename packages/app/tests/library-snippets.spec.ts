@@ -63,6 +63,10 @@ test('every sketch runs, makes events and names only sounds Stave has', async ({
     const r = await page.evaluate((code) => (window as any).__staveCheckSnippet(code, 4), snippet.code) // eslint-disable-line @typescript-eslint/no-explicit-any
     if (r.error) problems.push(`${snippet.id}: ${r.error}`)
     else if (r.events === 0) problems.push(`${snippet.id}: no events in 4 cycles`)
+    // every named track plays, not only the sketch as a whole
+    const named = [...snippet.code.matchAll(/^([a-z][a-zA-Z0-9_]*): /gm)].map((m) => m[1])
+    const silent = named.filter((t) => !(r.tracks as string[]).includes(t))
+    if (silent.length) problems.push(`${snippet.id}: track ${silent.join(', ')} made no events (tracks with events: ${(r.tracks as string[]).join(', ')})`)
     // superdough looks a sound up lower-cased (superdough.mjs getSound), and so do we
     const missing = (r.sounds as string[]).filter((s) => !known.has(s.toLowerCase()))
     if (missing.length) problems.push(`${snippet.id}: unknown sound ${missing.join(', ')}`)

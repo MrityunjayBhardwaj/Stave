@@ -59,18 +59,21 @@ export async function playSnippet(code: string): Promise<AssetPreviewHandle> {
 export async function checkSnippet(
   code: string,
   cycles = 4,
-): Promise<{ error: string | null; events: number; sounds: string[] }> {
+): Promise<{ error: string | null; events: number; sounds: string[]; tracks: string[] }> {
   const e = previewEngine();
   await e.init();
   const { error } = await e.evaluate(code);
-  if (error) return { error: error.message, events: 0, sounds: [] };
+  if (error) return { error: error.message, events: 0, sounds: [], tracks: [] };
   const events = e.getTimelineEvents(cycles);
   const sounds = new Set<string>();
+  // the tracks that made events, so a check can tell every named track plays
+  const tracks = new Set<string>();
   for (const ev of events) {
+    if (ev.trackId) tracks.add(ev.trackId);
     if (!ev.s) continue;
     // a drum-machine bank names its samples `<bank>_<sound>`, as superdough looks them up
     const bank = ev.params?.bank;
     sounds.add(typeof bank === "string" && bank ? `${bank}_${ev.s}` : ev.s);
   }
-  return { error: null, events: events.length, sounds: [...sounds] };
+  return { error: null, events: events.length, sounds: [...sounds], tracks: [...tracks] };
 }
