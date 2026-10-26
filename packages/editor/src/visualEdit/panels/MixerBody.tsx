@@ -26,7 +26,11 @@ import {
   knobRangeResetEdit,
   toggleCallEdit,
   removeNamedCall,
-  setStringCall,
+  readSoundCall,
+  soundArgLabel,
+  soundPickEdit,
+  soundPickRefusal,
+  type SoundArg,
 } from '../../codeView'
 import { Knob } from './Knob'
 import { knobRangeFor, isKnownControl, isStrudelControl, customRange } from './knobRanges'
@@ -36,7 +40,7 @@ import { SoundPickerMenu } from './SoundPickerMenu'
 import { ResolutionControl, type ResolutionControlProps } from './ResolutionControl'
 import { patternKind, rollShape } from '../../codeView'
 import { type Division, DIVISIONS, isRepresentable, stepsPerBar } from './division'
-import { readChainMethod, chooserEnd } from '../../codeView'
+import { chooserEnd } from '../../codeView'
 import { INSTRUMENTS, DRUM_KITS } from './soundCatalog'
 import { useSoundCatalog, useDrumKitCatalog } from '../../workspace/soundRegistry'
 import { auditionSound } from '../audition'
@@ -131,6 +135,22 @@ export function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry
  * melody. The division picker uses it to grey out divisions this grid can't snap to
  * (#432 Slice 2). The shape is read by `rollShape` (#1942).
  */
+/**
+ * What a sound / kit picker shows for the argument it edits (#2226). `value` is the
+ * one name that plays (a pattern of one name shows that name, so ▶ previews it);
+ * a pattern of several shows how many and which, and says why a pick may not
+ * replace it.
+ */
+function pickerArg(
+  arg: SoundArg | null,
+  noun: string,
+): { value: string; summary?: string; refusal?: string } {
+  if (!arg) return { value: '' }
+  if (arg.kind === 'one') return { value: arg.name }
+  if (arg.names.length === 1) return { value: arg.names[0] }
+  return { value: '', summary: soundArgLabel(arg, noun), refusal: soundPickRefusal(arg, noun) ?? undefined }
+}
+
 function rollStepsPerBar(chunk: ChunkInfo | null): number | null {
   const shape = rollShape(chunk)
   return shape ? stepsPerBar(shape.steps, shape.bars, shape.barSteps) : null
@@ -307,11 +327,16 @@ export function MixerBody({
   )
 
   // Sound assignment (#514 instrument / #515 kit): set a string-valued chain
-  // method (`.sound`/`.s`/`.bank`). Reuses the `'knob'` write source.
+  // method (`.sound`/`.s`/`.bank`). Reuses the `'knob'` write source. A pattern
+  // of several sounds is never replaced by one (#2226): the edit is refused, and
+  // the picker already showed why, so nothing is written.
   const writeChainMethod = React.useCallback(
-    (names: string[], canonical: string, value: string): void => {
+    (names: string[], canonical: string, value: string, noun: string): void => {
       if (value === '') return
-      applyEdit((fresh, wb) => commit(wb, setStringCall(fresh, names, canonical, value), 'knob'))
+      applyEdit((fresh, wb) => {
+        const pick = soundPickEdit(fresh, names, canonical, value, noun)
+        commit(wb, 'edit' in pick ? pick.edit : null, 'knob')
+      })
     },
     [applyEdit],
   )
@@ -357,9 +382,9 @@ export function MixerBody({
         <SoundPickerMenu
           label="Instrument"
           groups={liveInstruments ?? INSTRUMENTS}
-          value={readChainMethod(chunk, ['sound', 's'])?.value ?? ''}
+          {...pickerArg(readSoundCall(chunk, ['sound', 's']), 'sound')}
           placeholder="Default synth"
-          onChange={(v) => writeChainMethod(['sound', 's'], 'sound', v)}
+          onChange={(v) => writeChainMethod(['sound', 's'], 'sound', v, 'sound')}
           onAudition={(v) => auditionSound(v)}
         />
       )}
@@ -370,9 +395,9 @@ export function MixerBody({
         <SoundPickerMenu
           label="Kit"
           groups={liveKits ?? DRUM_KITS}
-          value={readChainMethod(chunk, ['bank'])?.value ?? ''}
+          {...pickerArg(readSoundCall(chunk, ['bank']), 'kit')}
           placeholder="Default kit"
-          onChange={(v) => writeChainMethod(['bank'], 'bank', v)}
+          onChange={(v) => writeChainMethod(['bank'], 'bank', v, 'kit')}
         />
       )}
       <div

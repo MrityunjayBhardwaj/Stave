@@ -244,8 +244,9 @@ export {
   knobRangeResetEdit,
   toggleCallEdit,
   removeNamedCall,
-  setStringCall,
 } from './chainEdit'
+export { readSoundCall, soundArgLabel, soundPickEdit, soundPickRefusal } from './soundArg'
+export type { SoundArg, SoundPickEdit } from './soundArg'
 export type { ChainArgRef } from './chainEdit'
 export {
   readRegion,

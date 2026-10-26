@@ -8,7 +8,8 @@
  *  - set a NUMBER call — replace the literal of the call that plays (the last
  *    one, `chainMethod.playingCall`), append `.name(n)` when the call is absent, and refuse (null) when the argument is not a plain number: a
  *    signal or an expression is somebody's code, not a dial position;
- *  - set a STRING call — replace the string argument in place, else append;
+ *  - set a STRING call — replace the string argument in place, else append (a
+ *    sound or kit pick is `soundArg.soundPickEdit`, which reads the string first);
  *  - REMOVE a call — by its range, members only: the head pattern is never
  *    deleted.
  *
@@ -75,20 +76,6 @@ export function setLiteralCall(
   const cur = readChainMethod(fresh, names)
   if (cur) return { range: cur.range, text: literal }
   return appendCall(fresh, canonical, literal)
-}
-
-/**
- * `setLiteralCall` for a sound / bank id: single-quoted, because the transpiler
- * turns a double-quoted string into a mini-notation pattern (PV44) and an id must
- * stay a string.
- */
-export function setStringCall(
-  fresh: ChunkInfo,
-  names: readonly string[],
-  canonical: string,
-  value: string,
-): OffsetEdit {
-  return setLiteralCall(fresh, names, canonical, `'${value}'`)
 }
 
 /**

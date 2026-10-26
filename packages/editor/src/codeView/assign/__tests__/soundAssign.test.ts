@@ -12,12 +12,21 @@ import {
 // assert the observable document outcome, not internal offsets.
 function apply(doc: string, plan: SoundAssignPlan | null): string {
   if (!plan) return doc
+  if (plan.kind === 'refused') return `REFUSED: ${plan.reason}`
   const edits = [assignmentEdit(plan)].flat().sort((a, b) => b.range[0] - a.range[0])
   for (const e of edits) doc = doc.slice(0, e.range[0]) + e.text + doc.slice(e.range[1])
   return doc
 }
 
 describe('planSoundAssignment (#830)', () => {
+  it('a .sound() that is a pattern of several sounds is not replaced; the plan says why (#2226)', () => {
+    const doc = 'note("48 67 63 [62, 58]").sound("piano gm_electric_guitar_muted")'
+    expect(apply(doc, planSoundAssignment(doc, 3, 'brown'))).toMatch(/^REFUSED: This sound is a pattern of 2 sounds/)
+    // one name written as a pattern: renamed where written, the rest kept
+    const one = 'note("c e").sound("<piano ~>")'
+    expect(apply(one, planSoundAssignment(one, 3, 'brown'))).toBe('note("c e").sound("<brown ~>")')
+  })
+
   it('returns null for an empty sound name (nothing to write)', () => {
     expect(planSoundAssignment('s("bd")', 0, '')).toBeNull()
   })
@@ -166,7 +175,8 @@ describe('planSoundAssignment (#830)', () => {
 
     it('the two edits are one write, so one undo takes both back', () => {
       const plan = planSoundAssignment('s("bare")', 0, 'kick')
-      const edits = assignmentEdit(plan!)
+      if (!plan || plan.kind === 'refused') throw new Error('expected a plan to write')
+      const edits = assignmentEdit(plan)
       expect(Array.isArray(edits) ? edits.length : 1).toBe(2)
     })
   })

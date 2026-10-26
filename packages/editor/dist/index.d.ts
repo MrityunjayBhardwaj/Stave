@@ -9787,11 +9787,12 @@ interface WorkspaceShellHandle {
      * cursor. No-op when there's no active editor. Detects the chunk fresh from
      * the active editor at call time — it does NOT depend on the Pattern/Mixer
      * panel being open. `slow` (#2070) is written as `.slow(N)` on a fresh line,
-     * for a clip longer than a cycle.
+     * for a clip longer than a cycle. Returns why nothing was written when the
+     * `.sound()` under the cursor is a pattern of several sounds (#2226), else null.
      */
     assignSoundToCursor(sound: string, opts?: {
         slow?: number;
-    }): void;
+    }): string | null;
     /** Attach `.viz("name")` to the pattern chunk under the cursor (Asset Library
      *  viz insert). Returns true if it wrote, false when there's no pattern under
      *  the cursor (nothing to attach to) so the caller can guide the user. */

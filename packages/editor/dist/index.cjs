@@ -8202,10 +8202,6 @@ function setLiteralCall(fresh, names, canonical, literal) {
   return appendCall(fresh, canonical, literal);
 }
 __name(setLiteralCall, "setLiteralCall");
-function setStringCall(fresh, names, canonical, value) {
-  return setLiteralCall(fresh, names, canonical, `'${value}'`);
-}
-__name(setStringCall, "setStringCall");
 function removeCall(fresh, index) {
   if (index <= 0) return null;
   const call = fresh.chain[index];
@@ -12970,6 +12966,80 @@ function listSectionParts(doc, call) {
 }
 __name(listSectionParts, "listSectionParts");
 
+// src/codeView/soundArg.ts
+function nameAtoms(g, out) {
+  for (const c of g.children) {
+    if (c.kind === "group") nameAtoms(c, out);
+    else if (c.content.kind === "group") nameAtoms(c.content, out);
+    else if (!isRest(c.content)) out.push({ text: c.content.text, span: c.content.span });
+  }
+}
+__name(nameAtoms, "nameAtoms");
+function soleElement(root) {
+  const only = root.children.length === 1 ? root.children[0] : null;
+  return root.alignment === "fastcat" && only?.kind === "element" ? only : null;
+}
+__name(soleElement, "soleElement");
+function readSoundArg(body) {
+  let root;
+  try {
+    root = miniShape(body);
+  } catch {
+    return { kind: "one", name: body };
+  }
+  const sole = soleElement(root);
+  if (sole && sole.content.kind === "atom" && sole.ops.length === 0 && sole.weight === 1 && sole.reps === 1) {
+    return { kind: "one", name: sole.content.text };
+  }
+  const atoms = [];
+  nameAtoms(root, atoms);
+  if (atoms.length === 0) return { kind: "one", name: body };
+  const names = [...new Set(atoms.map((a) => a.text))];
+  const alternates = !!sole && sole.content.kind === "group" && sole.content.alignment === "polymeter_slowcat";
+  return { kind: "pattern", names, spans: atoms.map((a) => a.span), alternates };
+}
+__name(readSoundArg, "readSoundArg");
+function readSoundCall(chunk, names) {
+  const cur = readChainMethod(chunk, names);
+  return cur ? readSoundArg(cur.value) : null;
+}
+__name(readSoundCall, "readSoundCall");
+function soundArgLabel(arg, noun) {
+  if (arg.kind === "one") return arg.name;
+  if (arg.names.length === 1) return arg.names[0];
+  const list = arg.names.join(", ");
+  return arg.alternates ? `alternates: ${list}` : `${arg.names.length} ${noun}s: ${list}`;
+}
+__name(soundArgLabel, "soundArgLabel");
+function soundPickRefusal(arg, noun) {
+  if (!arg || arg.kind === "one" || arg.names.length === 1) return null;
+  return `This ${noun} is a pattern of ${arg.names.length} ${noun}s (${arg.names.join(", ")}). Picking one would replace them all, so change it in the code.`;
+}
+__name(soundPickRefusal, "soundPickRefusal");
+function soundPickEdit(fresh, names, canonical, value, noun) {
+  const cur = readChainMethod(fresh, names);
+  if (!cur) {
+    const end = fresh.exprRange[1];
+    return { edit: { range: [end, end], text: `.${canonical}('${value}')` } };
+  }
+  const arg = readSoundArg(cur.value);
+  if (arg.kind === "one") return { edit: { range: cur.range, text: `'${value}'` } };
+  const refused2 = soundPickRefusal(arg, noun);
+  if (refused2) return { refused: refused2 };
+  const asAtom = readSoundArg(value);
+  if (asAtom.kind !== "one" || asAtom.name !== value) {
+    return {
+      refused: `"${value}" can't be written inside this ${noun}'s pattern as it stands, so change it in the code.`
+    };
+  }
+  let body = cur.value;
+  for (const s of [...arg.spans].sort((a, b) => b.start - a.start)) {
+    body = body.slice(0, s.start) + value + body.slice(s.end);
+  }
+  return { edit: { range: [cur.range[0] + 1, cur.range[1] - 1], text: body } };
+}
+__name(soundPickEdit, "soundPickEdit");
+
 // src/codeView/bareExpression.ts
 var SETUP_CALLS = /* @__PURE__ */ new Set(["samples", "setcps", "setCps", "setcpm", "setCpm", "hush"]);
 function bareExpressionOf(statements) {
@@ -12995,7 +13065,9 @@ function planSoundAssignment(doc, offset, sound, slow) {
   if (!sound) return null;
   const chunk = detectChunk(doc, offset);
   if (chunk && patternKind(chunk) === "roll") {
-    const edit = setStringCall(chunk, ["sound", "s"], "sound", sound);
+    const pick = soundPickEdit(chunk, ["sound", "s"], "sound", sound, "sound");
+    if ("refused" in pick) return { kind: "refused", reason: pick.refused };
+    const edit = pick.edit;
     return edit.range[0] === edit.range[1] ? { kind: "insert", offset: edit.range[0], text: edit.text } : { kind: "replace", range: edit.range, text: edit.text };
   }
   const statements = parseTopLevel(doc);
@@ -43178,6 +43250,8 @@ function SoundPickerMenu({
   label,
   groups,
   value,
+  summary,
+  refusal,
   placeholder,
   onChange,
   onAudition
@@ -43189,7 +43263,7 @@ function SoundPickerMenu({
   const btnRef = React48__namespace.useRef(null);
   const menuRef = React48__namespace.useRef(null);
   const lc = label.toLowerCase();
-  const currentLabel = groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder;
+  const currentLabel = summary ?? (groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder);
   const place = React48__namespace.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
@@ -43245,7 +43319,7 @@ function SoundPickerMenu({
   const total = totalOptions(groups);
   const shown = filterGroups(groups, query, category);
   const menu = open && pos ? reactDom.createPortal(
-    /* @__PURE__ */ jsxRuntime.jsxs(
+    /* @__PURE__ */ jsxRuntime.jsx(
       "div",
       {
         ref: menuRef,
@@ -43266,7 +43340,14 @@ function SoundPickerMenu({
           boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4)",
           fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
         },
-        children: [
+        children: refusal ? /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            "data-mixer-sound-refusal": lc,
+            style: { padding: 6, fontSize: 12, lineHeight: 1.4, color: "var(--foreground, #e6e6ea)" },
+            children: refusal
+          }
+        ) : /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
           /* @__PURE__ */ jsxRuntime.jsx(
             "input",
             {
@@ -43378,7 +43459,7 @@ function SoundPickerMenu({
               "\u201D."
             ] })
           ] })
-        ]
+        ] })
       }
     ),
     document.body
@@ -43399,7 +43480,7 @@ function SoundPickerMenu({
               "data-mixer-sound-trigger": lc,
               "aria-expanded": open,
               onClick: () => setOpen((o) => !o),
-              title: value || placeholder,
+              title: summary ?? (value || placeholder),
               style: {
                 display: "flex",
                 alignItems: "center",
@@ -43410,7 +43491,7 @@ function SoundPickerMenu({
                 borderRadius: 4,
                 border: "1px solid var(--border, #3a3a42)",
                 background: "var(--background-elevated, #26262c)",
-                color: value ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)",
+                color: value || summary ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)",
                 cursor: "pointer",
                 flex: "1 1 auto",
                 minWidth: 0,
@@ -43800,6 +43881,13 @@ function knobsFromChunk(chunk, includeGain = false) {
   return knobs;
 }
 __name(knobsFromChunk, "knobsFromChunk");
+function pickerArg(arg, noun) {
+  if (!arg) return { value: "" };
+  if (arg.kind === "one") return { value: arg.name };
+  if (arg.names.length === 1) return { value: arg.names[0] };
+  return { value: "", summary: soundArgLabel(arg, noun), refusal: soundPickRefusal(arg, noun) ?? void 0 };
+}
+__name(pickerArg, "pickerArg");
 function rollStepsPerBar(chunk) {
   const shape = rollShape(chunk);
   return shape ? stepsPerBar(shape.steps, shape.bars, shape.barSteps) : null;
@@ -43893,9 +43981,12 @@ function MixerBody({
     [applyEdit]
   );
   const writeChainMethod = React48__namespace.useCallback(
-    (names, canonical, value) => {
+    (names, canonical, value, noun) => {
       if (value === "") return;
-      applyEdit((fresh, wb) => commit(wb, setStringCall(fresh, names, canonical, value), "knob"));
+      applyEdit((fresh, wb) => {
+        const pick = soundPickEdit(fresh, names, canonical, value, noun);
+        commit(wb, "edit" in pick ? pick.edit : null, "knob");
+      });
     },
     [applyEdit]
   );
@@ -43938,9 +44029,9 @@ function MixerBody({
                 {
                   label: "Instrument",
                   groups: liveInstruments ?? INSTRUMENTS,
-                  value: readChainMethod(chunk, ["sound", "s"])?.value ?? "",
+                  ...pickerArg(readSoundCall(chunk, ["sound", "s"]), "sound"),
                   placeholder: "Default synth",
-                  onChange: (v) => writeChainMethod(["sound", "s"], "sound", v),
+                  onChange: (v) => writeChainMethod(["sound", "s"], "sound", v, "sound"),
                   onAudition: (v) => auditionSound(v)
                 }
               ),
@@ -43950,9 +44041,9 @@ function MixerBody({
                 {
                   label: "Kit",
                   groups: liveKits ?? DRUM_KITS,
-                  value: readChainMethod(chunk, ["bank"])?.value ?? "",
+                  ...pickerArg(readSoundCall(chunk, ["bank"]), "kit"),
                   placeholder: "Default kit",
-                  onChange: (v) => writeChainMethod(["bank"], "bank", v)
+                  onChange: (v) => writeChainMethod(["bank"], "bank", v, "kit")
                 }
               ),
               /* @__PURE__ */ jsxRuntime.jsxs(
@@ -48842,15 +48933,17 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
         };
       }, "getBackdropSettings"),
       assignSoundToCursor: /* @__PURE__ */ __name((sound, opts) => {
-        if (!sound) return;
+        if (!sound) return null;
         const editor = getActiveEditor();
         const model = editor?.getModel();
         const pos = editor?.getPosition();
-        if (!editor || !model || !pos) return;
+        if (!editor || !model || !pos) return null;
         const offset = model.getOffsetAt(pos);
         const plan = planSoundAssignment(model.getValue(), offset, sound, opts?.slow);
-        if (!plan) return;
+        if (!plan) return null;
+        if (plan.kind === "refused") return plan.reason;
         commitToEditor(editor, assignmentEdit(plan), "mixer");
+        return null;
       }, "assignSoundToCursor"),
       assignVizToCursor: /* @__PURE__ */ __name((name) => {
         if (!name) return false;
