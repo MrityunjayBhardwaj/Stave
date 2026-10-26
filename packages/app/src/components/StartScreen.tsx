@@ -15,6 +15,23 @@ import type { ProjectTemplate } from "../templates";
 import { GITHUB_REPO_URL } from "./MenuBar";
 import { TemplateIcon } from "./TemplateIcon";
 
+/**
+ * Load the intro into its frame without credentials: the only way a page
+ * isolated from other origins may frame YouTube's player (see introPlaysInline).
+ *
+ * #2229 — not as a JSX prop. Next's bundled React lists `credentialless` as a
+ * boolean attribute, so `credentialless=""` was dropped as false (npm's React
+ * keeps it, which is why the unit test passed), and the frame was blocked:
+ * "www.youtube-nocookie.com refused to connect". The frame is rendered without
+ * `src`; the attribute goes on first and `src` after it, so its one navigation
+ * starts credentialless whichever React rendered it.
+ */
+function loadCredentialless(frame: HTMLIFrameElement | null): void {
+  if (!frame || frame.hasAttribute("src")) return;
+  frame.setAttribute("credentialless", "");
+  frame.setAttribute("src", introEmbedUrl);
+}
+
 interface StartScreenProps {
   open: boolean;
   /** shown in the corner of the picture, e.g. "0.5.0" */
@@ -94,13 +111,10 @@ export function StartScreen({
           {playing ? (
             <iframe
               title={INTRO_VIDEO.title}
-              src={introEmbedUrl}
+              ref={loadCredentialless}
               style={styles.film}
               allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
               allowFullScreen
-              // Loaded without credentials: the only way a page isolated from other
-              // origins may frame YouTube's player. See introPlaysInline.
-              {...{ credentialless: "" }}
               data-start-screen="film"
             />
           ) : (

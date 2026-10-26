@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { expectNoUncaught, watchUncaught } from './_uncaught'
+import { STARTER_UNTIL_2240 } from './_appBoot'
 
 /**
  * The instrument behind #1344, #1345 and #1346.
@@ -30,6 +31,13 @@ function starterCode(): string {
   if (!m) throw new Error('STRUDEL_CODE not found in templates.ts')
   return m[1]
 }
+
+/**
+ * The rung arms read the Starter the ladder was found on (#1344): it trips
+ * `setcps`, then `.viz`, then `$:`, in that order. A later Starter (#2240) trips
+ * other things first, which says nothing about these three rungs.
+ */
+const LADDER_SONG = STARTER_UNTIL_2240
 
 /** No `setcps`, no `$:`, no `.viz` — the shape the offline path can render. */
 const NO_SETCPS = 'note("c3 e3 g3 b3").s("sawtooth").gain(0.5)'
@@ -372,7 +380,7 @@ test.describe('the three audio-bounce paths', () => {
   }) => {
     test.setTimeout(120000)
     await openApp(page)
-    const out = await call(page, 'exportLikeButton', starterCode(), 2)
+    const out = await call(page, 'exportLikeButton', LADDER_SONG, 2)
     // `setcps` is not a module export: @strudel/core/repl.mjs registers it inside
     // injectPatternMethods(), which the repl calls at the top of its OWN evaluate.
     expect({ ok: out.ok, mentionsSetcps: /setcps is not defined/.test(out.error ?? '') })
@@ -384,7 +392,7 @@ test.describe('the three audio-bounce paths', () => {
   }) => {
     test.setTimeout(120000)
     await openApp(page)
-    const out = await call(page, 'offlineAfterEvaluate', starterCode(), 2)
+    const out = await call(page, 'offlineAfterEvaluate', LADDER_SONG, 2)
     // `.viz` is installed on Pattern.prototype during StrudelEngine.evaluate and
     // deleted again afterwards — correct by design, and it means the offline
     // renderer's own evaluate can never see it.
@@ -397,7 +405,7 @@ test.describe('the three audio-bounce paths', () => {
   }) => {
     test.setTimeout(120000)
     await openApp(page)
-    const stripped = starterCode().replace(/\s*\.viz\("[^"]*"\)/g, '')
+    const stripped = LADDER_SONG.replace(/\s*\.viz\("[^"]*"\)/g, '')
     const out = await call(page, 'offlineAfterEvaluate', stripped, 2)
     // `$:` transpiles to `.p(...)`, installed and deleted the same way. This is
     // the rung that makes the ladder structural: practically every document we
@@ -970,11 +978,11 @@ test.describe('#1344 — bouncing the loaded document', () => {
         `played=${out.played} cps=${out.cps} peak=${r ? peak(r.mono).toFixed(4) : '-'} ` +
         `skipped=${JSON.stringify(out.skipped)}`,
     )
-    // cps is the document's own `setcps(130/240)`, read off the scheduler the
-    // bounce's evaluate set. 0.05 asks only "is this audible".
+    // cps is the document's own `setcps(110/60/4)` (110 bpm), read off the
+    // scheduler the bounce's evaluate set. 0.05 asks only "is this audible".
     expect({ ok: out.ok, cps: out.cps, audible: r ? peak(r.mono) > 0.05 : false }).toEqual({
       ok: true,
-      cps: 130 / 240,
+      cps: 110 / 60 / 4,
       audible: true,
     })
   })

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { bootApp, seedCode, STARTER_UNTIL_2240 } from './_appBoot'
 
 /**
  * #1365 — the bounce modal offers the SONG's length, not a list of guessed
@@ -7,8 +8,8 @@ import { test, expect, type Page } from '@playwright/test'
  * ── WHAT THESE ARMS ARE FOR, AND WHAT THEY DELIBERATELY ARE NOT ──────────────
  * A modal that opens, renders a heading and logs no errors is a modal that
  * MOUNTED. It says nothing about whether anything measured the document. So the
- * arms below assert a duration COMPUTED FROM REAL DATA — the starter file
- * declares `setcps(130/240)`, so a cycle is 240/130 seconds and every offer must
+ * arms below assert a duration COMPUTED FROM REAL DATA — the seeded song (the
+ * Starter until #2240) declares `setcps(130/240)`, so a cycle is 240/130 seconds and every offer must
  * land on a whole number of those — and the second arm removes the data layer
  * (never press play, so the scheduler has no tempo) and requires the offers to
  * VANISH.
@@ -20,12 +21,12 @@ import { test, expect, type Page } from '@playwright/test'
  * That pairing is the whole point: an assertion that passes with the data layer
  * absent is a wiring check wearing a feature's name.
  *
- * The starter document alternates `<c2 [g2 c2] f2 [g2 eb2]>` over 4 cycles, so
+ * That song alternates `<c2 [g2 c2] f2 [g2 eb2]>` over 4 cycles, so
  * a period is findable. Nothing here bounces — these arms are about the CHOICE,
  * and a real capture costs its own seconds (covered by `bounce-to-wav`).
  */
 
-/** The starter's own tempo: `setcps(130/240)`. One cycle = 240/130 s. */
+/** The seeded song's own tempo: `setcps(130/240)`. One cycle = 240/130 s. */
 const CPS = 130 / 240
 const CYCLE_SECONDS = 1 / CPS
 
@@ -174,7 +175,8 @@ test('the modal offers repeats of the song, costed at the document tempo', async
   page,
 }) => {
   test.setTimeout(90_000)
-  await boot(page)
+  await bootApp(page)
+  await seedCode(page, STARTER_UNTIL_2240)
   await playOnce(page)
   await openBounceModal(page)
 
@@ -194,7 +196,7 @@ test('the modal offers repeats of the song, costed at the document tempo', async
   })
 
   // ⚠ THE DISPLAY IS ROUNDED TO WHOLE SECONDS, so a duration cannot be compared
-  // to a cycle multiple more tightly than that. Measured: the starter's period
+  // to a cycle multiple more tightly than that. Measured: the seeded song's period
   // is 4 cycles = 7.3846s, shown as `0:07`, which reads back as 3.79 cycles —
   // a 0.21-cycle residual that is the rounding quantum and not an error. The
   // first version of this arm asserted 0.05 and failed on its own instrument.

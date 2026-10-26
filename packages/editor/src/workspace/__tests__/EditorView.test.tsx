@@ -60,7 +60,13 @@ const capture: MonacoCapture = { props: null, mountCount: 0 }
 // `EditorView` will be called with `(stubEditor, stubMonaco)`; the stub
 // `monaco` must expose enough of the `languages` surface that
 // `ensureWorkspaceLanguages` can call it without throwing.
-const stubEditor = { id: 'stub-editor' }
+const stubEditor: Record<string, unknown> = { id: 'stub-editor' }
+
+/** give the stub editor a model holding `text` at `version` (a new Monaco model is at 1) */
+function stubModel(text: string, version: number): void {
+  stubEditor.getValue = () => text
+  stubEditor.getModel = () => ({ getVersionId: () => version })
+}
 const stubRegisteredLanguages: Array<{ id: string }> = []
 const stubMonaco = {
   languages: {
@@ -115,6 +121,8 @@ vi.mock('../../monaco/diagnostics', () => ({
 import { EditorView } from '../EditorView'
 import {
   createWorkspaceFile,
+  getFile,
+  subscribe,
   __resetWorkspaceFilesForTests,
 } from '../WorkspaceFile'
 import { __resetWorkspaceLanguagesForTests } from '../languages'
@@ -125,6 +133,8 @@ describe('EditorView', () => {
     __resetWorkspaceLanguagesForTests()
     capture.props = null
     capture.mountCount = 0
+    delete stubEditor.getValue
+    delete stubEditor.getModel
     stubRegisteredLanguages.length = 0
     stubMonaco.languages.register.mockClear()
     stubMonaco.languages.setMonarchTokensProvider.mockClear()
@@ -247,5 +257,33 @@ describe('EditorView', () => {
     expect(registeredIds).toContain('sonicpi')
     expect(registeredIds).toContain('hydra')
     expect(registeredIds).toContain('p5js')
+  })
+  // #2217 — the Monaco wrapper creates the editor in one commit and subscribes
+  // onChange in the next; an edit in between reaches the editor only. The
+  // mount handler writes it to the file.
+  describe('an edit made before the change subscription (#2217)', () => {
+    it('is written to the file when the editor mounts', () => {
+      createWorkspaceFile('a', 'a.hydra', 'old', 'hydra')
+      stubModel('osc(10).out()', 2)
+      render(<EditorView fileId="a" />)
+      expect(getFile('a')?.content).toBe('osc(10).out()')
+    })
+
+    it('an unedited model is never written back, even when its text differs (normalised line endings)', () => {
+      createWorkspaceFile('a', 'a.hydra', 'a\r\nb\nc\n', 'hydra')
+      stubModel('a\nb\nc\n', 1)
+      render(<EditorView fileId="a" />)
+      expect(getFile('a')?.content).toBe('a\r\nb\nc\n')
+    })
+
+    it('an edited model that matches the file writes nothing', () => {
+      createWorkspaceFile('a', 'a.hydra', 'same', 'hydra')
+      stubModel('same', 3)
+      const seen: string[] = []
+      const off = subscribe('a', () => seen.push(getFile('a')!.content))
+      render(<EditorView fileId="a" />)
+      off()
+      expect(seen).toEqual([])
+    })
   })
 })

@@ -128,12 +128,8 @@ test.describe('#599 — play-bar BPM reflects the real tempo', () => {
       const eds = m?.editor?.getEditors?.() ?? []
       const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
       const code = t?.getModel()?.getValue() ?? ''
-      const frac = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/)
-      if (frac) return Math.round((parseFloat(frac[1]) / parseFloat(frac[2])) * 240)
-      const scal = code.match(/setcps\s*\(\s*([\d.]+)\s*\)/)
-      if (scal) return Math.round(parseFloat(scal[1]) * 240)
-      return null
-    })
+      return code.match(/setcps\s*\(\s*([\d.\s/*+-]+)\)/)?.[1] ?? null
+    }).then((arg) => (arg === null ? null : Math.round(Number(new Function(`return (${arg})`)()) * 240)))
     expect(expected, 'starter doc must carry a setcps to test the BPM readout').not.toBeNull()
     await page.locator('[data-testid="strudel-chrome-transport"]').click() // play → evaluates
     const bpm = page.locator('[data-testid="strudel-chrome-bpm"]')

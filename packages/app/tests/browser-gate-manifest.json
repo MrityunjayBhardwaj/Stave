@@ -165,7 +165,15 @@
   },
   "library-snippets.spec.ts": {
     "runs": "gate",
-    "why": "collected by the gate \u2014 it runs the whole chromium project"
+    "why": "The Library's built-in Strudel sketches (#2165): every sketch runs on the preview engine, makes events in its first four cycles and names only sounds Stave has; the Library lists them under Snippets with level and topic chips; a preview plays and the next one stops it; + adds a sketch under snippets/ and opens it, and adding it again makes a copy."
+  },
+  "preview-early-edit.spec.ts": {
+    "runs": "gate",
+    "why": "An edit made the moment an editor is created reaches its file (#2217): opening a Hydra file's preview to the side re-creates its editor, and an edit made in that first moment runs in the preview; opening the preview without an edit leaves the file as it was."
+  },
+  "starter-first-visit.spec.ts": {
+    "runs": "gate",
+    "why": "A first visit opens the Starter as made (#2240): the song and Sunset Drive's code as two tabs, the song active; Sunset Drive pinned behind the song and drawing before anything plays; once it plays, the bass's piano roll and the lead's scope at one height (160px), the knob in the bass line, and no errors."
   },
   "strudel-messages.spec.ts": {
     "runs": "gate",
@@ -795,6 +803,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "project-file.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "resolution.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
@@ -924,6 +936,10 @@
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
   "stave.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "start-screen-intro.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },

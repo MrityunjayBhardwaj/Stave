@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { expectNoUncaught, watchUncaught } from './_uncaught'
+import { seedCode, waitForEditorLoaded, STARTER_UNTIL_2240 } from './_appBoot'
 
 /**
  * #1346 — Bounce to WAV, driven through the real File menu.
@@ -135,6 +136,13 @@ test('a bounce renders faster than the song plays, at full length (#1631)', asyn
 })
 
 /**
+ * A song with no worklet sound, for the held renders: one with a worklet sound
+ * (`supersaw`, as in the Starter since #2240) renders in a frame of its own
+ * (#1758), whose `OfflineAudioContext` the hold below never sees.
+ */
+const NO_WORKLET_SONG = STARTER_UNTIL_2240
+
+/**
  * #1655 — hold a bounce-sized render at its `n`th pause (0-based) until the test
  * releases it with `__renderHold.release()`. Shorter offline renders pass.
  * The render has reported progress for every pause BEFORE the held one (#1650):
@@ -189,7 +197,8 @@ test('cancelling a render saves nothing and says so (#1631)', async ({ page }) =
   test.setTimeout(120_000)
   await holdRenderAtPause(page, 0)
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
+  await waitForEditorLoaded(page)
+  await seedCode(page, NO_WORKLET_SONG)
   await openBounceModal(page)
   await page.getByRole('button', { name: '300s' }).click()
 
@@ -228,7 +237,8 @@ test('a render shows how far it has got, and still saves the whole song (#1650)'
   test.setTimeout(120_000)
   await holdRenderAtPause(page, 2)
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
+  await waitForEditorLoaded(page)
+  await seedCode(page, NO_WORKLET_SONG)
   await openBounceModal(page)
   await page.getByRole('button', { name: '300s' }).click()
 

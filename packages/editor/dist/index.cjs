@@ -24281,7 +24281,7 @@ function compileP5Code(code, source) {
   }) => {
     return (p) => {
       if (syntaxError) {
-        installErrorSketch(p, syntaxError.message);
+        installErrorSketch(p, syntaxError.message, containerSizeRef);
         emitLog({
           level: "error",
           runtime: "p5",
@@ -24324,7 +24324,7 @@ function compileP5Code(code, source) {
         lifecycle = compile(p, stave, staveUniforms);
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
-        installErrorSketch(p, error.message);
+        installErrorSketch(p, error.message, containerSizeRef);
         const parts = formatFriendlyError(error, "p5", {
           index: P5_DOCS_INDEX
         });
@@ -24466,10 +24466,11 @@ function installLifecycle(p, lifecycle, source, lineOffset, staveUniforms) {
   }
 }
 __name(installLifecycle, "installLifecycle");
-function installErrorSketch(p, message) {
+function installErrorSketch(p, message, containerSizeRef) {
   const pi = p;
   pi.setup = function() {
-    pi.createCanvas(pi.windowWidth || 400, 160);
+    const size = containerSizeRef.current;
+    pi.createCanvas(size?.w ?? 400, size?.h ?? 300);
   };
   pi.draw = function() {
     pi.background(20, 20, 24);
@@ -35625,6 +35626,10 @@ function EditorView({
   const handleMonacoMount = /* @__PURE__ */ __name((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+    if (!viewing && (editor.getModel?.()?.getVersionId?.() ?? 1) > 1) {
+      const text = editor.getValue?.();
+      if (typeof text === "string" && text !== getFile(fileId)?.content) setContent2(text);
+    }
     setEditorReady(true);
     registerEditor(fileId, editor);
     registerMonacoNamespace(monaco);

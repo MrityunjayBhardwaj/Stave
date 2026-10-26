@@ -313,7 +313,7 @@ export function compileP5Code(code: string, source?: string) {
 
     return (p: unknown) => {
       if (syntaxError) {
-        installErrorSketch(p, syntaxError.message)
+        installErrorSketch(p, syntaxError.message, containerSizeRef)
         emitLog({
           level: 'error',
           runtime: 'p5',
@@ -391,7 +391,7 @@ export function compileP5Code(code: string, source?: string) {
         //      Monaco squiggle). Without this, the preview pane was
         //      the ONLY surface that showed the error.
         const error = err instanceof Error ? err : new Error(String(err))
-        installErrorSketch(p, error.message)
+        installErrorSketch(p, error.message, containerSizeRef)
         const parts = formatFriendlyError(error, 'p5', {
           index: P5_DOCS_INDEX,
         })
@@ -658,11 +658,20 @@ function installLifecycle(
  * fallback when `new Function` itself throws (syntax error). Runtime
  * errors during draw/setup still bubble up through p5's own handler.
  */
-function installErrorSketch(p: unknown, message: string): void {
+function installErrorSketch(
+  p: unknown,
+  message: string,
+  containerSizeRef: RefObject<ContainerSize>,
+): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pi = p as any
   pi.setup = function () {
-    pi.createCanvas(pi.windowWidth || 400, 160)
+    // #2225 — the preview's size, as `stave.width` / `stave.height` give a
+    // sketch. In the viz worker the canvas is shown at the preview's size, so
+    // one sized from the window was stretched to fit; both hosts resize it
+    // with the preview after this.
+    const size = containerSizeRef.current
+    pi.createCanvas(size?.w ?? 400, size?.h ?? 300)
   }
   pi.draw = function () {
     pi.background(20, 20, 24)
