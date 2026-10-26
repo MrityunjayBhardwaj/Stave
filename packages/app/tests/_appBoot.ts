@@ -162,6 +162,45 @@ export async function waitForEditorLoaded(page: Page): Promise<void> {
 }
 
 /**
+ * Unpin the backdrop the Starter pins behind its song (#2240), the way a user
+ * does: the pattern bar's "set bg" button, then Clear in its popover. For specs
+ * about a project with no backdrop yet.
+ */
+export async function clearPinnedBackdrop(page: Page): Promise<void> {
+  const toggle = page.locator('[data-testid="strudel-chrome-bg-toggle"]')
+  await expect(toggle).toHaveAttribute('data-pinned', /true|false/, { timeout: 15_000 })
+  if ((await toggle.getAttribute('data-pinned')) !== 'true') return
+  await toggle.click()
+  await page.locator('[data-testid="backdrop-popover"] [data-testid="backdrop-chrome-clear"]').click()
+  await expect(toggle).toHaveAttribute('data-pinned', 'false')
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
+}
+
+/**
+ * The song Stave opened with until #2240: three named tracks at 130/240 cps, the
+ * drums one `stack` of three voices. Specs measured against the default document
+ * seed this instead, so a new Starter does not change what they measure.
+ */
+export const STARTER_UNTIL_2240 = `setcps(130/240)
+
+melody: stack(
+  note("c4 e4 g4 b4 c5 b4 g4 e4")
+    .s("sawtooth").gain(0.3).lpf(2400).release(0.12),
+  note("e3 g3 b3 e4")
+    .s("sine").gain(0.15).release(0.3)
+).viz("pianoroll")
+
+bass: note("<c2 [g2 c2] f2 [g2 eb2]>")
+  .s("square").gain(0.4).lpf(500).release(0.2)
+  .viz("pitchwheel")
+
+drums: stack(
+  s("hh*8").gain(0.3),
+  s("bd [~ bd] ~ bd").gain(0.5),
+  s("~ sd ~ [sd cp]").gain(0.4)
+).viz("wordfall")`
+
+/**
  * Replace the editor's content with `code`, and PROVE it arrived.
  *
  * Writes the model rather than typing: `Cmd+A` + `type()` silently mangles

@@ -8,6 +8,7 @@ import {
   type AssetRecord,
   type ProjectMeta,
 } from "@stave/editor";
+import { projectFileName } from "./projectFile";
 
 /**
  * Where a take's bytes sit inside the archive, named by content hash.
@@ -123,11 +124,10 @@ export async function exportProjectAsZip(project: ProjectMeta): Promise<void> {
   zip.file("stave.json", JSON.stringify(manifest, null, 2));
 
   const blob = await zip.generateAsync({ type: "blob" });
-  const safeName = project.name.replace(/[^a-z0-9_-]+/gi, "_");
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${safeName || "stave-project"}.zip`;
+  a.download = projectFileName(project.name);
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

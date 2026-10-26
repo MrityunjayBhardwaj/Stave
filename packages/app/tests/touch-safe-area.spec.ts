@@ -59,16 +59,32 @@ async function setInsets(page: Page, insets: Insets): Promise<boolean> {
 function controlsOutside(page: Page, insets: Insets): Promise<{ total: number; outside: string[] }> {
   return page.evaluate((i) => {
     const safe = { top: i.top, left: i.left, right: window.innerWidth - i.right, bottom: window.innerHeight - i.bottom }
+    // the part of a control that is drawn: its box cut by every ancestor that clips
+    // its overflow. A control scrolled part-way out of a panel is drawn only up to
+    // the panel's edge (the Mixer's strips, past the third, #2240); a panel that
+    // itself runs under a cut-out still shows its controls there.
+    const drawn = (el: Element) => {
+      const b = el.getBoundingClientRect()
+      let r = { top: b.top, left: b.left, right: b.right, bottom: b.bottom }
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const cs = getComputedStyle(a)
+        if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue
+        const c = a.getBoundingClientRect()
+        if (cs.overflowX !== 'visible') r = { ...r, left: Math.max(r.left, c.left), right: Math.min(r.right, c.right) }
+        if (cs.overflowY !== 'visible') r = { ...r, top: Math.max(r.top, c.top), bottom: Math.min(r.bottom, c.bottom) }
+      }
+      return { ...r, width: r.right - r.left, height: r.bottom - r.top }
+    }
     const controls = [...document.querySelectorAll('button, [role="button"], [role="tab"], a[href], select, input')].filter((el) => {
-      const r = el.getBoundingClientRect()
-      if (r.width === 0 || r.height === 0) return false
+      const r = drawn(el)
+      if (r.width <= 0 || r.height <= 0) return false
       // on screen at all: a control scrolled out of a panel is that panel's business
       if (r.bottom <= 0 || r.top >= window.innerHeight || r.right <= 0 || r.left >= window.innerWidth) return false
       const cs = getComputedStyle(el)
       return cs.visibility !== 'hidden' && cs.display !== 'none'
     })
     const outside = controls.filter((el) => {
-      const r = el.getBoundingClientRect()
+      const r = drawn(el)
       // the middle of the control is what a finger aims at
       const cx = r.left + r.width / 2
       const cy = r.top + r.height / 2

@@ -305,7 +305,7 @@ function makeBootstrapOrchestrator(
           if (genRef.current !== gen) return null;
           await touchProject(project.id);
           if (genRef.current !== gen) return null;
-          if (isFirstRun) seedProjectFromTemplate("starter");
+          if (isFirstRun) seedProjectFromTemplate("starter", project.id);
           // Ensure bundled viz preset files exist in EVERY session — the shell's
           // tab persistence (#175) may hydrate tabs pointing at these viz
           // fileIds, so they must be in the store before StaveApp mounts.
@@ -338,7 +338,7 @@ function makeBootstrapOrchestrator(
         createdAt: Date.now(),
         lastOpenedAt: Date.now(),
       };
-      seedProjectFromTemplate("starter");
+      seedProjectFromTemplate("starter", project.id);
       seedMissingPresetFiles();
       setPhase({ kind: "ready", project, persisted: false });
     }, []);

@@ -16,12 +16,7 @@
  * label that was below the fold becomes visible after scrolling to the bottom.
  */
 import { test, expect, type Page } from '@playwright/test'
-
-const K = {
-  height: 'stave:bottomPanel.height',
-  open: 'stave:bottomPanel.open',
-  activeTabId: 'stave:bottomPanel.activeTabId',
-}
+import { bootApp, seedCode, evalCode } from './_appBoot'
 // Four lanes — even collapsed they exceed the short drawer's body height, so the
 // vertical overflow (and thus the scrollbar) is exercised without expanding.
 const CODE = `setcps(130/240)
@@ -39,35 +34,10 @@ $: s("cp*4").gain(0.35).viz("spectrum")
 `
 
 async function boot(page: Page, height: number) {
-  await page.addInitScript(
-    ([h, o, a, hv]: string[]) => {
-      try {
-        window.localStorage.setItem(h, hv)
-        window.localStorage.setItem(o, 'true')
-        window.localStorage.setItem(a, 'musical-timeline')
-      } catch {}
-    },
-    [K.height, K.open, K.activeTabId, String(height)],
-  )
-  await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 20_000 })
-  await page.waitForFunction(
-    () => (((window as unknown as { monaco?: { editor?: { getEditors?: () => unknown[] } } }).monaco?.editor?.getEditors?.()?.length) ?? 0) > 0,
-    { timeout: 20_000 },
-  )
-  await page.evaluate((code) => {
-    const eds = ((window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string; setValue?: (v: string) => void } | null; focus: () => void }> } } }).monaco?.editor?.getEditors?.()) ?? []
-    const ed = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
-    ed?.focus()
-    ed?.getModel()?.setValue?.(code)
-  }, CODE)
-  await page.waitForTimeout(500)
-  await page.evaluate(() => {
-    const eds = ((window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string } | null; focus: () => void }> } } }).monaco?.editor?.getEditors?.()) ?? []
-    const ed = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
-    ed?.focus()
-  })
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter')
+  // the shared boot waits for the project file to land before seeding (#872)
+  await bootApp(page, { drawer: { tabId: 'musical-timeline', height } })
+  await seedCode(page, CODE)
+  await evalCode(page)
   await page.waitForTimeout(1500)
 }
 

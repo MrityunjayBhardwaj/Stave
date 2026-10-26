@@ -115,7 +115,7 @@ Then point a track at it with `$: s("bd*4, ~ cp").viz("kick")`. The circle jumps
 
 - **Bounce** the whole song to WAV, as one mix or as one file per track (stems).
 - **Copy a share link.** The whole project goes into the link itself, so nothing is uploaded.
-- **Export a `.zip`** with your audio included, or roll back with version history.
+- **Save a `.stave` project file** with your audio included, or roll back with version history.
 
 ---
 

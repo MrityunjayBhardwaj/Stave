@@ -363,7 +363,7 @@ test('#1779 Try again after freeing room clears the notice', async ({ page }) =>
   await expect(notice(page)).toHaveCount(0, { timeout: 10_000 })
 })
 
-test('#1779 Export project downloads a zip even while storage is full', async ({ page }) => {
+test('#1779 Export project downloads a project file even while storage is full', async ({ page }) => {
   await boot(page)
   await fillStorage(page)
   await editCode(page)
@@ -371,7 +371,7 @@ test('#1779 Export project downloads a zip even while storage is full', async ({
     page.waitForEvent('download', { timeout: 15_000 }),
     page.locator('[data-storage-full-export]').click(),
   ])
-  expect(download.suggestedFilename()).toMatch(/\.zip$/)
+  expect(download.suggestedFilename()).toMatch(/\.stave$/)
 })
 
 test('#1779 a take the disk refused is kept and offered as a download', async ({ page }) => {
