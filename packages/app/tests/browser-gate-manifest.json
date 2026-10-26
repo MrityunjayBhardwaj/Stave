@@ -163,6 +163,10 @@
     "runs": "gate",
     "why": "An error's squiggle follows the code around it (#2184): typing lines above it moves the Console row's line and where clicking the row goes; fixing the underlined word takes the squiggle off without running again, and an edit elsewhere on the line leaves it on (#2185)."
   },
+  "preview-early-edit.spec.ts": {
+    "runs": "gate",
+    "why": "An edit made the moment an editor is created reaches its file (#2217): opening a Hydra file's preview to the side re-creates its editor, and an edit made in that first moment runs in the preview; opening the preview without an edit leaves the file as it was."
+  },
   "starter-first-visit.spec.ts": {
     "runs": "gate",
     "why": "A first visit opens the Starter as made (#2240): the song and Sunset Drive's code as two tabs, the song active; Sunset Drive pinned behind the song and drawing before anything plays; once it plays, the bass's piano roll and the lead's scope at one height (160px), the knob in the bass line, and no errors."
