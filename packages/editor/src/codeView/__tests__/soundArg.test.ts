@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { detectChunk } from '../chunkDetect'
 import { applyEdits } from '../writeback'
-import { noteSounds } from '../noteSounds'
+import { noteSounds, soundBlockEdit, soundLane } from '../noteSounds'
 import { readSoundArg, soundArgLabel, soundPickEdit, soundPickRefusal } from '../soundArg'
 import { parsePianoRoll } from '../notation/parse'
 import { stepToCycle } from '../../visualEdit/panels/usePlayingStep'
@@ -200,5 +200,70 @@ describe('noteSounds — which sound each note of a roll plays (#2226)', () => {
       (n) => played.get(`${n.pitch}@${stepToCycle(n.start, m.steps, span, m.barSteps).toFixed(6)}`) ?? [],
     )
     expect(ours.sounds).toEqual(expected)
+  })
+})
+
+describe('soundLane — the sound pattern as its own row (#2226)', () => {
+  const lane = (doc: string, span = 1) => soundLane(detectChunk(doc, 0)!, span)
+  const edit = (doc: string, i: number, value: string, span = 1) => {
+    const chunk = detectChunk(doc, 0)!
+    const l = soundLane(chunk, span)!
+    const r = soundBlockEdit(chunk, l.blocks[i], value)
+    return 'edit' in r ? applyEdits(doc, [r.edit]) : `REFUSED: ${r.refused}`
+  }
+
+  it('the reported line: piano over the first half, the guitar over the second', () => {
+    const l = lane('note("48 67 63 [62, 58]").sound("piano gm_electric_guitar_muted")')!
+    expect(l.readOnly).toBeUndefined()
+    expect(l.blocks.map((b) => [b.name, b.begin, b.end])).toEqual([
+      ['piano', 0, 0.5],
+      ['gm_electric_guitar_muted', 0.5, 1],
+    ])
+  })
+
+  it('its own divisions, and a rest is a gap', () => {
+    const l = lane('note("c e g b").sound("piano [sawtooth ~ square]")')!
+    expect(l.blocks.map((b) => [b.name, Number(b.begin.toFixed(4)), Number(b.end.toFixed(4))])).toEqual([
+      ['piano', 0, 0.5],
+      ['sawtooth', 0.5, 0.6667],
+      ['square', 0.8333, 1],
+    ])
+  })
+
+  it('a block writes only its own name, where it is written', () => {
+    const doc = 'note("c e").sound("<piano ~ piano> sawtooth")'
+    // `<…>` takes a step per cycle; span 3 shows its whole round
+    const l = lane(doc, 3)!
+    expect(l.blocks.map((b) => b.name)).toEqual(['piano', 'sawtooth', 'sawtooth', 'piano', 'sawtooth'])
+    expect(edit(doc, 3, 'square', 3)).toBe('note("c e").sound("<piano ~ square> sawtooth")')
+    expect(edit(doc, 0, 'square', 3)).toBe('note("c e").sound("<square ~ piano> sawtooth")')
+    expect(edit('note("c e").sound("piano:2 sawtooth")', 0, 'square')).toBe('note("c e").sound("square:2 sawtooth")')
+  })
+
+  it('a pick that is not one name is refused; so is a block the code moved under', () => {
+    const doc = 'note("c e").sound("piano sawtooth")'
+    expect(edit(doc, 0, 'my kick')).toMatch(/^REFUSED: "my kick"/)
+    const chunk = detectChunk(doc, 0)!
+    const block = soundLane(chunk, 1)!.blocks[1]
+    const moved = detectChunk('note("c e").sound("sawtooth piano")', 0)!
+    const r = soundBlockEdit(moved, block, 'square')
+    expect('refused' in r).toBe(true)
+  })
+
+  it('read-only with a reason, never a wrong picture', () => {
+    expect(lane('note("c e").sound("piano | sawtooth")')).toMatchObject({ blocks: [], readOnly: expect.stringMatching(/random/) })
+    expect(lane('note("c e").sound("piano? sawtooth")')).toMatchObject({ blocks: [], readOnly: expect.stringMatching(/random/) })
+    expect(lane('note("c e").sound("[piano, sawtooth] square")')).toMatchObject({ blocks: [], readOnly: expect.stringMatching(/at a time/) })
+    // one bar of notes, a sound per bar: the lane would show only the first
+    expect(lane('note("c e").sound("<piano sawtooth>")')).toMatchObject({ blocks: [], readOnly: expect.stringMatching(/longer/) })
+    // …and under two bars of notes it draws both
+    expect(lane('note("<c e>").sound("<piano sawtooth>")', 2)!.blocks.map((b) => b.name)).toEqual(['piano', 'sawtooth'])
+  })
+
+  it('no lane: one name, no sound, a time change before the sound', () => {
+    expect(lane('note("c e").sound("piano")')).toBeNull()
+    expect(lane('note("c e").sound("piano*2")')).toBeNull()
+    expect(lane('note("c e")')).toBeNull()
+    expect(lane('note("c e").fast(2).sound("piano sawtooth")')).toBeNull()
   })
 })

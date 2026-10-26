@@ -50,6 +50,7 @@ export function SoundPickerMenu({
   placeholder,
   onChange,
   onAudition,
+  renderTrigger,
 }: {
   label: string
   groups: SoundGroup[]
@@ -63,6 +64,11 @@ export function SoundPickerMenu({
   /** When set, render a ▶ button that previews the current value without
    *  changing it (#805), and audition each pick on select. */
   onAudition?: (v: string) => void
+  /**
+   * Draw your own trigger instead of the labelled box (#2226: a block of the roll's
+   * sound lane opens this menu). Give the button `ref` and call `toggle` on click.
+   */
+  renderTrigger?: (t: { ref: React.RefObject<HTMLButtonElement>; open: boolean; toggle: () => void }) => React.ReactElement
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
@@ -285,6 +291,15 @@ export function SoundPickerMenu({
           document.body,
         )
       : null
+
+  if (renderTrigger) {
+    return (
+      <>
+        {renderTrigger({ ref: btnRef, open, toggle: () => setOpen((o) => !o) })}
+        {menu}
+      </>
+    )
+  }
 
   return (
     <label

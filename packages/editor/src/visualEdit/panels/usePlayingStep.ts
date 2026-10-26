@@ -91,3 +91,23 @@ export function usePlayingStep(
 
   return step
 }
+
+/**
+ * cycle → the column it falls at, unrounded: `stepToCycle`'s inverse, for drawing
+ * something that is not a note on the roll's columns (#2226: the sound lane's blocks).
+ * Pure. `t` runs over `[0, bars]`; `bars` itself is the end of the last column.
+ */
+export function cycleToColumn(
+  t: number,
+  steps: number,
+  bars: number,
+  barSteps?: readonly number[],
+): number {
+  const b = bars > 0 ? bars : 1
+  if (barSteps && barSteps.length === b) {
+    const bar = Math.max(0, Math.min(b - 1, Math.floor(t)))
+    const before = barSteps.slice(0, bar).reduce((a, n) => a + n, 0)
+    return before + (t - bar) * barSteps[bar]
+  }
+  return (t / b) * steps
+}

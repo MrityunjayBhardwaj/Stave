@@ -6,6 +6,9 @@
  *  - the piano roll colours each note by the sound it plays, with a key, and a
  *    one-sound track looks as it always did;
  *  - with `<…>` under a two-bar roll, bar 1 is piano and bar 2 the guitar;
+ *  - a sound lane under the roll draws the sound pattern's own blocks, and a
+ *    block's pick writes only its own name; a pattern one pass can't draw truly
+ *    says why;
  *  - the Song timeline, expanded, gives each sound a labelled row of its own,
  *    piano included, under the track's own header row;
  *  - the Mixer strip says "2 sounds", with the names on hover.
@@ -15,6 +18,13 @@ import { bootApp, seedCode, evalCode } from './_appBoot'
 
 const GUITAR = 'gm_electric_guitar_muted'
 const MULTI = `$: note("48 67 63 [62, 58]").sound("piano ${GUITAR}")`
+
+async function code(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const m = (window as unknown as { monaco: { editor: { getEditors: () => Array<{ getModel: () => { getValue: () => string } | null }> } } }).monaco
+    return m.editor.getEditors()[0]?.getModel()?.getValue() ?? ''
+  })
+}
 
 async function cursorAt(page: Page, line: number, column = 8): Promise<void> {
   await page.evaluate(
@@ -83,9 +93,47 @@ test.describe('a sound that is a pattern is shown where it plays (#2226)', () =>
     }
   })
 
-  test('one sound: no key, no tags — the roll looks as it did', async ({ page }) => {
+  test('the sound lane: its own blocks, and a block writes only its own name', async ({ page }) => {
+    const panel = await roll(page, MULTI)
+    const blocks = panel.locator('[data-roll-sound-block]')
+    await expect(blocks).toHaveCount(2)
+    await expect(blocks.nth(0)).toHaveAttribute('data-roll-sound-block', 'piano')
+    await expect(blocks.nth(1)).toHaveAttribute('data-roll-sound-block', GUITAR)
+    // piano's block covers the columns of 48 and 67, the guitar's those of 63 and 62:
+    // its first segment starts where the first column does, its last ends with the last
+    const edges = async (name: string) => {
+      const segs = panel.locator(`[data-roll-sound-segment="${name}"]`)
+      const first = (await segs.first().boundingBox())!
+      const last = (await segs.last().boundingBox())!
+      return [first.x, last.x + last.width]
+    }
+    const col = async (cell: string) => {
+      const r = (await panel.locator(`[data-roll-cell="${cell}"]`).boundingBox())!
+      return [r.x, r.x + r.width]
+    }
+    const [p, g] = [await edges('piano'), await edges(GUITAR)]
+    expect(Math.abs(p[0] - (await col('48:0'))[0])).toBeLessThanOrEqual(2)
+    expect(Math.abs(p[1] - (await col('67:1'))[1])).toBeLessThanOrEqual(2)
+    expect(Math.abs(g[0] - (await col('63:2'))[0])).toBeLessThanOrEqual(2)
+    expect(Math.abs(g[1] - (await col('62:3'))[1])).toBeLessThanOrEqual(2)
+
+    await blocks.nth(0).click()
+    const menu = page.locator('[data-mixer-sound-menu="sound"]')
+    await menu.locator('[data-mixer-sound-search]').fill('sawtooth')
+    await menu.locator('[data-mixer-sound-option="sawtooth"]').click()
+    await expect.poll(() => code(page)).toBe(`$: note("48 67 63 [62, 58]").sound("sawtooth ${GUITAR}")`)
+  })
+
+  test('the sound lane says why when one pass would draw it wrong', async ({ page }) => {
+    const panel = await roll(page, '$: note("c4 e4").sound("piano | sawtooth")')
+    await expect(panel.locator('[data-roll-sound-lane-read-only]')).toContainText('chosen at random')
+    await expect(panel.locator('[data-roll-sound-block]')).toHaveCount(0)
+  })
+
+  test('one sound: no key, no tags, no lane — the roll looks as it did', async ({ page }) => {
     const panel = await roll(page, '$: note("c4 e4 g4").sound("piano")')
     await expect(panel.locator('[data-roll-sound-key]')).toHaveCount(0)
+    await expect(panel.locator('[data-roll-sound-lane]')).toHaveCount(0)
     expect(Object.values(await noteTags(page))).toEqual([null, null, null])
   })
 

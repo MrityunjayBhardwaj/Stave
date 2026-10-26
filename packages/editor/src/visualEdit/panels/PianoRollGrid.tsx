@@ -37,7 +37,7 @@ import { opensPianoRoll } from '../../codeView'
 import { useGridModel } from './useGridModel'
 import { onLiveGraph } from '../../engine/offlineGraph'
 import { emitLog } from '../../engine/engineLog'
-import { stepToCycle, usePlayingStep } from './usePlayingStep'
+import { cycleToColumn, stepToCycle, usePlayingStep } from './usePlayingStep'
 import {
   moveNote,
   pasteNote,
@@ -64,7 +64,10 @@ import {
   type GridAction,
   type NoteEdit,
 } from './gridGestures'
-import { colorForTrack, noteSounds, readChainMethod, readSoundCall } from '../../codeView'
+import { colorForTrack, commit, noteSounds, readChainMethod, readSoundCall, soundBlockEdit, soundLane, type SoundBlock } from '../../codeView'
+import { SoundPickerMenu } from './SoundPickerMenu'
+import { INSTRUMENTS } from './soundCatalog'
+import { useSoundCatalog } from '../../workspace/soundRegistry'
 import { ExtendHandle } from './ExtendHandle'
 import { linesModel, rulerLabels, useLayoutFollow, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { usePatternLength } from './usePatternLength'
@@ -361,7 +364,7 @@ export function PianoRollGrid({
    * worst case measured here is a sweep down the 13 declined cells of one column.
    */
   const [declinedCell, setDeclinedCell] = React.useState<string | null>(null)
-  const { chunk, model, read, mutate, settle, writeMini, beginGesture, endGesture, patternKey } = useGridModel<PianoRollModel>({
+  const { chunk, model, read, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit } = useGridModel<PianoRollModel>({
     ...pianoRollCodec,
     source: 'roll',
     eligible: opensPianoRoll,
@@ -401,6 +404,35 @@ export function PianoRollGrid({
     if (names.length < 2) return null
     return { names, byNote: new Map(model.notes.map((n, i) => [n, per[i]] as const)) }
   }, [chunk, model])
+  // #2226 — the sound pattern as its own row under the notes, with its own divisions
+  const lane = React.useMemo(() => (chunk && model ? soundLane(chunk, model.bars ?? 1) : null), [chunk, model])
+  // each column's pieces of the lane's blocks, in columns (fractional where a block
+  // begins or ends inside one)
+  const laneSegments = React.useMemo(() => {
+    const out: { block: number; from: number; to: number; first: boolean }[][] = []
+    if (!lane || !model) return out
+    const span = model.bars ?? 1
+    lane.blocks.forEach((b, i) => {
+      const c0 = cycleToColumn(b.begin, model.steps, span, model.barSteps)
+      const c1 = cycleToColumn(Math.min(b.end, span), model.steps, span, model.barSteps)
+      for (let c = Math.floor(c0); c < c1 - 1e-9; c++) {
+        ;(out[c] ??= []).push({ block: i, from: Math.max(c0, c), to: Math.min(c1, c + 1), first: c === Math.floor(c0) })
+      }
+    })
+    return out
+  }, [lane, model])
+  // a block's other segments open the picker its first segment holds
+  const laneToggles = React.useRef(new Map<number, () => void>())
+  const instruments = useSoundCatalog()
+  // A block writes only its own name. A refusal changes nothing and says why.
+  const writeBlock = (block: SoundBlock, value: string): void => {
+    if (value === '') return
+    applyEdit((fresh, wb) => {
+      const r = soundBlockEdit(fresh, block, value)
+      if ('refused' in r) emitLog({ level: 'warn', runtime: 'stave', message: r.refused })
+      commit(wb, 'edit' in r ? r.edit : null, 'roll')
+    })
+  }
   // Pitch row the pointer is over → highlight its key on the keyboard (#430).
   const [hoveredMidi, setHoveredMidi] = React.useState<number | null>(null)
   // Audition (#633): press-and-hold a key to sustain it (drag to glissando).
@@ -1854,6 +1886,97 @@ export function PianoRollGrid({
           </div>
         {!model.lookOnly && (
           <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-roll-cell" cols={cols} lastBarCols={layout.lastBarCols} />
+        )}
+        {lane && (
+          // #2226 — THE SOUND LANE: the track's sound pattern as its own row, drawn on
+          // the roll's own columns (the same weighted slots a pitch row has) with the
+          // pattern's own divisions. A block is a segment in each column it covers; any
+          // of them opens the picker, and a pick writes only that block's name. A
+          // pattern no single pass draws truly says why instead.
+          <div data-roll-sound-lane style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+            <span
+              title="The sound each part of the bar plays"
+              style={{ width: model.numeric ? 36 : 40, flex: '0 0 auto', fontSize: 9, textAlign: 'right', color: 'var(--foreground-muted, #a0a0aa)' }}
+            >
+              snd
+            </span>
+            {lane.readOnly ? (
+              <div data-roll-sound-lane-read-only style={{ flex: 1, fontSize: 11, color: 'var(--foreground-muted, #a0a0aa)' }}>
+                {lane.readOnly}
+              </div>
+            ) : (
+              <div role="none" style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, height: 20 }}>
+                {Array.from({ length: cols }, (_, c) => (
+                  <div key={c} style={{ ...cellBox(c), position: 'relative', height: '100%' }}>
+                    {laneSegments[c]?.map(({ block: i, from, to, first }) => {
+                      const b = lane.blocks[i]
+                      const editable = !!b.at && !model.lookOnly
+                      const style: React.CSSProperties = {
+                        position: 'absolute',
+                        top: 0,
+                        bottom: 0,
+                        left: `${(from - c) * 100}%`,
+                        width: `${(to - from) * 100}%`,
+                        padding: first ? '0 3px' : 0,
+                        border: 'none',
+                        borderRadius: 2,
+                        background: colorForTrack(b.name),
+                        color: '#111',
+                        fontSize: 9,
+                        textAlign: 'left',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        cursor: editable ? 'pointer' : 'default',
+                      }
+                      const title = editable ? `${b.name} — click to change this part's sound` : b.name
+                      if (!first || !editable) {
+                        return (
+                          <span
+                            key={i}
+                            data-roll-sound-block={first ? b.name : undefined}
+                            data-roll-sound-segment={b.name}
+                            title={title}
+                            onClick={editable ? () => laneToggles.current.get(i)?.() : undefined}
+                            style={{ ...style, display: 'block' }}
+                          >
+                            {first ? b.name : null}
+                          </span>
+                        )
+                      }
+                      return (
+                        <SoundPickerMenu
+                          key={i}
+                          label="Sound"
+                          groups={instruments ?? INSTRUMENTS}
+                          value={b.name}
+                          placeholder={b.name}
+                          onChange={(v) => writeBlock(b, v)}
+                          renderTrigger={({ ref, open, toggle }) => {
+                            laneToggles.current.set(i, toggle)
+                            return (
+                              <button
+                                ref={ref}
+                                type="button"
+                                data-roll-sound-block={b.name}
+                                data-roll-sound-segment={b.name}
+                                aria-expanded={open}
+                                title={title}
+                                onClick={toggle}
+                                style={style}
+                              >
+                                {b.name}
+                              </button>
+                            )
+                          }}
+                        />
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         {/* Not on a look-only view (#1975): its levels are never read from the code, so
             the lane would draw every note at full level whatever the pattern says. */}

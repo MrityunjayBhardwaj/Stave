@@ -13318,6 +13318,13 @@ var VALUE_ONLY = /* @__PURE__ */ new Set([
   "color",
   "analog"
 ]);
+function soundInRollTime(chunk, names) {
+  const cur = readChainMethod(chunk, names);
+  if (!cur) return null;
+  const at = chunk.chain.indexOf(playingCall(chunk, names));
+  return chunk.chain.slice(1, at).some((c) => !VALUE_ONLY.has(c.name)) ? null : cur;
+}
+__name(soundInRollTime, "soundInRollTime");
 var SOUND_PASSES = 8;
 function playedName(v) {
   if (typeof v === "string") return v;
@@ -13326,10 +13333,8 @@ function playedName(v) {
 }
 __name(playedName, "playedName");
 function noteSounds(chunk, onsets, span, names = ["sound", "s"]) {
-  const cur = readChainMethod(chunk, names);
+  const cur = soundInRollTime(chunk, names);
   if (!cur || readSoundArg(cur.value).kind === "one" || !(span > 0)) return null;
-  const at = chunk.chain.indexOf(playingCall(chunk, names));
-  if (chunk.chain.slice(1, at).some((c) => !VALUE_ONLY.has(c.name))) return null;
   const times = [];
   for (const t of onsets) for (let k = 0; k < SOUND_PASSES; k++) times.push(t + k * span);
   let values2;
@@ -13350,6 +13355,64 @@ function noteSounds(chunk, onsets, span, names = ["sound", "s"]) {
   });
 }
 __name(noteSounds, "noteSounds");
+function soundLane(chunk, span, names = ["sound", "s"]) {
+  const cur = soundInRollTime(chunk, names);
+  const arg = cur ? readSoundArg(cur.value) : null;
+  if (!cur || !arg || arg.kind === "one" || arg.names.length < 2 || !(span > 0)) return null;
+  const body = cur.value;
+  if (isRandom(miniShape(body))) {
+    return { blocks: [], readOnly: "These sounds are chosen at random as it plays, so the lane can\u2019t draw them \u2014 change them in the code." };
+  }
+  let pass;
+  try {
+    const pat = miniPattern(body);
+    pass = [0, 1].map((k) => {
+      const out = [];
+      for (let c = 0; c < span; c++) {
+        for (const h of pat.hits(k * span + c)) {
+          const name = playedName(h.value);
+          if (name === null) continue;
+          const at = h.locations.find((l) => body.slice(l.start, l.end) === name) ?? null;
+          out.push({ begin: h.begin.valueOf() - k * span, end: h.end.valueOf() - k * span, name, at });
+        }
+      }
+      return out;
+    });
+  } catch {
+    return null;
+  }
+  const [blocks, next] = pass;
+  const key3 = /* @__PURE__ */ __name((b) => `${b.begin.toFixed(9)}:${b.end.toFixed(9)}:${b.name}`, "key");
+  if (blocks.map(key3).join() !== next.map(key3).join()) {
+    return { blocks: [], readOnly: "These sounds take longer than these notes to come round, so the lane can\u2019t draw them here \u2014 change them in the code." };
+  }
+  const sorted = [...blocks].sort((a, b) => a.begin - b.begin);
+  if (sorted.some((b, i) => i > 0 && b.begin < sorted[i - 1].end - 1e-9)) {
+    return { blocks: [], readOnly: "These sounds play more than one at a time, so one lane can\u2019t draw them \u2014 change them in the code." };
+  }
+  return { blocks: sorted };
+}
+__name(soundLane, "soundLane");
+function isRandom(g) {
+  if (g.alignment === "rand") return true;
+  return g.children.some(
+    (c) => c.kind === "group" ? isRandom(c) : c.ops.some((o) => o.kind === "degradeBy") || c.content.kind === "group" && isRandom(c.content)
+  );
+}
+__name(isRandom, "isRandom");
+function soundBlockEdit(fresh, block, value, names = ["sound", "s"]) {
+  const cur = readChainMethod(fresh, names);
+  if (!cur || !block.at || cur.value.slice(block.at.start, block.at.end) !== block.name) {
+    return { refused: "The sound pattern changed under the lane, so nothing was written." };
+  }
+  const asAtom = readSoundArg(value);
+  if (asAtom.kind !== "one" || asAtom.name !== value) {
+    return { refused: `"${value}" can't be written inside this sound pattern as it stands, so change it in the code.` };
+  }
+  const lit = cur.range[0] + 1;
+  return { edit: { range: [lit + block.at.start, lit + block.at.end], text: value } };
+}
+__name(soundBlockEdit, "soundBlockEdit");
 
 // src/codeView/regionTrim.ts
 var REGION_DEFAULT = { begin: 0, end: 1 };
@@ -37882,7 +37945,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  return { model, read: read5, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey };
+  return { model, read: read5, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit };
 }
 __name(useGridModel, "useGridModel");
 
@@ -37946,6 +38009,16 @@ function usePlayingStep(steps, bars, cols, barSteps) {
   return step;
 }
 __name(usePlayingStep, "usePlayingStep");
+function cycleToColumn(t, steps, bars, barSteps) {
+  const b = bars > 0 ? bars : 1;
+  if (barSteps && barSteps.length === b) {
+    const bar2 = Math.max(0, Math.min(b - 1, Math.floor(t)));
+    const before = barSteps.slice(0, bar2).reduce((a, n) => a + n, 0);
+    return before + (t - bar2) * barSteps[bar2];
+  }
+  return t / b * steps;
+}
+__name(cycleToColumn, "cycleToColumn");
 
 // src/visualEdit/panels/soundCatalog.ts
 var INSTRUMENTS = [
@@ -40931,6 +41004,696 @@ function getNoteClip() {
   return clip;
 }
 __name(getNoteClip, "getNoteClip");
+var MOVED_PX = 0.5;
+function scrollVerdict(placed, now2, clip2) {
+  if (placed && Math.abs(placed.top - now2.top) < MOVED_PX && Math.abs(placed.left - now2.left) < MOVED_PX) {
+    return "ignore";
+  }
+  const outOfView = now2.bottom <= clip2.top || now2.top >= clip2.bottom || now2.right <= clip2.left || now2.left >= clip2.right;
+  return outOfView ? "close" : "follow";
+}
+__name(scrollVerdict, "scrollVerdict");
+function viewportRect() {
+  return { top: 0, left: 0, bottom: window.innerHeight, right: window.innerWidth };
+}
+__name(viewportRect, "viewportRect");
+function useAnchorScroll(open, anchorRef, menuRef, place, close) {
+  const placedAt = React48.useRef(null);
+  React48.useLayoutEffect(() => {
+    placedAt.current = open ? anchorRef.current?.getBoundingClientRect() ?? null : null;
+  }, [open, anchorRef]);
+  React48.useEffect(() => {
+    if (!open) return;
+    const onScroll = /* @__PURE__ */ __name((e) => {
+      const t = e.target;
+      if (t instanceof Node && menuRef.current?.contains(t)) return;
+      const anchor = anchorRef.current;
+      if (!anchor) {
+        close();
+        return;
+      }
+      const now2 = anchor.getBoundingClientRect();
+      const clip2 = t instanceof Element ? t.getBoundingClientRect() : viewportRect();
+      const verdict = scrollVerdict(placedAt.current, now2, clip2);
+      if (verdict === "close") close();
+      else if (verdict === "follow") {
+        placedAt.current = now2;
+        place();
+      }
+    }, "onScroll");
+    window.addEventListener("scroll", onScroll, true);
+    return () => window.removeEventListener("scroll", onScroll, true);
+  }, [open, anchorRef, menuRef, place, close]);
+}
+__name(useAnchorScroll, "useAnchorScroll");
+
+// src/visualEdit/panels/soundPickerFilter.ts
+function soundCategory(group) {
+  const i = group.indexOf(" \xB7 ");
+  return i > 0 ? group.slice(0, i) : group;
+}
+__name(soundCategory, "soundCategory");
+function categoryCounts(groups) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const g of groups) {
+    const c = soundCategory(g.group);
+    counts.set(c, (counts.get(c) ?? 0) + g.options.length);
+  }
+  return [...counts.entries()].map(([category, count]) => ({ category, count })).sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
+}
+__name(categoryCounts, "categoryCounts");
+function totalOptions(groups) {
+  return groups.reduce((n, g) => n + g.options.length, 0);
+}
+__name(totalOptions, "totalOptions");
+function filterGroups(groups, query, category) {
+  const q = query.trim().toLowerCase();
+  if (!q && !category) return groups;
+  const out = [];
+  for (const g of groups) {
+    if (category && soundCategory(g.group) !== category) continue;
+    const options = q ? g.options.filter(
+      (o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
+    ) : g.options;
+    if (options.length) out.push({ group: g.group, options });
+  }
+  return out;
+}
+__name(filterGroups, "filterGroups");
+var MENU_WIDTH = 230;
+var catScrollStyleInjected = false;
+function ensureCatScrollStyle() {
+  if (catScrollStyleInjected) return;
+  if (typeof document === "undefined") return;
+  const el = document.createElement("style");
+  el.setAttribute("data-stave-style", "sound-picker-cats");
+  el.textContent = "[data-mixer-sound-cats]::-webkit-scrollbar{display:none;width:0;height:0}";
+  document.head.appendChild(el);
+  catScrollStyleInjected = true;
+}
+__name(ensureCatScrollStyle, "ensureCatScrollStyle");
+function SoundPickerMenu({
+  label,
+  groups,
+  value,
+  summary,
+  refusal,
+  placeholder,
+  onChange,
+  onAudition,
+  renderTrigger
+}) {
+  const [open, setOpen] = React48.useState(false);
+  const [query, setQuery] = React48.useState("");
+  const [category, setCategory] = React48.useState(null);
+  const [pos, setPos] = React48.useState(null);
+  const btnRef = React48.useRef(null);
+  const menuRef = React48.useRef(null);
+  const lc = label.toLowerCase();
+  const currentLabel = summary ?? (groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder);
+  const place = React48.useCallback(() => {
+    const b = btnRef.current?.getBoundingClientRect();
+    if (!b) return;
+    const margin = 8;
+    const below = window.innerHeight - b.bottom - margin;
+    const above = b.top - margin;
+    const openUp = below < 240 && above > below;
+    const maxHeight = Math.min(340, Math.max(160, openUp ? above : below));
+    setPos({
+      top: openUp ? Math.max(margin, b.top - 4 - maxHeight) : b.bottom + 4,
+      left: Math.max(margin, Math.min(b.left, window.innerWidth - MENU_WIDTH - margin)),
+      maxHeight
+    });
+  }, []);
+  React48.useLayoutEffect(() => {
+    if (open) place();
+  }, [open, place]);
+  React48.useEffect(() => {
+    if (open) {
+      ensureCatScrollStyle();
+      setQuery("");
+      setCategory(null);
+    }
+  }, [open]);
+  React48.useEffect(() => {
+    if (!open) return;
+    const onDown = /* @__PURE__ */ __name((e) => {
+      const t = e.target;
+      if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
+    }, "onDown");
+    const onKey = /* @__PURE__ */ __name((e) => {
+      if (e.key === "Escape") setOpen(false);
+    }, "onKey");
+    const dismiss = /* @__PURE__ */ __name(() => setOpen(false), "dismiss");
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", dismiss);
+    };
+  }, [open]);
+  const close = React48.useCallback(() => setOpen(false), []);
+  useAnchorScroll(open, btnRef, menuRef, place, close);
+  const pick = /* @__PURE__ */ __name((v) => {
+    onChange(v);
+    if (v) onAudition?.(v);
+    setOpen(false);
+  }, "pick");
+  const cats = categoryCounts(groups);
+  const total = totalOptions(groups);
+  const shown = filterGroups(groups, query, category);
+  const menu = open && pos ? createPortal(
+    /* @__PURE__ */ jsx(
+      "div",
+      {
+        ref: menuRef,
+        "data-mixer-sound-menu": lc,
+        style: {
+          position: "fixed",
+          zIndex: 1e3,
+          top: pos.top,
+          left: pos.left,
+          width: MENU_WIDTH,
+          maxHeight: pos.maxHeight,
+          display: "flex",
+          flexDirection: "column",
+          padding: 6,
+          borderRadius: 6,
+          border: "1px solid var(--border, #3a3a42)",
+          background: "var(--background-elevated, #26262c)",
+          boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4)",
+          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+        },
+        children: refusal ? /* @__PURE__ */ jsx(
+          "div",
+          {
+            "data-mixer-sound-refusal": lc,
+            style: { padding: 6, fontSize: 12, lineHeight: 1.4, color: "var(--foreground, #e6e6ea)" },
+            children: refusal
+          }
+        ) : /* @__PURE__ */ jsxs(Fragment, { children: [
+          /* @__PURE__ */ jsx(
+            "input",
+            {
+              autoFocus: true,
+              "data-mixer-sound-search": lc,
+              value: query,
+              onChange: (e) => setQuery(e.target.value),
+              placeholder: `Search ${label.toLowerCase()}\u2026`,
+              style: {
+                width: "100%",
+                boxSizing: "border-box",
+                flexShrink: 0,
+                padding: "4px 8px",
+                marginBottom: 4,
+                fontSize: 12,
+                borderRadius: 4,
+                border: "1px solid var(--border, #3a3a42)",
+                background: "var(--background, #1c1c20)",
+                color: "var(--foreground, #e6e6ea)"
+              }
+            }
+          ),
+          cats.length > 1 && /* @__PURE__ */ jsxs(
+            "div",
+            {
+              "data-mixer-sound-cats": true,
+              style: {
+                display: "grid",
+                gridAutoFlow: "column",
+                gridTemplateRows: "repeat(2, auto)",
+                gridAutoColumns: "max-content",
+                gap: 3,
+                marginBottom: 4,
+                overflowX: "auto",
+                // Explicit hidden so `overflowX:auto` doesn't compute overflowY
+                // to `auto` and add a vertical scrollbar; the 2 rows fit exactly.
+                overflowY: "hidden",
+                // Firefox ignores the injected `::-webkit-scrollbar` rule, so
+                // hide its scrollbar with the standard prop too (belt still
+                // scrolls). Same dual pattern as WorkspaceShell's tabbar.
+                scrollbarWidth: "none",
+                paddingBottom: 2,
+                // Keep the natural 2-row height — don't let the tall option list
+                // below shrink this to a sliver (the flex-column default).
+                flexShrink: 0
+              },
+              children: [
+                /* @__PURE__ */ jsx(
+                  CategoryChip,
+                  {
+                    label: "All",
+                    count: total,
+                    active: category === null,
+                    onClick: () => setCategory(null),
+                    dataValue: "all"
+                  }
+                ),
+                cats.map((c) => /* @__PURE__ */ jsx(
+                  CategoryChip,
+                  {
+                    label: c.category,
+                    count: c.count,
+                    active: category === c.category,
+                    onClick: () => setCategory((cur) => cur === c.category ? null : c.category),
+                    dataValue: c.category
+                  },
+                  c.category
+                ))
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxs("div", { style: { flex: "1 1 auto", overflowY: "auto", minHeight: 0 }, children: [
+            /* @__PURE__ */ jsx(
+              "button",
+              {
+                type: "button",
+                "data-mixer-sound-default": lc,
+                onClick: () => pick(""),
+                style: { ...ITEM_STYLE, fontStyle: "italic", color: "var(--foreground-muted, #a0a0aa)" },
+                children: placeholder
+              }
+            ),
+            shown.map((g) => /* @__PURE__ */ jsxs("div", { children: [
+              /* @__PURE__ */ jsx("div", { style: GROUP_HEADER_STYLE, children: g.group }),
+              g.options.map((o) => /* @__PURE__ */ jsxs(
+                "button",
+                {
+                  type: "button",
+                  "data-mixer-sound-option": o.value,
+                  "aria-pressed": o.value === value,
+                  onClick: () => pick(o.value),
+                  style: {
+                    ...ITEM_STYLE,
+                    background: o.value === value ? "var(--background, #1c1c20)" : "transparent"
+                  },
+                  children: [
+                    /* @__PURE__ */ jsx("span", { style: { width: 12, flexShrink: 0, color: "var(--accent, #6ea8fe)" }, children: o.value === value ? "\u2713" : "" }),
+                    o.label
+                  ]
+                },
+                o.value
+              ))
+            ] }, g.group)),
+            shown.length === 0 && /* @__PURE__ */ jsxs("div", { style: { padding: 8, fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" }, children: [
+              "No ",
+              label.toLowerCase(),
+              " matches \u201C",
+              query,
+              "\u201D."
+            ] })
+          ] })
+        ] })
+      }
+    ),
+    document.body
+  ) : null;
+  if (renderTrigger) {
+    return /* @__PURE__ */ jsxs(Fragment, { children: [
+      renderTrigger({ ref: btnRef, open, toggle: /* @__PURE__ */ __name(() => setOpen((o) => !o), "toggle") }),
+      menu
+    ] });
+  }
+  return /* @__PURE__ */ jsxs(
+    "label",
+    {
+      "data-mixer-sound": lc,
+      style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11 },
+      children: [
+        /* @__PURE__ */ jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: label }),
+        /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4, width: "100%", maxWidth: 220 }, children: [
+          /* @__PURE__ */ jsxs(
+            "button",
+            {
+              ref: btnRef,
+              type: "button",
+              "data-mixer-sound-trigger": lc,
+              "aria-expanded": open,
+              onClick: () => setOpen((o) => !o),
+              title: summary ?? (value || placeholder),
+              style: {
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 6,
+                padding: "4px 8px",
+                fontSize: 12,
+                borderRadius: 4,
+                border: "1px solid var(--border, #3a3a42)",
+                background: "var(--background-elevated, #26262c)",
+                color: value || summary ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)",
+                cursor: "pointer",
+                flex: "1 1 auto",
+                minWidth: 0,
+                textAlign: "left"
+              },
+              children: [
+                /* @__PURE__ */ jsx("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: currentLabel }),
+                /* @__PURE__ */ jsx("span", { style: { flexShrink: 0, opacity: 0.6 }, children: "\u25BE" })
+              ]
+            }
+          ),
+          onAudition && /* @__PURE__ */ jsx(
+            "button",
+            {
+              type: "button",
+              "data-mixer-sound-audition": lc,
+              title: value ? `Preview ${value}` : "Pick a sound to preview",
+              "aria-label": "Preview sound",
+              disabled: !value,
+              onClick: () => value && onAudition(value),
+              style: {
+                flexShrink: 0,
+                width: 24,
+                height: 24,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 11,
+                lineHeight: 1,
+                borderRadius: 4,
+                border: "1px solid var(--border, #3a3a42)",
+                background: "var(--background-elevated, #26262c)",
+                color: value ? "var(--foreground, #e6e6ea)" : "var(--text-disabled, #555)",
+                cursor: value ? "pointer" : "default"
+              },
+              children: "\u25B6"
+            }
+          )
+        ] }),
+        menu
+      ]
+    }
+  );
+}
+__name(SoundPickerMenu, "SoundPickerMenu");
+var ITEM_STYLE = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  width: "100%",
+  textAlign: "left",
+  padding: "4px 6px",
+  fontSize: 12,
+  borderRadius: 4,
+  border: "none",
+  cursor: "pointer",
+  color: "var(--foreground, #e6e6ea)",
+  background: "transparent"
+};
+var GROUP_HEADER_STYLE = {
+  fontSize: 9,
+  textTransform: "uppercase",
+  letterSpacing: 0.5,
+  color: "var(--foreground-muted, #6a6a72)",
+  margin: "6px 4px 2px"
+};
+function CategoryChip({
+  label,
+  count,
+  active: active2,
+  onClick,
+  dataValue
+}) {
+  return /* @__PURE__ */ jsxs(
+    "button",
+    {
+      type: "button",
+      "data-mixer-sound-category": dataValue,
+      "aria-pressed": active2,
+      onClick,
+      style: {
+        padding: "1px 6px",
+        fontSize: 10,
+        borderRadius: 9,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+        borderWidth: 1,
+        borderStyle: "solid",
+        borderColor: active2 ? "var(--accent, #6ea8fe)" : "var(--border, #3a3a42)",
+        background: active2 ? "var(--background, #1c1c20)" : "transparent",
+        color: active2 ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)"
+      },
+      children: [
+        label,
+        " ",
+        /* @__PURE__ */ jsx("span", { style: { opacity: 0.6, fontVariantNumeric: "tabular-nums" }, children: count })
+      ]
+    }
+  );
+}
+__name(CategoryChip, "CategoryChip");
+
+// src/workspace/gmFamilies.ts
+var GM_FAMILY_ORDER = [
+  "Piano",
+  "Chromatic Percussion",
+  "Organ",
+  "Guitar",
+  "Bass",
+  "Strings",
+  "Ensemble",
+  "Brass",
+  "Reed",
+  "Pipe",
+  "Synth Lead",
+  "Synth Pad",
+  "Synth Effects",
+  "Ethnic",
+  "Percussive",
+  "Sound Effects"
+];
+var GM_FAMILY_KEYS = {
+  "Piano": ["gm_piano", "gm_epiano1", "gm_epiano2", "gm_harpsichord", "gm_clavinet"],
+  "Chromatic Percussion": ["gm_celesta", "gm_glockenspiel", "gm_music_box", "gm_vibraphone", "gm_marimba", "gm_xylophone", "gm_tubular_bells", "gm_dulcimer"],
+  "Organ": ["gm_drawbar_organ", "gm_percussive_organ", "gm_rock_organ", "gm_church_organ", "gm_reed_organ", "gm_accordion", "gm_harmonica", "gm_bandoneon"],
+  "Guitar": ["gm_acoustic_guitar_nylon", "gm_acoustic_guitar_steel", "gm_electric_guitar_jazz", "gm_electric_guitar_clean", "gm_electric_guitar_muted", "gm_overdriven_guitar", "gm_distortion_guitar", "gm_guitar_harmonics"],
+  "Bass": ["gm_acoustic_bass", "gm_electric_bass_finger", "gm_electric_bass_pick", "gm_fretless_bass", "gm_slap_bass_1", "gm_slap_bass_2", "gm_synth_bass_1", "gm_synth_bass_2"],
+  "Strings": ["gm_violin", "gm_viola", "gm_cello", "gm_contrabass", "gm_tremolo_strings", "gm_pizzicato_strings", "gm_orchestral_harp", "gm_timpani"],
+  "Ensemble": ["gm_string_ensemble_1", "gm_string_ensemble_2", "gm_synth_strings_1", "gm_synth_strings_2", "gm_choir_aahs", "gm_voice_oohs", "gm_synth_choir", "gm_orchestra_hit"],
+  "Brass": ["gm_trumpet", "gm_trombone", "gm_tuba", "gm_muted_trumpet", "gm_french_horn", "gm_brass_section", "gm_synth_brass_1", "gm_synth_brass_2"],
+  "Reed": ["gm_soprano_sax", "gm_alto_sax", "gm_tenor_sax", "gm_baritone_sax", "gm_oboe", "gm_english_horn", "gm_bassoon", "gm_clarinet"],
+  "Pipe": ["gm_piccolo", "gm_flute", "gm_recorder", "gm_pan_flute", "gm_blown_bottle", "gm_shakuhachi", "gm_whistle", "gm_ocarina"],
+  "Synth Lead": ["gm_lead_1_square", "gm_lead_2_sawtooth", "gm_lead_3_calliope", "gm_lead_4_chiff", "gm_lead_5_charang", "gm_lead_6_voice", "gm_lead_7_fifths", "gm_lead_8_bass_lead"],
+  "Synth Pad": ["gm_pad_new_age", "gm_pad_warm", "gm_pad_poly", "gm_pad_choir", "gm_pad_bowed", "gm_pad_metallic", "gm_pad_halo", "gm_pad_sweep"],
+  "Synth Effects": ["gm_fx_rain", "gm_fx_soundtrack", "gm_fx_crystal", "gm_fx_atmosphere", "gm_fx_brightness", "gm_fx_goblins", "gm_fx_echoes", "gm_fx_sci_fi"],
+  "Ethnic": ["gm_sitar", "gm_banjo", "gm_shamisen", "gm_koto", "gm_kalimba", "gm_bagpipe", "gm_fiddle", "gm_shanai"],
+  "Percussive": ["gm_tinkle_bell", "gm_agogo", "gm_steel_drums", "gm_woodblock", "gm_taiko_drum", "gm_melodic_tom", "gm_synth_drum", "gm_reverse_cymbal"],
+  "Sound Effects": ["gm_guitar_fret_noise", "gm_breath_noise", "gm_seashore", "gm_bird_tweet", "gm_telephone", "gm_helicopter", "gm_applause", "gm_gunshot"]
+};
+var KEY_TO_FAMILY = (() => {
+  const m = /* @__PURE__ */ new Map();
+  for (const family of GM_FAMILY_ORDER) {
+    for (const key3 of GM_FAMILY_KEYS[family]) m.set(key3, family);
+  }
+  return m;
+})();
+var GM_FAMILY_KEY_COUNT = KEY_TO_FAMILY.size;
+function gmFamily(name) {
+  return KEY_TO_FAMILY.get(name) ?? null;
+}
+__name(gmFamily, "gmFamily");
+function soundfontGroupLabel(name) {
+  const family = gmFamily(name);
+  return family ? `Soundfonts \xB7 ${family}` : "Soundfonts";
+}
+__name(soundfontGroupLabel, "soundfontGroupLabel");
+
+// src/workspace/soundRegistry.ts
+function soundfontLabel(name) {
+  return name.replace(/^gm_/, "").split("_").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+__name(soundfontLabel, "soundfontLabel");
+function simpleLabel(name) {
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+__name(simpleLabel, "simpleLabel");
+function groupSoundCatalog(dict) {
+  if (!dict) return null;
+  const synths = [];
+  const soundfonts = [];
+  const wavetables = [];
+  const samples2 = [];
+  for (const name of Object.keys(dict)) {
+    if (name.startsWith("_")) continue;
+    const data = dict[name]?.data;
+    if (data?.tag === "drum-machines") continue;
+    if (data?.type === "input") continue;
+    switch (data?.type) {
+      case "synth":
+        synths.push(name);
+        break;
+      case "soundfont":
+        soundfonts.push(name);
+        break;
+      case "wavetable":
+        wavetables.push(name);
+        break;
+      case "sample":
+      // A sound type we don't have a dedicated group for is still a PLAYABLE
+      // melodic sound — treat it as a sample rather than silently drop it. The
+      // old `default: break` swallowed `wavetable` (7 uzu-wavetables) whole
+      // (incomplete type-enumeration, the P254/PV162 family). Include-by-default
+      // so the next new upstream type can't vanish from the picker.
+      default:
+        samples2.push(name);
+        break;
+    }
+  }
+  if (synths.length + soundfonts.length + wavetables.length + samples2.length === 0) return null;
+  const groups = [];
+  if (synths.length) {
+    groups.push({
+      group: "Synths",
+      options: synths.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
+    });
+  }
+  if (soundfonts.length) {
+    const byLabel = /* @__PURE__ */ new Map();
+    for (const v of soundfonts.sort()) {
+      const label = soundfontGroupLabel(v);
+      const opts = byLabel.get(label) ?? [];
+      opts.push({ value: v, label: soundfontLabel(v) });
+      byLabel.set(label, opts);
+    }
+    for (const family of GM_FAMILY_ORDER) {
+      const opts = byLabel.get(`Soundfonts \xB7 ${family}`);
+      if (opts?.length) groups.push({ group: `Soundfonts \xB7 ${family}`, options: opts });
+    }
+    const flat = byLabel.get("Soundfonts");
+    if (flat?.length) groups.push({ group: "Soundfonts", options: flat });
+  }
+  if (wavetables.length) {
+    groups.push({
+      group: "Wavetables",
+      options: wavetables.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
+    });
+  }
+  if (samples2.length) {
+    groups.push({
+      group: "Samples",
+      options: samples2.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
+    });
+  }
+  return groups;
+}
+__name(groupSoundCatalog, "groupSoundCatalog");
+function banksFromDrumMachineManifest(manifest) {
+  if (!manifest) return [];
+  const banks = /* @__PURE__ */ new Set();
+  for (const key3 of Object.keys(manifest)) {
+    if (key3.startsWith("_")) continue;
+    const i = key3.lastIndexOf("_");
+    if (i <= 0) continue;
+    banks.add(key3.slice(0, i));
+  }
+  return [...banks].sort();
+}
+__name(banksFromDrumMachineManifest, "banksFromDrumMachineManifest");
+var KIT_MAKERS = [
+  { prefix: "Roland", group: "Roland" },
+  { prefix: "Yamaha", group: "Yamaha" },
+  { prefix: "Akai", group: "Akai" },
+  { prefix: "Korg", group: "Korg" },
+  { prefix: "Boss", group: "Boss" },
+  { prefix: "Casio", group: "Casio" },
+  { prefix: "Alesis", group: "Alesis" },
+  { prefix: "Emu", group: "E-mu" },
+  { prefix: "Linn", group: "Linn" },
+  { prefix: "Oberheim", group: "Oberheim" },
+  { prefix: "SequentialCircuits", group: "Sequential" },
+  { prefix: "Simmons", group: "Simmons" }
+];
+var KIT_GROUP_ORDER = [
+  "Roland",
+  "Yamaha",
+  "Akai",
+  "Korg",
+  "Boss",
+  "Casio",
+  "Alesis",
+  "E-mu",
+  "Linn",
+  "Oberheim",
+  "Sequential",
+  "Simmons",
+  "Other"
+];
+function spaceCamel(s) {
+  return s.replace(/([a-z])([A-Z])/g, "$1 $2").trim();
+}
+__name(spaceCamel, "spaceCamel");
+function groupDrumKits(bankNames) {
+  if (!bankNames || bankNames.length === 0) return null;
+  const byGroup = /* @__PURE__ */ new Map();
+  for (const bank of bankNames) {
+    const maker = KIT_MAKERS.find((m) => bank.startsWith(m.prefix));
+    const group = maker?.group ?? "Other";
+    const rest = maker ? bank.slice(maker.prefix.length) : bank;
+    const label = spaceCamel(rest) || bank;
+    const opts = byGroup.get(group) ?? [];
+    opts.push({ value: bank, label });
+    byGroup.set(group, opts);
+  }
+  const groups = [];
+  for (const group of KIT_GROUP_ORDER) {
+    const opts = byGroup.get(group);
+    if (opts && opts.length) {
+      groups.push({
+        group,
+        options: opts.sort((a, b) => a.label.localeCompare(b.label))
+      });
+    }
+  }
+  return groups.length ? groups : null;
+}
+__name(groupDrumKits, "groupDrumKits");
+function createCatalogStore() {
+  let accessor2 = null;
+  let cached2 = null;
+  const listeners18 = /* @__PURE__ */ new Set();
+  const recompute = /* @__PURE__ */ __name(() => {
+    if (!accessor2) {
+      cached2 = null;
+      return;
+    }
+    try {
+      cached2 = accessor2();
+    } catch {
+      cached2 = null;
+    }
+  }, "recompute");
+  const setAccessor = /* @__PURE__ */ __name((fn) => {
+    accessor2 = fn;
+    recompute();
+    listeners18.forEach((l) => l());
+  }, "setAccessor");
+  const notify6 = /* @__PURE__ */ __name(() => {
+    recompute();
+    listeners18.forEach((l) => l());
+  }, "notify");
+  const read5 = /* @__PURE__ */ __name(() => cached2, "read");
+  const subscribe11 = /* @__PURE__ */ __name((listener) => {
+    listeners18.add(listener);
+    return () => listeners18.delete(listener);
+  }, "subscribe");
+  const useCatalog = /* @__PURE__ */ __name(() => React48.useSyncExternalStore(subscribe11, read5, () => null), "useCatalog");
+  return { setAccessor, notify: notify6, read: read5, useCatalog };
+}
+__name(createCatalogStore, "createCatalogStore");
+var instrumentStore = createCatalogStore();
+var setSoundCatalogAccessor = instrumentStore.setAccessor;
+var notifySoundCatalogChanged = instrumentStore.notify;
+instrumentStore.read;
+var useSoundCatalog = instrumentStore.useCatalog;
+var drumKitStore = createCatalogStore();
+var setDrumKitAccessor = drumKitStore.setAccessor;
+var notifyDrumKitChanged = drumKitStore.notify;
+drumKitStore.read;
+var useDrumKitCatalog = drumKitStore.useCatalog;
 var AUDITION_ENVELOPE = {
   gain: 0.9,
   attack: 0.01,
@@ -41098,7 +41861,7 @@ function PianoRollGrid({
 } = {}) {
   const [viewScale, setViewScale] = React48.useState(UNREFINED);
   const [declinedCell, setDeclinedCell] = React48.useState(null);
-  const { chunk, model, read: read5, mutate, settle, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
+  const { chunk, model, read: read5, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit } = useGridModel({
     ...pianoRollCodec,
     source: "roll",
     eligible: opensPianoRoll,
@@ -41128,6 +41891,30 @@ function PianoRollGrid({
     if (names.length < 2) return null;
     return { names, byNote: new Map(model.notes.map((n, i) => [n, per[i]])) };
   }, [chunk, model]);
+  const lane = React48.useMemo(() => chunk && model ? soundLane(chunk, model.bars ?? 1) : null, [chunk, model]);
+  const laneSegments = React48.useMemo(() => {
+    const out = [];
+    if (!lane || !model) return out;
+    const span = model.bars ?? 1;
+    lane.blocks.forEach((b, i) => {
+      const c0 = cycleToColumn(b.begin, model.steps, span, model.barSteps);
+      const c1 = cycleToColumn(Math.min(b.end, span), model.steps, span, model.barSteps);
+      for (let c = Math.floor(c0); c < c1 - 1e-9; c++) {
+        (out[c] ?? (out[c] = [])).push({ block: i, from: Math.max(c0, c), to: Math.min(c1, c + 1), first: c === Math.floor(c0) });
+      }
+    });
+    return out;
+  }, [lane, model]);
+  const laneToggles = React48.useRef(/* @__PURE__ */ new Map());
+  const instruments = useSoundCatalog();
+  const writeBlock = /* @__PURE__ */ __name((block, value) => {
+    if (value === "") return;
+    applyEdit((fresh, wb) => {
+      const r = soundBlockEdit(fresh, block, value);
+      if ("refused" in r) emitLog({ level: "warn", runtime: "stave", message: r.refused });
+      commit(wb, "edit" in r ? r.edit : null, "roll");
+    });
+  }, "writeBlock");
   const [hoveredMidi, setHoveredMidi] = React48.useState(null);
   const holdMidiRef = React48.useRef(null);
   const holdTimerRef = React48.useRef(null);
@@ -42049,6 +42836,86 @@ function PianoRollGrid({
                     }
                   ),
                   !model.lookOnly && /* @__PURE__ */ jsx(ExtendHandle, { length, gridRef, cellAttr: "data-roll-cell", cols, lastBarCols: layout.lastBarCols }),
+                  lane && // #2226 — THE SOUND LANE: the track's sound pattern as its own row, drawn on
+                  // the roll's own columns (the same weighted slots a pitch row has) with the
+                  // pattern's own divisions. A block is a segment in each column it covers; any
+                  // of them opens the picker, and a pick writes only that block's name. A
+                  // pattern no single pass draws truly says why instead.
+                  /* @__PURE__ */ jsxs("div", { "data-roll-sound-lane": true, style: { display: "flex", alignItems: "center", gap: 6, marginTop: 8 }, children: [
+                    /* @__PURE__ */ jsx(
+                      "span",
+                      {
+                        title: "The sound each part of the bar plays",
+                        style: { width: model.numeric ? 36 : 40, flex: "0 0 auto", fontSize: 9, textAlign: "right", color: "var(--foreground-muted, #a0a0aa)" },
+                        children: "snd"
+                      }
+                    ),
+                    lane.readOnly ? /* @__PURE__ */ jsx("div", { "data-roll-sound-lane-read-only": true, style: { flex: 1, fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" }, children: lane.readOnly }) : /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: 20 }, children: Array.from({ length: cols }, (_, c) => /* @__PURE__ */ jsx("div", { style: { ...cellBox(c), position: "relative", height: "100%" }, children: laneSegments[c]?.map(({ block: i, from, to, first }) => {
+                      const b = lane.blocks[i];
+                      const editable = !!b.at && !model.lookOnly;
+                      const style = {
+                        position: "absolute",
+                        top: 0,
+                        bottom: 0,
+                        left: `${(from - c) * 100}%`,
+                        width: `${(to - from) * 100}%`,
+                        padding: first ? "0 3px" : 0,
+                        border: "none",
+                        borderRadius: 2,
+                        background: colorForTrack(b.name),
+                        color: "#111",
+                        fontSize: 9,
+                        textAlign: "left",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        cursor: editable ? "pointer" : "default"
+                      };
+                      const title = editable ? `${b.name} \u2014 click to change this part's sound` : b.name;
+                      if (!first || !editable) {
+                        return /* @__PURE__ */ jsx(
+                          "span",
+                          {
+                            "data-roll-sound-block": first ? b.name : void 0,
+                            "data-roll-sound-segment": b.name,
+                            title,
+                            onClick: editable ? () => laneToggles.current.get(i)?.() : void 0,
+                            style: { ...style, display: "block" },
+                            children: first ? b.name : null
+                          },
+                          i
+                        );
+                      }
+                      return /* @__PURE__ */ jsx(
+                        SoundPickerMenu,
+                        {
+                          label: "Sound",
+                          groups: instruments ?? INSTRUMENTS,
+                          value: b.name,
+                          placeholder: b.name,
+                          onChange: (v) => writeBlock(b, v),
+                          renderTrigger: ({ ref, open, toggle }) => {
+                            laneToggles.current.set(i, toggle);
+                            return /* @__PURE__ */ jsx(
+                              "button",
+                              {
+                                ref,
+                                type: "button",
+                                "data-roll-sound-block": b.name,
+                                "data-roll-sound-segment": b.name,
+                                "aria-expanded": open,
+                                title,
+                                onClick: toggle,
+                                style,
+                                children: b.name
+                              }
+                            );
+                          }
+                        },
+                        i
+                      );
+                    }) }, c)) })
+                  ] }),
                   gainInScope(model) && !model.lookOnly && /* @__PURE__ */ jsxs(
                     "div",
                     {
@@ -42162,48 +43029,6 @@ function PianoRollGrid({
   );
 }
 __name(PianoRollGrid, "PianoRollGrid");
-var MOVED_PX = 0.5;
-function scrollVerdict(placed, now2, clip2) {
-  if (placed && Math.abs(placed.top - now2.top) < MOVED_PX && Math.abs(placed.left - now2.left) < MOVED_PX) {
-    return "ignore";
-  }
-  const outOfView = now2.bottom <= clip2.top || now2.top >= clip2.bottom || now2.right <= clip2.left || now2.left >= clip2.right;
-  return outOfView ? "close" : "follow";
-}
-__name(scrollVerdict, "scrollVerdict");
-function viewportRect() {
-  return { top: 0, left: 0, bottom: window.innerHeight, right: window.innerWidth };
-}
-__name(viewportRect, "viewportRect");
-function useAnchorScroll(open, anchorRef, menuRef, place, close) {
-  const placedAt = React48.useRef(null);
-  React48.useLayoutEffect(() => {
-    placedAt.current = open ? anchorRef.current?.getBoundingClientRect() ?? null : null;
-  }, [open, anchorRef]);
-  React48.useEffect(() => {
-    if (!open) return;
-    const onScroll = /* @__PURE__ */ __name((e) => {
-      const t = e.target;
-      if (t instanceof Node && menuRef.current?.contains(t)) return;
-      const anchor = anchorRef.current;
-      if (!anchor) {
-        close();
-        return;
-      }
-      const now2 = anchor.getBoundingClientRect();
-      const clip2 = t instanceof Element ? t.getBoundingClientRect() : viewportRect();
-      const verdict = scrollVerdict(placedAt.current, now2, clip2);
-      if (verdict === "close") close();
-      else if (verdict === "follow") {
-        placedAt.current = now2;
-        place();
-      }
-    }, "onScroll");
-    window.addEventListener("scroll", onScroll, true);
-    return () => window.removeEventListener("scroll", onScroll, true);
-  }, [open, anchorRef, menuRef, place, close]);
-}
-__name(useAnchorScroll, "useAnchorScroll");
 
 // src/visualEdit/panels/knobScale.ts
 function clamp014(pos) {
@@ -43132,7 +43957,7 @@ var EFFECT_GROUPS = (() => {
   }
   return order.map((g) => [g, byGroup.get(g)]);
 })();
-var MENU_WIDTH = 230;
+var MENU_WIDTH2 = 230;
 function AddEffectMenu({
   present,
   onToggle
@@ -43152,7 +43977,7 @@ function AddEffectMenu({
     const maxHeight = Math.min(300, Math.max(120, openUp ? above : below));
     setPos({
       top: openUp ? Math.max(margin, b.top - 4 - maxHeight) : b.bottom + 4,
-      left: Math.max(margin, Math.min(b.left, window.innerWidth - MENU_WIDTH - margin)),
+      left: Math.max(margin, Math.min(b.left, window.innerWidth - MENU_WIDTH2 - margin)),
       maxHeight
     });
   }, []);
@@ -43201,7 +44026,7 @@ function AddEffectMenu({
           zIndex: 1e3,
           top: pos.top,
           left: pos.left,
-          width: MENU_WIDTH,
+          width: MENU_WIDTH2,
           maxHeight: pos.maxHeight,
           overflowY: "auto",
           padding: 6,
@@ -43315,647 +44140,6 @@ function AddEffectMenu({
   ] });
 }
 __name(AddEffectMenu, "AddEffectMenu");
-
-// src/visualEdit/panels/soundPickerFilter.ts
-function soundCategory(group) {
-  const i = group.indexOf(" \xB7 ");
-  return i > 0 ? group.slice(0, i) : group;
-}
-__name(soundCategory, "soundCategory");
-function categoryCounts(groups) {
-  const counts = /* @__PURE__ */ new Map();
-  for (const g of groups) {
-    const c = soundCategory(g.group);
-    counts.set(c, (counts.get(c) ?? 0) + g.options.length);
-  }
-  return [...counts.entries()].map(([category, count]) => ({ category, count })).sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
-}
-__name(categoryCounts, "categoryCounts");
-function totalOptions(groups) {
-  return groups.reduce((n, g) => n + g.options.length, 0);
-}
-__name(totalOptions, "totalOptions");
-function filterGroups(groups, query, category) {
-  const q = query.trim().toLowerCase();
-  if (!q && !category) return groups;
-  const out = [];
-  for (const g of groups) {
-    if (category && soundCategory(g.group) !== category) continue;
-    const options = q ? g.options.filter(
-      (o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
-    ) : g.options;
-    if (options.length) out.push({ group: g.group, options });
-  }
-  return out;
-}
-__name(filterGroups, "filterGroups");
-var MENU_WIDTH2 = 230;
-var catScrollStyleInjected = false;
-function ensureCatScrollStyle() {
-  if (catScrollStyleInjected) return;
-  if (typeof document === "undefined") return;
-  const el = document.createElement("style");
-  el.setAttribute("data-stave-style", "sound-picker-cats");
-  el.textContent = "[data-mixer-sound-cats]::-webkit-scrollbar{display:none;width:0;height:0}";
-  document.head.appendChild(el);
-  catScrollStyleInjected = true;
-}
-__name(ensureCatScrollStyle, "ensureCatScrollStyle");
-function SoundPickerMenu({
-  label,
-  groups,
-  value,
-  summary,
-  refusal,
-  placeholder,
-  onChange,
-  onAudition
-}) {
-  const [open, setOpen] = React48.useState(false);
-  const [query, setQuery] = React48.useState("");
-  const [category, setCategory] = React48.useState(null);
-  const [pos, setPos] = React48.useState(null);
-  const btnRef = React48.useRef(null);
-  const menuRef = React48.useRef(null);
-  const lc = label.toLowerCase();
-  const currentLabel = summary ?? (groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder);
-  const place = React48.useCallback(() => {
-    const b = btnRef.current?.getBoundingClientRect();
-    if (!b) return;
-    const margin = 8;
-    const below = window.innerHeight - b.bottom - margin;
-    const above = b.top - margin;
-    const openUp = below < 240 && above > below;
-    const maxHeight = Math.min(340, Math.max(160, openUp ? above : below));
-    setPos({
-      top: openUp ? Math.max(margin, b.top - 4 - maxHeight) : b.bottom + 4,
-      left: Math.max(margin, Math.min(b.left, window.innerWidth - MENU_WIDTH2 - margin)),
-      maxHeight
-    });
-  }, []);
-  React48.useLayoutEffect(() => {
-    if (open) place();
-  }, [open, place]);
-  React48.useEffect(() => {
-    if (open) {
-      ensureCatScrollStyle();
-      setQuery("");
-      setCategory(null);
-    }
-  }, [open]);
-  React48.useEffect(() => {
-    if (!open) return;
-    const onDown = /* @__PURE__ */ __name((e) => {
-      const t = e.target;
-      if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return;
-      setOpen(false);
-    }, "onDown");
-    const onKey = /* @__PURE__ */ __name((e) => {
-      if (e.key === "Escape") setOpen(false);
-    }, "onKey");
-    const dismiss = /* @__PURE__ */ __name(() => setOpen(false), "dismiss");
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("resize", dismiss);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", dismiss);
-    };
-  }, [open]);
-  const close = React48.useCallback(() => setOpen(false), []);
-  useAnchorScroll(open, btnRef, menuRef, place, close);
-  const pick = /* @__PURE__ */ __name((v) => {
-    onChange(v);
-    if (v) onAudition?.(v);
-    setOpen(false);
-  }, "pick");
-  const cats = categoryCounts(groups);
-  const total = totalOptions(groups);
-  const shown = filterGroups(groups, query, category);
-  const menu = open && pos ? createPortal(
-    /* @__PURE__ */ jsx(
-      "div",
-      {
-        ref: menuRef,
-        "data-mixer-sound-menu": lc,
-        style: {
-          position: "fixed",
-          zIndex: 1e3,
-          top: pos.top,
-          left: pos.left,
-          width: MENU_WIDTH2,
-          maxHeight: pos.maxHeight,
-          display: "flex",
-          flexDirection: "column",
-          padding: 6,
-          borderRadius: 6,
-          border: "1px solid var(--border, #3a3a42)",
-          background: "var(--background-elevated, #26262c)",
-          boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4)",
-          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
-        },
-        children: refusal ? /* @__PURE__ */ jsx(
-          "div",
-          {
-            "data-mixer-sound-refusal": lc,
-            style: { padding: 6, fontSize: 12, lineHeight: 1.4, color: "var(--foreground, #e6e6ea)" },
-            children: refusal
-          }
-        ) : /* @__PURE__ */ jsxs(Fragment, { children: [
-          /* @__PURE__ */ jsx(
-            "input",
-            {
-              autoFocus: true,
-              "data-mixer-sound-search": lc,
-              value: query,
-              onChange: (e) => setQuery(e.target.value),
-              placeholder: `Search ${label.toLowerCase()}\u2026`,
-              style: {
-                width: "100%",
-                boxSizing: "border-box",
-                flexShrink: 0,
-                padding: "4px 8px",
-                marginBottom: 4,
-                fontSize: 12,
-                borderRadius: 4,
-                border: "1px solid var(--border, #3a3a42)",
-                background: "var(--background, #1c1c20)",
-                color: "var(--foreground, #e6e6ea)"
-              }
-            }
-          ),
-          cats.length > 1 && /* @__PURE__ */ jsxs(
-            "div",
-            {
-              "data-mixer-sound-cats": true,
-              style: {
-                display: "grid",
-                gridAutoFlow: "column",
-                gridTemplateRows: "repeat(2, auto)",
-                gridAutoColumns: "max-content",
-                gap: 3,
-                marginBottom: 4,
-                overflowX: "auto",
-                // Explicit hidden so `overflowX:auto` doesn't compute overflowY
-                // to `auto` and add a vertical scrollbar; the 2 rows fit exactly.
-                overflowY: "hidden",
-                // Firefox ignores the injected `::-webkit-scrollbar` rule, so
-                // hide its scrollbar with the standard prop too (belt still
-                // scrolls). Same dual pattern as WorkspaceShell's tabbar.
-                scrollbarWidth: "none",
-                paddingBottom: 2,
-                // Keep the natural 2-row height — don't let the tall option list
-                // below shrink this to a sliver (the flex-column default).
-                flexShrink: 0
-              },
-              children: [
-                /* @__PURE__ */ jsx(
-                  CategoryChip,
-                  {
-                    label: "All",
-                    count: total,
-                    active: category === null,
-                    onClick: () => setCategory(null),
-                    dataValue: "all"
-                  }
-                ),
-                cats.map((c) => /* @__PURE__ */ jsx(
-                  CategoryChip,
-                  {
-                    label: c.category,
-                    count: c.count,
-                    active: category === c.category,
-                    onClick: () => setCategory((cur) => cur === c.category ? null : c.category),
-                    dataValue: c.category
-                  },
-                  c.category
-                ))
-              ]
-            }
-          ),
-          /* @__PURE__ */ jsxs("div", { style: { flex: "1 1 auto", overflowY: "auto", minHeight: 0 }, children: [
-            /* @__PURE__ */ jsx(
-              "button",
-              {
-                type: "button",
-                "data-mixer-sound-default": lc,
-                onClick: () => pick(""),
-                style: { ...ITEM_STYLE, fontStyle: "italic", color: "var(--foreground-muted, #a0a0aa)" },
-                children: placeholder
-              }
-            ),
-            shown.map((g) => /* @__PURE__ */ jsxs("div", { children: [
-              /* @__PURE__ */ jsx("div", { style: GROUP_HEADER_STYLE, children: g.group }),
-              g.options.map((o) => /* @__PURE__ */ jsxs(
-                "button",
-                {
-                  type: "button",
-                  "data-mixer-sound-option": o.value,
-                  "aria-pressed": o.value === value,
-                  onClick: () => pick(o.value),
-                  style: {
-                    ...ITEM_STYLE,
-                    background: o.value === value ? "var(--background, #1c1c20)" : "transparent"
-                  },
-                  children: [
-                    /* @__PURE__ */ jsx("span", { style: { width: 12, flexShrink: 0, color: "var(--accent, #6ea8fe)" }, children: o.value === value ? "\u2713" : "" }),
-                    o.label
-                  ]
-                },
-                o.value
-              ))
-            ] }, g.group)),
-            shown.length === 0 && /* @__PURE__ */ jsxs("div", { style: { padding: 8, fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" }, children: [
-              "No ",
-              label.toLowerCase(),
-              " matches \u201C",
-              query,
-              "\u201D."
-            ] })
-          ] })
-        ] })
-      }
-    ),
-    document.body
-  ) : null;
-  return /* @__PURE__ */ jsxs(
-    "label",
-    {
-      "data-mixer-sound": lc,
-      style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 11 },
-      children: [
-        /* @__PURE__ */ jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: label }),
-        /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4, width: "100%", maxWidth: 220 }, children: [
-          /* @__PURE__ */ jsxs(
-            "button",
-            {
-              ref: btnRef,
-              type: "button",
-              "data-mixer-sound-trigger": lc,
-              "aria-expanded": open,
-              onClick: () => setOpen((o) => !o),
-              title: summary ?? (value || placeholder),
-              style: {
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 6,
-                padding: "4px 8px",
-                fontSize: 12,
-                borderRadius: 4,
-                border: "1px solid var(--border, #3a3a42)",
-                background: "var(--background-elevated, #26262c)",
-                color: value || summary ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)",
-                cursor: "pointer",
-                flex: "1 1 auto",
-                minWidth: 0,
-                textAlign: "left"
-              },
-              children: [
-                /* @__PURE__ */ jsx("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: currentLabel }),
-                /* @__PURE__ */ jsx("span", { style: { flexShrink: 0, opacity: 0.6 }, children: "\u25BE" })
-              ]
-            }
-          ),
-          onAudition && /* @__PURE__ */ jsx(
-            "button",
-            {
-              type: "button",
-              "data-mixer-sound-audition": lc,
-              title: value ? `Preview ${value}` : "Pick a sound to preview",
-              "aria-label": "Preview sound",
-              disabled: !value,
-              onClick: () => value && onAudition(value),
-              style: {
-                flexShrink: 0,
-                width: 24,
-                height: 24,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 11,
-                lineHeight: 1,
-                borderRadius: 4,
-                border: "1px solid var(--border, #3a3a42)",
-                background: "var(--background-elevated, #26262c)",
-                color: value ? "var(--foreground, #e6e6ea)" : "var(--text-disabled, #555)",
-                cursor: value ? "pointer" : "default"
-              },
-              children: "\u25B6"
-            }
-          )
-        ] }),
-        menu
-      ]
-    }
-  );
-}
-__name(SoundPickerMenu, "SoundPickerMenu");
-var ITEM_STYLE = {
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  width: "100%",
-  textAlign: "left",
-  padding: "4px 6px",
-  fontSize: 12,
-  borderRadius: 4,
-  border: "none",
-  cursor: "pointer",
-  color: "var(--foreground, #e6e6ea)",
-  background: "transparent"
-};
-var GROUP_HEADER_STYLE = {
-  fontSize: 9,
-  textTransform: "uppercase",
-  letterSpacing: 0.5,
-  color: "var(--foreground-muted, #6a6a72)",
-  margin: "6px 4px 2px"
-};
-function CategoryChip({
-  label,
-  count,
-  active: active2,
-  onClick,
-  dataValue
-}) {
-  return /* @__PURE__ */ jsxs(
-    "button",
-    {
-      type: "button",
-      "data-mixer-sound-category": dataValue,
-      "aria-pressed": active2,
-      onClick,
-      style: {
-        padding: "1px 6px",
-        fontSize: 10,
-        borderRadius: 9,
-        cursor: "pointer",
-        whiteSpace: "nowrap",
-        borderWidth: 1,
-        borderStyle: "solid",
-        borderColor: active2 ? "var(--accent, #6ea8fe)" : "var(--border, #3a3a42)",
-        background: active2 ? "var(--background, #1c1c20)" : "transparent",
-        color: active2 ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)"
-      },
-      children: [
-        label,
-        " ",
-        /* @__PURE__ */ jsx("span", { style: { opacity: 0.6, fontVariantNumeric: "tabular-nums" }, children: count })
-      ]
-    }
-  );
-}
-__name(CategoryChip, "CategoryChip");
-
-// src/workspace/gmFamilies.ts
-var GM_FAMILY_ORDER = [
-  "Piano",
-  "Chromatic Percussion",
-  "Organ",
-  "Guitar",
-  "Bass",
-  "Strings",
-  "Ensemble",
-  "Brass",
-  "Reed",
-  "Pipe",
-  "Synth Lead",
-  "Synth Pad",
-  "Synth Effects",
-  "Ethnic",
-  "Percussive",
-  "Sound Effects"
-];
-var GM_FAMILY_KEYS = {
-  "Piano": ["gm_piano", "gm_epiano1", "gm_epiano2", "gm_harpsichord", "gm_clavinet"],
-  "Chromatic Percussion": ["gm_celesta", "gm_glockenspiel", "gm_music_box", "gm_vibraphone", "gm_marimba", "gm_xylophone", "gm_tubular_bells", "gm_dulcimer"],
-  "Organ": ["gm_drawbar_organ", "gm_percussive_organ", "gm_rock_organ", "gm_church_organ", "gm_reed_organ", "gm_accordion", "gm_harmonica", "gm_bandoneon"],
-  "Guitar": ["gm_acoustic_guitar_nylon", "gm_acoustic_guitar_steel", "gm_electric_guitar_jazz", "gm_electric_guitar_clean", "gm_electric_guitar_muted", "gm_overdriven_guitar", "gm_distortion_guitar", "gm_guitar_harmonics"],
-  "Bass": ["gm_acoustic_bass", "gm_electric_bass_finger", "gm_electric_bass_pick", "gm_fretless_bass", "gm_slap_bass_1", "gm_slap_bass_2", "gm_synth_bass_1", "gm_synth_bass_2"],
-  "Strings": ["gm_violin", "gm_viola", "gm_cello", "gm_contrabass", "gm_tremolo_strings", "gm_pizzicato_strings", "gm_orchestral_harp", "gm_timpani"],
-  "Ensemble": ["gm_string_ensemble_1", "gm_string_ensemble_2", "gm_synth_strings_1", "gm_synth_strings_2", "gm_choir_aahs", "gm_voice_oohs", "gm_synth_choir", "gm_orchestra_hit"],
-  "Brass": ["gm_trumpet", "gm_trombone", "gm_tuba", "gm_muted_trumpet", "gm_french_horn", "gm_brass_section", "gm_synth_brass_1", "gm_synth_brass_2"],
-  "Reed": ["gm_soprano_sax", "gm_alto_sax", "gm_tenor_sax", "gm_baritone_sax", "gm_oboe", "gm_english_horn", "gm_bassoon", "gm_clarinet"],
-  "Pipe": ["gm_piccolo", "gm_flute", "gm_recorder", "gm_pan_flute", "gm_blown_bottle", "gm_shakuhachi", "gm_whistle", "gm_ocarina"],
-  "Synth Lead": ["gm_lead_1_square", "gm_lead_2_sawtooth", "gm_lead_3_calliope", "gm_lead_4_chiff", "gm_lead_5_charang", "gm_lead_6_voice", "gm_lead_7_fifths", "gm_lead_8_bass_lead"],
-  "Synth Pad": ["gm_pad_new_age", "gm_pad_warm", "gm_pad_poly", "gm_pad_choir", "gm_pad_bowed", "gm_pad_metallic", "gm_pad_halo", "gm_pad_sweep"],
-  "Synth Effects": ["gm_fx_rain", "gm_fx_soundtrack", "gm_fx_crystal", "gm_fx_atmosphere", "gm_fx_brightness", "gm_fx_goblins", "gm_fx_echoes", "gm_fx_sci_fi"],
-  "Ethnic": ["gm_sitar", "gm_banjo", "gm_shamisen", "gm_koto", "gm_kalimba", "gm_bagpipe", "gm_fiddle", "gm_shanai"],
-  "Percussive": ["gm_tinkle_bell", "gm_agogo", "gm_steel_drums", "gm_woodblock", "gm_taiko_drum", "gm_melodic_tom", "gm_synth_drum", "gm_reverse_cymbal"],
-  "Sound Effects": ["gm_guitar_fret_noise", "gm_breath_noise", "gm_seashore", "gm_bird_tweet", "gm_telephone", "gm_helicopter", "gm_applause", "gm_gunshot"]
-};
-var KEY_TO_FAMILY = (() => {
-  const m = /* @__PURE__ */ new Map();
-  for (const family of GM_FAMILY_ORDER) {
-    for (const key3 of GM_FAMILY_KEYS[family]) m.set(key3, family);
-  }
-  return m;
-})();
-var GM_FAMILY_KEY_COUNT = KEY_TO_FAMILY.size;
-function gmFamily(name) {
-  return KEY_TO_FAMILY.get(name) ?? null;
-}
-__name(gmFamily, "gmFamily");
-function soundfontGroupLabel(name) {
-  const family = gmFamily(name);
-  return family ? `Soundfonts \xB7 ${family}` : "Soundfonts";
-}
-__name(soundfontGroupLabel, "soundfontGroupLabel");
-
-// src/workspace/soundRegistry.ts
-function soundfontLabel(name) {
-  return name.replace(/^gm_/, "").split("_").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-}
-__name(soundfontLabel, "soundfontLabel");
-function simpleLabel(name) {
-  return name.charAt(0).toUpperCase() + name.slice(1);
-}
-__name(simpleLabel, "simpleLabel");
-function groupSoundCatalog(dict) {
-  if (!dict) return null;
-  const synths = [];
-  const soundfonts = [];
-  const wavetables = [];
-  const samples2 = [];
-  for (const name of Object.keys(dict)) {
-    if (name.startsWith("_")) continue;
-    const data = dict[name]?.data;
-    if (data?.tag === "drum-machines") continue;
-    if (data?.type === "input") continue;
-    switch (data?.type) {
-      case "synth":
-        synths.push(name);
-        break;
-      case "soundfont":
-        soundfonts.push(name);
-        break;
-      case "wavetable":
-        wavetables.push(name);
-        break;
-      case "sample":
-      // A sound type we don't have a dedicated group for is still a PLAYABLE
-      // melodic sound — treat it as a sample rather than silently drop it. The
-      // old `default: break` swallowed `wavetable` (7 uzu-wavetables) whole
-      // (incomplete type-enumeration, the P254/PV162 family). Include-by-default
-      // so the next new upstream type can't vanish from the picker.
-      default:
-        samples2.push(name);
-        break;
-    }
-  }
-  if (synths.length + soundfonts.length + wavetables.length + samples2.length === 0) return null;
-  const groups = [];
-  if (synths.length) {
-    groups.push({
-      group: "Synths",
-      options: synths.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
-    });
-  }
-  if (soundfonts.length) {
-    const byLabel = /* @__PURE__ */ new Map();
-    for (const v of soundfonts.sort()) {
-      const label = soundfontGroupLabel(v);
-      const opts = byLabel.get(label) ?? [];
-      opts.push({ value: v, label: soundfontLabel(v) });
-      byLabel.set(label, opts);
-    }
-    for (const family of GM_FAMILY_ORDER) {
-      const opts = byLabel.get(`Soundfonts \xB7 ${family}`);
-      if (opts?.length) groups.push({ group: `Soundfonts \xB7 ${family}`, options: opts });
-    }
-    const flat = byLabel.get("Soundfonts");
-    if (flat?.length) groups.push({ group: "Soundfonts", options: flat });
-  }
-  if (wavetables.length) {
-    groups.push({
-      group: "Wavetables",
-      options: wavetables.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
-    });
-  }
-  if (samples2.length) {
-    groups.push({
-      group: "Samples",
-      options: samples2.sort().map((v) => ({ value: v, label: simpleLabel(v) }))
-    });
-  }
-  return groups;
-}
-__name(groupSoundCatalog, "groupSoundCatalog");
-function banksFromDrumMachineManifest(manifest) {
-  if (!manifest) return [];
-  const banks = /* @__PURE__ */ new Set();
-  for (const key3 of Object.keys(manifest)) {
-    if (key3.startsWith("_")) continue;
-    const i = key3.lastIndexOf("_");
-    if (i <= 0) continue;
-    banks.add(key3.slice(0, i));
-  }
-  return [...banks].sort();
-}
-__name(banksFromDrumMachineManifest, "banksFromDrumMachineManifest");
-var KIT_MAKERS = [
-  { prefix: "Roland", group: "Roland" },
-  { prefix: "Yamaha", group: "Yamaha" },
-  { prefix: "Akai", group: "Akai" },
-  { prefix: "Korg", group: "Korg" },
-  { prefix: "Boss", group: "Boss" },
-  { prefix: "Casio", group: "Casio" },
-  { prefix: "Alesis", group: "Alesis" },
-  { prefix: "Emu", group: "E-mu" },
-  { prefix: "Linn", group: "Linn" },
-  { prefix: "Oberheim", group: "Oberheim" },
-  { prefix: "SequentialCircuits", group: "Sequential" },
-  { prefix: "Simmons", group: "Simmons" }
-];
-var KIT_GROUP_ORDER = [
-  "Roland",
-  "Yamaha",
-  "Akai",
-  "Korg",
-  "Boss",
-  "Casio",
-  "Alesis",
-  "E-mu",
-  "Linn",
-  "Oberheim",
-  "Sequential",
-  "Simmons",
-  "Other"
-];
-function spaceCamel(s) {
-  return s.replace(/([a-z])([A-Z])/g, "$1 $2").trim();
-}
-__name(spaceCamel, "spaceCamel");
-function groupDrumKits(bankNames) {
-  if (!bankNames || bankNames.length === 0) return null;
-  const byGroup = /* @__PURE__ */ new Map();
-  for (const bank of bankNames) {
-    const maker = KIT_MAKERS.find((m) => bank.startsWith(m.prefix));
-    const group = maker?.group ?? "Other";
-    const rest = maker ? bank.slice(maker.prefix.length) : bank;
-    const label = spaceCamel(rest) || bank;
-    const opts = byGroup.get(group) ?? [];
-    opts.push({ value: bank, label });
-    byGroup.set(group, opts);
-  }
-  const groups = [];
-  for (const group of KIT_GROUP_ORDER) {
-    const opts = byGroup.get(group);
-    if (opts && opts.length) {
-      groups.push({
-        group,
-        options: opts.sort((a, b) => a.label.localeCompare(b.label))
-      });
-    }
-  }
-  return groups.length ? groups : null;
-}
-__name(groupDrumKits, "groupDrumKits");
-function createCatalogStore() {
-  let accessor2 = null;
-  let cached2 = null;
-  const listeners18 = /* @__PURE__ */ new Set();
-  const recompute = /* @__PURE__ */ __name(() => {
-    if (!accessor2) {
-      cached2 = null;
-      return;
-    }
-    try {
-      cached2 = accessor2();
-    } catch {
-      cached2 = null;
-    }
-  }, "recompute");
-  const setAccessor = /* @__PURE__ */ __name((fn) => {
-    accessor2 = fn;
-    recompute();
-    listeners18.forEach((l) => l());
-  }, "setAccessor");
-  const notify6 = /* @__PURE__ */ __name(() => {
-    recompute();
-    listeners18.forEach((l) => l());
-  }, "notify");
-  const read5 = /* @__PURE__ */ __name(() => cached2, "read");
-  const subscribe11 = /* @__PURE__ */ __name((listener) => {
-    listeners18.add(listener);
-    return () => listeners18.delete(listener);
-  }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React48.useSyncExternalStore(subscribe11, read5, () => null), "useCatalog");
-  return { setAccessor, notify: notify6, read: read5, useCatalog };
-}
-__name(createCatalogStore, "createCatalogStore");
-var instrumentStore = createCatalogStore();
-var setSoundCatalogAccessor = instrumentStore.setAccessor;
-var notifySoundCatalogChanged = instrumentStore.notify;
-instrumentStore.read;
-var useSoundCatalog = instrumentStore.useCatalog;
-var drumKitStore = createCatalogStore();
-var setDrumKitAccessor = drumKitStore.setAccessor;
-var notifyDrumKitChanged = drumKitStore.notify;
-drumKitStore.read;
-var useDrumKitCatalog = drumKitStore.useCatalog;
 function rangeInfo(call) {
   const extra = call.args.slice(1);
   if (extra.length === 0) return { editable: true };

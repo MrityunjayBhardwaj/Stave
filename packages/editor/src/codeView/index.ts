@@ -246,7 +246,7 @@ export {
   removeNamedCall,
 } from './chainEdit'
 export { readSoundCall, soundArgLabel, soundPickEdit, soundPickRefusal } from './soundArg'
-export { noteSounds } from './noteSounds'
+export { noteSounds, soundLane, soundBlockEdit, type SoundBlock } from './noteSounds'
 export type { SoundArg, SoundPickEdit } from './soundArg'
 export type { ChainArgRef } from './chainEdit'
 export {
