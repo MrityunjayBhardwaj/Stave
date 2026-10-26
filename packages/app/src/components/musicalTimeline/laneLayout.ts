@@ -97,8 +97,14 @@ export interface LaneBox {
   readonly expanded: boolean
   /** Per-voice sub-rows, present ONLY when this lane is expanded AND has ≥2
    *  voices (#424). Absent for collapsed lanes and single-voice/melodic expanded
-   *  lanes (those draw one band). The boxes stack to fill `[top, top+height)`. */
+   *  lanes (those draw one band). The boxes stack to fill
+   *  `[top + headerHeight, top+height)`. */
   readonly subRows?: readonly SubRowBox[]
+  /** #2226 — with `subRows`, the band above them that holds the track's header,
+   *  so every voice gets a row and a label of its own (the first voice's name used
+   *  to share the header's row and was cut off by the track name). One sub-row
+   *  tall. Absent without `subRows`. */
+  readonly headerHeight?: number
   /** #1744 — the sub-row height this expanded lane was laid out with (the
    *  Timeline sub-row setting). A single-band pitched lane sizes its bars from
    *  it, as a multi-voice lane's sub-rows do. Absent on collapsed lanes. */
@@ -146,18 +152,27 @@ export function computeLaneLayout(
   const boxes: LaneBox[] = lanes.map((lane) => {
     const isExpanded = expanded.has(lane.laneKey)
     const voices = lane.voices ?? []
-    // An expanded lane with ≥2 voices splits into per-voice sub-rows (#424);
-    // its height grows with the voice count.
+    // An expanded lane with ≥2 voices splits into per-voice sub-rows (#424)
+    // under a header row of its own (#2226, a track stack: the track, then each
+    // sound it plays); its height grows with the voice count.
     if (isExpanded && voices.length >= 2 && sub > 0) {
       const subRows: SubRowBox[] = voices.map((v, i) => ({
         voiceKey: v.key,
         label: v.label,
         melodic: v.melodic,
-        top: top + i * sub,
+        top: top + sub + i * sub,
         height: sub,
       }))
-      const height = voices.length * sub
-      const box: LaneBox = { laneKey: lane.laneKey, top, height, expanded: true, subRows, subRowHeight: sub }
+      const height = (voices.length + 1) * sub
+      const box: LaneBox = {
+        laneKey: lane.laneKey,
+        top,
+        height,
+        expanded: true,
+        subRows,
+        headerHeight: sub,
+        subRowHeight: sub,
+      }
       top += height
       return box
     }

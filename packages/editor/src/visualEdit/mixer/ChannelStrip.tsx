@@ -599,6 +599,16 @@ export function ChannelStrip({
               {strip.shownName}
             </span>
           )}
+          {strip.sounds.length > 1 && (
+            // a track whose sound is a pattern plays several (#2226); one sound shows nothing new
+            <span
+              data-mixer-strip-sounds
+              title={strip.sounds.join(', ')}
+              style={{ flexShrink: 0, fontSize: 9, opacity: 0.7, whiteSpace: 'nowrap' }}
+            >
+              {strip.sounds.length} sounds
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <button

@@ -82,13 +82,15 @@ describe('computeLaneLayout — per-voice sub-rows (#424)', () => {
   it('splits an EXPANDED lane with ≥2 voices into per-voice sub-rows', () => {
     const layout = computeLaneLayout(drums, new Set(['drums']), 22, 96, 20)
     const box = layout.boxes[0]
-    expect(box.height).toBe(60) // 3 voices × 20
+    expect(box.height).toBe(80) // a header row + 3 voices, × 20 (#2226)
+    expect(box.headerHeight).toBe(20)
     expect(box.subRows?.map((s) => s.voiceKey)).toEqual(['bd', 'sd', 'hh'])
-    // Sub-rows stack from the lane top in absolute content space, no gaps.
-    expect(box.subRows?.map((s) => s.top)).toEqual([0, 20, 40])
+    // Sub-rows stack under the header row in absolute content space, no gaps.
+    expect(box.subRows?.map((s) => s.top)).toEqual([20, 40, 60])
     expect(box.subRows?.every((s) => s.height === 20)).toBe(true)
-    // 'lead' (single voice) follows the 60px drum lane.
-    expect(layout.boxes[1].top).toBe(60)
+    // 'lead' (single voice) follows the 80px drum lane, and has no header row.
+    expect(layout.boxes[1].top).toBe(80)
+    expect(layout.boxes[1].headerHeight).toBeUndefined()
   })
 
   it('carries the voice label + melodic flag onto each sub-row', () => {
@@ -158,7 +160,7 @@ describe('computeLaneLayout — per-voice sub-rows (#424)', () => {
     it('leaves a multi-voice lane alone, so its sub-rows still tile it exactly', () => {
       const many = [{ laneKey: 'drums', voices: [v('bd'), v('hh')], stepped: step }]
       const box = computeLaneLayout(many, new Set(['drums']), 22, 96, 25).boxes[0]
-      expect(box.height).toBe(50) // 2 × 25, NOT raised to the floor
+      expect(box.height).toBe(75) // header + 2 voices, × 25, NOT raised to the floor
       const rows = box.subRows ?? []
       expect(rows.at(-1)!.top + rows.at(-1)!.height - box.top).toBe(box.height)
     })

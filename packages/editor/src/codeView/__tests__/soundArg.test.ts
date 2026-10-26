@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { detectChunk } from '../chunkDetect'
 import { applyEdits } from '../writeback'
+import { noteSounds } from '../noteSounds'
 import { readSoundArg, soundArgLabel, soundPickEdit, soundPickRefusal } from '../soundArg'
+import { parsePianoRoll } from '../notation/parse'
+import { stepToCycle } from '../../visualEdit/panels/usePlayingStep'
+import { mini as reifyMini } from '@strudel/mini/mini.mjs'
+import * as strudelCore from '@strudel/core'
+
+type Hap = { hasOnset(): boolean; whole: { begin: { valueOf(): number } }; value: { note: unknown; s: string } }
+type Pat = { sound(p: unknown): Pat; queryArc(a: number, b: number): Hap[] }
+/** Strudel's own `note(…)`, which the repo's type stub for `@strudel/core` leaves out */
+const strudelNote = (strudelCore as unknown as { note(p: unknown): Pat }).note
 
 /** pick `value` on the roll chunk at the start of `doc`; the new doc, or the refusal */
 function pick(doc: string, value: string, names = ['sound', 's'], canonical = 'sound', noun = 'sound'): string {
@@ -101,5 +111,94 @@ describe('soundPickEdit — a pick never replaces a pattern of sounds (#2226)', 
     const doc = 's("bd sd").bank("<RolandTR909 RolandTR808>")'
     expect(pick(doc, 'AkaiLinn', ['bank'], 'bank', 'kit')).toMatch(/^REFUSED: This kit is a pattern of 2 kits/)
     expect(pick('s("bd sd").bank("RolandTR909")', 'AkaiLinn', ['bank'], 'bank', 'kit')).toBe(`s("bd sd").bank('AkaiLinn')`)
+  })
+})
+
+describe('noteSounds — which sound each note of a roll plays (#2226)', () => {
+  /** the roll's own notes for `doc`, with their onsets in cycles, and what noteSounds says they play */
+  function rollSounds(doc: string): { notes: string[]; sounds: string[][] | null } {
+    const chunk = detectChunk(doc, 0)!
+    const r = parsePianoRoll(chunk.miniString!)
+    if (!r.ok) throw new Error('not a roll')
+    const m = r.model
+    const onsets = m.notes.map((n) => stepToCycle(n.start, m.steps, m.bars ?? 1, m.barSteps))
+    return { notes: m.notes.map((n) => n.pitch), sounds: noteSounds(chunk, onsets, m.bars ?? 1) }
+  }
+
+  it('the reported line: 48 and 67 play piano, 63 62 58 the guitar', () => {
+    const { notes, sounds } = rollSounds('note("48 67 63 [62, 58]").sound("piano gm_electric_guitar_muted")')
+    expect(notes).toEqual(['48', '67', '63', '62', '58'])
+    expect(sounds).toEqual([['piano'], ['piano'], ['gm_electric_guitar_muted'], ['gm_electric_guitar_muted'], ['gm_electric_guitar_muted']])
+  })
+
+  it('alternation across bars: a one-bar roll plays each sound in turn, so every note names both', () => {
+    const { sounds } = rollSounds('note("c e").sound("<piano gm_electric_guitar_muted>")')
+    expect(sounds).toEqual([
+      ['piano', 'gm_electric_guitar_muted'],
+      ['piano', 'gm_electric_guitar_muted'],
+    ])
+  })
+
+  it('alternation in step with a two-bar roll: bar 1 piano, bar 2 the guitar', () => {
+    const { notes, sounds } = rollSounds('note("<c e> g").sound("<piano gm_electric_guitar_muted>")')
+    expect(notes).toEqual(['c', 'g', 'e', 'g'])
+    expect(sounds).toEqual([['piano'], ['piano'], ['gm_electric_guitar_muted'], ['gm_electric_guitar_muted']])
+  })
+
+  it('a rest in the sound silences the notes under it; a variant names its sound', () => {
+    expect(rollSounds('note("c e").sound("piano:2 ~")').sounds).toEqual([['piano'], []])
+  })
+
+  it('a stack of sounds plays both on every note', () => {
+    expect(rollSounds('note("c e").sound("[piano, sawtooth]")').sounds).toEqual([
+      ['piano', 'sawtooth'],
+      ['piano', 'sawtooth'],
+    ])
+  })
+
+  it('nothing to tell apart: one name, or a pattern of one name', () => {
+    expect(rollSounds('note("c e").sound("piano")').sounds).toBeNull()
+    expect(rollSounds('note("c e")').sounds).toBeNull()
+  })
+
+  it('a value-only call before the sound is fine; a time change before it claims nothing', () => {
+    expect(rollSounds('note("c e").gain(0.5).sound("piano sawtooth")').sounds).toEqual([['piano'], ['sawtooth']])
+    expect(rollSounds('note("c e").fast(2).sound("piano sawtooth")').sounds).toBeNull()
+    // after the sound, a time change moves both together: the pairing holds
+    expect(rollSounds('note("c e").sound("piano sawtooth").slow(2)').sounds).toEqual([['piano'], ['sawtooth']])
+  })
+
+  // The rule `noteSounds` relies on — a note plays the sound held at its onset — checked
+  // against Strudel composing the two patterns itself.
+  it.each([
+    ['48 67 63 [62, 58]', 'piano gm_electric_guitar_muted'],
+    ['c e g b', '<piano sawtooth> [square triangle]'],
+    ['c@3 e', 'piano sawtooth square'],
+    ['<c e> g', '<piano gm_electric_guitar_muted>'],
+    // onsets just before a sound boundary: a rule that looks a little late gets these wrong
+    ['c e', 'piano sawtooth square'],
+    ['c [e g] b', 'piano sawtooth square triangle gm_electric_guitar_muted'],
+  ])('agrees with Strudel: note("%s").sound("%s")', (notes, sounds) => {
+    const doc = `note("${notes}").sound("${sounds}")`
+    const ours = rollSounds(doc)
+    const chunk = detectChunk(doc, 0)!
+    const r = parsePianoRoll(chunk.miniString!)
+    if (!r.ok) throw new Error('not a roll')
+    const span = r.model.bars ?? 1
+    // Strudel: every onset over 8 passes, by (pitch, position in the pass) → sounds heard
+    const played = new Map<string, string[]>()
+    const pat = strudelNote(reifyMini(notes)).sound(reifyMini(sounds))
+    for (const h of pat.queryArc(0, 8 * span)) {
+      if (!h.hasOnset()) continue
+      const key = `${h.value.note}@${(h.whole.begin.valueOf() % span).toFixed(6)}`
+      const heard = played.get(key) ?? []
+      if (!heard.includes(h.value.s)) heard.push(h.value.s)
+      played.set(key, heard)
+    }
+    const m = r.model
+    const expected = m.notes.map(
+      (n) => played.get(`${n.pitch}@${stepToCycle(n.start, m.steps, span, m.barSteps).toFixed(6)}`) ?? [],
+    )
+    expect(ours.sounds).toEqual(expected)
   })
 })

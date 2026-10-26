@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cycleToStep } from '../usePlayingStep'
+import { cycleToStep, stepToCycle } from '../usePlayingStep'
 
 describe('cycleToStep', () => {
   it('maps a flat-pattern cycle to its step', () => {
@@ -72,5 +72,25 @@ describe('cycleToStep', () => {
     expect(cycleToStep(1.3, 7, 2, 7, bs)).toBe(4) // 30% into a bar of 4 → its second cell
     expect(cycleToStep(1.999, 7, 2, 7, bs)).toBe(6)
     expect(cycleToStep(2.1, 7, 2, 7, bs)).toBe(0) // the pattern loops
+  })
+})
+
+describe('stepToCycle — a column back to its time (#2226)', () => {
+  it('inverts cycleToStep on every column start: one bar, several bars, uneven bars', () => {
+    for (const [steps, bars, barSteps] of [
+      [8, 1, undefined],
+      [8, 2, undefined],
+      [7, 2, [3, 4]],
+    ] as const) {
+      for (let col = 0; col < steps; col++) {
+        const t = stepToCycle(col, steps, bars, barSteps)
+        expect(cycleToStep(t + 1e-9, steps, bars, steps, barSteps), `${steps}/${bars} col ${col}`).toBe(col)
+      }
+    }
+  })
+
+  it('keeps a mid-column start', () => {
+    expect(stepToCycle(1.5, 4, 1)).toBe(0.375)
+    expect(stepToCycle(4.5, 7, 2, [3, 4])).toBe(1 + 1.5 / 4)
   })
 })

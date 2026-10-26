@@ -45,6 +45,28 @@ export function cycleToStep(
   return Math.max(0, Math.min(cols - 1, step))
 }
 
+/**
+ * column → the cycle it begins at, from the pattern's start: `cycleToStep`'s inverse,
+ * without its rounding, so a note starting mid-column (`start` 1.5) gets its own time.
+ * Pure. Used to ask which sound a note meets (#2226).
+ */
+export function stepToCycle(
+  start: number,
+  steps: number,
+  bars: number,
+  barSteps?: readonly number[],
+): number {
+  const b = bars > 0 ? bars : 1
+  if (barSteps && barSteps.length === b) {
+    let before = 0
+    for (let bar = 0; bar < b; bar++) {
+      if (start < before + barSteps[bar] || bar === b - 1) return bar + (start - before) / barSteps[bar]
+      before += barSteps[bar]
+    }
+  }
+  return steps > 0 ? (start / steps) * b : 0
+}
+
 export function usePlayingStep(
   steps: number,
   bars: number,

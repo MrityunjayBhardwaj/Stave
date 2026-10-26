@@ -94,6 +94,7 @@ test('#647 — the same melodic lane grows with the setting (large slider)', asy
   const h = await heightsByLane(page)
   // 4 × 48 = 192 — it MOVED with the slider instead of staying 96.
   expect(h.d2).toBe(MELODIC_ROWS * 48)
-  // d1 (2 voices) and d3 (multi-voice) scale too — all expanded lanes respond.
-  expect(h.d1).toBe(2 * 48)
+  // d1 (2 voices, under its header row #2226) and d3 (multi-voice) scale too —
+  // all expanded lanes respond.
+  expect(h.d1).toBe(3 * 48)
 })

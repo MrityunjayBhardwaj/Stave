@@ -2228,7 +2228,8 @@ declare function masterVizEdit(doc: string, name: string | null): OffsetEdit | n
  * line when the error's own stack is bundle-only and the hap's `loc` is
  * degenerate (#567). Reuses the strips' own source-extraction so the locate
  * agrees with what the Mixer shows. First match wins (rare: two tracks, one
- * instrument).
+ * instrument). A hap carries the ONE sound it played, so a track whose source is
+ * a pattern of sounds matches on any of them (#2226).
  */
 declare function statementOffsetForSource(doc: string, source: string): number | null;
 /**

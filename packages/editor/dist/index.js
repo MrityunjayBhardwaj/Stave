@@ -7827,6 +7827,80 @@ function patternKind(chunk) {
 }
 __name(patternKind, "patternKind");
 
+// src/codeView/soundArg.ts
+function nameAtoms(g, out) {
+  for (const c of g.children) {
+    if (c.kind === "group") nameAtoms(c, out);
+    else if (c.content.kind === "group") nameAtoms(c.content, out);
+    else if (!isRest(c.content)) out.push({ text: c.content.text, span: c.content.span });
+  }
+}
+__name(nameAtoms, "nameAtoms");
+function soleElement(root) {
+  const only = root.children.length === 1 ? root.children[0] : null;
+  return root.alignment === "fastcat" && only?.kind === "element" ? only : null;
+}
+__name(soleElement, "soleElement");
+function readSoundArg(body) {
+  let root;
+  try {
+    root = miniShape(body);
+  } catch {
+    return { kind: "one", name: body };
+  }
+  const sole = soleElement(root);
+  if (sole && sole.content.kind === "atom" && sole.ops.length === 0 && sole.weight === 1 && sole.reps === 1) {
+    return { kind: "one", name: sole.content.text };
+  }
+  const atoms = [];
+  nameAtoms(root, atoms);
+  if (atoms.length === 0) return { kind: "one", name: body };
+  const names = [...new Set(atoms.map((a) => a.text))];
+  const alternates = !!sole && sole.content.kind === "group" && sole.content.alignment === "polymeter_slowcat";
+  return { kind: "pattern", names, spans: atoms.map((a) => a.span), alternates };
+}
+__name(readSoundArg, "readSoundArg");
+function readSoundCall(chunk, names) {
+  const cur = readChainMethod(chunk, names);
+  return cur ? readSoundArg(cur.value) : null;
+}
+__name(readSoundCall, "readSoundCall");
+function soundArgLabel(arg, noun) {
+  if (arg.kind === "one") return arg.name;
+  if (arg.names.length === 1) return arg.names[0];
+  const list = arg.names.join(", ");
+  return arg.alternates ? `alternates: ${list}` : `${arg.names.length} ${noun}s: ${list}`;
+}
+__name(soundArgLabel, "soundArgLabel");
+function soundPickRefusal(arg, noun) {
+  if (!arg || arg.kind === "one" || arg.names.length === 1) return null;
+  return `This ${noun} is a pattern of ${arg.names.length} ${noun}s (${arg.names.join(", ")}). Picking one would replace them all, so change it in the code.`;
+}
+__name(soundPickRefusal, "soundPickRefusal");
+function soundPickEdit(fresh, names, canonical, value, noun) {
+  const cur = readChainMethod(fresh, names);
+  if (!cur) {
+    const end = fresh.exprRange[1];
+    return { edit: { range: [end, end], text: `.${canonical}('${value}')` } };
+  }
+  const arg = readSoundArg(cur.value);
+  if (arg.kind === "one") return { edit: { range: cur.range, text: `'${value}'` } };
+  const refused2 = soundPickRefusal(arg, noun);
+  if (refused2) return { refused: refused2 };
+  const asAtom = readSoundArg(value);
+  if (asAtom.kind !== "one" || asAtom.name !== value) {
+    return {
+      refused: `"${value}" can't be written inside this ${noun}'s pattern as it stands, so change it in the code.`
+    };
+  }
+  let body = cur.value;
+  for (const s of [...arg.spans].sort((a, b) => b.start - a.start)) {
+    body = body.slice(0, s.start) + value + body.slice(s.end);
+  }
+  return { edit: { range: [cur.range[0] + 1, cur.range[1] - 1], text: body } };
+}
+__name(soundPickEdit, "soundPickEdit");
+
 // src/codeView/trackColor.ts
 var TRACK_PALETTE_32 = [
   // Drums (orange family) — 8 lightness steps
@@ -8009,6 +8083,11 @@ function readSource(chunk, kind) {
   return readChainMethod(chunk, ["sound", "s", "bank"])?.value ?? null;
 }
 __name(readSource, "readSource");
+function soundNames(source) {
+  const arg = readSoundArg(source);
+  return arg.kind === "one" ? [arg.name] : arg.names;
+}
+__name(soundNames, "soundNames");
 function readScalar(chunk, name) {
   const n = readNumberCall(chunk, [name]);
   return typeof n === "number" ? n : null;
@@ -8065,6 +8144,7 @@ function buildStripModel(chunk, index, displayKey, id, captureId) {
     headFn: chunk.headFn,
     miniString: chunk.miniString,
     source,
+    sounds: source === null ? [] : soundNames(source),
     gain: readGainState(chunk),
     pan: readScalar(chunk, "pan"),
     panForeign: isForeign(chunk, "pan"),
@@ -8113,7 +8193,9 @@ function buildStripModels(chunks, doc) {
 }
 __name(buildStripModels, "buildStripModels");
 function statementOffsetForSource(doc, source) {
-  const strip = buildStripModels(detectAllChunks(doc), doc).find((s) => s.source === source);
+  const strip = buildStripModels(detectAllChunks(doc), doc).find(
+    (s) => s.source === source || s.sounds.includes(source)
+  );
   return strip ? strip.statementRange[0] : null;
 }
 __name(statementOffsetForSource, "statementOffsetForSource");
@@ -8592,6 +8674,18 @@ function miniPieces(mini$1, cyc) {
   return asked(mini$1, mini(mini$1)).pieces(cyc);
 }
 __name(miniPieces, "miniPieces");
+function miniValuesAt(mini$1, times) {
+  const pat = asked(mini$1, mini(mini$1));
+  const byCycle = /* @__PURE__ */ new Map();
+  const EPS2 = 1e-9;
+  return times.map((t) => {
+    const cyc = Math.floor(t + EPS2);
+    let pieces = byCycle.get(cyc);
+    if (!pieces) byCycle.set(cyc, pieces = pat.pieces(cyc));
+    return pieces.filter((p) => p.begin.valueOf() <= t + EPS2 && t + EPS2 < p.end.valueOf()).map((p) => p.value);
+  });
+}
+__name(miniValuesAt, "miniValuesAt");
 function structHits(values2, rhythm, cyc, masks = []) {
   const pat = mini(values2).struct(mini(rhythm));
   const masked = masks.reduce((p, m) => p.mask(mini(m)), pat);
@@ -12940,80 +13034,6 @@ function listSectionParts(doc, call) {
 }
 __name(listSectionParts, "listSectionParts");
 
-// src/codeView/soundArg.ts
-function nameAtoms(g, out) {
-  for (const c of g.children) {
-    if (c.kind === "group") nameAtoms(c, out);
-    else if (c.content.kind === "group") nameAtoms(c.content, out);
-    else if (!isRest(c.content)) out.push({ text: c.content.text, span: c.content.span });
-  }
-}
-__name(nameAtoms, "nameAtoms");
-function soleElement(root) {
-  const only = root.children.length === 1 ? root.children[0] : null;
-  return root.alignment === "fastcat" && only?.kind === "element" ? only : null;
-}
-__name(soleElement, "soleElement");
-function readSoundArg(body) {
-  let root;
-  try {
-    root = miniShape(body);
-  } catch {
-    return { kind: "one", name: body };
-  }
-  const sole = soleElement(root);
-  if (sole && sole.content.kind === "atom" && sole.ops.length === 0 && sole.weight === 1 && sole.reps === 1) {
-    return { kind: "one", name: sole.content.text };
-  }
-  const atoms = [];
-  nameAtoms(root, atoms);
-  if (atoms.length === 0) return { kind: "one", name: body };
-  const names = [...new Set(atoms.map((a) => a.text))];
-  const alternates = !!sole && sole.content.kind === "group" && sole.content.alignment === "polymeter_slowcat";
-  return { kind: "pattern", names, spans: atoms.map((a) => a.span), alternates };
-}
-__name(readSoundArg, "readSoundArg");
-function readSoundCall(chunk, names) {
-  const cur = readChainMethod(chunk, names);
-  return cur ? readSoundArg(cur.value) : null;
-}
-__name(readSoundCall, "readSoundCall");
-function soundArgLabel(arg, noun) {
-  if (arg.kind === "one") return arg.name;
-  if (arg.names.length === 1) return arg.names[0];
-  const list = arg.names.join(", ");
-  return arg.alternates ? `alternates: ${list}` : `${arg.names.length} ${noun}s: ${list}`;
-}
-__name(soundArgLabel, "soundArgLabel");
-function soundPickRefusal(arg, noun) {
-  if (!arg || arg.kind === "one" || arg.names.length === 1) return null;
-  return `This ${noun} is a pattern of ${arg.names.length} ${noun}s (${arg.names.join(", ")}). Picking one would replace them all, so change it in the code.`;
-}
-__name(soundPickRefusal, "soundPickRefusal");
-function soundPickEdit(fresh, names, canonical, value, noun) {
-  const cur = readChainMethod(fresh, names);
-  if (!cur) {
-    const end = fresh.exprRange[1];
-    return { edit: { range: [end, end], text: `.${canonical}('${value}')` } };
-  }
-  const arg = readSoundArg(cur.value);
-  if (arg.kind === "one") return { edit: { range: cur.range, text: `'${value}'` } };
-  const refused2 = soundPickRefusal(arg, noun);
-  if (refused2) return { refused: refused2 };
-  const asAtom = readSoundArg(value);
-  if (asAtom.kind !== "one" || asAtom.name !== value) {
-    return {
-      refused: `"${value}" can't be written inside this ${noun}'s pattern as it stands, so change it in the code.`
-    };
-  }
-  let body = cur.value;
-  for (const s of [...arg.spans].sort((a, b) => b.start - a.start)) {
-    body = body.slice(0, s.start) + value + body.slice(s.end);
-  }
-  return { edit: { range: [cur.range[0] + 1, cur.range[1] - 1], text: body } };
-}
-__name(soundPickEdit, "soundPickEdit");
-
 // src/codeView/bareExpression.ts
 var SETUP_CALLS = /* @__PURE__ */ new Set(["samples", "setcps", "setCps", "setcpm", "setCpm", "hush"]);
 function bareExpressionOf(statements) {
@@ -13266,6 +13286,70 @@ function gridWritePlan(codec, next) {
   };
 }
 __name(gridWritePlan, "gridWritePlan");
+
+// src/codeView/noteSounds.ts
+var VALUE_ONLY = /* @__PURE__ */ new Set([
+  "gain",
+  "velocity",
+  "pan",
+  "n",
+  "bank",
+  "room",
+  "size",
+  "delay",
+  "delaytime",
+  "delayfeedback",
+  "lpf",
+  "hpf",
+  "cutoff",
+  "resonance",
+  "attack",
+  "decay",
+  "sustain",
+  "release",
+  "clip",
+  "legato",
+  "orbit",
+  "postgain",
+  "shape",
+  "crush",
+  "coarse",
+  "vowel",
+  "color",
+  "analog"
+]);
+var SOUND_PASSES = 8;
+function playedName(v) {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v) && typeof v[0] === "string") return v[0];
+  return null;
+}
+__name(playedName, "playedName");
+function noteSounds(chunk, onsets, span, names = ["sound", "s"]) {
+  const cur = readChainMethod(chunk, names);
+  if (!cur || readSoundArg(cur.value).kind === "one" || !(span > 0)) return null;
+  const at = chunk.chain.indexOf(playingCall(chunk, names));
+  if (chunk.chain.slice(1, at).some((c) => !VALUE_ONLY.has(c.name))) return null;
+  const times = [];
+  for (const t of onsets) for (let k = 0; k < SOUND_PASSES; k++) times.push(t + k * span);
+  let values2;
+  try {
+    values2 = miniValuesAt(cur.value, times);
+  } catch {
+    return null;
+  }
+  return onsets.map((_, i) => {
+    const heard = [];
+    for (let k = 0; k < SOUND_PASSES; k++) {
+      for (const v of values2[i * SOUND_PASSES + k]) {
+        const n = playedName(v);
+        if (n !== null && !heard.includes(n)) heard.push(n);
+      }
+    }
+    return heard;
+  });
+}
+__name(noteSounds, "noteSounds");
 
 // src/codeView/regionTrim.ts
 var REGION_DEFAULT = { begin: 0, end: 1 };
@@ -37833,6 +37917,18 @@ function cycleToStep(cycle, steps, bars, cols, barSteps) {
   return Math.max(0, Math.min(cols - 1, step));
 }
 __name(cycleToStep, "cycleToStep");
+function stepToCycle(start, steps, bars, barSteps) {
+  const b = bars > 0 ? bars : 1;
+  if (barSteps && barSteps.length === b) {
+    let before = 0;
+    for (let bar2 = 0; bar2 < b; bar2++) {
+      if (start < before + barSteps[bar2] || bar2 === b - 1) return bar2 + (start - before) / barSteps[bar2];
+      before += barSteps[bar2];
+    }
+  }
+  return steps > 0 ? start / steps * b : 0;
+}
+__name(stepToCycle, "stepToCycle");
 function usePlayingStep(steps, bars, cols, barSteps) {
   const [step, setStep] = React48.useState(null);
   const layoutKey = barSteps?.join(",") ?? "";
@@ -40948,6 +41044,14 @@ __name(gainInScope, "gainInScope");
 var tokenForRow = /* @__PURE__ */ __name((numeric, midi) => numeric ? String(midi) : midiToPitch(midi), "tokenForRow");
 var LEFT_UNCHANGED = "so it was left unchanged";
 var STAYED_AT_LAST_ACCEPTED = "so it stayed at the last spot it could go";
+function soundFill(names) {
+  if (names.length === 0) return "var(--border, #3a3a42)";
+  if (names.length === 1) return colorForTrack(names[0]);
+  const band = 100 / names.length;
+  const stops = names.map((n, i) => `${colorForTrack(n)} ${i * band}% ${(i + 1) * band}%`);
+  return `linear-gradient(to bottom, ${stops.join(", ")})`;
+}
+__name(soundFill, "soundFill");
 function reportRefusal2(attempted, outcome = LEFT_UNCHANGED) {
   emitLog({
     level: "warn",
@@ -41014,6 +41118,16 @@ function PianoRollGrid({
     model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
+  const sounds = React48.useMemo(() => {
+    if (!chunk || !model) return null;
+    const span = model.bars ?? 1;
+    const onsets = model.notes.map((n) => stepToCycle(n.start, model.steps, span, model.barSteps));
+    const per = noteSounds(chunk, onsets, span);
+    if (!per) return null;
+    const names = [...new Set(per.flat())];
+    if (names.length < 2) return null;
+    return { names, byNote: new Map(model.notes.map((n, i) => [n, per[i]])) };
+  }, [chunk, model]);
   const [hoveredMidi, setHoveredMidi] = React48.useState(null);
   const holdMidiRef = React48.useRef(null);
   const holdTimerRef = React48.useRef(null);
@@ -41143,7 +41257,7 @@ function PianoRollGrid({
     try {
       const ctx = getAudioContext();
       void ctx.resume();
-      const sound = chunk ? readChainMethod(chunk, ["sound", "s"])?.value : null;
+      const sound = previewSound();
       const value = {
         note: midiToPitch(midi),
         ...AUDITION_ENVELOPE
@@ -41154,6 +41268,19 @@ function PianoRollGrid({
     } catch {
     }
   }), "playMidi");
+  function previewSound() {
+    const arg = chunk ? readSoundCall(chunk, ["sound", "s"]) : null;
+    if (!arg) return null;
+    if (arg.kind === "one") return arg.name;
+    const sel = selectedRef.current;
+    if (chunk && model && sel?.kind === "roll") {
+      const span = model.bars ?? 1;
+      const at = noteSounds(chunk, [stepToCycle(sel.start, model.steps, span, model.barSteps)], span)?.[0];
+      if (at && at.length > 0) return at[0];
+    }
+    return arg.names[0];
+  }
+  __name(previewSound, "previewSound");
   const startHold = /* @__PURE__ */ __name((midi) => {
     holdMidiRef.current = midi;
     playMidi(midi);
@@ -41512,6 +41639,19 @@ function PianoRollGrid({
               children: lookOnlyLine(model.lookOnly)
             }
           ),
+          sounds && // #2226 — the key to the colours: which sound each colour is
+          /* @__PURE__ */ jsx(
+            "div",
+            {
+              "data-roll-sound-key": true,
+              title: "Each note is coloured by the sound it plays. A striped note plays a different sound on different passes.",
+              style: { display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" },
+              children: sounds.names.map((n) => /* @__PURE__ */ jsxs("span", { "data-roll-sound-key-item": n, style: { display: "inline-flex", alignItems: "center", gap: 4 }, children: [
+                /* @__PURE__ */ jsx("span", { style: { width: 8, height: 8, borderRadius: 2, background: colorForTrack(n), flexShrink: 0 } }),
+                n
+              ] }, n))
+            }
+          ),
           !placesNotes && !model.lookOnly && /* @__PURE__ */ jsx(
             "div",
             {
@@ -41761,13 +41901,14 @@ function PianoRollGrid({
                                               {
                                                 "data-roll-fill": true,
                                                 "data-roll-sustain": !isHead ? "true" : void 0,
+                                                "data-roll-note-sounds": sounds ? (sounds.byNote.get(note) ?? []).join(" ") : void 0,
                                                 style: {
                                                   position: "absolute",
                                                   top: 0,
                                                   bottom: 0,
                                                   left: `${hit.overlap.offset * 100}%`,
                                                   width: `${hit.overlap.extent * 100}%`,
-                                                  background: colorMode === "velocity" ? velocityColor(note.gain ?? 1) : "var(--accent, #6ea8fe)",
+                                                  background: colorMode === "velocity" ? velocityColor(note.gain ?? 1) : sounds ? soundFill(sounds.byNote.get(note) ?? []) : "var(--accent, #6ea8fe)",
                                                   opacity: isHead ? 1 : 0.7,
                                                   pointerEvents: "none"
                                                 }
@@ -44928,6 +45069,19 @@ function ChannelStrip({
                   cursor: renameEnabled ? "text" : "default"
                 },
                 children: strip.shownName
+              }
+            ),
+            strip.sounds.length > 1 && // a track whose sound is a pattern plays several (#2226); one sound shows nothing new
+            /* @__PURE__ */ jsxs(
+              "span",
+              {
+                "data-mixer-strip-sounds": true,
+                title: strip.sounds.join(", "),
+                style: { flexShrink: 0, fontSize: 9, opacity: 0.7, whiteSpace: "nowrap" },
+                children: [
+                  strip.sounds.length,
+                  " sounds"
+                ]
               }
             )
           ] }),
@@ -50395,7 +50549,7 @@ function StrudelEditor({
 }) {
   const engineRef = useRef(null);
   const [bpm, setBpm] = useState(120);
-  const [soundNames, setSoundNames] = useState([]);
+  const [soundNames2, setSoundNames] = useState([]);
   const [isExporting, setIsExporting] = useState(false);
   function getEngine() {
     if (!engineRef.current) {
@@ -50421,10 +50575,10 @@ function StrudelEditor({
     const written = writtenBpm(codeRef.current);
     if (written !== void 0) setBpm(written);
     const strudelEngine = engine2;
-    if (soundNames.length === 0) {
+    if (soundNames2.length === 0) {
       setSoundNames(strudelEngine.getSoundNames());
     }
-  }, [soundNames]);
+  }, [soundNames2]);
   const handleExport = useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
@@ -50509,7 +50663,7 @@ function StrudelEditor({
       vizDescriptors,
       toolbarExtra,
       onPostEvaluate: handlePostEvaluate,
-      soundNames
+      soundNames: soundNames2
     }
   );
 }

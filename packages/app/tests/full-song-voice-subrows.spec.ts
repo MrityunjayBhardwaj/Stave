@@ -10,7 +10,7 @@
  *      stack → ONE lane, distinct `s` per voice).
  *   2. Expanding that lane splits it into a sub-row PER VOICE: the lane reports
  *      `data-full-song-voices` ≥ 2 and renders an indented `[data-full-song-voice]`
- *      label for each voice past the first (voice 0 rides in the lane header).
+ *      label for each voice, under the lane's own header row (#2226).
  *   3. The canvas backing height grows to fit the sub-rows.
  *   4. No console/page errors; screenshot of the split lane (parity reference vs
  *      the live monitor's leaf-voice sub-rows).
@@ -77,9 +77,10 @@ test('full-song view: expanding a drum lane splits it into per-voice sub-rows (#
     `expected ≥1 lane with ≥2 voices in the starter song; saw: ${JSON.stringify(lanes.map((l) => ({ k: l.key, v: l.voices })))}`,
   ).toBeGreaterThanOrEqual(1)
 
-  // That lane renders an indented sub-label per voice past the first.
+  // That lane renders an indented sub-label per voice, the first included (#2226:
+  // it used to share the header's row, and the track name cut it off).
   for (const l of multi) {
-    expect(l.subLabels.length).toBe(Number(l.voices) - 1) // voice 0 is in the header
+    expect(l.subLabels.length).toBe(Number(l.voices))
     expect(l.subLabels.every((s) => s && s.length > 0)).toBe(true)
   }
 

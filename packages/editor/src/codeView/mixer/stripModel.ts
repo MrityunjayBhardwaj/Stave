@@ -18,6 +18,7 @@ import { detectAllChunks } from '../chunkDetect'
 import type { ChunkInfo, ChainCall } from '../chunkDetect'
 import { patternKind } from '../patternKind'
 import { readChainMethod, readNumberCall } from '../chainMethod'
+import { readSoundArg } from '../soundArg'
 import { trackIdentity } from '../trackColor'
 import { type GainState, readGainState } from './gain'
 import { NON_TRACK_HEADS } from '../ir/statementHeads'
@@ -58,6 +59,11 @@ export interface StripModel {
   miniString: string | null
   /** the assigned instrument/kit (`.sound`/`.s` for melody, `.bank` for drums) */
   source: string | null
+  /**
+   * the distinct names `source` plays (#2226): one for a plain name, several for
+   * a pattern (`"piano gm_electric_guitar_muted"`), empty when there is no source
+   */
+  sounds: readonly string[]
   /** how the fader reads this track's `.gain` (scalar / managed / foreign / absent) */
   gain: GainState
   /** `.pan` scalar (0=L, 0.5=C, 1=R), or null when absent/foreign */
@@ -219,6 +225,12 @@ function readSource(chunk: ChunkInfo, kind: StripKind): string | null {
   return readChainMethod(chunk, ['sound', 's', 'bank'])?.value ?? null
 }
 
+/** the names a source argument plays, in written order (#2226) */
+function soundNames(source: string): string[] {
+  const arg = readSoundArg(source)
+  return arg.kind === 'one' ? [arg.name] : arg.names
+}
+
 /** a scalar numeric chain method (`.pan(0.3)` → 0.3); null when absent/foreign. */
 function readScalar(chunk: ChunkInfo, name: string): number | null {
   const n = readNumberCall(chunk, [name])
@@ -352,6 +364,7 @@ function buildStripModel(
     headFn: chunk.headFn,
     miniString: chunk.miniString,
     source,
+    sounds: source === null ? [] : soundNames(source),
     gain: readGainState(chunk),
     pan: readScalar(chunk, 'pan'),
     panForeign: isForeign(chunk, 'pan'),
@@ -484,10 +497,13 @@ export function buildStripModels(chunks: ChunkInfo[], doc: string): StripModel[]
  * line when the error's own stack is bundle-only and the hap's `loc` is
  * degenerate (#567). Reuses the strips' own source-extraction so the locate
  * agrees with what the Mixer shows. First match wins (rare: two tracks, one
- * instrument).
+ * instrument). A hap carries the ONE sound it played, so a track whose source is
+ * a pattern of sounds matches on any of them (#2226).
  */
 export function statementOffsetForSource(doc: string, source: string): number | null {
-  const strip = buildStripModels(detectAllChunks(doc), doc).find((s) => s.source === source)
+  const strip = buildStripModels(detectAllChunks(doc), doc).find(
+    (s) => s.source === source || s.sounds.includes(source),
+  )
   return strip ? strip.statementRange[0] : null
 }
 

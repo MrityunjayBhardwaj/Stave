@@ -181,7 +181,7 @@ export { routeSurface, chunkSurface, opensStepGrid, opensPianoRoll, rollShape } 
 export type { Surface } from './surface/surfaceRoute'
 export { chordLanes } from './surface/chordLanes'
 export { sampleVoice } from './surface/drumVoices'
-export { trackIdentity, TRACK_PALETTE_32 } from './trackColor'
+export { colorForTrack, trackIdentity, TRACK_PALETTE_32 } from './trackColor'
 
 // ── ops ── model → model (or code → edits); offered exactly when the writer can write the result
 export {
@@ -246,6 +246,7 @@ export {
   removeNamedCall,
 } from './chainEdit'
 export { readSoundCall, soundArgLabel, soundPickEdit, soundPickRefusal } from './soundArg'
+export { noteSounds } from './noteSounds'
 export type { SoundArg, SoundPickEdit } from './soundArg'
 export type { ChainArgRef } from './chainEdit'
 export {

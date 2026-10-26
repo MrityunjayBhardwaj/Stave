@@ -37,7 +37,7 @@ import { opensPianoRoll } from '../../codeView'
 import { useGridModel } from './useGridModel'
 import { onLiveGraph } from '../../engine/offlineGraph'
 import { emitLog } from '../../engine/engineLog'
-import { usePlayingStep } from './usePlayingStep'
+import { stepToCycle, usePlayingStep } from './usePlayingStep'
 import {
   moveNote,
   pasteNote,
@@ -64,7 +64,7 @@ import {
   type GridAction,
   type NoteEdit,
 } from './gridGestures'
-import { readChainMethod } from '../../codeView'
+import { colorForTrack, noteSounds, readChainMethod, readSoundCall } from '../../codeView'
 import { ExtendHandle } from './ExtendHandle'
 import { linesModel, rulerLabels, useLayoutFollow, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { usePatternLength } from './usePatternLength'
@@ -175,6 +175,19 @@ const STAYED_AT_LAST_ACCEPTED = 'so it stayed at the last spot it could go'
  * this edit. `emitLog` coalesces identical entries into a count, so a user repeatedly
  * trying the same impossible edit gets one row that ticks up rather than a flood.
  */
+/**
+ * A note's fill when the track plays several sounds (#2226): the sound's colour, a band
+ * per sound for a note whose sound changes from pass to pass, and the empty-cell border
+ * colour for a note a rest in the sound pattern silences.
+ */
+function soundFill(names: readonly string[]): string {
+  if (names.length === 0) return 'var(--border, #3a3a42)'
+  if (names.length === 1) return colorForTrack(names[0])
+  const band = 100 / names.length
+  const stops = names.map((n, i) => `${colorForTrack(n)} ${i * band}% ${(i + 1) * band}%`)
+  return `linear-gradient(to bottom, ${stops.join(', ')})`
+}
+
 function reportRefusal(attempted: string, outcome: string = LEFT_UNCHANGED): void {
   emitLog({
     level: 'warn',
@@ -375,6 +388,19 @@ export function PianoRollGrid({
     model?.barSteps,
   )
   const [colorMode] = useNoteColorMode()
+  // #2226 — which sound each note plays, when the track's sound is a pattern of
+  // several (`.sound("piano gm_electric_guitar_muted")`). Asked of Strudel for each
+  // note's onset; null when the track plays one sound, so such a roll looks as it did.
+  const sounds = React.useMemo(() => {
+    if (!chunk || !model) return null
+    const span = model.bars ?? 1
+    const onsets = model.notes.map((n) => stepToCycle(n.start, model.steps, span, model.barSteps))
+    const per = noteSounds(chunk, onsets, span)
+    if (!per) return null
+    const names = [...new Set(per.flat())]
+    if (names.length < 2) return null
+    return { names, byNote: new Map(model.notes.map((n, i) => [n, per[i]] as const)) }
+  }, [chunk, model])
   // Pitch row the pointer is over → highlight its key on the keyboard (#430).
   const [hoveredMidi, setHoveredMidi] = React.useState<number | null>(null)
   // Audition (#633): press-and-hold a key to sustain it (drag to glissando).
@@ -706,7 +732,7 @@ export function PianoRollGrid({
     try {
       const ctx = getAudioContext()
       void ctx.resume() // the press is the user gesture that unlocks audio
-      const sound = chunk ? readChainMethod(chunk, ['sound', 's'])?.value : null
+      const sound = previewSound()
       // Shared envelope (#816) so a key tap and the Mixer picker's ▶ preview
       // sound identical — both trigger the same note shape through superdough.
       const value: Record<string, unknown> = {
@@ -719,6 +745,23 @@ export function PianoRollGrid({
       /* audio graph not ready — never break the UI */
     }
   })
+
+  // The ONE sound a key tap plays (#2226). The written argument is notation, not a
+  // name: `"piano*2"` or `"piano gm_electric_guitar_muted"` handed to superdough as `s`
+  // plays nothing. A pattern of sounds plays the one the cursor's column meets, else the
+  // first one written.
+  function previewSound(): string | null {
+    const arg = chunk ? readSoundCall(chunk, ['sound', 's']) : null
+    if (!arg) return null
+    if (arg.kind === 'one') return arg.name
+    const sel = selectedRef.current
+    if (chunk && model && sel?.kind === 'roll') {
+      const span = model.bars ?? 1
+      const at = noteSounds(chunk, [stepToCycle(sel.start, model.steps, span, model.barSteps)], span)?.[0]
+      if (at && at.length > 0) return at[0]
+    }
+    return arg.names[0]
+  }
 
   // Press-and-hold sustains the pitch (#633): superdough has no live note-off, so
   // a tight retrigger of an overlapping sustained note keeps it sounding while
@@ -1314,6 +1357,21 @@ export function PianoRollGrid({
             {lookOnlyLine(model.lookOnly)}
           </div>
         )}
+        {sounds && (
+          // #2226 — the key to the colours: which sound each colour is
+          <div
+            data-roll-sound-key
+            title="Each note is coloured by the sound it plays. A striped note plays a different sound on different passes."
+            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--foreground-muted, #a0a0aa)' }}
+          >
+            {sounds.names.map((n) => (
+              <span key={n} data-roll-sound-key-item={n} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: colorForTrack(n), flexShrink: 0 }} />
+                {n}
+              </span>
+            ))}
+          </div>
+        )}
         {!placesNotes && !model.lookOnly && (
           <div
             data-roll-no-placement
@@ -1645,6 +1703,7 @@ export function PianoRollGrid({
                         <span
                           data-roll-fill
                           data-roll-sustain={!isHead ? 'true' : undefined}
+                          data-roll-note-sounds={sounds ? (sounds.byNote.get(note!) ?? []).join(' ') : undefined}
                           style={{
                             position: 'absolute',
                             top: 0,
@@ -1654,7 +1713,9 @@ export function PianoRollGrid({
                             background:
                               colorMode === 'velocity'
                                 ? velocityColor(note!.gain ?? 1)
-                                : 'var(--accent, #6ea8fe)',
+                                : sounds
+                                  ? soundFill(sounds.byNote.get(note!) ?? [])
+                                  : 'var(--accent, #6ea8fe)',
                             opacity: isHead ? 1 : 0.7,
                             pointerEvents: 'none',
                           }}
