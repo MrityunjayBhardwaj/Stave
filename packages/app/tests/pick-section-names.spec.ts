@@ -19,8 +19,8 @@
  * having both: one spelling's caption arm cannot see the other's regression.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { seedCode, evalCode } from './_appBoot'
 
-const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 /** Long names, pick spelling. Two sections, 2 cycles each. */
 const LONG_NAMES = [
@@ -77,32 +77,12 @@ async function modelText(page: Page): Promise<string> {
   })
 }
 
-/** TYPE the song — a programmatic setValue does not update the file store the
- *  IR snapshot is parsed from. */
+/** Write the song and play it. The shared seed proves the model holds it
+ *  (#872), and the app hears a model write as it hears typing — typing at
+ *  8 ms a key raced Monaco's auto-close and left a stray quote under load. */
 async function typeSongAndEval(page: Page, code: string): Promise<void> {
-  await page.evaluate(() => {
-    const eds =
-      (
-        window as unknown as {
-          monaco?: {
-            editor?: {
-              getEditors?: () => Array<{
-                getModel: () => { getLanguageId?: () => string } | null
-                focus: () => void
-              }>
-            }
-          }
-        }
-      ).monaco?.editor?.getEditors?.() ?? []
-    const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
-    t?.focus()
-  })
-  await page.locator('.monaco-editor').first().click()
-  await page.keyboard.press(`${MOD}+A`)
-  await page.keyboard.press('Backspace')
-  await page.keyboard.type(code, { delay: 8 })
-  await page.waitForTimeout(400)
-  await page.keyboard.press(`${MOD}+Enter`)
+  await seedCode(page, code)
+  await evalCode(page)
   await page.waitForTimeout(1800)
 }
 
