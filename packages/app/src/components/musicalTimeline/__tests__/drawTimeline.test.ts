@@ -249,7 +249,7 @@ describe('drawTimeline', () => {
         },
       ],
     }
-    // Expanded with 2 voices → sub-rows (22px each → 44px lane). 1000px/cycle → marks.
+    // Expanded with 2 voices → a header row + sub-rows (22px each → 66px lane). 1000px/cycle → marks.
     const layout = computeLaneLayout(drumScene.lanes, new Set(['drums']), 22, 88, 22)
     expect(layout.boxes[0].subRows?.length).toBe(2)
     const { ctx, rects } = mockCtx()
@@ -261,9 +261,11 @@ describe('drawTimeline', () => {
     expect(marks.length).toBe(2)
     const ys = marks.map((r) => r.y).sort((a, b) => a - b)
     expect(ys[1] - ys[0]).toBeGreaterThanOrEqual(20) // ~one SUB_ROW_HEIGHT apart
-    // Sub-row 0 baseline sits in [0,22), sub-row 1 in [22,44) — no overlap.
-    expect(ys[0]).toBeLessThan(22)
-    expect(ys[1]).toBeGreaterThanOrEqual(22)
+    // Under the header row [0,22) (#2226): sub-row 0 sits in [22,44), sub-row 1
+    // in [44,66) — no overlap, and nothing drawn in the header row.
+    expect(ys[0]).toBeGreaterThanOrEqual(22)
+    expect(ys[0]).toBeLessThan(44)
+    expect(ys[1]).toBeGreaterThanOrEqual(44)
   })
 })
 

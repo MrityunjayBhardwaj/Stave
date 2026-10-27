@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { detectAllChunks, type ChunkInfo } from '../chunkDetect'
 import { applyEdits, type OffsetEdit } from '../writeback'
+import { soundPickEdit } from '../soundArg'
 import {
   setNumberCall,
   setLiteralCall,
-  setStringCall,
   removeCall,
   knobEdit,
   knobRangeEdit,
@@ -47,11 +47,15 @@ describe('chainEdit — the three primitives (#1888)', () => {
 
   it('a string call: replaces the string in place, else appends; ids are single-quoted', () => {
     const has = '$: note("c e g").s("sawtooth").room(0.2)'
-    expect(after(has, setStringCall(chunk(has), ['sound', 's'], 'sound', 'piano'))).toBe(
+    const pick = (doc: string) => {
+      const r = soundPickEdit(chunk(doc), ['sound', 's'], 'sound', 'piano', 'sound')
+      return 'edit' in r ? r.edit : null
+    }
+    expect(after(has, pick(has))).toBe(
       `$: note("c e g").s('piano').room(0.2)`,
     )
     const none = '$: note("c e g").room(0.2)'
-    expect(after(none, setStringCall(chunk(none), ['sound', 's'], 'sound', 'piano'))).toBe(
+    expect(after(none, pick(none))).toBe(
       `$: note("c e g").room(0.2).sound('piano')`,
     )
     expect(after(none, setLiteralCall(chunk(none), ['viz'], 'viz', '"pianoroll"'))).toBe(

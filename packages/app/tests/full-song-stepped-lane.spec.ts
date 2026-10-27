@@ -243,7 +243,9 @@ async function openStepShowing(page: Page, x: number, value: string): Promise<bo
   const editor = page.locator('[data-full-song="automation-step"]')
   const box = await page.locator('[data-full-song-canvas]').boundingBox()
   if (!box) throw new Error('no canvas')
-  for (let y = 1; y <= 40; y++) {
+  // the lane's whole height: an expanded two-voice lane is a header row and two
+  // voice rows (#2226), and its levels spread over all of it
+  for (let y = 1; y <= 80; y++) {
     await page.mouse.click(box.x + x, box.y + y)
     await page.waitForTimeout(60)
     if (await editor.count()) {

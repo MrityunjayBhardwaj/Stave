@@ -3382,13 +3382,14 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               }}
             >
             {layout.boxes.map((box) => {
-              // An expanded multi-voice lane (#424) shows its identity on sub-row
-              // 0 (`laneKey · voice0`, like the live monitor) and an indented
-              // label per remaining voice, positioned from the SAME layout so
-              // they line up with the canvas sub-rows exactly (PV120). A
-              // collapsed / single-voice lane renders the plain header.
+              // An expanded multi-voice lane (#424) shows its identity in a header
+              // row of its own and an indented label per voice beneath it (#2226:
+              // the first voice used to share the header's row and lost its name
+              // to the track's), positioned from the SAME layout so they line up
+              // with the canvas sub-rows exactly (PV120). A collapsed /
+              // single-voice lane renders the plain header.
               const subRows = box.subRows
-              const headerHeight = subRows ? subRows[0].height : box.height
+              const headerHeight = box.headerHeight ?? box.height
               // Display NAME + dot colour resolve to the track LABEL for a named
               // track (#579 STEP 2); fall back to the positional `laneKey` when
               // the lane has no scene entry (defensive — should always match).
@@ -3399,7 +3400,6 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               // set, rename — keeps using `displayName`.
               const shownName = lane?.shownName ?? displayName
               const dotColor = lane?.color ?? trackIdentity(box.laneKey).color
-              const headerName = subRows ? `${shownName} · ${subRows[0].label}` : shownName
               // Inline rename (#580, Phase C): renameable when a write handler is
               // wired AND the lane has a statement anchor. The seed is the current
               // label for a named track, EMPTY for an anonymous `d{N}` (its
@@ -3602,11 +3602,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                         style={styles.laneName}
                         title={menuEnabled ? `${shownName} — double-click or right-click for the track menu` : undefined}
                       >
-                        {headerName}
+                        {shownName}
                       </span>
                     )}
                   </div>
-                  {subRows?.slice(1).map((sr) => (
+                  {subRows?.map((sr) => (
                     <div
                       key={sr.voiceKey}
                       data-full-song-voice={sr.voiceKey}

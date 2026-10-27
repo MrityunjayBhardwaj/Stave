@@ -84,14 +84,18 @@ test.describe('docs: getting-started', () => {
   })
 
   test('Ctrl+Enter repeated on unchanged code never stops — it is not a toggle', async ({ page }) => {
-    // The regression signature of #180: pressing evaluate twice alternated
-    // play/stop. Any future re-toggle fails here, on the third press.
+    // Poll the first Play so a slow start does not fail the toggle check (#2032).
+    // Keep later presses on fixed waits to catch the #180 play/stop toggle.
     await bootApp(page)
     await clickIntoEditor(page)
     for (let i = 0; i < 3; i++) {
       await page.keyboard.press(`${MOD}+Enter`)
-      await page.waitForTimeout(1500)
-      expect(await isPlaying(page), `still playing after press ${i + 1}`).toBe(true)
+      if (i === 0) {
+        await expect.poll(() => isPlaying(page), { timeout: 10_000 }).toBe(true)
+      } else {
+        await page.waitForTimeout(1500)
+        expect(await isPlaying(page), `still playing after press ${i + 1}`).toBe(true)
+      }
     }
   })
 })

@@ -399,9 +399,10 @@ export interface WorkspaceShellHandle {
    * cursor. No-op when there's no active editor. Detects the chunk fresh from
    * the active editor at call time — it does NOT depend on the Pattern/Mixer
    * panel being open. `slow` (#2070) is written as `.slow(N)` on a fresh line,
-   * for a clip longer than a cycle.
+   * for a clip longer than a cycle. Returns why nothing was written when the
+   * `.sound()` under the cursor is a pattern of several sounds (#2226), else null.
    */
-  assignSoundToCursor(sound: string, opts?: { slow?: number }): void
+  assignSoundToCursor(sound: string, opts?: { slow?: number }): string | null
   /** Attach `.viz("name")` to the pattern chunk under the cursor (Asset Library
    *  viz insert). Returns true if it wrote, false when there's no pattern under
    *  the cursor (nothing to attach to) so the caller can guide the user. */
@@ -3132,15 +3133,15 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           quality: g?.backdropQuality ?? backdropQuality,
         }
       },
-      assignSoundToCursor: (sound: string, opts?: { slow?: number }) => {
-        if (!sound) return
+      assignSoundToCursor: (sound: string, opts?: { slow?: number }): string | null => {
+        if (!sound) return null
         // Reach the live editor through the registry singleton, NOT the
         // Mixer's `useActiveChunk` (which only exists while that panel is
         // mounted) — the sidebar assigns with the Pattern tab closed.
         const editor = getActiveEditor()
         const model = editor?.getModel()
         const pos = editor?.getPosition()
-        if (!editor || !model || !pos) return
+        if (!editor || !model || !pos) return null
         const offset = model.getOffsetAt(pos)
         // The whole decision — roll chunk under the cursor → set/replace its
         // `.sound()` (chainMethod idiom, single-quoted so PV44 doesn't reify
@@ -3149,8 +3150,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         // `planSoundAssignment` helper so it can be unit-tested (#830). Detect
         // is fresh at call time, which also sidesteps the freshness guard.
         const plan = planSoundAssignment(model.getValue(), offset, sound, opts?.slow)
-        if (!plan) return
+        if (!plan) return null
+        if (plan.kind === 'refused') return plan.reason
         commitToEditor(editor, assignmentEdit(plan), 'mixer')
+        return null
       },
       assignVizToCursor: (name: string): boolean => {
         if (!name) return false

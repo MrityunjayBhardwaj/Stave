@@ -10,7 +10,7 @@
 
 import { parseTopLevel } from '../astParse'
 import { detectChunk } from '../chunkDetect'
-import { setStringCall } from '../chainEdit'
+import { soundPickEdit } from '../soundArg'
 import { patternKind } from '../patternKind'
 import { bareExpressionOf } from '../bareExpression'
 import type { OffsetEdit } from '../writeback'
@@ -23,6 +23,8 @@ import type { OffsetEdit } from '../writeback'
 export type SoundAssignPlan =
   | { kind: 'replace'; range: [number, number]; text: string }
   | { kind: 'insert'; offset: number; text: string; label?: number }
+  /** the chunk's sound is a pattern of several, which one name may not replace (#2226) */
+  | { kind: 'refused'; reason: string }
 
 /**
  * Decide how to write `sound` at `offset` in `doc`, or return `null` when
@@ -50,7 +52,9 @@ export function planSoundAssignment(
 
   const chunk = detectChunk(doc, offset)
   if (chunk && patternKind(chunk) === 'roll') {
-    const edit = setStringCall(chunk, ['sound', 's'], 'sound', sound)
+    const pick = soundPickEdit(chunk, ['sound', 's'], 'sound', sound, 'sound')
+    if ('refused' in pick) return { kind: 'refused', reason: pick.refused }
+    const edit = pick.edit
     return edit.range[0] === edit.range[1]
       ? { kind: 'insert', offset: edit.range[0], text: edit.text }
       : { kind: 'replace', range: edit.range, text: edit.text }

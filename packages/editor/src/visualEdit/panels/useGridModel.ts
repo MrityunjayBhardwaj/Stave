@@ -105,6 +105,11 @@ export interface GridModel<M> {
    * to draw it at all (a 64-step pattern at ×8 needs more than 256 columns).
    */
   patternKey: string | null
+  /**
+   * The active chunk's own writer, for an edit that is not the notes — the roll's
+   * sound lane writes one name in the `.sound(…)` string (#2226).
+   */
+  applyEdit: ReturnType<typeof useActiveChunk>['applyEdit']
 }
 
 /** Where the pattern starts and what it says — see {@link GridModel.patternKey}. */
@@ -243,5 +248,5 @@ export function useGridModel<M extends { viewScale?: ViewScale; lookOnly?: unkno
     [applyEdit],
   )
 
-  return { model, read, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey }
+  return { model, read, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit }
 }

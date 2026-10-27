@@ -45,18 +45,30 @@ export function SoundPickerMenu({
   label,
   groups,
   value,
+  summary,
+  refusal,
   placeholder,
   onChange,
   onAudition,
+  renderTrigger,
 }: {
   label: string
   groups: SoundGroup[]
   value: string
+  /** what the trigger reads instead of `value` — a pattern of several sounds (#2226) */
+  summary?: string
+  /** why no pick may be written here; the menu says so instead of listing sounds (#2226) */
+  refusal?: string
   placeholder: string
   onChange: (v: string) => void
   /** When set, render a ▶ button that previews the current value without
    *  changing it (#805), and audition each pick on select. */
   onAudition?: (v: string) => void
+  /**
+   * Draw your own trigger instead of the labelled box (#2226: a block of the roll's
+   * sound lane opens this menu). Give the button `ref` and call `toggle` on click.
+   */
+  renderTrigger?: (t: { ref: React.RefObject<HTMLButtonElement>; open: boolean; toggle: () => void }) => React.ReactElement
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
@@ -69,7 +81,7 @@ export function SoundPickerMenu({
   // The label to show on the trigger: the catalog label for a known value, the
   // raw string for a hand-typed one, or the placeholder when unset.
   const currentLabel =
-    groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder
+    summary ?? (groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder)
 
   const place = React.useCallback((): void => {
     const b = btnRef.current?.getBoundingClientRect()
@@ -158,6 +170,15 @@ export function SoundPickerMenu({
               fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
             }}
           >
+            {refusal ? (
+              <div
+                data-mixer-sound-refusal={lc}
+                style={{ padding: 6, fontSize: 12, lineHeight: 1.4, color: 'var(--foreground, #e6e6ea)' }}
+              >
+                {refusal}
+              </div>
+            ) : (
+            <>
             <input
               autoFocus
               data-mixer-sound-search={lc}
@@ -264,10 +285,21 @@ export function SoundPickerMenu({
                 </div>
               )}
             </div>
+            </>
+            )}
           </div>,
           document.body,
         )
       : null
+
+  if (renderTrigger) {
+    return (
+      <>
+        {renderTrigger({ ref: btnRef, open, toggle: () => setOpen((o) => !o) })}
+        {menu}
+      </>
+    )
+  }
 
   return (
     <label
@@ -282,7 +314,7 @@ export function SoundPickerMenu({
           data-mixer-sound-trigger={lc}
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
-          title={value || placeholder}
+          title={summary ?? (value || placeholder)}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -293,7 +325,7 @@ export function SoundPickerMenu({
             borderRadius: 4,
             border: '1px solid var(--border, #3a3a42)',
             background: 'var(--background-elevated, #26262c)',
-            color: value ? 'var(--foreground, #e6e6ea)' : 'var(--foreground-muted, #a0a0aa)',
+            color: value || summary ? 'var(--foreground, #e6e6ea)' : 'var(--foreground-muted, #a0a0aa)',
             cursor: 'pointer',
             flex: '1 1 auto',
             minWidth: 0,

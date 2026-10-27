@@ -113,13 +113,14 @@ describe('FullSongTimeline — per-voice sub-rows (#424)', () => {
     const lane = container.querySelector('[data-full-song-lane="drums"]')!
     // ≥2 voices → the lane advertises its voice count.
     expect(Number(lane.getAttribute('data-full-song-voices'))).toBeGreaterThanOrEqual(2)
-    // Voice 0 rides in the header (`drums · bd`); the rest get indented sub-labels.
+    // The header row names the track; EVERY voice gets an indented label of its
+    // own beneath it (#2226: voice 0 used to share the header and lost its name).
     const subLabels = Array.from(container.querySelectorAll('[data-full-song-voice]')).map((e) =>
       e.getAttribute('data-full-song-voice'),
     )
-    // First-seen order from the crafted events: bd, hh, sd → sub-labels are hh, sd.
-    expect(subLabels).toEqual(['hh', 'sd'])
-    expect(lane.textContent).toContain('bd') // voice 0 in the header
+    // First-seen order from the crafted events: bd, hh, sd.
+    expect(subLabels).toEqual(['bd', 'hh', 'sd'])
+    expect(lane.querySelector('[data-full-song-lane-name]')?.textContent).not.toContain('bd')
     expect(lane.textContent).toContain('hh')
     expect(lane.textContent).toContain('sd')
   })
@@ -128,7 +129,7 @@ describe('FullSongTimeline — per-voice sub-rows (#424)', () => {
     const { container } = renderFull()
     await expandDrums(container)
     const lane = container.querySelector('[data-full-song-lane="drums"]') as HTMLElement
-    // 3 voices × SUB_ROW_HEIGHT(22) = 66px.
-    expect(lane.style.height).toBe('66px')
+    // a header row + 3 voices, × SUB_ROW_HEIGHT(22) = 88px (#2226).
+    expect(lane.style.height).toBe('88px')
   })
 })
