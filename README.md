@@ -114,7 +114,7 @@ Then point a track at it with `$: s("bd*4, ~ cp").viz("kick")`. The circle jumps
 ![The Bounce to WAV dialog: whole song or a fixed length, as a mix or as stems](assets/readme/bounce.jpg)
 
 - **Bounce** the whole song to WAV, as one mix or as one file per track (stems).
-- **Copy a share link.** The whole project goes into the link itself, so nothing is uploaded.
+- **Copy a short share link** that opens your project anywhere. It's locked with a key that stays in the link, so the copy Stave keeps can't be read without it.
 - **Save a `.stave` project file** with your audio included, or roll back with version history.
 
 ---
@@ -167,7 +167,7 @@ Stave is at **0.5**, its first beta. What it does today is in the [changelog](CH
 
 - **No sign-up.** Open the page and make music.
 - **No ads, no paywall.** Everything above is free.
-- **Your projects stay in your browser.** No server holds your songs. A share link carries the project inside the link itself.
+- **Your projects stay in your browser.** No server holds your songs. When you share one, Stave keeps a locked copy whose key is only in the link you hand out.
 - **The music you make is yours.** The licence covers Stave's code, not your songs.
 - **Open source** under AGPL-3.0, like Strudel.
 - **The only measurement:** anonymous page-view counts through Vercel Web Analytics. It sets no cookies and reads nothing from the editor.

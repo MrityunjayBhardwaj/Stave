@@ -42,9 +42,10 @@ import appPackage from "../../package.json";
 import { readStartConditions, setStartScreenWanted, showsStartScreen, startScreenWanted } from "../startScreen";
 import {
   buildShareUrl,
-  decodeSharePayload,
+  buildShortShareUrl,
+  loadIncomingShare,
   applyShareManifest,
-  readShareFragment,
+  readIncomingShare,
   clearShareFragment,
 } from "../shareProject";
 import { MenuBar } from "./MenuBar";
@@ -289,7 +290,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // after the last project has loaded): it greets an arrival and never appears
   // mid-session on its own. A share link has its own question to ask instead.
   const [startScreenOpen, setStartScreenOpen] = useState(() =>
-    showsStartScreen(readStartConditions(readShareFragment() != null)),
+    showsStartScreen(readStartConditions(readIncomingShare() != null)),
   );
   const [startScreenAtStart, setStartScreenAtStart] = useState(startScreenWanted);
   const [switcherModalOpen, setSwitcherModalOpen] = useState(false);
@@ -502,9 +503,19 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const handleShareProject = useCallback(async () => {
     if (!activeProject) return;
     try {
-      const url = await buildShareUrl(activeProject);
+      // #2248 — the short link first; the long one carries the project itself and
+      // needs no store, so it is the fallback when the store can't take it.
+      let url: string;
+      let note = "";
+      try {
+        url = await buildShortShareUrl(activeProject);
+      } catch (err) {
+        console.warn("[stave] short share link unavailable:", err);
+        url = await buildShareUrl(activeProject);
+        note = " A short link wasn't available, so this is the long one.";
+      }
       await navigator.clipboard.writeText(url);
-      showToast(`Share link copied (${url.length.toLocaleString()} chars).`, "info");
+      showToast(`Share link copied (${url.length.toLocaleString()} chars).${note}`, "info");
     } catch (err) {
       console.error("[stave] share failed:", err);
       showToast(
@@ -514,18 +525,18 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     }
   }, [activeProject]);
 
-  // On-mount: if we landed with #share=, decode and offer to import.
+  // On-mount: if we landed with #share= or a short /s/<id> link, decode and offer to import.
   // Runs once per session — the fragment is cleared either way so a
   // refresh doesn't re-prompt.
   const sharePromptHandledRef = useRef(false);
   useEffect(() => {
     if (sharePromptHandledRef.current) return;
     sharePromptHandledRef.current = true;
-    const encoded = readShareFragment();
-    if (!encoded) return;
+    const incoming = readIncomingShare();
+    if (!incoming) return;
     void (async () => {
       try {
-        const manifest = await decodeSharePayload(encoded);
+        const manifest = await loadIncomingShare(incoming);
         const ok = await showConfirm({
           title: "Import shared project?",
           description: `Import "${manifest.project.name}" as a new project? It contains ${manifest.files.length} file(s).`,
