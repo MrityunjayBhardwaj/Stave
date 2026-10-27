@@ -1,5 +1,5 @@
-import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-Br4H05-C.js';
-export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-Br4H05-C.js';
+import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-DO8O9hDv.js';
+export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-DO8O9hDv.js';
 import * as Monaco from 'monaco-editor';
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
@@ -4826,6 +4826,29 @@ declare class StrudelEngine implements LiveCodingEngine {
      */
     unlockAudio(): void;
     play(): void;
+    /** #2256 — the loaders and live context the sound warm-up uses; null before init. */
+    private soundWarmDeps;
+    private warmAheadTimer;
+    /** The pattern and cycle the warm-ahead loop last loaded up to. */
+    private warmAheadPattern;
+    private warmAheadThrough;
+    /** The note values the playing pattern starts in `[from, to)`, as the scheduler asks. */
+    private noteValuesBetween;
+    /**
+     * #2256 — load the sounds of the first `cycles` cycles the scheduler will play,
+     * before it starts: step 3a of the play lifecycle. Waits at most `capMs`, so a
+     * slow network still starts; loads that run longer keep going and serve the
+     * notes after. A second Play has everything cached and returns at once.
+     */
+    warmSounds(cycles?: number, capMs?: number): Promise<void>;
+    /**
+     * #2256 — while playing, load the sounds of the next two cycles, so a part that
+     * enters later (a new section, the next `<a b>` step) is ready when it arrives.
+     * Polls the scheduler's position; a re-evaluate swaps the pattern, and the new
+     * one is warmed from the current cycle.
+     */
+    private startWarmingAhead;
+    private stopWarmingAhead;
     /** #2058 — superdough's stop-every-sound (Stave's patch), once audio is up. */
     private stopAllSoundsFn;
     /** #2064 — moves on every Play and Stop, so a deferred fade knows it is stale. */
@@ -11188,27 +11211,9 @@ interface SamplePeaksDeps {
     /** The loaded sound registry the alias step consults; absent reads as empty. */
     readonly soundMap?: () => Record<string, unknown> | undefined;
 }
-/**
- * #1767 — the name the engine PLAYS for a written sound name, before any bank.
- *
- * The engine's own alias step (`aliasSoundValue`, called by live playback and
- * by the offline render), asked of the same registry object: a name the loaded
- * registry has wins, otherwise the curated table renames it (`kick` → `bd`).
- * This is that function's third caller, never a second table. The registry is
- * read on every call, so a later `samples(...)` that registers a real `kick`
- * takes over on the next draw, as it does at the next trigger.
- */
+/** #1767 — the name the engine PLAYS for a written sound name (see `engine/sampleUrl.ts`). */
 declare function playedSoundName(s: string, deps?: SamplePeaksDeps): string;
-/**
- * Which file would this event play? `null` when the name is not a sample.
- *
- * Mirrors the registration path exactly: `registerSample` stores the bank as
- * `data.samples` on the sound (`sampler.mjs:354-359`) and hands that same bank
- * to `onTriggerSample`, so reading `data.samples` here asks the question the
- * trigger will ask. Synths, wavetables and the audio-in bus have no bank and
- * fall out as null rather than as an error — most lanes on a timeline are not
- * samples, and that is not a failure.
- */
+/** Which file would this event play? `null` when the name is not a sample (see `engine/sampleUrl.ts`). */
 declare function resolveSampleUrl(ref: SampleRef, deps?: SamplePeaksDeps): string | null;
 /**
  * Peaks for an event, or `null` when they cannot be had YET.

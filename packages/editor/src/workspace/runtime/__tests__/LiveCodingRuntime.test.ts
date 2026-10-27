@@ -540,6 +540,52 @@ describe('LiveCodingRuntime', () => {
       expect(workspaceAudioBus.listSources()).toHaveLength(0)
     })
 
+    // #2256 — step 3a: the sounds the first cycles play are loaded after the code
+    // evaluates and before the scheduler starts, and a Stop pressed while they
+    // load still keeps the transport stopped.
+    it('warms the sounds after evaluate and before the scheduler starts (#2256)', async () => {
+      const engine = createMockEngine()
+      engine.setComponents({ streaming: makeStreamingComponent(), audio: makeAudioComponent() })
+      ;(engine as { warmSounds?: () => Promise<void> }).warmSounds = vi.fn(async () => {
+        engine.callLog.push('warm')
+      })
+      const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+      await runtime.play()
+      expect(engine.callLog.filter((c) => ['evaluate', 'warm', 'play'].includes(c))).toEqual(['evaluate', 'warm', 'play'])
+    })
+
+    it('stop() while sounds warm keeps the transport stopped (#2256)', async () => {
+      const engine = createMockEngine()
+      engine.setComponents({ streaming: makeStreamingComponent(), audio: makeAudioComponent() })
+      let releaseWarm!: () => void
+      const warmGate = new Promise<void>((res) => { releaseWarm = res })
+      ;(engine as { warmSounds?: () => Promise<void> }).warmSounds = vi.fn(() => warmGate)
+      const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+
+      const playPromise = runtime.play()
+      await new Promise((r) => setTimeout(r, 0))
+      runtime.stop()
+      releaseWarm()
+      await playPromise
+
+      expect(engine.callLog).not.toContain('play')
+      expect(runtime.getIsPlaying()).toBe(false)
+      expect(workspaceAudioBus.listSources()).toHaveLength(0)
+    })
+
+    it('a warm-up that fails never stops Play (#2256)', async () => {
+      const engine = createMockEngine()
+      engine.setComponents({ streaming: makeStreamingComponent(), audio: makeAudioComponent() })
+      ;(engine as { warmSounds?: () => Promise<void> }).warmSounds = vi.fn(async () => {
+        throw new Error('network down')
+      })
+      const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+      const result = await runtime.play()
+      expect(result.error).toBeNull()
+      expect(engine.callLog).toContain('play')
+      expect(runtime.getIsPlaying()).toBe(true)
+    })
+
     it('stop() always reaches engine.stop() even when isPlayingState is false (authoritative stop, #811)', () => {
       const engine = createMockEngine()
       const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')

@@ -15860,6 +15860,88 @@ function offlineContextInFrame(channels, length, sampleRate, options) {
 }
 __name(offlineContextInFrame, "offlineContextInFrame");
 
+// src/engine/sampleUrl.ts
+function playedSoundNameIn(s, deps) {
+  return aliasSoundValue({ s }, deps.soundMap?.()).value.s;
+}
+__name(playedSoundNameIn, "playedSoundNameIn");
+function resolveSampleUrlIn(ref, deps) {
+  const played = playedSoundNameIn(ref.s, deps);
+  const name = ref.bank ? `${ref.bank}_${played}` : played;
+  const sound = deps.getSound(name);
+  const bank = sound?.data?.samples;
+  if (bank == null || typeof bank !== "object") return null;
+  try {
+    const hapValue = { s: name };
+    if (ref.note != null) hapValue.note = ref.note;
+    if (ref.freq != null) hapValue.freq = ref.freq;
+    if (ref.n != null) hapValue.n = ref.n;
+    const { url } = deps.getSampleInfo(hapValue, bank);
+    return typeof url === "string" && url.length > 0 ? url : null;
+  } catch {
+    return null;
+  }
+}
+__name(resolveSampleUrlIn, "resolveSampleUrlIn");
+
+// src/engine/soundWarm.ts
+var asString = /* @__PURE__ */ __name((v) => typeof v === "string" && v.length > 0 ? v : null, "asString");
+var asNumber = /* @__PURE__ */ __name((v) => typeof v === "number" && Number.isFinite(v) ? v : null, "asNumber");
+function soundIndex(n, length) {
+  const i = Math.round(n ?? 0);
+  return (i % length + length) % length;
+}
+__name(soundIndex, "soundIndex");
+function soundWarmJobs(values2, deps) {
+  const jobs = /* @__PURE__ */ new Map();
+  for (const value of values2) {
+    const s = asString(value.s);
+    if (!s) continue;
+    const bank = asString(value.bank);
+    const n = asNumber(value.n);
+    const note = asNumber(value.note) ?? asString(value.note);
+    const freq = asNumber(value.freq);
+    const url = resolveSampleUrlIn({ s, bank, n, note, freq }, deps);
+    if (url != null) {
+      const key4 = `sample:${url}`;
+      if (jobs.has(key4) || deps.getCachedBuffer(url) != null) continue;
+      jobs.set(key4, { key: key4, run: /* @__PURE__ */ __name(() => deps.loadBuffer(url, deps.audioContext(), s, n ?? 0), "run") });
+      continue;
+    }
+    if (!deps.getFontBufferSource) continue;
+    const played = playedSoundNameIn(s, deps);
+    const sound = deps.getSound(bank ? `${bank}_${played}` : played);
+    const fonts = sound?.data?.fonts;
+    if (sound?.data?.type !== "soundfont" || !Array.isArray(fonts) || fonts.length === 0) continue;
+    const font = asString(fonts[soundIndex(n, fonts.length)]);
+    if (!font) continue;
+    const pitch = {};
+    if (freq != null) pitch.freq = freq;
+    else if (note != null) pitch.note = note;
+    const key3 = `font:${font}:${freq ?? note ?? "c3"}`;
+    if (jobs.has(key3)) continue;
+    const load2 = deps.getFontBufferSource;
+    jobs.set(key3, { key: key3, run: /* @__PURE__ */ __name(() => load2(font, pitch, deps.audioContext()), "run") });
+  }
+  return [...jobs.values()];
+}
+__name(soundWarmJobs, "soundWarmJobs");
+async function runWarmJobs(jobs, capMs) {
+  if (jobs.length === 0) return { loaded: 0, pending: 0 };
+  let loaded = 0;
+  const all = Promise.allSettled(jobs.map((j) => j.run().then(() => {
+    loaded++;
+  })));
+  let timer;
+  const cap = new Promise((resolve) => {
+    timer = setTimeout(resolve, capMs);
+  });
+  await Promise.race([all, cap]);
+  clearTimeout(timer);
+  return { loaded, pending: jobs.length - loaded };
+}
+__name(runWarmJobs, "runWarmJobs");
+
 // src/engine/friendlyErrors.ts
 function parseStackLocation(err) {
   const stack = typeof err === "object" && err !== null && "stack" in err ? String(err.stack ?? "") : "";
@@ -17131,6 +17213,12 @@ var _StrudelEngine = class _StrudelEngine {
     // — user-registered names always win over the curated alias map.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.soundMapRef = null;
+    /** #2256 — the loaders and live context the sound warm-up uses; null before init. */
+    this.soundWarmDeps = null;
+    this.warmAheadTimer = null;
+    /** The pattern and cycle the warm-ahead loop last loaded up to. */
+    this.warmAheadPattern = null;
+    this.warmAheadThrough = -Infinity;
     /** #2058 — superdough's stop-every-sound (Stave's patch), once audio is up. */
     this.stopAllSoundsFn = null;
     /** #2064 — moves on every Play and Stop, so a deferred fade knows it is stale. */
@@ -17459,6 +17547,17 @@ var _StrudelEngine = class _StrudelEngine {
     this.taggedDestinationGain = audioController.output.destinationGain;
     this.superdoughControllerFn = webaudioMod.getSuperdoughAudioController ?? null;
     this.stopAllSoundsFn = webaudioMod.stopAllSounds ?? null;
+    const wa = webaudioMod;
+    const sf = soundfontsMod;
+    this.soundWarmDeps = {
+      getSound: /* @__PURE__ */ __name((name) => wa.getSound(name), "getSound"),
+      getSampleInfo: /* @__PURE__ */ __name((hap, bank) => wa.getSampleInfo(hap, bank), "getSampleInfo"),
+      getCachedBuffer: /* @__PURE__ */ __name((url) => wa.getCachedBuffer(url), "getCachedBuffer"),
+      loadBuffer: /* @__PURE__ */ __name((url, ac, s, n) => wa.loadBuffer(url, ac, s, n), "loadBuffer"),
+      getFontBufferSource: /* @__PURE__ */ __name((font, value, ac) => sf.getFontBufferSource(font, value, ac), "getFontBufferSource"),
+      soundMap: /* @__PURE__ */ __name(() => wa.soundMap?.get(), "soundMap"),
+      audioContext: /* @__PURE__ */ __name(() => this.audioCtx, "audioContext")
+    };
     const hapStream = this.hapStream;
     const audioCtxRef = audioCtx;
     const wrappedOutput = /* @__PURE__ */ __name(async (hap, deadline, duration, cps, t) => {
@@ -17911,9 +18010,78 @@ var _StrudelEngine = class _StrudelEngine {
   play() {
     this.transportGeneration++;
     this.trackEnvelopes.playing();
+    this.startWarmingAhead();
     if (this.transportHold.requestPlay()) return;
     this.repl?.scheduler?.start();
     this.followMasterAnalyser();
+  }
+  /** The note values the playing pattern starts in `[from, to)`, as the scheduler asks. */
+  noteValuesBetween(from, to) {
+    const scheduler = this.repl?.scheduler;
+    const pattern = scheduler?.pattern;
+    if (!pattern || typeof pattern.queryArc !== "function") return [];
+    try {
+      const haps = pattern.queryArc(from, to, { _cps: scheduler.cps });
+      const values2 = [];
+      for (const hap of haps) {
+        if (hap.hasOnset && !hap.hasOnset()) continue;
+        if (hap.value && typeof hap.value === "object") values2.push(hap.value);
+      }
+      return values2;
+    } catch {
+      return [];
+    }
+  }
+  /**
+   * #2256 — load the sounds of the first `cycles` cycles the scheduler will play,
+   * before it starts: step 3a of the play lifecycle. Waits at most `capMs`, so a
+   * slow network still starts; loads that run longer keep going and serve the
+   * notes after. A second Play has everything cached and returns at once.
+   */
+  async warmSounds(cycles = 2, capMs = WARM_CAP_MS) {
+    const deps = this.soundWarmDeps;
+    if (!deps || !this.audioCtx) return;
+    const from = Number(this.repl?.scheduler?.lastEnd) || 0;
+    try {
+      await runWarmJobs(soundWarmJobs(this.noteValuesBetween(from, from + cycles), deps), capMs);
+    } catch {
+    }
+  }
+  /**
+   * #2256 — while playing, load the sounds of the next two cycles, so a part that
+   * enters later (a new section, the next `<a b>` step) is ready when it arrives.
+   * Polls the scheduler's position; a re-evaluate swaps the pattern, and the new
+   * one is warmed from the current cycle.
+   */
+  startWarmingAhead() {
+    if (this.warmAheadTimer != null) return;
+    this.warmAheadTimer = setInterval(() => {
+      const scheduler = this.repl?.scheduler;
+      const deps = this.soundWarmDeps;
+      if (!scheduler?.started || !deps) return;
+      if (scheduler.pattern !== this.warmAheadPattern) {
+        this.warmAheadPattern = scheduler.pattern;
+        this.warmAheadThrough = -Infinity;
+      }
+      const now2 = Math.floor(Number(scheduler.now?.()) || 0);
+      const from = Math.max(now2, this.warmAheadThrough);
+      const to = now2 + 2;
+      if (from >= to) return;
+      this.warmAheadThrough = to;
+      try {
+        for (const job of soundWarmJobs(this.noteValuesBetween(from, to), deps)) {
+          void job.run().catch(() => {
+          });
+        }
+      } catch {
+      }
+    }, WARM_AHEAD_POLL_MS);
+  }
+  stopWarmingAhead() {
+    if (this.warmAheadTimer != null) clearInterval(this.warmAheadTimer);
+    this.warmAheadTimer = null;
+    this.warmAheadPattern = null;
+    this.warmAheadThrough = -Infinity;
   }
   /**
    * Keep the master `AnalyserNode` tapped to the LIVE output node. superdough
@@ -17944,6 +18112,7 @@ var _StrudelEngine = class _StrudelEngine {
   stop() {
     this.transportHold.cancelResume();
     this.repl?.scheduler?.stop();
+    this.stopWarmingAhead();
     const stopAll = this.stopAllSoundsFn;
     if (stopAll) {
       const at = ++this.transportGeneration;
@@ -18699,6 +18868,7 @@ var _StrudelEngine = class _StrudelEngine {
   }
   dispose() {
     this.transportHold.cancelResume();
+    this.stopWarmingAhead();
     this.stopAskingForAudio?.();
     this.stopAskingForAudio = null;
     this.stopListeningForPlayErrors?.();
@@ -18856,6 +19026,8 @@ function watched(pat, onDropped, inQuery) {
 }
 __name(watched, "watched");
 var STRUDEL_LOG_EVENT = "strudel.log";
+var WARM_CAP_MS = 2500;
+var WARM_AHEAD_POLL_MS = 250;
 function playTimeErrorFrom(detail, caught) {
   const message = detail?.message;
   if (typeof message !== "string") return null;
@@ -50015,6 +50187,10 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
       this.fireOnError(evalResult.error);
       return { error: evalResult.error };
     }
+    try {
+      await this.engine.warmSounds?.();
+    } catch {
+    }
     if (superseded()) {
       return { error: null };
     }
@@ -52980,25 +53156,11 @@ var liveDeps = {
   soundMap: /* @__PURE__ */ __name(() => soundMap.get(), "soundMap")
 };
 function playedSoundName(s, deps = liveDeps) {
-  return aliasSoundValue({ s }, deps.soundMap?.()).value.s;
+  return playedSoundNameIn(s, deps);
 }
 __name(playedSoundName, "playedSoundName");
 function resolveSampleUrl(ref, deps = liveDeps) {
-  const played = playedSoundName(ref.s, deps);
-  const name = ref.bank ? `${ref.bank}_${played}` : played;
-  const sound = deps.getSound(name);
-  const bank = sound?.data?.samples;
-  if (bank == null || typeof bank !== "object") return null;
-  try {
-    const hapValue = { s: name };
-    if (ref.note != null) hapValue.note = ref.note;
-    if (ref.freq != null) hapValue.freq = ref.freq;
-    if (ref.n != null) hapValue.n = ref.n;
-    const { url } = deps.getSampleInfo(hapValue, bank);
-    return typeof url === "string" && url.length > 0 ? url : null;
-  } catch {
-    return null;
-  }
+  return resolveSampleUrlIn(ref, deps);
 }
 __name(resolveSampleUrl, "resolveSampleUrl");
 function peaksForSample(ref, deps = liveDeps) {

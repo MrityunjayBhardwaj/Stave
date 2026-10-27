@@ -33,7 +33,7 @@
  */
 
 import { getAudioContext, getCachedBuffer, getSampleInfo, getSound, loadBuffer, soundMap } from '@strudel/webaudio'
-import { aliasSoundValue } from '../engine/aliases'
+import { playedSoundNameIn, resolveSampleUrlIn } from '../engine/sampleUrl'
 import type { SampleRef } from './sampleRef'
 
 /**
@@ -182,50 +182,14 @@ const liveDeps: SamplePeaksDeps = {
   soundMap: () => soundMap.get(),
 }
 
-/**
- * #1767 — the name the engine PLAYS for a written sound name, before any bank.
- *
- * The engine's own alias step (`aliasSoundValue`, called by live playback and
- * by the offline render), asked of the same registry object: a name the loaded
- * registry has wins, otherwise the curated table renames it (`kick` → `bd`).
- * This is that function's third caller, never a second table. The registry is
- * read on every call, so a later `samples(...)` that registers a real `kick`
- * takes over on the next draw, as it does at the next trigger.
- */
+/** #1767 — the name the engine PLAYS for a written sound name (see `engine/sampleUrl.ts`). */
 export function playedSoundName(s: string, deps: SamplePeaksDeps = liveDeps): string {
-  return aliasSoundValue({ s }, deps.soundMap?.()).value.s
+  return playedSoundNameIn(s, deps)
 }
 
-/**
- * Which file would this event play? `null` when the name is not a sample.
- *
- * Mirrors the registration path exactly: `registerSample` stores the bank as
- * `data.samples` on the sound (`sampler.mjs:354-359`) and hands that same bank
- * to `onTriggerSample`, so reading `data.samples` here asks the question the
- * trigger will ask. Synths, wavetables and the audio-in bus have no bank and
- * fall out as null rather than as an error — most lanes on a timeline are not
- * samples, and that is not a failure.
- */
+/** Which file would this event play? `null` when the name is not a sample (see `engine/sampleUrl.ts`). */
 export function resolveSampleUrl(ref: SampleRef, deps: SamplePeaksDeps = liveDeps): string | null {
-  // The engine's order (#1767): alias the bare name, THEN add the bank —
-  // `s("kick").bank("RolandTR909")` plays `rolandtr909-bd`, observed.
-  const played = playedSoundName(ref.s, deps)
-  const name = ref.bank ? `${ref.bank}_${played}` : played
-  const sound = deps.getSound(name)
-  const bank = (sound as { data?: { samples?: unknown } } | undefined)?.data?.samples
-  if (bank == null || typeof bank !== 'object') return null
-  try {
-    const hapValue: Record<string, unknown> = { s: name }
-    if (ref.note != null) hapValue.note = ref.note
-    if (ref.freq != null) hapValue.freq = ref.freq
-    if (ref.n != null) hapValue.n = ref.n
-    const { url } = deps.getSampleInfo(hapValue, bank as never)
-    return typeof url === 'string' && url.length > 0 ? url : null
-  } catch {
-    // A malformed bank is a registration problem, not a drawing one. The lane
-    // keeps the marks it already had.
-    return null
-  }
+  return resolveSampleUrlIn(ref, deps)
 }
 
 /**

@@ -31,6 +31,7 @@ import type { PatternIR, IREvent } from '../codeView'
 import { getTierFlags, type TierFlags } from './tierFlags'
 import { aliasSoundValue } from './aliases'
 import { canOpenAudioFrame, offlineContextInFrame } from './audioFrame'
+import { runWarmJobs, soundWarmJobs, type SoundWarmDeps } from './soundWarm'
 import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
 import { locateEvalError, locateQuotedValue, locateSoundName, measureEvalFrame, type EvalFrameShape } from './evalErrorLocation'
 import { findMissingPatternMethods, patternRuntimeOf, type MissingMethod } from './missingPatternMethods'
@@ -1112,6 +1113,22 @@ export class StrudelEngine implements LiveCodingEngine {
     // #2058 — Stave's superdough patch: stops every sound still playing (Stop).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.stopAllSoundsFn = (webaudioMod as any).stopAllSounds ?? null
+    // #2256 — what the sound warm-up loads with: the trigger's own loaders, and the
+    // LIVE context, read when a load starts (never the global, which a bounce swaps).
+    // Every export is read at call time, not here: init must not depend on them.
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const wa = webaudioMod as any
+    const sf = soundfontsMod as any
+    this.soundWarmDeps = {
+      getSound: (name) => wa.getSound(name),
+      getSampleInfo: (hap, bank) => wa.getSampleInfo(hap, bank),
+      getCachedBuffer: (url) => wa.getCachedBuffer(url),
+      loadBuffer: (url, ac, s, n) => wa.loadBuffer(url, ac, s, n),
+      getFontBufferSource: (font, value, ac) => sf.getFontBufferSource(font, value, ac),
+      soundMap: () => wa.soundMap?.get(),
+      audioContext: () => this.audioCtx as AudioContext,
+    }
+    /* eslint-enable @typescript-eslint/no-explicit-any */
 
     // Wrap the native output trigger so we can fan events to HapStream subscribers
     const hapStream = this.hapStream
@@ -2006,6 +2023,7 @@ export class StrudelEngine implements LiveCodingEngine {
     this.trackEnvelopes.playing()
     // #1627 — a Play pressed while an offline render holds the transport starts
     // when the render finishes, not into it.
+    this.startWarmingAhead()
     if (this.transportHold.requestPlay()) return
     this.repl?.scheduler?.start()
     // Re-tap the master analyser on the live output node. superdough recreates
@@ -2014,6 +2032,95 @@ export class StrudelEngine implements LiveCodingEngine {
     // play() is where a just-started file (re)asserts the tap. The master TRIM
     // itself lives in the document as `all(x => x.mul(postgain()))` (#792/#794/#1711), not here.
     this.followMasterAnalyser()
+  }
+
+  /** #2256 — the loaders and live context the sound warm-up uses; null before init. */
+  private soundWarmDeps: SoundWarmDeps | null = null
+  private warmAheadTimer: ReturnType<typeof setInterval> | null = null
+  /** The pattern and cycle the warm-ahead loop last loaded up to. */
+  private warmAheadPattern: unknown = null
+  private warmAheadThrough = -Infinity
+
+  /** The note values the playing pattern starts in `[from, to)`, as the scheduler asks. */
+  private noteValuesBetween(from: number, to: number): Record<string, unknown>[] {
+    const scheduler = this.repl?.scheduler
+    const pattern = scheduler?.pattern
+    if (!pattern || typeof pattern.queryArc !== 'function') return []
+    try {
+      // The scheduler's tempo, but NOT its `cyclist: 'cyclist'` tag (`cyclist.mjs:60`):
+      // `watchSkippedTicks` reads a tagged query as the scheduler's own tick, so a
+      // look-ahead carrying the tag made every real tick after it look like a gap and
+      // count as dropped notes (#1348's LATE cell climbed and never cleared).
+      const haps: Array<{ value?: unknown; hasOnset?: () => boolean }> =
+        pattern.queryArc(from, to, { _cps: scheduler.cps })
+      const values: Record<string, unknown>[] = []
+      for (const hap of haps) {
+        if (hap.hasOnset && !hap.hasOnset()) continue
+        if (hap.value && typeof hap.value === 'object') values.push(hap.value as Record<string, unknown>)
+      }
+      return values
+    } catch {
+      // A pattern that throws when queried throws for the scheduler too, which
+      // reports it; the warm-up just has nothing to load.
+      return []
+    }
+  }
+
+  /**
+   * #2256 — load the sounds of the first `cycles` cycles the scheduler will play,
+   * before it starts: step 3a of the play lifecycle. Waits at most `capMs`, so a
+   * slow network still starts; loads that run longer keep going and serve the
+   * notes after. A second Play has everything cached and returns at once.
+   */
+  async warmSounds(cycles = 2, capMs = WARM_CAP_MS): Promise<void> {
+    const deps = this.soundWarmDeps
+    if (!deps || !this.audioCtx) return
+    // where the next start begins: `start()` queries from `lastEnd` (`cyclist.mjs:47`),
+    // which `stop()` rewinds to 0
+    const from = Number(this.repl?.scheduler?.lastEnd) || 0
+    try {
+      await runWarmJobs(soundWarmJobs(this.noteValuesBetween(from, from + cycles), deps), capMs)
+    } catch {
+      // warming is a courtesy: the trigger still loads on demand
+    }
+  }
+
+  /**
+   * #2256 — while playing, load the sounds of the next two cycles, so a part that
+   * enters later (a new section, the next `<a b>` step) is ready when it arrives.
+   * Polls the scheduler's position; a re-evaluate swaps the pattern, and the new
+   * one is warmed from the current cycle.
+   */
+  private startWarmingAhead(): void {
+    if (this.warmAheadTimer != null) return
+    this.warmAheadTimer = setInterval(() => {
+      const scheduler = this.repl?.scheduler
+      const deps = this.soundWarmDeps
+      if (!scheduler?.started || !deps) return
+      if (scheduler.pattern !== this.warmAheadPattern) {
+        this.warmAheadPattern = scheduler.pattern
+        this.warmAheadThrough = -Infinity
+      }
+      const now = Math.floor(Number(scheduler.now?.()) || 0)
+      const from = Math.max(now, this.warmAheadThrough)
+      const to = now + 2
+      if (from >= to) return
+      this.warmAheadThrough = to
+      try {
+        for (const job of soundWarmJobs(this.noteValuesBetween(from, to), deps)) {
+          void job.run().catch(() => { /* the trigger reports a load that fails */ })
+        }
+      } catch {
+        // a registry read that throws must not escape the timer
+      }
+    }, WARM_AHEAD_POLL_MS)
+  }
+
+  private stopWarmingAhead(): void {
+    if (this.warmAheadTimer != null) clearInterval(this.warmAheadTimer)
+    this.warmAheadTimer = null
+    this.warmAheadPattern = null
+    this.warmAheadThrough = -Infinity
   }
 
   /** #2058 — superdough's stop-every-sound (Stave's patch), once audio is up. */
@@ -2067,6 +2174,7 @@ export class StrudelEngine implements LiveCodingEngine {
     // the render resumes the transport it paused.
     this.transportHold.cancelResume()
     this.repl?.scheduler?.stop()
+    this.stopWarmingAhead()
     // #2058 — the scheduler's stop only stops NEW notes. A sample plays its whole
     // length unless something cuts it, so a long file kept sounding after Stop
     // (measured: still at full level fifteen seconds later). Fade out what is
@@ -2986,6 +3094,7 @@ export class StrudelEngine implements LiveCodingEngine {
     // #1627 — like stop(): a render still running must not restart playback
     // (on this repl, or on the one a later init() builds) when it finishes.
     this.transportHold.cancelResume()
+    this.stopWarmingAhead()
     this.stopAskingForAudio?.()
     this.stopAskingForAudio = null
     this.stopListeningForPlayErrors?.()
@@ -3199,6 +3308,15 @@ function watched(pat: any, onDropped: (notes: number) => void, inQuery?: Schedul
  * red instead of silently muting #2173.
  */
 export const STRUDEL_LOG_EVENT = 'strudel.log'
+
+/**
+ * #2256 — the longest Play waits for the first cycles' sounds to load. Long
+ * enough for a drum kit and an instrument zone on an ordinary connection; short
+ * enough that a slow one still starts, with the rest loading as it plays.
+ */
+export const WARM_CAP_MS = 2500
+/** How often the warm-ahead loop checks the playing position. */
+const WARM_AHEAD_POLL_MS = 250
 
 /**
  * #2200 #2201 — a Console row an evaluate raised, for the app to write with the
