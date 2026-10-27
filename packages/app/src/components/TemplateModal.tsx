@@ -200,7 +200,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cardSelected: {
     background: "var(--bg-hover)",
-    borderColor: "var(--accent)",
+    border: "1px solid var(--accent)",
     boxShadow: "0 0 0 1px var(--accent)",
   },
   cardIcon: {
@@ -279,7 +279,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   createBtnDisabled: {
     background: "var(--bg-hover)",
-    borderColor: "var(--border-strong)",
+    border: "1px solid var(--border-strong)",
     color: "var(--text-muted)",
     cursor: "default",
   },
