@@ -37616,6 +37616,194 @@ function PatternSideToggle() {
   );
 }
 __name(PatternSideToggle, "PatternSideToggle");
+var PATTERN_SIDE_RAIL_ATTR = "data-pattern-side-rail";
+var PATTERN_SIDE_DRAWER_ATTR = "data-pattern-side-drawer";
+var PATTERN_SIDE_SCRIM_ATTR = "data-pattern-side-scrim";
+var PATTERN_SIDE_RAIL_WIDTH = 30;
+var SLIDE_MS = 240;
+var DRAWER_ID = "stave-pattern-side-drawer";
+function reducedMotion() {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false;
+}
+__name(reducedMotion, "reducedMotion");
+function PatternSideDrawer({ children }) {
+  const [open, setOpen] = React48.useState(false);
+  const [built, setBuilt] = React48.useState(false);
+  const railRef = React48.useRef(null);
+  const closeRef = React48.useRef(null);
+  const moved = React48.useRef(false);
+  const slide = reducedMotion() ? 0 : SLIDE_MS;
+  const show = /* @__PURE__ */ __name(() => {
+    moved.current = true;
+    setBuilt(true);
+    setOpen(true);
+  }, "show");
+  const hide = /* @__PURE__ */ __name(() => {
+    moved.current = true;
+    setOpen(false);
+  }, "hide");
+  React48.useEffect(() => {
+    if (!moved.current) return;
+    (open ? closeRef : railRef).current?.focus();
+  }, [open]);
+  React48.useEffect(() => {
+    if (!open) return;
+    const onKey = /* @__PURE__ */ __name((e) => {
+      if (e.key === "Escape") hide();
+    }, "onKey");
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+  return /* @__PURE__ */ jsxs(Fragment, { children: [
+    /* @__PURE__ */ jsxs(
+      "button",
+      {
+        ref: railRef,
+        ...{ [PATTERN_SIDE_RAIL_ATTR]: "" },
+        type: "button",
+        "aria-label": "Show inspector",
+        title: "Show inspector",
+        "aria-expanded": open,
+        "aria-controls": DRAWER_ID,
+        onClick: show,
+        style: {
+          appearance: "none",
+          width: PATTERN_SIDE_RAIL_WIDTH,
+          flexShrink: 0,
+          height: "100%",
+          margin: 0,
+          padding: "10px 0",
+          border: "none",
+          borderLeft: "1px solid var(--border, #3a3a42)",
+          background: "var(--background, #1c1c20)",
+          color: "var(--foreground-muted, #a0a0aa)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 10,
+          cursor: "pointer",
+          touchAction: "manipulation"
+        },
+        children: [
+          /* @__PURE__ */ jsx("svg", { width: "8", height: "12", viewBox: "0 0 8 12", "aria-hidden": "true", focusable: "false", children: /* @__PURE__ */ jsx("path", { d: "M6 1 1 6l5 5", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round", fill: "none" }) }),
+          /* @__PURE__ */ jsx(
+            "span",
+            {
+              "aria-hidden": "true",
+              style: {
+                writingMode: "vertical-rl",
+                transform: "rotate(180deg)",
+                fontSize: 10,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase"
+              },
+              children: "Inspector"
+            }
+          )
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsx(
+      "div",
+      {
+        ...{ [PATTERN_SIDE_SCRIM_ATTR]: "" },
+        "aria-hidden": "true",
+        onPointerDown: (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        },
+        onClick: (e) => {
+          e.stopPropagation();
+          hide();
+        },
+        style: {
+          position: "absolute",
+          inset: 0,
+          zIndex: 30,
+          background: "rgba(0, 0, 0, 0.42)",
+          opacity: open ? 1 : 0,
+          pointerEvents: open ? "auto" : "none",
+          transition: `opacity ${slide}ms ease-out`,
+          touchAction: "none"
+        }
+      }
+    ),
+    /* @__PURE__ */ jsxs(
+      "div",
+      {
+        id: DRAWER_ID,
+        ...{ [PATTERN_SIDE_DRAWER_ATTR]: open ? "open" : "closed" },
+        role: "dialog",
+        "aria-label": "Inspector",
+        "aria-hidden": !open,
+        style: {
+          position: "absolute",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 31,
+          width: "min(78%, 320px)",
+          display: "flex",
+          flexDirection: "column",
+          background: "var(--background, #1c1c20)",
+          borderLeft: "1px solid var(--border, #3a3a42)",
+          boxShadow: open ? "-12px 0 32px rgba(0, 0, 0, 0.5)" : "none",
+          transform: open ? "none" : "translateX(102%)",
+          // hidden only once it has slid out, so it leaves the tab order and the
+          // accessibility tree without cutting the slide short
+          visibility: open ? "visible" : "hidden",
+          transition: open ? `transform ${slide}ms cubic-bezier(0.2, 0.8, 0.2, 1)` : `transform ${slide}ms cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear ${slide}ms`
+        },
+        children: [
+          /* @__PURE__ */ jsxs(
+            "div",
+            {
+              style: {
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                padding: "4px 4px 4px 12px",
+                borderBottom: "1px solid var(--border, #3a3a42)",
+                color: "var(--foreground, #e2e2e8)",
+                fontSize: 12,
+                fontWeight: 600
+              },
+              children: [
+                /* @__PURE__ */ jsx("span", { style: { flex: 1 }, children: "Inspector" }),
+                /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    ref: closeRef,
+                    type: "button",
+                    "aria-label": "Hide inspector",
+                    title: "Hide inspector",
+                    onClick: hide,
+                    style: {
+                      appearance: "none",
+                      width: 36,
+                      height: 36,
+                      border: "none",
+                      borderRadius: 6,
+                      background: "transparent",
+                      color: "var(--foreground-muted, #a0a0aa)",
+                      display: "grid",
+                      placeItems: "center",
+                      cursor: "pointer",
+                      touchAction: "manipulation"
+                    },
+                    children: /* @__PURE__ */ jsx("svg", { width: "12", height: "12", viewBox: "0 0 12 12", "aria-hidden": "true", focusable: "false", children: /* @__PURE__ */ jsx("path", { d: "M2 2l8 8M10 2l-8 8", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", fill: "none" }) })
+                  }
+                )
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsx("div", { style: { flex: "1 1 0", minHeight: 0, minWidth: 0, overflow: "hidden" }, children: built ? children : null })
+        ]
+      }
+    )
+  ] });
+}
+__name(PatternSideDrawer, "PatternSideDrawer");
 function VisualEditStandby({
   panel,
   hint,
@@ -45161,10 +45349,10 @@ function PatternPanel() {
     {
       "data-bottom-panel-tab": "pattern",
       ...{ [CODE_UNDO_ATTR]: CODE_UNDO_ACTIVE },
-      style: { display: "flex", height: "100%", width: "100%", minWidth: 0 },
+      style: { display: "flex", height: "100%", width: "100%", minWidth: 0, ...phone ? { position: "relative", overflow: "hidden" } : null },
       children: [
         /* @__PURE__ */ jsx("div", { "data-pattern-grid": true, style: { flex: 1, minWidth: 0, height: "100%", overflow: "hidden" }, children: grid }),
-        gridAlone ? null : /* @__PURE__ */ jsx(
+        phone ? /* @__PURE__ */ jsx(PatternSideDrawer, { children: /* @__PURE__ */ jsx(MixerPanel, { division: division2, onDivisionChange: setDivision, resolution }) }) : gridAlone ? null : /* @__PURE__ */ jsx(
           "div",
           {
             "data-pattern-mixer": true,

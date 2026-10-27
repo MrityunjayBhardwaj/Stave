@@ -13806,14 +13806,15 @@ declare function runGridGesture(scope: GridScope, id: string, dryRun: boolean): 
  * Anything with no content span still shows a standby hint. The Mixer is pinned on the right for whatever is focused — it edits the
  * numeric chain args of any pattern, so it stays constant across the switch.
  *
- * On a PHONE the grid is shown ALONE (#1990): the pinned column is more than half a
- * phone's width. The knobs are still in the Mixer tab; the snap picker and the Slots
- * control have no other home, so on a phone they keep their current value. A tablet has
- * the room and keeps the column, like a desktop.
+ * On a PHONE the column is not pinned (#1990): it is more than half a phone's width.
+ * It starts collapsed to a slim rail on the right edge and slides in OVER the grid when
+ * the rail is tapped (#2252), so the snap picker and the Slots control — which have no
+ * other home — are reachable there too. A tablet has the room and keeps the column,
+ * like a desktop.
  *
  * Off a phone the column can be put away (#2044): a menu button in the tab's header row
- * hides it and the grid takes the whole width. Hidden, it is as on a phone — the snap
- * picker and the Slots control keep their current value.
+ * hides it and the grid takes the whole width. Hidden, the snap picker and the Slots
+ * control keep their current value.
  *
  * This is pure composition: SequencerGrid / PianoRollGrid / Mixer keep their
  * own binding, write-back and standby behaviour unchanged. Each binds the
