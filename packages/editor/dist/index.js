@@ -14933,8 +14933,8 @@ async function renderInPieces(duration, sampleRate, pieces, render, signal, abor
   return out;
 }
 __name(renderInPieces, "renderInPieces");
-function canPauseOfflineRender(scope = globalThis) {
-  const ctor = scope.OfflineAudioContext;
+function canPauseOfflineRender(scope2 = globalThis) {
+  const ctor = scope2.OfflineAudioContext;
   return typeof ctor?.prototype?.suspend === "function";
 }
 __name(canPauseOfflineRender, "canPauseOfflineRender");
@@ -16205,11 +16205,11 @@ function findMissingPatternMethods(code, runtime) {
 }
 __name(findMissingPatternMethods, "findMissingPatternMethods");
 var PATTERN_BUILDERS = /* @__PURE__ */ new Set(["mini", "m", "arrange", "pure", "run", "irand", "chooseCycles", "randcat", "wrandcat", "polymeter", "timecat", "fastcat", "slowcat", "sequence"]);
-function patternRuntimeOf(Pattern2, scope = globalThis) {
+function patternRuntimeOf(Pattern2, scope2 = globalThis) {
   return {
     isMethod: /* @__PURE__ */ __name((name) => name in Pattern2.prototype, "isMethod"),
-    isPatternValue: /* @__PURE__ */ __name((name) => scope[name] instanceof Pattern2, "isPatternValue"),
-    isPatternFunction: /* @__PURE__ */ __name((name) => typeof scope[name] === "function" && (name in Pattern2.prototype || PATTERN_BUILDERS.has(name)), "isPatternFunction")
+    isPatternValue: /* @__PURE__ */ __name((name) => scope2[name] instanceof Pattern2, "isPatternValue"),
+    isPatternFunction: /* @__PURE__ */ __name((name) => typeof scope2[name] === "function" && (name in Pattern2.prototype || PATTERN_BUILDERS.has(name)), "isPatternFunction")
   };
 }
 __name(patternRuntimeOf, "patternRuntimeOf");
@@ -16507,14 +16507,20 @@ __name(registerStrudelLogOwner, "registerStrudelLogOwner");
 
 // src/engine/vendored/slider.ts
 var sliderValues = {};
+var scope = "";
+function setSliderScope(next) {
+  scope = next;
+}
+__name(setSliderScope, "setSliderScope");
 function sliderFunctions({ ref, pure }) {
   const slider = /* @__PURE__ */ __name((value) => {
     console.warn("slider will only work when the transpiler is used... passing value as is");
     return pure(value);
   }, "slider");
   const sliderWithID = /* @__PURE__ */ __name((id, value, _min, _max) => {
-    sliderValues[id] = value;
-    return ref(() => sliderValues[id]);
+    const key3 = scope + id;
+    sliderValues[key3] = value;
+    return ref(() => sliderValues[key3]);
   }, "sliderWithID");
   return { slider, sliderWithID };
 }
@@ -16652,8 +16658,24 @@ var TRACK_ENVELOPE_CAP_SECONDS = 1200;
 var TRACK_ENVELOPE_COLUMNS_PER_SECOND = 100;
 var DISPLAY_PIECE_SECONDS = 8;
 var DISPLAY_PIECE_LEAD_SECONDS = 4;
+var prototypeWindow = Promise.resolve();
+function inPrototypeWindow(fn) {
+  const run = prototypeWindow.then(fn, fn);
+  prototypeWindow = run.then(
+    () => void 0,
+    () => void 0
+  );
+  return run;
+}
+__name(inPrototypeWindow, "inPrototypeWindow");
 var _StrudelEngine = class _StrudelEngine {
-  constructor() {
+  /**
+   * @param options.sliderScope where this engine's `slider()` values live
+   *   (`setSliderScope`). '' — the default — is the project's, which the Monaco
+   *   sliders write; the Library's preview engine passes its own (#2165).
+   */
+  constructor(options = {}) {
+    this.options = options;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.repl = null;
     /**
@@ -17314,7 +17336,14 @@ var _StrudelEngine = class _StrudelEngine {
       this.evaluating++;
       let result;
       try {
-        result = await this.evaluateCode(code);
+        result = await inPrototypeWindow(async () => {
+          setSliderScope(this.options.sliderScope ?? "");
+          try {
+            return await this.evaluateCode(code);
+          } finally {
+            setSliderScope("");
+          }
+        });
       } finally {
         this.evaluating--;
       }
@@ -39514,7 +39543,7 @@ var GRID_GESTURE = {
   seqShorter: "stave.sequencer.shorter",
   seqLonger: "stave.sequencer.longer"
 };
-function cursorKeys(scope, ids) {
+function cursorKeys(scope2, ids) {
   const keys = [
     ["left", "Move cursor left", "arrowleft"],
     ["right", "Move cursor right", "arrowright"],
@@ -39525,7 +39554,7 @@ function cursorKeys(scope, ids) {
     ["first", "Move cursor to the first cell", "mod+home"],
     ["last", "Move cursor to the last cell", "mod+end"]
   ];
-  return keys.map(([action, title, keybinding]) => ({ id: ids[action], scope, action, title, keybinding }));
+  return keys.map(([action, title, keybinding]) => ({ id: ids[action], scope: scope2, action, title, keybinding }));
 }
 __name(cursorKeys, "cursorKeys");
 var GRID_GESTURES = [
@@ -39614,9 +39643,9 @@ var GRID_GESTURES = [
   })
 ];
 var BY_ID = new Map(GRID_GESTURES.map((g) => [g.id, g]));
-function gridGestureAction(scope, id) {
+function gridGestureAction(scope2, id) {
   const g = BY_ID.get(id);
-  return g && g.scope === scope ? g.action : void 0;
+  return g && g.scope === scope2 ? g.action : void 0;
 }
 __name(gridGestureAction, "gridGestureAction");
 function moveCursor(at, move, rows, cols) {
@@ -39660,10 +39689,10 @@ var GRID_SCOPE_LABEL = {
   pianoRoll: { category: "Piano roll", where: "In the piano roll, on the selected cell" },
   sequencer: { category: "Sequencer", where: "In the sequencer, on the selected cell" }
 };
-function matchDefaults(scope, e) {
+function matchDefaults(scope2, e) {
   const chord = chordFromEvent(e);
   for (const g of GRID_GESTURES) {
-    if (g.scope !== scope) continue;
+    if (g.scope !== scope2) continue;
     if ([g.keybinding, ...g.alternateKeybindings ?? []].some((b) => chordMatches(chord, b))) return g.id;
   }
   return void 0;
@@ -39677,23 +39706,23 @@ function setGridKeyMatcher(fn) {
   };
 }
 __name(setGridKeyMatcher, "setGridKeyMatcher");
-function matchGridKey(scope, e) {
-  const id = matcher(scope, e);
-  return id ? gridGestureAction(scope, id) : void 0;
+function matchGridKey(scope2, e) {
+  const id = matcher(scope2, e);
+  return id ? gridGestureAction(scope2, id) : void 0;
 }
 __name(matchGridKey, "matchGridKey");
 var mounted = /* @__PURE__ */ new Map();
-function mountGridGestures(scope, run) {
-  mounted.set(scope, run);
+function mountGridGestures(scope2, run) {
+  mounted.set(scope2, run);
   return () => {
-    if (mounted.get(scope) === run) mounted.delete(scope);
+    if (mounted.get(scope2) === run) mounted.delete(scope2);
   };
 }
 __name(mountGridGestures, "mountGridGestures");
-function runGridGesture(scope, id, dryRun) {
-  const action = gridGestureAction(scope, id);
+function runGridGesture(scope2, id, dryRun) {
+  const action = gridGestureAction(scope2, id);
   if (!action) return false;
-  return mounted.get(scope)?.(action, dryRun) ?? false;
+  return mounted.get(scope2)?.(action, dryRun) ?? false;
 }
 __name(runGridGesture, "runGridGesture");
 var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";

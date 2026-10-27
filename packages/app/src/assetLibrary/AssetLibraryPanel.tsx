@@ -28,6 +28,7 @@ import {
 } from "./registry";
 import {
   availableCategories,
+  availableLevels,
   availableSources,
   availableTypes,
   collectAssets,
@@ -36,7 +37,7 @@ import {
 import { computeWindow } from "./windowing";
 import { formatBytes } from "./freeSpaceMessages";
 import { useVizPreviewHeight } from "../state/vizPreviewHeight";
-import type { Asset, AssetPreviewHandle, AssetSource, AssetType } from "./types";
+import type { Asset, AssetPreviewHandle, AssetSource, AssetType, SkillLevel } from "./types";
 
 const ROW_HEIGHT = 40;
 /** Types shown as a wrapping CARD GRID (aspect-true thumbnail + name beneath)
@@ -81,6 +82,11 @@ const TYPE_LABELS: Record<AssetType, string> = {
   snippet: "Snippets",
   sample: "Samples",
 };
+const LEVEL_LABELS: Record<SkillLevel, string> = {
+  beginner: "Beginner",
+  intermediate: "Intermediate",
+  advanced: "Advanced",
+};
 const SOURCE_LABELS: Record<AssetSource, string> = {
   "built-in": "Built-in",
   user: "User",
@@ -115,6 +121,7 @@ export function AssetLibraryPanel({
   const [type, setType] = useState<AssetType | null>(null);
   const [source, setSource] = useState<AssetSource | null>(initialSource ?? null);
   const [category, setCategory] = useState<string | null>(null);
+  const [level, setLevel] = useState<SkillLevel | null>(null);
 
   const onFiles = useCallback(
     (files: readonly File[]) =>
@@ -127,14 +134,15 @@ export function AssetLibraryPanel({
         setQuery("");
         setSource("user");
         setCategory(null);
+        setLevel(null);
       }),
     [audio.importFiles],
   );
   const drop = useAudioDrop(onFiles);
 
   const filter: AssetFilter = useMemo(
-    () => ({ query, type, source, category }),
-    [query, type, source, category],
+    () => ({ query, type, source, category, level }),
+    [query, type, source, category, level],
   );
   const assets = useMemo(
     () => collectAssets(providers, filter),
@@ -146,7 +154,13 @@ export function AssetLibraryPanel({
   // Category counts are scoped to the active type/source (so they match "All")
   // but ignore the query/category, so the numbers stay put while browsing.
   const categories = useMemo(
-    () => availableCategories(providers, { type, source }),
+    () => availableCategories(providers, { type, source, level }),
+    [providers, type, source, level],
+  );
+  // #2165 — only types whose assets carry a level (examples to learn from) get
+  // level chips.
+  const levels = useMemo(
+    () => availableLevels(providers, { type, source }).map((l) => l.level),
     [providers, type, source],
   );
   const total = useMemo(
@@ -183,6 +197,9 @@ export function AssetLibraryPanel({
   useEffect(() => {
     if (category && !categories.some((c) => c.category === category)) setCategory(null);
   }, [category, categories]);
+  useEffect(() => {
+    if (level && !levels.includes(level)) setLevel(null);
+  }, [level, levels]);
 
   // ---- Single-active-preview: starting a row stops the previous one. --------
   const activePreview = useRef<{ key: string; handle: AssetPreviewHandle | null } | null>(null);
@@ -275,6 +292,16 @@ export function AssetLibraryPanel({
             dataAttr="asset-type-filter"
           />
         )}
+        {levels.length > 0 && (
+          <ChipRow
+            label="Level"
+            active={level}
+            values={levels}
+            render={(l) => LEVEL_LABELS[l]}
+            onPick={(l) => setLevel(l)}
+            dataAttr="asset-level-filter"
+          />
+        )}
         {categories.length > 1 && (
           <CategoryChips
             active={category}
@@ -306,7 +333,7 @@ export function AssetLibraryPanel({
         // Reset scroll to top when the FILTER changes (not when the catalog
         // grows under a stable filter) — a new search starts at the top, but
         // browsing position survives a lazily-growing provider.
-        resetKey={`${type ?? ""}|${source ?? ""}|${category ?? ""}|${query}`}
+        resetKey={`${type ?? ""}|${source ?? ""}|${category ?? ""}|${level ?? ""}|${query}`}
       />
     </div>
   );
@@ -617,7 +644,15 @@ function AssetRow({
       )}
       <div style={styles.rowText}>
         <span style={styles.rowName}>{asset.name}</span>
-        {asset.group && <span style={styles.rowGroup}>{asset.group}</span>}
+        {/* #2165 — who an example is for, ahead of its topic, on the one line
+            the row has room for */}
+        {(asset.level || asset.group) && (
+          <span style={styles.rowGroup}>
+            {asset.level && <span data-asset-level={rowKey}>{LEVEL_LABELS[asset.level]}</span>}
+            {asset.level && asset.group && " · "}
+            {asset.group}
+          </span>
+        )}
         {/* #1786 — what this asset takes on disk, so a full disk has a map. */}
         {asset.sizeBytes != null && (
           <span style={styles.rowGroup} data-asset-size={rowKey}>

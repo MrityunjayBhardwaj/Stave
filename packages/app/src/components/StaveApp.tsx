@@ -149,6 +149,9 @@ import { getFile } from "@stave/editor";
 import { usePhone, isPhone, usePhoneLayout, startVisibleArea } from "@stave/editor";
 import { createSamplesProvider } from "../assetLibrary/samplesProvider";
 import { createVizProvider } from "../assetLibrary/vizProvider";
+import { createSnippetsProvider } from "../assetLibrary/snippetsProvider";
+import { playSnippet, checkSnippet, previewNotesPlayed } from "../assetLibrary/snippetPreview";
+import { createFileWithContent } from "../lib/newFile";
 import { planVizLibFiles, VIZ_LIB_ROOT, type VizLibItem } from "../assetLibrary/vizLibrary";
 import { PerfOverlay } from "./PerfOverlay";
 import { PROJECT_FILE_ACCEPT } from "../projectFile";
@@ -964,6 +967,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     // re-emitted into the main engineLog (Console/issues panel).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__staveGetLog = () => getLogHistory();
+    // #2165 — run a Library sketch on the preview engine and report its error,
+    // event count and the sounds it names (library-snippets.spec checks them all).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveCheckSnippet = (code: string, cycles?: number) => checkSnippet(code, cycles);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveSnippetNotesPlayed = () => previewNotesPlayed();
     // Override an EXISTING workspace viz file's code (e.g. the bundled
     // `preset/viz/spectrum.p5`) so a real non-underscore method (`.spectrum()`)
     // pins it through the production code-driven backdrop path — which is the
@@ -1400,6 +1409,22 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       }),
     );
     return unregViz;
+  }, []);
+
+  // #2165 — the built-in Strudel sketches. Preview plays one on an engine of
+  // its own (the project's stays as it is); `+` adds it to the project as a new
+  // file under `snippets/`, which opens it: StrudelEditorClient opens every file
+  // added to the project. (Opening it here as well gave it two tabs.)
+  useEffect(() => {
+    return registerAssetProvider(
+      createSnippetsProvider({
+        startPreview: (snippet) => playSnippet(snippet.code),
+        onInsert: (snippet) => {
+          const file = createFileWithContent(`snippets/${snippet.id}.strudel`, snippet.code, "strudel");
+          showToast(`Added ${snippet.name} → ${file.path}. Press play to hear it.`, "info");
+        },
+      }),
+    );
   }, []);
 
   // #1504 — the project's own audio in the library. `AssetType` has declared

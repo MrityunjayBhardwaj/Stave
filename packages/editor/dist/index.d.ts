@@ -4629,9 +4629,21 @@ declare function isBootStepFailure(err: unknown): err is BootStepFailure;
  * Wraps @strudel/webaudio (which wraps superdough) via webaudioRepl().
  *
  * API surface matches ARCHITECTURE.md.
- * One instance per page. Must be init()'d after a user gesture.
+ * Must be init()'d after a user gesture. Every instance plays through
+ * superdough's one audio context; a page holds several (one per Strudel file,
+ * and the Library's preview, #2165), and their evaluates take turns
+ * (`inPrototypeWindow`).
  */
 declare class StrudelEngine implements LiveCodingEngine {
+    private readonly options;
+    /**
+     * @param options.sliderScope where this engine's `slider()` values live
+     *   (`setSliderScope`). '' — the default — is the project's, which the Monaco
+     *   sliders write; the Library's preview engine passes its own (#2165).
+     */
+    constructor(options?: {
+        sliderScope?: string;
+    });
     private repl;
     /**
      * #1627 — holds the live transport still while an offline render borrows

@@ -24,6 +24,19 @@
 /** a slider's current value, by the id the transpiler gave it */
 export const sliderValues: Record<string, number> = {}
 
+/**
+ * #2165 — whose sliders are being read: the engine evaluating right now keeps
+ * its values under this prefix. The project's engine uses '' (what the Monaco
+ * sliders write); the Library's preview engine has its own, so a previewed
+ * sketch's slider can't overwrite one of the project's at the same offset.
+ * Set by `StrudelEngine.evaluate` for the length of its evaluate, which only one
+ * engine holds at a time.
+ */
+let scope = ''
+export function setSliderScope(next: string): void {
+  scope = next
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Core = { ref: (accessor: () => unknown) => any; pure: (value: unknown) => any }
 
@@ -36,8 +49,9 @@ export function sliderFunctions({ ref, pure }: Core) {
   }
   /** what the transpiler turns `slider(value, min, max)` into */
   const sliderWithID = (id: string, value: number, _min?: number, _max?: number) => {
-    sliderValues[id] = value // sync state at eval time (code -> state)
-    return ref(() => sliderValues[id]) // use state at query time
+    const key = scope + id
+    sliderValues[key] = value // sync state at eval time (code -> state)
+    return ref(() => sliderValues[key]) // use state at query time
   }
   return { slider, sliderWithID }
 }
