@@ -2228,7 +2228,8 @@ declare function masterVizEdit(doc: string, name: string | null): OffsetEdit | n
  * line when the error's own stack is bundle-only and the hap's `loc` is
  * degenerate (#567). Reuses the strips' own source-extraction so the locate
  * agrees with what the Mixer shows. First match wins (rare: two tracks, one
- * instrument).
+ * instrument). A hap carries the ONE sound it played, so a track whose source is
+ * a pattern of sounds matches on any of them (#2226).
  */
 declare function statementOffsetForSource(doc: string, source: string): number | null;
 /**
@@ -9799,11 +9800,12 @@ interface WorkspaceShellHandle {
      * cursor. No-op when there's no active editor. Detects the chunk fresh from
      * the active editor at call time — it does NOT depend on the Pattern/Mixer
      * panel being open. `slow` (#2070) is written as `.slow(N)` on a fresh line,
-     * for a clip longer than a cycle.
+     * for a clip longer than a cycle. Returns why nothing was written when the
+     * `.sound()` under the cursor is a pattern of several sounds (#2226), else null.
      */
     assignSoundToCursor(sound: string, opts?: {
         slow?: number;
-    }): void;
+    }): string | null;
     /** Attach `.viz("name")` to the pattern chunk under the cursor (Asset Library
      *  viz insert). Returns true if it wrote, false when there's no pattern under
      *  the cursor (nothing to attach to) so the caller can guide the user. */

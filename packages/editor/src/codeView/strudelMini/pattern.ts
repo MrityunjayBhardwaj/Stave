@@ -111,6 +111,31 @@ export function miniPieces(mini: string, cyc: number): MiniPiece[] {
   return asked(mini, reifyMini(mini) as Queryable).pieces(cyc)
 }
 
+/**
+ * What `mini` holds at each instant in `times` (cycles), every value sounding then: one
+ * for a sequence, several under a `,` stack, none in a rest (#2226).
+ *
+ * This is how a note learns its sound. `.sound(x)` is a control, and a control is
+ * `pat.set.in(x)` (`@strudel/core` `controls.mjs`): the note keeps its own span and
+ * takes, through `appLeft`, a fragment for every piece of `x` its span overlaps. Only
+ * the fragment that holds the note's onset plays, and that is the piece of `x` sounding
+ * at the onset — this, asked of Strudel.
+ *
+ * THROWS what Strudel throws.
+ */
+export function miniValuesAt(mini: string, times: readonly number[]): unknown[][] {
+  const pat = asked(mini, reifyMini(mini) as Queryable)
+  const byCycle = new Map<number, MiniPiece[]>()
+  // a column's time is a float (`1/3` of a bar); Strudel's is exact, so allow for the rounding
+  const EPS = 1e-9
+  return times.map((t) => {
+    const cyc = Math.floor(t + EPS)
+    let pieces = byCycle.get(cyc)
+    if (!pieces) byCycle.set(cyc, (pieces = pat.pieces(cyc)))
+    return pieces.filter((p) => p.begin.valueOf() <= t + EPS && t + EPS < p.end.valueOf()).map((p) => p.value)
+  })
+}
+
 /** one onset of `values.struct(rhythm)`: when, and which value it plays */
 export interface StructHit {
   begin: MiniTime

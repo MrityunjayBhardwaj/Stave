@@ -86,12 +86,13 @@ test.describe('timeline row edge resize (#1750)', () => {
     await expect(d1).toHaveAttribute('data-expanded', 'true')
     const voices = Number(await d1.getAttribute('data-full-song-voices'))
     expect(voices).toBe(3) // PRECONDITION: three voice sub-rows scale with the setting
-    expect(await rowHeight(page, 'd1')).toBe(75)
+    // the track's header row + three voice rows (#2226)
+    expect(await rowHeight(page, 'd1')).toBe(100)
 
-    // Down 30 px over three rows → each row +10.
+    // Down 40 px over four rows → each row +10.
     const edge = page.locator('[data-full-song-row-edge="d1"]')
-    const down = await dragEdge(page, 'd1', 30)
-    expect(await rowHeight(page, 'd1')).toBe(105)
+    const down = await dragEdge(page, 'd1', 40)
+    expect(await rowHeight(page, 'd1')).toBe(140)
     expect(await rowHeight(page, 'd2')).toBe(35)
     const after = (await edge.boundingBox())!
     expect(Math.abs(after.y + after.height / 2 - down.releaseY)).toBeLessThanOrEqual(1.5)

@@ -1323,7 +1323,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       createSoundsProvider({
         readDict,
         startPreview: (sound) => startAudition(sound),
-        onInsert: (sound) => shellRef.current?.assignSoundToCursor(sound),
+        onInsert: (sound) => {
+          // #2226 — a `.sound()` that is a pattern of several is not replaced: say why
+          const refused = shellRef.current?.assignSoundToCursor(sound);
+          if (refused) showToast(refused, "info", 6000);
+        },
         // #2062 — your audio is listed with the sounds, as yours
         ownAudio: () => ownAudioRef.current?.list() ?? [],
       }),
@@ -1496,7 +1500,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onInsert: (name) => {
           const record = listAssetRecords().find((r) => r.name === name);
           const slow = cyclesToPlayThrough(record?.duration, getCpsRef.current() ?? 0.5);
-          shellRef.current?.assignSoundToCursor(name, slow ? { slow } : undefined);
+          const refused = shellRef.current?.assignSoundToCursor(name, slow ? { slow } : undefined);
+          if (refused) showToast(refused, "info", 6000);
         },
         sizeOf: (hash) => sizes.get(hash),
         onRemove,

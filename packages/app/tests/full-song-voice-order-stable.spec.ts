@@ -9,8 +9,8 @@
  * the top-level lane stability.
  *
  * Repro (verified in the real browser): `arrange([2, s("bd*4")], [2, s("hh*8")],
- * [4, s("bd sn bd sn")])` is ONE lane (`d1`) with three voices — header `d1 · bd`
- * and indented sub-labels `[hh, sn]`. Swapping the first two arms (code-edit OR
+ * [4, s("bd sn bd sn")])` is ONE lane (`d1`) with three voices — a header row, and
+ * under it indented labels `[bd, hh, sn]` (#2226). Swapping the first two arms (code-edit OR
  * drag) must leave that row order [bd, hh, sn] UNCHANGED while the per-voice mark
  * content moves (bd's hits slide later; hh's slide earlier) — proving the rows
  * held WITHOUT freezing the timeline.
@@ -73,17 +73,15 @@ async function openSongView(page: Page): Promise<void> {
   await page.waitForTimeout(400)
 }
 
-/** The FULL ordered voice keys of a lane: header voice 0 (parsed from
- *  `laneKey · voice0`) followed by the indented `data-full-song-voice` sub-rows.
- *  This is the exact top-to-bottom row order the user sees. */
+/** The FULL ordered voice keys of a lane: its indented `data-full-song-voice`
+ *  rows, one per voice under the header row (#2226). This is the exact
+ *  top-to-bottom row order the user sees. */
 async function voiceOrder(page: Page, laneKey: string): Promise<string[]> {
+  // every voice has a labelled row of its own under the track's header (#2226)
   const lane = page.locator(`[data-full-song-lane="${laneKey}"]`)
-  const header = (await lane.locator('span').last().textContent()) ?? ''
-  const voice0 = header.includes('·') ? header.split('·').pop()!.trim() : header.trim()
-  const subs = await lane.locator('[data-full-song-voice]').evaluateAll((els) =>
+  return lane.locator('[data-full-song-voice]').evaluateAll((els) =>
     els.map((e) => e.getAttribute('data-full-song-voice') ?? ''),
   )
-  return [voice0, ...subs]
 }
 
 /** A pixel fingerprint of the canvas — changes iff the drawn scene changed.

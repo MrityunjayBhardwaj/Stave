@@ -587,6 +587,25 @@ describe('statementOffsetForSource', () => {
     expect(statementOffsetForSource('$: s("bd")', 'gm_agogo')).toBeNull()
   })
 
+  // #2226 — a note carries the ONE sound it played; the track's is a pattern of them
+  it('a track whose sound is a pattern matches on any of its sounds', () => {
+    const doc = ['$: s("bd")', '$: note("48 67 63").sound("piano gm_electric_guitar_muted")'].join('\n')
+    const second = doc.indexOf('$: note')
+    expect(statementOffsetForSource(doc, 'gm_electric_guitar_muted')).toBe(second)
+    expect(statementOffsetForSource(doc, 'piano')).toBe(second)
+    expect(statementOffsetForSource('$: note("c").sound("<piano:2 ~>")', 'piano')).toBe(0)
+    // a name that is only part of one is not a match
+    expect(statementOffsetForSource(doc, 'gm_electric')).toBeNull()
+  })
+
+  it('a strip lists the sounds its source plays', () => {
+    const src = '$: note("c").sound("piano")\n$: note("c").sound("<piano sawtooth piano>")\n$: note("c")'
+    const [one, multi, none] = buildStripModels(detectAllChunks(src), src)
+    expect(one.sounds).toEqual(['piano'])
+    expect(multi.sounds).toEqual(['piano', 'sawtooth'])
+    expect(none.sounds).toEqual([])
+  })
+
   it('offset → 1-based line by newline count (the app conversion)', () => {
     const doc = ['setcps(0.5)', '$: s("bd")', "$: note(\"c7\").sound('gm_agogo')"].join('\n')
     const offset = statementOffsetForSource(doc, 'gm_agogo')!

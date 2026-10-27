@@ -29,11 +29,11 @@ describe('rowHeightForEdge (#1750)', () => {
     expect(edgeOf(none, 30, 2)).toBe(90)
   })
 
-  it('counts an expanded multi-voice lane above the edge as its voices', () => {
+  it('counts an expanded multi-voice lane above the edge as its voices and its header', () => {
     const b = new Set(['b'])
-    // Above the edge below c: a (1 row) + b (3 voices) + c (1 row) = 5h.
-    expect(rowHeightForEdge(layoutAt(b), 2, 100, 12, 48)).toBe(20)
-    expect(edgeOf(b, 20, 2)).toBe(100)
+    // Above the edge below c: a (1 row) + b (header + 3 voices, #2226) + c (1 row) = 6h.
+    expect(rowHeightForEdge(layoutAt(b), 2, 120, 12, 48)).toBe(20)
+    expect(edgeOf(b, 20, 2)).toBe(120)
   })
 
   it('picks the nearest whole pixel when the pointer falls between two', () => {
