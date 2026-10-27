@@ -217,3 +217,48 @@ test('the Explorer header actions still appear only on hover', async ({ page }) 
   await page.waitForTimeout(300)
   expect(Number(await opacityOfRow()), 'shown while the cursor is inside').toBeGreaterThan(0.9)
 })
+
+/**
+ * #2254 — at the panel's narrowest width a toolbar's buttons stay inside it.
+ *
+ * Console's filter box and Search's input are `flex: 1` text inputs. A text input
+ * will not shrink below its built-in ~20-character width unless `min-width` lets it,
+ * so below ~250 px it pushed its buttons past the panel's edge, and the panel does
+ * not clip, so they sat on top of the editor (65 px over at 160 px for Console, 31
+ * for Search). Measured as rendered boxes against the panel's own right edge, at a
+ * normal width first so a toolbar that is wrong everywhere cannot pass.
+ */
+test('at its narrowest width, the Console and Search toolbars keep their buttons inside', async ({ page }) => {
+  // two widths x two tabs, each a tab switch and a drag
+  test.setTimeout(90_000)
+  const toolbars = [
+    { tab: 'Console', buttons: ['Copy visible entries', 'Clear log'], input: '[data-testid="console-search"]' },
+    { tab: 'Search', buttons: ['Match case'], input: 'input[placeholder^="Search in files"]' },
+  ] as const
+
+  const reachPastEdge = async (title: string): Promise<number> => {
+    const panel = await page.locator('[data-side-panel]').boundingBox()
+    const btn = await page.locator('[data-sidebar]').getByTitle(title, { exact: true }).boundingBox()
+    if (!panel || !btn) throw new Error(`${title}: not visible`)
+    return Math.round(btn.x + btn.width - (panel.x + panel.width))
+  }
+
+  for (const narrow of [false, true]) {
+    for (const { tab, buttons, input } of toolbars) {
+      await selectTab(page, tab)
+      if (narrow) {
+        // well past the 160 px floor but short of the 80 px collapse line
+        const panel = await page.locator('[data-side-panel]').boundingBox()
+        await dragEdgeTo(page, panel!.x + 120)
+        expect(await panelWidth(page), 'the drag must reach the 160 px floor').toBe(160)
+      }
+      for (const title of buttons) {
+        expect(await reachPastEdge(title), `${tab} › ${title} at ${await panelWidth(page)} px`).toBeLessThanOrEqual(0)
+      }
+      // the box gave up the room, and is still there to type into
+      const box = await page.locator(input).boundingBox()
+      expect(box!.width, `${tab}'s input still has room`).toBeGreaterThan(30)
+    }
+  }
+})
+
