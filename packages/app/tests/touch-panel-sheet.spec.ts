@@ -5,9 +5,10 @@
  * On a desktop the panel takes its height out of the editor's, and a 4 px edge resizes
  * it. On a phone there is no height to share and no edge a finger can find. So upright
  * on a phone the strip of tab names at the bottom of the screen is tall enough to hit,
- * a tab opens its panel as a sheet lying OVER the code at half height, and pulling the
- * strip up takes the sheet to the full height under the editor's Play bar; pulling it
- * down goes back to half, then closed. The editor underneath never changes size, so
+ * a tab opens its panel as a sheet lying OVER the code at half height, and the strip
+ * pulls the sheet to any height between closed and full (under the editor's Play bar).
+ * It stays where it is let go, unless that is within a fifth of the screen of either
+ * end: then it closes, or goes full (#2260). The editor underneath never changes size, so
  * closing the sheet leaves the code exactly where it was.
  *
  * The pulls here are made with the mouse's pointer, which runs the same pointer
@@ -125,14 +126,15 @@ test.describe('the panel is a sheet on a phone held upright (#2002)', () => {
     }
   })
 
-  test('pulling the handle up goes to full height under Play; pulling down goes to half, then closed', async ({ page }) => {
+  test('pulling the handle all the way up goes to full height under Play; all the way down closes it', async ({ page }) => {
     await boot(page)
     await page.locator('[data-bottom-panel="header"] [data-tab-id="pattern"]').tap()
     const root = page.locator('[data-bottom-panel="root"]')
     await expect(root).toHaveAttribute('data-sheet', 'half')
     const half = await sheet(page)
 
-    await pull(page, -150)
+    // twice half is past full, and the finger stays on the screen
+    await pull(page, -half.height)
     await expect(root).toHaveAttribute('data-sheet', 'full')
     const full = await sheet(page)
     expect(full.height).toBeGreaterThan(half.height + 100)
@@ -143,15 +145,58 @@ test.describe('the panel is a sheet on a phone held upright (#2002)', () => {
     expect(await onTop(page, TOP_BAR)).toBe(true)
     await expect(page.locator('[data-bottom-panel-tab="pattern"]')).toBeVisible()
 
-    await pull(page, 150)
-    await expect(root).toHaveAttribute('data-sheet', 'half')
-    expect(Math.round((await sheet(page)).height)).toBe(Math.round(half.height))
-
-    await pull(page, 150)
+    await pull(page, full.height - 60)
     await expect(root).toHaveAttribute('data-sheet', 'closed')
     await expect(page.locator('[data-bottom-panel="body"]')).toHaveCount(0)
     const s = await strip(page)
     expect(Math.round(s.y + s.height)).toBe(await screenHeight(page))
+  })
+
+  test('the sheet stays where it is let go; only near either end does it go the rest of the way (#2260)', async ({ page }) => {
+    await boot(page)
+    await page.locator('[data-bottom-panel="header"] [data-tab-id="pattern"]').tap()
+    const root = page.locator('[data-bottom-panel="root"]')
+    await expect(root).toHaveAttribute('data-sheet', 'half')
+    const zone = (await screenHeight(page)) / 5
+    const closed = Math.round((await strip(page)).height) + 1 // the strip and its top border
+    await pull(page, -(await sheet(page)).height)
+    await expect(root).toHaveAttribute('data-sheet', 'full')
+    const full = Math.round((await sheet(page)).height)
+    expect(full - closed, 'room for a middle that snaps to neither end').toBeGreaterThan(2 * zone + 40)
+
+    /** pull the sheet from where it is to `target` px tall */
+    const pullTo = async (target: number): Promise<void> => pull(page, (await sheet(page)).height - target)
+
+    // let go in the middle: it stays there, at the height it was let go
+    const middle = Math.round((closed + full) / 2)
+    await pullTo(middle)
+    await expect(root).toHaveAttribute('data-sheet', 'free')
+    expect(Math.abs((await sheet(page)).height - middle)).toBeLessThanOrEqual(2)
+    await expect(page.locator('[data-bottom-panel-tab="pattern"]')).toBeVisible()
+    // a second pull starts from there, not from half
+    await pull(page, -30)
+    await expect(root).toHaveAttribute('data-sheet', 'free')
+    expect(Math.abs((await sheet(page)).height - (middle + 30))).toBeLessThanOrEqual(2)
+
+    // let go just outside the zone under full: still where it was let go
+    await pullTo(full - zone - 12)
+    await expect(root).toHaveAttribute('data-sheet', 'free')
+    // inside it: the rest of the way up
+    await pullTo(full - zone + 12)
+    await expect(root).toHaveAttribute('data-sheet', 'full')
+    expect(Math.round((await sheet(page)).height)).toBe(full)
+
+    // just outside the zone over the strip: where it was let go
+    await pullTo(closed + zone + 12)
+    await expect(root).toHaveAttribute('data-sheet', 'free')
+    // inside it: closed
+    await pullTo(closed + zone - 12)
+    await expect(root).toHaveAttribute('data-sheet', 'closed')
+    await expect(page.locator('[data-bottom-panel="body"]')).toHaveCount(0)
+
+    // and a tab opens it at half again, not where it was last let go
+    await page.locator('[data-bottom-panel="header"] [data-tab-id="pattern"]').tap()
+    await expect(root).toHaveAttribute('data-sheet', 'half')
   })
 
   test('a drag inside a panel belongs to the panel: the sheet does not move', async ({ page }) => {
@@ -198,7 +243,7 @@ test.describe('the panel is a sheet on a phone held upright (#2002)', () => {
 
     await page.locator('[data-bottom-panel="header"] [data-tab-id="mixer-console"]').tap()
     await expect(page.locator('[data-bottom-panel="root"]')).toHaveAttribute('data-sheet', 'half')
-    await pull(page, -150)
+    await pull(page, -(await sheet(page)).height)
     await expect(page.locator('[data-bottom-panel="root"]')).toHaveAttribute('data-sheet', 'full')
     await page.locator('[data-bottom-panel="toggle"]').tap()
     await expect(page.locator('[data-bottom-panel="root"]')).toHaveAttribute('data-sheet', 'closed')
