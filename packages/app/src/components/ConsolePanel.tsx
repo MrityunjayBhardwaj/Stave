@@ -488,6 +488,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   search: {
     flex: 1,
+    // A text input will not shrink below its built-in ~20-character width on
+    // its own; without this the box pushed the copy/clear buttons out past a
+    // narrow panel's edge, over the editor (#2254).
+    minWidth: 0,
     background: "var(--bg-app)",
     border: "1px solid var(--border-subtle)",
     borderRadius: 3,
@@ -498,6 +502,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: "inherit",
   },
   btn: {
+    // the filter box gives up room first; the buttons keep their size (#2254)
+    flexShrink: 0,
     background: "transparent",
     border: "1px solid var(--border-subtle)",
     borderRadius: 3,

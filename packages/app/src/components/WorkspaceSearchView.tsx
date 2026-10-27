@@ -163,6 +163,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   input: {
     flex: 1,
+    // A text input will not shrink below its built-in ~20-character width on
+    // its own; without this it pushed the Aa button out past a narrow panel's
+    // edge, over the editor (#2254).
+    minWidth: 0,
     background: "var(--bg-input)",
     border: "none",
     color: "var(--text-primary)",
@@ -172,6 +176,8 @@ const styles: Record<string, React.CSSProperties> = {
     outline: "none",
   },
   caseBtn: {
+    // the input gives up room first; the button keeps its size (#2254)
+    flexShrink: 0,
     background: "var(--bg-input)",
     border: "none",
     borderLeft: "1px solid var(--border-subtle)",
