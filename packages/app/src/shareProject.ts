@@ -7,6 +7,10 @@
  * Size cap: 2 MB raw manifest to keep URLs under typical browser limits
  * (Chrome: ~2 MB for location.hash; most paste targets tolerate this).
  * Gzip shrinks typical Strudel projects ~4-8x.
+ *
+ * #2248 — the short form, `/s/<id>#<key>`, carries the same gzipped manifest,
+ * sealed with a key that stays in the link and stored by id (see shareCrypto.ts).
+ * Copy Share Link tries it first and falls back to the long link.
  */
 import {
   listWorkspaceFiles,
@@ -24,6 +28,8 @@ import {
   type WorkspaceLanguage,
 } from "@stave/editor";
 
+import { fromBase64Url, openShare, parseShortShare, sealShare, toBase64Url } from "./shareCrypto";
+
 export const SHARE_HASH_PREFIX = "#share=";
 const MAX_RAW_BYTES = 2 * 1024 * 1024;
 
@@ -33,23 +39,6 @@ interface ShareManifest {
   files: Array<{ id: string; path: string; language: string; content: string }>;
   fileOrder: Record<string, string[]>;
   subfolderOrder: Record<string, string[]>;
-}
-
-// base64url: replace `+/` with `-_` and strip `=` padding.
-function toBase64Url(bytes: Uint8Array): string {
-  let bin = "";
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  const b64 = btoa(bin);
-  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function fromBase64Url(str: string): Uint8Array {
-  const b64 = str.replace(/-/g, "+").replace(/_/g, "/") +
-    "=".repeat((4 - (str.length % 4)) % 4);
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
 }
 
 async function gzip(bytes: Uint8Array): Promise<Uint8Array> {
@@ -131,18 +120,46 @@ function collectManifest(project: ProjectMeta): ShareManifest {
  * so the server never sees it.
  */
 export async function buildShareUrl(project: ProjectMeta): Promise<string> {
-  const manifest = collectManifest(project);
-  const json = JSON.stringify(manifest);
-  const raw = new TextEncoder().encode(json);
+  const encoded = toBase64Url(await packProject(project));
+  return `${window.location.origin}${appPath()}${SHARE_HASH_PREFIX}${encoded}`;
+}
+
+/** The project's manifest, gzipped. Throws past the 2 MB cap. */
+async function packProject(project: ProjectMeta): Promise<Uint8Array> {
+  const raw = new TextEncoder().encode(JSON.stringify(collectManifest(project)));
   if (raw.byteLength > MAX_RAW_BYTES) {
     throw new Error(
       `Project too large to share via URL (${(raw.byteLength / 1024).toFixed(0)}KB > 2MB). Export the project instead.`,
     );
   }
-  const zipped = await gzip(raw);
-  const encoded = toBase64Url(zipped);
-  const { origin, pathname } = window.location;
-  return `${origin}${pathname}${SHARE_HASH_PREFIX}${encoded}`;
+  return gzip(raw);
+}
+
+/**
+ * The page the app lives on. A short link's `/s/<id>` is an address for one shared
+ * project, not a place to build links from or return to.
+ */
+function appPath(): string {
+  const { pathname } = window.location;
+  return parseShortShare(pathname, "") ? "/" : pathname;
+}
+
+/**
+ * #2248 — a short link, `/s/<id>#<key>`. The project is sealed here with a fresh
+ * key and only the sealed bytes are uploaded; the key stays in the link's `#` part,
+ * which browsers never send. Throws when the store can't take it (offline, not set
+ * up, too large) — the caller falls back to the long link.
+ */
+export async function buildShortShareUrl(project: ProjectMeta): Promise<string> {
+  const { sealed, key } = await sealShare(await packProject(project));
+  const res = await fetch("/api/share", {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: sealed as BodyInit,
+  });
+  if (!res.ok) throw new Error(`the share store answered ${res.status}`);
+  const { id } = (await res.json()) as { id: string };
+  return `${window.location.origin}/s/${id}#${key}`;
 }
 
 /**
@@ -150,7 +167,10 @@ export async function buildShareUrl(project: ProjectMeta): Promise<string> {
  * for the caller to confirm + apply. Throws on malformed input.
  */
 export async function decodeSharePayload(encoded: string): Promise<ShareManifest> {
-  const zipped = fromBase64Url(encoded);
+  return unpackManifest(fromBase64Url(encoded));
+}
+
+async function unpackManifest(zipped: Uint8Array): Promise<ShareManifest> {
   const raw = await gunzip(zipped);
   const json = new TextDecoder().decode(raw);
   const manifest = JSON.parse(json) as ShareManifest;
@@ -198,9 +218,34 @@ export function readShareFragment(): string | null {
   return hash.slice(SHARE_HASH_PREFIX.length);
 }
 
-/** Clear the share fragment from the URL without reloading. */
+/** A share the page was opened with: a long `#share=` link or a short `/s/<id>` one. */
+export type IncomingShare =
+  | { kind: "long"; encoded: string }
+  | { kind: "short"; id: string; key: string | null };
+
+export function readIncomingShare(): IncomingShare | null {
+  if (typeof window === "undefined") return null;
+  const short = parseShortShare(window.location.pathname, window.location.hash);
+  if (short) return { kind: "short", ...short };
+  const encoded = readShareFragment();
+  return encoded ? { kind: "long", encoded } : null;
+}
+
+/** Fetch (for a short link) and decode a share. Throws a reason a person can act on. */
+export async function loadIncomingShare(share: IncomingShare): Promise<ShareManifest> {
+  if (share.kind === "long") return decodeSharePayload(share.encoded);
+  if (!share.key) throw new Error("the link is missing its key; copy the whole link, including the part after #");
+  const res = await fetch(`/api/share/${share.id}`);
+  if (res.status === 404) throw new Error("this share link wasn't found");
+  if (res.status === 503) throw new Error("short links aren't set up on this site");
+  if (!res.ok) throw new Error(`the share store answered ${res.status}`);
+  const sealed = new Uint8Array(await res.arrayBuffer());
+  return unpackManifest(await openShare(sealed, share.key));
+}
+
+/** Clear the share from the URL without reloading (a short link goes back to the app's page). */
 export function clearShareFragment(): void {
   if (typeof window === "undefined") return;
-  const { origin, pathname, search } = window.location;
-  window.history.replaceState(null, "", `${origin}${pathname}${search}`);
+  const { origin, search } = window.location;
+  window.history.replaceState(null, "", `${origin}${appPath()}${search}`);
 }

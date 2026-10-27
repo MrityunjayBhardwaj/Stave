@@ -37,9 +37,10 @@ Open it from **File › Version History…** or the history icon in the activity
 
 ## Share links
 
-**File › Copy Share Link** puts the whole project into a link like `https://stave.live/#share=…`. Whoever opens it is asked "Import shared project?".
+**File › Copy Share Link** copies a short link like `https://stave.live/s/k3Fq9xT2abc#…`. Whoever opens it is asked "Import shared project?".
 
-- The project lives in the part of the link after `#`, which browsers never send to a server.
+- Your browser locks the project with a new key and uploads only the locked copy. The key is the part of the link after `#`, which browsers never send to a server, so the copy Stave keeps can't be read without the link.
+- If a short link can't be made (you're offline, say), Stave copies a long link instead, with the whole project inside it, and tells you. Long links like `https://stave.live/#share=…` keep working.
 - A share link carries your files, not your audio. To send audio as well, export the project as a `.stave` file.
 - A project too big for a link (over 2 MB before compression) asks you to export the project instead.
 
