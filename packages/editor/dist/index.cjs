@@ -15178,8 +15178,8 @@ async function renderInPieces(duration, sampleRate, pieces, render, signal, abor
   return out;
 }
 __name(renderInPieces, "renderInPieces");
-function canPauseOfflineRender(scope = globalThis) {
-  const ctor = scope.OfflineAudioContext;
+function canPauseOfflineRender(scope2 = globalThis) {
+  const ctor = scope2.OfflineAudioContext;
   return typeof ctor?.prototype?.suspend === "function";
 }
 __name(canPauseOfflineRender, "canPauseOfflineRender");
@@ -16450,11 +16450,11 @@ function findMissingPatternMethods(code, runtime) {
 }
 __name(findMissingPatternMethods, "findMissingPatternMethods");
 var PATTERN_BUILDERS = /* @__PURE__ */ new Set(["mini", "m", "arrange", "pure", "run", "irand", "chooseCycles", "randcat", "wrandcat", "polymeter", "timecat", "fastcat", "slowcat", "sequence"]);
-function patternRuntimeOf(Pattern2, scope = globalThis) {
+function patternRuntimeOf(Pattern2, scope2 = globalThis) {
   return {
     isMethod: /* @__PURE__ */ __name((name) => name in Pattern2.prototype, "isMethod"),
-    isPatternValue: /* @__PURE__ */ __name((name) => scope[name] instanceof Pattern2, "isPatternValue"),
-    isPatternFunction: /* @__PURE__ */ __name((name) => typeof scope[name] === "function" && (name in Pattern2.prototype || PATTERN_BUILDERS.has(name)), "isPatternFunction")
+    isPatternValue: /* @__PURE__ */ __name((name) => scope2[name] instanceof Pattern2, "isPatternValue"),
+    isPatternFunction: /* @__PURE__ */ __name((name) => typeof scope2[name] === "function" && (name in Pattern2.prototype || PATTERN_BUILDERS.has(name)), "isPatternFunction")
   };
 }
 __name(patternRuntimeOf, "patternRuntimeOf");
@@ -16752,14 +16752,20 @@ __name(registerStrudelLogOwner, "registerStrudelLogOwner");
 
 // src/engine/vendored/slider.ts
 var sliderValues = {};
+var scope = "";
+function setSliderScope(next) {
+  scope = next;
+}
+__name(setSliderScope, "setSliderScope");
 function sliderFunctions({ ref, pure }) {
   const slider = /* @__PURE__ */ __name((value) => {
     console.warn("slider will only work when the transpiler is used... passing value as is");
     return pure(value);
   }, "slider");
   const sliderWithID = /* @__PURE__ */ __name((id, value, _min, _max) => {
-    sliderValues[id] = value;
-    return ref(() => sliderValues[id]);
+    const key3 = scope + id;
+    sliderValues[key3] = value;
+    return ref(() => sliderValues[key3]);
   }, "sliderWithID");
   return { slider, sliderWithID };
 }
@@ -16897,8 +16903,24 @@ var TRACK_ENVELOPE_CAP_SECONDS = 1200;
 var TRACK_ENVELOPE_COLUMNS_PER_SECOND = 100;
 var DISPLAY_PIECE_SECONDS = 8;
 var DISPLAY_PIECE_LEAD_SECONDS = 4;
+var prototypeWindow = Promise.resolve();
+function inPrototypeWindow(fn) {
+  const run = prototypeWindow.then(fn, fn);
+  prototypeWindow = run.then(
+    () => void 0,
+    () => void 0
+  );
+  return run;
+}
+__name(inPrototypeWindow, "inPrototypeWindow");
 var _StrudelEngine = class _StrudelEngine {
-  constructor() {
+  /**
+   * @param options.sliderScope where this engine's `slider()` values live
+   *   (`setSliderScope`). '' — the default — is the project's, which the Monaco
+   *   sliders write; the Library's preview engine passes its own (#2165).
+   */
+  constructor(options = {}) {
+    this.options = options;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.repl = null;
     /**
@@ -17559,7 +17581,14 @@ var _StrudelEngine = class _StrudelEngine {
       this.evaluating++;
       let result;
       try {
-        result = await this.evaluateCode(code);
+        result = await inPrototypeWindow(async () => {
+          setSliderScope(this.options.sliderScope ?? "");
+          try {
+            return await this.evaluateCode(code);
+          } finally {
+            setSliderScope("");
+          }
+        });
       } finally {
         this.evaluating--;
       }
@@ -37832,6 +37861,194 @@ function PatternSideToggle() {
   );
 }
 __name(PatternSideToggle, "PatternSideToggle");
+var PATTERN_SIDE_RAIL_ATTR = "data-pattern-side-rail";
+var PATTERN_SIDE_DRAWER_ATTR = "data-pattern-side-drawer";
+var PATTERN_SIDE_SCRIM_ATTR = "data-pattern-side-scrim";
+var PATTERN_SIDE_RAIL_WIDTH = 30;
+var SLIDE_MS = 240;
+var DRAWER_ID = "stave-pattern-side-drawer";
+function reducedMotion() {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false;
+}
+__name(reducedMotion, "reducedMotion");
+function PatternSideDrawer({ children }) {
+  const [open, setOpen] = React48__namespace.useState(false);
+  const [built, setBuilt] = React48__namespace.useState(false);
+  const railRef = React48__namespace.useRef(null);
+  const closeRef = React48__namespace.useRef(null);
+  const moved = React48__namespace.useRef(false);
+  const slide = reducedMotion() ? 0 : SLIDE_MS;
+  const show = /* @__PURE__ */ __name(() => {
+    moved.current = true;
+    setBuilt(true);
+    setOpen(true);
+  }, "show");
+  const hide = /* @__PURE__ */ __name(() => {
+    moved.current = true;
+    setOpen(false);
+  }, "hide");
+  React48__namespace.useEffect(() => {
+    if (!moved.current) return;
+    (open ? closeRef : railRef).current?.focus();
+  }, [open]);
+  React48__namespace.useEffect(() => {
+    if (!open) return;
+    const onKey = /* @__PURE__ */ __name((e) => {
+      if (e.key === "Escape") hide();
+    }, "onKey");
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+  return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntime.jsxs(
+      "button",
+      {
+        ref: railRef,
+        ...{ [PATTERN_SIDE_RAIL_ATTR]: "" },
+        type: "button",
+        "aria-label": "Show inspector",
+        title: "Show inspector",
+        "aria-expanded": open,
+        "aria-controls": DRAWER_ID,
+        onClick: show,
+        style: {
+          appearance: "none",
+          width: PATTERN_SIDE_RAIL_WIDTH,
+          flexShrink: 0,
+          height: "100%",
+          margin: 0,
+          padding: "10px 0",
+          border: "none",
+          borderLeft: "1px solid var(--border, #3a3a42)",
+          background: "var(--background, #1c1c20)",
+          color: "var(--foreground-muted, #a0a0aa)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 10,
+          cursor: "pointer",
+          touchAction: "manipulation"
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntime.jsx("svg", { width: "8", height: "12", viewBox: "0 0 8 12", "aria-hidden": "true", focusable: "false", children: /* @__PURE__ */ jsxRuntime.jsx("path", { d: "M6 1 1 6l5 5", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round", fill: "none" }) }),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "span",
+            {
+              "aria-hidden": "true",
+              style: {
+                writingMode: "vertical-rl",
+                transform: "rotate(180deg)",
+                fontSize: 10,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase"
+              },
+              children: "Inspector"
+            }
+          )
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntime.jsx(
+      "div",
+      {
+        ...{ [PATTERN_SIDE_SCRIM_ATTR]: "" },
+        "aria-hidden": "true",
+        onPointerDown: (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        },
+        onClick: (e) => {
+          e.stopPropagation();
+          hide();
+        },
+        style: {
+          position: "absolute",
+          inset: 0,
+          zIndex: 30,
+          background: "rgba(0, 0, 0, 0.42)",
+          opacity: open ? 1 : 0,
+          pointerEvents: open ? "auto" : "none",
+          transition: `opacity ${slide}ms ease-out`,
+          touchAction: "none"
+        }
+      }
+    ),
+    /* @__PURE__ */ jsxRuntime.jsxs(
+      "div",
+      {
+        id: DRAWER_ID,
+        ...{ [PATTERN_SIDE_DRAWER_ATTR]: open ? "open" : "closed" },
+        role: "dialog",
+        "aria-label": "Inspector",
+        "aria-hidden": !open,
+        style: {
+          position: "absolute",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 31,
+          width: "min(78%, 320px)",
+          display: "flex",
+          flexDirection: "column",
+          background: "var(--background, #1c1c20)",
+          borderLeft: "1px solid var(--border, #3a3a42)",
+          boxShadow: open ? "-12px 0 32px rgba(0, 0, 0, 0.5)" : "none",
+          transform: open ? "none" : "translateX(102%)",
+          // hidden only once it has slid out, so it leaves the tab order and the
+          // accessibility tree without cutting the slide short
+          visibility: open ? "visible" : "hidden",
+          transition: open ? `transform ${slide}ms cubic-bezier(0.2, 0.8, 0.2, 1)` : `transform ${slide}ms cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear ${slide}ms`
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntime.jsxs(
+            "div",
+            {
+              style: {
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                padding: "4px 4px 4px 12px",
+                borderBottom: "1px solid var(--border, #3a3a42)",
+                color: "var(--foreground, #e2e2e8)",
+                fontSize: 12,
+                fontWeight: 600
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1 }, children: "Inspector" }),
+                /* @__PURE__ */ jsxRuntime.jsx(
+                  "button",
+                  {
+                    ref: closeRef,
+                    type: "button",
+                    "aria-label": "Hide inspector",
+                    title: "Hide inspector",
+                    onClick: hide,
+                    style: {
+                      appearance: "none",
+                      width: 36,
+                      height: 36,
+                      border: "none",
+                      borderRadius: 6,
+                      background: "transparent",
+                      color: "var(--foreground-muted, #a0a0aa)",
+                      display: "grid",
+                      placeItems: "center",
+                      cursor: "pointer",
+                      touchAction: "manipulation"
+                    },
+                    children: /* @__PURE__ */ jsxRuntime.jsx("svg", { width: "12", height: "12", viewBox: "0 0 12 12", "aria-hidden": "true", focusable: "false", children: /* @__PURE__ */ jsxRuntime.jsx("path", { d: "M2 2l8 8M10 2l-8 8", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", fill: "none" }) })
+                  }
+                )
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: "1 1 0", minHeight: 0, minWidth: 0, overflow: "hidden" }, children: built ? children : null })
+        ]
+      }
+    )
+  ] });
+}
+__name(PatternSideDrawer, "PatternSideDrawer");
 function VisualEditStandby({
   panel,
   hint,
@@ -39781,7 +39998,7 @@ var GRID_GESTURE = {
   seqShorter: "stave.sequencer.shorter",
   seqLonger: "stave.sequencer.longer"
 };
-function cursorKeys(scope, ids) {
+function cursorKeys(scope2, ids) {
   const keys = [
     ["left", "Move cursor left", "arrowleft"],
     ["right", "Move cursor right", "arrowright"],
@@ -39792,7 +40009,7 @@ function cursorKeys(scope, ids) {
     ["first", "Move cursor to the first cell", "mod+home"],
     ["last", "Move cursor to the last cell", "mod+end"]
   ];
-  return keys.map(([action, title, keybinding]) => ({ id: ids[action], scope, action, title, keybinding }));
+  return keys.map(([action, title, keybinding]) => ({ id: ids[action], scope: scope2, action, title, keybinding }));
 }
 __name(cursorKeys, "cursorKeys");
 var GRID_GESTURES = [
@@ -39881,9 +40098,9 @@ var GRID_GESTURES = [
   })
 ];
 var BY_ID = new Map(GRID_GESTURES.map((g) => [g.id, g]));
-function gridGestureAction(scope, id) {
+function gridGestureAction(scope2, id) {
   const g = BY_ID.get(id);
-  return g && g.scope === scope ? g.action : void 0;
+  return g && g.scope === scope2 ? g.action : void 0;
 }
 __name(gridGestureAction, "gridGestureAction");
 function moveCursor(at, move, rows, cols) {
@@ -39927,10 +40144,10 @@ var GRID_SCOPE_LABEL = {
   pianoRoll: { category: "Piano roll", where: "In the piano roll, on the selected cell" },
   sequencer: { category: "Sequencer", where: "In the sequencer, on the selected cell" }
 };
-function matchDefaults(scope, e) {
+function matchDefaults(scope2, e) {
   const chord = chordFromEvent(e);
   for (const g of GRID_GESTURES) {
-    if (g.scope !== scope) continue;
+    if (g.scope !== scope2) continue;
     if ([g.keybinding, ...g.alternateKeybindings ?? []].some((b) => chordMatches(chord, b))) return g.id;
   }
   return void 0;
@@ -39944,23 +40161,23 @@ function setGridKeyMatcher(fn) {
   };
 }
 __name(setGridKeyMatcher, "setGridKeyMatcher");
-function matchGridKey(scope, e) {
-  const id = matcher(scope, e);
-  return id ? gridGestureAction(scope, id) : void 0;
+function matchGridKey(scope2, e) {
+  const id = matcher(scope2, e);
+  return id ? gridGestureAction(scope2, id) : void 0;
 }
 __name(matchGridKey, "matchGridKey");
 var mounted = /* @__PURE__ */ new Map();
-function mountGridGestures(scope, run) {
-  mounted.set(scope, run);
+function mountGridGestures(scope2, run) {
+  mounted.set(scope2, run);
   return () => {
-    if (mounted.get(scope) === run) mounted.delete(scope);
+    if (mounted.get(scope2) === run) mounted.delete(scope2);
   };
 }
 __name(mountGridGestures, "mountGridGestures");
-function runGridGesture(scope, id, dryRun) {
-  const action = gridGestureAction(scope, id);
+function runGridGesture(scope2, id, dryRun) {
+  const action = gridGestureAction(scope2, id);
   if (!action) return false;
-  return mounted.get(scope)?.(action, dryRun) ?? false;
+  return mounted.get(scope2)?.(action, dryRun) ?? false;
 }
 __name(runGridGesture, "runGridGesture");
 var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
@@ -45587,10 +45804,10 @@ function PatternPanel() {
     {
       "data-bottom-panel-tab": "pattern",
       ...{ [CODE_UNDO_ATTR]: CODE_UNDO_ACTIVE },
-      style: { display: "flex", height: "100%", width: "100%", minWidth: 0 },
+      style: { display: "flex", height: "100%", width: "100%", minWidth: 0, ...phone ? { position: "relative", overflow: "hidden" } : null },
       children: [
         /* @__PURE__ */ jsxRuntime.jsx("div", { "data-pattern-grid": true, style: { flex: 1, minWidth: 0, height: "100%", overflow: "hidden" }, children: grid }),
-        gridAlone ? null : /* @__PURE__ */ jsxRuntime.jsx(
+        phone ? /* @__PURE__ */ jsxRuntime.jsx(PatternSideDrawer, { children: /* @__PURE__ */ jsxRuntime.jsx(MixerPanel, { division: division2, onDivisionChange: setDivision, resolution }) }) : gridAlone ? null : /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
             "data-pattern-mixer": true,

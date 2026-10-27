@@ -7,7 +7,7 @@ vi.mock("../../dialogs/host", () => ({
   showToast: vi.fn(),
 }));
 
-import { promptAndCreateFile } from "../newFile";
+import { createFileWithContent, promptAndCreateFile } from "../newFile";
 
 /**
  * #2076: a new visual file starts with a short sketch that already draws, in
@@ -44,5 +44,17 @@ describe("starter code for new visual files (#2076)", () => {
 
   it("other new files still start empty", async () => {
     for (const name of ["a.strudel", "a.md"]) expect((await create(name)).content, name).toBe("");
+  });
+});
+
+describe("createFileWithContent (#2165)", () => {
+  it("adds a file with the content, and a copy beside it rather than overwriting", () => {
+    const a = createFileWithContent("lib-snippets/euclid.strudel", 's("bd(3,8)")\n', "strudel");
+    expect(a).toMatchObject({ path: "lib-snippets/euclid.strudel", content: 's("bd(3,8)")\n', language: "strudel" });
+    const b = createFileWithContent("lib-snippets/euclid.strudel", "changed\n", "strudel");
+    expect(b.path).toBe("lib-snippets/euclid copy.strudel");
+    expect(b.id).not.toBe(a.id);
+    // the first is untouched
+    expect(listWorkspaceFiles().find((f) => f.id === a.id)?.content).toBe('s("bd(3,8)")\n');
   });
 });

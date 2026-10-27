@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sliderFunctions, sliderId, sliderValues, sliderWidgets } from '../vendored/slider'
+import { setSliderScope, sliderFunctions, sliderId, sliderValues, sliderWidgets } from '../vendored/slider'
 import { clearStringParser, installMiniStringParser } from '../stringParser'
 
 /**
@@ -57,5 +57,29 @@ describe('slider(…) — the vendored half against the installed transpiler', (
       { type: 'slider', from: 1, to: 2 },
     ])
     expect(sliderWidgets(undefined)).toEqual([])
+  })
+})
+
+/**
+ * #2165 — the Library's preview engine keeps its slider values apart from the
+ * project's: same id, different scope, so neither overwrites the other.
+ */
+describe('slider scope', () => {
+  it("an engine's values live under its scope; the project's ('') are left alone", () => {
+    const ref = (read: () => unknown) => ({ read })
+    const { sliderWithID } = sliderFunctions({ ref, pure: (v: unknown) => v })
+    sliderValues['slider_42'] = 0.3 // the project's slider at offset 42
+    try {
+      setSliderScope('preview:')
+      const previewed = sliderWithID('slider_42', 800)
+      setSliderScope('')
+      expect(sliderValues['slider_42']).toBe(0.3)
+      expect(sliderValues['preview:slider_42']).toBe(800)
+      expect(previewed.read()).toBe(800)
+    } finally {
+      setSliderScope('')
+      delete sliderValues['slider_42']
+      delete sliderValues['preview:slider_42']
+    }
   })
 })

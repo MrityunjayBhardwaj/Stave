@@ -5,7 +5,7 @@
  * change; the result is what the windowed list renders.
  */
 
-import type { Asset, AssetProvider, AssetSource, AssetType } from "./types";
+import { SKILL_LEVELS, type Asset, type AssetProvider, type AssetSource, type AssetType, type SkillLevel } from "./types";
 
 export interface AssetFilter {
   /** Trimmed search query; empty string matches everything. */
@@ -17,6 +17,8 @@ export interface AssetFilter {
   /** null = all categories; otherwise restrict to this top-level category
    *  (the group prefix, e.g. "Drums" / "Soundfonts"). See {@link assetCategory}. */
   category: string | null;
+  /** null/absent = all levels; otherwise only assets of this level (#2165). */
+  level?: SkillLevel | null;
 }
 
 /**
@@ -62,6 +64,7 @@ export function collectAssets(
     for (const asset of base) {
       if (filter.source && asset.source !== filter.source) continue;
       if (filter.category && assetCategory(asset) !== filter.category) continue;
+      if (filter.level && asset.level !== filter.level) continue;
       // Provider `search` already applied the query; only the generic path
       // needs the substring gate here.
       if (q && !provider.search && !matchesQuery(asset, q)) continue;
@@ -98,13 +101,14 @@ export function availableSources(providers: readonly AssetProvider[]): AssetSour
  */
 export function availableCategories(
   providers: readonly AssetProvider[],
-  scope?: { type?: AssetType | null; source?: AssetSource | null },
+  scope?: { type?: AssetType | null; source?: AssetSource | null; level?: SkillLevel | null },
 ): { category: string; count: number }[] {
   const counts = new Map<string, number>();
   for (const p of providers) {
     if (scope?.type && p.type !== scope.type) continue;
     for (const a of p.list()) {
       if (scope?.source && a.source !== scope.source) continue;
+      if (scope?.level && a.level !== scope.level) continue;
       const c = assetCategory(a);
       counts.set(c, (counts.get(c) ?? 0) + 1);
     }
@@ -112,4 +116,24 @@ export function availableCategories(
   return [...counts.entries()]
     .map(([category, count]) => ({ category, count }))
     .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
+}
+
+/**
+ * The levels present, each with its count, easiest first (#2165) — drives the
+ * level chips. Scoped like {@link availableCategories} (type and source), so a
+ * type whose assets carry no level shows no level chips at all.
+ */
+export function availableLevels(
+  providers: readonly AssetProvider[],
+  scope?: { type?: AssetType | null; source?: AssetSource | null },
+): { level: SkillLevel; count: number }[] {
+  const counts = new Map<SkillLevel, number>();
+  for (const p of providers) {
+    if (scope?.type && p.type !== scope.type) continue;
+    for (const a of p.list()) {
+      if (scope?.source && a.source !== scope.source) continue;
+      if (a.level) counts.set(a.level, (counts.get(a.level) ?? 0) + 1);
+    }
+  }
+  return SKILL_LEVELS.filter((l) => counts.has(l)).map((level) => ({ level, count: counts.get(level)! }));
 }

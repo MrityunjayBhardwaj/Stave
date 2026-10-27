@@ -163,6 +163,10 @@
     "runs": "gate",
     "why": "An error's squiggle follows the code around it (#2184): typing lines above it moves the Console row's line and where clicking the row goes; fixing the underlined word takes the squiggle off without running again, and an edit elsewhere on the line leaves it on (#2185)."
   },
+  "library-snippets.spec.ts": {
+    "runs": "gate",
+    "why": "The Library's built-in Strudel sketches (#2165): every sketch runs on the preview engine, makes events in its first four cycles and names only sounds Stave has; the Library lists them under Snippets with level and topic chips; a preview plays and the next one stops it; + adds a sketch under snippets/ and opens it, and adding it again makes a copy."
+  },
   "preview-early-edit.spec.ts": {
     "runs": "gate",
     "why": "An edit made the moment an editor is created reaches its file (#2217): opening a Hydra file's preview to the side re-creates its editor, and an edit made in that first moment runs in the preview; opening the preview without an edit leaves the file as it was."
@@ -916,6 +920,10 @@
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
   "settings-shell.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "share-short-link.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
