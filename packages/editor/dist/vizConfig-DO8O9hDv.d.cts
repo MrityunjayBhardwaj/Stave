@@ -826,6 +826,12 @@ interface LiveCodingEngine {
      * Optional: an engine with no audio of its own to start leaves it out.
      */
     unlockAudio?(): void;
+    /**
+     * #2256 — load the sounds the first cycles will play, before the scheduler
+     * starts (step 3a of the play lifecycle). Bounded; never rejects. Engines that
+     * load nothing on demand leave it out.
+     */
+    warmSounds?(): Promise<void>;
     /** Stop the scheduler / pause playback. */
     stop(): void;
     /** Release all resources. Engine is unusable after this call. */

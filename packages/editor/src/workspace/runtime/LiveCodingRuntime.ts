@@ -510,6 +510,18 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
       return { error: evalResult.error }
     }
 
+    // Step 3a — load the sounds the first cycles play (#2256). A sample or an
+    // instrument is otherwise fetched when its first note asks for it, and a load
+    // that ends after the note's start drops that note: the first hit of every
+    // sound was silent on a cold cache. Bounded inside the engine (a slow network
+    // still starts), and BEFORE 3b, so a Stop pressed while sounds load still
+    // keeps the transport stopped.
+    try {
+      await this.engine.warmSounds?.()
+    } catch {
+      // warming is a courtesy: a failure here must never stop Play
+    }
+
     // Step 3b — supersession gate. A stop() (or a newer play()) landed during
     // the init/evaluate awaits above. Abort BEFORE publishing to the bus and
     // BEFORE step 8's scheduler.start(): restarting here is exactly the race

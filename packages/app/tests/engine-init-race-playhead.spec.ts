@@ -114,6 +114,12 @@ test('a Play racing engine init still leaves the transport running and the playh
   // agreement between them is worth something.
   const lcd = page.locator('[data-stave-lcd-pos]')
   await expect(lcd).toBeVisible({ timeout: 10_000 })
+  // #2256 — Play loads the first cycles' sounds before the clock starts (at most
+  // 2.5 s), so the position can still read "—" for that long after the playhead
+  // appears. What this guards is a clock that never starts, so it waits past that.
+  await expect
+    .poll(async () => (await lcd.textContent())?.trim() ?? '', { timeout: 10_000 })
+    .not.toContain('—')
   const first = (await lcd.textContent())?.trim() ?? ''
   expect(first, 'transport reports no position — the clock is dead').not.toContain('—')
 
