@@ -46954,22 +46954,28 @@ var SHEET_HEADER_HEIGHT = TOUCH2 + 4;
 var SHEET_CLOSED_HEIGHT = SHEET_HEADER_HEIGHT + 1;
 var SHEET_MIN_BODY = 120;
 var SHEET_PULL_SLOP = 8;
-var SHEET_PULL_STEP = 24;
+var SHEET_SNAP_SHARE = 1 / 5;
 var SHEET_Z_INDEX = 100;
-var SHEET_STOPS = ["closed", "half", "full"];
 function sheetHeights(room) {
   const full = Math.max(SHEET_CLOSED_HEIGHT, Math.round(room.height - room.top));
   const half = Math.min(full, Math.max(SHEET_CLOSED_HEIGHT + SHEET_MIN_BODY, Math.round(room.height / 2)));
   return { closed: SHEET_CLOSED_HEIGHT, half, full };
 }
 __name(sheetHeights, "sheetHeights");
-function sheetStopAfterPull(from, dy) {
-  const i = SHEET_STOPS.indexOf(from);
-  if (dy >= SHEET_PULL_STEP) return SHEET_STOPS[Math.min(i + 1, SHEET_STOPS.length - 1)];
-  if (dy <= -SHEET_PULL_STEP) return SHEET_STOPS[Math.max(i - 1, 0)];
-  return from;
+function sheetRestAfterPull(height, heights, screenHeight) {
+  const zone = screenHeight * SHEET_SNAP_SHARE;
+  const toClosed = height - heights.closed;
+  const toFull = heights.full - height;
+  if (toClosed <= zone && toFull <= zone) return toClosed < toFull ? "closed" : "full";
+  if (toClosed <= zone) return "closed";
+  if (toFull <= zone) return "full";
+  return Math.round(height);
 }
-__name(sheetStopAfterPull, "sheetStopAfterPull");
+__name(sheetRestAfterPull, "sheetRestAfterPull");
+function restHeight(rest, heights) {
+  return typeof rest === "number" ? Math.max(heights.closed, Math.min(heights.full, rest)) : heights[rest];
+}
+__name(restHeight, "restHeight");
 function computeNewHeight(startY, currentY, startHeight) {
   return startHeight + (startY - currentY);
 }
@@ -47097,8 +47103,8 @@ function BottomPanel({ hidden = false } = {}) {
   const layout = usePhoneLayout();
   const sheet = layout === "upright";
   const wholeView = layout === "sideways";
-  const [sheetFull, setSheetFull] = React48__namespace.useState(false);
-  const stop = !open ? "closed" : sheetFull ? "full" : "half";
+  const [sheetRest, setSheetRest] = React48__namespace.useState("half");
+  const stop = !open ? "closed" : typeof sheetRest === "number" ? "free" : sheetRest;
   const [pulled, setPulled] = React48__namespace.useState(null);
   const [room, setRoom] = React48__namespace.useState(null);
   const spaceRef = React48__namespace.useRef(null);
@@ -47125,18 +47131,18 @@ function BottomPanel({ hidden = false } = {}) {
       observer?.disconnect();
     };
   }, [sheet, wholeView, drawn, open, measureRoom]);
-  const goToStop = React48__namespace.useCallback((next) => {
+  const goToRest = React48__namespace.useCallback((next) => {
     if (next === "closed") {
       setBottomPanelOpen(false);
       return;
     }
-    setSheetFull(next === "full");
+    setSheetRest(next);
     setBottomPanelOpen(true);
   }, []);
   const pullRef = React48__namespace.useRef(null);
   const swallowClickRef = React48__namespace.useRef(false);
-  const stopRef = React48__namespace.useRef(stop);
-  stopRef.current = stop;
+  const restRef = React48__namespace.useRef(open ? sheetRest : "closed");
+  restRef.current = open ? sheetRest : "closed";
   const endPullRef = React48__namespace.useRef(null);
   React48__namespace.useEffect(() => () => endPullRef.current?.(), []);
   const onStripPointerDown = React48__namespace.useCallback(
@@ -47147,14 +47153,16 @@ function BottomPanel({ hidden = false } = {}) {
       const measured = measureRoom();
       if (!measured) return;
       const heights = sheetHeights(measured);
-      pullRef.current = { pointerId: e.pointerId, startY: e.clientY, from: stopRef.current, heights, moved: false };
+      const rest = restRef.current;
+      const from = rest === "closed" ? heights.closed : restHeight(rest, heights);
+      pullRef.current = { pointerId: e.pointerId, startY: e.clientY, from, heights, moved: false };
+      const heightAt = /* @__PURE__ */ __name((pull, y) => Math.max(pull.heights.closed, Math.min(pull.heights.full, pull.from + pull.startY - y)), "heightAt");
       const move = /* @__PURE__ */ __name((ev) => {
         const pull = pullRef.current;
         if (!pull || ev.pointerId !== pull.pointerId) return;
-        const dy = pull.startY - ev.clientY;
-        if (!pull.moved && Math.abs(dy) < SHEET_PULL_SLOP) return;
+        if (!pull.moved && Math.abs(pull.startY - ev.clientY) < SHEET_PULL_SLOP) return;
         pull.moved = true;
-        setPulled(Math.max(pull.heights.closed, Math.min(pull.heights.full, pull.heights[pull.from] + dy)));
+        setPulled(heightAt(pull, ev.clientY));
       }, "move");
       const finish = /* @__PURE__ */ __name((ev, settle) => {
         const pull = pullRef.current;
@@ -47163,7 +47171,7 @@ function BottomPanel({ hidden = false } = {}) {
         if (!pull.moved) return;
         swallowClickRef.current = true;
         setPulled(null);
-        if (settle) goToStop(sheetStopAfterPull(pull.from, pull.startY - ev.clientY));
+        if (settle) goToRest(sheetRestAfterPull(heightAt(pull, ev.clientY), pull.heights, window.innerHeight));
       }, "finish");
       const up = /* @__PURE__ */ __name((ev) => finish(ev, true), "up");
       const cancel = /* @__PURE__ */ __name((ev) => finish(ev, false), "cancel");
@@ -47182,7 +47190,7 @@ function BottomPanel({ hidden = false } = {}) {
       window.addEventListener("pointerup", up);
       window.addEventListener("pointercancel", cancel);
     },
-    [sheet, measureRoom, goToStop]
+    [sheet, measureRoom, goToRest]
   );
   React48__namespace.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
@@ -47242,7 +47250,7 @@ function BottomPanel({ hidden = false } = {}) {
   if (givesWayToKeyboard) return null;
   const renderHeight = drag.dragging ? drag.value : height;
   const stopHeights = sheetHeights(room ?? { height: typeof window === "undefined" ? 0 : window.innerHeight, top: 0 });
-  const sheetHeight = pulled ?? stopHeights[stop];
+  const sheetHeight = pulled ?? (open ? restHeight(sheetRest, stopHeights) : stopHeights.closed);
   const headerHeight = sheet ? SHEET_HEADER_HEIGHT : HEADER_HEIGHT;
   const bodyDrawn = open || sheet && pulled !== null;
   const activeHeaderActions = tabs2.find((tab) => tab.id === activeTabId)?.headerActions ?? null;
@@ -47394,7 +47402,7 @@ function BottomPanel({ hidden = false } = {}) {
                           }
                           wasOpenOnTabPressRef.current = open;
                           if (!open) {
-                            setSheetFull(false);
+                            setSheetRest("half");
                             setOpen(true);
                           }
                           setActiveTabId(tab.id);
@@ -47451,7 +47459,7 @@ function BottomPanel({ hidden = false } = {}) {
                   "aria-label": open ? "Hide panel" : "Show panel",
                   "aria-expanded": open,
                   onClick: () => {
-                    if (!open) setSheetFull(false);
+                    if (!open) setSheetRest("half");
                     setOpen(!open);
                   },
                   style: {

@@ -1,11 +1,11 @@
 /**
  * The sheet's arithmetic (#2002): how tall it is at each stop, and where a pull leaves
- * it. The browser spec (`touch-panel-sheet.spec.ts`) shows the sheet on a phone; these
+ * it (#2260). The browser spec (`touch-panel-sheet.spec.ts`) shows the sheet on a phone; these
  * pin the numbers it is drawn from, including the screens the spec has no device for.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { sheetHeights, sheetStopAfterPull } from '../BottomPanel'
+import { sheetHeights, sheetRestAfterPull } from '../BottomPanel'
 import { phoneLayout } from '../../usePhone'
 
 describe('sheetHeights', () => {
@@ -32,29 +32,41 @@ describe('sheetHeights', () => {
   })
 })
 
-describe('sheetStopAfterPull', () => {
-  it('a pull up moves one stop up; a pull down one stop down', () => {
-    expect(sheetStopAfterPull('closed', 60)).toBe('half')
-    expect(sheetStopAfterPull('half', 60)).toBe('full')
-    expect(sheetStopAfterPull('full', -60)).toBe('half')
-    expect(sheetStopAfterPull('half', -60)).toBe('closed')
+describe('sheetRestAfterPull (#2260)', () => {
+  // a Pixel 7 held upright: 915 px screen, so a fifth of it is 183 px
+  const heights = sheetHeights({ height: 791, top: 82 }) // closed 49, half 396, full 709
+  const screen = 915
+
+  it('let go in the middle, the sheet stays where it was let go', () => {
+    expect(sheetRestAfterPull(500, heights, screen)).toBe(500)
+    expect(sheetRestAfterPull(300.4, heights, screen)).toBe(300)
+    // half is not a stop a pull falls into: near it is just where it was let go
+    expect(sheetRestAfterPull(410, heights, screen)).toBe(410)
   })
 
-  it('one pull is one stop, however long', () => {
-    expect(sheetStopAfterPull('closed', 900)).toBe('half')
-    expect(sheetStopAfterPull('full', -900)).toBe('half')
+  it('within a fifth of the screen of the strip, it closes; one pixel more and it stays', () => {
+    expect(sheetRestAfterPull(49 + 183, heights, screen)).toBe('closed')
+    expect(sheetRestAfterPull(49, heights, screen)).toBe('closed')
+    expect(sheetRestAfterPull(49 + 184, heights, screen)).toBe(233)
   })
 
-  it('there is nothing past the ends', () => {
-    expect(sheetStopAfterPull('full', 200)).toBe('full')
-    expect(sheetStopAfterPull('closed', -200)).toBe('closed')
+  it('within a fifth of the screen of full, it goes full; one pixel less and it stays', () => {
+    expect(sheetRestAfterPull(709 - 183, heights, screen)).toBe('full')
+    expect(sheetRestAfterPull(709, heights, screen)).toBe('full')
+    expect(sheetRestAfterPull(709 - 184, heights, screen)).toBe(525)
   })
 
-  it('a pull under 24 px leaves the sheet where it was; 24 px moves it', () => {
-    expect(sheetStopAfterPull('half', 23)).toBe('half')
-    expect(sheetStopAfterPull('half', -23)).toBe('half')
-    expect(sheetStopAfterPull('half', 24)).toBe('full')
-    expect(sheetStopAfterPull('half', -24)).toBe('closed')
+  it('the zone is a fifth of the SCREEN, not of the room the sheet has', () => {
+    // the same room on a taller screen has wider zones
+    expect(sheetRestAfterPull(260, heights, 1100)).toBe('closed') // 1100 / 5 = 220 ≥ 211
+    expect(sheetRestAfterPull(260, heights, screen)).toBe(260)
+  })
+
+  it('on a screen so short the zones overlap, the nearer end wins', () => {
+    const short = sheetHeights({ height: 300, top: 82 }) // closed 49, full 218
+    // a 600 px screen: zones of 120, and only 169 px between the ends, so both points are in both
+    expect(sheetRestAfterPull(100, short, 600)).toBe('closed') // 51 from closed, 118 from full
+    expect(sheetRestAfterPull(160, short, 600)).toBe('full') // 111 from closed, 58 from full
   })
 })
 

@@ -59,10 +59,12 @@ const CLOSED_HEIGHT = HEADER_HEIGHT + 1 // +1 for the 1px top border
 //
 // There the panel does not take its height out of the editor's. Its strip of tabs
 // keeps a fixed place at the bottom of the screen, tall enough for a finger, and an
-// open panel lies OVER the code as a sheet: half the height, or all of it up to the
-// editor's Play bar. The strip is the sheet's top edge and its handle — pulled up
-// it goes closed → half → full, pulled down the other way. Nothing inside the
-// panel's body moves the sheet; a drag there is the Timeline's or a grid's own.
+// open panel lies OVER the code as a sheet. A tab opens it at half the height. The
+// strip is the sheet's top edge and its handle: the sheet follows the finger and stays
+// where it is let go, anywhere from the strip up to the editor's Play bar (#2260).
+// Let go near either end, within a fifth of the screen's height, it goes the rest of
+// the way: closed, or full. Nothing inside the panel's body moves the sheet; a drag
+// there is the Timeline's or a grid's own.
 //
 // The editor never changes size for it, so closing the sheet leaves the code
 // exactly where it was.
@@ -82,13 +84,14 @@ const SHEET_CLOSED_HEIGHT = SHEET_HEADER_HEIGHT + 1 // +1 for the 1px top border
 const SHEET_MIN_BODY = 120
 /** a pull shorter than this is a tap that wobbled, and leaves the sheet where it was */
 const SHEET_PULL_SLOP = 8
-/** a pull at least this long moves the sheet one stop */
-const SHEET_PULL_STEP = 24
+/** let go this close to either end, as a share of the screen's height, and the sheet goes there (#2260) */
+const SHEET_SNAP_SHARE = 1 / 5
 /** above the editor and everything Monaco lays inside it; below the phone's drawer */
 const SHEET_Z_INDEX = 100
 
 type SheetStop = 'closed' | 'half' | 'full'
-const SHEET_STOPS: readonly SheetStop[] = ['closed', 'half', 'full']
+/** where an open sheet rests: half, full, or the height in px where a finger let it go */
+type SheetRest = 'half' | 'full' | number
 
 /** the room the sheet has: its parent's height, and how far down the Play bar ends */
 interface SheetRoom {
@@ -103,12 +106,29 @@ export function sheetHeights(room: SheetRoom): Record<SheetStop, number> {
   return { closed: SHEET_CLOSED_HEIGHT, half, full }
 }
 
-/** where a pull of `dy` px (up is positive) that began at `from` leaves the sheet */
-export function sheetStopAfterPull(from: SheetStop, dy: number): SheetStop {
-  const i = SHEET_STOPS.indexOf(from)
-  if (dy >= SHEET_PULL_STEP) return SHEET_STOPS[Math.min(i + 1, SHEET_STOPS.length - 1)]
-  if (dy <= -SHEET_PULL_STEP) return SHEET_STOPS[Math.max(i - 1, 0)]
-  return from
+/**
+ * Where the sheet comes to rest when a pull lets go of it at `height` px tall (#2260).
+ * Within a fifth of the screen's height of either end it goes to that end. Anywhere
+ * else it stays where it was let go. On a screen so short that the two zones overlap,
+ * the nearer end wins.
+ */
+export function sheetRestAfterPull(
+  height: number,
+  heights: Record<SheetStop, number>,
+  screenHeight: number,
+): 'closed' | 'full' | number {
+  const zone = screenHeight * SHEET_SNAP_SHARE
+  const toClosed = height - heights.closed
+  const toFull = heights.full - height
+  if (toClosed <= zone && toFull <= zone) return toClosed < toFull ? 'closed' : 'full'
+  if (toClosed <= zone) return 'closed'
+  if (toFull <= zone) return 'full'
+  return Math.round(height)
+}
+
+/** how tall a resting sheet is: a let-go height is kept inside the room it has now */
+function restHeight(rest: SheetRest, heights: Record<SheetStop, number>): number {
+  return typeof rest === 'number' ? Math.max(heights.closed, Math.min(heights.full, rest)) : heights[rest]
 }
 
 // ---------------------------------------------------------------------------
@@ -324,8 +344,9 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
   const sheet = layout === 'upright'
   /** a phone held sideways: no header, and an open panel is the whole view (#2003) */
   const wholeView = layout === 'sideways'
-  const [sheetFull, setSheetFull] = React.useState(false)
-  const stop: SheetStop = !open ? 'closed' : sheetFull ? 'full' : 'half'
+  const [sheetRest, setSheetRest] = React.useState<SheetRest>('half')
+  /** where the sheet is, as `data-sheet` says it: a named height, or 'free' where a pull left it */
+  const stop: SheetStop | 'free' = !open ? 'closed' : typeof sheetRest === 'number' ? 'free' : sheetRest
   /** the sheet's height while a finger is pulling it; null otherwise */
   const [pulled, setPulled] = React.useState<number | null>(null)
   const [room, setRoom] = React.useState<SheetRoom | null>(null)
@@ -359,23 +380,23 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
     // time the sheet is about to be drawn open
   }, [sheet, wholeView, drawn, open, measureRoom])
 
-  const goToStop = React.useCallback((next: SheetStop) => {
+  const goToRest = React.useCallback((next: 'closed' | SheetRest) => {
     if (next === 'closed') {
       setBottomPanelOpen(false)
       return
     }
-    setSheetFull(next === 'full')
+    setSheetRest(next)
     setBottomPanelOpen(true)
   }, [])
 
   // A pull on the strip. Followed on the window, not by capturing the pointer: a
   // captured pointer's click lands on the strip instead of the tab under the finger,
   // and a plain tap on a tab has to stay a tap on that tab.
-  const pullRef = React.useRef<{ pointerId: number; startY: number; from: SheetStop; heights: Record<SheetStop, number>; moved: boolean } | null>(null)
+  const pullRef = React.useRef<{ pointerId: number; startY: number; from: number; heights: Record<SheetStop, number>; moved: boolean } | null>(null)
   /** set when a pull ends, so the click the browser makes of it does not also press a tab */
   const swallowClickRef = React.useRef(false)
-  const stopRef = React.useRef(stop)
-  stopRef.current = stop
+  const restRef = React.useRef<'closed' | SheetRest>(open ? sheetRest : 'closed')
+  restRef.current = open ? sheetRest : 'closed'
   const endPullRef = React.useRef<(() => void) | null>(null)
   React.useEffect(() => () => endPullRef.current?.(), [])
 
@@ -387,15 +408,19 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
       const measured = measureRoom()
       if (!measured) return
       const heights = sheetHeights(measured)
-      pullRef.current = { pointerId: e.pointerId, startY: e.clientY, from: stopRef.current, heights, moved: false }
+      const rest = restRef.current
+      const from = rest === 'closed' ? heights.closed : restHeight(rest, heights)
+      pullRef.current = { pointerId: e.pointerId, startY: e.clientY, from, heights, moved: false }
 
+      /** how tall the sheet is with the finger at `y`: under it, inside the room */
+      const heightAt = (pull: NonNullable<typeof pullRef.current>, y: number): number =>
+        Math.max(pull.heights.closed, Math.min(pull.heights.full, pull.from + pull.startY - y))
       const move = (ev: PointerEvent): void => {
         const pull = pullRef.current
         if (!pull || ev.pointerId !== pull.pointerId) return
-        const dy = pull.startY - ev.clientY
-        if (!pull.moved && Math.abs(dy) < SHEET_PULL_SLOP) return
+        if (!pull.moved && Math.abs(pull.startY - ev.clientY) < SHEET_PULL_SLOP) return
         pull.moved = true
-        setPulled(Math.max(pull.heights.closed, Math.min(pull.heights.full, pull.heights[pull.from] + dy)))
+        setPulled(heightAt(pull, ev.clientY))
       }
       const finish = (ev: PointerEvent, settle: boolean): void => {
         const pull = pullRef.current
@@ -404,7 +429,7 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
         if (!pull.moved) return
         swallowClickRef.current = true
         setPulled(null)
-        if (settle) goToStop(sheetStopAfterPull(pull.from, pull.startY - ev.clientY))
+        if (settle) goToRest(sheetRestAfterPull(heightAt(pull, ev.clientY), pull.heights, window.innerHeight))
       }
       const up = (ev: PointerEvent): void => finish(ev, true)
       const cancel = (ev: PointerEvent): void => finish(ev, false)
@@ -423,7 +448,7 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
       window.addEventListener('pointerup', up)
       window.addEventListener('pointercancel', cancel)
     },
-    [sheet, measureRoom, goToStop],
+    [sheet, measureRoom, goToRest],
   )
 
   // pagehide flush — defense against unload race for a not-yet-committed
@@ -514,11 +539,11 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
   // visibly resizes; otherwise use the committed height.
   const renderHeight = drag.dragging ? drag.value : height
 
-  // The sheet's height: where a pull has it right now, else its stop's. Before the
+  // The sheet's height: where a pull has it right now, else where it rests. Before the
   // room has been measured (the first paint) an open sheet is drawn at half the
   // window, which is what half the room comes to within a few pixels.
   const stopHeights = sheetHeights(room ?? { height: typeof window === 'undefined' ? 0 : window.innerHeight, top: 0 })
-  const sheetHeight = pulled ?? stopHeights[stop]
+  const sheetHeight = pulled ?? (open ? restHeight(sheetRest, stopHeights) : stopHeights.closed)
   const headerHeight = sheet ? SHEET_HEADER_HEIGHT : HEADER_HEIGHT
   const bodyDrawn = open || (sheet && pulled !== null)
   /** the showing tab's own header controls, if it has any (#2044) */
@@ -693,7 +718,7 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
                   // header behavior.
                   if (!open) {
                     // a sheet opened from its strip opens at half (#2002)
-                    setSheetFull(false)
+                    setSheetRest('half')
                     setOpen(true)
                   }
                   setActiveTabId(tab.id)
@@ -750,7 +775,7 @@ export function BottomPanel({ hidden = false }: BottomPanelProps = {}): React.Re
           aria-label={open ? 'Hide panel' : 'Show panel'}
           aria-expanded={open}
           onClick={() => {
-            if (!open) setSheetFull(false)
+            if (!open) setSheetRest('half')
             setOpen(!open)
           }}
           style={{

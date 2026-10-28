@@ -46,9 +46,11 @@ async function openPattern(page: Page, project: string, line: number, code = COD
     const handle = await page.locator('[data-bottom-panel="sheet-handle"]').boundingBox()
     const x = handle!.x + handle!.width / 2
     const y = handle!.y + handle!.height / 2
+    // as far up again as the half sheet is tall: past full, so it goes full (#2260)
+    const rise = (await page.locator('[data-bottom-panel="root"]').boundingBox())!.height
     await page.mouse.move(x, y)
     await page.mouse.down()
-    for (let i = 1; i <= 5; i++) await page.mouse.move(x, y - i * 30)
+    for (let i = 1; i <= 5; i++) await page.mouse.move(x, y - (i * rise) / 5)
     await page.mouse.up()
     await expect(page.locator('[data-bottom-panel="root"]')).toHaveAttribute('data-sheet', 'full')
   }
