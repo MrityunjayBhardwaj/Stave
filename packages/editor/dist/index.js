@@ -54082,8 +54082,9 @@ var STRUDEL_RUNTIME = {
   renderChrome: /* @__PURE__ */ __name((ctx) => /* @__PURE__ */ jsx(StrudelChrome, { ...ctx }), "renderChrome")
 };
 function SonicPiChrome(ctx) {
-  const { isPlaying, error, errorMessage, bpm, onPlay, onStop, chromeExtras } = ctx;
+  const { isPlaying, isPlayPending = false, error, errorMessage, bpm, onPlay, onStop, chromeExtras } = ctx;
   const bar2 = useTouchBar();
+  const busy = isPlaying || isPlayPending;
   return /* @__PURE__ */ jsxs(
     "div",
     {
@@ -54106,8 +54107,9 @@ function SonicPiChrome(ctx) {
           "button",
           {
             "data-testid": "sonicpi-chrome-transport",
-            onClick: isPlaying ? onStop : onPlay,
-            title: isPlaying ? "Stop (Ctrl+.)" : "Play (Ctrl+Enter)",
+            "data-play-pending": !isPlaying && isPlayPending ? "true" : void 0,
+            onClick: busy ? onStop : onPlay,
+            title: isPlaying ? "Stop (Ctrl+.)" : isPlayPending ? "Loading\u2026 click to cancel (Ctrl+.)" : "Play (Ctrl+Enter)",
             style: {
               display: "flex",
               alignItems: "center",
@@ -54118,11 +54120,11 @@ function SonicPiChrome(ctx) {
               cursor: "pointer",
               fontSize: 11,
               fontFamily: "var(--font-mono)",
-              background: isPlaying ? "rgba(139,92,246,0.15)" : "var(--accent)",
-              color: isPlaying ? "var(--accent)" : "#fff",
-              outline: isPlaying ? "1px solid var(--accent)" : "none"
+              background: busy ? "rgba(139,92,246,0.15)" : "var(--accent)",
+              color: busy ? "var(--accent)" : "#fff",
+              outline: busy ? "1px solid var(--accent)" : "none"
             },
-            children: isPlaying ? "\u25A0 Stop" : "\u25B6 Play"
+            children: isPlaying ? "\u25A0 Stop" : isPlayPending ? "\u25CC Loading" : "\u25B6 Play"
           }
         ),
         bpm != null && /* @__PURE__ */ jsxs(

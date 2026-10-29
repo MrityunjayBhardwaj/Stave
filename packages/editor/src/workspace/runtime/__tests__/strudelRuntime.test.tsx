@@ -104,6 +104,21 @@ describe('STRUDEL_RUNTIME renderChrome', () => {
     expect(onStop).toHaveBeenCalledTimes(1)
   })
 
+  // #2259 — a Play that is still loading says so, and a second press cancels it
+  it('reads Loading while Play is pending, and a press then stops instead of playing again', () => {
+    const onPlay = vi.fn()
+    const onStop = vi.fn()
+    const { getByTestId } = render(
+      STRUDEL_RUNTIME.renderChrome(makeCtx({ isPlayPending: true, onPlay, onStop })) as React.ReactElement,
+    )
+    const btn = getByTestId('strudel-chrome-transport')
+    expect(btn.textContent).toContain('Loading')
+    expect(btn.getAttribute('data-play-pending')).toBe('true')
+    fireEvent.click(btn)
+    expect(onStop).toHaveBeenCalledTimes(1)
+    expect(onPlay).not.toHaveBeenCalled()
+  })
+
   it('shows BPM when defined', () => {
     const withBpm = render(
       STRUDEL_RUNTIME.renderChrome(makeCtx({ bpm: 120 })) as React.ReactElement,
