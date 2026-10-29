@@ -8,8 +8,8 @@
  */
 import { playingCall, readChainMethod } from './chainMethod'
 import type { ChunkInfo } from './chunkDetect'
-import { readSoundArg } from './soundArg'
-import { miniPattern, miniValuesAt } from './strudelMini/pattern'
+import { nameAtoms, readSoundArg } from './soundArg'
+import { miniPattern, miniValuesAt, soundNoteHits } from './strudelMini/pattern'
 import { miniShape, type MiniGroup, type MiniSpan } from './strudelMini/shape'
 import type { OffsetEdit } from './writeback'
 
@@ -179,4 +179,79 @@ export function soundBlockEdit(
   }
   const lit = cur.range[0] + 1 // the literal's body starts after its opening quote
   return { edit: { range: [lit + block.at.start, lit + block.at.end], text: value } }
+}
+
+/**
+ * What each step of a sound-first line plays (#2226): `sound("piano gm_electric_guitar_muted")
+ * .note("48 67 63 [62, 58]")`, where the sounds set the rhythm and the step grid draws
+ * them. Asked of Strudel (`soundNoteHits`), never re-derived.
+ *
+ * Each step plays the note sounding where it starts — 48 on piano, 63 on the guitar — and
+ * a note no step starts on never plays (67, 62 and 58 here). So the grid can label each
+ * step with its note, and say which written notes are silent.
+ */
+export interface StepNotes {
+  /**
+   * The notes a step plays, keyed by `stepNoteKey(sound, cycle)`. One label per pass
+   * that plays something different (`c` then `e` under `<c e>`), each pass's notes
+   * joined by a comma when several start together.
+   */
+  notes: Map<string, string[]>
+  /** notes written in `.note(…)` that no step plays, as written, in written order */
+  unheard: string[]
+}
+
+/** a step's key in `StepNotes.notes`: the sound's name (`piano` for `piano:2`) and its start within the grid's span */
+export const stepNoteKey = (sound: string, cycle: number): string => `${sound.split(':')[0]}@${cycle.toFixed(6)}`
+
+/**
+ * Null when the line is not sound-first with notes it can tell truthfully: the head is
+ * not `s`/`sound` written as a literal, there is no `.note("…")` string, a later
+ * `.sound`/`.s` replaces the head's sounds, or a call that moves time sits between the
+ * head and the `.note` (see `VALUE_ONLY`). `span` is the grid's length in cycles.
+ */
+export function stepNotes(chunk: ChunkInfo, span: number): StepNotes | null {
+  if (!chunk.headFn || !['s', 'sound'].includes(chunk.headFn) || chunk.miniVia !== 'literal') return null
+  if (chunk.miniString === null || !(span > 0)) return null
+  const notes = readChainMethod(chunk, ['note'])
+  if (!notes) return null
+  const at = chunk.chain.indexOf(playingCall(chunk, ['note'])!)
+  // a later `.sound`/`.s` plays instead of the head's; a time call moves the sounds under the notes
+  if (chunk.chain.slice(1).some((c) => c.name === 's' || c.name === 'sound')) return null
+  if (chunk.chain.slice(1, at).some((c) => !VALUE_ONLY.has(c.name))) return null
+
+  const passes = new Map<string, string[]>()
+  const heard: MiniSpan[] = []
+  try {
+    for (let k = 0; k < SOUND_PASSES; k++) {
+      const pass = new Map<string, string[]>()
+      for (let c = 0; c < span; c++) {
+        for (const h of soundNoteHits(chunk.miniString, notes.value, k * span + c)) {
+          const name = playedName(h.sound)
+          if (name === null || h.note === undefined) continue
+          const key = stepNoteKey(name, h.begin.valueOf() - k * span)
+          pass.set(key, [...(pass.get(key) ?? []), String(h.note)])
+          heard.push(...h.noteAt)
+        }
+      }
+      for (const [key, played] of pass) {
+        const label = played.join(', ')
+        const seen = passes.get(key) ?? []
+        if (!seen.includes(label)) passes.set(key, [...seen, label])
+      }
+    }
+  } catch {
+    return null
+  }
+
+  const atoms: { text: string; span: MiniSpan }[] = []
+  try {
+    nameAtoms(miniShape(notes.value), atoms)
+  } catch {
+    return { notes: passes, unheard: [] }
+  }
+  const unheard = atoms
+    .filter((a) => !heard.some((s) => s.start < a.span.end && s.end > a.span.start))
+    .map((a) => a.text)
+  return { notes: passes, unheard }
 }

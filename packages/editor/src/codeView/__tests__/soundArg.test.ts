@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { detectChunk } from '../chunkDetect'
 import { applyEdits } from '../writeback'
-import { noteSounds, soundBlockEdit, soundLane } from '../noteSounds'
+import { noteSounds, soundBlockEdit, soundLane, stepNoteKey, stepNotes } from '../noteSounds'
 import { readSoundArg, soundArgLabel, soundPickEdit, soundPickRefusal } from '../soundArg'
-import { parsePianoRoll } from '../notation/parse'
+import { parsePianoRoll, parseStepGrid } from '../notation/parse'
+import { isCellOn } from '../notation/model'
 import { stepToCycle } from '../../visualEdit/panels/usePlayingStep'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import * as strudelCore from '@strudel/core'
@@ -265,5 +266,92 @@ describe('soundLane — the sound pattern as its own row (#2226)', () => {
     expect(lane('note("c e").sound("piano*2")')).toBeNull()
     expect(lane('note("c e")')).toBeNull()
     expect(lane('note("c e").fast(2).sound("piano sawtooth")')).toBeNull()
+  })
+})
+
+describe('stepNotes — what each step of a sound-first line plays (#2226)', () => {
+  const GUITAR = 'gm_electric_guitar_muted'
+  /** the step grid of `doc`'s sound string, and what each lit step plays, keyed `lane:column` */
+  function grid(doc: string) {
+    const chunk = detectChunk(doc, 0)!
+    const r = parseStepGrid(chunk.miniString!)
+    if (!r.ok) throw new Error('not a step grid')
+    const m = r.model
+    const span = m.bars ?? 1
+    const sn = stepNotes(chunk, span)
+    if (!sn) return null
+    const cells: Record<string, string[] | undefined> = {}
+    m.lanes.forEach((lane, li) =>
+      lane.cells.forEach((c, col) => {
+        if (isCellOn(c)) cells[`${lane.sound}:${col}`] = sn.notes.get(stepNoteKey(lane.sound, stepToCycle(col, m.steps, span, m.barSteps)))
+      }),
+    )
+    return { cells, unheard: sn.unheard }
+  }
+
+  it('the reported line, sound first: piano plays 48, the guitar 63, and 67 62 58 never play', () => {
+    expect(grid(`sound("piano ${GUITAR}").note("48 67 63 [62, 58]")`)).toEqual({
+      cells: { 'piano:0': ['48'], [`${GUITAR}:1`]: ['63'] },
+      unheard: ['67', '62', '58'],
+    })
+  })
+
+  it('alternating sounds over two bars: each bar plays 48, and 67 never plays', () => {
+    expect(grid(`sound("<piano ${GUITAR}>").note("48 67")`)).toEqual({
+      cells: { 'piano:0': ['48'], [`${GUITAR}:1`]: ['48'] },
+      unheard: ['67'],
+    })
+  })
+
+  it('more steps than notes: each note plays on every step that starts in it', () => {
+    expect(grid('s("piano*4").note("c e")')).toEqual({
+      cells: { 'piano:0': ['c'], 'piano:1': ['c'], 'piano:2': ['e'], 'piano:3': ['e'] },
+      unheard: [],
+    })
+  })
+
+  it('notes that alternate: a step names what it plays in each pass', () => {
+    expect(grid('s("piano sawtooth").note("<c e>")')).toEqual({
+      cells: { 'piano:0': ['c', 'e'], 'sawtooth:1': ['c', 'e'] },
+      unheard: [],
+    })
+  })
+
+  it('a chord on a step names both notes; a rest in the sounds plays nothing', () => {
+    expect(grid('s("piano ~").note("[c,e] g")')).toEqual({ cells: { 'piano:0': ['c, e'] }, unheard: ['g'] })
+  })
+
+  it('a value-only call between is fine; a sound variant still finds its lane', () => {
+    expect(grid('s("piano:2 sawtooth").gain(0.5).note("c e")')).toEqual({
+      cells: { 'piano:2:0': ['c'], 'sawtooth:1': ['e'] },
+      unheard: [],
+    })
+  })
+
+  it('says nothing it cannot say truly', () => {
+    const none = (doc: string) => stepNotes(detectChunk(doc, 0)!, 1)
+    expect(none('s("bd sd")')).toBeNull() // no notes: a drum grid
+    expect(none('note("c e").sound("piano sawtooth")')).toBeNull() // notes first: the roll
+    expect(none('s("piano sawtooth").fast(2).note("c e")')).toBeNull() // time moved under the notes
+    expect(none('s("piano sawtooth").note("c e").s("saw")')).toBeNull() // another sound plays
+    expect(none('s("piano sawtooth").note(mel)')).toBeNull() // not a string
+  })
+
+  // Every note is either played by a step or listed as unheard — checked against Strudel
+  // composing the two itself, over the same passes.
+  it.each([
+    [`piano ${GUITAR}`, '48 67 63 [62, 58]'],
+    ['piano sawtooth square', 'c e'],
+    ['<piano sawtooth> [square triangle]', 'c e g b'],
+    ['piano@3 sawtooth', 'c [e g] b'],
+  ])('agrees with Strudel: s("%s").note("%s")', (sounds, notes) => {
+    const doc = `s("${sounds}").note("${notes}")`
+    const g = grid(doc)!
+    const pat = (strudelCore as unknown as { s(p: unknown): { note(p: unknown): Pat } }).s(reifyMini(sounds)).note(reifyMini(notes))
+    const played = new Set<string>()
+    for (const h of pat.queryArc(0, 8)) if (h.hasOnset()) played.add(String(h.value.note))
+    const labelled = new Set(Object.values(g.cells).flat().flatMap((l) => l!.split(', ')))
+    expect([...labelled].sort()).toEqual([...played].sort())
+    for (const u of g.unheard) expect(played.has(u), u).toBe(false)
   })
 })

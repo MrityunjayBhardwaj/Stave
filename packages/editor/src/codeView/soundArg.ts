@@ -40,7 +40,7 @@ export type SoundArg =
   | { kind: 'pattern'; names: string[]; spans: MiniSpan[]; alternates: boolean }
 
 /** every name atom under `g`, rests excluded; op arguments (`*2`, `:3`, `(3,8)`) are not names */
-function nameAtoms(g: MiniGroup, out: { text: string; span: MiniSpan }[]): void {
+export function nameAtoms(g: MiniGroup, out: { text: string; span: MiniSpan }[]): void {
   for (const c of g.children) {
     if (c.kind === 'group') nameAtoms(c, out)
     else if (c.content.kind === 'group') nameAtoms(c.content, out)

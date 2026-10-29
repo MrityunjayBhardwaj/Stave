@@ -11,7 +11,9 @@
  *    says why;
  *  - the Song timeline, expanded, gives each sound a labelled row of its own,
  *    piano included, under the track's own header row;
- *  - the Mixer strip says "2 sounds", with the names on hover.
+ *  - the Mixer strip says "2 sounds", with the names on hover;
+ *  - sound first (`sound("a b").note("…")`), the step grid names the note each step
+ *    plays and says which written notes never play.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { bootApp, seedCode, evalCode } from './_appBoot'
@@ -148,6 +150,41 @@ test.describe('a sound that is a pattern is shown where it plays (#2226)', () =>
     await expect(lane).toHaveAttribute('data-full-song-voices', '2', { timeout: 10_000 })
     await expect(lane.locator('[data-full-song-voice]')).toHaveText(['piano', GUITAR])
     await expect(lane.locator('[data-full-song-lane-name]')).toHaveText('Track 1')
+  })
+
+  // Sound first, the sounds set the rhythm: each step plays the note written where it
+  // starts. Recorded at the audio graph for this line: only 48 and 63 ever start.
+  test('sound first: the step grid names the note each step plays, and the notes that never play', async ({ page }) => {
+    await bootApp(page)
+    await seedCode(page, `$: sound("piano ${GUITAR}").note("48 67 63 [62, 58]")`)
+    await cursorAt(page, 1)
+    const drawer = page.locator('[data-bottom-panel="root"]')
+    await drawer.locator('[data-bottom-panel="toggle"]').click()
+    await drawer.locator('role=tab[name="Pattern"]').click()
+    const grid = drawer.locator('[data-pattern-grid]')
+    await grid.locator('[data-seq-cell]').first().waitFor({ timeout: 15_000 })
+    const playing = await grid.locator('[data-seq-step-note]').evaluateAll((els) =>
+      els.map((e) => `${e.getAttribute('data-seq-cell')}=${e.getAttribute('data-seq-step-note')}`),
+    )
+    // lane 0 is piano, lane 1 the guitar; each plays on its own half of the bar
+    expect(playing).toEqual(['0:0=48', '1:1=63'])
+    await expect(grid.locator('[data-seq-step-note-label]')).toHaveText(['48', '63'])
+    await expect(grid.locator('[data-seq-sound-first]')).toHaveText(
+      'The sounds set the rhythm here: each step plays the note written where it starts, so 67, 62 and 58 never play.',
+    )
+  })
+
+  test('a drum grid has no notes to name: no labels, no line', async ({ page }) => {
+    await bootApp(page)
+    await seedCode(page, '$: s("bd sd hh sd")')
+    await cursorAt(page, 1)
+    const drawer = page.locator('[data-bottom-panel="root"]')
+    await drawer.locator('[data-bottom-panel="toggle"]').click()
+    await drawer.locator('role=tab[name="Pattern"]').click()
+    const grid = drawer.locator('[data-pattern-grid]')
+    await grid.locator('[data-seq-fill]').first().waitFor({ timeout: 15_000 })
+    await expect(grid.locator('[data-seq-step-note]')).toHaveCount(0)
+    await expect(grid.locator('[data-seq-sound-first]')).toHaveCount(0)
   })
 
   test('the Mixer strip says 2 sounds, the names on hover; one sound adds nothing', async ({ page }) => {

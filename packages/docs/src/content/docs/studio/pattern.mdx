@@ -45,6 +45,13 @@ const clav = chord("<Em9 A13>").voicing()
 
 From the keyboard, the arrow keys move between steps, **'** or **Enter** turns a step on or off, and **Delete** clears it.
 
+When the sound comes before the notes, the sounds set the rhythm, so the line opens here with a lane for each sound. Each step plays the note written where it starts, and its step shows that note. A line above the grid names any notes no step starts on, because those never play:
+
+```js
+$: sound("piano gm_electric_guitar_muted").note("48 67 63 [62, 58]")
+// piano plays 48, the guitar plays 63; 67, 62 and 58 never play
+```
+
 ## Piano roll
 
 ![The piano roll: a bassline's notes on a keyboard grid](../../../assets/studio/piano-roll.jpg)
