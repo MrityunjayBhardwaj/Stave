@@ -686,6 +686,14 @@ export interface LiveCodingRuntime {
   onPlayingChanged(cb: (playing: boolean) => void): () => void
 
   /**
+   * #2259 — subscribe to "Play was asked for and the clock hasn't started":
+   * `true` once that wait outlasts a short grace, `false` when it ends (Play
+   * returns, Stop, or a newer Play). Optional: a runtime that starts at once
+   * never fires it.
+   */
+  onPlayPendingChanged?(cb: (pending: boolean) => void): () => void
+
+  /**
    * Read the engine's current BPM, if extractable. The runtime parses
    * `setcps(...)` from the last evaluated code and converts to BPM
    * (Strudel) or returns `undefined` for engines that have no analogous
@@ -748,6 +756,11 @@ export interface ChromeContext {
   readonly file: WorkspaceFile
   /** Current playing state — sourced by the embedder. */
   readonly isPlaying: boolean
+  /**
+   * #2259 — Play was pressed and is still loading (the engine, the code, the
+   * first sounds). The Play button says so, and pressing it cancels that Play.
+   */
+  readonly isPlayPending?: boolean
   /** Current evaluation / runtime error, if any. */
   readonly error: Error | null
   /**

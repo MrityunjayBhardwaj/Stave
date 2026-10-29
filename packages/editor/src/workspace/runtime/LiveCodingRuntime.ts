@@ -136,6 +136,13 @@ import {
 const LIVE_MODE_DEBOUNCE_MS = 500
 
 /**
+ * #2259 — how long a Play may take to start before it says it is pending.
+ * Long enough that a Play with everything already loaded (a few ms) never
+ * flashes it; short enough to show before a person would press Play again.
+ */
+export const PLAY_PENDING_REVEAL_MS = 150
+
+/**
  * Subscribe-to-file function shape. Callers supply one if they want the
  * runtime's live mode (`setAutoRefresh(true)`) to actually do anything —
  * otherwise live mode is a no-op (useful in tests that don't want to
@@ -241,6 +248,9 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
 
   private readonly errorListeners = new Set<(err: Error) => void>()
   private readonly playingChangedListeners = new Set<(playing: boolean) => void>()
+  /** #2259 — a Play was asked for and the clock hasn't started yet (see `play`). */
+  private playPendingState = false
+  private readonly playPendingListeners = new Set<(pending: boolean) => void>()
   private readonly evaluateSuccessListeners = new Set<(code: string) => void>()
 
   /**
@@ -456,12 +466,40 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   }
 
   /**
+   * The nine-step play lifecycle (PK1), see {@link playSteps}.
+   *
+   * #2259 — from a stopped transport, Play can take a while before the clock
+   * starts: the engine's first load, the evaluate, then step 3a's sounds (up to
+   * its cap). The transport would read stopped all that time and a person presses
+   * Play again, so once the wait outlasts PLAY_PENDING_REVEAL_MS the runtime says
+   * Play is pending (a Play that is quick shows nothing). It ends when this Play
+   * returns, or at stop(), or when a newer play() takes over. Never while already
+   * playing: a re-evaluate under a running clock is not a wait.
+   */
+  async play(): Promise<{ error: Error | null }> {
+    const wasPlaying = this.isPlayingState
+    // playSteps takes its generation synchronously, before its first await
+    const steps = this.playSteps()
+    const myGen = this.playGeneration
+    if (wasPlaying || this.isDisposed) return steps
+    const reveal = setTimeout(() => {
+      if (myGen === this.playGeneration && !this.isDisposed) this.setPlayPending(true)
+    }, PLAY_PENDING_REVEAL_MS)
+    try {
+      return await steps
+    } finally {
+      clearTimeout(reveal)
+      if (myGen === this.playGeneration) this.setPlayPending(false)
+    }
+  }
+
+  /**
    * The nine-step play lifecycle (PK1). See class JSDoc above.
    *
    * Returns the evaluate error if any (also fires `onError` listeners).
    * The bus is left untouched on error — no publish, no unpublish.
    */
-  async play(): Promise<{ error: Error | null }> {
+  private async playSteps(): Promise<{ error: Error | null }> {
     if (this.isDisposed) {
       const err = new Error('LiveCodingRuntime: cannot play after dispose')
       this.fireOnError(err)
@@ -916,6 +954,8 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     // any early-return, so the guard can't be skipped.
     this.playGeneration++
     if (this.isDisposed) return
+    // #2259 — a Stop while Play is pending cancels that Play; the wait is over too.
+    this.setPlayPending(false)
 
     const wasPlaying = this.isPlayingState
 
@@ -978,6 +1018,7 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     this.isDisposed = true
     this.errorListeners.clear()
     this.playingChangedListeners.clear()
+    this.playPendingListeners.clear()
     this.evaluateSuccessListeners.clear()
     this.autoRefreshChangedListeners.clear()
     // Remove from the playback coordinator so a future
@@ -1129,6 +1170,37 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
       if (unsubscribed) return
       unsubscribed = true
       this.playingChangedListeners.delete(cb)
+    }
+  }
+
+  /**
+   * #2259 — fires `true` when a Play has been waiting to start for longer than
+   * {@link PLAY_PENDING_REVEAL_MS}, and `false` when that wait ends (the Play
+   * returns, Stop, or a newer Play). Only on a change.
+   */
+  onPlayPendingChanged(cb: (pending: boolean) => void): () => void {
+    this.playPendingListeners.add(cb)
+    let unsubscribed = false
+    return () => {
+      if (unsubscribed) return
+      unsubscribed = true
+      this.playPendingListeners.delete(cb)
+    }
+  }
+
+  isPlayPending(): boolean {
+    return this.playPendingState
+  }
+
+  private setPlayPending(pending: boolean): void {
+    if (this.playPendingState === pending) return
+    this.playPendingState = pending
+    for (const cb of Array.from(this.playPendingListeners)) {
+      try {
+        cb(pending)
+      } catch {
+        // Listener exceptions never break the dispatch loop.
+      }
     }
   }
 

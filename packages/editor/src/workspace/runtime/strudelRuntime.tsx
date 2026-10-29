@@ -177,6 +177,7 @@ function LoopToggle({
 function StrudelChrome(ctx: ChromeContext): React.ReactElement {
   const {
     isPlaying,
+    isPlayPending = false,
     error,
     errorMessage,
     bpm,
@@ -189,6 +190,7 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
     onToggleStopAtEnd,
   } = ctx
   const bar = useTouchBar()
+  const busy = isPlaying || isPlayPending
   return (
     <div
       data-strudel-runtime-chrome="root"
@@ -208,8 +210,15 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
     >
       <button
         data-testid="strudel-chrome-transport"
-        onClick={isPlaying ? onStop : onPlay}
-        title={isPlaying ? 'Stop (Ctrl+.)' : 'Play (Ctrl+Enter)'}
+        // #2259 — while Play is still loading the button says so, and pressing
+        // it again cancels that Play rather than starting another.
+        data-play-pending={!isPlaying && isPlayPending ? 'true' : undefined}
+        onClick={busy ? onStop : onPlay}
+        title={
+          isPlaying
+            ? 'Stop (Ctrl+.)'
+            : isPlayPending ? 'Loading… click to cancel (Ctrl+.)' : 'Play (Ctrl+Enter)'
+        }
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -220,12 +229,12 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
           cursor: 'pointer',
           fontSize: 11,
           fontFamily: 'var(--font-mono)',
-          background: isPlaying ? 'rgba(139,92,246,0.15)' : 'var(--accent)',
-          color: isPlaying ? 'var(--accent)' : '#fff',
-          outline: isPlaying ? '1px solid var(--accent)' : 'none',
+          background: busy ? 'rgba(139,92,246,0.15)' : 'var(--accent)',
+          color: busy ? 'var(--accent)' : '#fff',
+          outline: busy ? '1px solid var(--accent)' : 'none',
         }}
       >
-        {isPlaying ? '\u25A0 Stop' : '\u25B6 Play'}
+        {isPlaying ? '\u25A0 Stop' : isPlayPending ? '\u25CC Loading' : '\u25B6 Play'}
       </button>
 
       {bpm != null && (
