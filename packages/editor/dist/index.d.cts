@@ -1,5 +1,5 @@
-import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-DO8O9hDv.cjs';
-export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-DO8O9hDv.cjs';
+import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-CtFCK18o.cjs';
+export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-CtFCK18o.cjs';
 import * as Monaco from 'monaco-editor';
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
@@ -3227,6 +3227,21 @@ declare function resizeGrid(model: StepGridModel, nextSteps: number, mode: Resiz
 declare function resizeRoll(model: PianoRollModel, nextSteps: number, mode: ResizeMode): PianoRollModel;
 
 /**
+ * Convert a note name string or MIDI number to a MIDI note number.
+ * Returns null if the input is unrecognized (e.g. percussion sample names).
+ *
+ * This is the one note-name reader (#1928). Its grammar is Strudel's own
+ * (`@strudel/core` util.mjs `tokenizeNote` / `noteToMidi`), so a name means here
+ * what it means to the sound: a letter, any run of accidentals from `#` `s`
+ * (sharp) and `b` `f` (flat) that add up, and an optional octave that defaults
+ * to 3. A test pins it to Strudel's function.
+ *
+ * Examples: "c3" → 48, "eb4" → 63, "cs3" → 49, "g" → 55, "ef3" → 51,
+ * "Bbb2" → 45, "f#2" → 42, 60 → 60
+ */
+declare function noteToMidi(note: unknown): number | null;
+
+/**
  * WHAT SETTING THE GRID TO `target` DID TO THE NOTES — reported by the op, never
  * reconstructed from its output (#1061).
  *
@@ -5834,21 +5849,6 @@ declare class LiveRecorder {
 }
 
 /**
- * Convert a note name string or MIDI number to a MIDI note number.
- * Returns null if the input is unrecognized (e.g. percussion sample names).
- *
- * This is the one note-name reader (#1928). Its grammar is Strudel's own
- * (`@strudel/core` util.mjs `tokenizeNote` / `noteToMidi`), so a name means here
- * what it means to the sound: a letter, any run of accidentals from `#` `s`
- * (sharp) and `b` `f` (flat) that add up, and an optional octave that defaults
- * to 3. A test pins it to Strudel's function.
- *
- * Examples: "c3" → 48, "eb4" → 63, "cs3" → 49, "g" → 55, "ef3" → 51,
- * "Bbb2" → 45, "f#2" → 42, 60 → 60
- */
-declare function noteToMidi(note: unknown): number | null;
-
-/**
  * THE map between a control's value and its position on a dial (#1581).
  *
  * A control's value sits somewhere on its range: `gain` 0…1 is linear, `cutoff`
@@ -8331,6 +8331,13 @@ interface LiveCodingRuntime$1 {
      */
     onPlayingChanged(cb: (playing: boolean) => void): () => void;
     /**
+     * #2259 — subscribe to "Play was asked for and the clock hasn't started":
+     * `true` once that wait outlasts a short grace, `false` when it ends (Play
+     * returns, Stop, or a newer Play). Optional: a runtime that starts at once
+     * never fires it.
+     */
+    onPlayPendingChanged?(cb: (pending: boolean) => void): () => void;
+    /**
      * Read the engine's current BPM, if extractable. The runtime parses
      * `setcps(...)` from the last evaluated code and converts to BPM
      * (Strudel) or returns `undefined` for engines that have no analogous
@@ -8388,6 +8395,11 @@ interface ChromeContext {
     readonly file: WorkspaceFile;
     /** Current playing state — sourced by the embedder. */
     readonly isPlaying: boolean;
+    /**
+     * #2259 — Play was pressed and is still loading (the engine, the code, the
+     * first sounds). The Play button says so, and pressing it cancels that Play.
+     */
+    readonly isPlayPending?: boolean;
     /** Current evaluation / runtime error, if any. */
     readonly error: Error | null;
     /**
@@ -12054,6 +12066,9 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     private suppressedConsoleErrors;
     private readonly errorListeners;
     private readonly playingChangedListeners;
+    /** #2259 — a Play was asked for and the clock hasn't started yet (see `play`). */
+    private playPendingState;
+    private readonly playPendingListeners;
     private readonly evaluateSuccessListeners;
     /**
      * Unregister callback from the playback coordinator. Called in
@@ -12159,14 +12174,26 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
         readonly suppressedConsoleErrors: readonly string[];
     };
     /**
+     * The nine-step play lifecycle (PK1), see {@link playSteps}.
+     *
+     * #2259 — from a stopped transport, Play can take a while before the clock
+     * starts: the engine's first load, the evaluate, then step 3a's sounds (up to
+     * its cap). The transport would read stopped all that time and a person presses
+     * Play again, so once the wait outlasts PLAY_PENDING_REVEAL_MS the runtime says
+     * Play is pending (a Play that is quick shows nothing). It ends when this Play
+     * returns, or at stop(), or when a newer play() takes over. Never while already
+     * playing: a re-evaluate under a running clock is not a wait.
+     */
+    play(): Promise<{
+        error: Error | null;
+    }>;
+    /**
      * The nine-step play lifecycle (PK1). See class JSDoc above.
      *
      * Returns the evaluate error if any (also fires `onError` listeners).
      * The bus is left untouched on error — no publish, no unpublish.
      */
-    play(): Promise<{
-        error: Error | null;
-    }>;
+    private playSteps;
     /** Whether this runtime is currently playing (for the time-travel re-eval, #204). */
     getIsPlaying(): boolean;
     /**
@@ -12362,6 +12389,14 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     private fireAutoRefreshChanged;
     onError(cb: (err: Error) => void): () => void;
     onPlayingChanged(cb: (playing: boolean) => void): () => void;
+    /**
+     * #2259 — fires `true` when a Play has been waiting to start for longer than
+     * {@link PLAY_PENDING_REVEAL_MS}, and `false` when that wait ends (the Play
+     * returns, Stop, or a newer Play). Only on a change.
+     */
+    onPlayPendingChanged(cb: (pending: boolean) => void): () => void;
+    isPlayPending(): boolean;
+    private setPlayPending;
     /** Fires after each clean evaluate. The callback receives the EXACT source
      *  string that was evaluated (post eval-source transform), captured at eval
      *  time — so consumers don't have to re-read a lagging file snapshot (#583). */

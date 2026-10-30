@@ -90,4 +90,17 @@ test.describe('short share links (#2248)', () => {
     await expect.poll(() => editorValue(other), { timeout: 20_000 }).toBe(code)
     await other.context().close()
   })
+
+  // #2250 — the site's firewall answers 429 past 10 uploads in 10 minutes from one
+  // visitor. The person still gets a working link, and is told why it's the long one.
+  test('past the short-link limit, the long link is copied and the toast says why', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await bootApp(page)
+    await seedCode(page, 's("hh*4") // shared past the limit')
+    await page.route('**/api/share', (route) => route.fulfill({ status: 429, body: 'Too Many Requests' }))
+
+    const { url, toast } = await copyShareLink(page)
+    expect(url).toContain('/#share=')
+    expect(toast).toContain('several short links in the last few minutes')
+  })
 })

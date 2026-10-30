@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { noteToMidi as strudelNoteToMidi, isNote } from '@strudel/core'
 import { noteToMidi } from './noteToMidi'
-import { pitchToMidi } from '../codeView/notation/pitch'
+import { pitchToMidi } from './pitch'
 
 /** What Strudel makes of a name: its number, or null where it refuses (or reads NaN). */
 function strudel(name: string): number | null {

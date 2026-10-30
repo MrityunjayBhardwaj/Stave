@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { LiveCodingRuntime, extractBpmFromCode } from '../LiveCodingRuntime'
+import { LiveCodingRuntime, extractBpmFromCode, PLAY_PENDING_REVEAL_MS } from '../LiveCodingRuntime'
 import {
   workspaceAudioBus,
   __resetWorkspaceAudioBusForTests,
@@ -584,6 +584,122 @@ describe('LiveCodingRuntime', () => {
       expect(result.error).toBeNull()
       expect(engine.callLog).toContain('play')
       expect(runtime.getIsPlaying()).toBe(true)
+    })
+
+    // #2259 — a Play that takes a while to start says so, once the wait is long
+    // enough to notice, and stops saying so when it starts or Stop lands.
+    describe('play pending (#2259)', () => {
+      const gatedWarm = (engine: ReturnType<typeof createMockEngine>) => {
+        let release!: () => void
+        const gate = new Promise<void>((res) => { release = res })
+        ;(engine as { warmSounds?: () => Promise<void> }).warmSounds = vi.fn(() => gate)
+        return () => release()
+      }
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+      it('says it is loading after the grace, then stops saying so when Play starts', async () => {
+        const engine = createMockEngine()
+        engine.setComponents({ streaming: makeStreamingComponent(), audio: makeAudioComponent() })
+        const release = gatedWarm(engine)
+        const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+        const seen: boolean[] = []
+        runtime.onPlayPendingChanged((l) => seen.push(l))
+
+        const playPromise = runtime.play()
+        await wait(PLAY_PENDING_REVEAL_MS + 50)
+        expect(runtime.isPlayPending()).toBe(true)
+        expect(runtime.getIsPlaying()).toBe(false)
+
+        release()
+        await playPromise
+        expect(runtime.isPlayPending()).toBe(false)
+        expect(runtime.getIsPlaying()).toBe(true)
+        expect(seen).toEqual([true, false])
+      })
+
+      it('says nothing when the sounds are ready within the grace', async () => {
+        const engine = createMockEngine()
+        engine.setComponents({ streaming: makeStreamingComponent(), audio: makeAudioComponent() })
+        ;(engine as { warmSounds?: () => Promise<void> }).warmSounds = vi.fn(async () => {})
+        const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+        const seen: boolean[] = []
+        runtime.onPlayPendingChanged((l) => seen.push(l))
+
+        await runtime.play()
+        await wait(PLAY_PENDING_REVEAL_MS + 50)
+        expect(seen).toEqual([])
+        expect(runtime.getIsPlaying()).toBe(true)
+      })
+
+      it('Stop while loading ends the loading at once and keeps it stopped', async () => {
+        const engine = createMockEngine()
+        engine.setComponents({ streaming: makeStreamingComponent(), audio: makeAudioComponent() })
+        const release = gatedWarm(engine)
+        const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+
+        const playPromise = runtime.play()
+        await wait(PLAY_PENDING_REVEAL_MS + 50)
+        expect(runtime.isPlayPending()).toBe(true)
+        runtime.stop()
+        expect(runtime.isPlayPending()).toBe(false)
+
+        release()
+        await playPromise
+        expect(runtime.isPlayPending()).toBe(false)
+        expect(runtime.getIsPlaying()).toBe(false)
+      })
+
+      it('covers a slow first engine load, not only the sounds', async () => {
+        const engine = createMockEngine()
+        engine.setComponents({ streaming: makeStreamingComponent(), audio: makeAudioComponent() })
+        let releaseInit!: () => void
+        const initGate = new Promise<void>((res) => { releaseInit = res })
+        engine.initFn.mockImplementationOnce(() => initGate)
+        const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+
+        const playPromise = runtime.play()
+        await wait(PLAY_PENDING_REVEAL_MS + 50)
+        expect(runtime.isPlayPending()).toBe(true)
+        releaseInit()
+        await playPromise
+        expect(runtime.isPlayPending()).toBe(false)
+        expect(runtime.getIsPlaying()).toBe(true)
+      })
+
+      it('ends when the code fails to evaluate', async () => {
+        const engine = createMockEngine()
+        engine.setComponents({ streaming: makeStreamingComponent(), audio: makeAudioComponent() })
+        let releaseInit!: () => void
+        const initGate = new Promise<void>((res) => { releaseInit = res })
+        engine.initFn.mockImplementationOnce(() => initGate)
+        engine.setEvalResult({ error: new Error('bad code') })
+        const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+
+        const playPromise = runtime.play()
+        await wait(PLAY_PENDING_REVEAL_MS + 50)
+        expect(runtime.isPlayPending()).toBe(true)
+        releaseInit()
+        const result = await playPromise
+        expect(result.error?.message).toBe('bad code')
+        expect(runtime.isPlayPending()).toBe(false)
+      })
+
+      it('a re-evaluate while playing never shows loading', async () => {
+        const engine = createMockEngine()
+        engine.setComponents({ streaming: makeStreamingComponent(), audio: makeAudioComponent() })
+        ;(engine as { warmSounds?: () => Promise<void> }).warmSounds = vi.fn(async () => {})
+        const runtime = new LiveCodingRuntime('file-1', engine, () => 'code')
+        await runtime.play()
+        const release = gatedWarm(engine)
+        const seen: boolean[] = []
+        runtime.onPlayPendingChanged((l) => seen.push(l))
+
+        const again = runtime.play()
+        await wait(PLAY_PENDING_REVEAL_MS + 50)
+        release()
+        await again
+        expect(seen).toEqual([])
+      })
     })
 
     it('stop() always reaches engine.stop() even when isPlayingState is false (authoritative stop, #811)', () => {

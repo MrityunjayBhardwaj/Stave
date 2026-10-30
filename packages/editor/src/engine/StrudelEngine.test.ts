@@ -46,69 +46,76 @@ let capturedDefaultOutput: ((hap: any, deadline: number, duration: number, cps: 
 // Mock Pattern class
 // ---------------------------------------------------------------------------
 
-class MockPattern {
-  private instanceId: number
-  // Accumulated `.late()` shift (#863) — the seek wrap the engine applies to the
-  // SCHEDULER-frame pattern. `0` for a pattern in the song frame.
-  private shift: number
-  // #1570 — the transport wraps this pattern has been through, IN ORDER.
-  //
-  // `ribbon` cannot be modelled on this mock's time axis: it re-bases the slice
-  // it cuts, so what it changes is WHICH song cycle sounds, and these haps carry
-  // time rather than song-cycle values. (The real semantics are asserted against
-  // the actual @strudel/core in `__tests__/transportFrame.test.ts` — that is the
-  // authority; this records the WIRING.) The ops ride out on the hap value,
-  // where `normalizeStrudelHap` passes unknown fields through as `params`, so a
-  // test can read back exactly which wraps the engine applied to which frame.
-  private ops: string[]
-  // #1619 — `context.locations` for this pattern's haps, when a test sets them.
-  // Omitted otherwise, so no other test's haps change.
-  locations?: Array<{ start: number; end: number }>
-  constructor(clone?: { instanceId: number; shift: number; ops: string[]; locations?: Array<{ start: number; end: number }> }) {
-    this.instanceId = clone ? clone.instanceId : ++patternInstanceCounter
-    this.shift = clone ? clone.shift : 0
-    this.ops = clone ? clone.ops : []
-    this.locations = clone?.locations
+// Hoisted with the mocks (#2264): a `vi.mock` factory runs at the first import of
+// its module, and that can come before this line runs. Through the codeView entry,
+// `@strudel/mini/mini.mjs` imports `@strudel/core` while the test file is still loading.
+const { MockPattern } = vi.hoisted(() => {
+  class MockPattern {
+    private instanceId: number
+    // Accumulated `.late()` shift (#863) — the seek wrap the engine applies to the
+    // SCHEDULER-frame pattern. `0` for a pattern in the song frame.
+    private shift: number
+    // #1570 — the transport wraps this pattern has been through, IN ORDER.
+    //
+    // `ribbon` cannot be modelled on this mock's time axis: it re-bases the slice
+    // it cuts, so what it changes is WHICH song cycle sounds, and these haps carry
+    // time rather than song-cycle values. (The real semantics are asserted against
+    // the actual @strudel/core in `__tests__/transportFrame.test.ts` — that is the
+    // authority; this records the WIRING.) The ops ride out on the hap value,
+    // where `normalizeStrudelHap` passes unknown fields through as `params`, so a
+    // test can read back exactly which wraps the engine applied to which frame.
+    private ops: string[]
+    // #1619 — `context.locations` for this pattern's haps, when a test sets them.
+    // Omitted otherwise, so no other test's haps change.
+    locations?: Array<{ start: number; end: number }>
+    constructor(clone?: { instanceId: number; shift: number; ops: string[]; locations?: Array<{ start: number; end: number }> }) {
+      this.instanceId = clone ? clone.instanceId : ++patternInstanceCounter
+      this.shift = clone ? clone.shift : 0
+      this.ops = clone ? clone.ops : []
+      this.locations = clone?.locations
+    }
+    // Models `@strudel/core`'s `.late(offset)`: delays every onset by `offset`
+    // cycles. Returns a NEW pattern (as Strudel does) that keeps the same
+    // instanceId, so the orbit each analyser test asserts on is unaffected.
+    late(offset: number) {
+      return new MockPattern({
+        instanceId: this.instanceId,
+        shift: this.shift + offset,
+        ops: [...this.ops, `late(${offset})`],
+        locations: this.locations,
+      })
+    }
+    // #1570 — `.ribbon(offset, cycles)`: cut a span and loop it. Recorded, not
+    // simulated (see `ops` above).
+    ribbon(offset: number, cycles: number) {
+      return new MockPattern({
+        instanceId: this.instanceId,
+        shift: this.shift,
+        ops: [...this.ops, `ribbon(${offset},${cycles})`],
+        locations: this.locations,
+      })
+    }
+    queryArc(begin: number, end: number) {
+      return [{
+        whole: { begin: begin + this.shift, end: end + this.shift },
+        ...(this.locations ? { context: { locations: this.locations } } : {}),
+        // `orbit` field is read by StrudelEngine.resolveOrbit() to decide which
+        // superdough orbit to side-tap for per-track analysers. Using instanceId
+        // gives each pattern a distinct orbit in tests.
+        value: {
+          note: `note_${this.instanceId}`,
+          s: `inst_${this.instanceId}`,
+          orbit: this.instanceId,
+          // Omitted entirely on an unwrapped pattern, so the mock adds no
+          // `params` to the haps every other test in this file reads.
+          ...(this.ops.length > 0 ? { transportOps: this.ops } : {}),
+        },
+      }]
+    }
   }
-  // Models `@strudel/core`'s `.late(offset)`: delays every onset by `offset`
-  // cycles. Returns a NEW pattern (as Strudel does) that keeps the same
-  // instanceId, so the orbit each analyser test asserts on is unaffected.
-  late(offset: number) {
-    return new MockPattern({
-      instanceId: this.instanceId,
-      shift: this.shift + offset,
-      ops: [...this.ops, `late(${offset})`],
-      locations: this.locations,
-    })
-  }
-  // #1570 — `.ribbon(offset, cycles)`: cut a span and loop it. Recorded, not
-  // simulated (see `ops` above).
-  ribbon(offset: number, cycles: number) {
-    return new MockPattern({
-      instanceId: this.instanceId,
-      shift: this.shift,
-      ops: [...this.ops, `ribbon(${offset},${cycles})`],
-      locations: this.locations,
-    })
-  }
-  queryArc(begin: number, end: number) {
-    return [{
-      whole: { begin: begin + this.shift, end: end + this.shift },
-      ...(this.locations ? { context: { locations: this.locations } } : {}),
-      // `orbit` field is read by StrudelEngine.resolveOrbit() to decide which
-      // superdough orbit to side-tap for per-track analysers. Using instanceId
-      // gives each pattern a distinct orbit in tests.
-      value: {
-        note: `note_${this.instanceId}`,
-        s: `inst_${this.instanceId}`,
-        orbit: this.instanceId,
-        // Omitted entirely on an unwrapped pattern, so the mock adds no
-        // `params` to the haps every other test in this file reads.
-        ...(this.ops.length > 0 ? { transportOps: this.ops } : {}),
-      },
-    }]
-  }
-}
+  return { MockPattern }
+})
+type MockPattern = InstanceType<typeof MockPattern>
 
 // ---------------------------------------------------------------------------
 // Mock @strudel/core

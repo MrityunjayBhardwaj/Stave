@@ -376,6 +376,8 @@ interface StrudelEditorClientProps {
   onActiveRuntimeStateChange?: (state: {
     fileId: string;
     isPlaying: boolean;
+    /** #2259 — Play was pressed and the clock hasn't started yet. */
+    isPlayPending?: boolean;
     bpm?: number;
     error: string | null;
     /**
@@ -1008,6 +1010,8 @@ export default function StrudelEditorClient({
   onCodeBackdropChangeRef.current = onCodeBackdropChange;
   const [runtimeStates, setRuntimeStates] = useState<Map<string, {
     isPlaying: boolean; error: Error | null; bpm?: number; autoRefresh: boolean;
+    // #2259 — Play was pressed and the clock hasn't started yet (runtime.onPlayPendingChanged).
+    isPlayPending?: boolean;
     // #1388 — the document's own answer to "does this end?", refreshed on every
     // successful evaluate. Kept HERE rather than in a ref beside it because two
     // consumers read it and they must not disagree: the chrome (which shows the
@@ -1164,6 +1168,14 @@ export default function StrudelEditorClient({
         const next = new Map(prev);
         const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
         next.set(fileId, { ...cur, isPlaying: playing, bpm: runtime.getBpm() });
+        return next;
+      });
+    });
+    runtime.onPlayPendingChanged?.((pending: boolean) => {
+      setRuntimeStates(prev => {
+        const next = new Map(prev);
+        const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
+        next.set(fileId, { ...cur, isPlayPending: pending });
         return next;
       });
     });
@@ -1652,6 +1664,7 @@ export default function StrudelEditorClient({
       runtime: rt,
       file,
       isPlaying: state.isPlaying,
+      isPlayPending: state.isPlayPending ?? false,
       error: state.error,
       errorMessage: state.error ? state.errorMessage : undefined,
       bpm: state.bpm,
@@ -2127,6 +2140,7 @@ export default function StrudelEditorClient({
     onActiveRuntimeStateChange({
       fileId: fid,
       isPlaying: st.isPlaying,
+      isPlayPending: st.isPlayPending ?? false,
       bpm: st.bpm,
       error: shownError(st),
       getCycle: () =>
@@ -2312,6 +2326,7 @@ export default function StrudelEditorClient({
         onActiveRuntimeStateChange({
           fileId: fid,
           isPlaying: st.isPlaying,
+          isPlayPending: st.isPlayPending ?? false,
           bpm: st.bpm,
           error: shownError(st),
           getCycle: () =>

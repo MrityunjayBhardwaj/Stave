@@ -8416,7 +8416,7 @@ function soloMuteEdits(doc, newSolo, prevSnapshot) {
 }
 __name(soloMuteEdits, "soloMuteEdits");
 
-// src/engine/noteToMidi.ts
+// src/codeView/notation/noteToMidi.ts
 function noteToMidi(note) {
   if (typeof note === "number") return Math.round(note);
   if (typeof note !== "string") return null;
@@ -50058,6 +50058,7 @@ __name(stemFileNames, "stemFileNames");
 
 // src/workspace/runtime/LiveCodingRuntime.ts
 var LIVE_MODE_DEBOUNCE_MS = 500;
+var PLAY_PENDING_REVEAL_MS = 150;
 function extractBpmFromCode(code) {
   return writtenBpm(code);
 }
@@ -50104,6 +50105,9 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     this.suppressedConsoleErrors = [];
     this.errorListeners = /* @__PURE__ */ new Set();
     this.playingChangedListeners = /* @__PURE__ */ new Set();
+    /** #2259 — a Play was asked for and the clock hasn't started yet (see `play`). */
+    this.playPendingState = false;
+    this.playPendingListeners = /* @__PURE__ */ new Set();
     this.evaluateSuccessListeners = /* @__PURE__ */ new Set();
     /**
      * Unregister callback from the playback coordinator. Called in
@@ -50278,12 +50282,38 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     return { error: this.lastTimelineEvalError, suppressedConsoleErrors: this.suppressedConsoleErrors };
   }
   /**
+   * The nine-step play lifecycle (PK1), see {@link playSteps}.
+   *
+   * #2259 — from a stopped transport, Play can take a while before the clock
+   * starts: the engine's first load, the evaluate, then step 3a's sounds (up to
+   * its cap). The transport would read stopped all that time and a person presses
+   * Play again, so once the wait outlasts PLAY_PENDING_REVEAL_MS the runtime says
+   * Play is pending (a Play that is quick shows nothing). It ends when this Play
+   * returns, or at stop(), or when a newer play() takes over. Never while already
+   * playing: a re-evaluate under a running clock is not a wait.
+   */
+  async play() {
+    const wasPlaying = this.isPlayingState;
+    const steps = this.playSteps();
+    const myGen = this.playGeneration;
+    if (wasPlaying || this.isDisposed) return steps;
+    const reveal = setTimeout(() => {
+      if (myGen === this.playGeneration && !this.isDisposed) this.setPlayPending(true);
+    }, PLAY_PENDING_REVEAL_MS);
+    try {
+      return await steps;
+    } finally {
+      clearTimeout(reveal);
+      if (myGen === this.playGeneration) this.setPlayPending(false);
+    }
+  }
+  /**
    * The nine-step play lifecycle (PK1). See class JSDoc above.
    *
    * Returns the evaluate error if any (also fires `onError` listeners).
    * The bus is left untouched on error — no publish, no unpublish.
    */
-  async play() {
+  async playSteps() {
     if (this.isDisposed) {
       const err = new Error("LiveCodingRuntime: cannot play after dispose");
       this.fireOnError(err);
@@ -50582,6 +50612,7 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
   stop() {
     this.playGeneration++;
     if (this.isDisposed) return;
+    this.setPlayPending(false);
     const wasPlaying = this.isPlayingState;
     try {
       this.engine.stop();
@@ -50612,6 +50643,7 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     this.isDisposed = true;
     this.errorListeners.clear();
     this.playingChangedListeners.clear();
+    this.playPendingListeners.clear();
     this.evaluateSuccessListeners.clear();
     this.autoRefreshChangedListeners.clear();
     try {
@@ -50739,6 +50771,33 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
       unsubscribed = true;
       this.playingChangedListeners.delete(cb);
     };
+  }
+  /**
+   * #2259 — fires `true` when a Play has been waiting to start for longer than
+   * {@link PLAY_PENDING_REVEAL_MS}, and `false` when that wait ends (the Play
+   * returns, Stop, or a newer Play). Only on a change.
+   */
+  onPlayPendingChanged(cb) {
+    this.playPendingListeners.add(cb);
+    let unsubscribed = false;
+    return () => {
+      if (unsubscribed) return;
+      unsubscribed = true;
+      this.playPendingListeners.delete(cb);
+    };
+  }
+  isPlayPending() {
+    return this.playPendingState;
+  }
+  setPlayPending(pending) {
+    if (this.playPendingState === pending) return;
+    this.playPendingState = pending;
+    for (const cb of Array.from(this.playPendingListeners)) {
+      try {
+        cb(pending);
+      } catch {
+      }
+    }
   }
   /** Fires after each clean evaluate. The callback receives the EXACT source
    *  string that was evaluated (post eval-source transform), captured at eval
@@ -54027,6 +54086,7 @@ __name(LoopToggle, "LoopToggle");
 function StrudelChrome(ctx) {
   const {
     isPlaying,
+    isPlayPending = false,
     error,
     errorMessage,
     bpm,
@@ -54039,6 +54099,7 @@ function StrudelChrome(ctx) {
     onToggleStopAtEnd
   } = ctx;
   const bar2 = useTouchBar();
+  const busy = isPlaying || isPlayPending;
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -54061,8 +54122,9 @@ function StrudelChrome(ctx) {
           "button",
           {
             "data-testid": "strudel-chrome-transport",
-            onClick: isPlaying ? onStop : onPlay,
-            title: isPlaying ? "Stop (Ctrl+.)" : "Play (Ctrl+Enter)",
+            "data-play-pending": !isPlaying && isPlayPending ? "true" : void 0,
+            onClick: busy ? onStop : onPlay,
+            title: isPlaying ? "Stop (Ctrl+.)" : isPlayPending ? "Loading\u2026 click to cancel (Ctrl+.)" : "Play (Ctrl+Enter)",
             style: {
               display: "flex",
               alignItems: "center",
@@ -54073,11 +54135,11 @@ function StrudelChrome(ctx) {
               cursor: "pointer",
               fontSize: 11,
               fontFamily: "var(--font-mono)",
-              background: isPlaying ? "rgba(139,92,246,0.15)" : "var(--accent)",
-              color: isPlaying ? "var(--accent)" : "#fff",
-              outline: isPlaying ? "1px solid var(--accent)" : "none"
+              background: busy ? "rgba(139,92,246,0.15)" : "var(--accent)",
+              color: busy ? "var(--accent)" : "#fff",
+              outline: busy ? "1px solid var(--accent)" : "none"
             },
-            children: isPlaying ? "\u25A0 Stop" : "\u25B6 Play"
+            children: isPlaying ? "\u25A0 Stop" : isPlayPending ? "\u25CC Loading" : "\u25B6 Play"
           }
         ),
         bpm != null && /* @__PURE__ */ jsxRuntime.jsxs(
@@ -54140,8 +54202,9 @@ var STRUDEL_RUNTIME = {
   renderChrome: /* @__PURE__ */ __name((ctx) => /* @__PURE__ */ jsxRuntime.jsx(StrudelChrome, { ...ctx }), "renderChrome")
 };
 function SonicPiChrome(ctx) {
-  const { isPlaying, error, errorMessage, bpm, onPlay, onStop, chromeExtras } = ctx;
+  const { isPlaying, isPlayPending = false, error, errorMessage, bpm, onPlay, onStop, chromeExtras } = ctx;
   const bar2 = useTouchBar();
+  const busy = isPlaying || isPlayPending;
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -54164,8 +54227,9 @@ function SonicPiChrome(ctx) {
           "button",
           {
             "data-testid": "sonicpi-chrome-transport",
-            onClick: isPlaying ? onStop : onPlay,
-            title: isPlaying ? "Stop (Ctrl+.)" : "Play (Ctrl+Enter)",
+            "data-play-pending": !isPlaying && isPlayPending ? "true" : void 0,
+            onClick: busy ? onStop : onPlay,
+            title: isPlaying ? "Stop (Ctrl+.)" : isPlayPending ? "Loading\u2026 click to cancel (Ctrl+.)" : "Play (Ctrl+Enter)",
             style: {
               display: "flex",
               alignItems: "center",
@@ -54176,11 +54240,11 @@ function SonicPiChrome(ctx) {
               cursor: "pointer",
               fontSize: 11,
               fontFamily: "var(--font-mono)",
-              background: isPlaying ? "rgba(139,92,246,0.15)" : "var(--accent)",
-              color: isPlaying ? "var(--accent)" : "#fff",
-              outline: isPlaying ? "1px solid var(--accent)" : "none"
+              background: busy ? "rgba(139,92,246,0.15)" : "var(--accent)",
+              color: busy ? "var(--accent)" : "#fff",
+              outline: busy ? "1px solid var(--accent)" : "none"
             },
-            children: isPlaying ? "\u25A0 Stop" : "\u25B6 Play"
+            children: isPlaying ? "\u25A0 Stop" : isPlayPending ? "\u25CC Loading" : "\u25B6 Play"
           }
         ),
         bpm != null && /* @__PURE__ */ jsxRuntime.jsxs(

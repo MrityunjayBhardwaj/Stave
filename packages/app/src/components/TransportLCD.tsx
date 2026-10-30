@@ -47,6 +47,11 @@ import { transportReadout } from "./transportReadout";
 interface TransportLCDProps {
   readonly isPlaying: boolean;
   /**
+   * #2259 — Play was pressed and is still loading (the engine, the code, the
+   * first sounds): the state reads LOAD (amber) instead of STOP until it starts.
+   */
+  readonly isPlayPending?: boolean;
+  /**
    * The song position (#1725): the scheduler's clock less the seek offset,
    * folded into a loop range. `null` when stopped, so the readout dashes.
    */
@@ -97,6 +102,8 @@ function ensureLcdStyles(): void {
     @keyframes stave-lcd-pulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
     .stave-lcd-state { font-size: 8px; letter-spacing: 0.16em; color: #6f6fa0; text-transform: uppercase; }
     .stave-lcd.run .stave-lcd-state { color: #6bff8c; }
+    .stave-lcd.load .stave-lcd-dot { background: #ffcf7a; box-shadow: 0 0 6px rgba(255,207,122,0.5); animation: stave-lcd-pulse .6s ease-in-out infinite; }
+    .stave-lcd.load .stave-lcd-state { color: #ffcf7a; }
     .stave-lcd-readout { position: relative; display: inline-grid; }
     .stave-lcd-readout > span { grid-area: 1 / 1; font-variant-numeric: tabular-nums; letter-spacing: 0.06em; font-size: 13px; font-weight: 600; white-space: pre; }
     .stave-lcd-ghost { color: rgba(150,158,255,0.10); }
@@ -125,7 +132,7 @@ function ensureLcdStyles(): void {
     .stave-lcd-lamp .stave-lcd-state { font-size: 8px; }
     .stave-lcd-lamp.err .stave-lcd-dot { background: #ff8080; box-shadow: 0 0 6px rgba(255,128,128,0.6); }
     .stave-lcd-lamp.err .stave-lcd-state { color: #ff8080; }
-    @media (prefers-reduced-motion: reduce) { .stave-lcd.run .stave-lcd-dot { animation: none; } }
+    @media (prefers-reduced-motion: reduce) { .stave-lcd.run .stave-lcd-dot, .stave-lcd.load .stave-lcd-dot { animation: none; } }
   `;
   document.head.appendChild(style);
 }
@@ -134,12 +141,15 @@ const DASH = "—";
 
 export function TransportLCD({
   isPlaying,
+  isPlayPending = false,
   getSongPosition,
   getCps,
   getAudioHealth,
   evalError = null,
   onEvalLamp,
 }: TransportLCDProps): React.ReactElement {
+  const loading = !isPlaying && isPlayPending;
+  const state = isPlaying ? "PLAY" : loading ? "LOAD" : "STOP";
   const units = useRulerUnits();
   const cycleMode = units === "cycles";
   const meter = useDisplayMeter();
@@ -312,7 +322,7 @@ export function TransportLCD({
       <span className="stave-lcd-state">{evalError ? "\u2716 ERR" : "EVAL"}</span>
     </button>
     <div
-      className={`stave-lcd${isPlaying ? " run" : ""}`}
+      className={`stave-lcd${isPlaying ? " run" : loading ? " load" : ""}`}
       role="button"
       tabIndex={0}
       data-stave-transport-lcd
@@ -327,7 +337,9 @@ export function TransportLCD({
     >
       <div className="stave-lcd-seg">
         <span className="stave-lcd-dot" />
-        <span className="stave-lcd-state">{isPlaying ? "PLAY" : "STOP"}</span>
+        <span className="stave-lcd-state" data-stave-lcd-state={state.toLowerCase()}>
+          {state}
+        </span>
       </div>
       <div className="stave-lcd-seg">
         <span className="stave-lcd-label">{cycleMode ? "CYC" : "BAR"}</span>

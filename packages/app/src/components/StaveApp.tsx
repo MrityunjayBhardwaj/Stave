@@ -47,6 +47,7 @@ import {
   applyShareManifest,
   readIncomingShare,
   clearShareFragment,
+  SHARE_RATE_LIMITED,
 } from "../shareProject";
 import { MenuBar } from "./MenuBar";
 import { buildMenus, type MenuActions } from "./menuModel";
@@ -515,7 +516,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       } catch (err) {
         console.warn("[stave] short share link unavailable:", err);
         url = await buildShareUrl(activeProject);
-        note = " A short link wasn't available, so this is the long one.";
+        note =
+          (err as Error)?.name === SHARE_RATE_LIMITED
+            ? " You've made several short links in the last few minutes, so this is the long one."
+            : " A short link wasn't available, so this is the long one.";
       }
       await navigator.clipboard.writeText(url);
       showToast(`Share link copied (${url.length.toLocaleString()} chars).${note}`, "info");
@@ -909,7 +913,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // reads. It used to also carry `bpm` and `error` for the status bar; with the
   // bar gone (#1368) the Transport LCD is the only consumer and it takes tempo
   // from `getCps`, so keeping those fields would be state nobody looks at.
-  const [activeRuntime, setActiveRuntime] = useState<{ isPlaying: boolean; error: string | null } | null>(null);
+  const [activeRuntime, setActiveRuntime] = useState<{ isPlaying: boolean; isPlayPending: boolean; error: string | null } | null>(null);
 
   // Tell the history service which file is focused so the History panel's
   // File scope targets it (Phase G, #197).
@@ -1177,6 +1181,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       s:
         | {
             isPlaying: boolean;
+            isPlayPending?: boolean;
             bpm?: number;
             error: string | null;
             getCycle?: () => number | null;
@@ -1232,8 +1237,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       setActiveRuntime((prev) => {
         if (!s) return prev === null ? prev : null;
         const error = s.error ?? null;
-        if (prev && prev.isPlaying === s.isPlaying && prev.error === error) return prev; // skip re-render
-        return { isPlaying: s.isPlaying, error };
+        const isPlayPending = s.isPlayPending ?? false;
+        if (
+          prev &&
+          prev.isPlaying === s.isPlaying &&
+          prev.isPlayPending === isPlayPending &&
+          prev.error === error
+        ) return prev; // skip re-render
+        return { isPlaying: s.isPlaying, isPlayPending, error };
       });
     },
     [trackEnvelopeRelay],
@@ -2076,6 +2087,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // and ignores a seek.
   const transport = {
     isPlaying: activeRuntime?.isPlaying ?? false,
+    isPlayPending: activeRuntime?.isPlayPending ?? false,
     getSongPosition: () => getSongPositionRef.current(),
     getCps: () => getCpsRef.current(),
     getAudioHealth: () => getAudioHealthRef.current(),

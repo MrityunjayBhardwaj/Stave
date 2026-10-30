@@ -161,6 +161,7 @@ export type {
 export { parseStepGrid, parsePianoRoll, bracketedBarRegions } from './notation/parse'
 export { rhythmChart, RHYTHM_CHART_MAX_BARS, type RhythmChart, type RhythmChartResult } from './notation/rhythmChart'
 export { pitchToMidi, midiToPitch, isBlackKey, noteDisplayName, cLabel } from './notation/pitch'
+export { noteToMidi } from './notation/noteToMidi'
 export {
   rollSlotState,
   freeZoneScale,
