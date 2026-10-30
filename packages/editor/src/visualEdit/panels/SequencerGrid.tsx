@@ -34,11 +34,11 @@ import { VisualEditStandby } from './VisualEditStandby'
 import { SEQUENCER_TAB_ID } from './tabs'
 import { opensStepGrid } from '../../codeView'
 import { useGridModel } from './useGridModel'
-import { usePlayingStep } from './usePlayingStep'
+import { stepToCycle, usePlayingStep } from './usePlayingStep'
 import { addLane, removeLane } from '../../codeView'
 import { canResizeCell, canToggleCell, resizeCell, toggleCell } from '../../codeView'
 import { DRUM_SOUNDS } from './soundCatalog'
-import { sampleVoice, chordLanes } from '../../codeView'
+import { sampleVoice, chordLanes, stepNotes, stepNoteKey } from '../../codeView'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
@@ -157,6 +157,13 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   )
   const [colorMode] = useNoteColorMode()
   const gridMode = useGridMode()
+
+  // A SOUND-FIRST LINE (#2226): `sound("piano gm_electric_guitar_muted").note("48 67 63 [62, 58]")`.
+  // The sounds set the rhythm, so this grid draws them — and each step plays the note
+  // sounding where it starts, which the grid otherwise never shows. Asked of Strudel;
+  // null for every line that is not one (a drum grid has no `.note`).
+  const span = model?.bars ?? 1
+  const playedNotes = React.useMemo(() => (chunk ? stepNotes(chunk, span) : null), [chunk, span])
 
   // One pointer gesture from a cell press. An OFF cell paints immediately (snappy
   // step entry); an ON cell starts PENDING — a vertical drag past the threshold
@@ -809,6 +816,12 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
               ' They play to the rhythm in .struct(…): click into a rhythm line to see them on it and edit it.'}
           </div>
         )}
+        {playedNotes && (
+          <div data-seq-sound-first style={{ fontSize: 11, color: 'var(--foreground-muted, #a0a0aa)', paddingBottom: 2 }}>
+            The sounds set the rhythm here: each step plays the note written where it starts
+            {playedNotes.unheard.length > 0 ? `, so ${listOf(playedNotes.unheard)} never ${playedNotes.unheard.length === 1 ? 'plays' : 'play'}.` : '.'}
+          </div>
+        )}
         {notice && (
           <div data-seq-notice style={{ fontSize: 11, color: 'var(--foreground-muted, #a0a0aa)', paddingBottom: 2 }}>
             {notice}
@@ -1024,6 +1037,11 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                 // swallowing the click the way it did before (#1064/#1070) — for a
                 // lit cell's erase too (#1836).
                 const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true
+                // the note this step plays, on a sound-first line (#2226): `c / e` when it changes by pass
+                const playsNote =
+                  on && !held && playedNotes
+                    ? playedNotes.notes.get(stepNoteKey(lane.sound, stepToCycle(stepIndex, model.steps, span, model.barSteps)))?.join(' / ') ?? null
+                    : null
                 const inBox = (c: number): boolean => c >= stepIndex && c < stepIndex + w
                 const isCursor = liveCursor?.row === laneIndex && inBox(liveCursor.col)
                 const isTab = tabCell.row === laneIndex && inBox(tabCell.col)
@@ -1076,8 +1094,9 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                     aria-label={
                       held
                         ? `${lane.sound} step ${stepNo(stepIndex)}, held from step ${stepNo(cov!.start)}`
-                        : `${lane.sound} step ${stepNo(stepIndex)}`
+                        : `${lane.sound} step ${stepNo(stepIndex)}${playsNote ? `, plays ${playsNote}` : ''}`
                     }
+                    data-seq-step-note={playsNote ?? undefined}
                     data-seq-cell={`${laneIndex}:${stepIndex}`}
                     data-seq-box-width={w > 1 ? w : undefined}
                     data-gain={on && gainScoped ? gain : undefined}
@@ -1108,7 +1127,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                       lookOnly
                         ? lookOnlyLine(lookOnly)
                         : canToggle
-                        ? undefined
+                        ? playsNote ? `${lane.sound} plays ${playsNote}` : undefined
                         : on
                           ? model.leafSource
                             ? 'This hit comes from text that plays in more than one box here — remove it in the code view.'
@@ -1209,6 +1228,27 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                           pointerEvents: 'none',
                         }}
                       />
+                    )}
+                    {playsNote && (
+                      <span
+                        data-seq-step-note-label
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          paddingLeft: 3,
+                          fontSize: 9,
+                          lineHeight: 1,
+                          color: 'var(--background, #1c1c22)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        {playsNote}
+                      </span>
                     )}
                     {variant === 'plain' && isPlaying && (
                       // A plain step's columns draw no border, so the playing column is marked by
@@ -1362,4 +1402,9 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
       </div>
     </div>
   )
+}
+
+/** `a`, `a and b`, `a, b and c` */
+function listOf(items: readonly string[]): string {
+  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
 }

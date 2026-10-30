@@ -177,6 +177,51 @@ export function structHits(values: string, rhythm: string, cyc: number, masks: r
   return out
 }
 
+/** one onset of `s(sound).note(notes)`: when, what it plays, and where its note is written */
+export interface SoundNoteHit {
+  begin: MiniTime
+  /** the sound as Strudel plays it: `piano`, or `['piano', 2]` for `piano:2` */
+  sound: unknown
+  /** the note as Strudel plays it (`48`, `c4`) */
+  note: unknown
+  /** where in `notes` the note was written, inside its quotes */
+  noteAt: MiniSpan[]
+}
+
+/**
+ * What `s(sound).note(notes)` plays in cycle `cyc` (#2226): Strudel's own composition.
+ * The sounds set the rhythm here: `.note(…)` is a control, `set.in`, so each sound keeps
+ * its own span and takes the note sounding where it starts. A note the sounds never
+ * start on does not play at all.
+ *
+ * Each string is evaluated at its own offset, so a hit's locations say which string
+ * they were written in: the ones in `notes` come back as `noteAt`.
+ *
+ * THROWS what Strudel throws.
+ */
+export function soundNoteHits(sound: string, notes: string, cyc: number): SoundNoteHit[] {
+  type Pat = Queryable & { s(): Pat; note(p: unknown): Pat }
+  const at = (str: string, offset: number) => patternifyAST(mini2ast(`"${str}"`), `"${str}"`, null, offset) as Pat
+  // the notes string sits past the sound string's quoted text, so their locations never mix
+  const off = sound.length + 2
+  // a control called with no argument names its pattern's values: `"piano sawtooth"` → `{ s }`
+  const pat = at(sound, 0).s().note(at(notes, off))
+  const out: SoundNoteHit[] = []
+  for (const h of pat.queryArc(cyc, cyc + 1)) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue
+    const v = (h.value ?? {}) as { s?: unknown; note?: unknown }
+    const noteAt: MiniSpan[] = []
+    for (const l of h.context?.locations ?? []) {
+      // the opening quote of `"notes"` sits at `off`
+      if (typeof l?.start === 'number' && typeof l.end === 'number' && l.start > off) {
+        noteAt.push({ start: l.start - off - 1, end: l.end - off - 1 })
+      }
+    }
+    out.push({ begin: h.whole.begin, sound: v.s, note: v.note, noteAt })
+  }
+  return out
+}
+
 /** an onset's identity across two queries: its exact time and its value */
 const onsetKey = (t: MiniTime, value: unknown): string =>
   `${t.toFraction?.() ?? t.valueOf()}\u0000${JSON.stringify(value)}`

@@ -8728,6 +8728,25 @@ function structHits(values2, rhythm, cyc, masks = []) {
   return out;
 }
 __name(structHits, "structHits");
+function soundNoteHits(sound, notes, cyc) {
+  const at = /* @__PURE__ */ __name((str, offset) => mini_mjs.patternifyAST(mini_mjs.mini2ast(`"${str}"`), `"${str}"`, null, offset), "at");
+  const off = sound.length + 2;
+  const pat = at(sound, 0).s().note(at(notes, off));
+  const out = [];
+  for (const h of pat.queryArc(cyc, cyc + 1)) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
+    const v = h.value ?? {};
+    const noteAt2 = [];
+    for (const l of h.context?.locations ?? []) {
+      if (typeof l?.start === "number" && typeof l.end === "number" && l.start > off) {
+        noteAt2.push({ start: l.start - off - 1, end: l.end - off - 1 });
+      }
+    }
+    out.push({ begin: h.whole.begin, sound: v.s, note: v.note, noteAt: noteAt2 });
+  }
+  return out;
+}
+__name(soundNoteHits, "soundNoteHits");
 var onsetKey = /* @__PURE__ */ __name((t, value) => `${t.toFraction?.() ?? t.valueOf()}\0${JSON.stringify(value)}`, "onsetKey");
 
 // src/codeView/notation/perBar.ts
@@ -13439,6 +13458,48 @@ function soundBlockEdit(fresh, block, value, names = ["sound", "s"]) {
   return { edit: { range: [lit + block.at.start, lit + block.at.end], text: value } };
 }
 __name(soundBlockEdit, "soundBlockEdit");
+var stepNoteKey = /* @__PURE__ */ __name((sound, cycle) => `${sound.split(":")[0]}@${cycle.toFixed(6)}`, "stepNoteKey");
+function stepNotes(chunk, span) {
+  if (!chunk.headFn || !["s", "sound"].includes(chunk.headFn) || chunk.miniVia !== "literal") return null;
+  if (chunk.miniString === null || !(span > 0)) return null;
+  const notes = readChainMethod(chunk, ["note"]);
+  if (!notes) return null;
+  const at = chunk.chain.indexOf(playingCall(chunk, ["note"]));
+  if (chunk.chain.slice(1).some((c) => c.name === "s" || c.name === "sound")) return null;
+  if (chunk.chain.slice(1, at).some((c) => !VALUE_ONLY.has(c.name))) return null;
+  const passes = /* @__PURE__ */ new Map();
+  const heard = [];
+  try {
+    for (let k = 0; k < SOUND_PASSES; k++) {
+      const pass = /* @__PURE__ */ new Map();
+      for (let c = 0; c < span; c++) {
+        for (const h of soundNoteHits(chunk.miniString, notes.value, k * span + c)) {
+          const name = playedName(h.sound);
+          if (name === null || h.note === void 0) continue;
+          const key3 = stepNoteKey(name, h.begin.valueOf() - k * span);
+          pass.set(key3, [...pass.get(key3) ?? [], String(h.note)]);
+          heard.push(...h.noteAt);
+        }
+      }
+      for (const [key3, played] of pass) {
+        const label = played.join(", ");
+        const seen = passes.get(key3) ?? [];
+        if (!seen.includes(label)) passes.set(key3, [...seen, label]);
+      }
+    }
+  } catch {
+    return null;
+  }
+  const atoms = [];
+  try {
+    nameAtoms(miniShape(notes.value), atoms);
+  } catch {
+    return { notes: passes, unheard: [] };
+  }
+  const unheard = atoms.filter((a) => !heard.some((s) => s.start < a.span.end && s.end > a.span.start)).map((a) => a.text);
+  return { notes: passes, unheard };
+}
+__name(stepNotes, "stepNotes");
 
 // src/codeView/regionTrim.ts
 var REGION_DEFAULT = { begin: 0, end: 1 };
@@ -40391,6 +40452,8 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
   );
   const [colorMode] = useNoteColorMode();
   const gridMode = useGridMode();
+  const span = model?.bars ?? 1;
+  const playedNotes = React48__namespace.useMemo(() => chunk ? stepNotes(chunk, span) : null, [chunk, span]);
   const gestureRef = React48__namespace.useRef(null);
   const gainScoped = React48__namespace.useMemo(() => model ? gainWritable(stepGridCodec, model) : false, [model]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
@@ -40771,6 +40834,10 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
             ]
           }
         ),
+        playedNotes && /* @__PURE__ */ jsxRuntime.jsxs("div", { "data-seq-sound-first": true, style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)", paddingBottom: 2 }, children: [
+          "The sounds set the rhythm here: each step plays the note written where it starts",
+          playedNotes.unheard.length > 0 ? `, so ${listOf(playedNotes.unheard)} never ${playedNotes.unheard.length === 1 ? "plays" : "play"}.` : "."
+        ] }),
         notice && /* @__PURE__ */ jsxRuntime.jsx("div", { "data-seq-notice": true, style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)", paddingBottom: 2 }, children: notice }),
         lookOnly && /* @__PURE__ */ jsxRuntime.jsx(
           "div",
@@ -40931,6 +40998,7 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                       const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
                       const isPlaying = playingStep !== null && playingStep >= stepIndex && playingStep < stepIndex + w;
                       const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true;
+                      const playsNote = on && !held2 && playedNotes ? playedNotes.notes.get(stepNoteKey(lane.sound, stepToCycle(stepIndex, model.steps, span, model.barSteps)))?.join(" / ") ?? null : null;
                       const inBox = /* @__PURE__ */ __name((c) => c >= stepIndex && c < stepIndex + w, "inBox");
                       const isCursor = liveCursor?.row === laneIndex && inBox(liveCursor.col);
                       const isTab = tabCell.row === laneIndex && inBox(tabCell.col);
@@ -40971,14 +41039,15 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                                   if (!isCursor) setCursor({ row: laneIndex, col: stepIndex });
                                 },
                                 "aria-pressed": on,
-                                "aria-label": held2 ? `${lane.sound} step ${stepNo(stepIndex)}, held from step ${stepNo(cov.start)}` : `${lane.sound} step ${stepNo(stepIndex)}`,
+                                "aria-label": held2 ? `${lane.sound} step ${stepNo(stepIndex)}, held from step ${stepNo(cov.start)}` : `${lane.sound} step ${stepNo(stepIndex)}${playsNote ? `, plays ${playsNote}` : ""}`,
+                                "data-seq-step-note": playsNote ?? void 0,
                                 "data-seq-cell": `${laneIndex}:${stepIndex}`,
                                 "data-seq-box-width": w > 1 ? w : void 0,
                                 "data-gain": on && gainScoped ? gain : void 0,
                                 "data-playing": isPlaying ? "true" : void 0,
                                 "data-seq-cell-inert": canToggle ? void 0 : "true",
                                 "aria-disabled": canToggle ? void 0 : true,
-                                title: lookOnly ? lookOnlyLine(lookOnly) : canToggle ? void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
+                                title: lookOnly ? lookOnlyLine(lookOnly) : canToggle ? playsNote ? `${lane.sound} plays ${playsNote}` : void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
                                 onPointerDown: (e) => {
                                   e.preventDefault();
                                   setCursor({ row: laneIndex, col: stepIndex });
@@ -41043,6 +41112,27 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                                         opacity: held2 && variant !== "plain" ? 0.7 : 1,
                                         pointerEvents: "none"
                                       }
+                                    }
+                                  ),
+                                  playsNote && /* @__PURE__ */ jsxRuntime.jsx(
+                                    "span",
+                                    {
+                                      "data-seq-step-note-label": true,
+                                      style: {
+                                        position: "absolute",
+                                        inset: 0,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        paddingLeft: 3,
+                                        fontSize: 9,
+                                        lineHeight: 1,
+                                        color: "var(--background, #1c1c22)",
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        pointerEvents: "none"
+                                      },
+                                      children: playsNote
                                     }
                                   ),
                                   variant === "plain" && isPlaying && // A plain step's columns draw no border, so the playing column is marked by
@@ -41188,6 +41278,10 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
   );
 }
 __name(SequencerGrid, "SequencerGrid");
+function listOf(items) {
+  return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+__name(listOf, "listOf");
 var parseChords = /* @__PURE__ */ __name((mini) => stepGridCodec.parse(mini, UNREFINED), "parseChords");
 function RhythmChartGrid({ onResolution }) {
   const phone = usePhoneGrid().phone;
