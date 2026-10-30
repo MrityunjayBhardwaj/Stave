@@ -8416,7 +8416,7 @@ function soloMuteEdits(doc, newSolo, prevSnapshot) {
 }
 __name(soloMuteEdits, "soloMuteEdits");
 
-// src/engine/noteToMidi.ts
+// src/codeView/notation/noteToMidi.ts
 function noteToMidi(note) {
   if (typeof note === "number") return Math.round(note);
   if (typeof note !== "string") return null;

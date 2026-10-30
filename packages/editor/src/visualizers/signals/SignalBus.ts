@@ -28,7 +28,7 @@
  * `.color`    ← either feed (prefer the active IREvent; fall back to last bump).
  */
 
-import { noteToMidi } from '../../engine/noteToMidi'
+import { noteToMidi } from '../../codeView'
 import type { IRPattern } from '../../codeView'
 import type { IREvent } from '../../codeView'
 import { ALIAS_MAP } from './aliasMap'
