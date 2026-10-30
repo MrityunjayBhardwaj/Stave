@@ -144,6 +144,9 @@ function appPath(): string {
   return parseShortShare(pathname, "") ? "/" : pathname;
 }
 
+/** #2250 — `Error.name` when the store refused because of the per-visitor limit. */
+export const SHARE_RATE_LIMITED = "ShareRateLimited";
+
 /**
  * #2248 — a short link, `/s/<id>#<key>`. The project is sealed here with a fresh
  * key and only the sealed bytes are uploaded; the key stays in the link's `#` part,
@@ -157,6 +160,13 @@ export async function buildShortShareUrl(project: ProjectMeta): Promise<string> 
     headers: { "Content-Type": "application/octet-stream" },
     body: sealed as BodyInit,
   });
+  if (res.status === 429) {
+    // #2250 — the site's firewall caps short links per visitor. Named, so Copy
+    // Share Link can say why it copied the long link instead.
+    const err = new Error("too many short links from here in the last few minutes");
+    err.name = SHARE_RATE_LIMITED;
+    throw err;
+  }
   if (!res.ok) throw new Error(`the share store answered ${res.status}`);
   const { id } = (await res.json()) as { id: string };
   return `${window.location.origin}/s/${id}#${key}`;

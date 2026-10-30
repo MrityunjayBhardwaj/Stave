@@ -8,7 +8,7 @@
  * round-trip itself stores the token verbatim, so emission style never
  * threatens fidelity for existing notes.
  */
-import { noteToMidi } from '../../engine/noteToMidi'
+import { noteToMidi } from './noteToMidi'
 
 const SHARP_NAMES = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b']
 

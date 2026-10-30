@@ -47,6 +47,7 @@ import {
   applyShareManifest,
   readIncomingShare,
   clearShareFragment,
+  SHARE_RATE_LIMITED,
 } from "../shareProject";
 import { MenuBar } from "./MenuBar";
 import { buildMenus, type MenuActions } from "./menuModel";
@@ -515,7 +516,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       } catch (err) {
         console.warn("[stave] short share link unavailable:", err);
         url = await buildShareUrl(activeProject);
-        note = " A short link wasn't available, so this is the long one.";
+        note =
+          (err as Error)?.name === SHARE_RATE_LIMITED
+            ? " You've made several short links in the last few minutes, so this is the long one."
+            : " A short link wasn't available, so this is the long one.";
       }
       await navigator.clipboard.writeText(url);
       showToast(`Share link copied (${url.length.toLocaleString()} chars).${note}`, "info");

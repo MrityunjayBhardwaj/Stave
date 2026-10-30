@@ -1,5 +1,4 @@
-import { noteToMidi } from './noteToMidi'
-import type { IREvent } from '../codeView'
+import { noteToMidi, type IREvent } from '../codeView'
 import { declaredOnly, findMatchedEvent } from './NormalizedHap'
 
 export interface HapEvent {

@@ -1,5 +1,5 @@
-import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-DO8O9hDv.cjs';
-export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-DO8O9hDv.cjs';
+import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-CtFCK18o.cjs';
+export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-CtFCK18o.cjs';
 import * as Monaco from 'monaco-editor';
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
@@ -3227,6 +3227,21 @@ declare function resizeGrid(model: StepGridModel, nextSteps: number, mode: Resiz
 declare function resizeRoll(model: PianoRollModel, nextSteps: number, mode: ResizeMode): PianoRollModel;
 
 /**
+ * Convert a note name string or MIDI number to a MIDI note number.
+ * Returns null if the input is unrecognized (e.g. percussion sample names).
+ *
+ * This is the one note-name reader (#1928). Its grammar is Strudel's own
+ * (`@strudel/core` util.mjs `tokenizeNote` / `noteToMidi`), so a name means here
+ * what it means to the sound: a letter, any run of accidentals from `#` `s`
+ * (sharp) and `b` `f` (flat) that add up, and an optional octave that defaults
+ * to 3. A test pins it to Strudel's function.
+ *
+ * Examples: "c3" → 48, "eb4" → 63, "cs3" → 49, "g" → 55, "ef3" → 51,
+ * "Bbb2" → 45, "f#2" → 42, 60 → 60
+ */
+declare function noteToMidi(note: unknown): number | null;
+
+/**
  * WHAT SETTING THE GRID TO `target` DID TO THE NOTES — reported by the op, never
  * reconstructed from its output (#1061).
  *
@@ -5832,21 +5847,6 @@ declare class LiveRecorder {
      */
     static capture(analyser: AnalyserNode, ctx: AudioContext, duration: number, signal?: AbortSignal): Promise<Blob>;
 }
-
-/**
- * Convert a note name string or MIDI number to a MIDI note number.
- * Returns null if the input is unrecognized (e.g. percussion sample names).
- *
- * This is the one note-name reader (#1928). Its grammar is Strudel's own
- * (`@strudel/core` util.mjs `tokenizeNote` / `noteToMidi`), so a name means here
- * what it means to the sound: a letter, any run of accidentals from `#` `s`
- * (sharp) and `b` `f` (flat) that add up, and an optional octave that defaults
- * to 3. A test pins it to Strudel's function.
- *
- * Examples: "c3" → 48, "eb4" → 63, "cs3" → 49, "g" → 55, "ef3" → 51,
- * "Bbb2" → 45, "f#2" → 42, 60 → 60
- */
-declare function noteToMidi(note: unknown): number | null;
 
 /**
  * THE map between a control's value and its position on a dial (#1581).
