@@ -119,3 +119,83 @@ test.describe('first play loads its sounds first (#2256)', () => {
     await stopCode(page)
   })
 })
+
+/**
+ * #2259 — while Play is still loading (the engine, the code, those sounds), the
+ * transport says LOAD and the Play button says Loading, so the wait doesn't read
+ * as a Play that did nothing. Every change of the transport's state word, and of
+ * the button's label, is recorded with its page time.
+ */
+async function recordTransportStates(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const seen: Array<{ t: number; state: string }> = []
+    ;(window as unknown as { __lcdStates: typeof seen }).__lcdStates = seen
+    const tick = (): void => {
+      const lcd = document.querySelector<HTMLElement>('[data-stave-lcd-state]')?.dataset.staveLcdState ?? ''
+      const button = document.querySelector('[data-testid="strudel-chrome-transport"]')?.textContent?.trim() ?? ''
+      const state = lcd && `${lcd}|${button}`
+      if (state && seen[seen.length - 1]?.state !== state) seen.push({ t: performance.now(), state })
+      requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  })
+}
+
+const lcdStates = (page: Page): Promise<Array<{ t: number; state: string }>> =>
+  page.evaluate(() => (window as unknown as { __lcdStates: Array<{ t: number; state: string }> }).__lcdStates)
+
+const COLD_SONG = [
+  '$: s("bd hh sd hh, ~ cp").bank("RolandTR909")',
+  '$: note("c3 e3 g3 b3").s("gm_piano")',
+].join('\n')
+
+test.describe('the wait for sounds is shown (#2259)', () => {
+  test('a cold Play reads LOAD, then PLAY once the clock starts', async ({ page }) => {
+    test.setTimeout(60_000)
+    await recordTransportStates(page)
+    await boot(page)
+    await seedCode(page, COLD_SONG)
+    const button = page.getByTestId('strudel-chrome-transport')
+    const pressed = await pageNow(page)
+    await evalCode(page)
+
+    await expect(page.locator('[data-stave-lcd-state]')).toHaveAttribute('data-stave-lcd-state', 'play', { timeout: 10_000 })
+    await expect(button).toHaveText(/Stop/)
+    await expect.poll(() => firstNoteAfter(page, pressed), { timeout: 10_000 }).not.toBeNull()
+
+    // read from the frame-by-frame record, so a short LOAD can't slip between polls
+    const states = (await lcdStates(page)).filter((s) => s.t >= pressed)
+    const load = states.find((s) => s.state.startsWith('load|'))
+    const play = states.find((s) => s.state.startsWith('play|'))!
+    const first = (await firstNoteAfter(page, pressed))!
+    console.log(`[#2259] ${states.map((s) => `${s.state} @${Math.round(s.t - pressed)}`).join(', ')}; first note ${first} ms after Play`)
+    // each surface on its own: the transport is drawn a render after the button
+    // (it goes through the app shell), so for a frame the two may differ
+    const sequence = (part: 0 | 1): string[] =>
+      states.map((s) => s.state.split('|')[part]).filter((v, i, all) => v !== all[i - 1])
+    expect(sequence(0)).toEqual(['load', 'play'])
+    expect(sequence(1)).toEqual(['\u25CC Loading', '\u25A0 Stop'])
+    expect(load).toBeDefined()
+    // LOAD covers the wait: it ends no later than the first note sounds
+    expect(play.t - pressed).toBeLessThanOrEqual(first + 50)
+    await stopCode(page)
+  })
+
+  test('pressing the button while it loads cancels that Play', async ({ page }) => {
+    test.setTimeout(60_000)
+    await boot(page)
+    await seedCode(page, COLD_SONG)
+    const button = page.getByTestId('strudel-chrome-transport')
+    await evalCode(page)
+    await expect(button).toHaveAttribute('data-play-pending', 'true', { timeout: 5_000 })
+
+    await button.click()
+    const cancelled = await pageNow(page)
+    await expect(page.locator('[data-stave-lcd-state]')).toHaveAttribute('data-stave-lcd-state', 'stop')
+    await expect(button).toHaveText(/Play/)
+    // past the warm-up's 2.5 s cap: the cancelled Play never starts the clock
+    await page.waitForTimeout(3500)
+    await expect(page.locator('[data-stave-lcd-state]')).toHaveAttribute('data-stave-lcd-state', 'stop')
+    expect(await notesStarted(page, cancelled), 'notes after the cancel').toBe(0)
+  })
+})

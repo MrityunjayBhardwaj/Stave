@@ -50,8 +50,11 @@ import { useTouchBar } from './touchBar'
  * threading flags through a shared component.
  */
 function SonicPiChrome(ctx: ChromeContext): React.ReactElement {
-  const { isPlaying, error, errorMessage, bpm, onPlay, onStop, chromeExtras } = ctx
+  const { isPlaying, isPlayPending = false, error, errorMessage, bpm, onPlay, onStop, chromeExtras } = ctx
   const bar = useTouchBar()
+  // #2259 — as the Strudel chrome: while Play is still loading it says so, and a
+  // second press cancels that Play
+  const busy = isPlaying || isPlayPending
   return (
     <div
       data-sonicpi-runtime-chrome="root"
@@ -71,8 +74,13 @@ function SonicPiChrome(ctx: ChromeContext): React.ReactElement {
     >
       <button
         data-testid="sonicpi-chrome-transport"
-        onClick={isPlaying ? onStop : onPlay}
-        title={isPlaying ? 'Stop (Ctrl+.)' : 'Play (Ctrl+Enter)'}
+        data-play-pending={!isPlaying && isPlayPending ? 'true' : undefined}
+        onClick={busy ? onStop : onPlay}
+        title={
+          isPlaying
+            ? 'Stop (Ctrl+.)'
+            : isPlayPending ? 'Loading… click to cancel (Ctrl+.)' : 'Play (Ctrl+Enter)'
+        }
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -83,12 +91,12 @@ function SonicPiChrome(ctx: ChromeContext): React.ReactElement {
           cursor: 'pointer',
           fontSize: 11,
           fontFamily: 'var(--font-mono)',
-          background: isPlaying ? 'rgba(139,92,246,0.15)' : 'var(--accent)',
-          color: isPlaying ? 'var(--accent)' : '#fff',
-          outline: isPlaying ? '1px solid var(--accent)' : 'none',
+          background: busy ? 'rgba(139,92,246,0.15)' : 'var(--accent)',
+          color: busy ? 'var(--accent)' : '#fff',
+          outline: busy ? '1px solid var(--accent)' : 'none',
         }}
       >
-        {isPlaying ? '\u25A0 Stop' : '\u25B6 Play'}
+        {isPlaying ? '\u25A0 Stop' : isPlayPending ? '\u25CC Loading' : '\u25B6 Play'}
       </button>
 
       {bpm != null && (

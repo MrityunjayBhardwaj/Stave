@@ -81,6 +81,20 @@ describe('SONICPI_RUNTIME renderChrome', () => {
     expect(onStop).toHaveBeenCalled()
   })
 
+  // #2259 — as the Strudel chrome
+  it('reads Loading while Play is pending, and a press then stops instead of playing again', () => {
+    const onPlay = vi.fn()
+    const onStop = vi.fn()
+    const { getByTestId } = render(
+      SONICPI_RUNTIME.renderChrome(makeCtx({ isPlayPending: true, onPlay, onStop })) as React.ReactElement,
+    )
+    const btn = getByTestId('sonicpi-chrome-transport')
+    expect(btn.textContent).toContain('Loading')
+    fireEvent.click(btn)
+    expect(onStop).toHaveBeenCalledTimes(1)
+    expect(onPlay).not.toHaveBeenCalled()
+  })
+
   it('hides BPM when undefined', () => {
     const without = render(
       SONICPI_RUNTIME.renderChrome(makeCtx()) as React.ReactElement,

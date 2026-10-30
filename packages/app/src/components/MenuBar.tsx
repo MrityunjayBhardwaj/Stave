@@ -19,6 +19,8 @@ interface MenuBarProps extends MenuActions {
   projectName: string;
   /** Transport LCD data (#857). Fed from the active runtime in StaveApp. */
   isPlaying: boolean;
+  /** #2259 — Play was pressed and the clock hasn't started yet. */
+  isPlayPending?: boolean;
   /** The song position the playhead reads (#1725), not cycles since Play. */
   getSongPosition: () => number | null;
   getCps: () => number | null;
@@ -35,6 +37,7 @@ type MenuId = "file" | "edit" | "view" | "help" | null;
 export function MenuBar({
   projectName: _projectName,
   isPlaying,
+  isPlayPending,
   getSongPosition,
   getCps,
   getAudioHealth,
@@ -87,6 +90,7 @@ export function MenuBar({
         <div style={styles.centerSlot}>
           <TransportLCD
             isPlaying={isPlaying}
+            isPlayPending={isPlayPending}
             getSongPosition={getSongPosition}
             getCps={getCps}
             getAudioHealth={getAudioHealth}
