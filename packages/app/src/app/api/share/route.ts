@@ -5,6 +5,12 @@ import { shareStore } from "./store";
 //
 // The body is the browser's sealed bytes; the key never reaches here. All this
 // route can check is the shape (version byte, length), so that is all it checks.
+//
+// #2250 — how often one visitor may upload is limited before this code runs, by a
+// Vercel Firewall rate-limit rule on stave-code-app: POST on path /api/share,
+// fixed window, 10 per 10 minutes, keyed by IP, answered 429. It lives in the
+// project's Firewall settings, not in this repo; a deploy elsewhere needs its own.
+// The client copies the long link on a 429 and says why.
 
 export async function POST(req: Request): Promise<Response> {
   const store = shareStore();
