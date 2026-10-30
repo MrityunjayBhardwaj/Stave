@@ -96,7 +96,7 @@ export type { AudioFrame } from './engine/audioFrame'
 export type { SkippedSounds } from './engine/renderPatternOffline'
 export type { TrackEnvelopeAccess, TrackEnvelopeView, TrackEnvelopeStatus } from './engine/trackEnvelopes'
 export { LiveRecorder } from './engine/LiveRecorder'
-export { noteToMidi } from './engine/noteToMidi'
+export { noteToMidi } from './codeView'
 // The value↔position map a knob and a stepped lane share (#1581), and the one chord
 // builder (#1799). Each used to ship as its own bundle entry because the app could not
 // load this one in its tests; since #1938 it can, and #1943 retired those entries.

@@ -37,7 +37,7 @@ interface IREvent {
     /**
      * The pitch as a MIDI number, in the order Strudel's `valueToMidi` reads a hap
      * (`@strudel/core` util.mjs): a written `freq`, else the note name through the
-     * one note reader (`engine/noteToMidi.ts`), else a note number. Set by
+     * one note reader (`codeView/notation/noteToMidi.ts`), else a note number. Set by
      * `normalizeStrudelHap` when the hap has a pitch; absent when it has none (a
      * drum sample) or the name is not a note. A sketch reads this instead of
      * parsing note names itself, since it runs sandboxed and cannot import (#1929).
