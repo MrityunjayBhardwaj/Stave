@@ -153,7 +153,11 @@ export function PatternSideDrawer({ children }: { children: React.ReactNode }): 
 
   React.useEffect(() => {
     if (!moved.current) return
-    ;(open ? closeRef : railRef).current?.focus()
+    // preventScroll (#2257): this runs while the drawer is still sliding in from
+    // off-screen, and focus() would scroll the Pattern row to reveal the button.
+    // The row's overflow is hidden, so the grid would stay shifted with no
+    // scrollbar to bring it back. The drawer arrives on its own; nothing scrolls.
+    ;(open ? closeRef : railRef).current?.focus({ preventScroll: true })
   }, [open])
 
   React.useEffect(() => {

@@ -38122,7 +38122,7 @@ function PatternSideDrawer({ children }) {
   }, "hide");
   React48__namespace.useEffect(() => {
     if (!moved.current) return;
-    (open ? closeRef : railRef).current?.focus();
+    (open ? closeRef : railRef).current?.focus({ preventScroll: true });
   }, [open]);
   React48__namespace.useEffect(() => {
     if (!open) return;
