@@ -38096,7 +38096,7 @@ function PatternSideDrawer({ children }) {
   }, "hide");
   React48.useEffect(() => {
     if (!moved.current) return;
-    (open ? closeRef : railRef).current?.focus();
+    (open ? closeRef : railRef).current?.focus({ preventScroll: true });
   }, [open]);
   React48.useEffect(() => {
     if (!open) return;

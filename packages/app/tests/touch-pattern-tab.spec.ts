@@ -81,14 +81,28 @@ test.describe('Pattern tab on a touch device (#1990)', () => {
     await expect(drawer).toHaveAttribute('data-pattern-side-drawer', 'closed')
     await expect(drawer).toBeHidden()
     const gridBefore = await grid.boundingBox()
+    // the row under the drawer must not scroll while it opens (#2257). Moving focus to the
+    // close button mid-slide scrolled it 326 px, and the grid swung left and crept back as
+    // the slide shrank the overhang — so only a watch kept for the whole slide sees it.
+    await drawer.evaluate((el) => {
+      const row = el.parentElement as HTMLElement
+      const w = window as unknown as { __rowScrolled: number }
+      w.__rowScrolled = row.scrollLeft
+      row.addEventListener('scroll', () => {
+        w.__rowScrolled = Math.max(w.__rowScrolled, row.scrollLeft)
+      })
+    })
 
     await panel.locator(RAIL).tap()
     await expect(drawer).toHaveAttribute('data-pattern-side-drawer', 'open')
     // the same panel as the desktop column: its strip, its picker, its knobs
     await expect(drawer.locator('[data-mixer-panel]')).toBeVisible()
-    await page.waitForTimeout(400) // the slide
+    // the slide has finished: wait for that, not for a time — a busy machine runs the
+    // 240 ms transition late (#2257)
+    await expect.poll(() => drawer.evaluate((el) => getComputedStyle(el).transform), { timeout: 10_000 }).toBe('none')
     const panelBox = await panel.boundingBox()
     const drawerBox = await drawer.boundingBox()
+    expect(await page.evaluate(() => (window as unknown as { __rowScrolled: number }).__rowScrolled)).toBe(0)
     // over the grid, not beside it: the grid keeps its width and place
     expect(await grid.boundingBox()).toEqual(gridBefore)
     expect(Math.round(drawerBox!.x + drawerBox!.width)).toBe(Math.round(panelBox!.x + panelBox!.width))
