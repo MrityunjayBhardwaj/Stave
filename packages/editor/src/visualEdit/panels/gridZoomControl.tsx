@@ -27,25 +27,31 @@ export interface GridZoom {
  * `mounted`: the scroll box is on the page. The grid draws a standby line until it has a
  * model, so the box it measures comes and goes — each time it comes, it is measured again.
  */
-export function useGridZoom(scrollRef: React.RefObject<HTMLDivElement | null>, enabled: boolean, mounted: boolean): GridZoom {
+export function useGridZoom(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+  mounted: boolean,
+  /** the box the columns are laid in, when it can be measured directly (the roll's ruler track) */
+  trackRef?: React.RefObject<HTMLDivElement | null>,
+): GridZoom {
   const [index, setIndex] = React.useState(0)
   const [avail, setAvail] = React.useState<number | null>(null)
   const indexRef = React.useRef(index)
   indexRef.current = index
 
   React.useLayoutEffect(() => {
-    const el = scrollRef.current
+    const el = trackRef?.current ?? scrollRef.current
     if (!el || !enabled) return
     // a box with no room yet (a panel still opening) is not a width to fit to
     const measure = (): void => {
-      const w = el.clientWidth - CHROME_PX
+      const w = trackRef?.current ? el.clientWidth : el.clientWidth - CHROME_PX
       setAvail(w >= 50 ? w : null)
     }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [scrollRef, enabled, mounted])
+  }, [scrollRef, trackRef, enabled, mounted])
 
   /** move to level `next`, keeping the content under `x` (px from the scroll box's left) in place */
   const go = React.useCallback(
