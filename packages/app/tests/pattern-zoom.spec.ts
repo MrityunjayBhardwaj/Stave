@@ -92,6 +92,32 @@ test.describe('zoom opens a level (#2277)', () => {
     expect(await notesAt()).toEqual(before)
   })
 
+  test('the roll draws the lines of the part being edited, and dims the other parts', async ({ page }) => {
+    await bootApp(page, { drawer: { tabId: 'pattern', height: 460 } })
+    const code = '$: note("c4 e4 g4 c5, [c3 g3]*2").s("piano")'
+    await seedCode(page, code)
+    const roll = page.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll).toHaveCount(1)
+    const rollLabels = (): Promise<string[]> =>
+      roll.locator('[data-roll-ruler-label]').evaluateAll((els) => els.map((e) => `${e.getAttribute('data-roll-ruler-label')}=${e.textContent}`))
+    // four columns, a quarter each. Nothing selected: the melody (four notes, written first)
+    // draws the lines — a step per quarter
+    await expect(roll).toHaveAttribute('data-roll-lines-part', '0')
+    expect(await rollLabels()).toEqual(['0=1', '1=1.2', '2=1.3', '3=1.4'])
+    // the bass's four notes are dimmed
+    await expect(roll.locator('[data-roll-dim]')).toHaveCount(4)
+
+    // select a bass note (⌘/Ctrl-click selects, it does not edit)
+    await roll.locator('[data-roll-cell="48:0"]').click({ modifiers: ['ControlOrMeta'] })
+    await expect(roll).toHaveAttribute('data-roll-lines-part', '1')
+    // `[c3 g3]*2` is the whole bar: its two copies are the pulse
+    await expect.poll(rollLabels).toEqual(['0=1', '2=1.2'])
+    // now the melody is the other part, and its four notes are the dimmed ones
+    await expect(roll.locator('[data-roll-dim]')).toHaveCount(4)
+    await expect(roll.locator('[data-roll-cell="60:0"] [data-roll-dim]')).toHaveCount(1)
+    expect(await editorValue(page)).toBe(code)
+  })
+
   test('a click on a step is the same edit whether the step it sits in is open or not', async ({ page }) => {
     const code = '$: s("bd [hh [hh hh]] sd [~ cp]")'
     // the snare row's cell inside `[hh hh]`, at 1× a small box in a closed step

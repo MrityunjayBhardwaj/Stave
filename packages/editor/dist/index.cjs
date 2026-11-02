@@ -43603,10 +43603,36 @@ function PianoRollGrid({
     [hasModel, barCount, rollMini]
   );
   const linesFrom = model ? linesModel(model, read5) : null;
+  const parts = linesFrom?.source?.parts ?? null;
+  const midiOf = /* @__PURE__ */ __name((token) => model?.numeric ? Number(token) : pitchToMidi(token), "midiOf");
+  const notesByPart = React49__namespace.useMemo(() => {
+    if (!parts || parts.length < 2) return null;
+    const out = /* @__PURE__ */ new Map();
+    for (const p of parts) {
+      const keys = /* @__PURE__ */ new Set();
+      for (const r of p.regions) for (const n of r.content) keys.add(`${midiOf(n.pitch)}@${n.start}`);
+      out.set(p.part, keys);
+    }
+    return out;
+  }, [parts]);
+  const editedPart = (() => {
+    if (!linesFrom) return 0;
+    if (notesByPart && model && selected?.kind === "roll") {
+      const m = midiOf(selected.pitch);
+      const hit = model.notes.find(
+        (n) => midiOf(n.pitch) === m && selected.start >= n.start && selected.start < n.start + Math.max(1, n.duration)
+      );
+      if (hit) {
+        for (const [part, keys] of notesByPart) if (keys.has(`${m}@${hit.start}`)) return part;
+      }
+    }
+    return rollPart(linesFrom);
+  })();
   const nodes = React49__namespace.useMemo(
-    () => linesFrom && trees ? partSteps(linesFrom, trees, rollPart(linesFrom)) : null,
-    [linesFrom, trees]
+    () => linesFrom && trees ? partSteps(linesFrom, trees, editedPart) : null,
+    [linesFrom, trees, editedPart]
   );
+  const otherNotes = notesByPart ? (key3) => !notesByPart.get(editedPart)?.has(key3) : null;
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
   if (!model) {
     return React49__namespace.createElement(VisualEditStandby, {
@@ -43640,6 +43666,7 @@ function PianoRollGrid({
     "div",
     {
       "data-bottom-panel-tab": "piano-roll",
+      "data-roll-lines-part": nodes ? editedPart : void 0,
       "data-look-only": model.lookOnly ? model.lookOnly.gate : void 0,
       tabIndex: -1,
       onPointerDownCapture: (e) => {
@@ -43945,6 +43972,7 @@ function PianoRollGrid({
                                                 "data-roll-fill": true,
                                                 "data-roll-sustain": !isHead ? "true" : void 0,
                                                 "data-roll-note-sounds": sounds ? (sounds.byNote.get(note) ?? []).join(" ") : void 0,
+                                                "data-roll-dim": otherNotes?.(`${midiOf(note.pitch)}@${note.start}`) ? "" : void 0,
                                                 style: {
                                                   position: "absolute",
                                                   top: 0,
@@ -43952,7 +43980,8 @@ function PianoRollGrid({
                                                   left: `${hit.overlap.offset * 100}%`,
                                                   width: `${hit.overlap.extent * 100}%`,
                                                   background: colorMode === "velocity" ? velocityColor(note.gain ?? 1) : sounds ? soundFill(sounds.byNote.get(note) ?? []) : "var(--accent, #6ea8fe)",
-                                                  opacity: isHead ? 1 : 0.7,
+                                                  // another part's note is drawn dimmer (#2277): the lines are the edited part's
+                                                  opacity: (isHead ? 1 : 0.7) * (otherNotes?.(`${midiOf(note.pitch)}@${note.start}`) ? 0.35 : 1),
                                                   pointerEvents: "none"
                                                 }
                                               }

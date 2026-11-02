@@ -1299,10 +1299,38 @@ export function PianoRollGrid({
     [hasModel, barCount, rollMini],
   )
   const linesFrom = model ? linesModel(model, read) : null
+  // THE PART BEING EDITED (#2277): the one the selected note was written in, else the one
+  // with the most notes. Its steps draw the lines and the ruler; the other parts' notes dim.
+  const parts = linesFrom?.source?.parts ?? null
+  const midiOf = (token: string): number | null => (model?.numeric ? Number(token) : pitchToMidi(token))
+  /** `midi@start` of the notes each part wrote, from the text's own regions; null for one part */
+  const notesByPart = React.useMemo(() => {
+    if (!parts || parts.length < 2) return null
+    const out = new Map<number, Set<string>>()
+    for (const p of parts) {
+      const keys = new Set<string>()
+      for (const r of p.regions) for (const n of r.content) keys.add(`${midiOf(n.pitch)}@${n.start}`)
+      out.set(p.part, keys)
+    }
+    return out
+  }, [parts])
+  const editedPart = ((): number => {
+    if (!linesFrom) return 0
+    if (notesByPart && model && selected?.kind === 'roll') {
+      const m = midiOf(selected.pitch)
+      const hit = model.notes.find(
+        (n) => midiOf(n.pitch) === m && selected.start >= n.start && selected.start < n.start + Math.max(1, n.duration),
+      )
+      if (hit) for (const [part, keys] of notesByPart) if (keys.has(`${m}@${hit.start}`)) return part
+    }
+    return rollPart(linesFrom)
+  })()
   const nodes = React.useMemo(
-    () => (linesFrom && trees ? partSteps(linesFrom, trees, rollPart(linesFrom)) : null),
-    [linesFrom, trees],
+    () => (linesFrom && trees ? partSteps(linesFrom, trees, editedPart) : null),
+    [linesFrom, trees, editedPart],
   )
+  /** the notes of every other part, drawn dimmer; null when there is one part */
+  const otherNotes = notesByPart ? (key: string): boolean => !notesByPart.get(editedPart)?.has(key) : null
   /** what keeps a row's key in place while its columns scroll under it */
   const pinned: React.CSSProperties = phoneGrid.phone
     ? { position: 'sticky', left: 0, zIndex: 2, background: 'var(--background, #0f0f12)' }
@@ -1369,6 +1397,7 @@ export function PianoRollGrid({
   return (
     <div
       data-bottom-panel-tab="piano-roll"
+      data-roll-lines-part={nodes ? editedPart : undefined}
       data-look-only={model.lookOnly ? model.lookOnly.gate : undefined}
       // Focusable, but not a tab stop: the grid's one tab stop is its cursor cell
       // (#1802, ARIA grid pattern).
@@ -1781,6 +1810,7 @@ export function PianoRollGrid({
                           data-roll-fill
                           data-roll-sustain={!isHead ? 'true' : undefined}
                           data-roll-note-sounds={sounds ? (sounds.byNote.get(note!) ?? []).join(' ') : undefined}
+                          data-roll-dim={otherNotes?.(`${midiOf(note!.pitch)}@${note!.start}`) ? '' : undefined}
                           style={{
                             position: 'absolute',
                             top: 0,
@@ -1793,7 +1823,8 @@ export function PianoRollGrid({
                                 : sounds
                                   ? soundFill(sounds.byNote.get(note!) ?? [])
                                   : 'var(--accent, #6ea8fe)',
-                            opacity: isHead ? 1 : 0.7,
+                            // another part's note is drawn dimmer (#2277): the lines are the edited part's
+                            opacity: (isHead ? 1 : 0.7) * (otherNotes?.(`${midiOf(note!.pitch)}@${note!.start}`) ? 0.35 : 1),
                             pointerEvents: 'none',
                           }}
                         />
