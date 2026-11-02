@@ -41,6 +41,17 @@ export interface DivisionStep {
    */
   name: string | null
   rest: boolean
+  /**
+   * `!n` / a bare `!`: the step is written once and plays as `reps` steps side by side,
+   * each an equal share of its slot (Strudel counts `bd!3 sd` as four steps). 1 when unwritten.
+   */
+  reps: number
+  /**
+   * How many of its row's shares the step takes: `@n`, `_`, and `!n` too (krill folds a
+   * replicate into the weight: `bd!3` weighs 3) — 1 when none is written. Strudel counts
+   * `bd@3 sd` as four steps (#1845): a note three steps long, then one.
+   */
+  weight: number
   /** where the written step sits in the bar, its own ops set aside — several when something above repeats its row */
   slots: Slot[]
   /** a note step's hits in this bar, in Strudel's order; empty for a rest, a group, a note held from an earlier bar */
@@ -95,6 +106,8 @@ function stepOut(s: Step, cyc: number): DivisionStep {
     span: s.element.span,
     name: nameOf(s.element),
     rest: s.rest,
+    reps: s.element.reps,
+    weight: s.element.weight,
     slots: s.slots,
     hits: s.hits.map((j) => ({
       begin: fracOf(j.hit.begin, cyc),

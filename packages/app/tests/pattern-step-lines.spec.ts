@@ -81,10 +81,18 @@ test.describe('sequencer: step lines and a step ruler (#1841)', () => {
     expect(starts).toEqual(['0:1', '0:2', '0:3', '1:1', '1:2', '1:3'])
   })
 
-  test('a leaf-read pattern has no written-step regions: bar numbers only, no step lines', async ({ page }) => {
+  test('a leaf-read pattern has no written-step regions, so its steps come from the pattern itself (#2277)', async ({ page }) => {
+    // the parser reads this one leaf by leaf and writes no step regions; the bar's tree,
+    // asked of Strudel, still knows its steps: 8 shares over 16 columns — `<…>@2` is one
+    // step of four columns, `hh@2` two steps (#1845), then four steps of two
     const seq = await open(page, '$: s("<bd [~ bd]>@2 hh@2 bd <bd ~> [hh bd] [~ hh]")', 'sequencer')
-    expect(await ruler(seq, 'data-seq-ruler-label')).toEqual(['0=1', '16=2'])
-    await expect(seq.locator('[data-seq-step-start]')).toHaveCount(0)
+    const bar = (b: number): string[] => ['0=1', '4=1.2', '6=1.3', '8=1.4', '10=1.5', '12=1.6', '14=1.7'].map((x) => {
+      const [c, l] = x.split('=')
+      return `${Number(c) + 16 * b}=${l.replace(/^1/, String(b + 1))}`
+    })
+    expect(await ruler(seq, 'data-seq-ruler-label')).toEqual([...bar(0), ...bar(1)])
+    // a line before each step that is not a bar's first: six a bar, in both rows
+    await expect(seq.locator('[data-seq-step-start]')).toHaveCount(24)
   })
 })
 

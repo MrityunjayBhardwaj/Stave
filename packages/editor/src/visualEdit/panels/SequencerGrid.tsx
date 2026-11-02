@@ -38,7 +38,9 @@ import { stepToCycle, usePlayingStep } from './usePlayingStep'
 import { addLane, removeLane } from '../../codeView'
 import { canResizeCell, canToggleCell, resizeCell, toggleCell } from '../../codeView'
 import { DRUM_SOUNDS } from './soundCatalog'
-import { sampleVoice, chordLanes, stepNotes, stepNoteKey } from '../../codeView'
+import { sampleVoice, chordLanes, stepNotes, stepNoteKey, chunkDivisions } from '../../codeView'
+import { OPEN_PX, drawnSteps, laneSteps, openAt, zoomRuler, type DrawnStep } from './gridZoom'
+import { GridZoomControl, useGridZoom } from './gridZoomControl'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
@@ -53,6 +55,7 @@ import {
   ownStepWidths,
   rowBoxes,
   rulerLabels,
+  type StepGroup,
   useRulerFit,
   writtenStepStarts,
 } from './writtenSteps'
@@ -324,6 +327,24 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
       return groupBoxesBySteps(boxes[li], starts ? [...starts].sort((a, b) => a - b) : undefined, model.steps, owners)
     })
   }, [model, boxes, coverage, stepStarts, gridMode])
+
+  // EACH ROW AS THE PATTERN'S OWN STEPS, NESTED (#2277, Exact): the bar's tree, asked of
+  // Strudel through codeView, laid on the drawn columns. Built once per text (`chunkDivisions`
+  // keeps it). A row whose tree does not hold exactly — or a model a drag has moved away from
+  // the text — gets null, and draws its step groups as above.
+  const miniText = chunk?.miniString ?? null
+  // keyed on what the tree depends on — the text and the bar count — not on every model a
+  // drag makes; `hasModel` because a grid that first drew its standby line has none yet
+  const hasModel = !!model
+  const barCount = model?.bars ?? 1
+  const trees = React.useMemo(
+    () => (hasModel && miniText !== null && gridMode === 'exact' ? chunkDivisions(miniText, barCount) : null),
+    [hasModel, barCount, miniText, gridMode],
+  )
+  const laneNodes = React.useMemo(
+    () => (model && trees ? model.lanes.map((_, li) => laneSteps(model, trees, li)) : null),
+    [model, trees],
+  )
 
   // PROVE BEFORE OFFER, at the length handle (#1053) — the same rule the cell already
   // applies, asked of `resizeCell` itself so the handle cannot promise a drag the writer
@@ -703,6 +724,31 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone)
   /** a step's narrowest width per unit of weight */
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 16
+  // ZOOM (#2277): 1× fits the bar to the panel. A pattern that fits at 16 px a column draws
+  // exactly as it always has; one that did not is squeezed to fit, and the steps too narrow
+  // to open draw their insides as small boxes. Zooming in widens every column. Not on a
+  // phone yet: its grid scrolls under a finger at its own step size (#2006).
+  const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model)
+  const zoomed = !phoneGrid.phone
+  /** a column's width per unit of weight that fits the panel at 1× — null until measured */
+  const fitPer = model && zoom.avail !== null
+    ? (() => {
+        const lay = drawnLayout(model, model.steps)
+        let total = 0
+        let bars = 0
+        for (let c = 0; c < model.steps; c++) {
+          total += lay.weight(c)
+          if (lay.barStart(c)) bars++
+        }
+        return Math.max(1, (zoom.avail - 2 * (model.steps - 1) - 8 * bars) / total)
+      })()
+    : null
+  // 1×: today's floor, lowered only as far as the panel needs; zoomed: every column the width
+  // it has at 1×, times the zoom
+  const minPer = !zoomed || fitPer === null ? stepMin : zoom.level === 1 ? Math.min(stepMin, fitPer) : Math.min(fitPer, 56) * zoom.level
+  const maxPer = zoomed ? 56 * zoom.level : 56
+  /** about how wide one unit of weight is drawn: what decides which steps are open */
+  const perPx = Math.max(minPer, Math.min(fitPer ?? stepMin, maxPer))
   /** what keeps a row's name in place while its steps scroll under it */
   const pinned: React.CSSProperties = phoneGrid.phone
     ? { position: 'sticky', left: 0, zIndex: 2, background: 'var(--background, #0f0f12)' }
@@ -729,7 +775,27 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // The ruler counts the steps of the row you're on — the first row until a cursor
   // exists — because rows from different `,`-parts can split a bar differently (#1841).
   const rulerPart = model.lanes[liveCursor?.row ?? 0]?.part ?? 0
-  const ruler = rulerLabels(model, model.steps, [...(stepStarts?.get(rulerPart) ?? [])])
+  /** about how wide drawn column `c` is on screen */
+  const colPx = (c: number): number => perPx * layout.weight(c)
+  // 1× IS TODAY'S PICTURE: a step that holds smaller steps draws them as small boxes (#1861)
+  // however wide it is. Zooming in is what opens a step, once its inner steps are wide enough.
+  const openPx = zoom.level > 1 ? OPEN_PX : Infinity
+  // what each row draws at this zoom (#2277): its own steps, nested, open where wide enough —
+  // null for a row the tree does not hold for, which draws its step groups as before
+  const drawnRows: (DrawnStep[] | null)[] | null =
+    laneNodes && boxes && coverage
+      ? model.lanes.map((lane, li) => {
+          const nodes = laneNodes[li]
+          if (!nodes) return null
+          const part = lane.part ?? 0
+          const owners = model.lanes.flatMap((l, i) => ((l.part ?? 0) === part ? [(c: number) => coverage[i]?.[c]?.start] : []))
+          return drawnSteps(openAt(nodes, colPx, openPx), boxes[li], model.steps, owners, colPx)
+        })
+      : null
+  const rulerNodes = laneNodes?.[liveCursor?.row ?? 0] ?? null
+  const ruler = rulerNodes && drawnRows?.[liveCursor?.row ?? 0]
+    ? zoomRuler(model, openAt(rulerNodes, colPx, openPx))
+    : rulerLabels(model, model.steps, [...(stepStarts?.get(rulerPart) ?? [])])
 
   return (
     <div
@@ -789,6 +855,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
               moved to the editor Settings tab (#602). Both are lifted/owned
               elsewhere now — the header just carries the track identity chip. */}
           <PatternTrackChip />
+          {zoomed && <GridZoomControl zoom={zoom} />}
           <TurnHint show={phoneGrid.upright && rulerPan.inView.more} />
         </div>
         {/* ONE statement for a view that cannot take a new note, rather than a
@@ -893,8 +960,8 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                   data-seq-col={`ruler:${c}`}
                   style={{
                     flex: `${layout.weight(c)} ${layout.weight(c)} 0`,
-                    minWidth: stepMin * layout.weight(c),
-                    maxWidth: 56 * layout.weight(c),
+                    minWidth: minPer * layout.weight(c),
+                    maxWidth: maxPer * layout.weight(c),
                     marginLeft: layout.barStart(c) ? 8 : 0,
                     position: 'relative',
                     height: '100%',
@@ -980,7 +1047,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
             )}
             </div>
             <div role="none" style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
-              {(stepGroups?.[laneIndex] ?? []).map((g) => {
+              {(() => {
                 // ONE BOX — `solo` as it has always been drawn; `inner` a small box inside a
                 // step that holds several (#1861); `plain` one column of a step drawn as a
                 // single box, its gaps showing as faint halves.
@@ -989,6 +1056,8 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                   variant: 'solo' | 'inner' | 'plain',
                   /** a plain step's first/last column carries the step's rounded corner */
                   ends: { first: boolean; last: boolean } = { first: true, last: true },
+                  /** drawn inside an open step (#2277): its parent owns the bar gap and the step line */
+                  nested = false,
                 ) => {
                 // ONE BOX, `w` columns from `stepIndex` (#1855): a column in LCM, one of
                 // the part's own steps in Exact. Everything below reads the box's first
@@ -1053,8 +1122,9 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                 /** the step number a person reads: the box's, counted in this row */
                 const stepNo = (c: number): number => Math.floor(c / w) + 1
                 // A written step begins here, and it is not a bar line (those keep their gap)
+                // (a row drawn from its own steps: every box at the top is one — #2277)
                 const stepStart =
-                  stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex)
+                  stepIndex > 0 && !layout.barStart(stepIndex) && (!!drawnRows?.[laneIndex] || !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex))
                 return (
                   // A gridcell holding one toggle button — `aria-pressed` stays on the
                   // button, which may carry it; the cursor is the cell's `aria-selected`.
@@ -1062,20 +1132,20 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                     key={stepIndex}
                     role="gridcell"
                     aria-selected={isCursor}
-                    data-seq-step-start={variant === 'solo' && stepStart ? 'true' : undefined}
+                    data-seq-step-start={variant === 'solo' && !nested && stepStart ? 'true' : undefined}
                     style={{
                       display: 'flex',
                       flex: `${weight} ${weight} ${gaps}px`,
-                      minWidth: stepMin * weight + gaps,
-                      maxWidth: 56 * weight + gaps,
+                      minWidth: minPer * weight + gaps,
+                      maxWidth: maxPer * weight + gaps,
                       // subtle gap at each bar boundary
-                      marginLeft: variant === 'solo' && layout.barStart(stepIndex) ? 8 : 0,
+                      marginLeft: variant === 'solo' && !nested && layout.barStart(stepIndex) ? 8 : 0,
                       // THREE LINE WEIGHTS (#1841): a bar is the 8px gap above; a written
                       // step fills the 2px gap before it with a line; a plain column
                       // leaves that gap empty. Drawn as a shadow INTO the gap rather than
                       // as extra width, because rows of different parts start steps at
                       // different columns and a real gap would push their columns apart.
-                      boxShadow: variant === 'solo' && stepStart ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined,
+                      boxShadow: variant === 'solo' && !nested && stepStart ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined,
                     }}
                   >
                   <button
@@ -1307,6 +1377,9 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                   </div>
                 )
                 }
+                // one step's boxes: `depth` 1 is a row's own step, deeper ones sit inside an open step
+                const drawGroup = (g: StepGroup, depth = 1): React.ReactNode => {
+                const nested = depth > 1
                 // A step of one box, or one a bar line would cut, is drawn box by box — inside the
                 // SAME keyed wrapper, laid out as nothing (`display: contents`). An edit can turn a
                 // grouped step into single boxes (`[bd ~ sd ~]` → `bd _ sd ~`); with a different
@@ -1315,7 +1388,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                 if (!grouped) {
                   return (
                     <div key={`step-${g.from}`} role="none" style={{ display: 'contents' }}>
-                      {g.boxes.map((b) => cellFor(b, 'solo'))}
+                      {g.boxes.map((b) => cellFor(b, 'solo', undefined, nested))}
                     </div>
                   )
                 }
@@ -1323,25 +1396,26 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                 for (let c = g.from; c < g.to; c++) weight += layout.weight(c)
                 const gaps = 2 * (g.to - g.from - 1)
                 const stepStart =
-                  g.from > 0 && !layout.barStart(g.from) && !!stepStarts?.get(lane.part ?? 0)?.has(g.from)
+                  !nested && g.from > 0 && !layout.barStart(g.from) && !!(drawnRows?.[laneIndex] || stepStarts?.get(lane.part ?? 0)?.has(g.from))
                 return (
                   <div
                     key={`step-${g.from}`}
                     role="none"
                     data-seq-step={g.plain ? 'plain' : 'holds'}
+                    data-seq-depth={depth}
                     data-seq-step-start={stepStart ? 'true' : undefined}
                     style={{
                       display: 'flex',
                       gap: 2,
-                      height: 22,
+                      height: nested ? '100%' : 22,
                       // exactly the space its boxes take drawn one by one, so its edges and
                       // its boxes' edges fall on the other rows' columns
                       flex: `${weight} ${weight} ${gaps}px`,
-                      minWidth: stepMin * weight + gaps,
-                      maxWidth: 56 * weight + gaps,
-                      marginLeft: layout.barStart(g.from) ? 8 : 0,
+                      minWidth: minPer * weight + gaps,
+                      maxWidth: maxPer * weight + gaps,
+                      marginLeft: !nested && layout.barStart(g.from) ? 8 : 0,
                       // an outline takes no space, so it cannot push a column
-                      outline: '1px solid var(--border, #3a3a42)',
+                      outline: stepOutline(depth),
                       borderRadius: g.plain ? 3 : 4,
                       // NOT overflow-hidden: the focus ring is drawn just outside a cell, and
                       // clipping it here hid the keyboard cursor on a filled column
@@ -1352,11 +1426,47 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                     }}
                   >
                     {g.boxes.map((b, i) =>
-                      cellFor(b, g.plain ? 'plain' : 'inner', { first: i === 0, last: i === g.boxes.length - 1 }),
+                      cellFor(b, g.plain ? 'plain' : 'inner', { first: i === 0, last: i === g.boxes.length - 1 }, nested),
                     )}
                   </div>
                 )
-              })}
+                }
+                // AN OPEN STEP (#2277): wide enough that the steps inside it are steps, each
+                // drawn as a row's own step is, inside its outline — lighter the deeper it sits
+                const drawStep = (d: DrawnStep): React.ReactNode => {
+                  if (d.kind === 'boxes') return drawGroup(d.group, d.depth)
+                  let weight = 0
+                  for (let c = d.from; c < d.to; c++) weight += layout.weight(c)
+                  const gaps = 2 * (d.to - d.from - 1)
+                  const top = d.depth === 1
+                  const stepStart = top && d.from > 0 && !layout.barStart(d.from)
+                  return (
+                    <div
+                      key={`step-${d.from}`}
+                      role="none"
+                      data-seq-step="open"
+                      data-seq-depth={d.depth}
+                      data-seq-step-start={stepStart ? 'true' : undefined}
+                      style={{
+                        display: 'flex',
+                        gap: 2,
+                        height: top ? 22 : '100%',
+                        flex: `${weight} ${weight} ${gaps}px`,
+                        minWidth: minPer * weight + gaps,
+                        maxWidth: maxPer * weight + gaps,
+                        marginLeft: top && layout.barStart(d.from) ? 8 : 0,
+                        outline: stepOutline(d.depth),
+                        borderRadius: 4,
+                        boxShadow: stepStart ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined,
+                      }}
+                    >
+                      {d.children.map(drawStep)}
+                    </div>
+                  )
+                }
+                const drawn = drawnRows?.[laneIndex]
+                return drawn ? drawn.map(drawStep) : (stepGroups?.[laneIndex] ?? []).map((g) => drawGroup(g))
+              })()}
             </div>
           </div>
           )
@@ -1402,6 +1512,16 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
       </div>
     </div>
   )
+}
+
+/**
+ * A step's outline by how deep it sits (#2277): a row's own step as it always was, a step
+ * inside it lighter, and every level below that dashed.
+ */
+function stepOutline(depth: number): string {
+  if (depth <= 1) return '1px solid var(--border, #3a3a42)'
+  if (depth === 2) return '1px solid color-mix(in srgb, var(--border, #3a3a42) 60%, transparent)'
+  return '1px dashed color-mix(in srgb, var(--border, #3a3a42) 50%, transparent)'
 }
 
 /** `a`, `a and b`, `a, b and c` */
