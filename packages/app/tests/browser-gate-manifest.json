@@ -853,7 +853,7 @@
   },
   "pattern-zoom.spec.ts": {
     "runs": "gate",
-    "why": "Step grid zoom (#2277): 1x keeps every step closed and fits a crowded bar to the panel; zooming in (buttons or Ctrl/Cmd + wheel) widens every column and opens the steps the text nests, with the ruler naming them (`1.2.2`). Pins the labels and open steps at 1x and 1.5x, the wheel, that 60 columns fit at 1x and scroll once zoomed, and that a click on a step writes the same code whether its parent is open or not."
+    "why": "Step grid zoom (#2277): 1x keeps every step closed and fits a crowded bar to the panel; zooming in (buttons or Ctrl/Cmd + wheel) widens every column and opens the steps the text nests, with the ruler naming them (`1.2.2`). Pins the labels and open steps at 1x and 1.5x, the wheel, that 60 columns fit at 1x and scroll once zoomed, that a click on a step writes the same code whether its parent is open or not, and that the piano roll's lines and ruler open the same way with its notes unmoved."
   },
   "pattern-side-toggle.spec.ts": {
     "runs": "gate",

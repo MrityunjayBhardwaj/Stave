@@ -39286,6 +39286,55 @@ function laneStepsOrWhy(model, trees, lane) {
   return out;
 }
 __name(laneStepsOrWhy, "laneStepsOrWhy");
+function partStepsOrWhy(model, trees, part) {
+  const bars = model.bars ?? 1;
+  if (trees.length !== bars) return "bar-count";
+  const out = [];
+  try {
+    for (let b = 0; b < bars; b++) {
+      const t = trees[b];
+      if (!t.ok) return t.why;
+      const row = t.parts[part];
+      if (!row) return "lane-part-missing";
+      const { start, per } = barColumns(model, b);
+      const col = /* @__PURE__ */ __name((f) => {
+        const c = f * per;
+        const r = Math.round(c);
+        if (Math.abs(c - r) > 1e-6) throw OFF_GRID;
+        return start + r;
+      }, "col");
+      let nodes = nodesOf(row, { b: 0, e: 1 }, 1, "", col);
+      if (!tiles(nodes, start, start + per)) return "does-not-tile";
+      while (nodes.length === 1 && nodes[0].children) nodes = nodes[0].children.map(lift);
+      const every = /* @__PURE__ */ __name((r) => {
+        for (const s of r.steps) {
+          for (const h of s.hits) if (num(h.begin) >= 0 && num(h.begin) < 1) col(num(h.begin));
+          for (const k of s.rows ?? []) every(k);
+        }
+      }, "every");
+      every(row);
+      out.push(...nodes);
+    }
+  } catch (e) {
+    if (e === OFF_GRID) return "off-grid";
+    throw e;
+  }
+  return out;
+}
+__name(partStepsOrWhy, "partStepsOrWhy");
+function partSteps(model, trees, part) {
+  const r = partStepsOrWhy(model, trees, part);
+  return typeof r === "string" ? null : r;
+}
+__name(partSteps, "partSteps");
+function openStarts(drawn, out = /* @__PURE__ */ new Map()) {
+  for (const n of drawn) {
+    if (!out.has(n.from) || out.get(n.from) > n.depth) out.set(n.from, n.depth);
+    if (n.open && n.children) openStarts(n.children, out);
+  }
+  return out;
+}
+__name(openStarts, "openStarts");
 function openAt(nodes, colPx, openPx = OPEN_PX) {
   const px = /* @__PURE__ */ __name((n) => {
     let w = 0;
@@ -39359,23 +39408,23 @@ function drawnSteps(drawn, boxes, steps, owners2, colPx, openPx = OPEN_PX) {
 __name(drawnSteps, "drawnSteps");
 var ZOOM_LEVELS = [1, 1.5, 2, 3, 4, 6, 8, 12, 16];
 var CHROME_PX = 16 + 16 + 28 + 104;
-function useGridZoom(scrollRef, enabled, mounted2) {
+function useGridZoom(scrollRef, enabled, mounted2, trackRef) {
   const [index, setIndex] = React49__namespace.useState(0);
   const [avail, setAvail] = React49__namespace.useState(null);
   const indexRef = React49__namespace.useRef(index);
   indexRef.current = index;
   React49__namespace.useLayoutEffect(() => {
-    const el = scrollRef.current;
+    const el = trackRef?.current ?? scrollRef.current;
     if (!el || !enabled) return;
     const measure = /* @__PURE__ */ __name(() => {
-      const w = el.clientWidth - CHROME_PX;
+      const w = trackRef?.current ? el.clientWidth : el.clientWidth - CHROME_PX;
       setAvail(w >= 50 ? w : null);
     }, "measure");
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [scrollRef, enabled, mounted2]);
+  }, [scrollRef, trackRef, enabled, mounted2]);
   const go = React49__namespace.useCallback(
     (next, x) => {
       const el = scrollRef.current;
@@ -42998,6 +43047,12 @@ function reportRefusal2(attempted, outcome = LEFT_UNCHANGED) {
 __name(reportRefusal2, "reportRefusal");
 function rollSteps(model, cols) {
   const byPart = writtenStepStarts(model);
+  const part = rollPart(model);
+  const starts = byPart.get(part) ?? [];
+  return { stepStarts: new Set(starts), ruler: rulerLabels(model, cols, starts) };
+}
+__name(rollSteps, "rollSteps");
+function rollPart(model) {
   let part = 0;
   if (model.source && model.source.parts.length > 1) {
     let most = -1;
@@ -43009,10 +43064,9 @@ function rollSteps(model, cols) {
       }
     }
   }
-  const starts = byPart.get(part) ?? [];
-  return { stepStarts: new Set(starts), ruler: rulerLabels(model, cols, starts) };
+  return part;
 }
-__name(rollSteps, "rollSteps");
+__name(rollPart, "rollPart");
 function overlapAt(model, midi, step) {
   for (const n of model.notes) {
     if (pitchToMidi(n.pitch) !== midi) continue;
@@ -43538,6 +43592,21 @@ function PianoRollGrid({
   const phoneGrid = usePhoneGrid();
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone);
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 12;
+  const trackRef = React49__namespace.useRef(null);
+  const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model, trackRef);
+  const zoomed = !phoneGrid.phone;
+  const rollMini = chunk?.miniString ?? null;
+  const hasModel = !!model;
+  const barCount = model?.bars ?? 1;
+  const trees = React49__namespace.useMemo(
+    () => hasModel && rollMini !== null ? chunkDivisions(rollMini, barCount) : null,
+    [hasModel, barCount, rollMini]
+  );
+  const linesFrom = model ? linesModel(model, read5) : null;
+  const nodes = React49__namespace.useMemo(
+    () => linesFrom && trees ? partSteps(linesFrom, trees, rollPart(linesFrom)) : null,
+    [linesFrom, trees]
+  );
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
   if (!model) {
     return React49__namespace.createElement(VisualEditStandby, {
@@ -43548,11 +43617,24 @@ function PianoRollGrid({
   }
   const tabCell = cursorCell() ?? defaultCell();
   const layout = drawnLayout(model, cols);
-  const { stepStarts, ruler } = rollSteps(linesModel(model, read5), cols);
-  const barLine = /* @__PURE__ */ __name((c) => layout.barStart(c) ? "-2px 0 0 0 var(--foreground, #e6e6ea)" : c > 0 && stepStarts.has(c) ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0, "barLine");
+  let totalWeight = 0;
+  for (let c = 0; c < cols; c++) totalWeight += layout.weight(c);
+  const fitPer = zoom.avail !== null && totalWeight > 0 ? Math.max(1, (zoom.avail - (cols - 1)) / totalWeight) : null;
+  const minPer = !zoomed || fitPer === null ? stepMin : zoom.level === 1 ? Math.min(stepMin, fitPer) : Math.min(fitPer, 44) * zoom.level;
+  const maxPer = zoomed ? 44 * zoom.level : 44;
+  const perPx = Math.max(minPer, Math.min(fitPer ?? stepMin, maxPer));
+  const today = rollSteps(linesModel(model, read5), cols);
+  const drawn = nodes ? openAt(nodes, (c) => perPx * layout.weight(c), zoom.level > 1 ? OPEN_PX : Infinity) : null;
+  const stepDepth = drawn ? openStarts(drawn) : null;
+  const stepStarts = stepDepth ? new Set(stepDepth.keys()) : today.stepStarts;
+  const ruler = drawn ? zoomRuler(model, drawn) : today.ruler;
+  const barLine = /* @__PURE__ */ __name((c) => layout.barStart(c) ? "-2px 0 0 0 var(--foreground, #e6e6ea)" : c > 0 && stepStarts.has(c) ? (stepDepth?.get(c) ?? 1) <= 1 ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : (
+    // a step inside a step: lighter the deeper it sits
+    `-2px 0 0 0 color-mix(in srgb, var(--foreground-muted, #6a6a90) ${(stepDepth?.get(c) ?? 2) === 2 ? 55 : 30}%, transparent)`
+  ) : void 0, "barLine");
   const cellBox = /* @__PURE__ */ __name((c) => {
     const w = layout.weight(c);
-    return { flex: `${w} ${w} 0`, minWidth: stepMin * w, maxWidth: 44 * w };
+    return { flex: `${w} ${w} 0`, minWidth: minPer * w, maxWidth: maxPer * w };
   }, "cellBox");
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
@@ -43586,6 +43668,7 @@ function PianoRollGrid({
       children: [
         /* @__PURE__ */ jsxRuntime.jsxs("div", { "data-roll-header": true, style: { display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }, children: [
           /* @__PURE__ */ jsxRuntime.jsx(PatternTrackChip, {}),
+          zoomed && /* @__PURE__ */ jsxRuntime.jsx(GridZoomControl, { zoom }),
           /* @__PURE__ */ jsxRuntime.jsx(TurnHint, { show: phoneGrid.upright && rulerPan.inView.more }),
           model.lookOnly && /* @__PURE__ */ jsxRuntime.jsx(
             "div",
@@ -43658,7 +43741,7 @@ function PianoRollGrid({
                       },
                       children: [
                         /* @__PURE__ */ jsxRuntime.jsx("div", { style: { width: model.numeric ? 36 : 40, flex: "0 0 auto", alignSelf: "stretch", ...pinned } }),
-                        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, c) => {
+                        /* @__PURE__ */ jsxRuntime.jsx("div", { ref: trackRef, style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, c) => {
                           const label = ruler.get(c);
                           const isBar = label !== void 0 && !label.includes(".");
                           return /* @__PURE__ */ jsxRuntime.jsx("div", { style: { ...cellBox(c), position: "relative", height: "100%" }, children: label !== void 0 && /* @__PURE__ */ jsxRuntime.jsx(

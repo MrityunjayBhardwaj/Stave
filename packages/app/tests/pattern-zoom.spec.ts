@@ -71,6 +71,27 @@ test.describe('zoom opens a level (#2277)', () => {
     await expect.poll(overflow).toBeGreaterThan(100)
   })
 
+  test('the piano roll zooms the same way: its lines and ruler open with the steps the melody nests', async ({ page }) => {
+    await bootApp(page, { drawer: { tabId: 'pattern', height: 460 } })
+    await seedCode(page, '$: note("c4 [e4 g4] a4 [b4 [c5 d5]]").s("piano")')
+    const roll = page.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll).toHaveCount(1)
+    const rollLabels = (): Promise<string[]> =>
+      roll.locator('[data-roll-ruler-label]').evaluateAll((els) => els.map((e) => `${e.getAttribute('data-roll-ruler-label')}=${e.textContent}`))
+    // 16 columns: a quarter each, `[b4 [c5 d5]]` cut to sixteenths
+    expect(await rollLabels()).toEqual(['0=1', '4=1.2', '8=1.3', '12=1.4'])
+    const notesAt = (): Promise<string[]> =>
+      roll.locator('[data-roll-note-name]').evaluateAll((els) => els.map((e) => e.textContent ?? ''))
+    const before = await notesAt()
+    expect(before.length).toBeGreaterThan(0)
+    await page.locator('[data-bottom-panel-tab="piano-roll"] [data-grid-zoom-in], [data-roll-header] [data-grid-zoom-in]').first().click()
+    await expect
+      .poll(rollLabels)
+      .toEqual(['0=1', '4=1.2', '6=1.2.2', '8=1.3', '12=1.4', '14=1.4.2', '15=1.4.2.2'])
+    // the notes are the same notes at every zoom
+    expect(await notesAt()).toEqual(before)
+  })
+
   test('a click on a step is the same edit whether the step it sits in is open or not', async ({ page }) => {
     const code = '$: s("bd [hh [hh hh]] sd [~ cp]")'
     // the snare row's cell inside `[hh hh]`, at 1× a small box in a closed step

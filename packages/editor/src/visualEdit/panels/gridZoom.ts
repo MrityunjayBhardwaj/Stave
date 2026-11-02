@@ -177,6 +177,63 @@ export function laneStepsOrWhy(model: Pick<StepGridModel, 'steps' | 'bars' | 'ba
   return out
 }
 
+/**
+ * A roll's part `part` as its own steps over every bar, nested (#2277) — or why not. A roll
+ * has no row per sound, so a group of several rows (a chord, `[c4,e4,g4]`) is one step;
+ * every slot and every note's start must land on a whole column.
+ */
+export function partStepsOrWhy(model: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, trees: readonly BarTree[], part: number): StepNode[] | LaneStepsRefusal {
+  const bars = model.bars ?? 1
+  if (trees.length !== bars) return 'bar-count'
+  const out: StepNode[] = []
+  try {
+    for (let b = 0; b < bars; b++) {
+      const t = trees[b]
+      if (!t.ok) return t.why
+      const row = t.parts[part]
+      if (!row) return 'lane-part-missing'
+      const { start, per } = barColumns(model, b)
+      const col = (f: number): number => {
+        const c = f * per
+        const r = Math.round(c)
+        if (Math.abs(c - r) > 1e-6) throw OFF_GRID
+        return start + r
+      }
+      let nodes = nodesOf(row, { b: 0, e: 1 }, 1, '', col)
+      if (!tiles(nodes, start, start + per)) return 'does-not-tile'
+      while (nodes.length === 1 && nodes[0].children) nodes = nodes[0].children.map(lift)
+      // every note starts on a column, or the roll's columns are not this tree's
+      const every = (r: DivisionRow): void => {
+        for (const s of r.steps) {
+          for (const h of s.hits) if (num(h.begin) >= 0 && num(h.begin) < 1) col(num(h.begin))
+          for (const k of s.rows ?? []) every(k)
+        }
+      }
+      every(row)
+      out.push(...nodes)
+    }
+  } catch (e) {
+    if (e === OFF_GRID) return 'off-grid'
+    throw e
+  }
+  return out
+}
+
+/** `partStepsOrWhy`, null when there are none */
+export function partSteps(model: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, trees: readonly BarTree[], part: number): StepNode[] | null {
+  const r = partStepsOrWhy(model, trees, part)
+  return typeof r === 'string' ? null : r
+}
+
+/** every open step's first column and its depth: where the lines go, and how light */
+export function openStarts(drawn: readonly DrawnNode[], out = new Map<number, number>()): Map<number, number> {
+  for (const n of drawn) {
+    if (!out.has(n.from) || out.get(n.from)! > n.depth) out.set(n.from, n.depth)
+    if (n.open && n.children) openStarts(n.children, out)
+  }
+  return out
+}
+
 /** a node as drawn at a zoom: open when each step inside it is at least `OPEN_PX` wide */
 export interface DrawnNode extends StepNode {
   open: boolean

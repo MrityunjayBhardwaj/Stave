@@ -21,7 +21,9 @@ import * as React from 'react'
 import { pianoRollCodec, gainWritable as gainWritableOn, slotPress, slotPressCost, NO_RESOLUTION_EFFECT } from '../../codeView'
 import type { PianoRollModel, RollNote, ColumnOverlap } from '../../codeView'
 import { lookOnlyLine } from '../../codeView'
-import { drawnLayout } from '../../codeView'
+import { drawnLayout, chunkDivisions } from '../../codeView'
+import { OPEN_PX, openAt, openStarts, partSteps, zoomRuler } from './gridZoom'
+import { GridZoomControl, useGridZoom } from './gridZoomControl'
 import {
   columnCount,
   columnOverlap,
@@ -211,6 +213,13 @@ function rollSteps(
   cols: number,
 ): { stepStarts: Set<number>; ruler: Map<number, string> } {
   const byPart = writtenStepStarts(model)
+  const part = rollPart(model)
+  const starts = byPart.get(part) ?? []
+  return { stepStarts: new Set(starts), ruler: rulerLabels(model, cols, starts) }
+}
+
+/** the part whose steps the roll draws: the one holding the most notes, ties to the first (see `rollSteps`) */
+function rollPart(model: PianoRollModel): number {
   let part = 0
   if (model.source && model.source.parts.length > 1) {
     let most = -1
@@ -222,8 +231,7 @@ function rollSteps(
       }
     }
   }
-  const starts = byPart.get(part) ?? []
-  return { stepStarts: new Set(starts), ruler: rulerLabels(model, cols, starts) }
+  return part
 }
 
 /**
@@ -1276,6 +1284,25 @@ export function PianoRollGrid({
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone)
   /** a column's narrowest width per unit of weight */
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 12
+  // ZOOM (#2277), as the step grid's: 1× fits the bar to the panel and keeps every step
+  // closed; zooming in widens every column and opens the steps the text nests, adding their
+  // lines and ruler names. The notes are drawn where they are at every zoom.
+  const trackRef = React.useRef<HTMLDivElement>(null)
+  const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model, trackRef)
+  const zoomed = !phoneGrid.phone
+  // the bar's tree for the part the roll draws (#2275), built once per text
+  const rollMini = chunk?.miniString ?? null
+  const hasModel = !!model
+  const barCount = model?.bars ?? 1
+  const trees = React.useMemo(
+    () => (hasModel && rollMini !== null ? chunkDivisions(rollMini, barCount) : null),
+    [hasModel, barCount, rollMini],
+  )
+  const linesFrom = model ? linesModel(model, read) : null
+  const nodes = React.useMemo(
+    () => (linesFrom && trees ? partSteps(linesFrom, trees, rollPart(linesFrom)) : null),
+    [linesFrom, trees],
+  )
   /** what keeps a row's key in place while its columns scroll under it */
   const pinned: React.CSSProperties = phoneGrid.phone
     ? { position: 'sticky', left: 0, zIndex: 2, background: 'var(--background, #0f0f12)' }
@@ -1306,7 +1333,21 @@ export function PianoRollGrid({
   // and how wide a cell is, so every bar is drawn the same width whatever its count.
   const layout = drawnLayout(model, cols)
   // drawn from what the TEXT reads as — the kept model's source is the text before the edit
-  const { stepStarts, ruler } = rollSteps(linesModel(model, read), cols)
+  // the columns' widths at this zoom: 1× fits the panel (today's floor, lowered only as far
+  // as the panel needs); zoomed, every column is its 1× width times the zoom
+  let totalWeight = 0
+  for (let c = 0; c < cols; c++) totalWeight += layout.weight(c)
+  const fitPer = zoom.avail !== null && totalWeight > 0 ? Math.max(1, (zoom.avail - (cols - 1)) / totalWeight) : null
+  const minPer = !zoomed || fitPer === null ? stepMin : zoom.level === 1 ? Math.min(stepMin, fitPer) : Math.min(fitPer, 44) * zoom.level
+  const maxPer = zoomed ? 44 * zoom.level : 44
+  const perPx = Math.max(minPer, Math.min(fitPer ?? stepMin, maxPer))
+  const today = rollSteps(linesModel(model, read), cols)
+  // THE PATTERN'S OWN STEPS (#2277): open where the zoom makes them wide enough, never at 1×
+  const drawn = nodes ? openAt(nodes, (c) => perPx * layout.weight(c), zoom.level > 1 ? OPEN_PX : Infinity) : null
+  /** each step's first column → how deep it sits: 1 a row's own step, 2 a step inside one, … */
+  const stepDepth = drawn ? openStarts(drawn) : null
+  const stepStarts = stepDepth ? new Set(stepDepth.keys()) : today.stepStarts
+  const ruler = drawn ? zoomRuler(model, drawn) : today.ruler
   // THREE LINE WEIGHTS, all in that same gap (#1841): a bar line, then a lighter line
   // where a step AS WRITTEN begins, then a plain column. Colour carries the difference,
   // never width, for the reason above.
@@ -1314,12 +1355,15 @@ export function PianoRollGrid({
     layout.barStart(c)
       ? '-2px 0 0 0 var(--foreground, #e6e6ea)'
       : c > 0 && stepStarts.has(c)
-        ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)'
+        ? (stepDepth?.get(c) ?? 1) <= 1
+          ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)'
+          : // a step inside a step: lighter the deeper it sits
+            `-2px 0 0 0 color-mix(in srgb, var(--foreground-muted, #6a6a90) ${(stepDepth?.get(c) ?? 2) === 2 ? 55 : 30}%, transparent)`
         : undefined
   /** a cell's flex box: weighted so a bar of 3 is as wide as a bar of 4 */
   const cellBox = (c: number): React.CSSProperties => {
     const w = layout.weight(c)
-    return { flex: `${w} ${w} 0`, minWidth: stepMin * w, maxWidth: 44 * w }
+    return { flex: `${w} ${w} 0`, minWidth: minPer * w, maxWidth: maxPer * w }
   }
 
   return (
@@ -1372,6 +1416,7 @@ export function PianoRollGrid({
         {/* Track identity (#589) — the bound track's colour dot + name. Click the dot to
             recolour, double-click the name to rename. */}
         <PatternTrackChip />
+        {zoomed && <GridZoomControl zoom={zoom} />}
         <TurnHint show={phoneGrid.upright && rulerPan.inView.more} />
         {/* ONE statement for a view that cannot take a new note (#1070) — the same
             fact the grid states, on the surface that carries 18,386 of the corpus's
@@ -1471,7 +1516,7 @@ export function PianoRollGrid({
             }}
           >
             <div style={{ width: model.numeric ? 36 : 40, flex: '0 0 auto', alignSelf: 'stretch', ...pinned }} />
-            <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
+            <div ref={trackRef} style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
               {Array.from({ length: cols }, (_, c) => {
                 const label = ruler.get(c)
                 const isBar = label !== undefined && !label.includes('.')
