@@ -8,8 +8,8 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { chunkDivisions, parseStepGrid, type StepGridModel } from '../../../codeView'
-import { laneSteps, laneStepsOrWhy, openAt, zoomRuler, type DrawnNode, type StepNode } from '../gridZoom'
+import { chunkDivisions, parsePianoRoll, parseStepGrid, type StepGridModel } from '../../../codeView'
+import { laneSteps, laneStepsOrWhy, openAt, openStarts, partSteps, partStepsOrWhy, zoomRuler, type DrawnNode, type StepNode } from '../gridZoom'
 import { writtenStepStarts } from '../writtenSteps'
 
 const grid = (mini: string): StepGridModel => {
@@ -108,6 +108,26 @@ describe('openAt and zoomRuler — zoom opens a level, the ruler follows', () =>
   })
 })
 
+describe('partSteps — a piano roll part as its own steps', () => {
+  const roll = (mini: string): StepNode[] | null => {
+    const r = parsePianoRoll(mini)
+    if (!r.ok) throw new Error(`${mini}: ${r.reason}`)
+    return partSteps(r.model, chunkDivisions(mini, r.model.bars ?? 1), 0)
+  }
+
+  it('the steps the melody writes, nested; a chord is one step', () => {
+    expect(show(roll('c4 [e4 g4] a4 [b4 [c5 d5]]'))).toBe('0-4 4-8[4-6 6-8] 8-12 12-16[12-14 14-16[14-15 15-16]]')
+    expect(show(roll('[c4,e4,g4] [d4 f4]'))).toBe('0-2 2-4[2-3 3-4]')
+  })
+
+  it('the lines at a zoom: the first column of each open step, by depth', () => {
+    const drawn = openAt(roll('c4 [e4 g4] a4 [b4 [c5 d5]]')!, () => 16)
+    expect([...openStarts(drawn).entries()].sort((a, b) => a[0] - b[0])).toEqual([
+      [0, 1], [4, 1], [6, 2], [8, 1], [12, 1], [14, 2], [15, 3],
+    ])
+  })
+})
+
 /* ── the corpus ─────────────────────────────────────────────────── */
 
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -172,6 +192,45 @@ describe('laneSteps — the corpus', () => {
  * with no nodes draws as it does today: `off-grid` (a slot inside a column), `does-not-tile`
  * (a group repeated by a euclid, `[a, b](4,8,1)`), and the tree's own refusals.
  */
+describe('partSteps — the corpus', () => {
+  it('every roll gets the steps of its part or says why; where the parser wrote step starts, they never cross', () => {
+    let rolls = 0
+    let nodes = 0
+    let compared = 0
+    const refused: Record<string, number> = {}
+    const cross: string[] = []
+    for (const mini of minis) {
+      const r = parsePianoRoll(mini)
+      if (!r.ok) continue
+      rolls++
+      const m = r.model
+      const parts = m.source?.parts.length ?? 1
+      // the part the roll draws when it has one; a stack's choice is the panel's
+      if (parts > 1) {
+        refused['several-parts'] = (refused['several-parts'] ?? 0) + 1
+        continue
+      }
+      const got = partStepsOrWhy(m, chunkDivisions(mini, m.bars ?? 1), 0)
+      if (typeof got === 'string') {
+        refused[got] = (refused[got] ?? 0) + 1
+        continue
+      }
+      nodes++
+      const parser = writtenStepStarts(m).get(0)
+      if (!parser) continue
+      compared++
+      const t = new Set(got.map((n) => n.from))
+      const p = new Set(parser)
+      if (![...t].every((x) => p.has(x)) && ![...p].every((x) => t.has(x))) cross.push(JSON.stringify(mini))
+    }
+    expect(cross).toEqual([])
+    expect({ rolls, nodes, compared, refused }).toEqual(ROLL_PINNED)
+  }, 600_000)
+})
+
+/** measured 2026-11-02 over the same corpus: 603 open as a roll; a stack's part is the panel's choice, so it is counted apart */
+const ROLL_PINNED = { rolls: 603, nodes: 561, compared: 524, refused: { 'does-not-tile': 4, 'off-grid': 4, 'several-parts': 34 } }
+
 const PINNED = {
   grids: 1018,
   rows: 2496,
