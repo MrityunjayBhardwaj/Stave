@@ -138,7 +138,9 @@ test.describe('a pattern nobody can edit note by note is still shown (#1975)', (
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
     // `no-leaf-anchor` until #1974: with its hits anchored on the note, every hit is the one `bd`
     await expect(grid).toHaveAttribute('data-look-only', 'view-unusable')
-    await expect(grid.locator('[data-seq-cell]')).toHaveCount(48)
+    // all 48 columns are there; at 1× the grid fits the panel (#2277), so a rest step may be
+    // drawn as one box over its columns — the ruler still has one place per column
+    await expect(grid.locator('[data-seq-col^="ruler:"]')).toHaveCount(48)
     // bar 1 plays 2 hits, bars 2 and 3 play 4 each — at the columns Strudel puts them
     const on = await grid.locator('[data-seq-cell][aria-pressed="true"]').evaluateAll((els) =>
       els.map((e) => e.getAttribute('data-seq-cell')),

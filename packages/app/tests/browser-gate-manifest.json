@@ -851,6 +851,10 @@
     "runs": "gate",
     "why": "Exact grid (#1861): a written step that holds several hits is drawn as one step with its hits inside (`[~ bd]`, `hh*8` as one step of 8), and a plain step a sibling cuts into columns is one box with faint halves. Pins which steps group in each row, that a grouped step's edges still fall on the other rows' columns, that clicks inside a step and on a faint half write what they always wrote, and LCM plus one-column steps unchanged as controls."
   },
+  "pattern-zoom.spec.ts": {
+    "runs": "gate",
+    "why": "Step grid zoom (#2277): 1x keeps every step closed and fits a crowded bar to the panel; zooming in (buttons or Ctrl/Cmd + wheel) widens every column and opens the steps the text nests, with the ruler naming them (`1.2.2`). Pins the labels and open steps at 1x and 1.5x, the wheel, that 60 columns fit at 1x and scroll once zoomed, and that a click on a step writes the same code whether its parent is open or not."
+  },
   "pattern-side-toggle.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
