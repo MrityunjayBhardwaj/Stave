@@ -184,14 +184,21 @@ export type LaneDivisions = { ok: true; row: DivisionRow; oneOf: boolean } | { o
 
 /**
  * The row of a bar's tree that grid row `lane` draws: its comma part (`StepLane.part`).
- * A row that names no part draws the bar's only part, and is refused when there are
- * several. The part must write a note of the row's sound — the check that the parser's
- * count of parts and Strudel's are the same parts.
+ * A row that names no part draws the bar's only part; when there are several, the one
+ * part that writes its sound, and it is refused when none or more than one does. The part
+ * must write a note of the row's sound — the check that the parser's count of parts and
+ * Strudel's are the same parts.
  */
 export function laneDivisions(tree: BarTree, lane: Pick<StepLane, 'sound' | 'part'>): LaneDivisions {
   if (!tree.ok) return tree
-  if (lane.part === undefined && tree.parts.length !== 1) return { ok: false, why: 'lane-part-unknown' }
-  const at = lane.part ?? 0
+  let at = lane.part ?? 0
+  if (lane.part === undefined && tree.parts.length !== 1) {
+    // A look-only grid's rows come from the cells alone and name no part (#2287). The
+    // row is still one part's when exactly one part writes its sound.
+    const writes = tree.parts.flatMap((p, i) => (p.sounds.includes(lane.sound) ? [i] : []))
+    if (writes.length !== 1) return { ok: false, why: 'lane-part-unknown' }
+    at = writes[0]
+  }
   const row = tree.parts[at]
   if (!row) return { ok: false, why: 'lane-part-missing' }
   if (!row.sounds.includes(lane.sound)) return { ok: false, why: 'lane-sound-not-in-part' }
