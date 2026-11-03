@@ -20,6 +20,7 @@
 import type { StepLane } from './notation/model'
 import { barDivisions, fracOf, type DivisionsRefusal, type Frac, type Row, type Slot, type Step } from './strudelMini/divisions'
 import { miniPattern } from './strudelMini/pattern'
+import { detectPeriod } from './ir/songAnalysis'
 import { argAtom, isRest, type MiniElement, type MiniGroup, type MiniSpan } from './strudelMini/shape'
 
 export type { Frac, Slot, DivisionsRefusal }
@@ -29,6 +30,11 @@ export interface DivisionHit {
   begin: Frac
   end: Frac
   args: Array<{ text: string; span: MiniSpan }>
+  /**
+   * The value Strudel plays, as plain data: a string, a number, or a `:` variant's parts
+   * (`["bd", 3]`); null for anything else. The roll reads its pitch from this (`rollPitch`).
+   */
+  value: string | number | Array<string | number> | null
 }
 
 export interface DivisionStep {
@@ -101,6 +107,13 @@ function nameOf(e: MiniElement): string | null {
   return name
 }
 
+/** a played value as plain data, or null — no Strudel object leaves the adapter */
+function plainValue(v: unknown): DivisionHit['value'] {
+  if (typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v))) return v
+  if (Array.isArray(v) && v.every((p) => typeof p === 'string' || typeof p === 'number')) return [...v] as Array<string | number>
+  return null
+}
+
 function stepOut(s: Step, cyc: number): DivisionStep {
   return {
     span: s.element.span,
@@ -113,6 +126,7 @@ function stepOut(s: Step, cyc: number): DivisionStep {
       begin: fracOf(j.hit.begin, cyc),
       end: fracOf(j.hit.end, cyc),
       args: j.args.map((a) => ({ text: a.text, span: a.span })),
+      value: plainValue(j.hit.value),
     })),
     copies: s.copies,
     rows: s.rows ? s.rows.map((r) => rowOut(r, cyc)) : null,
@@ -168,6 +182,34 @@ export function chunkDivisions(mini: string, bars: number): BarTree[] {
   BUILT.set(key, trees)
   if (BUILT.size > KEEP) BUILT.delete(BUILT.keys().next().value!)
   return trees
+}
+
+/**
+ * How many bars `mini` repeats over, asked of what it PLAYS — the area's one rule,
+ * `detectPeriod`, over `2 · cap` cycles of hits (each hit's time, length and value) — or
+ * null when it does not repeat within `cap`, plays nothing, or does not evaluate.
+ *
+ * Asked before any tree is built, because a tree costs far more than a query: a 100-part
+ * stack takes about 1.6 s a bar, and finding its period by building 24 bars of trees took
+ * 39 s (measured 2026-11-04). Its hits answer in milliseconds.
+ */
+export function chunkPeriod(mini: string, cap: number): number | null {
+  try {
+    const pat = miniPattern(mini)
+    const keys: string[] = []
+    for (let c = 0; c < 2 * cap; c++) {
+      const hits = pat.hits(c).map((h) => {
+        const b = fracOf(h.begin, c)
+        const e = fracOf(h.end, c)
+        return `${b.n}/${b.d}:${e.n}/${e.d}:${JSON.stringify(h.value)}`
+      })
+      keys.push(hits.sort().join('|'))
+    }
+    const p = detectPeriod(keys)
+    return p !== null && p <= cap ? p : null
+  } catch {
+    return null
+  }
 }
 
 /** why a grid row has no row of a bar's tree */

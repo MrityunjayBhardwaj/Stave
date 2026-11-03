@@ -25,6 +25,9 @@ import { drawnLayout, chunkDivisions } from '../../codeView'
 import { OPEN_PX, openAt, openStarts, partSteps, zoomRuler } from './gridZoom'
 import { GridZoomControl, useGridZoom } from './gridZoomControl'
 import { useExactPlayhead } from './exactPlayhead'
+import { lookOnlyTreeRoll } from './rollTree'
+import { TreeRollGrid } from './TreeRollGrid'
+import { useDeferredPerText } from './useDeferredPerText'
 import {
   columnCount,
   columnOverlap,
@@ -1340,8 +1343,13 @@ export function PianoRollGrid({
   // ruler's columns, over the playing column the cells already mark
   const playheadRef = React.useRef<HTMLDivElement>(null)
   useExactPlayhead(gridRef, playheadRef, model, (c) => (trackRef.current?.children[c] as HTMLElement | undefined) ?? null)
+  // A melody the columns cannot hold at all is drawn from its tree alone (#1834): asked only
+  // while there is no model, and kept per text
+  const rollEligible = !!chunk && opensPianoRoll(chunk)
+  const lookTree = useDeferredPerText(!hasModel && rollEligible ? rollMini : null, lookOnlyTreeRoll)
 
   if (!model) {
+    if (lookTree && 'roll' in lookTree) return <TreeRollGrid roll={lookTree.roll} reason={lookTree.reason} />
     return React.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint:

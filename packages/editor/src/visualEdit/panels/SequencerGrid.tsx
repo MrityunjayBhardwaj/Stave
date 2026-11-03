@@ -43,6 +43,9 @@ import { OPEN_PX, drawnSteps, laneSteps, openAt, zoomRuler, type DrawnStep } fro
 import { GridZoomControl, useGridZoom } from './gridZoomControl'
 import { lookOnlyTreeGrid } from './treeGrid'
 import { TreeStepGrid } from './TreeStepGrid'
+import { lookOnlyTreeRoll } from './rollTree'
+import { TreeRollGrid } from './TreeRollGrid'
+import { useDeferredPerText } from './useDeferredPerText'
 import { useExactPlayhead } from './exactPlayhead'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
@@ -347,10 +350,12 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // A pattern the columns cannot hold at all is drawn from its tree alone (#1834): asked only
   // while there is no model, and once per text
   const stepEligible = !!chunk && opensStepGrid(chunk)
-  const lookTree = React.useMemo(
-    () => (!hasModel && stepEligible && miniText !== null ? lookOnlyTreeGrid(miniText) : null),
-    [hasModel, stepEligible, miniText],
-  )
+  const lookTree = useDeferredPerText(!hasModel && stepEligible ? miniText : null, lookOnlyTreeGrid)
+  // A pattern with no head that plays NUMBERS lands here (`routeSurface` asks the roll first,
+  // and the roll had no model either). Its values are pitches, so it draws as a roll from its
+  // tree — the step grid's tree does not stand in for numbers
+  const silentHead = !!chunk && !['s', 'sound', 'chord'].includes(chunk.headFn ?? '')
+  const lookRoll = useDeferredPerText(!hasModel && stepEligible && silentHead && lookTree === null ? miniText : null, lookOnlyTreeRoll)
   const laneNodes = React.useMemo(
     () => (model && trees ? model.lanes.map((_, li) => laneSteps(model, trees, li)) : null),
     [model, trees],
@@ -773,6 +778,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     // NO COLUMN MODEL, BUT A TREE (#1834): too many steps, an onset between the columns —
     // the pattern's own divisions still draw it, look-only
     if (lookTree && 'grid' in lookTree) return <TreeStepGrid grid={lookTree.grid} reason={lookTree.reason} notice={notice} />
+    if (lookRoll && 'roll' in lookRoll) return <TreeRollGrid roll={lookRoll.roll} reason={lookRoll.reason} />
     return React.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && opensStepGrid(chunk)

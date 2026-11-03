@@ -18,16 +18,17 @@
  * ROWS are named as the step grid names them (`StepLane.sound`): one per sound per comma
  * part, `:n` tails included (`bd:4` and `bd` are two rows), in written order.
  */
-import { chunkDivisions, parseStepGrid, type BarTree, type DivisionRow, type Frac } from '../../codeView'
+import { chunkDivisions, chunkPeriod, parseStepGrid, type BarTree, type DivisionRow, type Frac } from '../../codeView'
 import { barStepsOrWhy, fracNum, OPEN_PX, type FracStep } from './gridZoom'
+import { perText, type PerText } from './useDeferredPerText'
 
 /** the longest repeat drawn: the step grid's own cap (it reads a pattern leaf by leaf up to 12 bars) */
 export const TREE_MAX_BARS = 12
 /**
  * How many bars are read to find where the pattern repeats: every repeat up to the cap is
- * seen twice, the grid's own rule (`detectPeriod`). MEASURED 2026-11-03 over the 256 corpus
- * patterns that open as nothing today, reading 24 bars: median 1.8 ms, p95 49 ms, worst
- * 582 ms — once per text, and only for a pattern with no column model.
+ * seen twice, the grid's own rule (`detectPeriod`). Reading all 24 as trees cost up to 39 s
+ * on one corpus pattern (a 100-part stack), so the period is asked of the hits first and
+ * only twice the period is built (`probeTrees`).
  */
 const PROBE_BARS = 2 * TREE_MAX_BARS
 
@@ -73,6 +74,40 @@ function period(trees: readonly BarTree[]): number | null {
   return null
 }
 
+export type OkTree = Extract<BarTree, { ok: true }>
+
+/**
+ * The bars the pattern repeats over, each a tree — or why not: a bar the tree refuses, no
+ * repeat within `TREE_MAX_BARS`, or comma parts that are a random choice. Shared by the
+ * step grid and the roll drawn from the tree.
+ */
+export function repeatingBars(probed: readonly BarTree[]): { ok: true; bars: number; trees: OkTree[] } | { ok: false; why: string } {
+  for (const t of probed) if (!t.ok) return { ok: false, why: t.why }
+  const bars = period(probed)
+  if (bars === null) return { ok: false, why: 'does-not-repeat' }
+  const trees = probed.slice(0, bars) as OkTree[]
+  if (trees.some((t) => t.oneOf && t.parts.length > 1)) return { ok: false, why: 'parts-are-a-choice' }
+  return { ok: true, bars, trees }
+}
+
+/**
+ * The bars a pattern's period is looked for in, each a tree. The period is asked of what
+ * the pattern PLAYS first (`chunkPeriod`, cheap), and only twice that many bars are built
+ * as trees, so `repeatingBars` checks the trees repeat there too. When they do not (the
+ * text repeats later than the sound), or the hits do not repeat within the cap, all
+ * `PROBE_BARS` are built and `repeatingBars` decides on them, as before.
+ */
+export function probeTrees(mini: string): BarTree[] {
+  const p = chunkPeriod(mini, TREE_MAX_BARS)
+  if (p === null) return chunkDivisions(mini, PROBE_BARS)
+  const first = chunkDivisions(mini, 2 * p)
+  // the trees can repeat later than the hits: `<r l r l>` plays as `<r l>` but is written
+  // as four arms (`s@3 <l r> s@3 <r l r l> …` plays every 6 bars, is written every 12)
+  const rep = repeatingBars(first)
+  if (!rep.ok && rep.why === 'does-not-repeat') return chunkDivisions(mini, PROBE_BARS)
+  return first
+}
+
 /** every note step in the row at any depth, with its name */
 function eachNote(row: DivisionRow, visit: (name: string | null, hits: readonly { begin: Frac; end: Frac }[]) => void): void {
   for (const s of row.steps) {
@@ -83,16 +118,14 @@ function eachNote(row: DivisionRow, visit: (name: string | null, hits: readonly 
 
 /** a pattern's tree grid, from its mini string: its bars, rows and hits — or why there is none */
 export function treeGridOf(mini: string): TreeGrid {
-  return treeGridFrom(chunkDivisions(mini, PROBE_BARS))
+  return treeGridFrom(probeTrees(mini))
 }
 
 /** `treeGridOf`, from the trees of bars `0 … n−1` */
 export function treeGridFrom(probed: readonly BarTree[]): TreeGrid {
-  for (const t of probed) if (!t.ok) return { ok: false, why: t.why }
-  const bars = period(probed)
-  if (bars === null) return { ok: false, why: 'does-not-repeat' }
-  const trees = probed.slice(0, bars) as Extract<BarTree, { ok: true }>[]
-  if (trees.some((t) => t.oneOf && t.parts.length > 1)) return { ok: false, why: 'parts-are-a-choice' }
+  const rep = repeatingBars(probed)
+  if (!rep.ok) return rep
+  const { bars, trees } = rep
   const rows: TreeRow[] = []
   const parts = trees[0].parts.length
   let played = 0
@@ -143,9 +176,11 @@ const NOT_A_GRID: ReadonlySet<string | undefined> = new Set<string | undefined>(
  * What the step grid draws for a pattern it has no column model for: the tree grid and
  * the sentence that says why it is look-only — or null when the column grid draws it (it
  * has a model, editable or look-only), when the refusal is not about columns, or when the
- * tree has no grid either (`treeGridOf`'s reason, for the corpus count).
+ * tree has no grid either (`treeGridOf`'s reason, for the corpus count). Kept per text.
  */
-export function lookOnlyTreeGrid(mini: string): { grid: Extract<TreeGrid, { ok: true }>; reason: string } | { why: string } | null {
+export const lookOnlyTreeGrid: PerText<{ grid: Extract<TreeGrid, { ok: true }>; reason: string } | { why: string } | null> = perText(lookOnlyTreeGridUncached)
+
+function lookOnlyTreeGridUncached(mini: string): { grid: Extract<TreeGrid, { ok: true }>; reason: string } | { why: string } | null {
   const g = parseStepGrid(mini)
   if (g.ok || g.lookOnly) return null
   if (NOT_A_GRID.has(g.gate)) return null
