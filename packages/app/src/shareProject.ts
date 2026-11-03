@@ -33,7 +33,7 @@ import { fromBase64Url, openShare, parseShortShare, sealShare, toBase64Url } fro
 export const SHARE_HASH_PREFIX = "#share=";
 const MAX_RAW_BYTES = 2 * 1024 * 1024;
 
-interface ShareManifest {
+export interface ShareManifest {
   schemaVersion: 1;
   project: { name: string; sharedAt: number };
   files: Array<{ id: string; path: string; language: string; content: string }>;
@@ -80,7 +80,8 @@ async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
   return merged;
 }
 
-function collectManifest(project: ProjectMeta): ShareManifest {
+/** The active project's manifest. Also the payload of a gallery entry (#2306). */
+export function collectManifest(project: ProjectMeta): ShareManifest {
   const files = listWorkspaceFiles();
 
   const folderPaths = new Set<string>([""]);
