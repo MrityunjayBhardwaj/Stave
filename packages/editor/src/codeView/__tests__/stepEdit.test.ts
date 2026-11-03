@@ -78,38 +78,74 @@ function difference(before: string[], after: string[]): { added: string[]; remov
 interface Toggle {
   mini: string
   bars: number
+  trees: readonly BarTree[]
   address: StepAddress
   sound: string
-  part?: number
-  /** the slot's end in the bar: the intended hit lasts the step */
-  end: Frac
   /** was the row's own note there (an erase) */
   erase: boolean
 }
 
+/** the hits Strudel plays in cycles `[0, cycles)` whose written place overlaps `[from, to)` */
+function playedFrom(mini: string, cycles: number, from: number, to: number): string[] {
+  const pat = miniPattern(mini)
+  const out: string[] = []
+  for (let c = 0; c < cycles; c++) {
+    for (const h of pat.hits(c)) {
+      if (h.locations.some((l) => l.start < to && l.end > from)) out.push(`${valueName(h.value)}@${t(h.begin)}-${t(h.end)}`)
+    }
+  }
+  return out.sort()
+}
+
+/** where the written step at the address begins, over two loops, in every bar it sits in */
+function beginsOf(x: Toggle): Set<string> {
+  const out = new Set<string>()
+  const visit = (r: DivisionRow, b: number): void => {
+    for (const s of r.steps) {
+      if (s.span && s.span.start === x.address.span.start && s.span.end === x.address.span.end) {
+        for (const slot of s.slots) for (let k = 0; k < 2; k++) {
+          const at = k * x.bars + b
+          out.add(fr(at * slot.begin.d + slot.begin.n, slot.begin.d))
+        }
+      }
+      for (const k of s.rows ?? []) visit(k, b)
+    }
+  }
+  x.trees.forEach((tree, b) => tree.ok && tree.parts.forEach((p) => visit(p, b)))
+  return out
+}
+
 /**
- * Does the edited string play exactly the intended change, over two loops? The intended
- * hit is the row's sound at the step's slot, in every loop: added for a place or a chord,
- * removed for an erase. Strudel is asked both strings; nothing is computed from the text.
+ * Does the edited string play exactly what the click asks, over two loops — no more, no
+ * less? STRUDEL IS ASKED, through where it says each hit was written: the change must be
+ * exactly the hits written in the text the edit replaced, against those written in what
+ * replaced it, and that change must be the row's sound alone, all added (a place) or all
+ * removed (an erase), each hit where the written step sits. A step played in several places
+ * changes in every one of them; a hit written anywhere else may not move.
  */
-function playsTheIntendedHit(x: Toggle, edited: string): { ok: boolean; got: { added: string[]; removed: string[] }; want: string[] } {
-  const loops = 2
-  const cycles = x.bars * loops
+function playsTheStep(x: Toggle, edited: string, edit: { from: number; to: number; insert: string }): { ok: boolean; got: { added: string[]; removed: string[] }; want: { added: string[]; removed: string[] } } {
+  const cycles = x.bars * 2
+  const want = difference(playedFrom(x.mini, cycles, edit.from, edit.to), playedFrom(edited, cycles, edit.from, edit.from + edit.insert.length))
+  const got = difference(plays(x.mini, cycles), plays(edited, cycles))
   // the row's sound as Strudel names what it plays (`sd:1:.6` plays as `sd:1:0.6`)
   const name = valueName(miniPattern(x.sound).hits(0)[0].value)
-  const want: string[] = []
-  for (let k = 0; k < loops; k++) {
-    const at = k * x.bars + x.address.bar
-    const b = { n: at * x.address.at.d + x.address.at.n, d: x.address.at.d }
-    const e = { n: at * x.end.d + x.end.n, d: x.end.d }
-    want.push(`${name}@${fr(b.n, b.d)}-${fr(e.n, e.d)}`)
-  }
-  want.sort()
-  const got = difference(plays(x.mini, cycles), plays(edited, cycles))
-  const ok = x.erase
-    ? got.added.length === 0 && JSON.stringify(got.removed) === JSON.stringify(want)
-    : got.removed.length === 0 && JSON.stringify(got.added) === JSON.stringify(want)
+  const net = x.erase ? want.removed : want.added
+  // one hit at every place the written step sits, and nowhere else
+  const begins = beginsOf(x)
+  const at = new Set(net.map((k) => k.slice(name.length + 1).split('-')[0]))
+  const ok =
+    JSON.stringify(got) === JSON.stringify(want) &&
+    (x.erase ? want.added : want.removed).length === 0 &&
+    net.every((k) => k.startsWith(`${name}@`)) &&
+    net.length === begins.size &&
+    [...begins].every((b) => at.has(b))
   return { ok, got, want }
+}
+
+/** the one replacement that turns `before` into `after`, once the common head and tail are set aside */
+function editOf(before: string, after: string): { from: number; to: number; insert: string } {
+  const [a, z] = changed(before, after)
+  return { from: a, to: z, insert: after.slice(a, after.length - (before.length - z)) }
 }
 
 /* ── fixtures ───────────────────────────────────────────────────── */
@@ -136,22 +172,31 @@ function toggle(mini: string, sound: string, text: string, opts: { bars?: number
   const bars = opts.bars ?? 1
   const bar = opts.bar ?? 0
   const trees = chunkDivisions(mini, bars)
-  const { address, end } = stepAt(trees, bar, sound, opts.part, text, mini, opts.nth)
+  const { address } = stepAt(trees, bar, sound, opts.part, text, mini, opts.nth)
   const result = toggleStep(mini, trees, address, { sound, part: opts.part })
   const erase = text.split(/[@\s_]/)[0] === sound
-  return { result, x: { mini, bars, address, sound, part: opts.part, end, erase } }
+  return { result, x: { mini, bars, trees, address, sound, erase } }
 }
 
-/** the toggle writes `want`, and Strudel plays exactly the intended hit more or less */
+/** the toggle writes `want`, and Strudel plays exactly what the click asks, no more */
 function writes(mini: string, sound: string, text: string, want: string, opts: Parameters<typeof toggle>[3] = {}): void {
   const { result, x } = toggle(mini, sound, text, opts)
   if (!result.ok) throw new Error(`${mini} ${sound}@${text}: refused ${result.why}`)
   const edited = applyStepEdit(mini, result.edit)
   expect(edited).toBe(want)
-  // the replacement is the step's name and nothing past it
-  expect(result.edit.to - result.edit.from).toBeLessThanOrEqual(text.length)
-  const heard = playsTheIntendedHit(x, edited)
-  expect(heard.got, `${mini} → ${edited}`).toEqual(x.erase ? { added: [], removed: heard.want } : { added: heard.want, removed: [] })
+  const heard = playsTheStep(x, edited, result.edit)
+  expect(heard.ok, `${mini} → ${edited}: ${JSON.stringify(heard)}`).toBe(true)
+}
+
+/** the toggle and a second toggle on the same step give back the text that was there */
+function roundTrips(mini: string, sound: string, text: string, opts: Parameters<typeof toggle>[3] = {}): void {
+  const { result } = toggle(mini, sound, text, opts)
+  if (!result.ok) throw new Error(`${mini}: refused ${result.why}`)
+  const once = applyStepEdit(mini, result.edit)
+  // the step the first edit wrote, found again by the text it now has
+  const back = toggle(once, sound, sound, { ...opts, nth: 0 })
+  if (!back.result.ok) throw new Error(`${once}: refused ${back.result.why}`)
+  expect(applyStepEdit(once, back.result.edit)).toBe(mini)
 }
 
 function refuses(mini: string, sound: string, text: string, why: string, opts: Parameters<typeof toggle>[3] = {}): void {
@@ -203,13 +248,37 @@ describe('toggleStep — one step, its own text, checked by Strudel', () => {
     writes('[bd,hh] sd', 'sd', '[bd,hh]', '[bd,hh,sd] sd')
     writes('[e3] [b3]', 'b3', 'e3', '[e3,b3] [b3]')
     writes('[e3] [b3]', 'e3', 'b3', '[e3] [e3,b3]')
-    // the row's note in a chord becomes a rest where it is, as today's grid writes it
-    writes('[bd,sd] hh', 'sd', 'sd', '[bd,~] hh')
+    // the row's note leaves a chord; a chord left with one member is that member
+    writes('[bd,sd] hh', 'sd', 'sd', 'bd hh')
+    writes('[bd, sd]@2 hh', 'bd', 'bd', 'sd@2 hh')
+    writes('[bd, hh, sd] cp', 'hh', 'hh', '[bd, sd] cp')
+    writes('[bd, hh, sd] cp', 'bd', 'bd', '[hh, sd] cp')
+    writes('[bd, hh, sd] cp', 'sd', 'sd', '[bd, hh] cp')
+    // a chord of one has nothing to leave: its note becomes a rest
+    writes('[e3] [b3]', 'e3', 'e3', '[~] [b3]')
+  })
+
+  it('a click and a second click on the same step give back the text', () => {
+    roundTrips('bd sd', 'sd', 'bd')
+    roundTrips('[bd, hh] sd', 'sd', '[bd, hh]')
+    roundTrips('bd ~ sd ~', 'sd', '~')
+    roundTrips('bd@2 sd', 'sd', 'bd@2')
   })
 
   it('an alternation’s arm is a step of the one bar that plays it', () => {
     writes('<bd ~> hh', 'bd', '~', '<bd bd> hh', { bars: 2, bar: 1 })
     writes('<bd ~> hh', 'bd', 'bd', '<~ ~> hh', { bars: 2, bar: 0 })
+  })
+
+  it('a step written once and played in several places changes in every one (ruling of 2026-11-04)', () => {
+    // a group repeated by its op: both copies
+    writes('[bd ~]*2 sd', 'bd', '~', '[bd bd]*2 sd')
+    writes('[bd ~]!2 sd', 'bd', '~', '[bd bd]!2 sd')
+    writes('[~ bd](3,8)', 'bd', 'bd', '[~ ~](3,8)')
+    // an alternation's arm that comes round twice in four bars
+    writes('<bd ~> hh', 'bd', '~', '<bd bd> hh', { bars: 4, bar: 1 })
+    // a polymeter plays its one `bd` twice in the first bar, and comes round in three bars
+    writes('{bd ~ sd}%4', 'bd', 'bd', '{~ ~ sd}%4', { bars: 3 })
   })
 })
 
@@ -223,22 +292,15 @@ describe('toggleStep — refused where no change to one text is the one click', 
     refuses('bd ~!2', 'bd', '~!2', 'step-is-replicated')
   })
 
-  it('a step inside a group an op repeats, or a random choice', () => {
-    refuses('[bd ~]*2 sd', 'bd', '~', 'step-under-a-generator')
-    refuses('[bd ~]!2 sd', 'bd', '~', 'step-under-a-generator')
-    refuses('[~ bd](3,8)', 'bd', 'bd', 'step-under-a-generator')
+  it('a step in a random choice', () => {
     refuses('[bd | ~] sd', 'bd', 'bd', 'step-is-a-random-choice')
   })
 
-  it('an alternation counted over a loop it does not fill plays in several places', () => {
-    // `<bd ~>` over FOUR bars plays its `~` in bars 1 and 3: one text, two places
-    refuses('<bd ~> hh', 'bd', '~', 'step-plays-in-several-places', { bars: 4, bar: 1 })
+  it('an alternation the loop does not fill: the edit would change bars the view does not show', () => {
     // `<bd ~ sd ~>` over TWO bars: its `sd` and last `~` never come round, so the loop is one
-    // turn of four bars, and the first `~` plays again in bar 3
+    // turn of four bars
     refuses('<bd ~ sd ~> hh', 'bd', '~', 'loop-shorter-than-the-pattern', { bars: 2, bar: 1 })
     writes('<bd ~ sd ~> hh', 'bd', '~', '<bd bd sd ~> hh', { bars: 4, bar: 1 })
-    // `{bd ~ sd}%4` plays its one `bd` at 0 and again at 3/4 of the first bar
-    refuses('{bd ~ sd}%4', 'bd', 'bd', 'step-plays-in-several-places')
   })
 
   it('a group step, a name that is not one run of text, a tree of another string', () => {
@@ -259,10 +321,16 @@ describe('toggleStep — refused where no change to one text is the one click', 
     const { result, x } = toggle('bd ~ sd ~', 'sd', '~')
     if (!result.ok) throw new Error(result.why)
     // the same insert, one step later: `bd ~ sd sd` instead of `bd sd sd ~`
-    const shifted = applyStepEdit(x.mini, { from: result.edit.from + 5, to: result.edit.to + 5, insert: result.edit.insert })
+    const off = { from: result.edit.from + 5, to: result.edit.to + 5, insert: result.edit.insert }
+    const shifted = applyStepEdit(x.mini, off)
     expect(shifted).toBe('bd ~ sd sd')
-    expect(playsTheIntendedHit(x, shifted).ok).toBe(false)
-    expect(playsTheIntendedHit(x, applyStepEdit(x.mini, result.edit)).ok).toBe(true)
+    expect(playsTheStep(x, shifted, off).ok).toBe(false)
+    expect(playsTheStep(x, applyStepEdit(x.mini, result.edit), result.edit).ok).toBe(true)
+    // and an edit that changes one copy of a repeated step but not the other is not the click
+    const two = toggle('[bd ~]*2 sd', 'bd', '~')
+    if (!two.result.ok) throw new Error(two.result.why)
+    const oneCopy = '[[bd ~] [bd bd]] sd'
+    expect(playsTheStep(two.x, oneCopy, editOf(two.x.mini, oneCopy)).ok).toBe(false)
   })
 })
 
@@ -335,6 +403,13 @@ function spelling(mini: string, today: string, mine: string, span: { start: numb
   const before = chordAt(mini, b) ?? [mini.slice(span.start, span.end).trim()]
   const ours = chordAt(mine, b)
   const theirsChord = chordAt(today, a)
+  // the row's note in a chord: today writes a rest in its place, the new edit takes it out
+  // (and drops the brackets when one member is left) — the ruling of 2026-11-04
+  if (theirsChord && theirsChord.includes('~') && !before.includes('~')) {
+    const left = theirsChord.filter((m) => m !== '~')
+    const taken = editOf(mini, mine).insert.trim()
+    if ((ours && JSON.stringify(ours) === JSON.stringify(left)) || (left.length === 1 && taken === left[0])) return 'by design — the row’s note leaves the chord (ruling of 2026-11-04); today writes a rest in it'
+  }
   if (ours && theirsChord) {
     const without = (xs: string[]): string[] => xs.filter((x) => x !== sound || before.includes(sound))
     const keep = JSON.stringify(without(ours)) === JSON.stringify(before)
@@ -442,18 +517,26 @@ function sideBySide(writer: Writer, opts: { strudel: boolean; limit?: number }):
             const mine = writer(mini, trees, address, { sound: lane.sound, part: lane.part, order })
             const mineText = mine.ok ? applyStepEdit(mini, mine.edit) : null
             const where = `${JSON.stringify(mini)} row ${lane.sound}${lane.part === undefined ? '' : ` (part ${lane.part})`} bar ${b} col ${col} step ${JSON.stringify(mini.slice(s.span.start, s.span.end).trim())}`
+            const x: Toggle = { mini, bars, trees, address, sound: lane.sound, erase: s.name === lane.sound && !s.rest }
+            /** does `text` play exactly what the click asks? today's text is judged by the same rule, through its own edit */
+            const isTheClick = (text: string): boolean => {
+              try {
+                return playsTheStep(x, text, editOf(mini, text)).ok
+              } catch {
+                return false
+              }
+            }
             if (mine.ok) {
               r.bytesNew.push(rewritten(mini, mineText!))
               if (opts.strudel) {
-                const erase = s.name === lane.sound && !s.rest
-                let heard: ReturnType<typeof playsTheIntendedHit> | null = null
+                let heard: ReturnType<typeof playsTheStep> | null = null
                 try {
-                  heard = playsTheIntendedHit({ mini, bars, address, sound: lane.sound, part: lane.part, end: slot.end, erase }, mineText!)
+                  heard = playsTheStep(x, mineText!, mine.edit)
                 } catch {
                   heard = null
                 }
                 if (heard?.ok) r.strudelOk++
-                else r.strudelBad.push(`${where} → ${JSON.stringify(mineText)} ${heard ? JSON.stringify(heard.got) : 'does not evaluate'}`)
+                else r.strudelBad.push(`${where} → ${JSON.stringify(mineText)} ${heard ? JSON.stringify(heard) : 'does not evaluate'}`)
               }
             }
             if (today !== null) r.bytesToday.push(rewritten(mini, today))
@@ -464,14 +547,6 @@ function sideBySide(writer: Writer, opts: { strudel: boolean; limit?: number }):
               } else {
                 // WHY do they differ? Asked, not assumed: does Strudel play the two the same,
                 // and did today's writer change bytes outside the clicked step's own text?
-                const erase = s.name === lane.sound && !s.rest
-                const isTheClick = (text: string): boolean => {
-                  try {
-                    return playsTheIntendedHit({ mini, bars, address, sound: lane.sound, part: lane.part, end: slot.end, erase }, text).ok
-                  } catch {
-                    return false
-                  }
-                }
                 let same = false
                 try {
                   same = JSON.stringify(plays(today, bars * 2)) === JSON.stringify(plays(mineText!, bars * 2))
@@ -484,7 +559,9 @@ function sideBySide(writer: Writer, opts: { strudel: boolean; limit?: number }):
                     ? 'PLAYS DIFFERENTLY — the new edit does not play the click'
                     : isTheClick(today)
                       ? 'PLAYS DIFFERENTLY — both play the click'
-                      : 'today plays other than the click; the new edit plays exactly it'
+                      : beginsOf(x).size > 2
+                        ? 'by design — the step plays in several places: today changes the one clicked, the new edit every one (ruling of 2026-11-04)'
+                        : 'today plays other than the click; the new edit plays exactly it'
                 const list = (r.differ[kind] ??= [])
                 list.push(`${where}\n      today: ${JSON.stringify(today)}\n      new:   ${JSON.stringify(mineText)}`)
               }

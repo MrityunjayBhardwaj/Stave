@@ -18,14 +18,17 @@
  *     `bd:4`); what follows the name — its weight `@2`, its `_` holds — stays as written.
  *     A chord (`[bd,sd]`): its members, inside its own brackets. Nothing around the step is
  *     respelled; an edit that would need that is refused.
- *  2. A generated step keeps its generator. If one written text plays as several steps or
- *     hits (`hh*4`, `bd(3,8)`, `bd!3`, `[bd ~]*2`, `{…}%n`, an alternation's arm that comes
- *     round more than once in the loop), or plays only by chance (`bd?`, `bd | sd`), a
- *     click on one of them is refused: no edit to that text changes only the one clicked.
- *  3. A step another sound of the same part already plays keeps today's grid: the row's
- *     sound JOINS it as a chord (`bd` → `[bd,sd]`, `[bd, hh]` → `[bd, hh, sd]`), and the
- *     row's note in a chord becomes a rest in place (`[bd,sd]` → `[bd,~]`) — both measured
- *     on today's grid before this was written; see the side-by-side test.
+ *  2. A click edits the WRITTEN step, every place it plays. A text the pattern plays in
+ *     several places — a group repeated (`[bd ~]*2`, `[bd ~]!3`, `[bd ~](3,8)`), a group
+ *     every bar plays, a polymeter (`{…}%n`) — changes everywhere together, as the text does
+ *     (the user's ruling, 2026-11-04).
+ *  3. A generator ON THE STEP keeps its generator: one text whose own op makes its hits
+ *     (`hh*4`, `bd(3,8)`, `bd!3`), or that plays by chance (`bd?`, `bd | sd`, `[bd ~]?`), is
+ *     refused — a click on one of its hits is not a click on its text.
+ *  4. A step another sound of the same part already plays keeps today's grid: the row's
+ *     sound JOINS it as a chord (`bd` → `[bd,sd]`, `[bd, hh]` → `[bd, hh, sd]`). The row's
+ *     note in a chord LEAVES it, and a chord left with one member is that member
+ *     (`[bd,sd]` → `bd`), so a second click gives back the text the first click changed.
  *
  * THE ADDRESS is a bar, the step's span, and where in that bar the step begins. Later
  * stages reuse it as is: a split (`bd` → `[bd ~]`) and a resize (`bd` → `bd@2`) rewrite the
@@ -33,13 +36,13 @@
  * step the same way.
  *
  * ⚠ `trees` MUST BE THE WHOLE LOOP the view draws — `chunkDivisions(mini, bars)` with the
- * grid's own bar count. "Plays once" is counted over those bars. Where a row of the step's
- * is an alternation (some of what it writes sits in other bars), every step it writes must
- * turn up somewhere in the loop, or the loop is shorter than the pattern and the toggle is
- * refused rather than written into one turn of several.
+ * grid's own bar count. Where a row of the step's is an alternation (some of what it writes
+ * sits in other bars), every step it writes must turn up somewhere in the loop, or the loop
+ * is shorter than the pattern: the edit would change bars the view does not show, and it is
+ * refused.
  */
 import type { StepLane } from './notation/model'
-import { laneDivisions, type BarTree, type BarTreeRefusal, type DivisionRow, type DivisionStep, type Frac, type LaneDivisionsRefusal, type Slot } from './gridDivisions'
+import { laneDivisions, type BarTree, type BarTreeRefusal, type DivisionRow, type DivisionStep, type Frac, type LaneDivisionsRefusal } from './gridDivisions'
 import type { MiniSpan } from './strudelMini/shape'
 
 /** one step of one bar, by where it is written */
@@ -90,12 +93,10 @@ export type StepEditRefusal =
   | 'step-is-replicated'
   /** the step's own op makes its hits (`hh*4`, `bd(3,8)`, `bd?`, `bd/2`) */
   | 'step-is-generated'
-  /** a group the step sits in carries an op that repeats, thins or stretches it (`[bd ~]*2`, `[bd ~]?`) */
+  /** a group the step sits in plays by chance (`[bd ~]?`), or carries an op that is not a plain repeat */
   | 'step-under-a-generator'
   /** the step sits in a random choice (`[bd | ~]`, `bd | sd`): which copy plays is chance */
   | 'step-is-a-random-choice'
-  /** the step's one text plays in more than one place over the loop (`{…}%n`, an arm that comes round twice) */
-  | 'step-plays-in-several-places'
   /** a row the step sits in writes steps that never play in the loop: the loop is one turn of a longer pattern */
   | 'loop-shorter-than-the-pattern'
 
@@ -128,19 +129,14 @@ function findIn(row: DivisionRow, key: string, span: MiniSpan, around: DivisionS
   return null
 }
 
-/**
- * Over every bar: every slot the written step at `span` takes, and for each row (by key)
- * the steps of it that sit in some bar — or the first bar's refusal.
- */
-function overTheLoop(trees: readonly BarTree[], span: MiniSpan): { places: Slot[]; seen: Map<string, Set<string>> } | BarTreeRefusal {
-  const places: Slot[] = []
+/** over every bar: for each row (by key), the steps of it that sit in some bar — or the first bar's refusal */
+function overTheLoop(trees: readonly BarTree[]): Map<string, Set<string>> | BarTreeRefusal {
   const seen = new Map<string, Set<string>>()
   const visit = (row: DivisionRow, key: string): void => {
     let got = seen.get(key)
     if (!got) seen.set(key, (got = new Set()))
     for (const s of row.steps) {
       got.add(spanKey(s.span))
-      if (sameSpan(s.span, span)) places.push(...s.slots)
       ;(s.rows ?? []).forEach((r, j) => visit(r, `${spanKey(s.span)}#${j}`))
     }
   }
@@ -148,7 +144,7 @@ function overTheLoop(trees: readonly BarTree[], span: MiniSpan): { places: Slot[
     if (!t.ok) return t.why
     t.parts.forEach((p, i) => visit(p, `part${i}`))
   }
-  return { places, seen }
+  return seen
 }
 
 /* ── chords ─────────────────────────────────────────────────────── */
@@ -213,6 +209,9 @@ function rank(order: readonly string[], name: string): number {
 
 /* ── the toggle ─────────────────────────────────────────────────── */
 
+/** group ops that repeat what the group holds: each copy is the same written text */
+const REPEATS = new Set(['replicate', 'stretch', 'bjorklund'])
+
 const refuse = (why: StepEditRefusal): StepEditResult => ({ ok: false, why })
 const write = (from: number, to: number, insert: string): StepEditResult => ({ ok: true, edit: { from, to, insert } })
 
@@ -239,9 +238,12 @@ export function toggleStep(mini: string, trees: readonly BarTree[], address: Ste
   if (!slot) return refuse('no-step-there')
 
   if (around.some((g) => g.oneOf)) return refuse('step-is-a-random-choice')
-  // `[bd ~]*2`, `[bd ~](3,8)`, `[bd ~]?`, `[bd ~]/2`: what the group's op does to the step
-  // is not the step's text to change. A weight on the group (`[bd ~]@2`) is not an op.
-  if (around.some((g) => g.ops.length > 0)) return refuse('step-under-a-generator')
+  // A group that REPEATS what it holds (`[bd ~]*2`, `[bd ~]!3`, `[bd ~](3,8)`, `[bd ~]/2`)
+  // plays the step's one text in several places, and an edit to that text changes every
+  // one of them together — the user's ruling (2026-11-04): a click edits the written step,
+  // all its copies. A group op that plays by CHANCE (`[bd ~]?`), or one this file does not
+  // know, is refused: what it would play is not a set of copies.
+  if (around.some((g) => g.ops.some((o) => !REPEATS.has(o)))) return refuse('step-under-a-generator')
   // `bd!3` (and a bare `bd!`) is ONE text that plays as three steps. A click is on one of
   // them, and no change to that text touches only that one: `~ bd!2` or `bd ~ bd` respell
   // the step into several — the replication is a generator like `*n`, and it keeps its
@@ -252,14 +254,14 @@ export function toggleStep(mini: string, trees: readonly BarTree[], address: Ste
   if (step.ops.some((o) => o !== 'tail')) return refuse('step-is-generated')
   if (slot.fromBefore || slot.pastEnd) return refuse('step-crosses-a-bar')
 
-  // The text plays exactly once over the loop, or a change to it changes more than the click…
-  const loop = overTheLoop(trees, address.span)
+  // Where the text plays over the loop: once, or in several places that all change together
+  // (a group played in every bar, `{…}%n`, a repeated group). The loop must be the whole of
+  // every row the step sits in: an alternation whose arms do not all come round in it
+  // (`<a b c d>` over two bars) plays past the loop's end, where the view cannot show it.
+  const loop = overTheLoop(trees)
   if (typeof loop === 'string') return refuse(loop)
-  if (loop.places.length !== 1) return refuse('step-plays-in-several-places')
-  // …and the loop is the whole of every row the step sits in: an alternation whose arms do
-  // not all come round in it (`<a b c d>` over two bars) repeats past the loop's end.
   for (const { row: r, key } of found.rows) {
-    if ((loop.seen.get(key)?.size ?? 0) < r.written) return refuse('loop-shorter-than-the-pattern')
+    if ((loop.get(key)?.size ?? 0) < r.written) return refuse('loop-shorter-than-the-pattern')
   }
 
   const order = row.order ?? lane.row.sounds
@@ -278,14 +280,28 @@ export function toggleStep(mini: string, trees: readonly BarTree[], address: Ste
 
   if (step.rest) return write(from, to, row.sound)
 
-  // a note plays exactly the one hit its slot holds, where the slot begins — anything else
-  // was made by something the tree does not name as an op, and is not this step's text
-  if (step.hits.length !== 1 || !sameFrac(step.hits[0].begin, slot.begin)) return refuse('step-is-generated')
+  // a note plays one hit in each of its slots, where the slot begins — anything else was made
+  // by something the tree does not name as an op, and is not this step's text
+  if (step.hits.length !== step.slots.length || !step.hits.every((h) => step.slots.some((s) => sameFrac(h.begin, s.begin)))) return refuse('step-is-generated')
 
-  // The row's own note becomes a rest — inside a chord too (`[c,e]` → `[~,e]`): that is what
-  // today's grid writes there, measured over the corpus, and it is the member's own text. A
-  // chord is not tidied away around it.
-  if (step.name === row.sound) return write(from, to, '~')
+  if (step.name === row.sound) {
+    // The row's own note in a plain chord leaves the chord, so a click and a second click give
+    // back the text that was there (`[bd, hh]` → `[bd, hh, sd]` → `[bd, hh]`); a chord left
+    // with one member is that member (`[bd,sd]` → `bd`) — the user's ruling, 2026-11-04. A
+    // chord of one (`[bd]`) has nothing to leave, and its note becomes a rest like any other.
+    const chord = around.length > 0 ? chordOf(around[around.length - 1], mini) : null
+    if (chord && chord.length > 1) {
+      const k = chord.findIndex((m) => sameSpan(m.span, step.span!))
+      if (k < 0) return refuse('tree-is-not-this-text')
+      if (chord.length === 2) {
+        const { open, close } = bracketsOf(mini, chord)!
+        return write(open, close + 1, chord[1 - k].name)
+      }
+      // the member and the separator before it (after it, for the first)
+      return k === 0 ? write(chord[0].span.start, chord[1].span.start, '') : write(chord[k - 1].span.end, chord[k].span.end, '')
+    }
+    return write(from, to, '~')
+  }
 
   // Another sound of the same part plays here. Today's grid answers with a chord, its
   // members in the order of the grid's rows (`bd sd`, row bd on the `sd` → `[bd,sd]`); kept.
