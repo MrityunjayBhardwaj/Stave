@@ -13721,10 +13721,20 @@ function nameOf2(e) {
   return name;
 }
 __name(nameOf2, "nameOf");
-function stepOut(s, cyc) {
+function headOf(e, name, mini) {
+  if (e.content.kind !== "atom" || name === null) return null;
+  const start = e.content.span.start;
+  const end = start + name.length;
+  return mini.slice(start, end) === name ? { start, end } : null;
+}
+__name(headOf, "headOf");
+function stepOut(s, cyc, mini) {
+  const name = nameOf2(s.element);
   return {
     span: s.element.span,
-    name: nameOf2(s.element),
+    name,
+    head: headOf(s.element, name, mini),
+    ops: s.element.ops.map((o) => o.kind),
     rest: s.rest,
     reps: s.element.reps,
     weight: s.element.weight,
@@ -13735,7 +13745,7 @@ function stepOut(s, cyc) {
       args: j.args.map((a) => ({ text: a.text, span: a.span }))
     })),
     copies: s.copies,
-    rows: s.rows ? s.rows.map((r) => rowOut(r, cyc)) : null,
+    rows: s.rows ? s.rows.map((r) => rowOut(r, cyc, mini)) : null,
     oneOf: s.oneOf
   };
 }
@@ -13752,8 +13762,9 @@ function soundsIn(group, out) {
   return out;
 }
 __name(soundsIn, "soundsIn");
-var rowOut = /* @__PURE__ */ __name((r, cyc) => ({
-  steps: r.steps.map((s) => stepOut(s, cyc)),
+var rowOut = /* @__PURE__ */ __name((r, cyc, mini) => ({
+  steps: r.steps.map((s) => stepOut(s, cyc, mini)),
+  written: r.group.children.length,
   sounds: [...soundsIn(r.group, /* @__PURE__ */ new Set())]
 }), "rowOut");
 var KEEP = 16;
@@ -13771,7 +13782,7 @@ function chunkDivisions(mini, bars) {
     const pat = miniPattern(mini);
     trees = Array.from({ length: bars }, (_, cyc) => {
       const d = barDivisions(pat, cyc);
-      return d.ok ? { ok: true, parts: d.parts.map((r) => rowOut(r, cyc)), oneOf: d.oneOf } : { ok: false, why: d.why };
+      return d.ok ? { ok: true, parts: d.parts.map((r) => rowOut(r, cyc, mini)), oneOf: d.oneOf } : { ok: false, why: d.why };
     });
   } catch {
     trees = Array.from({ length: bars }, () => ({ ok: false, why: "does-not-evaluate" }));
@@ -35412,10 +35423,10 @@ function getCurrentBranch(h) {
   return h.currentBranch;
 }
 __name(getCurrentBranch, "getCurrentBranch");
-function headOf(h, branch = h.currentBranch) {
+function headOf2(h, branch = h.currentBranch) {
   return h.branches[branch]?.head ?? null;
 }
-__name(headOf, "headOf");
+__name(headOf2, "headOf");
 function getFileContentAt(h, fileId, commitId) {
   let walk5 = commitId;
   while (walk5 !== null) {
@@ -35496,7 +35507,7 @@ function filesAliveAt(h, commitId) {
   return alive;
 }
 __name(filesAliveAt, "filesAliveAt");
-function changedFiles(h, liveFiles, baseCommit = headOf(h)) {
+function changedFiles(h, liveFiles, baseCommit = headOf2(h)) {
   const changed = {};
   for (const [f, content] of Object.entries(liveFiles)) {
     const at = baseCommit ? getFileContentAt(h, f, baseCommit) : null;
@@ -36067,7 +36078,7 @@ async function _commit(kind, opts = {}) {
   const changedKeys = Object.keys(changed);
   if (changedKeys.length === 0 && !opts.allowEmpty) return null;
   if (opts.gate) {
-    const head = headOf(current3);
+    const head = headOf2(current3);
     const pairs = changedKeys.map((f) => ({
       prev: head && getFileContentAt(current3, f, head) || "",
       next: changed[f]
@@ -36131,7 +36142,7 @@ __name(revertFileToSeed, "revertFileToSeed");
 function discardFileChanges(fileId) {
   return withLock(async () => {
     if (!current3) return;
-    const head = headOf(current3);
+    const head = headOf2(current3);
     if (!head) return;
     const content = getFileContentAt(current3, fileId, head);
     const live = readWorkspaceFiles();
@@ -36150,7 +36161,7 @@ function discardFileChanges(fileId) {
 __name(discardFileChanges, "discardFileChanges");
 function isFileModifiedSinceHead(fileId) {
   if (!current3) return false;
-  const head = headOf(current3);
+  const head = headOf2(current3);
   if (!head) return false;
   const live = readWorkspaceFiles();
   const liveContent = Object.prototype.hasOwnProperty.call(live, fileId) ? live[fileId] : null;
@@ -36164,7 +36175,7 @@ function getLiveFileContent(fileId) {
 __name(getLiveFileContent, "getLiveFileContent");
 function getModifiedFileIdsSinceHead() {
   if (!current3) return /* @__PURE__ */ new Set();
-  const head = headOf(current3);
+  const head = headOf2(current3);
   if (!head) return /* @__PURE__ */ new Set();
   return new Set(Object.keys(changedFiles(current3, readWorkspaceFiles(), head)));
 }
@@ -36187,7 +36198,7 @@ function forkToEditFromCommit(commitId) {
     while (existing.has(name)) name = `${base}-${n++}`;
     current3 = createBranch(current3, name, commitId, now());
     current3 = switchBranch(current3, name);
-    const head = headOf(current3);
+    const head = headOf2(current3);
     if (head) {
       const snap = snapshotAt(current3, head);
       applySnapshot(snap.files, current3.fileMeta, snap.order);
@@ -36201,7 +36212,7 @@ function switchToBranch(name) {
   return withLock(async () => {
     if (!current3) return;
     current3 = switchBranch(current3, name);
-    const head = headOf(current3);
+    const head = headOf2(current3);
     if (head) {
       const snap = snapshotAt(current3, head);
       applySnapshot(snap.files, current3.fileMeta, snap.order);
