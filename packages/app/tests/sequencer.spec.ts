@@ -397,13 +397,18 @@ test.describe('Sequencer (#382)', () => {
     await expect(empty).toHaveAttribute('aria-pressed', 'false')
     await expect(empty).not.toHaveAttribute('data-seq-cell-inert', 'true')
     await empty.click()
-    await expect.poll(() => strudelValue(page)).toBe('$: s("<bd bd - ->*2")')
+    // column 1 is where Strudel plays the second `-` (`*2` plays two arms a cycle)
+    await expect.poll(() => strudelValue(page)).toBe('$: s("<bd - bd ->*2")')
 
-    // and the notes that are here still delete
+    // and the notes that are here still delete — on the text as it was: `<bd - bd ->*2`
+    // plays the same in both cycles, so the grid reads it as one bar, where the four arms
+    // do not all come round and the loop rule refuses (#2292)
+    await setStrudelCode(page, '$: s("<bd - - ->*2")')
+    await placeCursorOn(page, 'bd')
     const held = grid.locator('[data-seq-cell="0:0"]')
     await expect(held).toHaveAttribute('aria-pressed', 'true')
     await held.click()
-    await expect.poll(() => strudelValue(page)).toBe('$: s("<~ bd - ->*2")')
+    await expect.poll(() => strudelValue(page)).toBe('$: s("<~ - - ->*2")')
   })
 
   /**

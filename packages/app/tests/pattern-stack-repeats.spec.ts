@@ -67,8 +67,10 @@ test.describe('a comma pattern with a `<…>` part (#1849)', () => {
     await cell(seq, 'bd step 11').click()
     await expect.poll(() => editorValue(page)).toBe('$: s("<[bd ~ bd ~] [bd bd ~ bd]>, ~ sd ~ sd, hh*8")')
     await expect(cell(seq, 'bd step 11')).toHaveAttribute('aria-pressed', 'true')
-    await expect(cell(seq, 'bd step 3')).toHaveAttribute('aria-pressed', 'true')
-    await expect(cell(seq, 'bd step 7')).toHaveAttribute('aria-pressed', 'false')
+    // bar 1's `[bd ~ bd ~]` is untouched: kicks at its 1st and 5th columns, rests between
+    await expect(cell(seq, 'bd step 1')).toHaveAttribute('aria-pressed', 'true')
+    await expect(cell(seq, 'bd step 3')).toHaveAttribute('aria-pressed', 'false')
+    await expect(cell(seq, 'bd step 5')).toHaveAttribute('aria-pressed', 'true')
   })
 
   test('CONTROL: a comma pattern that plays one bar is edited as before', async ({ page }) => {

@@ -869,7 +869,7 @@
   },
   "sequencer-erase-refusal.spec.ts": {
     "runs": "gate",
-    "why": "A lit sequencer cell whose erase the writer refuses must say so: inert and titled for the pointer, and reported as a warning for a key, which never sees a title (#1836). Before, every lit cell looked clickable and 285 of the corpus's erase clicks did nothing silently."
+    "why": "A hit the grid draws more than once from one written note (#1836 refused its erase): since the ruling of #2292 the click erases the written note, every copy. Pins the code read back, that both copies go dark (and only they), by mouse and by key, with a note drawn once erasing alone as the control, on a two-bar and a one-bar grid."
   },
   "sequencer-velocity-writable.spec.ts": {
     "runs": "gate",

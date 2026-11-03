@@ -1,47 +1,40 @@
 /**
- * Removing a hit the grid cannot remove must SAY so, never silently do nothing (#1836).
+ * Removing a hit the grid draws more than once from ONE written note (#1836, #2292).
  *
- * WHY A BROWSER TEST. `toggleCell` already refuses these erases correctly — the corpus
- * sweep counts 285 of the 5,707 erase clicks the sequencer offers. What went wrong was the
- * PANEL: it treated every lit cell as clickable (`canPlace = on || …`) and never looked at
- * whether the toggle came back unchanged. No model-level arm can see that, because none of
- * them render a cell or read the Console.
+ * #1836 made the panel say so when an erase was refused — and these were the erases it
+ * refused: a hit whose written note plays in more than one box of the view (`bd` outside
+ * every `< >` over two bars, `sd` in `[- sd]*2`), which the leaf writer could not remove
+ * from one box without respelling the pattern.
  *
- * The pointer is told BEFORE the click: a refused lit cell is inert (`aria-disabled`) and
- * titled with the reason, exactly as a refused EMPTY cell has been since #1070. The keys
- * are told AT the press, as a `stave` warn row (the roll's `reportRefusal` shape), since a
- * key user never sees a title.
+ * THE RULING OF 2026-11-04 (#2292) REVERSES THAT: a click edits the WRITTEN step, every
+ * place it plays. So erasing one of those boxes erases the written note, and every box it
+ * draws goes with it — one small edit at the note's own text. This file now pins that: the
+ * code read back, and that EVERY copy of the hit is gone from the grid, not only the box
+ * that was clicked.
  *
- * Two fixtures, both leaf-read, which is where every one of the 285 refusals lives: the
- * two-bar grid the issue was observed on (10 of 13 lit cells refuse), and a one-bar corpus
- * grid where the `sd` hits are one token drawn twice (`[- sd]*2`). The one-bar grid is the
- * case a velocity drag would have kept pressable — on leaf grids the writer never writes
- * velocity (#1839), so it is inert like the rest.
+ * WHY A BROWSER TEST. The writer and its corpus sweep are pinned in the editor's unit
+ * tests; only the panel shows that every lit cell is offered, that the click reaches the
+ * writer, and that the grid redraws BOTH copies from what was written.
  *
- * ⚠ EACH REFUSED ARM HAS A TWIN ON THE SAME GRID that erases normally, so "nothing
- * happened" cannot be read as "the click never landed", and "one warning" cannot be
- * satisfied by reporting that is always on.
+ * ⚠ EACH ARM HAS A TWIN: a hit written once and drawn once, erased the same way, so
+ * "both copies went" cannot be satisfied by a grid that clears whole rows.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { bootApp, seedCode, editorValue } from './_appBoot'
-import { expectRefusalReported, expectNoRefusalReported } from './_console'
+import { expectNoRefusalReported } from './_console'
 
-/** Two bars (the `< >` entries) — velocity is out of scope, so refusals are pre-announced. */
+/** Two bars (the `< >` entries). The third `bd` sits outside every `< >`: one note, drawn in both bars. */
 const TWO_BARS = '$: s("<bd [~ bd]>@2 hh@2 bd <bd ~> [hh bd] [~ hh]")'
-/** `hh@2` sits outside every `< >`, so it is drawn once per bar over ONE span — refused */
-const TWO_BARS_REFUSED = '0:8'
-/** the first `bd` is inside `< >`, one bar's own token — accepted */
-const TWO_BARS_ACCEPTED = '0:0'
-const TWO_BARS_AFTER = '$: s("<~ [~ bd]>@2 hh@2 bd <bd ~> [hh bd] [~ hh]")'
+/** that `bd`'s box in bar 1 — a box #1836 refused */
+const TWICE = '0:8'
+/** the written `bd`, erased: its own text and nothing else */
+const TWO_BARS_ERASED = '$: s("<bd [~ bd]>@2 hh@2 ~ <bd ~> [hh bd] [~ hh]")'
+/** the first `bd` is inside `< >`, one bar's own note — drawn once */
+const TWO_BARS_ONCE_AFTER = '$: s("<~ [~ bd]>@2 hh@2 bd <bd ~> [hh bd] [~ hh]")'
 
-/**
- * One bar, leaf-read: the `sd` token `[- sd]*2` is drawn as two hits. It sits inside a
- * one-branch `<…>` — which plays the same — because a stack part read with a wrapper
- * still sends the whole pattern to the leaf reading. Written plain, `[- sd]*2` is read
- * as a part's written step since #1849, and its two hits are erasable (the region
- * re-spells), so it would no longer be the leaf case this describe is about.
- */
+/** One bar: the `sd` of `[- sd]*2` is one written note drawn as two hits. */
 const ONE_BAR = '$: s("[bd - [- bd] -], <[- sd]*2>")'
+const ONE_BAR_NO_SD = '$: s("[bd - [- bd] -], <[- ~]*2>")'
 
 async function openSequencer(page: Page, code: string) {
   await bootApp(page, { drawer: { tabId: 'pattern', height: 520 } })
@@ -51,127 +44,81 @@ async function openSequencer(page: Page, code: string) {
   return grid
 }
 
-/** A lit cell, located and centred. Fails loudly if the fixture moved. */
-async function litCell(page: Page, key: string) {
-  const loc = page.locator(`[data-bottom-panel-tab="sequencer"] [data-seq-cell="${key}"]`)
-  await expect(loc, `cell ${key} must be drawn`).toHaveCount(1)
-  await expect(loc, `cell ${key} must be lit`).toHaveAttribute('aria-pressed', 'true')
-  const b = await loc.boundingBox()
-  if (!b) throw new Error(`cell ${key} has no box`)
-  return { loc, x: b.x + b.width / 2, y: b.y + b.height / 2 }
-}
-
 /** The lit cells of the open grid, by key, and which of them are marked inert. */
-async function litKeys(page: Page): Promise<{ key: string; inert: boolean; title: string | null }[]> {
+async function litKeys(page: Page): Promise<{ key: string; row: string; inert: boolean }[]> {
   return page
     .locator('[data-bottom-panel-tab="sequencer"] [data-seq-cell][aria-pressed="true"]')
     .evaluateAll((els) =>
       els.map((e) => ({
         key: e.getAttribute('data-seq-cell')!,
+        row: e.getAttribute('aria-label')?.split(' ')[0] ?? '',
         inert: e.getAttribute('aria-disabled') === 'true',
-        title: e.getAttribute('title'),
       })),
     )
 }
 
-test.describe('a refused erase is said before the click (#1836)', () => {
-  test('the refused lit cell is inert and titled; a click leaves the code alone and raises nothing', async ({
-    page,
-  }) => {
-    await openSequencer(page, TWO_BARS)
-    const cell = await litCell(page, TWO_BARS_REFUSED)
-    await expect(cell.loc, 'a lit cell whose erase is refused must be marked inert').toHaveAttribute(
-      'aria-disabled',
-      'true',
-    )
-    await expect(cell.loc).toHaveAttribute('title', /plays in more than one box/)
+/** the lit cells of the row that draws `sound` */
+async function litOf(page: Page, sound: string): Promise<string[]> {
+  return (await litKeys(page)).filter((c) => c.row === sound).map((c) => c.key)
+}
 
-    await page.mouse.click(cell.x, cell.y)
-    // Give a write the time it would take to land, then require the bytes unchanged.
-    await page.waitForTimeout(700)
-    expect(await editorValue(page)).toBe(TWO_BARS)
-    // Announced up front, like a refused placement — so the click itself is quiet.
-    await expectNoRefusalReported(page)
-  })
-
-  test('the removable lit cell on the same grid is not inert, and its click erases', async ({ page }) => {
-    await openSequencer(page, TWO_BARS)
-    const cell = await litCell(page, TWO_BARS_ACCEPTED)
-    await expect(cell.loc).not.toHaveAttribute('aria-disabled', 'true')
-    await expect(cell.loc).not.toHaveAttribute('title', /.+/)
-
-    await page.mouse.click(cell.x, cell.y)
-    await expect.poll(() => editorValue(page), { message: 'the accepted erase must write' }).toBe(TWO_BARS_AFTER)
-    await expectNoRefusalReported(page)
-  })
-
-  test('every lit cell tells the truth: inert exactly where the erase is refused (10 of 13)', async ({
-    page,
-  }) => {
+test.describe('a hit drawn twice from one written note: the click erases the note, every copy (#2292)', () => {
+  test('two bars: every lit cell is offered', async ({ page }) => {
     await openSequencer(page, TWO_BARS)
     const lit = await litKeys(page)
     expect(lit.length, 'the fixture draws 13 hits').toBe(13)
-    // The model-level answer for this grid, from `canToggleCell(model, l, s, false)`:
-    // only the three tokens inside `< >` accept an erase.
-    const removable = ['0:0', '0:10', '0:18']
-    expect(lit.filter((c) => !c.inert).map((c) => c.key)).toEqual(removable)
-    for (const c of lit.filter((c) => c.inert)) expect(c.title, `${c.key} must say why`).toBeTruthy()
+    expect(lit.filter((c) => c.inert).map((c) => c.key), 'no lit cell is refused').toEqual([])
   })
-})
 
-/**
- * THE KEYS. A title is invisible to someone on the keyboard, and the grid swallows a
- * bound key before asking the op, so an inert cell alone would leave Delete on it doing
- * nothing and saying nothing — the bug on the other input device. Same grid, same
- * twin: the refused key is reported, the accepted one writes and stays quiet.
- */
-test.describe('a refused erase by key is reported (#1836)', () => {
-  test('Delete on a hit the grid cannot remove leaves the code alone and says so', async ({ page }) => {
-    await openSequencer(page, TWO_BARS)
-    const cell = await litCell(page, TWO_BARS_REFUSED)
-    await cell.loc.focus()
+  test('two bars: erasing the third `bd` in bar 1 writes `~`, and bar 2’s copy goes too', async ({ page }) => {
+    const grid = await openSequencer(page, TWO_BARS)
+    const before = (await litKeys(page)).map((c) => c.key)
+    await grid.locator(`[data-seq-cell="${TWICE}"]`).click()
+    await expect.poll(() => editorValue(page)).toBe(TWO_BARS_ERASED)
+    // exactly two boxes went dark — the clicked one, and its copy in the other bar
+    await expect.poll(async () => (await litKeys(page)).length).toBe(before.length - 2)
+    const after = (await litKeys(page)).map((c) => c.key)
+    const gone = before.filter((k) => !after.includes(k))
+    expect(gone).toContain(TWICE)
+    expect(gone.length).toBe(2)
+    const [row, col] = TWICE.split(':').map(Number)
+    const other = gone.find((k) => k !== TWICE)!
+    expect(Number(other.split(':')[0]), 'the copy is in the same row').toBe(row)
+    expect(Number(other.split(':')[1]), 'the copy is in the other bar').not.toBe(col)
+    await expectNoRefusalReported(page)
+  })
+
+  test('two bars, by key: Delete on that `bd` box erases the written note', async ({ page }) => {
+    const grid = await openSequencer(page, TWO_BARS)
+    await grid.locator(`[data-seq-cell="${TWICE}"]`).focus()
     await page.keyboard.press('Delete')
-    await page.waitForTimeout(700)
-    expect(await editorValue(page), 'a refused key erase must not write').toBe(TWO_BARS)
-    await expectRefusalReported(page, "Couldn't remove that hit")
-  })
-
-  test('Delete on a removable hit erases it and stays quiet', async ({ page }) => {
-    await openSequencer(page, TWO_BARS)
-    const cell = await litCell(page, TWO_BARS_ACCEPTED)
-    await cell.loc.focus()
-    await page.keyboard.press('Delete')
-    await expect.poll(() => editorValue(page), { message: 'the accepted key erase must write' }).toBe(TWO_BARS_AFTER)
-    await expectNoRefusalReported(page)
-  })
-})
-
-test.describe('a one-bar grid refuses the same way (#1836)', () => {
-  test('the hit drawn twice from one token is inert and titled; a click leaves the code alone', async ({
-    page,
-  }) => {
-    await openSequencer(page, ONE_BAR)
-    const sd = (await litKeys(page)).filter((c) => c.key.startsWith('1:'))
-    expect(sd.length, 'the `sd` lane draws two hits from one token').toBe(2)
-    const cell = await litCell(page, sd[0].key)
-    await expect(cell.loc).toHaveAttribute('aria-disabled', 'true')
-    await expect(cell.loc).toHaveAttribute('title', /plays in more than one box/)
-
-    await page.mouse.click(cell.x, cell.y)
-    await page.waitForTimeout(700)
-    expect(await editorValue(page), 'a refused erase must not write').toBe(ONE_BAR)
+    await expect.poll(() => editorValue(page)).toBe(TWO_BARS_ERASED)
     await expectNoRefusalReported(page)
   })
 
-  test('the removable hit on the same grid erases and stays quiet', async ({ page }) => {
-    await openSequencer(page, ONE_BAR)
-    const cell = await litCell(page, '0:0')
-    await expect(cell.loc).not.toHaveAttribute('title', /.+/)
+  test('CONTROL, two bars: a note drawn once erases only its own box', async ({ page }) => {
+    const grid = await openSequencer(page, TWO_BARS)
+    const kicks = await litOf(page, 'bd')
+    await grid.locator('[data-seq-cell="0:0"]').click()
+    await expect.poll(() => editorValue(page)).toBe(TWO_BARS_ONCE_AFTER)
+    expect(await litOf(page, 'bd')).toEqual(kicks.filter((k) => k !== '0:0'))
+  })
 
-    await page.mouse.click(cell.x, cell.y)
-    await expect
-      .poll(() => editorValue(page), { message: 'the accepted erase must write' })
-      .not.toBe(ONE_BAR)
+  test('one bar: erasing one `sd` of `[- sd]*2` erases the written note — both hits', async ({ page }) => {
+    const grid = await openSequencer(page, ONE_BAR)
+    const sd = await litOf(page, 'sd')
+    expect(sd.length, 'the `sd` row draws two hits from one written note').toBe(2)
+    await grid.locator(`[data-seq-cell="${sd[0]}"]`).click()
+    await expect.poll(() => editorValue(page)).toBe(ONE_BAR_NO_SD)
+    for (const k of sd) await expect(grid.locator(`[data-seq-cell="${k}"]`)).toHaveAttribute('aria-pressed', 'false')
     await expectNoRefusalReported(page)
+  })
+
+  test('CONTROL, one bar: the first kick erases alone', async ({ page }) => {
+    const grid = await openSequencer(page, ONE_BAR)
+    const kicks = await litOf(page, 'bd')
+    await grid.locator('[data-seq-cell="0:0"]').click()
+    await expect.poll(() => editorValue(page)).toBe('$: s("[~ - [- bd] -], <[- sd]*2>")')
+    expect(await litOf(page, 'bd')).toEqual(kicks.filter((k) => k !== '0:0'))
   })
 })

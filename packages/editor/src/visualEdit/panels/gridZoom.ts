@@ -226,7 +226,7 @@ export function partSteps(model: Pick<StepGridModel, 'steps' | 'bars' | 'barStep
 }
 
 /** why a drawn column names no step a click can edit */
-export type StepAtRefusal = LaneStepsRefusal | 'inside-a-step' | 'step-is-generated'
+export type StepAtRefusal = LaneStepsRefusal | 'inside-a-step' | 'step-is-generated' | 'step-is-replicated'
 
 /**
  * The written step a click on lane `lane`, drawn column `col` lands on (#2292): the step
@@ -266,12 +266,14 @@ export function stepAddressAt(
         }
         // a hit that begins part-way through its step was made by the step's own op
         // (`hh*4`'s second hat): that is the reason to give, not "inside a step"
-        if (s.hits.some((h) => Math.abs(num(h.begin) * per - want) < 1e-9)) generated = true
+        if (s.hits.some((h) => Math.abs(num(h.begin) * per - want) < 1e-9)) {
+          generated = s.reps > 1 || s.ops.includes('replicate') ? 'step-is-replicated' : 'step-is-generated'
+        }
       }
       return null
     }
-    let generated = false
-    return visit(d.row) ?? (generated ? 'step-is-generated' : 'inside-a-step')
+    let generated: 'step-is-generated' | 'step-is-replicated' | null = null
+    return visit(d.row) ?? generated ?? 'inside-a-step'
   }
   return 'inside-a-step'
 }

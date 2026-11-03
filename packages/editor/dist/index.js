@@ -39502,12 +39502,14 @@ function stepAddressAt(model, trees, lane, col) {
           if (slot.fromBefore) continue;
           if (Math.abs(num(slot.begin) * per - want) < 1e-9) return { bar: b, span: s.span, at: slot.begin };
         }
-        if (s.hits.some((h) => Math.abs(num(h.begin) * per - want) < 1e-9)) generated = true;
+        if (s.hits.some((h) => Math.abs(num(h.begin) * per - want) < 1e-9)) {
+          generated = s.reps > 1 || s.ops.includes("replicate") ? "step-is-replicated" : "step-is-generated";
+        }
       }
       return null;
     }, "visit");
-    let generated = false;
-    return visit(d.row) ?? (generated ? "step-is-generated" : "inside-a-step");
+    let generated = null;
+    return visit(d.row) ?? generated ?? "inside-a-step";
   }
   return "inside-a-step";
 }

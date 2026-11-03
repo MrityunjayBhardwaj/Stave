@@ -54,6 +54,8 @@ describe('stepAddressAt — the step a column names', () => {
     // a hat that begins part-way through `hh*4` was made by its op, and says so
     expect(landsOn('bd hh*4', 'hh', 5)).toBe('refused: step-is-generated')
     expect(click('bd hh*4', 'hh', 4)).toBe('refused: step-is-generated')
+    // and one inside `bd!3` was made by its `!`
+    expect(landsOn('bd!3', 'bd', 1)).toBe('refused: step-is-replicated')
   })
 
   it('a click writes the step’s own text', () => {
