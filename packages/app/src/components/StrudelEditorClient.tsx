@@ -101,6 +101,7 @@ import {
   type BouncedStem,
   revealLineInFile,
 } from "@stave/editor";
+import { addsAreQuiet } from "../quietAdds";
 import { reportWriteRefusal } from "../lib/writeRefusal";
 import { noticeBareExpression, storedTold } from "../lib/bareExpressionNotice";
 import { showToast } from "../dialogs/host";
@@ -1917,6 +1918,8 @@ export default function StrudelEditorClient({
       const handle = shellRef?.current;
       if (!handle) return;
       for (const id of removed) handle.closeTabsForFile(id);
+      // an import opens the one file it means you to see (#2288)
+      if (addsAreQuiet()) return;
       // An empty folder's hidden placeholder is not something to edit: it
       // opened as an empty, unnamed-looking tab on every New folder (#2089).
       const placeholders = new Set(listWorkspaceFiles().filter((f) => isPlaceholder(f.path)).map((f) => f.id));

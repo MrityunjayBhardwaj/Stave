@@ -546,17 +546,16 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         const manifest = await loadIncomingShare(incoming);
         const ok = await showConfirm({
           title: "Import shared project?",
-          description: `Import "${manifest.project.name}" as a new project? It contains ${manifest.files.length} file(s).`,
+          description: `Add the ${manifest.files.length} file(s) of "${manifest.project.name}" to this project, in a new folder under shared/?`,
           confirmLabel: "Import",
         });
         clearShareFragment();
         if (!ok) return;
-        if (unsavedBlocksLeaving()) return;
-        const meta = await applyShareManifest(manifest);
-        const list = await listProjects();
-        setProjects(list);
-        setActiveProject(meta);
-        showToast(`Imported ${meta.name}`, "info");
+        // #2288 — into the project that is open, under shared/<when>/; nothing is left,
+        // so nothing unsaved can be lost
+        const placed = applyShareManifest(manifest);
+        if (placed.open) shellRef.current?.openOrFocusFile(placed.open);
+        showToast(`Imported ${manifest.project.name} into ${placed.folder}`, "info");
       } catch (err) {
         console.error("[stave] share import failed:", err);
         showToast(
