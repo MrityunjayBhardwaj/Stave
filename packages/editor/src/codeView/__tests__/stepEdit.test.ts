@@ -22,6 +22,7 @@ import {
   chunkDivisions,
   isCellOn,
   laneDivisions,
+  laneRowForEdit,
   parseStepGrid,
   serializeStepGrid,
   toggleCell,
@@ -258,6 +259,20 @@ describe('toggleStep — one step, its own text, checked by Strudel', () => {
     writes('[e3] [b3]', 'e3', 'e3', '[~] [b3]')
   })
 
+  it('a row whose sound the text does not write yet (a voice just added) edits its part', () => {
+    const mini = 'bd ~ sd ~'
+    const trees = chunkDivisions(mini, 1)
+    const rest = stepAt(trees, 0, 'bd', undefined, '~', mini)
+    const r = toggleStep(mini, trees, rest.address, { sound: 'cp' })
+    expect(r.ok && applyStepEdit(mini, r.edit)).toBe('bd cp sd ~')
+    const kick = stepAt(trees, 0, 'bd', undefined, 'bd', mini)
+    const k = toggleStep(mini, trees, kick.address, { sound: 'cp', order: ['bd', 'sd', 'cp'] })
+    expect(k.ok && applyStepEdit(mini, k.edit)).toBe('[bd,cp] ~ sd ~')
+    // under several parts, a new voice with no part named has none to edit
+    const two = chunkDivisions('bd ~, hh hh', 1)
+    expect(toggleStep('bd ~, hh hh', two, stepAt(two, 0, 'bd', 0, '~', 'bd ~, hh hh').address, { sound: 'cp' })).toEqual({ ok: false, why: 'lane-part-unknown' })
+  })
+
   it('a click and a second click on the same step give back the text', () => {
     roundTrips('bd sd', 'sd', 'bd')
     roundTrips('[bd, hh] sd', 'sd', '[bd, hh]')
@@ -307,8 +322,8 @@ describe('toggleStep — refused where no change to one text is the one click', 
     refuses('[bd sd, hh] cp', 'cp', '[bd sd, hh]', 'step-is-a-group')
     // the `sd` row on a note whose tail alternates: its name is no one run of text
     refuses('bd:<1 2> sd', 'sd', 'bd:<1 2>', 'step-has-no-text')
-    // and a row of that note's own name is not a sound the part writes as such
-    expect(toggleStep('bd:<1 2> ~', chunkDivisions('bd:<1 2> ~', 1), { bar: 0, span: { start: 0, end: 9 }, at: { n: 0, d: 1 } }, { sound: 'bd' })).toEqual({ ok: false, why: 'lane-sound-not-in-part' })
+    // and the row of that note's own name lands on the same step, which has no name to change
+    expect(toggleStep('bd:<1 2> ~', chunkDivisions('bd:<1 2> ~', 1), { bar: 0, span: { start: 0, end: 9 }, at: { n: 0, d: 1 } }, { sound: 'bd' })).toEqual({ ok: false, why: 'step-has-no-text' })
     const mini = 'bd ~ sd ~'
     const trees = chunkDivisions(mini, 1)
     const { address } = stepAt(trees, 0, 'sd', undefined, '~', mini)
@@ -486,7 +501,8 @@ function sideBySide(writer: Writer, opts: { strudel: boolean; limit?: number }):
     const trees = chunkDivisions(mini, bars)
     m.lanes.forEach((lane, li) => {
       for (let b = 0; b < bars; b++) {
-        const d = laneDivisions(trees[b], lane)
+        // the row a click edits — the one the panel asks for (`laneRowForEdit`)
+        const d = laneRowForEdit(trees[b], lane)
         if (!d.ok) {
           bump(r.skipped, `row has no tree row: ${d.why}`)
           continue

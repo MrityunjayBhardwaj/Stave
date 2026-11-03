@@ -18,7 +18,7 @@
  * slot lands on a whole column, and the row's notes start where its cells do (the same
  * check the corpus test pins). Otherwise `null`, and the row draws as it does today.
  */
-import { laneDivisions, type BarTree, type DivisionRow, type DivisionStep, type Frac, type StepGridModel } from '../../codeView'
+import { laneDivisions, laneRowForEdit, type BarTree, type DivisionRow, type DivisionStep, type Frac, type StepAddress, type StepGridModel } from '../../codeView'
 import { groupBoxesBySteps, type StepGroup } from './writtenSteps'
 
 /** a step opens once each step inside it is at least this wide: the grid's click floor */
@@ -223,6 +223,57 @@ export function partStepsOrWhy(model: Pick<StepGridModel, 'steps' | 'bars' | 'ba
 export function partSteps(model: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, trees: readonly BarTree[], part: number): StepNode[] | null {
   const r = partStepsOrWhy(model, trees, part)
   return typeof r === 'string' ? null : r
+}
+
+/** why a drawn column names no step a click can edit */
+export type StepAtRefusal = LaneStepsRefusal | 'inside-a-step' | 'step-is-generated'
+
+/**
+ * The written step a click on lane `lane`, drawn column `col` lands on (#2292): the step
+ * of the row this lane draws (the same `innerRow` rule the drawing uses) whose slot BEGINS
+ * at that column. A column part-way through a step (`bd@2`'s second column) names none —
+ * splitting a step is a later stage's gesture. The address is what `toggleStep` takes.
+ */
+export function stepAddressAt(
+  model: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps' | 'lanes'>,
+  trees: readonly BarTree[],
+  lane: number,
+  col: number,
+): StepAddress | StepAtRefusal {
+  const bars = model.bars ?? 1
+  if (trees.length !== bars) return 'bar-count'
+  const l = model.lanes[lane]
+  if (!l) return 'lane-part-missing'
+  for (let b = 0; b < bars; b++) {
+    const { start, per } = barColumns(model, b)
+    if (col < start || col >= start + per) continue
+    // the row the click edits, a voice the text does not write yet included
+    const d = laneRowForEdit(trees[b], l)
+    if (!d.ok) return d.why
+    const want = col - start
+    const visit = (row: DivisionRow): StepAddress | null => {
+      for (const s of row.steps) {
+        const inner = s.rows ? innerRow(s, l.sound) : null
+        if (inner) {
+          const got = visit(inner)
+          if (got) return got
+          continue
+        }
+        if (!s.span) continue
+        for (const slot of s.slots) {
+          if (slot.fromBefore) continue
+          if (Math.abs(num(slot.begin) * per - want) < 1e-9) return { bar: b, span: s.span, at: slot.begin }
+        }
+        // a hit that begins part-way through its step was made by the step's own op
+        // (`hh*4`'s second hat): that is the reason to give, not "inside a step"
+        if (s.hits.some((h) => Math.abs(num(h.begin) * per - want) < 1e-9)) generated = true
+      }
+      return null
+    }
+    let generated = false
+    return visit(d.row) ?? (generated ? 'step-is-generated' : 'inside-a-step')
+  }
+  return 'inside-a-step'
 }
 
 /** every open step's first column and its depth: where the lines go, and how light */

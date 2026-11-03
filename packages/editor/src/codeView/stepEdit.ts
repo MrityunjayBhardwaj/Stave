@@ -102,6 +102,31 @@ export type StepEditRefusal =
 
 export type StepEditResult = { ok: true; edit: StepEdit } | { ok: false; why: StepEditRefusal }
 
+/* ── the row a grid row edits ───────────────────────────────────── */
+
+/**
+ * The tree row a grid row edits: `laneDivisions`'s answer, and two more.
+ *
+ * - A row that names no part under several (a grid read leaf by leaf, `bd ~, <[~ sd]*2>`):
+ *   the one part that writes its sound, when exactly one does — `laneDivisions` will not
+ *   guess, and this is not a guess: no other part has a step of that sound to edit.
+ * - A row whose sound the text does not write anywhere yet (a voice just added, or one
+ *   emptied of its last note): its own part, or the only part. `laneDivisions` refuses it
+ *   because there it checks the grid's parts are Strudel's; a sound written nowhere has
+ *   nothing to check, and the rests it would land on are the part's own.
+ */
+export function laneRowForEdit(tree: BarTree, row: Pick<StepLane, 'sound' | 'part'>): ReturnType<typeof laneDivisions> {
+  const lane = laneDivisions(tree, row)
+  if (!lane.ok && lane.why === 'lane-part-unknown' && tree.ok) {
+    const writes = tree.parts.filter((p) => p.sounds.includes(row.sound))
+    return writes.length === 1 ? { ok: true, row: writes[0], oneOf: tree.oneOf } : lane
+  }
+  if (lane.ok || lane.why !== 'lane-sound-not-in-part' || !tree.ok) return lane
+  if (tree.parts.some((p) => p.sounds.includes(row.sound))) return lane
+  const part = tree.parts[row.part ?? 0]
+  return part ? { ok: true, row: part, oneOf: tree.oneOf } : lane
+}
+
 /* ── finding the step ───────────────────────────────────────────── */
 
 const sameSpan = (a: MiniSpan | null, b: MiniSpan): boolean => !!a && a.start === b.start && a.end === b.end
@@ -227,11 +252,12 @@ const write = (from: number, to: number, insert: string): StepEditResult => ({ o
 export function toggleStep(mini: string, trees: readonly BarTree[], address: StepAddress, row: StepRow): StepEditResult {
   const tree = trees[address.bar]
   if (!tree) return refuse('no-such-bar')
-  const lane = laneDivisions(tree, row)
+  const lane = laneRowForEdit(tree, row)
   if (!lane.ok) return refuse(lane.why)
   // a random choice of whole parts: what the bar plays is chance
   if (lane.oneOf) return refuse('step-is-a-random-choice')
-  const found = findIn(lane.row, `part${row.part ?? 0}`, address.span, [], [])
+  // the part's key by its place in the bar, since the row may not name it
+  const found = findIn(lane.row, `part${tree.ok ? tree.parts.indexOf(lane.row) : 0}`, address.span, [], [])
   if (!found) return refuse('no-step-there')
   const { step, around } = found
   const slot = step.slots.find((s) => sameFrac(s.begin, address.at))

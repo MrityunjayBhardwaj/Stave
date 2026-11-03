@@ -36,10 +36,10 @@ import { opensStepGrid } from '../../codeView'
 import { useGridModel } from './useGridModel'
 import { stepToCycle, usePlayingStep } from './usePlayingStep'
 import { addLane, removeLane } from '../../codeView'
-import { canResizeCell, canToggleCell, resizeCell, toggleCell } from '../../codeView'
+import { canResizeCell, resizeCell, toggleStep, type StepEditResult } from '../../codeView'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice, chordLanes, stepNotes, stepNoteKey, chunkDivisions } from '../../codeView'
-import { OPEN_PX, drawnSteps, laneSteps, openAt, zoomRuler, type DrawnStep } from './gridZoom'
+import { OPEN_PX, drawnSteps, laneSteps, openAt, stepAddressAt, zoomRuler, type DrawnStep, type StepAtRefusal } from './gridZoom'
 import { GridZoomControl, useGridZoom } from './gridZoomControl'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
@@ -101,12 +101,43 @@ const clamp01 = (v: number): number => Math.max(0, Math.min(1, v))
  * toggle the corpus offers is pre-announced, so no fixture reaches that one.
  * `emitLog` coalesces identical rows, so a repeated attempt ticks one row up.
  */
-function reportRefusal(attempted: string): void {
+function reportRefusal(attempted: string, why?: string): void {
   emitLog({
     level: 'warn',
     runtime: 'stave',
-    message: `${attempted} — writing it would change the pattern in ways you didn't ask for, so it was left unchanged.`,
+    message: why
+      ? `${attempted} — ${why.charAt(0).toLowerCase()}${why.slice(1)}`
+      : `${attempted} — writing it would change the pattern in ways you didn't ask for, so it was left unchanged.`,
   })
+}
+
+/**
+ * Why a click on a step is refused (#2292), in words, for the cell's title and the
+ * console line. A click edits the step's own text or nothing (the user's ruling: refuse
+ * rather than respell), so each reason says what in the text stops it and where to go.
+ */
+function stepRefusalLine(why: string, on: boolean): string {
+  switch (why) {
+    case 'inside-a-step':
+      return 'This column is part of a longer step — click where the step begins, or change it in the code view.'
+    case 'step-is-generated':
+      return "This hit is made by an operator on its step (like *4 or (3,8)) — change it in the code view."
+    case 'step-is-replicated':
+      return 'This step is written once and repeated with ! — change it in the code view.'
+    case 'step-is-a-random-choice':
+    case 'step-under-a-generator':
+      return 'This step plays by chance (? or |) — change it in the code view.'
+    case 'loop-shorter-than-the-pattern':
+      return "This step also plays in bars the grid doesn't show — change it in the code view."
+    case 'step-crosses-a-bar':
+      return 'This note runs over a bar line — change it in the code view.'
+    case 'step-is-a-group':
+      return on
+        ? 'This hit sits in a group the grid cannot take it out of — change it in the code view.'
+        : "This step holds a group the grid can't add a sound to — change it in the code view."
+    default:
+      return "The grid can't find this step's own text to change — change it in the code view."
+  }
 }
 
 /**
@@ -131,7 +162,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // reaches the document until an actual edit is made, and the first write absorbs
   // it (`useGridModel` → `absorbViewScale`).
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const { chunk, model, read, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
+  const { chunk, model, read, mutate, writeMini, writeStep, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
     ...stepGridCodec,
     source: 'seq',
     eligible: opensStepGrid,
@@ -186,6 +217,8 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     mode: 'paint' | 'pending' | 'velocity' | 'resize'
     paintValue: boolean
   } | null>(null)
+  /** the sound of the row a paint drag began in: the drag paints that row and no other */
+  const paintSoundRef = React.useRef<string | null>(null)
 
   // Velocity is offered where the WRITER will write it — `gainWritable` asks `serializeStepGain`
   // itself, the way the roll's `gainWritable` asks `serializeRollGain` (#1089), not
@@ -250,15 +283,43 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   //
   // A box in Exact is asked as the click it is: a hit one whole box long, at its first
   // column (#1855). The columns inside a box are never drawn, so they are not asked.
+  //
+  // ⚠ THE CLICK IS THE STEP WRITER'S NOW (#2292). A click edits the clicked step's own text
+  // — `~` → `sd`, `sd` → `~`, `bd` → `[bd,sd]` — through `toggleStep`, asked of the tree
+  // Strudel gives the text; where that cannot be written as the step's own text the click is
+  // REFUSED with its reason, never handed to the column writer to respell the pattern (the
+  // user's ruling). So this map, the press, the keys and the drag all ask that one writer.
+  // A step written once and played in several places changes everywhere it plays.
+  const stepMini = chunk?.miniString ?? null
+  const stepTrees = React.useMemo(
+    () => (model && stepMini !== null && !model.lookOnly ? chunkDivisions(stepMini, model.bars ?? 1) : null),
+    // the tree depends on the text and the bar count, not on every model a drag makes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stepMini, model?.bars, !!model, !!model?.lookOnly],
+  )
+  const stepToggles = React.useMemo((): Array<Array<StepEditResult | { ok: false; why: StepAtRefusal } | null>> | null => {
+    if (!model || !stepTrees || stepMini === null) return null
+    return model.lanes.map((lane, li) => {
+      const w = boxes?.[li]?.[0]?.width ?? 1
+      // the grid's rows of this part, in its order: a chord writes its members so
+      const order = model.lanes.filter((l) => (l.part ?? 0) === (lane.part ?? 0)).map((l) => l.sound)
+      return lane.cells.map((_, si) => {
+        if (si % w !== 0) return null
+        const at = stepAddressAt(model, stepTrees, li, si)
+        if (typeof at === 'string') return { ok: false, why: at }
+        return toggleStep(stepMini, stepTrees, at, { sound: lane.sound, part: lane.part, order })
+      })
+    })
+  }, [model, boxes, stepTrees, stepMini])
+  const modelRef = React.useRef(model)
+  modelRef.current = model
+  const stepTogglesRef = React.useRef(stepToggles)
+  stepTogglesRef.current = stepToggles
+  const stepMiniRef = React.useRef(stepMini)
+  stepMiniRef.current = stepMini
   const toggleable = React.useMemo(
-    () =>
-      model
-        ? model.lanes.map((lane, li) => {
-            const w = boxes?.[li]?.[0]?.width ?? 1
-            return lane.cells.map((c, si) => si % w === 0 && canToggleCell(model, li, si, !isCellOn(c), w))
-          })
-        : null,
-    [model, boxes],
+    () => (stepToggles ? stepToggles.map((row) => row.map((r) => !!r && r.ok)) : model ? model.lanes.map((l) => l.cells.map(() => false)) : null),
+    [stepToggles, model],
   )
 
   // Does this view place notes ANYWHERE? Said ONCE here rather than as a grid
@@ -394,28 +455,42 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   //
   // A hit is painted one box long: one column in LCM, one of the part's own steps in
   // Exact (#1855) — the step the user sees and clicked.
+  //
+  // The toggle is the step writer's (#2292): the answer `stepToggles` already holds for
+  // this box, made in the text it was computed from. A write that finds the text changed
+  // under it (a drag faster than the re-read) writes nothing, and is counted as refused.
   const paintCell = React.useCallback(
-    (laneIndex: number, stepIndex: number, value: boolean): boolean => {
-      let refused = false
-      const length = boxWidth(laneIndex)
-      mutate((prev) => {
-        const lane = prev.lanes[laneIndex]
-        if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) {
-          return prev // no change → useGridModel skips the write
-        }
-        const next = toggleCell(prev, laneIndex, stepIndex, value, length)
-        refused = next === prev
-        return next
-      })
-      return refused
+    (laneIndex: number, stepIndex: number, value: boolean): { refused: boolean; why?: string } => {
+      const lane = modelRef.current?.lanes[laneIndex]
+      if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) return { refused: false }
+      const answer = stepTogglesRef.current?.[laneIndex]?.[stepIndex]
+      const mini = stepMiniRef.current
+      if (!answer || mini === null) return { refused: true }
+      if (!answer.ok) return { refused: true, why: answer.why }
+      // The rows on screen stay on screen, where they were (#1161). The model is read again
+      // from the written text, which lists rows in the order sounds first play and leaves
+      // out a row with no note — so a row this edit empties, or one staged by Add voice and
+      // not written yet, is put back empty, and every row keeps its place: a click does not
+      // move the row under the pointer.
+      const shown = modelRef.current?.lanes ?? []
+      const keep = (read: StepGridModel): StepGridModel => {
+        const same = (a: { sound: string; part?: number }, b: { sound: string; part?: number }): boolean => a.sound === b.sound && (a.part ?? 0) === (b.part ?? 0)
+        const lanes = shown.map(
+          (l) => read.lanes.find((r) => same(r, l)) ?? { sound: l.sound, part: l.part, cells: Array<StepGridModel['lanes'][number]['cells'][number]>(read.steps).fill(false) },
+        )
+        for (const r of read.lanes) if (!shown.some((l) => same(r, l))) lanes.push(r)
+        return lanes.every((l, i) => l === read.lanes[i]) && lanes.length === read.lanes.length ? read : { ...read, lanes }
+      }
+      return { refused: !writeStep(mini, answer.edit, keep) }
     },
-    [mutate],
+    [writeStep],
   )
-  /** One deliberate toggle — a press or a key — which says so when it is refused. */
+  /** One deliberate toggle — a press or a key — which says so, and why, when it is refused. */
   const paintOne = React.useCallback(
     (laneIndex: number, stepIndex: number, value: boolean): void => {
-      if (paintCell(laneIndex, stepIndex, value)) {
-        reportRefusal(value ? "Couldn't add that hit" : "Couldn't remove that hit")
+      const { refused, why } = paintCell(laneIndex, stepIndex, value)
+      if (refused) {
+        reportRefusal(value ? "Couldn't add that hit" : "Couldn't remove that hit", why ? stepRefusalLine(why, !value) : undefined)
       }
     },
     [paintCell],
@@ -522,6 +597,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
 
   const onCellDown = (laneIndex: number, stepIndex: number, current: boolean, e: React.PointerEvent): void => {
     beginGesture()
+    paintSoundRef.current = model?.lanes[laneIndex]?.sound ?? null
     if (current) {
       // an ON cell starts PENDING: a vertical drag becomes velocity, a horizontal
       // drag paint-off, and a release with no drag toggles it OFF (onUp). Direct
@@ -580,6 +656,10 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
       return
     }
     if (g.mode !== 'paint') return
+    // A paint drag stays in the row it began in (#2292). A click now writes text and the
+    // grid redraws from it, so rows can move under a pointer that has not: the cell it
+    // "enters" then belongs to another row, and painting it was a write nobody made.
+    if (laneIndex !== g.lane || modelRef.current?.lanes[laneIndex]?.sound !== paintSoundRef.current) return
     paintCell(laneIndex, stepIndex, g.paintValue)
   }
 
@@ -658,8 +738,10 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // the handler has already swallowed the key, so without this the key does nothing
   // and says nothing: the very bug, one input device over. A dry run (the palette
   // asking whether the command applies) stays quiet and just answers no.
-  const refuseKey = (on: boolean, dryRun: boolean): false => {
-    if (!dryRun) reportRefusal(on ? "Couldn't remove that hit" : "Couldn't add that hit")
+  const refuseKey = (on: boolean, dryRun: boolean, at?: { row: number; col: number }): false => {
+    const answer = at ? stepToggles?.[at.row]?.[at.col] : null
+    const why = answer && !answer.ok ? stepRefusalLine(answer.why, on) : undefined
+    if (!dryRun) reportRefusal(on ? "Couldn't remove that hit" : "Couldn't add that hit", why)
     return false
   }
 
@@ -691,7 +773,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
         // Exactly what a click does: the cell flips where the writer takes it
         // (`toggleable`, the same gate that makes the cell inert to the pointer —
         // an ON cell included, #1836); a column a note sounds through is inert.
-        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun)
+        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun, { row: at.row, col })
         if (!dryRun) {
           if (!cursorRef.current) setCursor(at)
           paintByKey(at.row, col, !on)
@@ -699,7 +781,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
         return true
       case 'remove':
         if (!on) return false // nothing under the cursor: nothing asked, nothing to say
-        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun)
+        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun, { row: at.row, col })
         if (!dryRun) paintByKey(at.row, col, false)
         return true
       default:
@@ -1193,18 +1275,19 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                     // A LIT cell's reason is its own (#1836): on a leaf grid a hit
                     // whose text plays in more than one box has no replacement that
                     // removes only this box — all 285 refused erases in the corpus.
+                    //
+                    // Since #2292 the reason is the step writer's own: the click edits
+                    // the step's text or is refused, and the sentence names what in the
+                    // text stops it (`stepRefusalLine`).
                     title={
                       lookOnly
                         ? lookOnlyLine(lookOnly)
                         : canToggle
                         ? playsNote ? `${lane.sound} plays ${playsNote}` : undefined
-                        : on
-                          ? model.leafSource
-                            ? 'This hit comes from text that plays in more than one box here — remove it in the code view.'
-                            : 'Removing this hit would change the pattern in other places too — the grid has no way to write that.'
-                          : model.leafSource
-                            ? 'This pattern edits its existing notes — add steps in the code view.'
-                            : 'Adding a step here would change how long another sound plays — the grid has no way to write that.'
+                        : stepRefusalLine((() => {
+                            const a = stepToggles?.[laneIndex]?.[stepIndex]
+                            return a && !a.ok ? a.why : ''
+                          })(), on)
                     }
                     onPointerDown={(e) => {
                       e.preventDefault()
@@ -1231,7 +1314,11 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                           return
                         }
                       }
-                      if (!canToggle) return
+                      // A lit cell whose toggle is refused still takes its velocity drag
+                      // where velocity is written (#2292): a hit made by `*2` cannot be
+                      // removed from the grid, but how loud it plays is its own write. A
+                      // release with no drag then asks the toggle, which says why it is refused.
+                      if (!canToggle && !(on && gainScoped)) return
                       onCellDown(laneIndex, stepIndex, on, e)
                     }}
                     onPointerEnter={() => onCellEnter(laneIndex, stepIndex, w)}
