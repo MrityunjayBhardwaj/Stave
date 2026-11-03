@@ -64,23 +64,29 @@ test.describe('nested steps in Exact (#1861)', () => {
     }
   })
 
-  test('a click inside a step writes what it always wrote', async ({ page }) => {
+  test('a click inside a step writes that step’s own text', async ({ page }) => {
     const seq = await open(page, BEAT)
     // the rest inside [~ bd]
     await cell(seq, '0:2').click()
     await expect.poll(() => editorValue(page)).toBe('$: s("bd [bd bd] sd ~, hh*8")')
     await cell(seq, '0:2').click()
     await expect.poll(() => editorValue(page)).toBe(BEAT)
-    // a hat inside the one hh*8 step
-    await cell(seq, '2:3').click()
-    await expect.poll(() => editorValue(page)).toBe('$: s("bd [~ bd] sd ~, [hh hh hh ~ hh hh hh hh]")')
+    // a hat inside the one hh*8 step is made by `*8`: refused, the generator kept (#2292)
+    await expect(cell(seq, '2:3')).toHaveAttribute('aria-disabled', 'true')
+    await expect(cell(seq, '2:3')).toHaveAttribute('title', /operator on its step/)
+    await cell(seq, '2:3').click({ force: true })
+    await page.waitForTimeout(150)
+    expect(await editorValue(page)).toBe(BEAT)
   })
 
-  test('a click on a faint half of a plain step splits it, as the column did', async ({ page }) => {
+  test('a faint half of a plain step is not a step: the click is refused and says why', async ({ page }) => {
+    // splitting `bd` into `[bd bd]` respells the step; it is a later gesture (#2292, #2293)
     const seq = await open(page, BEAT)
     await expect(cell(seq, '0:1')).toHaveAttribute('aria-label', 'bd step 2, held from step 1')
-    await cell(seq, '0:1').click()
-    await expect.poll(() => editorValue(page)).toBe('$: s("[bd bd] [~ bd] sd ~, hh*8")')
+    await expect(cell(seq, '0:1')).toHaveAttribute('title', /part of a longer step/)
+    await cell(seq, '0:1').click({ force: true })
+    await page.waitForTimeout(150)
+    expect(await editorValue(page)).toBe(BEAT)
   })
 
   test('the playing column of a plain step is still marked', async ({ page }) => {

@@ -41,12 +41,15 @@ async function setGridMode(page: Page, mode: 'exact' | 'lcm'): Promise<string> {
 }
 
 test.describe('Exact grid mode (#1855)', () => {
-  test('is the default: each part at its own steps, every box editable', async ({ page }) => {
+  test('is the default: each part at its own steps, every written step editable', async ({ page }) => {
     const seq = await open(page, BEAT)
-    // kick 2 bars × 4, snare 2 × 4, hats 2 × 8 — against LCM's 48 cells, 8 of them locked
+    // kick 2 bars × 4, snare 2 × 4, hats 2 × 8
     await expect(seq.locator('[data-seq-cell]')).toHaveCount(32)
     await expect(seq.locator('[data-seq-cell][data-seq-box-width="2"]')).toHaveCount(16)
-    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(0)
+    // every kick and snare box is a written step a click edits; the 16 hats are made by
+    // `*8`, and a click on one of them is refused — it keeps its generator (#2292)
+    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(16)
+    await expect(seq.locator('[data-seq-cell-inert="true"][aria-label^="hh "]')).toHaveCount(16)
     await expect(cell(seq, 'sd step 2')).toHaveAttribute('aria-pressed', 'true')
     await expect(cell(seq, 'sd step 3')).toHaveAttribute('aria-pressed', 'false')
 
@@ -58,12 +61,14 @@ test.describe('Exact grid mode (#1855)', () => {
     expect(Math.abs(box!.x + box!.width - (h4!.x + h4!.width))).toBeLessThan(1)
   })
 
-  test('a click on an empty own step writes the whole step, in that bar only', async ({ page }) => {
+  test('a click on an empty own step writes the step’s own text, in every bar it plays', async ({ page }) => {
+    // `~ sd ~ sd` is written once and plays in both bars: its first `~` is one step of text,
+    // and a click changes it everywhere it plays (the ruling of 2026-11-04, #2292)
     const seq = await open(page, BEAT)
     await cell(seq, 'sd step 1').click()
-    await expect.poll(() => editorValue(page)).toBe(`$: s("${KICK}, <[sd sd ~ sd] [~ sd ~ sd]>, hh*8")`)
+    await expect.poll(() => editorValue(page)).toBe(`$: s("${KICK}, sd sd ~ sd, hh*8")`)
     await expect(cell(seq, 'sd step 1')).toHaveAttribute('aria-pressed', 'true')
-    await expect(cell(seq, 'sd step 5')).toHaveAttribute('aria-pressed', 'false')
+    await expect(cell(seq, 'sd step 5')).toHaveAttribute('aria-pressed', 'true')
     // and off again: the pattern as it was
     await cell(seq, 'sd step 1').click()
     await expect.poll(() => editorValue(page)).toBe(BEAT)
@@ -79,8 +84,12 @@ test.describe('Exact grid mode (#1855)', () => {
     const seq = await open(page, '$: s("bd*3, hh*4")')
     await expect(seq.locator('[data-seq-cell][aria-label^="bd "]')).toHaveCount(3)
     await expect(seq.locator('[data-seq-cell][aria-label^="hh "]')).toHaveCount(4)
-    await cell(seq, 'bd step 2').click()
-    await expect.poll(() => editorValue(page)).toBe('$: s("[bd ~ bd], hh*4")')
+    // the kicks are made by `*3`: a click on one is refused and says why (#2292)
+    await expect(cell(seq, 'bd step 2')).toHaveAttribute('aria-disabled', 'true')
+    await expect(cell(seq, 'bd step 2')).toHaveAttribute('title', /operator on its step/)
+    await cell(seq, 'bd step 2').click({ force: true })
+    await page.waitForTimeout(150)
+    expect(await editorValue(page)).toBe('$: s("bd*3, hh*4")')
   })
 
   test('keys step over a whole box and act on it', async ({ page }) => {
@@ -93,7 +102,7 @@ test.describe('Exact grid mode (#1855)', () => {
     )
     await page.keyboard.press('ArrowRight')
     await page.keyboard.press('Enter')
-    await expect.poll(() => editorValue(page)).toBe(`$: s("${KICK}, <[~ sd sd sd] [~ sd ~ sd]>, hh*8")`)
+    await expect.poll(() => editorValue(page)).toBe(`$: s("${KICK}, ~ sd sd sd, hh*8")`)
   })
 
   test('the setting redraws an open grid, both ways', async ({ page }) => {
@@ -101,10 +110,11 @@ test.describe('Exact grid mode (#1855)', () => {
     await expect(seq.locator('[data-seq-cell]')).toHaveCount(32)
     expect(await setGridMode(page, 'lcm')).toBe('exact')
     await expect(seq.locator('[data-seq-cell]')).toHaveCount(48)
-    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(8)
+    // LCM: the 16 hats, and the second column of each kick and snare step (16)
+    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(32)
     expect(await setGridMode(page, 'exact')).toBe('lcm')
     await expect(seq.locator('[data-seq-cell]')).toHaveCount(32)
-    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(0)
+    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(16)
   })
 
   // ── PART 2: the other gestures move by the box the row draws ──────────────────────
@@ -171,12 +181,13 @@ test.describe('Exact grid mode (#1855)', () => {
     expect(await editorValue(page)).toBe('$: s("~ sd ~ ~, hh*8")')
   })
 
-  test('CONTROL: LCM draws and writes as it always did', async ({ page }) => {
+  test('CONTROL: LCM draws the same and writes the same step text', async ({ page }) => {
     const seq = await open(page, BEAT, 'lcm')
     await expect(seq.locator('[data-seq-cell]')).toHaveCount(48)
-    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(8)
+    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(32)
+    // the last snare of bar 2 is the same written `sd` as bar 1's: both go (#2292)
     await cell(seq, 'sd step 15').click()
-    await expect.poll(() => editorValue(page)).toBe(`$: s("${KICK}, <[~ sd ~ sd] [~ sd ~ ~]>, hh*8")`)
+    await expect.poll(() => editorValue(page)).toBe(`$: s("${KICK}, ~ sd ~ ~, hh*8")`)
   })
 
   test('CONTROL: a pattern whose parts share one grid looks the same in both modes', async ({ page }) => {

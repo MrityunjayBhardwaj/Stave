@@ -151,7 +151,7 @@ test.describe('Sequencer behaviour-projection (#922)', () => {
  * a real panel, because "the view opens" and "the view can be worked with" are
  * different claims and only the second one matters.
  */
-test('a period longer than four bars opens a coarse grid and edits by byte surgery', async ({
+test('a period longer than four bars opens a coarse grid; its stretched step keeps its `/8`', async ({
   page,
 }) => {
   await boot(page)
@@ -165,10 +165,12 @@ test('a period longer than four bars opens a coarse grid and edits by byte surge
   for (let c = 1; c < 8; c++) {
     await expect(grid.locator(`[data-seq-cell="0:${c}"]`)).toHaveAttribute('aria-pressed', 'false')
   }
-  // clearing the sounding cell replaces that token's bytes; the `/8` rides back
-  await grid.locator('[data-seq-cell="0:0"]').click()
-  await page.waitForTimeout(80)
-  expect(await strudelValue(page)).toBe('$: s("~/8")')
+  // `hacking/8` is one text its own `/8` stretches over eight bars: the step's op makes
+  // where it sounds, so a click on it is refused and says why (#2292)
+  await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('title', /operator on its step/)
+  await grid.locator('[data-seq-cell="0:0"]').click({ force: true })
+  await page.waitForTimeout(150)
+  expect(await strudelValue(page)).toBe('$: s("hacking/8")')
 })
 
 /**
