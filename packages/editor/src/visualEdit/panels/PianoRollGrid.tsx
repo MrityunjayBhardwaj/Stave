@@ -24,6 +24,7 @@ import { lookOnlyLine } from '../../codeView'
 import { drawnLayout, chunkDivisions } from '../../codeView'
 import { OPEN_PX, openAt, openStarts, partSteps, zoomRuler } from './gridZoom'
 import { GridZoomControl, useGridZoom } from './gridZoomControl'
+import { useExactPlayhead } from './exactPlayhead'
 import {
   columnCount,
   columnOverlap,
@@ -1335,6 +1336,10 @@ export function PianoRollGrid({
   const pinned: React.CSSProperties = phoneGrid.phone
     ? { position: 'sticky', left: 0, zIndex: 2, background: 'var(--background, #0f0f12)' }
     : {}
+  // THE PLAYHEAD AT THE EXACT POSITION (#1834): a line moving with the phase, measured on the
+  // ruler's columns, over the playing column the cells already mark
+  const playheadRef = React.useRef<HTMLDivElement>(null)
+  useExactPlayhead(gridRef, playheadRef, model, (c) => (trackRef.current?.children[c] as HTMLElement | undefined) ?? null)
 
   if (!model) {
     return React.createElement(VisualEditStandby, {
@@ -1580,8 +1585,14 @@ export function PianoRollGrid({
             ref={gridRef}
             role="grid"
             aria-label="Piano roll"
-            style={{ display: 'flex', flexDirection: 'column', gap: 1 }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 1, position: 'relative' }}
           >
+          <div
+            ref={playheadRef}
+            aria-hidden="true"
+            data-roll-playhead-line
+            style={{ display: 'none', position: 'absolute', left: 0, top: 0, bottom: 0, width: 2, marginLeft: -1, background: 'var(--foreground, #e6e6ea)', opacity: 0.5, pointerEvents: 'none', zIndex: 3 }}
+          />
           {rows.map((midi) => {
           // Piano black/white striping only makes sense for note-name rows;
           // for numeric patterns a row is a raw value (MIDI or degree), not a
