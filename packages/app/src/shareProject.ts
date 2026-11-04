@@ -28,6 +28,7 @@ import {
   type WorkspaceLanguage,
 } from "@stave/editor";
 
+import { addPrivateLink } from "./gallery/localShares";
 import { fromBase64Url, openShare, parseShortShare, sealShare, toBase64Url } from "./shareCrypto";
 
 export const SHARE_HASH_PREFIX = "#share=";
@@ -169,8 +170,17 @@ export async function buildShortShareUrl(project: ProjectMeta): Promise<string> 
     throw err;
   }
   if (!res.ok) throw new Error(`the share store answered ${res.status}`);
-  const { id } = (await res.json()) as { id: string };
-  return `${window.location.origin}/s/${id}#${key}`;
+  const { id, manageToken } = (await res.json()) as { id: string; manageToken?: string };
+  const url = `${window.location.origin}/s/${id}#${key}`;
+  // #2311 — remember it, so My shares can copy it again or revoke it.
+  if (manageToken) {
+    try {
+      addPrivateLink({ id, url, projectName: project.name, createdAt: Date.now(), manageToken });
+    } catch (err) {
+      console.warn("[stave] couldn't remember the share link:", err);
+    }
+  }
+  return url;
 }
 
 /**

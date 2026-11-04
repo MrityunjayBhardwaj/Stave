@@ -101,8 +101,15 @@ export function buildMenus(a: MenuActions): Menu[] {
         item("Export as .stave", a.onExportProject),
         item("Bounce to WAV...", a.onBounceToWav, { disabled: !a.canBounceToWav() }),
         divider,
-        item("Copy Share Link", a.onShareProject),
-        ...(a.onPublishToGallery ? [item("Publish to Gallery...", a.onPublishToGallery)] : []),
+        // #2312 — private and public sharing side by side, named so they can't be mistaken.
+        {
+          kind: "submenu",
+          label: "Share",
+          items: [
+            item("Copy Private Link", a.onShareProject),
+            ...(a.onPublishToGallery ? [item("Publish to Gallery...", a.onPublishToGallery)] : []),
+          ],
+        },
         divider,
         item("Editor Settings...", a.onOpenEditorSettings),
         item("Keyboard Shortcuts...", a.onOpenShortcuts),

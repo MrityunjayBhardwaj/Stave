@@ -22,6 +22,17 @@ export interface LocalShare {
   manageToken: string;
 }
 
+/** #2311 — a private short link this browser made (Copy Share Link). */
+export interface LocalPrivateLink {
+  id: string;
+  /** The whole link, key included, so it can be copied again. */
+  url: string;
+  projectName: string;
+  createdAt: number;
+  manageToken: string;
+}
+
+const LINKS_KEY = "stave.share.links";
 const AUTHOR_KEY = "stave.gallery.author";
 const SHARES_KEY = "stave.gallery.shares";
 /** Fired on window when the local share list changes, so an open My shares tab refreshes. */
@@ -64,5 +75,22 @@ export function addLocalShare(share: LocalShare): void {
 
 export function removeLocalShare(id: string): void {
   write(SHARES_KEY, listLocalShares().filter((s) => s.id !== id));
+  window.dispatchEvent(new Event(LOCAL_SHARES_CHANGED));
+}
+
+/** #2311 — private links, newest first. */
+export function listPrivateLinks(): LocalPrivateLink[] {
+  const list = read<LocalPrivateLink[]>(LINKS_KEY, []);
+  return Array.isArray(list) ? [...list].sort((a, b) => b.createdAt - a.createdAt) : [];
+}
+
+export function addPrivateLink(link: LocalPrivateLink): void {
+  const rest = listPrivateLinks().filter((l) => l.id !== link.id);
+  write(LINKS_KEY, [link, ...rest]);
+  window.dispatchEvent(new Event(LOCAL_SHARES_CHANGED));
+}
+
+export function removePrivateLink(id: string): void {
+  write(LINKS_KEY, listPrivateLinks().filter((l) => l.id !== id));
   window.dispatchEvent(new Event(LOCAL_SHARES_CHANGED));
 }

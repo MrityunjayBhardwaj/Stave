@@ -21,7 +21,13 @@ import {
   reportGalleryEntry,
   GalleryEntryRemoved,
 } from "./client";
-import { listLocalShares, LOCAL_SHARES_CHANGED, type LocalShare } from "./localShares";
+import {
+  listLocalShares,
+  listPrivateLinks,
+  LOCAL_SHARES_CHANGED,
+  type LocalPrivateLink,
+  type LocalShare,
+} from "./localShares";
 import { MAX_REPORT_REASON_CHARS, type GalleryEntry, type GalleryEntryResponse, type GalleryKind } from "./types";
 import {
   GALLERY_TABS,
@@ -32,7 +38,7 @@ import {
   generatedCard,
   type GalleryTab,
 } from "./galleryModel";
-import { defaultDeleteDeps, deleteMyShare, shareStatus } from "./myShares";
+import { defaultDeleteDeps, defaultRevokeDeps, deleteMyShare, revokeMyLink, shareStatus } from "./myShares";
 import { getDialog, showConfirm, showPrompt, showToast } from "../dialogs/host";
 
 export interface GalleryOverlayProps {
@@ -43,6 +49,8 @@ export interface GalleryOverlayProps {
   /** Resolve true when the entry was opened (the overlay then closes). */
   onOpenAsProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"]) => Promise<boolean>;
   onAddToProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"]) => Promise<boolean>;
+  /** #2312 — open the Publish dialog from the gallery's header; absent where there's nowhere to publish. */
+  onPublish?: () => void;
 }
 
 type ListState =
@@ -65,12 +73,29 @@ async function copyLink(id: string): Promise<void> {
   }
 }
 
-export function GalleryOverlay({ open, initialEntryId, onClose, onOpenAsProject, onAddToProject }: GalleryOverlayProps) {
+async function copyPrivateLink(link: LocalPrivateLink): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(link.url);
+    showToast("Private link copied.", "info");
+  } catch {
+    showToast("Couldn't copy the link — your browser blocked the clipboard.", "error");
+  }
+}
+
+export function GalleryOverlay({
+  open,
+  initialEntryId,
+  onClose,
+  onOpenAsProject,
+  onAddToProject,
+  onPublish,
+}: GalleryOverlayProps) {
   const [tab, setTab] = useState<GalleryTab>("project");
   const [query, setQuery] = useState("");
   const [list, setList] = useState<ListState>({ status: "loading" });
   const [detail, setDetail] = useState<DetailState | null>(null);
   const [mine, setMine] = useState<LocalShare[]>([]);
+  const [links, setLinks] = useState<LocalPrivateLink[]>([]);
   const [busy, setBusy] = useState(false);
 
   const loadList = useCallback(() => {
@@ -103,13 +128,17 @@ export function GalleryOverlay({ open, initialEntryId, onClose, onOpenAsProject,
     if (!open) return;
     loadList();
     setMine(listLocalShares());
+    setLinks(listPrivateLinks());
     if (initialEntryId) openEntry(initialEntryId);
     else setDetail(null);
   }, [open, initialEntryId, loadList, openEntry]);
 
   useEffect(() => {
     if (!open) return;
-    const refresh = () => setMine(listLocalShares());
+    const refresh = () => {
+      setMine(listLocalShares());
+      setLinks(listPrivateLinks());
+    };
     window.addEventListener(LOCAL_SHARES_CHANGED, refresh);
     return () => window.removeEventListener(LOCAL_SHARES_CHANGED, refresh);
   }, [open]);
@@ -189,6 +218,25 @@ export function GalleryOverlay({ open, initialEntryId, onClose, onOpenAsProject,
     }
   };
 
+  const revokeLink = async (link: LocalPrivateLink) => {
+    try {
+      const outcome = await revokeMyLink(
+        link,
+        defaultRevokeDeps((l) =>
+          showConfirm({
+            title: "Revoke this link?",
+            description: `The link to "${l.projectName}" will stop working for everyone who has it. This can't be undone.`,
+            confirmLabel: "Revoke",
+            danger: true,
+          }),
+        ),
+      );
+      if (outcome === "revoked") showToast(`Revoked the link to "${link.projectName}".`, "info");
+    } catch (err) {
+      showToast(`Couldn't revoke it — ${(err as Error).message}`, "error");
+    }
+  };
+
   return (
     <div className="sg-backdrop" data-gallery="overlay" onClick={onClose}>
       <style>{CSS}</style>
@@ -201,9 +249,23 @@ export function GalleryOverlay({ open, initialEntryId, onClose, onOpenAsProject,
       >
         <div className="sg-header">
           <h2 className="sg-title">Community Gallery</h2>
-          <button className="sg-close" aria-label="Close gallery" onClick={onClose}>
-            ×
-          </button>
+          <div className="sg-header-actions">
+            {onPublish && (
+              <button
+                className="sg-btn sg-primary"
+                data-gallery-publish
+                onClick={() => {
+                  onClose();
+                  onPublish();
+                }}
+              >
+                Publish yours
+              </button>
+            )}
+            <button className="sg-close" aria-label="Close gallery" onClick={onClose}>
+              ×
+            </button>
+          </div>
         </div>
 
         {detail ? (
@@ -231,7 +293,9 @@ export function GalleryOverlay({ open, initialEntryId, onClose, onOpenAsProject,
                   >
                     {t.label}
                     {t.id !== "mine" && entries ? <span className="sg-count">{counts[t.id]}</span> : null}
-                    {t.id === "mine" && mine.length > 0 ? <span className="sg-count">{mine.length}</span> : null}
+                    {t.id === "mine" && mine.length + links.length > 0 ? (
+                      <span className="sg-count">{mine.length + links.length}</span>
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -251,7 +315,10 @@ export function GalleryOverlay({ open, initialEntryId, onClose, onOpenAsProject,
               {tab === "mine" ? (
                 <MyShares
                   shares={mine}
+                  links={links}
                   listed={entries}
+                  onCopyPrivate={copyPrivateLink}
+                  onRevoke={revokeLink}
                   onOpen={openEntry}
                   onCopy={copyLink}
                   onDelete={deleteShare}
@@ -450,53 +517,88 @@ function EntryDetail({
 
 function MyShares({
   shares,
+  links,
   listed,
   onOpen,
   onCopy,
   onDelete,
+  onCopyPrivate,
+  onRevoke,
 }: {
   shares: LocalShare[];
+  links: LocalPrivateLink[];
   listed: GalleryEntry[] | null;
   onOpen: (id: string) => void;
   onCopy: (id: string) => void;
   onDelete: (s: LocalShare) => void;
+  onCopyPrivate: (l: LocalPrivateLink) => void;
+  onRevoke: (l: LocalPrivateLink) => void;
 }) {
-  if (shares.length === 0) {
-    return (
-      <div className="sg-state" data-gallery-state="mine-empty">
-        <p>You haven&apos;t published anything from this browser yet.</p>
-        <p className="sg-muted">
-          Use File → Publish to Gallery to share a project, a pattern or a visual. What you publish shows up here, and
-          this browser keeps the key that lets you take it down again.
-        </p>
-      </div>
-    );
-  }
   return (
     <div className="sg-mine">
-      {shares.map((s) => {
-        const status = shareStatus(s, listed);
-        return (
-          <div key={s.id} className="sg-mine-row" data-gallery-mine={s.id} data-gallery-status={status}>
-            <div className="sg-mine-text">
-              <div className="sg-card-title">{s.title}</div>
-              <div className="sg-card-meta">
-                {KIND_LABEL[s.kind] ?? s.kind} · published {formatGalleryDate(s.publishedAt)}
-                {status === "missing" && (
-                  <span className="sg-missing"> · No longer in the gallery — it was removed.</span>
-                )}
+      <section data-gallery-section="published">
+        <h3 className="sg-section">In the gallery</h3>
+        <p className="sg-section-note">Everyone can see and open these.</p>
+        {shares.length === 0 ? (
+          <div className="sg-state sg-state-small" data-gallery-state="mine-empty">
+            <p>You haven&apos;t published anything from this browser yet.</p>
+            <p className="sg-muted">
+              Use File → Share → Publish to Gallery (or the Publish yours button above) to share a project, a pattern or
+              a visual. This browser keeps the key that lets you take it down again.
+            </p>
+          </div>
+        ) : (
+          shares.map((s) => {
+            const status = shareStatus(s, listed);
+            return (
+              <div key={s.id} className="sg-mine-row" data-gallery-mine={s.id} data-gallery-status={status}>
+                <div className="sg-mine-text">
+                  <div className="sg-card-title">{s.title}</div>
+                  <div className="sg-card-meta">
+                    {KIND_LABEL[s.kind] ?? s.kind} · published {formatGalleryDate(s.publishedAt)}
+                    {status === "missing" && (
+                      <span className="sg-missing"> · No longer in the gallery — it was removed.</span>
+                    )}
+                  </div>
+                </div>
+                <div className="sg-actions">
+                  <button className="sg-btn" onClick={() => onOpen(s.id)}>Open</button>
+                  <button className="sg-btn" onClick={() => onCopy(s.id)}>Copy link</button>
+                  <button className="sg-btn sg-danger" onClick={() => onDelete(s)}>
+                    {status === "missing" ? "Forget" : "Delete"}
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </section>
+
+      <section data-gallery-section="private">
+        <h3 className="sg-section">Private links</h3>
+        <p className="sg-section-note">
+          Only people you send these to can open them. Links made before this list existed aren&apos;t here and can&apos;t
+          be revoked; the list lives in this browser.
+        </p>
+        {links.length === 0 ? (
+          <div className="sg-state sg-state-small" data-gallery-state="links-empty">
+            <p className="sg-muted">File → Share → Copy Private Link makes one; it will show up here.</p>
+          </div>
+        ) : (
+          links.map((l) => (
+            <div key={l.id} className="sg-mine-row" data-gallery-link={l.id}>
+              <div className="sg-mine-text">
+                <div className="sg-card-title">{l.projectName}</div>
+                <div className="sg-card-meta">Private link · made {formatGalleryDate(l.createdAt)}</div>
+              </div>
+              <div className="sg-actions">
+                <button className="sg-btn" onClick={() => onCopyPrivate(l)}>Copy again</button>
+                <button className="sg-btn sg-danger" onClick={() => onRevoke(l)}>Revoke</button>
               </div>
             </div>
-            <div className="sg-actions">
-              <button className="sg-btn" onClick={() => onOpen(s.id)}>Open</button>
-              <button className="sg-btn" onClick={() => onCopy(s.id)}>Copy link</button>
-              <button className="sg-btn sg-danger" onClick={() => onDelete(s)}>
-                {status === "missing" ? "Forget" : "Delete"}
-              </button>
-            </div>
-          </div>
-        );
-      })}
+          ))
+        )}
+      </section>
     </div>
   );
 }
@@ -550,6 +652,11 @@ const CSS = `
 .sg-mine { display: flex; flex-direction: column; gap: 8px; }
 .sg-mine-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; }
 .sg-mine-text { min-width: 0; flex: 1 1 220px; }
+.sg-header-actions { display: flex; align-items: center; gap: 8px; }
+.sg-section { margin: 4px 0 2px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-primary); }
+.sg-section-note { margin: 0 0 8px; font-size: 12px; opacity: .75; }
+.sg-mine section { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.sg-state-small { padding: 14px 12px; }
 .sg-missing { color: var(--text-error, #f27878); }
 @media (max-width: 640px) {
   .sg-modal { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border: none; }

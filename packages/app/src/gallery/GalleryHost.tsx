@@ -34,11 +34,13 @@ export interface GalleryHostProps {
    * the new project becomes the app's active one. Same shape as File → New.
    */
   openProject: (load: () => Promise<ProjectMeta>) => Promise<ProjectMeta>;
+  /** #2312 — the gallery's "Publish yours" button opens the Publish dialog. */
+  onPublish?: () => void;
 }
 
 const RUN_HINT = "Nothing has run yet — press Play when you're ready.";
 
-export function GalleryHost({ unsavedBlocksLeaving, openProject }: GalleryHostProps) {
+export function GalleryHost({ unsavedBlocksLeaving, openProject, onPublish }: GalleryHostProps) {
   const [open, setOpen] = useState(false);
   const [entryId, setEntryId] = useState<string | null>(null);
 
@@ -133,6 +135,7 @@ export function GalleryHost({ unsavedBlocksLeaving, openProject }: GalleryHostPr
       }}
       onOpenAsProject={openAsProject}
       onAddToProject={addToProject}
+      onPublish={onPublish}
     />
   );
 }

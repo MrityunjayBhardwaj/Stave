@@ -13,7 +13,8 @@ import {
   sealShare,
 } from "../shareCrypto";
 import { POST } from "../app/api/share/route";
-import { GET } from "../app/api/share/[id]/route";
+import { DELETE, GET } from "../app/api/share/[id]/route";
+import { shareStore } from "../app/api/share/store";
 
 const text = (s: string) => new TextEncoder().encode(s);
 const read = (b: Uint8Array) => new TextDecoder().decode(b);
@@ -99,7 +100,8 @@ describe("the share routes (dev folder store)", () => {
 
     const back = await get(id);
     expect(back.status).toBe(200);
-    expect(back.headers.get("cache-control")).toContain("immutable");
+    // #2311 — a link can be revoked, so its answer is never cached.
+    expect(back.headers.get("cache-control")).toBe("no-store");
     const bytes = new Uint8Array(await back.arrayBuffer());
     expect(read(await openShare(bytes, key))).toBe("stored");
   });
@@ -124,6 +126,55 @@ describe("the share routes (dev folder store)", () => {
   it("answers 404 for an unknown or malformed id", async () => {
     expect((await get(newShareId())).status).toBe(404);
     expect((await get("../../etc/passwd")).status).toBe(404);
+  });
+
+  // #2311 — revoking a link.
+  const revoke = (id: string, token?: string) =>
+    DELETE(
+      new Request(`http://x/api/share/${id}`, {
+        method: "DELETE",
+        headers: token ? { "x-stave-manage-token": token } : {},
+      }),
+      { params: Promise.resolve({ id }) },
+    );
+
+  it("hands back a manage token once, and keeps only its hash", async () => {
+    const { sealed } = await sealShare(text("token"));
+    const body = (await (await post(sealed)).json()) as { id: string; manageToken: string };
+    expect(body.manageToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const stored = await shareStore()!.getManageHash(body.id);
+    expect(stored).toMatch(/^[0-9a-f]{64}$/);
+    expect(stored).not.toContain(body.manageToken);
+  });
+
+  it("revokes with the right token only, and the link stops opening", async () => {
+    const { sealed } = await sealShare(text("revoke me"));
+    const { id, manageToken } = (await (await post(sealed)).json()) as { id: string; manageToken: string };
+
+    expect((await revoke(id)).status).toBe(403);
+    expect((await revoke(id, "not-the-token")).status).toBe(403);
+    expect((await get(id)).status).toBe(200);
+
+    expect((await revoke(id, manageToken)).status).toBe(204);
+    expect((await get(id)).status).toBe(404);
+    expect(await shareStore()!.getManageHash(id)).toBeNull();
+    // already gone
+    expect((await revoke(id, manageToken)).status).toBe(404);
+  });
+
+  it("can't revoke a link made before revoking existed (no token on record)", async () => {
+    const { sealed } = await sealShare(text("old link"));
+    const id = newShareId();
+    expect(await shareStore()!.put(id, sealed)).toBe(true);
+    const res = await revoke(id, "anything");
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: string }).error).toContain("before links could be revoked");
+    expect((await get(id)).status).toBe(200);
+  });
+
+  it("answers 404 when revoking an unknown or malformed id", async () => {
+    expect((await revoke(newShareId(), "t")).status).toBe(404);
+    expect((await revoke("../../etc/passwd", "t")).status).toBe(404);
   });
 
   it("answers 503 on a production build with no store, so the client falls back", async () => {

@@ -83,3 +83,16 @@ export async function reportGalleryEntry(id: string, reason: string): Promise<vo
 export function galleryEntryLink(id: string): string {
   return `${window.location.origin}/#gallery=${encodeURIComponent(id)}`;
 }
+
+/**
+ * #2311 — revoke a private short link this browser made. Already gone (404)
+ * counts as done; a link made before revoking existed answers 403 with a reason.
+ */
+export async function revokeShareLink(id: string, manageToken: string): Promise<void> {
+  const res = await fetch(`/api/share/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { [MANAGE_TOKEN_HEADER]: manageToken },
+  });
+  if (res.status === 204 || res.status === 404) return;
+  throw await failure(res, "revoking the link");
+}

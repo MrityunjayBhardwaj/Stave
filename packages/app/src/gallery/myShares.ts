@@ -3,8 +3,8 @@
  * taking one down. The steps are injectable so the flow is unit-tested without
  * a dialog host or a server.
  */
-import { deleteFromGallery } from "./client";
-import { removeLocalShare, type LocalShare } from "./localShares";
+import { deleteFromGallery, revokeShareLink } from "./client";
+import { removeLocalShare, removePrivateLink, type LocalPrivateLink, type LocalShare } from "./localShares";
 import type { GalleryEntry } from "./types";
 
 export interface DeleteDeps {
@@ -41,4 +41,25 @@ export type ShareStatus = "listed" | "missing" | "unknown";
 export function shareStatus(share: LocalShare, listed: readonly GalleryEntry[] | null): ShareStatus {
   if (!listed) return "unknown";
   return listed.some((e) => e.id === share.id) ? "listed" : "missing";
+}
+
+/** #2311 — the same flow for a private short link: ask, revoke on the server, then forget. */
+export interface RevokeDeps {
+  confirm: (link: LocalPrivateLink) => Promise<boolean>;
+  revoke: (id: string, token: string) => Promise<void>;
+  forget: (id: string) => void;
+}
+
+export const defaultRevokeDeps = (confirm: RevokeDeps["confirm"]): RevokeDeps => ({
+  confirm,
+  revoke: revokeShareLink,
+  forget: removePrivateLink,
+});
+
+/** Forgotten locally only once the server agreed (already gone counts), so a failure leaves the key to retry. */
+export async function revokeMyLink(link: LocalPrivateLink, deps: RevokeDeps): Promise<"revoked" | "cancelled"> {
+  if (!(await deps.confirm(link))) return "cancelled";
+  await deps.revoke(link.id, link.manageToken);
+  deps.forget(link.id);
+  return "revoked";
 }

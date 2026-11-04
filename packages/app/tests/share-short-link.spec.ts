@@ -16,8 +16,10 @@ const SHORT = /^http:\/\/[^/]+\/s\/[A-Za-z0-9_-]{11}#[A-Za-z0-9_-]{22}$/
 async function copyShareLink(page: Page): Promise<{ url: string; toast: string }> {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.getByRole('button', { name: 'File', exact: true }).click()
-  await page.locator('[data-stave-menu-item]', { hasText: 'Copy Share Link' }).click()
-  const toast = page.locator('[data-testid="toast"]', { hasText: 'Share link copied' }).last()
+  // #2312 — under File → Share, named for what it is.
+  await page.locator('[data-stave-menu-item]', { hasText: /^Share/ }).hover()
+  await page.locator('[data-stave-menu-item]', { hasText: 'Copy Private Link' }).click()
+  const toast = page.locator('[data-testid="toast"]', { hasText: 'Private link copied' }).last()
   await toast.waitFor({ timeout: 20_000 })
   const url = await page.evaluate(() => navigator.clipboard.readText())
   return { url, toast: (await toast.textContent()) ?? '' }

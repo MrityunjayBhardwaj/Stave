@@ -1,4 +1,5 @@
 import { isSealedShape, MAX_SEALED_BYTES, newShareId } from "../../../shareCrypto";
+import { hashToken, newManageToken } from "../gallery/auth";
 import { shareStore } from "./store";
 
 // #2248 — store a sealed shared project and hand back its short id.
@@ -30,7 +31,13 @@ export async function POST(req: Request): Promise<Response> {
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const id = newShareId();
-    if (await store.put(id, bytes)) return Response.json({ id }, { status: 201 });
+    if (await store.put(id, bytes)) {
+      // #2311 — the token that lets whoever made this link revoke it. Shown once;
+      // only its hash is kept, beside the share.
+      const manageToken = newManageToken();
+      await store.putManageHash(id, hashToken(manageToken));
+      return Response.json({ id, manageToken }, { status: 201 });
+    }
   }
   return Response.json({ error: "could not store the project" }, { status: 500 });
 }

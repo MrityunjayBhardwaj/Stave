@@ -526,7 +526,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             : " A short link wasn't available, so this is the long one.";
       }
       await navigator.clipboard.writeText(url);
-      showToast(`Share link copied (${url.length.toLocaleString()} chars).${note}`, "info");
+      // #2312 — say it's private, and where public sharing lives, for whoever meant to publish.
+      showToast(
+        `Private link copied — only people you send it to can open it.${note} To show it to everyone, use File → Share → Publish to Gallery.`,
+        "info",
+        7000,
+      );
     } catch (err) {
       console.error("[stave] share failed:", err);
       showToast(
@@ -1837,9 +1842,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     }));
     unregs.push(registerCommand({
       id: "stave.file.share",
-      title: "Copy Share Link",
+      title: "Copy Private Link",
       category: "File",
-      description: "Copy a URL that imports this project on another machine.",
+      description: "Copy a private link to this project, for people you send it to. Not listed in the gallery.",
       run: () => { void handleShareProject(); },
     }));
     unregs.push(registerCommand({
@@ -2354,6 +2359,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
       <GalleryHost
         unsavedBlocksLeaving={unsavedBlocksLeaving}
+        onPublish={() => setPublishOpen(true)}
         openProject={async (load) => {
           // The editor unmounts while the file store switches under it, as
           // File → New does; otherwise the open editor writes into the new project.
