@@ -40,6 +40,7 @@ function actions(over: Partial<MenuActions> = {}): MenuActions {
     onRedo: noop,
     canUndo: true,
     canRedo: true,
+    onOpenGallery: noop,
     ...over,
   };
 }

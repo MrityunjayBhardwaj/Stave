@@ -1,0 +1,563 @@
+"use client";
+
+/**
+ * Community gallery overlay (#2300, #2302, #2304).
+ *
+ * Browse what people published (Projects / Music / Viz), read an entry's code,
+ * and open it — as a new project, or (music / viz) as a file in this one. My
+ * shares lists what this browser published, with delete.
+ *
+ * Safe-run (#2304): nothing here evaluates code. Cards show a static thumbnail
+ * or a generated card; the detail view shows the files as plain text. Opening
+ * hands the files to the host, which holds them (safeRun.ts) so they run only
+ * after the person presses Play.
+ */
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  fetchGalleryEntry,
+  fetchGalleryList,
+  galleryEntryLink,
+  galleryThumbnailUrl,
+  reportGalleryEntry,
+  GalleryEntryRemoved,
+} from "./client";
+import { listLocalShares, LOCAL_SHARES_CHANGED, type LocalShare } from "./localShares";
+import { MAX_REPORT_REASON_CHARS, type GalleryEntry, type GalleryEntryResponse, type GalleryKind } from "./types";
+import {
+  GALLERY_TABS,
+  KIND_LABEL,
+  countByKind,
+  entriesForTab,
+  formatGalleryDate,
+  generatedCard,
+  type GalleryTab,
+} from "./galleryModel";
+import { defaultDeleteDeps, deleteMyShare, shareStatus } from "./myShares";
+import { getDialog, showConfirm, showPrompt, showToast } from "../dialogs/host";
+
+export interface GalleryOverlayProps {
+  open: boolean;
+  /** Open straight on this entry (a `#gallery=<id>` link). */
+  initialEntryId: string | null;
+  onClose: () => void;
+  /** Resolve true when the entry was opened (the overlay then closes). */
+  onOpenAsProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"]) => Promise<boolean>;
+  onAddToProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"]) => Promise<boolean>;
+}
+
+type ListState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; entries: GalleryEntry[] };
+
+type DetailState =
+  | { status: "loading"; id: string }
+  | { status: "removed"; id: string }
+  | { status: "error"; id: string; message: string }
+  | { status: "ready"; id: string; data: GalleryEntryResponse };
+
+async function copyLink(id: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(galleryEntryLink(id));
+    showToast("Gallery link copied.", "info");
+  } catch {
+    showToast("Couldn't copy the link — your browser blocked the clipboard.", "error");
+  }
+}
+
+export function GalleryOverlay({ open, initialEntryId, onClose, onOpenAsProject, onAddToProject }: GalleryOverlayProps) {
+  const [tab, setTab] = useState<GalleryTab>("project");
+  const [query, setQuery] = useState("");
+  const [list, setList] = useState<ListState>({ status: "loading" });
+  const [detail, setDetail] = useState<DetailState | null>(null);
+  const [mine, setMine] = useState<LocalShare[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const loadList = useCallback(() => {
+    setList({ status: "loading" });
+    fetchGalleryList()
+      .then((r) => setList({ status: "ready", entries: Array.isArray(r.entries) ? r.entries : [] }))
+      .catch((err: Error) => setList({ status: "error", message: err.message || "the gallery couldn't be loaded" }));
+  }, []);
+
+  const openEntry = useCallback((id: string) => {
+    setDetail({ status: "loading", id });
+    fetchGalleryEntry(id)
+      .then((data) => {
+        setDetail((d) => (d?.id === id ? { status: "ready", id, data } : d));
+        setTab((t) => (t === "mine" ? t : data.entry.kind));
+      })
+      .catch((err: Error) => {
+        setDetail((d) =>
+          d?.id !== id
+            ? d
+            : err instanceof GalleryEntryRemoved || err?.name === "GalleryEntryRemoved"
+              ? { status: "removed", id }
+              : { status: "error", id, message: err.message || "the entry couldn't be loaded" },
+        );
+      });
+  }, []);
+
+  // Each open: fresh list, the link's entry if any, and the local shares.
+  useEffect(() => {
+    if (!open) return;
+    loadList();
+    setMine(listLocalShares());
+    if (initialEntryId) openEntry(initialEntryId);
+    else setDetail(null);
+  }, [open, initialEntryId, loadList, openEntry]);
+
+  useEffect(() => {
+    if (!open) return;
+    const refresh = () => setMine(listLocalShares());
+    window.addEventListener(LOCAL_SHARES_CHANGED, refresh);
+    return () => window.removeEventListener(LOCAL_SHARES_CHANGED, refresh);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      // A confirm / prompt on top owns Esc.
+      if (e.key !== "Escape" || getDialog()) return;
+      e.preventDefault();
+      onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  const entries = list.status === "ready" ? list.entries : null;
+  const counts = useMemo(() => countByKind(entries ?? []), [entries]);
+  const shown = useMemo(
+    () => (entries && tab !== "mine" ? entriesForTab(entries, tab, query) : []),
+    [entries, tab, query],
+  );
+
+  if (!open) return null;
+
+  const runAction = async (fn: () => Promise<boolean>) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (await fn()) onClose();
+    } catch (err) {
+      showToast(`Couldn't open it — ${(err as Error).message ?? "see console"}`, "error");
+      console.error("[stave] gallery open failed:", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const report = async (entry: GalleryEntry) => {
+    const reason = await showPrompt({
+      title: "Report this entry",
+      description: `What's wrong with "${entry.title}"? A person reads every report.`,
+      placeholder: "e.g. offensive title, copies someone else's work",
+      confirmLabel: "Report",
+    });
+    const trimmed = reason?.trim();
+    if (!trimmed) return;
+    try {
+      await reportGalleryEntry(entry.id, trimmed.slice(0, MAX_REPORT_REASON_CHARS));
+      showToast("Thanks — the report was sent.", "info");
+    } catch (err) {
+      showToast(`Couldn't send the report — ${(err as Error).message}`, "error");
+    }
+  };
+
+  const deleteShare = async (share: LocalShare) => {
+    try {
+      const outcome = await deleteMyShare(
+        share,
+        defaultDeleteDeps((s) =>
+          showConfirm({
+            title: "Delete from the gallery?",
+            description: `"${s.title}" will be taken down for everyone. This can't be undone.`,
+            confirmLabel: "Delete",
+            danger: true,
+          }),
+        ),
+      );
+      if (outcome === "deleted") {
+        showToast(`Deleted "${share.title}" from the gallery.`, "info");
+        if (list.status === "ready") {
+          setList({ status: "ready", entries: list.entries.filter((e) => e.id !== share.id) });
+        }
+      }
+    } catch (err) {
+      showToast(`Couldn't delete it — ${(err as Error).message}`, "error");
+    }
+  };
+
+  return (
+    <div className="sg-backdrop" data-gallery="overlay" onClick={onClose}>
+      <style>{CSS}</style>
+      <div
+        className="sg-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Community Gallery"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sg-header">
+          <h2 className="sg-title">Community Gallery</h2>
+          <button className="sg-close" aria-label="Close gallery" onClick={onClose}>
+            ×
+          </button>
+        </div>
+
+        {detail ? (
+          <EntryDetail
+            detail={detail}
+            busy={busy}
+            onBack={() => setDetail(null)}
+            onRetry={() => openEntry(detail.id)}
+            onOpenAsProject={(e, m) => runAction(() => onOpenAsProject(e, m))}
+            onAddToProject={(e, m) => runAction(() => onAddToProject(e, m))}
+            onReport={report}
+          />
+        ) : (
+          <>
+            <div className="sg-toolbar">
+              <div className="sg-tabs" role="tablist">
+                {GALLERY_TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    role="tab"
+                    aria-selected={tab === t.id}
+                    data-gallery-tab={t.id}
+                    className={tab === t.id ? "sg-tab sg-tab-on" : "sg-tab"}
+                    onClick={() => setTab(t.id)}
+                  >
+                    {t.label}
+                    {t.id !== "mine" && entries ? <span className="sg-count">{counts[t.id]}</span> : null}
+                    {t.id === "mine" && mine.length > 0 ? <span className="sg-count">{mine.length}</span> : null}
+                  </button>
+                ))}
+              </div>
+              {tab !== "mine" && (
+                <input
+                  className="sg-search"
+                  type="search"
+                  placeholder="Search title, tags, author"
+                  aria-label="Search the gallery"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              )}
+            </div>
+
+            <div className="sg-body">
+              {tab === "mine" ? (
+                <MyShares
+                  shares={mine}
+                  listed={entries}
+                  onOpen={openEntry}
+                  onCopy={copyLink}
+                  onDelete={deleteShare}
+                />
+              ) : list.status === "loading" ? (
+                <div className="sg-state" data-gallery-state="loading">Loading the gallery…</div>
+              ) : list.status === "error" ? (
+                <div className="sg-state" data-gallery-state="error">
+                  <p>Couldn&apos;t load the gallery: {list.message}.</p>
+                  <button className="sg-btn" onClick={loadList}>Try again</button>
+                </div>
+              ) : shown.length === 0 ? (
+                <div className="sg-state" data-gallery-state="empty">
+                  {query.trim()
+                    ? `Nothing in ${KIND_LABEL[tab as GalleryKind]} matches "${query.trim()}".`
+                    : `No ${KIND_LABEL[tab as GalleryKind].toLowerCase()} entries have been published yet.`}
+                </div>
+              ) : (
+                <div className="sg-grid">
+                  {shown.map((e) => (
+                    <Card key={e.id} entry={e} onOpen={() => openEntry(e.id)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Thumb({ entry }: { entry: GalleryEntry }) {
+  const [failed, setFailed] = useState(false);
+  if (entry.hasThumbnail && !failed) {
+    return (
+      <img
+        className="sg-thumb"
+        src={galleryThumbnailUrl(entry.id)}
+        alt=""
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  const { initials, hue } = generatedCard(entry);
+  return (
+    <div
+      className="sg-thumb sg-thumb-gen"
+      data-gallery-thumb="generated"
+      style={{ background: `linear-gradient(135deg, hsl(${hue} 45% 32%), hsl(${(hue + 50) % 360} 50% 18%))` }}
+    >
+      <span className="sg-initials">{initials}</span>
+      <span className="sg-kind-tag">{KIND_LABEL[entry.kind]}</span>
+    </div>
+  );
+}
+
+function Card({ entry, onOpen }: { entry: GalleryEntry; onOpen: () => void }) {
+  return (
+    <button className="sg-card" data-gallery-card={entry.id} onClick={onOpen} title={entry.title}>
+      <Thumb entry={entry} />
+      <div className="sg-card-text">
+        <div className="sg-card-title">{entry.title}</div>
+        <div className="sg-card-meta">
+          {entry.authorName} · {formatGalleryDate(entry.publishedAt)}
+        </div>
+        {entry.tags.length > 0 && (
+          <div className="sg-tags">
+            {entry.tags.map((t) => (
+              <span key={t} className="sg-tag">#{t}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function EntryDetail({
+  detail,
+  busy,
+  onBack,
+  onRetry,
+  onOpenAsProject,
+  onAddToProject,
+  onReport,
+}: {
+  detail: DetailState;
+  busy: boolean;
+  onBack: () => void;
+  onRetry: () => void;
+  onOpenAsProject: (e: GalleryEntry, m: GalleryEntryResponse["manifest"]) => void;
+  onAddToProject: (e: GalleryEntry, m: GalleryEntryResponse["manifest"]) => void;
+  onReport: (e: GalleryEntry) => void;
+}) {
+  const [fileIdx, setFileIdx] = useState(0);
+  useEffect(() => setFileIdx(0), [detail.id]);
+
+  const back = (
+    <button className="sg-btn sg-back" onClick={onBack}>
+      ← Back to the gallery
+    </button>
+  );
+
+  if (detail.status === "loading") {
+    return (
+      <div className="sg-body">
+        {back}
+        <div className="sg-state" data-gallery-state="loading">Loading the entry…</div>
+      </div>
+    );
+  }
+  if (detail.status === "removed") {
+    return (
+      <div className="sg-body">
+        {back}
+        <div className="sg-state" data-gallery-state="removed">This was removed from the gallery.</div>
+      </div>
+    );
+  }
+  if (detail.status === "error") {
+    return (
+      <div className="sg-body">
+        {back}
+        <div className="sg-state" data-gallery-state="error">
+          <p>Couldn&apos;t open the entry: {detail.message}.</p>
+          <button className="sg-btn" onClick={onRetry}>Try again</button>
+        </div>
+      </div>
+    );
+  }
+
+  const { entry, manifest } = detail.data;
+  const files = manifest.files ?? [];
+  const file = files[Math.min(fileIdx, Math.max(0, files.length - 1))];
+  return (
+    <div className="sg-body sg-detail" data-gallery-detail={entry.id}>
+      {back}
+      <div className="sg-detail-head">
+        <div>
+          <div className="sg-detail-title">{entry.title}</div>
+          <div className="sg-card-meta">
+            {KIND_LABEL[entry.kind]} by {entry.authorName} · {formatGalleryDate(entry.publishedAt)}
+          </div>
+          {entry.tags.length > 0 && (
+            <div className="sg-tags">
+              {entry.tags.map((t) => (
+                <span key={t} className="sg-tag">#{t}</span>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="sg-actions">
+          <button className="sg-btn sg-primary" disabled={busy} onClick={() => onOpenAsProject(entry, manifest)}>
+            Open as new project
+          </button>
+          {entry.kind !== "project" && (
+            <button className="sg-btn" disabled={busy} onClick={() => onAddToProject(entry, manifest)}>
+              Add to this project
+            </button>
+          )}
+          <button className="sg-btn" onClick={() => void copyLink(entry.id)}>Copy link</button>
+          <button className="sg-btn sg-quiet" onClick={() => onReport(entry)}>Report</button>
+        </div>
+      </div>
+      <p className="sg-safe" data-gallery-safe-note>
+        Nothing from this entry has run. Read the code below; once it is open, it plays only when you press Play.
+      </p>
+      {files.length > 1 && (
+        <div className="sg-files" role="tablist" aria-label="Files">
+          {files.map((f, i) => (
+            <button
+              key={f.id}
+              role="tab"
+              aria-selected={i === fileIdx}
+              className={i === fileIdx ? "sg-file sg-file-on" : "sg-file"}
+              onClick={() => setFileIdx(i)}
+            >
+              {f.path}
+            </button>
+          ))}
+        </div>
+      )}
+      {file ? (
+        <div className="sg-code-wrap">
+          <div className="sg-code-path">{file.path}</div>
+          <pre className="sg-code" data-gallery-code={file.path}>{file.content}</pre>
+        </div>
+      ) : (
+        <div className="sg-state">This entry has no files.</div>
+      )}
+    </div>
+  );
+}
+
+function MyShares({
+  shares,
+  listed,
+  onOpen,
+  onCopy,
+  onDelete,
+}: {
+  shares: LocalShare[];
+  listed: GalleryEntry[] | null;
+  onOpen: (id: string) => void;
+  onCopy: (id: string) => void;
+  onDelete: (s: LocalShare) => void;
+}) {
+  if (shares.length === 0) {
+    return (
+      <div className="sg-state" data-gallery-state="mine-empty">
+        <p>You haven&apos;t published anything from this browser yet.</p>
+        <p className="sg-muted">
+          Use File → Publish to Gallery to share a project, a pattern or a visual. What you publish shows up here, and
+          this browser keeps the key that lets you take it down again.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="sg-mine">
+      {shares.map((s) => {
+        const status = shareStatus(s, listed);
+        return (
+          <div key={s.id} className="sg-mine-row" data-gallery-mine={s.id} data-gallery-status={status}>
+            <div className="sg-mine-text">
+              <div className="sg-card-title">{s.title}</div>
+              <div className="sg-card-meta">
+                {KIND_LABEL[s.kind] ?? s.kind} · published {formatGalleryDate(s.publishedAt)}
+                {status === "missing" && (
+                  <span className="sg-missing"> · No longer in the gallery — it was removed.</span>
+                )}
+              </div>
+            </div>
+            <div className="sg-actions">
+              <button className="sg-btn" onClick={() => onOpen(s.id)}>Open</button>
+              <button className="sg-btn" onClick={() => onCopy(s.id)}>Copy link</button>
+              <button className="sg-btn sg-danger" onClick={() => onDelete(s)}>
+                {status === "missing" ? "Forget" : "Delete"}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const CSS = `
+.sg-backdrop { position: fixed; inset: 0; background: var(--bg-overlay, rgba(0,0,0,.55)); display: flex; align-items: center; justify-content: center; z-index: 10000; font-family: system-ui, -apple-system, sans-serif; }
+.sg-modal { width: min(1040px, 94vw); height: min(760px, 88vh); background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: 10px; display: flex; flex-direction: column; color: var(--text-chrome); box-shadow: 0 20px 60px rgba(0,0,0,.45); overflow: hidden; }
+.sg-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border-subtle); }
+.sg-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--text-primary); }
+.sg-close { background: none; border: none; color: var(--text-icon); font-size: 24px; cursor: pointer; padding: 0 6px; line-height: 1; }
+.sg-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 18px; border-bottom: 1px solid var(--border-subtle); }
+.sg-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.sg-tab { background: none; border: 1px solid transparent; color: var(--text-chrome); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+.sg-tab:hover { background: var(--bg-hover, rgba(255,255,255,.06)); }
+.sg-tab-on { border-color: var(--border-strong); background: var(--bg-hover, rgba(255,255,255,.08)); color: var(--text-primary); font-weight: 600; }
+.sg-count { font-size: 11px; opacity: .7; }
+.sg-search { flex: 1 1 200px; max-width: 320px; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg-input, var(--bg-elevated)); color: var(--text-primary); font-size: 13px; }
+.sg-body { flex: 1; overflow: auto; padding: 16px 18px; min-height: 0; }
+.sg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.sg-card { display: flex; flex-direction: column; text-align: left; padding: 0; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-panel, transparent); color: inherit; cursor: pointer; overflow: hidden; font: inherit; }
+.sg-card:hover, .sg-card:focus-visible { border-color: var(--accent, #7aa2f7); }
+.sg-thumb { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; background: #111; }
+.sg-thumb-gen { position: relative; display: flex; align-items: center; justify-content: center; }
+.sg-initials { font-size: 30px; font-weight: 700; color: rgba(255,255,255,.88); letter-spacing: 1px; }
+.sg-kind-tag { position: absolute; left: 8px; bottom: 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: rgba(255,255,255,.75); }
+.sg-card-text { padding: 9px 11px 11px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sg-card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-card-meta { font-size: 12px; color: var(--text-muted, var(--text-chrome)); opacity: .85; }
+.sg-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.sg-tag { font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--bg-hover, rgba(255,255,255,.08)); }
+.sg-state { padding: 40px 12px; text-align: center; font-size: 14px; color: var(--text-chrome); }
+.sg-state p { margin: 0 0 10px; }
+.sg-muted { opacity: .75; font-size: 13px; max-width: 460px; margin: 0 auto !important; line-height: 1.5; }
+.sg-btn { background: var(--bg-hover, rgba(255,255,255,.06)); border: 1px solid var(--border-strong); color: var(--text-primary); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+.sg-btn:disabled { opacity: .5; cursor: default; }
+.sg-primary { background: var(--accent, #4a6cf7); border-color: var(--accent, #4a6cf7); color: #fff; }
+.sg-danger { color: var(--text-error, #f27878); }
+.sg-quiet { opacity: .8; }
+.sg-back { align-self: flex-start; margin-bottom: 12px; background: none; border-color: transparent; padding-left: 0; }
+.sg-detail { display: flex; flex-direction: column; }
+.sg-detail-head { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
+.sg-detail-title { font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+.sg-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.sg-safe { font-size: 12px; margin: 12px 0 10px; padding: 7px 10px; border-left: 3px solid var(--accent, #4a6cf7); background: var(--bg-hover, rgba(255,255,255,.04)); }
+.sg-files { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.sg-file { background: none; border: 1px solid var(--border-subtle); color: var(--text-chrome); padding: 3px 8px; border-radius: 5px; cursor: pointer; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.sg-file-on { border-color: var(--accent, #4a6cf7); color: var(--text-primary); }
+.sg-code-wrap { flex: 1; min-height: 160px; display: flex; flex-direction: column; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; }
+.sg-code-path { font-size: 11px; padding: 5px 10px; border-bottom: 1px solid var(--border-subtle); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .8; }
+.sg-code { flex: 1; margin: 0; padding: 10px 12px; overflow: auto; font-size: 12.5px; line-height: 1.5; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; color: var(--text-primary); background: var(--bg-editor, rgba(0,0,0,.25)); user-select: text; }
+.sg-mine { display: flex; flex-direction: column; gap: 8px; }
+.sg-mine-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; }
+.sg-mine-text { min-width: 0; flex: 1 1 220px; }
+.sg-missing { color: var(--text-error, #f27878); }
+@media (max-width: 640px) {
+  .sg-modal { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border: none; }
+  .sg-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .sg-search { max-width: none; }
+  .sg-body { padding: 12px; }
+  .sg-toolbar { padding: 8px 12px; }
+  .sg-tab { padding: 8px 10px; }
+  .sg-btn { padding: 8px 12px; }
+}
+`;

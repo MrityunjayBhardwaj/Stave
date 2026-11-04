@@ -37,6 +37,7 @@ function menu(recentProjects: RecentProjectEntry[], onOpenRecent = vi.fn()) {
       onRedo={noop}
       canUndo={false}
       canRedo={false}
+      onOpenGallery={noop}
       isPlaying={false}
       getSongPosition={() => null}
       getCps={() => null}
