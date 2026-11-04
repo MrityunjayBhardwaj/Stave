@@ -31,8 +31,8 @@ import { GET as reportsRoute } from "../app/api/gallery/admin/reports/route";
 import { POST as dismissRoute } from "../app/api/gallery/admin/reports/[id]/dismiss/route";
 import { GET as logRoute } from "../app/api/gallery/admin/log/route";
 import { GET as meRoute } from "../app/api/gallery/me/route";
-import { ADMIN_LOG_PREFIX, appendAdminLog, parseAdminList, readAdminLog } from "../app/api/gallery/admin";
-import { galleryStore } from "../app/api/gallery/store";
+import { parseAdminList, readAdminLog } from "../app/api/gallery/admin";
+import { appendAdminLog } from "../db/repo/reports";
 import { getDb } from "../db/client";
 
 // #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
@@ -228,7 +228,7 @@ describe("taking down", () => {
     const entryId = await reported();
     const collectionId = await collectionOfAuthor();
     signIn(ADMIN);
-    const before = (await galleryStore()!.list(ADMIN_LOG_PREFIX)).length;
+    const before = (await readAdminLog(10_000)).length;
     for (const body of [undefined, {}, { reason: "   " }, { reason: 7 }]) {
       expect((await routes.deleteEntry(entryId, body)).status, JSON.stringify(body)).toBe(400);
       expect((await routes.deleteCollection(collectionId, body)).status, JSON.stringify(body)).toBe(400);
@@ -240,7 +240,7 @@ describe("taking down", () => {
     );
     expect(notJson.status).toBe(400);
     expect(await entryStatus(entryId)).toBe(200);
-    expect((await galleryStore()!.list(ADMIN_LOG_PREFIX)).length).toBe(before);
+    expect((await readAdminLog(10_000)).length).toBe(before);
   });
 
   it("an admin deleting their OWN entry is the author's delete: no reason needed", async () => {
@@ -292,20 +292,20 @@ describe("the flagged list and the log", () => {
   });
 
   it("lists the newest 200, newest first", async () => {
-    const store = galleryStore()!;
+    const db = (await getDb())!;
     const admin = { provider: "test-login", accountId: ADMIN, name: ADMIN_NAME };
     for (let i = 0; i < 205; i++) {
-      await appendAdminLog(store, { at: 1_000_000_000_000 + i, admin, action: "dismiss-report", target: `t${i}`, reason: "r" });
+      await appendAdminLog(db, { at: 1_000_000_000_000 + i, admin, action: "dismiss-report", target: `t${i}`, reason: "r" });
     }
     // Older than anything else in the log, so read the log down to them.
-    const all = await readAdminLog(store, 10_000);
+    const all = await readAdminLog(10_000);
     // 2001 vs today: everything this test wrote, nothing the others did.
     const old = all.filter((r) => r.at < 1_100_000_000_000);
     expect(old).toHaveLength(205);
     expect(old[0].target).toBe("t204");
     expect(all.indexOf(old[0])).toBe(all.length - 205);
     // The route's view: never more than 200, newest first.
-    const got = await readAdminLog(store);
+    const got = await readAdminLog();
     expect(got).toHaveLength(200);
     expect(got).toEqual(all.slice(0, 200));
     expect([...got].sort((a, b) => b.at - a.at)).toEqual(got);

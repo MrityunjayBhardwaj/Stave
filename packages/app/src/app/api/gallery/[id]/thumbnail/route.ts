@@ -1,4 +1,7 @@
 import { GALLERY_ID_PATTERN } from "../../../../../gallery/types";
+import { getDb } from "../../../../../db/client";
+import { isDatabaseUnavailable } from "../../../../../db/errors";
+import { getEntryRecord } from "../../../../../db/repo/entries";
 import { galleryPaths, galleryStore } from "../../store";
 import { sniffImage } from "../../validate";
 
@@ -6,6 +9,7 @@ import { sniffImage } from "../../validate";
 // (checked again here, not trusted from storage) and nosniff, so the browser
 // never treats it as anything but an image. Cached for 5 minutes only, so a
 // taken-down entry's picture doesn't outlive it by long.
+// #2352 — whether the entry exists and is live comes from Postgres; the bytes from Blob.
 
 export async function GET(
   _req: Request,
@@ -16,7 +20,21 @@ export async function GET(
   const store = galleryStore();
   if (!store) return new Response("the gallery is not set up here", { status: 503 });
 
-  if (await store.get(galleryPaths.removed(id))) return new Response("not found", { status: 404 });
+  let live: boolean;
+  try {
+    const db = await getDb();
+    if (!db) return new Response("the gallery is not set up here", { status: 503 });
+    const record = await getEntryRecord(db, id);
+    live = record !== null && record.removed === null;
+  } catch (err) {
+    // #2351 — an image answers in plain text, not the JSON 503 the other routes send.
+    if (!isDatabaseUnavailable(err)) throw err;
+    return new Response("the gallery is having trouble right now", {
+      status: 503,
+      headers: { "Retry-After": "60", "Cache-Control": "no-store" },
+    });
+  }
+  if (!live) return new Response("not found", { status: 404 });
   const bytes = await store.get(galleryPaths.thumbnail(id));
   const type = bytes && sniffImage(bytes);
   if (!bytes || !type) return new Response("not found", { status: 404 });

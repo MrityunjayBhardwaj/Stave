@@ -35,8 +35,11 @@ import { DELETE as deleteRoute, GET as entryRoute } from "../app/api/gallery/[id
 import { GET as thumbnailRoute } from "../app/api/gallery/[id]/thumbnail/route";
 import { POST as reportRoute } from "../app/api/gallery/[id]/report/route";
 import { GET as reportsRoute } from "../app/api/gallery/reports/route";
-import { galleryPaths, galleryStore, getJson } from "../app/api/gallery/store";
-import { getDb } from "../db/client";
+import { mkdir, writeFile } from "node:fs/promises";
+
+import { LIST_CACHE, LIST_REDIRECT_CACHE } from "../app/api/gallery/route";
+import { freshTestDb, getDb, useDbForTests } from "../db/client";
+import { getEntryRecord } from "../db/repo/entries";
 
 // #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
 // file. Starting it takes a few seconds, once; do it here, not inside the first test.
@@ -235,8 +238,8 @@ describe("publishing", () => {
     const { id, authorId } = (await res.json()) as PublishResponse;
     const body = (await (await entry(id)).json()) as GalleryEntryResponse;
     expect(body.entry).toMatchObject({ authorName: "Ada", authorId });
-    const record = await getJson<{ authorEmail: string }>(galleryStore()!, galleryPaths.privateRecord(id));
-    expect(record?.authorEmail).toBe(EMAIL);
+    // #2352 — the email is kept on the entry's row, privately.
+    expect((await getEntryRecord((await getDb())!, id))?.authorEmail).toBe(EMAIL);
   });
 
   it("#2319 refuses a signed-out publish with 401, before reading the body", async () => {
@@ -263,6 +266,64 @@ describe("publishing", () => {
     const raw = Buffer.alloc(MAX_THUMBNAIL_BYTES);
     Buffer.from(PNG_1x1, "base64").copy(raw);
     expect((await publish(request({ thumbnail: `data:image/png;base64,${raw.toString("base64")}` }))).status).toBe(201);
+  });
+});
+
+describe("publish writes the files before the row (#2352)", () => {
+  it("lists nothing, and keeps no row, when the manifest can't be stored", async () => {
+    // A store folder where gallery/manifests is a FILE, so writing a manifest fails.
+    const broken = path.join(dir, "broken-store");
+    await mkdir(path.join(broken, "gallery"), { recursive: true });
+    await writeFile(path.join(broken, "gallery", "manifests"), "not a folder");
+    vi.stubEnv("STAVE_GALLERY_DEV_DIR", broken);
+    const db = await freshTestDb();
+    useDbForTests(db);
+    try {
+      await expect(publish(request({ title: "no manifest" }))).rejects.toThrow();
+      expect((await list()).entries).toEqual([]);
+      const rows = await db.$client.query<{ n: number }>("select count(*)::int as n from entries");
+      expect(rows.rows[0].n).toBe(0);
+      // The control: the same publish into a working folder is listed.
+      vi.stubEnv("STAVE_GALLERY_DEV_DIR", dir);
+      const { id } = await published({ title: "with manifest" });
+      expect((await list()).entries.map((e) => e.id)).toEqual([id]);
+    } finally {
+      useDbForTests(undefined);
+    }
+  });
+});
+
+describe("#2346 the listing's cache key ignores the query string", () => {
+  it("answers any query string with a redirect to the bare path, and runs no query for it", async () => {
+    const db = await freshTestDb();
+    useDbForTests(db);
+    try {
+      const { id } = await published({ title: "listed" });
+      const query = vi.spyOn(db.$client, "query");
+      const exec = vi.spyOn(db.$client, "exec");
+
+      // A burst of uniquely query-stringed requests: each is a 308 to /api/gallery,
+      // cacheable, and none reaches the database.
+      const burst = await Promise.all(
+        Array.from({ length: 50 }, (_, i) => listRoute(new Request(`http://x/api/gallery?x=${i}-${Math.random()}`))),
+      );
+      for (const res of burst) {
+        expect(res.status).toBe(308);
+        expect(res.headers.get("location")).toBe("/api/gallery");
+        expect(res.headers.get("cache-control")).toBe(LIST_REDIRECT_CACHE);
+      }
+      expect(query.mock.calls.length + exec.mock.calls.length).toBe(0);
+
+      // The one URL the CDN caches: ONE query, the existing 30 s / stale-while-revalidate header.
+      const res = await listRoute(new Request("http://x/api/gallery"));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe(LIST_CACHE);
+      expect(LIST_CACHE).toBe("public, s-maxage=30, stale-while-revalidate=300");
+      expect(((await res.json()) as GalleryListResponse).entries.map((e) => e.id)).toEqual([id]);
+      expect(query.mock.calls.length + exec.mock.calls.length).toBe(1);
+    } finally {
+      useDbForTests(undefined);
+    }
   });
 });
 
@@ -316,6 +377,24 @@ describe("the author's email stays on the server", () => {
       expect(body).not.toContain(EMAIL);
       expect(body).not.toContain("example-privacy.test");
     }
+  });
+
+  it("#2352 stays out of the admin views, and leaves the row when the entry is taken down", async () => {
+    const { id, manageToken } = await published();
+    await report(id, { reason: "checking privacy" });
+    const flagged = await (await reports()).text();
+    // Control: the admin view really carries the entry.
+    expect(flagged).toContain(id);
+    expect(flagged).not.toContain(EMAIL);
+    expect(flagged).not.toContain("example-privacy.test");
+
+    const db = (await getDb())!;
+    expect((await getEntryRecord(db, id))?.authorEmail).toBe(EMAIL);
+    expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(204);
+    const gone = await getEntryRecord(db, id);
+    expect(gone?.removed).not.toBeNull();
+    expect(gone?.authorEmail).toBe("");
+    expect(gone?.manageTokenHash).toBeNull();
   });
 });
 
