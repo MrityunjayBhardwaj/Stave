@@ -1,6 +1,7 @@
 import { SHARE_ID_PATTERN } from "../../../shareCrypto";
 import {
   GALLERY_ID_PATTERN,
+  MAX_CLAIM_ITEMS,
   type ClaimLinkItem,
   type ClaimRefusal,
   type ClaimRequest,
@@ -61,9 +62,27 @@ import type { Checked } from "./validate";
 // browser retries until a claim succeeds) moves the rest. A rerun after the
 // retirement sweeps the old indexes again, finds them empty, and changes nothing.
 
-export const MAX_CLAIM_ITEMS = 500;
+export { MAX_CLAIM_ITEMS };
 export const MAX_CLAIM_BODY_BYTES = 256 * 1024;
 const MAX_TOKEN_CHARS = 200;
+
+/**
+ * #2345 — what one claim counts against the account's claim limit: one per
+ * entry, one per link, one for the old profile, and at least one, so an empty
+ * or malformed claim still counts.
+ *
+ * Why per item and not per request: the storage work is per item (an entry
+ * move is several reads and writes), so a per-request limit let one account
+ * buy 10 × 1,000 items of work an hour with ten requests. Charging per item,
+ * with the per-request cap lowered from 500 to MAX_CLAIM_ITEMS (50 entries and
+ * 50 links), bounds the work to the hourly budget (RATE_LIMITS.claim) however
+ * the requests are shaped. The cap keeps any single request well under the
+ * budget, so a real browser's claim is never refused for its size alone.
+ */
+export function claimCost(claim: ClaimRequest | null): number {
+  if (!claim) return 1;
+  return Math.max(1, claim.entries.length + claim.links.length + (claim.authorKey ? 1 : 0));
+}
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);

@@ -324,6 +324,13 @@ export interface ClaimLinkItem extends ClaimItem {
   createdAt?: number;
 }
 
+/**
+ * #2345 — the most entries, and separately the most links, one claim may carry.
+ * It was 500; each item costs several storage operations, so it is now small,
+ * and the browser sends anything beyond it on a later page load (pendingClaim).
+ */
+export const MAX_CLAIM_ITEMS = 50;
+
 export interface ClaimRequest {
   authorKey?: string;
   entries: ClaimItem[];

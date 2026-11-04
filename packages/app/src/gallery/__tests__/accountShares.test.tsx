@@ -34,7 +34,7 @@ import {
 } from "../localShares";
 import { claimToasts, movedPhrase, myRows } from "../myShares";
 import { resetGallerySessionForTests } from "../session";
-import { MANAGE_TOKEN_HEADER, type ClaimResponse, type GalleryEntry, type MySharesResponse } from "../types";
+import { MANAGE_TOKEN_HEADER, MAX_CLAIM_ITEMS, type ClaimResponse, type GalleryEntry, type MySharesResponse } from "../types";
 
 const ME = "acctAuthor1";
 const SHARE = (id: string, publishedAt: number, over: Partial<LocalShare> = {}): LocalShare => ({
@@ -80,6 +80,25 @@ describe("what a claim sends and marks", () => {
     expect(listPrivateLinks().map((l) => l.manageToken)).toEqual(["lt-l2xxxxxxxxx", "lt-l1xxxxxxxxx"]);
     // A different account on this browser still gets asked.
     expect(pendingClaim("someoneElse")?.entries).toHaveLength(1);
+  });
+
+  it(`#2345: sends at most ${MAX_CLAIM_ITEMS} entries and links at a time, and the rest on the next claim`, () => {
+    const extra = 7;
+    for (let i = 0; i < MAX_CLAIM_ITEMS + extra; i++) {
+      const n = String(i).padStart(3, "0");
+      addLocalShare(SHARE(`e${n}xxxxxxx`, i));
+      addPrivateLink(LINK(`l${n}xxxxxxx`, i));
+    }
+    const first = pendingClaim(ME)!;
+    expect(first.entries).toHaveLength(MAX_CLAIM_ITEMS);
+    expect(first.links).toHaveLength(MAX_CLAIM_ITEMS);
+    markClaimed(ME, first);
+    const second = pendingClaim(ME)!;
+    expect(second.entries).toHaveLength(extra);
+    expect(second.links).toHaveLength(extra);
+    expect(new Set([...first.entries, ...second.entries].map((e) => e.id)).size).toBe(MAX_CLAIM_ITEMS + extra);
+    markClaimed(ME, second);
+    expect(pendingClaim(ME)).toBeNull();
   });
 
   it("marks a refused item refused, not claimed, so it stays 'only in this browser' and isn't re-sent", () => {
