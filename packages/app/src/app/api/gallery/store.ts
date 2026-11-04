@@ -19,6 +19,12 @@ import { hasBlobStore } from "../share/store";
 //   gallery/thumbnails/<id>        PNG or WebP bytes (type is read from the bytes)
 //   gallery/reports/<id>/<t>-<r>.json   one GalleryReport per report
 //   gallery/removed/<id>.json      the removed marker: GET answers 410 once it exists
+//   gallery/authors/<authorId>.json          the public profile (GalleryAuthorProfile)
+//   gallery/author-private/<authorId>.json   { authorEmail, authorKeyHash } — never served
+//   gallery/author-keys/<keyHash>.json       { authorId } — which author a key belongs to
+//   gallery/author-index/<authorId>/entries/<entryId>.json          an author's entries
+//   gallery/author-index/<authorId>/collections/<collectionId>.json an author's collections
+//   gallery/collections/<id>.json            one collection (GalleryCollection)
 //
 // The entry JSON is written LAST on publish, so a listing never shows an entry
 // whose manifest isn't there yet; the removed marker is written FIRST on delete,
@@ -54,6 +60,17 @@ export const galleryPaths = {
   report: (id: string, name: string) => `gallery/reports/${id}/${name}.json`,
   removedPrefix: "gallery/removed/",
   removed: (id: string) => `gallery/removed/${id}.json`,
+
+  // #2314 authors and #2315 collections (see authors.ts for the lifecycle).
+  author: (authorId: string) => `gallery/authors/${authorId}.json`,
+  authorPrivate: (authorId: string) => `gallery/author-private/${authorId}.json`,
+  authorKey: (keyHash: string) => `gallery/author-keys/${keyHash}.json`,
+  authorEntriesOf: (authorId: string) => `gallery/author-index/${authorId}/entries/`,
+  authorEntry: (authorId: string, entryId: string) => `gallery/author-index/${authorId}/entries/${entryId}.json`,
+  authorCollectionsOf: (authorId: string) => `gallery/author-index/${authorId}/collections/`,
+  authorCollection: (authorId: string, collectionId: string) =>
+    `gallery/author-index/${authorId}/collections/${collectionId}.json`,
+  collection: (id: string) => `gallery/collections/${id}.json`,
 };
 
 const blobStore: GalleryBlobStore = {
@@ -178,6 +195,18 @@ export interface PrivateRecord {
   authorEmail: string;
   /** SHA-256 of the manage token, hex. */
   manageTokenHash: string;
+}
+
+/** The record kept beside each author (#2314). Never served. */
+export interface PrivateAuthorRecord {
+  authorEmail: string;
+  /** SHA-256 of the author key, hex. */
+  authorKeyHash: string;
+}
+
+/** `gallery/author-keys/<sha256 of key>.json` — finds the author a key belongs to. Never served. */
+export interface AuthorKeyPointer {
+  authorId: string;
 }
 
 export interface RemovedMarker {

@@ -1,6 +1,13 @@
 import {
+  GALLERY_ID_PATTERN,
   GALLERY_KINDS,
   MAX_AUTHOR_NAME_CHARS,
+  MAX_BIO_CHARS,
+  MAX_COLLECTION_DESCRIPTION_CHARS,
+  MAX_COLLECTION_ENTRIES,
+  MAX_COLLECTION_TITLE_CHARS,
+  type AuthorUpdateRequest,
+  type CollectionWriteRequest,
   MAX_MANIFEST_BYTES,
   MAX_REPORT_REASON_CHARS,
   MAX_TAG_CHARS,
@@ -38,7 +45,7 @@ export interface ValidPublish {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
-function boundedText(v: unknown, field: string, max: number): Checked<string> {
+export function boundedText(v: unknown, field: string, max: number): Checked<string> {
   if (typeof v !== "string") return bad(`${field} is missing`);
   const s = v.trim();
   if (!s) return bad(`${field} is empty`);
@@ -175,6 +182,52 @@ export function checkPublish(body: unknown): Checked<ValidPublish> {
       thumbnail: thumbnail.value,
     },
   };
+}
+
+// ── #2314 profiles and #2315 collections ─────────────────────────────────────
+
+export const MAX_AUTHOR_BODY_BYTES = MAX_BIO_CHARS * 4 + 16 * 1024;
+export const MAX_COLLECTION_BODY_BYTES = 64 * 1024;
+
+/**
+ * A profile edit. The name is trimmed like a publish name; the bio is markdown
+ * and kept exactly as typed (no trimming, no sanitising): it is only ever
+ * served as JSON, and the client renders it with raw HTML escaped. The server
+ * must never render it into a page itself.
+ */
+export function checkAuthorUpdate(body: unknown): Checked<AuthorUpdateRequest> {
+  if (!isObject(body)) return bad("expected a JSON object");
+  const name = boundedText(body.name, "name", MAX_AUTHOR_NAME_CHARS);
+  if (!name.ok) return name;
+  if (typeof body.bio !== "string") return bad("bio is missing");
+  if (body.bio.length > MAX_BIO_CHARS) return bad(`bio is longer than ${MAX_BIO_CHARS} characters`);
+  return { ok: true, value: { name: name.value, bio: body.bio } };
+}
+
+/**
+ * A collection's fields. Ids are checked for shape here, deduplicated keeping
+ * the first place each appears, and capped; whether each is the caller's own,
+ * live entry is checked against the store by the route.
+ */
+export function checkCollectionWrite(body: unknown): Checked<CollectionWriteRequest> {
+  if (!isObject(body)) return bad("expected a JSON object");
+  const title = boundedText(body.title, "title", MAX_COLLECTION_TITLE_CHARS);
+  if (!title.ok) return title;
+  if (typeof body.description !== "string") return bad("description is missing");
+  const description = body.description.trim();
+  if (description.length > MAX_COLLECTION_DESCRIPTION_CHARS) {
+    return bad(`description is longer than ${MAX_COLLECTION_DESCRIPTION_CHARS} characters`);
+  }
+  if (!Array.isArray(body.entryIds)) return bad("entryIds must be a list");
+  const entryIds: string[] = [];
+  for (const id of body.entryIds) {
+    if (typeof id !== "string" || !GALLERY_ID_PATTERN.test(id)) {
+      return bad(`entry id ${JSON.stringify(String(id)).slice(0, 40)} is not a gallery id`);
+    }
+    if (!entryIds.includes(id)) entryIds.push(id);
+  }
+  if (entryIds.length > MAX_COLLECTION_ENTRIES) return bad(`at most ${MAX_COLLECTION_ENTRIES} entries in a collection`);
+  return { ok: true, value: { title: title.value, description, entryIds } };
 }
 
 export function checkReport(body: unknown): Checked<{ reason: string }> {

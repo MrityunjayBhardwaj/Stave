@@ -120,6 +120,7 @@ describe("publishing", () => {
       kind: "music",
       tags: ["techno", "dark"],
       authorName: "Ada",
+      authorId: expect.stringMatching(GALLERY_ID_PATTERN),
       publishedAt: expect.any(Number),
       fileCount: 1,
       hasThumbnail: true,
