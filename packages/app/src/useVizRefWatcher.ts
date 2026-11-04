@@ -21,10 +21,10 @@ import {
   listWorkspaceFiles,
   subscribeToWorkspaceFile,
   flushToPreset,
-  getPresetIdForFile,
   registerPresetAsNamedViz,
   VizPresetStore,
 } from "@stave/editor";
+import { findVizFileByName, presetIdForVizFile } from "./visualizers/vizFileLookup";
 
 const VIZ_REF_RE = /\.viz\(\s*["']([^"']+)["']\s*\)/g;
 
@@ -40,23 +40,12 @@ function extractVizRefs(content: string): string[] {
   return names;
 }
 
-function resolveVizFile(vizName: string): { fileId: string; presetId: string } | null {
-  const norm = (s: string) => s.toLowerCase().replace(/[\s\-_]/g, "");
-  const target = norm(vizName);
-  const allFiles = listWorkspaceFiles();
-  for (const f of allFiles) {
-    const baseName = f.path.replace(/\.[^.]+$/, "");
-    const lastSeg = baseName.split("/").pop() ?? "";
-    if (norm(lastSeg) === target || norm(baseName) === target) {
-      let presetId = getPresetIdForFile(f);
-      // Auto-generate presetId for manually created viz files
-      if (!presetId) {
-        presetId = `user_${baseName.replace(/[^a-zA-Z0-9]/g, "_")}`;
-      }
-      return { fileId: f.id, presetId };
-    }
-  }
-  return null;
+// Viz files only, resolved the way the renderer registers them — a name-only
+// match picked up a PATTERN sharing the visual's name (fold.strudel beside
+// Fold.p5) and flushed its code into a viz preset (#2322).
+function resolveRefFile(vizName: string): { fileId: string; presetId: string } | null {
+  const f = findVizFileByName(listWorkspaceFiles(), vizName);
+  return f ? { fileId: f.id, presetId: presetIdForVizFile(f) } : null;
 }
 
 function recompileAndRegister(vizFileId: string, presetId: string): void {
@@ -90,7 +79,7 @@ export function useVizRefWatcher(fileId: string | null): void {
     const unsubs: Array<() => void> = [];
 
     for (const name of vizNames) {
-      const resolved = resolveVizFile(name);
+      const resolved = resolveRefFile(name);
       if (!resolved) continue;
 
       const unsub = subscribeToWorkspaceFile(resolved.fileId, () => {
