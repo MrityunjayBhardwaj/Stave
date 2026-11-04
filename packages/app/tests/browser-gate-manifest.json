@@ -491,6 +491,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "gallery-sandbox.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project; there only its trust-step test runs — the two preview tests skip themselves, saying why, because the gate's server is next dev, which can't host the sandboxed frame (run them against next start)"
+  },
   "gallery-sign-in.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN"

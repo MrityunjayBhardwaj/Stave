@@ -14,7 +14,7 @@ import { claimIntoAccount } from "./client";
 import { runClaimOnce } from "./claimRun";
 import { useGallerySession } from "./session";
 import { readGalleryLink, fileToAdd, type GalleryLinkTarget } from "./galleryModel";
-import { beginGalleryImport, endGalleryImport, holdGalleryFiles } from "./safeRun";
+import { beginGalleryImport, endGalleryImport, holdGalleryFiles, markGalleryFilesUntrusted } from "./safeRun";
 import type { GalleryEntry, GalleryManifest } from "./types";
 import { applyShareManifest, clearShareFragment } from "../shareProject";
 import { createFileWithContent, extensionToLanguage } from "../lib/newFile";
@@ -112,6 +112,8 @@ export function GalleryHost({ unsavedBlocksLeaving, openProject, onPublish }: Ga
         await openProject(async () => {
           const meta = await applyShareManifest({ ...manifest, project: { ...manifest.project, name: entry.title } });
           holdGalleryFiles(meta.id, manifest.files.map((f) => f.id));
+          // #2328 — and the first Play of each asks first, naming who wrote it.
+          markGalleryFilesUntrusted(meta.id, manifest.files.map((f) => f.id), entry.authorName);
           return meta;
         });
       } finally {
@@ -135,7 +137,10 @@ export function GalleryHost({ unsavedBlocksLeaving, openProject, onPublish }: Ga
     try {
       created = createFileWithContent(f.path, f.content, language);
       const projectId = getActiveProjectId();
-      if (projectId) holdGalleryFiles(projectId, [created.id]);
+      if (projectId) {
+        holdGalleryFiles(projectId, [created.id]);
+        markGalleryFilesUntrusted(projectId, [created.id], entry.authorName);
+      }
     } finally {
       endGalleryImport();
     }
