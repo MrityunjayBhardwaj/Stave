@@ -37,6 +37,8 @@ export interface MenuActions {
   canBounceToWav: () => boolean;
   onImportProject: () => void;
   onShareProject: () => void;
+  /** #2301 — File → Publish to Gallery…; absent where there is nowhere to publish. */
+  onPublishToGallery?: () => void;
   onVersionHistory: () => void;
   onToggleSidebar: () => void;
   sidebarCollapsed: boolean;
@@ -98,6 +100,7 @@ export function buildMenus(a: MenuActions): Menu[] {
         item("Bounce to WAV...", a.onBounceToWav, { disabled: !a.canBounceToWav() }),
         divider,
         item("Copy Share Link", a.onShareProject),
+        ...(a.onPublishToGallery ? [item("Publish to Gallery...", a.onPublishToGallery)] : []),
         divider,
         item("Editor Settings...", a.onOpenEditorSettings),
         item("Keyboard Shortcuts...", a.onOpenShortcuts),

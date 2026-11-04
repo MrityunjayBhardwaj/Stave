@@ -104,6 +104,7 @@ import {
 } from "@stave/editor";
 import StrudelEditorClient, { type BounceHandle } from "./StrudelEditorClient";
 import { BounceModal, type BounceState } from "./BounceModal";
+import { PublishDialog } from "../gallery/PublishDialog";
 import type { BounceSizing } from "./songLength";
 import { DocsSearchPalette } from "./DocsSearchPalette";
 import { isPerfOverlayToggle } from "./perfToggleKey";
@@ -290,6 +291,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   }, []);
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
   // #2019 — the start screen. Decided ONCE, when the app first mounts (which is
   // after the last project has loaded): it greets an arrival and never appears
   // mid-session on its own. A share link has its own question to ask instead.
@@ -1839,6 +1841,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       run: () => { void handleShareProject(); },
     }));
     unregs.push(registerCommand({
+      id: "stave.file.publishToGallery",
+      title: "Publish to Gallery…",
+      category: "File",
+      description: "Put this project, or one music or viz file, in the community gallery.",
+      run: () => setPublishOpen(true),
+    }));
+    unregs.push(registerCommand({
       id: "stave.view.shortcuts",
       title: "Keyboard Shortcuts",
       category: "View",
@@ -2062,6 +2071,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     onBounceToWav: openBounceModal,
     canBounceToWav: () => bounceRef.current?.canBounce() ?? false,
     onShareProject: handleShareProject,
+    onPublishToGallery: () => setPublishOpen(true),
     onVersionHistory: openSnapshotPanel,
     onToggleSidebar: () => setSidebarCollapsed((c) => !c),
     sidebarCollapsed,
@@ -2314,6 +2324,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           setStartScreenOpen(false);
           triggerImportPicker();
         }}
+      />
+
+      <PublishDialog
+        open={publishOpen}
+        project={activeProject}
+        activeFileId={activeFileId}
+        onClose={() => setPublishOpen(false)}
       />
 
       <TemplateModal
