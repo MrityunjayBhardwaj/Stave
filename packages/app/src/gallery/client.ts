@@ -5,6 +5,7 @@
 import {
   AUTHOR_KEY_HEADER,
   MANAGE_TOKEN_HEADER,
+  TURNSTILE_HEADER,
   type AuthorMovedResponse,
   type AuthorPageResponse,
   type ClaimRequest,
@@ -20,6 +21,10 @@ import {
   type PublishRequest,
   type PublishResponse,
 } from "./types";
+
+function withTurnstile(headers: Record<string, string>, token: string | null | undefined): Record<string, string> {
+  return token ? { ...headers, [TURNSTILE_HEADER]: token } : headers;
+}
 
 /** A removed entry (410) — the overlay says "this was removed" instead of failing. */
 export class GalleryEntryRemoved extends Error {
@@ -37,7 +42,9 @@ async function failure(res: Response, what: string): Promise<Error> {
   } catch {
     /* not JSON */
   }
+  // #2330 — the server says what was limited and when to try again; use its words.
   if (res.status === 429) {
+    if (detail) return new Error(detail);
     return new Error(
       what === "publishing"
         ? "you've published several times in the last few minutes; try again shortly"
@@ -81,10 +88,10 @@ export function galleryThumbnailUrl(id: string): string {
  * #2319 — the session cookie (sent with this same-origin request) says who is
  * publishing; signed out, the server answers 401.
  */
-export async function publishToGallery(req: PublishRequest): Promise<PublishResponse> {
+export async function publishToGallery(req: PublishRequest, turnstileToken?: string | null): Promise<PublishResponse> {
   const res = await fetch("/api/gallery", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: withTurnstile({ "Content-Type": "application/json" }, turnstileToken),
     body: JSON.stringify(req),
   });
   if (res.status === 401) throw new Error("sign in to publish (your session may have ended)");
@@ -108,10 +115,10 @@ export async function deleteFromGallery(id: string, manageToken: string | null):
   throw await failure(res, "deleting");
 }
 
-export async function reportGalleryEntry(id: string, reason: string): Promise<void> {
+export async function reportGalleryEntry(id: string, reason: string, turnstileToken?: string | null): Promise<void> {
   const res = await fetch(`/api/gallery/${encodeURIComponent(id)}/report`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: withTurnstile({ "Content-Type": "application/json" }, turnstileToken),
     body: JSON.stringify({ reason }),
   });
   if (res.status !== 202) throw await failure(res, "reporting");

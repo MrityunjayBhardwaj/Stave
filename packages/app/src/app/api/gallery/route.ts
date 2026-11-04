@@ -6,7 +6,9 @@ import {
   type PublishResponse,
 } from "../../../gallery/types";
 import { hashToken, newManageToken } from "./auth";
+import { limitAccount } from "./rateLimit";
 import { requireSessionAuthor } from "./session";
+import { requireTurnstile } from "./turnstile";
 import { galleryPaths, galleryStore, getJson, putJson, type PrivateRecord } from "./store";
 import { checkPublish, MAX_PUBLISH_BODY_BYTES, readJsonBody } from "./validate";
 
@@ -54,12 +56,12 @@ export async function GET(): Promise<Response> {
   return Response.json(body, { headers: { "Cache-Control": LIST_CACHE } });
 }
 
-// How often one visitor may publish is limited before this code runs, the way
-// #2250 limits short links — by a Vercel Firewall rate-limit rule on
-// stave-code-app. The existing rule matches POST /api/share ONLY; publishing
-// needs its own rule for POST on path /api/gallery (fixed window, keyed by IP,
-// answered 429), added in the project's Firewall settings. It is not in this
-// repo; a deploy elsewhere needs its own. The publish dialog says why on a 429.
+// #2330 — how often one account may publish is limited here (rateLimit.ts,
+// RATE_LIMITS.publish), and a Turnstile check runs when it is set up
+// (turnstile.ts). The outer layer is a per-address Vercel Firewall rule for
+// POST /api/gallery; it lives in the project's Firewall settings, not in this
+// repo (the docs page "Signing in to the gallery" lists the rules). The publish
+// dialog shows the server's message on a 429.
 
 export async function POST(req: Request): Promise<Response> {
   const store = galleryStore();
@@ -71,6 +73,9 @@ export async function POST(req: Request): Promise<Response> {
   const who = await requireSessionAuthor(req);
   if (who instanceof Response) return who;
   const { authorId, account } = who;
+  // #2330 — per-account limit, then the Turnstile check (when set up).
+  const limited = (await limitAccount("publish", account.accountHash)) ?? (await requireTurnstile(req));
+  if (limited) return limited;
 
   const body = await readJsonBody(req, MAX_PUBLISH_BODY_BYTES);
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });

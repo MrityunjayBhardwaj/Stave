@@ -172,8 +172,11 @@ function capitalise(s: string): string {
  * signed-in account's author. A key this browser already holds from before
  * sign-in stays where it is (localShares.ts) for #2320 to claim.
  */
-export async function publishAndRemember(request: PublishRequest): Promise<{ id: string; link: string }> {
-  const { id, manageToken } = await publishToGallery(request);
+export async function publishAndRemember(
+  request: PublishRequest,
+  turnstileToken?: string | null,
+): Promise<{ id: string; link: string }> {
+  const { id, manageToken } = await publishToGallery(request, turnstileToken);
   addLocalShare({ id, title: request.title, kind: request.kind, publishedAt: Date.now(), manageToken });
   return { id, link: galleryEntryLink(id) };
 }

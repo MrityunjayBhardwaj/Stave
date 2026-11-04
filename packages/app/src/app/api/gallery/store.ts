@@ -32,6 +32,8 @@ import { hasBlobStore } from "../share/store";
 //                                            belongs to. Never served.
 //   gallery/account-links/<accountHash>/<shareId>.json  #2321 AccountLink — a private link
 //                                            (key included) kept for its owner. Never public.
+//   gallery/rate-limits/<sha256(key)>.json   #2330 { windowStart, count } — one write counter
+//                                            (see rateLimit.ts). Never served.
 //
 // #2320 — a profile merged into an account's profile keeps its JSON with
 // `mergedInto: <authorId>` (StoredAuthorProfile); the author route answers

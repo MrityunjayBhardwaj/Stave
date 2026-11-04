@@ -1,5 +1,6 @@
 import { shareStore } from "../../share/store";
 import { checkClaim, MAX_CLAIM_BODY_BYTES, runClaim } from "../claim";
+import { limitAccount } from "../rateLimit";
 import { requireSessionAuthor } from "../session";
 import { galleryStore } from "../store";
 import { readJsonBody } from "../validate";
@@ -17,6 +18,8 @@ export async function POST(req: Request): Promise<Response> {
 
   const who = await requireSessionAuthor(req, { signedOut: "sign in to bring your shares into your account" });
   if (who instanceof Response) return who;
+  const limited = await limitAccount("claim", who.account.accountHash); // #2330
+  if (limited) return limited;
 
   const body = await readJsonBody(req, MAX_CLAIM_BODY_BYTES);
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });

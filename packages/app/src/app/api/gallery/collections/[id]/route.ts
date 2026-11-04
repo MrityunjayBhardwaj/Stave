@@ -7,6 +7,7 @@ import {
 } from "../../../../../gallery/types";
 import { isAdminKey } from "../../auth";
 import { foreignEntry, servedCollection } from "../../authors";
+import { limitAuthor } from "../../rateLimit";
 import { mayManageAuthor } from "../../session";
 import { galleryPaths, galleryStore, getJson, putJson } from "../../store";
 import { checkCollectionWrite, MAX_COLLECTION_BODY_BYTES, readJsonBody } from "../../validate";
@@ -52,6 +53,8 @@ export async function PUT(req: Request, { params }: Ctx): Promise<Response> {
   const stored = await getJson<GalleryCollection>(store, galleryPaths.collection(id));
   if (!stored) return notFound();
   if (!(await mayManageAuthor(req, store, stored.authorId))) return forbidden();
+  const limited = await limitAuthor("edit", stored.authorId); // #2330
+  if (limited) return limited;
 
   const body = await readJsonBody(req, MAX_COLLECTION_BODY_BYTES);
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });
@@ -83,6 +86,8 @@ export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
     isAdminKey(req.headers.get(ADMIN_KEY_HEADER)) ||
     (await mayManageAuthor(req, store, stored.authorId));
   if (!allowed) return forbidden();
+  const limited = await limitAuthor("edit", stored.authorId); // #2330
+  if (limited) return limited;
 
   // The collection itself first (GET answers 404 at once), then its index marker.
   // Its entries are untouched.

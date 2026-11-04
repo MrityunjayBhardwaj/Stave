@@ -5,6 +5,7 @@ import {
   type GalleryAuthorProfile,
 } from "../../../../../gallery/types";
 import { authorWork } from "../../authors";
+import { limitAuthor } from "../../rateLimit";
 import { mayManageAuthor } from "../../session";
 import { galleryPaths, galleryStore, getJson, putJson, type StoredAuthorProfile } from "../../store";
 import { checkAuthorUpdate, MAX_AUTHOR_BODY_BYTES, readJsonBody } from "../../validate";
@@ -63,6 +64,8 @@ export async function PUT(req: Request, { params }: Ctx): Promise<Response> {
   if (!(await mayManageAuthor(req, store, authorId))) {
     return Response.json({ error: "you can't edit this profile" }, { status: 403 });
   }
+  const limited = await limitAuthor("edit", authorId); // #2330
+  if (limited) return limited;
 
   const body = await readJsonBody(req, MAX_AUTHOR_BODY_BYTES);
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });
