@@ -63,6 +63,10 @@ beforeEach(() => {
   vi.stubEnv("STAVE_GALLERY_DEV_DIR", dir);
   vi.stubEnv("STAVE_GALLERY_ADMIN_KEY", OLD_KEY);
   vi.stubEnv("STAVE_GALLERY_ADMINS", `test-login:${ADMIN}`);
+  // #2330 — this file publishes far more than 10 times as one account; the
+  // limits themselves are tested in galleryRateLimit.test.ts.
+  vi.stubEnv("STAVE_RATE_LIMIT_PUBLISH", "1000");
+  vi.stubEnv("STAVE_RATE_LIMIT_REPORT", "1000");
   // #2319 — sign-in set up (the test provider) and signed in as Ada.
   vi.stubEnv("AUTH_SECRET", "test-secret");
   vi.stubEnv("STAVE_AUTH_TEST_LOGIN", "1");

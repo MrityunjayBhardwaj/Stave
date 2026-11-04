@@ -2,6 +2,7 @@ import { isSealedShape, MAX_SEALED_BYTES, newShareId } from "../../../shareCrypt
 import { SHARE_LINK_NAME_HEADER } from "../../../gallery/types";
 import { hashToken, newManageToken } from "../gallery/auth";
 import { accountLinkRecord, recordAccountLink } from "../gallery/accountLinks";
+import { limitRequest } from "../gallery/rateLimit";
 import { accountHashOf, sessionClaim } from "../gallery/session";
 import { galleryStore } from "../gallery/store";
 import { shareStore } from "./store";
@@ -28,6 +29,8 @@ import { shareStore } from "./store";
 export async function POST(req: Request): Promise<Response> {
   const store = shareStore();
   if (!store) return Response.json({ error: "short links are not set up here" }, { status: 503 });
+  const limited = await limitRequest("link", req); // #2330 — per account, or per address signed out
+  if (limited) return limited;
 
   const declared = Number(req.headers.get("content-length") ?? "0");
   if (declared > MAX_SEALED_BYTES) {

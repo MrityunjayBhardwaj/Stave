@@ -10,7 +10,14 @@ import {
   type PublishForm,
 } from "../publish";
 import { listLocalShares, loadAuthor, saveAuthor } from "../localShares";
-import { AUTHOR_KEY_HEADER, MAX_MANIFEST_BYTES, MAX_TAGS, MAX_THUMBNAIL_BYTES, type GalleryManifest } from "../types";
+import {
+  AUTHOR_KEY_HEADER,
+  MAX_MANIFEST_BYTES,
+  MAX_TAGS,
+  MAX_THUMBNAIL_BYTES,
+  TURNSTILE_HEADER,
+  type GalleryManifest,
+} from "../types";
 
 function project(): GalleryManifest {
   return {
@@ -166,6 +173,16 @@ describe("publishing", () => {
     expect(share.publishedAt).toBeGreaterThanOrEqual(before);
   });
 
+  it("#2330 sends the Turnstile token in its header only when there is one", async () => {
+    const ok = () => new Response(JSON.stringify({ id: "AbCdEfGhIjK", manageToken: "tok", authorId: "a" }), { status: 201 });
+    fetchMock.mockResolvedValueOnce(ok()).mockResolvedValueOnce(ok());
+    await publishAndRemember(request(), "XXXX.DUMMY.TOKEN.XXXX");
+    await publishAndRemember(request());
+    const headers = (i: number) => fetchMock.mock.calls[i][1].headers as Record<string, string>;
+    expect(headers(0)[TURNSTILE_HEADER]).toBe("XXXX.DUMMY.TOKEN.XXXX");
+    expect(TURNSTILE_HEADER in headers(1)).toBe(false);
+  });
+
   describe("#2319 the session is who publishes", () => {
     const sentHeaders = () => (fetchMock.mock.calls[0][1].headers ?? {}) as Record<string, string>;
 
@@ -203,6 +220,10 @@ describe("publishing", () => {
     await expect(publishAndRemember(request())).rejects.toThrow("the title is too long");
     fetchMock.mockResolvedValue(new Response("", { status: 429 }));
     await expect(publishAndRemember(request())).rejects.toThrow(/published several times/);
+    // #2330 — the server's own words on a 429 (what was limited, and when to try again).
+    const limited = "you've published 10 times in an hour, which is the most allowed; try again in 23 minutes";
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: limited }), { status: 429 }));
+    await expect(publishAndRemember(request())).rejects.toThrow(limited);
     expect(loadAuthor()).toBeNull();
     expect(listLocalShares()).toEqual([]);
   });

@@ -229,11 +229,15 @@ describe("#2320 the claim", () => {
     const before = await store.list("gallery/");
     const second = await claimOk(user, body);
     expect(second).toEqual({ authorId: first.authorId, moved: { entries: 0, collections: 0, links: 0 }, refused: [] });
-    // Not a single record written or removed.
+    // Not a single record written or removed — except #2330's counter of claims,
+    // which counts every call.
     const after = await store.list("gallery/");
-    expect(after.map((b) => `${b.pathname}@${b.uploadedAt}`).sort()).toEqual(
-      before.map((b) => `${b.pathname}@${b.uploadedAt}`).sort(),
-    );
+    const records = (bs: typeof before) =>
+      bs
+        .filter((b) => !b.pathname.startsWith("gallery/rate-limits/"))
+        .map((b) => `${b.pathname}@${b.uploadedAt}`)
+        .sort();
+    expect(records(after)).toEqual(records(before));
   });
 
   it("refuses an author that belongs to another account, and moves none of its work", async () => {

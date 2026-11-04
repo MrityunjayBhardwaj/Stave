@@ -14,6 +14,7 @@ import {
   type PublishForm,
 } from "./publish";
 import { captureLiveVizThumbnail, type CaptureResult } from "./thumbnail";
+import { TurnstileWidget, turnstileSiteKey } from "./TurnstileWidget";
 import {
   GALLERY_KINDS,
   MAX_MANIFEST_BYTES,
@@ -124,6 +125,11 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
   const [includeThumb, setIncludeThumb] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
+  // #2330 — the Turnstile check, when this site has one. A token is good once:
+  // a failed send bumps `turnstileRound`, which remounts the widget for a new one.
+  const siteKey = turnstileSiteKey();
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileRound, setTurnstileRound] = useState(0);
   const titleRef = useRef<HTMLInputElement>(null);
 
   const capture = useCallback(() => {
@@ -144,6 +150,8 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
     });
     setErrors([]);
     setSending(false);
+    setTurnstileToken(null);
+    setTurnstileRound((r) => r + 1);
     setIncludeThumb(true);
     capture();
     queueMicrotask(() => titleRef.current?.focus());
@@ -177,6 +185,10 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
 
   const submit = useCallback(async () => {
     if (!manifest || sending) return;
+    if (siteKey && !turnstileToken) {
+      setErrors(["Please finish the \u201care you human\u201d check above the Publish button first."]);
+      return;
+    }
     const built = buildPublishRequest(form, manifest, thumbnail);
     if (!built.request) {
       setErrors(built.errors);
@@ -185,7 +197,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
     setErrors([]);
     setSending(true);
     try {
-      const { link } = await publishAndRemember(built.request);
+      const { link } = await publishAndRemember(built.request, siteKey ? turnstileToken : null);
       let copied = true;
       try {
         await navigator.clipboard.writeText(link);
@@ -203,8 +215,9 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
     } catch (err) {
       setErrors([(err as Error)?.message || "Publishing failed."]);
       setSending(false);
+      if (siteKey) setTurnstileRound((r) => r + 1); // the token was spent; get a fresh one
     }
-  }, [manifest, sending, form, thumbnail, onClose]);
+  }, [manifest, sending, siteKey, turnstileToken, form, thumbnail, onClose]);
 
   if (!open) return null;
 
@@ -365,6 +378,15 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
             {kib(MAX_THUMBNAIL_BYTES)}. Anyone can see and open what you publish.
           </p>
 
+          {siteKey && (
+            <TurnstileWidget
+              key={turnstileRound}
+              siteKey={siteKey}
+              onToken={setTurnstileToken}
+              testId="gallery-publish-turnstile"
+            />
+          )}
+
           {errors.length > 0 && (
             <div style={styles.errors} role="alert" data-testid="gallery-publish-errors">
               {errors.map((e) => (
@@ -379,8 +401,8 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
             </button>
             <button
               type="submit"
-              style={{ ...styles.primaryBtn, opacity: sending ? 0.6 : 1 }}
-              disabled={sending || !manifest}
+              style={{ ...styles.primaryBtn, opacity: sending || (siteKey && !turnstileToken) ? 0.6 : 1 }}
+              disabled={sending || !manifest || (!!siteKey && !turnstileToken)}
               data-testid="gallery-publish-submit"
             >
               {sending ? "Publishing…" : "Publish"}

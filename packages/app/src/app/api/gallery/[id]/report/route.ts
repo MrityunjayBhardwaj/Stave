@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
 
 import { GALLERY_ID_PATTERN, type GalleryReport } from "../../../../../gallery/types";
+import { limitRequest } from "../../rateLimit";
 import { galleryPaths, galleryStore, putJson } from "../../store";
+import { requireTurnstile } from "../../turnstile";
 import { checkReport, MAX_REPORT_BODY_BYTES, readJsonBody } from "../../validate";
 
 // #2303 — anyone can flag an entry with a short reason. Each report is its own
@@ -16,6 +18,9 @@ export async function POST(
   if (!GALLERY_ID_PATTERN.test(id)) return Response.json({ error: "not found" }, { status: 404 });
   const store = galleryStore();
   if (!store) return Response.json({ error: "the gallery is not set up here" }, { status: 503 });
+  // #2330 — per account (or per address signed out), then Turnstile when set up.
+  const limited = (await limitRequest("report", req)) ?? (await requireTurnstile(req));
+  if (limited) return limited;
 
   const body = await readJsonBody(req, MAX_REPORT_BODY_BYTES);
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });

@@ -35,6 +35,8 @@ import { hasBlobStore } from "../share/store";
 //                                            the key or the full link (#2329). Never public.
 //   gallery/admin-log/<ms>-<hex>.json        #2331 AdminLogRecord — one per admin action.
 //                                            Read by admins only (see admin.ts).
+//   gallery/rate-limits/<sha256(key)>.json   #2330 { windowStart, count } — one write counter
+//                                            (see rateLimit.ts). Never served.
 //
 // #2320 — a profile merged into an account's profile keeps its JSON with
 // `mergedInto: <authorId>` (StoredAuthorProfile); the author route answers

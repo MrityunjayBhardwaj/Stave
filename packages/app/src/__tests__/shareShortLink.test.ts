@@ -1,7 +1,7 @@
 // @vitest-environment node
 // #2248 — short share links: the sealed form, the link's address, and the two routes
 // against the dev folder store.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   MAX_SEALED_BYTES,
@@ -85,6 +85,10 @@ describe("reading a short link's address", () => {
 });
 
 describe("the share routes (dev folder store)", () => {
+  // #2330 — link creation is limited per address, and every test here is the
+  // same (unknown) address in the shared dev folder; the limit itself is tested
+  // in galleryRateLimit.test.ts.
+  beforeEach(() => vi.stubEnv("STAVE_RATE_LIMIT_LINK", "1000000"));
   afterEach(() => vi.unstubAllEnvs());
 
   const post = (body: Uint8Array) =>

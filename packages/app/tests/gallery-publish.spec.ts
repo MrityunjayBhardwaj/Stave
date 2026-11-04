@@ -133,10 +133,42 @@ test.describe('Publish to Gallery (#2301)', () => {
     expect(['strudel', 'sonicpi']).toContain(body.manifest.files[0].language)
   })
 
+  // #2330 — only against a server started with NEXT_PUBLIC_TURNSTILE_SITE_KEY
+  // (Cloudflare's always-pass test key 1x00000000000000000000AA): the widget
+  // loads under the app's cross-origin isolation, hands out a token, and the
+  // token goes with the publish in the cf-turnstile-response header.
+  test('#2330 with Turnstile set up, the check loads in the dialog and its token goes with the publish', async ({ page }) => {
+    await routeSession(page, ADA_SESSION_USER)
+    await bootApp(page)
+    const seen = answerPublish(page)
+    await openPublish(page)
+    const widget = page.getByTestId('gallery-publish-turnstile')
+    test.skip((await widget.count()) === 0, 'Turnstile is not set up on this server')
+
+    // The widget is Cloudflare's iframe, inside a closed shadow root, so it is
+    // found among the page's frames rather than by selector. Until it hands out
+    // a token, Publish waits; the test key passes on its own.
+    await expect
+      .poll(() => page.frames().some((f) => f.url().startsWith('https://challenges.cloudflare.com/')), { timeout: 20_000 })
+      .toBe(true)
+    await expect(widget).toHaveAttribute('data-turnstile-status', 'ready')
+    await expect(page.getByTestId('gallery-publish-submit')).toBeEnabled({ timeout: 20_000 })
+    expect(await page.evaluate(() => window.crossOriginIsolated)).toBe(true)
+    if (SHOTS) await page.getByTestId('gallery-publish-dialog').screenshot({ path: `${SHOTS}/publish-turnstile.png` })
+    await page.getByTestId('gallery-publish-title').fill('Night drive')
+    await page.getByTestId('gallery-publish-submit').click()
+    await expect(page.getByTestId('gallery-publish-dialog')).toHaveCount(0)
+    expect(seen).toHaveLength(1)
+    expect(seen[0].headers()['cf-turnstile-response']).toBe('XXXX.DUMMY.TOKEN.XXXX')
+  })
+
   test('a blank title is caught before upload, and a server refusal is shown and nothing is kept', async ({ page }) => {
     await routeSession(page, ADA_SESSION_USER)
     await bootApp(page)
-    const seen = answerPublish(page, 429, { error: 'slow down' })
+    // #2330 — the server's own 429 message is what the dialog shows.
+    const seen = answerPublish(page, 429, {
+      error: "you've published 10 times in an hour, which is the most allowed; try again in 23 minutes",
+    })
     await openPublish(page)
     await page.getByTestId('gallery-publish-title').fill('   ')
     await page.getByTestId('gallery-publish-submit').click()
@@ -145,7 +177,9 @@ test.describe('Publish to Gallery (#2301)', () => {
 
     await page.getByTestId('gallery-publish-title').fill('Night drive')
     await page.getByTestId('gallery-publish-submit').click()
-    await expect(page.getByTestId('gallery-publish-errors')).toContainText('published several times')
+    await expect(page.getByTestId('gallery-publish-errors')).toContainText(
+      "you've published 10 times in an hour, which is the most allowed; try again in 23 minutes",
+    )
     expect(seen).toHaveLength(1)
     await expect(page.getByTestId('gallery-publish-submit')).toBeEnabled()
     expect(await localShares(page)).toEqual([])

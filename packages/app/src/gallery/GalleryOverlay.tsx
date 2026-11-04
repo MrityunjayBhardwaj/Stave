@@ -14,7 +14,7 @@
  * hands the files to the host, which holds them (safeRun.ts) so they run only
  * after the person presses Play.
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchAccountShares,
   fetchGalleryEntry,
@@ -36,7 +36,6 @@ import {
   type LocalShare,
 } from "./localShares";
 import {
-  MAX_REPORT_REASON_CHARS,
   type GalleryEntry,
   type GalleryEntryResponse,
   type GalleryKind,
@@ -64,7 +63,8 @@ import {
   type ShareRow,
 } from "./myShares";
 import { useGallerySession } from "./session";
-import { getDialog, showConfirm, showPrompt, showToast } from "../dialogs/host";
+import { getDialog, showConfirm, showToast } from "../dialogs/host";
+import { REPORT_CSS, ReportDialog } from "./ReportDialog";
 
 export interface GalleryOverlayProps {
   open: boolean;
@@ -141,6 +141,10 @@ export function GalleryOverlay({
   const [links, setLinks] = useState<LocalPrivateLink[]>([]);
   const [busy, setBusy] = useState(false);
   const [account, setAccount] = useState<AccountState>({ status: "off" });
+  const [reporting, setReporting] = useState<GalleryEntry | null>(null);
+  // Read by the Esc handler without re-subscribing it on every open.
+  const reportingRef = useRef<GalleryEntry | null>(null);
+  reportingRef.current = reporting;
   const session = useGallerySession();
   const accountAuthorId = session.status === "ready" ? (session.session.user?.authorId ?? null) : null;
   // #2331 — only an admin's session says so; the routes check again on every call.
@@ -234,8 +238,8 @@ export function GalleryOverlay({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      // A confirm / prompt on top owns Esc.
-      if (e.key !== "Escape" || getDialog()) return;
+      // A confirm / prompt / the report dialog on top owns Esc.
+      if (e.key !== "Escape" || getDialog() || reportingRef.current) return;
       e.preventDefault();
       onClose();
     };
@@ -282,21 +286,12 @@ export function GalleryOverlay({
     }
   };
 
-  const report = async (entry: GalleryEntry) => {
-    const reason = await showPrompt({
-      title: "Report this entry",
-      description: `What's wrong with "${entry.title}"? A person reads every report.`,
-      placeholder: "e.g. offensive title, copies someone else's work",
-      confirmLabel: "Report",
-    });
-    const trimmed = reason?.trim();
-    if (!trimmed) return;
-    try {
-      await reportGalleryEntry(entry.id, trimmed.slice(0, MAX_REPORT_REASON_CHARS));
-      showToast("Thanks — the report was sent.", "info");
-    } catch (err) {
-      showToast(`Couldn't send the report — ${(err as Error).message}`, "error");
-    }
+  // #2330 — its own dialog (ReportDialog), so the Turnstile check can sit in it.
+  const report = (entry: GalleryEntry) => setReporting(entry);
+  const sendReport = async (reason: string, turnstileToken: string | null) => {
+    if (!reporting) return;
+    await reportGalleryEntry(reporting.id, reason, turnstileToken);
+    showToast("Thanks — the report was sent.", "info");
   };
 
   const deleteShare = async (share: ShareRow) => {
@@ -347,8 +342,9 @@ export function GalleryOverlay({
   };
 
   return (
+    <>
     <div className="sg-backdrop" data-gallery="overlay" onClick={onClose}>
-      <style>{CSS + CARD_CSS + PROFILE_CSS + MARKDOWN_CSS + MODERATION_CSS}</style>
+      <style>{CSS + CARD_CSS + PROFILE_CSS + MARKDOWN_CSS + MODERATION_CSS + REPORT_CSS}</style>
       <div
         className="sg-modal"
         role="dialog"
@@ -489,6 +485,8 @@ export function GalleryOverlay({
         )}
       </div>
     </div>
+    {reporting && <ReportDialog entry={reporting} send={sendReport} onClose={() => setReporting(null)} />}
+    </>
   );
 }
 

@@ -1,6 +1,7 @@
 import { newShareId } from "../../../../shareCrypto";
 import { type GalleryCollection } from "../../../../gallery/types";
 import { foreignEntry } from "../authors";
+import { limitAuthor } from "../rateLimit";
 import { actingAuthor } from "../session";
 import { galleryPaths, galleryStore, putJson } from "../store";
 import { checkCollectionWrite, MAX_COLLECTION_BODY_BYTES, readJsonBody } from "../validate";
@@ -15,6 +16,8 @@ export async function POST(req: Request): Promise<Response> {
 
   const authorId = await actingAuthor(req, store);
   if (!authorId) return Response.json({ error: "sign in to make a collection" }, { status: 403 });
+  const limited = await limitAuthor("edit", authorId); // #2330
+  if (limited) return limited;
 
   const body = await readJsonBody(req, MAX_COLLECTION_BODY_BYTES);
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });

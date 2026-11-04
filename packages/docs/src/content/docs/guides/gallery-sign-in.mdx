@@ -100,3 +100,72 @@ STAVE_AUTH_TEST_LOGIN=1 AUTH_SECRET=dev-only-secret npm run dev
 ```
 
 A test account's id is `test-login:<what you typed>`, so `STAVE_GALLERY_ADMINS=test-login:gallery-admin` makes the test account `gallery-admin` an admin.
+
+## Limits and the "are you human" check
+
+Anything anyone can write to needs a few guard rails. Stave has three layers, and only the first two live in the code.
+
+### Per-account limits
+
+Each signed-in account (or, for things you can do signed out, each address) may do each kind of write only so many times an hour:
+
+| What | Limit | Counted per |
+| --- | --- | --- |
+| Publish to the gallery | 10 an hour | account |
+| Report an entry | 20 an hour | account, or address when signed out |
+| Edit a profile or a collection (make, change or delete) | 60 an hour, together | profile |
+| Make a private link | 30 an hour | account, or address when signed out |
+| Bring this browser's shares into your account | 10 an hour | account |
+
+Windows are fixed hours on the clock, so the count starts over on the hour. Over the limit, the server answers `429` with a plain message ("you've published 10 times in an hour…; try again in 23 minutes") and a `Retry-After` header in seconds, and the dialog shows that message.
+
+The counters are small private records in the gallery's Blob store, one per account and kind of write. That costs one read and one write per request, which is fine at the gallery's volume; when the gallery moves to a database the counters move with it, and nothing else changes. Addresses are never stored as they are, only as a keyed hash. If the store can't be reached, the request is let through (and logged) rather than blocking publishing.
+
+To raise a limit without a code change, set `STAVE_RATE_LIMIT_<NAME>` to a whole number: `STAVE_RATE_LIMIT_PUBLISH`, `_REPORT`, `_EDIT`, `_LINK` or `_CLAIM`. The tests use this; production should normally leave them unset.
+
+### Cloudflare Turnstile on publish and report
+
+[Turnstile](https://developers.cloudflare.com/turnstile/) is Cloudflare's check that most people pass without doing anything. When it is set up, a small widget appears in the Publish dialog and the Report dialog, and the server checks its answer before accepting either. A failed check is refused with `403` and a plain message; if Cloudflare can't be reached, the server says so (`503`) rather than letting the request through.
+
+| Variable | What it is |
+| --- | --- |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | The widget's site key. Public; it is built into the page, so set it before building. |
+| `TURNSTILE_SECRET_KEY` | The widget's secret key. Server only. |
+
+Leave both unset and nothing changes: no widget, no check. Set both, or neither.
+
+To get keys:
+
+1. In the Cloudflare dashboard, open **Turnstile** and select **Add widget**.
+2. Give it a name, add your site's hostname under **Hostname management**, and choose **Managed** as the widget mode.
+3. Select **Create**, then copy the site key into `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and the secret key into `TURNSTILE_SECRET_KEY`.
+
+For local work, use Cloudflare's [test keys](https://developers.cloudflare.com/turnstile/troubleshooting/testing/), which work on any hostname including `localhost`:
+
+| Site key | Secret key | Result |
+| --- | --- | --- |
+| `1x00000000000000000000AA` | `1x0000000000000000000000000000000AA` | always passes |
+| `2x00000000000000000000AB` | `2x0000000000000000000000000000000AA` | always fails |
+
+```sh
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA \
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA \
+STAVE_AUTH_TEST_LOGIN=1 AUTH_SECRET=dev-only-secret npm run dev
+```
+
+The widget works with the cross-origin isolation headers Stave sends (see above): Cloudflare serves both its script and the widget's frame with headers that allow an isolated page to load them, so no extra setting is needed.
+
+### Per-address Firewall rules (outer layer)
+
+The limits above count per account. In front of them, add per-address rate limits in your host's firewall, so a flood is turned away before it reaches Stave at all. On Vercel: open the project's **Firewall**, select **Configure › + New Rule**, add the conditions below, choose **Rate Limit** as the action, **Fixed Window**, key **IP**, and keep the default **429**. Then **Review Changes › Publish**. (Hobby and Pro windows can be at most 10 minutes.)
+
+| Rule | Method | Path | Limit |
+| --- | --- | --- | --- |
+| Publish | `POST` | equals `/api/gallery` | 10 per 10 minutes |
+| Report | `POST` | matches `^/api/gallery/[^/]+/report$` | 20 per 10 minutes |
+| Claim | `POST` | equals `/api/gallery/claim` | 10 per 10 minutes |
+| Private links | `POST` | equals `/api/share` | 10 per 10 minutes |
+| Every other gallery write | `POST`, `PUT` or `DELETE` | starts with `/api/gallery/` | 60 per 10 minutes |
+| Revoking links | `DELETE` | starts with `/api/share/` | 30 per 10 minutes |
+
+These live in the project's Firewall settings, not in the repository, so a new deployment elsewhere needs them added again.

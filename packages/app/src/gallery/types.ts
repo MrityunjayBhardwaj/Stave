@@ -385,6 +385,13 @@ export interface AuthorMovedResponse {
 export const SHARE_LINK_NAME_HEADER = "x-stave-share-name";
 
 export const AUTHOR_KEY_HEADER = "x-stave-author-key";
+
+/**
+ * #2330 — the Cloudflare Turnstile token on publish and report (the name
+ * Cloudflare gives the widget's form field). Checked by api/gallery/turnstile.ts
+ * only when TURNSTILE_SECRET_KEY is set.
+ */
+export const TURNSTILE_HEADER = "cf-turnstile-response";
 export const MAX_BIO_CHARS = 10_000;
 export const MAX_COLLECTION_TITLE_CHARS = 80;
 export const MAX_COLLECTION_DESCRIPTION_CHARS = 1_000;
