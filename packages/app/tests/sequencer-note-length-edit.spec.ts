@@ -105,7 +105,10 @@ test.describe('the grid sets a note’s length (#1053)', () => {
     page,
   }) => {
     await boot(page)
-    await setStrudelCode(page, '$: s("[bd ~ sd ~]")')
+    // #2293: the length is the step writer's, which keeps the author's brackets —
+    // `[bd ~ sd ~]` becomes `[bd _ sd ~]`, and the column reader draws THAT at two columns
+    // (#2323), so the picture is pinned on the flat spelling, which keeps its four
+    await setStrudelCode(page, '$: s("bd ~ sd ~")')
     await openSequencer(page)
     await expect(page.locator('[data-seq-cell="0:0"]')).toHaveCount(1)
     expect(await readLane(page, 0, 4)).toBe('#---')

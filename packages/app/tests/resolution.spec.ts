@@ -147,19 +147,14 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")') // still untouched
 
-    // ⚠ #2292: column 1 exists only at the refined resolution — it is between the
-    // source's own columns 0 and 1, part of the `bd` step and not a step of its own. A
-    // click edits a step's own text or nothing (the user's ruling), and turning `bd` into
-    // `[bd bd]` is a split, a later stage's gesture (#2293). So it is refused, says why,
-    // and the document stays untouched; an empty step of its own still writes.
-    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('title', /part of a longer step/)
-    await grid.locator('[data-seq-cell="0:1"]').click({ force: true })
-    await page.waitForTimeout(150)
-    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+    // Column 1 exists only at the refined resolution — between the source's own columns
+    // 0 and 1, the second half of the `bd` step. A click there splits that step (#2293);
+    // it is offered as one, before anything is pressed.
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('title', /Splits this step/)
     expect(errors).toEqual([])
   })
 
-  test.skip('step grid: a refined view absorbs a note placed between the source’s columns (#1057) — waits on the split gesture (#2293)', async ({
+  test('step grid: a refined view absorbs a note placed between the source’s columns (#1057) — the split gesture (#2293)', async ({
     page,
   }) => {
     const errors: string[] = []

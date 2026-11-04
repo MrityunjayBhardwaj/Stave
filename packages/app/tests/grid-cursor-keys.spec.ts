@@ -172,9 +172,10 @@ test.describe('sequencer', () => {
     const seq = await openPattern(page, 'sequencer', '[data-seq-cell="0:0"]')
     const placed = await byMouse(page, seq.locator('[data-seq-cell="0:3"]'), SEQ)
     const cleared = await byMouse(page, seq.locator('[data-seq-cell="0:0"]'), SEQ)
-    // 0:1 is held by `bd _`: part of the `bd` step, not a step of its own, so a click
-    // there writes nothing (#2292) — and neither does the key
-    await expect(seq.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-disabled', 'true')
+    // 0:1 is held by `bd _`: the second of the two steps `bd _` counts (#1846), so the
+    // arrows stop there. It is not a note's start: since #2293 a click there SPLITS the
+    // written `bd`, keeping its `_` — and so does the key
+    await expect(seq.locator('[data-seq-cell="0:1"]')).toHaveAttribute('data-seq-splits', 'true')
 
     await seq.locator('[data-seq-cell="0:0"]').focus()
     await page.keyboard.press('ArrowRight')
@@ -184,8 +185,7 @@ test.describe('sequencer', () => {
       'true',
     )
     await page.keyboard.press("'")
-    await page.waitForTimeout(300)
-    expect(await source(page)).toBe(SEQ)
+    await expect.poll(() => source(page), { timeout: 5_000 }).toBe('$: s("[bd bd] _ ~ ~ ~ ~ ~ ~")')
     await setCode(page, SEQ)
     await seq.locator('[data-seq-cell="0:1"]').focus()
     await page.keyboard.press('ArrowRight')

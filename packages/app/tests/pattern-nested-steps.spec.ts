@@ -79,14 +79,12 @@ test.describe('nested steps in Exact (#1861)', () => {
     expect(await editorValue(page)).toBe(BEAT)
   })
 
-  test('a faint half of a plain step is not a step: the click is refused and says why', async ({ page }) => {
-    // splitting `bd` into `[bd bd]` respells the step; it is a later gesture (#2292, #2293)
+  test('a faint half of a plain step is not a step: a click there splits the step (#2293)', async ({ page }) => {
     const seq = await open(page, BEAT)
     await expect(cell(seq, '0:1')).toHaveAttribute('aria-label', 'bd step 2, held from step 1')
-    await expect(cell(seq, '0:1')).toHaveAttribute('title', /part of a longer step/)
-    await cell(seq, '0:1').click({ force: true })
-    await page.waitForTimeout(150)
-    expect(await editorValue(page)).toBe(BEAT)
+    await expect(cell(seq, '0:1')).toHaveAttribute('title', /Splits this step/)
+    await cell(seq, '0:1').click()
+    await expect.poll(() => editorValue(page)).toBe('$: s("[bd bd] [~ bd] sd ~, hh*8")')
   })
 
   test('the playing column of a plain step is still marked', async ({ page }) => {
@@ -106,8 +104,9 @@ test.describe('nested steps in Exact (#1861)', () => {
     // the focus ring is drawn just outside a cell; a clipping step hid it on a filled column
     const seq = await open(page, BEAT)
     await cell(seq, '0:0').focus()
+    // the next step (#2293 → walks steps) is the rest inside `[~ bd]`, a cell inside a step
     await page.keyboard.press('ArrowRight')
-    await expect(cell(seq, '0:1')).toBeFocused()
+    await expect(cell(seq, '0:2')).toBeFocused()
     const clipped = await seq.locator('[data-seq-step]').evaluateAll((els) =>
       els.filter((e) => getComputedStyle(e).overflow !== 'visible').length,
     )

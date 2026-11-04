@@ -155,8 +155,8 @@ test.describe('Sequencer (#382)', () => {
     await grid.locator('[data-seq-cell="3:4"]').click()
     await page.waitForTimeout(80)
     expect(await strudelValue(page)).toBe('$: s("bd hh*2 [sd,cp] cp")')
-    // column 1 is part of the `bd` step, not a step: refused, nothing written
-    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-disabled', 'true')
+    // column 1 is part of the `bd` step, not a step: since #2293 a click there splits it
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('data-seq-splits', 'true')
   })
 
   /**

@@ -32,10 +32,10 @@ const cell = (seq: Locator, label: string): Locator => seq.locator(`[data-seq-ce
 test.describe('a comma pattern with a `<…>` part (#1849)', () => {
   test('opens editable, every bar drawn alike', async ({ page }) => {
     const seq = await open(page, BEAT)
-    // 48 cells; refused: the 16 hats (made by `*8`) and the second column of every kick
-    // and snare step (16), which is part of a longer step, not a step
+    // 48 cells; refused: the 16 hats (made by `*8`). The second column of every kick and
+    // snare step (16) is part of a longer step: since #2293 a click there splits it
     await expect(seq.locator('[data-seq-cell]')).toHaveCount(48)
-    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(32)
+    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(16)
     await expect(cell(seq, 'sd step 15')).toHaveAttribute('aria-pressed', 'true')
     await expect(cell(seq, 'sd step 15')).not.toHaveAttribute('title', /.*/)
   })
