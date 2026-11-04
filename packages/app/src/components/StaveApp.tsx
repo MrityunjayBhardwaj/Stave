@@ -159,6 +159,7 @@ import { createSamplesProvider } from "../assetLibrary/samplesProvider";
 import { createVizProvider } from "../assetLibrary/vizProvider";
 import { createSnippetsProvider } from "../assetLibrary/snippetsProvider";
 import { playSnippet, checkSnippet, previewNotesPlayed } from "../assetLibrary/snippetPreview";
+import { isGalleryRunDeclined } from "../gallery/runGate";
 import { createFileWithContent } from "../lib/newFile";
 import { planVizLibFiles, VIZ_LIB_ROOT, type VizLibItem } from "../assetLibrary/vizLibrary";
 import { PerfOverlay } from "./PerfOverlay";
@@ -778,6 +779,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           );
         })
         .catch((err: unknown) => {
+          // #2342 — Cancel on the gallery trust question: nothing ran, nothing saved.
+          if (isGalleryRunDeclined(err)) {
+            showToast("Bounce cancelled — nothing was saved.", "info");
+            return;
+          }
           console.error("[stave] stems export failed:", err);
           showToast("Stems export failed — see console for details.", "error");
         })
@@ -858,6 +864,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         );
       })
       .catch((err: unknown) => {
+        // #2342 — Cancel on the gallery trust question: nothing ran, nothing saved.
+        if (isGalleryRunDeclined(err)) {
+          showToast("Bounce cancelled — nothing was saved.", "info");
+          return;
+        }
         console.error("[stave] bounce failed:", err);
         // #1402 — a bounce that recorded nothing used to download a valid,
         // full-length WAV of silence and call it a success. The capture

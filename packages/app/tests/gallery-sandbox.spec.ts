@@ -47,7 +47,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { chromium, test, expect, type Page } from '@playwright/test'
-import { bootApp, editorValue, evalCode, stopCode } from './_appBoot'
+import { bootApp, editorValue, evalCode, seedCode, stopCode } from './_appBoot'
 import { MUSIC_CODE, routeGallery } from './_gallery'
 
 const SHOTS = process.env.GALLERY_SHOT_DIR
@@ -356,4 +356,154 @@ test('under the browser autoplay rule, the frame asks for a click of its own, th
   } finally {
     await browser.close()
   }
+})
+
+/*
+ * #2342 / #2344 — every other way to run imported code asks the same question.
+ * Bounce to WAV and the stems export evaluate the file; a viz file runs when its
+ * ▶ Play shows it; and `.viz("name")` in your own code must not mount an
+ * imported viz file nobody agreed to run. "Ran" is the fixture's top-level
+ * counter, `window.__galleryRuns`, on the page.
+ */
+test.describe('every path that runs imported code asks first (#2342, #2344)', () => {
+  const ASK =
+    "This code was written by Alice. Running it in your workspace gives it the same access you have to Stave on this browser: your projects and your account. Preview it in the gallery first if you're unsure."
+
+  /** The trust question's own buttons (the Bounce dialog has a Cancel too). */
+  const trust = (page: Page) =>
+    page
+      .locator('div', { has: page.getByText('Run code from the gallery?', { exact: true }) })
+      .filter({ has: page.getByRole('button', { name: 'Run it', exact: true }) })
+      .last()
+
+  async function openProjectEntry(page: Page): Promise<void> {
+    await routeGallery(page)
+    await bootApp(page)
+    await page.getByRole('button', { name: 'View', exact: true }).click()
+    await page.getByText('Community Gallery...', { exact: true }).click()
+    await page.locator('[data-gallery-card="proj1AAAAAA"]').click()
+    await page.getByRole('button', { name: 'Open as new project' }).click()
+    await expect.poll(() => editorValue(page), { timeout: 20_000 }).toBe(MUSIC_CODE)
+  }
+
+  async function startBounce(page: Page, kind: 'Mix' | 'Stems'): Promise<void> {
+    await page.getByRole('button', { name: 'File', exact: true }).click()
+    await page.getByText('Bounce to WAV...').click()
+    await expect(page.getByRole('dialog', { name: 'Bounce to WAV' })).toBeVisible()
+    await page.getByRole('button', { name: '8s' }).click()
+    if (kind === 'Stems') await page.getByTestId('bounce-export-kind').getByRole('button', { name: 'Stems' }).click()
+    await page.getByRole('button', { name: 'Start Bounce' }).click()
+  }
+
+  for (const kind of ['Mix', 'Stems'] as const) {
+    test(`Bounce (${kind}) of an imported project asks before anything runs; Cancel saves nothing`, async ({ page }) => {
+      test.setTimeout(120_000)
+      const downloads: string[] = []
+      page.on('download', (d) => downloads.push(d.suggestedFilename()))
+      await openProjectEntry(page)
+      const ask = page.getByText(ASK)
+
+      await startBounce(page, kind)
+      await expect(ask).toBeVisible({ timeout: 10_000 })
+      expect(await parentRuns(page), 'nothing ran before the answer').toBe(0)
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/bounce-${kind.toLowerCase()}-trust-dialog.png` })
+      await trust(page).getByRole('button', { name: 'Cancel' }).click()
+      await expect(ask).toHaveCount(0)
+      await expect(page.getByText('Bounce cancelled — nothing was saved.')).toBeVisible({ timeout: 10_000 })
+      await expect(page.getByRole('dialog', { name: 'Bounce to WAV' })).toBeHidden({ timeout: 10_000 })
+      await page.waitForTimeout(2000)
+      expect(await parentRuns(page), 'Cancel must leave the code unrun').toBe(0)
+      expect(downloads, 'Cancel must save nothing').toEqual([])
+
+      // Again, and Run it: it runs and the file arrives. (The control: the same
+      // path does evaluate, and does save, once the person agreed.)
+      const saved = page.waitForEvent('download', { timeout: 90_000 })
+      await startBounce(page, kind)
+      await expect(ask).toBeVisible({ timeout: 10_000 })
+      await trust(page).getByRole('button', { name: 'Run it' }).click()
+      const d = await saved
+      expect(d.suggestedFilename()).toMatch(kind === 'Mix' ? /\.wav$/ : /-stems\.zip$/)
+      expect(await parentRuns(page)).toBeGreaterThan(0)
+    })
+  }
+
+  test("a gallery viz file's ▶ Play asks before its code runs", async ({ page }) => {
+    test.setTimeout(120_000)
+    await routeGallery(page)
+    await bootApp(page)
+    await page.goto('/#gallery=vizz1DDDDDD')
+    await expect(page.locator('[data-gallery-detail="vizz1DDDDDD"]')).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: 'Add to this project' }).click()
+    await expect(page.locator('[data-gallery="overlay"]')).toHaveCount(0)
+    await page.waitForTimeout(2000)
+    expect(await parentRuns(page), 'adding the file runs nothing').toBe(0)
+
+    const ask = page.getByText(ASK.replace('Alice', 'Dee'))
+    await page.locator('[data-testid="viz-chrome-open-preview"]').first().click()
+    await expect(ask).toBeVisible({ timeout: 10_000 })
+    expect(await parentRuns(page)).toBe(0)
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/viz-play-trust-dialog.png` })
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await expect(ask).toHaveCount(0)
+    await expect(page.locator('[data-gallery-run-gate="declined"]').first()).toBeVisible({ timeout: 10_000 })
+    await page.waitForTimeout(2000)
+    expect(await parentRuns(page), 'Cancel must leave the viz code unrun').toBe(0)
+
+    // The viz's own control asks again (the visual sits behind the code as a
+    // backdrop, so its own "Run it…" can't be clicked); yes runs it.
+    await page.locator('[data-testid="viz-chrome-open-preview"]').first().click()
+    await expect(ask).toBeVisible({ timeout: 10_000 })
+    await page.getByRole('button', { name: 'Run it', exact: true }).click()
+    await expect.poll(() => parentRuns(page), { timeout: 20_000 }).toBeGreaterThan(0)
+  })
+
+  // Inline `.viz()` draws in a worker, which `next dev` can't load (an importScripts
+  // NetworkError), so this needs a production build, like the frame tests above.
+  // The viz code signals that it ran with a request and a console line, both of
+  // which a worker can make (it has no page `window` to count on).
+  for (const trusted of [false, true]) {
+    test(`.viz("name") in your own code ${trusted ? 'CONTROL: mounts the imported viz once trusted' : 'does not mount an imported viz file nobody agreed to run'}`, async ({ page }) => {
+      test.setTimeout(120_000)
+      test.skip(await isDevServer(page), DEV_SKIP)
+      const ran: string[] = []
+      page.on('console', (m) => { if (m.text().includes('BLOOM-RAN')) ran.push(m.text()) })
+      page.context().on('request', (r) => { if (r.url().includes('__bloom_ran__')) ran.push(r.url()) })
+      await page.context().route('**/__bloom_ran__*', (r) => r.fulfill({ status: 204 }))
+      await routeGallery(page)
+      const code = "console.log('BLOOM-RAN'); fetch('/__bloom_ran__?' + Date.now()).catch(() => {})\nosc(10, 0.1, 0.8).out()"
+      await page.route('**/api/gallery/vizz1DDDDDD', (r) => r.fulfill({ json: {
+        entry: { id: 'vizz1DDDDDD', title: 'Oscillator Bloom', kind: 'viz', tags: [], authorName: 'Dee', publishedAt: 0, fileCount: 1, hasThumbnail: false },
+        manifest: { schemaVersion: 1, project: { name: 'Bloom', sharedAt: 0 }, files: [{ id: 'g_viz1', path: 'bloom.hydra', language: 'hydra', content: code }], fileOrder: {}, subfolderOrder: {} },
+      } }))
+      await bootApp(page)
+      // your own pattern, naming a viz the import is about to bring in
+      const mine = '$: s("bd*4").viz("bloom")'
+      await seedCode(page, mine)
+      await page.goto('/#gallery=vizz1DDDDDD')
+      await expect(page.locator('[data-gallery-detail="vizz1DDDDDD"]')).toBeVisible({ timeout: 30_000 })
+      await page.getByRole('button', { name: 'Add to this project' }).click()
+      await expect(page.locator('[data-gallery="overlay"]')).toHaveCount(0)
+      await page.waitForTimeout(2000)
+      if (trusted) {
+        // as if the person had already said yes to this file
+        await page.evaluate(() => {
+          localStorage.removeItem('stave.gallery.untrusted')
+          localStorage.removeItem('stave.gallery.unplayed')
+        })
+        await page.reload()
+        await page.waitForTimeout(4000)
+      }
+      await page.locator('[data-workspace-tab="tab-pattern.strudel"]').first().click()
+      await expect.poll(() => editorValue(page), { timeout: 15_000 }).toBe(mine)
+      await evalCode(page)
+      if (trusted) {
+        await expect.poll(() => ran.length, { timeout: 20_000 }).toBeGreaterThan(0)
+      } else {
+        await page.waitForTimeout(8000)
+        expect(ran, "your own Play must not run the imported viz file's code").toEqual([])
+        await expect(page.getByText('Run code from the gallery?')).toHaveCount(0)
+      }
+    })
+  }
+
 })
