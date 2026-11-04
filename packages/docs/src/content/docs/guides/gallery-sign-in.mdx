@@ -101,6 +101,40 @@ STAVE_AUTH_TEST_LOGIN=1 AUTH_SECRET=dev-only-secret npm run dev
 
 A test account's id is `test-login:<what you typed>`, so `STAVE_GALLERY_ADMINS=test-login:gallery-admin` makes the test account `gallery-admin` an admin.
 
+## Adding the database (Neon)
+
+The gallery keeps its records (profiles, entries and the listing, collections, reports, the admin log and the write limits) in Postgres. The heavy files (each entry's project and its picture) stay in Vercel Blob, found by the entry's id. In production the database is [Neon](https://neon.com). On your own machine there's nothing to set up.
+
+### On Vercel
+
+1. In your Vercel project, open **Storage**, choose **Neon** from the Marketplace, and create a database (or connect one you already have).
+2. Connect it to the **Production** and **Preview** environments. The integration sets `DATABASE_URL` for you. Keep its default, pooled connection string.
+3. Redeploy. Until `DATABASE_URL` is set, a production deployment has no gallery database: the gallery says it isn't set up, and writes answer `503` with a plain message.
+
+### Migrations run at build
+
+The app's `build` script applies any new migrations (the SQL files in `packages/app/drizzle/`) before `next build`:
+
+- With `DATABASE_URL` set, it applies whatever is new, and does nothing if there's nothing new.
+- Without it, it says so and skips.
+- If a migration fails, the build fails, so new code never goes live ahead of the tables it needs.
+
+To run them by hand: `DATABASE_URL=… pnpm --filter @stave/app db:migrate`.
+
+### Keep previews off the production database
+
+A preview build migrates whichever database its `DATABASE_URL` points at. If previews share production's database, a preview of a branch that isn't merged yet can change production's tables. When you add Neon, turn on its option to create a **separate database branch for each preview deployment**, so every preview gets its own copy to migrate and write to. (Or point the Preview environment's `DATABASE_URL` at a separate database.)
+
+### On your own machine
+
+With no `DATABASE_URL`, `npm run dev` uses [PGlite](https://pglite.dev), which is Postgres running inside the dev server, so there's nothing to install and no account to make. It keeps its data in a `pglite` folder inside the dev gallery folder (`STAVE_GALLERY_DEV_DIR`, or `stave-gallery-dev` in your temp folder) and sets it up the first time it's used, so your gallery survives a restart. Two dev servers can't share that folder; the second one says so in its log. Give it its own folder with `STAVE_GALLERY_DB_DIR`. Tests use PGlite in memory, with a fresh database each run.
+
+### The listing's cache
+
+The gallery list is cached at the CDN for 30 seconds, then served stale for up to 5 minutes while one request refreshes it. So the database builds the listing about twice a minute, however many people open the gallery. A new entry can take up to 30 seconds to appear.
+
+The CDN keeps a separate copy for every different query string, so `/api/gallery?x=1` and `/api/gallery?x=2` would each cost a fresh listing. To stop that being used to make the server do extra work, a listing request with any query string is redirected to plain `/api/gallery` without touching the database, so only that one address is ever built.
+
 ## Limits and the "are you human" check
 
 Anything anyone can write to needs a few guard rails. Stave has three layers, and only the first two live in the code.
@@ -171,5 +205,6 @@ The limits above count per account. In front of them, add per-address rate limit
 | Private links | `POST` | equals `/api/share` | 10 per 10 minutes |
 | Every other gallery write | `POST`, `PUT` or `DELETE` | starts with `/api/gallery/` | 60 per 10 minutes |
 | Revoking links | `DELETE` | starts with `/api/share/` | 30 per 10 minutes |
+| Gallery listing | `GET` | starts with `/api/gallery` | 300 per 10 minutes |
 
 These live in the project's Firewall settings, not in the repository, so a new deployment elsewhere needs them added again.
