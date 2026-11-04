@@ -64,8 +64,13 @@ export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
 
   const marker: RemovedMarker = { removedAt: Date.now(), by };
   await putJson(store, galleryPaths.removed(id), marker);
+  // #2314 / #2315 — the entry leaves its author's page and every collection
+  // because those reads re-check each entry (authors.ts liveEntry). Dropping the
+  // author-index marker here is tidying, not the guarantee.
+  const listed = await getJson<GalleryEntry>(store, galleryPaths.entry(id)).catch(() => null);
   const reports = await store.list(galleryPaths.reportsOf(id));
   await store.del([
+    ...(listed?.authorId ? [galleryPaths.authorEntry(listed.authorId, id)] : []),
     galleryPaths.entry(id),
     galleryPaths.manifest(id),
     galleryPaths.thumbnail(id),
