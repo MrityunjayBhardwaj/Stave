@@ -144,6 +144,36 @@ export async function indexedIds(store: GalleryBlobStore, prefix: string): Promi
 }
 
 /**
+ * An author's live entries and collections, newest first — what the profile
+ * page shows (#2314) and what My shares lists for an account (#2321). The index
+ * is a hint: an entry must still be live and still name this author, and a
+ * collection must still name this author.
+ */
+export async function authorWork(
+  store: GalleryBlobStore,
+  authorId: string,
+): Promise<{ entries: GalleryEntry[]; collections: GalleryCollection[] }> {
+  const [entryIds, collectionIds] = await Promise.all([
+    indexedIds(store, galleryPaths.authorEntriesOf(authorId)),
+    indexedIds(store, galleryPaths.authorCollectionsOf(authorId)),
+  ]);
+  const entries = (await liveEntries(store, entryIds)).filter((e) => e.authorId === authorId);
+  entries.sort((a, b) => b.publishedAt - a.publishedAt);
+
+  const stored = await Promise.all(
+    collectionIds.map((id) => getJson<GalleryCollection>(store, galleryPaths.collection(id)).catch(() => null)),
+  );
+  const collections = (
+    await Promise.all(
+      stored
+        .filter((c): c is GalleryCollection => c !== null && c.authorId === authorId)
+        .map(async (c) => (await servedCollection(store, c)).collection),
+    )
+  ).sort((a, b) => b.createdAt - a.createdAt);
+  return { entries, collections };
+}
+
+/**
  * Check every id is the author's own live entry. Returns the error message
  * naming the first id that isn't, or null when all are.
  */

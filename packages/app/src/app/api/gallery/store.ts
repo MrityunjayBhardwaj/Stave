@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { BlobNotFoundError, del, get, list, put } from "@vercel/blob";
 
+import type { GalleryAuthorProfile } from "../../../gallery/types";
 import { hasBlobStore } from "../share/store";
 
 // #2299 — where the community gallery lives. Server-only.
@@ -29,6 +30,12 @@ import { hasBlobStore } from "../share/store";
 //                                            and the author it is linked to. Never served.
 //   gallery/author-accounts/<authorId>.json  #2319 { accountHash } — which account an author
 //                                            belongs to. Never served.
+//   gallery/account-links/<accountHash>/<shareId>.json  #2321 AccountLink — a private link
+//                                            (key included) kept for its owner. Never public.
+//
+// #2320 — a profile merged into an account's profile keeps its JSON with
+// `mergedInto: <authorId>` (StoredAuthorProfile); the author route answers
+// `{ movedTo }` for it.
 //
 // The entry JSON is written LAST on publish, so a listing never shows an entry
 // whose manifest isn't there yet; the removed marker is written FIRST on delete,
@@ -80,6 +87,12 @@ export const galleryPaths = {
   // `<provider>:<providerAccountId>`, so the store never holds a provider id in a path.
   account: (accountHash: string) => `gallery/accounts/${accountHash}.json`,
   authorAccount: (authorId: string) => `gallery/author-accounts/${authorId}.json`,
+
+  // #2321 private links recorded on an account: one blob per link, so recording
+  // and revoking never read-modify-write a shared list. Never served except to
+  // the account itself (GET /api/gallery/me/shares).
+  accountLinksOf: (accountHash: string) => `gallery/account-links/${accountHash}/`,
+  accountLink: (accountHash: string, shareId: string) => `gallery/account-links/${accountHash}/${shareId}.json`,
 };
 
 const blobStore: GalleryBlobStore = {
@@ -219,6 +232,15 @@ export interface PrivateAuthorRecord {
 /** `gallery/author-keys/<sha256 of key>.json` — finds the author a key belongs to. Never served. */
 export interface AuthorKeyPointer {
   authorId: string;
+}
+
+/**
+ * `gallery/authors/<authorId>.json` as stored. #2320 — `mergedInto` marks a
+ * profile retired by a claim: everything it had now lives on that author.
+ * Never served as-is; the author route sends only the public fields.
+ */
+export interface StoredAuthorProfile extends GalleryAuthorProfile {
+  mergedInto?: string;
 }
 
 export interface RemovedMarker {

@@ -1,6 +1,9 @@
 import { SHARE_ID_PATTERN } from "../../../../shareCrypto";
 import { MANAGE_TOKEN_HEADER } from "../../../../gallery/types";
 import { tokenMatches } from "../../gallery/auth";
+import { forgetAccountLink, hasAccountLink } from "../../gallery/accountLinks";
+import { accountHashOf, sessionClaim } from "../../gallery/session";
+import { galleryStore, type GalleryBlobStore } from "../../gallery/store";
 import { shareStore } from "../store";
 
 // #2248 — fetch one sealed shared project by its id. Never lists.
@@ -29,8 +32,9 @@ export async function GET(
 
 /**
  * #2311 — revoke a short link. Needs the manage token handed back when the link
- * was made. Links made before #2311 have no token on record: 403, they can't be
- * revoked. An unknown id is 404; the client treats that as already gone.
+ * was made, or (#2321) the signed-in session of the account the link is
+ * recorded on. Links made before #2311 have no token on record: 403, they
+ * can't be revoked. An unknown id is 404; the client treats that as already gone.
  */
 export async function DELETE(
   req: Request,
@@ -40,16 +44,36 @@ export async function DELETE(
   if (!SHARE_ID_PATTERN.test(id)) return new Response("not found", { status: 404 });
   const store = shareStore();
   if (!store) return new Response("short links are not set up here", { status: 503 });
+
+  // #2321 — the signed-in account the link is recorded on may revoke it with
+  // no token. Looked up only when a token doesn't already settle it.
+  const token = req.headers.get(MANAGE_TOKEN_HEADER);
   const hash = await store.getManageHash(id);
-  if (!hash) {
-    const exists = (await store.get(id)) !== null;
-    return exists
-      ? Response.json({ error: "this link was made before links could be revoked" }, { status: 403 })
-      : new Response("not found", { status: 404 });
-  }
-  if (!tokenMatches(req.headers.get(MANAGE_TOKEN_HEADER), hash)) {
+  const byToken = hash !== null && tokenMatches(token, hash);
+  const account = await linkAccount(id);
+  const byAccount = !byToken && account !== null && (await hasAccountLink(account.gallery, account.hash, id));
+
+  if (!byToken && !byAccount) {
+    if (!hash) {
+      const exists = (await store.get(id)) !== null;
+      return exists
+        ? Response.json({ error: "this link was made before links could be revoked" }, { status: 403 })
+        : new Response("not found", { status: 404 });
+    }
     return Response.json({ error: "that key doesn't match this link" }, { status: 403 });
   }
+  // The share first (the link is dead once it's gone), then the account's record of it.
   await store.remove(id);
+  if (account) await forgetAccountLink(account.gallery, account.hash, id);
   return new Response(null, { status: 204 });
+}
+
+/** The signed-in account's hash and the gallery store, or null when signed out. */
+async function linkAccount(id: string): Promise<{ gallery: GalleryBlobStore; hash: string } | null> {
+  if (!SHARE_ID_PATTERN.test(id)) return null;
+  const gallery = galleryStore();
+  if (!gallery) return null;
+  const signedIn = await sessionClaim();
+  if (!signedIn) return null;
+  return { gallery, hash: accountHashOf(signedIn.claim.provider, signedIn.claim.providerAccountId) };
 }

@@ -4,7 +4,15 @@ import { auth, type StaveAccountClaim } from "../../../auth";
 import { signInAvailable } from "../../../authProviders";
 import { AUTHOR_KEY_HEADER, MAX_AUTHOR_NAME_CHARS, type GalleryAuthorProfile, type GalleryVerified } from "../../../gallery/types";
 import { authorForKey, createKeylessAuthor, keyOwnsAuthor } from "./authors";
-import { galleryPaths, galleryStore, getJson, putJson, type GalleryBlobStore, type PrivateAuthorRecord } from "./store";
+import {
+  galleryPaths,
+  galleryStore,
+  getJson,
+  putJson,
+  type GalleryBlobStore,
+  type PrivateAuthorRecord,
+  type StoredAuthorProfile,
+} from "./store";
 
 /*
  * #2319 — signed-in accounts and the gallery author each one is linked to.
@@ -41,9 +49,13 @@ import { galleryPaths, galleryStore, getJson, putJson, type GalleryBlobStore, ty
  *       only looks (ownership checks use this, so checking never makes one).
  *       Refreshes the badge when the GitHub login or avatar changed.
  *
- *   requireSessionAuthor(req)            → { authorId, account } | Response
+ *   requireSessionAuthor(req, { signedOut? }) → { authorId, account } | Response
  *       sessionAuthor, or the Response to send instead: 503 (no store, or no
- *       sign-in set up here), 401 { error: "sign in to publish" }, 500.
+ *       sign-in set up here), 401 { error: signedOut ?? "sign in to publish" }, 500.
+ *
+ *   actingAuthor(req, store)
+ *       The session's author, else the author the key names. #2320 — a key
+ *       whose profile was merged into an account acts for nobody.
  *
  *   mayManageAuthor(req, store, authorId)
  *       True when the session's author IS authorId, or the request carries
@@ -226,8 +238,14 @@ export async function sessionAuthor(
   return linked.ok ? { authorId, account: linked.account } : null;
 }
 
-/** sessionAuthor, or the Response to answer with. */
-export async function requireSessionAuthor(req: Request): Promise<SessionAuthor | Response> {
+/**
+ * sessionAuthor, or the Response to answer with. `signedOut` is the 401's
+ * message (the #2320 / #2321 routes say what needs signing in for).
+ */
+export async function requireSessionAuthor(
+  req: Request,
+  opts: { signedOut?: string } = {},
+): Promise<SessionAuthor | Response> {
   const store = galleryStore();
   if (!store) return Response.json({ error: "the gallery is not set up here" }, { status: 503 });
   if (!signInAvailable(process.env)) {
@@ -236,7 +254,9 @@ export async function requireSessionAuthor(req: Request): Promise<SessionAuthor 
       { status: 503 },
     );
   }
-  if (!(await sessionClaim())) return Response.json({ error: "sign in to publish" }, { status: 401 });
+  if (!(await sessionClaim())) {
+    return Response.json({ error: opts.signedOut ?? "sign in to publish" }, { status: 401 });
+  }
   const found = await sessionAuthor(req, { store });
   if (!found) return Response.json({ error: "could not set up your gallery profile" }, { status: 500 });
   return found;
@@ -253,5 +273,10 @@ export async function mayManageAuthor(req: Request, store: GalleryBlobStore, aut
 export async function actingAuthor(req: Request, store: GalleryBlobStore): Promise<string | null> {
   const mine = await sessionAuthor(req, { store });
   if (mine) return mine.authorId;
-  return authorForKey(store, req.headers.get(AUTHOR_KEY_HEADER));
+  const keyed = await authorForKey(store, req.headers.get(AUTHOR_KEY_HEADER));
+  if (!keyed) return null;
+  // #2320 — a key whose profile was merged into an account acts for nobody:
+  // what it made now belongs to the account, and the key is not the account.
+  const profile = await getJson<StoredAuthorProfile>(store, galleryPaths.author(keyed));
+  return profile?.mergedInto ? null : keyed;
 }

@@ -1,12 +1,12 @@
 import {
   GALLERY_ID_PATTERN,
+  type AuthorMovedResponse,
   type AuthorPageResponse,
   type GalleryAuthorProfile,
-  type GalleryCollection,
 } from "../../../../../gallery/types";
-import { indexedIds, liveEntries, servedCollection } from "../../authors";
+import { authorWork } from "../../authors";
 import { mayManageAuthor } from "../../session";
-import { galleryPaths, galleryStore, getJson, putJson } from "../../store";
+import { galleryPaths, galleryStore, getJson, putJson, type StoredAuthorProfile } from "../../store";
 import { checkAuthorUpdate, MAX_AUTHOR_BODY_BYTES, readJsonBody } from "../../validate";
 
 // #2314 — an author's profile page: read it, or edit it (signed in as its owner,
@@ -32,28 +32,17 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
   const store = galleryStore();
   if (!store) return noStore();
 
-  const author = await getJson<GalleryAuthorProfile>(store, galleryPaths.author(authorId));
+  const author = await getJson<StoredAuthorProfile>(store, galleryPaths.author(authorId));
   if (!author) return notFound();
+  // #2320 — merged into an account's profile by a claim: say where it went. A
+  // 200 with `{ movedTo }` rather than an HTTP redirect, so the client decides
+  // (it follows it and opens the new profile) and nothing caches a 301.
+  if (author.mergedInto) {
+    const moved: AuthorMovedResponse = { movedTo: author.mergedInto };
+    return Response.json(moved, { headers: NO_STORE });
+  }
 
-  const [entryIds, collectionIds] = await Promise.all([
-    indexedIds(store, galleryPaths.authorEntriesOf(authorId)),
-    indexedIds(store, galleryPaths.authorCollectionsOf(authorId)),
-  ]);
-  // The index is a hint: an entry must still be live and still name this author.
-  const entries = (await liveEntries(store, entryIds)).filter((e) => e.authorId === authorId);
-  entries.sort((a, b) => b.publishedAt - a.publishedAt);
-
-  const stored = await Promise.all(
-    collectionIds.map((id) => getJson<GalleryCollection>(store, galleryPaths.collection(id)).catch(() => null)),
-  );
-  const collections = (
-    await Promise.all(
-      stored
-        .filter((c): c is GalleryCollection => c !== null && c.authorId === authorId)
-        .map(async (c) => (await servedCollection(store, c)).collection),
-    )
-  ).sort((a, b) => b.createdAt - a.createdAt);
-
+  const { entries, collections } = await authorWork(store, authorId);
   const body: AuthorPageResponse = { author: publicProfile(author), entries, collections };
   return Response.json(body, { headers: NO_STORE });
 }
@@ -64,8 +53,12 @@ export async function PUT(req: Request, { params }: Ctx): Promise<Response> {
   const store = galleryStore();
   if (!store) return noStore();
 
-  const author = await getJson<GalleryAuthorProfile>(store, galleryPaths.author(authorId));
+  const author = await getJson<StoredAuthorProfile>(store, galleryPaths.author(authorId));
   if (!author) return notFound();
+  // #2320 — a merged profile is retired; edit the one it moved to.
+  if (author.mergedInto) {
+    return Response.json({ error: "this profile moved to an account", movedTo: author.mergedInto }, { status: 409 });
+  }
   // #2319 — the signed-in owner, or the key for a profile made before sign-in.
   if (!(await mayManageAuthor(req, store, authorId))) {
     return Response.json({ error: "you can't edit this profile" }, { status: 403 });

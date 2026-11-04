@@ -232,6 +232,83 @@ export interface GallerySessionResponse {
   } | null;
 }
 
+// ── #2320 claim and #2321 shares that follow the account ───────────────────
+//
+//   POST   /api/gallery/claim     (signed in) ← ClaimRequest → 200 ClaimResponse · 400 · 401 · 503
+//       Brings what this browser holds keys for into the account: the old
+//       author (merged into the account's author), entries by manage token,
+//       private links by manage token. Running it twice changes nothing.
+//   GET    /api/gallery/me/shares (signed in) → 200 MySharesResponse · 401 · 503 (never cached)
+//   GET    /api/gallery/authors/<old id>      → 200 AuthorMovedResponse once that profile
+//                                               was merged into an account's profile
+//   POST   /api/share  with SHARE_LINK_KEY_HEADER + SHARE_LINK_NAME_HEADER, signed in:
+//       also records the link (key included) on the account. Signed out, those
+//       headers are ignored and nothing about the link is kept beyond its sealed bytes.
+//   DELETE /api/share/<id>        MANAGE_TOKEN_HEADER, or the session when the link is on the account.
+
+export interface ClaimItem {
+  id: string;
+  manageToken: string;
+}
+
+/** A private link to claim: the token proves it; the rest is what My shares shows and copies. */
+export interface ClaimLinkItem extends ClaimItem {
+  url?: string;
+  projectName?: string;
+  createdAt?: number;
+}
+
+export interface ClaimRequest {
+  authorKey?: string;
+  entries: ClaimItem[];
+  links: ClaimLinkItem[];
+}
+
+export interface ClaimRefusal {
+  /** What was refused, in words: "your old profile", "entry <id>", "private link <id>". */
+  what: string;
+  kind: "author" | "entry" | "link";
+  /** The entry or link id (absent for the author). */
+  id?: string;
+  reason: string;
+}
+
+export interface ClaimResponse {
+  /** The account's author, where everything now lives. */
+  authorId: string;
+  /** Counted only when this run changed something, so a second run is all zeros. */
+  moved: { entries: number; collections: number; links: number };
+  refused: ClaimRefusal[];
+}
+
+/** A private link recorded on an account. The full link, key included; only its owner reads it. */
+export interface AccountLink {
+  id: string;
+  url: string;
+  projectName: string;
+  createdAt: number;
+}
+
+export interface MySharesResponse {
+  authorId: string;
+  /** Newest first; taken-down entries left out. */
+  entries: GalleryEntry[];
+  /** Newest first. */
+  collections: GalleryCollection[];
+  /** Newest first; revoked links left out. */
+  links: AccountLink[];
+}
+
+/** The answer for a profile that was merged into another (#2320): follow `movedTo`. */
+export interface AuthorMovedResponse {
+  movedTo: string;
+}
+
+/** The link's key (the part after `#`), sent only by a signed-in browser so the link can be kept on the account. */
+export const SHARE_LINK_KEY_HEADER = "x-stave-share-key";
+/** The project's name, URI-encoded (headers are ASCII). */
+export const SHARE_LINK_NAME_HEADER = "x-stave-share-name";
+
 export const AUTHOR_KEY_HEADER = "x-stave-author-key";
 export const MAX_BIO_CHARS = 10_000;
 export const MAX_COLLECTION_TITLE_CHARS = 80;
