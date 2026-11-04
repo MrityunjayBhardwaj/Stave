@@ -28,6 +28,7 @@ import {
   commitWorkspace,
   getViewedContent,
   isViewing,
+  getActiveProjectId,
   pruneTrackMetaForCode,
   subscribeToRuntimeView,
   subscribeToFileList,
@@ -117,6 +118,8 @@ import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 import { installBounceProbe } from "../e2e/bounceProbe";
 import { installAssetProbe } from "../e2e/assetProbe";
 import { warmWaveforms } from "../audio/waveformWarm";
+// #2304 — gallery code is held until the person presses Play.
+import { isGalleryHeld, releaseGalleryHold } from "../gallery/safeRun";
 
 
 // Phase 20-12 — the timeline collects across the same cycle window the live
@@ -1047,6 +1050,12 @@ export default function StrudelEditorClient({
   // ⚠ That sentence used to be a claim only — the publish sat after an
   // unbounded await, so a hung evaluate silently cancelled it (#1193). It is
   // now enforced by the helper below rather than asserted here.
+  // #2304 — the project a file id belongs to is the FILE STORE's, not this
+  // mount's prop: during an import the store has already switched while this
+  // (about to unmount) editor still sees the new files arrive.
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+  const storeProjectId = useCallback(() => getActiveProjectId() ?? projectIdRef.current, []);
   const refreshTimelineMarks = useCallback(async (fid: string) => {
     const rt = runtimesRef.current.get(fid);
     const st = runtimeStatesRef.current.get(fid);
@@ -1055,8 +1064,12 @@ export default function StrudelEditorClient({
     // and inline here nothing could reach it. What is decided here is only
     // WHETHER an eval is wanted; the publish is the helper's to sequence, and
     // it runs on every path including a hung one.
+    // #2304 — a file opened from the gallery is never evaluated quietly: its code
+    // runs only once the person has pressed Play on it (gallery/safeRun.ts).
     const evalRuntime =
-      rt && !st?.isPlaying && isSongTimelineVisible() ? rt : null;
+      rt && !st?.isPlaying && isSongTimelineVisible() && !isGalleryHeld(storeProjectId(), fid)
+        ? rt
+        : null;
     await publishSnapshotAfterBoundedEval({
       evaluate: evalRuntime ? () => evalRuntime.evaluateForTimeline() : null,
       publish: () =>
@@ -1067,7 +1080,7 @@ export default function StrudelEditorClient({
         ),
       waitMs: TIMELINE_EVAL_WAIT_MS,
     });
-  }, []);
+  }, [storeProjectId]);
 
   // #457 — keep the Song timeline + IR Inspector snapshot in sync with the
   // SOURCE while the runtime isn't live-evaluating. The snapshot is otherwise
@@ -1164,6 +1177,8 @@ export default function StrudelEditorClient({
     );
 
     runtime.onPlayingChanged((playing: boolean) => {
+      // #2304 — Play is the person's consent to run this file's code.
+      if (playing) releaseGalleryHold(storeProjectId(), fileId);
       setRuntimeStates(prev => {
         const next = new Map(prev);
         const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
