@@ -47,6 +47,8 @@ import {
   PUT as collectionPutRoute,
 } from "../app/api/gallery/collections/[id]/route";
 import { GET as meRoute } from "../app/api/gallery/me/route";
+import { POST as publishRoute } from "../app/api/gallery/route";
+import { DELETE as entryDeleteRoute, GET as entryGetRoute } from "../app/api/gallery/[id]/route";
 import { createAuthor } from "../app/api/gallery/authors";
 import { hashToken, newManageToken } from "../app/api/gallery/auth";
 import { galleryPaths, galleryStore, putJson } from "../app/api/gallery/store";
@@ -604,5 +606,53 @@ describe("a production build with no database", () => {
     expect((await getCollection(id)).status).toBe(503);
     expect((await putCollection(id, body, "k")).status).toBe(503);
     expect((await deleteCollection(id, ADMIN, {}, { reason: "x" })).status).toBe(503);
+  });
+});
+
+
+// #2352 — the publish and entry routes, read through the session, once every
+// record is in the database. These three checks lived in this file before the
+// routes moved; they are kept here because this file is where "who is asking"
+// is set up (signIn / as).
+describe("publish and entry delete go by the signed-in account", () => {
+  const deleteEntry = (id: string, who?: string, headers: Record<string, string> = {}) =>
+    entryDeleteRoute(
+      new Request(`http://x/api/gallery/${id}`, { method: "DELETE", headers: { ...as(who), ...headers } }),
+      idCtx(id),
+    );
+  const entryStatus = async (id: string) =>
+    (await entryGetRoute(new Request(`http://x/api/gallery/${id}`), idCtx(id))).status;
+
+  it("ignores an author key sent with a signed-in publish: the session decides", async () => {
+    const old = await legacyAuthor(0);
+    const user = freshUser();
+    const accountAuthor = await openAppAs(user);
+    as(user);
+    const res = await publishRoute(
+      json("POST", "http://x/api/gallery", { title: "T", kind: "music", tags: [], manifest }, { [AUTHOR_KEY_HEADER]: old.key }),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as PublishResponse;
+    expect(body.authorId).toBe(accountAuthor);
+    expect(body.authorId).not.toBe(old.authorId);
+    // and the old author gained nothing
+    expect((await authorPage(old.authorId)).entries).toHaveLength(0);
+  });
+
+  it("another signed-in account gets 403 deleting my entry, with or without a wrong token", async () => {
+    const mine = await authorWith(1);
+    const id = mine.entries[0].id;
+    const other = freshUser();
+    await openAppAs(other);
+    expect((await deleteEntry(id, other)).status).toBe(403);
+    expect((await deleteEntry(id, other, { [MANAGE_TOKEN_HEADER]: "not-the-token" })).status).toBe(403);
+    expect(await entryStatus(id)).toBe(200);
+  });
+
+  it("the owner, signed in, deletes their own entry with no token at all (control)", async () => {
+    const mine = await authorWith(1);
+    const id = mine.entries[0].id;
+    expect((await deleteEntry(id, mine.key)).status).toBe(204);
+    expect(await entryStatus(id)).toBe(410);
   });
 });
