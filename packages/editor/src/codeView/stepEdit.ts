@@ -99,6 +99,16 @@ export type StepEditRefusal =
   | 'step-is-a-random-choice'
   /** a row the step sits in writes steps that never play in the loop: the loop is one turn of a longer pattern */
   | 'loop-shorter-than-the-pattern'
+  /** a split: the place asked is not strictly inside the step (its start is a plain toggle) */
+  | 'not-inside-the-step'
+  /** a resize: the step is not the row's own note (a rest, another sound, a group) */
+  | 'not-the-rows-note'
+  /** a resize: the length asked is not a whole number of the step's own units, or is its length now */
+  | 'length-not-whole-steps'
+  /** a resize: the step's length is not written as plain holds or one whole `@n` (`bd@1.5`, `bd@2 _`) */
+  | 'length-not-plain'
+  /** a longer note: the steps after it in its group are not rests that end exactly where the note would */
+  | 'no-room-to-grow'
 
 export type StepEditResult = { ok: true; edit: StepEdit } | { ok: false; why: StepEditRefusal }
 
@@ -240,6 +250,55 @@ const REPEATS = new Set(['replicate', 'stretch', 'bjorklund'])
 const refuse = (why: StepEditRefusal): StepEditResult => ({ ok: false, why })
 const write = (from: number, to: number, insert: string): StepEditResult => ({ ok: true, edit: { from, to, insert } })
 
+/** the step at `address`, found and checked: every rule a step's own text must pass before any gesture writes it */
+type Located =
+  | { ok: true; lane: { row: DivisionRow }; found: Found; slot: DivisionStep['slots'][number] }
+  | { ok: false; why: StepEditRefusal }
+
+function locate(trees: readonly BarTree[], address: StepAddress, row: StepRow): Located {
+  const no = (why: StepEditRefusal): Located => ({ ok: false, why })
+  const tree = trees[address.bar]
+  if (!tree) return no('no-such-bar')
+  const lane = laneRowForEdit(tree, row)
+  if (!lane.ok) return no(lane.why)
+  // a random choice of whole parts: what the bar plays is chance
+  if (lane.oneOf) return no('step-is-a-random-choice')
+  // the part's key by its place in the bar, since the row may not name it
+  const found = findIn(lane.row, `part${tree.ok ? tree.parts.indexOf(lane.row) : 0}`, address.span, [], [])
+  if (!found) return no('no-step-there')
+  const { step, around } = found
+  const slot = step.slots.find((s) => sameFrac(s.begin, address.at))
+  if (!slot) return no('no-step-there')
+
+  if (around.some((g) => g.oneOf)) return no('step-is-a-random-choice')
+  // A group that REPEATS what it holds (`[bd ~]*2`, `[bd ~]!3`, `[bd ~](3,8)`, `[bd ~]/2`)
+  // plays the step's one text in several places, and an edit to that text changes every
+  // one of them together — the user's ruling (2026-11-04): a click edits the written step,
+  // all its copies. A group op that plays by CHANCE (`[bd ~]?`), or one this file does not
+  // know, is refused: what it would play is not a set of copies.
+  if (around.some((g) => g.ops.some((o) => !REPEATS.has(o)))) return no('step-under-a-generator')
+  // `bd!3` (and a bare `bd!`) is ONE text that plays as three steps. A click is on one of
+  // them, and no change to that text touches only that one: `~ bd!2` or `bd ~ bd` respell
+  // the step into several — the replication is a generator like `*n`, and it keeps its
+  // parameter for a handle of its own later. Checked before the other ops so it says so.
+  if (step.reps > 1 || step.ops.includes('replicate')) return no('step-is-replicated')
+  // every other op makes, moves, thins or stretches the step's hits — only `:` tails are
+  // part of the name
+  if (step.ops.some((o) => o !== 'tail')) return no('step-is-generated')
+  if (slot.fromBefore || slot.pastEnd) return no('step-crosses-a-bar')
+
+  // Where the text plays over the loop: once, or in several places that all change together
+  // (a group played in every bar, `{…}%n`, a repeated group). The loop must be the whole of
+  // every row the step sits in: an alternation whose arms do not all come round in it
+  // (`<a b c d>` over two bars) plays past the loop's end, where the view cannot show it.
+  const loop = overTheLoop(trees)
+  if (typeof loop === 'string') return no(loop)
+  for (const { row: r, key } of found.rows) {
+    if ((loop.get(key)?.size ?? 0) < r.written) return no('loop-shorter-than-the-pattern')
+  }
+  return { ok: true, lane, found, slot }
+}
+
 /**
  * Toggle `row`'s sound on the step at `address`: a rest becomes the row's sound (`~` →
  * `sd`), the row's own note becomes a rest (`sd` → `~`), and a step another sound plays
@@ -250,45 +309,10 @@ const write = (from: number, to: number, insert: string): StepEditResult => ({ o
  * view's whole loop. Nothing is evaluated here.
  */
 export function toggleStep(mini: string, trees: readonly BarTree[], address: StepAddress, row: StepRow): StepEditResult {
-  const tree = trees[address.bar]
-  if (!tree) return refuse('no-such-bar')
-  const lane = laneRowForEdit(tree, row)
-  if (!lane.ok) return refuse(lane.why)
-  // a random choice of whole parts: what the bar plays is chance
-  if (lane.oneOf) return refuse('step-is-a-random-choice')
-  // the part's key by its place in the bar, since the row may not name it
-  const found = findIn(lane.row, `part${tree.ok ? tree.parts.indexOf(lane.row) : 0}`, address.span, [], [])
-  if (!found) return refuse('no-step-there')
+  const at = locate(trees, address, row)
+  if (!at.ok) return refuse(at.why)
+  const { lane, found } = at
   const { step, around } = found
-  const slot = step.slots.find((s) => sameFrac(s.begin, address.at))
-  if (!slot) return refuse('no-step-there')
-
-  if (around.some((g) => g.oneOf)) return refuse('step-is-a-random-choice')
-  // A group that REPEATS what it holds (`[bd ~]*2`, `[bd ~]!3`, `[bd ~](3,8)`, `[bd ~]/2`)
-  // plays the step's one text in several places, and an edit to that text changes every
-  // one of them together — the user's ruling (2026-11-04): a click edits the written step,
-  // all its copies. A group op that plays by CHANCE (`[bd ~]?`), or one this file does not
-  // know, is refused: what it would play is not a set of copies.
-  if (around.some((g) => g.ops.some((o) => !REPEATS.has(o)))) return refuse('step-under-a-generator')
-  // `bd!3` (and a bare `bd!`) is ONE text that plays as three steps. A click is on one of
-  // them, and no change to that text touches only that one: `~ bd!2` or `bd ~ bd` respell
-  // the step into several — the replication is a generator like `*n`, and it keeps its
-  // parameter for a handle of its own later. Checked before the other ops so it says so.
-  if (step.reps > 1 || step.ops.includes('replicate')) return refuse('step-is-replicated')
-  // every other op makes, moves, thins or stretches the step's hits — only `:` tails are
-  // part of the name
-  if (step.ops.some((o) => o !== 'tail')) return refuse('step-is-generated')
-  if (slot.fromBefore || slot.pastEnd) return refuse('step-crosses-a-bar')
-
-  // Where the text plays over the loop: once, or in several places that all change together
-  // (a group played in every bar, `{…}%n`, a repeated group). The loop must be the whole of
-  // every row the step sits in: an alternation whose arms do not all come round in it
-  // (`<a b c d>` over two bars) plays past the loop's end, where the view cannot show it.
-  const loop = overTheLoop(trees)
-  if (typeof loop === 'string') return refuse(loop)
-  for (const { row: r, key } of found.rows) {
-    if ((loop.get(key)?.size ?? 0) < r.written) return refuse('loop-shorter-than-the-pattern')
-  }
 
   const order = row.order ?? lane.row.sounds
 
@@ -345,4 +369,173 @@ export function toggleStep(mini: string, trees: readonly BarTree[], address: Ste
 /** `mini` with `edit` made */
 export function applyStepEdit(mini: string, edit: StepEdit): string {
   return mini.slice(0, edit.from) + edit.insert + mini.slice(edit.to)
+}
+
+/* ── split and resize (#2293) ───────────────────────────────────── */
+
+/**
+ * `resizeStep` by `delta` of the note's own units (one longer, one shorter): what the keys
+ * and the length handle's offer ask, where the grid knows the step but not its unit.
+ */
+export function resizeStepBy(mini: string, trees: readonly BarTree[], address: StepAddress, delta: number, row: StepRow): StepEditResult {
+  const got = locate(trees, address, row)
+  if (!got.ok) return refuse(got.why)
+  const { step } = got.found
+  if (!Number.isInteger(step.weight) || step.weight < 1) return refuse('length-not-plain')
+  const unit = fdiv(fsub(got.slot.end, got.slot.begin), { n: step.weight, d: 1 })
+  const k = step.weight + delta
+  const end = { n: got.slot.begin.n * unit.d + k * unit.n * got.slot.begin.d, d: got.slot.begin.d * unit.d }
+  return resizeStep(mini, trees, address, end, row)
+}
+
+const fsub = (a: Frac, b: Frac): Frac => ({ n: a.n * b.d - b.n * a.d, d: a.d * b.d })
+const gcdOf = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcdOf(b, a % b))
+/** `a / b` in lowest terms, `b` not zero */
+function fdiv(a: Frac, b: Frac): Frac {
+  let n = a.n * b.d
+  let d = a.d * b.n
+  if (d < 0) {
+    n = -n
+    d = -d
+  }
+  const g = gcdOf(n, d) || 1
+  return { n: n / g, d: d / g }
+}
+
+/** the note's text must be its name and its plays must be one hit per slot, where the slot begins */
+function plainNote(mini: string, step: DivisionStep): StepEditRefusal | null {
+  if (step.rows !== null) return 'step-is-a-group'
+  if (step.name === null || step.head === null || step.span === null) return 'step-has-no-text'
+  if (mini.slice(step.head.start, step.head.end) !== step.name) return 'tree-is-not-this-text'
+  if (!step.rest && (step.hits.length !== step.slots.length || !step.hits.every((h) => step.slots.some((s) => sameFrac(h.begin, s.begin))))) {
+    return 'step-is-generated'
+  }
+  return null
+}
+
+/**
+ * SPLIT A PLAIN STEP where a click lands part-way through it (#2293 — the snap halves the
+ * design locked as option B): the step's name becomes a group of equal parts, its own name
+ * first, the row's sound where the click is, rests between. One replacement at the name;
+ * whatever follows it (`@2`, `_` holds) stays as written.
+ *
+ *   `bd ~ sn ~`, row bd, at 1/8 (the second half of `bd`)  →  `[bd bd] ~ sn ~`
+ *   `~`, its second half                                    →  `[~ bd]`
+ *   `bd@2`, a quarter of the way in                         →  `[bd bd ~ ~]@2`
+ *
+ * `at` is where in bar `address.bar` the click is, as a share of the bar. The parts are as
+ * many as the click's place needs and no more: half way is two, a quarter of the way four.
+ * The step's own hit, if it plays one, now lasts its first part — the music of a split, as
+ * the grid has always written it. Refused wherever a toggle of the same step is.
+ */
+export function splitStep(mini: string, trees: readonly BarTree[], address: StepAddress, at: Frac, row: StepRow): StepEditResult {
+  const got = locate(trees, address, row)
+  if (!got.ok) return refuse(got.why)
+  const { step } = got.found
+  const bad = plainNote(mini, step)
+  if (bad) return refuse(bad)
+  // where in the step the click is, exactly: k of q equal parts
+  const p = fdiv(fsub(at, got.slot.begin), fsub(got.slot.end, got.slot.begin))
+  if (p.n <= 0 || p.n >= p.d) return refuse('not-inside-the-step')
+  const parts = Array.from({ length: p.d }, (_, i) => (i === 0 ? step.name! : i === p.n ? row.sound : '~'))
+  return write(step.head!.start, step.head!.end, `[${parts.join(' ')}]`)
+}
+
+/** the step's text ends here, padding left out */
+const textEnd = (mini: string, s: DivisionStep): number => s.span!.start + mini.slice(s.span!.start, s.span!.end).trimEnd().length
+
+type Length = { kind: 'plain' } | { kind: 'at'; from: number; to: number; n: number } | { kind: 'holds'; at: number[] }
+
+/** a note's length as written after its name: nothing, one whole `@n`, or `_` holds (and where each is) — else null */
+function lengthOf(mini: string, step: DivisionStep): Length | null {
+  const after = mini.slice(step.head!.end, textEnd(mini, step))
+  if (after === '') return { kind: 'plain' }
+  const m = /^@([1-9][0-9]*)$/.exec(after)
+  if (m) return { kind: 'at', from: step.head!.end, to: step.head!.end + after.length, n: Number(m[1]) }
+  if (/^(\s+_)+$/.test(after)) {
+    const at: number[] = []
+    for (let i = 0; i < after.length; i++) if (after[i] === '_') at.push(step.head!.end + i)
+    return { kind: 'holds', at }
+  }
+  return null
+}
+
+/**
+ * MAKE THE ROW'S NOTE END AT `end` (#2293): a resize that stays inside the note's group.
+ * The length is counted in the note's own units — the share of its group one step takes —
+ * and written the way the note already writes its length:
+ *
+ *   `bd ~ sd ~`, longer by one   →  `bd _ sd ~`   (the rest after it becomes a hold)
+ *   `bd _ sd ~`, shorter by one  →  `bd ~ sd ~`   (its last hold becomes a rest)
+ *   `bd@2 ~ sd`, longer by one   →  `bd@3 sd`     (an `@` stays an `@`)
+ *   `bd@3 sd`,   shorter by one  →  `bd@2 ~ sd`
+ *
+ * A longer note takes the room of the rests after it in its group, which must end exactly
+ * where the note would; anything else after it — a note, a group, a rest longer than the
+ * room asked — is refused, as is a length that is not a whole number of units. The group
+ * keeps its count of units, so every other step keeps its place and nothing else is heard
+ * to change but the note's length. `end` is a share of bar `address.bar`.
+ */
+export function resizeStep(mini: string, trees: readonly BarTree[], address: StepAddress, end: Frac, row: StepRow): StepEditResult {
+  const got = locate(trees, address, row)
+  if (!got.ok) return refuse(got.why)
+  const { step } = got.found
+  const { slot } = got
+  if (step.rows !== null || step.rest || step.name !== row.sound) return refuse('not-the-rows-note')
+  const bad = plainNote(mini, step)
+  if (bad) return refuse(bad)
+  if (!Number.isInteger(step.weight) || step.weight < 1) return refuse('length-not-plain')
+  const len = lengthOf(mini, step)
+  if (!len || (len.kind === 'plain' && step.weight !== 1) || (len.kind === 'at' && len.n !== step.weight) || (len.kind === 'holds' && len.at.length + 1 !== step.weight)) {
+    return refuse('length-not-plain')
+  }
+  // the note's unit: its slot over its weight; the length asked, in units
+  const unit = fdiv(fsub(slot.end, slot.begin), { n: step.weight, d: 1 })
+  const want = fdiv(fsub(end, slot.begin), unit)
+  if (want.d !== 1 || want.n < 1 || want.n === step.weight) return refuse('length-not-whole-steps')
+  const w = want.n
+
+  if (w < step.weight) {
+    const k = step.weight - w
+    if (len.kind === 'holds') {
+      // the last `k` holds become rests, each in its own place
+      const first = len.at[len.at.length - k]
+      const last = len.at[len.at.length - 1]
+      return write(first, last + 1, mini.slice(first, last + 1).replace(/_/g, '~'))
+    }
+    if (len.kind !== 'at') return refuse('length-not-plain')
+    return write(len.from, len.to, (w > 1 ? `@${w}` : '') + ' ~'.repeat(k))
+  }
+
+  // LONGER: the rests after the note in its own row, next in time, until the room is filled
+  const rowSteps = got.found.rows[got.found.rows.length - 1].row.steps
+  const i = rowSteps.indexOf(step)
+  let need = w - step.weight
+  let atTime = slot.end
+  const taken: DivisionStep[] = []
+  for (let j = i + 1; j < rowSteps.length && need > 0; j++) {
+    const r = rowSteps[j]
+    // the next step in TIME in this bar — an alternation's next arm is not
+    const next = r.slots.find((x) => sameFrac(x.begin, atTime))
+    if (!next || !r.rest || r.rows || r.ops.length > 0 || r.reps !== 1 || !r.span || !r.head || next.pastEnd) return refuse('no-room-to-grow')
+    const u = fdiv(fsub(next.end, next.begin), unit)
+    if (u.d !== 1 || u.n > need) return refuse('no-room-to-grow')
+    // a hold is one unit long, so a held note takes rests of exactly one, written bare
+    if (len.kind !== 'at' && (u.n !== 1 || mini.slice(r.head.start, textEnd(mini, r)) !== '~')) return refuse('no-room-to-grow')
+    taken.push(r)
+    need -= u.n
+    atTime = next.end
+  }
+  if (need > 0) return refuse('no-room-to-grow')
+  const lastEnd = textEnd(mini, taken[taken.length - 1])
+  if (len.kind === 'at') return write(len.from, lastEnd, `@${w}`)
+  // plain or held: each rest taken becomes a hold, in its own place
+  const from = taken[0].head!.start
+  let out = ''
+  let k = from
+  for (const r of taken) {
+    out += mini.slice(k, r.head!.start) + '_'
+    k = r.head!.end
+  }
+  return write(from, lastEnd, out + mini.slice(k, lastEnd))
 }
