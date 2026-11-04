@@ -147,8 +147,29 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")') // still untouched
 
-    // column 1 exists only at the refined resolution — it is between the source's
-    // own columns 0 and 1, so this is a note the document could not previously hold
+    // ⚠ #2292: column 1 exists only at the refined resolution — it is between the
+    // source's own columns 0 and 1, part of the `bd` step and not a step of its own. A
+    // click edits a step's own text or nothing (the user's ruling), and turning `bd` into
+    // `[bd bd]` is a split, a later stage's gesture (#2293). So it is refused, says why,
+    // and the document stays untouched; an empty step of its own still writes.
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('title', /part of a longer step/)
+    await grid.locator('[data-seq-cell="0:1"]').click({ force: true })
+    await page.waitForTimeout(150)
+    expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
+    expect(errors).toEqual([])
+  })
+
+  test.skip('step grid: a refined view absorbs a note placed between the source’s columns (#1057) — waits on the split gesture (#2293)', async ({
+    page,
+  }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd ~ sn ~")')
+    const drawer = await openPattern(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    const slots = slotsControl(drawer)
+    await (await preset(slots, 8)).click()
     await grid.locator('[data-seq-cell="0:1"]').click()
     await page.waitForTimeout(150)
 

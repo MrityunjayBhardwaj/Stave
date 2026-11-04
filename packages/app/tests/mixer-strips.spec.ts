@@ -512,7 +512,9 @@ test.describe('Mixer strip mute (#543 / S3)', () => {
     // Writeback (the meter darkens with no manual eval).
     const drawer = await openPattern(page)
     await enlargeDrawer(page)
-    await setStrudelCode(page, 'd1: s("bd*4")')
+    // four written kicks: each is a step a grid click can silence (the hits of `bd*4` are
+    // made by its `*4`, and a click on one is refused — #2292)
+    await setStrudelCode(page, 'd1: s("bd bd bd bd")')
 
     let lit = 0
     for (let attempt = 0; attempt < 3 && lit < 15; attempt++) {

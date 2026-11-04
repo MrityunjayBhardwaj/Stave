@@ -48,6 +48,17 @@ export interface DivisionStep {
   name: string | null
   rest: boolean
   /**
+   * A note or rest step's name in the string, tight: the atom and its `:` tails (`bd:4` of
+   * `bd:4@2 `). Null for a group, and wherever the name is not one unbroken run of text.
+   * This is the text a toggle rewrites; whatever follows it (`@2`) stays as written.
+   */
+  head: MiniSpan | null
+  /**
+   * The step's own ops, by krill's name, in written order: `tail`, `replicate`, `stretch`,
+   * `bjorklund`, `degradeBy`, `range`, … — `@n` and `_` are its weight, not ops.
+   */
+  ops: string[]
+  /**
    * `!n` / a bare `!`: the step is written once and plays as `reps` steps side by side,
    * each an equal share of its slot (Strudel counts `bd!3 sd` as four steps). 1 when unwritten.
    */
@@ -73,6 +84,12 @@ export interface DivisionStep {
 export interface DivisionRow {
   /** the steps that sit in this bar, in written order */
   steps: DivisionStep[]
+  /**
+   * How many steps the row WRITES, in every bar together. More than `steps.length` when
+   * the row is an alternation's arms (`<bd sd>`) or a polymeter's layer, and only some of
+   * them sit in this bar.
+   */
+  written: number
   /**
    * Every note written in the row, at any depth and in every arm (not only this bar's),
    * as written (`bd:3` and `bd` are two), each once — rests left out. A grid row is one
@@ -114,10 +131,21 @@ function plainValue(v: unknown): DivisionHit['value'] {
   return null
 }
 
-function stepOut(s: Step, cyc: number): DivisionStep {
+/** where a note's name sits, tight — or null when its atom and tails are not one run of text */
+function headOf(e: MiniElement, name: string | null, mini: string): MiniSpan | null {
+  if (e.content.kind !== 'atom' || name === null) return null
+  const start = e.content.span.start
+  const end = start + name.length
+  return mini.slice(start, end) === name ? { start, end } : null
+}
+
+function stepOut(s: Step, cyc: number, mini: string): DivisionStep {
+  const name = nameOf(s.element)
   return {
     span: s.element.span,
-    name: nameOf(s.element),
+    name,
+    head: headOf(s.element, name, mini),
+    ops: s.element.ops.map((o) => o.kind),
     rest: s.rest,
     reps: s.element.reps,
     weight: s.element.weight,
@@ -129,7 +157,7 @@ function stepOut(s: Step, cyc: number): DivisionStep {
       value: plainValue(j.hit.value),
     })),
     copies: s.copies,
-    rows: s.rows ? s.rows.map((r) => rowOut(r, cyc)) : null,
+    rows: s.rows ? s.rows.map((r) => rowOut(r, cyc, mini)) : null,
     oneOf: s.oneOf,
   }
 }
@@ -146,8 +174,9 @@ function soundsIn(group: MiniGroup, out: Set<string>): Set<string> {
   return out
 }
 
-const rowOut = (r: Row, cyc: number): DivisionRow => ({
-  steps: r.steps.map((s) => stepOut(s, cyc)),
+const rowOut = (r: Row, cyc: number, mini: string): DivisionRow => ({
+  steps: r.steps.map((s) => stepOut(s, cyc, mini)),
+  written: r.group.children.length,
   sounds: [...soundsIn(r.group, new Set())],
 })
 
@@ -173,7 +202,7 @@ export function chunkDivisions(mini: string, bars: number): BarTree[] {
     const pat = miniPattern(mini)
     trees = Array.from({ length: bars }, (_, cyc): BarTree => {
       const d = barDivisions(pat, cyc)
-      return d.ok ? { ok: true, parts: d.parts.map((r) => rowOut(r, cyc)), oneOf: d.oneOf } : { ok: false, why: d.why }
+      return d.ok ? { ok: true, parts: d.parts.map((r) => rowOut(r, cyc, mini)), oneOf: d.oneOf } : { ok: false, why: d.why }
     })
   } catch {
     // Strudel or krill threw for the pattern itself: no bar of it has a tree

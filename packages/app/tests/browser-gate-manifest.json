@@ -859,6 +859,10 @@
     "runs": "gate",
     "why": "Piano roll drawn from the pattern's own divisions, look-only (#1834): a melody the roll's columns cannot hold (a real corpus one, `C4 D4 [A5 Bb5@15] ...`) draws every note at its exact time and length on its pitch row, its part's steps as lines and a ruler by place. Pins the note positions read off the screen, that a click writes nothing, that Ctrl/Cmd + wheel opens the step holding two notes with every note unmoved, numbers on their own rows, an exact playhead, and an editable melody still opening the column roll."
   },
+  "pattern-step-click.spec.ts": {
+    "runs": "gate",
+    "why": "A click edits the clicked step's own text (#2292): real mouse clicks on `bd [~ bd] sd [hh [~ cp]]` and `[bd ~]*2 sd` must change only that step's bytes in the code, and what the page's own Strudel plays must change by exactly the hits of that written step (both copies of a repeated one); a chord joined and left again round-trips; a column part-way through a step and a hat made by `*4` are refused with their reason and the code is left alone."
+  },
   "pattern-zoom.spec.ts": {
     "runs": "gate",
     "why": "Step grid zoom (#2277): 1x keeps every step closed and fits a crowded bar to the panel; zooming in (buttons or Ctrl/Cmd + wheel) widens every column and opens the steps the text nests, with the ruler naming them (`1.2.2`). Pins the labels and open steps at 1x and 1.5x, the wheel, that 60 columns fit at 1x and scroll once zoomed, that a click on a step writes the same code whether its parent is open or not, and that the piano roll's lines and ruler open the same way with its notes unmoved."
@@ -873,7 +877,7 @@
   },
   "sequencer-erase-refusal.spec.ts": {
     "runs": "gate",
-    "why": "A lit sequencer cell whose erase the writer refuses must say so: inert and titled for the pointer, and reported as a warning for a key, which never sees a title (#1836). Before, every lit cell looked clickable and 285 of the corpus's erase clicks did nothing silently."
+    "why": "A hit the grid draws more than once from one written note (#1836 refused its erase): since the ruling of #2292 the click erases the written note, every copy. Pins the code read back, that both copies go dark (and only they), by mouse and by key, with a note drawn once erasing alone as the control, on a two-bar and a one-bar grid."
   },
   "sequencer-velocity-writable.spec.ts": {
     "runs": "gate",

@@ -98,8 +98,8 @@ describe('treeGridOf — rows, boxes, ruler', () => {
   })
 
   it('refuses a pattern that does not repeat, a random choice of parts, a hit with no plain name', () => {
-    expect(treeGridFrom(Array.from({ length: 16 }, (_, b) => ({ ok: true as const, parts: [{ steps: [], sounds: [String(b)] }], oneOf: false })))).toEqual({ ok: false, why: 'does-not-repeat' })
-    const choice = { ok: true as const, parts: [{ steps: [], sounds: ['bd'] }, { steps: [], sounds: ['hh'] }], oneOf: true }
+    expect(treeGridFrom(Array.from({ length: 16 }, (_, b) => ({ ok: true as const, parts: [{ steps: [], written: 0, sounds: [String(b)] }], oneOf: false })))).toEqual({ ok: false, why: 'does-not-repeat' })
+    const choice = { ok: true as const, parts: [{ steps: [], written: 0, sounds: ['bd'] }, { steps: [], written: 0, sounds: ['hh'] }], oneOf: true }
     expect(treeGridFrom(Array(16).fill(choice))).toEqual({ ok: false, why: 'parts-are-a-choice' })
     expect(treeGridOf('bd:<1 2> sd')).toEqual({ ok: false, why: 'unnamed-hit' })
     expect(treeGridOf('~ ~')).toEqual({ ok: false, why: 'no-hits' })

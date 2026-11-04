@@ -151,10 +151,12 @@ test.describe('Sequencer (#382)', () => {
     await setStrudelCode(page, '$: s("bd hh*2 sd cp")')
     const drawer = await openSequencer(page)
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    // the bd lane spans columns 0-1; turn on column 1 — inside `bd`, not `hh*2`
-    await grid.locator('[data-seq-cell="0:1"]').click()
+    // the cp row on the `sd` step: only that step's text changes, the `*2` stays (#2292)
+    await grid.locator('[data-seq-cell="3:4"]').click()
     await page.waitForTimeout(80)
-    expect(await strudelValue(page)).toBe('$: s("[bd bd] hh*2 sd cp")')
+    expect(await strudelValue(page)).toBe('$: s("bd hh*2 [sd,cp] cp")')
+    // column 1 is part of the `bd` step, not a step: refused, nothing written
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-disabled', 'true')
   })
 
   /**
@@ -293,12 +295,14 @@ test.describe('Sequencer (#382)', () => {
     }
     await expect(grid.locator('[data-seq-cell="0:8"]')).toHaveCount(0) // no 9th column
 
-    // turning one step off (select + Delete, #432) expands the `*8` sugar
-    await grid.locator('[data-seq-cell="0:3"]').click() // select (no longer toggles off)
-    await page.keyboard.press('Delete') // turn off
-    await page.waitForTimeout(100)
-    expect(await strudelValue(page)).toBe('$: s("hh hh hh ~ hh hh hh hh")')
-    await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveAttribute('aria-pressed', 'false')
+    // A hat made by `*8` keeps its generator (#2292): select + Delete is refused, and the
+    // `*8` is not expanded into eight written hats
+    await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveAttribute('title', /operator on its step/)
+    await grid.locator('[data-seq-cell="0:3"]').click({ force: true }) // select
+    await page.keyboard.press('Delete')
+    await page.waitForTimeout(150)
+    expect(await strudelValue(page)).toBe('$: s("hh*8")')
+    await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveAttribute('aria-pressed', 'true')
   })
 
   test('binds `bd(3,8)` euclid as an 8-step lane with 3 hits and expands on toggle (#399)', async ({
@@ -320,11 +324,12 @@ test.describe('Sequencer (#382)', () => {
     }
     await expect(grid.locator('[data-seq-cell="0:8"]')).toHaveCount(0) // no 9th column
 
-    // turning step 1 on expands the euclid sugar into the canonical sequence
-    await grid.locator('[data-seq-cell="0:1"]').click()
-    await page.waitForTimeout(100)
-    expect(await strudelValue(page)).toBe('$: s("bd bd ~ bd ~ ~ bd ~")')
-    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'true')
+    // the euclid keeps its generator (#2292): a click is refused, the `(3,8)` stays
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-disabled', 'true')
+    await grid.locator('[data-seq-cell="0:1"]').click({ force: true })
+    await page.waitForTimeout(150)
+    expect(await strudelValue(page)).toBe('$: s("bd(3,8)")')
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'false')
   })
 
   test('binds `bd!3` replicate as a 3-step lane and expands the sugar on toggle (#407)', async ({
@@ -342,12 +347,13 @@ test.describe('Sequencer (#382)', () => {
     }
     await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveCount(0) // no 4th column
 
-    // turning step 1 off (select + Delete, #432) expands the `!3` sugar
-    await grid.locator('[data-seq-cell="0:1"]').click() // select
-    await page.keyboard.press('Delete') // turn off
-    await page.waitForTimeout(100)
-    expect(await strudelValue(page)).toBe('$: s("bd ~ bd")')
-    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'false')
+    // `bd!3` is one text played as three steps: Delete on one is refused, the `!3` stays (#2292)
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('title', /repeated with !/)
+    await grid.locator('[data-seq-cell="0:1"]').click({ force: true }) // select
+    await page.keyboard.press('Delete')
+    await page.waitForTimeout(150)
+    expect(await strudelValue(page)).toBe('$: s("bd!3")')
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'true')
   })
 
   /**
@@ -372,7 +378,10 @@ test.describe('Sequencer (#382)', () => {
    * defect was that the model and the document stayed untouched — which is
    * exactly what a forced-state check cannot distinguish from success.
    */
-  test('a leaf-anchored grid states it takes no new note, and still deletes (#1070)', async ({
+  // #2292 — the step writer reaches what the leaf writer could not: each `-` of
+  // `<bd - - ->*2` is a step of its own text, so the grid now takes a note there, written
+  // as that step's text, and the banner that said it takes none is gone.
+  test('a leaf-anchored grid now takes a note on a rest step, and still deletes (#1070, #2292)', async ({
     page,
   }) => {
     await boot(page)
@@ -381,36 +390,25 @@ test.describe('Sequencer (#382)', () => {
     const drawer = await openSequencer(page)
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
     await expect(grid).toHaveCount(1) // it still OPENS — reach is unaffected
+    await expect(grid.locator('[data-seq-no-placement]')).toHaveCount(0)
 
-    // ONE statement for the view, not a cell-by-cell greying.
-    await expect(grid.locator('[data-seq-no-placement]')).toHaveCount(1)
-
-    // an empty cell is inert AND says why, instead of silently eating the click
+    // an empty cell is a written rest: the click writes the step's own text
     const empty = grid.locator('[data-seq-cell="0:1"]')
     await expect(empty).toHaveAttribute('aria-pressed', 'false')
-    await expect(empty).toHaveAttribute('data-seq-cell-inert', 'true')
-    await expect(empty).toHaveAttribute('aria-disabled', 'true')
+    await expect(empty).not.toHaveAttribute('data-seq-cell-inert', 'true')
+    await empty.click()
+    // column 1 is where Strudel plays the second `-` (`*2` plays two arms a cycle)
+    await expect.poll(() => strudelValue(page)).toBe('$: s("<bd - bd ->*2")')
 
-    // The affordance is genuinely gone, not merely styled: an ordinary click
-    // cannot reach it at all.
-    await expect(empty).toBeDisabled()
-
-    // AND the op refuses underneath it — forced past the affordance, the
-    // document is still untouched. Both layers, because the panel's guard is a
-    // courtesy and the op's refusal is the guarantee.
-    const before = await strudelValue(page)
-    await empty.click({ force: true })
-    await page.waitForTimeout(100)
-    expect(await strudelValue(page), 'a refused placement leaves the document alone').toBe(before)
-    await expect(empty).toHaveAttribute('aria-pressed', 'false')
-
-    // and the half the decision KEPT: the notes that are here still delete.
+    // and the notes that are here still delete — on the text as it was: `<bd - bd ->*2`
+    // plays the same in both cycles, so the grid reads it as one bar, where the four arms
+    // do not all come round and the loop rule refuses (#2292)
+    await setStrudelCode(page, '$: s("<bd - - ->*2")')
+    await placeCursorOn(page, 'bd')
     const held = grid.locator('[data-seq-cell="0:0"]')
     await expect(held).toHaveAttribute('aria-pressed', 'true')
-    await expect(held).not.toHaveAttribute('data-seq-cell-inert', 'true')
     await held.click()
-    await page.waitForTimeout(100)
-    expect(await strudelValue(page), 'delete still writes on a leaf view').not.toBe(before)
+    await expect.poll(() => strudelValue(page)).toBe('$: s("<~ - - ->*2")')
   })
 
   /**

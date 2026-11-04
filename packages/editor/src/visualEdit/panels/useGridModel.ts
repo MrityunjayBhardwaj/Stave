@@ -36,7 +36,8 @@ import * as React from 'react'
 import type { ChunkInfo } from '../../codeView'
 import type { NotationCodec } from '../../codeView'
 import { UNREFINED, type ViewScale } from '../../codeView'
-import { commit, type WriteSource } from '../../codeView'
+import { commit, type WriteSource, type OffsetEdit } from '../../codeView'
+import { applyStepEdit, type StepEdit } from '../../codeView'
 import { gridWriteEdits, readChunkGain, reconcileGrid, gridWritePlan } from '../../codeView'
 import { useActiveChunk } from './useActiveChunk'
 
@@ -94,6 +95,17 @@ export interface GridModel<M> {
    * caller has already checked the result reads back.
    */
   writeMini: (mini: string) => void
+  /**
+   * Make ONE step edit (`toggleStep`'s answer) in the mini the edit was computed from
+   * (#2292): only the step's own bytes change in the document. Returns false, writing
+   * nothing, when the document's mini is no longer `from` — an edit is a span in one text
+   * and means nothing in another — and on a look-only view.
+   *
+   * The model is read again from the written text, as after any text edit. `keep` is
+   * applied to that read once, on the echo of this write: what the panel showed that the
+   * text cannot say — a row emptied of its last note (#1161) stays on screen.
+   */
+  writeStep: (from: string, edit: StepEdit, keep?: (read: M) => M) => boolean
   beginGesture: () => void
   endGesture: () => void
   /**
@@ -150,6 +162,8 @@ export function useGridModel<M extends { viewScale?: ViewScale; lookOnly?: unkno
   // The key this panel's last write will come back as, and the key it is standing in
   // for. An echo of our own write keeps the pattern's key (#1964).
   const ownEchoRef = React.useRef<string | null>(null)
+  // what a step write asked to keep on the model its echo reads (`writeStep`'s `keep`)
+  const keepRef = React.useRef<{ mini: string; keep: (read: M) => M } | null>(null)
   const patternKeyRef = React.useRef<string | null>(null)
   const patternKey = React.useMemo(() => {
     if (!chunk) return (patternKeyRef.current = null)
@@ -185,8 +199,12 @@ export function useGridModel<M extends { viewScale?: ViewScale; lookOnly?: unkno
     }
     setRead(held.read)
     modelScaleRef.current = viewScale
-    modelRef.current = held.model
-    setModel(held.model)
+    // the echo of a step write: what it asked to keep goes onto the model read from it, once
+    const pending = keepRef.current
+    keepRef.current = null
+    const kept = pending && pending.mini === chunk.miniString && held.model !== modelRef.current ? pending.keep(held.model) : held.model
+    modelRef.current = kept
+    setModel(kept)
   }, [chunk, viewScale])
 
   /**
@@ -248,5 +266,29 @@ export function useGridModel<M extends { viewScale?: ViewScale; lookOnly?: unkno
     [applyEdit],
   )
 
-  return { model, read, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit }
+  /** See {@link GridModel.writeStep}. One edit, so one undo step. */
+  const writeStep = React.useCallback(
+    (from: string, edit: StepEdit, keep?: (read: M) => M): boolean => {
+      if (modelRef.current?.lookOnly) return false // same door (#1975)
+      let wrote = false
+      applyEdit((fresh, wb) => {
+        if (fresh.miniString !== from || !fresh.miniRange) return
+        const after = applyStepEdit(from, edit)
+        keepRef.current = keep ? { mini: after, keep } : null
+        // the panel's own write keeps the pattern's key, so a zoom the user set stays (#1964)
+        ownEchoRef.current = keyOf(fresh.exprRange[0], after)
+        const [start, end] = fresh.miniRange
+        // The step's own bytes, where the string's text is the document's text one for
+        // one. A literal with escapes (`\"`) is not, and is written whole, as `writeMini`
+        // writes it — the same mini either way.
+        const edits: OffsetEdit[] | null =
+          end - start === from.length ? [{ range: [start + edit.from, start + edit.to], text: edit.insert }] : gridWriteEdits(fresh, after, null)
+        wrote = commit(wb, edits, optsRef.current.source) === 'written'
+      })
+      return wrote
+    },
+    [applyEdit],
+  )
+
+  return { model, read, chunk, mutate, settle, writeMini, writeStep, beginGesture, endGesture, patternKey, applyEdit }
 }
