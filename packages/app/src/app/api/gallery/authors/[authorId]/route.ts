@@ -1,15 +1,16 @@
 import {
-  AUTHOR_KEY_HEADER,
   GALLERY_ID_PATTERN,
   type AuthorPageResponse,
   type GalleryAuthorProfile,
   type GalleryCollection,
 } from "../../../../../gallery/types";
-import { indexedIds, keyOwnsAuthor, liveEntries, servedCollection } from "../../authors";
+import { indexedIds, liveEntries, servedCollection } from "../../authors";
+import { mayManageAuthor } from "../../session";
 import { galleryPaths, galleryStore, getJson, putJson } from "../../store";
 import { checkAuthorUpdate, MAX_AUTHOR_BODY_BYTES, readJsonBody } from "../../validate";
 
-// #2314 — an author's profile page: read it, or (with the author key) edit it.
+// #2314 — an author's profile page: read it, or edit it (signed in as its owner,
+// #2319, or with the author key from before sign-in).
 //
 // Not cached at the CDN (`no-store`): the person who just edited their bio or
 // made a collection expects to see it on the next open, and a takedown must
@@ -65,8 +66,9 @@ export async function PUT(req: Request, { params }: Ctx): Promise<Response> {
 
   const author = await getJson<GalleryAuthorProfile>(store, galleryPaths.author(authorId));
   if (!author) return notFound();
-  if (!(await keyOwnsAuthor(store, authorId, req.headers.get(AUTHOR_KEY_HEADER)))) {
-    return Response.json({ error: "that key does not manage this profile" }, { status: 403 });
+  // #2319 — the signed-in owner, or the key for a profile made before sign-in.
+  if (!(await mayManageAuthor(req, store, authorId))) {
+    return Response.json({ error: "you can't edit this profile" }, { status: 403 });
   }
 
   const body = await readJsonBody(req, MAX_AUTHOR_BODY_BYTES);
@@ -86,5 +88,19 @@ export async function PUT(req: Request, { params }: Ctx): Promise<Response> {
 
 /** Only the contract's fields, whatever else a stored profile might hold. */
 function publicProfile(p: GalleryAuthorProfile): GalleryAuthorProfile {
-  return { authorId: p.authorId, name: p.name, bio: p.bio, createdAt: p.createdAt, updatedAt: p.updatedAt };
+  const out: GalleryAuthorProfile = {
+    authorId: p.authorId,
+    name: p.name,
+    bio: p.bio,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+  };
+  // #2319 — the badge, field by field: only the provider, GitHub login and avatar.
+  if (p.verified) {
+    const v = p.verified;
+    out.verified = { provider: v.provider };
+    if (v.login) out.verified.login = v.login;
+    if (v.avatarUrl) out.verified.avatarUrl = v.avatarUrl;
+  }
+  return out;
 }

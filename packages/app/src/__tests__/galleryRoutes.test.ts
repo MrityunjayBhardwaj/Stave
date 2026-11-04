@@ -2,11 +2,17 @@
 // #2299 / #2303 — the community gallery routes against the dev folder store:
 // publish, list, open, thumbnail, report, delete, the maintainer's flagged list,
 // and the privacy rule that the author's email never leaves the server.
+//
+// #2319 — publishing needs a signed-in session. Auth.js's `auth()` is mocked at
+// module level; most tests run signed in as one account (EMAIL is its email).
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+const fake = vi.hoisted(() => ({ session: null as unknown }));
+vi.mock("../auth", () => ({ auth: vi.fn(async () => fake.session) }));
 
 import {
   ADMIN_KEY_HEADER,
@@ -30,6 +36,7 @@ import { DELETE as deleteRoute, GET as entryRoute } from "../app/api/gallery/[id
 import { GET as thumbnailRoute } from "../app/api/gallery/[id]/thumbnail/route";
 import { POST as reportRoute } from "../app/api/gallery/[id]/report/route";
 import { GET as reportsRoute } from "../app/api/gallery/reports/route";
+import { galleryPaths, galleryStore, getJson } from "../app/api/gallery/store";
 
 const PNG_1x1 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
@@ -51,7 +58,21 @@ beforeEach(() => {
   vi.stubEnv("BLOB_STORE_ID", "");
   vi.stubEnv("STAVE_GALLERY_DEV_DIR", dir);
   vi.stubEnv("STAVE_GALLERY_ADMIN_KEY", ADMIN_KEY);
+  // #2319 — sign-in set up (the test provider) and signed in as Ada.
+  vi.stubEnv("AUTH_SECRET", "test-secret");
+  vi.stubEnv("STAVE_AUTH_TEST_LOGIN", "1");
+  signIn("ada-routes");
 });
+
+function signIn(id: string | null, name = "Ada") {
+  fake.session = id
+    ? {
+        user: { name, email: EMAIL },
+        account: { provider: "test-login", providerAccountId: id, badge: "github", login: id },
+        expires: "2099-01-01T00:00:00.000Z",
+      }
+    : null;
+}
 
 const manifest = (files = 1): GalleryManifest => ({
   schemaVersion: 1,
@@ -70,8 +91,6 @@ const request = (over: Record<string, unknown> = {}): Record<string, unknown> =>
   title: "  Night drive  ",
   kind: "music",
   tags: [" techno ", "dark", "", "dark"],
-  authorName: "  Ada  ",
-  authorEmail: EMAIL,
   manifest: manifest(1),
   thumbnail: `data:image/png;base64,${PNG_1x1}`,
   ...over,
@@ -94,8 +113,14 @@ const report = (id: string, body: unknown) =>
     new Request(`http://x/api/gallery/${id}/report`, { method: "POST", body: JSON.stringify(body) }),
     ctx(id),
   );
-const remove = (id: string, headers: Record<string, string> = {}) =>
-  deleteRoute(new Request(`http://x/api/gallery/${id}`, { method: "DELETE", headers }), ctx(id));
+/**
+ * Delete as someone NOT signed in, so only the token or admin key can grant it.
+ * (Signed in as the entry's author, no token is needed: galleryAuthors.test.ts.)
+ */
+const remove = (id: string, headers: Record<string, string> = {}) => {
+  signIn(null);
+  return deleteRoute(new Request(`http://x/api/gallery/${id}`, { method: "DELETE", headers }), ctx(id));
+};
 const reports = (headers: Record<string, string> = {}) =>
   reportsRoute(new Request("http://x/api/gallery/reports", { headers }));
 
@@ -156,10 +181,6 @@ describe("publishing", () => {
     ["tags not a list", request({ tags: "techno" })],
     ["too many tags", request({ tags: Array.from({ length: MAX_TAGS + 1 }, (_, i) => `t${i}`) })],
     ["long tag", request({ tags: ["x".repeat(MAX_TAG_CHARS + 1)] })],
-    ["long author name", request({ authorName: "x".repeat(MAX_AUTHOR_NAME_CHARS + 1) })],
-    ["blank author name", request({ authorName: " " })],
-    ["email without @", request({ authorEmail: "not-an-email" })],
-    ["email with spaces", request({ authorEmail: "a b@c.de" })],
     ["schemaVersion 2", request({ manifest: { ...manifest(1), schemaVersion: 2 } })],
     ["no files", request({ kind: "project", manifest: manifest(0) })],
     ["music with two files", request({ kind: "music", manifest: manifest(2) })],
@@ -180,6 +201,37 @@ describe("publishing", () => {
     const raw = Buffer.alloc(MAX_THUMBNAIL_BYTES + 1);
     Buffer.from(PNG_1x1, "base64").copy(raw);
     expect((await publish(request({ thumbnail: `data:image/png;base64,${raw.toString("base64")}` }))).status).toBe(413);
+  });
+
+  it("#2319 takes the author from the session and ignores a name and email in the body", async () => {
+    const old = request({ authorName: "x".repeat(MAX_AUTHOR_NAME_CHARS + 50), authorEmail: "imposter@elsewhere.test" });
+    const res = await publish(old);
+    expect(res.status).toBe(201);
+    const { id, authorId } = (await res.json()) as PublishResponse;
+    const body = (await (await entry(id)).json()) as GalleryEntryResponse;
+    expect(body.entry).toMatchObject({ authorName: "Ada", authorId });
+    const record = await getJson<{ authorEmail: string }>(galleryStore()!, galleryPaths.privateRecord(id));
+    expect(record?.authorEmail).toBe(EMAIL);
+  });
+
+  it("#2319 refuses a signed-out publish with 401, before reading the body", async () => {
+    signIn(null);
+    const res = await publish(request());
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "sign in to publish" });
+    expect((await publish("{not json")).status).toBe(401);
+  });
+
+  it("#2319 answers 503 with a plain reason when this site has no sign-in set up", async () => {
+    vi.stubEnv("STAVE_AUTH_TEST_LOGIN", "");
+    let res = await publish(request());
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { error: string }).error).toMatch(/sign-in isn't set up/);
+    // A provider but no secret to sign sessions with is no sign-in either.
+    vi.stubEnv("STAVE_AUTH_TEST_LOGIN", "1");
+    vi.stubEnv("AUTH_SECRET", "");
+    res = await publish(request());
+    expect(res.status).toBe(503);
   });
 
   it("accepts a thumbnail exactly at the limit", async () => {
@@ -221,6 +273,7 @@ describe("listing and opening", () => {
 
 describe("the author's email stays on the server", () => {
   it("appears in no public response", async () => {
+    // The account's email (EMAIL), and one an old client put in the body.
     const { id } = await published({ authorEmail: EMAIL });
     const bodies: string[] = [];
     bodies.push(await (await listRoute()).text());

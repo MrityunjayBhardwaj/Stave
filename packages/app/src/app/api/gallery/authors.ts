@@ -1,5 +1,5 @@
 import { newShareId } from "../../../shareCrypto";
-import type { GalleryAuthorProfile, GalleryCollection, GalleryEntry } from "../../../gallery/types";
+import type { GalleryAuthorProfile, GalleryCollection, GalleryEntry, GalleryVerified } from "../../../gallery/types";
 import { hashToken, newManageToken, tokenMatches } from "./auth";
 import {
   galleryPaths,
@@ -49,24 +49,32 @@ export async function authorForKey(store: GalleryBlobStore, key: string | null):
 export async function keyOwnsAuthor(store: GalleryBlobStore, authorId: string, key: string | null): Promise<boolean> {
   if (!key) return false;
   const record = await getJson<PrivateAuthorRecord>(store, galleryPaths.authorPrivate(authorId));
-  if (!record) return false;
+  // #2319 — an author made for a signed-in account has no key; only its session manages it.
+  if (!record?.authorKeyHash) return false;
   return tokenMatches(key, record.authorKeyHash);
 }
 
+/** A fresh, unused author id, or null after three clashes. */
+async function freeAuthorId(store: GalleryBlobStore): Promise<string | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const candidate = newShareId();
+    if (!(await store.get(galleryPaths.authorPrivate(candidate)))) return candidate;
+  }
+  return null;
+}
+
 /**
- * Make a new author. Private record and key pointer first, the public profile
- * last — so a profile that shows exists only once its key works.
+ * Make a new key-held author (the #2314 way, before sign-in). Private record and
+ * key pointer first, the public profile last — so a profile that shows exists
+ * only once its key works. Publishing no longer calls this (#2319); it stays for
+ * #2320's claim flow and for tests that need an author made before sign-in.
  */
 export async function createAuthor(
   store: GalleryBlobStore,
   name: string,
   email: string,
 ): Promise<{ authorId: string; authorKey: string } | null> {
-  let authorId: string | null = null;
-  for (let attempt = 0; attempt < 3 && !authorId; attempt++) {
-    const candidate = newShareId();
-    if (!(await store.get(galleryPaths.authorPrivate(candidate)))) authorId = candidate;
-  }
+  const authorId = await freeAuthorId(store);
   if (!authorId) return null;
 
   const authorKey = newAuthorKey();
@@ -80,6 +88,27 @@ export async function createAuthor(
   await putJson(store, galleryPaths.authorKey(keyHash), pointer);
   await putJson(store, galleryPaths.author(authorId), profile);
   return { authorId, authorKey };
+}
+
+/**
+ * #2319 — make the author for a signed-in account: no key (the session is what
+ * manages it), the account's badge on the public profile. The caller links it to
+ * the account (session.ts attachAuthorToAccount).
+ */
+export async function createKeylessAuthor(
+  store: GalleryBlobStore,
+  name: string,
+  email: string,
+  verified: GalleryVerified,
+): Promise<string | null> {
+  const authorId = await freeAuthorId(store);
+  if (!authorId) return null;
+  const now = Date.now();
+  const record: PrivateAuthorRecord = { authorEmail: email };
+  const profile: GalleryAuthorProfile = { authorId, name, bio: "", createdAt: now, updatedAt: now, verified };
+  await putJson(store, galleryPaths.authorPrivate(authorId), record);
+  await putJson(store, galleryPaths.author(authorId), profile);
+  return authorId;
 }
 
 /** An entry that is live (stored and not taken down), or null. */

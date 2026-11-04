@@ -1,24 +1,24 @@
 import {
   ADMIN_KEY_HEADER,
-  AUTHOR_KEY_HEADER,
   GALLERY_ID_PATTERN,
   type CollectionPageResponse,
   type GalleryAuthorProfile,
   type GalleryCollection,
 } from "../../../../../gallery/types";
 import { isAdminKey } from "../../auth";
-import { foreignEntry, keyOwnsAuthor, servedCollection } from "../../authors";
+import { foreignEntry, servedCollection } from "../../authors";
+import { mayManageAuthor } from "../../session";
 import { galleryPaths, galleryStore, getJson, putJson } from "../../store";
 import { checkCollectionWrite, MAX_COLLECTION_BODY_BYTES, readJsonBody } from "../../validate";
 
-// #2315 — one collection: open it, change it (author key), or delete it
-// (author key or admin key). Deleting a collection never touches its entries.
+// #2315 — one collection: open it, change it (its signed-in author, #2319, or
+// the author key), or delete it (either of those, or the admin key). Deleting a collection never touches its entries.
 // Not cached at the CDN, for the same reason as the author page: edits and
 // takedowns must show on the next open.
 
 const noStore = () => Response.json({ error: "the gallery is not set up here" }, { status: 503 });
 const notFound = () => Response.json({ error: "not found" }, { status: 404 });
-const forbidden = () => Response.json({ error: "that key does not manage this collection" }, { status: 403 });
+const forbidden = () => Response.json({ error: "you can't change this collection" }, { status: 403 });
 const NO_STORE = { "Cache-Control": "no-store" };
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -51,7 +51,7 @@ export async function PUT(req: Request, { params }: Ctx): Promise<Response> {
 
   const stored = await getJson<GalleryCollection>(store, galleryPaths.collection(id));
   if (!stored) return notFound();
-  if (!(await keyOwnsAuthor(store, stored.authorId, req.headers.get(AUTHOR_KEY_HEADER)))) return forbidden();
+  if (!(await mayManageAuthor(req, store, stored.authorId))) return forbidden();
 
   const body = await readJsonBody(req, MAX_COLLECTION_BODY_BYTES);
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });
@@ -81,7 +81,7 @@ export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
   if (!stored) return notFound();
   const allowed =
     isAdminKey(req.headers.get(ADMIN_KEY_HEADER)) ||
-    (await keyOwnsAuthor(store, stored.authorId, req.headers.get(AUTHOR_KEY_HEADER)));
+    (await mayManageAuthor(req, store, stored.authorId));
   if (!allowed) return forbidden();
 
   // The collection itself first (GET answers 404 at once), then its index marker.

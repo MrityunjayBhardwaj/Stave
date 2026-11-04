@@ -53,8 +53,14 @@ export interface PublishRequest {
   title: string;
   kind: GalleryKind;
   tags: string[];
-  authorName: string;
-  authorEmail: string;
+  /**
+   * #2319 — ignored. Publishing needs a signed-in session; the author's name is
+   * the profile's, and the email is the account's. Still accepted so a client
+   * from before sign-in doesn't get a 400.
+   */
+  authorName?: string;
+  /** #2319 — ignored, as `authorName`. */
+  authorEmail?: string;
   manifest: GalleryManifest;
   /** Optional `data:image/webp;base64,…` or `data:image/png;base64,…`, at most MAX_THUMBNAIL_BYTES decoded. */
   thumbnail?: string;
@@ -67,8 +73,9 @@ export interface PublishResponse {
   /** #2314 — the author this entry landed on. */
   authorId: string;
   /**
-   * #2314 — present only when this publish CREATED the author (the request had no
-   * valid AUTHOR_KEY_HEADER). Shown once; the browser keeps it (localShares.ts).
+   * #2314 — present only when a publish CREATED a key-held author. Since #2319 a
+   * publish always lands on the signed-in account's author, which has no key, so
+   * the server no longer sends it; kept so older stored responses still type.
    */
   authorKey?: string;
 }
@@ -131,6 +138,18 @@ export const ADMIN_KEY_HEADER = "x-stave-admin-key";
 // taken down are left out of every response. Deleting a collection never
 // deletes its entries. The author routes never return the email.
 
+/**
+ * #2319 — the account a profile is signed in with, shown as a badge. Only what
+ * the provider shows publicly anyway: never the email, never the provider's
+ * account id. `login` is the GitHub handle (the badge links to
+ * github.com/<login>); a Google account has none and shows as "Google account".
+ */
+export interface GalleryVerified {
+  provider: "github" | "google";
+  login?: string;
+  avatarUrl?: string;
+}
+
 /** The public profile. `bio` is markdown, rendered client-side with raw HTML escaped. */
 export interface GalleryAuthorProfile {
   authorId: string;
@@ -138,6 +157,8 @@ export interface GalleryAuthorProfile {
   bio: string;
   createdAt: number;
   updatedAt: number;
+  /** #2319 — present once the profile belongs to a signed-in account. */
+  verified?: GalleryVerified;
 }
 
 export interface GalleryCollection {
@@ -176,6 +197,39 @@ export interface CollectionPageResponse {
   author: Pick<GalleryAuthorProfile, "authorId" | "name">;
   /** In collection order; taken-down entries left out. */
   entries: GalleryEntry[];
+}
+
+// ── #2319 sign-in ───────────────────────────────────────────────────────────
+//
+// Publishing needs a signed-in session (GitHub or Google, through Auth.js at
+// /api/auth/*). The session's account is linked to exactly one author; the
+// server finds or makes it on the account's first gallery use.
+//
+//   GET    /api/gallery/me                → 200 GallerySessionResponse (never cached)
+//   POST   /api/gallery                   → 401 { error: "sign in to publish" } when signed out
+//                                         → 503 when this deployment has no sign-in set up
+//
+// Editing a profile, making/changing/deleting a collection and deleting an entry
+// accept the session's author, or (for things made before sign-in) the old
+// AUTHOR_KEY_HEADER / MANAGE_TOKEN_HEADER.
+
+/** A provider this deployment offers. */
+export interface GallerySignInProvider {
+  id: string;
+  name: string;
+}
+
+export interface GallerySessionResponse {
+  /** False when the deployment has no provider (or no session secret) set up. */
+  signInAvailable: boolean;
+  /** The providers on offer, in menu order. Empty when sign-in is unavailable. */
+  providers: GallerySignInProvider[];
+  /** Null when signed out. Never carries the email. */
+  user: {
+    name: string;
+    authorId: string;
+    verified: GalleryVerified;
+  } | null;
 }
 
 export const AUTHOR_KEY_HEADER = "x-stave-author-key";

@@ -35,8 +35,6 @@ export interface ValidPublish {
   title: string;
   kind: GalleryKind;
   tags: string[];
-  authorName: string;
-  authorEmail: string;
   manifest: GalleryManifest;
   manifestBytes: Uint8Array;
   thumbnail: { bytes: Uint8Array; contentType: "image/png" | "image/webp" } | null;
@@ -53,9 +51,6 @@ export function boundedText(v: unknown, field: string, max: number): Checked<str
   return { ok: true, value: s };
 }
 
-// Deliberately loose: something@something.something, no spaces. The email is
-// never verified (anyone can type anyone's), only kept with the entry.
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function stringRecord(v: unknown): Record<string, string[]> | null {
   if (!isObject(v)) return null;
@@ -153,11 +148,8 @@ export function checkPublish(body: unknown): Checked<ValidPublish> {
   }
   if (tags.length > MAX_TAGS) return bad(`at most ${MAX_TAGS} tags`);
 
-  const authorName = boundedText(body.authorName, "authorName", MAX_AUTHOR_NAME_CHARS);
-  if (!authorName.ok) return authorName;
-  const authorEmail = boundedText(body.authorEmail, "authorEmail", 254);
-  if (!authorEmail.ok) return authorEmail;
-  if (!EMAIL.test(authorEmail.value)) return bad("authorEmail doesn't look like an email");
+  // #2319 — authorName and authorEmail are no longer read: the author is the
+  // signed-in account's, and an old client that still sends them isn't refused.
 
   const manifest = checkManifest(body.manifest, kind);
   if (!manifest.ok) return manifest;
@@ -175,8 +167,6 @@ export function checkPublish(body: unknown): Checked<ValidPublish> {
       title: title.value,
       kind,
       tags,
-      authorName: authorName.value,
-      authorEmail: authorEmail.value,
       manifest: manifest.value,
       manifestBytes,
       thumbnail: thumbnail.value,

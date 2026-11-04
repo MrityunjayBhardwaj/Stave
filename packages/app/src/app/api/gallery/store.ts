@@ -25,6 +25,10 @@ import { hasBlobStore } from "../share/store";
 //   gallery/author-index/<authorId>/entries/<entryId>.json          an author's entries
 //   gallery/author-index/<authorId>/collections/<collectionId>.json an author's collections
 //   gallery/collections/<id>.json            one collection (GalleryCollection)
+//   gallery/accounts/<accountHash>.json      #2319 GalleryAccountRecord — a signed-in account
+//                                            and the author it is linked to. Never served.
+//   gallery/author-accounts/<authorId>.json  #2319 { accountHash } — which account an author
+//                                            belongs to. Never served.
 //
 // The entry JSON is written LAST on publish, so a listing never shows an entry
 // whose manifest isn't there yet; the removed marker is written FIRST on delete,
@@ -71,6 +75,11 @@ export const galleryPaths = {
   authorCollection: (authorId: string, collectionId: string) =>
     `gallery/author-index/${authorId}/collections/${collectionId}.json`,
   collection: (id: string) => `gallery/collections/${id}.json`,
+
+  // #2319 sign-in accounts (see session.ts). The account hash is the SHA-256 of
+  // `<provider>:<providerAccountId>`, so the store never holds a provider id in a path.
+  account: (accountHash: string) => `gallery/accounts/${accountHash}.json`,
+  authorAccount: (authorId: string) => `gallery/author-accounts/${authorId}.json`,
 };
 
 const blobStore: GalleryBlobStore = {
@@ -200,8 +209,11 @@ export interface PrivateRecord {
 /** The record kept beside each author (#2314). Never served. */
 export interface PrivateAuthorRecord {
   authorEmail: string;
-  /** SHA-256 of the author key, hex. */
-  authorKeyHash: string;
+  /**
+   * SHA-256 of the author key, hex. Absent on an author made for a signed-in
+   * account (#2319): it has no key, only the session.
+   */
+  authorKeyHash?: string;
 }
 
 /** `gallery/author-keys/<sha256 of key>.json` — finds the author a key belongs to. Never served. */

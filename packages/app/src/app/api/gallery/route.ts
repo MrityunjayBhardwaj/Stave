@@ -1,12 +1,12 @@
 import { newShareId } from "../../../shareCrypto";
 import {
-  AUTHOR_KEY_HEADER,
+  type GalleryAuthorProfile,
   type GalleryEntry,
   type GalleryListResponse,
   type PublishResponse,
 } from "../../../gallery/types";
 import { hashToken, newManageToken } from "./auth";
-import { authorForKey, createAuthor } from "./authors";
+import { requireSessionAuthor } from "./session";
 import { galleryPaths, galleryStore, getJson, putJson, type PrivateRecord } from "./store";
 import { checkPublish, MAX_PUBLISH_BODY_BYTES, readJsonBody } from "./validate";
 
@@ -65,6 +65,13 @@ export async function POST(req: Request): Promise<Response> {
   const store = galleryStore();
   if (!store) return noStore();
 
+  // #2319 — publishing needs a signed-in account; the entry lands on the
+  // account's author. Checked before the body is read, so a signed-out client
+  // is told to sign in rather than about its form.
+  const who = await requireSessionAuthor(req);
+  if (who instanceof Response) return who;
+  const { authorId, account } = who;
+
   const body = await readJsonBody(req, MAX_PUBLISH_BODY_BYTES);
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });
   const checked = checkPublish(body.value);
@@ -79,27 +86,19 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (!id) return Response.json({ error: "could not store the entry" }, { status: 500 });
 
-  // #2314 — which author this lands on. A key that matches no author makes a
-  // NEW author rather than a 403: the browser may hold a stale key (its author's
-  // private record lost, a store reset, a key copied from another deployment),
-  // and refusing would leave that person unable to publish at all, with nothing
-  // they could do about it. A fresh author costs nothing; they just get a new key.
-  let authorId = await authorForKey(store, req.headers.get(AUTHOR_KEY_HEADER));
-  let authorKey: string | undefined;
-  if (!authorId) {
-    const made = await createAuthor(store, v.authorName, v.authorEmail);
-    if (!made) return Response.json({ error: "could not store the entry" }, { status: 500 });
-    ({ authorId, authorKey } = made);
-  }
+  // The name shown is the profile's (changed on the profile, not here); the
+  // email kept is the account's. Whatever name or email the body carried is ignored.
+  const profile = await getJson<GalleryAuthorProfile>(store, galleryPaths.author(authorId));
+  if (!profile) return Response.json({ error: "could not find your gallery profile" }, { status: 500 });
 
   const manageToken = newManageToken();
-  const record: PrivateRecord = { authorEmail: v.authorEmail, manageTokenHash: hashToken(manageToken) };
+  const record: PrivateRecord = { authorEmail: account.email, manageTokenHash: hashToken(manageToken) };
   const entry: GalleryEntry = {
     id,
     title: v.title,
     kind: v.kind,
     tags: v.tags,
-    authorName: v.authorName,
+    authorName: profile.name,
     authorId,
     publishedAt: Date.now(),
     fileCount: v.manifest.files.length,
@@ -114,6 +113,6 @@ export async function POST(req: Request): Promise<Response> {
   // Last: once the public listing exists, everything it points at already does.
   await putJson(store, galleryPaths.entry(id), entry);
 
-  const res: PublishResponse = authorKey ? { id, manageToken, authorId, authorKey } : { id, manageToken, authorId };
+  const res: PublishResponse = { id, manageToken, authorId };
   return Response.json(res, { status: 201, headers: { "Cache-Control": "no-store" } });
 }

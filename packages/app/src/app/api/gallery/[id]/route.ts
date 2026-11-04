@@ -7,6 +7,7 @@ import {
   type GalleryManifest,
 } from "../../../../gallery/types";
 import { isAdminKey, tokenMatches } from "../auth";
+import { sessionAuthor } from "../session";
 import {
   galleryPaths,
   galleryStore,
@@ -43,8 +44,8 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
   return Response.json(body, { headers: { "Cache-Control": "no-store" } });
 }
 
-// The author deletes with their manage token; the maintainer with the admin key
-// (#2303). Either way the removed marker goes down first, so even a delete that
+// The author deletes while signed in (#2319) or with their manage token; the
+// maintainer with the admin key (#2303). Either way the removed marker goes down first, so even a delete that
 // fails halfway reads as removed (410, gone from the list), then everything else
 // about the entry is deleted — the private record with the email included.
 export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
@@ -57,8 +58,13 @@ export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
   const record = await getJson<PrivateRecord>(store, galleryPaths.privateRecord(id));
   if (!record) return notFound();
 
+  const listed = await getJson<GalleryEntry>(store, galleryPaths.entry(id)).catch(() => null);
+  // #2319 — the signed-in author of the entry may delete it with no token.
+  const mine = listed?.authorId ? await sessionAuthor(req, { create: false, store }) : null;
+
   let by: RemovedMarker["by"];
   if (isAdminKey(req.headers.get(ADMIN_KEY_HEADER))) by = "admin";
+  else if (mine && mine.authorId === listed?.authorId) by = "author";
   else if (tokenMatches(req.headers.get(MANAGE_TOKEN_HEADER), record.manageTokenHash)) by = "author";
   else return Response.json({ error: "that token does not manage this entry" }, { status: 403 });
 
@@ -67,7 +73,6 @@ export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
   // #2314 / #2315 — the entry leaves its author's page and every collection
   // because those reads re-check each entry (authors.ts liveEntry). Dropping the
   // author-index marker here is tidying, not the guarantee.
-  const listed = await getJson<GalleryEntry>(store, galleryPaths.entry(id)).catch(() => null);
   const reports = await store.list(galleryPaths.reportsOf(id));
   await store.del([
     ...(listed?.authorId ? [galleryPaths.authorEntry(listed.authorId, id)] : []),
