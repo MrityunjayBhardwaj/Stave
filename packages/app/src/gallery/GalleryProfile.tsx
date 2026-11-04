@@ -5,8 +5,9 @@
  *
  * A profile is a README-style page: name, a markdown bio (rendered safely by
  * markdown.ts), the author's collections, then everything they published. When
- * this browser holds the author's key it can edit the profile and make, edit and
- * delete collections. Nothing here evaluates code.
+ * this browser is signed in as the author (#2319), or holds the author's key from
+ * before sign-in, it can edit the profile and make, edit and delete collections.
+ * Nothing here evaluates code.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -25,11 +26,13 @@ import { renderMarkdown } from "./markdown";
 import {
   buildCollectionRequest,
   buildProfileRequest,
+  editAccess,
+  githubProfileUrl,
   moveEntry,
-  ownerKeyFor,
   removeEntry,
   toggleEntry,
 } from "./profileModel";
+import { useGallerySession } from "./session";
 import { KIND_LABEL, formatGalleryDate } from "./galleryModel";
 import {
   MAX_AUTHOR_NAME_CHARS,
@@ -41,6 +44,7 @@ import {
   type CollectionPageResponse,
   type GalleryCollection,
   type GalleryEntry,
+  type GalleryVerified,
 } from "./types";
 import { showConfirm, showToast } from "../dialogs/host";
 
@@ -87,6 +91,46 @@ export function Markdown({ source }: { source: string }) {
   return <div className="sg-md" data-gallery-markdown dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+/** The signed-in author's id, or null (signed out, loading, or no sign-in here). */
+function useSessionAuthorId(): string | null {
+  const s = useGallerySession();
+  return s.status === "ready" ? (s.session.user?.authorId ?? null) : null;
+}
+
+/**
+ * #2319 — the account a profile is signed in with: avatar, then the GitHub
+ * handle (linked) or "Google account". The avatar is a plain <img>; under the
+ * app's COEP `credentialless` a cross-origin image loads without cookies, which
+ * avatar CDNs don't need.
+ */
+export function VerifiedBadge({ verified }: { verified: GalleryVerified }) {
+  const gh = verified.provider === "github" ? githubProfileUrl(verified.login) : null;
+  return (
+    <span className="sg-verified" data-gallery-verified={verified.provider}>
+      {verified.avatarUrl && (
+        <img
+          className="sg-avatar"
+          src={verified.avatarUrl}
+          alt=""
+          width={20}
+          height={20}
+          referrerPolicy="no-referrer"
+          data-gallery-avatar
+        />
+      )}
+      {gh ? (
+        <a href={gh} target="_blank" rel="noopener noreferrer" data-gallery-verified-link>
+          GitHub @{verified.login}
+        </a>
+      ) : verified.provider === "github" ? (
+        "GitHub account"
+      ) : (
+        "Google account"
+      )}
+    </span>
+  );
+}
+
 // ── profile ────────────────────────────────────────────────────────────────
 
 export function ProfileView({
@@ -104,7 +148,7 @@ export function ProfileView({
 }) {
   const [page, setPage] = useState<Load<AuthorPageResponse>>({ status: "loading" });
   const [mode, setMode] = useState<"view" | "edit" | "new-collection">("view");
-  const ownerKey = ownerKeyFor(loadAuthor(), authorId);
+  const { canEdit, key: ownerKey } = editAccess(useSessionAuthorId(), loadAuthor(), authorId);
 
   const load = useCallback(() => {
     setPage({ status: "loading" });
@@ -139,7 +183,7 @@ export function ProfileView({
   return (
     <div className="sg-body sg-profile" data-gallery-profile={author.authorId}>
       {back}
-      {mode === "edit" && ownerKey ? (
+      {mode === "edit" && canEdit ? (
         <ProfileEditor
           page={page.data}
           authorKey={ownerKey}
@@ -149,7 +193,7 @@ export function ProfileView({
             setMode("view");
           }}
         />
-      ) : mode === "new-collection" && ownerKey ? (
+      ) : mode === "new-collection" && canEdit ? (
         <CollectionEditor
           heading="New collection"
           own={entries}
@@ -168,13 +212,14 @@ export function ProfileView({
           <div className="sg-detail-head">
             <div>
               <h3 className="sg-profile-name">{author.name}</h3>
+              {author.verified && <VerifiedBadge verified={author.verified} />}
               <div className="sg-card-meta">
                 {entries.length === 1 ? "1 entry" : `${entries.length} entries`} · since{" "}
                 {formatGalleryDate(author.createdAt)}
               </div>
             </div>
             <div className="sg-actions">
-              {ownerKey && (
+              {canEdit && (
                 <>
                   <button className="sg-btn sg-primary" data-gallery-edit-profile onClick={() => setMode("edit")}>
                     Edit profile
@@ -193,7 +238,7 @@ export function ProfileView({
             <div className="sg-readme">
               <Markdown source={author.bio} />
             </div>
-          ) : ownerKey ? (
+          ) : canEdit ? (
             <p className="sg-muted sg-left">Your profile has no bio yet. Edit profile to write one in markdown.</p>
           ) : null}
 
@@ -233,7 +278,8 @@ function ProfileEditor({
   onSaved,
 }: {
   page: AuthorPageResponse;
-  authorKey: string;
+  /** Null when the session is what makes this browser the owner (#2319). */
+  authorKey: string | null;
   onCancel: () => void;
   onSaved: (a: AuthorPageResponse["author"]) => void;
 }) {
@@ -474,6 +520,8 @@ export function CollectionView({
 }) {
   const [page, setPage] = useState<Load<CollectionPageResponse>>({ status: "loading" });
   const [editing, setEditing] = useState<Load<GalleryEntry[]> | null>(null);
+  const sessionAuthorId = useSessionAuthorId();
+  const access = (authorId: string) => editAccess(sessionAuthorId, loadAuthor(), authorId);
 
   const load = useCallback(() => {
     setPage({ status: "loading" });
@@ -505,7 +553,7 @@ export function CollectionView({
   }
 
   const { collection, author, entries } = page.data;
-  const ownerKey = ownerKeyFor(loadAuthor(), collection.authorId);
+  const { canEdit, key: ownerKey } = access(collection.authorId);
 
   const startEdit = () => {
     setEditing({ status: "loading" });
@@ -515,7 +563,7 @@ export function CollectionView({
       .catch((err: Error) => setEditing({ status: "error", message: err.message }));
   };
 
-  const remove = async (key: string) => {
+  const remove = async (key: string | null) => {
     const ok = await showConfirm({
       title: "Delete this collection?",
       description: `"${collection.title}" will be deleted. The entries in it stay in the gallery — only the collection goes.`,
@@ -532,7 +580,7 @@ export function CollectionView({
     }
   };
 
-  if (editing && ownerKey) {
+  if (editing && canEdit) {
     if (editing.status !== "ready") {
       return (
         <div className="sg-body">
@@ -588,7 +636,7 @@ export function CollectionView({
           </div>
         </div>
         <div className="sg-actions">
-          {ownerKey && (
+          {canEdit && (
             <button className="sg-btn sg-primary" data-gallery-edit-collection onClick={startEdit}>
               Edit
             </button>
@@ -622,6 +670,10 @@ export const PROFILE_CSS = `
 .sg-profile { display: flex; flex-direction: column; gap: 14px; }
 .sg-profile section { display: flex; flex-direction: column; gap: 8px; }
 .sg-profile-name { margin: 0 0 2px; font-size: 20px; font-weight: 600; color: var(--text-primary); }
+.sg-verified { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 4px; font-size: 12px; color: var(--text-secondary); }
+.sg-verified a { color: var(--accent); text-decoration: none; }
+.sg-verified a:hover { text-decoration: underline; }
+.sg-avatar { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: var(--bg-panel); }
 .sg-readme { border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px 20px; }
 .sg-left { text-align: left; margin: 0 !important; max-width: none; }
 .sg-description { margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }

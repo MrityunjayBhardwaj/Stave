@@ -5,7 +5,7 @@ import type { ProjectMeta } from "@stave/editor";
 
 import { showToast } from "../dialogs/host";
 import { collectManifest } from "../shareProject";
-import { loadAuthor } from "./localShares";
+import { gallerySignIn, useGallerySession, type GallerySessionState } from "./session";
 import {
   buildPublishRequest,
   filesForKind,
@@ -16,7 +16,6 @@ import {
 import { captureLiveVizThumbnail, type CaptureResult } from "./thumbnail";
 import {
   GALLERY_KINDS,
-  MAX_AUTHOR_NAME_CHARS,
   MAX_MANIFEST_BYTES,
   MAX_TAGS,
   MAX_TAG_CHARS,
@@ -24,14 +23,75 @@ import {
   MAX_TITLE_CHARS,
   type GalleryKind,
   type GalleryManifest,
+  type GallerySessionResponse,
 } from "./types";
 
 /**
- * #2301 — Publish to Gallery. Name and email (remembered here), a title, what the
- * entry is (the whole project, or one music or viz file), and tags. The server
- * hands back a manage token; this browser keeps it so the upload can be deleted
- * later. #2305 — a frame of the running viz goes with it as the card's picture.
+ * #2301 — Publish to Gallery. A title, what the entry is (the whole project, or
+ * one music or viz file), and tags. The server hands back a manage token; this
+ * browser keeps it so the upload can be deleted later. #2305 — a frame of the
+ * running viz goes with it as the card's picture.
+ *
+ * #2319 — publishing needs sign-in. Signed out, the dialog says so and offers
+ * each configured provider; the redirect comes back to `#publish`, which opens
+ * this dialog again. Signed in, it says who you're publishing as: the profile's
+ * name and the account's badge. There is no name or email field any more.
  */
+
+/** "GitHub @ada", "Google account", or "test account". */
+export function accountLabel(verified: { provider: "github" | "google"; login?: string }): string {
+  if (verified.provider === "github") return verified.login ? `GitHub @${verified.login}` : "GitHub";
+  return "Google account";
+}
+
+/** The panel shown instead of the form until someone is signed in. Null once they are. */
+function SignInGate({ state }: { state: GallerySessionState }) {
+  if (state.status === "loading") {
+    return (
+      <p style={styles.note} data-testid="gallery-publish-signin-checking">
+        Checking whether you&apos;re signed in…
+      </p>
+    );
+  }
+  if (state.status === "error") {
+    return (
+      <p style={styles.note} role="alert" data-testid="gallery-publish-signin-error">
+        Couldn&apos;t check whether you&apos;re signed in: {state.message}. Close this and try again.
+      </p>
+    );
+  }
+  const s: GallerySessionResponse = state.session;
+  if (!s.signInAvailable) {
+    return (
+      <div style={styles.gate} data-testid="gallery-publish-signin-unavailable">
+        <p style={styles.gateText}>Publishing needs you to sign in, and sign-in isn&apos;t set up on this site.</p>
+        <p style={styles.note}>You can still share this project with a private link: File → Share → Copy Private Link.</p>
+      </div>
+    );
+  }
+  return (
+    <div style={styles.gate} data-testid="gallery-publish-signin">
+      <p style={styles.gateText}>Sign in to publish to the gallery.</p>
+      <p style={styles.note}>
+        Your work is shown under your profile, with the account you sign in with. We keep your email private and use
+        it only to contact you about what you publish. You&apos;ll come straight back here afterwards.
+      </p>
+      <div style={styles.providers}>
+        {s.providers.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            style={styles.primaryBtn}
+            onClick={() => void gallerySignIn(p.id, { reopenPublish: true })}
+            data-testid={`gallery-publish-signin-${p.id}`}
+          >
+            Sign in with {p.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const KIND_LABEL: Record<GalleryKind, string> = { project: "Project", music: "Music", viz: "Viz" };
 const KIND_NOTE: Record<GalleryKind, string> = {
@@ -52,9 +112,9 @@ type Thumb = { state: "capturing" } | { state: "done"; result: CaptureResult };
 
 export function PublishDialog({ open, project, activeFileId, onClose }: PublishDialogProps) {
   const [manifest, setManifest] = useState<GalleryManifest | null>(null);
+  const session = useGallerySession();
+  const user = session.status === "ready" ? session.session.user : null;
   const [form, setForm] = useState<PublishForm>({
-    authorName: "",
-    authorEmail: "",
     title: "",
     kind: "project",
     fileId: null,
@@ -64,22 +124,19 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
   const [includeThumb, setIncludeThumb] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
-  const nameRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
 
   const capture = useCallback(() => {
     setThumb({ state: "capturing" });
     void captureLiveVizThumbnail().then((result) => setThumb({ state: "done", result }));
   }, []);
 
-  // Each opening starts from the project as it is now, and from who published last.
+  // Each opening starts from the project as it is now.
   useEffect(() => {
     if (!open) return;
     const m = collectManifest(project) as GalleryManifest;
-    const author = loadAuthor();
     setManifest(m);
     setForm({
-      authorName: author?.name ?? "",
-      authorEmail: author?.email ?? "",
       title: project.name.slice(0, MAX_TITLE_CHARS),
       kind: "project",
       fileId: null,
@@ -89,7 +146,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
     setSending(false);
     setIncludeThumb(true);
     capture();
-    queueMicrotask(() => nameRef.current?.focus());
+    queueMicrotask(() => titleRef.current?.focus());
   }, [open, project, capture]);
 
   const choices = useMemo(() => (manifest ? filesForKind(manifest.files, form.kind) : []), [manifest, form.kind]);
@@ -172,6 +229,16 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
           </button>
         </div>
 
+        {!user ? (
+          <div style={styles.body}>
+            <SignInGate state={session} />
+            <div style={styles.footer}>
+              <button type="button" style={styles.cancelBtn} onClick={onClose}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
         <form
           style={styles.body}
           onSubmit={(e) => {
@@ -180,38 +247,15 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
           }}
           noValidate
         >
-          <div style={styles.row2}>
-            <label style={styles.field}>
-              <span style={styles.label}>Your name</span>
-              <input
-                ref={nameRef}
-                style={styles.input}
-                value={form.authorName}
-                onChange={set("authorName")}
-                maxLength={MAX_AUTHOR_NAME_CHARS}
-                autoComplete="name"
-                data-testid="gallery-publish-name"
-              />
-            </label>
-            <label style={styles.field}>
-              <span style={styles.label}>Email</span>
-              <input
-                style={styles.input}
-                type="email"
-                value={form.authorEmail}
-                onChange={set("authorEmail")}
-                autoComplete="email"
-                data-testid="gallery-publish-email"
-              />
-            </label>
-          </div>
-          <p style={styles.note}>
-            Your name is shown with your upload. Your email stays private and is only used to contact you about it.
+          <p style={styles.as} data-testid="gallery-publish-as">
+            Publishing as <strong>{user.name}</strong> ({accountLabel(user.verified)}). To change the name shown, edit
+            your profile.
           </p>
 
           <label style={styles.field}>
             <span style={styles.label}>Title</span>
             <input
+              ref={titleRef}
               style={styles.input}
               value={form.title}
               onChange={set("title")}
@@ -317,12 +361,8 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
           </div>
 
           <p style={styles.note}>
-            Limits: title {MAX_TITLE_CHARS} characters, name {MAX_AUTHOR_NAME_CHARS}, project up to{" "}
-            {kib(MAX_MANIFEST_BYTES)}, picture up to {kib(MAX_THUMBNAIL_BYTES)}. Anyone can see and open what you
-            publish.
-          </p>
-          <p style={styles.note}>
-            This browser keeps the key that lets you delete it later; clearing site data loses it.
+            Limits: title {MAX_TITLE_CHARS} characters, project up to {kib(MAX_MANIFEST_BYTES)}, picture up to{" "}
+            {kib(MAX_THUMBNAIL_BYTES)}. Anyone can see and open what you publish.
           </p>
 
           {errors.length > 0 && (
@@ -347,6 +387,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );
@@ -395,7 +436,10 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1,
   },
   body: { padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12, margin: 0 },
-  row2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
+  as: { margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--text-chrome)" },
+  gate: { display: "flex", flexDirection: "column", gap: 10, padding: "4px 0 12px" },
+  gateText: { margin: 0, fontSize: 14, color: "var(--text-primary)" },
+  providers: { display: "flex", gap: 8, flexWrap: "wrap" },
   field: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
   label: {
     fontSize: 11,

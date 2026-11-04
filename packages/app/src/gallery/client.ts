@@ -44,6 +44,17 @@ async function failure(res: Response, what: string): Promise<Error> {
   return new Error(detail || `${what} failed (${res.status})`);
 }
 
+/** A 503 from publish is either no store or no sign-in set up; the server says which. */
+async function signInOrStoreMissing(res: Response): Promise<Error> {
+  try {
+    const body = (await res.json()) as { error?: string };
+    if (body?.error && /sign-in/.test(body.error)) return new Error(body.error);
+  } catch {
+    /* not JSON */
+  }
+  return new Error("the gallery isn't set up on this site");
+}
+
 export async function fetchGalleryList(): Promise<GalleryListResponse> {
   const res = await fetch("/api/gallery");
   if (!res.ok) throw await failure(res, "loading the gallery");
@@ -63,17 +74,17 @@ export function galleryThumbnailUrl(id: string): string {
 }
 
 /**
- * `authorKey` (#2314): this browser's author key, when it has one, so the entry
- * lands on the same profile as the earlier ones.
+ * #2319 — the session cookie (sent with this same-origin request) says who is
+ * publishing; signed out, the server answers 401.
  */
-export async function publishToGallery(req: PublishRequest, authorKey?: string): Promise<PublishResponse> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (authorKey) headers[AUTHOR_KEY_HEADER] = authorKey;
+export async function publishToGallery(req: PublishRequest): Promise<PublishResponse> {
   const res = await fetch("/api/gallery", {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });
+  if (res.status === 401) throw new Error("sign in to publish (your session may have ended)");
+  if (res.status === 503) throw await signInOrStoreMissing(res);
   if (res.status !== 201) throw await failure(res, "publishing");
   return (await res.json()) as PublishResponse;
 }
@@ -118,10 +129,15 @@ export async function revokeShareLink(id: string, manageToken: string): Promise<
 
 // ── #2314 profiles and #2315 collections ───────────────────────────────────
 
-const KEY_MISMATCH = "this browser's author key doesn't match that profile";
+const KEY_MISMATCH = "you can't edit that profile (sign in with the account it belongs to)";
 
-function keyed(authorKey: string, json = false): Record<string, string> {
-  const h: Record<string, string> = { [AUTHOR_KEY_HEADER]: authorKey };
+/**
+ * #2319 — the signed-in owner is known by the session cookie; `authorKey` is the
+ * fallback for a profile this browser made before sign-in. Send it only when held.
+ */
+function keyed(authorKey: string | null | undefined, json = false): Record<string, string> {
+  const h: Record<string, string> = {};
+  if (authorKey) h[AUTHOR_KEY_HEADER] = authorKey;
   if (json) h["Content-Type"] = "application/json";
   return h;
 }
@@ -135,7 +151,7 @@ export async function fetchAuthorPage(authorId: string): Promise<AuthorPageRespo
 
 export async function updateAuthor(
   authorId: string,
-  authorKey: string,
+  authorKey: string | null,
   update: AuthorUpdateRequest,
 ): Promise<GalleryAuthorProfile> {
   const res = await fetch(`/api/gallery/authors/${encodeURIComponent(authorId)}`, {
@@ -149,13 +165,13 @@ export async function updateAuthor(
   return ((await res.json()) as { author: GalleryAuthorProfile }).author;
 }
 
-export async function createCollection(authorKey: string, req: CollectionWriteRequest): Promise<GalleryCollection> {
+export async function createCollection(authorKey: string | null, req: CollectionWriteRequest): Promise<GalleryCollection> {
   const res = await fetch("/api/gallery/collections", {
     method: "POST",
     headers: keyed(authorKey, true),
     body: JSON.stringify(req),
   });
-  if (res.status === 403) throw new Error("this browser's author key wasn't accepted");
+  if (res.status === 403) throw new Error("sign in to make a collection");
   if (res.status !== 201) throw await failure(res, "creating the collection");
   return ((await res.json()) as { collection: GalleryCollection }).collection;
 }
@@ -169,7 +185,7 @@ export async function fetchCollectionPage(id: string): Promise<CollectionPageRes
 
 export async function updateCollection(
   id: string,
-  authorKey: string,
+  authorKey: string | null,
   req: CollectionWriteRequest,
 ): Promise<GalleryCollection> {
   const res = await fetch(`/api/gallery/collections/${encodeURIComponent(id)}`, {
@@ -177,20 +193,20 @@ export async function updateCollection(
     headers: keyed(authorKey, true),
     body: JSON.stringify(req),
   });
-  if (res.status === 403) throw new Error("this browser's author key doesn't match that collection");
+  if (res.status === 403) throw new Error("you can't change that collection");
   if (res.status === 404) throw new Error("this collection wasn't found");
   if (!res.ok) throw await failure(res, "saving the collection");
   return ((await res.json()) as { collection: GalleryCollection }).collection;
 }
 
 /** Already gone (404) counts as done. */
-export async function deleteCollection(id: string, authorKey: string): Promise<void> {
+export async function deleteCollection(id: string, authorKey: string | null): Promise<void> {
   const res = await fetch(`/api/gallery/collections/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: keyed(authorKey),
   });
   if (res.status === 204 || res.status === 404) return;
-  if (res.status === 403) throw new Error("this browser's author key doesn't match that collection");
+  if (res.status === 403) throw new Error("you can't delete that collection");
   throw await failure(res, "deleting the collection");
 }
 

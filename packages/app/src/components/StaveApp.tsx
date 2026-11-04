@@ -107,6 +107,10 @@ import {
 import StrudelEditorClient, { type BounceHandle } from "./StrudelEditorClient";
 import { BounceModal, type BounceState } from "./BounceModal";
 import { PublishDialog } from "../gallery/PublishDialog";
+// #2319 — who is signed in (menu bar, drawer, publish dialog), and the
+// `#publish` fragment the sign-in redirect comes back to.
+import { gallerySignIn, gallerySignOut, PUBLISH_HASH, useGallerySession } from "../gallery/session";
+import { buildAccountMenu } from "../gallery/accountMenu";
 import type { BounceSizing } from "./songLength";
 import { DocsSearchPalette } from "./DocsSearchPalette";
 import { isPerfOverlayToggle } from "./perfToggleKey";
@@ -294,11 +298,24 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const gallerySession = useGallerySession();
+  // #2319 — back from signing in to publish: take `#publish` off the URL and
+  // reopen the dialog. Once, on mount; the redirect reloads the page.
+  useEffect(() => {
+    if (window.location.hash !== PUBLISH_HASH) return;
+    clearShareFragment();
+    setPublishOpen(true);
+  }, []);
   // #2019 — the start screen. Decided ONCE, when the app first mounts (which is
   // after the last project has loaded): it greets an arrival and never appears
   // mid-session on its own. A share link has its own question to ask instead.
   const [startScreenOpen, setStartScreenOpen] = useState(() =>
-    showsStartScreen(readStartConditions(readIncomingShare() != null)),
+    // #2319 — coming back from sign-in to publish has its own dialog to show, like a share link.
+    showsStartScreen(
+      readStartConditions(
+        readIncomingShare() != null || (typeof window !== "undefined" && window.location.hash === PUBLISH_HASH),
+      ),
+    ),
   );
   const [startScreenAtStart, setStartScreenAtStart] = useState(startScreenWanted);
   const [switcherModalOpen, setSwitcherModalOpen] = useState(false);
@@ -2089,6 +2106,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     canUndo: undoState.canUndo,
     canRedo: undoState.canRedo,
     onOpenGallery: () => openGallery(),
+    account: buildAccountMenu(gallerySession, {
+      onSignIn: (id) => void gallerySignIn(id),
+      onSignOut: () => void gallerySignOut(),
+      onMyProfile: (authorId) => openGallery({ kind: "author", id: authorId }),
+    }),
   };
   // #1348 — the eval lamp: the active file's last evaluation. Pressing it does what
   // pressing that error's toast does, even after the toast is gone; with no error it

@@ -106,6 +106,33 @@ describe("the menus are one list, drawn twice (#2000)", () => {
     expect([...container.querySelectorAll("[data-stave-menu-item]")].map(labelOf)).toEqual(want);
   });
 
+  it("#2319 the account menu is on both too, in each of its states", () => {
+    const providers = [
+      { id: "github", name: "GitHub" },
+      { id: "google", name: "Google" },
+    ];
+    const states: NonNullable<MenuActions["account"]>[] = [
+      { state: "signed-out", providers, onSignIn: () => undefined },
+      { state: "signed-in", name: "Ada", onMyProfile: () => undefined, onSignOut: () => undefined },
+      { state: "unavailable" },
+    ];
+    const want = [
+      ["Sign in with GitHub", "Sign in with Google"],
+      ["My Profile", "Sign Out"],
+      ["Sign-in isn't set up on this site"],
+    ];
+    states.forEach((account, i) => {
+      const a = actions({ account });
+      const all = flatItems(buildMenus(a)).map((x) => x.label);
+      expect(all.slice(-want[i].length)).toEqual(want[i]);
+      expect(menuBarLabels(a)).toEqual(all);
+      const { container } = renderDrawer(a);
+      expect([...container.querySelectorAll("[data-stave-menu-item]")].map(labelOf)).toEqual(all);
+      expect(container.querySelector('[data-phone-menu="account"]')).not.toBeNull();
+      cleanup();
+    });
+  });
+
   it("greys the same items in both", () => {
     const a = actions({ canBounceToWav: () => false, canUndo: false });
     const off = flatItems(buildMenus(a)).filter((i) => i.disabled).map((i) => i.label);

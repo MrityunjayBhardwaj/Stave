@@ -1,16 +1,20 @@
 import { test, expect, type Page, type Request } from '@playwright/test'
 
 import { bootApp, evalCode, stopCode } from './_appBoot'
+import { ADA_SESSION_USER, routeSession } from './_gallery'
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 /**
  * #2301 / #2305 — Publish to Gallery, driven from the command palette.
  *
- * The gallery's server routes are not on this branch, so POST /api/gallery is
- * answered here, and the test reads exactly what the dialog sent: the fields it
- * should carry, nothing it shouldn't, the email included (the server keeps it
- * private; the browser still has to send it).
+ * POST /api/gallery is answered here, and the test reads exactly what the dialog
+ * sent: the fields it should carry and nothing it shouldn't.
+ *
+ * #2319 — publishing needs sign-in. GET /api/gallery/me is answered here too
+ * (signed in as Ada, signed out, or no sign-in on the site); no name or email
+ * is sent any more — the server takes both from the session. The real sign-in
+ * round trip is gallery-sign-in.spec.ts.
  */
 
 const SHOTS = process.env.GALLERY_SHOT_DIR
@@ -43,6 +47,7 @@ test.describe('Publish to Gallery (#2301)', () => {
   test('publishes the project with a picture of the running viz, and keeps the key here', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await routeSession(page, ADA_SESSION_USER)
     await bootApp(page)
     // The starter pins a viz behind its song; playing it gives the dialog a frame to take.
     // Wait until that viz has drawn, read the same way the dialog reads it.
@@ -67,8 +72,9 @@ test.describe('Publish to Gallery (#2301)', () => {
 
     await openPublish(page)
     const dialog = page.getByTestId('gallery-publish-dialog')
-    await expect(dialog).toContainText('Your email stays private')
-    await expect(dialog).toContainText('clearing site data loses it')
+    await expect(page.getByTestId('gallery-publish-as')).toContainText('Publishing as Ada (GitHub @ada)')
+    await expect(page.getByTestId('gallery-publish-name')).toHaveCount(0)
+    await expect(page.getByTestId('gallery-publish-email')).toHaveCount(0)
     // the title starts as the project's name
     await expect(page.getByTestId('gallery-publish-title')).not.toHaveValue('')
 
@@ -79,8 +85,6 @@ test.describe('Publish to Gallery (#2301)', () => {
     expect(shown.w).toBeLessThanOrEqual(480)
     if (SHOTS) await dialog.screenshot({ path: `${SHOTS}/gallery-publish-dialog.png` })
 
-    await page.getByTestId('gallery-publish-name').fill('Ada')
-    await page.getByTestId('gallery-publish-email').fill('ada@example.com')
     await page.getByTestId('gallery-publish-title').fill('Night drive')
     await page.getByTestId('gallery-publish-tags').fill('ambient, Drums, ambient')
     await page.getByTestId('gallery-publish-submit').click()
@@ -92,14 +96,8 @@ test.describe('Publish to Gallery (#2301)', () => {
 
     expect(seen).toHaveLength(1)
     const body = seen[0].postDataJSON() as Record<string, unknown>
-    expect(Object.keys(body).sort()).toEqual(['authorEmail', 'authorName', 'kind', 'manifest', 'tags', 'thumbnail', 'title'])
-    expect(body).toMatchObject({
-      title: 'Night drive',
-      kind: 'project',
-      tags: ['ambient', 'Drums'],
-      authorName: 'Ada',
-      authorEmail: 'ada@example.com',
-    })
+    expect(Object.keys(body).sort()).toEqual(['kind', 'manifest', 'tags', 'thumbnail', 'title'])
+    expect(body).toMatchObject({ title: 'Night drive', kind: 'project', tags: ['ambient', 'Drums'] })
     const manifest = body.manifest as { schemaVersion: number; files: unknown[] }
     expect(manifest.schemaVersion).toBe(1)
     expect(manifest.files.length).toBeGreaterThan(1)
@@ -110,19 +108,17 @@ test.describe('Publish to Gallery (#2301)', () => {
     const shares = await localShares(page)
     expect(shares).toHaveLength(1)
     expect(shares[0]).toMatchObject({ id: 'AbCdEfGhIjK', title: 'Night drive', kind: 'project', manageToken: 'tok-123' })
-    expect(await localAuthor(page)).toEqual({ name: 'Ada', email: 'ada@example.com' })
+    // #2319 — the session is the identity; nothing about the author is kept here.
+    expect(await localAuthor(page)).toBeNull()
     expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/#gallery=AbCdEfGhIjK$/)
   })
 
-  test('a music entry sends one file and no picture; the remembered author is filled in', async ({ page }) => {
-    await page.addInitScript(() => {
-      localStorage.setItem('stave.gallery.author', JSON.stringify({ name: 'Ada', email: 'ada@example.com' }))
-    })
+  test('a music entry sends one file and no picture', async ({ page }) => {
+    await routeSession(page, ADA_SESSION_USER)
     await bootApp(page)
     const seen = answerPublish(page)
     await openPublish(page)
-    await expect(page.getByTestId('gallery-publish-name')).toHaveValue('Ada')
-    await expect(page.getByTestId('gallery-publish-email')).toHaveValue('ada@example.com')
+    await expect(page.getByTestId('gallery-publish-as')).toBeVisible()
 
     await page.getByTestId('gallery-publish-kind-music').click()
     await expect(page.getByTestId('gallery-publish-thumbnail')).toContainText('card with the title')
@@ -137,22 +133,44 @@ test.describe('Publish to Gallery (#2301)', () => {
     expect(['strudel', 'sonicpi']).toContain(body.manifest.files[0].language)
   })
 
-  test('a bad email is caught before upload, and a server refusal is shown and nothing is kept', async ({ page }) => {
+  test('a blank title is caught before upload, and a server refusal is shown and nothing is kept', async ({ page }) => {
+    await routeSession(page, ADA_SESSION_USER)
     await bootApp(page)
     const seen = answerPublish(page, 429, { error: 'slow down' })
     await openPublish(page)
-    await page.getByTestId('gallery-publish-name').fill('Ada')
-    await page.getByTestId('gallery-publish-email').fill('ada-at-example')
+    await page.getByTestId('gallery-publish-title').fill('   ')
     await page.getByTestId('gallery-publish-submit').click()
-    await expect(page.getByTestId('gallery-publish-errors')).toContainText("doesn't look complete")
+    await expect(page.getByTestId('gallery-publish-errors')).toContainText('Add a title.')
     expect(seen).toHaveLength(0)
 
-    await page.getByTestId('gallery-publish-email').fill('ada@example.com')
+    await page.getByTestId('gallery-publish-title').fill('Night drive')
     await page.getByTestId('gallery-publish-submit').click()
     await expect(page.getByTestId('gallery-publish-errors')).toContainText('published several times')
     expect(seen).toHaveLength(1)
     await expect(page.getByTestId('gallery-publish-submit')).toBeEnabled()
     expect(await localShares(page)).toEqual([])
     expect(await localAuthor(page)).toBeNull()
+  })
+
+  test('#2319 signed out, the dialog asks you to sign in, offering only the configured providers', async ({ page }) => {
+    await routeSession(page, null, [{ id: 'github', name: 'GitHub' }])
+    await bootApp(page)
+    const seen = answerPublish(page)
+    await openPublish(page)
+    const gate = page.getByTestId('gallery-publish-signin')
+    await expect(gate).toContainText('Sign in to publish to the gallery.')
+    await expect(page.getByTestId('gallery-publish-signin-github')).toHaveText('Sign in with GitHub')
+    await expect(page.getByTestId('gallery-publish-signin-google')).toHaveCount(0)
+    await expect(page.getByTestId('gallery-publish-submit')).toHaveCount(0)
+    expect(seen).toHaveLength(0)
+  })
+
+  test('#2319 with no sign-in set up on the site, the dialog says so and offers none', async ({ page }) => {
+    await routeSession(page, 'unavailable')
+    await bootApp(page)
+    await openPublish(page)
+    await expect(page.getByTestId('gallery-publish-signin-unavailable')).toContainText("sign-in isn't set up on this site")
+    await expect(page.locator('[data-testid^="gallery-publish-signin-"]')).toHaveCount(1)
+    await expect(page.getByTestId('gallery-publish-submit')).toHaveCount(0)
   })
 })

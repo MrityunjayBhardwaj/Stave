@@ -29,8 +29,6 @@ function project(): GalleryManifest {
 }
 
 const form = (over: Partial<PublishForm> = {}): PublishForm => ({
-  authorName: "Ada",
-  authorEmail: "ada@example.com",
   title: "Night drive",
   kind: "project",
   fileId: null,
@@ -94,25 +92,15 @@ describe("checking the form before upload", () => {
   it("a complete form becomes exactly the request the server takes", () => {
     const r = buildPublishRequest(form({ tags: "a, b", title: "  Night drive " }), project());
     expect(r.errors).toEqual([]);
-    expect(Object.keys(r.request!).sort()).toEqual(["authorEmail", "authorName", "kind", "manifest", "tags", "title"]);
-    expect(r.request).toMatchObject({ title: "Night drive", tags: ["a", "b"], authorEmail: "ada@example.com" });
+    // #2319 — no name or email: the signed-in account is the author.
+    expect(Object.keys(r.request!).sort()).toEqual(["kind", "manifest", "tags", "title"]);
+    expect(r.request).toMatchObject({ title: "Night drive", tags: ["a", "b"] });
   });
 
   it("says every missing or malformed field at once", () => {
-    const r = buildPublishRequest(form({ authorName: " ", authorEmail: "ada@", title: "" }), project());
+    const r = buildPublishRequest(form({ title: "", kind: "viz" }), project());
     expect(r.request).toBeNull();
-    expect(r.errors).toEqual([
-      "Add your name.",
-      "That email doesn't look complete (it needs an @ and a domain).",
-      "Add a title.",
-    ]);
-  });
-
-  it("an email needs a local part, an @ and a dotted domain", () => {
-    for (const bad of ["ada", "ada@example", "@example.com", "a da@example.com"]) {
-      expect(buildPublishRequest(form({ authorEmail: bad }), project()).request, bad).toBeNull();
-    }
-    expect(buildPublishRequest(form({ authorEmail: "a.b+c@mail.example.org" }), project()).request).not.toBeNull();
+    expect(r.errors).toEqual(["Add a title.", "Choose the viz file to publish."]);
   });
 
   it("holds tags and title to the server's limits", () => {
@@ -160,8 +148,10 @@ describe("publishing", () => {
 
   const request = () => buildPublishRequest(form({ tags: "ambient" }), project()).request!;
 
-  it("on success remembers the author and the entry's key, and returns its link", async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: "AbCdEfGhIjK", manageToken: "tok" }), { status: 201 }));
+  it("on success keeps the entry's manage token and returns its link", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ id: "AbCdEfGhIjK", manageToken: "tok", authorId: "auth1" }), { status: 201 }),
+    );
     const before = Date.now();
     const { id, link } = await publishAndRemember(request());
 
@@ -171,51 +161,40 @@ describe("publishing", () => {
     expect(url).toBe("/api/gallery");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body)).toEqual(request());
-    expect(loadAuthor()).toEqual({ name: "Ada", email: "ada@example.com" });
     const [share] = listLocalShares();
     expect(share).toMatchObject({ id: "AbCdEfGhIjK", title: "Night drive", kind: "project", manageToken: "tok" });
     expect(share.publishedAt).toBeGreaterThanOrEqual(before);
   });
 
-  describe("#2314 one identity across publishes", () => {
-    const ok = (body: object) =>
-      fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: "AbCdEfGhIjK", manageToken: "tok", ...body }), { status: 201 }));
+  describe("#2319 the session is who publishes", () => {
     const sentHeaders = () => (fetchMock.mock.calls[0][1].headers ?? {}) as Record<string, string>;
 
-    it("the first publish sends no key, and keeps the author id and key it is given", async () => {
-      ok({ authorId: "auth1", authorKey: "key-1" });
+    it("sends no author key, and leaves a key held from before sign-in where it is", async () => {
+      saveAuthor({ name: "Ada", email: "ada@example.com", authorId: "old1", authorKey: "key-1" });
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify({ id: "AbCdEfGhIjK", manageToken: "tok", authorId: "acct1" }), { status: 201 }),
+      );
       await publishAndRemember(request());
       expect(AUTHOR_KEY_HEADER in sentHeaders()).toBe(false);
-      expect(loadAuthor()).toEqual({ name: "Ada", email: "ada@example.com", authorId: "auth1", authorKey: "key-1" });
+      // Kept for the claim step (#2320), not replaced by the account's author.
+      expect(loadAuthor()).toEqual({ name: "Ada", email: "ada@example.com", authorId: "old1", authorKey: "key-1" });
     });
 
-    it("a later publish sends the key held, and keeps it when the response has none", async () => {
-      saveAuthor({ name: "Ada", email: "ada@example.com", authorId: "auth1", authorKey: "key-1" });
-      ok({ authorId: "auth1" });
-      await publishAndRemember(request());
-      expect(sentHeaders()[AUTHOR_KEY_HEADER]).toBe("key-1");
-      expect(loadAuthor()).toEqual({ name: "Ada", email: "ada@example.com", authorId: "auth1", authorKey: "key-1" });
+    it("signed out (401) says to sign in, and keeps nothing", async () => {
+      fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "sign in to publish" }), { status: 401 }));
+      await expect(publishAndRemember(request())).rejects.toThrow(/sign in to publish/);
+      expect(listLocalShares()).toEqual([]);
     });
 
-    it("a new key from the server (the old one was refused) replaces the old one", async () => {
-      saveAuthor({ name: "Ada", email: "ada@example.com", authorId: "auth1", authorKey: "stale" });
-      ok({ authorId: "auth2", authorKey: "key-2" });
-      await publishAndRemember(request());
-      expect(loadAuthor()).toMatchObject({ authorId: "auth2", authorKey: "key-2" });
-    });
-
-    it("a server without profiles yet (no author id at all) keeps what was held", async () => {
-      saveAuthor({ name: "Ada", email: "ada@example.com", authorId: "auth1", authorKey: "key-1" });
-      ok({});
-      await publishAndRemember(request());
-      expect(loadAuthor()).toMatchObject({ authorId: "auth1", authorKey: "key-1" });
-    });
-
-    it("a failed publish leaves the held identity untouched", async () => {
-      saveAuthor({ name: "Old", email: "old@example.com", authorId: "auth1", authorKey: "key-1" });
-      fetchMock.mockResolvedValue(new Response("{}", { status: 500 }));
-      await expect(publishAndRemember(request())).rejects.toThrow();
-      expect(loadAuthor()).toEqual({ name: "Old", email: "old@example.com", authorId: "auth1", authorKey: "key-1" });
+    it("no sign-in on this site (503) says so, not that the gallery is off", async () => {
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify({ error: "sign-in isn't set up on this site, so publishing is turned off" }), {
+          status: 503,
+        }),
+      );
+      await expect(publishAndRemember(request())).rejects.toThrow(/sign-in isn't set up/);
+      fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "the gallery is not set up here" }), { status: 503 }));
+      await expect(publishAndRemember(request())).rejects.toThrow("the gallery isn't set up on this site");
     });
   });
 

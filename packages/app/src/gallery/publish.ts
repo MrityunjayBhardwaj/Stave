@@ -7,9 +7,8 @@
  * person is told before anything is uploaded.
  */
 import { publishToGallery, galleryEntryLink } from "./client";
-import { addLocalShare, loadAuthor, saveAuthor, type GalleryAuthor } from "./localShares";
+import { addLocalShare } from "./localShares";
 import {
-  MAX_AUTHOR_NAME_CHARS,
   MAX_MANIFEST_BYTES,
   MAX_TAGS,
   MAX_TAG_CHARS,
@@ -18,7 +17,6 @@ import {
   type GalleryKind,
   type GalleryManifest,
   type PublishRequest,
-  type PublishResponse,
 } from "./types";
 
 /** File languages a music entry can be. */
@@ -91,11 +89,11 @@ export function parseTags(text: string): string[] {
   return out;
 }
 
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
+/**
+ * #2319 — no name or email: publishing needs a signed-in account, the name shown
+ * is the profile's (changed on the profile), and the email is the account's.
+ */
 export interface PublishForm {
-  authorName: string;
-  authorEmail: string;
   title: string;
   kind: GalleryKind;
   /** The chosen file when kind is music or viz. */
@@ -119,15 +117,9 @@ export function buildPublishRequest(
   thumbnail?: string,
 ): { request: PublishRequest; errors: [] } | { request: null; errors: string[] } {
   const errors: string[] = [];
-  const authorName = form.authorName.trim();
-  const authorEmail = form.authorEmail.trim();
   const title = form.title.trim();
   const tags = parseTags(form.tags);
 
-  if (!authorName) errors.push("Add your name.");
-  else if (authorName.length > MAX_AUTHOR_NAME_CHARS) errors.push(`Your name can be at most ${MAX_AUTHOR_NAME_CHARS} characters.`);
-  if (!authorEmail) errors.push("Add your email.");
-  else if (!EMAIL_SHAPE.test(authorEmail)) errors.push("That email doesn't look complete (it needs an @ and a domain).");
   if (!title) errors.push("Add a title.");
   else if (title.length > MAX_TITLE_CHARS) errors.push(`The title can be at most ${MAX_TITLE_CHARS} characters.`);
   if (tags.length > MAX_TAGS) errors.push(`Use at most ${MAX_TAGS} tags.`);
@@ -151,7 +143,7 @@ export function buildPublishRequest(
   if (thumb && dataUrlBytes(thumb) > MAX_THUMBNAIL_BYTES) errors.push("The thumbnail is too large; leave it out.");
 
   if (errors.length || !manifest) return { request: null, errors };
-  const request: PublishRequest = { title, kind: form.kind, tags, authorName, authorEmail, manifest };
+  const request: PublishRequest = { title, kind: form.kind, tags, manifest };
   if (thumb) request.thumbnail = thumb;
   return { request, errors: [] };
 }
@@ -172,35 +164,16 @@ function capitalise(s: string): string {
 }
 
 /**
- * #2314 — who this browser is after a publish: the name and email as typed, the
- * author the entry landed on, and the author key. A key is shown only when the
- * publish created the author, so a response without one keeps the key already
- * held — it is never dropped.
- */
-export function rememberedAuthor(
-  request: Pick<PublishRequest, "authorName" | "authorEmail">,
-  before: GalleryAuthor | null,
-  res: Pick<PublishResponse, "authorId" | "authorKey">,
-): GalleryAuthor {
-  const out: GalleryAuthor = { name: request.authorName, email: request.authorEmail };
-  const authorId = res.authorId || before?.authorId;
-  const authorKey = res.authorKey || before?.authorKey;
-  if (authorId) out.authorId = authorId;
-  if (authorKey) out.authorKey = authorKey;
-  return out;
-}
-
-/**
- * Send it, then remember who published it and the key that lets this browser
- * delete it. Returns the entry's link. Throws the client's message on failure,
- * and remembers nothing then.
+ * Send it (the session cookie says who is publishing), then keep the entry's
+ * manage token so My shares on this browser can delete it. Returns the entry's
+ * link. Throws the client's message on failure, and keeps nothing then.
+ *
+ * #2319 — no author key is sent or kept any more: the entry lands on the
+ * signed-in account's author. A key this browser already holds from before
+ * sign-in stays where it is (localShares.ts) for #2320 to claim.
  */
 export async function publishAndRemember(request: PublishRequest): Promise<{ id: string; link: string }> {
-  const before = loadAuthor();
-  // #2314 — send the key this browser holds, so the entry joins the same profile.
-  const res = await publishToGallery(request, before?.authorKey);
-  const { id, manageToken } = res;
-  saveAuthor(rememberedAuthor(request, before, res));
+  const { id, manageToken } = await publishToGallery(request);
   addLocalShare({ id, title: request.title, kind: request.kind, publishedAt: Date.now(), manageToken });
   return { id, link: galleryEntryLink(id) };
 }

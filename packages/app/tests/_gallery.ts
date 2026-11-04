@@ -46,11 +46,40 @@ const PNG = Buffer.from(
   'base64',
 )
 
+/** #2319 — a signed-in user as GET /api/gallery/me describes them. */
+export const ADA_SESSION_USER = {
+  name: 'Ada',
+  authorId: 'adaAuthor01',
+  verified: { provider: 'github' as const, login: 'ada' },
+}
+
+/**
+ * #2319 — answer GET /api/gallery/me: signed in as `user`, signed out (null), or
+ * `'unavailable'` (no sign-in set up on the site). Register it BEFORE booting the
+ * app (it asks who is signed in as it starts, once per page load), and AFTER any
+ * broader `/api/gallery` route: Playwright tries the newest route first.
+ */
+export async function routeSession(
+  page: Page,
+  user: typeof ADA_SESSION_USER | null | 'unavailable',
+  providers = [{ id: 'github', name: 'GitHub' }, { id: 'google', name: 'Google' }],
+): Promise<void> {
+  const body =
+    user === 'unavailable'
+      ? { signInAvailable: false, providers: [], user: null }
+      : { signInAvailable: true, providers, user }
+  await page.route('**/api/gallery/me', (route) => route.fulfill({ json: body, headers: { 'cache-control': 'no-store' } }))
+}
+
 export async function routeGallery(page: Page, opts: { removed?: string[] } = {}): Promise<string[]> {
   const deleted: string[] = []
   await page.route(/\/api\/gallery(\/.*)?$/, async (route: Route) => {
     const req = route.request()
     const path = new URL(req.url()).pathname
+    // #2319 — signed out unless the spec routes a session itself (routeSession).
+    if (path === '/api/gallery/me') {
+      return route.fulfill({ json: { signInAvailable: true, providers: [{ id: 'github', name: 'GitHub' }], user: null } })
+    }
     if (path === '/api/gallery' && req.method() === 'GET') {
       return route.fulfill({ json: { entries: ENTRIES.filter((e) => !deleted.includes(e.id)) } })
     }

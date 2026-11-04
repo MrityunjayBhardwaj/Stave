@@ -59,7 +59,7 @@ describe("profiles", () => {
 
   it("a wrong key, a bad field and a throttle each say what happened", async () => {
     fetchMock.mockResolvedValueOnce(json({ error: "forbidden" }, 403));
-    await expect(updateAuthor("auth1", "k", { name: "a", bio: "" })).rejects.toThrow(/author key doesn't match/);
+    await expect(updateAuthor("auth1", "k", { name: "a", bio: "" })).rejects.toThrow(/can't edit that profile/);
     fetchMock.mockResolvedValueOnce(json({ error: "the bio is too long" }, 400));
     await expect(updateAuthor("auth1", "k", { name: "a", bio: "" })).rejects.toThrow("the bio is too long");
     fetchMock.mockResolvedValueOnce(json({}, 429));
@@ -100,7 +100,7 @@ describe("collections", () => {
     expect(call().headers[AUTHOR_KEY_HEADER]).toBe("key-1");
     expect(JSON.parse(call().body as string).entryIds).toEqual(["b", "a"]);
     fetchMock.mockResolvedValueOnce(json({}, 403));
-    await expect(updateCollection("col1", "k", req)).rejects.toThrow(/doesn't match that collection/);
+    await expect(updateCollection("col1", "k", req)).rejects.toThrow(/can't change that collection/);
   });
 
   it("deleting sends DELETE with the key; already gone counts as done; a wrong key says so", async () => {
@@ -111,7 +111,14 @@ describe("collections", () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
     await expect(deleteCollection("col1", "k")).resolves.toBeUndefined();
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 403 }));
-    await expect(deleteCollection("col1", "k")).rejects.toThrow(/doesn't match that collection/);
+    await expect(deleteCollection("col1", "k")).rejects.toThrow(/can't delete that collection/);
+  });
+
+  it("#2319 signed in, no key is held: nothing goes in the key header (the session cookie says who)", async () => {
+    fetchMock.mockResolvedValue(json({ collection: COLLECTION }, 201));
+    await createCollection(null, req);
+    expect(AUTHOR_KEY_HEADER in call().headers).toBe(false);
+    expect(call().headers["Content-Type"]).toBe("application/json");
   });
 
   it("links open the overlay on a profile or a collection", () => {

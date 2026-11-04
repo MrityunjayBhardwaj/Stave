@@ -25,6 +25,26 @@ export function ownerKeyFor(author: GalleryAuthor | null, authorId: string): str
   return author.authorId === authorId ? author.authorKey : null;
 }
 
+/**
+ * #2319 — may this browser edit `authorId`, and with what? Signed in as its
+ * author: yes, and the session is enough (no key sent). Otherwise the key this
+ * browser holds from before sign-in, when it is that author's.
+ */
+export function editAccess(
+  sessionAuthorId: string | null | undefined,
+  author: GalleryAuthor | null,
+  authorId: string,
+): { canEdit: boolean; key: string | null } {
+  const key = ownerKeyFor(author, authorId);
+  return { canEdit: sessionAuthorId === authorId || key !== null, key };
+}
+
+/** "github.com/<login>" for a GitHub handle; null when there is none or it isn't a handle's shape. */
+export function githubProfileUrl(login: string | undefined): string | null {
+  if (!login || !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(login)) return null;
+  return `https://github.com/${login}`;
+}
+
 /** Move the id at `index` by `delta` (−1 up, +1 down). Out of range: unchanged copy. */
 export function moveEntry(ids: readonly string[], index: number, delta: -1 | 1): string[] {
   const out = [...ids];

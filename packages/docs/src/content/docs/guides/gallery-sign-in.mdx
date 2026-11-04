@@ -1,0 +1,68 @@
+---
+title: Gallery sign-in (running your own Stave)
+description: Set up GitHub and Google sign-in for the Community Gallery on a Stave you deploy yourself.
+sidebar:
+  order: 3
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Publishing to the Community Gallery needs you to sign in with GitHub or Google. Browsing, playing, saving and private links never do. Your profile shows the account you signed in with (your GitHub handle, or "Google account"), and your email stays private: Stave keeps it only to contact you about what you publish.
+
+This page is for people **running their own copy of Stave**. On the hosted site it is already set up.
+
+## What happens without it
+
+Each provider is offered only when its settings are present. Set up GitHub, Google, or both. With neither (or with no `AUTH_SECRET`), sign-in is off: the menu says so, the Publish dialog explains it, and the server refuses to publish with a plain reason. Everything else keeps working.
+
+## Environment variables
+
+| Variable | What it is |
+| --- | --- |
+| `AUTH_SECRET` | A long random string that signs the session cookie. Make one with `openssl rand -base64 33`. Required. |
+| `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET` | The GitHub OAuth app's Client ID and a client secret. |
+| `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | The Google OAuth client's ID and secret. |
+| `AUTH_URL` | Only off Vercel: your site's public origin, e.g. `https://stave.example.com`. (Or set `AUTH_TRUST_HOST=true` if your proxy sets the host header correctly.) |
+
+Sessions live in that signed cookie, so there is no session database to run.
+
+## The callback URLs
+
+Each provider sends people back to one URL on your site. Use your public origin in place of `<origin>`:
+
+- GitHub: `<origin>/api/auth/callback/github`
+- Google: `<origin>/api/auth/callback/google`
+
+For local development the origin is `http://localhost:3000`. Most people make a separate GitHub app for local work, because a GitHub OAuth app takes only one callback URL.
+
+## Create the GitHub OAuth app
+
+1. On GitHub, go to **Settings › Developer settings › OAuth Apps › New OAuth App**. (For an organisation, it's the organisation's settings.)
+2. **Homepage URL**: your origin. **Authorization callback URL**: `<origin>/api/auth/callback/github`.
+3. Register it, copy the **Client ID** into `AUTH_GITHUB_ID`, then **Generate a new client secret** and put it in `AUTH_GITHUB_SECRET`.
+
+Stave asks GitHub only for `read:user user:email`: your public profile and your email address.
+
+## Create the Google OAuth client
+
+1. In the Google Cloud console, pick or create a project, then open **APIs & Services › OAuth consent screen**. Choose **External**, fill in the app name, support email and your site's domain, and add the scopes `openid`, `email` and `profile`.
+2. Google's consent screen asks for a **privacy policy URL** (and a home page). You need a privacy policy page on your site before you can publish the consent screen beyond test users.
+3. Go to **APIs & Services › Credentials › Create credentials › OAuth client ID**, type **Web application**.
+4. **Authorised JavaScript origins**: your origin. **Authorised redirect URIs**: `<origin>/api/auth/callback/google`.
+5. Copy the client ID into `AUTH_GOOGLE_ID` and the secret into `AUTH_GOOGLE_SECRET`.
+
+<Aside type="caution">
+A privacy policy page is needed for Google sign-in, and is good practice for GitHub too: it should say that Stave keeps the email of the account you sign in with, privately, to contact you about what you publish, and shows your public name, GitHub handle and avatar on your profile. Stave doesn't ship one; write your own.
+</Aside>
+
+## Why sign-in is a full-page redirect
+
+Stave sends `Cross-Origin-Opener-Policy: same-origin` on every page, which it needs for audio and visuals that share memory across threads. That header cuts a pop-up window off from the page that opened it, so a pop-up sign-in could never report back. Signing in leaves the page, goes to GitHub or Google, and comes back, reopening the Publish dialog if that's where you started.
+
+## Testing without GitHub or Google
+
+For development and automated tests there is a test-only sign-in that signs in as whatever account id you type. It is on only when the server runs with `STAVE_AUTH_TEST_LOGIN=1` **and** is not a production build; a production build never offers it, whatever the variable says.
+
+```sh
+STAVE_AUTH_TEST_LOGIN=1 AUTH_SECRET=dev-only-secret npm run dev
+```
