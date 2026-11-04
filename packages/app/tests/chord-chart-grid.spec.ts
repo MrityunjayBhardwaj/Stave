@@ -166,11 +166,15 @@ test.describe('#1243 — a chord chart under note() reaches the grid', () => {
     // guarantee and not a discriminating arm. This one reddens the moment the
     // gate test is dropped.
     await typeAndPoint(page, 'const mel = "<a1 c2>/2"\n$: note(mel).room(2)', '.room')
-    // Observed rather than assumed: the unit stays with the ROLL, which then
-    // declines it in its own words. The first draft of this arm asserted the
-    // generic standby surface and failed — a capacity refusal is the roll
+    // Observed rather than assumed: the unit stays with the ROLL. The roll's
+    // columns cannot hold it, so since #1834 it draws the melody look-only from
+    // the pattern's own divisions and says why in its own words (before #1834 it
+    // declined with "isn't grid-editable"). The first draft of this arm asserted
+    // the generic standby surface and failed — a capacity refusal is the roll
     // speaking, not the panel giving up on routing.
-    await expect(page.getByText(/isn't grid-editable/)).toBeVisible({ timeout: 15_000 })
+    const lookOnly = page.locator(`${panel} [data-roll-look-only]`)
+    await expect(lookOnly).toBeVisible({ timeout: 15_000 })
+    await expect(lookOnly).toContainText('does not fit inside the bar it starts in')
     // The claim that matters: it did NOT become a drum grid.
     expect(await page.locator(`${panel} [data-seq-cell]`).count()).toBe(0)
   })

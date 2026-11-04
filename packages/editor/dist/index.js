@@ -1,7 +1,7 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
 import { parse } from 'acorn';
-import * as React49 from 'react';
-import React49__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React53 from 'react';
+import React53__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import { parse as parse$1 } from '@strudel/mini/krill-parser.js';
 import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
 import { isControlName, getControlName } from '@strudel/core/controls.mjs';
@@ -1641,10 +1641,10 @@ function walkCycle(ir, ctx) {
     case "Cycle": {
       if (ir.items.length === 0) return [];
       const weights = ir.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
-      const period = weights.reduce((s, w) => s + w, 0);
-      if (period <= 0) return [];
-      const pos = (ctx.cycle % period + period) % period;
-      const innerCycle = Math.floor(ctx.cycle / period);
+      const period2 = weights.reduce((s, w) => s + w, 0);
+      if (period2 <= 0) return [];
+      const pos = (ctx.cycle % period2 + period2) % period2;
+      const innerCycle = Math.floor(ctx.cycle / period2);
       let acc = 0;
       let selected = 0;
       for (let k = 0; k < ir.items.length; k++) {
@@ -1660,9 +1660,9 @@ function walkCycle(ir, ctx) {
     }
     case "Arrange": {
       if (ir.arms.length === 0) return [];
-      const period = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
-      if (period <= 0) return [];
-      const pos = (ctx.cycle % period + period) % period;
+      const period2 = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
+      if (period2 <= 0) return [];
+      const pos = (ctx.cycle % period2 + period2) % period2;
       let acc = 0;
       let armIndex = 0;
       let localCycle = 0;
@@ -1725,8 +1725,8 @@ function walkCycle(ir, ctx) {
       if (ir.lookup.length === 0) return [];
       const out = [];
       const selectorLoc = ir.selector.loc?.[0];
-      for (const sub of ir.lookup) {
-        for (const it of recurse(sub, ctx)) {
+      for (const sub2 of ir.lookup) {
+        for (const it of recurse(sub2, ctx)) {
           const childLoc = it.loc ?? [];
           const newLoc = [...childLoc, ...selectorLoc ? [selectorLoc] : []];
           out.push(newLoc.length > 0 ? { ...it, loc: newLoc } : it);
@@ -1739,9 +1739,9 @@ function walkCycle(ir, ctx) {
       let selectedArm;
       if (ir.selector.tag === "Cycle" && ir.selector.items.length > 0) {
         const weights = ir.selector.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
-        const period = weights.reduce((s, w) => s + w, 0);
-        if (period > 0) {
-          const pos = (ctx.cycle % period + period) % period;
+        const period2 = weights.reduce((s, w) => s + w, 0);
+        if (period2 > 0) {
+          const pos = (ctx.cycle % period2 + period2) % period2;
           let acc = 0;
           for (let k = 0; k < weights.length; k++) {
             if (pos < acc + weights[k]) {
@@ -2862,10 +2862,10 @@ var _VizGovernor = class _VizGovernor {
       if (last > 0 && ts - last < gap - 1) return false;
     }
     if (n > 1) {
-      const period = periodFor(n, this.stress);
-      if (period > 1) {
+      const period2 = periodFor(n, this.stress);
+      if (period2 > 1) {
         const offset = this.registered.get(id) ?? 0;
-        if ((this.frameIndex + offset) % period !== 0) return false;
+        if ((this.frameIndex + offset) % period2 !== 0) return false;
       }
     }
     this.lastProduce.set(id, ts);
@@ -3044,7 +3044,7 @@ function subscribe(changed) {
 }
 __name(subscribe, "subscribe");
 function usePhone() {
-  return React49.useSyncExternalStore(subscribe, isPhone, () => false);
+  return React53.useSyncExternalStore(subscribe, isPhone, () => false);
 }
 __name(usePhone, "usePhone");
 function phoneLayout() {
@@ -3054,7 +3054,7 @@ function phoneLayout() {
 }
 __name(phoneLayout, "phoneLayout");
 function usePhoneLayout() {
-  return React49.useSyncExternalStore(subscribe, phoneLayout, () => "none");
+  return React53.useSyncExternalStore(subscribe, phoneLayout, () => "none");
 }
 __name(usePhoneLayout, "usePhoneLayout");
 
@@ -4391,8 +4391,8 @@ function stepIndexAtCycle(a, cycle) {
   const handed = placementsTimeAt(a.placements, Math.floor(cycle));
   if (handed === null) return null;
   const own = Math.floor(handed);
-  const period = a.periodCycles;
-  const pos = (own % period + period) % period;
+  const period2 = a.periodCycles;
+  const pos = (own % period2 + period2) % period2;
   for (let k = a.steps.length - 1; k >= 0; k--) {
     if (pos >= a.steps[k].startCycle) return k;
   }
@@ -6764,20 +6764,20 @@ function withValue(ev, key3, value) {
   return ev;
 }
 __name(withValue, "withValue");
-function repeatBeside(lanePeriods, cap, period) {
-  if (period === null) return null;
+function repeatBeside(lanePeriods, cap, period2) {
+  if (period2 === null) return null;
   const repeat = repeatOf(lanePeriods.map((l) => l.periodCycles), cap);
-  return repeat !== null && repeat % period === 0 ? repeat : null;
+  return repeat !== null && repeat % period2 === 0 ? repeat : null;
 }
 __name(repeatBeside, "repeatBeside");
-function spanCoversEveryLane(events, period) {
+function spanCoversEveryLane(events, period2) {
   const inSpan = /* @__PURE__ */ new Set();
   const all = /* @__PURE__ */ new Set();
   for (const ev of events) {
     const key3 = laneKeyOf(ev);
     all.add(key3);
     const cycle = Math.floor(ev.begin);
-    if (Number.isFinite(cycle) && cycle >= 0 && cycle < period) inSpan.add(key3);
+    if (Number.isFinite(cycle) && cycle >= 0 && cycle < period2) inSpan.add(key3);
   }
   for (const key3 of all) if (!inSpan.has(key3)) return false;
   return true;
@@ -6894,9 +6894,9 @@ function asFraction(x, maxDen = 1024) {
   for (let d = 1; d <= maxDen; d++) {
     const n = x * d;
     if (Math.abs(n - Math.round(n)) < 1e-9) {
-      const num2 = Math.round(n);
-      const g = gcdInt(num2, d);
-      return [num2 / g, d / g];
+      const num = Math.round(n);
+      const g = gcdInt(num, d);
+      return [num / g, d / g];
     }
   }
   return null;
@@ -6912,8 +6912,8 @@ function rationalLcm(x, y) {
   return lcmNum / gcdInt(b, d);
 }
 __name(rationalLcm, "rationalLcm");
-function foldWithSignalPeriods(period, periods, cap) {
-  let folded = period;
+function foldWithSignalPeriods(period2, periods, cap) {
+  let folded = period2;
   for (const q of periods) {
     const next = rationalLcm(folded, q);
     if (next === null || !Number.isFinite(next) || next > cap) return null;
@@ -6923,11 +6923,11 @@ function foldWithSignalPeriods(period, periods, cap) {
 }
 __name(foldWithSignalPeriods, "foldWithSignalPeriods");
 function displayPeriodRule(events, horizon, cap, hasUnheardTrack, signals) {
-  const period = detectDisplayPeriod(events, horizon);
-  if (period !== null) {
+  const period2 = detectDisplayPeriod(events, horizon);
+  if (period2 !== null) {
     if (hasUnheardTrack && horizon < cap) return null;
-    if (!spanCoversEveryLane(events, period)) return null;
-    return period;
+    if (!spanCoversEveryLane(events, period2)) return null;
+    return period2;
   }
   return signalInformedPeriod(events, horizon, cap, signals);
 }
@@ -7043,20 +7043,20 @@ async function analyzeSong(ir, opts = {}) {
         horizon = Math.min(horizon * 2, cap);
         continue;
       }
-      const period = periodRule(events, horizon);
-      if (period !== null) {
-        const lanes = accumulateLanes(events, period);
-        const sections = computeSections(lanes, period);
+      const period2 = periodRule(events, horizon);
+      if (period2 !== null) {
+        const lanes = accumulateLanes(events, period2);
+        const sections = computeSections(lanes, period2);
         const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys);
         return {
-          periodCycles: period,
-          horizonCycles: period,
+          periodCycles: period2,
+          horizonCycles: period2,
           lanes,
           sections,
-          displaySpan: { kind: "loop", cycles: period },
+          displaySpan: { kind: "loop", cycles: period2 },
           // #1599 — over the full collection horizon, where every lane's period was
           // detected, NOT the trimmed one-loop span (one loop has no repetition).
-          repeatCycles: repeatBeside(lanePeriods, cap, period),
+          repeatCycles: repeatBeside(lanePeriods, cap, period2),
           lanePeriods
         };
       }
@@ -7143,8 +7143,8 @@ __name(sectionCyclesOf, "sectionCyclesOf");
 function fixedParameters(ir) {
   const out = [];
   for (const { trackId, param, placements } of playableParameters(ir)) {
-    const num2 = numberOf(param.rawArgs);
-    if (!num2) continue;
+    const num = numberOf(param.rawArgs);
+    if (!num) continue;
     const sectionCycles = sectionCyclesOf(placements);
     if (sectionCycles === DECLINE) continue;
     const call = param.loc?.[0];
@@ -7155,8 +7155,8 @@ function fixedParameters(ir) {
       trackId,
       paramKey: param.key,
       method: param.userMethod ?? param.key,
-      value: Number(num2.text),
-      valueText: num2.text,
+      value: Number(num.text),
+      valueText: num.text,
       argSpan: { start: argStart, end: argStart + raw.trim().length },
       sectionCycles,
       offset: Number.isFinite(call.start) ? call.start : null,
@@ -7168,10 +7168,10 @@ function fixedParameters(ir) {
 __name(fixedParameters, "fixedParameters");
 function fixedToStepsEdit(f, steps, source) {
   if (!Number.isInteger(steps) || steps < 1) return null;
-  const num2 = numberOf(source.slice(f.argSpan.start, f.argSpan.end));
-  if (!num2 || num2.text !== f.valueText) return null;
-  const q = num2.quote || '"';
-  return { range: [f.argSpan.start, f.argSpan.end], text: `${q}<${Array(steps).fill(num2.text).join(" ")}>${q}` };
+  const num = numberOf(source.slice(f.argSpan.start, f.argSpan.end));
+  if (!num || num.text !== f.valueText) return null;
+  const q = num.quote || '"';
+  return { range: [f.argSpan.start, f.argSpan.end], text: `${q}<${Array(steps).fill(num.text).join(" ")}>${q}` };
 }
 __name(fixedToStepsEdit, "fixedToStepsEdit");
 
@@ -7673,8 +7673,8 @@ function findScaleSite(doc, body, chain) {
 }
 __name(findScaleSite, "findScaleSite");
 function gainSiteOf(doc, m, body) {
-  const scale = findScaleSite(doc, body, m.chain);
-  if (scale) return scale;
+  const scale2 = findScaleSite(doc, body, m.chain);
+  if (scale2) return scale2;
   for (const name of LEGACY_MASTER_CONTROLS) {
     const call = m.chain.find((c) => c.name === name);
     if (call) return { kind: "legacy", call, arg: call.args[0] };
@@ -7685,8 +7685,8 @@ __name(gainSiteOf, "gainSiteOf");
 function findMasterGainSite(doc) {
   const lines = detectMasterAllWithBodies(doc);
   for (const { m, body } of lines) {
-    const scale = findScaleSite(doc, body, m.chain);
-    if (scale) return scale;
+    const scale2 = findScaleSite(doc, body, m.chain);
+    if (scale2) return scale2;
   }
   for (const { m, body } of lines) {
     const site = gainSiteOf(doc, m, body);
@@ -9981,8 +9981,8 @@ function documentSteps(model) {
   return model.steps / (model.viewScale ?? UNREFINED);
 }
 __name(documentSteps, "documentSteps");
-function viewSteps(documentSteps2, scale) {
-  return documentSteps2 * scale;
+function viewSteps(documentSteps2, scale2) {
+  return documentSteps2 * scale2;
 }
 __name(viewSteps, "viewSteps");
 function absorbViewScale(model) {
@@ -9991,9 +9991,9 @@ function absorbViewScale(model) {
   return rest;
 }
 __name(absorbViewScale, "absorbViewScale");
-function viewScaleFits(perBar2, bars, scale) {
-  if (!isViewScale(scale)) return false;
-  return viewSteps(perBar2 * bars, scale) <= MAX_VIEW_STEPS;
+function viewScaleFits(perBar2, bars, scale2) {
+  if (!isViewScale(scale2)) return false;
+  return viewSteps(perBar2 * bars, scale2) <= MAX_VIEW_STEPS;
 }
 __name(viewScaleFits, "viewScaleFits");
 
@@ -10212,11 +10212,11 @@ function elementToSteps(el, allowNumeric) {
     const slots = groupSlots(el.source_, allowNumeric);
     if (!Array.isArray(slots)) return slots;
     if (mult > 1) {
-      const sub = [];
+      const sub2 = [];
       for (let r = 0; r < mult; r++) {
-        for (const s of slots) sub.push({ atoms: [...s.atoms], units: s.units });
+        for (const s of slots) sub2.push({ atoms: [...s.atoms], units: s.units });
       }
-      return [{ atoms: [], elongation: weight, sub }];
+      return [{ atoms: [], elongation: weight, sub: sub2 }];
     }
     if (slots.length === 1 && slots[0].units === 1) {
       return [{ atoms: slots[0].atoms, elongation: weight, sub: null }];
@@ -10598,9 +10598,9 @@ function playedBars(pat, read5, key3, cap) {
     cycles.push(cc.onsets);
   }
   if (cycles.every((c) => c.length === 0)) return no("no-note-content");
-  const period = detectPeriod(cycles.map(key3));
-  if (period === null || period > cap) return no("unstable-period");
-  return { ok: true, perCycle: cycles.slice(0, period) };
+  const period2 = detectPeriod(cycles.map(key3));
+  if (period2 === null || period2 > cap) return no("unstable-period");
+  return { ok: true, perCycle: cycles.slice(0, period2) };
 }
 __name(playedBars, "playedBars");
 function isWholeAlternation(src) {
@@ -11536,6 +11536,15 @@ function rollOnsets(pat, cyc) {
   return r.ok ? r.onsets : null;
 }
 __name(rollOnsets, "rollOnsets");
+function rollPitch(v) {
+  if (typeof v === "number" && Number.isFinite(v)) return { pitch: String(v), numeric: true };
+  const s = typeof v === "string" ? v : Array.isArray(v) ? tailToken(v) : null;
+  if (s === null) return "no-note-content";
+  if (NUMERIC.test(s)) return { pitch: s, numeric: true };
+  if (pitchToMidi(s.toLowerCase()) !== null) return { pitch: s.toLowerCase(), numeric: false };
+  return "wrong-surface";
+}
+__name(rollPitch, "rollPitch");
 function readRollOnsets(pat, cyc) {
   let haps;
   try {
@@ -11545,23 +11554,9 @@ function readRollOnsets(pat, cyc) {
   }
   const out = [];
   for (const { hit: h, atom } of haps) {
-    const v = h.value;
-    let pitch;
-    let numeric;
-    if (typeof v === "number" && Number.isFinite(v)) {
-      pitch = String(v);
-      numeric = true;
-    } else {
-      const s = typeof v === "string" ? v : Array.isArray(v) ? tailToken(v) : null;
-      if (s === null) return no("no-note-content");
-      if (NUMERIC.test(s)) {
-        pitch = s;
-        numeric = true;
-      } else if (pitchToMidi(s.toLowerCase()) !== null) {
-        pitch = s.toLowerCase();
-        numeric = false;
-      } else return no("wrong-surface");
-    }
+    const read5 = rollPitch(h.value);
+    if (typeof read5 === "string") return no(read5);
+    const { pitch, numeric } = read5;
     const pos = h.begin.valueOf() - cyc;
     const dur = h.end.valueOf() - h.begin.valueOf();
     if (dur <= 0) return no("no-note-content");
@@ -12305,14 +12300,14 @@ function isPow2(n) {
   return n >= 1 && Number.isInteger(n) && (n & n - 1) === 0;
 }
 __name(isPow2, "isPow2");
-function scaleTo(model, target, scale) {
+function scaleTo(model, target, scale2) {
   if (target < 1 || target === model.steps) return model;
   const up = target > model.steps;
   const ratio = up ? target / model.steps : model.steps / target;
   if (!isPow2(ratio)) return model;
   let cur = model;
   while (cur.steps !== target) {
-    const next = scale(cur, up ? "double" : "halve");
+    const next = scale2(cur, up ? "double" : "halve");
     if (next === cur) return model;
     cur = next;
   }
@@ -12553,8 +12548,8 @@ var descaleRollNotes = /* @__PURE__ */ __name((notes, k) => notes.map((n) => ({ 
 function slotState(steps, docSteps, bars, lossless, applies, target, canDrawView) {
   if (target === steps) return "active";
   if (canDrawView) {
-    const scale = freeZoneScale(docSteps, target);
-    if (scale !== null && canDrawView(scale)) return "view";
+    const scale2 = freeZoneScale(docSteps, target);
+    if (scale2 !== null && canDrawView(scale2)) return "view";
   }
   if (lossless) return "lossless";
   if ((bars ?? 1) > 1) return "disabled";
@@ -13197,12 +13192,12 @@ function rateEdit(a, nextText) {
   if (shown === null || !rateEditable(a)) return null;
   const bars = parseTypedNumber(nextText);
   if (bars === null || bars <= 0 || bars === shown) return null;
-  const scale = shown / a.periodCycles;
-  const own = bars / scale;
+  const scale2 = shown / a.periodCycles;
+  const own = bars / scale2;
   const speedUp = own < 1 && Number.isInteger(1 / own);
   const n = speedUp ? 1 / own : own;
   if (Number(n.toPrecision(RATE_DIGITS)) !== n) return null;
-  if ((speedUp ? 1 / n : n) * scale !== bars) return null;
+  if ((speedUp ? 1 / n : n) * scale2 !== bars) return null;
   const call = speedUp ? `.fast(${String(n)})` : `.slow(${String(n)})`;
   const span = a.spans.rate;
   if (span) return { range: [span.start, span.end], text: call };
@@ -13294,8 +13289,8 @@ function gainWritable(codec, model) {
 __name(gainWritable, "gainWritable");
 function slotPress(ops, model, target, canDrawView) {
   if (ops.slotState(model, target, canDrawView) !== "view") return { kind: "write" };
-  const scale = freeZoneScale(documentSteps(model), target);
-  return scale === null ? { kind: "none" } : { kind: "view", scale };
+  const scale2 = freeZoneScale(documentSteps(model), target);
+  return scale2 === null ? { kind: "none" } : { kind: "view", scale: scale2 };
 }
 __name(slotPress, "slotPress");
 function slotPressCost(ops, model, target, canDrawView) {
@@ -13721,6 +13716,12 @@ function nameOf2(e) {
   return name;
 }
 __name(nameOf2, "nameOf");
+function plainValue(v) {
+  if (typeof v === "string" || typeof v === "number" && Number.isFinite(v)) return v;
+  if (Array.isArray(v) && v.every((p) => typeof p === "string" || typeof p === "number")) return [...v];
+  return null;
+}
+__name(plainValue, "plainValue");
 function stepOut(s, cyc) {
   return {
     span: s.element.span,
@@ -13732,7 +13733,8 @@ function stepOut(s, cyc) {
     hits: s.hits.map((j) => ({
       begin: fracOf(j.hit.begin, cyc),
       end: fracOf(j.hit.end, cyc),
-      args: j.args.map((a) => ({ text: a.text, span: a.span }))
+      args: j.args.map((a) => ({ text: a.text, span: a.span })),
+      value: plainValue(j.hit.value)
     })),
     copies: s.copies,
     rows: s.rows ? s.rows.map((r) => rowOut(r, cyc)) : null,
@@ -13781,10 +13783,33 @@ function chunkDivisions(mini, bars) {
   return trees;
 }
 __name(chunkDivisions, "chunkDivisions");
+function chunkPeriod(mini, cap) {
+  try {
+    const pat = miniPattern(mini);
+    const keys = [];
+    for (let c = 0; c < 2 * cap; c++) {
+      const hits = pat.hits(c).map((h) => {
+        const b = fracOf(h.begin, c);
+        const e = fracOf(h.end, c);
+        return `${b.n}/${b.d}:${e.n}/${e.d}:${JSON.stringify(h.value)}`;
+      });
+      keys.push(hits.sort().join("|"));
+    }
+    const p = detectPeriod(keys);
+    return p !== null && p <= cap ? p : null;
+  } catch {
+    return null;
+  }
+}
+__name(chunkPeriod, "chunkPeriod");
 function laneDivisions(tree, lane) {
   if (!tree.ok) return tree;
-  if (lane.part === void 0 && tree.parts.length !== 1) return { ok: false, why: "lane-part-unknown" };
-  const at = lane.part ?? 0;
+  let at = lane.part ?? 0;
+  if (lane.part === void 0 && tree.parts.length !== 1) {
+    const writes2 = tree.parts.flatMap((p, i) => p.sounds.includes(lane.sound) ? [i] : []);
+    if (writes2.length !== 1) return { ok: false, why: "lane-part-unknown" };
+    at = writes2[0];
+  }
   const row = tree.parts[at];
   if (!row) return { ok: false, why: "lane-part-missing" };
   if (!row.sounds.includes(lane.sound)) return { ok: false, why: "lane-sound-not-in-part" };
@@ -14299,12 +14324,12 @@ function duplicateBar(mini, bars) {
   return why === null ? { ok: true, mini: next } : { ok: false, reason: why };
 }
 __name(duplicateBar, "duplicateBar");
-function appendEmptyBars(mini, bars, add) {
-  if (!Number.isInteger(add) || add < 1) return { ok: false, reason: "nothing to add" };
+function appendEmptyBars(mini, bars, add2) {
+  if (!Number.isInteger(add2) || add2 < 1) return { ok: false, reason: "nothing to add" };
   const old = oldBars(mini, bars);
   if (!Array.isArray(old)) return { ok: false, reason: old.reason };
-  const next = `<${entriesOf(mini)}${" ~".repeat(add)}>`;
-  const why = playsAsIntended(old, next, bars + add, (b) => b < bars ? b : null);
+  const next = `<${entriesOf(mini)}${" ~".repeat(add2)}>`;
+  const why = playsAsIntended(old, next, bars + add2, (b) => b < bars ? b : null);
   return why === null ? { ok: true, mini: next } : { ok: false, reason: why };
 }
 __name(appendEmptyBars, "appendEmptyBars");
@@ -14317,8 +14342,8 @@ function lengthenOffers(parse7, mini, bars, gain) {
   };
 }
 __name(lengthenOffers, "lengthenOffers");
-function appendBarsOffer(parse7, mini, bars, add, gain) {
-  return offered(parse7, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
+function appendBarsOffer(parse7, mini, bars, add2, gain) {
+  return offered(parse7, mini, () => appendEmptyBars(mini, bars, add2), bars + add2, gain);
 }
 __name(appendBarsOffer, "appendBarsOffer");
 var NOT_EDITABLE_HERE = "the grid can show this pattern but can't edit it; make it longer in the code";
@@ -15955,10 +15980,10 @@ function createLiveTriggerDrain() {
   return {
     track(done, startTime) {
       inFlight2.set(done, startTime);
-      const settle = /* @__PURE__ */ __name(() => {
+      const settle2 = /* @__PURE__ */ __name(() => {
         inFlight2.delete(done);
       }, "settle");
-      done.then(settle, settle);
+      done.then(settle2, settle2);
     },
     pending: /* @__PURE__ */ __name(() => inFlight2.size, "pending"),
     async drain({ now: now2, sleep, capSeconds, marginSeconds }) {
@@ -27487,8 +27512,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React49__default.Children.count(children);
-  const childArray = React49__default.Children.toArray(children);
+  const count = React53__default.Children.count(children);
+  const childArray = React53__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -27533,7 +27558,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React49__default.useEffect(() => {
+  React53__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -27549,7 +27574,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React49__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React53__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -34298,14 +34323,14 @@ function readVisibleArea() {
   if (typeof window === "undefined" || !isPhone()) return ALL;
   const vv = window.visualViewport;
   if (!vv) return ALL;
-  const scale = vv.scale > 0 ? vv.scale : 1;
-  const showing = vv.height * scale;
+  const scale2 = vv.scale > 0 ? vv.scale : 1;
+  const showing = vv.height * scale2;
   if (window.innerHeight - showing < KEYBOARD_MIN_PX) return ALL;
   return {
     keyboardUp: true,
     height: Math.round(showing),
     // while zoomed, the offset is the zoom's pan, not the keyboard's push
-    top: scale === 1 ? Math.max(0, Math.round(vv.offsetTop)) : 0
+    top: scale2 === 1 ? Math.max(0, Math.round(vv.offsetTop)) : 0
   };
 }
 __name(readVisibleArea, "readVisibleArea");
@@ -34350,7 +34375,7 @@ function subscribe4(listener) {
 }
 __name(subscribe4, "subscribe");
 function useKeyboardUp() {
-  return React49.useSyncExternalStore(subscribe4, () => current2.keyboardUp, () => false);
+  return React53.useSyncExternalStore(subscribe4, () => current2.keyboardUp, () => false);
 }
 __name(useKeyboardUp, "useKeyboardUp");
 function getVisibleArea() {
@@ -34758,8 +34783,8 @@ __name(renderSizeFor, "renderSizeFor");
 function computeLayout(contentW, native, crop) {
   const cropW = Math.max(0.01, crop.w);
   const cropH = Math.max(0.01, crop.h);
-  const scale = contentW / (cropW * native.w);
-  let zoneH = cropH * native.h * scale;
+  const scale2 = contentW / (cropW * native.w);
+  let zoneH = cropH * native.h * scale2;
   if (zoneH > MAX_ZONE_HEIGHT) {
     const clamped = MAX_ZONE_HEIGHT / (cropH * native.h);
     return {
@@ -34772,9 +34797,9 @@ function computeLayout(contentW, native, crop) {
   if (zoneH < MIN_ZONE_HEIGHT) zoneH = MIN_ZONE_HEIGHT;
   return {
     zoneH,
-    scale,
-    tx: -crop.x * native.w * scale,
-    ty: -crop.y * native.h * scale
+    scale: scale2,
+    tx: -crop.x * native.w * scale2,
+    ty: -crop.y * native.h * scale2
   };
 }
 __name(computeLayout, "computeLayout");
@@ -34782,12 +34807,12 @@ function layoutForIntent(contentW, native, crop, intentH) {
   const fit = computeLayout(contentW, native, crop);
   if (intentH == null) return fit;
   const denom2 = Math.max(0.01, crop.h) * native.h;
-  const scale = Math.min(fit.scale, intentH / denom2);
+  const scale2 = Math.min(fit.scale, intentH / denom2);
   return {
-    zoneH: Math.max(MIN_ZONE_HEIGHT, denom2 * scale),
-    scale,
-    tx: -crop.x * native.w * scale,
-    ty: -crop.y * native.h * scale
+    zoneH: Math.max(MIN_ZONE_HEIGHT, denom2 * scale2),
+    scale: scale2,
+    tx: -crop.x * native.w * scale2,
+    ty: -crop.y * native.h * scale2
   };
 }
 __name(layoutForIntent, "layoutForIntent");
@@ -36564,7 +36589,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React49__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React53__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -36786,7 +36811,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React49__default.useMemo(() => {
+  const providerNode = React53__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -37079,25 +37104,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React49.useMemo(
+  const changedIds = React53.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit3.files),
     [commit3, pickerFileIds]
   );
-  const [mode, setMode2] = React49.useState(defaultMode);
-  React49.useEffect(() => {
+  const [mode, setMode2] = React53.useState(defaultMode);
+  React53.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React49.useState(
+  const [fileId, setFileId] = React53.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React49.useRef(null);
-  const handleMount = React49.useCallback(
+  const diffEditorRef = React53.useRef(null);
+  const handleMount = React53.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -37107,7 +37132,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -37232,18 +37257,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React49.useMemo(() => snapshotAt(history2, commit3.id), [history2, commit3]);
-  const fileIds = React49.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React49.useState(
+  const snapshot = React53.useMemo(() => snapshotAt(history2, commit3.id), [history2, commit3]);
+  const fileIds = React53.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React53.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React49.useCallback(
+  const handleMount = React53.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -38185,7 +38210,7 @@ function subscribeToBottomPanelState(cb) {
 }
 __name(subscribeToBottomPanelState, "subscribeToBottomPanelState");
 function useBottomPanelState() {
-  return React49.useSyncExternalStore(subscribeToBottomPanelState, getBottomPanelState, () => SERVER_STATE);
+  return React53.useSyncExternalStore(subscribeToBottomPanelState, getBottomPanelState, () => SERVER_STATE);
 }
 __name(useBottomPanelState, "useBottomPanelState");
 
@@ -38212,7 +38237,7 @@ function useTouchBar() {
 }
 __name(useTouchBar, "useTouchBar");
 function EmptyTimelineStub() {
-  return React49.createElement(
+  return React53.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -38230,7 +38255,7 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React49.createElement(EmptyTimelineStub)
+  content: React53.createElement(EmptyTimelineStub)
 });
 
 // src/workspace/codeUndo.ts
@@ -38254,14 +38279,14 @@ function codeUndoForFocus(el, which) {
 }
 __name(codeUndoForFocus, "codeUndoForFocus");
 function useActiveWriter() {
-  const [editor, setEditor] = React49.useState(() => getActiveEditor());
-  const editorRef = React49.useRef(null);
-  const writerRef = React49.useRef(null);
-  React49.useEffect(() => {
+  const [editor, setEditor] = React53.useState(() => getActiveEditor());
+  const editorRef = React53.useRef(null);
+  const writerRef = React53.useRef(null);
+  React53.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     editorRef.current = editor;
     writerRef.current = editor ? createWriter(editor) : null;
   }, [editor]);
@@ -38272,10 +38297,10 @@ __name(useActiveWriter, "useActiveWriter");
 // src/visualEdit/panels/useActiveChunk.ts
 function useActiveChunk() {
   const { editor, editorRef, writerRef } = useActiveWriter();
-  const [chunk, setChunk] = React49.useState(null);
-  const anchorRef = React49.useRef(null);
+  const [chunk, setChunk] = React53.useState(null);
+  const anchorRef = React53.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -38302,7 +38327,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React49.useCallback(
+  const applyEdit = React53.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writerRef.current;
@@ -38317,8 +38342,8 @@ function useActiveChunk() {
     },
     [editorRef, writerRef]
   );
-  const beginGesture = React49.useCallback(() => openGesture(writerRef.current), [writerRef]);
-  const endGesture = React49.useCallback(() => closeGesture(writerRef.current), [writerRef]);
+  const beginGesture = React53.useCallback(() => openGesture(writerRef.current), [writerRef]);
+  const endGesture = React53.useCallback(() => closeGesture(writerRef.current), [writerRef]);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -38343,7 +38368,7 @@ function subscribe5(listener) {
 }
 __name(subscribe5, "subscribe");
 function usePatternSideShown() {
-  return React49.useSyncExternalStore(subscribe5, () => current5, () => DEFAULT_SHOWN);
+  return React53.useSyncExternalStore(subscribe5, () => current5, () => DEFAULT_SHOWN);
 }
 __name(usePatternSideShown, "usePatternSideShown");
 function setPatternSideShown(shown) {
@@ -38396,11 +38421,11 @@ function reducedMotion() {
 }
 __name(reducedMotion, "reducedMotion");
 function PatternSideDrawer({ children }) {
-  const [open, setOpen] = React49.useState(false);
-  const [built, setBuilt] = React49.useState(false);
-  const railRef = React49.useRef(null);
-  const closeRef = React49.useRef(null);
-  const moved = React49.useRef(false);
+  const [open, setOpen] = React53.useState(false);
+  const [built, setBuilt] = React53.useState(false);
+  const railRef = React53.useRef(null);
+  const closeRef = React53.useRef(null);
+  const moved = React53.useRef(false);
   const slide = reducedMotion() ? 0 : SLIDE_MS;
   const show = /* @__PURE__ */ __name(() => {
     moved.current = true;
@@ -38411,11 +38436,11 @@ function PatternSideDrawer({ children }) {
     moved.current = true;
     setOpen(false);
   }, "hide");
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (!moved.current) return;
     (open ? closeRef : railRef).current?.focus({ preventScroll: true });
   }, [open]);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (!open) return;
     const onKey = /* @__PURE__ */ __name((e) => {
       if (e.key === "Escape") hide();
@@ -38578,7 +38603,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React49.createElement(
+  return React53.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -38597,12 +38622,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React49.createElement("span", {
+    icon ? React53.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React49.createElement("span", null, hint)
+    React53.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -38630,25 +38655,25 @@ var VISUAL_EDIT_TABS = [
 var keyOf = /* @__PURE__ */ __name((at, mini) => `${at}:${mini ?? ""}`, "keyOf");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React49.useState(null);
-  const [read5, setRead] = React49.useState(null);
-  const modelRef = React49.useRef(null);
-  React49.useEffect(() => {
+  const [model, setModel] = React53.useState(null);
+  const [read5, setRead] = React53.useState(null);
+  const modelRef = React53.useRef(null);
+  React53.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React49.useRef(opts);
+  const optsRef = React53.useRef(opts);
   optsRef.current = opts;
   const viewScale = opts.viewScale ?? UNREFINED;
-  const modelScaleRef = React49.useRef(UNREFINED);
-  const ownEchoRef = React49.useRef(null);
-  const patternKeyRef = React49.useRef(null);
-  const patternKey = React49.useMemo(() => {
+  const modelScaleRef = React53.useRef(UNREFINED);
+  const ownEchoRef = React53.useRef(null);
+  const patternKeyRef = React53.useRef(null);
+  const patternKey = React53.useMemo(() => {
     if (!chunk) return patternKeyRef.current = null;
     const key3 = keyOf(chunk.exprRange[0], chunk.miniString);
     if (key3 !== ownEchoRef.current) patternKeyRef.current = key3;
     return patternKeyRef.current;
   }, [chunk]);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -38675,7 +38700,7 @@ function useGridModel(opts) {
     modelRef.current = held2.model;
     setModel(held2.model);
   }, [chunk, viewScale]);
-  const writeModel = React49.useCallback(
+  const writeModel = React53.useCallback(
     (next) => {
       if (modelRef.current?.lookOnly) return;
       const o = optsRef.current;
@@ -38692,7 +38717,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  const mutate = React49.useCallback(
+  const mutate = React53.useCallback(
     (fn) => {
       const prev = modelRef.current;
       if (prev == null) return;
@@ -38702,8 +38727,8 @@ function useGridModel(opts) {
     },
     [writeModel]
   );
-  const settle = React49.useCallback((next) => writeModel(next), [writeModel]);
-  const writeMini = React49.useCallback(
+  const settle2 = React53.useCallback((next) => writeModel(next), [writeModel]);
+  const writeMini = React53.useCallback(
     (mini) => {
       if (modelRef.current?.lookOnly) return;
       applyEdit((fresh, wb) => {
@@ -38712,7 +38737,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  return { model, read: read5, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit };
+  return { model, read: read5, chunk, mutate, settle: settle2, writeMini, beginGesture, endGesture, patternKey, applyEdit };
 }
 __name(useGridModel, "useGridModel");
 
@@ -38760,9 +38785,9 @@ function stepToCycle(start, steps, bars, barSteps) {
 }
 __name(stepToCycle, "stepToCycle");
 function usePlayingStep(steps, bars, cols, barSteps) {
-  const [step, setStep] = React49.useState(null);
+  const [step, setStep] = React53.useState(null);
   const layoutKey = barSteps?.join(",") ?? "";
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     let raf = 0;
     const counts = layoutKey ? layoutKey.split(",").map(Number) : void 0;
     const tick = /* @__PURE__ */ __name(() => {
@@ -39020,12 +39045,12 @@ __name(boxesPlaceNotes, "boxesPlaceNotes");
 function groupBoxesBySteps(boxes, starts, steps, owners2) {
   const alone = /* @__PURE__ */ __name(() => boxes.map((b) => ({ from: b.start, to: b.start + b.width, boxes: [b], plain: true })), "alone");
   if (!starts || starts.length === 0) return alone();
-  const edges = [.../* @__PURE__ */ new Set([...starts, steps])].filter((c) => c >= 0 && c <= steps).sort((a, b) => a - b);
-  if (edges[0] !== 0) edges.unshift(0);
+  const edges2 = [.../* @__PURE__ */ new Set([...starts, steps])].filter((c) => c >= 0 && c <= steps).sort((a, b) => a - b);
+  if (edges2[0] !== 0) edges2.unshift(0);
   const out = [];
   let k = 0;
-  for (let i = 0; i + 1 < edges.length; i++) {
-    const [from, to] = [edges[i], edges[i + 1]];
+  for (let i = 0; i + 1 < edges2.length; i++) {
+    const [from, to] = [edges2[i], edges2[i + 1]];
     const inStep = [];
     while (k < boxes.length && boxes[k].start < to) {
       if (boxes[k].start < from || boxes[k].start + boxes[k].width > to) return alone();
@@ -39110,7 +39135,7 @@ function fitLabels(boxes) {
 }
 __name(fitLabels, "fitLabels");
 function useRulerFit(rulerRef, labelAttr) {
-  const fit = React49.useCallback(() => {
+  const fit = React53.useCallback(() => {
     const root = rulerRef.current;
     if (!root) return;
     const els = [...root.querySelectorAll(`[${labelAttr}]`)];
@@ -39127,10 +39152,10 @@ function useRulerFit(rulerRef, labelAttr) {
 }
 __name(useRulerFit, "useRulerFit");
 function useLayoutFollow(ref, run) {
-  const runRef = React49.useRef(run);
+  const runRef = React53.useRef(run);
   runRef.current = run;
-  const observed = React49.useRef(null);
-  React49.useLayoutEffect(() => {
+  const observed = React53.useRef(null);
+  React53.useLayoutEffect(() => {
     runRef.current();
     const el = ref.current;
     if (observed.current?.el === el) return;
@@ -39141,7 +39166,7 @@ function useLayoutFollow(ref, run) {
     ro.observe(el);
     observed.current = { el, ro };
   });
-  React49.useEffect(() => () => observed.current?.ro.disconnect(), []);
+  React53.useEffect(() => () => observed.current?.ro.disconnect(), []);
 }
 __name(useLayoutFollow, "useLayoutFollow");
 
@@ -39153,7 +39178,28 @@ function barColumns(m, b) {
   return { start: b * (m.steps / bars), per: m.steps / bars };
 }
 __name(barColumns, "barColumns");
-var num = /* @__PURE__ */ __name((x) => x.n / x.d, "num");
+var gcd4 = /* @__PURE__ */ __name((a, b) => b === 0 ? Math.abs(a) : gcd4(b, a % b), "gcd");
+function frac(n, d) {
+  const g = gcd4(n, d) || 1;
+  const s = d < 0 ? -1 : 1;
+  return { n: s * n / g, d: s * d / g };
+}
+__name(frac, "frac");
+var cmp = /* @__PURE__ */ __name((a, b) => a.n * b.d - b.n * a.d, "cmp");
+var sub = /* @__PURE__ */ __name((a, b) => frac(a.n * b.d - b.n * a.d, a.d * b.d), "sub");
+var add = /* @__PURE__ */ __name((a, b) => frac(a.n * b.d + b.n * a.d, a.d * b.d), "add");
+var scale = /* @__PURE__ */ __name((a, k, n) => frac(a.n * k, a.d * n), "scale");
+var fmax = /* @__PURE__ */ __name((a, b) => cmp(a, b) >= 0 ? a : b, "fmax");
+var fmin = /* @__PURE__ */ __name((a, b) => cmp(a, b) <= 0 ? a : b, "fmin");
+var fracNum = /* @__PURE__ */ __name((x) => x.n / x.d, "fracNum");
+var ZERO2 = frac(0, 1);
+var ONE2 = frac(1, 1);
+function columnOf(f, start, per) {
+  const c = f.n * per / f.d;
+  const r = Math.round(c);
+  return Math.abs(c - r) > 1e-9 ? null : start + r;
+}
+__name(columnOf, "columnOf");
 function innerRow(s, sound) {
   if (!s.rows || s.oneOf) return null;
   if (s.rows.length === 1) return s.rows[0];
@@ -39161,36 +39207,36 @@ function innerRow(s, sound) {
   return mine.length === 1 ? mine[0] : null;
 }
 __name(innerRow, "innerRow");
-var OFF_GRID = new Error("off-grid");
-function nodesOf(row, within2, depth, sound, col) {
+function nodesOf(row, within2, depth, sound) {
   const out = [];
   for (const s of row.steps) {
     for (const slot of s.slots) {
-      const b = Math.max(num(slot.begin), 0);
-      const e = Math.min(num(slot.end), 1);
-      if (b < within2.b - 1e-9 || b >= within2.e - 1e-9) continue;
+      const b = fmax(slot.begin, ZERO2);
+      const e = fmin(slot.end, ONE2);
+      if (cmp(b, within2.b) < 0 || cmp(b, within2.e) >= 0) continue;
       const parts = s.rows === null ? Number.isInteger(s.weight) && s.weight > 1 ? s.weight : 1 : s.reps;
       const n = slot.fromBefore || slot.pastEnd ? 1 : parts;
-      for (let k = 0; k < n; k++) out.push(stepNode(s, b + (e - b) * k / n, b + (e - b) * (k + 1) / n, depth, sound, col));
+      const len = sub(e, b);
+      for (let k = 0; k < n; k++) out.push(stepNode(s, add(b, scale(len, k, n)), add(b, scale(len, k + 1, n)), depth, sound));
     }
   }
-  return out.sort((x, y) => x.from - y.from);
+  return out.sort((x, y) => cmp(x.begin, y.begin));
 }
 __name(nodesOf, "nodesOf");
-function stepNode(s, b, e, depth, sound, col) {
-  const node = { from: col(b), to: col(e), depth, children: null };
+function stepNode(s, b, e, depth, sound) {
+  const node = { begin: b, end: e, depth, children: null };
   const inner = innerRow(s, sound);
   if (!inner) return node;
   if (s.copies) {
-    const copies = s.copies.filter((c) => num(c.begin) >= b - 1e-9 && num(c.begin) < e - 1e-9).map((c) => {
-      const cb = Math.max(num(c.begin), 0);
-      const ce = Math.min(num(c.end), 1);
-      return { from: col(cb), to: col(ce), depth: depth + 1, children: nodesOf(inner, { b: cb, e: ce }, depth + 2, sound, col) };
+    const copies = s.copies.filter((c) => cmp(c.begin, b) >= 0 && cmp(c.begin, e) < 0).map((c) => {
+      const cb = fmax(c.begin, ZERO2);
+      const ce = fmin(c.end, ONE2);
+      return { begin: cb, end: ce, depth: depth + 1, children: nodesOf(inner, { b: cb, e: ce }, depth + 2, sound) };
     });
     node.children = copies.length > 1 ? copies : copies.length === 1 ? copies[0].children.map((n) => lift(n)) : null;
     return node;
   }
-  node.children = nodesOf(inner, { b, e }, depth + 1, sound, col);
+  node.children = nodesOf(inner, { b, e }, depth + 1, sound);
   return node;
 }
 __name(stepNode, "stepNode");
@@ -39201,24 +39247,62 @@ __name(lift, "lift");
 function tiles(nodes, from, to) {
   let at = from;
   for (const n of nodes) {
-    if (n.from !== at || n.to <= n.from) return false;
+    if (cmp(n.begin, at) !== 0 || cmp(n.end, n.begin) <= 0) return false;
     while (n.children && n.children.length === 1) {
       const only = n.children[0];
-      if (only.from !== n.from || only.to !== n.to) return false;
+      if (cmp(only.begin, n.begin) !== 0 || cmp(only.end, n.end) !== 0) return false;
       n.children = only.children ? only.children.map(lift) : null;
     }
-    if (n.children && !tiles(n.children, n.from, n.to)) return false;
-    at = n.to;
+    if (n.children && !tiles(n.children, n.begin, n.end)) return false;
+    at = n.end;
   }
-  return at === to;
+  return cmp(at, to) === 0;
 }
 __name(tiles, "tiles");
-function treeStarts(row, sound, col, out) {
+function edges(nodes, out = []) {
+  for (const n of nodes) {
+    out.push(n.begin, n.end);
+    if (n.children) edges(n.children, out);
+  }
+  return out;
+}
+__name(edges, "edges");
+function writtenSteps(row, sound) {
+  return nodesOf(row, { b: ZERO2, e: ONE2 }, 1, sound);
+}
+__name(writtenSteps, "writtenSteps");
+function settle(nodes) {
+  if (!tiles(nodes, ZERO2, ONE2)) return null;
+  while (nodes.length === 1 && nodes[0].children) nodes = nodes[0].children.map(lift);
+  return nodes;
+}
+__name(settle, "settle");
+function barStepsOrWhy(row, sound) {
+  return settle(writtenSteps(row, sound)) ?? "does-not-tile";
+}
+__name(barStepsOrWhy, "barStepsOrWhy");
+function onColumns(nodes, start, per) {
+  const out = [];
+  for (const n of nodes) {
+    const from = columnOf(n.begin, start, per);
+    const to = columnOf(n.end, start, per);
+    if (from === null || to === null) return null;
+    let children = null;
+    if (n.children) {
+      children = onColumns(n.children, start, per);
+      if (!children) return null;
+    }
+    out.push({ from, to, depth: n.depth, children });
+  }
+  return out;
+}
+__name(onColumns, "onColumns");
+function treeStarts(row, sound, out) {
   for (const s of row.steps) {
     if (s.name === sound) {
-      for (const h of s.hits) if (num(h.begin) >= 0 && num(h.begin) < 1) out.add(col(num(h.begin)));
+      for (const h of s.hits) if (cmp(h.begin, ZERO2) >= 0 && cmp(h.begin, ONE2) < 0) out.push(h.begin);
     }
-    for (const r of s.rows ?? []) treeStarts(r, sound, col, out);
+    for (const r of s.rows ?? []) treeStarts(r, sound, out);
   }
 }
 __name(treeStarts, "treeStarts");
@@ -39232,30 +39316,28 @@ function laneStepsOrWhy(model, trees, lane) {
   if (trees.length !== bars) return "bar-count";
   const l = model.lanes[lane];
   const out = [];
-  try {
-    for (let b = 0; b < bars; b++) {
-      const d = laneDivisions(trees[b], l);
-      if (!d.ok) return d.why;
-      const { start, per } = barColumns(model, b);
-      const col = /* @__PURE__ */ __name((f) => {
-        const c = f * per;
-        const r = Math.round(c);
-        if (Math.abs(c - r) > 1e-6) throw OFF_GRID;
-        return start + r;
-      }, "col");
-      let nodes = nodesOf(d.row, { b: 0, e: 1 }, 1, l.sound, col);
-      if (!tiles(nodes, start, start + per)) return "does-not-tile";
-      while (nodes.length === 1 && nodes[0].children) nodes = nodes[0].children.map(lift);
-      const starts = /* @__PURE__ */ new Set();
-      treeStarts(d.row, l.sound, col, starts);
-      for (let c = start; c < start + per; c++) {
-        if (!!l.cells[c] !== starts.has(c)) return "cells-differ";
-      }
-      out.push(...nodes);
+  for (let b = 0; b < bars; b++) {
+    const d = laneDivisions(trees[b], l);
+    if (!d.ok) return d.why;
+    const { start, per } = barColumns(model, b);
+    const written = writtenSteps(d.row, l.sound);
+    if (edges(written).some((f) => columnOf(f, start, per) === null)) return "off-grid";
+    const steps = settle(written);
+    if (!steps) return "does-not-tile";
+    const nodes = onColumns(steps, start, per);
+    if (!nodes) return "off-grid";
+    const begins = [];
+    treeStarts(d.row, l.sound, begins);
+    const starts = /* @__PURE__ */ new Set();
+    for (const f of begins) {
+      const c = columnOf(f, start, per);
+      if (c === null) return "off-grid";
+      starts.add(c);
     }
-  } catch (e) {
-    if (e === OFF_GRID) return "off-grid";
-    throw e;
+    for (let c = start; c < start + per; c++) {
+      if (!!l.cells[c] !== starts.has(c)) return "cells-differ";
+    }
+    out.push(...nodes);
   }
   return out;
 }
@@ -39264,34 +39346,27 @@ function partStepsOrWhy(model, trees, part) {
   const bars = model.bars ?? 1;
   if (trees.length !== bars) return "bar-count";
   const out = [];
-  try {
-    for (let b = 0; b < bars; b++) {
-      const t = trees[b];
-      if (!t.ok) return t.why;
-      const row = t.parts[part];
-      if (!row) return "lane-part-missing";
-      const { start, per } = barColumns(model, b);
-      const col = /* @__PURE__ */ __name((f) => {
-        const c = f * per;
-        const r = Math.round(c);
-        if (Math.abs(c - r) > 1e-6) throw OFF_GRID;
-        return start + r;
-      }, "col");
-      let nodes = nodesOf(row, { b: 0, e: 1 }, 1, "", col);
-      if (!tiles(nodes, start, start + per)) return "does-not-tile";
-      while (nodes.length === 1 && nodes[0].children) nodes = nodes[0].children.map(lift);
-      const every = /* @__PURE__ */ __name((r) => {
-        for (const s of r.steps) {
-          for (const h of s.hits) if (num(h.begin) >= 0 && num(h.begin) < 1) col(num(h.begin));
-          for (const k of s.rows ?? []) every(k);
-        }
-      }, "every");
-      every(row);
-      out.push(...nodes);
-    }
-  } catch (e) {
-    if (e === OFF_GRID) return "off-grid";
-    throw e;
+  for (let b = 0; b < bars; b++) {
+    const t = trees[b];
+    if (!t.ok) return t.why;
+    const row = t.parts[part];
+    if (!row) return "lane-part-missing";
+    const { start, per } = barColumns(model, b);
+    const written = writtenSteps(row, "");
+    if (edges(written).some((f) => columnOf(f, start, per) === null)) return "off-grid";
+    const steps = settle(written);
+    if (!steps) return "does-not-tile";
+    const nodes = onColumns(steps, start, per);
+    if (!nodes) return "off-grid";
+    const every = /* @__PURE__ */ __name((r) => {
+      for (const s of r.steps) {
+        for (const h of s.hits) if (cmp(h.begin, ZERO2) >= 0 && cmp(h.begin, ONE2) < 0 && columnOf(h.begin, start, per) === null) return false;
+        for (const k of s.rows ?? []) if (!every(k)) return false;
+      }
+      return true;
+    }, "every");
+    if (!every(row)) return "off-grid";
+    out.push(...nodes);
   }
   return out;
 }
@@ -39383,11 +39458,11 @@ __name(drawnSteps, "drawnSteps");
 var ZOOM_LEVELS = [1, 1.5, 2, 3, 4, 6, 8, 12, 16];
 var CHROME_PX = 16 + 16 + 28 + 104;
 function useGridZoom(scrollRef, enabled, mounted2, trackRef) {
-  const [index, setIndex] = React49.useState(0);
-  const [avail, setAvail] = React49.useState(null);
-  const indexRef = React49.useRef(index);
+  const [index, setIndex] = React53.useState(0);
+  const [avail, setAvail] = React53.useState(null);
+  const indexRef = React53.useRef(index);
   indexRef.current = index;
-  React49.useLayoutEffect(() => {
+  React53.useLayoutEffect(() => {
     const el = trackRef?.current ?? scrollRef.current;
     if (!el || !enabled) return;
     const measure = /* @__PURE__ */ __name(() => {
@@ -39399,7 +39474,7 @@ function useGridZoom(scrollRef, enabled, mounted2, trackRef) {
     ro.observe(el);
     return () => ro.disconnect();
   }, [scrollRef, trackRef, enabled, mounted2]);
-  const go = React49.useCallback(
+  const go = React53.useCallback(
     (next, x) => {
       const el = scrollRef.current;
       const from = ZOOM_LEVELS[indexRef.current];
@@ -39414,7 +39489,7 @@ function useGridZoom(scrollRef, enabled, mounted2, trackRef) {
     },
     [scrollRef]
   );
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     const el = scrollRef.current;
     if (!el || !enabled) return;
     const onWheel = /* @__PURE__ */ __name((e) => {
@@ -39460,6 +39535,1346 @@ function GridZoomControl({ zoom }) {
   ] });
 }
 __name(GridZoomControl, "GridZoomControl");
+function perText(fn, keep = 16) {
+  const kept = /* @__PURE__ */ new Map();
+  const f = /* @__PURE__ */ __name(((text) => {
+    if (kept.has(text)) return kept.get(text);
+    const out = fn(text);
+    kept.set(text, out);
+    if (kept.size > keep) kept.delete(kept.keys().next().value);
+    return out;
+  }), "f");
+  f.cached = (text) => kept.get(text);
+  return f;
+}
+__name(perText, "perText");
+var DEFER_MS = 250;
+function useDeferredPerText(text, f, delayMs = DEFER_MS) {
+  const [last, setLast] = React53.useState(null);
+  const kept = text === null ? void 0 : f.cached(text);
+  React53.useEffect(() => {
+    if (text === null || kept !== void 0) return;
+    const id = setTimeout(() => setLast({ text, value: f(text) }), delayMs);
+    return () => clearTimeout(id);
+  }, [text, kept, f, delayMs]);
+  if (text === null) return null;
+  if (kept !== void 0) return kept;
+  return last?.value ?? null;
+}
+__name(useDeferredPerText, "useDeferredPerText");
+
+// src/visualEdit/panels/treeGrid.ts
+var TREE_MAX_BARS = 12;
+var PROBE_BARS = 2 * TREE_MAX_BARS;
+function period(trees) {
+  const keys = trees.map((t) => JSON.stringify(t));
+  for (let p = 1; p <= TREE_MAX_BARS && 2 * p <= keys.length; p++) {
+    let ok = true;
+    for (let k = 0; k + p < keys.length && ok; k++) if (keys[k] !== keys[k + p]) ok = false;
+    if (ok) return p;
+  }
+  return null;
+}
+__name(period, "period");
+function repeatingBars(probed) {
+  for (const t of probed) if (!t.ok) return { ok: false, why: t.why };
+  const bars = period(probed);
+  if (bars === null) return { ok: false, why: "does-not-repeat" };
+  const trees = probed.slice(0, bars);
+  if (trees.some((t) => t.oneOf && t.parts.length > 1)) return { ok: false, why: "parts-are-a-choice" };
+  return { ok: true, bars, trees };
+}
+__name(repeatingBars, "repeatingBars");
+function probeTrees(mini) {
+  const p = chunkPeriod(mini, TREE_MAX_BARS);
+  if (p === null) return chunkDivisions(mini, PROBE_BARS);
+  const first = chunkDivisions(mini, 2 * p);
+  const rep = repeatingBars(first);
+  if (!rep.ok && rep.why === "does-not-repeat") return chunkDivisions(mini, PROBE_BARS);
+  return first;
+}
+__name(probeTrees, "probeTrees");
+function eachNote(row, visit) {
+  for (const s of row.steps) {
+    if (s.hits.length > 0) visit(s.name, s.hits);
+    for (const r of s.rows ?? []) eachNote(r, visit);
+  }
+}
+__name(eachNote, "eachNote");
+function treeGridOf(mini) {
+  return treeGridFrom(probeTrees(mini));
+}
+__name(treeGridOf, "treeGridOf");
+function treeGridFrom(probed) {
+  const rep = repeatingBars(probed);
+  if (!rep.ok) return rep;
+  const { bars, trees } = rep;
+  const rows = [];
+  const parts = trees[0].parts.length;
+  let played = 0;
+  for (let p = 0; p < parts; p++) {
+    for (const sound of trees[0].parts[p].sounds) {
+      const hits = [];
+      let why = null;
+      const perBar2 = [];
+      trees.forEach((t, b) => {
+        const row = t.parts[p];
+        eachNote(row, (name, hs) => {
+          if (name === sound) for (const h of hs) hits.push({ begin: b + fracNum(h.begin), end: b + fracNum(h.end) });
+        });
+        const steps = barStepsOrWhy(row, sound);
+        if (typeof steps === "string") why = why ?? steps;
+        else perBar2.push(steps);
+      });
+      hits.sort((x, y) => x.begin - y.begin);
+      played += hits.length;
+      rows.push({ sound, part: p, bars: why ? null : perBar2, why, hits });
+    }
+  }
+  for (const t of trees) {
+    for (const part of t.parts) {
+      let unnamed = false;
+      eachNote(part, (name) => {
+        if (name === null) unnamed = true;
+      });
+      if (unnamed) return { ok: false, why: "unnamed-hit" };
+    }
+  }
+  if (played === 0) return { ok: false, why: "no-hits" };
+  return { ok: true, bars, rows };
+}
+__name(treeGridFrom, "treeGridFrom");
+var NOT_A_GRID = /* @__PURE__ */ new Set(["wrong-surface", "no-note-content", "mixed-pitch-domain", "escaped-source"]);
+var lookOnlyTreeGrid = perText(lookOnlyTreeGridUncached);
+function lookOnlyTreeGridUncached(mini) {
+  const g = parseStepGrid(mini);
+  if (g.ok || g.lookOnly) return null;
+  if (NOT_A_GRID.has(g.gate)) return null;
+  const t = treeGridOf(mini);
+  if (!t.ok) return { why: t.why };
+  return { grid: t, reason: g.reason };
+}
+__name(lookOnlyTreeGridUncached, "lookOnlyTreeGridUncached");
+function openFracAt(bars, barPx, openPx = OPEN_PX) {
+  return bars.map((steps, b) => {
+    const at = /* @__PURE__ */ __name((n) => {
+      const open = !!n.children && n.children.every((k) => (fracNum(k.end) - fracNum(k.begin)) * barPx >= openPx - 1e-6);
+      return {
+        begin: b + fracNum(n.begin),
+        end: b + fracNum(n.end),
+        depth: n.depth,
+        open,
+        children: n.children && open ? n.children.map(at) : null
+      };
+    }, "at");
+    return steps.map(at);
+  });
+}
+__name(openFracAt, "openFracAt");
+function leaves(n, b, out) {
+  for (const k of n.children ?? []) {
+    if (k.children) leaves(k, b, out);
+    else out.push({ begin: b + fracNum(k.begin), end: b + fracNum(k.end), depth: k.depth });
+  }
+}
+__name(leaves, "leaves");
+function drawTreeRow(bars, barPx, openPx = OPEN_PX) {
+  const out = { steps: [], inner: [], lines: [] };
+  const lines = /* @__PURE__ */ new Map();
+  const drawn = openFracAt(bars, barPx, openPx);
+  const walk5 = /* @__PURE__ */ __name((d, n, b) => {
+    if (d.begin !== b && (!lines.has(d.begin) || lines.get(d.begin) > d.depth)) lines.set(d.begin, d.depth);
+    if (d.open && d.children) {
+      d.children.forEach((c, i) => walk5(c, n.children[i], b));
+      return;
+    }
+    out.steps.push({ begin: d.begin, end: d.end, depth: d.depth });
+    if (n.children) leaves(n, b, out.inner);
+  }, "walk");
+  drawn.forEach((row, b) => row.forEach((d, i) => walk5(d, bars[b][i], b)));
+  out.lines = [...lines].map(([at, depth]) => ({ at, depth })).sort((x, y) => x.at - y.at);
+  return out;
+}
+__name(drawTreeRow, "drawTreeRow");
+function treeRuler(bars, barPx, openPx = OPEN_PX) {
+  const out = /* @__PURE__ */ new Map();
+  const drawn = openFracAt(bars, barPx, openPx);
+  const name = /* @__PURE__ */ __name((nodes, prefix) => {
+    nodes.forEach((n, i) => {
+      const label = `${prefix}.${i + 1}`;
+      if (!out.has(n.begin)) out.set(n.begin, label);
+      if (n.open && n.children) name(n.children, label);
+    });
+  }, "name");
+  drawn.forEach((row, b) => {
+    out.set(b, String(b + 1));
+    row.forEach((n, i) => {
+      const label = `${b + 1}.${i + 1}`;
+      if (i > 0) out.set(n.begin, label);
+      if (n.open && n.children) name(n.children, label);
+    });
+  });
+  return [...out].map(([at, label]) => ({ at, label })).sort((x, y) => x.at - y.at);
+}
+__name(treeRuler, "treeRuler");
+function treePlayhead(cycle, bars) {
+  if (cycle === null || !Number.isFinite(cycle) || bars <= 0) return null;
+  return (cycle % bars + bars) % bars;
+}
+__name(treePlayhead, "treePlayhead");
+function emptyMasterChunk(doc) {
+  const pos = doc.length;
+  return {
+    statementRange: [pos, pos],
+    statementText: "",
+    exprRange: [pos, pos],
+    label: null,
+    headFn: null,
+    miniRange: null,
+    miniString: null,
+    miniVia: null,
+    miniAnchor: null,
+    chain: [{ name: "x", args: [], range: [pos, pos] }],
+    type: "knobs",
+    nested: false
+  };
+}
+__name(emptyMasterChunk, "emptyMasterChunk");
+function deriveMasterChunk(doc) {
+  const line = detectMasterAudioAll(doc);
+  return line ? adaptMasterChunk(doc, line) : emptyMasterChunk(doc);
+}
+__name(deriveMasterChunk, "deriveMasterChunk");
+var EMPTY_DERIVED = {
+  strips: [],
+  chunks: [],
+  masterGain: { value: 1, foreign: false },
+  masterMuted: false,
+  masterChunk: emptyMasterChunk("")
+};
+function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
+  try {
+    const pos = model.getPositionAt?.(trackOffset);
+    if (!pos) return;
+    const changed = lastJumpRef.current !== trackOffset;
+    const focuses = revealTakesFocus();
+    if (changed || focuses && !editor.hasTextFocus?.()) {
+      editor.setPosition?.(pos);
+      editor.revealLineInCenter?.(pos.lineNumber);
+      if (focuses) editor.focus?.();
+    }
+    lastJumpRef.current = trackOffset;
+  } catch {
+  }
+}
+__name(jumpCursorToTrack, "jumpCursorToTrack");
+function useMixerModel() {
+  const { editor, editorRef, writerRef: writebackRef } = useActiveWriter();
+  const [derived, setDerived] = React53.useState(EMPTY_DERIVED);
+  const lastJumpRef = React53.useRef(null);
+  React53.useEffect(() => {
+    lastJumpRef.current = null;
+  }, [editor]);
+  React53.useEffect(() => {
+    if (!editor) {
+      setDerived(EMPTY_DERIVED);
+      return;
+    }
+    const rederive = /* @__PURE__ */ __name(() => {
+      const model2 = editor.getModel?.();
+      if (!model2) {
+        setDerived(EMPTY_DERIVED);
+        return;
+      }
+      const value = model2.getValue();
+      const allChunks = detectAllChunks(value);
+      const strips = buildStripModels(allChunks, value);
+      setDerived({
+        strips,
+        chunks: strips.map((s) => allChunks[s.index]),
+        masterGain: readMasterGain(value),
+        masterMuted: readMasterMute(value),
+        masterChunk: deriveMasterChunk(value)
+      });
+    }, "rederive");
+    rederive();
+    const model = editor.getModel?.();
+    const sub2 = model?.onDidChangeContent?.(rederive);
+    return () => sub2?.dispose?.();
+  }, [editor]);
+  const applyToStrip = React53.useCallback(
+    (id, mutate) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      if (!ed || !wb) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      const doc = model.getValue();
+      const chunks = detectAllChunks(doc);
+      const strip = buildStripModels(chunks, doc).find((s) => s.id === id);
+      if (!strip) return;
+      const fresh = chunks[strip.index];
+      const trackOffset = fresh.statementRange[0];
+      mutate(fresh, wb);
+      jumpCursorToTrack(ed, model, trackOffset, lastJumpRef);
+    },
+    []
+  );
+  const applyToStripAt = React53.useCallback(
+    (anchor, mutate) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      if (!ed || !wb) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      const doc = model.getValue();
+      const fresh = detectAllChunks(doc).find((c) => c.statementRange[0] === anchor);
+      if (!fresh) return;
+      mutate(fresh, wb, doc);
+      jumpCursorToTrack(ed, model, anchor, lastJumpRef);
+    },
+    []
+  );
+  const applyToMaster = React53.useCallback(
+    (mutate) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      if (!ed || !wb) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      mutate(model.getValue(), wb);
+    },
+    []
+  );
+  const applyToMasterChunk = React53.useCallback(
+    (mutate) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      if (!ed || !wb) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      const doc = model.getValue();
+      const line = detectMasterAudioAll(doc);
+      if (line) {
+        mutate(adaptMasterChunk(doc, line), wb);
+        return;
+      }
+      const base = masterAudioLineEdit(doc);
+      if (!base) return;
+      openGesture(wb);
+      commit(wb, base, "mixer");
+      const next = model.getValue();
+      const fresh = detectMasterAudioAll(next);
+      if (fresh) mutate(adaptMasterChunk(next, fresh), wb);
+      closeGesture(wb);
+    },
+    []
+  );
+  const beginGesture = React53.useCallback(() => openGesture(writebackRef.current), [writebackRef]);
+  const endGesture = React53.useCallback(() => closeGesture(writebackRef.current), [writebackRef]);
+  const [selectedId, setSelectedId] = React53.useState(null);
+  const stripsRef = React53.useRef(EMPTY_DERIVED.strips);
+  stripsRef.current = derived.strips;
+  React53.useEffect(() => {
+    if (!editor) {
+      setSelectedId(null);
+      return;
+    }
+    const model = editor.getModel?.();
+    if (!model) {
+      setSelectedId(null);
+      return;
+    }
+    const recompute = /* @__PURE__ */ __name(() => {
+      try {
+        const pos = editor.getPosition?.();
+        if (!pos) {
+          setSelectedId(null);
+          return;
+        }
+        const off = model.getOffsetAt(pos);
+        const sel = stripsRef.current.find(
+          (s) => off >= s.statementRange[0] && off <= s.statementRange[1]
+        )?.id ?? null;
+        setSelectedId((prev) => prev === sel ? prev : sel);
+      } catch {
+      }
+    }, "recompute");
+    recompute();
+    const sub2 = editor.onDidChangeCursorPosition?.(recompute);
+    return () => sub2?.dispose?.();
+  }, [editor, derived.strips]);
+  const selectTrack = React53.useCallback((id) => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const model = ed.getModel?.();
+    if (!model) return;
+    const strip = buildStripModels(detectAllChunks(model.getValue()), model.getValue()).find((s) => s.id === id);
+    if (!strip) return;
+    jumpCursorToTrack(ed, model, strip.statementRange[0], lastJumpRef);
+  }, []);
+  return {
+    strips: derived.strips,
+    chunks: derived.chunks,
+    applyToStrip,
+    applyToStripAt,
+    masterGain: derived.masterGain,
+    masterMuted: derived.masterMuted,
+    masterChunk: derived.masterChunk,
+    applyToMaster,
+    applyToMasterChunk,
+    beginGesture,
+    endGesture,
+    selectedId,
+    selectTrack
+  };
+}
+__name(useMixerModel, "useMixerModel");
+function StripColorPopover({
+  anchorRect,
+  currentColor,
+  onPick,
+  onReset,
+  onClose
+}) {
+  const ref = React53.useRef(null);
+  React53.useEffect(() => {
+    const onDown = /* @__PURE__ */ __name((e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    }, "onDown");
+    const onKey = /* @__PURE__ */ __name((e) => {
+      if (e.key === "Escape") onClose();
+    }, "onKey");
+    const onReflow = /* @__PURE__ */ __name(() => onClose(), "onReflow");
+    const t = setTimeout(() => document.addEventListener("mousedown", onDown), 0);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onReflow, true);
+    window.addEventListener("resize", onReflow);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onReflow, true);
+      window.removeEventListener("resize", onReflow);
+    };
+  }, [onClose]);
+  const POPOVER_WIDTH2 = 8 * 16 + 7 * 4 + 12;
+  const left = typeof window !== "undefined" ? Math.max(8, Math.min(window.innerWidth - 8 - POPOVER_WIDTH2, anchorRect.left)) : anchorRect.left;
+  const top = anchorRect.bottom + 4;
+  const customColor = currentColor && !TRACK_PALETTE_32.includes(currentColor) ? currentColor : "#888888";
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    /* @__PURE__ */ jsxs(
+      "div",
+      {
+        ref,
+        "data-mixer-strip-color-popover": true,
+        role: "dialog",
+        "aria-label": "Pick track color",
+        style: {
+          position: "fixed",
+          top,
+          left,
+          zIndex: 1e3,
+          background: "var(--background-elevated, #1a1a1a)",
+          border: "1px solid var(--border, #333)",
+          padding: 6,
+          borderRadius: 4,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)"
+        },
+        children: [
+          /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(8, 16px)", gridGap: 4 }, children: TRACK_PALETTE_32.map((color) => {
+            const isCurrent = color === currentColor;
+            return /* @__PURE__ */ jsx(
+              "button",
+              {
+                type: "button",
+                "data-mixer-strip-swatch": true,
+                "data-color": color,
+                "aria-label": `Color ${color}`,
+                "aria-current": isCurrent ? "true" : void 0,
+                onClick: () => {
+                  onPick(color);
+                  onClose();
+                },
+                style: {
+                  width: 16,
+                  height: 16,
+                  padding: 0,
+                  border: isCurrent ? "2px solid white" : "1px solid rgba(255,255,255,0.18)",
+                  background: color,
+                  cursor: "pointer",
+                  borderRadius: 3,
+                  boxSizing: "border-box"
+                }
+              },
+              color
+            );
+          }) }),
+          /* @__PURE__ */ jsxs(
+            "div",
+            {
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                paddingTop: 4,
+                borderTop: "1px solid var(--border, rgba(255,255,255,0.12))",
+                fontSize: 11,
+                color: "var(--foreground-muted, rgba(255,255,255,0.55))"
+              },
+              children: [
+                /* @__PURE__ */ jsx("label", { htmlFor: "mixer-strip-custom-color", style: { flex: 1, cursor: "pointer" }, children: "Custom" }),
+                onReset && /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "data-mixer-strip-color-reset": true,
+                    "aria-label": "Reset to default colour",
+                    title: "Reset to the default palette colour",
+                    onClick: () => {
+                      onReset();
+                      onClose();
+                    },
+                    style: {
+                      padding: "1px 6px",
+                      fontSize: 10,
+                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
+                      borderRadius: 3,
+                      background: "transparent",
+                      color: "inherit",
+                      cursor: "pointer"
+                    },
+                    children: "Default"
+                  }
+                ),
+                /* @__PURE__ */ jsx(
+                  "input",
+                  {
+                    id: "mixer-strip-custom-color",
+                    type: "color",
+                    "data-mixer-strip-custom-color": true,
+                    "aria-label": "Custom track color",
+                    defaultValue: customColor,
+                    onChange: (e) => onPick(e.currentTarget.value),
+                    style: {
+                      width: 28,
+                      height: 18,
+                      padding: 0,
+                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
+                      borderRadius: 3,
+                      background: "transparent",
+                      cursor: "pointer"
+                    }
+                  }
+                )
+              ]
+            }
+          )
+        ]
+      }
+    ),
+    document.body
+  );
+}
+__name(StripColorPopover, "StripColorPopover");
+function PatternTrackChip() {
+  const { chunk } = useActiveChunk();
+  const { strips, applyToStripAt } = useMixerModel();
+  const [fileId, setFileId] = React53.useState(() => getActiveFileId());
+  React53.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const trackMeta = useTrackMetaMap(fileId ?? void 0);
+  const [colorAnchor, setColorAnchor] = React53.useState(null);
+  const [renaming, setRenaming] = React53.useState(false);
+  const settledRef = React53.useRef(false);
+  const openRename = /* @__PURE__ */ __name(() => {
+    settledRef.current = false;
+    setRenaming(true);
+  }, "openRename");
+  const cancelRename = /* @__PURE__ */ __name(() => {
+    settledRef.current = true;
+    setRenaming(false);
+  }, "cancelRename");
+  const anchor = chunk ? chunk.statementRange[0] : null;
+  const strip = anchor != null ? stripContainingOffset(strips, anchor) : void 0;
+  if (!strip) return null;
+  const customColor = trackMeta.get(strip.name)?.color;
+  const dotColor = trackIdentity(strip.name, customColor).color;
+  const bareLabel = strip.label ?? "";
+  const renameSeed = bareLabel !== "" && bareLabel !== "$" ? bareLabel : "";
+  const commitRename = /* @__PURE__ */ __name((raw) => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    setRenaming(false);
+    const v = raw.trim();
+    if (!v) return;
+    applyToStripAt(strip.statementRange[0], (fresh, wb, doc) => {
+      const taken = new Set(otherTrackNames(doc, fresh.statementRange[0]));
+      if (commit(wb, renameEdit(fresh, v, taken), "rename") !== "written") return;
+      if (fileId) {
+        const prevColor = getTrackMeta(fileId, strip.name).color;
+        if (prevColor && strip.name !== v) {
+          setTrackMeta(fileId, v, { color: prevColor });
+          setTrackMeta(fileId, strip.name, { color: void 0 });
+        }
+      }
+    });
+  }, "commitRename");
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-pattern-track-chip": true,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        minWidth: 0,
+        padding: "3px 8px",
+        background: "var(--surface, #14142a)",
+        border: "1px solid var(--border, #2a2a4a)",
+        borderRadius: "0 0 6px 0",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      },
+      children: [
+        fileId ? /* @__PURE__ */ jsx(
+          "button",
+          {
+            type: "button",
+            "data-pattern-track-dot": true,
+            "aria-label": `Change colour of ${strip.shownName}`,
+            title: `${strip.shownName} \u2014 click to change colour`,
+            onClick: (e) => setColorAnchor(e.currentTarget.getBoundingClientRect()),
+            style: {
+              width: 9,
+              height: 9,
+              padding: 0,
+              border: "none",
+              borderRadius: "50%",
+              background: dotColor,
+              flexShrink: 0,
+              cursor: "pointer"
+            }
+          }
+        ) : /* @__PURE__ */ jsx(
+          "span",
+          {
+            "data-pattern-track-dot": true,
+            style: { width: 9, height: 9, borderRadius: "50%", background: dotColor, flexShrink: 0 }
+          }
+        ),
+        colorAnchor && fileId && /* @__PURE__ */ jsx(
+          StripColorPopover,
+          {
+            anchorRect: colorAnchor,
+            currentColor: dotColor,
+            onPick: (color) => setTrackMeta(fileId, strip.name, { color }),
+            onReset: () => setTrackMeta(fileId, strip.name, { color: void 0 }),
+            onClose: () => setColorAnchor(null)
+          }
+        ),
+        renaming ? /* @__PURE__ */ jsx(
+          "input",
+          {
+            "data-pattern-track-rename": true,
+            autoFocus: true,
+            defaultValue: renameSeed,
+            placeholder: "name this track",
+            spellCheck: false,
+            onFocus: (e) => e.currentTarget.select(),
+            onKeyDown: (e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitRename(e.currentTarget.value);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelRename();
+              }
+              e.stopPropagation();
+            },
+            onBlur: (e) => commitRename(e.currentTarget.value),
+            style: {
+              minWidth: 0,
+              width: 96,
+              fontSize: 11,
+              fontWeight: 600,
+              fontFamily: "inherit",
+              color: "var(--foreground, #e6e6ea)",
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.25)",
+              borderRadius: 3,
+              padding: "0 3px",
+              outline: "none"
+            }
+          }
+        ) : /* @__PURE__ */ jsx(
+          "span",
+          {
+            "data-pattern-track-name": true,
+            title: `${strip.shownName} \u2014 double-click to rename`,
+            onDoubleClick: openRename,
+            style: {
+              fontSize: 11,
+              fontWeight: 600,
+              color: "var(--foreground, #e6e6ea)",
+              maxWidth: 160,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              cursor: "text"
+            },
+            children: strip.shownName
+          }
+        )
+      ]
+    }
+  );
+}
+__name(PatternTrackChip, "PatternTrackChip");
+var PHONE_STEP_MIN = 40;
+var PHONE_RULER_HEIGHT = 44;
+function usePhoneGrid() {
+  const layout = usePhoneLayout();
+  return { phone: layout !== "none", upright: layout === "upright" };
+}
+__name(usePhoneGrid, "usePhoneGrid");
+var ALL_IN_VIEW = { start: 0, end: 1, more: false };
+function gridInView(scrollLeft, clientWidth, scrollWidth) {
+  if (!(scrollWidth > 0) || !(clientWidth > 0) || scrollWidth <= clientWidth + 1) return ALL_IN_VIEW;
+  const start = Math.max(0, Math.min(1, scrollLeft / scrollWidth));
+  const end = Math.max(start, Math.min(1, (scrollLeft + clientWidth) / scrollWidth));
+  return { start, end, more: true };
+}
+__name(gridInView, "gridInView");
+function useRulerPan(scrollRef, enabled) {
+  const [inView, setInView] = React53.useState(ALL_IN_VIEW);
+  const [viewWidth, setViewWidth] = React53.useState(0);
+  const [scroller, setScroller] = React53.useState(null);
+  const read5 = React53.useCallback(() => {
+    const sc = scrollRef.current;
+    const next = enabled && sc ? gridInView(sc.scrollLeft, sc.clientWidth, sc.scrollWidth) : ALL_IN_VIEW;
+    setInView((prev) => prev.start === next.start && prev.end === next.end && prev.more === next.more ? prev : next);
+    setViewWidth(enabled && sc ? sc.clientWidth : 0);
+  }, [scrollRef, enabled]);
+  React53.useLayoutEffect(() => {
+    if (scrollRef.current !== scroller) setScroller(scrollRef.current);
+    read5();
+  });
+  React53.useEffect(() => {
+    if (!enabled || !scroller) return;
+    scroller.addEventListener("scroll", read5, { passive: true });
+    window.addEventListener("resize", read5);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(read5) : null;
+    observer?.observe(scroller);
+    return () => {
+      scroller.removeEventListener("scroll", read5);
+      window.removeEventListener("resize", read5);
+      observer?.disconnect();
+    };
+  }, [enabled, scroller, read5]);
+  const onPointerDown = React53.useCallback(
+    (e) => {
+      const sc = scrollRef.current;
+      if (!sc) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.preventDefault();
+      const pointerId = e.pointerId;
+      const startX = e.clientX;
+      const startLeft = sc.scrollLeft;
+      const move = /* @__PURE__ */ __name((ev) => {
+        if (ev.pointerId !== pointerId) return;
+        sc.scrollLeft = startLeft - (ev.clientX - startX);
+      }, "move");
+      const end = /* @__PURE__ */ __name((ev) => {
+        if (ev.pointerId !== pointerId) return;
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", end);
+        window.removeEventListener("pointercancel", end);
+      }, "end");
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", end);
+      window.addEventListener("pointercancel", end);
+    },
+    [scrollRef]
+  );
+  return { handlers: enabled ? { onPointerDown } : {}, inView, viewWidth };
+}
+__name(useRulerPan, "useRulerPan");
+var PHONE_GRID_WIDTH = { width: "max-content", minWidth: "100%" };
+function InViewBar({ inView, width }) {
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      "data-grid-in-view": true,
+      "data-more": inView.more ? "true" : "false",
+      "aria-hidden": "true",
+      style: {
+        position: "absolute",
+        left: 0,
+        width: Math.max(0, width),
+        top: 6,
+        height: 3,
+        borderRadius: 2,
+        // drawn only when there is something out of view to point at
+        background: inView.more ? "var(--border, #3a3a42)" : "transparent",
+        pointerEvents: "none"
+      },
+      children: /* @__PURE__ */ jsx(
+        "div",
+        {
+          "data-grid-in-view-part": true,
+          style: {
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: `${inView.start * 100}%`,
+            width: `${(inView.end - inView.start) * 100}%`,
+            borderRadius: 2,
+            background: inView.more ? "var(--accent, #8b5cf6)" : "transparent"
+          }
+        }
+      )
+    }
+  );
+}
+__name(InViewBar, "InViewBar");
+function TurnHint({ show }) {
+  if (!show) return null;
+  return /* @__PURE__ */ jsx("span", { "data-grid-turn-hint": true, style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)", whiteSpace: "nowrap" }, children: "Drag the numbers, or turn the phone" });
+}
+__name(TurnHint, "TurnHint");
+var BAR_GAP = 8;
+var NAME_PX = 96;
+var ROW_PX = 22;
+function outline(depth) {
+  if (depth <= 1) return "1px solid var(--border, #3a3a42)";
+  if (depth === 2) return "1px solid color-mix(in srgb, var(--border, #3a3a42) 60%, transparent)";
+  return "1px dashed color-mix(in srgb, var(--border, #3a3a42) 50%, transparent)";
+}
+__name(outline, "outline");
+function lineColor(depth) {
+  if (depth <= 1) return "var(--foreground-muted, #6a6a90)";
+  if (depth === 2) return "color-mix(in srgb, var(--foreground-muted, #6a6a90) 55%, transparent)";
+  return "color-mix(in srgb, var(--foreground-muted, #6a6a90) 30%, transparent)";
+}
+__name(lineColor, "lineColor");
+function TreeStepGrid({ grid, reason, notice = null }) {
+  const scrollRef = React53.useRef(null);
+  const phone = usePhoneGrid().phone;
+  const zoom = useGridZoom(scrollRef, !phone, true);
+  const bars = grid.bars;
+  const fit = zoom.avail !== null ? Math.max(40, (zoom.avail - BAR_GAP * (bars - 1)) / bars) : 320;
+  const barPx = fit * zoom.level;
+  const openPx = zoom.level > 1 ? OPEN_PX : Infinity;
+  const x = /* @__PURE__ */ __name((t) => {
+    const b = Math.min(bars - 1, Math.max(0, Math.floor(t)));
+    return b * (barPx + BAR_GAP) + (t - b) * barPx;
+  }, "x");
+  const trackPx = bars * barPx + (bars - 1) * BAR_GAP;
+  const drawings = React53.useMemo(
+    () => grid.rows.map((r) => r.bars ? drawTreeRow(r.bars, barPx, openPx) : null),
+    [grid, barPx, openPx]
+  );
+  const rulerRow = grid.rows.find((r) => r.bars);
+  const ruler = React53.useMemo(
+    () => rulerRow?.bars ? treeRuler(rulerRow.bars, barPx, openPx) : Array.from({ length: bars }, (_, b) => ({ at: b, label: String(b + 1) })),
+    [rulerRow, barPx, openPx, bars]
+  );
+  const headRef = React53.useRef(null);
+  const xRef = React53.useRef(x);
+  xRef.current = x;
+  React53.useEffect(() => {
+    let raf = 0;
+    const tick = /* @__PURE__ */ __name(() => {
+      const el = headRef.current;
+      if (el) {
+        const t = treePlayhead(readCurrentCycle(), bars);
+        if (t === null) el.style.display = "none";
+        else {
+          el.style.display = "block";
+          el.style.transform = `translateX(${xRef.current(t)}px)`;
+          el.dataset.treePlayhead = t.toFixed(4);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    }, "tick");
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [bars]);
+  const muted3 = "var(--foreground-muted, #a0a0aa)";
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      ref: scrollRef,
+      "data-bottom-panel-tab": "sequencer",
+      "data-look-only": "tree",
+      "data-tree-grid": true,
+      "data-tree-bars": bars,
+      "data-pattern-scroll": true,
+      style: {
+        padding: 16,
+        height: "100%",
+        overflow: "auto",
+        boxSizing: "border-box",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      },
+      children: /* @__PURE__ */ jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: NAME_PX + 8 + trackPx + 28, paddingRight: 28, minWidth: "100%", boxSizing: "border-box" }, children: [
+        /* @__PURE__ */ jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 4, position: "sticky", left: 0, width: zoom.avail !== null ? zoom.avail + NAME_PX + 8 : void 0 }, children: [
+          /* @__PURE__ */ jsx(PatternTrackChip, {}),
+          !phone && /* @__PURE__ */ jsx(GridZoomControl, { zoom })
+        ] }),
+        notice && /* @__PURE__ */ jsx("div", { "data-seq-notice": true, style: { fontSize: 11, color: muted3, paddingBottom: 2 }, children: notice }),
+        /* @__PURE__ */ jsx("div", { "data-seq-look-only": true, style: { fontSize: 11, color: muted3, paddingBottom: 2, position: "sticky", left: 0 }, children: lookOnlyLine({ reason }) }),
+        /* @__PURE__ */ jsxs("div", { role: "table", "aria-label": "Step sequencer, look only", style: { display: "flex", flexDirection: "column", gap: 4 }, children: [
+          /* @__PURE__ */ jsxs("div", { "data-seq-ruler": true, "aria-hidden": "true", style: { display: "flex", gap: 8, height: 12 }, children: [
+            /* @__PURE__ */ jsx("div", { style: { width: NAME_PX, flex: "0 0 auto" } }),
+            /* @__PURE__ */ jsx("div", { style: { position: "relative", width: trackPx, flex: "0 0 auto", height: "100%" }, children: ruler.map(({ at, label }) => {
+              const isBar = !label.includes(".");
+              return /* @__PURE__ */ jsx(
+                "span",
+                {
+                  "data-seq-ruler-label": label,
+                  "data-ruler-bar": isBar ? "" : void 0,
+                  "data-tree-at": at.toFixed(6),
+                  style: {
+                    position: "absolute",
+                    left: x(at),
+                    bottom: 0,
+                    fontSize: 9,
+                    lineHeight: "10px",
+                    whiteSpace: "nowrap",
+                    fontVariantNumeric: "tabular-nums",
+                    fontWeight: isBar ? 600 : 400,
+                    color: isBar ? "var(--foreground, #e6e6ea)" : muted3
+                  },
+                  children: label
+                },
+                label
+              );
+            }) })
+          ] }),
+          grid.rows.map((row, ri) => {
+            const voice = sampleVoice(row.sound);
+            const d = drawings[ri];
+            return /* @__PURE__ */ jsxs("div", { role: "row", "data-tree-row": row.sound, "data-tree-part": row.part, style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+              /* @__PURE__ */ jsx(
+                "span",
+                {
+                  role: "rowheader",
+                  "data-seq-voice": row.sound,
+                  title: row.sound,
+                  style: { width: NAME_PX - 24, marginRight: 24, flex: "0 0 auto", textAlign: "right", fontSize: 11, color: "var(--foreground, #e6e6ea)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+                  children: voice.label
+                }
+              ),
+              /* @__PURE__ */ jsxs(
+                "div",
+                {
+                  role: "cell",
+                  "aria-label": `${row.sound}: ${row.hits.length} ${row.hits.length === 1 ? "hit" : "hits"}, look only`,
+                  "data-tree-why": row.why ?? void 0,
+                  title: lookOnlyLine({ reason }),
+                  style: { position: "relative", width: trackPx, height: ROW_PX, flex: "0 0 auto" },
+                  children: [
+                    d?.steps.map((s) => /* @__PURE__ */ jsx(
+                      "div",
+                      {
+                        "data-tree-step": s.depth,
+                        "data-tree-begin": s.begin.toFixed(6),
+                        "data-tree-end": s.end.toFixed(6),
+                        style: {
+                          position: "absolute",
+                          left: x(s.begin) + 1,
+                          width: Math.max(1, x(s.end) - x(s.begin) - 2),
+                          top: 0,
+                          bottom: 0,
+                          boxSizing: "border-box",
+                          border: outline(s.depth),
+                          borderRadius: 3,
+                          background: "var(--background, #1e1e24)"
+                        }
+                      },
+                      `s${s.begin}`
+                    )),
+                    d?.inner.map((s) => /* @__PURE__ */ jsx(
+                      "div",
+                      {
+                        "data-tree-inner": s.depth,
+                        style: {
+                          position: "absolute",
+                          left: x(s.begin) + 2,
+                          width: Math.max(1, x(s.end) - x(s.begin) - 3),
+                          top: 4,
+                          bottom: 4,
+                          boxSizing: "border-box",
+                          border: "1px solid var(--border, #3a3a42)",
+                          borderRadius: 2,
+                          background: "var(--background-elevated, #26262c)"
+                        }
+                      },
+                      `i${s.begin}`
+                    )),
+                    d?.lines.map((l) => /* @__PURE__ */ jsx(
+                      "div",
+                      {
+                        "data-tree-line": l.depth,
+                        style: { position: "absolute", left: x(l.at) - 1, width: 2, top: 0, bottom: 0, background: lineColor(l.depth), pointerEvents: "none" }
+                      },
+                      `l${l.at}`
+                    )),
+                    row.hits.map((h, i) => /* @__PURE__ */ jsx(
+                      "div",
+                      {
+                        "data-tree-hit": h.begin.toFixed(6),
+                        style: {
+                          position: "absolute",
+                          left: x(h.begin) + 2,
+                          width: Math.max(2, x(Math.min(h.end, bars)) - x(h.begin) - 3),
+                          top: 5,
+                          bottom: 5,
+                          borderRadius: 2,
+                          background: voice.color,
+                          pointerEvents: "none"
+                        }
+                      },
+                      `h${i}`
+                    ))
+                  ]
+                }
+              )
+            ] }, `${row.sound}:${row.part}`);
+          }),
+          /* @__PURE__ */ jsx("div", { style: { position: "relative", height: 0, marginLeft: NAME_PX + 8 }, children: /* @__PURE__ */ jsx(
+            "div",
+            {
+              ref: headRef,
+              "aria-hidden": "true",
+              "data-tree-playhead-line": true,
+              style: {
+                display: "none",
+                position: "absolute",
+                left: 0,
+                bottom: 0,
+                width: 2,
+                height: grid.rows.length * (ROW_PX + 4) + 16,
+                background: "var(--foreground, #e6e6ea)",
+                opacity: 0.6,
+                pointerEvents: "none"
+              }
+            }
+          ) })
+        ] })
+      ] })
+    }
+  );
+}
+__name(TreeStepGrid, "TreeStepGrid");
+
+// src/visualEdit/panels/rollTree.ts
+function eachHit(row, visit) {
+  for (const s of row.steps) {
+    for (const h of s.hits) visit(h);
+    for (const r of s.rows ?? []) eachHit(r, visit);
+  }
+}
+__name(eachHit, "eachHit");
+function treeRollOf(mini) {
+  return treeRollFrom(probeTrees(mini));
+}
+__name(treeRollOf, "treeRollOf");
+function treeRollFrom(probed) {
+  const rep = repeatingBars(probed);
+  if (!rep.ok) return rep;
+  const { bars, trees } = rep;
+  const parts = trees[0].parts.length;
+  const notes = [];
+  const perPart = new Array(parts).fill(0);
+  let numeric = null;
+  let why = null;
+  trees.forEach((t, b) => {
+    t.parts.forEach((row, p) => {
+      eachHit(row, (h) => {
+        if (why) return;
+        const read5 = rollPitch(h.value);
+        if (typeof read5 === "string") {
+          why = read5;
+          return;
+        }
+        if (numeric !== null && numeric !== read5.numeric) {
+          why = "mixed-pitch-domain";
+          return;
+        }
+        numeric = read5.numeric;
+        const midi = read5.numeric ? Number(read5.pitch) : pitchToMidi(read5.pitch);
+        if (midi === null || !Number.isFinite(midi)) {
+          why = "wrong-surface";
+          return;
+        }
+        notes.push({ begin: b + fracNum(h.begin), end: Math.min(bars, b + fracNum(h.end)), midi, part: p });
+        perPart[p]++;
+      });
+    });
+  });
+  if (why) return { ok: false, why };
+  if (notes.length === 0) return { ok: false, why: "no-hits" };
+  notes.sort((x, y) => x.begin - y.begin || x.midi - y.midi);
+  let linesPart = 0;
+  perPart.forEach((n, p) => {
+    if (n > perPart[linesPart]) linesPart = p;
+  });
+  const lines = [];
+  let linesWhy = null;
+  for (const t of trees) {
+    const steps = barStepsOrWhy(t.parts[linesPart], "");
+    if (typeof steps === "string") {
+      linesWhy = steps;
+      break;
+    }
+    lines.push(steps);
+  }
+  return { ok: true, bars, numeric: numeric ?? false, notes, parts, linesPart, lines: linesWhy ? null : lines, linesWhy };
+}
+__name(treeRollFrom, "treeRollFrom");
+var NOT_A_ROLL = /* @__PURE__ */ new Set(["wrong-surface", "no-note-content", "mixed-pitch-domain", "escaped-source"]);
+var lookOnlyTreeRoll = perText(lookOnlyTreeRollUncached);
+function lookOnlyTreeRollUncached(mini) {
+  const r = parsePianoRoll(mini);
+  if (r.ok || r.lookOnly) return null;
+  if (NOT_A_ROLL.has(r.gate)) return null;
+  const t = treeRollOf(mini);
+  if (!t.ok) return { why: t.why };
+  const { ok: _ok, ...roll } = t;
+  return { roll, reason: r.reason };
+}
+__name(lookOnlyTreeRollUncached, "lookOnlyTreeRollUncached");
+var BAR_GAP2 = 8;
+var ROW_PX2 = 16;
+var KEY_PX = 98;
+function lineColor2(depth) {
+  if (depth <= 1) return "var(--foreground-muted, #6a6a90)";
+  if (depth === 2) return "color-mix(in srgb, var(--foreground-muted, #6a6a90) 55%, transparent)";
+  return "color-mix(in srgb, var(--foreground-muted, #6a6a90) 30%, transparent)";
+}
+__name(lineColor2, "lineColor");
+function TreeRollGrid({ roll, reason }) {
+  const scrollRef = React53.useRef(null);
+  const phone = usePhoneGrid().phone;
+  const zoom = useGridZoom(scrollRef, !phone, true);
+  const { bars } = roll;
+  const fit = zoom.avail !== null ? Math.max(40, (zoom.avail - BAR_GAP2 * (bars - 1)) / bars) : 320;
+  const barPx = fit * zoom.level;
+  const openPx = zoom.level > 1 ? OPEN_PX : Infinity;
+  const x = /* @__PURE__ */ __name((t) => {
+    const b = Math.min(bars - 1, Math.max(0, Math.floor(t)));
+    return b * (barPx + BAR_GAP2) + (t - b) * barPx;
+  }, "x");
+  const trackPx = bars * barPx + (bars - 1) * BAR_GAP2;
+  const rows = React53.useMemo(() => {
+    const ms = roll.notes.map((n) => n.midi);
+    const lo = Math.min(...ms);
+    const hi = Math.max(...ms);
+    return Array.from({ length: hi - lo + 1 }, (_, i) => hi - i);
+  }, [roll]);
+  const rowOf = /* @__PURE__ */ __name((midi) => rows[0] - midi, "rowOf");
+  const drawing = React53.useMemo(() => roll.lines ? drawTreeRow(roll.lines, barPx, openPx) : null, [roll, barPx, openPx]);
+  const ruler = React53.useMemo(
+    () => roll.lines ? treeRuler(roll.lines, barPx, openPx) : Array.from({ length: bars }, (_, b) => ({ at: b, label: String(b + 1) })),
+    [roll, barPx, openPx, bars]
+  );
+  const headRef = React53.useRef(null);
+  const xRef = React53.useRef(x);
+  xRef.current = x;
+  React53.useEffect(() => {
+    let raf = 0;
+    const tick = /* @__PURE__ */ __name(() => {
+      const el = headRef.current;
+      if (el) {
+        const t = treePlayhead(readCurrentCycle(), bars);
+        if (t === null) el.style.display = "none";
+        else {
+          el.style.display = "block";
+          el.style.transform = `translateX(${xRef.current(t)}px)`;
+          el.dataset.treePlayhead = t.toFixed(4);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    }, "tick");
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [bars]);
+  const muted3 = "var(--foreground-muted, #a0a0aa)";
+  const height = rows.length * (ROW_PX2 + 1);
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      ref: scrollRef,
+      "data-bottom-panel-tab": "piano-roll",
+      "data-look-only": "tree",
+      "data-tree-roll": true,
+      "data-tree-bars": bars,
+      "data-roll-lines-part": roll.linesPart,
+      "data-pattern-scroll": true,
+      style: { padding: 16, height: "100%", overflow: "auto", boxSizing: "border-box", fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif' },
+      children: /* @__PURE__ */ jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: KEY_PX + 6 + trackPx + 28, paddingRight: 28, minWidth: "100%", boxSizing: "border-box" }, children: [
+        /* @__PURE__ */ jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 4, position: "sticky", left: 0, width: zoom.avail !== null ? zoom.avail + KEY_PX + 6 : void 0 }, children: [
+          /* @__PURE__ */ jsx(PatternTrackChip, {}),
+          !phone && /* @__PURE__ */ jsx(GridZoomControl, { zoom })
+        ] }),
+        /* @__PURE__ */ jsx("div", { "data-roll-look-only": true, style: { fontSize: 11, color: muted3, paddingBottom: 2, position: "sticky", left: 0 }, children: lookOnlyLine({ reason }) }),
+        /* @__PURE__ */ jsxs("div", { "data-roll-ruler": true, "aria-hidden": "true", style: { display: "flex", gap: 6, height: 12 }, children: [
+          /* @__PURE__ */ jsx("div", { style: { width: KEY_PX, flex: "0 0 auto" } }),
+          /* @__PURE__ */ jsx("div", { style: { position: "relative", width: trackPx, flex: "0 0 auto", height: "100%" }, children: ruler.map(({ at, label }) => {
+            const isBar = !label.includes(".");
+            return /* @__PURE__ */ jsx(
+              "span",
+              {
+                "data-roll-ruler-label": label,
+                "data-ruler-bar": isBar ? "" : void 0,
+                "data-tree-at": at.toFixed(6),
+                style: { position: "absolute", left: x(at), bottom: 0, fontSize: 9, lineHeight: "10px", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", fontWeight: isBar ? 600 : 400, color: isBar ? "var(--foreground, #e6e6ea)" : muted3 },
+                children: label
+              },
+              label
+            );
+          }) })
+        ] }),
+        /* @__PURE__ */ jsxs("div", { role: "table", "aria-label": "Piano roll, look only", style: { display: "flex", gap: 6 }, children: [
+          /* @__PURE__ */ jsx("div", { style: { width: KEY_PX, flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 1 }, children: rows.map((midi) => /* @__PURE__ */ jsx(
+            "div",
+            {
+              role: "rowheader",
+              "data-roll-key": midi,
+              style: {
+                height: ROW_PX2,
+                fontSize: 9,
+                lineHeight: `${ROW_PX2}px`,
+                textAlign: "right",
+                paddingRight: 4,
+                color: muted3,
+                background: !roll.numeric && isBlackKey(midi) ? "var(--background, #1a1a20)" : "var(--background-elevated, #26262c)",
+                borderRadius: 2
+              },
+              children: roll.numeric ? midi : cLabel(midi) ?? noteDisplayName(midi)
+            },
+            midi
+          )) }),
+          /* @__PURE__ */ jsxs("div", { role: "cell", title: lookOnlyLine({ reason }), style: { position: "relative", width: trackPx, height, flex: "0 0 auto" }, children: [
+            rows.map((midi, i) => /* @__PURE__ */ jsx(
+              "div",
+              {
+                style: {
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: i * (ROW_PX2 + 1),
+                  height: ROW_PX2,
+                  background: !roll.numeric && isBlackKey(midi) ? "var(--background, #1a1a20)" : "var(--background-elevated, #222228)"
+                }
+              },
+              midi
+            )),
+            Array.from({ length: bars - 1 }, (_, b) => /* @__PURE__ */ jsx("div", { style: { position: "absolute", left: x(b + 1) - BAR_GAP2, width: BAR_GAP2, top: 0, bottom: 0, background: "var(--background, #0f0f12)" } }, `gap${b}`)),
+            drawing?.lines.map((l) => /* @__PURE__ */ jsx(
+              "div",
+              {
+                "data-tree-line": l.depth,
+                style: { position: "absolute", left: x(l.at) - 1, width: 2, top: 0, bottom: 0, background: lineColor2(l.depth), pointerEvents: "none" }
+              },
+              `l${l.at}`
+            )),
+            roll.notes.map((n, i) => {
+              const dim = roll.parts > 1 && n.part !== roll.linesPart;
+              const w = Math.max(3, x(n.end) - x(n.begin) - 1);
+              return /* @__PURE__ */ jsx(
+                "div",
+                {
+                  "data-tree-note": n.midi,
+                  "data-tree-begin": n.begin.toFixed(6),
+                  "data-tree-end": n.end.toFixed(6),
+                  "data-roll-dim": dim ? "" : void 0,
+                  title: roll.numeric ? String(n.midi) : noteDisplayName(n.midi),
+                  style: {
+                    position: "absolute",
+                    left: x(n.begin) + 1,
+                    width: w,
+                    top: rowOf(n.midi) * (ROW_PX2 + 1) + 1,
+                    height: ROW_PX2 - 2,
+                    boxSizing: "border-box",
+                    borderRadius: 3,
+                    background: "var(--accent, #7c6cf0)",
+                    opacity: dim ? 0.35 : 1,
+                    fontSize: 9,
+                    lineHeight: `${ROW_PX2 - 2}px`,
+                    paddingLeft: 3,
+                    overflow: "hidden",
+                    whiteSpace: "nowrap",
+                    color: "var(--background, #1c1c22)",
+                    pointerEvents: "none"
+                  },
+                  children: w > 24 ? roll.numeric ? String(n.midi) : noteDisplayName(n.midi) : null
+                },
+                i
+              );
+            }),
+            /* @__PURE__ */ jsx(
+              "div",
+              {
+                ref: headRef,
+                "aria-hidden": "true",
+                "data-tree-playhead-line": true,
+                style: { display: "none", position: "absolute", left: -1, top: 0, bottom: 0, width: 2, background: "var(--foreground, #e6e6ea)", opacity: 0.6, pointerEvents: "none" }
+              }
+            )
+          ] })
+        ] })
+      ] })
+    }
+  );
+}
+__name(TreeRollGrid, "TreeRollGrid");
+function patternPhase(cycle, bars) {
+  if (cycle === null || !Number.isFinite(cycle)) return null;
+  const b = bars > 0 ? bars : 1;
+  return (cycle % b + b) % b;
+}
+__name(patternPhase, "patternPhase");
+function useExactPlayhead(box, line, layout, column) {
+  const steps = layout?.steps ?? 0;
+  const bars = layout?.bars ?? 1;
+  const layoutKey = layout?.barSteps?.join(",") ?? "";
+  const columnRef = React53.useRef(column);
+  columnRef.current = column;
+  React53.useEffect(() => {
+    if (steps <= 0) return;
+    const counts = layoutKey ? layoutKey.split(",").map(Number) : void 0;
+    let raf = 0;
+    const tick = /* @__PURE__ */ __name(() => {
+      const el = line.current;
+      const root = box.current;
+      if (el && root) {
+        const t = patternPhase(readCurrentCycle(), bars);
+        const at = t === null ? null : Math.min(steps - 1e-9, Math.max(0, cycleToColumn(t, steps, bars, counts)));
+        const c = at === null ? -1 : Math.floor(at);
+        const col = c >= 0 ? columnRef.current(c) : null;
+        if (!col || at === null) el.style.display = "none";
+        else {
+          const r = col.getBoundingClientRect();
+          const x = r.left - root.getBoundingClientRect().left + (at - c) * r.width;
+          el.style.display = "block";
+          el.style.transform = `translateX(${x}px)`;
+          el.dataset.playheadCol = at.toFixed(4);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    }, "tick");
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [box, line, steps, bars, layoutKey]);
+}
+__name(useExactPlayhead, "useExactPlayhead");
 var NOTE_COLOR_MODE_KEY = "stave:visualEdit.noteColorMode";
 var DEFAULT_MODE = "off";
 var clamp01 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
@@ -39497,7 +40912,7 @@ function subscribe6(listener) {
 }
 __name(subscribe6, "subscribe");
 function useNoteColorMode() {
-  const mode = React49.useSyncExternalStore(subscribe6, () => current6, () => DEFAULT_MODE);
+  const mode = React53.useSyncExternalStore(subscribe6, () => current6, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -39514,20 +40929,20 @@ function subscribeNoteColorMode(listener) {
 }
 __name(subscribeNoteColorMode, "subscribeNoteColorMode");
 function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
-  const slotStateRef = React49.useRef(slotState2);
+  const slotStateRef = React53.useRef(slotState2);
   slotStateRef.current = slotState2;
-  const onScaleToRef = React49.useRef(onScaleTo);
+  const onScaleToRef = React53.useRef(onScaleTo);
   onScaleToRef.current = onScaleTo;
-  const effectRef = React49.useRef(effect);
+  const effectRef = React53.useRef(effect);
   effectRef.current = effect;
-  const stableSlotState = React49.useCallback((t) => slotStateRef.current(t), []);
-  const stableScaleTo = React49.useCallback((t) => onScaleToRef.current(t), []);
+  const stableSlotState = React53.useCallback((t) => slotStateRef.current(t), []);
+  const stableScaleTo = React53.useCallback((t) => onScaleToRef.current(t), []);
   const hasEffect = effect !== void 0;
-  const stableEffect = React49.useCallback(
+  const stableEffect = React53.useCallback(
     (t) => effectRef.current?.(t) ?? NO_RESOLUTION_EFFECT,
     []
   );
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (!onResolution) return;
     onResolution(
       steps == null ? null : {
@@ -39538,31 +40953,31 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
       }
     );
   }, [steps, onResolution, stableSlotState, stableScaleTo, hasEffect, stableEffect]);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     return () => onResolution?.(null);
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
 function useViewProver(mini, parse7) {
-  const cacheRef = React49.useRef({
+  const cacheRef = React53.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React49.useRef(parse7);
+  const parseRef = React53.useRef(parse7);
   parseRef.current = parse7;
   const key3 = mini ?? null;
-  return React49.useCallback(
-    (scale) => {
+  return React53.useCallback(
+    (scale2) => {
       if (key3 == null) return false;
       const c = cacheRef.current;
       if (c.mini !== key3) {
         c.mini = key3;
         c.answers = /* @__PURE__ */ new Map();
       }
-      const hit = c.answers.get(scale);
+      const hit = c.answers.get(scale2);
       if (hit !== void 0) return hit;
-      const answer = parseRef.current(key3, scale).ok;
-      c.answers.set(scale, answer);
+      const answer = parseRef.current(key3, scale2).ok;
+      c.answers.set(scale2, answer);
       return answer;
     },
     [key3]
@@ -39616,9 +41031,9 @@ function ResolutionControl({
   onScaleTo,
   effect
 }) {
-  const [open, setOpen] = React49.useState(false);
-  const rootRef = React49.useRef(null);
-  React49.useEffect(() => {
+  const [open, setOpen] = React53.useState(false);
+  const rootRef = React53.useRef(null);
+  React53.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       if (!rootRef.current?.contains(e.target)) setOpen(false);
@@ -39790,518 +41205,6 @@ function ResolutionControl({
   );
 }
 __name(ResolutionControl, "ResolutionControl");
-function emptyMasterChunk(doc) {
-  const pos = doc.length;
-  return {
-    statementRange: [pos, pos],
-    statementText: "",
-    exprRange: [pos, pos],
-    label: null,
-    headFn: null,
-    miniRange: null,
-    miniString: null,
-    miniVia: null,
-    miniAnchor: null,
-    chain: [{ name: "x", args: [], range: [pos, pos] }],
-    type: "knobs",
-    nested: false
-  };
-}
-__name(emptyMasterChunk, "emptyMasterChunk");
-function deriveMasterChunk(doc) {
-  const line = detectMasterAudioAll(doc);
-  return line ? adaptMasterChunk(doc, line) : emptyMasterChunk(doc);
-}
-__name(deriveMasterChunk, "deriveMasterChunk");
-var EMPTY_DERIVED = {
-  strips: [],
-  chunks: [],
-  masterGain: { value: 1, foreign: false },
-  masterMuted: false,
-  masterChunk: emptyMasterChunk("")
-};
-function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
-  try {
-    const pos = model.getPositionAt?.(trackOffset);
-    if (!pos) return;
-    const changed = lastJumpRef.current !== trackOffset;
-    const focuses = revealTakesFocus();
-    if (changed || focuses && !editor.hasTextFocus?.()) {
-      editor.setPosition?.(pos);
-      editor.revealLineInCenter?.(pos.lineNumber);
-      if (focuses) editor.focus?.();
-    }
-    lastJumpRef.current = trackOffset;
-  } catch {
-  }
-}
-__name(jumpCursorToTrack, "jumpCursorToTrack");
-function useMixerModel() {
-  const { editor, editorRef, writerRef: writebackRef } = useActiveWriter();
-  const [derived, setDerived] = React49.useState(EMPTY_DERIVED);
-  const lastJumpRef = React49.useRef(null);
-  React49.useEffect(() => {
-    lastJumpRef.current = null;
-  }, [editor]);
-  React49.useEffect(() => {
-    if (!editor) {
-      setDerived(EMPTY_DERIVED);
-      return;
-    }
-    const rederive = /* @__PURE__ */ __name(() => {
-      const model2 = editor.getModel?.();
-      if (!model2) {
-        setDerived(EMPTY_DERIVED);
-        return;
-      }
-      const value = model2.getValue();
-      const allChunks = detectAllChunks(value);
-      const strips = buildStripModels(allChunks, value);
-      setDerived({
-        strips,
-        chunks: strips.map((s) => allChunks[s.index]),
-        masterGain: readMasterGain(value),
-        masterMuted: readMasterMute(value),
-        masterChunk: deriveMasterChunk(value)
-      });
-    }, "rederive");
-    rederive();
-    const model = editor.getModel?.();
-    const sub = model?.onDidChangeContent?.(rederive);
-    return () => sub?.dispose?.();
-  }, [editor]);
-  const applyToStrip = React49.useCallback(
-    (id, mutate) => {
-      const ed = editorRef.current;
-      const wb = writebackRef.current;
-      if (!ed || !wb) return;
-      const model = ed.getModel?.();
-      if (!model) return;
-      const doc = model.getValue();
-      const chunks = detectAllChunks(doc);
-      const strip = buildStripModels(chunks, doc).find((s) => s.id === id);
-      if (!strip) return;
-      const fresh = chunks[strip.index];
-      const trackOffset = fresh.statementRange[0];
-      mutate(fresh, wb);
-      jumpCursorToTrack(ed, model, trackOffset, lastJumpRef);
-    },
-    []
-  );
-  const applyToStripAt = React49.useCallback(
-    (anchor, mutate) => {
-      const ed = editorRef.current;
-      const wb = writebackRef.current;
-      if (!ed || !wb) return;
-      const model = ed.getModel?.();
-      if (!model) return;
-      const doc = model.getValue();
-      const fresh = detectAllChunks(doc).find((c) => c.statementRange[0] === anchor);
-      if (!fresh) return;
-      mutate(fresh, wb, doc);
-      jumpCursorToTrack(ed, model, anchor, lastJumpRef);
-    },
-    []
-  );
-  const applyToMaster = React49.useCallback(
-    (mutate) => {
-      const ed = editorRef.current;
-      const wb = writebackRef.current;
-      if (!ed || !wb) return;
-      const model = ed.getModel?.();
-      if (!model) return;
-      mutate(model.getValue(), wb);
-    },
-    []
-  );
-  const applyToMasterChunk = React49.useCallback(
-    (mutate) => {
-      const ed = editorRef.current;
-      const wb = writebackRef.current;
-      if (!ed || !wb) return;
-      const model = ed.getModel?.();
-      if (!model) return;
-      const doc = model.getValue();
-      const line = detectMasterAudioAll(doc);
-      if (line) {
-        mutate(adaptMasterChunk(doc, line), wb);
-        return;
-      }
-      const base = masterAudioLineEdit(doc);
-      if (!base) return;
-      openGesture(wb);
-      commit(wb, base, "mixer");
-      const next = model.getValue();
-      const fresh = detectMasterAudioAll(next);
-      if (fresh) mutate(adaptMasterChunk(next, fresh), wb);
-      closeGesture(wb);
-    },
-    []
-  );
-  const beginGesture = React49.useCallback(() => openGesture(writebackRef.current), [writebackRef]);
-  const endGesture = React49.useCallback(() => closeGesture(writebackRef.current), [writebackRef]);
-  const [selectedId, setSelectedId] = React49.useState(null);
-  const stripsRef = React49.useRef(EMPTY_DERIVED.strips);
-  stripsRef.current = derived.strips;
-  React49.useEffect(() => {
-    if (!editor) {
-      setSelectedId(null);
-      return;
-    }
-    const model = editor.getModel?.();
-    if (!model) {
-      setSelectedId(null);
-      return;
-    }
-    const recompute = /* @__PURE__ */ __name(() => {
-      try {
-        const pos = editor.getPosition?.();
-        if (!pos) {
-          setSelectedId(null);
-          return;
-        }
-        const off = model.getOffsetAt(pos);
-        const sel = stripsRef.current.find(
-          (s) => off >= s.statementRange[0] && off <= s.statementRange[1]
-        )?.id ?? null;
-        setSelectedId((prev) => prev === sel ? prev : sel);
-      } catch {
-      }
-    }, "recompute");
-    recompute();
-    const sub = editor.onDidChangeCursorPosition?.(recompute);
-    return () => sub?.dispose?.();
-  }, [editor, derived.strips]);
-  const selectTrack = React49.useCallback((id) => {
-    const ed = editorRef.current;
-    if (!ed) return;
-    const model = ed.getModel?.();
-    if (!model) return;
-    const strip = buildStripModels(detectAllChunks(model.getValue()), model.getValue()).find((s) => s.id === id);
-    if (!strip) return;
-    jumpCursorToTrack(ed, model, strip.statementRange[0], lastJumpRef);
-  }, []);
-  return {
-    strips: derived.strips,
-    chunks: derived.chunks,
-    applyToStrip,
-    applyToStripAt,
-    masterGain: derived.masterGain,
-    masterMuted: derived.masterMuted,
-    masterChunk: derived.masterChunk,
-    applyToMaster,
-    applyToMasterChunk,
-    beginGesture,
-    endGesture,
-    selectedId,
-    selectTrack
-  };
-}
-__name(useMixerModel, "useMixerModel");
-function StripColorPopover({
-  anchorRect,
-  currentColor,
-  onPick,
-  onReset,
-  onClose
-}) {
-  const ref = React49.useRef(null);
-  React49.useEffect(() => {
-    const onDown = /* @__PURE__ */ __name((e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
-    }, "onDown");
-    const onKey = /* @__PURE__ */ __name((e) => {
-      if (e.key === "Escape") onClose();
-    }, "onKey");
-    const onReflow = /* @__PURE__ */ __name(() => onClose(), "onReflow");
-    const t = setTimeout(() => document.addEventListener("mousedown", onDown), 0);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", onReflow, true);
-    window.addEventListener("resize", onReflow);
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", onReflow, true);
-      window.removeEventListener("resize", onReflow);
-    };
-  }, [onClose]);
-  const POPOVER_WIDTH2 = 8 * 16 + 7 * 4 + 12;
-  const left = typeof window !== "undefined" ? Math.max(8, Math.min(window.innerWidth - 8 - POPOVER_WIDTH2, anchorRect.left)) : anchorRect.left;
-  const top = anchorRect.bottom + 4;
-  const customColor = currentColor && !TRACK_PALETTE_32.includes(currentColor) ? currentColor : "#888888";
-  if (typeof document === "undefined") return null;
-  return createPortal(
-    /* @__PURE__ */ jsxs(
-      "div",
-      {
-        ref,
-        "data-mixer-strip-color-popover": true,
-        role: "dialog",
-        "aria-label": "Pick track color",
-        style: {
-          position: "fixed",
-          top,
-          left,
-          zIndex: 1e3,
-          background: "var(--background-elevated, #1a1a1a)",
-          border: "1px solid var(--border, #333)",
-          padding: 6,
-          borderRadius: 4,
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)"
-        },
-        children: [
-          /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(8, 16px)", gridGap: 4 }, children: TRACK_PALETTE_32.map((color) => {
-            const isCurrent = color === currentColor;
-            return /* @__PURE__ */ jsx(
-              "button",
-              {
-                type: "button",
-                "data-mixer-strip-swatch": true,
-                "data-color": color,
-                "aria-label": `Color ${color}`,
-                "aria-current": isCurrent ? "true" : void 0,
-                onClick: () => {
-                  onPick(color);
-                  onClose();
-                },
-                style: {
-                  width: 16,
-                  height: 16,
-                  padding: 0,
-                  border: isCurrent ? "2px solid white" : "1px solid rgba(255,255,255,0.18)",
-                  background: color,
-                  cursor: "pointer",
-                  borderRadius: 3,
-                  boxSizing: "border-box"
-                }
-              },
-              color
-            );
-          }) }),
-          /* @__PURE__ */ jsxs(
-            "div",
-            {
-              style: {
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                paddingTop: 4,
-                borderTop: "1px solid var(--border, rgba(255,255,255,0.12))",
-                fontSize: 11,
-                color: "var(--foreground-muted, rgba(255,255,255,0.55))"
-              },
-              children: [
-                /* @__PURE__ */ jsx("label", { htmlFor: "mixer-strip-custom-color", style: { flex: 1, cursor: "pointer" }, children: "Custom" }),
-                onReset && /* @__PURE__ */ jsx(
-                  "button",
-                  {
-                    type: "button",
-                    "data-mixer-strip-color-reset": true,
-                    "aria-label": "Reset to default colour",
-                    title: "Reset to the default palette colour",
-                    onClick: () => {
-                      onReset();
-                      onClose();
-                    },
-                    style: {
-                      padding: "1px 6px",
-                      fontSize: 10,
-                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
-                      borderRadius: 3,
-                      background: "transparent",
-                      color: "inherit",
-                      cursor: "pointer"
-                    },
-                    children: "Default"
-                  }
-                ),
-                /* @__PURE__ */ jsx(
-                  "input",
-                  {
-                    id: "mixer-strip-custom-color",
-                    type: "color",
-                    "data-mixer-strip-custom-color": true,
-                    "aria-label": "Custom track color",
-                    defaultValue: customColor,
-                    onChange: (e) => onPick(e.currentTarget.value),
-                    style: {
-                      width: 28,
-                      height: 18,
-                      padding: 0,
-                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
-                      borderRadius: 3,
-                      background: "transparent",
-                      cursor: "pointer"
-                    }
-                  }
-                )
-              ]
-            }
-          )
-        ]
-      }
-    ),
-    document.body
-  );
-}
-__name(StripColorPopover, "StripColorPopover");
-function PatternTrackChip() {
-  const { chunk } = useActiveChunk();
-  const { strips, applyToStripAt } = useMixerModel();
-  const [fileId, setFileId] = React49.useState(() => getActiveFileId());
-  React49.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
-  const trackMeta = useTrackMetaMap(fileId ?? void 0);
-  const [colorAnchor, setColorAnchor] = React49.useState(null);
-  const [renaming, setRenaming] = React49.useState(false);
-  const settledRef = React49.useRef(false);
-  const openRename = /* @__PURE__ */ __name(() => {
-    settledRef.current = false;
-    setRenaming(true);
-  }, "openRename");
-  const cancelRename = /* @__PURE__ */ __name(() => {
-    settledRef.current = true;
-    setRenaming(false);
-  }, "cancelRename");
-  const anchor = chunk ? chunk.statementRange[0] : null;
-  const strip = anchor != null ? stripContainingOffset(strips, anchor) : void 0;
-  if (!strip) return null;
-  const customColor = trackMeta.get(strip.name)?.color;
-  const dotColor = trackIdentity(strip.name, customColor).color;
-  const bareLabel = strip.label ?? "";
-  const renameSeed = bareLabel !== "" && bareLabel !== "$" ? bareLabel : "";
-  const commitRename = /* @__PURE__ */ __name((raw) => {
-    if (settledRef.current) return;
-    settledRef.current = true;
-    setRenaming(false);
-    const v = raw.trim();
-    if (!v) return;
-    applyToStripAt(strip.statementRange[0], (fresh, wb, doc) => {
-      const taken = new Set(otherTrackNames(doc, fresh.statementRange[0]));
-      if (commit(wb, renameEdit(fresh, v, taken), "rename") !== "written") return;
-      if (fileId) {
-        const prevColor = getTrackMeta(fileId, strip.name).color;
-        if (prevColor && strip.name !== v) {
-          setTrackMeta(fileId, v, { color: prevColor });
-          setTrackMeta(fileId, strip.name, { color: void 0 });
-        }
-      }
-    });
-  }, "commitRename");
-  return /* @__PURE__ */ jsxs(
-    "div",
-    {
-      "data-pattern-track-chip": true,
-      style: {
-        display: "flex",
-        alignItems: "center",
-        gap: 5,
-        minWidth: 0,
-        padding: "3px 8px",
-        background: "var(--surface, #14142a)",
-        border: "1px solid var(--border, #2a2a4a)",
-        borderRadius: "0 0 6px 0",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
-        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
-      },
-      children: [
-        fileId ? /* @__PURE__ */ jsx(
-          "button",
-          {
-            type: "button",
-            "data-pattern-track-dot": true,
-            "aria-label": `Change colour of ${strip.shownName}`,
-            title: `${strip.shownName} \u2014 click to change colour`,
-            onClick: (e) => setColorAnchor(e.currentTarget.getBoundingClientRect()),
-            style: {
-              width: 9,
-              height: 9,
-              padding: 0,
-              border: "none",
-              borderRadius: "50%",
-              background: dotColor,
-              flexShrink: 0,
-              cursor: "pointer"
-            }
-          }
-        ) : /* @__PURE__ */ jsx(
-          "span",
-          {
-            "data-pattern-track-dot": true,
-            style: { width: 9, height: 9, borderRadius: "50%", background: dotColor, flexShrink: 0 }
-          }
-        ),
-        colorAnchor && fileId && /* @__PURE__ */ jsx(
-          StripColorPopover,
-          {
-            anchorRect: colorAnchor,
-            currentColor: dotColor,
-            onPick: (color) => setTrackMeta(fileId, strip.name, { color }),
-            onReset: () => setTrackMeta(fileId, strip.name, { color: void 0 }),
-            onClose: () => setColorAnchor(null)
-          }
-        ),
-        renaming ? /* @__PURE__ */ jsx(
-          "input",
-          {
-            "data-pattern-track-rename": true,
-            autoFocus: true,
-            defaultValue: renameSeed,
-            placeholder: "name this track",
-            spellCheck: false,
-            onFocus: (e) => e.currentTarget.select(),
-            onKeyDown: (e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commitRename(e.currentTarget.value);
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                cancelRename();
-              }
-              e.stopPropagation();
-            },
-            onBlur: (e) => commitRename(e.currentTarget.value),
-            style: {
-              minWidth: 0,
-              width: 96,
-              fontSize: 11,
-              fontWeight: 600,
-              fontFamily: "inherit",
-              color: "var(--foreground, #e6e6ea)",
-              background: "rgba(255,255,255,0.08)",
-              border: "1px solid rgba(255,255,255,0.25)",
-              borderRadius: 3,
-              padding: "0 3px",
-              outline: "none"
-            }
-          }
-        ) : /* @__PURE__ */ jsx(
-          "span",
-          {
-            "data-pattern-track-name": true,
-            title: `${strip.shownName} \u2014 double-click to rename`,
-            onDoubleClick: openRename,
-            style: {
-              fontSize: 11,
-              fontWeight: 600,
-              color: "var(--foreground, #e6e6ea)",
-              maxWidth: 160,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              cursor: "text"
-            },
-            children: strip.shownName
-          }
-        )
-      ]
-    }
-  );
-}
-__name(PatternTrackChip, "PatternTrackChip");
 
 // src/visualEdit/panels/inspector.ts
 function gainAtStart(model, start) {
@@ -40326,13 +41229,13 @@ function setColumnGain(model, stepIndex, gain) {
 __name(setColumnGain, "setColumnGain");
 var CLICK_SLOP_PX = 4;
 function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
-  const selfRef = React49.useRef(null);
-  const [frame, setFrame] = React49.useState(null);
-  const [added, setAdded] = React49.useState(0);
-  const [engaged, setEngaged] = React49.useState(false);
-  const dragRef = React49.useRef(null);
-  const swallowClick = React49.useRef(false);
-  const measure = React49.useCallback(() => {
+  const selfRef = React53.useRef(null);
+  const [frame, setFrame] = React53.useState(null);
+  const [added, setAdded] = React53.useState(0);
+  const [engaged, setEngaged] = React53.useState(false);
+  const dragRef = React53.useRef(null);
+  const swallowClick = React53.useRef(false);
+  const measure = React53.useCallback(() => {
     const grid = gridRef.current;
     const parent = selfRef.current?.offsetParent;
     if (!grid || !parent || cols < 1) return;
@@ -40355,8 +41258,8 @@ function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
       (f) => f && f.left === next.left && f.top === next.top && f.height === next.height && f.pitch === next.pitch && f.maxRight === next.maxRight ? f : next
     );
   }, [gridRef, cellAttr, cols]);
-  React49.useLayoutEffect(measure);
-  React49.useEffect(() => {
+  React53.useLayoutEffect(measure);
+  React53.useEffect(() => {
     const grid = gridRef.current;
     if (!grid || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => measure());
@@ -40512,7 +41415,7 @@ function subscribe7(listener) {
 }
 __name(subscribe7, "subscribe");
 function useGridMode() {
-  return React49.useSyncExternalStore(subscribe7, () => current7, () => DEFAULT_MODE2);
+  return React53.useSyncExternalStore(subscribe7, () => current7, () => DEFAULT_MODE2);
 }
 __name(useGridMode, "useGridMode");
 function getGridMode() {
@@ -40534,9 +41437,9 @@ function usePatternLength(chunk, model, parse7, writeMini) {
   const bars = model?.bars ?? 1;
   const gain = chunk ? readChunkGain(chunk) : null;
   const velocity = gain?.mini != null;
-  const parseRef = React49.useRef(parse7);
+  const parseRef = React53.useRef(parse7);
   parseRef.current = parse7;
-  const cache3 = React49.useRef(null);
+  const cache3 = React53.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null || gain === null) return null;
     const key3 = `${bars}|${velocity}|${mini}`;
@@ -40564,118 +41467,6 @@ function report(attempted, reason) {
   emitLog({ level: "warn", runtime: "stave", message: `${attempted} \u2014 ${reason}, so it was left unchanged.` });
 }
 __name(report, "report");
-var PHONE_STEP_MIN = 40;
-var PHONE_RULER_HEIGHT = 44;
-function usePhoneGrid() {
-  const layout = usePhoneLayout();
-  return { phone: layout !== "none", upright: layout === "upright" };
-}
-__name(usePhoneGrid, "usePhoneGrid");
-var ALL_IN_VIEW = { start: 0, end: 1, more: false };
-function gridInView(scrollLeft, clientWidth, scrollWidth) {
-  if (!(scrollWidth > 0) || !(clientWidth > 0) || scrollWidth <= clientWidth + 1) return ALL_IN_VIEW;
-  const start = Math.max(0, Math.min(1, scrollLeft / scrollWidth));
-  const end = Math.max(start, Math.min(1, (scrollLeft + clientWidth) / scrollWidth));
-  return { start, end, more: true };
-}
-__name(gridInView, "gridInView");
-function useRulerPan(scrollRef, enabled) {
-  const [inView, setInView] = React49.useState(ALL_IN_VIEW);
-  const [viewWidth, setViewWidth] = React49.useState(0);
-  const [scroller, setScroller] = React49.useState(null);
-  const read5 = React49.useCallback(() => {
-    const sc = scrollRef.current;
-    const next = enabled && sc ? gridInView(sc.scrollLeft, sc.clientWidth, sc.scrollWidth) : ALL_IN_VIEW;
-    setInView((prev) => prev.start === next.start && prev.end === next.end && prev.more === next.more ? prev : next);
-    setViewWidth(enabled && sc ? sc.clientWidth : 0);
-  }, [scrollRef, enabled]);
-  React49.useLayoutEffect(() => {
-    if (scrollRef.current !== scroller) setScroller(scrollRef.current);
-    read5();
-  });
-  React49.useEffect(() => {
-    if (!enabled || !scroller) return;
-    scroller.addEventListener("scroll", read5, { passive: true });
-    window.addEventListener("resize", read5);
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(read5) : null;
-    observer?.observe(scroller);
-    return () => {
-      scroller.removeEventListener("scroll", read5);
-      window.removeEventListener("resize", read5);
-      observer?.disconnect();
-    };
-  }, [enabled, scroller, read5]);
-  const onPointerDown = React49.useCallback(
-    (e) => {
-      const sc = scrollRef.current;
-      if (!sc) return;
-      if (e.pointerType === "mouse" && e.button !== 0) return;
-      e.preventDefault();
-      const pointerId = e.pointerId;
-      const startX = e.clientX;
-      const startLeft = sc.scrollLeft;
-      const move = /* @__PURE__ */ __name((ev) => {
-        if (ev.pointerId !== pointerId) return;
-        sc.scrollLeft = startLeft - (ev.clientX - startX);
-      }, "move");
-      const end = /* @__PURE__ */ __name((ev) => {
-        if (ev.pointerId !== pointerId) return;
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", end);
-        window.removeEventListener("pointercancel", end);
-      }, "end");
-      window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", end);
-      window.addEventListener("pointercancel", end);
-    },
-    [scrollRef]
-  );
-  return { handlers: enabled ? { onPointerDown } : {}, inView, viewWidth };
-}
-__name(useRulerPan, "useRulerPan");
-var PHONE_GRID_WIDTH = { width: "max-content", minWidth: "100%" };
-function InViewBar({ inView, width }) {
-  return /* @__PURE__ */ jsx(
-    "div",
-    {
-      "data-grid-in-view": true,
-      "data-more": inView.more ? "true" : "false",
-      "aria-hidden": "true",
-      style: {
-        position: "absolute",
-        left: 0,
-        width: Math.max(0, width),
-        top: 6,
-        height: 3,
-        borderRadius: 2,
-        // drawn only when there is something out of view to point at
-        background: inView.more ? "var(--border, #3a3a42)" : "transparent",
-        pointerEvents: "none"
-      },
-      children: /* @__PURE__ */ jsx(
-        "div",
-        {
-          "data-grid-in-view-part": true,
-          style: {
-            position: "absolute",
-            top: 0,
-            bottom: 0,
-            left: `${inView.start * 100}%`,
-            width: `${(inView.end - inView.start) * 100}%`,
-            borderRadius: 2,
-            background: inView.more ? "var(--accent, #8b5cf6)" : "transparent"
-          }
-        }
-      )
-    }
-  );
-}
-__name(InViewBar, "InViewBar");
-function TurnHint({ show }) {
-  if (!show) return null;
-  return /* @__PURE__ */ jsx("span", { "data-grid-turn-hint": true, style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)", whiteSpace: "nowrap" }, children: "Drag the numbers, or turn the phone" });
-}
-__name(TurnHint, "TurnHint");
 
 // src/keys/chord.ts
 function isMacPlatform() {
@@ -41039,7 +41830,7 @@ function opensRhythmLine(call) {
 }
 __name(opensRhythmLine, "opensRhythmLine");
 function SequencerGrid({ onResolution, notice = null } = {}) {
-  const [viewScale, setViewScale] = React49.useState(UNREFINED);
+  const [viewScale, setViewScale] = React53.useState(UNREFINED);
   const { chunk, model, read: read5, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
     ...stepGridCodec,
     source: "seq",
@@ -41048,7 +41839,7 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, stepGridCodec.parse, writeMini);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     setViewScale(UNREFINED);
   }, [patternKey]);
   const playingStep = usePlayingStep(
@@ -41060,45 +41851,45 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
   const [colorMode] = useNoteColorMode();
   const gridMode = useGridMode();
   const span = model?.bars ?? 1;
-  const playedNotes = React49.useMemo(() => chunk ? stepNotes(chunk, span) : null, [chunk, span]);
-  const gestureRef = React49.useRef(null);
-  const gainScoped = React49.useMemo(() => model ? gainWritable(stepGridCodec, model) : false, [model]);
+  const playedNotes = React53.useMemo(() => chunk ? stepNotes(chunk, span) : null, [chunk, span]);
+  const gestureRef = React53.useRef(null);
+  const gainScoped = React53.useMemo(() => model ? gainWritable(stepGridCodec, model) : false, [model]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
   const chordHead = chunk?.headFn === "chord";
-  const isChordChart = React49.useMemo(
+  const isChordChart = React53.useMemo(
     () => chordHead || chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
     [chordHead, laneKey]
   );
-  const boxes = React49.useMemo(() => {
+  const boxes = React53.useMemo(() => {
     if (!model) return null;
     const widths = gridMode === "exact" ? ownStepWidths(linesModel(model, read5)) : /* @__PURE__ */ new Map();
     return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn));
   }, [model, read5, gridMode]);
-  const boxesRef = React49.useRef(boxes);
+  const boxesRef = React53.useRef(boxes);
   boxesRef.current = boxes;
   const boxWidth = /* @__PURE__ */ __name((laneIndex) => boxesRef.current?.[laneIndex]?.[0]?.width ?? 1, "boxWidth");
-  const toggleable = React49.useMemo(
+  const toggleable = React53.useMemo(
     () => model ? model.lanes.map((lane, li) => {
       const w = boxes?.[li]?.[0]?.width ?? 1;
       return lane.cells.map((c, si) => si % w === 0 && canToggleCell(model, li, si, !isCellOn(c), w));
     }) : null,
     [model, boxes]
   );
-  const placesNotes = React49.useMemo(
+  const placesNotes = React53.useMemo(
     () => model && boxes && toggleable ? boxesPlaceNotes(model.lanes, boxes, isCellOn, toggleable) : false,
     [model, boxes, toggleable]
   );
-  const coverage = React49.useMemo(
+  const coverage = React53.useMemo(
     () => model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null,
     [model]
   );
-  const stepStarts = React49.useMemo(() => {
+  const stepStarts = React53.useMemo(() => {
     if (!model) return null;
     const out = /* @__PURE__ */ new Map();
     for (const [part, cols] of writtenStepStarts(linesModel(model, read5))) out.set(part, new Set(cols));
     return out;
   }, [model, read5]);
-  const stepGroups = React49.useMemo(() => {
+  const stepGroups = React53.useMemo(() => {
     if (!model || !boxes || !coverage) return null;
     return model.lanes.map((lane, li) => {
       const part = lane.part ?? 0;
@@ -41112,15 +41903,19 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
   const miniText2 = chunk?.miniString ?? null;
   const hasModel = !!model;
   const barCount = model?.bars ?? 1;
-  const trees = React49.useMemo(
+  const trees = React53.useMemo(
     () => hasModel && miniText2 !== null && gridMode === "exact" ? chunkDivisions(miniText2, barCount) : null,
     [hasModel, barCount, miniText2, gridMode]
   );
-  const laneNodes = React49.useMemo(
+  const stepEligible = !!chunk && opensStepGrid(chunk);
+  const lookTree = useDeferredPerText(!hasModel && stepEligible ? miniText2 : null, lookOnlyTreeGrid);
+  const silentHead = !!chunk && !["s", "sound", "chord"].includes(chunk.headFn ?? "");
+  const lookRoll = useDeferredPerText(!hasModel && stepEligible && silentHead && lookTree === null ? miniText2 : null, lookOnlyTreeRoll);
+  const laneNodes = React53.useMemo(
     () => model && trees ? model.lanes.map((_, li) => laneSteps(model, trees, li)) : null,
     [model, trees]
   );
-  const resizable = React49.useMemo(() => {
+  const resizable = React53.useMemo(() => {
     if (!model) return null;
     return model.lanes.map((lane, li) => {
       const out = /* @__PURE__ */ new Set();
@@ -41133,7 +41928,7 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
       return out;
     });
   }, [model, boxes]);
-  const paintCell = React49.useCallback(
+  const paintCell = React53.useCallback(
     (laneIndex, stepIndex, value) => {
       let refused2 = false;
       const length2 = boxWidth(laneIndex);
@@ -41150,7 +41945,7 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     },
     [mutate]
   );
-  const paintOne = React49.useCallback(
+  const paintOne = React53.useCallback(
     (laneIndex, stepIndex, value) => {
       if (paintCell(laneIndex, stepIndex, value)) {
         reportRefusal(value ? "Couldn't add that hit" : "Couldn't remove that hit");
@@ -41158,20 +41953,20 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     },
     [paintCell]
   );
-  const addVoice = React49.useCallback(
+  const addVoice = React53.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React49.useCallback(
+  const removeVoice = React53.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
   const canDrawView = useViewProver(chunk?.miniString, stepGridCodec.parse);
-  const scaleToSlots = React49.useCallback(
+  const scaleToSlots = React53.useCallback(
     (target) => {
       if (!model) return;
       const press = slotPress(stepGridCodec, model, target, canDrawView);
@@ -41191,7 +41986,7 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     // looking closer costs nothing.
     (t) => model ? slotPressCost(stepGridCodec, model, t, canDrawView) : NO_RESOLUTION_EFFECT
   );
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -41274,23 +42069,23 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     if (g.mode !== "paint") return;
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
-  const [cursor, setCursor] = React49.useState(null);
+  const [cursor, setCursor] = React53.useState(null);
   const rowsN = model?.lanes.length ?? 0;
   const colsN = model?.steps ?? 0;
   const liveCursor = cursor && cursor.row < rowsN && cursor.col < colsN ? cursor : null;
-  const cursorRef = React49.useRef(liveCursor);
+  const cursorRef = React53.useRef(liveCursor);
   cursorRef.current = liveCursor;
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React49.useRef(stmtId);
-  React49.useEffect(() => {
+  const stmtRef = React53.useRef(stmtId);
+  React53.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setCursor(null);
     }
   }, [stmtId]);
-  const focusCursorRef = React49.useRef(false);
-  const gridRef = React49.useRef(null);
-  React49.useEffect(() => {
+  const focusCursorRef = React53.useRef(false);
+  const gridRef = React53.useRef(null);
+  React53.useEffect(() => {
     if (!focusCursorRef.current) return;
     focusCursorRef.current = false;
     gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-seq-cell]')?.focus();
@@ -41363,16 +42158,16 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
         return false;
     }
   }, "runGesture");
-  const runGestureRef = React49.useRef(runGesture);
+  const runGestureRef = React53.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React49.useEffect(
+  React53.useEffect(
     () => mountGridGestures(GRID_SCOPE.sequencer, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React49.useRef(null);
+  const rulerRef = React53.useRef(null);
   useRulerFit(rulerRef, "data-seq-ruler-label");
   const phoneGrid = usePhoneGrid();
-  const scrollRef = React49.useRef(null);
+  const scrollRef = React53.useRef(null);
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone);
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 16;
   const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model);
@@ -41391,8 +42186,12 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
   const maxPer = zoomed ? 56 * zoom.level : 56;
   const perPx = Math.max(minPer, Math.min(fitPer ?? stepMin, maxPer));
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
+  const playheadRef = React53.useRef(null);
+  useExactPlayhead(gridRef, playheadRef, model, (c) => gridRef.current?.querySelector(`[data-seq-col="ruler:${c}"]`) ?? null);
   if (!model) {
-    return React49.createElement(VisualEditStandby, {
+    if (lookTree && "grid" in lookTree) return /* @__PURE__ */ jsx(TreeStepGrid, { grid: lookTree.grid, reason: lookTree.reason, notice });
+    if (lookRoll && "roll" in lookRoll) return /* @__PURE__ */ jsx(TreeRollGrid, { roll: lookRoll.roll, reason: lookRoll.reason });
+    return React53.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && opensStepGrid(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -41507,7 +42306,16 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
             children: "Edits the notes already here \u2014 to add one, use the code view."
           }
         ),
-        /* @__PURE__ */ jsxs("div", { ref: gridRef, role: "grid", "aria-label": "Step sequencer", style: { display: "flex", flexDirection: "column", gap: 4 }, children: [
+        /* @__PURE__ */ jsxs("div", { ref: gridRef, role: "grid", "aria-label": "Step sequencer", style: { display: "flex", flexDirection: "column", gap: 4, position: "relative" }, children: [
+          /* @__PURE__ */ jsx(
+            "div",
+            {
+              ref: playheadRef,
+              "aria-hidden": "true",
+              "data-seq-playhead-line": true,
+              style: { display: "none", position: "absolute", left: 0, top: 0, bottom: 0, width: 2, marginLeft: -1, background: "var(--foreground, #e6e6ea)", opacity: 0.5, pointerEvents: "none", zIndex: 3 }
+            }
+          ),
           phoneGrid.phone && // which part of the pattern is on screen. It sits over the top of the ruler
           // and stays put while the ruler's numbers scroll under it; its width is the
           // panel's, not the pattern's.
@@ -41977,11 +42785,11 @@ function RhythmChartGrid({ onResolution }) {
     source: "seq",
     eligible: opensStepGrid
   });
-  const result = React49.useMemo(
+  const result = React53.useMemo(
     () => chunk?.structRhythm && chunk.miniString !== null ? rhythmChart(chunk.structOver?.miniString ?? null, chunk.miniString, model, parseChords, chunk.structOver?.masks) : { ok: false, reason: null },
     [chunk, model]
   );
-  const toggleable = React49.useMemo(() => {
+  const toggleable = React53.useMemo(() => {
     if (!model || !result.ok || result.chart.lookOnly) return null;
     return Array.from({ length: model.steps }, (_, m) => {
       const on = model.lanes.findIndex((l) => isCellOn(l.cells[m]));
@@ -41989,7 +42797,7 @@ function RhythmChartGrid({ onResolution }) {
     });
   }, [model, result]);
   const chartShown = result.ok;
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (chartShown) onResolution?.(null);
   }, [chartShown, onResolution]);
   if (!result.ok) return /* @__PURE__ */ jsx(SequencerGrid, { onResolution, notice: result.reason });
@@ -42214,11 +43022,11 @@ function viewportRect() {
 }
 __name(viewportRect, "viewportRect");
 function useAnchorScroll(open, anchorRef, menuRef, place, close) {
-  const placedAt = React49.useRef(null);
-  React49.useLayoutEffect(() => {
+  const placedAt = React53.useRef(null);
+  React53.useLayoutEffect(() => {
     placedAt.current = open ? anchorRef.current?.getBoundingClientRect() ?? null : null;
   }, [open, anchorRef]);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (!open) return;
     const onScroll = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -42299,15 +43107,15 @@ function SoundPickerMenu({
   onAudition,
   renderTrigger
 }) {
-  const [open, setOpen] = React49.useState(false);
-  const [query, setQuery] = React49.useState("");
-  const [category, setCategory] = React49.useState(null);
-  const [pos, setPos] = React49.useState(null);
-  const btnRef = React49.useRef(null);
-  const menuRef = React49.useRef(null);
+  const [open, setOpen] = React53.useState(false);
+  const [query, setQuery] = React53.useState("");
+  const [category, setCategory] = React53.useState(null);
+  const [pos, setPos] = React53.useState(null);
+  const btnRef = React53.useRef(null);
+  const menuRef = React53.useRef(null);
   const lc = label.toLowerCase();
   const currentLabel = summary ?? (groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder);
-  const place = React49.useCallback(() => {
+  const place = React53.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -42321,17 +43129,17 @@ function SoundPickerMenu({
       maxHeight
     });
   }, []);
-  React49.useLayoutEffect(() => {
+  React53.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (open) {
       ensureCatScrollStyle();
       setQuery("");
       setCategory(null);
     }
   }, [open]);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -42351,7 +43159,7 @@ function SoundPickerMenu({
       window.removeEventListener("resize", dismiss);
     };
   }, [open]);
-  const close = React49.useCallback(() => setOpen(false), []);
+  const close = React53.useCallback(() => setOpen(false), []);
   useAnchorScroll(open, btnRef, menuRef, place, close);
   const pick = /* @__PURE__ */ __name((v) => {
     onChange(v);
@@ -42876,7 +43684,7 @@ function createCatalogStore() {
     listeners18.add(listener);
     return () => listeners18.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React49.useSyncExternalStore(subscribe11, read5, () => null), "useCatalog");
+  const useCatalog = /* @__PURE__ */ __name(() => React53.useSyncExternalStore(subscribe11, read5, () => null), "useCatalog");
   return { setAccessor, notify: notify6, read: read5, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
@@ -43060,9 +43868,9 @@ function PianoRollGrid({
   division: division2 = DEFAULT_DIVISION,
   onResolution
 } = {}) {
-  const [viewScale, setViewScale] = React49.useState(UNREFINED);
-  const [declinedCell, setDeclinedCell] = React49.useState(null);
-  const { chunk, model, read: read5, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit } = useGridModel({
+  const [viewScale, setViewScale] = React53.useState(UNREFINED);
+  const [declinedCell, setDeclinedCell] = React53.useState(null);
+  const { chunk, model, read: read5, mutate, settle: settle2, writeMini, beginGesture, endGesture, patternKey, applyEdit } = useGridModel({
     ...pianoRollCodec,
     source: "roll",
     eligible: opensPianoRoll,
@@ -43070,11 +43878,11 @@ function PianoRollGrid({
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, pianoRollCodec.parse, writeMini);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     setViewScale(UNREFINED);
   }, [patternKey]);
-  const dragRef = React49.useRef(null);
-  const velRef = React49.useRef(null);
+  const dragRef = React53.useRef(null);
+  const velRef = React53.useRef(null);
   const playingStep = usePlayingStep(
     model?.steps ?? 0,
     model?.bars ?? 1,
@@ -43082,7 +43890,7 @@ function PianoRollGrid({
     model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
-  const sounds = React49.useMemo(() => {
+  const sounds = React53.useMemo(() => {
     if (!chunk || !model) return null;
     const span = model.bars ?? 1;
     const onsets = model.notes.map((n) => stepToCycle(n.start, model.steps, span, model.barSteps));
@@ -43092,8 +43900,8 @@ function PianoRollGrid({
     if (names.length < 2) return null;
     return { names, byNote: new Map(model.notes.map((n, i) => [n, per[i]])) };
   }, [chunk, model]);
-  const lane = React49.useMemo(() => chunk && model ? soundLane(chunk, model.bars ?? 1) : null, [chunk, model]);
-  const laneSegments = React49.useMemo(() => {
+  const lane = React53.useMemo(() => chunk && model ? soundLane(chunk, model.bars ?? 1) : null, [chunk, model]);
+  const laneSegments = React53.useMemo(() => {
     const out = [];
     if (!lane || !model) return out;
     const span = model.bars ?? 1;
@@ -43106,7 +43914,7 @@ function PianoRollGrid({
     });
     return out;
   }, [lane, model]);
-  const laneToggles = React49.useRef(/* @__PURE__ */ new Map());
+  const laneToggles = React53.useRef(/* @__PURE__ */ new Map());
   const instruments = useSoundCatalog();
   const writeBlock = /* @__PURE__ */ __name((block, value) => {
     if (value === "") return;
@@ -43116,21 +43924,21 @@ function PianoRollGrid({
       commit(wb, "edit" in r ? r.edit : null, "roll");
     });
   }, "writeBlock");
-  const [hoveredMidi, setHoveredMidi] = React49.useState(null);
-  const holdMidiRef = React49.useRef(null);
-  const holdTimerRef = React49.useRef(null);
-  const onSelectRef = React49.useRef(onSelect);
+  const [hoveredMidi, setHoveredMidi] = React53.useState(null);
+  const holdMidiRef = React53.useRef(null);
+  const holdTimerRef = React53.useRef(null);
+  const onSelectRef = React53.useRef(onSelect);
   onSelectRef.current = onSelect;
-  const selectedRef = React49.useRef(selected);
+  const selectedRef = React53.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range2, setRange] = React49.useState(
+  const [range2, setRange] = React53.useState(
     () => rollContentRange({ notes: [] })
   );
-  const stmtIdRef = React49.useRef(null);
-  const scrollRef = React49.useRef(null);
-  const openScrollRef = React49.useRef(false);
-  React49.useEffect(() => {
+  const stmtIdRef = React53.useRef(null);
+  const scrollRef = React53.useRef(null);
+  const openScrollRef = React53.useRef(false);
+  React53.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = rollContentRange(model);
@@ -43166,14 +43974,14 @@ function PianoRollGrid({
     const room = sc.clientHeight - 2 * pad;
     sc.scrollTop = y1 - y0 <= room ? (y0 + y1) / 2 - sc.clientHeight / 2 : y1 + pad - sc.clientHeight;
   });
-  const placesNotes = React49.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
-  const resizable = React49.useMemo(() => model ? resizableNotes(model) : null, [model]);
+  const placesNotes = React53.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
+  const resizable = React53.useMemo(() => model ? resizableNotes(model) : null, [model]);
   const cols = model ? columnCount(model) : 0;
-  const gainWritable2 = React49.useMemo(
+  const gainWritable2 = React53.useMemo(
     () => model ? gainWritable(pianoRollCodec, model) : false,
     [model]
   );
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
@@ -43193,7 +44001,7 @@ function PianoRollGrid({
           readback: true
         });
         const refused2 = settled === d.base;
-        if (refused2) settle(d.base);
+        if (refused2) settle2(d.base);
         else mutate(() => settled);
         if (refused2) reportRefusal2("Couldn't set that length");
       }
@@ -43206,7 +44014,7 @@ function PianoRollGrid({
             readback: true
           });
           wentHome = settled === d.base;
-          if (wentHome) settle(d.base);
+          if (wentHome) settle2(d.base);
           else mutate(() => settled);
         }
         if (wentHome) reportRefusal2("Couldn't move that note there");
@@ -43222,7 +44030,7 @@ function PianoRollGrid({
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
@@ -43290,7 +44098,7 @@ function PianoRollGrid({
       holdTimerRef.current = null;
     }
   }, "stopHold");
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     window.addEventListener("pointerup", stopHold);
     window.addEventListener("pointercancel", stopHold);
     return () => {
@@ -43448,9 +44256,9 @@ function PianoRollGrid({
     }
     return best ?? { row: 0, col: 0 };
   }, "defaultCell");
-  const focusCursorRef = React49.useRef(false);
-  const gridRef = React49.useRef(null);
-  React49.useEffect(() => {
+  const focusCursorRef = React53.useRef(false);
+  const gridRef = React53.useRef(null);
+  React53.useEffect(() => {
     if (!focusCursorRef.current) return;
     const cell = gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-roll-cell]');
     if (!cell) return;
@@ -43555,31 +44363,31 @@ function PianoRollGrid({
         return true;
     }
   }, "runGesture");
-  const runGestureRef = React49.useRef(runGesture);
+  const runGestureRef = React53.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React49.useEffect(
+  React53.useEffect(
     () => mountGridGestures(GRID_SCOPE.pianoRoll, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React49.useRef(null);
+  const rulerRef = React53.useRef(null);
   useRulerFit(rulerRef, "data-roll-ruler-label");
   const phoneGrid = usePhoneGrid();
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone);
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 12;
-  const trackRef = React49.useRef(null);
+  const trackRef = React53.useRef(null);
   const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model, trackRef);
   const zoomed = !phoneGrid.phone;
   const rollMini = chunk?.miniString ?? null;
   const hasModel = !!model;
   const barCount = model?.bars ?? 1;
-  const trees = React49.useMemo(
+  const trees = React53.useMemo(
     () => hasModel && rollMini !== null ? chunkDivisions(rollMini, barCount) : null,
     [hasModel, barCount, rollMini]
   );
   const linesFrom = model ? linesModel(model, read5) : null;
   const parts = linesFrom?.source?.parts ?? null;
   const midiOf = /* @__PURE__ */ __name((token) => model?.numeric ? Number(token) : pitchToMidi(token), "midiOf");
-  const notesByPart = React49.useMemo(() => {
+  const notesByPart = React53.useMemo(() => {
     if (!parts || parts.length < 2) return null;
     const out = /* @__PURE__ */ new Map();
     for (const p of parts) {
@@ -43602,14 +44410,19 @@ function PianoRollGrid({
     }
     return rollPart(linesFrom);
   })();
-  const nodes = React49.useMemo(
+  const nodes = React53.useMemo(
     () => linesFrom && trees ? partSteps(linesFrom, trees, editedPart) : null,
     [linesFrom, trees, editedPart]
   );
   const otherNotes = notesByPart ? (key3) => !notesByPart.get(editedPart)?.has(key3) : null;
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
+  const playheadRef = React53.useRef(null);
+  useExactPlayhead(gridRef, playheadRef, model, (c) => trackRef.current?.children[c] ?? null);
+  const rollEligible = !!chunk && opensPianoRoll(chunk);
+  const lookTree = useDeferredPerText(!hasModel && rollEligible ? rollMini : null, lookOnlyTreeRoll);
   if (!model) {
-    return React49.createElement(VisualEditStandby, {
+    if (lookTree && "roll" in lookTree) return /* @__PURE__ */ jsx(TreeRollGrid, { roll: lookTree.roll, reason: lookTree.reason });
+    return React53.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && opensPianoRoll(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -43768,330 +44581,341 @@ function PianoRollGrid({
                       ]
                     }
                   ),
-                  /* @__PURE__ */ jsx(
+                  /* @__PURE__ */ jsxs(
                     "div",
                     {
                       ref: gridRef,
                       role: "grid",
                       "aria-label": "Piano roll",
-                      style: { display: "flex", flexDirection: "column", gap: 1 },
-                      children: rows.map((midi) => {
-                        const black = !model.numeric && isBlackKey(midi);
-                        const hovered = midi === hoveredMidi;
-                        const keyC = cLabel(midi);
-                        return /* @__PURE__ */ jsxs(
+                      style: { display: "flex", flexDirection: "column", gap: 1, position: "relative" },
+                      children: [
+                        /* @__PURE__ */ jsx(
                           "div",
                           {
-                            role: "row",
-                            style: { display: "flex", alignItems: "center", gap: 6 },
-                            onPointerEnter: () => {
-                              if (!dragRef.current && !velRef.current) setHoveredMidi(midi);
-                            },
-                            children: [
-                              model.numeric ? (
-                                // Numeric rows are raw values/degrees, not piano keys — keep the
-                                // value label (no keyboard graphic).
-                                /* @__PURE__ */ jsx(
-                                  "span",
-                                  {
-                                    role: "rowheader",
-                                    style: {
-                                      width: 36,
-                                      fontSize: 9,
-                                      textAlign: "right",
-                                      color: "var(--foreground, #e6e6ea)",
-                                      ...pinned
-                                    },
-                                    children: tokenForRow(true, midi)
-                                  }
-                                )
-                              ) : (
-                                // Graphical piano key (#430). Fixed-width key bed so the note
-                                // cells stay column-aligned across every row (PV120 single
-                                // vertical axis — same `rows` midi list). White keys fill the
-                                // bed light; a black key is a shorter dark bar overlaid on the
-                                // BACK (left) of the bed, leaving the white front edge visible —
-                                // the keyboard look. C rows are labelled (C is always white).
-                                /* @__PURE__ */ jsxs(
-                                  "span",
-                                  {
-                                    role: "rowheader",
-                                    "aria-label": noteDisplayName(midi),
-                                    "data-roll-key": midi,
-                                    "data-roll-key-black": black ? "true" : void 0,
-                                    title: `Play ${noteDisplayName(midi)}`,
-                                    onPointerDown: (e) => {
-                                      e.preventDefault();
-                                      startHold(midi);
-                                    },
-                                    onPointerEnter: () => moveHold(midi),
-                                    style: {
-                                      position: "relative",
-                                      width: 40,
-                                      height: 16,
-                                      flex: "0 0 auto",
-                                      boxSizing: "border-box",
-                                      borderRadius: "2px 3px 3px 2px",
-                                      border: "1px solid var(--border, #3a3a42)",
-                                      background: hovered ? "#cdd3ff" : "#e8e8ec",
-                                      color: "#3a3a42",
-                                      fontSize: 8,
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "flex-end",
-                                      paddingRight: 3,
-                                      overflow: "hidden",
-                                      cursor: "pointer",
-                                      touchAction: "none",
-                                      // let a touch-drag glissando across keys
-                                      // pinned on a phone (#2006); the key keeps its own colour
-                                      ...phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2 } : {}
-                                    },
-                                    children: [
-                                      black && /* @__PURE__ */ jsx(
-                                        "span",
-                                        {
-                                          "aria-hidden": "true",
-                                          style: {
-                                            position: "absolute",
-                                            left: 0,
-                                            top: 0,
-                                            bottom: 0,
-                                            width: "62%",
-                                            background: hovered ? "#3a3a44" : "#1b1b20",
-                                            borderRadius: "1px 2px 2px 1px"
-                                          }
-                                        }
-                                      ),
-                                      /* @__PURE__ */ jsx("span", { style: { position: "relative" }, children: keyC ?? "" })
-                                    ]
-                                  }
-                                )
-                              ),
-                              /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, step) => {
-                                const hit = overlapAt(model, midi, step);
-                                const note = hit?.note;
-                                const on = note !== void 0;
-                                const isHead = on && headColumn(note) === step;
-                                const isTail = on && tailColumn(note) === step;
-                                const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
-                                const canPlace = !model.lookOnly && (on || placesNotes);
-                                const dropRefused = declinedCell === `${midi}:${step}`;
-                                const resizeInert = on && isTail && resizable?.has(note) === false;
-                                const isTab = tabCell.col === step && rows[tabCell.row] === midi;
-                                return (
-                                  // A gridcell holding one toggle button (ARIA grid pattern: a cell
-                                  // with a single widget puts focus on the widget). The button keeps
-                                  // `aria-pressed` — a gridcell may not carry it, a button may — and
-                                  // the cell carries the cursor as `aria-selected` (#1802).
+                            ref: playheadRef,
+                            "aria-hidden": "true",
+                            "data-roll-playhead-line": true,
+                            style: { display: "none", position: "absolute", left: 0, top: 0, bottom: 0, width: 2, marginLeft: -1, background: "var(--foreground, #e6e6ea)", opacity: 0.5, pointerEvents: "none", zIndex: 3 }
+                          }
+                        ),
+                        rows.map((midi) => {
+                          const black = !model.numeric && isBlackKey(midi);
+                          const hovered = midi === hoveredMidi;
+                          const keyC = cLabel(midi);
+                          return /* @__PURE__ */ jsxs(
+                            "div",
+                            {
+                              role: "row",
+                              style: { display: "flex", alignItems: "center", gap: 6 },
+                              onPointerEnter: () => {
+                                if (!dragRef.current && !velRef.current) setHoveredMidi(midi);
+                              },
+                              children: [
+                                model.numeric ? (
+                                  // Numeric rows are raw values/degrees, not piano keys — keep the
+                                  // value label (no keyboard graphic).
                                   /* @__PURE__ */ jsx(
-                                    "div",
+                                    "span",
                                     {
-                                      role: "gridcell",
-                                      "aria-selected": isSel,
-                                      "data-roll-step-start": step > 0 && !layout.barStart(step) && stepStarts.has(step) ? "true" : void 0,
-                                      style: { display: "flex", ...cellBox(step), boxShadow: barLine(step) },
-                                      children: /* @__PURE__ */ jsxs(
-                                        "button",
-                                        {
-                                          type: "button",
-                                          tabIndex: isTab ? 0 : -1,
-                                          onFocus: () => {
-                                            if (!isSel) select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
-                                          },
-                                          "aria-pressed": on,
-                                          "aria-label": on && !isHead ? `${tokenForRow(!!model.numeric, midi)} step ${step + 1}, held from step ${headColumn(note) + 1}` : `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
-                                          "data-roll-cell": `${midi}:${step}`,
-                                          "data-roll-selected": isSel ? "true" : void 0,
-                                          "data-playing": step === playingStep ? "true" : void 0,
-                                          "data-roll-cell-inert": canPlace ? void 0 : "true",
-                                          "data-roll-drop-refused": dropRefused ? "true" : void 0,
-                                          "data-roll-resize-inert": resizeInert ? "true" : void 0,
-                                          "aria-disabled": canPlace ? void 0 : true,
-                                          title: model.lookOnly ? lookOnlyLine(model.lookOnly) : !canPlace ? "This pattern edits its existing notes \u2014 add notes in the code view." : resizeInert ? "This note has no other length the pattern can hold \u2014 change its length in the code view." : void 0,
-                                          onPointerDown: (e) => {
-                                            e.preventDefault();
-                                            if (!canPlace && !(e.metaKey || e.ctrlKey)) return;
-                                            onCellDown(midi, step, e);
-                                          },
-                                          onPointerEnter: () => onCellEnter(midi, step),
-                                          style: {
-                                            position: "relative",
-                                            width: "100%",
-                                            height: 16,
-                                            padding: 0,
-                                            border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
-                                            borderRadius: 2,
-                                            // The note is drawn by the fill BELOW, not by this background, so
-                                            // that a note occupying part of a column occupies part of the box
-                                            // (#1074). The cell keeps its own empty-cell background.
-                                            background: step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
-                                            cursor: dropRefused ? "not-allowed" : model.lookOnly ? "default" : "pointer"
-                                            // The selection ring (#432) is NOT here — see the overlay that
-                                            // is the cell's last child (#1077).
-                                          },
-                                          children: [
-                                            hit && // The note itself. WIDTH is how much of this column it sounds
-                                            // for and LEFT is where in the column it begins — the same
-                                            // geometry the step grid draws (#1056), from the same shared
-                                            // `columnOverlap` rule, with the offset that only the roll needs
-                                            // because only a roll note carries a fractional start.
-                                            //
-                                            // A non-head is dimmed, which is what this surface already did
-                                            // via the button's own opacity; moving it onto the fill keeps the
-                                            // cell's playhead border and selection ring at full strength.
-                                            /* @__PURE__ */ jsx(
-                                              "span",
-                                              {
-                                                "data-roll-fill": true,
-                                                "data-roll-sustain": !isHead ? "true" : void 0,
-                                                "data-roll-note-sounds": sounds ? (sounds.byNote.get(note) ?? []).join(" ") : void 0,
-                                                "data-roll-dim": otherNotes?.(`${midiOf(note.pitch)}@${note.start}`) ? "" : void 0,
-                                                style: {
-                                                  position: "absolute",
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  left: `${hit.overlap.offset * 100}%`,
-                                                  width: `${hit.overlap.extent * 100}%`,
-                                                  background: colorMode === "velocity" ? velocityColor(note.gain ?? 1) : sounds ? soundFill(sounds.byNote.get(note) ?? []) : "var(--accent, #6ea8fe)",
-                                                  // another part's note is drawn dimmer (#2277): the lines are the edited part's
-                                                  opacity: (isHead ? 1 : 0.7) * (otherNotes?.(`${midiOf(note.pitch)}@${note.start}`) ? 0.35 : 1),
-                                                  pointerEvents: "none"
-                                                }
-                                              }
-                                            ),
-                                            isHead && // Note name inside the bar (#605) — rendered on the head
-                                            // cell, clipped to THE BAR so it never spills onto a
-                                            // neighbour or onto the empty part of its own column.
-                                            // pointer-events:none so it never blocks the cell's
-                                            // pointer gestures (paint/drag) or the tail resize handle.
-                                            //
-                                            // Positioned against the FILL's box, not the cell's (#1078).
-                                            // While the note WAS the whole cell the two rectangles
-                                            // coincided and nothing had to choose; once the note became a
-                                            // child span occupying only its overlap (#1076), `inset: 0`
-                                            // put the label on empty background BESIDE the bar it names —
-                                            // 12 of 4842 corpus notes, every one of them a note that
-                                            // begins mid-column. Same two numbers the bar uses, so the
-                                            // two cannot drift apart again.
-                                            /* @__PURE__ */ jsx(
-                                              "span",
-                                              {
-                                                "data-roll-note-name": true,
-                                                "aria-hidden": "true",
-                                                style: {
-                                                  position: "absolute",
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  left: `${hit.overlap.offset * 100}%`,
-                                                  width: `${hit.overlap.extent * 100}%`,
-                                                  display: "flex",
-                                                  alignItems: "center",
-                                                  paddingLeft: 3,
-                                                  fontSize: 8,
-                                                  lineHeight: 1,
-                                                  fontWeight: 600,
-                                                  color: "#fff",
-                                                  textShadow: "0 1px 1px rgba(0,0,0,0.55)",
-                                                  whiteSpace: "nowrap",
-                                                  overflow: "hidden",
-                                                  pointerEvents: "none"
-                                                },
-                                                children: model.numeric ? String(midi) : noteDisplayName(midi)
-                                              }
-                                            ),
-                                            isTail && resizable?.has(note) && // RENDERED ONLY WHERE A DRAG WOULD WRITE (`resizable`, #1322),
-                                            // which is the standing rule for every affordance this panel
-                                            // draws (#1064/#1070/#1089). 1,861 of 5,480 corpus notes have no
-                                            // length the document can carry, and until now every one of them
-                                            // drew a handle that took the cursor and did nothing.
-                                            //
-                                            // The resize handle sits at the BAR's trailing edge, not the
-                                            // cell's (#1078). A note that ends mid-column used to put its
-                                            // handle at the far side of the column — floating in empty
-                                            // background past the end of the note it resizes, which is a
-                                            // handle you cannot aim at because it is not on the thing.
-                                            // 18 of 4842 corpus notes.
-                                            //
-                                            // WIDTH IS CLAMPED TO THE BAR: a `@0.25` note in a
-                                            // minimum-width (12px) column is a 3px bar, and a fixed 8px
-                                            // handle would be wider than the note, overhanging backwards
-                                            // past its own start. The handle is never wider than what it
-                                            // resizes. What that costs — a very small note draws a very
-                                            // small handle — is paid back by the pointer-down grab zone
-                                            // below, which is floored and invisible: what you SEE is the
-                                            // note's own trailing edge, what you can HIT is larger.
-                                            /* @__PURE__ */ jsx(
-                                              "span",
-                                              {
-                                                "data-roll-resize": `${midi}:${note.start}`,
-                                                "aria-label": `resize ${tokenForRow(!!model.numeric, midi)}`,
-                                                onPointerDown: (e) => {
-                                                  e.preventDefault();
-                                                  e.stopPropagation();
-                                                  onResizeDown(note);
-                                                },
-                                                style: {
-                                                  position: "absolute",
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  right: `${(1 - hit.overlap.offset - hit.overlap.extent) * 100}%`,
-                                                  width: `min(${RESIZE_ZONE_PX2}px, ${hit.overlap.extent * 100}%)`,
-                                                  cursor: "ew-resize",
-                                                  background: "var(--foreground, #e6e6ea)",
-                                                  opacity: 0.45,
-                                                  borderRadius: "0 2px 2px 0"
-                                                }
-                                              }
-                                            ),
-                                            isSel && // Selection ring (#432), drawn as the LAST child rather than as
-                                            // the cell's own inset shadow (#1077).
-                                            //
-                                            // An inset box-shadow paints with the element's background, and
-                                            // every child paints above it. That cost nothing while the note
-                                            // WAS the background; once the note became a child span (#1074)
-                                            // the ring was covered on every cell holding a note — which is
-                                            // every cell you would want to select. Measured against the
-                                            // previous build: 424 white ring pixels on a selected note cell
-                                            // → 0, while a selected EMPTY cell was unaffected, which is
-                                            // exactly why every existing assertion stayed green.
-                                            //
-                                            // Drawn last so it frames whatever is underneath — note, name,
-                                            // resize handle or bare cell — and never has to know which.
-                                            /* @__PURE__ */ jsx(
-                                              "span",
-                                              {
-                                                "data-roll-selection": true,
-                                                "aria-hidden": "true",
-                                                style: {
-                                                  position: "absolute",
-                                                  // Laid out against the PADDING box, so the ring sits a pixel
-                                                  // further in than the old inset shadow did — measured 403
-                                                  // white frame pixels against the original 424. Growing the
-                                                  // overlay by the border width to close that gap was tried and
-                                                  // MEASURED WORSE: at `inset: -1` the ring is drawn outside the
-                                                  // cell and bleeds across the 1px lane gap (2156). The pixel
-                                                  // nearest the border is not worth a ring that leaves its cell.
-                                                  inset: 0,
-                                                  borderRadius: 2,
-                                                  boxShadow: "inset 0 0 0 2px var(--foreground, #e6e6ea)",
-                                                  pointerEvents: "none"
-                                                }
-                                              }
-                                            )
-                                          ]
-                                        }
-                                      )
-                                    },
-                                    step
+                                      role: "rowheader",
+                                      style: {
+                                        width: 36,
+                                        fontSize: 9,
+                                        textAlign: "right",
+                                        color: "var(--foreground, #e6e6ea)",
+                                        ...pinned
+                                      },
+                                      children: tokenForRow(true, midi)
+                                    }
                                   )
-                                );
-                              }) })
-                            ]
-                          },
-                          midi
-                        );
-                      })
+                                ) : (
+                                  // Graphical piano key (#430). Fixed-width key bed so the note
+                                  // cells stay column-aligned across every row (PV120 single
+                                  // vertical axis — same `rows` midi list). White keys fill the
+                                  // bed light; a black key is a shorter dark bar overlaid on the
+                                  // BACK (left) of the bed, leaving the white front edge visible —
+                                  // the keyboard look. C rows are labelled (C is always white).
+                                  /* @__PURE__ */ jsxs(
+                                    "span",
+                                    {
+                                      role: "rowheader",
+                                      "aria-label": noteDisplayName(midi),
+                                      "data-roll-key": midi,
+                                      "data-roll-key-black": black ? "true" : void 0,
+                                      title: `Play ${noteDisplayName(midi)}`,
+                                      onPointerDown: (e) => {
+                                        e.preventDefault();
+                                        startHold(midi);
+                                      },
+                                      onPointerEnter: () => moveHold(midi),
+                                      style: {
+                                        position: "relative",
+                                        width: 40,
+                                        height: 16,
+                                        flex: "0 0 auto",
+                                        boxSizing: "border-box",
+                                        borderRadius: "2px 3px 3px 2px",
+                                        border: "1px solid var(--border, #3a3a42)",
+                                        background: hovered ? "#cdd3ff" : "#e8e8ec",
+                                        color: "#3a3a42",
+                                        fontSize: 8,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "flex-end",
+                                        paddingRight: 3,
+                                        overflow: "hidden",
+                                        cursor: "pointer",
+                                        touchAction: "none",
+                                        // let a touch-drag glissando across keys
+                                        // pinned on a phone (#2006); the key keeps its own colour
+                                        ...phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2 } : {}
+                                      },
+                                      children: [
+                                        black && /* @__PURE__ */ jsx(
+                                          "span",
+                                          {
+                                            "aria-hidden": "true",
+                                            style: {
+                                              position: "absolute",
+                                              left: 0,
+                                              top: 0,
+                                              bottom: 0,
+                                              width: "62%",
+                                              background: hovered ? "#3a3a44" : "#1b1b20",
+                                              borderRadius: "1px 2px 2px 1px"
+                                            }
+                                          }
+                                        ),
+                                        /* @__PURE__ */ jsx("span", { style: { position: "relative" }, children: keyC ?? "" })
+                                      ]
+                                    }
+                                  )
+                                ),
+                                /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, step) => {
+                                  const hit = overlapAt(model, midi, step);
+                                  const note = hit?.note;
+                                  const on = note !== void 0;
+                                  const isHead = on && headColumn(note) === step;
+                                  const isTail = on && tailColumn(note) === step;
+                                  const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
+                                  const canPlace = !model.lookOnly && (on || placesNotes);
+                                  const dropRefused = declinedCell === `${midi}:${step}`;
+                                  const resizeInert = on && isTail && resizable?.has(note) === false;
+                                  const isTab = tabCell.col === step && rows[tabCell.row] === midi;
+                                  return (
+                                    // A gridcell holding one toggle button (ARIA grid pattern: a cell
+                                    // with a single widget puts focus on the widget). The button keeps
+                                    // `aria-pressed` — a gridcell may not carry it, a button may — and
+                                    // the cell carries the cursor as `aria-selected` (#1802).
+                                    /* @__PURE__ */ jsx(
+                                      "div",
+                                      {
+                                        role: "gridcell",
+                                        "aria-selected": isSel,
+                                        "data-roll-step-start": step > 0 && !layout.barStart(step) && stepStarts.has(step) ? "true" : void 0,
+                                        style: { display: "flex", ...cellBox(step), boxShadow: barLine(step) },
+                                        children: /* @__PURE__ */ jsxs(
+                                          "button",
+                                          {
+                                            type: "button",
+                                            tabIndex: isTab ? 0 : -1,
+                                            onFocus: () => {
+                                              if (!isSel) select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
+                                            },
+                                            "aria-pressed": on,
+                                            "aria-label": on && !isHead ? `${tokenForRow(!!model.numeric, midi)} step ${step + 1}, held from step ${headColumn(note) + 1}` : `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
+                                            "data-roll-cell": `${midi}:${step}`,
+                                            "data-roll-selected": isSel ? "true" : void 0,
+                                            "data-playing": step === playingStep ? "true" : void 0,
+                                            "data-roll-cell-inert": canPlace ? void 0 : "true",
+                                            "data-roll-drop-refused": dropRefused ? "true" : void 0,
+                                            "data-roll-resize-inert": resizeInert ? "true" : void 0,
+                                            "aria-disabled": canPlace ? void 0 : true,
+                                            title: model.lookOnly ? lookOnlyLine(model.lookOnly) : !canPlace ? "This pattern edits its existing notes \u2014 add notes in the code view." : resizeInert ? "This note has no other length the pattern can hold \u2014 change its length in the code view." : void 0,
+                                            onPointerDown: (e) => {
+                                              e.preventDefault();
+                                              if (!canPlace && !(e.metaKey || e.ctrlKey)) return;
+                                              onCellDown(midi, step, e);
+                                            },
+                                            onPointerEnter: () => onCellEnter(midi, step),
+                                            style: {
+                                              position: "relative",
+                                              width: "100%",
+                                              height: 16,
+                                              padding: 0,
+                                              border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                                              borderRadius: 2,
+                                              // The note is drawn by the fill BELOW, not by this background, so
+                                              // that a note occupying part of a column occupies part of the box
+                                              // (#1074). The cell keeps its own empty-cell background.
+                                              background: step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
+                                              cursor: dropRefused ? "not-allowed" : model.lookOnly ? "default" : "pointer"
+                                              // The selection ring (#432) is NOT here — see the overlay that
+                                              // is the cell's last child (#1077).
+                                            },
+                                            children: [
+                                              hit && // The note itself. WIDTH is how much of this column it sounds
+                                              // for and LEFT is where in the column it begins — the same
+                                              // geometry the step grid draws (#1056), from the same shared
+                                              // `columnOverlap` rule, with the offset that only the roll needs
+                                              // because only a roll note carries a fractional start.
+                                              //
+                                              // A non-head is dimmed, which is what this surface already did
+                                              // via the button's own opacity; moving it onto the fill keeps the
+                                              // cell's playhead border and selection ring at full strength.
+                                              /* @__PURE__ */ jsx(
+                                                "span",
+                                                {
+                                                  "data-roll-fill": true,
+                                                  "data-roll-sustain": !isHead ? "true" : void 0,
+                                                  "data-roll-note-sounds": sounds ? (sounds.byNote.get(note) ?? []).join(" ") : void 0,
+                                                  "data-roll-dim": otherNotes?.(`${midiOf(note.pitch)}@${note.start}`) ? "" : void 0,
+                                                  style: {
+                                                    position: "absolute",
+                                                    top: 0,
+                                                    bottom: 0,
+                                                    left: `${hit.overlap.offset * 100}%`,
+                                                    width: `${hit.overlap.extent * 100}%`,
+                                                    background: colorMode === "velocity" ? velocityColor(note.gain ?? 1) : sounds ? soundFill(sounds.byNote.get(note) ?? []) : "var(--accent, #6ea8fe)",
+                                                    // another part's note is drawn dimmer (#2277): the lines are the edited part's
+                                                    opacity: (isHead ? 1 : 0.7) * (otherNotes?.(`${midiOf(note.pitch)}@${note.start}`) ? 0.35 : 1),
+                                                    pointerEvents: "none"
+                                                  }
+                                                }
+                                              ),
+                                              isHead && // Note name inside the bar (#605) — rendered on the head
+                                              // cell, clipped to THE BAR so it never spills onto a
+                                              // neighbour or onto the empty part of its own column.
+                                              // pointer-events:none so it never blocks the cell's
+                                              // pointer gestures (paint/drag) or the tail resize handle.
+                                              //
+                                              // Positioned against the FILL's box, not the cell's (#1078).
+                                              // While the note WAS the whole cell the two rectangles
+                                              // coincided and nothing had to choose; once the note became a
+                                              // child span occupying only its overlap (#1076), `inset: 0`
+                                              // put the label on empty background BESIDE the bar it names —
+                                              // 12 of 4842 corpus notes, every one of them a note that
+                                              // begins mid-column. Same two numbers the bar uses, so the
+                                              // two cannot drift apart again.
+                                              /* @__PURE__ */ jsx(
+                                                "span",
+                                                {
+                                                  "data-roll-note-name": true,
+                                                  "aria-hidden": "true",
+                                                  style: {
+                                                    position: "absolute",
+                                                    top: 0,
+                                                    bottom: 0,
+                                                    left: `${hit.overlap.offset * 100}%`,
+                                                    width: `${hit.overlap.extent * 100}%`,
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    paddingLeft: 3,
+                                                    fontSize: 8,
+                                                    lineHeight: 1,
+                                                    fontWeight: 600,
+                                                    color: "#fff",
+                                                    textShadow: "0 1px 1px rgba(0,0,0,0.55)",
+                                                    whiteSpace: "nowrap",
+                                                    overflow: "hidden",
+                                                    pointerEvents: "none"
+                                                  },
+                                                  children: model.numeric ? String(midi) : noteDisplayName(midi)
+                                                }
+                                              ),
+                                              isTail && resizable?.has(note) && // RENDERED ONLY WHERE A DRAG WOULD WRITE (`resizable`, #1322),
+                                              // which is the standing rule for every affordance this panel
+                                              // draws (#1064/#1070/#1089). 1,861 of 5,480 corpus notes have no
+                                              // length the document can carry, and until now every one of them
+                                              // drew a handle that took the cursor and did nothing.
+                                              //
+                                              // The resize handle sits at the BAR's trailing edge, not the
+                                              // cell's (#1078). A note that ends mid-column used to put its
+                                              // handle at the far side of the column — floating in empty
+                                              // background past the end of the note it resizes, which is a
+                                              // handle you cannot aim at because it is not on the thing.
+                                              // 18 of 4842 corpus notes.
+                                              //
+                                              // WIDTH IS CLAMPED TO THE BAR: a `@0.25` note in a
+                                              // minimum-width (12px) column is a 3px bar, and a fixed 8px
+                                              // handle would be wider than the note, overhanging backwards
+                                              // past its own start. The handle is never wider than what it
+                                              // resizes. What that costs — a very small note draws a very
+                                              // small handle — is paid back by the pointer-down grab zone
+                                              // below, which is floored and invisible: what you SEE is the
+                                              // note's own trailing edge, what you can HIT is larger.
+                                              /* @__PURE__ */ jsx(
+                                                "span",
+                                                {
+                                                  "data-roll-resize": `${midi}:${note.start}`,
+                                                  "aria-label": `resize ${tokenForRow(!!model.numeric, midi)}`,
+                                                  onPointerDown: (e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    onResizeDown(note);
+                                                  },
+                                                  style: {
+                                                    position: "absolute",
+                                                    top: 0,
+                                                    bottom: 0,
+                                                    right: `${(1 - hit.overlap.offset - hit.overlap.extent) * 100}%`,
+                                                    width: `min(${RESIZE_ZONE_PX2}px, ${hit.overlap.extent * 100}%)`,
+                                                    cursor: "ew-resize",
+                                                    background: "var(--foreground, #e6e6ea)",
+                                                    opacity: 0.45,
+                                                    borderRadius: "0 2px 2px 0"
+                                                  }
+                                                }
+                                              ),
+                                              isSel && // Selection ring (#432), drawn as the LAST child rather than as
+                                              // the cell's own inset shadow (#1077).
+                                              //
+                                              // An inset box-shadow paints with the element's background, and
+                                              // every child paints above it. That cost nothing while the note
+                                              // WAS the background; once the note became a child span (#1074)
+                                              // the ring was covered on every cell holding a note — which is
+                                              // every cell you would want to select. Measured against the
+                                              // previous build: 424 white ring pixels on a selected note cell
+                                              // → 0, while a selected EMPTY cell was unaffected, which is
+                                              // exactly why every existing assertion stayed green.
+                                              //
+                                              // Drawn last so it frames whatever is underneath — note, name,
+                                              // resize handle or bare cell — and never has to know which.
+                                              /* @__PURE__ */ jsx(
+                                                "span",
+                                                {
+                                                  "data-roll-selection": true,
+                                                  "aria-hidden": "true",
+                                                  style: {
+                                                    position: "absolute",
+                                                    // Laid out against the PADDING box, so the ring sits a pixel
+                                                    // further in than the old inset shadow did — measured 403
+                                                    // white frame pixels against the original 424. Growing the
+                                                    // overlay by the border width to close that gap was tried and
+                                                    // MEASURED WORSE: at `inset: -1` the ring is drawn outside the
+                                                    // cell and bleeds across the 1px lane gap (2156). The pixel
+                                                    // nearest the border is not worth a ring that leaves its cell.
+                                                    inset: 0,
+                                                    borderRadius: 2,
+                                                    boxShadow: "inset 0 0 0 2px var(--foreground, #e6e6ea)",
+                                                    pointerEvents: "none"
+                                                  }
+                                                }
+                                              )
+                                            ]
+                                          }
+                                        )
+                                      },
+                                      step
+                                    )
+                                  );
+                                }) })
+                              ]
+                            },
+                            midi
+                          );
+                        })
+                      ]
                     }
                   ),
                   !model.lookOnly && /* @__PURE__ */ jsx(ExtendHandle, { length, gridRef, cellAttr: "data-roll-cell", cols, lastBarCols: layout.lastBarCols }),
@@ -44294,17 +45118,17 @@ function clamp014(pos) {
   return Math.min(1, Math.max(0, pos));
 }
 __name(clamp014, "clamp01");
-function positionOfValue(value, min, max, scale) {
+function positionOfValue(value, min, max, scale2) {
   if (!Number.isFinite(value) || !(max > min)) return 0;
-  if (scale === "log" && min > 0 && value > 0) {
+  if (scale2 === "log" && min > 0 && value > 0) {
     return clamp014(Math.log(value / min) / Math.log(max / min));
   }
   return clamp014((value - min) / (max - min));
 }
 __name(positionOfValue, "positionOfValue");
-function valueAtPosition(pos, min, max, scale) {
+function valueAtPosition(pos, min, max, scale2) {
   const t = clamp014(Number.isFinite(pos) ? pos : 0);
-  if (scale === "log" && min > 0 && max > min) return min * Math.pow(max / min, t);
+  if (scale2 === "log" && min > 0 && max > min) return min * Math.pow(max / min, t);
   return min + t * (max - min);
 }
 __name(valueAtPosition, "valueAtPosition");
@@ -44334,13 +45158,13 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React49.useRef(null);
-  const [editing, setEditing] = React49.useState(false);
-  const [draftMin, setDraftMin] = React49.useState("");
-  const [draftMax, setDraftMax] = React49.useState("");
-  const [popupPos, setPopupPos] = React49.useState(null);
-  const sliderRef = React49.useRef(null);
-  const popupRef = React49.useRef(null);
+  const dragRef = React53.useRef(null);
+  const [editing, setEditing] = React53.useState(false);
+  const [draftMin, setDraftMin] = React53.useState("");
+  const [draftMax, setDraftMax] = React53.useState("");
+  const [popupPos, setPopupPos] = React53.useState(null);
+  const sliderRef = React53.useRef(null);
+  const popupRef = React53.useRef(null);
   const POPUP_W = 132;
   const openRangeEditor = /* @__PURE__ */ __name(() => {
     if (!onRangeChange) return;
@@ -44356,7 +45180,7 @@ function Knob({
     }
     setEditing(false);
   }, "commitRange");
-  const placePopup = React49.useCallback(() => {
+  const placePopup = React53.useCallback(() => {
     const r = sliderRef.current?.getBoundingClientRect();
     if (!r) return;
     const margin = 8;
@@ -44370,10 +45194,10 @@ function Knob({
       )
     });
   }, []);
-  React49.useLayoutEffect(() => {
+  React53.useLayoutEffect(() => {
     if (editing) placePopup();
   }, [editing, placePopup]);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (!editing) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -44388,7 +45212,7 @@ function Knob({
       window.removeEventListener("resize", dismiss);
     };
   }, [editing]);
-  const closePopup = React49.useCallback(() => setEditing(false), []);
+  const closePopup = React53.useCallback(() => setEditing(false), []);
   useAnchorScroll(editing, sliderRef, popupRef, placePopup, closePopup);
   const pos = toPosition(value, range2);
   const angle = -135 + pos * 270;
@@ -45221,12 +46045,12 @@ function AddEffectMenu({
   present,
   onToggle
 }) {
-  const [open, setOpen] = React49.useState(false);
-  const [query, setQuery] = React49.useState("");
-  const [pos, setPos] = React49.useState(null);
-  const btnRef = React49.useRef(null);
-  const menuRef = React49.useRef(null);
-  const place = React49.useCallback(() => {
+  const [open, setOpen] = React53.useState(false);
+  const [query, setQuery] = React53.useState("");
+  const [pos, setPos] = React53.useState(null);
+  const btnRef = React53.useRef(null);
+  const menuRef = React53.useRef(null);
+  const place = React53.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -45240,10 +46064,10 @@ function AddEffectMenu({
       maxHeight
     });
   }, []);
-  React49.useLayoutEffect(() => {
+  React53.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -45263,7 +46087,7 @@ function AddEffectMenu({
       window.removeEventListener("resize", dismiss);
     };
   }, [open]);
-  const close = React49.useCallback(() => setOpen(false), []);
+  const close = React53.useCallback(() => setOpen(false), []);
   useAnchorScroll(open, btnRef, menuRef, place, close);
   const q = query.trim().toLowerCase();
   const groups = EFFECT_GROUPS.map(
@@ -45508,37 +46332,37 @@ function MixerBody({
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
   const knobs = knobsFromChunk(chunk, showGain);
-  const writeKnob = React49.useCallback(
+  const writeKnob = React53.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => commit(wb, knobEdit(fresh, entry, value), "knob"));
     },
     [applyEdit]
   );
-  const writeRange = React49.useCallback(
+  const writeRange = React53.useCallback(
     (entry, min, max) => {
       applyEdit((fresh, wb) => commit(wb, knobRangeEdit(fresh, entry, min, max), "knob"));
     },
     [applyEdit]
   );
-  const resetRange = React49.useCallback(
+  const resetRange = React53.useCallback(
     (entry) => {
       applyEdit((fresh, wb) => commit(wb, knobRangeResetEdit(fresh, entry), "knob"));
     },
     [applyEdit]
   );
-  const toggleEffect = React49.useCallback(
+  const toggleEffect = React53.useCallback(
     (e) => {
       applyEdit((fresh, wb) => commit(wb, toggleCallEdit(fresh, effectNames(e), e.method, e.def), "knob"));
     },
     [applyEdit]
   );
-  const removeMethod = React49.useCallback(
+  const removeMethod = React53.useCallback(
     (method) => {
       applyEdit((fresh, wb) => commit(wb, removeNamedCall(fresh, method), "knob"));
     },
     [applyEdit]
   );
-  const writeChainMethod = React49.useCallback(
+  const writeChainMethod = React53.useCallback(
     (names, canonical, value, noun) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -45720,7 +46544,7 @@ var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function Mixer({ division: division2, onDivisionChange, resolution } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   if (!chunk || chunk.chain.length === 0) {
-    return React49.createElement(VisualEditStandby, {
+    return React53.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -45833,33 +46657,33 @@ function schedulersOf(payload) {
   return payload.engineComponents?.queryable?.trackSchedulers ?? null;
 }
 __name(schedulersOf, "schedulersOf");
-function levelColor(frac) {
-  if (frac >= 0.9) return "var(--meter-red, #ff5a52)";
-  if (frac >= 0.72) return "var(--meter-yellow, #ffcc4d)";
+function levelColor(frac2) {
+  if (frac2 >= 0.9) return "var(--meter-red, #ff5a52)";
+  if (frac2 >= 0.72) return "var(--meter-yellow, #ffcc4d)";
   return "var(--meter-green, #44d07b)";
 }
 __name(levelColor, "levelColor");
 var MIN_FRAME_MS = 1e3 / 60;
 var QUERY_WINDOW_CYCLES = 0.01;
 function useTrackMeters() {
-  const elsRef = React49.useRef(/* @__PURE__ */ new Map());
-  const stateRef = React49.useRef(/* @__PURE__ */ new Map());
-  const schedulersRef = React49.useRef(null);
-  const rafRef = React49.useRef(null);
-  const lastTsRef = React49.useRef(0);
-  const [fileId, setFileId] = React49.useState(() => getActiveFileId());
-  React49.useEffect(() => {
+  const elsRef = React53.useRef(/* @__PURE__ */ new Map());
+  const stateRef = React53.useRef(/* @__PURE__ */ new Map());
+  const schedulersRef = React53.useRef(null);
+  const rafRef = React53.useRef(null);
+  const lastTsRef = React53.useRef(0);
+  const [fileId, setFileId] = React53.useState(() => getActiveFileId());
+  React53.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React49.useCallback((captureId, els) => {
+  const register = React53.useCallback((captureId, els) => {
     if (els) elsRef.current.set(captureId, els);
     else {
       elsRef.current.delete(captureId);
       stateRef.current.delete(captureId);
     }
   }, []);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       schedulersRef.current = schedulersOf(payload);
     }) : (() => {
@@ -45950,7 +46774,7 @@ function useTrackMeters() {
       stateRef.current.clear();
     };
   }, [fileId]);
-  return React49.useMemo(() => ({ register }), [register]);
+  return React53.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
@@ -45990,8 +46814,8 @@ function subscribe8(listener) {
 }
 __name(subscribe8, "subscribe");
 function useActiveFileId() {
-  const [id, setId] = React49.useState(() => getActiveFileId());
-  React49.useEffect(() => {
+  const [id, setId] = React53.useState(() => getActiveFileId());
+  React53.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -46000,7 +46824,7 @@ function useActiveFileId() {
 __name(useActiveFileId, "useActiveFileId");
 function useSoloedIds() {
   const fileId = useActiveFileId();
-  return React49.useSyncExternalStore(
+  return React53.useSyncExternalStore(
     subscribe8,
     () => read2(fileId),
     () => EMPTY
@@ -46010,7 +46834,7 @@ __name(useSoloedIds, "useSoloedIds");
 function useSoloStrips() {
   const fileId = useActiveFileId();
   const soloed = useSoloedIds();
-  const toggle = React49.useCallback(
+  const toggle = React53.useCallback(
     (id) => {
       if (fileId) toggleSolo(fileId, id);
     },
@@ -46023,7 +46847,7 @@ __name(useSoloStrips, "useSoloStrips");
 // src/visualEdit/mixer/soloMuteSync.ts
 function useSoloMuteSync() {
   const { soloed, toggle: toggleSet } = useSoloStrips();
-  const toggle = React49.useCallback(
+  const toggle = React53.useCallback(
     (id) => {
       const fileId = getActiveFileId();
       const editor = getActiveEditor();
@@ -46051,9 +46875,9 @@ function StripMeter({
   controller,
   horizontal = false
 }) {
-  const fillRef = React49.useRef(null);
-  const peakRef = React49.useRef(null);
-  React49.useEffect(() => {
+  const fillRef = React53.useRef(null);
+  const peakRef = React53.useRef(null);
+  React53.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -46159,14 +46983,14 @@ function ChannelStrip({
   orientation = "vertical"
 }) {
   const horizontal = orientation === "horizontal";
-  const [colorAnchor, setColorAnchor] = React49.useState(null);
+  const [colorAnchor, setColorAnchor] = React53.useState(null);
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
-  const [renaming, setRenaming] = React49.useState(false);
+  const [renaming, setRenaming] = React53.useState(false);
   const bareLabel = strip.label ?? "";
   const renameSeed = bareLabel !== "" && bareLabel !== "$" ? bareLabel : "";
   const renameEnabled = onRename !== void 0;
-  const settledRef = React49.useRef(false);
+  const settledRef = React53.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {
     settledRef.current = false;
     setRenaming(true);
@@ -46187,8 +47011,8 @@ function ChannelStrip({
   const faderEnabled = gain !== null && onGainChange !== void 0;
   const panEnabled = !strip.panForeign && onPanChange !== void 0;
   const panValue = strip.pan ?? 0.5;
-  const faderDrag = React49.useRef(null);
-  const panDrag = React49.useRef(null);
+  const faderDrag = React53.useRef(null);
+  const panDrag = React53.useRef(null);
   const onFaderDown = /* @__PURE__ */ __name((e) => {
     if (!faderEnabled) return;
     e.preventDefault();
@@ -46793,17 +47617,17 @@ function PatternPanel() {
   const phone = usePhone();
   const sideShown = usePatternSideShown();
   const gridAlone = phone || !sideShown;
-  const [selected, setSelected] = React49.useState(null);
+  const [selected, setSelected] = React53.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React49.useRef(stmtId);
-  React49.useEffect(() => {
+  const stmtRef = React53.useRef(stmtId);
+  React53.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setSelected(null);
     }
   }, [stmtId]);
-  const [division2, setDivision] = React49.useState(DEFAULT_DIVISION);
-  const [resolution, setResolution] = React49.useState(null);
+  const [division2, setDivision] = React53.useState(DEFAULT_DIVISION);
+  const [resolution, setResolution] = React53.useState(null);
   const grid = kind === "step" ? (
     // a `.struct` rhythm line draws the chords it times (#2120)
     chunk?.structRhythm ? /* @__PURE__ */ jsx(RhythmChartGrid, { onResolution: setResolution }) : /* @__PURE__ */ jsx(SequencerGrid, { onResolution: setResolution })
@@ -46916,8 +47740,8 @@ function subscribe9(listener) {
 }
 __name(subscribe9, "subscribe");
 function useActiveFileId2() {
-  const [id, setId] = React49.useState(() => getActiveFileId());
-  React49.useEffect(() => {
+  const [id, setId] = React53.useState(() => getActiveFileId());
+  React53.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -46926,12 +47750,12 @@ function useActiveFileId2() {
 __name(useActiveFileId2, "useActiveFileId");
 function useExpandedStrips() {
   const fileId = useActiveFileId2();
-  const expanded = React49.useSyncExternalStore(
+  const expanded = React53.useSyncExternalStore(
     subscribe9,
     () => read3(fileId),
     () => EMPTY2
   );
-  const toggle = React49.useCallback(
+  const toggle = React53.useCallback(
     (id) => {
       if (fileId) toggleExpanded(fileId, id);
     },
@@ -47010,12 +47834,12 @@ function subscribe10(listener) {
 }
 __name(subscribe10, "subscribe");
 function useMixerZoom() {
-  const zoom = React49.useSyncExternalStore(subscribe10, read4, () => MIXER_ZOOM_DEFAULT);
+  const zoom = React53.useSyncExternalStore(subscribe10, read4, () => MIXER_ZOOM_DEFAULT);
   return {
     zoom,
     percent: Math.round(zoom * 100),
-    zoomIn: React49.useCallback(() => nudgeMixerZoom(1), []),
-    zoomOut: React49.useCallback(() => nudgeMixerZoom(-1), []),
+    zoomIn: React53.useCallback(() => nudgeMixerZoom(1), []),
+    zoomOut: React53.useCallback(() => nudgeMixerZoom(-1), []),
     canZoomIn: zoom < MIXER_ZOOM_MAX,
     canZoomOut: zoom > MIXER_ZOOM_MIN
   };
@@ -47082,29 +47906,29 @@ function analyserOf(payload) {
   return payload?.analyser ?? null;
 }
 __name(analyserOf, "analyserOf");
-function levelColor2(frac) {
-  if (frac >= 0.9) return "var(--meter-red, #ff5a52)";
-  if (frac >= 0.72) return "var(--meter-yellow, #ffcc4d)";
+function levelColor2(frac2) {
+  if (frac2 >= 0.9) return "var(--meter-red, #ff5a52)";
+  if (frac2 >= 0.72) return "var(--meter-yellow, #ffcc4d)";
   return "var(--meter-green, #44d07b)";
 }
 __name(levelColor2, "levelColor");
 function useMasterMeter() {
-  const elsRef = React49.useRef(null);
-  const stateRef = React49.useRef(ZERO_METER);
-  const analyserRef = React49.useRef(null);
-  const bufRef = React49.useRef(null);
-  const rafRef = React49.useRef(null);
-  const lastTsRef = React49.useRef(0);
-  const [fileId, setFileId] = React49.useState(() => getActiveFileId());
-  React49.useEffect(() => {
+  const elsRef = React53.useRef(null);
+  const stateRef = React53.useRef(ZERO_METER);
+  const analyserRef = React53.useRef(null);
+  const bufRef = React53.useRef(null);
+  const rafRef = React53.useRef(null);
+  const lastTsRef = React53.useRef(0);
+  const [fileId, setFileId] = React53.useState(() => getActiveFileId());
+  React53.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React49.useCallback((els) => {
+  const register = React53.useCallback((els) => {
     elsRef.current = els;
     if (!els) stateRef.current = ZERO_METER;
   }, []);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       analyserRef.current = analyserOf(payload);
     }) : (() => {
@@ -47178,7 +48002,7 @@ function useMasterMeter() {
       stateRef.current = ZERO_METER;
     };
   }, [fileId]);
-  return React49.useMemo(() => ({ register }), [register]);
+  return React53.useMemo(() => ({ register }), [register]);
 }
 __name(useMasterMeter, "useMasterMeter");
 var FADER_HEIGHT2 = 80;
@@ -47197,9 +48021,9 @@ function MasterStrip({
   onGestureEnd
 }) {
   const meter = useMasterMeter();
-  const fillRef = React49.useRef(null);
-  const peakRef = React49.useRef(null);
-  React49.useEffect(() => {
+  const fillRef = React53.useRef(null);
+  const peakRef = React53.useRef(null);
+  React53.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -47207,7 +48031,7 @@ function MasterStrip({
     return () => meter.register(null);
   }, [meter]);
   const pos = gainToFaderPos(gain);
-  const drag = React49.useRef(null);
+  const drag = React53.useRef(null);
   const onDown = /* @__PURE__ */ __name((e) => {
     if (foreign) return;
     e.preventDefault();
@@ -47488,8 +48312,8 @@ function MixerStrips({
     selectTrack
   } = useMixerModel();
   const meters = useTrackMeters();
-  const [fileId, setFileId] = React49.useState(() => getActiveFileId());
-  React49.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React53.useState(() => getActiveFileId());
+  React53.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
   const { expanded, toggle } = useExpandedStrips();
   const masterExpanded = expanded.has(MASTER_EXPAND_ID);
@@ -47782,9 +48606,9 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React49.createElement(Panel),
+      content: React53.createElement(Panel),
       // the Pattern tab's button for its right side panel (#2044)
-      headerActions: tab.id === PATTERN_TAB_ID ? React49.createElement(PatternSideToggle) : void 0
+      headerActions: tab.id === PATTERN_TAB_ID ? React53.createElement(PatternSideToggle) : void 0
     });
   }
 }
@@ -47825,24 +48649,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React49.useState(opts.initial);
-  const [dragging, setDragging] = React49.useState(false);
-  const startYRef = React49.useRef(0);
-  const startValueRef = React49.useRef(opts.initial);
-  const pointerIdRef = React49.useRef(null);
-  const draggingRef = React49.useRef(false);
-  const minRef = React49.useRef(opts.min);
-  const maxRef = React49.useRef(opts.max);
-  React49.useEffect(() => {
+  const [value, setValueState] = React53.useState(opts.initial);
+  const [dragging, setDragging] = React53.useState(false);
+  const startYRef = React53.useRef(0);
+  const startValueRef = React53.useRef(opts.initial);
+  const pointerIdRef = React53.useRef(null);
+  const draggingRef = React53.useRef(false);
+  const minRef = React53.useRef(opts.min);
+  const maxRef = React53.useRef(opts.max);
+  React53.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React49.useCallback((v) => {
+  const setValue = React53.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React49.useCallback(
+  const onPointerDown = React53.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -47857,7 +48681,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React49.useCallback(
+  const endDrag = React53.useCallback(
     (e, commit3) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -47872,7 +48696,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React49.useCallback(
+  const onPointerMove = React53.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -47888,13 +48712,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React49.useCallback(
+  const onPointerUp = React53.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React49.useCallback(
+  const onPointerCancel = React53.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -47921,18 +48745,18 @@ function pickActiveTabId(tabs2, chosen) {
 }
 __name(pickActiveTabId, "pickActiveTabId");
 function BottomPanel({ hidden = false } = {}) {
-  const [tabs2, setTabs] = React49.useState(
+  const [tabs2, setTabs] = React53.useState(
     () => listBottomPanelTabs()
   );
   const { open, activeTabId: chosenTabId } = useBottomPanelState();
   const setOpen = setBottomPanelOpen;
   const setActiveTabId = setBottomPanelActiveTab;
-  const [height, setHeight] = React49.useState(readPersistedHeight);
+  const [height, setHeight] = React53.useState(readPersistedHeight);
   const activeTabId = pickActiveTabId(tabs2, chosenTabId);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     return subscribeToBottomPanelTabs(() => setTabs(listBottomPanelTabs()));
   }, []);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (activeTabId !== chosenTabId) setBottomPanelActiveTab(activeTabId);
   }, [activeTabId, chosenTabId]);
   const drag = useDragResize({
@@ -47947,12 +48771,12 @@ function BottomPanel({ hidden = false } = {}) {
   const layout = usePhoneLayout();
   const sheet = layout === "upright";
   const wholeView = layout === "sideways";
-  const [sheetRest, setSheetRest] = React49.useState("half");
+  const [sheetRest, setSheetRest] = React53.useState("half");
   const stop = !open ? "closed" : typeof sheetRest === "number" ? "free" : sheetRest;
-  const [pulled, setPulled] = React49.useState(null);
-  const [room, setRoom] = React49.useState(null);
-  const spaceRef = React49.useRef(null);
-  const measureRoom = React49.useCallback(() => {
+  const [pulled, setPulled] = React53.useState(null);
+  const [room, setRoom] = React53.useState(null);
+  const spaceRef = React53.useRef(null);
+  const measureRoom = React53.useCallback(() => {
     const parent = spaceRef.current?.parentElement;
     if (!parent) return null;
     const box = parent.getBoundingClientRect();
@@ -47963,7 +48787,7 @@ function BottomPanel({ hidden = false } = {}) {
     return next;
   }, []);
   const drawn = tabs2.length > 0 && !hidden;
-  React49.useLayoutEffect(() => {
+  React53.useLayoutEffect(() => {
     if (!(sheet || wholeView) || !drawn) return;
     measureRoom();
     const parent = spaceRef.current?.parentElement;
@@ -47975,7 +48799,7 @@ function BottomPanel({ hidden = false } = {}) {
       observer?.disconnect();
     };
   }, [sheet, wholeView, drawn, open, measureRoom]);
-  const goToRest = React49.useCallback((next) => {
+  const goToRest = React53.useCallback((next) => {
     if (next === "closed") {
       setBottomPanelOpen(false);
       return;
@@ -47983,13 +48807,13 @@ function BottomPanel({ hidden = false } = {}) {
     setSheetRest(next);
     setBottomPanelOpen(true);
   }, []);
-  const pullRef = React49.useRef(null);
-  const swallowClickRef = React49.useRef(false);
-  const restRef = React49.useRef(open ? sheetRest : "closed");
+  const pullRef = React53.useRef(null);
+  const swallowClickRef = React53.useRef(false);
+  const restRef = React53.useRef(open ? sheetRest : "closed");
   restRef.current = open ? sheetRest : "closed";
-  const endPullRef = React49.useRef(null);
-  React49.useEffect(() => () => endPullRef.current?.(), []);
-  const onStripPointerDown = React49.useCallback(
+  const endPullRef = React53.useRef(null);
+  React53.useEffect(() => () => endPullRef.current?.(), []);
+  const onStripPointerDown = React53.useCallback(
     (e) => {
       swallowClickRef.current = false;
       if (!sheet || pullRef.current) return;
@@ -48008,14 +48832,14 @@ function BottomPanel({ hidden = false } = {}) {
         pull.moved = true;
         setPulled(heightAt(pull, ev.clientY));
       }, "move");
-      const finish = /* @__PURE__ */ __name((ev, settle) => {
+      const finish = /* @__PURE__ */ __name((ev, settle2) => {
         const pull = pullRef.current;
         if (!pull || ev.pointerId !== pull.pointerId) return;
         end();
         if (!pull.moved) return;
         swallowClickRef.current = true;
         setPulled(null);
-        if (settle) goToRest(sheetRestAfterPull(heightAt(pull, ev.clientY), pull.heights, window.innerHeight));
+        if (settle2) goToRest(sheetRestAfterPull(heightAt(pull, ev.clientY), pull.heights, window.innerHeight));
       }, "finish");
       const up = /* @__PURE__ */ __name((ev) => finish(ev, true), "up");
       const cancel = /* @__PURE__ */ __name((ev) => finish(ev, false), "cancel");
@@ -48036,25 +48860,25 @@ function BottomPanel({ hidden = false } = {}) {
     },
     [sheet, measureRoom, goToRest]
   );
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const wasOpenOnTabPressRef = React49.useRef(open);
-  const tabButtonRefs = React49.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React49.useCallback(
+  const wasOpenOnTabPressRef = React53.useRef(open);
+  const tabButtonRefs = React53.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React53.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React49.useCallback((id) => {
+  const focusTab = React53.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React49.useCallback(
+  const onTabsKeyDown = React53.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -48081,8 +48905,8 @@ function BottomPanel({ hidden = false } = {}) {
     [tabs2, activeTabId, focusTab]
   );
   const keyboardUp = useKeyboardUp();
-  const [, refocused] = React49.useReducer((n) => n + 1, 0);
-  React49.useEffect(() => {
+  const [, refocused] = React53.useReducer((n) => n + 1, 0);
+  React53.useEffect(() => {
     if (!keyboardUp) return;
     document.addEventListener("focusin", refocused);
     return () => document.removeEventListener("focusin", refocused);
@@ -48388,8 +49212,8 @@ __name(typeSymbol, "typeSymbol");
 function SymbolRow() {
   const upright = usePhoneLayout() === "upright";
   const keyboardUp = useKeyboardUp();
-  const [, focusMoved] = React49.useReducer((n) => n + 1, 0);
-  React49.useEffect(() => {
+  const [, focusMoved] = React53.useReducer((n) => n + 1, 0);
+  React53.useEffect(() => {
     if (!keyboardUp) return;
     document.addEventListener("focusin", focusMoved);
     document.addEventListener("focusout", focusMoved);
@@ -50662,7 +51486,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
                     if (column.length === 1) {
                       const g = groups.get(column[0]);
-                      return /* @__PURE__ */ jsx(React49__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                      return /* @__PURE__ */ jsx(React53__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
                     }
                     return /* @__PURE__ */ jsx(
                       SplitPane,
@@ -50670,7 +51494,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                         direction: "vertical",
                         children: column.map((gid) => {
                           const g = groups.get(gid);
-                          return /* @__PURE__ */ jsx(React49__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                          return /* @__PURE__ */ jsx(React53__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                         })
                       },
                       `col-${colIdx}-${column.join("+")}`
@@ -54348,10 +55172,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React49.useReducer((x) => x + 1, 0);
-  React49.useEffect(() => subscribeToHistory(force), []);
-  React49.useEffect(() => subscribeToRuntimeView(force), []);
-  React49.useEffect(() => {
+  const [, force] = React53.useReducer((x) => x + 1, 0);
+  React53.useEffect(() => subscribeToHistory(force), []);
+  React53.useEffect(() => subscribeToRuntimeView(force), []);
+  React53.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -54368,17 +55192,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React49.useState(null);
-  const [forkName, setForkName] = React49.useState("");
-  const [committing, setCommitting] = React49.useState(false);
-  const [commitLabel, setCommitLabel] = React49.useState("");
-  const [expanded, setExpanded] = React49.useState(null);
-  const [hovered, setHovered] = React49.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React49.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React49.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React49.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React53.useState(null);
+  const [forkName, setForkName] = React53.useState("");
+  const [committing, setCommitting] = React53.useState(false);
+  const [commitLabel, setCommitLabel] = React53.useState("");
+  const [expanded, setExpanded] = React53.useState(null);
+  const [hovered, setHovered] = React53.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React53.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React53.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React53.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -56153,10 +56977,10 @@ function trackPlaced(fileId, model, entry, marker, kept) {
   } else {
     const t = { model, placed: [placed], stop: /* @__PURE__ */ __name(() => {
     }, "stop") };
-    const sub = model.onDidChangeContent(() => onEdited(fileId, t));
+    const sub2 = model.onDidChangeContent(() => onEdited(fileId, t));
     const gone = model.onWillDispose?.(() => untrack(fileId));
     t.stop = () => {
-      sub.dispose();
+      sub2.dispose();
       gone?.dispose();
     };
     tracks.set(fileId, t);
@@ -56352,13 +57176,13 @@ function silencedNamesFrom(strips, soloed) {
 __name(silencedNamesFrom, "silencedNamesFrom");
 function useSilencedTrackNames() {
   const soloed = useSoloedIds();
-  const [editor, setEditor] = React49.useState(() => getActiveEditor());
-  const [strips, setStrips] = React49.useState([]);
-  React49.useEffect(() => {
+  const [editor, setEditor] = React53.useState(() => getActiveEditor());
+  const [strips, setStrips] = React53.useState([]);
+  React53.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React49.useEffect(() => {
+  React53.useEffect(() => {
     if (!editor) {
       setStrips([]);
       return;
@@ -56379,10 +57203,10 @@ function useSilencedTrackNames() {
     }, "rederive");
     rederive();
     const model = editor.getModel?.();
-    const sub = model?.onDidChangeContent?.(rederive);
-    return () => sub?.dispose?.();
+    const sub2 = model?.onDidChangeContent?.(rederive);
+    return () => sub2?.dispose?.();
   }, [editor]);
-  return React49.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
+  return React53.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
 }
 __name(useSilencedTrackNames, "useSilencedTrackNames");
 

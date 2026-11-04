@@ -851,6 +851,14 @@
     "runs": "gate",
     "why": "Exact grid (#1861): a written step that holds several hits is drawn as one step with its hits inside (`[~ bd]`, `hh*8` as one step of 8), and a plain step a sibling cuts into columns is one box with faint halves. Pins which steps group in each row, that a grouped step's edges still fall on the other rows' columns, that clicks inside a step and on a faint half write what they always wrote, and LCM plus one-column steps unchanged as controls."
   },
+  "pattern-tree-grid.spec.ts": {
+    "runs": "gate",
+    "why": "Grid drawn from the pattern's own divisions, look-only (#1834): a pattern the columns cannot hold (96 columns, an onset off every column) draws every step at its exact share of the bar, closed groups as small boxes, its hits, and a ruler naming steps by place. Pins the box and hit counts, equal eighths, that a click writes nothing, that Ctrl/Cmd + wheel opens the groups with the hits unmoved, five levels opening on a deep pattern, the roll opening a beat of five, and an editable pattern still opening the column grid."
+  },
+  "pattern-tree-roll.spec.ts": {
+    "runs": "gate",
+    "why": "Piano roll drawn from the pattern's own divisions, look-only (#1834): a melody the roll's columns cannot hold (a real corpus one, `C4 D4 [A5 Bb5@15] ...`) draws every note at its exact time and length on its pitch row, its part's steps as lines and a ruler by place. Pins the note positions read off the screen, that a click writes nothing, that Ctrl/Cmd + wheel opens the step holding two notes with every note unmoved, numbers on their own rows, an exact playhead, and an editable melody still opening the column roll."
+  },
   "pattern-zoom.spec.ts": {
     "runs": "gate",
     "why": "Step grid zoom (#2277): 1x keeps every step closed and fits a crowded bar to the panel; zooming in (buttons or Ctrl/Cmd + wheel) widens every column and opens the steps the text nests, with the ruler naming them (`1.2.2`). Pins the labels and open steps at 1x and 1.5x, the wheel, that 60 columns fit at 1x and scroll once zoomed, that a click on a step writes the same code whether its parent is open or not, and that the piano roll's lines and ruler open the same way with its notes unmoved."

@@ -1,22 +1,26 @@
 /**
  * gridZoom.ts — a grid row as the pattern's own steps, nested, and which of them are open
- * at a zoom (#2277, #2276, part of #1834, epic #1832).
+ * at a zoom (#2277, #2276, #1834, epic #1832).
  *
  * The bar's tree comes from codeView (`chunkDivisions` / `laneDivisions`, asked of
- * Strudel). This file lays it on the grid's DRAWN columns, the columns every cell, click
- * and write already uses, so nothing here changes what a click edits: a node is only a
- * run of columns and how deep in the pattern it sits.
+ * Strudel). Its steps are EXACT SHARES OF THE BAR (`FracStep`, `barStepsOrWhy`): that is
+ * where every grid's steps are drawn from (#1834). A row that has a column model lays them
+ * on the columns every cell, click and write already uses (`laneSteps`), so nothing here
+ * changes what a click edits: column `c` of a bar whose columns are `[start, start + per)`
+ * is the fraction `(c − start) / per` (`columnOf`). A row with no column model draws the
+ * fractions as they are (`treeGrid.ts`).
  *
  *   `bd [~ bd] sd ~` (8 columns)  →  bd [0,2) · [ ~ [2,3) · bd [3,4) ] · sd [4,6) · ~ [6,8)
+ *                    (fractions)  →  bd [0,¼) · [ ~ [¼,⅜) · bd [⅜,½) ] · sd [½,¾) · ~ [¾,1)
  *
  * ZOOM OPENS A LEVEL. Once zoomed in, a step that holds smaller steps opens when each of
  * them is at least `OPEN_PX` wide on screen (the grid's own click floor, 16 px a column);
  * until then it is drawn as one step with its columns as small boxes inside it, which is
  * how every such step is drawn at 1× (the grid asks `openAt` with no width that opens).
  *
- * A row gets nodes only when they hold exactly: every bar has a tree for the row, every
- * slot lands on a whole column, and the row's notes start where its cells do (the same
- * check the corpus test pins). Otherwise `null`, and the row draws as it does today.
+ * A row gets column nodes only when they hold exactly: every bar has a tree for the row,
+ * every edge lands on a whole column, and the row's notes start where its cells do (the
+ * same check the corpus test pins). Otherwise `null`, and the row draws as it does today.
  */
 import { laneDivisions, type BarTree, type DivisionRow, type DivisionStep, type Frac, type StepGridModel } from '../../codeView'
 import { groupBoxesBySteps, type StepGroup } from './writtenSteps'
@@ -41,7 +45,53 @@ function barColumns(m: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, b: nu
   return { start: b * (m.steps / bars), per: m.steps / bars }
 }
 
-const num = (x: Frac): number => x.n / x.d
+/* ── exact fractions of a bar ───────────────────────────────────── */
+
+const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b))
+
+/** `n/d` in lowest terms, the sign on the top */
+export function frac(n: number, d: number): Frac {
+  const g = gcd(n, d) || 1
+  const s = d < 0 ? -1 : 1
+  return { n: (s * n) / g, d: (s * d) / g }
+}
+const cmp = (a: Frac, b: Frac): number => a.n * b.d - b.n * a.d
+const sub = (a: Frac, b: Frac): Frac => frac(a.n * b.d - b.n * a.d, a.d * b.d)
+const add = (a: Frac, b: Frac): Frac => frac(a.n * b.d + b.n * a.d, a.d * b.d)
+/** `a · k / n` */
+const scale = (a: Frac, k: number, n: number): Frac => frac(a.n * k, a.d * n)
+const fmax = (a: Frac, b: Frac): Frac => (cmp(a, b) >= 0 ? a : b)
+const fmin = (a: Frac, b: Frac): Frac => (cmp(a, b) <= 0 ? a : b)
+export const fracNum = (x: Frac): number => x.n / x.d
+const ZERO = frac(0, 1)
+const ONE = frac(1, 1)
+
+/**
+ * A step of one bar as the share of the bar it takes, exactly (#1834). This is where every
+ * grid's steps are: a row with a column model lays these on its columns (`laneSteps`), one
+ * without draws them as they are (`treeGrid.ts`).
+ */
+export interface FracStep {
+  /** `[begin, end)` of the bar, 0 … 1 */
+  begin: Frac
+  end: Frac
+  /** 1 for the row's own steps, 2 for the steps inside one of them, … */
+  depth: number
+  /** the steps inside, tiling `[begin, end)`; null for a note or a rest, and for a step whose inside is not one row of this sound */
+  children: FracStep[] | null
+}
+
+/**
+ * THE COLUMN A FRACTION IS, for a row that has columns: bar fraction `f` of a bar whose
+ * columns are `[start, start + per)` is column `start + f · per`, or null when that is not
+ * a whole column. Its inverse is `(c − start) / per`. The two are the whole relationship
+ * between where a step is and the columns a click goes through.
+ */
+export function columnOf(f: Frac, start: number, per: number): number | null {
+  const c = (f.n * per) / f.d
+  const r = Math.round(c)
+  return Math.abs(c - r) > 1e-9 ? null : start + r
+}
 
 /**
  * The inner row of a group step this lane draws: its only row, or under several (`[hh hh, cp]`)
@@ -54,78 +104,121 @@ function innerRow(s: DivisionStep, sound: string): DivisionRow | null {
   return mine.length === 1 ? mine[0] : null
 }
 
-/**
- * The row's steps in bar columns. `col` maps a bar fraction to a drawn column, or null
- * when it does not land on one. Throws `OFF_GRID` when a slot does not.
- */
-const OFF_GRID = new Error('off-grid')
-
-function nodesOf(row: DivisionRow, within: { b: number; e: number }, depth: number, sound: string, col: (f: number) => number): StepNode[] {
-  const out: StepNode[] = []
+/** the row's steps that begin inside `[within.b, within.e)` of the bar, as written */
+function nodesOf(row: DivisionRow, within: { b: Frac; e: Frac }, depth: number, sound: string): FracStep[] {
+  const out: FracStep[] = []
   for (const s of row.steps) {
     for (const slot of s.slots) {
-      const b = Math.max(num(slot.begin), 0)
-      const e = Math.min(num(slot.end), 1)
-      if (b < within.b - 1e-9 || b >= within.e - 1e-9) continue
+      const b = fmax(slot.begin, ZERO)
+      const e = fmin(slot.end, ONE)
+      if (cmp(b, within.b) < 0 || cmp(b, within.e) >= 0) continue
       // `bd!3` is written once and is three steps, and so is `bd@3` (#1845, #1846): each an
       // equal share of the slot. krill folds `!n` into the weight (`bd!3` weighs 3), so a note
       // is cut by its weight; a group by its `!` alone — under `@` what it holds spans it.
       const parts = s.rows === null ? (Number.isInteger(s.weight) && s.weight > 1 ? s.weight : 1) : s.reps
       const n = slot.fromBefore || slot.pastEnd ? 1 : parts
-      for (let k = 0; k < n; k++) out.push(stepNode(s, b + ((e - b) * k) / n, b + ((e - b) * (k + 1)) / n, depth, sound, col))
+      const len = sub(e, b)
+      for (let k = 0; k < n; k++) out.push(stepNode(s, add(b, scale(len, k, n)), add(b, scale(len, k + 1, n)), depth, sound))
     }
   }
-  return out.sort((x, y) => x.from - y.from)
+  return out.sort((x, y) => cmp(x.begin, y.begin))
 }
 
-function stepNode(s: DivisionStep, b: number, e: number, depth: number, sound: string, col: (f: number) => number): StepNode {
-  const node: StepNode = { from: col(b), to: col(e), depth, children: null }
+function stepNode(s: DivisionStep, b: Frac, e: Frac, depth: number, sound: string): FracStep {
+  const node: FracStep = { begin: b, end: e, depth, children: null }
   const inner = innerRow(s, sound)
   if (!inner) return node
   if (s.copies) {
     // a group its own op repeats (`[~ hh]*4`): the copies are a level of their own
     const copies = s.copies
-      .filter((c) => num(c.begin) >= b - 1e-9 && num(c.begin) < e - 1e-9)
-      .map((c): StepNode => {
-        const cb = Math.max(num(c.begin), 0)
-        const ce = Math.min(num(c.end), 1)
-        return { from: col(cb), to: col(ce), depth: depth + 1, children: nodesOf(inner, { b: cb, e: ce }, depth + 2, sound, col) }
+      .filter((c) => cmp(c.begin, b) >= 0 && cmp(c.begin, e) < 0)
+      .map((c): FracStep => {
+        const cb = fmax(c.begin, ZERO)
+        const ce = fmin(c.end, ONE)
+        return { begin: cb, end: ce, depth: depth + 1, children: nodesOf(inner, { b: cb, e: ce }, depth + 2, sound) }
       })
     node.children = copies.length > 1 ? copies : copies.length === 1 ? copies[0].children!.map((n) => lift(n)) : null
     return node
   }
-  node.children = nodesOf(inner, { b, e }, depth + 1, sound, col)
+  node.children = nodesOf(inner, { b, e }, depth + 1, sound)
   return node
 }
 
 /** one copy alone is not a level: its steps move up one */
-function lift(n: StepNode): StepNode {
+function lift(n: FracStep): FracStep {
   return { ...n, depth: n.depth - 1, children: n.children ? n.children.map(lift) : null }
 }
 
 /** does every node tile its parent edge to edge, with at least two inside? */
-function tiles(nodes: StepNode[], from: number, to: number): boolean {
+function tiles(nodes: FracStep[], from: Frac, to: Frac): boolean {
   let at = from
   for (const n of nodes) {
-    if (n.from !== at || n.to <= n.from) return false
+    if (cmp(n.begin, at) !== 0 || cmp(n.end, n.begin) <= 0) return false
     // a level of one step is not a level: what it holds moves up (`<bd [bd bd]>` in the
     // bar that plays `[bd bd]` is the two steps, not a step holding one)
     while (n.children && n.children.length === 1) {
       const only = n.children[0]
-      if (only.from !== n.from || only.to !== n.to) return false
+      if (cmp(only.begin, n.begin) !== 0 || cmp(only.end, n.end) !== 0) return false
       n.children = only.children ? only.children.map(lift) : null
     }
-    if (n.children && !tiles(n.children, n.from, n.to)) return false
-    at = n.to
+    if (n.children && !tiles(n.children, n.begin, n.end)) return false
+    at = n.end
   }
-  return at === to
+  return cmp(at, to) === 0
 }
 
-/** where the row's notes named `sound` start, in drawn columns, by the tree */
-function treeStarts(row: DivisionRow, sound: string, col: (f: number) => number, out: Set<number>): void {
+/** every edge in the steps, at every depth */
+function edges(nodes: readonly FracStep[], out: Frac[] = []): Frac[] {
+  for (const n of nodes) {
+    out.push(n.begin, n.end)
+    if (n.children) edges(n.children, out)
+  }
+  return out
+}
+
+/** the steps as written, before they are checked: what `barStepsOrWhy` settles */
+function writtenSteps(row: DivisionRow, sound: string): FracStep[] {
+  return nodesOf(row, { b: ZERO, e: ONE }, 1, sound)
+}
+
+/** they tile the bar, a level of one step lifted; null when they do not tile */
+function settle(nodes: FracStep[]): FracStep[] | null {
+  if (!tiles(nodes, ZERO, ONE)) return null
+  // a bar that is one step (`<a [b c]>`'s second bar) is cut by that step: its split is the pulse
+  while (nodes.length === 1 && nodes[0].children) nodes = nodes[0].children.map(lift)
+  return nodes
+}
+
+/**
+ * Bar row `row`'s steps for sound `sound` (the grid row's name; `''` for a roll's part, which
+ * has no row per sound), as exact shares of the bar — or `does-not-tile`.
+ */
+export function barStepsOrWhy(row: DivisionRow, sound: string): FracStep[] | 'does-not-tile' {
+  return settle(writtenSteps(row, sound)) ?? 'does-not-tile'
+}
+
+/** the steps laid on a bar's columns; null when an edge is not on one */
+function onColumns(nodes: readonly FracStep[], start: number, per: number): StepNode[] | null {
+  const out: StepNode[] = []
+  for (const n of nodes) {
+    const from = columnOf(n.begin, start, per)
+    const to = columnOf(n.end, start, per)
+    if (from === null || to === null) return null
+    let children: StepNode[] | null = null
+    if (n.children) {
+      children = onColumns(n.children, start, per)
+      if (!children) return null
+    }
+    out.push({ from, to, depth: n.depth, children })
+  }
+  return out
+}
+
+/** where the row's notes named `sound` start, as bar fractions, by the tree */
+function treeStarts(row: DivisionRow, sound: string, out: Frac[]): void {
   for (const s of row.steps) {
-    if (s.name === sound) for (const h of s.hits) if (num(h.begin) >= 0 && num(h.begin) < 1) out.add(col(num(h.begin)))
-    for (const r of s.rows ?? []) treeStarts(r, sound, col, out)
+    if (s.name === sound) for (const h of s.hits) if (cmp(h.begin, ZERO) >= 0 && cmp(h.begin, ONE) < 0) out.push(h.begin)
+    for (const r of s.rows ?? []) treeStarts(r, sound, out)
   }
 }
 
@@ -141,38 +234,40 @@ export function laneSteps(model: Pick<StepGridModel, 'steps' | 'bars' | 'barStep
   return typeof r === 'string' ? null : r
 }
 
-/** `laneSteps`, saying why when there are none */
+/**
+ * `laneSteps`, saying why when there are none. The steps are the tree's exact shares of
+ * each bar (`barStepsOrWhy`); this only lays them on the bar's columns, and checks the
+ * columns are this tree's: every edge on a whole column (`off-grid` otherwise), and the
+ * row's notes starting exactly where its cells do (`cells-differ`).
+ */
 export function laneStepsOrWhy(model: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps' | 'lanes'>, trees: readonly BarTree[], lane: number): StepNode[] | LaneStepsRefusal {
   const bars = model.bars ?? 1
   if (trees.length !== bars) return 'bar-count'
   const l = model.lanes[lane]
   const out: StepNode[] = []
-  try {
-    for (let b = 0; b < bars; b++) {
-      const d = laneDivisions(trees[b], l)
-      if (!d.ok) return d.why
-      const { start, per } = barColumns(model, b)
-      const col = (f: number): number => {
-        const c = f * per
-        const r = Math.round(c)
-        if (Math.abs(c - r) > 1e-6) throw OFF_GRID
-        return start + r
-      }
-      let nodes = nodesOf(d.row, { b: 0, e: 1 }, 1, l.sound, col)
-      if (!tiles(nodes, start, start + per)) return 'does-not-tile'
-      // a bar that is one step (`<a [b c]>`'s second bar) is cut by that step: its split is the pulse
-      while (nodes.length === 1 && nodes[0].children) nodes = nodes[0].children.map(lift)
-      // the row's notes start where its cells do, or the tree is not this grid's
-      const starts = new Set<number>()
-      treeStarts(d.row, l.sound, col, starts)
-      for (let c = start; c < start + per; c++) {
-        if (!!l.cells[c] !== starts.has(c)) return 'cells-differ'
-      }
-      out.push(...nodes)
+  for (let b = 0; b < bars; b++) {
+    const d = laneDivisions(trees[b], l)
+    if (!d.ok) return d.why
+    const { start, per } = barColumns(model, b)
+    const written = writtenSteps(d.row, l.sound)
+    if (edges(written).some((f) => columnOf(f, start, per) === null)) return 'off-grid'
+    const steps = settle(written)
+    if (!steps) return 'does-not-tile'
+    const nodes = onColumns(steps, start, per)
+    if (!nodes) return 'off-grid'
+    // the row's notes start where its cells do, or the tree is not this grid's
+    const begins: Frac[] = []
+    treeStarts(d.row, l.sound, begins)
+    const starts = new Set<number>()
+    for (const f of begins) {
+      const c = columnOf(f, start, per)
+      if (c === null) return 'off-grid'
+      starts.add(c)
     }
-  } catch (e) {
-    if (e === OFF_GRID) return 'off-grid'
-    throw e
+    for (let c = start; c < start + per; c++) {
+      if (!!l.cells[c] !== starts.has(c)) return 'cells-differ'
+    }
+    out.push(...nodes)
   }
   return out
 }
@@ -186,35 +281,28 @@ export function partStepsOrWhy(model: Pick<StepGridModel, 'steps' | 'bars' | 'ba
   const bars = model.bars ?? 1
   if (trees.length !== bars) return 'bar-count'
   const out: StepNode[] = []
-  try {
-    for (let b = 0; b < bars; b++) {
-      const t = trees[b]
-      if (!t.ok) return t.why
-      const row = t.parts[part]
-      if (!row) return 'lane-part-missing'
-      const { start, per } = barColumns(model, b)
-      const col = (f: number): number => {
-        const c = f * per
-        const r = Math.round(c)
-        if (Math.abs(c - r) > 1e-6) throw OFF_GRID
-        return start + r
+  for (let b = 0; b < bars; b++) {
+    const t = trees[b]
+    if (!t.ok) return t.why
+    const row = t.parts[part]
+    if (!row) return 'lane-part-missing'
+    const { start, per } = barColumns(model, b)
+    const written = writtenSteps(row, '')
+    if (edges(written).some((f) => columnOf(f, start, per) === null)) return 'off-grid'
+    const steps = settle(written)
+    if (!steps) return 'does-not-tile'
+    const nodes = onColumns(steps, start, per)
+    if (!nodes) return 'off-grid'
+    // every note starts on a column, or the roll's columns are not this tree's
+    const every = (r: DivisionRow): boolean => {
+      for (const s of r.steps) {
+        for (const h of s.hits) if (cmp(h.begin, ZERO) >= 0 && cmp(h.begin, ONE) < 0 && columnOf(h.begin, start, per) === null) return false
+        for (const k of s.rows ?? []) if (!every(k)) return false
       }
-      let nodes = nodesOf(row, { b: 0, e: 1 }, 1, '', col)
-      if (!tiles(nodes, start, start + per)) return 'does-not-tile'
-      while (nodes.length === 1 && nodes[0].children) nodes = nodes[0].children.map(lift)
-      // every note starts on a column, or the roll's columns are not this tree's
-      const every = (r: DivisionRow): void => {
-        for (const s of r.steps) {
-          for (const h of s.hits) if (num(h.begin) >= 0 && num(h.begin) < 1) col(num(h.begin))
-          for (const k of s.rows ?? []) every(k)
-        }
-      }
-      every(row)
-      out.push(...nodes)
+      return true
     }
-  } catch (e) {
-    if (e === OFF_GRID) return 'off-grid'
-    throw e
+    if (!every(row)) return 'off-grid'
+    out.push(...nodes)
   }
   return out
 }
