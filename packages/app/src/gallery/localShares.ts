@@ -12,6 +12,10 @@ import type { GalleryKind } from "./types";
 export interface GalleryAuthor {
   name: string;
   email: string;
+  /** #2314 — this browser's author identity, once it has published. */
+  authorId?: string;
+  /** #2314 — the private key that edits this author's profile and collections. */
+  authorKey?: string;
 }
 
 export interface LocalShare {
