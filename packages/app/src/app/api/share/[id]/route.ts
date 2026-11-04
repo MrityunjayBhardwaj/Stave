@@ -1,9 +1,9 @@
 import { SHARE_ID_PATTERN } from "../../../../shareCrypto";
 import { MANAGE_TOKEN_HEADER } from "../../../../gallery/types";
 import { tokenMatches } from "../../gallery/auth";
+import { getDb, type Db } from "../../../../db/client";
 import { forgetAccountLink, hasAccountLink } from "../../gallery/accountLinks";
 import { accountHashOf, sessionClaim } from "../../gallery/session";
-import { galleryStore, type GalleryBlobStore } from "../../gallery/store";
 import { shareStore } from "../store";
 import { assertSameOrigin } from "../../gallery/origin";
 import { withDatabase } from "../../../../db/errors";
@@ -54,7 +54,7 @@ async function handleDELETE(
   const hash = await store.getManageHash(id);
   const byToken = hash !== null && tokenMatches(token, hash);
   const account = await linkAccount(id);
-  const byAccount = !byToken && account !== null && (await hasAccountLink(account.gallery, account.hash, id));
+  const byAccount = !byToken && account !== null && (await hasAccountLink(account.db, account.hash, id));
 
   if (!byToken && !byAccount) {
     if (!hash) {
@@ -67,18 +67,22 @@ async function handleDELETE(
   }
   // The share first (the link is dead once it's gone), then the account's record of it.
   await store.remove(id);
-  if (account) await forgetAccountLink(account.gallery, account.hash, id);
+  if (account) await forgetAccountLink(account.db, account.hash, id);
   return new Response(null, { status: 204 });
 }
 
-/** The signed-in account's hash and the gallery store, or null when signed out. */
-async function linkAccount(id: string): Promise<{ gallery: GalleryBlobStore; hash: string } | null> {
+/**
+ * The signed-in account's hash and the gallery database, or null when signed
+ * out or there is no database here. Only the account's hash is needed: an
+ * account with no row yet has no links to find, so nothing is made here.
+ */
+async function linkAccount(id: string): Promise<{ db: Db; hash: string } | null> {
   if (!SHARE_ID_PATTERN.test(id)) return null;
-  const gallery = galleryStore();
-  if (!gallery) return null;
   const signedIn = await sessionClaim();
   if (!signedIn) return null;
-  return { gallery, hash: accountHashOf(signedIn.claim.provider, signedIn.claim.providerAccountId) };
+  const db = await getDb();
+  if (!db) return null;
+  return { db, hash: accountHashOf(signedIn.claim.provider, signedIn.claim.providerAccountId) };
 }
 
 // #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.

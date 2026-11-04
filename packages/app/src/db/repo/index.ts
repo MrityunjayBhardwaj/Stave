@@ -7,7 +7,7 @@
  *   collections.ts   collections and their ordered entries
  *   reports.ts       reports and the admin action log
  *   links.ts         private links listed on an account (id, name, date only)
- *   claim.ts         the claim's moves, one transaction each
+ *   claim.ts         the claim's moves (the whole claim is one transaction)
  *   rateLimits.ts    the write counters (#2345: one atomic upsert)
  *   tx.ts            inTransaction, the Tx / Q types
  *

@@ -1,15 +1,18 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 
-import type { Db } from "../client";
 import { authors, collections, entries } from "../schema";
-import { inTransaction } from "./tx";
+import type { Q } from "./tx";
 
 /*
  * #2320 — the claim's moves: bring what a browser published before sign-in
- * onto the account's author. Each move is ONE transaction, so there is no
- * half-moved state and no write order to get right (the Blob version needed
- * one, see claim.ts's header): either everything moved, or nothing did and the
- * browser's retry starts clean.
+ * onto the account's author.
+ *
+ * #2352 — the claim (app/api/gallery/claim.ts runClaim) runs ALL of its moves
+ * in ONE transaction and passes it here as `db`, so a claim that fails halfway
+ * leaves nothing moved and the browser's retry starts clean. There is no write
+ * order to get right (the Blob version needed one per item). mergeAuthorInto is
+ * also atomic on its own: a savepoint inside the claim's transaction, its own
+ * transaction when called with the database.
  *
  * Who may claim what (keys, tokens, "belongs to another account") is decided
  * by claim.ts before it calls these; these only move.
@@ -37,11 +40,11 @@ export interface ClaimTarget {
  * POST /api/gallery/claim.
  */
 export async function mergeAuthorInto(
-  db: Db,
+  db: Q,
   fromId: string,
   to: ClaimTarget,
 ): Promise<{ entries: number; collections: number }> {
-  return inTransaction(db, async (tx) => {
+  return db.transaction(async (tx) => {
     const now = Date.now();
     const movedEntries = await tx
       .update(entries)
@@ -79,7 +82,7 @@ export async function mergeAuthorInto(
  *
  * Phase 2 caller: claim.ts runClaim (entries by manage token) — POST /api/gallery/claim.
  */
-export async function moveEntry(db: Db, id: string, fromId: string | null, to: ClaimTarget): Promise<boolean> {
+export async function moveEntry(db: Q, id: string, fromId: string | null, to: ClaimTarget): Promise<boolean> {
   const owner = fromId === null ? isNull(entries.authorId) : eq(entries.authorId, fromId);
   const rows = await db
     .update(entries)

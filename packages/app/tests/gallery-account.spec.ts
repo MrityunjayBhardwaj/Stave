@@ -1,8 +1,3 @@
-import { createHash, randomBytes } from 'node:crypto'
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
-import os from 'node:os'
-import path from 'node:path'
-
 import { test, expect, type APIRequestContext, type Browser, type BrowserContext, type Page } from '@playwright/test'
 
 import { bootApp } from './_appBoot'
@@ -16,14 +11,15 @@ import { bootApp } from './_appBoot'
  * or localStorage, which is what two devices are to the app.
  *
  * Publishing now needs sign-in, so a profile from BEFORE sign-in can't be made
- * through the routes any more. The fixture writes one straight into the dev
- * gallery folder (the store the dev server reads, under the OS temp dir), with
- * the same records the old key-based publish wrote: the private author record
- * with the key's SHA-256, the key pointer, the public profile, one entry with
- * its manage-token hash and author index marker, and one collection. Browser A
- * is then given the keys that publish would have left in its localStorage. The
- * private link is made for real, signed out, through File → Share → Copy
- * Private Link.
+ * through the routes any more. #2352 — the records are in the dev server's
+ * Postgres (PGlite), which only the server's own process may open, so the
+ * fixture asks the server to make them: POST /api/test-seed, a
+ * TEST-ONLY route that answers 404 unless the test sign-in is allowed (the
+ * flag, and never a production build). It makes a key-held profile with a bio,
+ * one entry with its manage token, and one collection, and hands back the keys.
+ * Browser A is then given the keys that publish would have left in its
+ * localStorage. The private link is made for real, signed out, through File →
+ * Share → Copy Private Link.
  *
  * Like gallery-sign-in.spec.ts, it SKIPS (saying why) unless the server was
  * started with STAVE_AUTH_TEST_LOGIN=1 and an AUTH_SECRET, which the browser
@@ -42,7 +38,6 @@ import { bootApp } from './_appBoot'
 const SHOTS = process.env.GALLERY_SHOT_DIR
 const RUN = Date.now().toString(36)
 const USER = `claim-${RUN}`
-const GALLERY_DIR = process.env.STAVE_GALLERY_DEV_DIR || path.join(os.tmpdir(), 'stave-gallery-dev')
 
 async function testLoginOffered(request: APIRequestContext): Promise<boolean> {
   const res = await request.get('/api/gallery/me')
@@ -68,57 +63,19 @@ function watchErrors(page: Page): string[] {
 }
 const ours = (errors: string[]) => errors.filter((e) => /auth|session|gallery|sign.?in|claim|share|401|403|500/i.test(e))
 
-const newId = () => randomBytes(8).toString('base64url') // 11 chars, the gallery id shape
-const newToken = () => randomBytes(32).toString('base64url')
-const sha = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex')
-
-async function putJson(rel: string, value: unknown): Promise<void> {
-  const file = path.join(GALLERY_DIR, rel)
-  await mkdir(path.dirname(file), { recursive: true })
-  await writeFile(file, JSON.stringify(value))
-}
-
-/** A profile, an entry and a collection as the key-based publish (before sign-in) left them. */
-async function seedPreSignInAuthor() {
-  const authorId = newId()
-  const authorKey = newToken()
-  const entryId = newId()
-  const manageToken = newToken()
-  const collectionId = newId()
-  const now = Date.now()
+/** A profile, an entry and a collection as the key-based publish (before sign-in) left them, made by the server. */
+async function seedPreSignInAuthor(request: APIRequestContext) {
   const title = `Before sign-in ${RUN}`
-  await putJson(`gallery/author-private/${authorId}.json`, { authorEmail: `old-${RUN}@example.invalid`, authorKeyHash: sha(authorKey) })
-  await putJson(`gallery/author-keys/${sha(authorKey)}.json`, { authorId })
-  await putJson(`gallery/authors/${authorId}.json`, { authorId, name: 'Old me', bio: 'Made before sign-in.', createdAt: now, updatedAt: now })
-  await putJson(`gallery/private/${entryId}.json`, { authorEmail: `old-${RUN}@example.invalid`, manageTokenHash: sha(manageToken) })
-  await putJson(`gallery/manifests/${entryId}.json`, {
-    schemaVersion: 1,
-    project: { name: title, sharedAt: now },
-    files: [{ id: 'f0', path: 'song.strudel', language: 'strudel', content: '$: s("bd sd")' }],
-    fileOrder: { '': ['f0'] },
-    subfolderOrder: {},
-  })
-  await putJson(`gallery/author-index/${authorId}/entries/${entryId}.json`, {})
-  await putJson(`gallery/entries/${entryId}.json`, {
-    id: entryId, title, kind: 'music', tags: [], authorName: 'Old me', authorId, publishedAt: now, fileCount: 1, hasThumbnail: false,
-  })
-  await putJson(`gallery/collections/${collectionId}.json`, {
-    id: collectionId, authorId, title: `Old EP ${RUN}`, description: '', entryIds: [entryId], createdAt: now, updatedAt: now,
-  })
-  await putJson(`gallery/author-index/${authorId}/collections/${collectionId}.json`, {})
-  return { authorId, authorKey, entryId, manageToken, collectionId, title }
+  const res = await request.post('/api/test-seed', { data: { title, collectionTitle: `Old EP ${RUN}` } })
+  expect(res.status(), await res.text()).toBe(201)
+  return (await res.json()) as { authorId: string; authorKey: string; entryId: string; manageToken: string; collectionId: string; title: string }
 }
 
-/** #2329 — every stored account-link file the dev server wrote, with its contents. */
-async function accountLinkFiles(): Promise<Array<[string, string]>> {
-  const root = path.join(GALLERY_DIR, 'gallery/account-links')
-  const names = (await readdir(root, { recursive: true }).catch(() => [] as string[])).map(String)
-  const out: Array<[string, string]> = []
-  for (const name of names) {
-    const text = await readFile(path.join(root, name), 'utf8').catch(() => null) // null: a folder
-    if (text !== null) out.push([name, text])
-  }
-  return out
+/** #2329 / #2352 — every account-link row the dev server stored (every account), every column. */
+async function storedAccountLinks(request: APIRequestContext): Promise<Array<Record<string, unknown>>> {
+  const res = await request.get('/api/test-seed')
+  expect(res.status()).toBe(200)
+  return ((await res.json()) as { accountLinks: Array<Record<string, unknown>> }).accountLinks
 }
 
 async function copyPrivateLink(page: Page): Promise<string> {
@@ -171,8 +128,8 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
     await deviceA?.context.close()
   })
 
-  test('browser A: what it published before sign-in comes into the account', async ({ browser }) => {
-    seed = await seedPreSignInAuthor()
+  test('browser A: what it published before sign-in comes into the account', async ({ browser, request }) => {
+    seed = await seedPreSignInAuthor(request)
     deviceA = await newDevice(browser)
     const { page } = deviceA
     const errors = watchErrors(page)
@@ -232,19 +189,17 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
     await linkRow.getByRole('button', { name: 'Copy again' }).click()
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(url)
 
-    // #2329 — what the real server stored for the account: no key, no `#`, only id, name and date.
-    // This run's key is in no file of the whole store. The `#` check covers this account's
-    // folder: the shared dev store can hold other accounts' records from before #2329, which
-    // are stripped only when their own account next reads My shares.
-    const files = await accountLinkFiles()
-    const thisLink = files.filter(([name]) => name.endsWith(`/${linkId}.json`))
+    // #2329 — what the real server stored for the account: no key, no `#`, only the
+    // account, id, name and date (#2352: the account_links table has no other column).
+    // This run's key is in no row of the whole store.
+    const rows = await storedAccountLinks(page.request)
+    const thisLink = rows.filter((r) => r.share_id === linkId)
     expect(thisLink).toHaveLength(1)
-    expect(Object.keys(JSON.parse(thisLink[0][1])).sort()).toEqual(['createdAt', 'id', 'projectName'])
-    const accountFolder = thisLink[0][0].slice(0, -`${linkId}.json`.length)
-    const ofAccount = files.filter(([name]) => name.startsWith(accountFolder))
+    expect(Object.keys(thisLink[0]).sort()).toEqual(['account_id', 'created_at', 'project_name', 'share_id'])
+    const ofAccount = rows.filter((r) => r.account_id === thisLink[0].account_id)
     expect(ofAccount.length).toBeGreaterThanOrEqual(1)
-    for (const [name, text] of files) expect(text, name).not.toContain(linkKey)
-    for (const [name, text] of ofAccount) expect(text, name).not.toContain('#')
+    for (const r of rows) expect(JSON.stringify(r)).not.toContain(linkKey)
+    for (const r of ofAccount) expect(JSON.stringify(r)).not.toContain('#')
     // ...and My shares' own answer carries no key either.
     const myShares = await page.request.get('/api/gallery/me/shares')
     expect(myShares.status()).toBe(200)

@@ -272,7 +272,8 @@ export async function getAuthor(db: Q, authorId: string): Promise<StoredAuthor |
 /**
  * Make a key-held author (#2314, before sign-in): the author and its key hash
  * in one transaction. Returns the new id, or null after three id clashes.
- * Phase 2 caller: authors.ts createAuthor (#2320's claim tests use it; no route makes one any more).
+ * Called by: authors.ts createAuthor (#2320's claim tests, and the dev-only seed
+ * route the browser specs use; no route makes one for real any more).
  */
 export async function insertKeyedAuthor(
   db: Db,
@@ -297,36 +298,9 @@ export async function insertKeyedAuthor(
 }
 
 /**
- * Phase 1 only (the routes still read authors from Blob): put an author that
- * exists in Blob into the database, unchanged, if it isn't there yet. Lets an
- * account link to a profile made before sign-in. Removed in phase 2.
- * Called by: session.ts attachAuthorToAccount.
- */
-export async function importAuthorIfMissing(
-  db: Q,
-  author: StoredAuthor & { keyHash?: string },
-): Promise<void> {
-  await db
-    .insert(authors)
-    .values({
-      id: author.authorId,
-      name: author.name,
-      bio: author.bio,
-      verified: author.verified ?? null,
-      email: author.email,
-      createdAt: author.createdAt,
-      updatedAt: author.updatedAt,
-    })
-    .onConflictDoNothing();
-  if (author.keyHash) {
-    await db.insert(authorKeys).values({ keyHash: author.keyHash, authorId: author.authorId }).onConflictDoNothing();
-  }
-}
-
-/**
  * The author a key hash belongs to, or null. The caller still confirms with
  * the constant-time compare against authorKeyHash (authors.ts keyOwnsAuthor).
- * Phase 2 caller: authors.ts authorForKey (claim, collections, author PUT).
+ * Called by: authors.ts authorForKey (claim, collections, author PUT).
  */
 export async function authorIdForKeyHash(db: Q, keyHash: string): Promise<string | null> {
   const [row] = await db.select({ authorId: authorKeys.authorId }).from(authorKeys).where(eq(authorKeys.keyHash, keyHash)).limit(1);
@@ -335,7 +309,7 @@ export async function authorIdForKeyHash(db: Q, keyHash: string): Promise<string
 
 /**
  * The stored key hash of an author, or null (an account's author has no key).
- * Phase 2 caller: authors.ts keyOwnsAuthor.
+ * Called by: authors.ts keyOwnsAuthor.
  */
 export async function authorKeyHash(db: Q, authorId: string): Promise<string | null> {
   const [row] = await db.select({ keyHash: authorKeys.keyHash }).from(authorKeys).where(eq(authorKeys.authorId, authorId)).limit(1);
@@ -345,7 +319,7 @@ export async function authorKeyHash(db: Q, authorId: string): Promise<string | n
 /**
  * Change an author's name and bio; the updated public profile, or null when
  * there is no such author or it was merged away.
- * Phase 2 caller: PUT /api/gallery/authors/[authorId].
+ * Called by: PUT /api/gallery/authors/[authorId].
  */
 export async function updateAuthorProfile(
   db: Q,
