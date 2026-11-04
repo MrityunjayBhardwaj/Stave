@@ -158,7 +158,7 @@ export type {
   AltSource,
   NotationSource,
 } from './notation/model'
-export { parseStepGrid, parsePianoRoll, bracketedBarRegions } from './notation/parse'
+export { parseStepGrid, parsePianoRoll, bracketedBarRegions, rollPitch } from './notation/parse'
 export { rhythmChart, RHYTHM_CHART_MAX_BARS, type RhythmChart, type RhythmChartResult } from './notation/rhythmChart'
 export { pitchToMidi, midiToPitch, isBlackKey, noteDisplayName, cLabel } from './notation/pitch'
 export { noteToMidi } from './notation/noteToMidi'
@@ -248,7 +248,7 @@ export {
 } from './chainEdit'
 export { readSoundCall, soundArgLabel, soundPickEdit, soundPickRefusal } from './soundArg'
 export { noteSounds, soundLane, soundBlockEdit, stepNotes, stepNoteKey, type SoundBlock, type StepNotes } from './noteSounds'
-export { chunkDivisions, laneDivisions } from './gridDivisions'
+export { chunkDivisions, chunkPeriod, laneDivisions } from './gridDivisions'
 export type { BarTree, BarTreeRefusal, DivisionRow, DivisionStep, DivisionHit, LaneDivisions, LaneDivisionsRefusal, Frac, Slot, DivisionsRefusal } from './gridDivisions'
 export { toggleStep, applyStepEdit, laneRowForEdit } from './stepEdit'
 export type { StepAddress, StepEdit, StepEditRefusal, StepEditResult } from './stepEdit'

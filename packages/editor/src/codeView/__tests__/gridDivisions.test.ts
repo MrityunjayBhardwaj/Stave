@@ -129,9 +129,17 @@ describe('laneDivisions — the row each grid row draws', () => {
     }
   })
 
-  it('refuses rather than guess: no part named under several, a part that is not there, a part without the sound', () => {
+  it('a row that names no part under several draws the one part that writes its sound (#2287)', () => {
     const [two] = chunkDivisions('bd ~ bd ~, hh*4', 1)
-    expect(laneDivisions(two, { sound: 'bd' })).toEqual({ ok: false, why: 'lane-part-unknown' })
+    const bd = laneDivisions(two, { sound: 'bd' })
+    expect(bd.ok && bd.row).toBe(two.ok && two.parts[0])
+    const hh = laneDivisions(two, { sound: 'hh' })
+    expect(hh.ok && hh.row).toBe(two.ok && two.parts[1])
+  })
+
+  it('refuses rather than guess: no part named and two parts write the sound, a part that is not there, a part without the sound', () => {
+    const [two] = chunkDivisions('bd ~ bd ~, hh*4', 1)
+    expect(laneDivisions(chunkDivisions('bd ~, ~ bd', 1)[0], { sound: 'bd' })).toEqual({ ok: false, why: 'lane-part-unknown' })
     expect(laneDivisions(two, { sound: 'bd', part: 2 })).toEqual({ ok: false, why: 'lane-part-missing' })
     expect(laneDivisions(two, { sound: 'bd', part: 1 })).toEqual({ ok: false, why: 'lane-sound-not-in-part' })
     const [one] = chunkDivisions('bd sd', 1)
@@ -189,14 +197,16 @@ describe('laneDivisions — the corpus', () => {
 /**
  * Measured 2026-11-02 on main c26ca5e7 + this change, 1,625 distinct corpus patterns:
  * 1,018 open as a step grid, 4,919 grid rows × bars. Refused: `feet` (not modelled by the
- * tree), `lane-part-unknown` (a stack the grid reads leaf by leaf, whose rows name no
- * part), `lane-sound-not-in-part` (the row's sound is a value the text does not write as
+ * tree), `lane-sound-not-in-part` (the row's sound is a value the text does not write as
  * such: `hh:<1 2>`, `hh:3:.2` read as `hh:3:0.2`).
+ *
+ * 2026-11-03 (#2287): the 62 `lane-part-unknown` rows — a stack the grid reads leaf by
+ * leaf, whose rows name no part — each have exactly one part writing their sound, and
+ * all 62 now agree.
  */
 const PINNED = {
   grids: 1018,
-  agrees: 4812,
+  agrees: 4874,
   feet: 7,
-  'lane-part-unknown': 62,
   'lane-sound-not-in-part': 38,
 }

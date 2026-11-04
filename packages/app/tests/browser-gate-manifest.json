@@ -851,6 +851,14 @@
     "runs": "gate",
     "why": "Exact grid (#1861): a written step that holds several hits is drawn as one step with its hits inside (`[~ bd]`, `hh*8` as one step of 8), and a plain step a sibling cuts into columns is one box with faint halves. Pins which steps group in each row, that a grouped step's edges still fall on the other rows' columns, that clicks inside a step and on a faint half write what they always wrote, and LCM plus one-column steps unchanged as controls."
   },
+  "pattern-tree-grid.spec.ts": {
+    "runs": "gate",
+    "why": "Grid drawn from the pattern's own divisions, look-only (#1834): a pattern the columns cannot hold (96 columns, an onset off every column) draws every step at its exact share of the bar, closed groups as small boxes, its hits, and a ruler naming steps by place. Pins the box and hit counts, equal eighths, that a click writes nothing, that Ctrl/Cmd + wheel opens the groups with the hits unmoved, five levels opening on a deep pattern, the roll opening a beat of five, and an editable pattern still opening the column grid."
+  },
+  "pattern-tree-roll.spec.ts": {
+    "runs": "gate",
+    "why": "Piano roll drawn from the pattern's own divisions, look-only (#1834): a melody the roll's columns cannot hold (a real corpus one, `C4 D4 [A5 Bb5@15] ...`) draws every note at its exact time and length on its pitch row, its part's steps as lines and a ruler by place. Pins the note positions read off the screen, that a click writes nothing, that Ctrl/Cmd + wheel opens the step holding two notes with every note unmoved, numbers on their own rows, an exact playhead, and an editable melody still opening the column roll."
+  },
   "pattern-step-click.spec.ts": {
     "runs": "gate",
     "why": "A click edits the clicked step's own text (#2292): real mouse clicks on `bd [~ bd] sd [hh [~ cp]]` and `[bd ~]*2 sd` must change only that step's bytes in the code, and what the page's own Strudel plays must change by exactly the hits of that written step (both copies of a repeated one); a chord joined and left again round-trips; a column part-way through a step and a hat made by `*4` are refused with their reason and the code is left alone."

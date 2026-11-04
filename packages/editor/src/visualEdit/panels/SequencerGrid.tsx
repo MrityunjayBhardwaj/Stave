@@ -41,6 +41,12 @@ import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice, chordLanes, stepNotes, stepNoteKey, chunkDivisions } from '../../codeView'
 import { OPEN_PX, drawnSteps, laneSteps, openAt, stepAddressAt, zoomRuler, type DrawnStep, type StepAtRefusal } from './gridZoom'
 import { GridZoomControl, useGridZoom } from './gridZoomControl'
+import { lookOnlyTreeGrid } from './treeGrid'
+import { TreeStepGrid } from './TreeStepGrid'
+import { lookOnlyTreeRoll } from './rollTree'
+import { TreeRollGrid } from './TreeRollGrid'
+import { useDeferredPerText } from './useDeferredPerText'
+import { useExactPlayhead } from './exactPlayhead'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
@@ -402,6 +408,15 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     () => (hasModel && miniText !== null && gridMode === 'exact' ? chunkDivisions(miniText, barCount) : null),
     [hasModel, barCount, miniText, gridMode],
   )
+  // A pattern the columns cannot hold at all is drawn from its tree alone (#1834): asked only
+  // while there is no model, and once per text
+  const stepEligible = !!chunk && opensStepGrid(chunk)
+  const lookTree = useDeferredPerText(!hasModel && stepEligible ? miniText : null, lookOnlyTreeGrid)
+  // A pattern with no head that plays NUMBERS lands here (`routeSurface` asks the roll first,
+  // and the roll had no model either). Its values are pitches, so it draws as a roll from its
+  // tree — the step grid's tree does not stand in for numbers
+  const silentHead = !!chunk && !['s', 'sound', 'chord'].includes(chunk.headFn ?? '')
+  const lookRoll = useDeferredPerText(!hasModel && stepEligible && silentHead && lookTree === null ? miniText : null, lookOnlyTreeRoll)
   const laneNodes = React.useMemo(
     () => (model && trees ? model.lanes.map((_, li) => laneSteps(model, trees, li)) : null),
     [model, trees],
@@ -836,7 +851,16 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     ? { position: 'sticky', left: 0, zIndex: 2, background: 'var(--background, #0f0f12)' }
     : {}
 
+  // THE PLAYHEAD AT THE EXACT POSITION (#1834): a line that moves with the phase, over the
+  // playing cell, which stays the column it falls in
+  const playheadRef = React.useRef<HTMLDivElement>(null)
+  useExactPlayhead(gridRef, playheadRef, model, (c) => gridRef.current?.querySelector<HTMLElement>(`[data-seq-col="ruler:${c}"]`) ?? null)
+
   if (!model) {
+    // NO COLUMN MODEL, BUT A TREE (#1834): too many steps, an onset between the columns —
+    // the pattern's own divisions still draw it, look-only
+    if (lookTree && 'grid' in lookTree) return <TreeStepGrid grid={lookTree.grid} reason={lookTree.reason} notice={notice} />
+    if (lookRoll && 'roll' in lookRoll) return <TreeRollGrid roll={lookRoll.roll} reason={lookRoll.reason} />
     return React.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && opensStepGrid(chunk)
@@ -1002,7 +1026,13 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
         )}
         {/* The voices are the grid (#1802, ARIA grid pattern): a row per voice, a
             gridcell per step, one tab stop that moves with the cursor. */}
-        <div ref={gridRef} role="grid" aria-label="Step sequencer" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div ref={gridRef} role="grid" aria-label="Step sequencer" style={{ display: 'flex', flexDirection: 'column', gap: 4, position: 'relative' }}>
+        <div
+          ref={playheadRef}
+          aria-hidden="true"
+          data-seq-playhead-line
+          style={{ display: 'none', position: 'absolute', left: 0, top: 0, bottom: 0, width: 2, marginLeft: -1, background: 'var(--foreground, #e6e6ea)', opacity: 0.5, pointerEvents: 'none', zIndex: 3 }}
+        />
         {/* THE RULER (#1841): counts the written steps of the cursor's row, `1, 1.2, …, 2`.
             Laid out exactly like a row — the header's width, the same weights and bar
             gaps — so each label sits over its own column. Visual only: hidden from the

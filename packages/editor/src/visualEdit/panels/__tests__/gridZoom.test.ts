@@ -8,8 +8,8 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { chunkDivisions, parsePianoRoll, parseStepGrid, type StepGridModel } from '../../../codeView'
-import { laneSteps, laneStepsOrWhy, openAt, openStarts, partSteps, partStepsOrWhy, zoomRuler, type DrawnNode, type StepNode } from '../gridZoom'
+import { chunkDivisions, laneDivisions, parsePianoRoll, parseStepGrid, type StepGridModel } from '../../../codeView'
+import { barStepsOrWhy, columnOf, frac, laneSteps, laneStepsOrWhy, openAt, openStarts, partSteps, partStepsOrWhy, zoomRuler, type DrawnNode, type StepNode } from '../gridZoom'
 import { writtenStepStarts } from '../writtenSteps'
 
 const grid = (mini: string): StepGridModel => {
@@ -234,10 +234,108 @@ const ROLL_PINNED = { rolls: 603, nodes: 561, compared: 524, refused: { 'does-no
 const PINNED = {
   grids: 1018,
   rows: 2496,
-  nodes: 2418,
+  nodes: 2431,
   compared: 2211,
   treeFiner: 122,
   parserFiner: 27,
   maxDepth: 4,
-  refused: { 'off-grid': 15, 'does-not-tile': 25, feet: 6, 'lane-part-unknown': 14, 'lane-sound-not-in-part': 18 },
+  // 2026-11-03 (#2287): the 14 rows that named no part under several now draw the one part
+  // writing their sound — 13 get nodes, 1 is off-grid
+  refused: { 'off-grid': 16, 'does-not-tile': 25, feet: 6, 'lane-sound-not-in-part': 18 },
+}
+
+describe('laneSteps — columns are the exact fractions, laid on the bar (#1834)', () => {
+  it('column c of a bar is the fraction (c − start) / per, and back', () => {
+    expect(columnOf(frac(3, 8), 0, 8)).toBe(3)
+    expect(columnOf(frac(3, 8), 16, 8)).toBe(19)
+    expect(columnOf(frac(1, 3), 0, 8)).toBeNull()
+  })
+
+  it('over the corpus, every row that draws by columns draws its tree\'s fractions exactly', () => {
+    let rows = 0
+    let edges = 0
+    const bad: string[] = []
+    for (const mini of minis) {
+      const g = parseStepGrid(mini)
+      const m = g.ok ? g.model : g.lookOnly
+      if (!m) continue
+      const bars = m.bars ?? 1
+      const trees = chunkDivisions(mini, bars)
+      m.lanes.forEach((lane, li) => {
+        const nodes = laneSteps(m, trees, li)
+        if (!nodes) return
+        rows++
+        // the same steps as shares of each bar, asked of the tree directly
+        let at = 0
+        for (let b = 0; b < bars; b++) {
+          const start = m.barSteps ? m.barSteps.slice(0, b).reduce((a, n) => a + n, 0) : (b * m.steps) / bars
+          const per = m.barSteps ? m.barSteps[b] : m.steps / bars
+          const d = laneDivisions(trees[b], lane)
+          if (!d.ok) throw new Error(d.why)
+          const fs = barStepsOrWhy(d.row, lane.sound)
+          if (typeof fs === 'string') throw new Error(fs)
+          const walk = (cs: readonly StepNode[], ff: ReturnType<typeof barStepsOrWhy> & object): void => {
+            if (cs.length !== ff.length) bad.push(`${mini.slice(0, 50)} ${lane.sound}: ${cs.length} vs ${ff.length}`)
+            cs.forEach((c, i) => {
+              const f = ff[i]
+              if (!f) return
+              edges += 2
+              if ((c.from - start) / per !== f.begin.n / f.begin.d || (c.to - start) / per !== f.end.n / f.end.d) {
+                bad.push(`${mini.slice(0, 50)} ${lane.sound}: ${c.from}-${c.to} vs ${f.begin.n}/${f.begin.d}-${f.end.n}/${f.end.d}`)
+              }
+              if (!!c.children !== !!f.children) bad.push(`${mini.slice(0, 50)} ${lane.sound}: children differ`)
+              if (c.children && f.children) walk(c.children, f.children)
+            })
+          }
+          const inBar = nodes.slice(at, at + fs.length)
+          at += fs.length
+          walk(inBar, fs)
+        }
+        if (at !== nodes.length) bad.push(`${mini.slice(0, 50)} ${lane.sound}: ${nodes.length} nodes, ${at} steps`)
+      })
+    }
+    expect(bad).toEqual([])
+    // editable 2,431 + look-only 133 (pinned above and below)
+    expect({ rows, edges }).toEqual({ rows: 2564, edges: COLUMN_EDGES })
+  }, 600_000)
+})
+
+describe('laneSteps — the corpus, look-only grids (#2287)', () => {
+  it('a look-only grid gets its rows\' steps the way an editable one does; counts pinned', () => {
+    let grids = 0
+    let rows = 0
+    let nodes = 0
+    const refused: Record<string, number> = {}
+    for (const mini of minis) {
+      const g = parseStepGrid(mini)
+      if (g.ok || !g.lookOnly) continue
+      grids++
+      const m = g.lookOnly
+      const trees = chunkDivisions(mini, m.bars ?? 1)
+      m.lanes.forEach((_, i) => {
+        rows++
+        const got = laneStepsOrWhy(m, trees, i)
+        if (typeof got === 'string') refused[got] = (refused[got] ?? 0) + 1
+        else nodes++
+      })
+    }
+    expect(refused['cells-differ']).toBeUndefined()
+    expect({ grids, rows, nodes, refused }).toEqual(LOOK_ONLY_PINNED)
+  }, 600_000)
+})
+
+/**
+ * Measured 2026-11-03 over the same corpus: 56 patterns open as a look-only grid, 180 rows.
+ * Their rows are built from the cells and name no part, so under a stack every one was
+ * refused `lane-part-unknown` until #2287: 97 rows got steps then, 133 now. The 6 left
+ * unknown are a sound two parts both write.
+ */
+/** every edge of every drawn step, at every depth, of the 2,564 rows */
+const COLUMN_EDGES = 52_580
+
+const LOOK_ONLY_PINNED = {
+  grids: 56,
+  rows: 180,
+  nodes: 133,
+  refused: { 'does-not-tile': 2, 'lane-part-unknown': 6, 'lane-sound-not-in-part': 25, 'off-grid': 14 },
 }
