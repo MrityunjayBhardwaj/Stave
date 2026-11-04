@@ -5,7 +5,11 @@
 import {
   AUTHOR_KEY_HEADER,
   MANAGE_TOKEN_HEADER,
+  type AuthorMovedResponse,
   type AuthorPageResponse,
+  type ClaimRequest,
+  type ClaimResponse,
+  type MySharesResponse,
   type AuthorUpdateRequest,
   type CollectionPageResponse,
   type CollectionWriteRequest,
@@ -89,10 +93,14 @@ export async function publishToGallery(req: PublishRequest): Promise<PublishResp
   return (await res.json()) as PublishResponse;
 }
 
-export async function deleteFromGallery(id: string, manageToken: string): Promise<void> {
+/**
+ * Take an entry down. `manageToken` is this browser's key for it; without one
+ * (#2321, an entry on the signed-in account) the session cookie is what counts.
+ */
+export async function deleteFromGallery(id: string, manageToken: string | null): Promise<void> {
   const res = await fetch(`/api/gallery/${encodeURIComponent(id)}`, {
     method: "DELETE",
-    headers: { [MANAGE_TOKEN_HEADER]: manageToken },
+    headers: manageToken ? { [MANAGE_TOKEN_HEADER]: manageToken } : {},
   });
   // Already gone counts as done.
   if (res.status === 204 || res.status === 404 || res.status === 410) return;
@@ -118,13 +126,34 @@ export function galleryEntryLink(id: string): string {
  * #2311 — revoke a private short link this browser made. Already gone (404)
  * counts as done; a link made before revoking existed answers 403 with a reason.
  */
-export async function revokeShareLink(id: string, manageToken: string): Promise<void> {
+export async function revokeShareLink(id: string, manageToken: string | null): Promise<void> {
+  // #2321 — no token: a link on the signed-in account, revoked through the session.
   const res = await fetch(`/api/share/${encodeURIComponent(id)}`, {
     method: "DELETE",
-    headers: { [MANAGE_TOKEN_HEADER]: manageToken },
+    headers: manageToken ? { [MANAGE_TOKEN_HEADER]: manageToken } : {},
   });
   if (res.status === 204 || res.status === 404) return;
   throw await failure(res, "revoking the link");
+}
+
+// ── #2320 claim and #2321 My shares from the account ───────────────────────
+
+/** Bring what this browser holds keys for into the signed-in account. */
+export async function claimIntoAccount(req: ClaimRequest): Promise<ClaimResponse> {
+  const res = await fetch("/api/gallery/claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw await failure(res, "bringing your shares into your account");
+  return (await res.json()) as ClaimResponse;
+}
+
+/** The signed-in account's entries, collections and private links. */
+export async function fetchAccountShares(): Promise<MySharesResponse> {
+  const res = await fetch("/api/gallery/me/shares", { cache: "no-store" });
+  if (!res.ok) throw await failure(res, "loading your shares");
+  return (await res.json()) as MySharesResponse;
 }
 
 // ── #2314 profiles and #2315 collections ───────────────────────────────────
@@ -142,11 +171,22 @@ function keyed(authorKey: string | null | undefined, json = false): Record<strin
   return h;
 }
 
+/**
+ * A profile page. #2320 — a profile merged into an account's profile answers
+ * `{ movedTo }`; this follows it (a few hops at most), so an old profile link
+ * opens the account's profile. The page's `author.authorId` is where it landed.
+ */
 export async function fetchAuthorPage(authorId: string): Promise<AuthorPageResponse> {
-  const res = await fetch(`/api/gallery/authors/${encodeURIComponent(authorId)}`);
-  if (res.status === 404) throw new Error("this profile wasn't found");
-  if (!res.ok) throw await failure(res, "loading the profile");
-  return (await res.json()) as AuthorPageResponse;
+  let id = authorId;
+  for (let hop = 0; hop < 4; hop++) {
+    const res = await fetch(`/api/gallery/authors/${encodeURIComponent(id)}`);
+    if (res.status === 404) throw new Error("this profile wasn't found");
+    if (!res.ok) throw await failure(res, "loading the profile");
+    const body = (await res.json()) as AuthorPageResponse | AuthorMovedResponse;
+    if (!("movedTo" in body)) return body;
+    id = body.movedTo;
+  }
+  throw new Error("this profile moved too many times to follow");
 }
 
 export async function updateAuthor(

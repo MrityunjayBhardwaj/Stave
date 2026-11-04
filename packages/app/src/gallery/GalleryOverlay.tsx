@@ -5,7 +5,9 @@
  *
  * Browse what people published (Projects / Music / Viz), read an entry's code,
  * and open it — as a new project, or (music / viz) as a file in this one. My
- * shares lists what this browser published, with delete.
+ * shares lists what you published, with delete: signed out, from this
+ * browser; signed in (#2321), from your account, plus anything this browser
+ * holds that isn't on the account yet.
  *
  * Safe-run (#2304): nothing here evaluates code. Cards show a static thumbnail
  * or a generated card; the detail view shows the files as plain text. Opening
@@ -13,7 +15,14 @@
  * after the person presses Play.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchGalleryEntry, fetchGalleryList, galleryEntryLink, reportGalleryEntry, GalleryEntryRemoved } from "./client";
+import {
+  fetchAccountShares,
+  fetchGalleryEntry,
+  fetchGalleryList,
+  galleryEntryLink,
+  reportGalleryEntry,
+  GalleryEntryRemoved,
+} from "./client";
 import { AuthorName, Card, CARD_CSS } from "./GalleryCards";
 import { CollectionView, PROFILE_CSS, ProfileView } from "./GalleryProfile";
 import { MARKDOWN_CSS } from "./markdown";
@@ -25,7 +34,13 @@ import {
   type LocalPrivateLink,
   type LocalShare,
 } from "./localShares";
-import { MAX_REPORT_REASON_CHARS, type GalleryEntry, type GalleryEntryResponse, type GalleryKind } from "./types";
+import {
+  MAX_REPORT_REASON_CHARS,
+  type GalleryEntry,
+  type GalleryEntryResponse,
+  type GalleryKind,
+  type MySharesResponse,
+} from "./types";
 import {
   GALLERY_TABS,
   KIND_LABEL,
@@ -35,7 +50,18 @@ import {
   type GalleryLinkTarget,
   type GalleryTab,
 } from "./galleryModel";
-import { defaultDeleteDeps, defaultRevokeDeps, deleteMyShare, revokeMyLink, shareStatus } from "./myShares";
+import {
+  defaultDeleteDeps,
+  defaultRevokeDeps,
+  deleteMyShare,
+  myRows,
+  revokeMyLink,
+  shareStatus,
+  type LinkRow,
+  type MyRows,
+  type ShareRow,
+} from "./myShares";
+import { useGallerySession } from "./session";
 import { getDialog, showConfirm, showPrompt, showToast } from "../dialogs/host";
 
 export interface GalleryOverlayProps {
@@ -60,6 +86,13 @@ type ListState =
   | { status: "error"; message: string }
   | { status: "ready"; entries: GalleryEntry[] };
 
+/** #2321 — the signed-in account's shares; "off" when signed out. */
+type AccountState =
+  | { status: "off" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; data: MySharesResponse };
+
 type DetailState =
   | { status: "loading"; id: string }
   | { status: "removed"; id: string }
@@ -75,7 +108,7 @@ async function copyLink(id: string): Promise<void> {
   }
 }
 
-async function copyPrivateLink(link: LocalPrivateLink): Promise<void> {
+async function copyPrivateLink(link: { url: string }): Promise<void> {
   try {
     await navigator.clipboard.writeText(link.url);
     showToast("Private link copied.", "info");
@@ -103,6 +136,20 @@ export function GalleryOverlay({
   const [mine, setMine] = useState<LocalShare[]>([]);
   const [links, setLinks] = useState<LocalPrivateLink[]>([]);
   const [busy, setBusy] = useState(false);
+  const [account, setAccount] = useState<AccountState>({ status: "off" });
+  const session = useGallerySession();
+  const accountAuthorId = session.status === "ready" ? (session.session.user?.authorId ?? null) : null;
+
+  const loadAccount = useCallback(() => {
+    if (!accountAuthorId) {
+      setAccount({ status: "off" });
+      return;
+    }
+    setAccount((a) => (a.status === "ready" ? a : { status: "loading" }));
+    fetchAccountShares()
+      .then((data) => setAccount({ status: "ready", data }))
+      .catch((err: Error) => setAccount({ status: "error", message: err.message || "your shares couldn't be loaded" }));
+  }, [accountAuthorId]);
 
   const loadList = useCallback(() => {
     setList({ status: "loading" });
@@ -158,16 +205,23 @@ export function GalleryOverlay({
     else setDetail(null);
   }, [open, initialEntryId, initialKind, initialId, loadList, openEntry]);
 
+  // #2321 — signed in: the account's shares, on open and whenever sign-in resolves.
+  useEffect(() => {
+    if (open) loadAccount();
+  }, [open, loadAccount]);
+
   useEffect(() => {
     if (!open) return;
     const refresh = () => {
       setMine(listLocalShares());
       setLinks(listPrivateLinks());
       setMyAuthorId(loadAuthor()?.authorId ?? null);
+      // A claim just landed, or something was deleted: the account's list changed too.
+      loadAccount();
     };
     window.addEventListener(LOCAL_SHARES_CHANGED, refresh);
     return () => window.removeEventListener(LOCAL_SHARES_CHANGED, refresh);
-  }, [open]);
+  }, [open, loadAccount]);
 
   useEffect(() => {
     if (!open) return;
@@ -186,6 +240,11 @@ export function GalleryOverlay({
   const shown = useMemo(
     () => (entries && tab !== "mine" ? entriesForTab(entries, tab, query) : []),
     [entries, tab, query],
+  );
+
+  const rows: MyRows = useMemo(
+    () => myRows(account.status === "ready" ? account.data : null, mine, links),
+    [account, mine, links],
   );
 
   if (!open) return null;
@@ -232,7 +291,7 @@ export function GalleryOverlay({
     }
   };
 
-  const deleteShare = async (share: LocalShare) => {
+  const deleteShare = async (share: ShareRow) => {
     try {
       const outcome = await deleteMyShare(
         share,
@@ -250,13 +309,14 @@ export function GalleryOverlay({
         if (list.status === "ready") {
           setList({ status: "ready", entries: list.entries.filter((e) => e.id !== share.id) });
         }
+        loadAccount();
       }
     } catch (err) {
       showToast(`Couldn't delete it — ${(err as Error).message}`, "error");
     }
   };
 
-  const revokeLink = async (link: LocalPrivateLink) => {
+  const revokeLink = async (link: LinkRow) => {
     try {
       const outcome = await revokeMyLink(
         link,
@@ -269,7 +329,10 @@ export function GalleryOverlay({
           }),
         ),
       );
-      if (outcome === "revoked") showToast(`Revoked the link to "${link.projectName}".`, "info");
+      if (outcome === "revoked") {
+        showToast(`Revoked the link to "${link.projectName}".`, "info");
+        loadAccount();
+      }
     } catch (err) {
       showToast(`Couldn't revoke it — ${(err as Error).message}`, "error");
     }
@@ -352,8 +415,8 @@ export function GalleryOverlay({
                   >
                     {t.label}
                     {t.id !== "mine" && entries ? <span className="sg-count">{counts[t.id]}</span> : null}
-                    {t.id === "mine" && mine.length + links.length > 0 ? (
-                      <span className="sg-count">{mine.length + links.length}</span>
+                    {t.id === "mine" && rows.entries.length + rows.links.length > 0 ? (
+                      <span className="sg-count">{rows.entries.length + rows.links.length}</span>
                     ) : null}
                   </button>
                 ))}
@@ -373,10 +436,12 @@ export function GalleryOverlay({
             <div className="sg-body">
               {tab === "mine" ? (
                 <MyShares
-                  myAuthorId={myAuthorId}
+                  myAuthorId={accountAuthorId ?? myAuthorId}
                   onMyProfile={openAuthor}
-                  shares={mine}
-                  links={links}
+                  rows={rows}
+                  account={account}
+                  onRetryAccount={loadAccount}
+                  onOpenCollection={openCollection}
                   listed={entries}
                   onCopyPrivate={copyPrivateLink}
                   onRevoke={revokeLink}
@@ -537,8 +602,10 @@ function EntryDetail({
 function MyShares({
   myAuthorId,
   onMyProfile,
-  shares,
-  links,
+  rows,
+  account,
+  onRetryAccount,
+  onOpenCollection,
   listed,
   onOpen,
   onCopy,
@@ -548,17 +615,27 @@ function MyShares({
 }: {
   myAuthorId: string | null;
   onMyProfile: (authorId: string) => void;
-  shares: LocalShare[];
-  links: LocalPrivateLink[];
+  rows: MyRows;
+  account: AccountState;
+  onRetryAccount: () => void;
+  onOpenCollection: (id: string) => void;
   listed: GalleryEntry[] | null;
   onOpen: (id: string) => void;
   onCopy: (id: string) => void;
-  onDelete: (s: LocalShare) => void;
-  onCopyPrivate: (l: LocalPrivateLink) => void;
-  onRevoke: (l: LocalPrivateLink) => void;
+  onDelete: (s: ShareRow) => void;
+  onCopyPrivate: (l: LinkRow) => void;
+  onRevoke: (l: LinkRow) => void;
 }) {
+  const signedIn = account.status !== "off";
+  const browserOnly = (home: "account" | "browser") =>
+    signedIn && home === "browser" ? (
+      <span className="sg-browser-only" data-gallery-browser-only>
+        {" "}
+        · only in this browser
+      </span>
+    ) : null;
   return (
-    <div className="sg-mine">
+    <div className="sg-mine" data-gallery-mine-source={signedIn ? "account" : "browser"}>
       {myAuthorId && (
         <button
           className="sg-btn sg-my-profile"
@@ -568,26 +645,47 @@ function MyShares({
           View my profile →
         </button>
       )}
+      {account.status === "loading" && (
+        <div className="sg-section-note" data-gallery-state="account-loading">Loading your account&apos;s shares…</div>
+      )}
+      {account.status === "error" && (
+        <div className="sg-section-note" data-gallery-state="account-error">
+          Couldn&apos;t load your account&apos;s shares: {account.message}. Showing what this browser has.{" "}
+          <button className="sg-btn" onClick={onRetryAccount}>Try again</button>
+        </div>
+      )}
       <section data-gallery-section="published">
         <h3 className="sg-section">In the gallery</h3>
         <p className="sg-section-note">Everyone can see and open these.</p>
-        {shares.length === 0 ? (
+        {rows.entries.length === 0 ? (
           <div className="sg-state sg-state-small" data-gallery-state="mine-empty">
-            <p>You haven&apos;t published anything from this browser yet.</p>
+            <p>
+              {signedIn
+                ? "You haven't published anything yet."
+                : "You haven't published anything from this browser yet."}
+            </p>
             <p className="sg-muted">
               Use File → Share → Publish to Gallery (or the Publish yours button above) to share a project, a pattern or
-              a visual. This browser keeps the key that lets you take it down again.
+              a visual.{signedIn ? "" : " This browser keeps the key that lets you take it down again."}
             </p>
           </div>
         ) : (
-          shares.map((s) => {
-            const status = shareStatus(s, listed);
+          rows.entries.map((s) => {
+            // An account row is live by definition; a browser row is checked against the list.
+            const status = s.home === "account" ? "listed" : shareStatus(s, listed);
             return (
-              <div key={s.id} className="sg-mine-row" data-gallery-mine={s.id} data-gallery-status={status}>
+              <div
+                key={s.id}
+                className="sg-mine-row"
+                data-gallery-mine={s.id}
+                data-gallery-status={status}
+                data-gallery-home={s.home}
+              >
                 <div className="sg-mine-text">
                   <div className="sg-card-title">{s.title}</div>
                   <div className="sg-card-meta">
                     {KIND_LABEL[s.kind] ?? s.kind} · published {formatGalleryDate(s.publishedAt)}
+                    {browserOnly(s.home)}
                     {status === "missing" && (
                       <span className="sg-missing"> · No longer in the gallery — it was removed.</span>
                     )}
@@ -606,22 +704,46 @@ function MyShares({
         )}
       </section>
 
+      {signedIn && rows.collections.length > 0 && (
+        <section data-gallery-section="collections">
+          <h3 className="sg-section">Collections</h3>
+          <p className="sg-section-note">Open one to change or delete it.</p>
+          {rows.collections.map((c) => (
+            <div key={c.id} className="sg-mine-row" data-gallery-my-collection={c.id}>
+              <div className="sg-mine-text">
+                <div className="sg-card-title">{c.title}</div>
+                <div className="sg-card-meta">
+                  Collection · {c.entryIds.length} {c.entryIds.length === 1 ? "entry" : "entries"}
+                </div>
+              </div>
+              <div className="sg-actions">
+                <button className="sg-btn" onClick={() => onOpenCollection(c.id)}>Open</button>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+
       <section data-gallery-section="private">
         <h3 className="sg-section">Private links</h3>
-        <p className="sg-section-note">
-          Only people you send these to can open them. Links made before this list existed aren&apos;t here and can&apos;t
-          be revoked; the list lives in this browser.
+        <p className="sg-section-note" data-gallery-links-note>
+          {signedIn
+            ? "Only people you send these to can open them. Your account keeps each full link, key included, so you can copy it again on any device; only you can see this list."
+            : "Only people you send these to can open them. Links made before this list existed aren't here and can't be revoked; the list lives in this browser."}
         </p>
-        {links.length === 0 ? (
+        {rows.links.length === 0 ? (
           <div className="sg-state sg-state-small" data-gallery-state="links-empty">
             <p className="sg-muted">File → Share → Copy Private Link makes one; it will show up here.</p>
           </div>
         ) : (
-          links.map((l) => (
-            <div key={l.id} className="sg-mine-row" data-gallery-link={l.id}>
+          rows.links.map((l) => (
+            <div key={l.id} className="sg-mine-row" data-gallery-link={l.id} data-gallery-home={l.home}>
               <div className="sg-mine-text">
                 <div className="sg-card-title">{l.projectName}</div>
-                <div className="sg-card-meta">Private link · made {formatGalleryDate(l.createdAt)}</div>
+                <div className="sg-card-meta">
+                  Private link · made {formatGalleryDate(l.createdAt)}
+                  {browserOnly(l.home)}
+                </div>
               </div>
               <div className="sg-actions">
                 <button className="sg-btn" onClick={() => onCopyPrivate(l)}>Copy again</button>
@@ -688,6 +810,7 @@ const CSS = `
 .sg-mine section { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
 .sg-state-small { padding: 14px 12px; }
 .sg-missing { color: var(--text-error, #f27878); }
+.sg-browser-only { font-style: italic; opacity: .85; }
 @media (max-width: 640px) {
   .sg-modal { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border: none; }
   .sg-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }

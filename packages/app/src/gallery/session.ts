@@ -76,6 +76,11 @@ export function useGallerySession(): GallerySessionState {
   return s;
 }
 
+/** The session as last loaded, for code outside React (#2321: Copy Private Link). */
+export function currentGallerySession(): GallerySessionState {
+  return state;
+}
+
 /** For tests: forget what was loaded. */
 export function resetGallerySessionForTests(next: GallerySessionState = { status: "loading" }): void {
   inflight = null;

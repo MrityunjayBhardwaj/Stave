@@ -10,6 +10,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { getActiveProjectId, type ProjectMeta, type WorkspaceFile } from "@stave/editor";
 import { GalleryOverlay } from "./GalleryOverlay";
+import { claimIntoAccount } from "./client";
+import { runClaimOnce } from "./claimRun";
+import { useGallerySession } from "./session";
 import { readGalleryLink, fileToAdd, type GalleryLinkTarget } from "./galleryModel";
 import { beginGalleryImport, endGalleryImport, holdGalleryFiles } from "./safeRun";
 import type { GalleryEntry, GalleryManifest } from "./types";
@@ -58,6 +61,17 @@ export function GalleryHost({ unsavedBlocksLeaving, openProject, onPublish }: Ga
     window.addEventListener(OPEN_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_EVENT, onOpen);
   }, [show]);
+
+  // #2320 — once signed in, bring what this browser published before into the account.
+  const session = useGallerySession();
+  const accountAuthorId = session.status === "ready" ? (session.session.user?.authorId ?? null) : null;
+  useEffect(() => {
+    if (!accountAuthorId) return;
+    void runClaimOnce(accountAuthorId, {
+      claim: claimIntoAccount,
+      toast: (text, kind) => showToast(text, kind, 7000),
+    });
+  }, [accountAuthorId]);
 
   useEffect(
     () =>

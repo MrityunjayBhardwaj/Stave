@@ -7,7 +7,7 @@
  * Clearing site data loses the tokens, and with them control of the uploads;
  * the publish dialog says so.
  */
-import type { GalleryKind } from "./types";
+import type { ClaimRefusal, ClaimRequest, GalleryKind } from "./types";
 
 export interface GalleryAuthor {
   name: string;
@@ -16,6 +16,10 @@ export interface GalleryAuthor {
   authorId?: string;
   /** #2314 — the private key that edits this author's profile and collections. */
   authorKey?: string;
+  /** #2320 — the account author this key was brought into (claimed); unset until then. */
+  claimedBy?: string;
+  /** #2320 — the account author a claim tried this for and the server refused (kept here). */
+  claimRefusedBy?: string;
 }
 
 export interface LocalShare {
@@ -24,6 +28,10 @@ export interface LocalShare {
   kind: GalleryKind;
   publishedAt: number;
   manageToken: string;
+  /** #2320 — the account author a claim brought this into; unset until then. */
+  claimedBy?: string;
+  /** #2320 — the account author a claim tried this for and the server refused (kept here). */
+  claimRefusedBy?: string;
 }
 
 /** #2311 — a private short link this browser made (Copy Share Link). */
@@ -34,6 +42,10 @@ export interface LocalPrivateLink {
   projectName: string;
   createdAt: number;
   manageToken: string;
+  /** #2320 — the account author a claim brought this into (or that recorded it when made). */
+  claimedBy?: string;
+  /** #2320 — the account author a claim tried this for and the server refused (kept here). */
+  claimRefusedBy?: string;
 }
 
 const LINKS_KEY = "stave.share.links";
@@ -96,5 +108,54 @@ export function addPrivateLink(link: LocalPrivateLink): void {
 
 export function removePrivateLink(id: string): void {
   write(LINKS_KEY, listPrivateLinks().filter((l) => l.id !== id));
+  window.dispatchEvent(new Event(LOCAL_SHARES_CHANGED));
+}
+
+// ── #2320 claiming what this browser holds into the signed-in account ────────
+
+/** Has a claim for `authorId` already settled this item, either way? */
+const settled = (x: { claimedBy?: string; claimRefusedBy?: string }, authorId: string) =>
+  x.claimedBy === authorId || x.claimRefusedBy === authorId;
+
+/**
+ * What this browser still has to bring into account author `authorId`: its
+ * author key and every entry and private link a claim hasn't settled for that
+ * account yet. Null when there is nothing.
+ */
+export function pendingClaim(authorId: string): ClaimRequest | null {
+  const author = loadAuthor();
+  const req: ClaimRequest = {
+    entries: listLocalShares()
+      .filter((s) => !settled(s, authorId))
+      .map((s) => ({ id: s.id, manageToken: s.manageToken })),
+    links: listPrivateLinks()
+      .filter((l) => !settled(l, authorId))
+      .map((l) => ({ id: l.id, manageToken: l.manageToken, url: l.url, projectName: l.projectName, createdAt: l.createdAt })),
+  };
+  if (author?.authorKey && !settled(author, authorId)) req.authorKey = author.authorKey;
+  return req.authorKey || req.entries.length || req.links.length ? req : null;
+}
+
+/**
+ * After the server answered a claim: mark each item it was sent, so it isn't
+ * sent again on every load. Refused ones are marked refused (they stay "only
+ * in this browser"); the rest are on the account now (moved, or already there).
+ * The keys stay (a fallback until they are removed later); only the mark is added.
+ */
+export function markClaimed(authorId: string, sent: ClaimRequest, refused: ClaimRefusal[] = []): void {
+  const no = (kind: ClaimRefusal["kind"]) => new Set(refused.filter((r) => r.kind === kind).map((r) => r.id));
+  const noEntries = no("entry");
+  const noLinks = no("link");
+  const mark = <T extends { id: string }>(x: T, refusedIds: Set<string | undefined>): T =>
+    refusedIds.has(x.id) ? { ...x, claimRefusedBy: authorId } : { ...x, claimedBy: authorId };
+  const entryIds = new Set(sent.entries.map((e) => e.id));
+  const linkIds = new Set(sent.links.map((l) => l.id));
+  write(SHARES_KEY, listLocalShares().map((s) => (entryIds.has(s.id) ? mark(s, noEntries) : s)));
+  write(LINKS_KEY, listPrivateLinks().map((l) => (linkIds.has(l.id) ? mark(l, noLinks) : l)));
+  const author = loadAuthor();
+  if (author && sent.authorKey && author.authorKey === sent.authorKey) {
+    const authorRefused = refused.some((r) => r.kind === "author");
+    saveAuthor(authorRefused ? { ...author, claimRefusedBy: authorId } : { ...author, claimedBy: authorId });
+  }
   window.dispatchEvent(new Event(LOCAL_SHARES_CHANGED));
 }

@@ -29,6 +29,8 @@ import {
 } from "@stave/editor";
 
 import { addPrivateLink } from "./gallery/localShares";
+import { currentGallerySession } from "./gallery/session";
+import { SHARE_LINK_KEY_HEADER, SHARE_LINK_NAME_HEADER } from "./gallery/types";
 import { fromBase64Url, openShare, parseShortShare, sealShare, toBase64Url } from "./shareCrypto";
 
 export const SHARE_HASH_PREFIX = "#share=";
@@ -157,9 +159,18 @@ export const SHARE_RATE_LIMITED = "ShareRateLimited";
  */
 export async function buildShortShareUrl(project: ProjectMeta): Promise<string> {
   const { sealed, key } = await sealShare(await packProject(project));
+  // #2321 — signed in, the link is also kept on the account (key included) so
+  // My shares has it on every device. Signed out, the key never leaves here.
+  const session = currentGallerySession();
+  const accountAuthorId = session.status === "ready" ? (session.session.user?.authorId ?? null) : null;
+  const headers: Record<string, string> = { "Content-Type": "application/octet-stream" };
+  if (accountAuthorId) {
+    headers[SHARE_LINK_KEY_HEADER] = key;
+    headers[SHARE_LINK_NAME_HEADER] = encodeURIComponent(project.name);
+  }
   const res = await fetch("/api/share", {
     method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
+    headers,
     body: sealed as BodyInit,
   });
   if (res.status === 429) {
@@ -170,12 +181,20 @@ export async function buildShortShareUrl(project: ProjectMeta): Promise<string> 
     throw err;
   }
   if (!res.ok) throw new Error(`the share store answered ${res.status}`);
-  const { id, manageToken } = (await res.json()) as { id: string; manageToken?: string };
+  const { id, manageToken, onAccount } = (await res.json()) as { id: string; manageToken?: string; onAccount?: boolean };
   const url = `${window.location.origin}/s/${id}#${key}`;
-  // #2311 — remember it, so My shares can copy it again or revoke it.
+  // #2311 — remember it, so My shares can copy it again or revoke it. #2320 —
+  // already on the account: marked so the claim doesn't send it again.
   if (manageToken) {
     try {
-      addPrivateLink({ id, url, projectName: project.name, createdAt: Date.now(), manageToken });
+      addPrivateLink({
+        id,
+        url,
+        projectName: project.name,
+        createdAt: Date.now(),
+        manageToken,
+        ...(onAccount && accountAuthorId ? { claimedBy: accountAuthorId } : {}),
+      });
     } catch (err) {
       console.warn("[stave] couldn't remember the share link:", err);
     }

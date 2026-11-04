@@ -148,7 +148,10 @@ export function ProfileView({
 }) {
   const [page, setPage] = useState<Load<AuthorPageResponse>>({ status: "loading" });
   const [mode, setMode] = useState<"view" | "edit" | "new-collection">("view");
-  const { canEdit, key: ownerKey } = editAccess(useSessionAuthorId(), loadAuthor(), authorId);
+  // #2320 — an old profile link lands on the profile it was merged into; who
+  // may edit is decided for the profile actually shown.
+  const shownId = page.status === "ready" ? page.data.author.authorId : authorId;
+  const { canEdit, key: ownerKey } = editAccess(useSessionAuthorId(), loadAuthor(), shownId);
 
   const load = useCallback(() => {
     setPage({ status: "loading" });
