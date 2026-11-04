@@ -11,6 +11,7 @@ import { requireSessionAuthor } from "./session";
 import { requireTurnstile } from "./turnstile";
 import { galleryPaths, galleryStore, getJson, putJson, type PrivateRecord } from "./store";
 import { checkPublish, MAX_PUBLISH_BODY_BYTES, readJsonBody } from "./validate";
+import { assertSameOrigin } from "./origin";
 
 // #2299 — the community gallery: list what has been published, and publish.
 
@@ -64,6 +65,7 @@ export async function GET(): Promise<Response> {
 // dialog shows the server's message on a 429.
 
 export async function POST(req: Request): Promise<Response> {
+  const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const store = galleryStore();
   if (!store) return noStore();
 

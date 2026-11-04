@@ -13,6 +13,9 @@
  * or a generated card; the detail view shows the files as plain text. Opening
  * hands the files to the host, which holds them (safeRun.ts) so they run only
  * after the person presses Play.
+ *
+ * Preview (#2328): the detail view can play the file it shows, but only inside
+ * a sandboxed frame with an opaque origin (GalleryPreview.tsx) — never here.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -65,6 +68,8 @@ import {
 import { useGallerySession } from "./session";
 import { getDialog, showConfirm, showToast } from "../dialogs/host";
 import { REPORT_CSS, ReportDialog } from "./ReportDialog";
+import { GalleryPreview } from "./GalleryPreview";
+import { previewKindOf } from "./previewProtocol";
 
 export interface GalleryOverlayProps {
   open: boolean;
@@ -583,7 +588,7 @@ function EntryDetail({
         </div>
       </div>
       <p className="sg-safe" data-gallery-safe-note>
-        Nothing from this entry has run. Read the code below; once it is open, it plays only when you press Play.
+        Nothing from this entry has run. Read the code below, or preview it in a sealed frame; once it is open, it plays only when you press Play.
       </p>
       {files.length > 1 && (
         <div className="sg-files" role="tablist" aria-label="Files">
@@ -599,6 +604,9 @@ function EntryDetail({
             </button>
           ))}
         </div>
+      )}
+      {file && previewKindOf(file) && (
+        <GalleryPreview code={file.content} kind={previewKindOf(file)!} fileKey={`${entry.id}/${file.id}`} />
       )}
       {file ? (
         <div className="sg-code-wrap">
@@ -818,6 +826,10 @@ const CSS = `
 .sg-files { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
 .sg-file { background: none; border: 1px solid var(--border-subtle); color: var(--text-chrome); padding: 3px 8px; border-radius: 5px; cursor: pointer; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .sg-file-on { border-color: var(--accent, #4a6cf7); color: var(--text-primary); }
+.sg-sandbox { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.sg-sandbox-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sg-sandbox-status { font-size: 12px; opacity: .85; min-width: 0; flex: 1 1 260px; overflow-wrap: anywhere; }
+.sg-sandbox-frame { width: 100%; height: 220px; border: 1px solid var(--border-subtle); border-radius: 6px; background: #000; }
 .sg-code-wrap { flex: 1; min-height: 160px; display: flex; flex-direction: column; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; }
 .sg-code-path { font-size: 11px; padding: 5px 10px; border-bottom: 1px solid var(--border-subtle); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .8; }
 .sg-code { flex: 1; margin: 0; padding: 10px 12px; overflow: auto; font-size: 12.5px; line-height: 1.5; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; color: var(--text-primary); background: var(--bg-editor, rgba(0,0,0,.25)); user-select: text; }

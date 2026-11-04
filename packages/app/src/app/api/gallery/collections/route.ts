@@ -5,12 +5,14 @@ import { limitAuthor } from "../rateLimit";
 import { actingAuthor } from "../session";
 import { galleryPaths, galleryStore, putJson } from "../store";
 import { checkCollectionWrite, MAX_COLLECTION_BODY_BYTES, readJsonBody } from "../validate";
+import { assertSameOrigin } from "../origin";
 
 // #2315 — make a collection of your own entries. The session (#2319), or for an
 // author from before sign-in the author key, says whose it is; there is no
 // author id in the body to trust.
 
 export async function POST(req: Request): Promise<Response> {
+  const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const store = galleryStore();
   if (!store) return Response.json({ error: "the gallery is not set up here" }, { status: 503 });
 

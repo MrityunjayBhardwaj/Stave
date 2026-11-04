@@ -104,7 +104,7 @@ import {
 } from "@stave/editor";
 import { reportWriteRefusal } from "../lib/writeRefusal";
 import { noticeBareExpression, storedTold } from "../lib/bareExpressionNotice";
-import { showToast } from "../dialogs/host";
+import { showConfirm, showToast } from "../dialogs/host";
 import { effectiveLoopRange, subscribeLoopState } from "../state/loopRange";
 import { getSongCycleLimit } from "../state/songCycleLimit";
 import { createSongCollector } from "./musicalTimeline/songCollector";
@@ -119,7 +119,13 @@ import { installBounceProbe } from "../e2e/bounceProbe";
 import { installAssetProbe } from "../e2e/assetProbe";
 import { warmWaveforms } from "../audio/waveformWarm";
 // #2304 — gallery code is held until the person presses Play.
-import { isGalleryHeld, releaseGalleryHold } from "../gallery/safeRun";
+import {
+  confirmGalleryRun,
+  galleryAuthorToConfirm,
+  galleryTrustMessage,
+  isGalleryHeld,
+  releaseGalleryHold,
+} from "../gallery/safeRun";
 
 
 // Phase 20-12 — the timeline collects across the same cycle window the live
@@ -1561,16 +1567,27 @@ export default function StrudelEditorClient({
   // ── Shell callbacks ─────────────────────────────────────────────────
 
   const handlePlay = useCallback((fileId: string) => {
-    const rt = getOrCreateRuntime(fileId);
-    if (!rt) return;
-    setRuntimeStates(prev => {
-      const next = new Map(prev);
-      const cur = prev.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
-      next.set(fileId, { ...cur, error: null });
-      return next;
+    const start = () => {
+      const rt = getOrCreateRuntime(fileId);
+      if (!rt) return;
+      setRuntimeStates(prev => {
+        const next = new Map(prev);
+        const cur = prev.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
+        next.set(fileId, { ...cur, error: null });
+        return next;
+      });
+      rt.play();
+    };
+    // #2328 — the first Play of a file taken in from the gallery asks first
+    // (gallery/safeRun.ts); Cancel leaves it unrun. Any other file plays at
+    // once, exactly as before.
+    if (galleryAuthorToConfirm(storeProjectId(), fileId) === null) return start();
+    void confirmGalleryRun(storeProjectId(), fileId, (author) =>
+      showConfirm({ ...galleryTrustMessage(author), cancelLabel: "Cancel" }),
+    ).then((ok) => {
+      if (ok) start();
     });
-    rt.play();
-  }, [getOrCreateRuntime]);
+  }, [getOrCreateRuntime, storeProjectId]);
 
   const handleStop = useCallback((fileId: string) => {
     const rt = runtimesRef.current.get(fileId);

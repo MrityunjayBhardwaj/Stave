@@ -5,6 +5,7 @@ import { forgetAccountLink, hasAccountLink } from "../../gallery/accountLinks";
 import { accountHashOf, sessionClaim } from "../../gallery/session";
 import { galleryStore, type GalleryBlobStore } from "../../gallery/store";
 import { shareStore } from "../store";
+import { assertSameOrigin } from "../../gallery/origin";
 
 // #2248 — fetch one sealed shared project by its id. Never lists.
 //
@@ -40,6 +41,7 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
+  const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const { id } = await params;
   if (!SHARE_ID_PATTERN.test(id)) return new Response("not found", { status: 404 });
   const store = shareStore();

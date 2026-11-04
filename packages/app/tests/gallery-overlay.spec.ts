@@ -135,8 +135,12 @@ test.describe('community gallery overlay', () => {
     expect(await peak(page, runs, 6_000), 'gallery code ran without Play').toBe(0)
     expect(await triggers(page)).toBe(before)
 
-    // Play: now it runs, and the scheduler emits notes.
+    // Play: first it asks (#2328), and nothing has run while it asks; once
+    // confirmed it runs, and the scheduler emits notes.
     await evalCode(page)
+    await expect(page.getByText('This code was written by Alice.', { exact: false })).toBeVisible({ timeout: 10_000 })
+    expect(await runs(page), 'gallery code ran before the trust step was answered').toBe(0)
+    await page.getByRole('button', { name: 'Run it' }).click()
     await expect.poll(() => runs(page), { timeout: 20_000 }).toBeGreaterThan(0)
     await expect.poll(async () => (await triggers(page)) ?? -1, { timeout: 20_000 }).toBeGreaterThan(before ?? 0)
   })
