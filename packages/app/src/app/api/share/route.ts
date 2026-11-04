@@ -1,7 +1,7 @@
 import { isSealedShape, MAX_SEALED_BYTES, newShareId } from "../../../shareCrypto";
-import { SHARE_LINK_KEY_HEADER, SHARE_LINK_NAME_HEADER } from "../../../gallery/types";
+import { SHARE_LINK_NAME_HEADER } from "../../../gallery/types";
 import { hashToken, newManageToken } from "../gallery/auth";
-import { cleanProjectName, isShareKey, recordAccountLink, shareUrl } from "../gallery/accountLinks";
+import { accountLinkRecord, recordAccountLink } from "../gallery/accountLinks";
 import { accountHashOf, sessionClaim } from "../gallery/session";
 import { galleryStore } from "../gallery/store";
 import { shareStore } from "./store";
@@ -11,12 +11,13 @@ import { shareStore } from "./store";
 // The body is the browser's sealed bytes. All this route can check is the
 // shape (version byte, length), so that is all it checks.
 //
-// Signed out, the key never reaches here. #2321 — signed in, the browser also
-// sends the key and the project's name in headers, and the whole link is kept
-// on the account (gallery/accountLinks.ts) so My shares can copy it again from
-// any device. That is the one place the server keeps a private link's key, and
-// only the account reads it back. A key header from a signed-out request is
-// ignored, never stored. Link creation itself needs no account.
+// The key never reaches here: it lives after the `#` in the link, which
+// browsers never send. #2321 / #2329 — signed in, the browser also sends the
+// project's name in a header, and the link is listed on the account as
+// `{ id, projectName, createdAt }` (gallery/accountLinks.ts) so My shares can
+// show it and revoke it from any device. Never the key or the full link: an
+// older browser that still sends a key header is ignored, and nothing from it
+// is stored. Link creation itself needs no account.
 //
 // #2250 — how often one visitor may upload is limited before this code runs, by a
 // Vercel Firewall rate-limit rule on stave-code-app: POST on path /api/share,
@@ -55,13 +56,12 @@ export async function POST(req: Request): Promise<Response> {
 }
 
 /**
- * #2321 — keep the new link on the signed-in account. False when the browser
- * didn't ask (no key header), nobody is signed in, or keeping it failed: the
- * link itself is made either way, and the browser still keeps its own copy.
+ * #2321 — list the new link on the signed-in account (id, name, date only;
+ * #2329). False when nobody is signed in or keeping it failed: the link itself
+ * is made either way, and the browser still keeps its own copy. Any key header
+ * is never read.
  */
 async function recordOnAccount(req: Request, id: string): Promise<boolean> {
-  const key = req.headers.get(SHARE_LINK_KEY_HEADER);
-  if (!isShareKey(key)) return false;
   try {
     const gallery = galleryStore();
     if (!gallery) return false;
@@ -74,12 +74,7 @@ async function recordOnAccount(req: Request, id: string): Promise<boolean> {
       /* a malformed name is just no name */
     }
     const accountHash = accountHashOf(signedIn.claim.provider, signedIn.claim.providerAccountId);
-    await recordAccountLink(gallery, accountHash, {
-      id,
-      url: shareUrl(new URL(req.url).origin, id, key),
-      projectName: cleanProjectName(name),
-      createdAt: Date.now(),
-    });
+    await recordAccountLink(gallery, accountHash, accountLinkRecord(id, name, Date.now()));
     return true;
   } catch (err) {
     console.warn("[stave] couldn't keep the link on the account:", err);

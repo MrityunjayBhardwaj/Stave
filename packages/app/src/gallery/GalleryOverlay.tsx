@@ -108,7 +108,9 @@ async function copyLink(id: string): Promise<void> {
   }
 }
 
-async function copyPrivateLink(link: { url: string }): Promise<void> {
+async function copyPrivateLink(link: { url: string | null }): Promise<void> {
+  // #2329 — only a link this browser made has its key here; the button isn't shown otherwise.
+  if (!link.url) return;
   try {
     await navigator.clipboard.writeText(link.url);
     showToast("Private link copied.", "info");
@@ -728,7 +730,7 @@ function MyShares({
         <h3 className="sg-section">Private links</h3>
         <p className="sg-section-note" data-gallery-links-note>
           {signedIn
-            ? "Only people you send these to can open them. Your account keeps each full link, key included, so you can copy it again on any device; only you can see this list."
+            ? "Only people you send these to can open them. Your account lists each link so you can revoke it from any device, and only you can see this list. A link's key is kept only in the browser that made it, so you can copy a link again only there."
             : "Only people you send these to can open them. Links made before this list existed aren't here and can't be revoked; the list lives in this browser."}
         </p>
         {rows.links.length === 0 ? (
@@ -744,9 +746,16 @@ function MyShares({
                   Private link · made {formatGalleryDate(l.createdAt)}
                   {browserOnly(l.home)}
                 </div>
+                {l.url ? null : (
+                  <div className="sg-card-meta" data-gallery-link-elsewhere>
+                    Made on another device. The link&apos;s key is only kept there.
+                  </div>
+                )}
               </div>
               <div className="sg-actions">
-                <button className="sg-btn" onClick={() => onCopyPrivate(l)}>Copy again</button>
+                {l.url ? (
+                  <button className="sg-btn" onClick={() => onCopyPrivate(l)}>Copy again</button>
+                ) : null}
                 <button className="sg-btn sg-danger" onClick={() => onRevoke(l)}>Revoke</button>
               </div>
             </div>

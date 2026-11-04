@@ -1,7 +1,6 @@
 import { SHARE_ID_PATTERN } from "../../../shareCrypto";
 import {
   GALLERY_ID_PATTERN,
-  type AccountLink,
   type ClaimLinkItem,
   type ClaimRefusal,
   type ClaimRequest,
@@ -11,7 +10,7 @@ import {
 } from "../../../gallery/types";
 import type { ShareStore } from "../share/store";
 import { tokenMatches } from "./auth";
-import { cleanProjectName, isShareUrlFor, recordAccountLink } from "./accountLinks";
+import { accountLinkRecord, recordAccountLink } from "./accountLinks";
 import { authorForKey, indexedIds } from "./authors";
 import { accountForAuthor, type SessionAuthor } from "./session";
 import {
@@ -92,8 +91,9 @@ export function checkClaim(v: unknown): Checked<ClaimRequest> {
       if (field === "entries") {
         out.entries.push({ id: item.id, manageToken: item.manageToken });
       } else {
+        // #2329 — a `url` (an older browser sent the whole link, key included)
+        // is never read: the account keeps only id, name and date.
         const link: ClaimLinkItem = { id: item.id, manageToken: item.manageToken };
-        if (item.url !== undefined) link.url = item.url as string;
         if (item.projectName !== undefined) link.projectName = item.projectName as string;
         if (typeof item.createdAt === "number" && Number.isFinite(item.createdAt)) link.createdAt = item.createdAt;
         out.links.push(link);
@@ -256,18 +256,10 @@ export async function runClaim(
       refused.push({ ...what, reason: "this browser's key for it doesn't match" });
       continue;
     }
-    if (!isShareUrlFor(item.url, item.id)) {
-      refused.push({ ...what, reason: "the link this browser kept is incomplete" });
-      continue;
-    }
     // A link is a capability: whoever holds its token can already revoke it, so
-    // a second account recording it gains nothing the token didn't give.
-    const link: AccountLink = {
-      id: item.id,
-      url: item.url,
-      projectName: cleanProjectName(item.projectName),
-      createdAt: typeof item.createdAt === "number" ? item.createdAt : Date.now(),
-    };
+    // a second account recording it gains nothing the token didn't give. Only
+    // id, name and date are kept (#2329); the key stays in the browser.
+    const link = accountLinkRecord(item.id, item.projectName, item.createdAt);
     if (await recordAccountLink(store, to.accountHash, link)) moved.links++;
   }
 
