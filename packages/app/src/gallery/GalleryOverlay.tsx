@@ -25,6 +25,7 @@ import {
 } from "./client";
 import { AuthorName, Card, CARD_CSS } from "./GalleryCards";
 import { CollectionView, PROFILE_CSS, ProfileView } from "./GalleryProfile";
+import { MODERATION_CSS, ModerationView } from "./GalleryModeration";
 import { MARKDOWN_CSS } from "./markdown";
 import {
   loadAuthor,
@@ -42,11 +43,12 @@ import {
   type MySharesResponse,
 } from "./types";
 import {
-  GALLERY_TABS,
   KIND_LABEL,
   countByKind,
   entriesForTab,
   formatGalleryDate,
+  galleryTabs,
+  isKindTab,
   type GalleryLinkTarget,
   type GalleryTab,
 } from "./galleryModel";
@@ -126,7 +128,7 @@ export function GalleryOverlay({
   onAddToProject,
   onPublish,
 }: GalleryOverlayProps) {
-  const [tab, setTab] = useState<GalleryTab>("project");
+  const [chosenTab, setTab] = useState<GalleryTab>("project");
   const [query, setQuery] = useState("");
   const [list, setList] = useState<ListState>({ status: "loading" });
   const [detail, setDetail] = useState<DetailState | null>(null);
@@ -139,6 +141,10 @@ export function GalleryOverlay({
   const [account, setAccount] = useState<AccountState>({ status: "off" });
   const session = useGallerySession();
   const accountAuthorId = session.status === "ready" ? (session.session.user?.authorId ?? null) : null;
+  // #2331 — only an admin's session says so; the routes check again on every call.
+  const isAdmin = session.status === "ready" && session.session.isAdmin === true;
+  // Moderation chosen, then no longer an admin (the session changed): back to Projects.
+  const tab: GalleryTab = chosenTab === "moderation" && !isAdmin ? "project" : chosenTab;
 
   const loadAccount = useCallback(() => {
     if (!accountAuthorId) {
@@ -163,7 +169,7 @@ export function GalleryOverlay({
     fetchGalleryEntry(id)
       .then((data) => {
         setDetail((d) => (d?.id === id ? { status: "ready", id, data } : d));
-        setTab((t) => (t === "mine" ? t : data.entry.kind));
+        setTab((t) => (isKindTab(t) ? data.entry.kind : t));
       })
       .catch((err: Error) => {
         setDetail((d) =>
@@ -238,7 +244,7 @@ export function GalleryOverlay({
   const entries = list.status === "ready" ? list.entries : null;
   const counts = useMemo(() => countByKind(entries ?? []), [entries]);
   const shown = useMemo(
-    () => (entries && tab !== "mine" ? entriesForTab(entries, tab, query) : []),
+    () => (entries && isKindTab(tab) ? entriesForTab(entries, tab, query) : []),
     [entries, tab, query],
   );
 
@@ -340,7 +346,7 @@ export function GalleryOverlay({
 
   return (
     <div className="sg-backdrop" data-gallery="overlay" onClick={onClose}>
-      <style>{CSS + CARD_CSS + PROFILE_CSS + MARKDOWN_CSS}</style>
+      <style>{CSS + CARD_CSS + PROFILE_CSS + MARKDOWN_CSS + MODERATION_CSS}</style>
       <div
         className="sg-modal"
         role="dialog"
@@ -404,7 +410,7 @@ export function GalleryOverlay({
           <>
             <div className="sg-toolbar">
               <div className="sg-tabs" role="tablist">
-                {GALLERY_TABS.map((t) => (
+                {galleryTabs(isAdmin).map((t) => (
                   <button
                     key={t.id}
                     role="tab"
@@ -414,14 +420,14 @@ export function GalleryOverlay({
                     onClick={() => setTab(t.id)}
                   >
                     {t.label}
-                    {t.id !== "mine" && entries ? <span className="sg-count">{counts[t.id]}</span> : null}
+                    {isKindTab(t.id) && entries ? <span className="sg-count">{counts[t.id]}</span> : null}
                     {t.id === "mine" && rows.entries.length + rows.links.length > 0 ? (
                       <span className="sg-count">{rows.entries.length + rows.links.length}</span>
                     ) : null}
                   </button>
                 ))}
               </div>
-              {tab !== "mine" && (
+              {isKindTab(tab) && (
                 <input
                   className="sg-search"
                   type="search"
@@ -434,7 +440,14 @@ export function GalleryOverlay({
             </div>
 
             <div className="sg-body">
-              {tab === "mine" ? (
+              {tab === "moderation" && isAdmin ? (
+                <ModerationView
+                  onOpen={openOne}
+                  onTakenDown={(id) =>
+                    setList((l) => (l.status === "ready" ? { status: "ready", entries: l.entries.filter((e) => e.id !== id) } : l))
+                  }
+                />
+              ) : tab === "mine" ? (
                 <MyShares
                   myAuthorId={accountAuthorId ?? myAuthorId}
                   onMyProfile={openAuthor}
