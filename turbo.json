@@ -36,8 +36,14 @@
     //
     // The cost is the ~1m this cache was "saving" while producing broken
     // deploys. The editor's build stays cached — it is not what Vercel hooks.
+    //
+    // #2352 — `env` lets DATABASE_URL through to the build, whose first step
+    // applies the gallery's migrations (scripts/db-migrate.mjs --if-configured).
+    // Turbo's strict env mode hands a task only the variables it declares, so
+    // without this line the step would always see "not set" and skip.
     "@stave/app#build": {
       "dependsOn": ["^build"],
+      "env": ["DATABASE_URL"],
       "cache": false
     },
     "dev": {

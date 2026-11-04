@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/copy-monaco.mjs && next dev",
-    "build": "node scripts/copy-monaco.mjs && pnpm --filter @stave/docs build && next build",
+    "build": "node scripts/copy-monaco.mjs && node scripts/db-migrate.mjs --if-configured && pnpm --filter @stave/docs build && next build",
     "start": "next start",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/db-migrate.mjs",
     "lint": "eslint",
     "test": "node scripts/vitest-guard.mjs",
     "test:proto": "vitest run --config vitest.proto.config.ts",
@@ -13,10 +15,13 @@
     "test:instruments:collect": "vitest run --config vitest.instruments.config.ts -t '$^' --reporter=default --reporter=./tests/gate-scope-reporter.ts"
   },
   "dependencies": {
+    "@electric-sql/pglite": "0.5.15",
+    "@neondatabase/serverless": "1.2.0",
     "@stave/editor": "workspace:*",
     "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.8.2",
     "@vscode/codicons": "^0.0.45",
+    "drizzle-orm": "0.45.4",
     "jszip": "^3.10.1",
     "micromark": "^4.0.3",
     "micromark-extension-gfm": "^3.0.0",
@@ -35,6 +40,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "acorn": "^8.17.0",
+    "drizzle-kit": "0.31.11",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "jsdom": "^24.0.0",
