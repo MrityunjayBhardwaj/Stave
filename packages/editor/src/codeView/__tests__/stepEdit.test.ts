@@ -37,9 +37,11 @@ import {
 } from '..'
 import { miniPattern } from '../strudelMini/pattern'
 
-const SCRATCH =
-  process.env.ZZ_STEP_EDIT_REPORT ??
-  '/private/tmp/claude-501/-Users-mrityunjaybhardwaj-Documents-projects-stave/a65698cb-7b6e-4c11-81f0-4d5b228e5476/scratchpad/stepEdit-side-by-side.txt'
+/**
+ * Where to write the full side-by-side difference list, when you want to read it:
+ * `STEP_EDIT_REPORT=/some/dir/side-by-side.txt`. Unset, nothing is written.
+ */
+const REPORT = process.env.STEP_EDIT_REPORT
 
 /* ── asking Strudel ─────────────────────────────────────────────── */
 
@@ -635,7 +637,8 @@ function report(r: SideBySide, title: string): string {
 }
 
 function write(name: string, text: string): void {
-  const file = name === 'main' ? SCRATCH : SCRATCH.replace(/\.txt$/, `-${name}.txt`)
+  if (!REPORT) return
+  const file = name === 'main' ? REPORT : REPORT.replace(/\.txt$/, `-${name}.txt`)
   mkdirSync(path.dirname(file), { recursive: true })
   writeFileSync(file, text)
 }
