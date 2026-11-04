@@ -33,6 +33,11 @@ import { GET as logRoute } from "../app/api/gallery/admin/log/route";
 import { GET as meRoute } from "../app/api/gallery/me/route";
 import { ADMIN_LOG_PREFIX, appendAdminLog, parseAdminList, readAdminLog } from "../app/api/gallery/admin";
 import { galleryStore } from "../app/api/gallery/store";
+import { getDb } from "../db/client";
+
+// #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
+// file. Starting it takes a few seconds, once; do it here, not inside the first test.
+beforeAll(() => getDb(), 60_000);
 
 const ADMIN = "mod-admin";
 const ADMIN_NAME = "Mo Moderator";

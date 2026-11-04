@@ -29,14 +29,23 @@ import {
   RATE_LIMITS,
   hashedAddress,
   rateLimit,
-  rateLimitPath,
-  resetRateLimitInstanceForTests,
+  type RateLimitStore,
   ruleFor,
   waitPhrase,
 } from "../app/api/gallery/rateLimit";
 import { requireTurnstile, SITEVERIFY_URL } from "../app/api/gallery/turnstile";
 import { galleryStore } from "../app/api/gallery/store";
+import { dbOverPglite, getDb, useDbForTests, type Db } from "../db/client";
+import { DATABASE_UNAVAILABLE_MESSAGE } from "../db/errors";
+import { rateLimitRowKey } from "../db/repo/rateLimits";
+import { rowsOf } from "../db/repo/tx";
+import { sql } from "drizzle-orm";
+import type { PGlite } from "@electric-sql/pglite";
 import { claimCost, MAX_CLAIM_ITEMS } from "../app/api/gallery/claim";
+
+// #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
+// file. Starting it takes a few seconds, once; do it here, not inside the first test.
+beforeAll(() => getDb(), 60_000);
 
 // Cloudflare's published test keys (developers.cloudflare.com/turnstile/troubleshooting/testing/).
 const PASS_SECRET = "1x0000000000000000000000000000000AA";
@@ -120,49 +129,57 @@ async function expect429(res: Response) {
 }
 
 describe("rateLimit, on its own", () => {
-  const store = () => galleryStore()!;
 
   it("lets max calls through in a window and refuses the next, with the seconds left", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-05T10:00:10Z"));
     const key = `unit:${fresh()}`;
-    for (let i = 1; i <= 3; i++) expect(await rateLimit(key, 60, 3, store())).toEqual({ ok: true, count: i });
-    expect(await rateLimit(key, 60, 3, store())).toEqual({ ok: false, retryAfter: 50 });
+    for (let i = 1; i <= 3; i++) expect(await rateLimit(key, 60, 3)).toEqual({ ok: true, count: i });
+    expect(await rateLimit(key, 60, 3)).toEqual({ ok: false, retryAfter: 50 });
     // Still refused later in the same window, and the refusal is not counted.
     vi.setSystemTime(new Date("2026-11-05T10:00:59Z"));
-    expect(await rateLimit(key, 60, 3, store())).toEqual({ ok: false, retryAfter: 1 });
+    expect(await rateLimit(key, 60, 3)).toEqual({ ok: false, retryAfter: 1 });
   });
 
   it("starts over when the window rolls over", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-05T10:59:30Z"));
     const key = `unit:${fresh()}`;
-    expect((await rateLimit(key, 3600, 1, store())).ok).toBe(true);
-    expect(await rateLimit(key, 3600, 1, store())).toEqual({ ok: false, retryAfter: 30 });
+    expect((await rateLimit(key, 3600, 1)).ok).toBe(true);
+    expect(await rateLimit(key, 3600, 1)).toEqual({ ok: false, retryAfter: 30 });
     vi.setSystemTime(new Date("2026-11-05T11:00:00Z"));
-    expect(await rateLimit(key, 3600, 1, store())).toEqual({ ok: true, count: 1 });
+    expect(await rateLimit(key, 3600, 1)).toEqual({ ok: true, count: 1 });
   });
 
   it("keeps keys apart", async () => {
     const a = `unit:${fresh()}`;
     const b = `unit:${fresh()}`;
-    expect((await rateLimit(a, 3600, 1, store())).ok).toBe(true);
-    expect((await rateLimit(a, 3600, 1, store())).ok).toBe(false);
-    expect((await rateLimit(b, 3600, 1, store())).ok).toBe(true);
+    expect((await rateLimit(a, 3600, 1)).ok).toBe(true);
+    expect((await rateLimit(a, 3600, 1)).ok).toBe(false);
+    expect((await rateLimit(b, 3600, 1)).ok).toBe(true);
   });
 
-  it("stores one record per key, named by a hash (no key text in the path)", async () => {
-    const key = `unit:ada@example.test`;
-    await rateLimit(key, 3600, 5, store());
-    expect(rateLimitPath(key)).toMatch(/^gallery\/rate-limits\/[0-9a-f]{64}\.json$/);
-    expect(await store().get(rateLimitPath(key))).not.toBeNull();
+  it("stores one row per key, named by a hash (no key text in the table)", async () => {
+    const key = `unit:ada-${fresh()}@example.test`;
+    await rateLimit(key, 3600, 5);
+    await rateLimit(key, 3600, 5);
+    const db = (await getDb())!;
+    const rows = rowsOf<{ key: string; count: number }>(await db.execute(sql`select key, count from rate_limits`));
+    const mine = rows.filter((r) => r.key === rateLimitRowKey(key));
+    expect(mine).toEqual([{ key: rateLimitRowKey(key), count: 2 }]);
+    expect(rateLimitRowKey(key)).toMatch(/^[0-9a-f]{64}$/);
+    expect(rows.some((r) => r.key.includes("ada"))).toBe(false);
   });
 
-  it("lets the request through when the store fails, counting it in this instance", async () => {
+  it("#2351: refuses (unavailable, retry in a minute) when the store fails", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(await rateLimit(`unit:${fresh()}`, 60, 1, brokenStore())).toEqual({ ok: true, count: 1 });
+    expect(await rateLimit(`unit:${fresh()}`, 60, 1, brokenStore())).toEqual({ ok: false, unavailable: true, retryAfter: 60 });
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it("#2351: refuses the same way when no database is configured", async () => {
+    expect(await rateLimit(`unit:${fresh()}`, 60, 1, null)).toEqual({ ok: false, unavailable: true, retryAfter: 60 });
   });
 
   it("takes an env override of max, only as a positive whole number", () => {
@@ -262,11 +279,12 @@ describe("each write route applies its limit", () => {
 
 // ── #2345: bursts, item charging, and a store outage ──────────────────────────
 
-function brokenStore() {
-  const down = async (): Promise<never> => {
-    throw new Error("down");
+function brokenStore(): RateLimitStore {
+  return {
+    take: async () => {
+      throw new Error("down");
+    },
   };
-  return { put: down, get: down, del: async () => {}, list: async () => [] };
 }
 
 /** Fire `times` calls at once and count the answers by status. */
@@ -302,13 +320,13 @@ describe("a burst of parallel requests (#2345)", () => {
 
   it("30 parallel calls to the limiter itself, max 10: exactly 10 admitted, counts 1..10 each once", async () => {
     const key = `unit:${fresh()}`;
-    const results = await Promise.all(Array.from({ length: 30 }, () => rateLimit(key, 3600, 10, galleryStore()!)));
+    const results = await Promise.all(Array.from({ length: 30 }, () => rateLimit(key, 3600, 10)));
     const admitted = results.filter((r) => r.ok).map((r) => (r as { count: number }).count);
     expect(admitted.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
   it("keys don't wait on each other", async () => {
-    const results = await Promise.all(Array.from({ length: 5 }, () => rateLimit(`unit:${fresh()}`, 3600, 1, galleryStore()!)));
+    const results = await Promise.all(Array.from({ length: 5 }, () => rateLimit(`unit:${fresh()}`, 3600, 1)));
     expect(results.every((r) => r.ok)).toBe(true);
   });
 });
@@ -348,33 +366,75 @@ describe("the claim is charged per item (#2345)", () => {
   });
 });
 
-describe("when the store is down (#2345)", () => {
-  it("the limit still holds within this instance, for a burst and one at a time", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+describe("across servers (#2345, #2352)", () => {
+  // Two independent database handles over ONE database stand in for two
+  // server instances: nothing is shared between them but the database. (PGlite
+  // runs one statement at a time, so this proves the limiter keeps no count of
+  // its own and relies on the statement alone; Postgres's row lock gives the
+  // same answer under real concurrency.)
+  async function twoServers(): Promise<[RateLimitStore, RateLimitStore]> {
+    const client = ((await getDb()) as Db & { $client: PGlite }).$client;
+    const { postgresRateLimitStore } = await import("../app/api/gallery/rateLimit");
+    return [postgresRateLimitStore(await dbOverPglite(client)), postgresRateLimitStore(await dbOverPglite(client))];
+  }
+
+  it("30 parallel calls split over two servers, max 10: exactly 10 admitted", async () => {
+    const [a, b] = await twoServers();
     const key = `unit:${fresh()}`;
-    const results = await Promise.all(Array.from({ length: 30 }, () => rateLimit(key, 3600, 10, brokenStore())));
+    const results = await Promise.all(Array.from({ length: 30 }, (_, i) => rateLimit(key, 3600, 10, i % 2 ? a : b)));
     expect(results.filter((r) => r.ok)).toHaveLength(10);
-    expect((await rateLimit(key, 3600, 10, brokenStore())).ok).toBe(false);
+    expect(results.filter((r) => !r.ok && !r.unavailable)).toHaveLength(20);
+  });
+
+  it("what one server counted, the other sees: 9 on one, then a burst of 30 on the other admits 1", async () => {
+    const [a, b] = await twoServers();
+    const key = `unit:${fresh()}`;
+    for (let i = 0; i < 9; i++) expect((await rateLimit(key, 3600, 10, a)).ok).toBe(true);
+    const results = await Promise.all(Array.from({ length: 30 }, () => rateLimit(key, 3600, 10, b)));
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+  });
+});
+
+describe("when the database is down (#2351)", () => {
+  afterEach(() => useDbForTests(undefined));
+  // A database that can't answer: a PGlite that was closed. Made once (starting
+  // one takes seconds under a full parallel run).
+  let dead: Db;
+  beforeAll(async () => {
+    const { PGlite } = await import("@electric-sql/pglite");
+    const client = await PGlite.create();
+    await client.close();
+    dead = await dbOverPglite(client);
+  }, 60_000);
+
+  it("a burst against a failing store: every call refused as unavailable, none admitted", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const results = await Promise.all(Array.from({ length: 30 }, () => rateLimit(`unit:${fresh()}`, 3600, 10, brokenStore())));
+    expect(results.every((r) => !r.ok && r.unavailable)).toBe(true);
     warn.mockRestore();
   });
 
-  it("the shared record is the floor for a fresh instance: what another instance counted still counts", async () => {
-    const key = `unit:${fresh()}`;
-    for (let i = 0; i < 9; i++) expect((await rateLimit(key, 3600, 10, galleryStore()!)).ok).toBe(true);
-    resetRateLimitInstanceForTests(); // as if the next requests reached a new server process
-    const results = await Promise.all(Array.from({ length: 30 }, () => rateLimit(key, 3600, 10, galleryStore()!)));
-    expect(results.filter((r) => r.ok)).toHaveLength(1);
-  });
+  it("a limited route answers 503 with the plain message and Retry-After, writes nothing, and works again once it is back", async () => {
+    await myAuthorId(); // the account exists; only the limiter's store goes away
+    const listed = async () => (await galleryStore()!.list("gallery/entries/")).length;
+    const before = await listed();
+    useDbForTests(dead);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-  it("once this instance knows a key is over, it refuses without touching the store", async () => {
-    const key = `unit:${fresh()}`;
-    const real = galleryStore()!;
-    let reads = 0;
-    const counting = { ...real, get: (p: string) => (reads++, real.get(p)) };
-    for (let i = 0; i < 3; i++) await rateLimit(key, 3600, 3, counting);
-    const before = reads;
-    for (let i = 0; i < 20; i++) expect((await rateLimit(key, 3600, 3, counting)).ok).toBe(false);
-    expect(reads).toBe(before);
+    for (const res of [
+      await publish(),
+      await claimRoute(json("POST", "http://x/api/gallery/claim", { entries: [], links: [] })),
+      await report("AAAAAAAAAAA"),
+    ]) {
+      expect(res.status).toBe(503);
+      expect(res.headers.get("Retry-After")).toBe("60");
+      expect(((await res.json()) as { error: string }).error).toBe(DATABASE_UNAVAILABLE_MESSAGE);
+    }
+    expect(await listed()).toBe(before);
+    warn.mockRestore();
+
+    useDbForTests(undefined); // the database is back: no manual step
+    expect((await publish()).status).toBe(201);
   });
 });
 

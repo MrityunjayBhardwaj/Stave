@@ -6,6 +6,7 @@ import { accountHashOf, sessionClaim } from "../../gallery/session";
 import { galleryStore, type GalleryBlobStore } from "../../gallery/store";
 import { shareStore } from "../store";
 import { assertSameOrigin } from "../../gallery/origin";
+import { withDatabase } from "../../../../db/errors";
 
 // #2248 — fetch one sealed shared project by its id. Never lists.
 //
@@ -37,7 +38,7 @@ export async function GET(
  * recorded on. Links made before #2311 have no token on record: 403, they
  * can't be revoked. An unknown id is 404; the client treats that as already gone.
  */
-export async function DELETE(
+async function handleDELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
@@ -79,3 +80,6 @@ async function linkAccount(id: string): Promise<{ gallery: GalleryBlobStore; has
   if (!signedIn) return null;
   return { gallery, hash: accountHashOf(signedIn.claim.provider, signedIn.claim.providerAccountId) };
 }
+
+// #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.
+export const DELETE = withDatabase(handleDELETE);

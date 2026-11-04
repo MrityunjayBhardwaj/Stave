@@ -10,6 +10,7 @@ import { mayManageAuthor } from "../../session";
 import { galleryPaths, galleryStore, getJson, putJson, type StoredAuthorProfile } from "../../store";
 import { checkAuthorUpdate, MAX_AUTHOR_BODY_BYTES, readJsonBody } from "../../validate";
 import { assertSameOrigin } from "../../origin";
+import { withDatabase } from "../../../../../db/errors";
 
 // #2314 — an author's profile page: read it, or edit it (signed in as its owner,
 // #2319, or with the author key from before sign-in).
@@ -49,7 +50,7 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
   return Response.json(body, { headers: NO_STORE });
 }
 
-export async function PUT(req: Request, { params }: Ctx): Promise<Response> {
+async function handlePUT(req: Request, { params }: Ctx): Promise<Response> {
   const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const { authorId } = await params;
   if (!GALLERY_ID_PATTERN.test(authorId)) return notFound();
@@ -102,3 +103,6 @@ function publicProfile(p: GalleryAuthorProfile): GalleryAuthorProfile {
   }
   return out;
 }
+
+// #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.
+export const PUT = withDatabase(handlePUT);

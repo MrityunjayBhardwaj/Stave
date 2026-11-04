@@ -26,17 +26,18 @@ import { hasBlobStore } from "../share/store";
 //   gallery/author-index/<authorId>/entries/<entryId>.json          an author's entries
 //   gallery/author-index/<authorId>/collections/<collectionId>.json an author's collections
 //   gallery/collections/<id>.json            one collection (GalleryCollection)
-//   gallery/accounts/<accountHash>.json      #2319 GalleryAccountRecord — a signed-in account
-//                                            and the author it is linked to. Never served.
-//   gallery/author-accounts/<authorId>.json  #2319 { accountHash } — which account an author
-//                                            belongs to. Never served.
 //   gallery/account-links/<accountHash>/<shareId>.json  #2321 AccountLink — a private link
 //                                            listed for its owner: id, name, date only, never
 //                                            the key or the full link (#2329). Never public.
 //   gallery/admin-log/<ms>-<hex>.json        #2331 AdminLogRecord — one per admin action.
 //                                            Read by admins only (see admin.ts).
-//   gallery/rate-limits/<sha256(key)>.json   #2330 { windowStart, count } — one write counter
-//                                            (see rateLimit.ts). Never served.
+//
+// #2352 — the move to Postgres (src/db/). Already moved: signed-in accounts
+// (the `accounts` table; session.ts) and the rate-limit counters
+// (`rate_limits`; rateLimit.ts). A new account's author is ALSO written here
+// under gallery/authors/ and gallery/author-private/, because the routes below
+// still read it from Blob until phase 2 moves them. Phase 2 moves every record
+// above except manifests and thumbnails, which stay here for good.
 //
 // #2320 — a profile merged into an account's profile keeps its JSON with
 // `mergedInto: <authorId>` (StoredAuthorProfile); the author route answers
@@ -87,11 +88,6 @@ export const galleryPaths = {
   authorCollection: (authorId: string, collectionId: string) =>
     `gallery/author-index/${authorId}/collections/${collectionId}.json`,
   collection: (id: string) => `gallery/collections/${id}.json`,
-
-  // #2319 sign-in accounts (see session.ts). The account hash is the SHA-256 of
-  // `<provider>:<providerAccountId>`, so the store never holds a provider id in a path.
-  account: (accountHash: string) => `gallery/accounts/${accountHash}.json`,
-  authorAccount: (authorId: string) => `gallery/author-accounts/${authorId}.json`,
 
   // #2321 private links recorded on an account: one blob per link, so recording
   // and revoking never read-modify-write a shared list. Never served except to

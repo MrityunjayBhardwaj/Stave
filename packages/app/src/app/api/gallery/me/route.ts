@@ -3,6 +3,7 @@ import type { GalleryAuthorProfile, GallerySessionResponse } from "../../../../g
 import { adminIdOf, isAdmin } from "../admin";
 import { sessionAuthor, sessionClaim } from "../session";
 import { galleryPaths, galleryStore, getJson } from "../store";
+import { withDatabase } from "../../../../db/errors";
 
 // #2319 — who the gallery thinks you are: what sign-in offers here, and, when
 // signed in, your author (made on this first gallery use) with its badge.
@@ -19,7 +20,7 @@ async function myAdminId(): Promise<string | undefined> {
   return signedIn ? adminIdOf(signedIn.claim.provider, signedIn.claim.providerAccountId) : undefined;
 }
 
-export async function GET(req: Request): Promise<Response> {
+async function handleGET(req: Request): Promise<Response> {
   const available = signInAvailable(process.env);
   const body: GallerySessionResponse = {
     signInAvailable: available,
@@ -40,3 +41,6 @@ export async function GET(req: Request): Promise<Response> {
   }
   return Response.json(body, { headers: NO_STORE });
 }
+
+// #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.
+export const GET = withDatabase(handleGET);

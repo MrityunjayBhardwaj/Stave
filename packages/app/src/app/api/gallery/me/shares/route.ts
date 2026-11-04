@@ -4,6 +4,7 @@ import { listAccountLinks } from "../../accountLinks";
 import { authorWork } from "../../authors";
 import { requireSessionAuthor } from "../../session";
 import { galleryStore } from "../../store";
+import { withDatabase } from "../../../../../db/errors";
 
 // #2321 — My shares for the signed-in account, on any device: its gallery
 // entries and collections (through the account's author index), and the
@@ -17,7 +18,7 @@ import { galleryStore } from "../../store";
 
 const NO_STORE = { "Cache-Control": "no-store, private" };
 
-export async function GET(req: Request): Promise<Response> {
+async function handleGET(req: Request): Promise<Response> {
   const store = galleryStore();
   if (!store) return Response.json({ error: "the gallery is not set up here" }, { status: 503 });
 
@@ -31,3 +32,6 @@ export async function GET(req: Request): Promise<Response> {
   const body: MySharesResponse = { authorId: who.authorId, entries, collections, links };
   return Response.json(body, { headers: NO_STORE });
 }
+
+// #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.
+export const GET = withDatabase(handleGET);

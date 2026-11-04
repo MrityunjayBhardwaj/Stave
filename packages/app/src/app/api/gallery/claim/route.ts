@@ -5,6 +5,7 @@ import { requireSessionAuthor } from "../session";
 import { galleryStore } from "../store";
 import { readJsonBody } from "../validate";
 import { assertSameOrigin } from "../origin";
+import { withDatabase } from "../../../../db/errors";
 
 // #2320 — bring what this browser published before sign-in into the account.
 // The rules and the write order are in ../claim.ts. Signed in only; the
@@ -13,7 +14,7 @@ import { assertSameOrigin } from "../origin";
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
-export async function POST(req: Request): Promise<Response> {
+async function handlePOST(req: Request): Promise<Response> {
   const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const store = galleryStore();
   if (!store) return Response.json({ error: "the gallery is not set up here" }, { status: 503 });
@@ -34,3 +35,6 @@ export async function POST(req: Request): Promise<Response> {
   const result = await runClaim(store, shareStore(), who, checked.value);
   return Response.json(result, { headers: NO_STORE });
 }
+
+// #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.
+export const POST = withDatabase(handlePOST);

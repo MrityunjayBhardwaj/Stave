@@ -17,6 +17,7 @@ import {
   type RemovedMarker,
 } from "../store";
 import { assertSameOrigin } from "../origin";
+import { withDatabase } from "../../../../db/errors";
 
 // #2299 / #2303 — one gallery entry: open it, or take it down.
 
@@ -51,7 +52,7 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
 // so an admin deleting their own entry needs no reason. Either way the removed marker goes down first, so even a delete that
 // fails halfway reads as removed (410, gone from the list), then everything else
 // about the entry is deleted — the private record with the email included.
-export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
+async function handleDELETE(req: Request, { params }: Ctx): Promise<Response> {
   const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const { id } = await params;
   if (!GALLERY_ID_PATTERN.test(id)) return notFound();
@@ -93,3 +94,6 @@ export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
   ]);
   return new Response(null, { status: 204 });
 }
+
+// #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.
+export const DELETE = withDatabase(handleDELETE);

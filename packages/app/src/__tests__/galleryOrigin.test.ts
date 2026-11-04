@@ -5,7 +5,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeAll } from "vitest";
 
 // The routes import Auth.js; never reach it — the origin check runs first.
 const fake = vi.hoisted(() => ({ calls: 0 }));
@@ -27,6 +27,11 @@ import { PUT as editProfile } from "../app/api/gallery/authors/[authorId]/route"
 import { POST as createShare } from "../app/api/share/route";
 import { DELETE as revokeShare } from "../app/api/share/[id]/route";
 import { POST as dismissReports } from "../app/api/gallery/admin/reports/[id]/dismiss/route";
+import { getDb } from "../db/client";
+
+// #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
+// file. Starting it takes a few seconds, once; do it here, not inside the first test.
+beforeAll(() => getDb(), 60_000);
 
 const SITE = "https://stave.example";
 
@@ -114,7 +119,7 @@ function scanWriteHandlers(): string[] {
       if (ent.isDirectory()) walk(full);
       else if (ent.name === "route.ts") {
         const src = readFileSync(full, "utf8");
-        for (const m of src.matchAll(/export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)\s*\(/g)) {
+        for (const m of src.matchAll(/export\s+(?:async\s+function|const)\s+(POST|PUT|PATCH|DELETE)\s*[(=]/g)) {
           found.push(`${m[1]} ${path.relative(apiRoot, full).split(path.sep).join("/")}`);
         }
       }

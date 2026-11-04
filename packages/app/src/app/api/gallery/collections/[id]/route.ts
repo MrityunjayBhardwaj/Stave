@@ -11,6 +11,7 @@ import { mayManageAuthor } from "../../session";
 import { galleryPaths, galleryStore, getJson, putJson } from "../../store";
 import { checkCollectionWrite, MAX_COLLECTION_BODY_BYTES, readJsonBody } from "../../validate";
 import { assertSameOrigin } from "../../origin";
+import { withDatabase } from "../../../../../db/errors";
 
 // #2315 — one collection: open it, change it (its signed-in author, #2319, or
 // the author key), or delete it (either of those, or an admin with a reason, #2331). Deleting a collection never touches its entries.
@@ -44,7 +45,7 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
   return Response.json(body, { headers: NO_STORE });
 }
 
-export async function PUT(req: Request, { params }: Ctx): Promise<Response> {
+async function handlePUT(req: Request, { params }: Ctx): Promise<Response> {
   const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const { id } = await params;
   if (!GALLERY_ID_PATTERN.test(id)) return notFound();
@@ -75,7 +76,7 @@ export async function PUT(req: Request, { params }: Ctx): Promise<Response> {
   return Response.json({ collection }, { headers: NO_STORE });
 }
 
-export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
+async function handleDELETE(req: Request, { params }: Ctx): Promise<Response> {
   const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const { id } = await params;
   if (!GALLERY_ID_PATTERN.test(id)) return notFound();
@@ -97,3 +98,7 @@ export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
   await store.del([galleryPaths.collection(id), galleryPaths.authorCollection(stored.authorId, id)]);
   return new Response(null, { status: 204 });
 }
+
+// #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.
+export const PUT = withDatabase(handlePUT);
+export const DELETE = withDatabase(handleDELETE);

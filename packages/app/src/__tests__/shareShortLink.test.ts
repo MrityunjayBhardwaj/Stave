@@ -1,7 +1,7 @@
 // @vitest-environment node
 // #2248 — short share links: the sealed form, the link's address, and the two routes
 // against the dev folder store.
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, beforeAll } from "vitest";
 
 import {
   MAX_SEALED_BYTES,
@@ -15,6 +15,11 @@ import {
 import { POST } from "../app/api/share/route";
 import { DELETE, GET } from "../app/api/share/[id]/route";
 import { shareStore } from "../app/api/share/store";
+import { getDb } from "../db/client";
+
+// #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
+// file. Starting it takes a few seconds, once; do it here, not inside the first test.
+beforeAll(() => getDb(), 60_000);
 
 const text = (s: string) => new TextEncoder().encode(s);
 const read = (b: Uint8Array) => new TextDecoder().decode(b);

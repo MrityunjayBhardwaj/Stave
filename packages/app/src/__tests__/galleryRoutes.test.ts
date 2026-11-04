@@ -36,6 +36,11 @@ import { GET as thumbnailRoute } from "../app/api/gallery/[id]/thumbnail/route";
 import { POST as reportRoute } from "../app/api/gallery/[id]/report/route";
 import { GET as reportsRoute } from "../app/api/gallery/reports/route";
 import { galleryPaths, galleryStore, getJson } from "../app/api/gallery/store";
+import { getDb } from "../db/client";
+
+// #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
+// file. Starting it takes a few seconds, once; do it here, not inside the first test.
+beforeAll(() => getDb(), 60_000);
 
 const PNG_1x1 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";

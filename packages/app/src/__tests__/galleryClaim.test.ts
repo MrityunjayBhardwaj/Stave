@@ -37,6 +37,11 @@ import { createAuthor } from "../app/api/gallery/authors";
 import { hashToken, newManageToken } from "../app/api/gallery/auth";
 import { galleryPaths, galleryStore, getJson, putJson } from "../app/api/gallery/store";
 import { attachAuthorToAccount } from "../app/api/gallery/session";
+import { getDb } from "../db/client";
+
+// #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
+// file. Starting it takes a few seconds, once; do it here, not inside the first test.
+beforeAll(() => getDb(), 60_000);
 
 const EMAIL = "qq.distinctive.claim+account@example-privacy-three.test";
 /** #2329 — the key header browsers sent before #2329. The server must ignore it. */
@@ -229,14 +234,10 @@ describe("#2320 the claim", () => {
     const before = await store.list("gallery/");
     const second = await claimOk(user, body);
     expect(second).toEqual({ authorId: first.authorId, moved: { entries: 0, collections: 0, links: 0 }, refused: [] });
-    // Not a single record written or removed — except #2330's counter of claims,
-    // which counts every call.
+    // Not a single record written or removed. (#2330's counter of claims counts
+    // every call, but since #2352 it lives in the database, not here.)
     const after = await store.list("gallery/");
-    const records = (bs: typeof before) =>
-      bs
-        .filter((b) => !b.pathname.startsWith("gallery/rate-limits/"))
-        .map((b) => `${b.pathname}@${b.uploadedAt}`)
-        .sort();
+    const records = (bs: typeof before) => bs.map((b) => `${b.pathname}@${b.uploadedAt}`).sort();
     expect(records(after)).toEqual(records(before));
   });
 

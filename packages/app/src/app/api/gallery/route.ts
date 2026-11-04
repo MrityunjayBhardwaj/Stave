@@ -12,6 +12,7 @@ import { requireTurnstile } from "./turnstile";
 import { galleryPaths, galleryStore, getJson, putJson, type PrivateRecord } from "./store";
 import { checkPublish, MAX_PUBLISH_BODY_BYTES, readJsonBody } from "./validate";
 import { assertSameOrigin } from "./origin";
+import { withDatabase } from "../../../db/errors";
 
 // #2299 — the community gallery: list what has been published, and publish.
 
@@ -64,7 +65,7 @@ export async function GET(): Promise<Response> {
 // repo (the docs page "Signing in to the gallery" lists the rules). The publish
 // dialog shows the server's message on a 429.
 
-export async function POST(req: Request): Promise<Response> {
+async function handlePOST(req: Request): Promise<Response> {
   const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const store = galleryStore();
   if (!store) return noStore();
@@ -123,3 +124,6 @@ export async function POST(req: Request): Promise<Response> {
   const res: PublishResponse = { id, manageToken, authorId };
   return Response.json(res, { status: 201, headers: { "Cache-Control": "no-store" } });
 }
+
+// #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.
+export const POST = withDatabase(handlePOST);

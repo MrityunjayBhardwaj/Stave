@@ -1,5 +1,5 @@
 import { newShareId } from "../../../shareCrypto";
-import type { GalleryAuthorProfile, GalleryCollection, GalleryEntry, GalleryVerified } from "../../../gallery/types";
+import type { GalleryAuthorProfile, GalleryCollection, GalleryEntry } from "../../../gallery/types";
 import { hashToken, newManageToken, tokenMatches } from "./auth";
 import {
   galleryPaths,
@@ -88,27 +88,6 @@ export async function createAuthor(
   await putJson(store, galleryPaths.authorKey(keyHash), pointer);
   await putJson(store, galleryPaths.author(authorId), profile);
   return { authorId, authorKey };
-}
-
-/**
- * #2319 — make the author for a signed-in account: no key (the session is what
- * manages it), the account's badge on the public profile. The caller links it to
- * the account (session.ts attachAuthorToAccount).
- */
-export async function createKeylessAuthor(
-  store: GalleryBlobStore,
-  name: string,
-  email: string,
-  verified: GalleryVerified,
-): Promise<string | null> {
-  const authorId = await freeAuthorId(store);
-  if (!authorId) return null;
-  const now = Date.now();
-  const record: PrivateAuthorRecord = { authorEmail: email };
-  const profile: GalleryAuthorProfile = { authorId, name, bio: "", createdAt: now, updatedAt: now, verified };
-  await putJson(store, galleryPaths.authorPrivate(authorId), record);
-  await putJson(store, galleryPaths.author(authorId), profile);
-  return authorId;
 }
 
 /** An entry that is live (stored and not taken down), or null. */

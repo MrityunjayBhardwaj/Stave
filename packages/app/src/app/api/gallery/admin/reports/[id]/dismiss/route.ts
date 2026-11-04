@@ -2,12 +2,13 @@ import { GALLERY_ID_PATTERN } from "../../../../../../../gallery/types";
 import { adminAction, openReportsOf, requireAdmin } from "../../../../admin";
 import { assertSameOrigin } from "../../../../origin";
 import { galleryStore } from "../../../../store";
+import { withDatabase } from "../../../../../../../db/errors";
 
 // #2331 — an admin dismisses the reports on an entry (the entry stays up). Needs
 // a reason in the JSON body; the dismissal is logged before the reports go.
 // 404 when the entry has no open reports.
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
+async function handlePOST(req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const { id } = await params;
   if (!GALLERY_ID_PATTERN.test(id)) return Response.json({ error: "not found" }, { status: 404 });
@@ -25,3 +26,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   await store.del(reports);
   return new Response(null, { status: 204 });
 }
+
+// #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.
+export const POST = withDatabase(handlePOST);

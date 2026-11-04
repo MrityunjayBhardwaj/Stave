@@ -178,7 +178,7 @@ async function moveAuthorWork(store: GalleryBlobStore, from: string, to: Target)
 async function ownedElsewhere(store: GalleryBlobStore, authorId: string, to: Target): Promise<boolean> {
   const profile = await getJson<StoredAuthorProfile>(store, galleryPaths.author(authorId));
   if (profile?.mergedInto) return profile.mergedInto !== to.authorId;
-  const owner = await accountForAuthor(store, authorId);
+  const owner = await accountForAuthor(authorId);
   return owner !== null && owner.accountHash !== to.accountHash;
 }
 

@@ -2,8 +2,21 @@ import { createHash } from "node:crypto";
 
 import { auth, type StaveAccountClaim } from "../../../auth";
 import { signInAvailable } from "../../../authProviders";
+import { getDb, type Db } from "../../../db/client";
+import { databaseUnavailable, isDatabaseUnavailable } from "../../../db/errors";
+import {
+  ensureAccountAuthor,
+  getAccount,
+  getAccountByAuthor,
+  getAuthor,
+  importAuthorIfMissing,
+  linkAccount,
+  refreshAccount,
+  type AccountClaimInput,
+  type AccountRecord,
+} from "../../../db/repo/accounts";
 import { AUTHOR_KEY_HEADER, MAX_AUTHOR_NAME_CHARS, type GalleryAuthorProfile, type GalleryVerified } from "../../../gallery/types";
-import { authorForKey, createKeylessAuthor, keyOwnsAuthor } from "./authors";
+import { authorForKey, keyOwnsAuthor } from "./authors";
 import {
   galleryPaths,
   galleryStore,
@@ -22,19 +35,25 @@ import {
  * `account` claim names the provider and the provider's account id. This module
  * turns that into an author.
  *
- * ── Records (all private, in the gallery Blob store; see store.ts) ──────────
+ * ── Records (#2352: in Postgres, see src/db/schema.ts) ──────────────────────
  *
- *   gallery/accounts/<accountHash>.json       GalleryAccountRecord
- *       accountHash = sha256("<provider>:<providerAccountId>"), hex.
- *       Holds authorId, the account's email, provider, and the public badge
- *       (GitHub login / avatar). The email lives here and in the author's
- *       private record; no response ever carries it.
- *   gallery/author-accounts/<authorId>.json   AuthorAccountPointer { accountHash }
- *       The reverse index: which account an author belongs to.
+ *   accounts   one row per signed-in account, keyed by
+ *              accountHash = sha256("<provider>:<providerAccountId>"), hex.
+ *              Holds authorId (unique: an author belongs to at most one
+ *              account), the account's email, provider, and the public badge
+ *              (GitHub login / avatar). No response ever carries the email.
+ *   authors    the profile the account is linked to.
  *
- *   So an account record is readable both ways:
- *     by account → readAccount(store, accountHashOf(provider, id))
- *     by author  → accountForAuthor(store, authorId)
+ *   An account is readable both ways:
+ *     by account → readAccount(accountHash)
+ *     by author  → accountForAuthor(authorId)
+ *
+ * PHASE 1 OF THE MOVE (#2352): accounts, and the authors made for them, live
+ * in Postgres, but the other routes still read profiles from Blob
+ * (`gallery/authors/<id>.json`, `gallery/author-private/<id>.json`). So a new
+ * account's author is also written there (mirrorAuthor), and a badge or email
+ * change is followed there too (mirrorBadge). Phase 2 moves those routes onto
+ * the database and deletes the mirror.
  *
  * ── API ─────────────────────────────────────────────────────────────────────
  *
@@ -44,14 +63,18 @@ import {
  *
  *   sessionAuthor(req, { create? })      → { authorId, account } | null
  *       The author linked to the session's account. With `create` (default
- *       true) the first call for an account makes a keyless author named after
- *       the account and links it — "first gallery use". With create:false it
- *       only looks (ownership checks use this, so checking never makes one).
- *       Refreshes the badge when the GitHub login or avatar changed.
+ *       true) the first call for an account makes its author (named after the
+ *       account) — "first gallery use". #2349: race-safe; any number of first
+ *       requests at once, on any servers, make ONE author and all answer with
+ *       it (db/repo/accounts.ts ensureAccountAuthor). With create:false it only
+ *       looks (ownership checks use this, so checking never makes one).
+ *       Follows a changed GitHub login, avatar or email. Throws when the
+ *       database can't be reached (routes answer 503 for that, #2351).
  *
  *   requireSessionAuthor(req, { signedOut? }) → { authorId, account } | Response
- *       sessionAuthor, or the Response to send instead: 503 (no store, or no
- *       sign-in set up here), 401 { error: signedOut ?? "sign in to publish" }, 500.
+ *       sessionAuthor, or the Response to send instead: 503 (no store or
+ *       database here, sign-in not set up here, or the database unreachable),
+ *       401 { error: signedOut ?? "sign in to publish" }, 500.
  *
  *   actingAuthor(req, store)
  *       The session's author, else the author the key names. #2320 — a key
@@ -63,45 +86,20 @@ import {
  *       made before sign-in.
  *
  *   accountHashOf(provider, providerAccountId) → string
- *   readAccount(store, accountHash)            → GalleryAccountRecord | null
- *   accountForAuthor(store, authorId)          → GalleryAccountRecord | null
+ *   readAccount(accountHash)                   → GalleryAccountRecord | null
+ *   accountForAuthor(authorId)                 → GalleryAccountRecord | null
  *
  *   attachAuthorToAccount(store, claim, email, authorId, { replace? })
  *       → { ok: true, account } | { ok: false, reason }
- *       Link author X to account Y: writes the account record and the reverse
- *       pointer, puts the badge on the public profile and the account email in
- *       the author's private record. Refuses ("author-taken") an author already
- *       linked to a DIFFERENT account. Refuses ("account-linked") an account
- *       already linked to a different author unless `replace: true` — that is
- *       the merge step #2320 needs (move the account onto the browser's older
- *       author); with replace the old author's reverse pointer is removed.
- *
- * #2320 (claim what this browser published before sign-in) builds on
- * attachAuthorToAccount + keyOwnsAuthor; #2321 (My shares from the account)
- * builds on sessionAuthor + accountForAuthor.
- *
- * Known gap: two first requests from one new account racing (e.g. the session
- * read and a publish at the same moment) can each make an author; the second
- * write of the account record wins and the other author is left with no
- * account. Blob has no compare-and-set, and the window is one round trip.
+ *       Link author X to account Y (db/repo/accounts.ts linkAccount, one
+ *       transaction); the badge goes on the profile and the account email on
+ *       the author. Refuses ("author-taken") an author already linked to a
+ *       DIFFERENT account. Refuses ("account-linked") an account already
+ *       linked to a different author unless `replace: true`.
  */
 
 /** A signed-in account and the author it is linked to. Never served. */
-export interface GalleryAccountRecord {
-  accountHash: string;
-  /** Auth.js provider id ("github", "google", "test-login"). */
-  provider: string;
-  authorId: string;
-  email: string;
-  verified: GalleryVerified;
-  createdAt: number;
-  updatedAt: number;
-}
-
-/** `gallery/author-accounts/<authorId>.json`. Never served. */
-export interface AuthorAccountPointer {
-  accountHash: string;
-}
+export type GalleryAccountRecord = AccountRecord;
 
 export interface SessionAuthor {
   authorId: string;
@@ -112,16 +110,19 @@ export function accountHashOf(provider: string, providerAccountId: string): stri
   return createHash("sha256").update(`${provider}:${providerAccountId}`, "utf8").digest("hex");
 }
 
-export function readAccount(store: GalleryBlobStore, accountHash: string): Promise<GalleryAccountRecord | null> {
-  return getJson<GalleryAccountRecord>(store, galleryPaths.account(accountHash));
+/** The gallery database; throws when it can't be opened, or when none is configured here. */
+async function db(): Promise<Db> {
+  const d = await getDb();
+  if (!d) throw new Error("the gallery has no database configured here");
+  return d;
 }
 
-export async function accountForAuthor(store: GalleryBlobStore, authorId: string): Promise<GalleryAccountRecord | null> {
-  const pointer = await getJson<AuthorAccountPointer>(store, galleryPaths.authorAccount(authorId));
-  if (!pointer) return null;
-  const account = await readAccount(store, pointer.accountHash);
-  // The account record is the truth; a pointer it disagrees with is stale.
-  return account && account.authorId === authorId ? account : null;
+export async function readAccount(accountHash: string): Promise<GalleryAccountRecord | null> {
+  return getAccount(await db(), accountHash);
+}
+
+export async function accountForAuthor(authorId: string): Promise<GalleryAccountRecord | null> {
+  return getAccountByAuthor(await db(), authorId);
 }
 
 /** The public badge for a claim. Only what the provider shows publicly anyway. */
@@ -149,11 +150,48 @@ export async function sessionClaim(): Promise<{ claim: StaveAccountClaim; email:
   return { claim, email: session?.user?.email ?? "", name: session?.user?.name ?? "" };
 }
 
-async function putBadge(store: GalleryBlobStore, authorId: string, verified: GalleryVerified): Promise<void> {
+const claimInput = (claim: StaveAccountClaim, email: string): AccountClaimInput => ({
+  accountHash: accountHashOf(claim.provider, claim.providerAccountId),
+  provider: claim.provider,
+  providerAccountId: claim.providerAccountId,
+  email,
+  verified: verifiedOf(claim),
+});
+
+// ── phase 1: the Blob mirror of an account's author (deleted in phase 2) ──────
+
+/** Follow a badge or email change on the Blob copy of the profile and its private record. */
+async function mirrorBadge(store: GalleryBlobStore, authorId: string, verified: GalleryVerified, email: string): Promise<void> {
+  const privateRecord = await getJson<PrivateAuthorRecord>(store, galleryPaths.authorPrivate(authorId));
+  if (privateRecord && privateRecord.authorEmail !== email) {
+    await putJson(store, galleryPaths.authorPrivate(authorId), { ...privateRecord, authorEmail: email });
+  }
   const profile = await getJson<GalleryAuthorProfile>(store, galleryPaths.author(authorId));
   if (profile && !sameVerified(profile.verified, verified)) {
     await putJson(store, galleryPaths.author(authorId), { ...profile, verified });
   }
+}
+
+/**
+ * Make sure the account's author exists in Blob too, written from its database
+ * row, so every racing first request writes the same bytes and none of them
+ * returns an author the Blob-reading routes can't find. Private record first,
+ * the public profile last, as before.
+ */
+async function mirrorAuthor(store: GalleryBlobStore, d: Db, account: GalleryAccountRecord): Promise<void> {
+  if (await store.get(galleryPaths.author(account.authorId))) return;
+  const author = await getAuthor(d, account.authorId);
+  if (!author) return;
+  await putJson(store, galleryPaths.authorPrivate(account.authorId), { authorEmail: account.email } satisfies PrivateAuthorRecord);
+  const profile: GalleryAuthorProfile = {
+    authorId: author.authorId,
+    name: author.name,
+    bio: author.bio,
+    createdAt: author.createdAt,
+    updatedAt: author.updatedAt,
+    verified: account.verified,
+  };
+  await putJson(store, galleryPaths.author(account.authorId), profile);
 }
 
 export type AttachResult =
@@ -168,36 +206,20 @@ export async function attachAuthorToAccount(
   authorId: string,
   opts: { replace?: boolean } = {},
 ): Promise<AttachResult> {
-  const accountHash = accountHashOf(claim.provider, claim.providerAccountId);
-  const privateRecord = await getJson<PrivateAuthorRecord>(store, galleryPaths.authorPrivate(authorId));
-  if (!privateRecord) return { ok: false, reason: "no-author" };
-
-  const owner = await getJson<AuthorAccountPointer>(store, galleryPaths.authorAccount(authorId));
-  if (owner && owner.accountHash !== accountHash) {
-    const other = await readAccount(store, owner.accountHash);
-    if (other && other.authorId === authorId) return { ok: false, reason: "author-taken" };
+  const d = await db();
+  // Phase 1: a profile made with a key before sign-in lives only in Blob; bring it in first.
+  const [privateRecord, profile] = await Promise.all([
+    getJson<PrivateAuthorRecord>(store, galleryPaths.authorPrivate(authorId)),
+    getJson<StoredAuthorProfile>(store, galleryPaths.author(authorId)),
+  ]);
+  if (privateRecord && profile) {
+    await importAuthorIfMissing(d, { ...profile, email: privateRecord.authorEmail, keyHash: privateRecord.authorKeyHash });
   }
-  const existing = await readAccount(store, accountHash);
-  if (existing && existing.authorId !== authorId && !opts.replace) return { ok: false, reason: "account-linked" };
-
-  const now = Date.now();
-  const verified = verifiedOf(claim);
-  const account: GalleryAccountRecord = {
-    accountHash,
-    provider: claim.provider,
-    authorId,
-    email,
-    verified,
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
-  };
-  // Private sides first, the public badge last.
-  await putJson(store, galleryPaths.authorPrivate(authorId), { ...privateRecord, authorEmail: email });
-  await putJson(store, galleryPaths.authorAccount(authorId), { accountHash } satisfies AuthorAccountPointer);
-  await putJson(store, galleryPaths.account(accountHash), account);
-  if (existing && existing.authorId !== authorId) await store.del([galleryPaths.authorAccount(existing.authorId)]);
-  await putBadge(store, authorId, verified);
-  return { ok: true, account };
+  const input = claimInput(claim, email);
+  const linked = await linkAccount(d, input, authorId, opts);
+  if (!linked.ok) return linked;
+  await mirrorBadge(store, authorId, input.verified, email);
+  return { ok: true, account: linked.account };
 }
 
 /** The name a new author starts with: the account's name, else its login, else a placeholder. */
@@ -220,22 +242,24 @@ export async function sessionAuthor(
   const signedIn = await sessionClaim();
   if (!signedIn) return null;
   const { claim, email, name } = signedIn;
+  const d = await getDb();
+  if (!d) return null;
 
-  const accountHash = accountHashOf(claim.provider, claim.providerAccountId);
-  const account = await readAccount(store, accountHash);
+  const input = claimInput(claim, email);
+  const account = await getAccount(d, input.accountHash);
   if (account) {
-    const verified = verifiedOf(claim);
-    if (sameVerified(account.verified, verified) && account.email === email) return { authorId: account.authorId, account };
+    if (sameVerified(account.verified, input.verified) && account.email === email) return { authorId: account.authorId, account };
     // The GitHub login, avatar or email changed since the last visit: follow it.
-    const refreshed = await attachAuthorToAccount(store, claim, email, account.authorId);
-    return refreshed.ok ? { authorId: account.authorId, account: refreshed.account } : { authorId: account.authorId, account };
+    const refreshed = await refreshAccount(d, input.accountHash, { email, verified: input.verified });
+    await mirrorBadge(store, account.authorId, input.verified, email);
+    return { authorId: account.authorId, account: refreshed ?? account };
   }
   if (opts.create === false) return null;
 
-  const authorId = await createKeylessAuthor(store, startingName(name, claim), email, verifiedOf(claim));
-  if (!authorId) return null;
-  const linked = await attachAuthorToAccount(store, claim, email, authorId);
-  return linked.ok ? { authorId, account: linked.account } : null;
+  // #2349 — race-safe: one author however many first requests arrive at once.
+  const made = await ensureAccountAuthor(d, { ...input, name: startingName(name, claim) });
+  await mirrorAuthor(store, d, made.account);
+  return { authorId: made.account.authorId, account: made.account };
 }
 
 /**
@@ -246,8 +270,9 @@ export async function requireSessionAuthor(
   req: Request,
   opts: { signedOut?: string } = {},
 ): Promise<SessionAuthor | Response> {
+  const notSetUp = () => Response.json({ error: "the gallery is not set up here" }, { status: 503 });
   const store = galleryStore();
-  if (!store) return Response.json({ error: "the gallery is not set up here" }, { status: 503 });
+  if (!store) return notSetUp();
   if (!signInAvailable(process.env)) {
     return Response.json(
       { error: "sign-in isn't set up on this site, so publishing is turned off" },
@@ -257,7 +282,16 @@ export async function requireSessionAuthor(
   if (!(await sessionClaim())) {
     return Response.json({ error: opts.signedOut ?? "sign in to publish" }, { status: 401 });
   }
-  const found = await sessionAuthor(req, { store });
+  let found: SessionAuthor | null;
+  try {
+    if (!(await getDb())) return notSetUp();
+    found = await sessionAuthor(req, { store });
+  } catch (err) {
+    // #2351 — the database can't be reached: "try again shortly", never a 500.
+    if (!isDatabaseUnavailable(err)) throw err;
+    console.warn("[stave] gallery database unavailable:", err);
+    return databaseUnavailable();
+  }
   if (!found) return Response.json({ error: "could not set up your gallery profile" }, { status: 500 });
   return found;
 }

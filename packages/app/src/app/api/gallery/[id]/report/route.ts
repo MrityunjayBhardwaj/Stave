@@ -6,12 +6,13 @@ import { galleryPaths, galleryStore, putJson } from "../../store";
 import { requireTurnstile } from "../../turnstile";
 import { checkReport, MAX_REPORT_BODY_BYTES, readJsonBody } from "../../validate";
 import { assertSameOrigin } from "../../origin";
+import { withDatabase } from "../../../../../db/errors";
 
 // #2303 — anyone can flag an entry with a short reason. Each report is its own
 // small blob (never a shared counter), listed for admins by
 // GET /api/gallery/admin/reports (#2331). The ack says nothing but that it was received.
 
-export async function POST(
+async function handlePOST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
@@ -41,3 +42,6 @@ export async function POST(
   await putJson(store, galleryPaths.report(id, name), report);
   return Response.json({ ok: true }, { status: 202 });
 }
+
+// #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.
+export const POST = withDatabase(handlePOST);

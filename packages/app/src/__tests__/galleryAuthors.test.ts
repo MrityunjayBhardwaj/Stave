@@ -48,6 +48,11 @@ import { hashToken, newManageToken } from "../app/api/gallery/auth";
 import { galleryPaths, galleryStore, getJson, putJson } from "../app/api/gallery/store";
 import { accountForAuthor, accountHashOf, readAccount } from "../app/api/gallery/session";
 import type { GalleryEntry, GallerySessionResponse } from "../gallery/types";
+import { getDb } from "../db/client";
+
+// #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
+// file. Starting it takes a few seconds, once; do it here, not inside the first test.
+beforeAll(() => getDb(), 60_000);
 
 // #2331 — the admin is a signed-in account listed in STAVE_GALLERY_ADMINS; the old
 // shared key stays set on the server to prove its header opens nothing.
@@ -263,8 +268,8 @@ describe("#2319 the account behind an author", () => {
     const res = await publish();
     const id = res.who.slice(5);
     const store = galleryStore()!;
-    const byAccount = await readAccount(store, accountHashOf("test-login", id));
-    const byAuthor = await accountForAuthor(store, res.authorId);
+    const byAccount = await readAccount(accountHashOf("test-login", id));
+    const byAuthor = await accountForAuthor(res.authorId);
     expect(byAccount).toEqual(byAuthor);
     expect(byAccount).toMatchObject({ authorId: res.authorId, email: EMAIL, provider: "test-login" });
     // The entry's private record keeps the account email, whatever the body said.

@@ -7,6 +7,7 @@ import { accountHashOf, sessionClaim } from "../gallery/session";
 import { galleryStore } from "../gallery/store";
 import { shareStore } from "./store";
 import { assertSameOrigin } from "../gallery/origin";
+import { withDatabase } from "../../../db/errors";
 
 // #2248 — store a sealed shared project and hand back its short id.
 //
@@ -27,7 +28,7 @@ import { assertSameOrigin } from "../gallery/origin";
 // project's Firewall settings, not in this repo; a deploy elsewhere needs its own.
 // The client copies the long link on a 429 and says why.
 
-export async function POST(req: Request): Promise<Response> {
+async function handlePOST(req: Request): Promise<Response> {
   const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const store = shareStore();
   if (!store) return Response.json({ error: "short links are not set up here" }, { status: 503 });
@@ -86,3 +87,6 @@ async function recordOnAccount(req: Request, id: string): Promise<boolean> {
     return false;
   }
 }
+
+// #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.
+export const POST = withDatabase(handlePOST);
