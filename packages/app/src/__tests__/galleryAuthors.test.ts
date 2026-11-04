@@ -18,7 +18,6 @@ const fake = vi.hoisted(() => ({ session: null as unknown }));
 vi.mock("../auth", () => ({ auth: vi.fn(async () => fake.session) }));
 
 import {
-  ADMIN_KEY_HEADER,
   AUTHOR_KEY_HEADER,
   GALLERY_ID_PATTERN,
   MANAGE_TOKEN_HEADER,
@@ -50,7 +49,11 @@ import { galleryPaths, galleryStore, getJson, putJson } from "../app/api/gallery
 import { accountForAuthor, accountHashOf, readAccount } from "../app/api/gallery/session";
 import type { GalleryEntry, GallerySessionResponse } from "../gallery/types";
 
-const ADMIN_KEY = "test-admin-key-authors-0123";
+// #2331 — the admin is a signed-in account listed in STAVE_GALLERY_ADMINS; the old
+// shared key stays set on the server to prove its header opens nothing.
+const ADMIN = "user:mod-authors";
+const OLD_ADMIN_HEADER = "x-stave-admin-key";
+const OLD_KEY = "test-admin-key-authors-0123";
 const EMAIL = "qq.distinctive.profile+authors@example-privacy-two.test";
 
 let dir = "";
@@ -65,7 +68,8 @@ beforeEach(() => {
   vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
   vi.stubEnv("BLOB_STORE_ID", "");
   vi.stubEnv("STAVE_GALLERY_DEV_DIR", dir);
-  vi.stubEnv("STAVE_GALLERY_ADMIN_KEY", ADMIN_KEY);
+  vi.stubEnv("STAVE_GALLERY_ADMIN_KEY", OLD_KEY);
+  vi.stubEnv("STAVE_GALLERY_ADMINS", "test-login:mod-authors");
   // #2319 — sign-in is set up (the test provider), and nobody is signed in yet.
   vi.stubEnv("AUTH_SECRET", "test-secret");
   vi.stubEnv("STAVE_AUTH_TEST_LOGIN", "1");
@@ -172,15 +176,20 @@ const getCollection = (id: string) =>
   collectionGetRoute(new Request(`http://x/api/gallery/collections/${id}`), idCtx(id));
 const putCollection = (id: string, body: unknown, who?: string) =>
   collectionPutRoute(json("PUT", `http://x/api/gallery/collections/${id}`, body, as(who)), idCtx(id));
-/** `who` as in as(); extra headers (the admin key) on top. */
-const deleteCollection = (id: string, who?: string, headers: Record<string, string> = {}) =>
+/** `who` as in as(); extra headers on top; `body` (an admin's `{ reason }`) as JSON. */
+const withBody = (body: unknown) => (body === undefined ? {} : { body: JSON.stringify(body) });
+const deleteCollection = (id: string, who?: string, headers: Record<string, string> = {}, body?: unknown) =>
   collectionDeleteRoute(
-    new Request(`http://x/api/gallery/collections/${id}`, { method: "DELETE", headers: { ...as(who), ...headers } }),
+    new Request(`http://x/api/gallery/collections/${id}`, {
+      method: "DELETE",
+      headers: { ...as(who), ...headers },
+      ...withBody(body),
+    }),
     idCtx(id),
   );
-const deleteEntry = (id: string, headers: Record<string, string>, who?: string) =>
+const deleteEntry = (id: string, headers: Record<string, string>, who?: string, body?: unknown) =>
   deleteEntryRoute(
-    new Request(`http://x/api/gallery/${id}`, { method: "DELETE", headers: { ...as(who), ...headers } }),
+    new Request(`http://x/api/gallery/${id}`, { method: "DELETE", headers: { ...as(who), ...headers }, ...withBody(body) }),
     idCtx(id),
   );
 
@@ -269,6 +278,7 @@ describe("#2319 the account behind an author", () => {
       name: "Ada",
       authorId: res.authorId,
       verified: { provider: "github", login: "renamed", avatarUrl: "https://avatars.githubusercontent.com/u/1?v=4" },
+      accountId: `test-login:${id}`,
     });
     expect((await authorPage(res.authorId)).author.verified).toEqual(me.user!.verified);
   });
@@ -283,7 +293,12 @@ describe("#2319 the account behind an author", () => {
   it("the session route says what sign-in offers, and who you are without the email", async () => {
     signIn(null);
     let me = (await (await meRoute(new Request("http://x/api/gallery/me"))).json()) as GallerySessionResponse;
-    expect(me).toEqual({ signInAvailable: true, providers: [{ id: "test-login", name: "Test account" }], user: null });
+    expect(me).toEqual({
+      signInAvailable: true,
+      providers: [{ id: "test-login", name: "Test account" }],
+      user: null,
+      isAdmin: false,
+    });
 
     signIn("me-1");
     const res = await meRoute(new Request("http://x/api/gallery/me"));
@@ -294,7 +309,7 @@ describe("#2319 the account behind an author", () => {
 
     vi.stubEnv("AUTH_SECRET", "");
     me = (await (await meRoute(new Request("http://x/api/gallery/me"))).json()) as GallerySessionResponse;
-    expect(me).toEqual({ signInAvailable: false, providers: [], user: null });
+    expect(me).toEqual({ signInAvailable: false, providers: [], user: null, isAdmin: false });
   });
 });
 
@@ -490,7 +505,7 @@ describe("collections", () => {
     const [e0, e1, e2] = entries;
     const c = await made({ title: "Album", description: "", entryIds: [e0.id, e1.id, e2.id] }, key);
 
-    expect((await deleteEntry(e1.id, { [ADMIN_KEY_HEADER]: ADMIN_KEY })).status).toBe(204);
+    expect((await deleteEntry(e1.id, {}, ADMIN, { reason: "taken down in a test" })).status).toBe(204);
 
     const page = (await (await getCollection(c.id)).json()) as CollectionPageResponse;
     expect(page.collection.entryIds).toEqual([e0.id, e2.id]);
@@ -500,11 +515,13 @@ describe("collections", () => {
     expect(profile.entries.map((e) => e.id)).not.toContain(e1.id);
   });
 
-  it("lets the maintainer delete any collection with the admin key", async () => {
+  it("lets an admin delete any collection, with a reason", async () => {
     const { key } = await authorWith(1);
     const c = await made({ title: "T", description: "", entryIds: [] }, key);
-    expect((await deleteCollection(c.id, undefined, { [ADMIN_KEY_HEADER]: "wrong" })).status).toBe(403);
-    expect((await deleteCollection(c.id, undefined, { [ADMIN_KEY_HEADER]: ADMIN_KEY })).status).toBe(204);
+    expect((await deleteCollection(c.id, undefined, { [OLD_ADMIN_HEADER]: OLD_KEY })).status).toBe(403);
+    expect((await deleteCollection(c.id, freshUser(), {}, { reason: "not an admin" })).status).toBe(403);
+    expect((await deleteCollection(c.id, ADMIN)).status).toBe(400);
+    expect((await deleteCollection(c.id, ADMIN, {}, { reason: "spam collection" })).status).toBe(204);
     expect((await getCollection(c.id)).status).toBe(404);
   });
 });
@@ -560,6 +577,6 @@ describe("a production build with no store", () => {
     expect((await postCollection(body, "k")).status).toBe(503);
     expect((await getCollection(id)).status).toBe(503);
     expect((await putCollection(id, body, "k")).status).toBe(503);
-    expect((await deleteCollection(id, undefined, { [ADMIN_KEY_HEADER]: ADMIN_KEY })).status).toBe(503);
+    expect((await deleteCollection(id, ADMIN, {}, { reason: "x" })).status).toBe(503);
   });
 });

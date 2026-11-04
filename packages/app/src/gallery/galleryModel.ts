@@ -5,7 +5,7 @@
  */
 import { GALLERY_ID_PATTERN, type GalleryEntry, type GalleryKind, type GalleryManifest } from "./types";
 
-export type GalleryTab = "project" | "music" | "viz" | "mine";
+export type GalleryTab = "project" | "music" | "viz" | "mine" | "moderation";
 
 export const GALLERY_TABS: ReadonlyArray<{ id: GalleryTab; label: string }> = [
   { id: "project", label: "Projects" },
@@ -13,6 +13,19 @@ export const GALLERY_TABS: ReadonlyArray<{ id: GalleryTab; label: string }> = [
   { id: "viz", label: "Viz" },
   { id: "mine", label: "My shares" },
 ];
+
+/** #2331 — the admins' tab, added after My shares only when /api/gallery/me says isAdmin. */
+export const MODERATION_TAB: { id: GalleryTab; label: string } = { id: "moderation", label: "Moderation" };
+
+/** The tabs to show: the kinds and My shares, plus Moderation for an admin. */
+export function galleryTabs(isAdmin: boolean): ReadonlyArray<{ id: GalleryTab; label: string }> {
+  return isAdmin ? [...GALLERY_TABS, MODERATION_TAB] : GALLERY_TABS;
+}
+
+/** Is this tab one of the entry kinds (Projects / Music / Viz), with a count and a search? */
+export function isKindTab(tab: GalleryTab): tab is GalleryKind {
+  return tab !== "mine" && tab !== "moderation";
+}
 
 export const KIND_LABEL: Record<GalleryKind, string> = {
   project: "Project",

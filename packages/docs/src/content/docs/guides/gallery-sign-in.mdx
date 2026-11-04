@@ -59,6 +59,38 @@ A privacy policy page is needed for Google sign-in, and is good practice for Git
 
 Stave sends `Cross-Origin-Opener-Policy: same-origin` on every page, which it needs for audio and visuals that share memory across threads. That header cuts a pop-up window off from the page that opened it, so a pop-up sign-in could never report back. Signing in leaves the page, goes to GitHub or Google, and comes back, reopening the Publish dialog if that's where you started.
 
+## Gallery admins (moderation)
+
+Anyone can report a gallery entry. Admins read those reports and decide: take the entry down, or dismiss the reports and leave it up. An admin is a **signed-in account** you list in one variable:
+
+| Variable | What it is |
+| --- | --- |
+| `STAVE_GALLERY_ADMINS` | Comma-separated account ids, each `provider:id`, for example `github:12345,google:110248495921238986420`. Spaces around entries are ignored. Unset or empty means nobody is an admin. |
+
+Older versions used a shared `STAVE_GALLERY_ADMIN_KEY` sent as a header. That is gone: the header is ignored, so remove the variable when you set `STAVE_GALLERY_ADMINS`.
+
+### Finding your account id
+
+Sign in to your Stave with the account you want to make an admin, then open `<origin>/api/gallery/me` in the same browser. It answers with JSON; your id is `user.accountId`, already in the `provider:id` form the variable wants:
+
+```json
+{ "user": { "name": "Ada", "accountId": "github:12345", ... }, "isAdmin": false }
+```
+
+Only you see your own id there (the page never shows it to anyone else). Add it to `STAVE_GALLERY_ADMINS`, redeploy (or restart the server), reload `/api/gallery/me`, and `isAdmin` reads `true`.
+
+### What admins see
+
+With an admin signed in, the Community Gallery gets a **Moderation** tab. It lists every reported entry with each report's reason, and for each one:
+
+- **Open** shows the entry, as anyone would see it.
+- **Take down** removes it for everyone. Stave asks why.
+- **Dismiss** clears its reports and leaves it up. Stave asks why.
+
+Below that is the **action log**: the newest 200 take-downs and dismissals by any admin, each with who did it (name and account id, never the email), when, and the reason they typed. Only admins can read it. Nobody else sees the tab, and the moderation routes answer `403` to everyone else.
+
+An admin can also take down a whole collection by sending `DELETE /api/gallery/collections/<id>` with the JSON body `{ "reason": "…" }` while signed in; that is logged the same way. Deleting your *own* entry or collection is an ordinary author delete and needs no reason.
+
 ## Testing without GitHub or Google
 
 For development and automated tests there is a test-only sign-in that signs in as whatever account id you type. It is on only when the server runs with `STAVE_AUTH_TEST_LOGIN=1` **and** is not a production build; a production build never offers it, whatever the variable says.
@@ -66,3 +98,5 @@ For development and automated tests there is a test-only sign-in that signs in a
 ```sh
 STAVE_AUTH_TEST_LOGIN=1 AUTH_SECRET=dev-only-secret npm run dev
 ```
+
+A test account's id is `test-login:<what you typed>`, so `STAVE_GALLERY_ADMINS=test-login:gallery-admin` makes the test account `gallery-admin` an admin.

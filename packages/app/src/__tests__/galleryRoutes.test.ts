@@ -1,6 +1,6 @@
 // @vitest-environment node
 // #2299 / #2303 — the community gallery routes against the dev folder store:
-// publish, list, open, thumbnail, report, delete, the maintainer's flagged list,
+// publish, list, open, thumbnail, report, delete, the admins' flagged list (#2331),
 // and the privacy rule that the author's email never leaves the server.
 //
 // #2319 — publishing needs a signed-in session. Auth.js's `auth()` is mocked at
@@ -15,7 +15,6 @@ const fake = vi.hoisted(() => ({ session: null as unknown }));
 vi.mock("../auth", () => ({ auth: vi.fn(async () => fake.session) }));
 
 import {
-  ADMIN_KEY_HEADER,
   GALLERY_ID_PATTERN,
   MANAGE_TOKEN_HEADER,
   MAX_AUTHOR_NAME_CHARS,
@@ -29,7 +28,7 @@ import {
   type GalleryListResponse,
   type GalleryManifest,
   type PublishResponse,
-  type ReportsResponse,
+  type ModerationReportsResponse,
 } from "../gallery/types";
 import { GET as listRoute, POST as publishRoute } from "../app/api/gallery/route";
 import { DELETE as deleteRoute, GET as entryRoute } from "../app/api/gallery/[id]/route";
@@ -41,7 +40,12 @@ import { galleryPaths, galleryStore, getJson } from "../app/api/gallery/store";
 const PNG_1x1 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 const WEBP_1x1 = "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAwA0JaQAA3AA/vuUAAA=";
-const ADMIN_KEY = "test-admin-key-0123456789";
+// #2331 — admins are signed-in accounts listed in STAVE_GALLERY_ADMINS. The old
+// shared-key header is still sent in places, with the old key still set on the
+// server, to prove it opens nothing.
+const ADMIN = "mod-routes";
+const OLD_ADMIN_HEADER = "x-stave-admin-key";
+const OLD_KEY = "test-admin-key-0123456789";
 const EMAIL = "zz.distinctive.author+gallery@example-privacy.test";
 
 let dir = "";
@@ -57,7 +61,8 @@ beforeEach(() => {
   vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
   vi.stubEnv("BLOB_STORE_ID", "");
   vi.stubEnv("STAVE_GALLERY_DEV_DIR", dir);
-  vi.stubEnv("STAVE_GALLERY_ADMIN_KEY", ADMIN_KEY);
+  vi.stubEnv("STAVE_GALLERY_ADMIN_KEY", OLD_KEY);
+  vi.stubEnv("STAVE_GALLERY_ADMINS", `test-login:${ADMIN}`);
   // #2319 — sign-in set up (the test provider) and signed in as Ada.
   vi.stubEnv("AUTH_SECRET", "test-secret");
   vi.stubEnv("STAVE_AUTH_TEST_LOGIN", "1");
@@ -114,15 +119,26 @@ const report = (id: string, body: unknown) =>
     ctx(id),
   );
 /**
- * Delete as someone NOT signed in, so only the token or admin key can grant it.
- * (Signed in as the entry's author, no token is needed: galleryAuthors.test.ts.)
+ * Delete as `who` (by default NOT signed in, so only the token can grant it), with
+ * an optional JSON body (an admin's reason). (Signed in as the entry's author, no
+ * token is needed: galleryAuthors.test.ts.)
  */
-const remove = (id: string, headers: Record<string, string> = {}) => {
-  signIn(null);
-  return deleteRoute(new Request(`http://x/api/gallery/${id}`, { method: "DELETE", headers }), ctx(id));
+const remove = (id: string, headers: Record<string, string> = {}, who: string | null = null, body?: unknown) => {
+  signIn(who);
+  return deleteRoute(
+    new Request(`http://x/api/gallery/${id}`, {
+      method: "DELETE",
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }),
+    ctx(id),
+  );
 };
-const reports = (headers: Record<string, string> = {}) =>
-  reportsRoute(new Request("http://x/api/gallery/reports", { headers }));
+/** The flagged list, as the admin unless `who` says otherwise (null: signed out). */
+const reports = (headers: Record<string, string> = {}, who: string | null = ADMIN) => {
+  signIn(who);
+  return reportsRoute(new Request("http://x/api/gallery/reports", { headers }));
+};
 
 async function published(over: Record<string, unknown> = {}): Promise<PublishResponse> {
   const res = await publish(request(over));
@@ -295,13 +311,17 @@ describe("the author's email stays on the server", () => {
 });
 
 describe("reporting", () => {
-  it("records a report the maintainer can list", async () => {
+  it("records a report an admin can list", async () => {
     const { id } = await published();
     expect((await report(id, { reason: "  not music at all  " })).status).toBe(202);
-    const res = await reports({ [ADMIN_KEY_HEADER]: ADMIN_KEY });
+    const res = await reports();
     expect(res.status).toBe(200);
-    const body = (await res.json()) as ReportsResponse;
-    expect(body.reports).toContainEqual({ entryId: id, reason: "not music at all", reportedAt: expect.any(Number) });
+    const body = (await res.json()) as ModerationReportsResponse;
+    expect(body.flagged).toContainEqual({
+      entryId: id,
+      entry: expect.objectContaining({ id, title: "Night drive" }),
+      reports: [{ reason: "not music at all", reportedAt: expect.any(Number) }],
+    });
   });
 
   it("refuses a blank or long reason, and an unknown entry", async () => {
@@ -312,11 +332,13 @@ describe("reporting", () => {
     expect((await report("AAAAAAAAAAA", { reason: "spam" })).status).toBe(404);
   });
 
-  it("keeps the flagged list from anyone without the admin key", async () => {
+  it("keeps the flagged list from anyone who isn't an admin, and from the old key", async () => {
+    expect((await reports({}, null)).status).toBe(403);
+    expect((await reports({}, "ada-routes")).status).toBe(403);
+    expect((await reports({ [OLD_ADMIN_HEADER]: OLD_KEY }, null)).status).toBe(403);
+    expect((await reports({ [OLD_ADMIN_HEADER]: OLD_KEY }, "ada-routes")).status).toBe(403);
+    vi.stubEnv("STAVE_GALLERY_ADMINS", "");
     expect((await reports()).status).toBe(403);
-    expect((await reports({ [ADMIN_KEY_HEADER]: "wrong" })).status).toBe(403);
-    vi.stubEnv("STAVE_GALLERY_ADMIN_KEY", "");
-    expect((await reports({ [ADMIN_KEY_HEADER]: "" })).status).toBe(403);
   });
 });
 
@@ -336,22 +358,24 @@ describe("deleting", () => {
     expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(404);
   });
 
-  it("lets the maintainer take an entry down with the admin key, clearing its reports", async () => {
+  it("lets an admin take an entry down with a reason, clearing its reports", async () => {
     const { id } = await published();
     await report(id, { reason: "spam" });
-    expect((await remove(id, { [ADMIN_KEY_HEADER]: "not the key" })).status).toBe(403);
-    expect((await remove(id, { [ADMIN_KEY_HEADER]: ADMIN_KEY })).status).toBe(204);
+    expect((await remove(id, { [OLD_ADMIN_HEADER]: OLD_KEY })).status).toBe(403);
+    expect((await remove(id, {}, ADMIN)).status).toBe(400);
+    expect((await remove(id, {}, ADMIN, { reason: "spam, checked" })).status).toBe(204);
     expect((await list()).entries.map((e) => e.id)).not.toContain(id);
     expect((await entry(id)).status).toBe(410);
-    const body = (await (await reports({ [ADMIN_KEY_HEADER]: ADMIN_KEY })).json()) as ReportsResponse;
-    expect(body.reports.map((r) => r.entryId)).not.toContain(id);
+    const body = (await (await reports()).json()) as ModerationReportsResponse;
+    expect(body.flagged.map((f) => f.entryId)).not.toContain(id);
   });
 
-  it("has no admin when the server has no admin key", async () => {
-    vi.stubEnv("STAVE_GALLERY_ADMIN_KEY", "");
+  it("has no admin when STAVE_GALLERY_ADMINS is empty", async () => {
+    vi.stubEnv("STAVE_GALLERY_ADMINS", "");
     const { id } = await published();
-    expect((await remove(id, { [ADMIN_KEY_HEADER]: "" })).status).toBe(403);
-    expect((await remove(id, { [ADMIN_KEY_HEADER]: "anything" })).status).toBe(403);
+    expect((await remove(id, {}, ADMIN, { reason: "x" })).status).toBe(403);
+    expect((await remove(id, { [OLD_ADMIN_HEADER]: OLD_KEY })).status).toBe(403);
+    expect((await entry(id)).status).toBe(200);
   });
 
   it("one entry's token doesn't delete another", async () => {
@@ -362,8 +386,8 @@ describe("deleting", () => {
   });
 
   it("answers 404 for an unknown or malformed id", async () => {
-    expect((await remove("AAAAAAAAAAA", { [ADMIN_KEY_HEADER]: ADMIN_KEY })).status).toBe(404);
-    expect((await remove("../x", { [ADMIN_KEY_HEADER]: ADMIN_KEY })).status).toBe(404);
+    expect((await remove("AAAAAAAAAAA", {}, ADMIN, { reason: "x" })).status).toBe(404);
+    expect((await remove("../x", {}, ADMIN, { reason: "x" })).status).toBe(404);
   });
 });
 
@@ -378,6 +402,6 @@ describe("a production build with no store", () => {
     expect((await thumbnail(id)).status).toBe(503);
     expect((await report(id, { reason: "x" })).status).toBe(503);
     expect((await remove(id)).status).toBe(503);
-    expect((await reports({ [ADMIN_KEY_HEADER]: ADMIN_KEY })).status).toBe(503);
+    expect((await reports()).status).toBe(503);
   });
 });

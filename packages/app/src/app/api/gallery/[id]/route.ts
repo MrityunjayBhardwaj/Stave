@@ -1,12 +1,12 @@
 import {
-  ADMIN_KEY_HEADER,
   GALLERY_ID_PATTERN,
   MANAGE_TOKEN_HEADER,
   type GalleryEntry,
   type GalleryEntryResponse,
   type GalleryManifest,
 } from "../../../../gallery/types";
-import { isAdminKey, tokenMatches } from "../auth";
+import { adminAction } from "../admin";
+import { tokenMatches } from "../auth";
 import { sessionAuthor } from "../session";
 import {
   galleryPaths,
@@ -44,8 +44,10 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
   return Response.json(body, { headers: { "Cache-Control": "no-store" } });
 }
 
-// The author deletes while signed in (#2319) or with their manage token; the
-// maintainer with the admin key (#2303). Either way the removed marker goes down first, so even a delete that
+// The author deletes while signed in (#2319) or with their manage token; an
+// admin (#2331: a signed-in account in STAVE_GALLERY_ADMINS) with a reason in
+// the JSON body, which goes in the action log first. The author's own route wins,
+// so an admin deleting their own entry needs no reason. Either way the removed marker goes down first, so even a delete that
 // fails halfway reads as removed (410, gone from the list), then everything else
 // about the entry is deleted — the private record with the email included.
 export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
@@ -63,10 +65,15 @@ export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
   const mine = listed?.authorId ? await sessionAuthor(req, { create: false, store }) : null;
 
   let by: RemovedMarker["by"];
-  if (isAdminKey(req.headers.get(ADMIN_KEY_HEADER))) by = "admin";
-  else if (mine && mine.authorId === listed?.authorId) by = "author";
+  if (mine && mine.authorId === listed?.authorId) by = "author";
   else if (tokenMatches(req.headers.get(MANAGE_TOKEN_HEADER), record.manageTokenHash)) by = "author";
-  else return Response.json({ error: "that token does not manage this entry" }, { status: 403 });
+  else {
+    const admin = await adminAction(req, store, { action: "take-down-entry", target: id }, () =>
+      Response.json({ error: "that token does not manage this entry" }, { status: 403 }),
+    );
+    if (admin instanceof Response) return admin;
+    by = "admin";
+  }
 
   const marker: RemovedMarker = { removedAt: Date.now(), by };
   await putJson(store, galleryPaths.removed(id), marker);
