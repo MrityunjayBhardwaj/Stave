@@ -46,6 +46,8 @@ export interface MenuActions {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /** #2300 — View → Community Gallery. */
+  onOpenGallery: () => void;
 }
 
 export type MenuEntry =
@@ -119,6 +121,8 @@ export function buildMenus(a: MenuActions): Menu[] {
       items: [
         item(a.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar", a.onToggleSidebar, { shortcut: "⌘B" }),
         item(a.zenMode ? "Exit Zen Mode" : "Zen Mode (Fullscreen)", a.onToggleZenMode, { shortcut: "⌘⌥Z" }),
+        divider,
+        item("Community Gallery...", a.onOpenGallery),
       ],
     },
     {

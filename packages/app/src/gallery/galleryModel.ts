@@ -1,0 +1,104 @@
+/**
+ * Community gallery (#2300) — the overlay's pure logic: which tab an entry is
+ * in, what a search matches, how a `#gallery=<id>` link is read, and where an
+ * added file lands. No React, no fetch — so every rule here is unit-tested.
+ */
+import { GALLERY_ID_PATTERN, type GalleryEntry, type GalleryKind, type GalleryManifest } from "./types";
+
+export type GalleryTab = "project" | "music" | "viz" | "mine";
+
+export const GALLERY_TABS: ReadonlyArray<{ id: GalleryTab; label: string }> = [
+  { id: "project", label: "Projects" },
+  { id: "music", label: "Music" },
+  { id: "viz", label: "Viz" },
+  { id: "mine", label: "My shares" },
+];
+
+export const KIND_LABEL: Record<GalleryKind, string> = {
+  project: "Project",
+  music: "Music",
+  viz: "Viz",
+};
+
+export const GALLERY_HASH_PREFIX = "#gallery=";
+
+/**
+ * The entry id a `#gallery=<id>` fragment names, or null. An id that is not the
+ * gallery's shape is refused here, so a crafted link never reaches a fetch.
+ */
+export function readGalleryFragment(hash: string): string | null {
+  if (!hash.startsWith(GALLERY_HASH_PREFIX)) return null;
+  let id: string;
+  try {
+    id = decodeURIComponent(hash.slice(GALLERY_HASH_PREFIX.length));
+  } catch {
+    return null;
+  }
+  return GALLERY_ID_PATTERN.test(id) ? id : null;
+}
+
+/** Lower-cased words of a query; an empty query matches everything. */
+function terms(query: string): string[] {
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.replace(/^#/, ""))
+    .filter(Boolean);
+}
+
+/**
+ * Does the entry match every word of the query, each against its title, tags or
+ * author name? (All words must match somewhere — "dub alice" finds Alice's dub.)
+ */
+export function entryMatches(entry: GalleryEntry, query: string): boolean {
+  const ts = terms(query);
+  if (ts.length === 0) return true;
+  const hay = [entry.title, entry.authorName, ...entry.tags].map((s) => s.toLowerCase());
+  return ts.every((t) => hay.some((h) => h.includes(t)));
+}
+
+/** The entries one kind-tab shows, newest first, filtered by the search. */
+export function entriesForTab(entries: readonly GalleryEntry[], kind: GalleryKind, query: string): GalleryEntry[] {
+  return entries
+    .filter((e) => e.kind === kind && entryMatches(e, query))
+    .sort((a, b) => b.publishedAt - a.publishedAt);
+}
+
+/** How many entries each kind holds — the tab badges. */
+export function countByKind(entries: readonly GalleryEntry[]): Record<GalleryKind, number> {
+  const out: Record<GalleryKind, number> = { project: 0, music: 0, viz: 0 };
+  for (const e of entries) if (e.kind in out) out[e.kind] += 1;
+  return out;
+}
+
+export function formatGalleryDate(ms: number): string {
+  if (!Number.isFinite(ms)) return "";
+  return new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+/**
+ * Where "Add to this project" puts a music / viz entry's file: its own name at
+ * the project's root (the caller suffixes on a collision), so a published path
+ * can never point outside the root. `ext` is returned so the caller can take the
+ * language from the extension (lib/newFile's `extensionToLanguage`) rather than
+ * trusting the manifest's label; it is not imported here to keep this module
+ * free of the editor package.
+ */
+export function fileToAdd(
+  manifest: GalleryManifest,
+): { path: string; ext: string; content: string; language: string } | null {
+  const f = manifest.files.find((x) => !x.path.split("/").pop()?.startsWith(".")) ?? manifest.files[0];
+  if (!f) return null;
+  const base = (f.path.split("/").pop() ?? "").replace(/[^A-Za-z0-9._ -]/g, "_").replace(/^\.+/, "") || "gallery";
+  const ext = base.includes(".") ? base.slice(base.lastIndexOf(".") + 1) : "";
+  return { path: base, ext: ext.toLowerCase(), content: f.content, language: f.language };
+}
+
+/** A two-letter monogram + hue for a card with no thumbnail, stable per entry. */
+export function generatedCard(entry: Pick<GalleryEntry, "id" | "title">): { initials: string; hue: number } {
+  const words = entry.title.trim().split(/\s+/).filter(Boolean);
+  const initials = (words.length >= 2 ? words[0][0] + words[1][0] : (words[0] ?? "?").slice(0, 2)).toUpperCase();
+  let h = 0;
+  for (const ch of entry.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return { initials, hue: h % 360 };
+}

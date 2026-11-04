@@ -58,6 +58,8 @@ import { TimeSignatureControl } from "./TimeSignatureControl";
 import { FileTree, type FileTreeHandle } from "./FileTree";
 import { TemplateModal } from "./TemplateModal";
 import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
+// #2300 — the community gallery overlay, its command and its `#gallery=` links.
+import { GalleryHost, openGallery } from "../gallery/GalleryHost";
 import {
   bumpEditorFontSize,
   toggleEditorMinimap,
@@ -2071,6 +2073,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     onRedo: () => { redo(); },
     canUndo: undoState.canUndo,
     canRedo: undoState.canRedo,
+    onOpenGallery: () => openGallery(),
   };
   // #1348 — the eval lamp: the active file's last evaluation. Pressing it does what
   // pressing that error's toast does, even after the toast is gone; with no error it
@@ -2330,6 +2333,23 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onSelect={doSwitchProject}
         onRename={handleRenameProjectFromSwitcher}
         onDelete={handleDeleteProjectFromSwitcher}
+      />
+
+      <GalleryHost
+        unsavedBlocksLeaving={unsavedBlocksLeaving}
+        openProject={async (load) => {
+          // The editor unmounts while the file store switches under it, as
+          // File → New does; otherwise the open editor writes into the new project.
+          setSwitching(true);
+          try {
+            const meta = await load();
+            setProjects(await listProjects());
+            setActiveProject(meta);
+            return meta;
+          } finally {
+            setSwitching(false);
+          }
+        }}
       />
 
       <StorageFullNotice onExport={handleExportProject} onOpenLibrary={openLibraryAtYourSounds} />
