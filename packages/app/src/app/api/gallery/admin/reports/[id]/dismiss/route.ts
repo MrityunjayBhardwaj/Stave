@@ -1,5 +1,6 @@
 import { GALLERY_ID_PATTERN } from "../../../../../../../gallery/types";
 import { adminAction, openReportsOf, requireAdmin } from "../../../../admin";
+import { assertSameOrigin } from "../../../../origin";
 import { galleryStore } from "../../../../store";
 
 // #2331 — an admin dismisses the reports on an entry (the entry stays up). Needs
@@ -7,6 +8,7 @@ import { galleryStore } from "../../../../store";
 // 404 when the entry has no open reports.
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
+  const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const { id } = await params;
   if (!GALLERY_ID_PATTERN.test(id)) return Response.json({ error: "not found" }, { status: 404 });
   const store = galleryStore();

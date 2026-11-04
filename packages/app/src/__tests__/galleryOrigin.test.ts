@@ -2,6 +2,9 @@
 // #2328 — the gallery and share routes that change something answer 403 to a
 // request from another site or from an opaque origin (`Origin: null`, what the
 // sandboxed preview frame sends), and carry on for this site or no Origin.
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 // The routes import Auth.js; never reach it — the origin check runs first.
@@ -23,6 +26,7 @@ import { POST as claim } from "../app/api/gallery/claim/route";
 import { PUT as editProfile } from "../app/api/gallery/authors/[authorId]/route";
 import { POST as createShare } from "../app/api/share/route";
 import { DELETE as revokeShare } from "../app/api/share/[id]/route";
+import { POST as dismissReports } from "../app/api/gallery/admin/reports/[id]/dismiss/route";
 
 const SITE = "https://stave.example";
 
@@ -82,9 +86,55 @@ const WRITE_ROUTES: Array<[string, string, Handler, Record<string, string>]> = [
   ["PUT /api/gallery/authors/:authorId", "PUT", editProfile as Handler, { authorId: ID }],
   ["POST /api/share", "POST", createShare as Handler, {}],
   ["DELETE /api/share/:id", "DELETE", revokeShare as Handler, { id: ID }],
+  ["POST /api/gallery/admin/reports/:id/dismiss", "POST", dismissReports as Handler, { id: ID }],
 ];
 
+// Where each listed route lives, so the scan below can tell a route nobody listed.
+const LISTED_FILES: Record<string, string> = {
+  "POST /api/gallery (publish)": "gallery/route.ts",
+  "DELETE /api/gallery/:id": "gallery/[id]/route.ts",
+  "POST /api/gallery/:id/report": "gallery/[id]/report/route.ts",
+  "POST /api/gallery/collections": "gallery/collections/route.ts",
+  "PUT /api/gallery/collections/:id": "gallery/collections/[id]/route.ts",
+  "DELETE /api/gallery/collections/:id": "gallery/collections/[id]/route.ts",
+  "POST /api/gallery/claim": "gallery/claim/route.ts",
+  "PUT /api/gallery/authors/:authorId": "gallery/authors/[authorId]/route.ts",
+  "POST /api/share": "share/route.ts",
+  "DELETE /api/share/:id": "share/[id]/route.ts",
+  "POST /api/gallery/admin/reports/:id/dismiss": "gallery/admin/reports/[id]/dismiss/route.ts",
+};
+
+/** Every exported POST / PUT / PATCH / DELETE handler under app/api/{gallery,share}, as "METHOD file". */
+function scanWriteHandlers(): string[] {
+  const apiRoot = path.join(__dirname, "../app/api");
+  const found: string[] = [];
+  const walk = (dir: string) => {
+    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) walk(full);
+      else if (ent.name === "route.ts") {
+        const src = readFileSync(full, "utf8");
+        for (const m of src.matchAll(/export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)\s*\(/g)) {
+          found.push(`${m[1]} ${path.relative(apiRoot, full).split(path.sep).join("/")}`);
+        }
+      }
+    }
+  };
+  walk(path.join(apiRoot, "gallery"));
+  walk(path.join(apiRoot, "share"));
+  return found.sort();
+}
+
 describe("every gallery / share write route", () => {
+  // A route added later without being listed here would skip every check below
+  // (it happened once: the admin dismiss route landed beside this list, not in it).
+  it("lists every write handler the API folders export", () => {
+    const listed = WRITE_ROUTES.map(([name, method]) => `${method} ${LISTED_FILES[name]}`).sort();
+    const scanned = scanWriteHandlers();
+    expect(scanned.length).toBeGreaterThan(5); // the scan itself found routes
+    expect(listed).toEqual(scanned);
+  });
+
   it.each(WRITE_ROUTES)("%s refuses Origin: null with 403, before anything else", async (_name, method, handler, params) => {
     const before = fake.calls;
     const res = await handler(req(method, "null"), { params: Promise.resolve(params) });
