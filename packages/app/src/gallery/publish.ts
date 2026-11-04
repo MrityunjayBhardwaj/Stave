@@ -7,7 +7,7 @@
  * person is told before anything is uploaded.
  */
 import { publishToGallery, galleryEntryLink } from "./client";
-import { addLocalShare, saveAuthor } from "./localShares";
+import { addLocalShare, loadAuthor, saveAuthor, type GalleryAuthor } from "./localShares";
 import {
   MAX_AUTHOR_NAME_CHARS,
   MAX_MANIFEST_BYTES,
@@ -18,6 +18,7 @@ import {
   type GalleryKind,
   type GalleryManifest,
   type PublishRequest,
+  type PublishResponse,
 } from "./types";
 
 /** File languages a music entry can be. */
@@ -171,13 +172,35 @@ function capitalise(s: string): string {
 }
 
 /**
+ * #2314 — who this browser is after a publish: the name and email as typed, the
+ * author the entry landed on, and the author key. A key is shown only when the
+ * publish created the author, so a response without one keeps the key already
+ * held — it is never dropped.
+ */
+export function rememberedAuthor(
+  request: Pick<PublishRequest, "authorName" | "authorEmail">,
+  before: GalleryAuthor | null,
+  res: Pick<PublishResponse, "authorId" | "authorKey">,
+): GalleryAuthor {
+  const out: GalleryAuthor = { name: request.authorName, email: request.authorEmail };
+  const authorId = res.authorId || before?.authorId;
+  const authorKey = res.authorKey || before?.authorKey;
+  if (authorId) out.authorId = authorId;
+  if (authorKey) out.authorKey = authorKey;
+  return out;
+}
+
+/**
  * Send it, then remember who published it and the key that lets this browser
  * delete it. Returns the entry's link. Throws the client's message on failure,
  * and remembers nothing then.
  */
 export async function publishAndRemember(request: PublishRequest): Promise<{ id: string; link: string }> {
-  const { id, manageToken } = await publishToGallery(request);
-  saveAuthor({ name: request.authorName, email: request.authorEmail });
+  const before = loadAuthor();
+  // #2314 — send the key this browser holds, so the entry joins the same profile.
+  const res = await publishToGallery(request, before?.authorKey);
+  const { id, manageToken } = res;
+  saveAuthor(rememberedAuthor(request, before, res));
   addLocalShare({ id, title: request.title, kind: request.kind, publishedAt: Date.now(), manageToken });
   return { id, link: galleryEntryLink(id) };
 }

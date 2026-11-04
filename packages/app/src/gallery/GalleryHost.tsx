@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { getActiveProjectId, type ProjectMeta, type WorkspaceFile } from "@stave/editor";
 import { GalleryOverlay } from "./GalleryOverlay";
-import { readGalleryFragment, fileToAdd } from "./galleryModel";
+import { readGalleryLink, fileToAdd, type GalleryLinkTarget } from "./galleryModel";
 import { beginGalleryImport, endGalleryImport, holdGalleryFiles } from "./safeRun";
 import type { GalleryEntry, GalleryManifest } from "./types";
 import { applyShareManifest, clearShareFragment } from "../shareProject";
@@ -20,9 +20,13 @@ import { showToast } from "../dialogs/host";
 
 const OPEN_EVENT = "stave:open-gallery";
 
-/** Open the gallery overlay (the menu item; anything else that wants it). */
-export function openGallery(entryId?: string): void {
-  window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: entryId ?? null }));
+/**
+ * Open the gallery overlay (the menu item; anything else that wants it) — on an
+ * entry id, or (#2314 / #2315) on a profile or collection.
+ */
+export function openGallery(target?: string | GalleryLinkTarget): void {
+  const view: GalleryLinkTarget | null = typeof target === "string" ? { kind: "entry", id: target } : (target ?? null);
+  window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: view }));
 }
 
 export interface GalleryHostProps {
@@ -42,15 +46,15 @@ const RUN_HINT = "Nothing has run yet — press Play when you're ready.";
 
 export function GalleryHost({ unsavedBlocksLeaving, openProject, onPublish }: GalleryHostProps) {
   const [open, setOpen] = useState(false);
-  const [entryId, setEntryId] = useState<string | null>(null);
+  const [view, setView] = useState<GalleryLinkTarget | null>(null);
 
-  const show = useCallback((id: string | null) => {
-    setEntryId(id);
+  const show = useCallback((target: GalleryLinkTarget | null) => {
+    setView(target);
     setOpen(true);
   }, []);
 
   useEffect(() => {
-    const onOpen = (e: Event) => show(((e as CustomEvent).detail as string | null) ?? null);
+    const onOpen = (e: Event) => show(((e as CustomEvent).detail as GalleryLinkTarget | null) ?? null);
     window.addEventListener(OPEN_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_EVENT, onOpen);
   }, [show]);
@@ -67,17 +71,17 @@ export function GalleryHost({ unsavedBlocksLeaving, openProject, onPublish }: Ga
     [show],
   );
 
-  // A `#gallery=<id>` link: open on that entry, then take the fragment off the
-  // URL so a refresh doesn't reopen it. On load, and when the link is pasted
-  // into a tab that already has Stave open (only the fragment changes, so the
-  // page doesn't reload — just `hashchange`).
+  // A `#gallery=<id>` link (or #2314 `#gallery-author=<id>`, #2315
+  // `#gallery-collection=<id>`): open on it, then take the fragment off the URL
+  // so a refresh doesn't reopen it. On load, and when the link is pasted into a
+  // tab that already has Stave open (only the fragment changes, so the page
+  // doesn't reload — just `hashchange`).
   useEffect(() => {
     const check = () => {
-      const hash = window.location.hash || "";
-      if (!hash.startsWith("#gallery=")) return;
-      const id = readGalleryFragment(hash);
+      const target = readGalleryLink(window.location.hash || "");
+      if (!target) return;
       clearShareFragment();
-      if (id) show(id);
+      if (target !== "invalid") show(target);
       else showToast("That gallery link isn't valid — copy the whole link and try again.", "error");
     };
     check();
@@ -128,10 +132,11 @@ export function GalleryHost({ unsavedBlocksLeaving, openProject, onPublish }: Ga
   return (
     <GalleryOverlay
       open={open}
-      initialEntryId={entryId}
+      initialEntryId={null}
+      initialView={view}
       onClose={() => {
         setOpen(false);
-        setEntryId(null);
+        setView(null);
       }}
       onOpenAsProject={openAsProject}
       onAddToProject={addToProject}

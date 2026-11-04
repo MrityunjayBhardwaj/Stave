@@ -3,7 +3,14 @@
  * Every function throws an Error whose message a person can act on.
  */
 import {
+  AUTHOR_KEY_HEADER,
   MANAGE_TOKEN_HEADER,
+  type AuthorPageResponse,
+  type AuthorUpdateRequest,
+  type CollectionPageResponse,
+  type CollectionWriteRequest,
+  type GalleryAuthorProfile,
+  type GalleryCollection,
   type GalleryEntryResponse,
   type GalleryListResponse,
   type PublishRequest,
@@ -26,7 +33,13 @@ async function failure(res: Response, what: string): Promise<Error> {
   } catch {
     /* not JSON */
   }
-  if (res.status === 429) return new Error("you've published several times in the last few minutes; try again shortly");
+  if (res.status === 429) {
+    return new Error(
+      what === "publishing"
+        ? "you've published several times in the last few minutes; try again shortly"
+        : "too many changes in the last few minutes; try again shortly",
+    );
+  }
   if (res.status === 503) return new Error("the gallery isn't set up on this site");
   return new Error(detail || `${what} failed (${res.status})`);
 }
@@ -49,10 +62,16 @@ export function galleryThumbnailUrl(id: string): string {
   return `/api/gallery/${encodeURIComponent(id)}/thumbnail`;
 }
 
-export async function publishToGallery(req: PublishRequest): Promise<PublishResponse> {
+/**
+ * `authorKey` (#2314): this browser's author key, when it has one, so the entry
+ * lands on the same profile as the earlier ones.
+ */
+export async function publishToGallery(req: PublishRequest, authorKey?: string): Promise<PublishResponse> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (authorKey) headers[AUTHOR_KEY_HEADER] = authorKey;
   const res = await fetch("/api/gallery", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(req),
   });
   if (res.status !== 201) throw await failure(res, "publishing");
@@ -95,4 +114,92 @@ export async function revokeShareLink(id: string, manageToken: string): Promise<
   });
   if (res.status === 204 || res.status === 404) return;
   throw await failure(res, "revoking the link");
+}
+
+// ── #2314 profiles and #2315 collections ───────────────────────────────────
+
+const KEY_MISMATCH = "this browser's author key doesn't match that profile";
+
+function keyed(authorKey: string, json = false): Record<string, string> {
+  const h: Record<string, string> = { [AUTHOR_KEY_HEADER]: authorKey };
+  if (json) h["Content-Type"] = "application/json";
+  return h;
+}
+
+export async function fetchAuthorPage(authorId: string): Promise<AuthorPageResponse> {
+  const res = await fetch(`/api/gallery/authors/${encodeURIComponent(authorId)}`);
+  if (res.status === 404) throw new Error("this profile wasn't found");
+  if (!res.ok) throw await failure(res, "loading the profile");
+  return (await res.json()) as AuthorPageResponse;
+}
+
+export async function updateAuthor(
+  authorId: string,
+  authorKey: string,
+  update: AuthorUpdateRequest,
+): Promise<GalleryAuthorProfile> {
+  const res = await fetch(`/api/gallery/authors/${encodeURIComponent(authorId)}`, {
+    method: "PUT",
+    headers: keyed(authorKey, true),
+    body: JSON.stringify(update),
+  });
+  if (res.status === 403) throw new Error(KEY_MISMATCH);
+  if (res.status === 404) throw new Error("this profile wasn't found");
+  if (!res.ok) throw await failure(res, "saving the profile");
+  return ((await res.json()) as { author: GalleryAuthorProfile }).author;
+}
+
+export async function createCollection(authorKey: string, req: CollectionWriteRequest): Promise<GalleryCollection> {
+  const res = await fetch("/api/gallery/collections", {
+    method: "POST",
+    headers: keyed(authorKey, true),
+    body: JSON.stringify(req),
+  });
+  if (res.status === 403) throw new Error("this browser's author key wasn't accepted");
+  if (res.status !== 201) throw await failure(res, "creating the collection");
+  return ((await res.json()) as { collection: GalleryCollection }).collection;
+}
+
+export async function fetchCollectionPage(id: string): Promise<CollectionPageResponse> {
+  const res = await fetch(`/api/gallery/collections/${encodeURIComponent(id)}`);
+  if (res.status === 404) throw new Error("this collection wasn't found");
+  if (!res.ok) throw await failure(res, "loading the collection");
+  return (await res.json()) as CollectionPageResponse;
+}
+
+export async function updateCollection(
+  id: string,
+  authorKey: string,
+  req: CollectionWriteRequest,
+): Promise<GalleryCollection> {
+  const res = await fetch(`/api/gallery/collections/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: keyed(authorKey, true),
+    body: JSON.stringify(req),
+  });
+  if (res.status === 403) throw new Error("this browser's author key doesn't match that collection");
+  if (res.status === 404) throw new Error("this collection wasn't found");
+  if (!res.ok) throw await failure(res, "saving the collection");
+  return ((await res.json()) as { collection: GalleryCollection }).collection;
+}
+
+/** Already gone (404) counts as done. */
+export async function deleteCollection(id: string, authorKey: string): Promise<void> {
+  const res = await fetch(`/api/gallery/collections/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: keyed(authorKey),
+  });
+  if (res.status === 204 || res.status === 404) return;
+  if (res.status === 403) throw new Error("this browser's author key doesn't match that collection");
+  throw await failure(res, "deleting the collection");
+}
+
+/** A link that opens the gallery overlay on this author's profile. */
+export function galleryAuthorLink(authorId: string): string {
+  return `${window.location.origin}/#gallery-author=${encodeURIComponent(authorId)}`;
+}
+
+/** A link that opens the gallery overlay on this collection. */
+export function galleryCollectionLink(id: string): string {
+  return `${window.location.origin}/#gallery-collection=${encodeURIComponent(id)}`;
 }
