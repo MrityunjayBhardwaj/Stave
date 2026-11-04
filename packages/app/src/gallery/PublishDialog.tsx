@@ -418,7 +418,11 @@ const styles: Record<string, React.CSSProperties> = {
   kinds: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 },
   kind: {
     background: "var(--bg-panel)",
-    border: "1px solid var(--border-subtle)",
+    // #2318 — longhand, so the selected state can swap only the colour without
+    // React warning about a shorthand and a longhand fighting on re-render.
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "var(--border-subtle)",
     borderRadius: 6,
     padding: "8px 0",
     cursor: "pointer",
