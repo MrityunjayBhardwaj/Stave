@@ -16,6 +16,7 @@ import {
   type PrivateRecord,
   type RemovedMarker,
 } from "../store";
+import { assertSameOrigin } from "../origin";
 
 // #2299 / #2303 — one gallery entry: open it, or take it down.
 
@@ -49,6 +50,7 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
 // fails halfway reads as removed (410, gone from the list), then everything else
 // about the entry is deleted — the private record with the email included.
 export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
+  const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const { id } = await params;
   if (!GALLERY_ID_PATTERN.test(id)) return notFound();
   const store = galleryStore();

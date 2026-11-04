@@ -5,6 +5,7 @@ import { cleanProjectName, isShareKey, recordAccountLink, shareUrl } from "../ga
 import { accountHashOf, sessionClaim } from "../gallery/session";
 import { galleryStore } from "../gallery/store";
 import { shareStore } from "./store";
+import { assertSameOrigin } from "../gallery/origin";
 
 // #2248 — store a sealed shared project and hand back its short id.
 //
@@ -25,6 +26,7 @@ import { shareStore } from "./store";
 // The client copies the long link on a 429 and says why.
 
 export async function POST(req: Request): Promise<Response> {
+  const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const store = shareStore();
   if (!store) return Response.json({ error: "short links are not set up here" }, { status: 503 });
 

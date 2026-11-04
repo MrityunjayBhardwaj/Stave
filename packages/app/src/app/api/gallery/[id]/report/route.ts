@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { GALLERY_ID_PATTERN, type GalleryReport } from "../../../../../gallery/types";
 import { galleryPaths, galleryStore, putJson } from "../../store";
 import { checkReport, MAX_REPORT_BODY_BYTES, readJsonBody } from "../../validate";
+import { assertSameOrigin } from "../../origin";
 
 // #2303 — anyone can flag an entry with a short reason. Each report is its own
 // small blob (never a shared counter), listed for the maintainer by
@@ -12,6 +13,7 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
+  const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const { id } = await params;
   if (!GALLERY_ID_PATTERN.test(id)) return Response.json({ error: "not found" }, { status: 404 });
   const store = galleryStore();

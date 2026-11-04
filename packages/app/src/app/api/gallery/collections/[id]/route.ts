@@ -10,6 +10,7 @@ import { foreignEntry, servedCollection } from "../../authors";
 import { mayManageAuthor } from "../../session";
 import { galleryPaths, galleryStore, getJson, putJson } from "../../store";
 import { checkCollectionWrite, MAX_COLLECTION_BODY_BYTES, readJsonBody } from "../../validate";
+import { assertSameOrigin } from "../../origin";
 
 // #2315 — one collection: open it, change it (its signed-in author, #2319, or
 // the author key), or delete it (either of those, or the admin key). Deleting a collection never touches its entries.
@@ -44,6 +45,7 @@ export async function GET(_req: Request, { params }: Ctx): Promise<Response> {
 }
 
 export async function PUT(req: Request, { params }: Ctx): Promise<Response> {
+  const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const { id } = await params;
   if (!GALLERY_ID_PATTERN.test(id)) return notFound();
   const store = galleryStore();
@@ -72,6 +74,7 @@ export async function PUT(req: Request, { params }: Ctx): Promise<Response> {
 }
 
 export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
+  const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
   const { id } = await params;
   if (!GALLERY_ID_PATTERN.test(id)) return notFound();
   const store = galleryStore();
