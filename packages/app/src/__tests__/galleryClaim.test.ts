@@ -1,16 +1,29 @@
 // @vitest-environment node
 // #2320 — bring what a browser published before sign-in into the account (the
 // claim), and #2321 — My shares and private links that follow the account.
-// Against the dev folder stores (gallery and short links), with Auth.js's
-// `auth()` mocked so each test says who is signed in.
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+// #2352 — the records are in Postgres (PGlite here); the short links' sealed
+// bytes and manage-token hashes are in the dev folder share store. Auth.js's
+// `auth()` is mocked so each test says who is signed in.
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const fake = vi.hoisted(() => ({ session: null as unknown }));
+const fake = vi.hoisted(() => ({ session: null as unknown, failLinkRecord: false }));
 vi.mock("../auth", () => ({ auth: vi.fn(async () => fake.session) }));
+// #2352 — a failure injected into the repository: recording a link on the
+// account throws (the claim records links last, after every other move).
+vi.mock("../db/repo/links", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../db/repo/links")>();
+  return {
+    ...actual,
+    recordAccountLink: vi.fn(async (...args: Parameters<typeof actual.recordAccountLink>) => {
+      if (fake.failLinkRecord) throw new TypeError("injected failure: recording the link");
+      return actual.recordAccountLink(...args);
+    }),
+  };
+});
 
 import {
   AUTHOR_KEY_HEADER,
@@ -28,6 +41,7 @@ import {
 import { sealShare } from "../shareCrypto";
 import { GET as authorGetRoute, PUT as authorPutRoute } from "../app/api/gallery/authors/[authorId]/route";
 import { POST as collectionPostRoute } from "../app/api/gallery/collections/route";
+import { GET as collectionGetRoute } from "../app/api/gallery/collections/[id]/route";
 import { POST as claimRoute } from "../app/api/gallery/claim/route";
 import { GET as meRoute } from "../app/api/gallery/me/route";
 import { GET as mySharesRoute } from "../app/api/gallery/me/shares/route";
@@ -35,13 +49,20 @@ import { POST as sharePostRoute } from "../app/api/share/route";
 import { DELETE as shareDeleteRoute, GET as shareGetRoute } from "../app/api/share/[id]/route";
 import { createAuthor } from "../app/api/gallery/authors";
 import { hashToken, newManageToken } from "../app/api/gallery/auth";
-import { galleryPaths, galleryStore, getJson, putJson } from "../app/api/gallery/store";
-import { attachAuthorToAccount } from "../app/api/gallery/session";
-import { getDb } from "../db/client";
+import { galleryPaths, galleryStore, putJson } from "../app/api/gallery/store";
+import { accountHashOf, attachAuthorToAccount } from "../app/api/gallery/session";
+import { getDb, useDbForTests, type Db } from "../db/client";
+import { getAuthor as storedAuthor, updateAuthorProfile } from "../db/repo/accounts";
+import { collectionsOfAuthor } from "../db/repo/collections";
+import { entriesOfAuthor, getEntryRecord, insertEntry } from "../db/repo/entries";
+import { listAccountLinks as linksOnAccount } from "../db/repo/links";
+import { rowsOf } from "../db/repo/tx";
+import { sql } from "drizzle-orm";
 
 // #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
 // file. Starting it takes a few seconds, once; do it here, not inside the first test.
 beforeAll(() => getDb(), 60_000);
+const db = async (): Promise<Db> => (await getDb())!;
 
 const EMAIL = "qq.distinctive.claim+account@example-privacy-three.test";
 /** #2329 — the key header browsers sent before #2329. The server must ignore it. */
@@ -62,6 +83,8 @@ beforeEach(() => {
   vi.stubEnv("AUTH_SECRET", "test-secret");
   vi.stubEnv("STAVE_AUTH_TEST_LOGIN", "1");
   fake.session = null;
+  fake.failLinkRecord = false;
+  useDbForTests(undefined);
 });
 
 let n = 0;
@@ -98,30 +121,23 @@ async function openAppAs(id: string): Promise<string> {
 }
 
 let entrySeq = 0;
-/** An entry written the way publishing worked before sign-in, under `authorId`. */
+/** An entry written the way publishing worked before sign-in, under `authorId` (manifest in Blob, record in the database). */
 async function legacyEntry(authorId: string | undefined, title: string) {
-  const store = galleryStore()!;
   const id = `E${String(++entrySeq).padStart(4, "0")}${Date.now().toString(36)}`.slice(0, 11).padEnd(11, "x");
   const manageToken = newManageToken();
-  await putJson(store, galleryPaths.privateRecord(id), { authorEmail: EMAIL, manageTokenHash: hashToken(manageToken) });
-  await putJson(store, galleryPaths.manifest(id), manifest);
-  if (authorId) await putJson(store, galleryPaths.authorEntry(authorId, id), {});
+  await putJson(galleryStore()!, galleryPaths.manifest(id), manifest);
   const entry: GalleryEntry = {
     id, title, kind: "music", tags: [], authorName: "Old Ada", ...(authorId ? { authorId } : {}),
     publishedAt: Date.now() + entrySeq, fileCount: 1, hasThumbnail: false,
   };
-  await putJson(store, galleryPaths.entry(id), entry);
+  expect(await insertEntry(await db(), { entry, authorEmail: EMAIL, manageTokenHash: hashToken(manageToken) })).toBe(true);
   return { id, manageToken };
 }
 
 /** A key-held author from before sign-in, with `count` entries and (optionally) a collection of them. */
 async function legacyAuthor(count: number, withCollection = false) {
-  const store = galleryStore()!;
-  const made = (await createAuthor(store, "Old Ada", EMAIL))!;
-  await putJson(store, galleryPaths.author(made.authorId), {
-    ...(await getJson<object>(store, galleryPaths.author(made.authorId))),
-    bio: "the old bio",
-  });
+  const made = (await createAuthor(await db(), "Old Ada", EMAIL))!;
+  await updateAuthorProfile(await db(), made.authorId, { name: "Old Ada", bio: "the old bio" });
   const entries = [];
   for (let i = 0; i < count; i++) entries.push(await legacyEntry(made.authorId, `Old ${i}`));
   let collection: GalleryCollection | null = null;
@@ -146,6 +162,24 @@ async function anonymousLink(name = "Linked song") {
   expect(res.status).toBe(201);
   const { id, manageToken } = (await res.json()) as { id: string; manageToken: string };
   return { id, manageToken, url: `http://x/s/${id}#${key}`, projectName: name, createdAt: Date.now() };
+}
+
+/** Every stored account-link row, every column (as Postgres names them). */
+async function storedLinks(): Promise<Array<Record<string, unknown>>> {
+  return rowsOf<Record<string, unknown>>(await (await db()).execute(sql`select * from account_links`)).map((r) => ({
+    ...r,
+    created_at: Number(r.created_at),
+  }));
+}
+
+/** Every row the claim could touch (the records tables, not the rate-limit counters), in a stable order. */
+async function records(): Promise<string[]> {
+  const out: string[] = [];
+  for (const table of ["authors", "author_keys", "accounts", "entries", "collections", "collection_entries", "account_links"]) {
+    const rows = rowsOf<Record<string, unknown>>(await (await db()).execute(sql.raw(`select * from ${table}`)));
+    for (const r of rows) out.push(`${table} ${JSON.stringify(r)}`);
+  }
+  return out.sort();
 }
 
 const claim = async (as: string, body: unknown) => {
@@ -204,11 +238,11 @@ describe("#2320 the claim", () => {
     expect(page.collections[0].entryIds.sort()).toEqual(old.entries.map((e) => e.id).sort());
     expect(page.author.bio).toBe("the old bio");
 
-    // The old per-author indexes are empty; the new ones hold it all.
-    const store = galleryStore()!;
-    expect(await store.list(galleryPaths.authorEntriesOf(old.authorId))).toEqual([]);
-    expect(await store.list(galleryPaths.authorCollectionsOf(old.authorId))).toEqual([]);
-    expect((await store.list(galleryPaths.authorEntriesOf(mine))).length).toBe(2);
+    // The old author holds nothing; the account's author holds it all.
+    expect(await entriesOfAuthor(await db(), old.authorId)).toEqual([]);
+    expect(await collectionsOfAuthor(await db(), old.authorId)).toEqual([]);
+    expect((await entriesOfAuthor(await db(), mine)).length).toBe(2);
+    expect((await storedAuthor(await db(), old.authorId))?.mergedInto).toBe(mine);
 
     // The old key no longer acts for anyone: it can't make a collection on the retired profile.
     const viaKey = await collectionPostRoute(
@@ -230,24 +264,20 @@ describe("#2320 the claim", () => {
     const first = await claimOk(user, body);
     expect(first.moved).toEqual({ entries: 1, collections: 1, links: 1 });
 
-    const store = galleryStore()!;
-    const before = await store.list("gallery/");
+    const before = await records();
+    expect(before.length).toBeGreaterThan(5); // control: the snapshot reads real rows
     const second = await claimOk(user, body);
     expect(second).toEqual({ authorId: first.authorId, moved: { entries: 0, collections: 0, links: 0 }, refused: [] });
-    // Not a single record written or removed. (#2330's counter of claims counts
-    // every call, but since #2352 it lives in the database, not here.)
-    const after = await store.list("gallery/");
-    const records = (bs: typeof before) => bs.map((b) => `${b.pathname}@${b.uploadedAt}`).sort();
-    expect(records(after)).toEqual(records(before));
+    // Not a single record written or removed (every column of every row, times
+    // included). #2330's counter of claims counts every call, so it is left out.
+    expect(await records()).toEqual(before);
   });
 
   it("refuses an author that belongs to another account, and moves none of its work", async () => {
     const old = await legacyAuthor(1);
     // Another account linked this author first (e.g. it was claimed by linking).
-    const store = galleryStore()!;
     const otherId = freshId();
     const linked = await attachAuthorToAccount(
-      store,
       { provider: "test-login", providerAccountId: otherId, badge: "github", login: otherId },
       EMAIL,
       old.authorId,
@@ -320,6 +350,39 @@ describe("#2320 the claim", () => {
     expect(ids.sort()).toEqual([stray.entries[0].id, ancient.id].sort());
     // The stray profile is not retired: only the author key claims a profile.
     expect(((await (await getAuthor(stray.authorId)).json()) as AuthorPageResponse).entries).toEqual([]);
+  });
+
+  it("#2352: one that fails halfway leaves NOTHING moved, and the retry moves it all", async () => {
+    const old = await legacyAuthor(2, true);
+    const stray = await legacyEntry(undefined, "From before profiles");
+    const link = await anonymousLink();
+    const user = freshId();
+    const mine = await openAppAs(user);
+    const body = { authorKey: old.key, entries: [...old.entries, stray], links: [link] };
+    const before = await records();
+
+    // Recording the link is the claim's LAST write: the merge (two entries, the
+    // collection, the retirement) and the stray entry's move have all run by then.
+    const { recordAccountLink } = await import("../db/repo/links");
+    const calls = vi.mocked(recordAccountLink).mock.calls.length;
+    fake.failLinkRecord = true;
+    await expect(claim(user, body)).rejects.toThrow("injected failure");
+    expect(vi.mocked(recordAccountLink).mock.calls.length).toBe(calls + 1); // control: the failure was reached
+
+    // Not one row changed, and each thing is still where it was.
+    expect(await records()).toEqual(before);
+    const d = await db();
+    expect((await storedAuthor(d, old.authorId))?.mergedInto).toBeUndefined();
+    expect((await entriesOfAuthor(d, old.authorId)).map((e) => e.id).sort()).toEqual(old.entries.map((e) => e.id).sort());
+    expect((await collectionsOfAuthor(d, old.authorId)).map((c) => c.id)).toEqual([old.collection!.id]);
+    expect(await entriesOfAuthor(d, mine)).toEqual([]);
+    expect((await getEntryRecord(d, stray.id))?.entry.authorId).toBeUndefined();
+    expect(await linksOnAccount(d, accountHashOf("test-login", user))).toEqual([]);
+
+    // The browser retries: everything moves at once.
+    fake.failLinkRecord = false;
+    const retry = await claimOk(user, body);
+    expect(retry).toEqual({ authorId: mine, moved: { entries: 3, collections: 1, links: 1 }, refused: [] });
   });
 
   it("needs a signed-in session, and a well-formed body", async () => {
@@ -425,38 +488,32 @@ describe("#2321 shares that follow the account", () => {
     expect(res2.status).toBe(201);
     const anonMade = (await res2.json()) as { id: string; onAccount: boolean };
     expect(anonMade.onAccount).toBe(false);
-    const recorded = await readdir(path.join(dir, "gallery/account-links"), { recursive: true });
-    expect(recorded.some((f) => String(f).includes(anonMade.id))).toBe(false);
-    // Control: the signed-in one IS on disk, so the scan reads the right place.
-    expect(recorded.some((f) => String(f).includes(made.id))).toBe(true);
+    const recorded = (await storedLinks()).map((r) => r.share_id);
+    expect(recorded).not.toContain(anonMade.id);
+    // Control: the signed-in one IS stored, so the scan reads the right place.
+    expect(recorded).toContain(made.id);
   });
 });
 
 describe("#2329 a private link's key never reaches the account", () => {
-  /** Every file under the dev store's account-link area, with its contents. */
-  async function accountLinkFiles(): Promise<Array<[string, string]>> {
-    const root = path.join(dir, "gallery/account-links");
-    const names = (await readdir(root, { recursive: true }).catch(() => [] as string[])).map(String);
-    const out: Array<[string, string]> = [];
-    for (const name of names) {
-      const text = await readFile(path.join(root, name), "utf8").catch(() => null); // null: a folder
-      if (text !== null) out.push([name, text]);
-    }
-    return out;
+  /** #2352 — every stored account-link row (every account), every column. */
+  async function accountLinkRows(): Promise<Array<Record<string, unknown>>> {
+    return storedLinks();
   }
 
-  /** No stored account-link file holds either key or a `#`, and each holds only id, name and date. */
+  /** No stored account-link row holds either key or a `#`, and each holds only account, id, name and date. */
   async function scanStore(when: string, keys: string[]): Promise<number> {
-    const files = await accountLinkFiles();
-    for (const [name, text] of files) {
-      for (const key of keys) expect(text, `${when}: ${name}`).not.toContain(key);
-      expect(text, `${when}: ${name}`).not.toContain("#");
-      expect(Object.keys(JSON.parse(text)).sort(), `${when}: ${name}`).toEqual(["createdAt", "id", "projectName"]);
+    const rows = await accountLinkRows();
+    for (const row of rows) {
+      const text = JSON.stringify(row);
+      for (const key of keys) expect(text, `${when}: ${text}`).not.toContain(key);
+      expect(text, `${when}: ${text}`).not.toContain("#");
+      expect(Object.keys(row).sort(), `${when}: ${text}`).toEqual(["account_id", "created_at", "project_name", "share_id"]);
     }
-    return files.length;
+    return rows.length;
   }
 
-  it("is in no stored account-link file and no response, after a signed-in link, a claim and My shares", async () => {
+  it("is in no stored account-link row and no response, after a signed-in link, a claim and My shares", async () => {
     const user = freshId();
     await openAppAs(user);
     const bodies: Array<[string, string]> = [];
@@ -479,7 +536,7 @@ describe("#2329 a private link's key never reaches the account", () => {
       ),
     );
     const madeId = ((await madeRes.json()) as { id: string }).id;
-    // Scanned as written, before anything reads the list (a read tidies old records).
+    // Scanned as written, before anything reads the list.
     expect(await scanStore("after the signed-in link", [made.key])).toBeGreaterThanOrEqual(1);
 
     // 2. A claim from an older browser that still sends each link's full url.
@@ -491,21 +548,22 @@ describe("#2329 a private link's key never reaches the account", () => {
     // 3. My shares.
     await keep("my shares", await myShares(user));
 
-    const files = await accountLinkFiles();
-    const mine = files.filter(([name]) => name.includes(madeId) || name.includes(old.id));
+    const rows = await accountLinkRows();
+    const mine = rows.filter((r) => r.share_id === madeId || r.share_id === old.id);
     // Controls: both links are on the account, and the scan reads real records.
     expect(mine).toHaveLength(2);
-    expect(mine.map(([, text]) => JSON.parse(text))).toEqual(
+    const accountHash = accountHashOf("test-login", user);
+    expect(mine).toEqual(
       expect.arrayContaining([
-        { id: madeId, projectName: "Made signed in", createdAt: expect.any(Number) },
-        { id: old.id, projectName: "Claimed song", createdAt: old.createdAt },
+        { account_id: accountHash, share_id: madeId, project_name: "Made signed in", created_at: expect.any(Number) },
+        { account_id: accountHash, share_id: old.id, project_name: "Claimed song", created_at: old.createdAt },
       ]),
     );
     expect(oldKey).toMatch(/^[A-Za-z0-9_-]{22}$/);
     expect(made.key).toMatch(/^[A-Za-z0-9_-]{22}$/);
     expect(bodies.find(([l]) => l === "my shares")![1]).toContain(madeId);
 
-    // The scan: EVERY stored account-link file (all accounts in this store), then every response.
+    // The scan: EVERY stored account-link row (all accounts in this database), then every response.
     expect(await scanStore("after My shares", [made.key, oldKey])).toBeGreaterThanOrEqual(2);
     for (const [label, body] of bodies) {
       expect(body, label).not.toContain(made.key);
@@ -514,37 +572,21 @@ describe("#2329 a private link's key never reaches the account", () => {
     }
   });
 
-  it("strips the full link from an account record written before #2329, once, as it is read", async () => {
-    const user = freshId();
-    await openAppAs(user);
-    const link = await anonymousLink("Old record song");
-    const store = galleryStore()!;
-    const { accountHashOf } = await import("../app/api/gallery/session");
-    const accountHash = accountHashOf("test-login", user);
-    const where = galleryPaths.accountLink(accountHash, link.id);
-    // What #2321 wrote: the whole link, key included (and a stray key field for good measure).
-    await putJson(store, where, { id: link.id, url: link.url, key: link.url.split("#")[1], projectName: "Old record song", createdAt: 7 });
-    const onDisk = () => readFile(path.join(dir, where), "utf8");
-    expect(await onDisk()).toContain("#"); // control: the old record really holds the link
-
-    const res = await myShares(user);
-    const text = await res.text();
-    expect(JSON.parse(text).links).toEqual([{ id: link.id, projectName: "Old record song", createdAt: 7 }]);
-    expect(text).not.toContain(link.url.split("#")[1]);
-    // Rewritten on disk without it.
-    expect(JSON.parse(await onDisk())).toEqual({ id: link.id, projectName: "Old record song", createdAt: 7 });
-
-    // Once: a second read leaves the clean record alone (same bytes, same mtime).
-    const { stat } = await import("node:fs/promises");
-    const before = (await stat(path.join(dir, where))).mtimeMs;
-    await new Promise((r) => setTimeout(r, 20));
-    expect((await mySharesOk(user)).links).toHaveLength(1);
-    expect((await stat(path.join(dir, where))).mtimeMs).toBe(before);
+  it("has nowhere to keep one: the table's columns are the account, the id, the name and the date", async () => {
+    // #2352 — the Blob records could hold extra fields (an old browser's full
+    // link), so they were rewritten as they were read. A table row can't: these
+    // are all the columns there are.
+    const cols = rowsOf<{ column_name: string }>(
+      await (await db()).execute(
+        sql`select column_name from information_schema.columns where table_name = 'account_links' order by column_name`,
+      ),
+    ).map((c) => c.column_name);
+    expect(cols).toEqual(["account_id", "created_at", "project_name", "share_id"]);
   });
 });
 
 describe("the email stays on the server (#2320 / #2321 routes)", () => {
-  it("appears in no response from the claim, My shares, a moved profile or a link", async () => {
+  it("appears in no response from the claim, My shares, profiles, collections, the session or a link", async () => {
     const old = await legacyAuthor(1, true);
     const link = await anonymousLink();
     const user = freshId();
@@ -559,6 +601,28 @@ describe("the email stays on the server (#2320 / #2321 routes)", () => {
     await keep("my shares", await myShares(user));
     await keep("moved profile", await getAuthor(old.authorId));
     await keep("new profile", await getAuthor(mine));
+    signIn(null);
+    await keep(
+      "moved profile PUT 409",
+      await authorPutRoute(
+        json("PUT", `http://x/api/gallery/authors/${old.authorId}`, { name: "x", bio: "" }, { [AUTHOR_KEY_HEADER]: old.key }),
+        authorCtx(old.authorId),
+      ),
+    );
+    signIn(user);
+    await keep(
+      "new profile PUT",
+      await authorPutRoute(json("PUT", `http://x/api/gallery/authors/${mine}`, { name: "Ada", bio: "hi" }), authorCtx(mine)),
+    );
+    signIn(user);
+    await keep(
+      "collection POST",
+      await collectionPostRoute(json("POST", "http://x/api/gallery/collections", { title: "Mine", description: "", entryIds: [old.entries[0].id] })),
+    );
+    const cid = (JSON.parse(bodies[bodies.length - 1][1]) as { collection: GalleryCollection }).collection.id;
+    await keep("collection GET", await collectionGetRoute(new Request(`http://x/api/gallery/collections/${cid}`), idCtx(cid)));
+    signIn(user);
+    await keep("me", await meRoute(new Request("http://x/api/gallery/me")));
     signIn(user);
     const { sealed, key } = await sealShare(new TextEncoder().encode("x"));
     await keep(
@@ -569,8 +633,14 @@ describe("the email stays on the server (#2320 / #2321 routes)", () => {
     await keep("share DELETE by session", await revoke(link.id));
 
     const byLabel = Object.fromEntries(bodies);
-    // Controls: the routes answered with real data.
+    // Controls: the email IS stored (on the account's author, and on the moved
+    // entry's private side), and the routes answered with real data.
+    expect((await storedAuthor(await db(), mine))?.email).toBe(EMAIL);
+    expect((await getEntryRecord(await db(), old.entries[0].id))?.authorEmail).toBe(EMAIL);
     expect(byLabel["claim"]).toContain(mine);
+    expect(byLabel["collection GET"]).toContain(old.entries[0].id);
+    expect(byLabel["me"]).toContain(mine);
+    expect(byLabel["new profile PUT"]).toContain("hi");
     expect(byLabel["my shares"]).toContain(old.entries[0].id);
     expect(byLabel["moved profile"]).toContain(mine);
     expect(byLabel["share POST signed in"]).toContain("onAccount");
@@ -581,10 +651,9 @@ describe("the email stays on the server (#2320 / #2321 routes)", () => {
   });
 });
 
-describe("a store-less production build", () => {
+describe("a production build with no database", () => {
   it("answers 503 on the claim and My shares", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("STAVE_SHARE_DEV_STORE", "");
+    useDbForTests(null);
     expect((await claim(freshId(), { entries: [], links: [] })).status).toBe(503);
     expect((await myShares(freshId())).status).toBe(503);
   });

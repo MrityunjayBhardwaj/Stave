@@ -177,3 +177,47 @@ describe("the account menu", () => {
     expect(on.onMyProfile).toHaveBeenCalledWith("auth1");
   });
 });
+
+// #2352 — the browser specs' seed route (it makes a pre-sign-in profile in the
+// dev database) lives by the same rule as the test sign-in.
+describe("the test-only seed route", () => {
+  const seed = async (env: Record<string, string>) => {
+    for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v);
+    vi.resetModules();
+    const route = await import("../app/api/test-seed/route");
+    const post = await route.POST(new Request("http://x/api/test-seed", { method: "POST", body: "{}" }));
+    const get = await route.GET();
+    return [post.status, get.status];
+  };
+
+  it("is refused (404) in a production build, even with the flag set", async () => {
+    expect(await seed({ NODE_ENV: "production", STAVE_AUTH_TEST_LOGIN: "1", STAVE_SHARE_DEV_STORE: "1" })).toEqual([404, 404]);
+  });
+
+  it("is refused (404) without the flag", async () => {
+    expect(await seed({ NODE_ENV: "development", STAVE_AUTH_TEST_LOGIN: "" })).toEqual([404, 404]);
+  });
+
+  it("refuses another site's page with 403, like every write route", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("STAVE_AUTH_TEST_LOGIN", "1");
+    vi.resetModules();
+    const route = await import("../app/api/test-seed/route");
+    const res = await route.POST(
+      new Request("http://x/api/test-seed", { method: "POST", body: "{}", headers: { origin: "https://evil.example" } }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("makes the profile, entry and collection in development with the flag (control)", async () => {
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = await mkdtemp(path.join(os.tmpdir(), "stave-test-seed-"));
+    try {
+      expect(await seed({ NODE_ENV: "development", STAVE_AUTH_TEST_LOGIN: "1", BLOB_READ_WRITE_TOKEN: "", BLOB_STORE_ID: "", STAVE_GALLERY_DEV_DIR: dir })).toEqual([201, 200]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+});

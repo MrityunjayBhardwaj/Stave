@@ -19,6 +19,8 @@ import { POST as publishRoute } from "../app/api/gallery/route";
 import { GET as meRoute } from "../app/api/gallery/me/route";
 import { GET as mySharesRoute } from "../app/api/gallery/me/shares/route";
 import { POST as collectionPost } from "../app/api/gallery/collections/route";
+import { POST as sharePost } from "../app/api/share/route";
+import { sealShare } from "../shareCrypto";
 import { accountHashOf } from "../app/api/gallery/session";
 import { galleryPaths, galleryStore } from "../app/api/gallery/store";
 import { dbOverPglite, getDb, useDbForTests, type Db } from "../db/client";
@@ -48,6 +50,7 @@ beforeEach(() => {
   vi.stubEnv("TURNSTILE_SECRET_KEY", "");
   vi.stubEnv("STAVE_RATE_LIMIT_PUBLISH", "1000");
   vi.stubEnv("STAVE_RATE_LIMIT_EDIT", "1000");
+  vi.stubEnv("STAVE_RATE_LIMIT_LINK", "1000");
 });
 afterEach(() => useDbForTests(undefined));
 
@@ -72,6 +75,11 @@ const me = () => meRoute(new Request("http://x/api/gallery/me"));
 const publish = () => publishRoute(json("POST", "http://x/api/gallery", { title: "T", kind: "music", tags: [], manifest }));
 const collection = () => collectionPost(json("POST", "http://x/api/gallery/collections", { title: "C", description: "", entryIds: [] }));
 const shares = () => mySharesRoute(new Request("http://x/api/gallery/me/shares"));
+/** A private short link made signed in: it is recorded on the account, which may not exist yet. */
+const link = async () => {
+  const { sealed } = await sealShare(new TextEncoder().encode("song"));
+  return sharePost(new Request("http://x/api/share", { method: "POST", body: sealed as BodyInit }));
+};
 
 async function authorsOf(accountId: string): Promise<string[]> {
   const db = (await getDb())!;
@@ -101,24 +109,32 @@ describe("#2349 a new account's first requests, all at once", () => {
       await db.execute(sql`select count(*)::int as n from authors where email = 'ada@example.test' and id = ${[...authorIds][0]!}`),
     );
     expect(authors).toBe(1);
-    // Phase 1 mirror: the profile the Blob-reading routes need is there.
-    expect(await galleryStore()!.get(galleryPaths.author([...authorIds][0]!))).not.toBeNull();
+    // #2352 — the profile lives only in the database: no Blob copy is written any more.
+    expect(await galleryStore()!.get(galleryPaths.author([...authorIds][0]!))).toBeNull();
+    expect(await galleryStore()!.get(galleryPaths.authorPrivate([...authorIds][0]!))).toBeNull();
   });
 
-  it("30 parallel first requests of mixed kinds (me, publish, collection, My shares): no errors, one profile", async () => {
+  it("30 parallel first requests of mixed kinds (me, collection, My shares, a signed-in link): no errors, one profile", async () => {
+    // #2352 — POST /api/gallery is left out of this mix until it reads the
+    // profile from the database too (it still reads the Blob copy, which is gone).
     const id = fresh();
     signIn(id);
-    const calls = [me, publish, collection, shares];
+    const calls = [me, collection, shares, link];
     const answers = await Promise.all(Array.from({ length: 30 }, (_, i) => calls[i % calls.length]()));
     const counts = await statusCounts(answers);
     expect(Object.keys(counts).filter((s) => Number(s) >= 500)).toEqual([]);
-    expect(counts).toEqual({ 200: 8 + 7, 201: 8 + 7 });
+    expect(counts).toEqual({ 200: 8 + 7, 201: 8 + 7 }); // me + My shares; collections + links
     expect((await authorsOf(id)).length).toBe(1);
     const authorId = (await authorsOf(id))[0];
-    const publishedTo = new Set(
-      (await Promise.all(answers.filter((_, i) => i % 4 === 1).map((r) => r.json()))).map((b) => (b as { authorId: string }).authorId),
+    const collectedBy = new Set(
+      (await Promise.all(answers.filter((_, i) => i % 4 === 1).map((r) => r.json()))).map(
+        (b) => (b as { collection: { authorId: string } }).collection.authorId,
+      ),
     );
-    expect([...publishedTo]).toEqual([authorId]);
+    expect([...collectedBy]).toEqual([authorId]);
+    // Every signed-in link landed on the one account.
+    const linked = await Promise.all(answers.filter((_, i) => i % 4 === 3).map((r) => r.json()));
+    expect(linked.every((b) => (b as { onAccount: boolean }).onAccount)).toBe(true);
   });
 });
 

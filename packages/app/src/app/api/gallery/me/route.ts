@@ -1,8 +1,9 @@
 import { offeredProviders, signInAvailable } from "../../../../authProviders";
-import type { GalleryAuthorProfile, GallerySessionResponse } from "../../../../gallery/types";
+import type { GallerySessionResponse } from "../../../../gallery/types";
+import { getDb } from "../../../../db/client";
+import { getAuthor } from "../../../../db/repo/accounts";
 import { adminIdOf, isAdmin } from "../admin";
 import { sessionAuthor, sessionClaim } from "../session";
-import { galleryPaths, galleryStore, getJson } from "../store";
 import { withDatabase } from "../../../../db/errors";
 
 // #2319 — who the gallery thinks you are: what sign-in offers here, and, when
@@ -28,11 +29,11 @@ async function handleGET(req: Request): Promise<Response> {
     user: null,
     isAdmin: false,
   };
-  const store = galleryStore();
-  if (available && store) {
-    const mine = await sessionAuthor(req, { store });
+  const db = available ? await getDb() : null;
+  if (db) {
+    const mine = await sessionAuthor(req);
     if (mine) {
-      const profile = await getJson<GalleryAuthorProfile>(store, galleryPaths.author(mine.authorId));
+      const profile = await getAuthor(db, mine.authorId);
       body.user = { name: profile?.name ?? "", authorId: mine.authorId, verified: mine.account.verified };
       // #2331 — the id STAVE_GALLERY_ADMINS lists, so a person can find their own; and whether they are one.
       body.user.accountId = await myAdminId();

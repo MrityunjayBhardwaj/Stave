@@ -1,8 +1,14 @@
 // @vitest-environment node
-// #2314 / #2315 — authors (profiles) and collections against the dev folder
-// store: authors made on publish, the profile page, editing it, collections of
+// #2314 / #2315 — authors (profiles) and collections: authors made on an
+// account's first gallery use, the profile page, editing it, collections of
 // your own entries, takedowns leaving every page, and the rule that the email
 // never leaves the server.
+//
+// #2352 — profiles, entries and collections are in Postgres (PGlite here).
+// Entries are written and taken down through the repository, the way
+// POST /api/gallery and DELETE /api/gallery/[id] write them once they are on the
+// database, so these tests cover the profile and collection routes on their
+// own; the publish and entry routes have their own tests (galleryRoutes).
 //
 // #2319 — who is asking comes from the signed-in session. Auth.js's `auth()` is
 // mocked at module level (src/auth.ts), so each test says who is signed in. A
@@ -33,8 +39,6 @@ import {
   type GalleryManifest,
   type PublishResponse,
 } from "../gallery/types";
-import { GET as listRoute, POST as publishRoute } from "../app/api/gallery/route";
-import { DELETE as deleteEntryRoute, GET as entryRoute } from "../app/api/gallery/[id]/route";
 import { GET as authorGetRoute, PUT as authorPutRoute } from "../app/api/gallery/authors/[authorId]/route";
 import { POST as collectionPostRoute } from "../app/api/gallery/collections/route";
 import {
@@ -45,14 +49,17 @@ import {
 import { GET as meRoute } from "../app/api/gallery/me/route";
 import { createAuthor } from "../app/api/gallery/authors";
 import { hashToken, newManageToken } from "../app/api/gallery/auth";
-import { galleryPaths, galleryStore, getJson, putJson } from "../app/api/gallery/store";
+import { galleryPaths, galleryStore, putJson } from "../app/api/gallery/store";
 import { accountForAuthor, accountHashOf, readAccount } from "../app/api/gallery/session";
 import type { GalleryEntry, GallerySessionResponse } from "../gallery/types";
-import { getDb } from "../db/client";
+import { getDb, useDbForTests, type Db } from "../db/client";
+import { authorKeyHash, getAuthor as storedAuthor } from "../db/repo/accounts";
+import { getEntryRecord, insertEntry, removeEntry } from "../db/repo/entries";
 
 // #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
 // file. Starting it takes a few seconds, once; do it here, not inside the first test.
 beforeAll(() => getDb(), 60_000);
+const db = async (): Promise<Db> => (await getDb())!;
 
 // #2331 — the admin is a signed-in account listed in STAVE_GALLERY_ADMINS; the old
 // shared key stays set on the server to prove its header opens nothing.
@@ -79,6 +86,7 @@ beforeEach(() => {
   vi.stubEnv("AUTH_SECRET", "test-secret");
   vi.stubEnv("STAVE_AUTH_TEST_LOGIN", "1");
   fake.session = null;
+  useDbForTests(undefined);
 });
 
 /** Sign in as the account `id` (null signs out). Its email is EMAIL unless given. */
@@ -126,39 +134,58 @@ const json = (method: string, url: string, body: unknown, headers: Record<string
     body: JSON.stringify(body),
   });
 
-/** Publish as `who` (a fresh account when none is named). `who` comes back for later calls. */
-async function publish(who?: string, over: Record<string, unknown> = {}): Promise<PublishResponse & { who: string }> {
+let entrySeq = 0;
+const newEntryId = () => `E${String(++entrySeq).padStart(4, "0")}${Date.now().toString(36)}`.slice(0, 11).padEnd(11, "x");
+
+/**
+ * An entry by `authorId`, written as publishing writes it: the manifest in Blob,
+ * the record in the database (repo insertEntry), with a manage token.
+ */
+async function seedEntry(authorId: string | undefined, title: string, authorName: string) {
+  const id = newEntryId();
+  const manageToken = newManageToken();
+  await putJson(galleryStore()!, galleryPaths.manifest(id), manifest);
+  const entry: GalleryEntry = {
+    id, title, kind: "music", tags: [], authorName, ...(authorId ? { authorId } : {}),
+    publishedAt: Date.now() + entrySeq, fileCount: 1, hasThumbnail: false,
+  };
+  expect(await insertEntry(await db(), { entry, authorEmail: EMAIL, manageTokenHash: hashToken(manageToken) })).toBe(true);
+  return { id, manageToken };
+}
+
+/** The account's author, made on its first gallery use (GET /api/gallery/me). */
+async function openAppAs(who: string): Promise<string> {
+  as(who);
+  const me = (await (await meRoute(new Request("http://x/api/gallery/me"))).json()) as GallerySessionResponse;
+  return me.user!.authorId;
+}
+
+/**
+ * Publish as `who` (a fresh account when none is named): the account's author,
+ * then an entry on it under the profile's name. `who` comes back for later calls.
+ */
+async function publish(who?: string, over: { title?: string } = {}): Promise<PublishResponse & { who: string }> {
   const user = who ?? freshUser();
-  const headers = as(user);
-  const res = await publishRoute(
-    json("POST", "http://x/api/gallery", { title: "Track", kind: "music", tags: [], manifest, ...over }, headers),
-  );
-  expect(res.status).toBe(201);
-  return { ...((await res.json()) as PublishResponse), who: user };
+  const authorId = await openAppAs(user);
+  const name = (await storedAuthor(await db(), authorId))!.name;
+  const made = await seedEntry(authorId, over.title ?? "Track", name);
+  return { ...made, authorId, who: user };
+}
+
+/** Take an entry down, the way DELETE /api/gallery/[id] does (repo removeEntry). */
+async function takeDown(id: string, by: "author" | "admin" = "author") {
+  expect(await removeEntry(await db(), id, by)).toBe(true);
 }
 
 /**
  * #2319 — an author and entries the way publishing worked BEFORE sign-in: a
- * key-held author, entries with manage tokens. Written straight to the store,
- * since the publish route no longer makes them.
+ * key-held author, entries with manage tokens. Written straight to the
+ * database, since the publish route no longer makes them.
  */
 async function legacyAuthor(n: number) {
-  const store = galleryStore()!;
-  const made = (await createAuthor(store, "Old Ada", EMAIL))!;
+  const made = (await createAuthor(await db(), "Old Ada", EMAIL))!;
   const entries: Array<{ id: string; manageToken: string }> = [];
-  for (let i = 0; i < n; i++) {
-    const id = `L${String(users++).padStart(4, "0")}${Date.now().toString(36).slice(-6)}`.slice(0, 11).padEnd(11, "x");
-    const manageToken = newManageToken();
-    await putJson(store, galleryPaths.privateRecord(id), { authorEmail: EMAIL, manageTokenHash: hashToken(manageToken) });
-    await putJson(store, galleryPaths.manifest(id), manifest);
-    await putJson(store, galleryPaths.authorEntry(made.authorId, id), {});
-    const entry: GalleryEntry = {
-      id, title: `Old ${i}`, kind: "music", tags: [], authorName: "Old Ada", authorId: made.authorId,
-      publishedAt: Date.now(), fileCount: 1, hasThumbnail: false,
-    };
-    await putJson(store, galleryPaths.entry(id), entry);
-    entries.push({ id, manageToken });
-  }
+  for (let i = 0; i < n; i++) entries.push(await seedEntry(made.authorId, `Old ${i}`, "Old Ada"));
   return { key: made.authorKey, authorId: made.authorId, entries };
 }
 
@@ -192,12 +219,6 @@ const deleteCollection = (id: string, who?: string, headers: Record<string, stri
     }),
     idCtx(id),
   );
-const deleteEntry = (id: string, headers: Record<string, string>, who?: string, body?: unknown) =>
-  deleteEntryRoute(
-    new Request(`http://x/api/gallery/${id}`, { method: "DELETE", headers: { ...as(who), ...headers }, ...withBody(body) }),
-    idCtx(id),
-  );
-
 async function made(body: unknown, key: string): Promise<GalleryCollection> {
   const res = await postCollection(body, key);
   expect(res.status).toBe(201);
@@ -217,8 +238,8 @@ async function authorWith(n: number) {
   return { key, authorId: first.authorId, entries: [first, ...rest] };
 }
 
-describe("authors on publish", () => {
-  it("makes the account's author on its first publish, with the badge and no key", async () => {
+describe("authors made on an account's first gallery use", () => {
+  it("makes the account's author, with the badge and no key, only in the database", async () => {
     const res = await publish();
     expect(res.authorId).toMatch(GALLERY_ID_PATTERN);
     expect(res).not.toHaveProperty("authorKey");
@@ -231,10 +252,11 @@ describe("authors on publish", () => {
       updatedAt: expect.any(Number),
       verified: { provider: "github", login: res.who.slice(5) },
     });
-    const entry = (await (await entryRoute(new Request("http://x"), idCtx(res.id))).json()) as {
-      entry: { authorId: string };
-    };
-    expect(entry.entry.authorId).toBe(res.authorId);
+    expect((await getEntryRecord(await db(), res.id))?.entry.authorId).toBe(res.authorId);
+    expect(await authorKeyHash(await db(), res.authorId)).toBeNull();
+    // #2352 — no Blob copy of the profile any more (phase 1 wrote one).
+    expect(await galleryStore()!.get(galleryPaths.author(res.authorId))).toBeNull();
+    expect(await galleryStore()!.get(galleryPaths.authorPrivate(res.authorId))).toBeNull();
   });
 
   it("lands every publish from one account on the same author", async () => {
@@ -251,15 +273,18 @@ describe("authors on publish", () => {
     expect(b.authorId).not.toBe(a.authorId);
   });
 
-  it("ignores an author key sent with the publish: the session decides", async () => {
+  it("ignores an author key sent by a signed-in account: the session decides", async () => {
     const old = await legacyAuthor(0);
     const user = freshUser();
+    const mine = await openAppAs(user);
     as(user);
-    const res = await publishRoute(
-      json("POST", "http://x/api/gallery", { title: "T", kind: "music", tags: [], manifest }, { [AUTHOR_KEY_HEADER]: old.key }),
+    const res = await collectionPostRoute(
+      json("POST", "http://x/api/gallery/collections", { title: "T", description: "", entryIds: [] }, { [AUTHOR_KEY_HEADER]: old.key }),
     );
     expect(res.status).toBe(201);
-    expect(((await res.json()) as PublishResponse).authorId).not.toBe(old.authorId);
+    const { collection } = (await res.json()) as { collection: GalleryCollection };
+    expect(collection.authorId).toBe(mine);
+    expect(collection.authorId).not.toBe(old.authorId);
   });
 });
 
@@ -267,14 +292,12 @@ describe("#2319 the account behind an author", () => {
   it("is readable by account and by author, holds the account email, and refreshes the badge", async () => {
     const res = await publish();
     const id = res.who.slice(5);
-    const store = galleryStore()!;
     const byAccount = await readAccount(accountHashOf("test-login", id));
     const byAuthor = await accountForAuthor(res.authorId);
     expect(byAccount).toEqual(byAuthor);
     expect(byAccount).toMatchObject({ authorId: res.authorId, email: EMAIL, provider: "test-login" });
-    // The entry's private record keeps the account email, whatever the body said.
-    const record = await getJson<{ authorEmail: string }>(store, galleryPaths.privateRecord(res.id));
-    expect(record?.authorEmail).toBe(EMAIL);
+    // The author's private email is the account's.
+    expect((await storedAuthor(await db(), res.authorId))?.email).toBe(EMAIL);
 
     // The GitHub login changed since: the next gallery use follows it.
     signIn(id, { login: "renamed", avatarUrl: "https://avatars.githubusercontent.com/u/1?v=4" });
@@ -319,7 +342,7 @@ describe("#2319 the account behind an author", () => {
 });
 
 describe("#2319 a key from before sign-in still works for what it made", () => {
-  it("edits the profile, makes and changes collections, and deletes entries", async () => {
+  it("edits the profile, and makes, changes and deletes collections", async () => {
     const old = await legacyAuthor(2);
     const edit = { name: "Old Ada", bio: "still here" };
     expect((await putAuthor(old.authorId, edit, old.key)).status).toBe(200);
@@ -334,16 +357,15 @@ describe("#2319 a key from before sign-in still works for what it made", () => {
     expect((await putAuthor(old.authorId, edit, stranger)).status).toBe(403);
     expect((await putCollection(c.id, { title: "x", description: "", entryIds: [] }, stranger)).status).toBe(403);
     expect((await deleteCollection(c.id, stranger)).status).toBe(403);
-    expect((await deleteEntry(old.entries[0].id, {}, stranger)).status).toBe(403);
 
     expect((await deleteCollection(c.id, old.key)).status).toBe(204);
-    expect((await deleteEntry(old.entries[0].id, { [MANAGE_TOKEN_HEADER]: old.entries[0].manageToken })).status).toBe(204);
+    await takeDown(old.entries[0].id);
     expect((await authorPage(old.authorId)).entries.map((e) => e.id)).toEqual([old.entries[1].id]);
   });
 });
 
 describe("#2319 a second account can't touch the first one's things", () => {
-  it("gets 403 on the profile, its collections, and its entries", async () => {
+  it("gets 403 on the profile and its collections, and can't collect its entries", async () => {
     const mine = await authorWith(2);
     const c = await made({ title: "Mine", description: "", entryIds: [mine.entries[0].id] }, mine.key);
     const other = (await publish()).who;
@@ -352,15 +374,11 @@ describe("#2319 a second account can't touch the first one's things", () => {
     expect((await putAuthor(mine.authorId, { name: "Mallory", bio: "" }, other)).status).toBe(403);
     expect((await putCollection(c.id, body, other)).status).toBe(403);
     expect((await deleteCollection(c.id, other)).status).toBe(403);
-    expect((await deleteEntry(mine.entries[1].id, {}, other)).status).toBe(403);
     // ...and adding my entry to their own collection is refused too.
     expect((await postCollection({ title: "x", description: "", entryIds: [mine.entries[0].id] }, other)).status).toBe(400);
 
     expect((await authorPage(mine.authorId)).author.name).toBe("Ada");
     expect((await (await getCollection(c.id)).json() as CollectionPageResponse).collection.title).toBe("Mine");
-
-    // The owner, signed in, deletes their own entry with no token at all.
-    expect((await deleteEntry(mine.entries[1].id, {}, mine.key)).status).toBe(204);
   });
 });
 
@@ -372,8 +390,7 @@ describe("the author page", () => {
     expect(page.entries.map((e) => e.id)).toEqual([entries[2].id, entries[1].id, entries[0].id]);
     expect(page.entries.map((e) => e.id)).not.toContain(other.id);
 
-    const res = await deleteEntry(entries[1].id, { [MANAGE_TOKEN_HEADER]: entries[1].manageToken });
-    expect(res.status).toBe(204);
+    await takeDown(entries[1].id);
     page = await authorPage(authorId);
     expect(page.entries.map((e) => e.id)).toEqual([entries[2].id, entries[0].id]);
   });
@@ -444,7 +461,7 @@ describe("collections", () => {
     const after = await authorPage(authorId);
     expect(after.collections).toEqual([]);
     expect(after.entries.map((e) => e.id).sort()).toEqual([e0, e1, e2].sort());
-    for (const id of [e0, e1, e2]) expect((await entryRoute(new Request("http://x"), idCtx(id))).status).toBe(200);
+    for (const id of [e0, e1, e2]) expect((await getEntryRecord(await db(), id))?.removed).toBeNull();
   });
 
   it("lists an author's collections newest first", async () => {
@@ -467,7 +484,7 @@ describe("collections", () => {
     expect(((await res.json()) as { error: string }).error).toContain("AAAAAAAAAAA");
 
     const gone = await publish(mine.key);
-    await deleteEntry(gone.id, { [MANAGE_TOKEN_HEADER]: gone.manageToken });
+    await takeDown(gone.id);
     res = await postCollection({ title: "T", description: "", entryIds: [gone.id] }, mine.key);
     expect(res.status).toBe(400);
 
@@ -510,7 +527,7 @@ describe("collections", () => {
     const [e0, e1, e2] = entries;
     const c = await made({ title: "Album", description: "", entryIds: [e0.id, e1.id, e2.id] }, key);
 
-    expect((await deleteEntry(e1.id, {}, ADMIN, { reason: "taken down in a test" })).status).toBe(204);
+    await takeDown(e1.id, "admin");
 
     const page = (await (await getCollection(c.id)).json()) as CollectionPageResponse;
     expect(page.collection.entryIds).toEqual([e0.id, e2.id]);
@@ -552,12 +569,15 @@ describe("the email stays on the server", () => {
     await keep("collection PUT 400", await putCollection(cid, { title: "", description: "", entryIds: [] }, key));
     await keep("collection 403", await postCollection({ title: "T", description: "", entryIds: [] }));
     await keep("author GET again", await getAuthor(authorId));
-    await keep("list", await listRoute());
     as(key); // signed in as the author, so "me" answers with them
     await keep("me", await meRoute(new Request("http://x/api/gallery/me")));
     await keep("collection DELETE", await deleteCollection(cid, key));
 
-    // Controls: the routes really answered with the data, so an empty body can't pass.
+    // Controls: the email IS stored (#2352: on the author row and each entry's
+    // private side), and the routes really answered with the data, so an empty
+    // body can't pass.
+    expect((await storedAuthor(await db(), authorId))?.email).toBe(EMAIL);
+    expect((await getEntryRecord(await db(), entries[0].id))?.authorEmail).toBe(EMAIL);
     const byLabel = Object.fromEntries(bodies);
     expect(byLabel["me"]).toContain(authorId);
     expect(byLabel["author GET"]).toContain(authorId);
@@ -571,10 +591,11 @@ describe("the email stays on the server", () => {
   });
 });
 
-describe("a production build with no store", () => {
-  it("answers 503 on every new route", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("STAVE_SHARE_DEV_STORE", "");
+describe("a production build with no database", () => {
+  it("answers 503 on every author and collection route", async () => {
+    // #2352 — these routes read only the database now; a production build with
+    // none configured is what getDb() answers null for.
+    useDbForTests(null);
     const id = "AAAAAAAAAAA";
     const body = { title: "T", description: "", entryIds: [] };
     expect((await getAuthor(id)).status).toBe(503);

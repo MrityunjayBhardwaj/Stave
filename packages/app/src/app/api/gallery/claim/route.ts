@@ -2,22 +2,22 @@ import { shareStore } from "../../share/store";
 import { checkClaim, claimCost, MAX_CLAIM_BODY_BYTES, runClaim } from "../claim";
 import { limitAccount } from "../rateLimit";
 import { requireSessionAuthor } from "../session";
-import { galleryStore } from "../store";
 import { readJsonBody } from "../validate";
 import { assertSameOrigin } from "../origin";
+import { getDb } from "../../../../db/client";
 import { withDatabase } from "../../../../db/errors";
 
 // #2320 — bring what this browser published before sign-in into the account.
-// The rules and the write order are in ../claim.ts. Signed in only; the
-// response says what moved and, in plain words, what didn't and why. It never
-// carries the email.
+// The rules, and the one transaction every move happens in, are in
+// ../claim.ts. Signed in only; the response says what moved and, in plain
+// words, what didn't and why. It never carries the email.
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
 async function handlePOST(req: Request): Promise<Response> {
   const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
-  const store = galleryStore();
-  if (!store) return Response.json({ error: "the gallery is not set up here" }, { status: 503 });
+  const db = await getDb();
+  if (!db) return Response.json({ error: "the gallery is not set up here" }, { status: 503 });
 
   const who = await requireSessionAuthor(req, { signedOut: "sign in to bring your shares into your account" });
   if (who instanceof Response) return who;
@@ -32,7 +32,7 @@ async function handlePOST(req: Request): Promise<Response> {
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });
   if (!checked || !checked.ok) return Response.json({ error: checked?.error ?? "bad claim" }, { status: checked?.status ?? 400 });
 
-  const result = await runClaim(store, shareStore(), who, checked.value);
+  const result = await runClaim(db, shareStore(), who, checked.value);
   return Response.json(result, { headers: NO_STORE });
 }
 

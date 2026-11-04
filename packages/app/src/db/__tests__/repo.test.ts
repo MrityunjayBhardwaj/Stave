@@ -133,14 +133,6 @@ describe("accounts and authors", () => {
     expect(await repo.authorKeyHash(db, await author())).toBeNull(); // an account's author has no key
   });
 
-  it("importAuthorIfMissing brings a Blob-only author in once, unchanged", async () => {
-    const a = { authorId: "blobAuthor1", name: "Old", bio: "hi", createdAt: 5, updatedAt: 6, email: "e@x", keyHash: "kb" };
-    await repo.importAuthorIfMissing(db, a);
-    await repo.importAuthorIfMissing(db, { ...a, name: "Changed" });
-    expect(await repo.getAuthor(db, "blobAuthor1")).toEqual({ authorId: "blobAuthor1", name: "Old", bio: "hi", createdAt: 5, updatedAt: 6, email: "e@x" });
-    expect(await repo.authorIdForKeyHash(db, "kb")).toBe("blobAuthor1");
-  });
-
   it("updateAuthorProfile changes name and bio, and refuses a merged profile", async () => {
     const id = await author();
     const updated = await repo.updateAuthorProfile(db, id, { name: "Ada L", bio: "music" });

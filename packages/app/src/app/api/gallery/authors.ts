@@ -1,171 +1,105 @@
-import { newShareId } from "../../../shareCrypto";
-import type { GalleryAuthorProfile, GalleryCollection, GalleryEntry } from "../../../gallery/types";
-import { hashToken, newManageToken, tokenMatches } from "./auth";
+import type { GalleryCollection, GalleryEntry } from "../../../gallery/types";
+import type { Db } from "../../../db/client";
 import {
-  galleryPaths,
-  getJson,
-  putJson,
-  type AuthorKeyPointer,
-  type GalleryBlobStore,
-  type PrivateAuthorRecord,
-  type RemovedMarker,
-} from "./store";
+  authorIdForKeyHash,
+  authorKeyHash,
+  collectionsOfAuthor,
+  entriesOfAuthor,
+  insertKeyedAuthor,
+  liveEntries,
+  type Q,
+} from "../../../db/repo";
+import { hashToken, newManageToken, tokenMatches } from "./auth";
 
-// #2314 / #2315 — authors and collections, shared by the publish route, the
-// author routes and the collection routes.
+// #2314 / #2315 — authors and collections, shared by the author routes, the
+// collection routes, My shares and the claim.
 //
-// An author has no account. On a first publish the server makes one and hands
-// back an author key once; the store keeps only the key's SHA-256 — in the
-// private record beside the email, and as the NAME of a small pointer blob
-// (`author-keys/<hash>.json` → authorId), which is how a key alone finds its
-// author. A found author is then confirmed with the constant-time compare
-// against the private record, so the pointer is only an index, never the check.
+// #2352 — the records are in Postgres (src/db/schema.ts): `authors`,
+// `author_keys`, `entries`, `collections`, `collection_entries`. Every function
+// here takes the database (or a transaction) first.
 //
-// Finding an author's entries and collections: a per-author index
-// (`author-index/<authorId>/entries/<entryId>.json`, one empty marker per
-// entry), not a scan of every entry. The trade-off:
-//   - index: one prefix list + one read per THAT author's entries. Cost grows
-//     with the author, not the gallery. Publish writes one extra small blob, and
-//     the index can point at an entry that is gone — so every read re-checks the
-//     entry itself (missing or removed → left out), and a takedown is never
-//     trusted to have tidied the index.
-//   - scan: list every entry and read each to compare authorId. One read per
-//     entry in the whole gallery on every profile open, and the listing route's
-//     500-newest cap would silently hide an author's older work.
-// The index wins once the gallery has more than a handful of authors.
+// An author made before sign-in has no account. Its author key was handed back
+// once; the store keeps only the key's SHA-256 (`author_keys.key_hash`). A key
+// finds its author by that hash (an index lookup), and the author it found is
+// then CONFIRMED with the constant-time compare against the stored hash, so the
+// lookup is only an index, never the check.
+//
+// An author's entries and collections come from indexed queries
+// (`entries (author_id, published_at desc)`, `collections (author_id, created_at desc)`),
+// live entries only. A collection keeps the ids its author saved; an entry taken
+// down since is left out when it is read (servedCollection), never deleted from it.
 
 /** A fresh author key: same shape as a manage token (32 random bytes, base64url). */
 export const newAuthorKey = newManageToken;
 
-/** The author this key belongs to, or null (no key, unknown key, or a pointer that doesn't verify). */
-export async function authorForKey(store: GalleryBlobStore, key: string | null): Promise<string | null> {
+/** The author this key belongs to, or null (no key, unknown key, or a hash that doesn't confirm). */
+export async function authorForKey(db: Q, key: string | null): Promise<string | null> {
   if (!key) return null;
-  const pointer = await getJson<AuthorKeyPointer>(store, galleryPaths.authorKey(hashToken(key)));
-  if (!pointer) return null;
-  return (await keyOwnsAuthor(store, pointer.authorId, key)) ? pointer.authorId : null;
+  const authorId = await authorIdForKeyHash(db, hashToken(key));
+  if (!authorId) return null;
+  return (await keyOwnsAuthor(db, authorId, key)) ? authorId : null;
 }
 
 /** Does `key` own `authorId`? Constant-time compare against the stored hash. */
-export async function keyOwnsAuthor(store: GalleryBlobStore, authorId: string, key: string | null): Promise<boolean> {
+export async function keyOwnsAuthor(db: Q, authorId: string, key: string | null): Promise<boolean> {
   if (!key) return false;
-  const record = await getJson<PrivateAuthorRecord>(store, galleryPaths.authorPrivate(authorId));
   // #2319 — an author made for a signed-in account has no key; only its session manages it.
-  if (!record?.authorKeyHash) return false;
-  return tokenMatches(key, record.authorKeyHash);
-}
-
-/** A fresh, unused author id, or null after three clashes. */
-async function freeAuthorId(store: GalleryBlobStore): Promise<string | null> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const candidate = newShareId();
-    if (!(await store.get(galleryPaths.authorPrivate(candidate)))) return candidate;
-  }
-  return null;
+  const stored = await authorKeyHash(db, authorId);
+  if (!stored) return false;
+  return tokenMatches(key, stored);
 }
 
 /**
- * Make a new key-held author (the #2314 way, before sign-in). Private record and
- * key pointer first, the public profile last — so a profile that shows exists
- * only once its key works. Publishing no longer calls this (#2319); it stays for
- * #2320's claim flow and for tests that need an author made before sign-in.
+ * Make a new key-held author (the #2314 way, before sign-in): the author and
+ * its key hash in one transaction. Publishing no longer calls this (#2319); it
+ * stays for #2320's claim tests and the browser specs' dev-only seeding.
  */
 export async function createAuthor(
-  store: GalleryBlobStore,
+  db: Db,
   name: string,
   email: string,
 ): Promise<{ authorId: string; authorKey: string } | null> {
-  const authorId = await freeAuthorId(store);
-  if (!authorId) return null;
-
   const authorKey = newAuthorKey();
-  const keyHash = hashToken(authorKey);
-  const now = Date.now();
-  const record: PrivateAuthorRecord = { authorEmail: email, authorKeyHash: keyHash };
-  const pointer: AuthorKeyPointer = { authorId };
-  const profile: GalleryAuthorProfile = { authorId, name, bio: "", createdAt: now, updatedAt: now };
-
-  await putJson(store, galleryPaths.authorPrivate(authorId), record);
-  await putJson(store, galleryPaths.authorKey(keyHash), pointer);
-  await putJson(store, galleryPaths.author(authorId), profile);
-  return { authorId, authorKey };
-}
-
-/** An entry that is live (stored and not taken down), or null. */
-export async function liveEntry(store: GalleryBlobStore, id: string): Promise<GalleryEntry | null> {
-  const [removed, entry] = await Promise.all([
-    getJson<RemovedMarker>(store, galleryPaths.removed(id)),
-    getJson<GalleryEntry>(store, galleryPaths.entry(id)).catch(() => null),
-  ]);
-  return removed || !entry ? null : entry;
-}
-
-/** The live entries among `ids`, in the same order; gone ones left out. */
-export async function liveEntries(store: GalleryBlobStore, ids: string[]): Promise<GalleryEntry[]> {
-  const found = await Promise.all(ids.map((id) => liveEntry(store, id)));
-  return found.filter((e): e is GalleryEntry => e !== null);
+  const authorId = await insertKeyedAuthor(db, { name, email, keyHash: hashToken(authorKey) });
+  return authorId ? { authorId, authorKey } : null;
 }
 
 /** The collection as served: ids of entries that are gone dropped. */
 export async function servedCollection(
-  store: GalleryBlobStore,
+  db: Q,
   collection: GalleryCollection,
 ): Promise<{ collection: GalleryCollection; entries: GalleryEntry[] }> {
-  const entries = await liveEntries(store, collection.entryIds);
+  const entries = await liveEntries(db, collection.entryIds);
   return { collection: { ...collection, entryIds: entries.map((e) => e.id) }, entries };
-}
-
-/** Ids named in an index folder (`<prefix><id>.json`). */
-export async function indexedIds(store: GalleryBlobStore, prefix: string): Promise<string[]> {
-  const listed = await store.list(prefix);
-  return listed
-    .filter((b) => b.pathname.endsWith(".json"))
-    .map((b) => b.pathname.slice(prefix.length, -".json".length));
 }
 
 /**
  * An author's live entries and collections, newest first — what the profile
- * page shows (#2314) and what My shares lists for an account (#2321). The index
- * is a hint: an entry must still be live and still name this author, and a
- * collection must still name this author.
+ * page shows (#2314) and what My shares lists for an account (#2321). Three
+ * queries however much the author has: their live entries, their collections,
+ * and which of the collections' entries are still live.
  */
 export async function authorWork(
-  store: GalleryBlobStore,
+  db: Q,
   authorId: string,
 ): Promise<{ entries: GalleryEntry[]; collections: GalleryCollection[] }> {
-  const [entryIds, collectionIds] = await Promise.all([
-    indexedIds(store, galleryPaths.authorEntriesOf(authorId)),
-    indexedIds(store, galleryPaths.authorCollectionsOf(authorId)),
-  ]);
-  const entries = (await liveEntries(store, entryIds)).filter((e) => e.authorId === authorId);
-  entries.sort((a, b) => b.publishedAt - a.publishedAt);
-
-  const stored = await Promise.all(
-    collectionIds.map((id) => getJson<GalleryCollection>(store, galleryPaths.collection(id)).catch(() => null)),
-  );
-  const collections = (
-    await Promise.all(
-      stored
-        .filter((c): c is GalleryCollection => c !== null && c.authorId === authorId)
-        .map(async (c) => (await servedCollection(store, c)).collection),
-    )
-  ).sort((a, b) => b.createdAt - a.createdAt);
+  const [entries, stored] = await Promise.all([entriesOfAuthor(db, authorId), collectionsOfAuthor(db, authorId)]);
+  const named = [...new Set(stored.flatMap((c) => c.entryIds))];
+  const live = new Set((await liveEntries(db, named)).map((e) => e.id));
+  const collections = stored.map((c) => ({ ...c, entryIds: c.entryIds.filter((id) => live.has(id)) }));
   return { entries, collections };
 }
 
 /**
  * Check every id is the author's own live entry. Returns the error message
- * naming the first id that isn't, or null when all are.
+ * naming the first id that isn't, or null when all are. One query.
  */
-export async function foreignEntry(
-  store: GalleryBlobStore,
-  authorId: string,
-  ids: string[],
-): Promise<string | null> {
-  const entries = await Promise.all(ids.map((id) => liveEntry(store, id)));
-  for (let i = 0; i < ids.length; i++) {
-    const e = entries[i];
-    if (!e) return `entry ${ids[i]} does not exist or was removed`;
-    if (e.authorId !== authorId) return `entry ${ids[i]} is not one of yours`;
+export async function foreignEntry(db: Q, authorId: string, ids: string[]): Promise<string | null> {
+  const live = new Map((await liveEntries(db, ids)).map((e) => [e.id, e]));
+  for (const id of ids) {
+    const e = live.get(id);
+    if (!e) return `entry ${id} does not exist or was removed`;
+    if (e.authorId !== authorId) return `entry ${id} is not one of yours`;
   }
   return null;
 }
