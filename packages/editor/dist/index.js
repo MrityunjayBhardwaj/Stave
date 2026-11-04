@@ -13914,27 +13914,36 @@ __name(rank, "rank");
 var REPEATS = /* @__PURE__ */ new Set(["replicate", "stretch", "bjorklund"]);
 var refuse = /* @__PURE__ */ __name((why) => ({ ok: false, why }), "refuse");
 var write = /* @__PURE__ */ __name((from, to, insert) => ({ ok: true, edit: { from, to, insert } }), "write");
-function toggleStep(mini, trees, address, row) {
+function locate(trees, address, row) {
+  const no2 = /* @__PURE__ */ __name((why) => ({ ok: false, why }), "no");
   const tree = trees[address.bar];
-  if (!tree) return refuse("no-such-bar");
+  if (!tree) return no2("no-such-bar");
   const lane = laneRowForEdit(tree, row);
-  if (!lane.ok) return refuse(lane.why);
-  if (lane.oneOf) return refuse("step-is-a-random-choice");
+  if (!lane.ok) return no2(lane.why);
+  if (lane.oneOf) return no2("step-is-a-random-choice");
   const found = findIn(lane.row, `part${tree.ok ? tree.parts.indexOf(lane.row) : 0}`, address.span, [], []);
-  if (!found) return refuse("no-step-there");
+  if (!found) return no2("no-step-there");
   const { step, around } = found;
   const slot = step.slots.find((s) => sameFrac(s.begin, address.at));
-  if (!slot) return refuse("no-step-there");
-  if (around.some((g) => g.oneOf)) return refuse("step-is-a-random-choice");
-  if (around.some((g) => g.ops.some((o) => !REPEATS.has(o)))) return refuse("step-under-a-generator");
-  if (step.reps > 1 || step.ops.includes("replicate")) return refuse("step-is-replicated");
-  if (step.ops.some((o) => o !== "tail")) return refuse("step-is-generated");
-  if (slot.fromBefore || slot.pastEnd) return refuse("step-crosses-a-bar");
+  if (!slot) return no2("no-step-there");
+  if (around.some((g) => g.oneOf)) return no2("step-is-a-random-choice");
+  if (around.some((g) => g.ops.some((o) => !REPEATS.has(o)))) return no2("step-under-a-generator");
+  if (step.reps > 1 || step.ops.includes("replicate")) return no2("step-is-replicated");
+  if (step.ops.some((o) => o !== "tail")) return no2("step-is-generated");
+  if (slot.fromBefore || slot.pastEnd) return no2("step-crosses-a-bar");
   const loop = overTheLoop(trees);
-  if (typeof loop === "string") return refuse(loop);
+  if (typeof loop === "string") return no2(loop);
   for (const { row: r, key: key3 } of found.rows) {
-    if ((loop.get(key3)?.size ?? 0) < r.written) return refuse("loop-shorter-than-the-pattern");
+    if ((loop.get(key3)?.size ?? 0) < r.written) return no2("loop-shorter-than-the-pattern");
   }
+  return { ok: true, lane, found, slot };
+}
+__name(locate, "locate");
+function toggleStep(mini, trees, address, row) {
+  const at = locate(trees, address, row);
+  if (!at.ok) return refuse(at.why);
+  const { lane, found } = at;
+  const { step, around } = found;
   const order = row.order ?? lane.row.sounds;
   if (step.rows !== null) {
     const members = chordOf(step, mini);
@@ -13972,6 +13981,122 @@ function applyStepEdit(mini, edit) {
   return mini.slice(0, edit.from) + edit.insert + mini.slice(edit.to);
 }
 __name(applyStepEdit, "applyStepEdit");
+function resizeStepBy(mini, trees, address, delta, row) {
+  const got = locate(trees, address, row);
+  if (!got.ok) return refuse(got.why);
+  const { step } = got.found;
+  if (!Number.isInteger(step.weight) || step.weight < 1) return refuse("length-not-plain");
+  const unit = fdiv(fsub(got.slot.end, got.slot.begin), { n: step.weight, d: 1 });
+  const k = step.weight + delta;
+  const end = { n: got.slot.begin.n * unit.d + k * unit.n * got.slot.begin.d, d: got.slot.begin.d * unit.d };
+  return resizeStep(mini, trees, address, end, row);
+}
+__name(resizeStepBy, "resizeStepBy");
+var fsub = /* @__PURE__ */ __name((a, b) => ({ n: a.n * b.d - b.n * a.d, d: a.d * b.d }), "fsub");
+var gcdOf = /* @__PURE__ */ __name((a, b) => b === 0 ? Math.abs(a) : gcdOf(b, a % b), "gcdOf");
+function fdiv(a, b) {
+  let n = a.n * b.d;
+  let d = a.d * b.n;
+  if (d < 0) {
+    n = -n;
+    d = -d;
+  }
+  const g = gcdOf(n, d) || 1;
+  return { n: n / g, d: d / g };
+}
+__name(fdiv, "fdiv");
+function plainNote(mini, step) {
+  if (step.rows !== null) return "step-is-a-group";
+  if (step.name === null || step.head === null || step.span === null) return "step-has-no-text";
+  if (mini.slice(step.head.start, step.head.end) !== step.name) return "tree-is-not-this-text";
+  if (!step.rest && (step.hits.length !== step.slots.length || !step.hits.every((h) => step.slots.some((s) => sameFrac(h.begin, s.begin))))) {
+    return "step-is-generated";
+  }
+  return null;
+}
+__name(plainNote, "plainNote");
+function splitStep(mini, trees, address, at, row) {
+  const got = locate(trees, address, row);
+  if (!got.ok) return refuse(got.why);
+  const { step } = got.found;
+  const bad = plainNote(mini, step);
+  if (bad) return refuse(bad);
+  const p = fdiv(fsub(at, got.slot.begin), fsub(got.slot.end, got.slot.begin));
+  if (p.n <= 0 || p.n >= p.d) return refuse("not-inside-the-step");
+  const parts = Array.from({ length: p.d }, (_, i) => i === 0 ? step.name : i === p.n ? row.sound : "~");
+  return write(step.head.start, step.head.end, `[${parts.join(" ")}]`);
+}
+__name(splitStep, "splitStep");
+var textEnd = /* @__PURE__ */ __name((mini, s) => s.span.start + mini.slice(s.span.start, s.span.end).trimEnd().length, "textEnd");
+function lengthOf(mini, step) {
+  const after = mini.slice(step.head.end, textEnd(mini, step));
+  if (after === "") return { kind: "plain" };
+  const m = /^@([1-9][0-9]*)$/.exec(after);
+  if (m) return { kind: "at", from: step.head.end, to: step.head.end + after.length, n: Number(m[1]) };
+  if (/^(\s+_)+$/.test(after)) {
+    const at = [];
+    for (let i = 0; i < after.length; i++) if (after[i] === "_") at.push(step.head.end + i);
+    return { kind: "holds", at };
+  }
+  return null;
+}
+__name(lengthOf, "lengthOf");
+function resizeStep(mini, trees, address, end, row) {
+  const got = locate(trees, address, row);
+  if (!got.ok) return refuse(got.why);
+  const { step } = got.found;
+  const { slot } = got;
+  if (step.rows !== null || step.rest || step.name !== row.sound) return refuse("not-the-rows-note");
+  const bad = plainNote(mini, step);
+  if (bad) return refuse(bad);
+  if (!Number.isInteger(step.weight) || step.weight < 1) return refuse("length-not-plain");
+  const len = lengthOf(mini, step);
+  if (!len || len.kind === "plain" && step.weight !== 1 || len.kind === "at" && len.n !== step.weight || len.kind === "holds" && len.at.length + 1 !== step.weight) {
+    return refuse("length-not-plain");
+  }
+  const unit = fdiv(fsub(slot.end, slot.begin), { n: step.weight, d: 1 });
+  const want = fdiv(fsub(end, slot.begin), unit);
+  if (want.d !== 1 || want.n < 1 || want.n === step.weight) return refuse("length-not-whole-steps");
+  const w = want.n;
+  if (w < step.weight) {
+    const k2 = step.weight - w;
+    if (len.kind === "holds") {
+      const first = len.at[len.at.length - k2];
+      const last = len.at[len.at.length - 1];
+      return write(first, last + 1, mini.slice(first, last + 1).replace(/_/g, "~"));
+    }
+    if (len.kind !== "at") return refuse("length-not-plain");
+    return write(len.from, len.to, (w > 1 ? `@${w}` : "") + " ~".repeat(k2));
+  }
+  const rowSteps2 = got.found.rows[got.found.rows.length - 1].row.steps;
+  const i = rowSteps2.indexOf(step);
+  let need = w - step.weight;
+  let atTime = slot.end;
+  const taken = [];
+  for (let j = i + 1; j < rowSteps2.length && need > 0; j++) {
+    const r = rowSteps2[j];
+    const next = r.slots.find((x) => sameFrac(x.begin, atTime));
+    if (!next || !r.rest || r.rows || r.ops.length > 0 || r.reps !== 1 || !r.span || !r.head || next.pastEnd) return refuse("no-room-to-grow");
+    const u = fdiv(fsub(next.end, next.begin), unit);
+    if (u.d !== 1 || u.n > need) return refuse("no-room-to-grow");
+    if (len.kind !== "at" && (u.n !== 1 || mini.slice(r.head.start, textEnd(mini, r)) !== "~")) return refuse("no-room-to-grow");
+    taken.push(r);
+    need -= u.n;
+    atTime = next.end;
+  }
+  if (need > 0) return refuse("no-room-to-grow");
+  const lastEnd = textEnd(mini, taken[taken.length - 1]);
+  if (len.kind === "at") return write(len.from, lastEnd, `@${w}`);
+  const from = taken[0].head.start;
+  let out = "";
+  let k = from;
+  for (const r of taken) {
+    out += mini.slice(k, r.head.start) + "_";
+    k = r.head.end;
+  }
+  return write(from, lastEnd, out + mini.slice(k, lastEnd));
+}
+__name(resizeStep, "resizeStep");
 
 // src/codeView/regionTrim.ts
 var REGION_DEFAULT = { begin: 0, end: 1 };
@@ -14141,43 +14266,6 @@ function pasteNote(model, pitch, start, duration, opts = {}) {
 __name(pasteNote, "pasteNote");
 var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value, length = 1) => toggleCell(model, laneIndex, stepIndex, value, length) !== model, "canToggleCell");
 var canPlaceNote = /* @__PURE__ */ __name((model, pitch, start, duration) => placeNote(model, pitch, start, duration) !== model, "canPlaceNote");
-function partRoom(model, laneIndex, stepIndex) {
-  const part = model.lanes[laneIndex]?.part ?? 0;
-  let next = model.steps;
-  for (const lane of model.lanes) {
-    if ((lane.part ?? 0) !== part) continue;
-    for (let j = stepIndex + 1; j < lane.cells.length && j < next; j++) {
-      if (isCellOn(lane.cells[j])) {
-        next = j;
-        break;
-      }
-    }
-  }
-  return next - stepIndex;
-}
-__name(partRoom, "partRoom");
-function resizeCell(model, laneIndex, stepIndex, duration) {
-  const cell = model.lanes[laneIndex]?.cells[stepIndex];
-  if (!isCellOn(cell)) return model;
-  const capped = Math.max(1, Math.min(duration, partRoom(model, laneIndex, stepIndex)));
-  const lanes = model.lanes.map(
-    (lane, i) => i === laneIndex ? {
-      ...lane,
-      cells: clampLane(
-        lane.cells.map((c, j) => j === stepIndex ? cellOn(capped) : c),
-        model.steps
-      )
-    } : lane
-  );
-  const next = lanes[laneIndex].cells[stepIndex];
-  if (isCellOn(next) && next.duration === cell.duration) return model;
-  const written = serializeStepGrid({ ...model, lanes });
-  if (written === null) return model;
-  if (written === serializeStepGrid(model)) return model;
-  return { ...model, lanes };
-}
-__name(resizeCell, "resizeCell");
-var canResizeCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, duration) => resizeCell(model, laneIndex, stepIndex, duration) !== model, "canResizeCell");
 var resizableNotes = /* @__PURE__ */ __name((model) => {
   const out = /* @__PURE__ */ new Set();
   const now2 = serializePianoRoll(model);
@@ -39244,12 +39332,6 @@ function groupBoxesBySteps(boxes, starts, steps, owners2) {
   return k === boxes.length ? out : alone();
 }
 __name(groupBoxesBySteps, "groupBoxesBySteps");
-function boxLengths(duration, w) {
-  const d = Math.round(duration);
-  const down = Math.ceil(d / w) - 1;
-  return { longer: (Math.floor(d / w) + 1) * w, shorter: down >= 1 ? down * w : null };
-}
-__name(boxLengths, "boxLengths");
 function linesModel(shown, read5) {
   if (!read5 || read5.steps !== shown.steps || (read5.bars ?? 1) !== (shown.bars ?? 1)) return shown;
   return (read5.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read5 : shown;
@@ -39355,6 +39437,16 @@ function barColumns(m, b) {
   return { start: b * (m.steps / bars), per: m.steps / bars };
 }
 __name(barColumns, "barColumns");
+function endInBar(m, col, end) {
+  const bars = m.bars ?? 1;
+  for (let b = 0; b < bars; b++) {
+    const { start, per } = barColumns(m, b);
+    if (col < start || col >= start + per) continue;
+    return end > start && end <= start + per ? frac(end - start, per) : null;
+  }
+  return null;
+}
+__name(endInBar, "endInBar");
 var gcd4 = /* @__PURE__ */ __name((a, b) => b === 0 ? Math.abs(a) : gcd4(b, a % b), "gcd");
 function frac(n, d) {
   const g = gcd4(n, d) || 1;
@@ -39589,6 +39681,52 @@ function stepAddressAt(model, trees, lane, col) {
   return "inside-a-step";
 }
 __name(stepAddressAt, "stepAddressAt");
+function splitAddressAt(model, trees, lane, col) {
+  const bars = model.bars ?? 1;
+  if (trees.length !== bars) return null;
+  const l = model.lanes[lane];
+  if (!l) return null;
+  for (let b = 0; b < bars; b++) {
+    const { start, per } = barColumns(model, b);
+    if (col < start || col >= start + per) continue;
+    const d = laneRowForEdit(trees[b], l);
+    if (!d.ok) return null;
+    const at = frac(col - start, per);
+    const visit = /* @__PURE__ */ __name((row) => {
+      for (const s of row.steps) {
+        const inner = s.rows ? innerRow(s, l.sound) : null;
+        if (inner) {
+          const got = visit(inner);
+          if (got) return got;
+          continue;
+        }
+        if (!s.span || s.rows) continue;
+        for (const slot of s.slots) {
+          if (slot.fromBefore || slot.pastEnd) continue;
+          if (cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0) return { address: { bar: b, span: s.span, at: slot.begin }, at };
+        }
+      }
+      return null;
+    }, "visit");
+    return visit(d.row);
+  }
+  return null;
+}
+__name(splitAddressAt, "splitAddressAt");
+function leafStops(nodes) {
+  const out = [];
+  const walk5 = /* @__PURE__ */ __name((n) => {
+    if (n.children) n.children.forEach(walk5);
+    else out.push(n.from);
+  }, "walk");
+  nodes.forEach(walk5);
+  return out;
+}
+__name(leafStops, "leafStops");
+function groupStops(g) {
+  return g.plain ? [g.from] : g.boxes.map((b) => b.start);
+}
+__name(groupStops, "groupStops");
 function openStarts(drawn, out = /* @__PURE__ */ new Map()) {
   for (const n of drawn) {
     if (!out.has(n.from) || out.get(n.from) > n.depth) out.set(n.from, n.depth);
@@ -41969,16 +42107,44 @@ function moveCursor(at, move, rows, cols) {
   }
 }
 __name(moveCursor, "moveCursor");
-function moveBoxCursor(at, move, rows, cols, widthOf) {
-  if (move === "up" || move === "down") return moveCursor(at, move, rows, cols);
-  const w = widthOf(at.row);
-  const start = at.col - at.col % w;
-  const from = { row: at.row, col: move === "right" ? start + w - 1 : start };
-  const to = moveCursor(from, move, rows, cols);
-  const tw = widthOf(to.row);
-  return { row: to.row, col: to.col - to.col % tw };
+function stopAt(stops, col) {
+  let got = stops[0] ?? col;
+  for (const s of stops) if (s <= col) got = s;
+  return got;
 }
-__name(moveBoxCursor, "moveBoxCursor");
+__name(stopAt, "stopAt");
+function moveStepCursor(at, move, rows, cols, stopsOf) {
+  const stops = /* @__PURE__ */ __name((row) => {
+    const s = stopsOf(row);
+    return s && s.length > 0 ? s : Array.from({ length: cols }, (_, c) => c);
+  }, "stops");
+  const clampRow = /* @__PURE__ */ __name((r) => Math.max(0, Math.min(rows - 1, r)), "clampRow");
+  const here = stops(at.row);
+  const i = here.indexOf(stopAt(here, at.col));
+  switch (move) {
+    case "left":
+      return { row: at.row, col: here[i] < at.col ? here[i] : here[Math.max(0, i - 1)] };
+    case "right": {
+      const next = here.find((s) => s > at.col);
+      return { row: at.row, col: next ?? at.col };
+    }
+    case "up":
+    case "down":
+      return { row: clampRow(at.row + (move === "up" ? -1 : 1)), col: at.col };
+    case "rowStart":
+      return { row: at.row, col: here[0] };
+    case "rowEnd":
+      return { row: at.row, col: here[here.length - 1] };
+    case "first":
+      return { row: 0, col: stops(0)[0] };
+    case "last": {
+      const row = Math.max(0, rows - 1);
+      const s = stops(row);
+      return { row, col: s[s.length - 1] };
+    }
+  }
+}
+__name(moveStepCursor, "moveStepCursor");
 function isCursorMove(action) {
   return CURSOR_MOVES.has(action);
 }
@@ -42066,6 +42232,8 @@ function opensRhythmLine(call) {
 __name(opensRhythmLine, "opensRhythmLine");
 function SequencerGrid({ onResolution, notice = null } = {}) {
   const [viewScale, setViewScale] = React32.useState(UNREFINED);
+  const viewScaleRef = React32.useRef(viewScale);
+  viewScaleRef.current = viewScale;
   const { chunk, model, read: read5, mutate, writeMini, writeStep, beginGesture, endGesture, patternKey } = useGridModel({
     ...stepGridCodec,
     source: "seq",
@@ -42116,14 +42284,23 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     return model.lanes.map((lane, li) => {
       const w = boxes?.[li]?.[0]?.width ?? 1;
       const order = model.lanes.filter((l) => (l.part ?? 0) === (lane.part ?? 0)).map((l) => l.sound);
+      const row = { sound: lane.sound, part: lane.part, order };
       return lane.cells.map((_, si) => {
         if (si % w !== 0) return null;
         const at = stepAddressAt(model, stepTrees, li, si);
+        if (at === "inside-a-step") {
+          const inside = splitAddressAt(model, stepTrees, li, si);
+          if (!inside) return { ok: false, why: at };
+          const r = splitStep(stepMini, stepTrees, inside.address, inside.at, row);
+          return r.ok ? { ...r, split: true } : r;
+        }
         if (typeof at === "string") return { ok: false, why: at };
-        return toggleStep(stepMini, stepTrees, at, { sound: lane.sound, part: lane.part, order });
+        return toggleStep(stepMini, stepTrees, at, row);
       });
     });
   }, [model, boxes, stepTrees, stepMini]);
+  const stepTreesRef = React32.useRef(stepTrees);
+  stepTreesRef.current = stepTrees;
   const modelRef = React32.useRef(model);
   modelRef.current = model;
   const stepTogglesRef = React32.useRef(stepToggles);
@@ -42174,27 +42351,45 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     () => model && trees ? model.lanes.map((_, li) => laneSteps(model, trees, li)) : null,
     [model, trees]
   );
+  const editNodes = React32.useMemo(
+    () => model && stepTrees ? model.lanes.map((_, li) => laneSteps(model, stepTrees, li)) : null,
+    [model, stepTrees]
+  );
   const resizable = React32.useMemo(() => {
-    if (!model) return null;
+    if (!model || !stepTrees || stepMini === null) return null;
     return model.lanes.map((lane, li) => {
       const out = /* @__PURE__ */ new Set();
-      const w = boxes?.[li]?.[0]?.width ?? 1;
+      const row = { sound: lane.sound, part: lane.part };
       lane.cells.forEach((c, si) => {
         if (!isCellOn(c)) return;
-        const { longer, shorter } = boxLengths(c.duration, w);
-        if (canResizeCell(model, li, si, longer) || shorter !== null && canResizeCell(model, li, si, shorter)) out.add(si);
+        const at = stepAddressAt(model, stepTrees, li, si);
+        if (typeof at === "string") return;
+        if (resizeStepBy(stepMini, stepTrees, at, 1, row).ok || resizeStepBy(stepMini, stepTrees, at, -1, row).ok) out.add(si);
       });
       return out;
     });
-  }, [model, boxes]);
-  const paintCell = React32.useCallback(
-    (laneIndex, stepIndex, value) => {
-      const lane = modelRef.current?.lanes[laneIndex];
-      if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) return { refused: false };
-      const answer = stepTogglesRef.current?.[laneIndex]?.[stepIndex];
-      const mini = stepMiniRef.current;
-      if (!answer || mini === null) return { refused: true };
-      if (!answer.ok) return { refused: true, why: answer.why };
+  }, [model, stepTrees, stepMini]);
+  const resizeNote2 = /* @__PURE__ */ __name((li, head, to, dryRun = false) => {
+    const m = modelRef.current;
+    const trees2 = stepTreesRef.current;
+    const mini = stepMiniRef.current;
+    const lane = m?.lanes[li];
+    if (!m || !trees2 || mini === null || !lane) return false;
+    const at = stepAddressAt(m, trees2, li, head);
+    if (typeof at === "string") return false;
+    const row = { sound: lane.sound, part: lane.part };
+    let r;
+    if ("by" in to) r = resizeStepBy(mini, trees2, at, to.by, row);
+    else {
+      const end = endInBar(m, head, to.end);
+      if (!end) return false;
+      r = resizeStep(mini, trees2, at, end, row);
+    }
+    if (!r.ok) return false;
+    return dryRun || writeEdit(mini, r.edit);
+  }, "resizeNote");
+  const writeEdit = React32.useCallback(
+    (mini, edit) => {
       const shown = modelRef.current?.lanes ?? [];
       const keep = /* @__PURE__ */ __name((read6) => {
         const same2 = /* @__PURE__ */ __name((a, b) => a.sound === b.sound && (a.part ?? 0) === (b.part ?? 0), "same");
@@ -42204,9 +42399,28 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
         for (const r of read6.lanes) if (!shown.some((l) => same2(r, l))) lanes.push(r);
         return lanes.every((l, i) => l === read6.lanes[i]) && lanes.length === read6.lanes.length ? read6 : { ...read6, lanes };
       }, "keep");
-      return { refused: !writeStep(mini, answer.edit, keep) };
+      const steps = modelRef.current?.steps;
+      const wrote = writeStep(mini, edit, keep);
+      if (wrote && viewScaleRef.current !== UNREFINED) {
+        const natural = stepGridCodec.parse(applyStepEdit(mini, edit), UNREFINED);
+        if (natural.ok && natural.model.steps === steps) setViewScale(UNREFINED);
+      }
+      return wrote;
     },
     [writeStep]
+  );
+  const paintCell = React32.useCallback(
+    (laneIndex, stepIndex, value, drag = false) => {
+      const lane = modelRef.current?.lanes[laneIndex];
+      if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) return { refused: false };
+      const answer = stepTogglesRef.current?.[laneIndex]?.[stepIndex];
+      const mini = stepMiniRef.current;
+      if (!answer || mini === null) return { refused: true };
+      if (!answer.ok) return { refused: true, why: answer.why };
+      if (drag && "split" in answer && answer.split) return { refused: false };
+      return { refused: !writeEdit(mini, answer.edit) };
+    },
+    [writeEdit]
   );
   const paintOne = React32.useCallback(
     (laneIndex, stepIndex, value) => {
@@ -42328,14 +42542,15 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     const g = gestureRef.current;
     if (!g) return;
     if (g.mode === "resize") {
-      mutate((prev) => resizeCell(prev, g.lane, g.step, stepIndex + width - g.step));
+      resizeNote2(g.lane, g.step, { end: stepIndex + width });
       return;
     }
     if (g.mode !== "paint") return;
     if (laneIndex !== g.lane || modelRef.current?.lanes[laneIndex]?.sound !== paintSoundRef.current) return;
-    paintCell(laneIndex, stepIndex, g.paintValue);
+    paintCell(laneIndex, stepIndex, g.paintValue, true);
   }, "onCellEnter");
   const [cursor, setCursor] = React32.useState(null);
+  const stopsRef = React32.useRef(null);
   const rowsN = model?.lanes.length ?? 0;
   const colsN = model?.steps ?? 0;
   const liveCursor = cursor && cursor.row < rowsN && cursor.col < colsN ? cursor : null;
@@ -42366,21 +42581,18 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     const cells = model.lanes[at.row]?.cells ?? [];
     let head = -1;
     for (let si = at.col; si >= 0; si--) {
-      const c2 = cells[si];
-      if (isCellOn(c2)) {
-        if (si + Math.ceil(c2.duration) > at.col) head = si;
+      const c = cells[si];
+      if (isCellOn(c)) {
+        if (si + Math.ceil(c.duration) > at.col) head = si;
         break;
       }
     }
     if (head < 0) return false;
-    const c = cells[head];
-    if (!isCellOn(c)) return false;
-    const { longer, shorter } = boxLengths(c.duration, boxWidth(at.row));
-    const dur = action === "longer" ? longer : shorter;
-    if (dur === null || !canResizeCell(model, at.row, head, dur)) return false;
+    const by = action === "longer" ? 1 : -1;
+    if (!resizeNote2(at.row, head, { by }, true)) return false;
     if (!dryRun) {
       beginGesture();
-      mutate((prev) => resizeCell(prev, at.row, head, dur));
+      resizeNote2(at.row, head, { by });
       endGesture();
       focusCursorRef.current = true;
       setCursor({ row: at.row, col: head });
@@ -42400,13 +42612,14 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     if (isCursorMove(action)) {
       if (dryRun) return true;
       focusCursorRef.current = true;
-      setCursor(moveBoxCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN, boxWidth));
+      setCursor(moveStepCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN, (r) => stopsRef.current?.[r] ?? null));
       return true;
     }
     if (!at) return false;
     if (isNoteEdit(action)) return resizeByKey(at, action, dryRun);
+    const stops = stopsRef.current?.[at.row];
     const boxW = boxWidth(at.row);
-    const col = at.col - at.col % boxW;
+    const col = stops && stops.length > 0 ? stopAt(stops, at.col) : at.col - at.col % boxW;
     const cell = model.lanes[at.row]?.cells[col];
     const on = cell !== void 0 && isCellOn(cell);
     switch (action) {
@@ -42478,6 +42691,11 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     const owners2 = model.lanes.flatMap((l, i) => (l.part ?? 0) === part ? [(c) => coverage[i]?.[c]?.start] : []);
     return drawnSteps(openAt(nodes, colPx, openPx), boxes[li], model.steps, owners2, colPx);
   }) : null;
+  stopsRef.current = model.lanes.map((_, li) => {
+    const nodes = laneNodes?.[li] ?? editNodes?.[li];
+    if (nodes) return leafStops(nodes);
+    return (stepGroups?.[li] ?? []).flatMap(groupStops);
+  });
   const rulerNodes = laneNodes?.[liveCursor?.row ?? 0] ?? null;
   const ruler = rulerNodes && drawnRows?.[liveCursor?.row ?? 0] ? zoomRuler(model, openAt(rulerNodes, colPx, openPx)) : rulerLabels(model, model.steps, [...stepStarts?.get(rulerPart) ?? []]);
   return /* @__PURE__ */ jsx(
@@ -42718,6 +42936,8 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                       const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
                       const isPlaying = playingStep !== null && playingStep >= stepIndex && playingStep < stepIndex + w;
                       const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true;
+                      const splitAnswer = stepToggles?.[laneIndex]?.[stepIndex];
+                      const splits = !!splitAnswer && splitAnswer.ok && "split" in splitAnswer && !!splitAnswer.split;
                       const playsNote = on && !held2 && playedNotes ? playedNotes.notes.get(stepNoteKey(lane.sound, stepToCycle(stepIndex, model.steps, span, model.barSteps)))?.join(" / ") ?? null : null;
                       const inBox = /* @__PURE__ */ __name((c) => c >= stepIndex && c < stepIndex + w, "inBox");
                       const isCursor = liveCursor?.row === laneIndex && inBox(liveCursor.col);
@@ -42766,8 +42986,9 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                                 "data-gain": on && gainScoped ? gain : void 0,
                                 "data-playing": isPlaying ? "true" : void 0,
                                 "data-seq-cell-inert": canToggle ? void 0 : "true",
+                                "data-seq-splits": splits ? "true" : void 0,
                                 "aria-disabled": canToggle ? void 0 : true,
-                                title: lookOnly ? lookOnlyLine(lookOnly) : canToggle ? playsNote ? `${lane.sound} plays ${playsNote}` : void 0 : stepRefusalLine((() => {
+                                title: lookOnly ? lookOnlyLine(lookOnly) : canToggle ? splits ? `Splits this step: adds ${lane.sound} here` : playsNote ? `${lane.sound} plays ${playsNote}` : void 0 : stepRefusalLine((() => {
                                   const a = stepToggles?.[laneIndex]?.[stepIndex];
                                   return a && !a.ok ? a.why : "";
                                 })(), on),

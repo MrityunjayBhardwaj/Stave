@@ -36,10 +36,10 @@ import { opensStepGrid } from '../../codeView'
 import { useGridModel } from './useGridModel'
 import { stepToCycle, usePlayingStep } from './usePlayingStep'
 import { addLane, removeLane } from '../../codeView'
-import { canResizeCell, resizeCell, toggleStep, type StepEditResult } from '../../codeView'
+import { applyStepEdit, resizeStep, resizeStepBy, splitStep, toggleStep, type StepEdit, type StepEditResult } from '../../codeView'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice, chordLanes, stepNotes, stepNoteKey, chunkDivisions } from '../../codeView'
-import { OPEN_PX, drawnSteps, laneSteps, openAt, stepAddressAt, zoomRuler, type DrawnStep, type StepAtRefusal } from './gridZoom'
+import { OPEN_PX, drawnSteps, endInBar, groupStops, laneSteps, leafStops, openAt, splitAddressAt, stepAddressAt, zoomRuler, type DrawnStep, type StepAtRefusal } from './gridZoom'
 import { GridZoomControl, useGridZoom } from './gridZoomControl'
 import { lookOnlyTreeGrid } from './treeGrid'
 import { TreeStepGrid } from './TreeStepGrid'
@@ -54,7 +54,6 @@ import { UNREFINED, type ViewScale } from '../../codeView'
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
 import {
-  boxLengths,
   boxesPlaceNotes,
   groupBoxesBySteps,
   linesModel,
@@ -75,7 +74,8 @@ import {
   isNoteEdit,
   matchGridKey,
   mountGridGestures,
-  moveBoxCursor,
+  moveStepCursor,
+  stopAt,
   type GridAction,
   type GridCell,
 } from './gridGestures'
@@ -168,6 +168,8 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // reaches the document until an actual edit is made, and the first write absorbs
   // it (`useGridModel` → `absorbViewScale`).
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
+  const viewScaleRef = React.useRef(viewScale)
+  viewScaleRef.current = viewScale
   const { chunk, model, read, mutate, writeMini, writeStep, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
     ...stepGridCodec,
     source: 'seq',
@@ -303,20 +305,33 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [stepMini, model?.bars, !!model, !!model?.lookOnly],
   )
-  const stepToggles = React.useMemo((): Array<Array<StepEditResult | { ok: false; why: StepAtRefusal } | null>> | null => {
+  //
+  // A box PART-WAY THROUGH a plain step — its faint snap half (#2293, the design's option B) —
+  // SPLITS that step (`splitStep`: `bd` → `[bd bd]`, `~` → `[~ sd]`), one replacement at the
+  // step's name. Marked `split`, because a drag does not split: paint walks steps.
+  const stepToggles = React.useMemo((): Array<Array<(StepEditResult & { split?: true }) | { ok: false; why: StepAtRefusal } | null>> | null => {
     if (!model || !stepTrees || stepMini === null) return null
     return model.lanes.map((lane, li) => {
       const w = boxes?.[li]?.[0]?.width ?? 1
       // the grid's rows of this part, in its order: a chord writes its members so
       const order = model.lanes.filter((l) => (l.part ?? 0) === (lane.part ?? 0)).map((l) => l.sound)
+      const row = { sound: lane.sound, part: lane.part, order }
       return lane.cells.map((_, si) => {
         if (si % w !== 0) return null
         const at = stepAddressAt(model, stepTrees, li, si)
+        if (at === 'inside-a-step') {
+          const inside = splitAddressAt(model, stepTrees, li, si)
+          if (!inside) return { ok: false, why: at }
+          const r = splitStep(stepMini, stepTrees, inside.address, inside.at, row)
+          return r.ok ? { ...r, split: true as const } : r
+        }
         if (typeof at === 'string') return { ok: false, why: at }
-        return toggleStep(stepMini, stepTrees, at, { sound: lane.sound, part: lane.part, order })
+        return toggleStep(stepMini, stepTrees, at, row)
       })
     })
   }, [model, boxes, stepTrees, stepMini])
+  const stepTreesRef = React.useRef(stepTrees)
+  stepTreesRef.current = stepTrees
   const modelRef = React.useRef(model)
   modelRef.current = model
   const stepTogglesRef = React.useRef(stepToggles)
@@ -421,67 +436,66 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     () => (model && trees ? model.lanes.map((_, li) => laneSteps(model, trees, li)) : null),
     [model, trees],
   )
+  // each row's own steps by the tree the EDITS use (every mode): where the arrow keys stop (#2293)
+  const editNodes = React.useMemo(
+    () => (model && stepTrees ? model.lanes.map((_, li) => laneSteps(model, stepTrees, li)) : null),
+    [model, stepTrees],
+  )
 
-  // PROVE BEFORE OFFER, at the length handle (#1053) — the same rule the cell already
-  // applies, asked of `resizeCell` itself so the handle cannot promise a drag the writer
-  // declines. A note gets a handle exactly when SOME length other than its own is
-  // admissible: one column longer, or one shorter. Both are asked, because the two
-  // decline independently — a note with no room ahead can still be shortened, and a note
-  // already at one column can only grow.
+  // PROVE BEFORE OFFER, at the length handle (#1053): a note gets a handle exactly when SOME
+  // length other than its own is admissible — one unit longer, or one shorter, asked of the
+  // writer the drag runs, so the handle cannot promise a drag the writer declines. Both are
+  // asked: a note with no room ahead can still be shortened. Keyed by the note's HEAD column,
+  // and memoized on the model, as `mutate` fires every pointermove.
   //
-  // Asked around the ROUNDED length, since that is the lattice the gesture moves on: a
-  // drag sets a whole number of boxes (columns in LCM), and a sub-column note (`[hh ~]!16`
-  // → 0.5) is offered the nearest whole lengths rather than a fraction it could not be
-  // dragged to (`boxLengths`).
-  //
-  // Keyed by the note's HEAD column, so a two-column note asks once rather than once per
-  // column it covers. Memoized on the model beside `toggleable`/`coverage` and for the
-  // same reason ([[P380]]): `mutate` fires every pointermove, so anything derived per
-  // cell is recomputed per frame unless it hangs off the model.
-  //
-  // MEASURED over the 966 corpus models, because [[P380]] is precisely the entry where a
-  // comment called a per-cell map cheap before anyone had timed one: p50 0.0022ms, p99
-  // 0.357ms, worst 1.26ms — against the cell map's (then `placeable`) p50 0.0047ms, p99 2.54ms, worst 14.4ms
-  // on the same run, i.e. **16.1% of its total**. It costs less than the map beside it
-  // despite serializing, because it asks once per NOTE while that map then asked once per
-  // EMPTY cell, and grids have far more of those.
-  //
-  // In Exact the neighbours are one BOX away (#1855): on a factor-2 row ±1 column is half a
-  // step, which the writer declines both ways, so `~ sd ~ sd, hh*8` offered no handle at all
-  // while a snare two steps long was writable.
+  // ⚠ THE RESIZE IS THE STEP WRITER'S NOW (#2293): a note's length changes inside its group,
+  // in its own text (`resizeStep`: `bd ~` → `bd _`, `bd@3` → `bd@2 ~`), or not at all — never
+  // a respelling of the pattern from columns. Asked one of the note's own units longer and one
+  // shorter, so the handle is offered exactly where one of them writes.
   const resizable = React.useMemo(() => {
-    if (!model) return null
+    if (!model || !stepTrees || stepMini === null) return null
     return model.lanes.map((lane, li) => {
       const out = new Set<number>()
-      const w = boxes?.[li]?.[0]?.width ?? 1
+      const row = { sound: lane.sound, part: lane.part }
       lane.cells.forEach((c, si) => {
         if (!isCellOn(c)) return
-        const { longer, shorter } = boxLengths(c.duration, w)
-        if (canResizeCell(model, li, si, longer) || (shorter !== null && canResizeCell(model, li, si, shorter))) out.add(si)
+        const at = stepAddressAt(model, stepTrees, li, si)
+        if (typeof at === 'string') return
+        if (resizeStepBy(stepMini, stepTrees, at, 1, row).ok || resizeStepBy(stepMini, stepTrees, at, -1, row).ok) out.add(si)
       })
       return out
     })
-  }, [model, boxes])
+  }, [model, stepTrees, stepMini])
 
-  // Returns whether the writer REFUSED the toggle — `toggleCell` handing back the
-  // model it was given — as distinct from a cell already in the asked state, which
-  // is no refusal. The caller decides whether to say so: a single press or key does
-  // (`paintOne`), a paint drag brushing across inert cells does not.
-  //
-  // A hit is painted one box long: one column in LCM, one of the part's own steps in
-  // Exact (#1855) — the step the user sees and clicked.
-  //
-  // The toggle is the step writer's (#2292): the answer `stepToggles` already holds for
-  // this box, made in the text it was computed from. A write that finds the text changed
-  // under it (a drag faster than the re-read) writes nothing, and is counted as refused.
-  const paintCell = React.useCallback(
-    (laneIndex: number, stepIndex: number, value: boolean): { refused: boolean; why?: string } => {
-      const lane = modelRef.current?.lanes[laneIndex]
-      if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) return { refused: false }
-      const answer = stepTogglesRef.current?.[laneIndex]?.[stepIndex]
+  /**
+   * Make lane `li`'s note at column `head` end at column `end` (#2293), or one of its units
+   * longer / shorter (`by`) — through the step writer, in the text as it is now.
+   */
+  const resizeNote = (li: number, head: number, to: { end: number } | { by: number }, dryRun = false): boolean => {
+      const m = modelRef.current
+      const trees = stepTreesRef.current
       const mini = stepMiniRef.current
-      if (!answer || mini === null) return { refused: true }
-      if (!answer.ok) return { refused: true, why: answer.why }
+      const lane = m?.lanes[li]
+      if (!m || !trees || mini === null || !lane) return false
+      const at = stepAddressAt(m, trees, li, head)
+      if (typeof at === 'string') return false
+      const row = { sound: lane.sound, part: lane.part }
+      let r: StepEditResult
+      if ('by' in to) r = resizeStepBy(mini, trees, at, to.by, row)
+      else {
+        const end = endInBar(m, head, to.end)
+        if (!end) return false
+        r = resizeStep(mini, trees, at, end, row)
+      }
+      if (!r.ok) return false
+      return dryRun || writeEdit(mini, r.edit)
+  }
+
+  // ONE STEP EDIT, written in the text it was computed from (#2292): a toggle, a split, a
+  // resize. A write that finds the text changed under it (a drag faster than the re-read)
+  // writes nothing, and says false.
+  const writeEdit = React.useCallback(
+    (mini: string, edit: StepEdit): boolean => {
       // The rows on screen stay on screen, where they were (#1161). The model is read again
       // from the written text, which lists rows in the order sounds first play and leaves
       // out a row with no note — so a row this edit empties, or one staged by Add voice and
@@ -496,9 +510,49 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
         for (const r of read.lanes) if (!shown.some((l) => same(r, l))) lanes.push(r)
         return lanes.every((l, i) => l === read.lanes[i]) && lanes.length === read.lanes.length ? read : { ...read, lanes }
       }
-      return { refused: !writeStep(mini, answer.edit, keep) }
+      const steps = modelRef.current?.steps
+      const wrote = writeStep(mini, edit, keep)
+      // A REFINED VIEW IS ABSORBED when the text now spells it (#1057, #2293): a split in a
+      // view drawn finer than the text (Slots ×2) writes the finer step itself, and the text
+      // read alone opens at the columns on screen — so the view's scale is dropped, as the
+      // column writer drops it (`spellsRefinement`). Otherwise the scale would apply AGAIN
+      // to the finer text, and the grid would double under the user's pointer.
+      if (wrote && viewScaleRef.current !== UNREFINED) {
+        const natural = stepGridCodec.parse(applyStepEdit(mini, edit), UNREFINED)
+        if (natural.ok && natural.model.steps === steps) setViewScale(UNREFINED)
+      }
+      return wrote
     },
     [writeStep],
+  )
+
+  // Returns whether the writer REFUSED the toggle — `toggleCell` handing back the
+  // model it was given — as distinct from a cell already in the asked state, which
+  // is no refusal. The caller decides whether to say so: a single press or key does
+  // (`paintOne`), a paint drag brushing across inert cells does not.
+  //
+  // A hit is painted one box long: one column in LCM, one of the part's own steps in
+  // Exact (#1855) — the step the user sees and clicked.
+  //
+  // The toggle is the step writer's (#2292): the answer `stepToggles` already holds for
+  // this box, made in the text it was computed from. A write that finds the text changed
+  // under it (a drag faster than the re-read) writes nothing, and is counted as refused.
+  //
+  // `drag`: the box is one a paint drag entered (#2293). A drag walks STEPS — it paints the
+  // steps it crosses and passes over a step's snap halves, which split only for a deliberate
+  // click or key; otherwise a brush across a long rest would cut it into pieces.
+  const paintCell = React.useCallback(
+    (laneIndex: number, stepIndex: number, value: boolean, drag = false): { refused: boolean; why?: string } => {
+      const lane = modelRef.current?.lanes[laneIndex]
+      if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) return { refused: false }
+      const answer = stepTogglesRef.current?.[laneIndex]?.[stepIndex]
+      const mini = stepMiniRef.current
+      if (!answer || mini === null) return { refused: true }
+      if (!answer.ok) return { refused: true, why: answer.why }
+      if (drag && 'split' in answer && answer.split) return { refused: false }
+      return { refused: !writeEdit(mini, answer.edit) }
+    },
+    [writeEdit],
   )
   /** One deliberate toggle — a press or a key — which says so, and why, when it is refused. */
   const paintOne = React.useCallback(
@@ -510,6 +564,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     },
     [paintCell],
   )
+
 
   // Add a new drum voice (#516). The new lane is all-rest, so it stages in the
   // model and only writes to the source on the first hit (useGridModel keeps it
@@ -663,11 +718,11 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     if (g.mode === 'resize') {
       // The LANE the pointer wanders into is ignored, exactly as the roll ignores the
       // row: a resize is a horizontal gesture and a few px of vertical drift should not
-      // silently retarget it. `resizeCell` floors at one column and `clampLane` caps at
-      // the room the note has, so a drag back past the note's own start, or forward past
-      // the next hit, lands on the shortest/longest length rather than doing nothing.
-      // the pointer's box ends the note: its last column, however wide the box is
-      mutate((prev) => resizeCell(prev, g.lane, g.step, stepIndex + width - g.step))
+      // silently retarget it. The pointer's box ends the note — its last column, however
+      // wide the box is — through the step writer (#2293): a length the note's group can
+      // take in its own text writes; any other (past the next note, part of a unit, before
+      // the note's own start) leaves the note as it is.
+      resizeNote(g.lane, g.step, { end: stepIndex + width })
       return
     }
     if (g.mode !== 'paint') return
@@ -675,13 +730,15 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     // grid redraws from it, so rows can move under a pointer that has not: the cell it
     // "enters" then belongs to another row, and painting it was a write nobody made.
     if (laneIndex !== g.lane || modelRef.current?.lanes[laneIndex]?.sound !== paintSoundRef.current) return
-    paintCell(laneIndex, stepIndex, g.paintValue)
+    paintCell(laneIndex, stepIndex, g.paintValue, true)
   }
 
   // THE CURSOR (#1802): a (lane, step) the arrow keys move and the keys act on.
   // A press on a cell moves it there too. Local to the grid — the sequencer has no
   // selection for anything else to share.
   const [cursor, setCursor] = React.useState<GridCell | null>(null)
+  /** each row's cursor stops (#2293): the first column of every box it draws, set where the rows are drawn */
+  const stopsRef = React.useRef<number[][] | null>(null)
   const rowsN = model?.lanes.length ?? 0
   const colsN = model?.steps ?? 0
   /** The cursor, when it is still on the grid (a voice can be removed under it). */
@@ -717,9 +774,9 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     endGesture()
   }
 
-  // ⌥⇧← / ⌥⇧→ set the length of the hit under the cursor, a box at a time (#1803, #1855)
-  // — what the handle does, through the same `resizeCell`, on the note sounding
-  // through the cursor's column (its head, when the cursor sits on a held column).
+  // ⌥⇧← / ⌥⇧→ set the length of the hit under the cursor, one of its own units at a time
+  // (#1803, #2293) — what the handle does, through the same step writer, on the note
+  // sounding through the cursor's column (its head, when the cursor sits on a held column).
   // The sequencer has no move: every other note edit is declined here.
   const resizeByKey = (at: GridCell, action: GridAction, dryRun: boolean): boolean => {
     if (!model || (action !== 'shorter' && action !== 'longer')) return false
@@ -733,14 +790,11 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
       }
     }
     if (head < 0) return false
-    const c = cells[head]
-    if (!isCellOn(c)) return false
-    const { longer, shorter } = boxLengths(c.duration, boxWidth(at.row))
-    const dur = action === 'longer' ? longer : shorter
-    if (dur === null || !canResizeCell(model, at.row, head, dur)) return false
+    const by = action === 'longer' ? 1 : -1
+    if (!resizeNote(at.row, head, { by }, true)) return false
     if (!dryRun) {
       beginGesture()
-      mutate((prev) => resizeCell(prev, at.row, head, dur))
+      resizeNote(at.row, head, { by })
       endGesture()
       focusCursorRef.current = true
       setCursor({ row: at.row, col: head })
@@ -772,15 +826,18 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     if (isCursorMove(action)) {
       if (dryRun) return true
       focusCursorRef.current = true
-      // ←/→ step over a whole box; ↑/↓ land on the box playing at the same moment (#1855)
-      setCursor(moveBoxCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN, boxWidth))
+      // ←/→ go to the step before or after, at whatever depth it is drawn — into an open
+      // group and out of it; ↑/↓ land on the step playing at the same moment (#1855, #2293)
+      setCursor(moveStepCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN, (r) => stopsRef.current?.[r] ?? null))
       return true
     }
     if (!at) return false
     if (isNoteEdit(action)) return resizeByKey(at, action, dryRun)
     // a key acts on the box the cursor is in, at its first column — what a click on it does
+    // (the step the cursor is on: its row's stop at or before the column, #2293)
+    const stops = stopsRef.current?.[at.row]
     const boxW = boxWidth(at.row)
-    const col = at.col - (at.col % boxW)
+    const col = stops && stops.length > 0 ? stopAt(stops, at.col) : at.col - (at.col % boxW)
     const cell = model.lanes[at.row]?.cells[col]
     const on = cell !== undefined && isCellOn(cell)
     switch (action) {
@@ -898,6 +955,13 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
           return drawnSteps(openAt(nodes, colPx, openPx), boxes[li], model.steps, owners, colPx)
         })
       : null
+  // where the arrow keys stop in each row (#2293): each of its own steps, at every depth
+  // — asked of the tree the edits use, so LCM walks the same steps as Exact
+  stopsRef.current = model.lanes.map((_, li) => {
+    const nodes = laneNodes?.[li] ?? editNodes?.[li]
+    if (nodes) return leafStops(nodes)
+    return (stepGroups?.[li] ?? []).flatMap(groupStops)
+  })
   const rulerNodes = laneNodes?.[liveCursor?.row ?? 0] ?? null
   const ruler = rulerNodes && drawnRows?.[liveCursor?.row ?? 0]
     ? zoomRuler(model, openAt(rulerNodes, colPx, openPx))
@@ -1218,6 +1282,9 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                 // swallowing the click the way it did before (#1064/#1070) — for a
                 // lit cell's erase too (#1836).
                 const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true
+                // a press here splits the step it is part of (#2293): said on the cell
+                const splitAnswer = stepToggles?.[laneIndex]?.[stepIndex]
+                const splits = !!splitAnswer && splitAnswer.ok && 'split' in splitAnswer && !!splitAnswer.split
                 // the note this step plays, on a sound-first line (#2226): `c / e` when it changes by pass
                 const playsNote =
                   on && !held && playedNotes
@@ -1284,6 +1351,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                     data-gain={on && gainScoped ? gain : undefined}
                     data-playing={isPlaying ? 'true' : undefined}
                     data-seq-cell-inert={canToggle ? undefined : 'true'}
+                    data-seq-splits={splits ? 'true' : undefined}
                     aria-disabled={canToggle ? undefined : true}
                     // WHY THIS CELL IS INERT, and the two reasons are not
                     // interchangeable. On the element and alt paths every
@@ -1313,7 +1381,9 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                       lookOnly
                         ? lookOnlyLine(lookOnly)
                         : canToggle
-                        ? playsNote ? `${lane.sound} plays ${playsNote}` : undefined
+                        ? splits
+                          ? `Splits this step: adds ${lane.sound} here`
+                          : playsNote ? `${lane.sound} plays ${playsNote}` : undefined
                         : stepRefusalLine((() => {
                             const a = stepToggles?.[laneIndex]?.[stepIndex]
                             return a && !a.ok ? a.why : ''

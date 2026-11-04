@@ -4,8 +4,8 @@
  * and tree the panel uses.
  */
 import { describe, expect, it } from 'vitest'
-import { applyStepEdit, chunkDivisions, parseStepGrid, toggleStep, type StepGridModel } from '../../../codeView'
-import { stepAddressAt } from '../gridZoom'
+import { applyStepEdit, chunkDivisions, parseStepGrid, splitStep, toggleStep, type StepGridModel } from '../../../codeView'
+import { laneSteps, leafStops, splitAddressAt, stepAddressAt } from '../gridZoom'
 
 const MINI = 'bd [~ bd] sd [hh [~ cp]]'
 
@@ -56,6 +56,36 @@ describe('stepAddressAt — the step a column names', () => {
     expect(click('bd hh*4', 'hh', 4)).toBe('refused: step-is-generated')
     // and one inside `bd!3` was made by its `!`
     expect(landsOn('bd!3', 'bd', 1)).toBe('refused: step-is-replicated')
+  })
+
+  it('a column part-way through a plain step splits it, at any depth (#2293)', () => {
+    const split = (mini: string, sound: string, col: number): string => {
+      const m = grid(mini)
+      const trees = chunkDivisions(mini, m.bars ?? 1)
+      const li = m.lanes.findIndex((l) => l.sound === sound)
+      const got = splitAddressAt(m, trees, li, col)
+      if (!got) return 'none'
+      const r = splitStep(mini, trees, got.address, got.at, { sound, part: m.lanes[li].part })
+      return r.ok ? applyStepEdit(mini, r.edit) : `refused: ${r.why}`
+    }
+    // `bd` is columns 0–3 of 16: column 2 is its half, column 1 its quarter
+    expect(split(MINI, 'bd', 2)).toBe('[bd bd] [~ bd] sd [hh [~ cp]]')
+    expect(split(MINI, 'bd', 1)).toBe('[bd bd ~ ~] [~ bd] sd [hh [~ cp]]')
+    // inside a group: `hh` is columns 12–13
+    expect(split(MINI, 'cp', 13)).toBe('bd [~ bd] sd [[hh cp] [~ cp]]')
+    // a column where a step begins is no split
+    expect(split(MINI, 'bd', 4)).toBe('none')
+    // a hat inside `hh*4` is no plain step's half
+    expect(split('bd hh*4', 'hh', 5)).toBe('refused: step-is-generated')
+  })
+
+  it('leafStops: the cursor walks each step at every depth, never a column inside one (#2293)', () => {
+    const m = grid(MINI)
+    const trees = chunkDivisions(MINI, m.bars ?? 1)
+    const stops = (sound: string): number[] => leafStops(laneSteps(m, trees, m.lanes.findIndex((l) => l.sound === sound))!)
+    // bd [~ bd] sd [hh [~ cp]] on 16 columns: bd 0, ~ 4, bd 6, sd 8, hh 12, ~ 14, cp 15
+    expect(stops('bd')).toEqual([0, 4, 6, 8, 12, 14, 15])
+    expect(stops('cp')).toEqual([0, 4, 6, 8, 12, 14, 15])
   })
 
   it('a click writes the step’s own text', () => {
