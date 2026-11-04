@@ -115,11 +115,15 @@ Each signed-in account (or, for things you can do signed out, each address) may 
 | Report an entry | 20 an hour | account, or address when signed out |
 | Edit a profile or a collection (make, change or delete) | 60 an hour, together | profile |
 | Make a private link | 30 an hour | account, or address when signed out |
-| Bring this browser's shares into your account | 10 an hour | account |
+| Bring this browser's shares into your account | 250 shares an hour | account |
 
 Windows are fixed hours on the clock, so the count starts over on the hour. Over the limit, the server answers `429` with a plain message ("you've published 10 times in an hour…; try again in 23 minutes") and a `Retry-After` header in seconds, and the dialog shows that message.
 
-The counters are small private records in the gallery's Blob store, one per account and kind of write. That costs one read and one write per request, which is fine at the gallery's volume; when the gallery moves to a database the counters move with it, and nothing else changes. Addresses are never stored as they are, only as a keyed hash. If the store can't be reached, the request is let through (and logged) rather than blocking publishing.
+Bringing shares into your account counts each share, not each request: every entry, every private link and the old profile counts one (an empty request still counts one). One request carries at most 50 entries and 50 links, so the hour's 250 covers two full requests. If a browser holds more than that, it sends the first 50 of each and the rest on later visits. Counting shares rather than requests matters because moving each share is several storage operations; counting requests let one account move thousands of shares an hour.
+
+Each server keeps its own count, and checks for one account run one at a time, so however many requests arrive at once, one server never lets more than the limit through. The servers also share a small private record per account and kind of write in the gallery's Blob store, and each one counts from whichever is higher, its own count or the record's. That keeps the limit across servers for requests spread over time. Blob can't do an atomic "add one if under the limit", though, so a burst that lands on several servers at the same moment can get the limit's worth through on each of them. When the gallery moves to a database the shared count becomes atomic and that gap closes, with nothing else changing.
+
+Addresses are never stored as they are, only as a keyed hash. If the store can't be reached, the request is not refused for that (it's logged), but each server's own count still applies, so an outage never means no limit at all.
 
 To raise a limit without a code change, set `STAVE_RATE_LIMIT_<NAME>` to a whole number: `STAVE_RATE_LIMIT_PUBLISH`, `_REPORT`, `_EDIT`, `_LINK` or `_CLAIM`. The tests use this; production should normally leave them unset.
 

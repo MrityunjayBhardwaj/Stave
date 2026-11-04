@@ -6,17 +6,46 @@ import { galleryStore, getJson, putJson, type GalleryBlobStore } from "./store";
 /*
  * #2330 — how often one account (or, signed out, one address) may write.
  *
- *   rateLimit(key, windowSeconds, max) → { ok: true, count } | { ok: false, retryAfter }
+ *   rateLimit(key, windowSeconds, max, store?, cost = 1)
+ *       → { ok: true, count } | { ok: false, retryAfter }
  *       Fixed windows: the window a moment falls in starts at
- *       floor(now / windowSeconds) * windowSeconds. Each call counts one; the
- *       (max + 1)th call in a window is refused, and `retryAfter` is the whole
- *       seconds until that window ends.
+ *       floor(now / windowSeconds) * windowSeconds. Each call counts `cost`
+ *       (one, unless the caller says otherwise); a call that would take the
+ *       window's count past `max` is refused and not counted, and `retryAfter`
+ *       is the whole seconds until that window ends.
  *
- *   limitAccount(name, accountHash) / limitAuthor(name, authorId) / limitRequest(name, req)
+ *   limitAccount(name, accountHash, cost?) / limitAuthor(name, authorId) / limitRequest(name, req)
  *       → the 429 Response to send, or null to go on. One line at the top of a
  *       route: `const limited = await limitAccount("publish", hash); if (limited) return limited;`
  *       limitRequest keys on the signed-in account when there is one, else on
  *       the hashed address (anonymous link creation and reports).
+ *
+ * ── What is guaranteed (#2345) ──────────────────────────────────────────────
+ *
+ * There are two layers: a counter inside each server instance, and a shared
+ * record in a store (today the gallery's Blob store).
+ *
+ *   WITHIN ONE INSTANCE (one running server process): exact. Every check for
+ *   one key runs one at a time (a per-key queue), and the instance keeps its
+ *   own count for the current window. However many requests for one key
+ *   arrive at once, one instance admits at most `max` worth of cost per window.
+ *   This holds even when the store is down, because the instance's own count
+ *   doesn't depend on it.
+ *
+ *   ACROSS INSTANCES: best effort. Each instance also reads the shared record
+ *   and counts from whichever is higher, its own count or the record's, then
+ *   writes the new count back. Requests spread over time are therefore limited
+ *   across all instances. But Blob has no compare-and-set, so two instances
+ *   checking at the same moment can both read the same record. In the worst
+ *   case a burst that lands on K instances at once is admitted up to K × max
+ *   (Vercel may run several instances of a function under load; each one is
+ *   capped at `max`, and the record catches up as soon as the burst ends).
+ *   The per-address Firewall rules (docs: "Limits") sit in front of this.
+ *
+ *   The fix for the cross-instance gap is an atomic store: one Postgres row per
+ *   key, `INSERT … ON CONFLICT … DO UPDATE … WHERE count + cost <= max
+ *   RETURNING count`. That is what the `RateLimitStore.take` interface below is
+ *   shaped for; swap `blobRateLimitStore` for it and no route changes.
  *
  * ── Storage ─────────────────────────────────────────────────────────────────
  *
@@ -26,17 +55,14 @@ import { galleryStore, getJson, putJson, type GalleryBlobStore } from "./store";
  *
  * The record holds the CURRENT window only; the first call in a new window
  * overwrites it, so nothing piles up. That is one Blob read and one Blob write
- * per limited request. At the gallery's volume (a handful of writes an hour per
- * person) that is fine, and cheaper than a database we don't run yet. Blob has
- * no compare-and-set, so two requests from one account at the same instant can
- * both read the same count and the limit can be overshot by the number racing;
- * a burst wider than that is still refused. When the gallery moves to Postgres
- * (#2306's later stage), this moves with it: a row per key with an atomic
- * upsert, behind this same `rateLimit` function, and no route changes.
+ * per admitted request; a request the instance already knows is over the limit
+ * is refused without touching the store, so a flood costs no storage.
  *
- * When the store can't be read or written, the request is let through with a
- * warning in the log: a limiter outage should not take publishing down with it,
- * and the outer per-address Firewall rules (docs: "Limits") still apply.
+ * When the store can't be read or written, the request is not refused because
+ * of that (logged instead): a store outage should not take publishing down with
+ * it. The instance's own count still applies, so an outage loosens the limit
+ * only to "per instance", never to "no limit". Whether to refuse outright on a
+ * store outage is an open decision for the gallery's owner, not changed here.
  *
  * Addresses are never stored as they are: the key is an HMAC of the address
  * with AUTH_SECRET (plain SHA-256 when it isn't set), so the store can't be
@@ -68,8 +94,15 @@ export const RATE_LIMITS = {
   edit: { windowSeconds: 3600, max: 60 },
   /** POST /api/share — a private short link. Per account, or per address signed out. */
   link: { windowSeconds: 3600, max: 30 },
-  /** POST /api/gallery/claim — bring this browser's shares into the account. */
-  claim: { windowSeconds: 3600, max: 10 },
+  /**
+   * POST /api/gallery/claim — bring this browser's shares into the account.
+   * #2345: counted in ITEMS, not requests (see claimCost in claim.ts). Each
+   * item costs several storage operations, so a request-count limit let one
+   * account move 10 × 1,000 items an hour. One request now carries at most
+   * MAX_CLAIM_ITEMS entries + MAX_CLAIM_ITEMS links + the old profile (101), so
+   * an hour's budget covers two full requests, plenty for a real browser.
+   */
+  claim: { windowSeconds: 3600, max: 250 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitName = keyof typeof RATE_LIMITS;
@@ -93,27 +126,136 @@ interface CounterRecord {
 export const rateLimitPath = (key: string) =>
   `gallery/rate-limits/${createHash("sha256").update(key, "utf8").digest("hex")}.json`;
 
-/** Count one call against `key`. See the header for the window and storage rules. */
+// ── the shared store (cross-instance) ────────────────────────────────────────
+
+/**
+ * Where the shared count lives. `take` adds `cost` to the key's count for the
+ * window starting at `windowStart`, unless that would pass `max`. `floor` is
+ * what this instance already knows the count to be; the store counts from the
+ * higher of the two. Returns whether it was admitted and the count after (or,
+ * refused, the count that refused it).
+ *
+ * An atomic store (Postgres) does this in one statement. The Blob store below
+ * can't, so two instances racing may both be admitted (see the header).
+ */
+export interface RateLimitStore {
+  take(key: string, windowStart: number, cost: number, max: number, floor: number): Promise<{ admitted: boolean; count: number }>;
+}
+
+/** The shared count in the gallery's Blob store: read, decide, write. Not atomic across instances. */
+export function blobRateLimitStore(store: GalleryBlobStore): RateLimitStore {
+  return {
+    async take(key, windowStart, cost, max, floor) {
+      const file = rateLimitPath(key);
+      const held = await getJson<CounterRecord>(store, file);
+      const count = Math.max(floor, held && held.windowStart === windowStart ? held.count : 0);
+      if (count + cost > max) return { admitted: false, count };
+      await putJson(store, file, { windowStart, count: count + cost } satisfies CounterRecord);
+      return { admitted: true, count: count + cost };
+    },
+  };
+}
+
+const isRateLimitStore = (s: GalleryBlobStore | RateLimitStore): s is RateLimitStore =>
+  typeof (s as Partial<RateLimitStore>).take === "function";
+
+// ── this instance's own count, and the per-key queue ─────────────────────────
+
+interface LocalCount {
+  windowStart: number;
+  windowEnd: number;
+  count: number;
+}
+
+interface InstanceState {
+  counts: Map<string, LocalCount>;
+  /** The tail of each key's queue: the next check for that key waits on it. */
+  tails: Map<string, Promise<void>>;
+}
+
+// On globalThis, not module scope: Next can load this module more than once in
+// one process (one copy per route bundle, and again on a dev reload), and every
+// copy must share one count, or the edit limit (four routes) would split four ways.
+const INSTANCE = Symbol.for("stave.gallery.rateLimit.instance");
+function instance(): InstanceState {
+  const g = globalThis as { [INSTANCE]?: InstanceState };
+  return (g[INSTANCE] ??= { counts: new Map(), tails: new Map() });
+}
+
+/** For tests: forget this instance's counts, as a fresh server process would. */
+export function resetRateLimitInstanceForTests(): void {
+  const s = instance();
+  s.counts.clear();
+  s.tails.clear();
+}
+
+const PRUNE_AT = 5000;
+
+function localCount(key: string, windowStart: number, windowSeconds: number, nowSec: number): LocalCount {
+  const { counts } = instance();
+  if (counts.size > PRUNE_AT) {
+    for (const [k, v] of counts) if (v.windowEnd <= nowSec) counts.delete(k);
+  }
+  let held = counts.get(key);
+  if (!held || held.windowStart !== windowStart) {
+    held = { windowStart, windowEnd: windowStart + windowSeconds, count: 0 };
+    counts.set(key, held);
+  }
+  return held;
+}
+
+/**
+ * Run `fn` after every earlier call for `key` in this instance has finished,
+ * so a check's read, decision and write for one key never interleave with
+ * another's. Different keys don't wait on each other.
+ */
+async function oneAtATime<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const { tails } = instance();
+  const before = tails.get(key) ?? Promise.resolve();
+  const run = before.then(fn);
+  const tail = run.then(
+    () => {},
+    () => {},
+  );
+  tails.set(key, tail);
+  try {
+    return await run;
+  } finally {
+    if (tails.get(key) === tail) tails.delete(key);
+  }
+}
+
+/** Count `cost` against `key`. See the header for the window, storage and guarantees. */
 export async function rateLimit(
   key: string,
   windowSeconds: number,
   max: number,
-  store: GalleryBlobStore | null = galleryStore(),
+  store: GalleryBlobStore | RateLimitStore | null = galleryStore(),
+  cost = 1,
 ): Promise<RateLimitResult> {
-  if (!store) return { ok: true, count: 0 };
-  const now = Math.floor(Date.now() / 1000);
-  const windowStart = now - (now % windowSeconds);
-  const file = rateLimitPath(key);
-  try {
-    const held = await getJson<CounterRecord>(store, file);
-    const count = held && held.windowStart === windowStart ? held.count : 0;
-    if (count >= max) return { ok: false, retryAfter: Math.max(1, windowStart + windowSeconds - now) };
-    await putJson(store, file, { windowStart, count: count + 1 } satisfies CounterRecord);
-    return { ok: true, count: count + 1 };
-  } catch (err) {
-    console.warn("[stave] rate limit store unavailable; letting the request through:", err);
-    return { ok: true, count: 0 };
-  }
+  const shared = store ? (isRateLimitStore(store) ? store : blobRateLimitStore(store)) : null;
+  return oneAtATime(key, async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const windowStart = now - (now % windowSeconds);
+    const refuse = (): RateLimitResult => ({ ok: false, retryAfter: Math.max(1, windowStart + windowSeconds - now) });
+    const local = localCount(key, windowStart, windowSeconds, now);
+    const known = local.count;
+    // This instance's count is a floor on the real one, so over it is over: no store trip.
+    if (known + cost > max) return refuse();
+    if (shared) {
+      try {
+        const taken = await shared.take(key, windowStart, cost, max, known);
+        local.count = Math.max(local.count, taken.count);
+        return taken.admitted ? { ok: true, count: taken.count } : refuse();
+      } catch (err) {
+        // Policy (unchanged by #2345): a store failure is not a refusal. This
+        // instance's own count below still holds the line.
+        console.warn("[stave] rate limit store unavailable; counting in this instance only:", err);
+      }
+    }
+    local.count = known + cost;
+    return { ok: true, count: local.count };
+  });
 }
 
 const WHAT: Record<RateLimitName, string> = {
@@ -136,23 +278,26 @@ export function waitPhrase(seconds: number): string {
 /** The 429 for a refused call: a plain message and Retry-After in seconds. */
 export function tooMany(name: RateLimitName, rule: RateLimitRule, retryAfter: number): Response {
   const per = rule.windowSeconds === 3600 ? "an hour" : `${waitPhrase(rule.windowSeconds)}`;
+  // The claim counts items, not requests (#2345), so it can't say "N times".
+  const error =
+    name === "claim"
+      ? `you can bring at most ${rule.max} shares into your account in ${per}, and this would go past that; try again in ${waitPhrase(retryAfter)}`
+      : `you've ${WHAT[name]} ${rule.max} times in ${per}, which is the most allowed; try again in ${waitPhrase(retryAfter)}`;
   return Response.json(
-    {
-      error: `you've ${WHAT[name]} ${rule.max} times in ${per}, which is the most allowed; try again in ${waitPhrase(retryAfter)}`,
-    },
+    { error },
     { status: 429, headers: { "Retry-After": String(retryAfter), "Cache-Control": "no-store" } },
   );
 }
 
-async function limitKey(name: RateLimitName, key: string): Promise<Response | null> {
+async function limitKey(name: RateLimitName, key: string, cost = 1): Promise<Response | null> {
   const rule = ruleFor(name);
-  const result = await rateLimit(`${name}:${key}`, rule.windowSeconds, rule.max);
+  const result = await rateLimit(`${name}:${key}`, rule.windowSeconds, rule.max, galleryStore(), cost);
   return result.ok ? null : tooMany(name, rule, result.retryAfter);
 }
 
-/** Limit by signed-in account (its account hash). */
-export function limitAccount(name: RateLimitName, accountHash: string): Promise<Response | null> {
-  return limitKey(name, `account:${accountHash}`);
+/** Limit by signed-in account (its account hash). `cost` is how many units this call counts (default one). */
+export function limitAccount(name: RateLimitName, accountHash: string, cost = 1): Promise<Response | null> {
+  return limitKey(name, `account:${accountHash}`, cost);
 }
 
 /** Limit by gallery author: profile and collection edits, which an author key may also make. */

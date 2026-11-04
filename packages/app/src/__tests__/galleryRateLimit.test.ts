@@ -30,11 +30,13 @@ import {
   hashedAddress,
   rateLimit,
   rateLimitPath,
+  resetRateLimitInstanceForTests,
   ruleFor,
   waitPhrase,
 } from "../app/api/gallery/rateLimit";
 import { requireTurnstile, SITEVERIFY_URL } from "../app/api/gallery/turnstile";
 import { galleryStore } from "../app/api/gallery/store";
+import { claimCost, MAX_CLAIM_ITEMS } from "../app/api/gallery/claim";
 
 // Cloudflare's published test keys (developers.cloudflare.com/turnstile/troubleshooting/testing/).
 const PASS_SECRET = "1x0000000000000000000000000000000AA";
@@ -52,14 +54,18 @@ afterAll(async () => {
 let n = 0;
 const fresh = () => `rl-${Date.now().toString(36)}-${n++}`;
 
-beforeEach(() => {
-  vi.unstubAllEnvs();
+function stubBaseEnv() {
   vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
   vi.stubEnv("BLOB_STORE_ID", "");
   vi.stubEnv("STAVE_GALLERY_DEV_DIR", dir);
   vi.stubEnv("AUTH_SECRET", "test-secret");
   vi.stubEnv("STAVE_AUTH_TEST_LOGIN", "1");
   vi.stubEnv("TURNSTILE_SECRET_KEY", "");
+}
+
+beforeEach(() => {
+  vi.unstubAllEnvs();
+  stubBaseEnv();
   signIn(fresh());
 });
 afterEach(() => {
@@ -152,19 +158,9 @@ describe("rateLimit, on its own", () => {
     expect(await store().get(rateLimitPath(key))).not.toBeNull();
   });
 
-  it("lets the request through when the store fails", async () => {
-    const broken = {
-      put: async () => {
-        throw new Error("down");
-      },
-      get: async () => {
-        throw new Error("down");
-      },
-      del: async () => {},
-      list: async () => [],
-    };
+  it("lets the request through when the store fails, counting it in this instance", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(await rateLimit("unit:x", 60, 1, broken)).toEqual({ ok: true, count: 0 });
+    expect(await rateLimit(`unit:${fresh()}`, 60, 1, brokenStore())).toEqual({ ok: true, count: 1 });
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
@@ -240,12 +236,13 @@ describe("each write route applies its limit", () => {
     await expect429(await cPut());
     await expect429(await collectionPost(json("POST", "http://x/api/gallery/collections", { title: "D", description: "", entryIds: [] })));
     await expect429(await collectionDelete(new Request(`http://x/api/gallery/collections/${collection.id}`, { method: "DELETE" }), ctxC));
-  });
+  }, 20_000); // 60 real writes to the folder store: 2-4 s alone, past 5 s under a full parallel suite
 
-  it(`claim: ${RATE_LIMITS.claim.max} an hour per account, then 429`, async () => {
+  it("claim: counted per item, then 429", async () => {
+    vi.stubEnv("STAVE_RATE_LIMIT_CLAIM", "10");
     const claim = () => claimRoute(json("POST", "http://x/api/gallery/claim", { entries: [], links: [] }));
-    await expectAll(RATE_LIMITS.claim.max, claim, 200);
-    await expect429(await claim());
+    await expectAll(10, claim, 200);
+    expect(await expect429(await claim())).toMatch(/at most 10 shares into your account in an hour/);
   });
 
   it(`private links: ${RATE_LIMITS.link.max} an hour per address signed out, per account signed in`, async () => {
@@ -260,6 +257,124 @@ describe("each write route applies its limit", () => {
     signIn(fresh()); // the same address, signed in: the account's own count
     await expectAll(RATE_LIMITS.link.max, () => post(ip), 201);
     await expect429(await post(ip));
+  });
+});
+
+// ── #2345: bursts, item charging, and a store outage ──────────────────────────
+
+function brokenStore() {
+  const down = async (): Promise<never> => {
+    throw new Error("down");
+  };
+  return { put: down, get: down, del: async () => {}, list: async () => [] };
+}
+
+/** Fire `times` calls at once and count the answers by status. */
+async function burst(times: number, fn: () => Promise<Response>): Promise<Record<number, number>> {
+  const answers = await Promise.all(Array.from({ length: times }, fn));
+  const counts: Record<number, number> = {};
+  for (const res of answers) counts[res.status] = (counts[res.status] ?? 0) + 1;
+  return counts;
+}
+
+/** A claim of `entries` + `links` items, each well-shaped but naming nothing that exists. */
+const claimOf = (entries: number, links = 0) =>
+  claimRoute(
+    json("POST", "http://x/api/gallery/claim", {
+      entries: Array.from({ length: entries }, (_, i) => ({ id: `nothere${i}`, manageToken: "t" })),
+      links: Array.from({ length: links }, (_, i) => ({ id: `nothere${i}`, manageToken: "t" })),
+    }),
+  );
+
+describe("a burst of parallel requests (#2345)", () => {
+  it("30 parallel claims as one account against a limit of 10: exactly 10 get through", async () => {
+    vi.stubEnv("STAVE_RATE_LIMIT_CLAIM", "10");
+    await myAuthorId(); // the account's author exists before the burst, as after any sign-in
+    const counts = await burst(30, () => claimRoute(json("POST", "http://x/api/gallery/claim", { entries: [], links: [] })));
+    expect(counts).toEqual({ 200: 10, 429: 20 });
+  });
+
+  it(`30 parallel publishes as one account: exactly ${RATE_LIMITS.publish.max} get through`, async () => {
+    await myAuthorId();
+    const counts = await burst(30, () => publish());
+    expect(counts).toEqual({ 201: RATE_LIMITS.publish.max, 429: 30 - RATE_LIMITS.publish.max });
+  });
+
+  it("30 parallel calls to the limiter itself, max 10: exactly 10 admitted, counts 1..10 each once", async () => {
+    const key = `unit:${fresh()}`;
+    const results = await Promise.all(Array.from({ length: 30 }, () => rateLimit(key, 3600, 10, galleryStore()!)));
+    const admitted = results.filter((r) => r.ok).map((r) => (r as { count: number }).count);
+    expect(admitted.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  it("keys don't wait on each other", async () => {
+    const results = await Promise.all(Array.from({ length: 5 }, () => rateLimit(`unit:${fresh()}`, 3600, 1, galleryStore()!)));
+    expect(results.every((r) => r.ok)).toBe(true);
+  });
+});
+
+describe("the claim is charged per item (#2345)", () => {
+  beforeEach(() => vi.stubEnv("STAVE_RATE_LIMIT_CLAIM", "10"));
+
+  it("one claim of 12 items against a limit of 10 is refused, and costs nothing", async () => {
+    await expect429(await claimOf(8, 4));
+    expect((await claimOf(10)).status).toBe(200); // the refused 12 weren't counted
+    await expect429(await claimOf(0)); // the 10 were
+  });
+
+  it("items add up across claims: 6 then 5 is refused at the second", async () => {
+    expect((await claimOf(6)).status).toBe(200);
+    await expect429(await claimOf(3, 2));
+    expect((await claimOf(4)).status).toBe(200); // 6 + 4 = 10 still fits
+  });
+
+  it("an empty or malformed claim still costs one, and the limit answers before the shape error", async () => {
+    vi.stubEnv("STAVE_RATE_LIMIT_CLAIM", "2");
+    const malformed = () => claimRoute(json("POST", "http://x/api/gallery/claim", { entries: "nope" }));
+    expect((await malformed()).status).toBe(400);
+    expect((await claimOf(0)).status).toBe(200);
+    await expect429(await malformed());
+  });
+
+  it(`the per-request cap is ${MAX_CLAIM_ITEMS} of each, and a full request fits the default hourly budget`, async () => {
+    vi.unstubAllEnvs();
+    stubBaseEnv();
+    expect(MAX_CLAIM_ITEMS).toBe(50);
+    expect((await claimOf(MAX_CLAIM_ITEMS + 1)).status).toBe(400);
+    expect(claimCost({ authorKey: "k", entries: Array(MAX_CLAIM_ITEMS).fill({}), links: Array(MAX_CLAIM_ITEMS).fill({}) })).toBe(101);
+    expect(2 * 101).toBeLessThanOrEqual(RATE_LIMITS.claim.max);
+    expect(claimCost({ entries: [], links: [] })).toBe(1);
+    expect(claimCost(null)).toBe(1);
+  });
+});
+
+describe("when the store is down (#2345)", () => {
+  it("the limit still holds within this instance, for a burst and one at a time", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const key = `unit:${fresh()}`;
+    const results = await Promise.all(Array.from({ length: 30 }, () => rateLimit(key, 3600, 10, brokenStore())));
+    expect(results.filter((r) => r.ok)).toHaveLength(10);
+    expect((await rateLimit(key, 3600, 10, brokenStore())).ok).toBe(false);
+    warn.mockRestore();
+  });
+
+  it("the shared record is the floor for a fresh instance: what another instance counted still counts", async () => {
+    const key = `unit:${fresh()}`;
+    for (let i = 0; i < 9; i++) expect((await rateLimit(key, 3600, 10, galleryStore()!)).ok).toBe(true);
+    resetRateLimitInstanceForTests(); // as if the next requests reached a new server process
+    const results = await Promise.all(Array.from({ length: 30 }, () => rateLimit(key, 3600, 10, galleryStore()!)));
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+  });
+
+  it("once this instance knows a key is over, it refuses without touching the store", async () => {
+    const key = `unit:${fresh()}`;
+    const real = galleryStore()!;
+    let reads = 0;
+    const counting = { ...real, get: (p: string) => (reads++, real.get(p)) };
+    for (let i = 0; i < 3; i++) await rateLimit(key, 3600, 3, counting);
+    const before = reads;
+    for (let i = 0; i < 20; i++) expect((await rateLimit(key, 3600, 3, counting)).ok).toBe(false);
+    expect(reads).toBe(before);
   });
 });
 

@@ -7,7 +7,7 @@
  * Clearing site data loses the tokens, and with them control of the uploads;
  * the publish dialog says so.
  */
-import type { ClaimRefusal, ClaimRequest, GalleryKind } from "./types";
+import { MAX_CLAIM_ITEMS, type ClaimRefusal, type ClaimRequest, type GalleryKind } from "./types";
 
 export interface GalleryAuthor {
   name: string;
@@ -131,11 +131,15 @@ export function pendingClaim(authorId: string): ClaimRequest | null {
   const req: ClaimRequest = {
     entries: listLocalShares()
       .filter((s) => !settled(s, authorId))
-      .map((s) => ({ id: s.id, manageToken: s.manageToken })),
+      .map((s) => ({ id: s.id, manageToken: s.manageToken }))
+      // #2345 — one claim carries at most MAX_CLAIM_ITEMS of each; markClaimed
+      // marks only what was sent, so the rest go with the next page load.
+      .slice(0, MAX_CLAIM_ITEMS),
     links: listPrivateLinks()
       .filter((l) => !settled(l, authorId))
       // #2329 — never the url: the link's key stays in this browser.
-      .map((l) => ({ id: l.id, manageToken: l.manageToken, projectName: l.projectName, createdAt: l.createdAt })),
+      .map((l) => ({ id: l.id, manageToken: l.manageToken, projectName: l.projectName, createdAt: l.createdAt }))
+      .slice(0, MAX_CLAIM_ITEMS),
   };
   if (author?.authorKey && !settled(author, authorId)) req.authorKey = author.authorKey;
   return req.authorKey || req.entries.length || req.links.length ? req : null;

@@ -1,5 +1,5 @@
 import { shareStore } from "../../share/store";
-import { checkClaim, MAX_CLAIM_BODY_BYTES, runClaim } from "../claim";
+import { checkClaim, claimCost, MAX_CLAIM_BODY_BYTES, runClaim } from "../claim";
 import { limitAccount } from "../rateLimit";
 import { requireSessionAuthor } from "../session";
 import { galleryStore } from "../store";
@@ -20,13 +20,16 @@ export async function POST(req: Request): Promise<Response> {
 
   const who = await requireSessionAuthor(req, { signedOut: "sign in to bring your shares into your account" });
   if (who instanceof Response) return who;
-  const limited = await limitAccount("claim", who.account.accountHash); // #2330
-  if (limited) return limited;
-
+  // #2345 — the claim limit counts items, so the body is read (bounded by
+  // MAX_CLAIM_BODY_BYTES) before the limit is charged. A body that doesn't
+  // parse or check still costs one, so a malformed flood is limited too, and
+  // the limit is answered before the shape error.
   const body = await readJsonBody(req, MAX_CLAIM_BODY_BYTES);
+  const checked = body.ok ? checkClaim(body.value) : null;
+  const limited = await limitAccount("claim", who.account.accountHash, claimCost(checked?.ok ? checked.value : null)); // #2330
+  if (limited) return limited;
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });
-  const checked = checkClaim(body.value);
-  if (!checked.ok) return Response.json({ error: checked.error }, { status: checked.status });
+  if (!checked || !checked.ok) return Response.json({ error: checked?.error ?? "bad claim" }, { status: checked?.status ?? 400 });
 
   const result = await runClaim(store, shareStore(), who, checked.value);
   return Response.json(result, { headers: NO_STORE });
