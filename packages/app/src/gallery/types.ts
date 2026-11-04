@@ -12,10 +12,11 @@
  *                                         → 400 bad shape · 413 too large · 429 rate limited · 503 no store
  *   GET    /api/gallery/<id>              → 200 GalleryEntryResponse · 404 · 410 removed
  *   GET    /api/gallery/<id>/thumbnail    → 200 image bytes · 404
- *   DELETE /api/gallery/<id>              (header MANAGE_TOKEN_HEADER or ADMIN_KEY_HEADER)
- *                                         → 204 · 403 wrong token · 404
+ *   DELETE /api/gallery/<id>              (the author's session or MANAGE_TOKEN_HEADER; or an
+ *                                          admin's session with AdminReasonRequest, #2331)
+ *                                         → 204 · 400 admin without a reason · 403 · 404
  *   POST   /api/gallery/<id>/report       ← ReportRequest → 202
- *   GET    /api/gallery/reports           (header ADMIN_KEY_HEADER) → 200 ReportsResponse · 403
+ *   (moderation routes: see "#2331 admins" below)
  *
  * Privacy rule: `authorEmail` is stored server-side only. No public response
  * (list, entry, thumbnail, report ack) may ever contain it.
@@ -99,8 +100,61 @@ export interface GalleryReport {
   reportedAt: number;
 }
 
-export interface ReportsResponse {
-  reports: GalleryReport[];
+// ── #2331 admins: moderation and the action log ───────────────────────────
+//
+// An admin is a signed-in account listed in STAVE_GALLERY_ADMINS
+// ("provider:providerAccountId", comma-separated). Every route below answers
+// 403 to anyone else, signed in or not. There is no admin key or header.
+//
+//   GET    /api/gallery/admin/reports                → 200 ModerationReportsResponse · 403
+//   GET    /api/gallery/reports                      (the same; the route's old address)
+//   POST   /api/gallery/admin/reports/<id>/dismiss   ← AdminReasonRequest → 204 · 400 · 403 · 404
+//   GET    /api/gallery/admin/log                    → 200 AdminLogResponse (newest 200) · 403
+//   DELETE /api/gallery/<id>                         ← AdminReasonRequest → 204 · 400 · 403 · 404
+//   DELETE /api/gallery/collections/<id>             ← AdminReasonRequest → 204 · 400 · 403 · 404
+//
+// Each take-down and dismiss appends one AdminLogRecord before it acts.
+
+export interface AdminReasonRequest {
+  /** Why: kept in the action log. Required, at most MAX_REPORT_REASON_CHARS. */
+  reason: string;
+}
+
+export type AdminAction = "take-down-entry" | "take-down-collection" | "dismiss-report";
+
+/** Who did it. Never the email. */
+export interface GalleryAdmin {
+  provider: string;
+  accountId: string;
+  name: string;
+}
+
+export interface AdminLogRecord {
+  /** ms since epoch */
+  at: number;
+  admin: GalleryAdmin;
+  action: AdminAction;
+  /** The entry or collection id. */
+  target: string;
+  reason: string;
+}
+
+export interface AdminLogResponse {
+  /** Newest first, at most 200. */
+  actions: AdminLogRecord[];
+}
+
+/** One flagged entry and every open report on it, newest report first. */
+export interface FlaggedEntry {
+  entryId: string;
+  /** Null when the entry's listing can't be read (it is reported, but gone). */
+  entry: GalleryEntry | null;
+  reports: Array<Pick<GalleryReport, "reason" | "reportedAt">>;
+}
+
+export interface ModerationReportsResponse {
+  /** The most recently reported first. */
+  flagged: FlaggedEntry[];
 }
 
 /** Limits — enforced by the server, mirrored by the dialog so it can say so before uploading. */
@@ -114,7 +168,8 @@ export const MAX_MANIFEST_BYTES = 1024 * 1024;
 export const MAX_THUMBNAIL_BYTES = 200 * 1024;
 
 export const MANAGE_TOKEN_HEADER = "x-stave-manage-token";
-export const ADMIN_KEY_HEADER = "x-stave-admin-key";
+// #2331 — ADMIN_KEY_HEADER ("x-stave-admin-key") is gone: admins are signed-in
+// accounts (STAVE_GALLERY_ADMINS), and the server ignores that header.
 
 // ── #2314 authors (profiles) and #2315 collections ─────────────────────────
 //
@@ -132,7 +187,8 @@ export const ADMIN_KEY_HEADER = "x-stave-admin-key";
 //   GET    /api/gallery/collections/<id>          → 200 CollectionPageResponse · 404
 //   PUT    /api/gallery/collections/<id>          (AUTHOR_KEY_HEADER) ← CollectionWriteRequest
 //                                                 → 200 { collection: GalleryCollection } · 400 · 403 · 404
-//   DELETE /api/gallery/collections/<id>          (AUTHOR_KEY_HEADER or ADMIN_KEY_HEADER) → 204 · 403 · 404
+//   DELETE /api/gallery/collections/<id>          (AUTHOR_KEY_HEADER, or an admin's session
+//                                                 with a reason, #2331) → 204 · 400 · 403 · 404
 //
 // A collection may hold only its author's own entries (400 otherwise). Entries
 // taken down are left out of every response. Deleting a collection never
@@ -229,7 +285,14 @@ export interface GallerySessionResponse {
     name: string;
     authorId: string;
     verified: GalleryVerified;
+    /**
+     * #2331 — "provider:providerAccountId", the id STAVE_GALLERY_ADMINS lists.
+     * Sent only to the account itself (this route is never cached).
+     */
+    accountId?: string;
   } | null;
+  /** #2331 — true only for a signed-in admin; the overlay then shows Moderation. */
+  isAdmin?: boolean;
 }
 
 // ── #2320 claim and #2321 shares that follow the account ───────────────────

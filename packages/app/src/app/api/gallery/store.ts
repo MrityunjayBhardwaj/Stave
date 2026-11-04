@@ -32,6 +32,8 @@ import { hasBlobStore } from "../share/store";
 //                                            belongs to. Never served.
 //   gallery/account-links/<accountHash>/<shareId>.json  #2321 AccountLink — a private link
 //                                            (key included) kept for its owner. Never public.
+//   gallery/admin-log/<ms>-<hex>.json        #2331 AdminLogRecord — one per admin action.
+//                                            Read by admins only (see admin.ts).
 //
 // #2320 — a profile merged into an account's profile keeps its JSON with
 // `mergedInto: <authorId>` (StoredAuthorProfile); the author route answers

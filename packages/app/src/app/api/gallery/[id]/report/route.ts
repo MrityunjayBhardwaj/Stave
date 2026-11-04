@@ -5,8 +5,8 @@ import { galleryPaths, galleryStore, putJson } from "../../store";
 import { checkReport, MAX_REPORT_BODY_BYTES, readJsonBody } from "../../validate";
 
 // #2303 — anyone can flag an entry with a short reason. Each report is its own
-// small blob (never a shared counter), listed for the maintainer by
-// GET /api/gallery/reports. The ack says nothing but that it was received.
+// small blob (never a shared counter), listed for admins by
+// GET /api/gallery/admin/reports (#2331). The ack says nothing but that it was received.
 
 export async function POST(
   req: Request,

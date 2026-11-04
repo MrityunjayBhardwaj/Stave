@@ -1,18 +1,17 @@
 import {
-  ADMIN_KEY_HEADER,
   GALLERY_ID_PATTERN,
   type CollectionPageResponse,
   type GalleryAuthorProfile,
   type GalleryCollection,
 } from "../../../../../gallery/types";
-import { isAdminKey } from "../../auth";
+import { adminAction } from "../../admin";
 import { foreignEntry, servedCollection } from "../../authors";
 import { mayManageAuthor } from "../../session";
 import { galleryPaths, galleryStore, getJson, putJson } from "../../store";
 import { checkCollectionWrite, MAX_COLLECTION_BODY_BYTES, readJsonBody } from "../../validate";
 
 // #2315 — one collection: open it, change it (its signed-in author, #2319, or
-// the author key), or delete it (either of those, or the admin key). Deleting a collection never touches its entries.
+// the author key), or delete it (either of those, or an admin with a reason, #2331). Deleting a collection never touches its entries.
 // Not cached at the CDN, for the same reason as the author page: edits and
 // takedowns must show on the next open.
 
@@ -79,10 +78,10 @@ export async function DELETE(req: Request, { params }: Ctx): Promise<Response> {
 
   const stored = await getJson<GalleryCollection>(store, galleryPaths.collection(id));
   if (!stored) return notFound();
-  const allowed =
-    isAdminKey(req.headers.get(ADMIN_KEY_HEADER)) ||
-    (await mayManageAuthor(req, store, stored.authorId));
-  if (!allowed) return forbidden();
+  if (!(await mayManageAuthor(req, store, stored.authorId))) {
+    const admin = await adminAction(req, store, { action: "take-down-collection", target: id }, forbidden);
+    if (admin instanceof Response) return admin;
+  }
 
   // The collection itself first (GET answers 404 at once), then its index marker.
   // Its entries are untouched.

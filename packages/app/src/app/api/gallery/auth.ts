@@ -2,15 +2,14 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { toBase64Url } from "../../../shareCrypto";
 
-// #2299 / #2303 — who may delete an entry.
-//
-// The author: whoever holds the manage token handed back once at publish. The
+// #2299 / #2303 — the author's manage token: handed back once at publish; the
 // server keeps only its SHA-256, so a leaked store doesn't leak the tokens.
-// The maintainer: whoever holds `STAVE_GALLERY_ADMIN_KEY` (server env only). With
-// that unset, nobody is an admin.
 //
-// Both checks compare SHA-256 digests with timingSafeEqual: equal-length inputs,
+// The check compares SHA-256 digests with timingSafeEqual: equal-length inputs,
 // so neither the length nor a matching prefix of the secret shows in the timing.
+//
+// #2331 — admins are no longer a shared key (STAVE_GALLERY_ADMIN_KEY is gone);
+// they are signed-in accounts listed in STAVE_GALLERY_ADMINS. See admin.ts.
 
 /** A fresh manage token: 32 random bytes, base64url (43 characters). */
 export function newManageToken(): string {
@@ -31,11 +30,4 @@ function sameDigest(a: string, b: string): boolean {
 export function tokenMatches(token: string | null, storedHash: string): boolean {
   if (!token) return false;
   return sameDigest(hashToken(token), storedHash);
-}
-
-/** Is `key` the admin key? Always false when the server has none. */
-export function isAdminKey(key: string | null): boolean {
-  const admin = process.env.STAVE_GALLERY_ADMIN_KEY;
-  if (!admin || !key) return false;
-  return sameDigest(key, admin);
 }
