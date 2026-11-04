@@ -1,62 +1,62 @@
 import { newShareId } from "../../../shareCrypto";
-import {
-  type GalleryAuthorProfile,
-  type GalleryEntry,
-  type GalleryListResponse,
-  type PublishResponse,
-} from "../../../gallery/types";
+import { type GalleryEntry, type GalleryListResponse, type PublishResponse } from "../../../gallery/types";
+import { getDb } from "../../../db/client";
+import { withDatabase } from "../../../db/errors";
+import { getAuthor } from "../../../db/repo/accounts";
+import { getEntryRecord, insertEntry, listEntries } from "../../../db/repo/entries";
+import { inTransaction } from "../../../db/repo/tx";
 import { hashToken, newManageToken } from "./auth";
+import { mirrorPublished, putEntryFiles } from "./entryFiles";
 import { limitAccount } from "./rateLimit";
 import { requireSessionAuthor } from "./session";
 import { requireTurnstile } from "./turnstile";
-import { galleryPaths, galleryStore, getJson, putJson, type PrivateRecord } from "./store";
+import { galleryStore, type PrivateRecord } from "./store";
 import { checkPublish, MAX_PUBLISH_BODY_BYTES, readJsonBody } from "./validate";
 import { assertSameOrigin } from "./origin";
-import { withDatabase } from "../../../db/errors";
 
 // #2299 — the community gallery: list what has been published, and publish.
+// #2352 — the records are in Postgres (db/repo/entries.ts); the manifest and
+// thumbnail stay in Blob, keyed by the entry id (entryFiles.ts).
 
 const noStore = () => Response.json({ error: "the gallery is not set up here" }, { status: 503 });
 
-/** The most entries one listing reads, newest first. Each costs one Blob read on a cache miss. */
-const MAX_LISTED_ENTRIES = 500;
-
 // The listing is cached at the CDN for 30 s, then served stale for up to 5 min
-// while one request refreshes it. So opening the overlay costs Blob reads at
-// most about twice a minute, however many people open it. The price: a new
-// publish can take up to ~30 s to show in the list, and a deleted entry can
-// linger in it as long. The entry route is not cached that way — a removed
-// entry answers 410 straight away, so a lingering card opens to "removed".
-// A client that must see its own publish at once can add any query string
-// (`?fresh=<time>`), which the CDN keys separately.
-const LIST_CACHE = "public, s-maxage=30, stale-while-revalidate=300";
+// while one request refreshes it. So the listing query runs at most about twice
+// a minute, however many people open the overlay. The price: a new publish can
+// take up to ~30 s to show in the list, and a deleted entry can linger in it as
+// long. The entry route is not cached that way: a removed entry answers 410
+// straight away, so a lingering card opens to "removed".
+export const LIST_CACHE = "public, s-maxage=30, stale-while-revalidate=300";
 
-export async function GET(): Promise<Response> {
+// #2346 — ONE listing per cache window, whatever the query string. The CDN
+// keys its cache on the whole URL, query included, and offers no response
+// header that makes it ignore the query. So a request carrying ANY query string
+// is answered with a permanent redirect to the bare path, before the database
+// is touched: `?x=<random>` costs one tiny function call and no query, and every
+// real listing comes from the one cached URL, /api/gallery. The redirect is
+// cacheable as well, so a repeated stray URL doesn't reach the function at all.
+// The listing takes no parameters, and the client asks for the bare path.
+export const LIST_REDIRECT_CACHE = "public, max-age=3600, s-maxage=86400";
+
+async function handleGET(req?: Request): Promise<Response> {
+  if (req) {
+    const url = new URL(req.url);
+    if (url.search !== "") {
+      return new Response(null, {
+        status: 308,
+        headers: { Location: url.pathname, "Cache-Control": LIST_REDIRECT_CACHE },
+      });
+    }
+  }
   const store = galleryStore();
-  if (!store) return noStore();
-
-  const [listed, removed] = await Promise.all([
-    store.list(galleryPaths.entriesPrefix),
-    store.list(galleryPaths.removedPrefix),
-  ]);
-  // An entry whose removed marker exists is gone, even if deleting its listing failed.
-  const removedIds = new Set(
-    removed.map((b) => b.pathname.slice(galleryPaths.removedPrefix.length).replace(/\.json$/, "")),
-  );
-  const newest = listed
-    .filter((b) => b.pathname.endsWith(".json"))
-    .filter((b) => !removedIds.has(b.pathname.slice(galleryPaths.entriesPrefix.length, -".json".length)))
-    .sort((a, b) => b.uploadedAt - a.uploadedAt)
-    .slice(0, MAX_LISTED_ENTRIES);
-
-  const entries = (
-    await Promise.all(newest.map((b) => getJson<GalleryEntry>(store, b.pathname).catch(() => null)))
-  ).filter((e): e is GalleryEntry => e !== null);
-  entries.sort((a, b) => b.publishedAt - a.publishedAt);
-
-  const body: GalleryListResponse = { entries };
+  const db = store && (await getDb());
+  if (!store || !db) return noStore();
+  // One indexed query: live entries only, newest first, at most MAX_LISTED_ENTRIES.
+  const body: GalleryListResponse = { entries: await listEntries(db) };
   return Response.json(body, { headers: { "Cache-Control": LIST_CACHE } });
 }
+// An outage answers 503 (no-store), so the CDN never caches an error as the listing.
+export const GET = withDatabase(handleGET);
 
 // #2330 — how often one account may publish is limited here (rateLimit.ts,
 // RATE_LIMITS.publish), and a Turnstile check runs when it is set up
@@ -86,17 +86,21 @@ async function handlePOST(req: Request): Promise<Response> {
   if (!checked.ok) return Response.json({ error: checked.error }, { status: checked.status });
   const v = checked.value;
 
-  // Ids are 64 random bits; a clash is a near-impossibility, but never overwrite one.
+  const db = await getDb();
+  if (!db) return noStore();
+
+  // Ids are 64 random bits; a clash is a near-impossibility, but never reuse one
+  // (a removed entry keeps its row, so its id stays taken).
   let id: string | null = null;
   for (let attempt = 0; attempt < 3 && !id; attempt++) {
     const candidate = newShareId();
-    if (!(await store.get(galleryPaths.privateRecord(candidate)))) id = candidate;
+    if (!(await getEntryRecord(db, candidate))) id = candidate;
   }
   if (!id) return Response.json({ error: "could not store the entry" }, { status: 500 });
 
   // The name shown is the profile's (changed on the profile, not here); the
   // email kept is the account's. Whatever name or email the body carried is ignored.
-  const profile = await getJson<GalleryAuthorProfile>(store, galleryPaths.author(authorId));
+  const profile = await getAuthor(db, authorId);
   if (!profile) return Response.json({ error: "could not find your gallery profile" }, { status: 500 });
 
   const manageToken = newManageToken();
@@ -113,13 +117,13 @@ async function handlePOST(req: Request): Promise<Response> {
     hasThumbnail: v.thumbnail !== null,
   };
 
-  await putJson(store, galleryPaths.privateRecord(id), record);
-  await store.put(galleryPaths.manifest(id), v.manifestBytes, "application/json");
-  if (v.thumbnail) await store.put(galleryPaths.thumbnail(id), v.thumbnail.bytes, v.thumbnail.contentType);
-  // The author index may point at an entry that isn't there yet; readers skip it.
-  await putJson(store, galleryPaths.authorEntry(authorId, id), {});
-  // Last: once the public listing exists, everything it points at already does.
-  await putJson(store, galleryPaths.entry(id), entry);
+  // The files first, then the row: once the entry can be listed, its manifest
+  // (and thumbnail) already exist. A failure before the insert leaves only
+  // unlisted files behind, never a listed entry without them.
+  await putEntryFiles(store, id, v.manifestBytes, v.thumbnail);
+  const stored = await inTransaction(db, (tx) => insertEntry(tx, { entry, ...record }));
+  if (!stored) return Response.json({ error: "could not store the entry" }, { status: 500 });
+  await mirrorPublished(store, entry, record);
 
   const res: PublishResponse = { id, manageToken, authorId };
   return Response.json(res, { status: 201, headers: { "Cache-Control": "no-store" } });

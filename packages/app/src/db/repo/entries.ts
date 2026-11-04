@@ -159,14 +159,22 @@ export async function entriesOfAuthor(db: Q, authorId: string): Promise<GalleryE
  * Phase 2 caller: DELETE /api/gallery/[id] (author or admin).
  */
 export async function removeEntry(db: Db, id: string, by: "author" | "admin", at = Date.now()): Promise<boolean> {
-  return inTransaction(db, async (tx) => {
-    const done = await tx
-      .update(entries)
-      .set({ removedAt: at, removedBy: by, authorEmail: "", manageTokenHash: null })
-      .where(and(eq(entries.id, id), isNull(entries.removedAt)))
-      .returning({ id: entries.id });
-    if (done.length === 0) return false;
-    await tx.update(reports).set({ closedAt: at }).where(and(eq(reports.entryId, id), isNull(reports.closedAt)));
-    return true;
-  });
+  return inTransaction(db, (tx) => removeEntryIn(tx, id, by, at));
+}
+
+/**
+ * removeEntry's two statements, inside a transaction the CALLER holds, so an
+ * admin take-down can write its log record in the same one (the record and the
+ * removal land together or not at all).
+ * Phase 2 caller: DELETE /api/gallery/[id] (admin take-down).
+ */
+export async function removeEntryIn(tx: Q, id: string, by: "author" | "admin", at = Date.now()): Promise<boolean> {
+  const done = await tx
+    .update(entries)
+    .set({ removedAt: at, removedBy: by, authorEmail: "", manageTokenHash: null })
+    .where(and(eq(entries.id, id), isNull(entries.removedAt)))
+    .returning({ id: entries.id });
+  if (done.length === 0) return false;
+  await tx.update(reports).set({ closedAt: at }).where(and(eq(reports.entryId, id), isNull(reports.closedAt)));
+  return true;
 }

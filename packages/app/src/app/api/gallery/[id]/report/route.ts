@@ -1,16 +1,18 @@
-import { randomBytes } from "node:crypto";
-
 import { GALLERY_ID_PATTERN, type GalleryReport } from "../../../../../gallery/types";
+import { getDb } from "../../../../../db/client";
+import { withDatabase } from "../../../../../db/errors";
+import { getEntryRecord } from "../../../../../db/repo/entries";
+import { addReport } from "../../../../../db/repo/reports";
 import { limitRequest } from "../../rateLimit";
-import { galleryPaths, galleryStore, putJson } from "../../store";
+import { galleryStore } from "../../store";
 import { requireTurnstile } from "../../turnstile";
 import { checkReport, MAX_REPORT_BODY_BYTES, readJsonBody } from "../../validate";
 import { assertSameOrigin } from "../../origin";
-import { withDatabase } from "../../../../../db/errors";
 
 // #2303 — anyone can flag an entry with a short reason. Each report is its own
-// small blob (never a shared counter), listed for admins by
-// GET /api/gallery/admin/reports (#2331). The ack says nothing but that it was received.
+// row (never a shared counter), listed for admins by GET /api/gallery/admin/reports
+// (#2331) until it is dismissed or the entry is taken down. The ack says nothing
+// but that it was received.
 
 async function handlePOST(
   req: Request,
@@ -20,7 +22,8 @@ async function handlePOST(
   const { id } = await params;
   if (!GALLERY_ID_PATTERN.test(id)) return Response.json({ error: "not found" }, { status: 404 });
   const store = galleryStore();
-  if (!store) return Response.json({ error: "the gallery is not set up here" }, { status: 503 });
+  const db = store && (await getDb());
+  if (!store || !db) return Response.json({ error: "the gallery is not set up here" }, { status: 503 });
   // #2330 — per account (or per address signed out), then Turnstile when set up.
   const limited = (await limitRequest("report", req)) ?? (await requireTurnstile(req));
   if (limited) return limited;
@@ -30,16 +33,12 @@ async function handlePOST(
   const checked = checkReport(body.value);
   if (!checked.ok) return Response.json({ error: checked.error }, { status: checked.status });
 
-  if (await store.get(galleryPaths.removed(id))) {
-    return Response.json({ error: "this entry was removed" }, { status: 410 });
-  }
-  if (!(await store.get(galleryPaths.entry(id)))) {
-    return Response.json({ error: "not found" }, { status: 404 });
-  }
+  const record = await getEntryRecord(db, id);
+  if (!record) return Response.json({ error: "not found" }, { status: 404 });
+  if (record.removed) return Response.json({ error: "this entry was removed" }, { status: 410 });
 
   const report: GalleryReport = { entryId: id, reason: checked.value.reason, reportedAt: Date.now() };
-  const name = `${report.reportedAt}-${randomBytes(4).toString("hex")}`;
-  await putJson(store, galleryPaths.report(id, name), report);
+  await addReport(db, report);
   return Response.json({ ok: true }, { status: 202 });
 }
 
