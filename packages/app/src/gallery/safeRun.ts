@@ -66,10 +66,45 @@ export function isGalleryHeld(projectId: string, fileId: string): boolean {
   return read().has(keyOf(projectId, fileId));
 }
 
+/**
+ * #2342 — held by a recorded import, ignoring the in-flight window. The
+ * engine-side gate (runGate.ts) reads this one: a file already playing in the
+ * current project must not be refused just because an import is landing.
+ */
+export function isGalleryHeldStored(projectId: string, fileId: string): boolean {
+  return read().has(keyOf(projectId, fileId));
+}
+
 /** The person pressed Play on this file: from now on it is theirs to run. */
 export function releaseGalleryHold(projectId: string, fileId: string): void {
   const set = read();
-  if (set.delete(keyOf(projectId, fileId))) write(set);
+  if (set.delete(keyOf(projectId, fileId))) {
+    write(set);
+    notifyChange();
+  }
+}
+
+/*
+ * #2342 — who needs to know when a file becomes runnable: the named-viz
+ * registration skips gallery files nobody has agreed to run, and registers
+ * them once someone has.
+ */
+const changeListeners = new Set<() => void>();
+
+function notifyChange(): void {
+  for (const cb of [...changeListeners]) {
+    try {
+      cb();
+    } catch {
+      /* one listener's failure must not stop the others */
+    }
+  }
+}
+
+/** Called after a gallery file is trusted or its hold is lifted. Returns an unsubscribe. */
+export function onGalleryRunnableChange(cb: () => void): () => void {
+  changeListeners.add(cb);
+  return () => changeListeners.delete(cb);
 }
 
 /** Test seam. */
@@ -131,6 +166,7 @@ export function trustGalleryFile(projectId: string, fileId: string): void {
   if (k in map) {
     delete map[k];
     writeUntrusted(map);
+    notifyChange();
   }
 }
 
