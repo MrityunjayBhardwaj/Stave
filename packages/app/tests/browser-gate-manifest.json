@@ -479,6 +479,10 @@
     "runs": "gate",
     "why": "collected by the gate — it runs the whole chromium project"
   },
+  "gallery-profiles.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "gallery-publish.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"

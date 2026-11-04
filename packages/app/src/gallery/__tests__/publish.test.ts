@@ -9,8 +9,8 @@ import {
   publishAndRemember,
   type PublishForm,
 } from "../publish";
-import { listLocalShares, loadAuthor } from "../localShares";
-import { MAX_MANIFEST_BYTES, MAX_TAGS, MAX_THUMBNAIL_BYTES, type GalleryManifest } from "../types";
+import { listLocalShares, loadAuthor, saveAuthor } from "../localShares";
+import { AUTHOR_KEY_HEADER, MAX_MANIFEST_BYTES, MAX_TAGS, MAX_THUMBNAIL_BYTES, type GalleryManifest } from "../types";
 
 function project(): GalleryManifest {
   return {
@@ -175,6 +175,48 @@ describe("publishing", () => {
     const [share] = listLocalShares();
     expect(share).toMatchObject({ id: "AbCdEfGhIjK", title: "Night drive", kind: "project", manageToken: "tok" });
     expect(share.publishedAt).toBeGreaterThanOrEqual(before);
+  });
+
+  describe("#2314 one identity across publishes", () => {
+    const ok = (body: object) =>
+      fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: "AbCdEfGhIjK", manageToken: "tok", ...body }), { status: 201 }));
+    const sentHeaders = () => (fetchMock.mock.calls[0][1].headers ?? {}) as Record<string, string>;
+
+    it("the first publish sends no key, and keeps the author id and key it is given", async () => {
+      ok({ authorId: "auth1", authorKey: "key-1" });
+      await publishAndRemember(request());
+      expect(AUTHOR_KEY_HEADER in sentHeaders()).toBe(false);
+      expect(loadAuthor()).toEqual({ name: "Ada", email: "ada@example.com", authorId: "auth1", authorKey: "key-1" });
+    });
+
+    it("a later publish sends the key held, and keeps it when the response has none", async () => {
+      saveAuthor({ name: "Ada", email: "ada@example.com", authorId: "auth1", authorKey: "key-1" });
+      ok({ authorId: "auth1" });
+      await publishAndRemember(request());
+      expect(sentHeaders()[AUTHOR_KEY_HEADER]).toBe("key-1");
+      expect(loadAuthor()).toEqual({ name: "Ada", email: "ada@example.com", authorId: "auth1", authorKey: "key-1" });
+    });
+
+    it("a new key from the server (the old one was refused) replaces the old one", async () => {
+      saveAuthor({ name: "Ada", email: "ada@example.com", authorId: "auth1", authorKey: "stale" });
+      ok({ authorId: "auth2", authorKey: "key-2" });
+      await publishAndRemember(request());
+      expect(loadAuthor()).toMatchObject({ authorId: "auth2", authorKey: "key-2" });
+    });
+
+    it("a server without profiles yet (no author id at all) keeps what was held", async () => {
+      saveAuthor({ name: "Ada", email: "ada@example.com", authorId: "auth1", authorKey: "key-1" });
+      ok({});
+      await publishAndRemember(request());
+      expect(loadAuthor()).toMatchObject({ authorId: "auth1", authorKey: "key-1" });
+    });
+
+    it("a failed publish leaves the held identity untouched", async () => {
+      saveAuthor({ name: "Old", email: "old@example.com", authorId: "auth1", authorKey: "key-1" });
+      fetchMock.mockResolvedValue(new Response("{}", { status: 500 }));
+      await expect(publishAndRemember(request())).rejects.toThrow();
+      expect(loadAuthor()).toEqual({ name: "Old", email: "old@example.com", authorId: "auth1", authorKey: "key-1" });
+    });
   });
 
   it("on failure throws the message a person can act on, and keeps nothing", async () => {

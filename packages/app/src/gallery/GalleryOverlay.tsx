@@ -13,15 +13,12 @@
  * after the person presses Play.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { fetchGalleryEntry, fetchGalleryList, galleryEntryLink, reportGalleryEntry, GalleryEntryRemoved } from "./client";
+import { AuthorName, Card, CARD_CSS } from "./GalleryCards";
+import { CollectionView, PROFILE_CSS, ProfileView } from "./GalleryProfile";
+import { MARKDOWN_CSS } from "./markdown";
 import {
-  fetchGalleryEntry,
-  fetchGalleryList,
-  galleryEntryLink,
-  galleryThumbnailUrl,
-  reportGalleryEntry,
-  GalleryEntryRemoved,
-} from "./client";
-import {
+  loadAuthor,
   listLocalShares,
   listPrivateLinks,
   LOCAL_SHARES_CHANGED,
@@ -35,7 +32,7 @@ import {
   countByKind,
   entriesForTab,
   formatGalleryDate,
-  generatedCard,
+  type GalleryLinkTarget,
   type GalleryTab,
 } from "./galleryModel";
 import { defaultDeleteDeps, defaultRevokeDeps, deleteMyShare, revokeMyLink, shareStatus } from "./myShares";
@@ -45,6 +42,11 @@ export interface GalleryOverlayProps {
   open: boolean;
   /** Open straight on this entry (a `#gallery=<id>` link). */
   initialEntryId: string | null;
+  /**
+   * #2314 / #2315 — open straight on an entry, a profile or a collection
+   * (`#gallery-author=<id>`, `#gallery-collection=<id>`). Wins over initialEntryId.
+   */
+  initialView?: GalleryLinkTarget | null;
   onClose: () => void;
   /** Resolve true when the entry was opened (the overlay then closes). */
   onOpenAsProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"]) => Promise<boolean>;
@@ -85,6 +87,7 @@ async function copyPrivateLink(link: LocalPrivateLink): Promise<void> {
 export function GalleryOverlay({
   open,
   initialEntryId,
+  initialView,
   onClose,
   onOpenAsProject,
   onAddToProject,
@@ -94,6 +97,9 @@ export function GalleryOverlay({
   const [query, setQuery] = useState("");
   const [list, setList] = useState<ListState>({ status: "loading" });
   const [detail, setDetail] = useState<DetailState | null>(null);
+  /** What is open on top of the browse grid, innermost last; Back pops one. */
+  const [stack, setStack] = useState<GalleryLinkTarget[]>([]);
+  const [myAuthorId, setMyAuthorId] = useState<string | null>(null);
   const [mine, setMine] = useState<LocalShare[]>([]);
   const [links, setLinks] = useState<LocalPrivateLink[]>([]);
   const [busy, setBusy] = useState(false);
@@ -123,21 +129,41 @@ export function GalleryOverlay({
       });
   }, []);
 
-  // Each open: fresh list, the link's entry if any, and the local shares.
+  /** Open a view on top of what is showing. */
+  const push = useCallback(
+    (view: GalleryLinkTarget) => {
+      setStack((s) => [...s, view]);
+      if (view.kind === "entry") openEntry(view.id);
+    },
+    [openEntry],
+  );
+
+  const initialKind = initialView?.kind ?? null;
+  const initialId = initialView?.id ?? null;
+  // Each open: fresh list, the link's view if any, and the local shares.
   useEffect(() => {
     if (!open) return;
     loadList();
     setMine(listLocalShares());
     setLinks(listPrivateLinks());
-    if (initialEntryId) openEntry(initialEntryId);
+    setMyAuthorId(loadAuthor()?.authorId ?? null);
+    const first: GalleryLinkTarget | null =
+      initialKind && initialId
+        ? ({ kind: initialKind, id: initialId } as GalleryLinkTarget)
+        : initialEntryId
+          ? { kind: "entry", id: initialEntryId }
+          : null;
+    setStack(first ? [first] : []);
+    if (first?.kind === "entry") openEntry(first.id);
     else setDetail(null);
-  }, [open, initialEntryId, loadList, openEntry]);
+  }, [open, initialEntryId, initialKind, initialId, loadList, openEntry]);
 
   useEffect(() => {
     if (!open) return;
     const refresh = () => {
       setMine(listLocalShares());
       setLinks(listPrivateLinks());
+      setMyAuthorId(loadAuthor()?.authorId ?? null);
     };
     window.addEventListener(LOCAL_SHARES_CHANGED, refresh);
     return () => window.removeEventListener(LOCAL_SHARES_CHANGED, refresh);
@@ -163,6 +189,18 @@ export function GalleryOverlay({
   );
 
   if (!open) return null;
+
+  const top = stack[stack.length - 1] ?? null;
+  const backLabel = stack.length > 1 ? "← Back" : "← Back to the gallery";
+  const back = () => {
+    const next = stack.slice(0, -1);
+    setStack(next);
+    const t = next[next.length - 1];
+    if (t?.kind === "entry" && detail?.id !== t.id) openEntry(t.id);
+  };
+  const openAuthor = (id: string) => push({ kind: "author", id });
+  const openCollection = (id: string) => push({ kind: "collection", id });
+  const openOne = (id: string) => push({ kind: "entry", id });
 
   const runAction = async (fn: () => Promise<boolean>) => {
     if (busy) return;
@@ -239,7 +277,7 @@ export function GalleryOverlay({
 
   return (
     <div className="sg-backdrop" data-gallery="overlay" onClick={onClose}>
-      <style>{CSS}</style>
+      <style>{CSS + CARD_CSS + PROFILE_CSS + MARKDOWN_CSS}</style>
       <div
         className="sg-modal"
         role="dialog"
@@ -268,11 +306,32 @@ export function GalleryOverlay({
           </div>
         </div>
 
-        {detail ? (
+        {top?.kind === "author" ? (
+          <ProfileView
+            key={`a:${top.id}:${stack.length}`}
+            authorId={top.id}
+            backLabel={backLabel}
+            onBack={back}
+            onOpenEntry={openOne}
+            onOpenCollection={openCollection}
+          />
+        ) : top?.kind === "collection" ? (
+          <CollectionView
+            key={`c:${top.id}:${stack.length}`}
+            collectionId={top.id}
+            backLabel={backLabel}
+            onBack={back}
+            onOpenEntry={openOne}
+            onOpenAuthor={openAuthor}
+            onDeleted={back}
+          />
+        ) : top?.kind === "entry" && detail ? (
           <EntryDetail
             detail={detail}
             busy={busy}
-            onBack={() => setDetail(null)}
+            backLabel={backLabel}
+            onBack={back}
+            onAuthor={openAuthor}
             onRetry={() => openEntry(detail.id)}
             onOpenAsProject={(e, m) => runAction(() => onOpenAsProject(e, m))}
             onAddToProject={(e, m) => runAction(() => onAddToProject(e, m))}
@@ -314,12 +373,14 @@ export function GalleryOverlay({
             <div className="sg-body">
               {tab === "mine" ? (
                 <MyShares
+                  myAuthorId={myAuthorId}
+                  onMyProfile={openAuthor}
                   shares={mine}
                   links={links}
                   listed={entries}
                   onCopyPrivate={copyPrivateLink}
                   onRevoke={revokeLink}
-                  onOpen={openEntry}
+                  onOpen={openOne}
                   onCopy={copyLink}
                   onDelete={deleteShare}
                 />
@@ -339,7 +400,7 @@ export function GalleryOverlay({
               ) : (
                 <div className="sg-grid">
                   {shown.map((e) => (
-                    <Card key={e.id} entry={e} onOpen={() => openEntry(e.id)} />
+                    <Card key={e.id} entry={e} onOpen={() => openOne(e.id)} onAuthor={openAuthor} />
                   ))}
                 </div>
               )}
@@ -351,57 +412,12 @@ export function GalleryOverlay({
   );
 }
 
-function Thumb({ entry }: { entry: GalleryEntry }) {
-  const [failed, setFailed] = useState(false);
-  if (entry.hasThumbnail && !failed) {
-    return (
-      <img
-        className="sg-thumb"
-        src={galleryThumbnailUrl(entry.id)}
-        alt=""
-        loading="lazy"
-        onError={() => setFailed(true)}
-      />
-    );
-  }
-  const { initials, hue } = generatedCard(entry);
-  return (
-    <div
-      className="sg-thumb sg-thumb-gen"
-      data-gallery-thumb="generated"
-      style={{ background: `linear-gradient(135deg, hsl(${hue} 45% 32%), hsl(${(hue + 50) % 360} 50% 18%))` }}
-    >
-      <span className="sg-initials">{initials}</span>
-      <span className="sg-kind-tag">{KIND_LABEL[entry.kind]}</span>
-    </div>
-  );
-}
-
-function Card({ entry, onOpen }: { entry: GalleryEntry; onOpen: () => void }) {
-  return (
-    <button className="sg-card" data-gallery-card={entry.id} onClick={onOpen} title={entry.title}>
-      <Thumb entry={entry} />
-      <div className="sg-card-text">
-        <div className="sg-card-title">{entry.title}</div>
-        <div className="sg-card-meta">
-          {entry.authorName} · {formatGalleryDate(entry.publishedAt)}
-        </div>
-        {entry.tags.length > 0 && (
-          <div className="sg-tags">
-            {entry.tags.map((t) => (
-              <span key={t} className="sg-tag">#{t}</span>
-            ))}
-          </div>
-        )}
-      </div>
-    </button>
-  );
-}
-
 function EntryDetail({
   detail,
   busy,
+  backLabel,
   onBack,
+  onAuthor,
   onRetry,
   onOpenAsProject,
   onAddToProject,
@@ -409,7 +425,9 @@ function EntryDetail({
 }: {
   detail: DetailState;
   busy: boolean;
+  backLabel: string;
   onBack: () => void;
+  onAuthor: (authorId: string) => void;
   onRetry: () => void;
   onOpenAsProject: (e: GalleryEntry, m: GalleryEntryResponse["manifest"]) => void;
   onAddToProject: (e: GalleryEntry, m: GalleryEntryResponse["manifest"]) => void;
@@ -420,7 +438,7 @@ function EntryDetail({
 
   const back = (
     <button className="sg-btn sg-back" onClick={onBack}>
-      ← Back to the gallery
+      {backLabel}
     </button>
   );
 
@@ -462,7 +480,8 @@ function EntryDetail({
         <div>
           <div className="sg-detail-title">{entry.title}</div>
           <div className="sg-card-meta">
-            {KIND_LABEL[entry.kind]} by {entry.authorName} · {formatGalleryDate(entry.publishedAt)}
+            {KIND_LABEL[entry.kind]} by{" "}
+            <AuthorName name={entry.authorName} authorId={entry.authorId} onAuthor={onAuthor} /> · {formatGalleryDate(entry.publishedAt)}
           </div>
           {entry.tags.length > 0 && (
             <div className="sg-tags">
@@ -516,6 +535,8 @@ function EntryDetail({
 }
 
 function MyShares({
+  myAuthorId,
+  onMyProfile,
   shares,
   links,
   listed,
@@ -525,6 +546,8 @@ function MyShares({
   onCopyPrivate,
   onRevoke,
 }: {
+  myAuthorId: string | null;
+  onMyProfile: (authorId: string) => void;
   shares: LocalShare[];
   links: LocalPrivateLink[];
   listed: GalleryEntry[] | null;
@@ -536,6 +559,15 @@ function MyShares({
 }) {
   return (
     <div className="sg-mine">
+      {myAuthorId && (
+        <button
+          className="sg-btn sg-my-profile"
+          data-gallery-my-profile={myAuthorId}
+          onClick={() => onMyProfile(myAuthorId)}
+        >
+          View my profile →
+        </button>
+      )}
       <section data-gallery-section="published">
         <h3 className="sg-section">In the gallery</h3>
         <p className="sg-section-note">Everyone can see and open these.</p>
@@ -618,8 +650,6 @@ const CSS = `
 .sg-search { flex: 1 1 200px; max-width: 320px; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg-input, var(--bg-elevated)); color: var(--text-primary); font-size: 13px; }
 .sg-body { flex: 1; overflow: auto; padding: 16px 18px; min-height: 0; }
 .sg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
-.sg-card { display: flex; flex-direction: column; text-align: left; padding: 0; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-panel, transparent); color: inherit; cursor: pointer; overflow: hidden; font: inherit; }
-.sg-card:hover, .sg-card:focus-visible { border-color: var(--accent, #7aa2f7); }
 .sg-thumb { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; background: #111; }
 .sg-thumb-gen { position: relative; display: flex; align-items: center; justify-content: center; }
 .sg-initials { font-size: 30px; font-weight: 700; color: rgba(255,255,255,.88); letter-spacing: 1px; }

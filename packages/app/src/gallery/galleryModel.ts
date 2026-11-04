@@ -37,6 +37,48 @@ export function readGalleryFragment(hash: string): string | null {
   return GALLERY_ID_PATTERN.test(id) ? id : null;
 }
 
+/** What a gallery link in the URL fragment opens (#2300, #2314, #2315). */
+export type GalleryLinkTarget =
+  | { kind: "entry"; id: string }
+  | { kind: "author"; id: string }
+  | { kind: "collection"; id: string };
+
+export const GALLERY_AUTHOR_HASH_PREFIX = "#gallery-author=";
+export const GALLERY_COLLECTION_HASH_PREFIX = "#gallery-collection=";
+
+/**
+ * Author and collection ids: the contract fixes no length for them, so this is the
+ * id alphabet only (base64url, at most 64) — enough that a crafted link can never
+ * carry a path or a query into a fetch.
+ */
+const PROFILE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Read any gallery link in a fragment. `null` when the fragment is not a gallery
+ * link at all; `"invalid"` when it is one but its id is not a gallery id (the
+ * caller says so, rather than fetching it).
+ */
+export function readGalleryLink(hash: string): GalleryLinkTarget | "invalid" | null {
+  if (hash.startsWith(GALLERY_HASH_PREFIX)) {
+    const id = readGalleryFragment(hash);
+    return id ? { kind: "entry", id } : "invalid";
+  }
+  for (const [prefix, kind] of [
+    [GALLERY_AUTHOR_HASH_PREFIX, "author"],
+    [GALLERY_COLLECTION_HASH_PREFIX, "collection"],
+  ] as const) {
+    if (!hash.startsWith(prefix)) continue;
+    let id: string;
+    try {
+      id = decodeURIComponent(hash.slice(prefix.length));
+    } catch {
+      return "invalid";
+    }
+    return PROFILE_ID_PATTERN.test(id) ? { kind, id } : "invalid";
+  }
+  return null;
+}
+
 /** Lower-cased words of a query; an empty query matches everything. */
 function terms(query: string): string[] {
   return query
