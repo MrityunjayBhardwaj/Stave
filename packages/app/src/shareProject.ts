@@ -30,7 +30,7 @@ import {
 
 import { addPrivateLink } from "./gallery/localShares";
 import { currentGallerySession } from "./gallery/session";
-import { SHARE_LINK_KEY_HEADER, SHARE_LINK_NAME_HEADER } from "./gallery/types";
+import { SHARE_LINK_NAME_HEADER } from "./gallery/types";
 import { fromBase64Url, openShare, parseShortShare, sealShare, toBase64Url } from "./shareCrypto";
 
 export const SHARE_HASH_PREFIX = "#share=";
@@ -159,13 +159,14 @@ export const SHARE_RATE_LIMITED = "ShareRateLimited";
  */
 export async function buildShortShareUrl(project: ProjectMeta): Promise<string> {
   const { sealed, key } = await sealShare(await packProject(project));
-  // #2321 — signed in, the link is also kept on the account (key included) so
-  // My shares has it on every device. Signed out, the key never leaves here.
+  // #2321 — signed in, the link is also listed on the account (by its project
+  // name) so My shares can show and revoke it on every device. #2329 — the key
+  // never leaves this browser, signed in or not: only this browser's own list
+  // (addPrivateLink below) can copy the link again.
   const session = currentGallerySession();
   const accountAuthorId = session.status === "ready" ? (session.session.user?.authorId ?? null) : null;
   const headers: Record<string, string> = { "Content-Type": "application/octet-stream" };
   if (accountAuthorId) {
-    headers[SHARE_LINK_KEY_HEADER] = key;
     headers[SHARE_LINK_NAME_HEADER] = encodeURIComponent(project.name);
   }
   const res = await fetch("/api/share", {

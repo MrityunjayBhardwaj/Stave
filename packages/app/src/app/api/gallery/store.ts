@@ -31,7 +31,8 @@ import { hasBlobStore } from "../share/store";
 //   gallery/author-accounts/<authorId>.json  #2319 { accountHash } — which account an author
 //                                            belongs to. Never served.
 //   gallery/account-links/<accountHash>/<shareId>.json  #2321 AccountLink — a private link
-//                                            (key included) kept for its owner. Never public.
+//                                            listed for its owner: id, name, date only, never
+//                                            the key or the full link (#2329). Never public.
 //
 // #2320 — a profile merged into an account's profile keeps its JSON with
 // `mergedInto: <authorId>` (StoredAuthorProfile); the author route answers

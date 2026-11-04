@@ -3,7 +3,7 @@
 // claim), and #2321 — My shares and private links that follow the account.
 // Against the dev folder stores (gallery and short links), with Auth.js's
 // `auth()` mocked so each test says who is signed in.
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -15,7 +15,6 @@ vi.mock("../auth", () => ({ auth: vi.fn(async () => fake.session) }));
 import {
   AUTHOR_KEY_HEADER,
   MANAGE_TOKEN_HEADER,
-  SHARE_LINK_KEY_HEADER,
   SHARE_LINK_NAME_HEADER,
   type AuthorMovedResponse,
   type AuthorPageResponse,
@@ -40,6 +39,8 @@ import { galleryPaths, galleryStore, getJson, putJson } from "../app/api/gallery
 import { attachAuthorToAccount } from "../app/api/gallery/session";
 
 const EMAIL = "qq.distinctive.claim+account@example-privacy-three.test";
+/** #2329 — the key header browsers sent before #2329. The server must ignore it. */
+const OLD_KEY_HEADER = "x-stave-share-key";
 
 let dir = "";
 beforeAll(async () => {
@@ -210,9 +211,9 @@ describe("#2320 the claim", () => {
     );
     expect(viaKey.status).toBe(403);
 
-    // The link is on the account, full link included.
+    // The link is on the account: id, name and date, never the link itself (#2329).
     const shares = await mySharesOk(user);
-    expect(shares.links).toEqual([{ id: link.id, url: link.url, projectName: link.projectName, createdAt: link.createdAt }]);
+    expect(shares.links).toEqual([{ id: link.id, projectName: link.projectName, createdAt: link.createdAt }]);
   });
 
   it("changes nothing the second time", async () => {
@@ -394,11 +395,12 @@ describe("#2321 shares that follow the account", () => {
     expect((await mySharesOk(a)).links).toEqual([]);
   });
 
-  it("records a link made while signed in, key included; signed out, the key header is ignored", async () => {
+  it("records a link made while signed in by id, name and date only; signed out, nothing is recorded", async () => {
     const a = freshId();
     await openAppAs(a);
     const { sealed, key } = await sealShare(new TextEncoder().encode("new song"));
-    const headers = { [SHARE_LINK_KEY_HEADER]: key, [SHARE_LINK_NAME_HEADER]: encodeURIComponent("Nüe Song") };
+    // An older browser still sends the key header: it is ignored.
+    const headers = { [OLD_KEY_HEADER]: key, [SHARE_LINK_NAME_HEADER]: encodeURIComponent("Nüe Song") };
     signIn(a);
     const res = await sharePostRoute(new Request("http://x/api/share", { method: "POST", body: sealed as BodyInit, headers }));
     expect(res.status).toBe(201);
@@ -407,13 +409,13 @@ describe("#2321 shares that follow the account", () => {
     expect(made.manageToken).toBeTruthy(); // still handed back
 
     const links = (await mySharesOk(a)).links;
-    expect(links).toEqual([{ id: made.id, url: `http://x/s/${made.id}#${key}`, projectName: "Nüe Song", createdAt: expect.any(Number) }]);
+    expect(links).toEqual([{ id: made.id, projectName: "Nüe Song", createdAt: expect.any(Number) }]);
 
     // Signed out: the link is made, the key header is not kept anywhere.
     signIn(null);
     const anon = await sealShare(new TextEncoder().encode("anon"));
     const res2 = await sharePostRoute(
-      new Request("http://x/api/share", { method: "POST", body: anon.sealed as BodyInit, headers: { [SHARE_LINK_KEY_HEADER]: anon.key } }),
+      new Request("http://x/api/share", { method: "POST", body: anon.sealed as BodyInit, headers: { [OLD_KEY_HEADER]: anon.key } }),
     );
     expect(res2.status).toBe(201);
     const anonMade = (await res2.json()) as { id: string; onAccount: boolean };
@@ -422,6 +424,117 @@ describe("#2321 shares that follow the account", () => {
     expect(recorded.some((f) => String(f).includes(anonMade.id))).toBe(false);
     // Control: the signed-in one IS on disk, so the scan reads the right place.
     expect(recorded.some((f) => String(f).includes(made.id))).toBe(true);
+  });
+});
+
+describe("#2329 a private link's key never reaches the account", () => {
+  /** Every file under the dev store's account-link area, with its contents. */
+  async function accountLinkFiles(): Promise<Array<[string, string]>> {
+    const root = path.join(dir, "gallery/account-links");
+    const names = (await readdir(root, { recursive: true }).catch(() => [] as string[])).map(String);
+    const out: Array<[string, string]> = [];
+    for (const name of names) {
+      const text = await readFile(path.join(root, name), "utf8").catch(() => null); // null: a folder
+      if (text !== null) out.push([name, text]);
+    }
+    return out;
+  }
+
+  /** No stored account-link file holds either key or a `#`, and each holds only id, name and date. */
+  async function scanStore(when: string, keys: string[]): Promise<number> {
+    const files = await accountLinkFiles();
+    for (const [name, text] of files) {
+      for (const key of keys) expect(text, `${when}: ${name}`).not.toContain(key);
+      expect(text, `${when}: ${name}`).not.toContain("#");
+      expect(Object.keys(JSON.parse(text)).sort(), `${when}: ${name}`).toEqual(["createdAt", "id", "projectName"]);
+    }
+    return files.length;
+  }
+
+  it("is in no stored account-link file and no response, after a signed-in link, a claim and My shares", async () => {
+    const user = freshId();
+    await openAppAs(user);
+    const bodies: Array<[string, string]> = [];
+    const keep = async (label: string, res: Response) => {
+      bodies.push([label, await res.clone().text()]);
+      return res;
+    };
+
+    // 1. A link made signed in, by an older browser that still sends the key header.
+    const made = await sealShare(new TextEncoder().encode("signed-in song"));
+    signIn(user);
+    const madeRes = await keep(
+      "share POST signed in",
+      await sharePostRoute(
+        new Request("http://x/api/share", {
+          method: "POST",
+          body: made.sealed as BodyInit,
+          headers: { [OLD_KEY_HEADER]: made.key, [SHARE_LINK_NAME_HEADER]: encodeURIComponent("Made signed in") },
+        }),
+      ),
+    );
+    const madeId = ((await madeRes.json()) as { id: string }).id;
+    // Scanned as written, before anything reads the list (a read tidies old records).
+    expect(await scanStore("after the signed-in link", [made.key])).toBeGreaterThanOrEqual(1);
+
+    // 2. A claim from an older browser that still sends each link's full url.
+    const old = await anonymousLink("Claimed song");
+    const oldKey = old.url.split("#")[1];
+    await keep("claim", await claim(user, { entries: [], links: [old] }));
+    expect(await scanStore("after the claim", [made.key, oldKey])).toBeGreaterThanOrEqual(2);
+
+    // 3. My shares.
+    await keep("my shares", await myShares(user));
+
+    const files = await accountLinkFiles();
+    const mine = files.filter(([name]) => name.includes(madeId) || name.includes(old.id));
+    // Controls: both links are on the account, and the scan reads real records.
+    expect(mine).toHaveLength(2);
+    expect(mine.map(([, text]) => JSON.parse(text))).toEqual(
+      expect.arrayContaining([
+        { id: madeId, projectName: "Made signed in", createdAt: expect.any(Number) },
+        { id: old.id, projectName: "Claimed song", createdAt: old.createdAt },
+      ]),
+    );
+    expect(oldKey).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(made.key).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(bodies.find(([l]) => l === "my shares")![1]).toContain(madeId);
+
+    // The scan: EVERY stored account-link file (all accounts in this store), then every response.
+    expect(await scanStore("after My shares", [made.key, oldKey])).toBeGreaterThanOrEqual(2);
+    for (const [label, body] of bodies) {
+      expect(body, label).not.toContain(made.key);
+      expect(body, label).not.toContain(oldKey);
+      expect(body, label).not.toContain("#");
+    }
+  });
+
+  it("strips the full link from an account record written before #2329, once, as it is read", async () => {
+    const user = freshId();
+    await openAppAs(user);
+    const link = await anonymousLink("Old record song");
+    const store = galleryStore()!;
+    const { accountHashOf } = await import("../app/api/gallery/session");
+    const accountHash = accountHashOf("test-login", user);
+    const where = galleryPaths.accountLink(accountHash, link.id);
+    // What #2321 wrote: the whole link, key included (and a stray key field for good measure).
+    await putJson(store, where, { id: link.id, url: link.url, key: link.url.split("#")[1], projectName: "Old record song", createdAt: 7 });
+    const onDisk = () => readFile(path.join(dir, where), "utf8");
+    expect(await onDisk()).toContain("#"); // control: the old record really holds the link
+
+    const res = await myShares(user);
+    const text = await res.text();
+    expect(JSON.parse(text).links).toEqual([{ id: link.id, projectName: "Old record song", createdAt: 7 }]);
+    expect(text).not.toContain(link.url.split("#")[1]);
+    // Rewritten on disk without it.
+    expect(JSON.parse(await onDisk())).toEqual({ id: link.id, projectName: "Old record song", createdAt: 7 });
+
+    // Once: a second read leaves the clean record alone (same bytes, same mtime).
+    const { stat } = await import("node:fs/promises");
+    const before = (await stat(path.join(dir, where))).mtimeMs;
+    await new Promise((r) => setTimeout(r, 20));
+    expect((await mySharesOk(user)).links).toHaveLength(1);
+    expect((await stat(path.join(dir, where))).mtimeMs).toBe(before);
   });
 });
 
@@ -445,7 +558,7 @@ describe("the email stays on the server (#2320 / #2321 routes)", () => {
     const { sealed, key } = await sealShare(new TextEncoder().encode("x"));
     await keep(
       "share POST signed in",
-      await sharePostRoute(new Request("http://x/api/share", { method: "POST", body: sealed as BodyInit, headers: { [SHARE_LINK_KEY_HEADER]: key } })),
+      await sharePostRoute(new Request("http://x/api/share", { method: "POST", body: sealed as BodyInit, headers: { [OLD_KEY_HEADER]: key } })),
     );
     signIn(user);
     await keep("share DELETE by session", await revoke(link.id));

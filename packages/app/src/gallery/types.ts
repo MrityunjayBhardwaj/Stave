@@ -241,9 +241,10 @@ export interface GallerySessionResponse {
 //   GET    /api/gallery/me/shares (signed in) → 200 MySharesResponse · 401 · 503 (never cached)
 //   GET    /api/gallery/authors/<old id>      → 200 AuthorMovedResponse once that profile
 //                                               was merged into an account's profile
-//   POST   /api/share  with SHARE_LINK_KEY_HEADER + SHARE_LINK_NAME_HEADER, signed in:
-//       also records the link (key included) on the account. Signed out, those
-//       headers are ignored and nothing about the link is kept beyond its sealed bytes.
+//   POST   /api/share  with SHARE_LINK_NAME_HEADER, signed in: also lists the link on
+//       the account as an AccountLink (id, name, date; never the key or the full
+//       link, #2329). Signed out, the header is ignored and nothing about the link
+//       is kept beyond its sealed bytes and its manage-token hash.
 //   DELETE /api/share/<id>        MANAGE_TOKEN_HEADER, or the session when the link is on the account.
 
 export interface ClaimItem {
@@ -251,9 +252,11 @@ export interface ClaimItem {
   manageToken: string;
 }
 
-/** A private link to claim: the token proves it; the rest is what My shares shows and copies. */
+/**
+ * A private link to claim: the token proves it; the rest is what My shares
+ * shows. #2329 — never the link itself: its key stays in this browser.
+ */
 export interface ClaimLinkItem extends ClaimItem {
-  url?: string;
   projectName?: string;
   createdAt?: number;
 }
@@ -281,10 +284,17 @@ export interface ClaimResponse {
   refused: ClaimRefusal[];
 }
 
-/** A private link recorded on an account. The full link, key included; only its owner reads it. */
+/**
+ * A private link listed on an account (#2321), so My shares can show it and
+ * revoke it from any device. #2329 — only these three fields, ever: never the
+ * link's key and never the full link (the key lives after the `#`, in the
+ * browser that made it). Copying a link again needs that browser's own copy
+ * (localShares.ts LocalPrivateLink); other devices can only revoke it. Revoking
+ * through the session works because the record exists on the account; the
+ * manage-token hash stays beside the share, not here.
+ */
 export interface AccountLink {
   id: string;
-  url: string;
   projectName: string;
   createdAt: number;
 }
@@ -304,9 +314,11 @@ export interface AuthorMovedResponse {
   movedTo: string;
 }
 
-/** The link's key (the part after `#`), sent only by a signed-in browser so the link can be kept on the account. */
-export const SHARE_LINK_KEY_HEADER = "x-stave-share-key";
-/** The project's name, URI-encoded (headers are ASCII). */
+/**
+ * The project's name, URI-encoded (headers are ASCII), sent by a signed-in
+ * browser so the account's list can name the link. #2329 — there is no key
+ * header any more; the server ignores one if an older browser sends it.
+ */
 export const SHARE_LINK_NAME_HEADER = "x-stave-share-name";
 
 export const AUTHOR_KEY_HEADER = "x-stave-author-key";

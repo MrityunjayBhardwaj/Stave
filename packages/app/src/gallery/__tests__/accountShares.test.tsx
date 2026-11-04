@@ -67,8 +67,10 @@ describe("what a claim sends and marks", () => {
     expect(req).toEqual({
       authorKey: "old-key",
       entries: [{ id: "e1xxxxxxxxx", manageToken: "tok-e1xxxxxxxxx" }],
-      links: [{ id: "l1xxxxxxxxx", manageToken: "lt-l1xxxxxxxxx", url: LINK("l1xxxxxxxxx", 2).url, projectName: "Song l1xxxxxxxxx", createdAt: 2 }],
+      // #2329 — never the url: the link's key stays in this browser.
+      links: [{ id: "l1xxxxxxxxx", manageToken: "lt-l1xxxxxxxxx", projectName: "Song l1xxxxxxxxx", createdAt: 2 }],
     });
+    expect(JSON.stringify(req)).not.toContain("#");
 
     markClaimed(ME, req);
     expect(pendingClaim(ME)).toBeNull();
@@ -162,7 +164,10 @@ describe("My shares rows", () => {
       authorId: ME,
       entries: [ENTRY("both0000000", 5), ENTRY("acct0000000", 3)],
       collections: [],
-      links: [{ id: "lboth000000", url: "http://x/s/lboth000000#k", projectName: "P", createdAt: 4 }],
+      links: [
+        { id: "lboth000000", projectName: "P", createdAt: 4 },
+        { id: "lelse000000", projectName: "Made elsewhere", createdAt: 3 },
+      ],
     };
     const signed = myRows(account, local, links);
     expect(signed.entries.map((e) => [e.id, e.home, e.manageToken])).toEqual([
@@ -170,9 +175,11 @@ describe("My shares rows", () => {
       ["acct0000000", "account", null],
       ["local000000", "browser", "tok-local000000"],
     ]);
-    expect(signed.links.map((l) => [l.id, l.home])).toEqual([
-      ["lboth000000", "account"],
-      ["llocal00000", "browser"],
+    // #2329 — a row can be copied only when this browser holds the link.
+    expect(signed.links.map((l) => [l.id, l.home, l.url])).toEqual([
+      ["lboth000000", "account", LINK("lboth000000", 4).url],
+      ["lelse000000", "account", null],
+      ["llocal00000", "browser", LINK("llocal00000", 2).url],
     ]);
   });
 });
@@ -200,7 +207,7 @@ describe("the overlay signed in", () => {
       authorId: ME,
       entries: [ENTRY("acct0000000", 3)],
       collections: [{ id: "coll0000000", authorId: ME, title: "EP", description: "", entryIds: ["acct0000000"], createdAt: 1, updatedAt: 1 }],
-      links: [{ id: "lacct000000", url: "http://x/s/lacct000000#k", projectName: "Linked", createdAt: 4 }],
+      links: [{ id: "lacct000000", projectName: "Linked", createdAt: 4 }],
     };
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       const key = `${init?.method ?? "GET"} ${url}`;
@@ -228,6 +235,9 @@ describe("the overlay signed in", () => {
     expect(local.textContent).toContain("only in this browser");
     expect(document.querySelector('[data-gallery-my-collection="coll0000000"]')).not.toBeNull();
     expect(document.querySelector('[data-gallery-links-note]')!.textContent).toContain("only you can see this list");
+    expect(document.querySelector('[data-gallery-links-note]')!.textContent).toContain(
+      "A link's key is kept only in the browser that made it",
+    );
     expect(document.querySelector('[data-gallery-my-profile]')!.getAttribute("data-gallery-my-profile")).toBe(ME);
 
     fireEvent.click(within(acct).getByText("Delete"));
@@ -240,5 +250,49 @@ describe("the overlay signed in", () => {
     await waitFor(() => expect(document.querySelector('[data-gallery-link="lacct000000"]')).toBeNull());
     const rev = fetchMock.mock.calls.find(([u, i]) => u === "/api/share/lacct000000" && i?.method === "DELETE")!;
     expect((rev[1]!.headers as Record<string, string>)[MANAGE_TOKEN_HEADER]).toBeUndefined();
+  });
+
+  it("#2329 offers Copy again only for a link this browser made; one made elsewhere can only be revoked", async () => {
+    resetGallerySessionForTests({
+      status: "ready",
+      session: { signInAvailable: true, providers: [], user: { name: "Ada", authorId: ME, verified: { provider: "github", login: "ada" } } },
+    });
+    addPrivateLink(LINK("lhere000000", 5, { claimedBy: ME }));
+    const account: MySharesResponse = {
+      authorId: ME,
+      entries: [],
+      collections: [],
+      links: [
+        { id: "lhere000000", projectName: "Made here", createdAt: 5 },
+        { id: "lelse000000", projectName: "Made elsewhere", createdAt: 4 },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url === "/api/gallery/me/shares" ? Response.json(account) : url === "/api/gallery" ? Response.json({ entries: [] }) : new Response(null, { status: 404 }),
+      ),
+    );
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<GalleryOverlay open initialEntryId={null} onClose={vi.fn()} onOpenAsProject={vi.fn()} onAddToProject={vi.fn()} />);
+    fireEvent.click(document.querySelector('[data-gallery-tab="mine"]')!);
+
+    await waitFor(() => expect(document.querySelector('[data-gallery-link="lelse000000"]')).not.toBeNull());
+    const here = document.querySelector('[data-gallery-link="lhere000000"]') as HTMLElement;
+    const elsewhere = document.querySelector('[data-gallery-link="lelse000000"]') as HTMLElement;
+
+    expect(within(here).queryByText("Copy again")).not.toBeNull();
+    expect(within(here).queryByText("Revoke")).not.toBeNull();
+    expect(here.querySelector("[data-gallery-link-elsewhere]")).toBeNull();
+
+    expect(within(elsewhere).queryByText("Copy again")).toBeNull();
+    expect(within(elsewhere).queryByText("Revoke")).not.toBeNull();
+    expect(elsewhere.querySelector("[data-gallery-link-elsewhere]")!.textContent).toBe(
+      "Made on another device. The link's key is only kept there.",
+    );
+
+    fireEvent.click(within(here).getByText("Copy again"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(LINK("lhere000000", 5).url));
   });
 });

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -31,6 +31,10 @@ import { bootApp } from './_appBoot'
  *
  *   STAVE_AUTH_TEST_LOGIN=1 AUTH_SECRET=dev-only-secret npm run dev -- -p 3341
  *   STAVE_E2E_PORT=3341 npx playwright test tests/gallery-account.spec.ts --project=chromium --workers=1
+ *
+ * #2329 — the account lists a private link by id, name and date only, never
+ * its key. Browser A, which made the link, can copy it again from its own
+ * copy; browser B sees the row and can revoke it, but has no Copy again.
  *
  * Screenshots go to $GALLERY_SHOT_DIR when it is set.
  */
@@ -105,6 +109,18 @@ async function seedPreSignInAuthor() {
   return { authorId, authorKey, entryId, manageToken, collectionId, title }
 }
 
+/** #2329 — every stored account-link file the dev server wrote, with its contents. */
+async function accountLinkFiles(): Promise<Array<[string, string]>> {
+  const root = path.join(GALLERY_DIR, 'gallery/account-links')
+  const names = (await readdir(root, { recursive: true }).catch(() => [] as string[])).map(String)
+  const out: Array<[string, string]> = []
+  for (const name of names) {
+    const text = await readFile(path.join(root, name), 'utf8').catch(() => null) // null: a folder
+    if (text !== null) out.push([name, text])
+  }
+  return out
+}
+
 async function copyPrivateLink(page: Page): Promise<string> {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.getByRole('button', { name: 'File', exact: true }).click()
@@ -147,6 +163,7 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
   test.describe.configure({ mode: 'serial' })
   let seed: Awaited<ReturnType<typeof seedPreSignInAuthor>>
   let linkId = ''
+  let linkKey = ''
   let accountAuthorId = ''
   let deviceA: { context: BrowserContext; page: Page } | null = null
 
@@ -165,6 +182,8 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
     // Signed out: a real private link, kept in this browser.
     const url = await copyPrivateLink(page)
     linkId = new URL(url).pathname.split('/').pop()!
+    linkKey = new URL(url).hash.slice(1)
+    expect(linkKey).toMatch(/^[A-Za-z0-9_-]{22}$/)
     // ...and the keys a pre-sign-in publish left here.
     await page.evaluate((s) => {
       localStorage.setItem('stave.gallery.author', JSON.stringify({ name: 'Old me', email: '', authorId: s.authorId, authorKey: s.authorKey }))
@@ -200,7 +219,39 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
     await expect(page.locator(`[data-gallery-my-collection="${seed.collectionId}"]`)).toBeVisible()
     await expect(page.locator('[data-gallery-browser-only]')).toHaveCount(0)
     await expect(page.locator('[data-gallery-links-note]')).toContainText('only you can see this list')
+    await expect(page.locator('[data-gallery-links-note]')).toContainText("A link's key is kept only in the browser that made it")
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/2-my-shares-signed-in.png` })
+
+    // #2329 — A made the link, so it has Copy again (from its own copy) and Revoke.
+    const linkRow = page.locator(`[data-gallery-link="${linkId}"]`)
+    await expect(linkRow.getByRole('button', { name: 'Copy again' })).toBeVisible()
+    await expect(linkRow.getByRole('button', { name: 'Revoke' })).toBeVisible()
+    await expect(linkRow.locator('[data-gallery-link-elsewhere]')).toHaveCount(0)
+    if (SHOTS) await page.locator('[data-gallery-section="private"]').screenshot({ path: `${SHOTS}/a-private-links.png` })
+    await page.evaluate(() => navigator.clipboard.writeText(''))
+    await linkRow.getByRole('button', { name: 'Copy again' }).click()
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(url)
+
+    // #2329 — what the real server stored for the account: no key, no `#`, only id, name and date.
+    // This run's key is in no file of the whole store. The `#` check covers this account's
+    // folder: the shared dev store can hold other accounts' records from before #2329, which
+    // are stripped only when their own account next reads My shares.
+    const files = await accountLinkFiles()
+    const thisLink = files.filter(([name]) => name.endsWith(`/${linkId}.json`))
+    expect(thisLink).toHaveLength(1)
+    expect(Object.keys(JSON.parse(thisLink[0][1])).sort()).toEqual(['createdAt', 'id', 'projectName'])
+    const accountFolder = thisLink[0][0].slice(0, -`${linkId}.json`.length)
+    const ofAccount = files.filter(([name]) => name.startsWith(accountFolder))
+    expect(ofAccount.length).toBeGreaterThanOrEqual(1)
+    for (const [name, text] of files) expect(text, name).not.toContain(linkKey)
+    for (const [name, text] of ofAccount) expect(text, name).not.toContain('#')
+    // ...and My shares' own answer carries no key either.
+    const myShares = await page.request.get('/api/gallery/me/shares')
+    expect(myShares.status()).toBe(200)
+    const mySharesText = await myShares.text()
+    expect(mySharesText).toContain(linkId)
+    expect(mySharesText).not.toContain(linkKey)
+    expect(mySharesText).not.toContain('#')
 
     // The old profile link opens the account's profile.
     await page.keyboard.press('Escape')
@@ -247,11 +298,13 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
       expect(await b.page.evaluate(() => localStorage.getItem('stave.share.links'))).toBeNull()
       if (SHOTS) await b.page.screenshot({ path: `${SHOTS}/3-my-shares-browser-b.png` })
 
-      // Copy again works from here: the account kept the whole link.
-      await b.context.grantPermissions(['clipboard-read', 'clipboard-write'])
-      await link.getByRole('button', { name: 'Copy again' }).click()
-      const copied = await b.page.evaluate(() => navigator.clipboard.readText())
-      expect(copied).toMatch(new RegExp(`/s/${linkId}#[A-Za-z0-9_-]{22}$`))
+      // #2329 — the account never had the key, so B sees the row and can revoke it, but can't copy it.
+      await expect(link.locator('[data-gallery-link-elsewhere]')).toHaveText(
+        "Made on another device. The link's key is only kept there.",
+      )
+      await expect(link.getByRole('button', { name: 'Copy again' })).toHaveCount(0)
+      await expect(link.getByRole('button', { name: 'Revoke' })).toBeVisible()
+      if (SHOTS) await b.page.locator('[data-gallery-section="private"]').screenshot({ path: `${SHOTS}/b-private-links.png` })
 
       // Revoke through the session (no key here).
       await link.getByRole('button', { name: 'Revoke' }).click()

@@ -37,7 +37,11 @@ export interface LocalShare {
 /** #2311 — a private short link this browser made (Copy Share Link). */
 export interface LocalPrivateLink {
   id: string;
-  /** The whole link, key included, so it can be copied again. */
+  /**
+   * The whole link, key included, so it can be copied again. #2329 — kept only
+   * here, in this browser: the account's list never has it, so Copy again works
+   * only on the device that made the link.
+   */
   url: string;
   projectName: string;
   createdAt: number;
@@ -130,7 +134,8 @@ export function pendingClaim(authorId: string): ClaimRequest | null {
       .map((s) => ({ id: s.id, manageToken: s.manageToken })),
     links: listPrivateLinks()
       .filter((l) => !settled(l, authorId))
-      .map((l) => ({ id: l.id, manageToken: l.manageToken, url: l.url, projectName: l.projectName, createdAt: l.createdAt })),
+      // #2329 — never the url: the link's key stays in this browser.
+      .map((l) => ({ id: l.id, manageToken: l.manageToken, projectName: l.projectName, createdAt: l.createdAt })),
   };
   if (author?.authorKey && !settled(author, authorId)) req.authorKey = author.authorKey;
   return req.authorKey || req.entries.length || req.links.length ? req : null;

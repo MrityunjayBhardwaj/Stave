@@ -7,7 +7,9 @@ import { galleryStore } from "../../store";
 
 // #2321 — My shares for the signed-in account, on any device: its gallery
 // entries and collections (through the account's author index), and the
-// private links recorded on the account, full links included.
+// private links listed on the account (id, project name, date). #2329 — never
+// a link's key or full link: the store doesn't have them, and old records that
+// did are stripped as they are read (accountLinks.ts).
 //
 // Only the account itself reaches this: the session decides whose list it is,
 // and there is no id in the request to change that. Never cached anywhere. The

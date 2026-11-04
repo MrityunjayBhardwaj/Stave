@@ -28,7 +28,12 @@ export interface ShareRow {
 
 export interface LinkRow {
   id: string;
-  url: string;
+  /**
+   * #2329 — the whole link, only when this browser holds it (it made the link).
+   * Null for a link made on another device: the account never has the key, so
+   * that row can be revoked here but not copied.
+   */
+  url: string | null;
   projectName: string;
   createdAt: number;
   manageToken: string | null;
@@ -69,8 +74,19 @@ export function myRows(account: MySharesResponse | null, local: LocalShare[], lo
     })),
     ...local.filter((s) => !onAccount.has(s.id) && notTaken(s)).map(fromLocalShare),
   ].sort((a, b) => b.publishedAt - a.publishedAt);
+  // #2329 — the account's list has no keys; Copy again comes from this browser's copy, when it has one.
+  const localUrl = new Map(localLinks.map((l) => [l.id, l.url]));
   const links: LinkRow[] = [
-    ...account.links.map((l: AccountLink): LinkRow => ({ ...l, manageToken: null, home: "account" })),
+    ...account.links.map(
+      (l: AccountLink): LinkRow => ({
+        id: l.id,
+        url: localUrl.get(l.id) ?? null,
+        projectName: l.projectName,
+        createdAt: l.createdAt,
+        manageToken: null,
+        home: "account",
+      }),
+    ),
     ...localLinks.filter((l) => !linksOnAccount.has(l.id) && notTaken(l)).map(fromLocalLink),
   ].sort((a, b) => b.createdAt - a.createdAt);
   return { entries, links, collections: account.collections };
