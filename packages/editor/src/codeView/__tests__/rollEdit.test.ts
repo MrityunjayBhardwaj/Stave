@@ -254,6 +254,75 @@ describe('the roll edits one step’s own text (#2294)', () => {
   })
 })
 
+/*
+ * ── the tree mode, on the fixtures of the roll's older specs ─────────
+ *
+ * Settings › Grid › Exact routes the roll through this writer; LCM keeps the column writer,
+ * and the older browser specs are pinned to LCM. These are the same fixtures in the tree
+ * mode: each edit is checked by Strudel (`edit`), each refusal carries its reason.
+ */
+describe('the tree mode on the roll’s older fixtures (#2294)', () => {
+  const on = (bar: number, n: number, d: number): RollPlace => ({ bar, at: F(n, d) })
+  const barsOf = (mini: string): number => {
+    const g = parsePianoRoll(mini)
+    if (!g.ok) throw new Error(`${mini}: ${g.reason}`)
+    return g.model.bars ?? 1
+  }
+
+  it('length: a note with no rest after it in its group is refused, with the reason', () => {
+    const refuse = (mini: string, place: RollPlace, midi: number, end: Frac): RollEditResult => rollResize(mini, chunkDivisions(mini, barsOf(mini)), place, midi, end)
+    expect(refuse('[c3@3 e3] [~ g2@2 b2]', on(0, 0, 1), 48, F(1, 2))).toEqual({ ok: false, why: 'no-room-to-grow' })
+    expect(refuse('c3 e3 g3 a3', on(0, 0, 1), 48, F(3, 4))).toEqual({ ok: false, why: 'no-room-to-grow' })
+    expect(refuse('[c3,e3] ~ ~ ~', on(0, 0, 1), 48, F(3, 4))).toEqual({ ok: false, why: 'no-room-to-grow' })
+    // and where there is room, the length is written inside the group and heard
+    expect(edit('[c3@3 e3] [~ g2@2 b2]', (tr) => rollResize('[c3@3 e3] [~ g2@2 b2]', tr, on(0, 0, 1), 48, F(1, 4)), 'resize', 48, on(0, 0, 1))).toBe('[c3@2 ~ e3] [~ g2@2 b2]')
+  })
+
+  it('move: copies that come from outside the step are refused, with the reason', () => {
+    const mini = '- - - <b3 [b3 b3]>'
+    const bars = barsOf(mini)
+    const r = rollMove(mini, chunkDivisions(mini, bars), on(0, 3, 4), 59, on(0, 1, 2), 'b3', (s) => chunkDivisions(s, bars))
+    expect(r).toEqual({ ok: false, why: 'copies-come-from-outside-the-step' })
+  })
+
+  it('add into a repeat: the one hit becomes a chord, or splits at the click, the repeat written out', () => {
+    const mini = '<c2*2 g2*3 [a g] c2*6>'
+    const bars = barsOf(mini)
+    expect(edit(mini, (tr) => rollAdd(mini, tr, on(1, 0, 1), 'c2'), 'add', 36, on(1, 0, 1), bars)).toBe('<c2*2 [[c2,g2] g2 g2] [a g] c2*6>')
+    expect(edit(mini, (tr) => rollAdd(mini, tr, on(1, 1, 6), 'c2'), 'add', 36, on(1, 1, 6), bars)).toBe('<c2*2 [[g2 c2] g2 g2] [a g] c2*6>')
+  })
+
+  it('delete inside an alternation or a stack: that note alone becomes a rest', () => {
+    const stack = '<g1, c1> - <c3, g4 - - >'
+    const bars = barsOf(stack)
+    expect(edit(stack, (tr) => rollRemove(stack, tr, on(0, 2, 3), 48), 'remove', 48, on(0, 2, 3), bars)).toBe('<g1, c1> - <~, g4 - - >')
+    expect(edit(stack, (tr) => rollRemove(stack, tr, on(0, 2, 3), 67), 'remove', 67, on(0, 2, 3), bars)).toBe('<g1, c1> - <c3, ~ - - >')
+    const alt = '<0 2 0 4>*4, <4 6 4 8>*2, -4*4'
+    const altBars = barsOf(alt)
+    expect(edit(alt, (tr) => rollRemove(alt, tr, on(0, 3, 4), 4), 'remove', 4, on(0, 3, 4), altBars)).toBe('<0 2 0 ~>*4, <4 6 4 8>*2, -4*4')
+    expect(edit(alt, (tr) => rollRemove(alt, tr, on(0, 0, 1), 4), 'remove', 4, on(0, 0, 1), altBars)).toBe('<0 2 0 4>*4, <~ 6 4 8>*2, -4*4')
+  })
+
+  it('add into a one-step bar: the rest splits at the column’s size, so the note is one column long', () => {
+    const mini = '<[e4 d4 c4 d4 e4 e4 e4@2] ~>'
+    const bars = barsOf(mini)
+    expect(edit(mini, (tr) => rollAdd(mini, tr, on(1, 2, 8), 'd4', F(1, 8)), 'add', 62, on(1, 2, 8), bars)).toBe('<[e4 d4 c4 d4 e4 e4 e4@2] [~ ~ d4 ~ ~ ~ ~ ~]>')
+    // without the column, the split is as coarse as the place: two columns long (the old arm)
+    expect(edit(mini, (tr) => rollAdd(mini, tr, on(1, 2, 8), 'd4'), 'add', 62, on(1, 2, 8), bars)).toBe('<[e4 d4 c4 d4 e4 e4 e4@2] [~ d4 ~ ~]>')
+    // a NOTE is split only as finely as the click needs: a finer split would cut it shorter
+    expect(edit('c4 e4', (tr) => rollAdd('c4 e4', tr, on(0, 1, 4), 'd4', F(1, 8)), 'add', 62, on(0, 1, 4))).toBe('[c4 d4] e4')
+  })
+
+  it('the one-column check can go red: a two-column note is not the one-column add', () => {
+    const mini = '<[e4 d4 c4 d4 e4 e4 e4@2] ~>'
+    const one = plays('<[e4 d4 c4 d4 e4 e4 e4@2] [~ ~ d4 ~ ~ ~ ~ ~]>', 4).filter((k) => k.startsWith('d4@5/4'))
+    const two = plays('<[e4 d4 c4 d4 e4 e4 e4@2] [~ d4 ~ ~]>', 4).filter((k) => k.startsWith('d4@5/4'))
+    expect(one).toEqual(['d4@5/4-11/8'])
+    expect(two).not.toEqual(one)
+    void mini
+  })
+})
+
 /* ── the corpus ─────────────────────────────────────────────────── */
 
 const corpus: { minis: { mini: string }[] } = JSON.parse(

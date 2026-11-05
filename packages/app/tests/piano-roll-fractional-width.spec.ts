@@ -13,6 +13,10 @@
  * the line.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
@@ -79,7 +83,7 @@ async function enlargeDrawer(page: Page): Promise<void> {
 
 // midi: c4=60, e4=64
 test.describe('Piano Roll — fractional column widths (#1092)', () => {
-  test('dragging one note leaves the other note`s text untouched, and writes no float', async ({
+  test('dragging one note leaves the other note`s text untouched, and writes no float (LCM grid)', async ({
     page,
   }) => {
     await boot(page)

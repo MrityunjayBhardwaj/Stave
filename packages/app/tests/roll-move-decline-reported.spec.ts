@@ -38,8 +38,11 @@
  * commit changed nothing: the document at release is the document after release.
  */
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 import { expectRefusalReported, expectNoRefusalReported } from './_console'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 const CODE = '$: note("- - - <b3 [b3 b3]>")'
 
@@ -72,7 +75,7 @@ function refusedCells(page: Page) {
 }
 
 test.describe('a declined move drop is reported (#1452)', () => {
-  test('a drop with no accepted frame reports, and leaves the document alone', async ({ page }) => {
+  test('a drop with no accepted frame reports, and leaves the document alone (LCM grid)', async ({ page }) => {
     await openRoll(page)
 
     const f = await cell(page, GRAB)
@@ -98,7 +101,7 @@ test.describe('a declined move drop is reported (#1452)', () => {
     await expectRefusalReported(page, "Couldn't move that note there", 'left unchanged')
   })
 
-  test('a drop that strands the note reports where the note actually is', async ({ page }) => {
+  test('a drop that strands the note reports where the note actually is (LCM grid)', async ({ page }) => {
     await openRoll(page)
 
     const f = await cell(page, GRAB)
@@ -133,7 +136,7 @@ test.describe('a declined move drop is reported (#1452)', () => {
     )
   })
 
-  test('an accepted drop on the same fixture writes, and stays quiet', async ({ page }) => {
+  test('an accepted drop on the same fixture writes, and stays quiet (LCM grid)', async ({ page }) => {
     await openRoll(page)
 
     const f = await cell(page, GRAB)

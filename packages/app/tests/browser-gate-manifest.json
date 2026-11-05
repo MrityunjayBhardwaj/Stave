@@ -899,6 +899,10 @@
     "runs": "gate",
     "why": "The piano roll edits a step's own text (#2294): on `c4 [e4 [g4 a4]] b4` a click inside a note's step splits it (`[c4 d4]`) and a click on a note two levels down makes it a rest; on `c4 ~ e4 ~` Alt+Shift+arrows write `c4@2` and back, and Alt+Right moves the note leaving a rest; on `[c4 e4]*2 ~` a move across places writes out only the repeat and moves the dragged copy. Each edit is read back from the editor and checked against what the page's own Strudel plays, onset and end, over two cycles."
   },
+  "pattern-roll-tree-mode.spec.ts": {
+    "runs": "gate",
+    "why": "The piano roll on the tree grid (Settings › Grid › Exact, #2294), on the fixtures of the roll's older specs, which run on the LCM grid: on `g c g c g c g c` no note offers a length handle; on `[c3@3 e3] [~ g2@2 b2]` and a chord member, a length past the note's group is refused with its reason; a move whose copies come from outside its step, and a move where the columns are not whole (`c4@1.5 e4@1.2`), are refused with their reason; adds into `g2*3` write `[[c2,g2] g2 g2]` and `[[g2 c2] g2 g2]`; deletes in `<c3, g4 - - >` and `<0 2 0 4>*4` rest that one note; an add into a one-step bar is one column long. Every write is checked against what the page's own Strudel plays over two cycles, and every refusal leaves the document byte-for-byte."
+  },
   "pattern-steps-walk.spec.ts": {
     "runs": "gate",
     "why": "Split, paint, cursor and resize walk steps, not columns (#2293): on nested patterns, a click part-way through a plain step splits it (`bd` -> `[bd bd]`, `sd` -> `[sd cp]`); a paint drag paints each step it crosses at any depth and never splits one; the arrow keys walk the drawn steps into a group and out of it; Alt+Shift+arrows lengthen and shorten a note in its own spelling (`bd@2` -> `bd@3`, `sd ~` -> `sd _`) and a length its group cannot take is refused. Every edit is read back from the editor and checked against what the page's own Strudel plays, onset and end, over two cycles."

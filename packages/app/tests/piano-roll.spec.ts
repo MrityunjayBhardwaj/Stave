@@ -8,6 +8,10 @@
  *   - a sound pattern (not a melody) falls back to standby.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
@@ -234,7 +238,7 @@ test.describe('Piano Roll (#383)', () => {
     await page.waitForTimeout(90)
   }
 
-  test('stretching ONE note of a chord resizes only that note (#628)', async ({ page }) => {
+  test('stretching ONE note of a chord resizes only that note (#628) (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("[c3,e3] ~ ~ ~")')
     const drawer = await openRoll(page)
@@ -251,7 +255,7 @@ test.describe('Piano Roll (#383)', () => {
     await expect(grid.locator('[data-roll-cell="52:2"]')).toHaveAttribute('aria-pressed', 'false')
   })
 
-  test('stretching a note OVER a following note sustains under it (#628)', async ({ page }) => {
+  test('stretching a note OVER a following note sustains under it (#628) (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c3 e3 g3 a3")') // adjacent — was a no-op before #628
     const drawer = await openRoll(page)

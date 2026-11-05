@@ -27,8 +27,11 @@
  * is an assertion that cannot fail.
  */
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 import { expectRefusalReported, expectNoRefusalReported } from './_console'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 const CODE = '$: note("[c3@3 e3] [~ g2@2 b2]")'
 /** what the per-frame rule writes for the refused ask — note that b2 is gone */
@@ -70,7 +73,7 @@ async function tailEdge(page: Page, key: string): Promise<{ x: number; y: number
 }
 
 test.describe('a roll resize is settled against the reopened document (#1331)', () => {
-  test('an accepted resize writes, and keeps every voice', async ({ page }) => {
+  test('an accepted resize writes, and keeps every voice (LCM grid)', async ({ page }) => {
     // The positive half of the pair. Without it, the refusal arm below cannot tell a
     // working decline from a resize gesture that never functioned at all.
     await openRoll(page, CODE)
@@ -83,7 +86,7 @@ test.describe('a roll resize is settled against the reopened document (#1331)', 
     await expect.poll(() => editorValue(page)).toBe(ACCEPTED)
   })
 
-  test('a resize that would lose a voice is taken back when the gesture commits', async ({
+  test('a resize that would lose a voice is taken back when the gesture commits (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, CODE)
@@ -154,7 +157,7 @@ test.describe('a refused resize says why the note went back (#1336)', () => {
     await expectRefusalReported(page, "Couldn't set that length")
   })
 
-  test('the accepted resize raises none', async ({ page }) => {
+  test('the accepted resize raises none (LCM grid)', async ({ page }) => {
     await openRoll(page, CODE)
 
     const from = await tailEdge(page, '48:2')

@@ -25,7 +25,10 @@
  * — one on each of `resizeNote`'s branches (single-bar, and the multi-bar `<...>` form).
  */
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 async function openRoll(page: Page, code: string) {
   await bootApp(page, { drawer: { tabId: 'pattern', height: 520 } })
@@ -107,7 +110,7 @@ test.describe('the roll offers a length handle only where one would work (#1322)
     await expect(cellLoc(page, LIVE_CELL)).not.toHaveAttribute('data-roll-resize-inert', 'true')
   })
 
-  test('a note that KEEPS its handle still resizes — the gate did not take the affordance from everyone', async ({
+  test('a note that KEEPS its handle still resizes — the gate did not take the affordance from everyone (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, SINGLE)
@@ -124,7 +127,7 @@ test.describe('the roll offers a length handle only where one would work (#1322)
       .not.toBe(SINGLE)
   })
 
-  test('pressing where the handle used to be writes nothing — checked against an ACCEPTED edit, not from rest', async ({
+  test('pressing where the handle used to be writes nothing — checked against an ACCEPTED edit, not from rest (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, SINGLE)

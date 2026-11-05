@@ -28,7 +28,10 @@
  * deletes, and these are the smallest that address cleanly.
  */
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 /** Open the app with the roll already on screen and tall enough to address. */
 async function openRoll(page: Page, code: string) {
@@ -95,7 +98,7 @@ test.describe('roll writers decline instead of quietly doing nothing (#1325/#132
     await expect.poll(() => editorValue(page)).toBe(code)
   })
 
-  test('a refused DROP leaves the document where the drag left it — it does not snap home', async ({ page }) => {
+  test('a refused DROP leaves the document where the drag left it — it does not snap home (LCM grid)', async ({ page }) => {
     // Grabbing b3@6: every pitch is declined at step 7 and taken at every other
     // step, so the two drops below differ only in the target step.
     //
@@ -143,7 +146,7 @@ test.describe('roll writers decline instead of quietly doing nothing (#1325/#132
     await expect.poll(() => editorValue(page)).toBe('$: note("~ e3 g3 ~")')
   })
 
-  test('a refused DELETE leaves the document alone — and the same row deletes fine elsewhere', async ({ page }) => {
+  test('a refused DELETE leaves the document alone — and the same row deletes fine elsewhere (LCM grid)', async ({ page }) => {
     // Numeric rows, so the row token IS the number. Deleting 4@3 is declined and
     // 4@0 is taken — one row, so the pair differs only in the step.
     //
