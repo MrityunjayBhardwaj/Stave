@@ -105,7 +105,10 @@ test.describe('the grid sets a note’s length (#1053)', () => {
     page,
   }) => {
     await boot(page)
-    await setStrudelCode(page, '$: s("[bd ~ sd ~]")')
+    // #2293: the length is the step writer's, which keeps the author's brackets —
+    // `[bd ~ sd ~]` becomes `[bd _ sd ~]`, and the column reader draws THAT at two columns
+    // (#2323), so the picture is pinned on the flat spelling, which keeps its four
+    await setStrudelCode(page, '$: s("bd ~ sd ~")')
     await openSequencer(page)
     await expect(page.locator('[data-seq-cell="0:0"]')).toHaveCount(1)
     expect(await readLane(page, 0, 4)).toBe('#---')
@@ -117,8 +120,8 @@ test.describe('the grid sets a note’s length (#1053)', () => {
 
     const code = await readCode(page)
     console.log(`\n  after drag →  ${code}`)
-    // the sustain is spelled `_`, the one-token-per-column shape the grid writes
-    expect(code).toContain('bd _ sd ~')
+    // the length is spelled `@n`, as people write it (#2326)
+    expect(code).toContain('bd@2 sd ~')
     // …and the panel now DRAWS the note carrying through column 1
     expect(await readLane(page, 0, 4)).toBe('#=--')
   })
@@ -167,7 +170,7 @@ test.describe('the grid sets a note’s length (#1053)', () => {
     const code = await readCode(page)
     console.log(`  flat grid after drag →  ${code}`)
     // three columns of bd, and `sd` plus the rests past the note's reach untouched
-    expect(code).toContain('bd _ _ ~ sd ~ ~ ~')
+    expect(code).toContain('bd@3 ~ sd ~ ~ ~') // a length is `@n` (#2326)
     expect(await readLane(page, 0, 8)).toBe('#==-----')
   })
 

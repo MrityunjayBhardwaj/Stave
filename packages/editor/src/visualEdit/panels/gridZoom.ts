@@ -45,6 +45,20 @@ function barColumns(m: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, b: nu
   return { start: b * (m.steps / bars), per: m.steps / bars }
 }
 
+/**
+ * Column `end` as a share of the bar column `col` is in (#2293): a note's end, which may be
+ * the bar's last edge (1). Null past that bar.
+ */
+export function endInBar(m: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, col: number, end: number): Frac | null {
+  const bars = m.bars ?? 1
+  for (let b = 0; b < bars; b++) {
+    const { start, per } = barColumns(m, b)
+    if (col < start || col >= start + per) continue
+    return end > start && end <= start + per ? frac(end - start, per) : null
+  }
+  return null
+}
+
 /* ── exact fractions of a bar ───────────────────────────────────── */
 
 const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b))
@@ -353,8 +367,12 @@ export function stepAddressAt(
           if (columnOf(slot.begin, 0, per) === want) return { bar: b, span: s.span, at: slot.begin }
         }
         // a hit that begins part-way through its step was made by the step's own op
-        // (`hh*4`'s second hat): that is the reason to give, not "inside a step"
-        if (s.hits.some((h) => columnOf(h.begin, 0, per) === want)) {
+        // (`hh*4`'s second hat, `bd!3`'s second copy). Since #2326 the writer edits one hit
+        // of a plain `x*k` / `x!k`, so the address is the step and where that hit begins; it
+        // gives the refusal itself for the ops it still does not edit (euclid, `?`, …)
+        const hit = s.hits.find((h) => columnOf(h.begin, 0, per) === want)
+        if (hit) {
+          if (s.ops.every((o) => o === 'tail' || o === 'stretch' || o === 'replicate')) return { bar: b, span: s.span, at: hit.begin }
           generated = s.reps > 1 || s.ops.includes('replicate') ? 'step-is-replicated' : 'step-is-generated'
         }
       }
@@ -364,6 +382,74 @@ export function stepAddressAt(
     return visit(d.row) ?? generated ?? 'inside-a-step'
   }
   return 'inside-a-step'
+}
+
+/**
+ * The plain step a column PART-WAY THROUGH it belongs to, and where in the bar that column
+ * is (#2293): what `splitStep` takes when a click lands on a step's faint snap half. The
+ * step is found by the same row rule as `stepAddressAt`; a column that begins a step, or one
+ * inside a step that holds others (a group the lane does not draw open), names none.
+ */
+export function splitAddressAt(
+  model: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps' | 'lanes'>,
+  trees: readonly BarTree[],
+  lane: number,
+  col: number,
+): { address: StepAddress; at: Frac } | null {
+  const bars = model.bars ?? 1
+  if (trees.length !== bars) return null
+  const l = model.lanes[lane]
+  if (!l) return null
+  for (let b = 0; b < bars; b++) {
+    const { start, per } = barColumns(model, b)
+    if (col < start || col >= start + per) continue
+    const d = laneRowForEdit(trees[b], l)
+    if (!d.ok) return null
+    const at = frac(col - start, per)
+    const visit = (row: DivisionRow): { address: StepAddress; at: Frac } | null => {
+      for (const s of row.steps) {
+        const inner = s.rows ? innerRow(s, l.sound) : null
+        if (inner) {
+          const got = visit(inner)
+          if (got) return got
+          continue
+        }
+        if (!s.span || s.rows) continue
+        for (const slot of s.slots) {
+          if (slot.fromBefore || slot.pastEnd) continue
+          if (cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0) return { address: { bar: b, span: s.span, at: slot.begin }, at }
+        }
+      }
+      return null
+    }
+    return visit(d.row)
+  }
+  return null
+}
+
+/**
+ * The cursor's stops in one row (#2293): where each of the row's own steps begins, at
+ * every depth — a group's steps in place of the group, open or not. Arrow keys walk these,
+ * so the cursor moves step to step, into a group and out of it, and never onto a column in
+ * the middle of a step (a snap half is where a click splits a step, not a step).
+ */
+export function leafStops(nodes: readonly StepNode[]): number[] {
+  const out: number[] = []
+  const walk = (n: StepNode): void => {
+    if (n.children) n.children.forEach(walk)
+    else out.push(n.from)
+  }
+  nodes.forEach(walk)
+  return out
+}
+
+/**
+ * A step group's stops: a step holding small boxes stops on each; a PLAIN step (one note or
+ * rest through several columns) only where it begins — its faint snap halves are places a
+ * click splits it, not steps the cursor walks.
+ */
+export function groupStops(g: StepGroup): number[] {
+  return g.plain ? [g.from] : g.boxes.map((b) => b.start)
 }
 
 /** every open step's first column and its depth: where the lines go, and how light */
