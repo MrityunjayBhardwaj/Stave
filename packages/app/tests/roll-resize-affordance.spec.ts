@@ -75,7 +75,7 @@ test.describe('the roll offers a length handle only where one would work (#1322)
   const INERT_CELL = '48:7' // c at step 7 — no writable length
   const LIVE_CELL = '48:1' // c at step 1 — same row, same document, offerable
 
-  test('withholds the handle where no length is writable, and keeps it on the same row where one is', async ({
+  test('withholds the handle where no length is writable, and keeps it on the same row where one is (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, SINGLE)
@@ -92,7 +92,7 @@ test.describe('the roll offers a length handle only where one would work (#1322)
     ).toHaveCount(0)
   })
 
-  test('says why the handle is missing, rather than leaving the absence unexplained', async ({
+  test('says why the handle is missing, rather than leaving the absence unexplained (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, SINGLE)
@@ -166,7 +166,7 @@ test.describe('the roll offers a length handle only where one would work (#1322)
   // the second slot do not, and all three are the same row.
   const MULTI = '$: note("- - - <b3 [b3 b3]>")'
 
-  test('the same rule holds on the multi-bar branch', async ({ page }) => {
+  test('the same rule holds on the multi-bar branch (LCM grid)', async ({ page }) => {
     await openRoll(page, MULTI)
 
     await expect(handle(page, '59:6'), 'the offerable b3 must keep its handle').toHaveCount(1)
