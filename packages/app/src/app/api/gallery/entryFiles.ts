@@ -9,7 +9,7 @@ import { galleryPaths, type GalleryBlobStore } from "./store";
  *   gallery/thumbnails/<id>        PNG or WebP bytes
  *
  * Nothing else is written here (#2363: the old Blob records publish and
- * take-down used to mirror are gone; galleryBlobKeys.test.ts holds the line).
+ * take-down used to mirror are gone; galleryBlobContentOnly.test.ts holds the line).
  *
  * Ordering, so a reader never sees an entry whose files are missing:
  *   publish   putEntryFiles FIRST, then the row is inserted (a listed entry's
