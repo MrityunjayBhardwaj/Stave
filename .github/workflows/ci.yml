@@ -14,7 +14,10 @@
 # - `tsc --noEmit` over the editor's test files: 63 errors on main, all in tests (#2124).
 #   The app's tests already typecheck: `next build` checks them.
 # - The browser suite: 279 Playwright spec files (about 1,000 tests) needing a dev
-#   server and real audio; it stays a manual gate for now.
+#   server and real audio; it stays a manual gate for now. One file is the
+#   exception: tests/gallery-sandbox.spec.ts runs here, on the production build
+#   this job has just made, because `next dev` can't host the gallery's sandboxed
+#   preview frame, so the manual gate skips most of it (#2343).
 name: CI
 
 on:
@@ -37,7 +40,7 @@ jobs:
   build-and-test:
     name: ${{ github.event_name == 'pull_request' && 'Build and unit tests' || 'Build and full unit suite' }}
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 60 }}
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 30 || 70 }}
     steps:
       # Full history, so origin/main exists: the modelling ratchet and the
       # code-view boundary tests check that their lists only shrink against it.
@@ -71,3 +74,21 @@ jobs:
       - name: App unit tests
         if: github.event_name != 'pull_request'
         run: pnpm --filter @stave/app test
+
+      # #2343 — the gallery preview's browser tests, on the production build made
+      # above. They serve their gallery entries themselves, so no database and no
+      # sign-in: a plain `next start`.
+      - name: Install Chromium for the gallery preview tests
+        run: pnpm --filter @stave/app exec playwright install --with-deps chromium
+
+      - name: Gallery preview tests (production build)
+        working-directory: packages/app
+        env:
+          AUTH_SECRET: ci-only-secret-for-the-gallery-preview-tests
+          STAVE_E2E_PORT: "3359"
+        run: |
+          npx next start -p 3359 > "$RUNNER_TEMP/next-start.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:3359/ && break; sleep 2; done
+          npx playwright test tests/gallery-sandbox.spec.ts --project=chromium --workers=1 --reporter=line || {
+            echo "--- next start log ---"; cat "$RUNNER_TEMP/next-start.log"; exit 1;
+          }
