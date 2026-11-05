@@ -245,6 +245,12 @@ describe("rateLimit, on its own", () => {
       expect(new Set(rotated).size).toBe(1);
       const visitors = ["192.0.2.1", "192.0.2.2"].map((ip) => hashedAddress(xff(`6.6.6.6, ${ip}`), { ...one, AUTH_SECRET: "s" }));
       expect(new Set(visitors).size).toBe(2);
+      // Only a plain address counts: a port would make every connection a new visitor.
+      expect(clientAddress(xff("6.6.6.6, 2001:db8::7"), one)).toBe("2001:db8::7");
+      for (const odd of ["203.0.113.7:51234", "[2001:db8::7]:443", "unknown", "_hidden", "not an ip"]) {
+        expect(clientAddress(xff(`6.6.6.6, ${odd}`), one), odd).toBe("unknown");
+        expect(clientAddress(req([["x-real-ip", odd]]), { STAVE_CLIENT_IP_HEADER: "x-real-ip" }), odd).toBe("unknown");
+      }
       // The setting doesn't read other headers.
       expect(clientAddress(req([["x-real-ip", "203.0.113.7"]]), one)).toBe("unknown");
     });

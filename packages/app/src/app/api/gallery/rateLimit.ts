@@ -1,4 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
+import { isIP } from "node:net";
 
 import { getDb, type Db } from "../../../db/client";
 import { DATABASE_RETRY_AFTER_SECONDS, databaseUnavailable } from "../../../db/errors";
@@ -227,6 +228,9 @@ export function limitAuthor(name: RateLimitName, authorId: string): Promise<Resp
  *       a list (a comma) is refused, since an overwritten header has one address.
  *       X-Forwarded-For can't be named here: it is a list, use the hop count.
  *
+ * Either way the value must be a plain IP address (no port): anything else is
+ * "unknown".
+ *
  * A setting that can't be read (not a whole number from 1 to 20, not a header
  * name, both set at once) is logged once and the answer stays "unknown": a
  * typo never turns into trusting what the client sent.
@@ -244,14 +248,23 @@ export function clientAddress(req: Request, env: Env = process.env): string {
     // the single list MDN says to read.
     const entries = (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim());
     if (entries.length < trust.hops) return "unknown";
-    return entries[entries.length - trust.hops] || "unknown";
+    return plainIp(entries[entries.length - trust.hops]);
   }
   if (trust.kind === "header") {
     const value = req.headers.get(trust.header)?.trim();
     if (!value || value.includes(",")) return "unknown";
-    return value;
+    return plainIp(value);
   }
   return "unknown";
+}
+
+/**
+ * Only a plain IPv4 / IPv6 address counts. Some proxies write `ip:port`, and the
+ * port changes with every connection, so taking it as-is would make each new
+ * connection a new visitor. Anything that isn't an address is the shared bucket.
+ */
+function plainIp(value: string | undefined): string {
+  return value && isIP(value) ? value : "unknown";
 }
 
 const MAX_TRUSTED_PROXY_HOPS = 20;

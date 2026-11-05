@@ -48,6 +48,7 @@ How Stave reads them:
 
 - **With the hop count**, Stave takes the `n`-th address counted from the **right** of `X-Forwarded-For`. A visitor can put anything they like at the left of that header, and your proxies append after it, so the right-hand end is the only part a visitor can't write. Anything to the left of the `n`-th address is ignored. This is the "trusted proxy count" rule in MDN's [X-Forwarded-For security notes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address), and the same as Express's `trust proxy` set to a number. If the header has fewer than `n` addresses, the request goes into the shared bucket.
 - **With a header name**, Stave reads that one header. If it holds more than one address (a comma), the request goes into the shared bucket, because a header your proxy replaced has exactly one. `X-Forwarded-For` can't be named here; use the hop count for it.
+- Either way, the address must be a plain IPv4 or IPv6 address. If your proxy writes something else, such as an address with a port (`203.0.113.7:51234`), the request goes into the shared bucket: a port changes with every connection, so it can't tell visitors apart.
 - A value Stave can't read (a hop count that isn't a whole number from 1 to 20, something that isn't a header name, or both variables set) is logged once (the first time Stave needs a visitor's address), and Stave keeps the shared bucket. A typo never turns into believing whatever the visitor sent.
 
 <Aside type="caution">
