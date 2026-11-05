@@ -9,6 +9,7 @@ import {
   setZoneCropOverride,
   getZoneCropOverride,
   getFile,
+  getActiveProjectId,
   rendererForLanguage,
   type AudioSourceRef,
   type CropRegion,
@@ -17,6 +18,7 @@ import {
   type VizRenderer,
 } from "@stave/editor";
 import { showToast } from "../dialogs/host";
+import { mayEvaluate } from "../gallery/runGate";
 
 /**
  * CropAdapter — everything about a given crop session that differs
@@ -137,6 +139,10 @@ export function createBackdropCropAdapter(opts: {
     loadPreset: async () => {
       const file = getFile(fileId);
       if (!file) return null;
+      // #2344 — the crop preview runs the file's code; a gallery file nobody has
+      // agreed to run shows the placeholder instead.
+      const projectId = getActiveProjectId();
+      if (projectId && !mayEvaluate(projectId, fileId)) return null;
       const renderer: VizPreset["renderer"] =
         rendererForLanguage(file.language) ?? "p5";
       return {

@@ -14,6 +14,11 @@ import {
 import { PopoutPreviewController } from "./PopoutPreviewController";
 import { registerVizWorker } from "../visualizers/registerVizWorker";
 import {
+  p5VizBasenames,
+  presetIdForVizFile,
+  qualifiedVizName,
+} from "../visualizers/vizFileLookup";
+import {
   WorkspaceShell,
   getResolvedTheme,
   onThemeChange,
@@ -28,6 +33,7 @@ import {
   commitWorkspace,
   getViewedContent,
   isViewing,
+  getActiveProjectId,
   pruneTrackMetaForCode,
   subscribeToRuntimeView,
   subscribeToFileList,
@@ -44,7 +50,6 @@ import {
   VizPresetStore,
   bundledPresetId,
   flushToPreset,
-  getPresetIdForFile,
   isVizLanguage,
   rendererForLanguage,
   compilePreset,
@@ -103,7 +108,7 @@ import {
 } from "@stave/editor";
 import { reportWriteRefusal } from "../lib/writeRefusal";
 import { noticeBareExpression, storedTold } from "../lib/bareExpressionNotice";
-import { showToast } from "../dialogs/host";
+import { showConfirm, showToast } from "../dialogs/host";
 import { effectiveLoopRange, subscribeLoopState } from "../state/loopRange";
 import { getSongCycleLimit } from "../state/songCycleLimit";
 import { createSongCollector } from "./musicalTimeline/songCollector";
@@ -117,6 +122,41 @@ import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 import { installBounceProbe } from "../e2e/bounceProbe";
 import { installAssetProbe } from "../e2e/assetProbe";
 import { warmWaveforms } from "../audio/waveformWarm";
+// #2304 — gallery code is held until the person presses Play.
+import { onGalleryRunnableChange, releaseGalleryHold } from "../gallery/safeRun";
+import { gatePreviewProvider } from "../gallery/RunGatePreview";
+// #2342 — every evaluate of a project file passes one gate (gallery/runGate.ts).
+import {
+  askBeforeRunning,
+  guardProjectEngine,
+  mayEvaluate,
+  mayEvaluateQuietly,
+  runAfterAsking,
+  type AskToRun,
+} from "../gallery/runGate";
+
+/** #2328/#2342 — how the trust question is put: the app's own confirm dialog. */
+const askToRun: AskToRun = (message) => showConfirm({ ...message, cancelLabel: "Cancel" });
+
+/**
+ * #2342 — a seek on the ruler re-evaluates the file and, when stopped, starts
+ * it (LiveCodingRuntime `seekTo` → `play`). So it asks first, as Play does; a
+ * file that may run seeks at once, with no await in between.
+ */
+function seekAfterAsking(
+  projectId: string,
+  rt: { fileId: string; seekTo?: (cycle: number) => Promise<unknown> } | undefined,
+  cycle: number,
+): void {
+  if (!rt?.seekTo) return;
+  if (mayEvaluate(projectId, rt.fileId)) {
+    void rt.seekTo(cycle);
+    return;
+  }
+  void askBeforeRunning(projectId, rt.fileId, askToRun).then((ok) => {
+    if (ok) void rt.seekTo?.(cycle);
+  });
+}
 
 
 // Phase 20-12 — the timeline collects across the same cycle window the live
@@ -452,7 +492,7 @@ interface StrudelEditorClientProps {
   } | null) => void;
   onTabContextMenu?: (tab: WorkspaceTab, x: number, y: number) => void;
   /** Navigate to a viz file when the user clicks the edit icon on an inline viz. */
-  onEditViz?: (vizId: string) => void;
+  onEditViz?: (vizId: string, presetId: string | null) => void;
   /** Open crop popup when the user clicks the crop icon on an inline viz. */
   onCropViz?: (vizId: string, presetId: string | null, trackKey: string) => void;
   /** Pass-through of the shell's backdrop change callback — fires on any
@@ -634,7 +674,10 @@ export default function StrudelEditorClient({
       createdAt: 0,
       updatedAt: 0,
     };
-    setPopout({ fileId, descriptor: compilePreset(preset) });
+    // #2344 — the pop-out runs the file's code: ask first, as Play does.
+    void askBeforeRunning(getActiveProjectId() ?? projectIdRef.current, fileId, askToRun).then((ok) => {
+      if (ok) setPopout({ fileId, descriptor: compilePreset(preset) });
+    });
   }, []);
 
   // Persist the per-tab map (best-effort). Re-runs only when the map changes.
@@ -813,17 +856,17 @@ export default function StrudelEditorClient({
     // resolves to the p5 preset instead of last-write-wins (#181). This
     // also keeps inline `.viz("scope")` in lockstep with the `.scope()`
     // backdrop, which always prefers the p5 file.
-    const baseOf = (p: string) =>
-      p.split("/").pop()!.replace(/\.[^.]+$/, "");
-    const p5Basenames = new Set(
-      vizFiles.filter((f) => f.language === "p5js").map((f) => baseOf(f.path)),
-    );
+    //
+    // The preset id and the qualified name come from vizFileLookup — the
+    // same rules ✎ / crop use to find the file a zone draws (#2322).
+    const p5Basenames = p5VizBasenames(vizFiles);
     for (const f of vizFiles) {
-      let presetId = getPresetIdForFile(f);
-      if (!presetId) {
-        const baseName = f.path.replace(/\.[^.]+$/, "");
-        presetId = `user_${baseName.replace(/[^a-zA-Z0-9]/g, "_")}`;
-      }
+      // #2344 — a gallery viz file nobody has agreed to run is not registered:
+      // otherwise `.viz("<its name>")` in your own code would mount it unasked.
+      // It registers once trusted (the listener below re-runs this).
+      // Quiet check: it also skips a file whose import is still landing.
+      if (!mayEvaluateQuietly(getActiveProjectId() ?? projectIdRef.current, f.id)) continue;
+      const presetId = presetIdForVizFile(f);
       // Persist live code to the preset store — but NEVER while viewing
       // (the override is read-only; persisting historical code would corrupt
       // the live preset, the viz analogue of writing Y.Text).
@@ -845,19 +888,21 @@ export default function StrudelEditorClient({
       const effective = bundledNative
         ? { ...effective0, nativeSize: bundledNative }
         : effective0;
-      const base = baseOf(f.path);
       // A non-p5 file sharing a basename with a p5 file registers under a
       // renderer-qualified name (`<name>:hydra` / `<name>:glsl`) so bare
       // `.viz("<name>")` deterministically resolves to the p5 preset (#181).
-      const name =
-        f.language !== "p5js" && p5Basenames.has(base)
-          ? `${base}:${f.language === "hydra" ? "hydra" : "glsl"}`
-          : preset.name;
+      const name = qualifiedVizName(f, p5Basenames) ?? preset.name;
       registerPresetAsNamedViz(effective, name);
     }
   }, []);
 
   useEffect(() => { void registerAllVizFiles(); }, [registerAllVizFiles]);
+
+  // #2344 — a gallery viz file becomes registrable once someone agrees to run it.
+  useEffect(
+    () => onGalleryRunnableChange(() => { void registerAllVizFiles(); }),
+    [registerAllVizFiles],
+  );
 
   // #204 time-travel: re-register viz from the snapshot on checkout
   // enter/exit/swap so inline `.viz()` follows the viewed commit, then
@@ -1047,6 +1092,12 @@ export default function StrudelEditorClient({
   // ⚠ That sentence used to be a claim only — the publish sat after an
   // unbounded await, so a hung evaluate silently cancelled it (#1193). It is
   // now enforced by the helper below rather than asserted here.
+  // #2304 — the project a file id belongs to is the FILE STORE's, not this
+  // mount's prop: during an import the store has already switched while this
+  // (about to unmount) editor still sees the new files arrive.
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+  const storeProjectId = useCallback(() => getActiveProjectId() ?? projectIdRef.current, []);
   const refreshTimelineMarks = useCallback(async (fid: string) => {
     const rt = runtimesRef.current.get(fid);
     const st = runtimeStatesRef.current.get(fid);
@@ -1055,8 +1106,13 @@ export default function StrudelEditorClient({
     // and inline here nothing could reach it. What is decided here is only
     // WHETHER an eval is wanted; the publish is the helper's to sequence, and
     // it runs on every path including a hung one.
+    // #2304 — a file opened from the gallery is never evaluated quietly: its code
+    // runs only once the person has chosen to run it (gallery/runGate.ts). The
+    // engine refuses it anyway; checking here keeps the timeline from asking.
     const evalRuntime =
-      rt && !st?.isPlaying && isSongTimelineVisible() ? rt : null;
+      rt && !st?.isPlaying && isSongTimelineVisible() && mayEvaluateQuietly(storeProjectId(), fid)
+        ? rt
+        : null;
     await publishSnapshotAfterBoundedEval({
       evaluate: evalRuntime ? () => evalRuntime.evaluateForTimeline() : null,
       publish: () =>
@@ -1067,7 +1123,7 @@ export default function StrudelEditorClient({
         ),
       waitMs: TIMELINE_EVAL_WAIT_MS,
     });
-  }, []);
+  }, [storeProjectId]);
 
   // #457 — keep the Song timeline + IR Inspector snapshot in sync with the
   // SOURCE while the runtime isn't live-evaluating. The snapshot is otherwise
@@ -1117,7 +1173,13 @@ export default function StrudelEditorClient({
     const provider = getRuntimeProviderForLanguage(file.language);
     if (!provider) return null;
 
-    const engine = provider.createEngine();
+    // #2342 — THE gate: every evaluate this runtime makes (play, timeline, bounce,
+    // stems, live capture, seek, loop, live mode) goes through this engine's
+    // `evaluate`, which refuses a gallery file nobody has agreed to run yet.
+    const engine = guardProjectEngine(provider.createEngine(), () => ({
+      projectId: storeProjectId(),
+      fileId,
+    }));
     // #2200–#2202 — the engine doesn't know its file; the Console names its rows
     // by it. What an evaluate had to say is written once the evaluate is known to
     // be a real one (here, after its error rows or its clean mark), because the
@@ -1164,6 +1226,8 @@ export default function StrudelEditorClient({
     );
 
     runtime.onPlayingChanged((playing: boolean) => {
+      // #2304 — Play is the person's consent to run this file's code.
+      if (playing) releaseGalleryHold(storeProjectId(), fileId);
       setRuntimeStates(prev => {
         const next = new Map(prev);
         const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
@@ -1546,16 +1610,25 @@ export default function StrudelEditorClient({
   // ── Shell callbacks ─────────────────────────────────────────────────
 
   const handlePlay = useCallback((fileId: string) => {
-    const rt = getOrCreateRuntime(fileId);
-    if (!rt) return;
-    setRuntimeStates(prev => {
-      const next = new Map(prev);
-      const cur = prev.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
-      next.set(fileId, { ...cur, error: null });
-      return next;
+    const start = () => {
+      const rt = getOrCreateRuntime(fileId);
+      if (!rt) return;
+      setRuntimeStates(prev => {
+        const next = new Map(prev);
+        const cur = prev.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
+        next.set(fileId, { ...cur, error: null });
+        return next;
+      });
+      rt.play();
+    };
+    // #2328 — the first Play of a file taken in from the gallery asks first
+    // (gallery/runGate.ts); Cancel leaves it unrun. Any other file plays at
+    // once, exactly as before (synchronously: no await between the key and Play).
+    if (mayEvaluate(storeProjectId(), fileId)) return start();
+    void askBeforeRunning(storeProjectId(), fileId, askToRun).then((ok) => {
+      if (ok) start();
     });
-    rt.play();
-  }, [getOrCreateRuntime]);
+  }, [getOrCreateRuntime, storeProjectId]);
 
   const handleStop = useCallback((fileId: string) => {
     const rt = runtimesRef.current.get(fileId);
@@ -1714,16 +1787,15 @@ export default function StrudelEditorClient({
 
       // Use existing presetId, or auto-generate one for manually created
       // viz files so they become available to `.viz("name")`.
-      let presetId = getPresetIdForFile(file);
-      if (!presetId) {
-        const baseName = file.path.replace(/\.[^.]+$/, "");
-        presetId = `user_${baseName.replace(/[^a-zA-Z0-9]/g, "_")}`;
-      }
+      const presetId = presetIdForVizFile(file);
 
       flushToPreset(file.id, presetId)
         .then(() => VizPresetStore.get(presetId))
         .then((preset) => {
-          if (preset) registerPresetAsNamedViz(preset);
+          // #2344 — saving is not agreeing to run: an untrusted gallery file stays unregistered.
+          if (preset && mayEvaluate(getActiveProjectId() ?? projectIdRef.current, file.id)) {
+            registerPresetAsNamedViz(preset);
+          }
         })
         .catch((err) => {
           console.warn("[stave] flushToPreset failed:", err);
@@ -1846,8 +1918,10 @@ export default function StrudelEditorClient({
   const previewProviderFor = useCallback((tab: WorkspaceTab & { kind: "preview" }): PreviewProvider | undefined => {
     const file = getFile(tab.fileId);
     if (!file) return undefined;
-    return getPreviewProviderForLanguage(file.language) ?? undefined;
-  }, []);
+    const provider = getPreviewProviderForLanguage(file.language);
+    // #2344 — a viz file's preview tab and backdrop run its code: behind the gate.
+    return provider ? gatePreviewProvider(provider, storeProjectId, askToRun) : undefined;
+  }, [storeProjectId]);
 
   // onTabClose: dispose runtime when pattern tab is closed (U3)
   const handleTabClose = useCallback((closingTab: WorkspaceTab) => {
@@ -1988,6 +2062,26 @@ export default function StrudelEditorClient({
     // disagree in the first place.
     const rendersOffline = (rt: LiveCodingRuntime): boolean =>
       !forceLiveBounceRef.current && rt.canBounceOffline();
+    // The mix bounce, once `bounce` below has asked (#2342).
+    const bounceAsked = async (
+      rt: LiveCodingRuntime,
+      seconds: number,
+      signal?: AbortSignal,
+      onCaptureStart?: () => void,
+      onRenderProgress?: (renderedSeconds: number) => void,
+    ): Promise<BounceResult | null> => {
+      // #1631 — offline whenever the engine can render its loaded document.
+      // The live capture is the path for an engine that cannot, NOT a retry
+      // after a render that threw: a document that fails to evaluate or plays
+      // nothing fails the same way live, and retrying would spend the song's
+      // whole length in real time to report the same error.
+      if (rendersOffline(rt)) {
+        const out = await rt.bounceOffline(seconds, signal, onRenderProgress);
+        return out ? { blob: out.blob, offline: true, skipped: out.skipped } : null;
+      }
+      const blob = await rt.record(seconds, signal, onCaptureStart);
+      return blob ? { blob, offline: false, skipped: [] } : null;
+    };
     const handle: BounceHandle = {
       canBounce: () => {
         const rt = activeRuntime();
@@ -2020,23 +2114,20 @@ export default function StrudelEditorClient({
         // capability question and the executor are two readings of one fact,
         // and the point of the predicate is that they cannot differ.
         if (!rt || !rendersOffline(rt) || !rt.canBounceStems()) return null;
-        const out = await rt.bounceStemsOffline(seconds, signal, onRenderProgress);
+        // #2342 — the export evaluates the file: ask first, as Play does. Cancel
+        // rejects with GalleryRunDeclined before anything is evaluated or made.
+        const out = await runAfterAsking(storeProjectId(), rt.fileId, askToRun, () =>
+          rt.bounceStemsOffline(seconds, signal, onRenderProgress),
+        );
         return out ? out.stems : null;
       },
       bounce: async (seconds, signal, onCaptureStart, onRenderProgress) => {
         const rt = activeRuntime();
         if (!rt) return null;
-        // #1631 — offline whenever the engine can render its loaded document.
-        // The live capture is the path for an engine that cannot, NOT a retry
-        // after a render that threw: a document that fails to evaluate or plays
-        // nothing fails the same way live, and retrying would spend the song's
-        // whole length in real time to report the same error.
-        if (rendersOffline(rt)) {
-          const out = await rt.bounceOffline(seconds, signal, onRenderProgress);
-          return out ? { blob: out.blob, offline: true, skipped: out.skipped } : null;
-        }
-        const blob = await rt.record(seconds, signal, onCaptureStart);
-        return blob ? { blob, offline: false, skipped: [] } : null;
+        // #2342 — both paths below evaluate the file: ask first, as Play does.
+        return runAfterAsking(storeProjectId(), rt.fileId, askToRun, () =>
+          bounceAsked(rt, seconds, signal, onCaptureStart, onRenderProgress),
+        );
       },
       songSizing: async (signal) => {
         const fid = activeFileIdRef.current;
@@ -2099,7 +2190,7 @@ export default function StrudelEditorClient({
     return () => {
       if (bounceRef.current === handle) bounceRef.current = null;
     };
-  }, [bounceRef]);
+  }, [bounceRef, storeProjectId]);
 
   // #977 — visibility poll for eval-on-load. The snapshot cadence effect covers
   // file switches + edits, and onRequestSnapshot covers a cold song-view entry —
@@ -2178,7 +2269,7 @@ export default function StrudelEditorClient({
       getSongPosition: () =>
         runtimesRef.current.get(accessorFid)?.getSongPosition?.() ?? null,
       onSeek: (cycle: number) => {
-        void runtimesRef.current.get(accessorFid)?.seekTo?.(cycle);
+        seekAfterAsking(storeProjectId(), runtimesRef.current.get(accessorFid), cycle);
       },
       // #394 — publish the active file's IR for the full-song view on demand.
       // #977 — routed through refreshTimelineMarks so a cold song-view entry (or
@@ -2364,7 +2455,7 @@ export default function StrudelEditorClient({
               .get(accessorFid)
               ?.getSongPosition?.() ?? null,
           onSeek: (cycle: number) => {
-            void runtimesRef.current.get(accessorFid)?.seekTo?.(cycle);
+            seekAfterAsking(storeProjectId(), runtimesRef.current.get(accessorFid), cycle);
           },
           // #394 — on-demand snapshot capture (same shape as the useEffect
           // builder above). #977 — via refreshTimelineMarks so a cold entry

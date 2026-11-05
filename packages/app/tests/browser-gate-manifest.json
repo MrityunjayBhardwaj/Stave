@@ -147,6 +147,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "edit-viz-opens-visual.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "editor-track-colour-bar.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
@@ -474,6 +478,34 @@
   "full-song-zoom-ruler.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "gallery-account.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN"
+  },
+  "gallery-moderation.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN or STAVE_GALLERY_ADMINS"
+  },
+  "gallery-overlay.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project"
+  },
+  "gallery-profiles.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "gallery-publish.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "gallery-sandbox.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project; there only its trust-step test runs — the two preview tests skip themselves, saying why, because the gate's server is next dev, which can't host the sandboxed frame (run them against next start)"
+  },
+  "gallery-sign-in.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN"
   },
   "getting-started-walkthrough.spec.ts": {
     "runs": "gate",
@@ -1042,6 +1074,10 @@
   "timeline-refusal-reported.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "touch-gallery.spec.ts": {
+    "runs": "touch",
+    "why": "runs on the touch projects (phone, phone-sideways, tablet), which the gate names beside chromium"
   },
   "touch-keyboard.spec.ts": {
     "runs": "touch",

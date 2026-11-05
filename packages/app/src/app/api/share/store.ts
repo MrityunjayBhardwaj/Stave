@@ -1,8 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { get, put } from "@vercel/blob";
+import { BlobNotFoundError, del, get, put } from "@vercel/blob";
 
 // #2248 — where sealed shared projects live, keyed by share id. Server-only.
 //
@@ -12,17 +12,37 @@ import { get, put } from "@vercel/blob";
 // can be made and opened on a laptop without a cloud store. A production build with
 // no Blob store configured has no store at all, and the routes answer 503 so the
 // client falls back to the long link.
+//
+// #2311 — each share also has a private record, `shares/<id>.manage`, holding the
+// SHA-256 of the manage token handed back once at creation. Holding the token is
+// what lets the person who made the link revoke it. Links made before #2311 have
+// no record and can't be revoked.
 
 export interface ShareStore {
   /** Store new bytes under `id`. Returns false if the id is already taken. */
   put(id: string, bytes: Uint8Array): Promise<boolean>;
   /** The bytes stored under `id`, or null. */
   get(id: string): Promise<Uint8Array | null>;
+  /** #2311 — store the manage token's hash beside the share. */
+  putManageHash(id: string, hash: string): Promise<void>;
+  /** The stored manage-token hash, or null (no such share, or made before #2311). */
+  getManageHash(id: string): Promise<string | null>;
+  /** Delete the share and its record. Deleting what isn't there is not an error. */
+  remove(id: string): Promise<void>;
 }
 
 const blobPath = (id: string) => `shares/${id}`;
+const managePath = (id: string) => `shares/${id}.manage`;
 
-function hasBlobStore(): boolean {
+async function blobDel(pathname: string): Promise<void> {
+  try {
+    await del(pathname);
+  } catch (err) {
+    if (!(err instanceof BlobNotFoundError)) throw err;
+  }
+}
+
+export function hasBlobStore(): boolean {
   return Boolean(
     process.env.BLOB_READ_WRITE_TOKEN ||
       (process.env.BLOB_STORE_ID && process.env.VERCEL_OIDC_TOKEN),
@@ -43,9 +63,28 @@ const blobStore: ShareStore = {
     return true;
   },
   async get(id) {
-    const res = await get(blobPath(id), { access: "private" });
+    // `useCache: false` — a revoked share must stop opening at once (#2311).
+    const res = await get(blobPath(id), { access: "private", useCache: false });
     if (!res || res.statusCode !== 200) return null;
     return new Uint8Array(await new Response(res.stream).arrayBuffer());
+  },
+  async putManageHash(id, hash) {
+    await put(managePath(id), hash, {
+      access: "private",
+      addRandomSuffix: false,
+      allowOverwrite: false,
+      contentType: "text/plain",
+    });
+  },
+  async getManageHash(id) {
+    const res = await get(managePath(id), { access: "private", useCache: false });
+    if (!res || res.statusCode !== 200) return null;
+    return (await new Response(res.stream).text()).trim() || null;
+  },
+  async remove(id) {
+    // The project first: once it's gone the link is dead, whatever happens next.
+    await blobDel(blobPath(id));
+    await blobDel(managePath(id));
   },
 };
 
@@ -69,6 +108,22 @@ const folderStore: ShareStore = {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw err;
     }
+  },
+  async putManageHash(id, hash) {
+    await mkdir(DEV_DIR, { recursive: true });
+    await writeFile(path.join(DEV_DIR, `${id}.manage`), hash, { flag: "wx" });
+  },
+  async getManageHash(id) {
+    try {
+      return (await readFile(path.join(DEV_DIR, `${id}.manage`), "utf8")).trim() || null;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
+    }
+  },
+  async remove(id) {
+    await rm(path.join(DEV_DIR, id), { force: true });
+    await rm(path.join(DEV_DIR, `${id}.manage`), { force: true });
   },
 };
 

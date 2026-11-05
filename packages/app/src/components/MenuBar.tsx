@@ -32,7 +32,7 @@ interface MenuBarProps extends MenuActions {
   onEvalLamp: () => void;
 }
 
-type MenuId = "file" | "edit" | "view" | "help" | null;
+type MenuId = "file" | "edit" | "view" | "help" | "account" | null;
 
 export function MenuBar({
   projectName: _projectName,
@@ -71,11 +71,16 @@ export function MenuBar({
   const clickItem = useCallback((action: () => void) => {
     setOpenMenu(null);
     action();
-  }, []);
+  }, [setOpenMenu]);
+
+  const menus = buildMenus(actions);
+  // #2319 — the account menu sits at the bar's right end, its dropdown anchored right.
+  const account = menus.find((m) => m.id === "account");
+  const avatar = actions.account?.state === "signed-in" ? actions.account.avatarUrl : undefined;
 
   return (
     <div ref={barRef} style={styles.bar}>
-      {buildMenus(actions).map((menu) => (
+      {menus.filter((m) => m.id !== "account").map((menu) => (
         <MenuButton
           key={menu.id}
           label={menu.label}
@@ -106,6 +111,19 @@ export function MenuBar({
       )}
 
       <div style={styles.spacer} />
+
+      {account && (
+        <MenuButton
+          label={account.label}
+          open={openMenu === "account"}
+          onClick={() => setOpenMenu(openMenu === "account" ? null : "account")}
+          alignRight
+          avatarUrl={avatar}
+          testId="menubar-account"
+        >
+          <MenuEntries entries={account.items} run={clickItem} />
+        </MenuButton>
+      )}
     </div>
   );
 }
@@ -132,22 +150,28 @@ function MenuEntries({ entries, run }: { entries: readonly MenuEntry[]; run: (ac
 }
 
 function MenuButton({
-  label, open, onClick, children,
+  label, open, onClick, children, alignRight, avatarUrl, testId,
 }: {
   label: string;
   open: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  /** #2319 — the account menu opens leftwards from the bar's right end. */
+  alignRight?: boolean;
+  avatarUrl?: string;
+  testId?: string;
 }) {
   return (
     <div style={styles.menuButtonWrap}>
       <button
         onClick={onClick}
-        style={{ ...styles.menuButton, ...(open ? styles.menuButtonOpen : {}) }}
+        style={{ ...styles.menuButton, ...(avatarUrl ? styles.accountButton : {}), ...(open ? styles.menuButtonOpen : {}) }}
+        data-testid={testId}
       >
+        {avatarUrl && <img src={avatarUrl} alt="" width={16} height={16} style={styles.avatar} referrerPolicy="no-referrer" />}
         {label}
       </button>
-      {open && <div style={styles.dropdown}>{children}</div>}
+      {open && <div style={{ ...styles.dropdown, ...(alignRight ? styles.dropdownRight : {}) }}>{children}</div>}
     </div>
   );
 }
@@ -261,6 +285,21 @@ const styles: Record<string, React.CSSProperties> = {
   },
   menuButtonOpen: {
     background: "var(--bg-hover)",
+  },
+  accountButton: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  avatar: {
+    width: 16,
+    height: 16,
+    borderRadius: "50%",
+    objectFit: "cover" as const,
+  },
+  dropdownRight: {
+    left: "auto",
+    right: 0,
   },
   dropdown: {
     position: "absolute" as const,

@@ -37,6 +37,8 @@ export interface MenuActions {
   canBounceToWav: () => boolean;
   onImportProject: () => void;
   onShareProject: () => void;
+  /** #2301 — File → Publish to Gallery…; absent where there is nowhere to publish. */
+  onPublishToGallery?: () => void;
   onVersionHistory: () => void;
   onToggleSidebar: () => void;
   sidebarCollapsed: boolean;
@@ -46,6 +48,36 @@ export interface MenuActions {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /** #2300 — View → Community Gallery. */
+  onOpenGallery: () => void;
+  /**
+   * #2319 — the account menu: Sign in, or the signed-in name with My Profile and
+   * Sign Out. Absent until the app knows (and in tests that don't care), so the
+   * menu doesn't flash "Sign in" for someone who is signed in.
+   */
+  account?: AccountMenu;
+}
+
+/** #2319 — what the account menu needs to know. */
+export type AccountMenu =
+  | { readonly state: "unavailable" }
+  | {
+      readonly state: "signed-out";
+      /** Configured providers only, in order. */
+      readonly providers: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+      readonly onSignIn: (providerId: string) => void;
+    }
+  | {
+      readonly state: "signed-in";
+      readonly name: string;
+      readonly avatarUrl?: string;
+      readonly onMyProfile: () => void;
+      readonly onSignOut: () => void;
+    };
+
+/** The label of the account menu's button: the person's name, or "Sign in". */
+export function accountMenuLabel(a: AccountMenu): string {
+  return a.state === "signed-in" ? a.name || "Account" : "Sign in";
 }
 
 export type MenuEntry =
@@ -61,7 +93,7 @@ export type MenuEntry =
   | { readonly kind: "divider" };
 
 export interface Menu {
-  readonly id: "file" | "edit" | "view" | "help";
+  readonly id: "file" | "edit" | "view" | "help" | "account";
   readonly label: string;
   readonly items: readonly MenuEntry[];
 }
@@ -97,7 +129,15 @@ export function buildMenus(a: MenuActions): Menu[] {
         item("Export as .stave", a.onExportProject),
         item("Bounce to WAV...", a.onBounceToWav, { disabled: !a.canBounceToWav() }),
         divider,
-        item("Copy Share Link", a.onShareProject),
+        // #2312 — private and public sharing side by side, named so they can't be mistaken.
+        {
+          kind: "submenu",
+          label: "Share",
+          items: [
+            item("Copy Private Link", a.onShareProject),
+            ...(a.onPublishToGallery ? [item("Publish to Gallery...", a.onPublishToGallery)] : []),
+          ],
+        },
         divider,
         item("Editor Settings...", a.onOpenEditorSettings),
         item("Keyboard Shortcuts...", a.onOpenShortcuts),
@@ -119,6 +159,8 @@ export function buildMenus(a: MenuActions): Menu[] {
       items: [
         item(a.sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar", a.onToggleSidebar, { shortcut: "⌘B" }),
         item(a.zenMode ? "Exit Zen Mode" : "Zen Mode (Fullscreen)", a.onToggleZenMode, { shortcut: "⌘⌥Z" }),
+        divider,
+        item("Community Gallery...", a.onOpenGallery),
       ],
     },
     {
@@ -131,7 +173,19 @@ export function buildMenus(a: MenuActions): Menu[] {
         item("GitHub Repository", () => window.open(GITHUB_REPO_URL, "_blank", "noopener,noreferrer")),
       ],
     },
+    ...(a.account ? [accountMenu(a.account)] : []),
   ];
+}
+
+/** #2319 — the account menu, last: the desktop draws it at the bar's right end. */
+function accountMenu(a: AccountMenu): Menu {
+  const items: MenuEntry[] =
+    a.state === "signed-in"
+      ? [item("My Profile", a.onMyProfile), item("Sign Out", a.onSignOut)]
+      : a.state === "signed-out"
+        ? a.providers.map((p) => item(`Sign in with ${p.name}`, () => a.onSignIn(p.id)))
+        : [item("Sign-in isn't set up on this site", nothing, { disabled: true })];
+  return { id: "account", label: accountMenuLabel(a), items };
 }
 
 /** Every item a menu holds, submenus opened out — what a test or a flat list walks. */
