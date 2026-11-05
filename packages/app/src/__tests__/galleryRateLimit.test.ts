@@ -28,6 +28,7 @@ import { sealShare } from "../shareCrypto";
 import {
   RATE_LIMITS,
   clientAddress,
+  trustedProxySetting,
   hashedAddress,
   rateLimit,
   type RateLimitStore,
@@ -222,6 +223,75 @@ describe("rateLimit, on its own", () => {
     expect(new Set(rotated).size).toBe(1);
   });
 
+  // #2377 — the self-hoster's opt-in: which part of the request their own proxy wrote.
+  describe("off Vercel, with a trusted-proxy setting", () => {
+    const req = (headers: Array<[string, string]>) => new Request("http://x", { headers });
+    const xff = (...values: string[]) => req(values.map((v) => ["x-forwarded-for", v] as [string, string]));
+
+    it("STAVE_TRUSTED_PROXY_HOPS=n takes the n-th address from the right, never the client's left-most one", () => {
+      const one = { STAVE_TRUSTED_PROXY_HOPS: "1" };
+      expect(clientAddress(xff("203.0.113.7"), one)).toBe("203.0.113.7");
+      expect(clientAddress(xff("6.6.6.6, 203.0.113.7"), one)).toBe("203.0.113.7"); // spoofed left-most ignored
+      const two = { STAVE_TRUSTED_PROXY_HOPS: "2" };
+      expect(clientAddress(xff("6.6.6.6, 203.0.113.7, 10.0.0.2"), two)).toBe("203.0.113.7");
+      // Repeated headers are one list (MDN).
+      expect(clientAddress(xff("6.6.6.6", "203.0.113.7, 10.0.0.2"), two)).toBe("203.0.113.7");
+      // Fewer entries than hops: the chain isn't what was configured.
+      expect(clientAddress(xff("203.0.113.7"), two)).toBe("unknown");
+      expect(clientAddress(req([]), one)).toBe("unknown");
+      expect(clientAddress(xff(", 203.0.113.7, "), one)).toBe("unknown");
+      // Rotating the left-most entry stays one bucket; different right-most entries don't.
+      const rotated = ["192.0.2.1", "192.0.2.2", "192.0.2.3"].map((ip) => hashedAddress(xff(`${ip}, 203.0.113.7`), { ...one, AUTH_SECRET: "s" }));
+      expect(new Set(rotated).size).toBe(1);
+      const visitors = ["192.0.2.1", "192.0.2.2"].map((ip) => hashedAddress(xff(`6.6.6.6, ${ip}`), { ...one, AUTH_SECRET: "s" }));
+      expect(new Set(visitors).size).toBe(2);
+      // The setting doesn't read other headers.
+      expect(clientAddress(req([["x-real-ip", "203.0.113.7"]]), one)).toBe("unknown");
+    });
+
+    it("STAVE_CLIENT_IP_HEADER reads that one header, and only a single address", () => {
+      const env = { STAVE_CLIENT_IP_HEADER: "CF-Connecting-IP" };
+      expect(clientAddress(req([["cf-connecting-ip", " 203.0.113.7 "]]), env)).toBe("203.0.113.7");
+      expect(clientAddress(req([["x-forwarded-for", "203.0.113.7"], ["x-real-ip", "203.0.113.8"]]), env)).toBe("unknown");
+      // A list means the proxy appended rather than overwrote (or the client sent a second header).
+      expect(clientAddress(req([["cf-connecting-ip", "6.6.6.6, 203.0.113.7"]]), env)).toBe("unknown");
+      expect(clientAddress(req([["cf-connecting-ip", "6.6.6.6"], ["cf-connecting-ip", "203.0.113.7"]]), env)).toBe("unknown");
+    });
+
+    it("a setting it can't read is logged once and changes nothing: still one shared address", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const spoofs = req([["x-forwarded-for", "6.6.6.6, 203.0.113.7"], ["x-real-ip", "203.0.113.7"]]);
+      const bad: Array<Record<string, string>> = [
+        { STAVE_TRUSTED_PROXY_HOPS: "0" },
+        { STAVE_TRUSTED_PROXY_HOPS: "-1" },
+        { STAVE_TRUSTED_PROXY_HOPS: "1.5" },
+        { STAVE_TRUSTED_PROXY_HOPS: "true" },
+        { STAVE_TRUSTED_PROXY_HOPS: "21" },
+        { STAVE_CLIENT_IP_HEADER: "x real ip" },
+        { STAVE_CLIENT_IP_HEADER: "X-Forwarded-For" },
+        { STAVE_TRUSTED_PROXY_HOPS: "1", STAVE_CLIENT_IP_HEADER: "x-real-ip" },
+      ];
+      for (const env of bad) {
+        warn.mockClear();
+        expect(clientAddress(spoofs, env), JSON.stringify(env)).toBe("unknown");
+        expect(trustedProxySetting(env)).toEqual({ kind: "none" });
+        // Logged on the first read only (the first clientAddress call above).
+        expect(warn, JSON.stringify(env)).toHaveBeenCalledTimes(1);
+      }
+      warn.mockRestore();
+    });
+
+    it("unset (or blank) is today's behaviour, and on Vercel the settings are ignored", () => {
+      const spoofs = req([["x-forwarded-for", "6.6.6.6, 203.0.113.7"], ["x-real-ip", "203.0.113.9"]]);
+      for (const env of [{}, { STAVE_TRUSTED_PROXY_HOPS: "" }, { STAVE_CLIENT_IP_HEADER: " " }]) {
+        expect(trustedProxySetting(env)).toEqual({ kind: "none" });
+        expect(clientAddress(spoofs, env)).toBe("unknown");
+      }
+      expect(clientAddress(spoofs, { VERCEL: "1", STAVE_TRUSTED_PROXY_HOPS: "1" })).toBe("203.0.113.9");
+      expect(clientAddress(xff("6.6.6.6, 203.0.113.7"), { VERCEL: "1", STAVE_TRUSTED_PROXY_HOPS: "1" })).toBe("6.6.6.6");
+    });
+  });
+
   it("says how long to wait in plain words", () => {
     expect(waitPhrase(5)).toBe("a minute");
     expect(waitPhrase(61)).toBe("2 minutes");
@@ -267,6 +337,21 @@ describe("each write route applies its limit", () => {
     const rotating = () => report(id, { "x-forwarded-for": `203.0.113.${k++}`, "x-real-ip": `198.51.100.${k}` });
     await expectAll(3, rotating, 202);
     await expect429(await rotating());
+  });
+
+  // #2377 — a self-hoster says how many proxies append to X-Forwarded-For.
+  it("report signed out, off Vercel, STAVE_TRUSTED_PROXY_HOPS=1: a rotated left-most entry is still the same visitor; another visitor has their own limit", async () => {
+    const { id } = (await (await publish()).json()) as PublishResponse;
+    signIn(null);
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("STAVE_TRUSTED_PROXY_HOPS", "1");
+    vi.stubEnv("STAVE_RATE_LIMIT_REPORT", "3");
+    const visitor = `198.51.100.${n++ % 250}`;
+    let k = 0;
+    const spoofing = () => report(id, { "x-forwarded-for": `203.0.113.${k++}, ${visitor}` });
+    await expectAll(3, spoofing, 202);
+    await expect429(await spoofing());
+    expect((await report(id, { "x-forwarded-for": `203.0.113.1, 192.0.2.${n++ % 250}` })).status).toBe(202);
   });
 
   it(`profile and collection edits share ${RATE_LIMITS.edit.max} an hour per author`, async () => {
