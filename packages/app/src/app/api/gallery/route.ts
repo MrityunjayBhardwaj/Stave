@@ -89,8 +89,9 @@ async function handlePOST(req: Request): Promise<Response> {
   const db = await getDb();
   if (!db) return noStore();
 
-  // Ids are 64 random bits; a clash is a near-impossibility, but never reuse one
-  // (a removed entry keeps its row, so its id stays taken).
+  // Ids are 64 random bits; a clash is a near-impossibility, but never reuse a
+  // live or taken-down one (those keep their row). An id whose author deleted the
+  // entry leaves no row (#2403), which 64 random bits make safe enough.
   let id: string | null = null;
   for (let attempt = 0; attempt < 3 && !id; attempt++) {
     const candidate = newShareId();

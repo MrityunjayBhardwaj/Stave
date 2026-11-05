@@ -96,8 +96,9 @@ export const accounts = pgTable(
 
 /**
  * A published entry: the public listing fields (GalleryEntry), plus the private
- * ones. A taken-down entry keeps its row with `removed_at` set (the entry
- * route answers 410), and its private columns are cleared.
+ * ones. An entry an admin takes down keeps its row with `removed_at` set (the
+ * entry route answers 410), and its private columns are cleared; an entry its
+ * author deletes leaves no row (#2403).
  */
 export const entries = pgTable(
   "entries",
