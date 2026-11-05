@@ -746,13 +746,20 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     // #1648 — one WAV per track, in one zip. Offline only: the dialog offers it
     // only when the active file renders offline.
     if (stems) {
-      setBounceState({ phase: "rendering", seconds, stems: { total: 0 } });
+      const rendering: BounceState = { phase: "rendering", seconds, stems: { total: 0 } };
+      setBounceState(rendering);
       void handle
-        .bounceStems(seconds, controller.signal, (rendered, total) => {
-          setBounceState((prev) =>
-            prev.phase === "rendering" ? { ...prev, rendered, stems: { total } } : prev,
-          );
-        })
+        .bounceStems(
+          seconds,
+          controller.signal,
+          (rendered, total) => {
+            setBounceState((prev) =>
+              prev.phase === "rendering" ? { ...prev, rendered, stems: { total } } : prev,
+            );
+          },
+          // #2343 — a gallery file asks first: say so, not "Rendering", until it is answered.
+          (asking) => setBounceState(asking ? { phase: "asking" } : rendering),
+        )
         .then(async (result) => {
           if (controller.signal.aborted) {
             showToast("Bounce cancelled — nothing was saved.", "info");
@@ -802,7 +809,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     // clock on `onCaptureStart`, or the bar would run ahead of the audio and
     // sit at 100% while the take was still finishing.
     const offline = handle.bouncesOffline();
-    setBounceState(offline ? { phase: "rendering", seconds } : { phase: "preparing" });
+    const starting: BounceState = offline ? { phase: "rendering", seconds } : { phase: "preparing" };
+    setBounceState(starting);
 
     const beginTicking = () => {
       setBounceState({ phase: "recording", seconds, elapsed: 0 });
@@ -825,7 +833,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     };
 
     void handle
-      .bounce(seconds, controller.signal, beginTicking, onRenderProgress)
+      .bounce(seconds, controller.signal, beginTicking, onRenderProgress, (asking) =>
+        // #2343 — a gallery file asks first: say so, not "Rendering", until it is answered.
+        setBounceState(asking ? { phase: "asking" } : starting),
+      )
       .then((result) => {
         if (bounceTickRef.current) {
           clearInterval(bounceTickRef.current);

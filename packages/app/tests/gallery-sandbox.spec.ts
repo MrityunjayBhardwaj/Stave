@@ -432,6 +432,9 @@ test.describe('every path that runs imported code asks first (#2342, #2344)', ()
       await startBounce(page, kind)
       await expect(ask).toBeVisible({ timeout: 10_000 })
       expect(await parentRuns(page), 'nothing ran before the answer').toBe(0)
+      // #2343 — behind the question, the Bounce dialog says it is waiting, not rendering
+      await expect(page.locator('[data-bounce-asking]')).toHaveText('Waiting for your answer before running this code…')
+      await expect(page.getByText(/^Rendering/)).toHaveCount(0)
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/bounce-${kind.toLowerCase()}-trust-dialog.png` })
       await trust(page).getByRole('button', { name: 'Cancel' }).click()
       await expect(ask).toHaveCount(0)
@@ -465,9 +468,12 @@ test.describe('every path that runs imported code asks first (#2342, #2344)', ()
     expect(await parentRuns(page), 'adding the file runs nothing').toBe(0)
 
     const ask = page.getByText(ASK.replace('Alice', 'Dee'))
-    await page.locator('[data-testid="viz-chrome-open-preview"]').first().click()
+    const vizPlay = page.locator('[data-testid="viz-chrome-open-preview"]').first()
+    await vizPlay.click()
     await expect(ask).toBeVisible({ timeout: 10_000 })
     expect(await parentRuns(page)).toBe(0)
+    // #2343 — nothing is running yet, so the control offers Play, not Pause
+    await expect(vizPlay).toHaveText('\u25B6 Play')
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/viz-play-trust-dialog.png` })
     await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(ask).toHaveCount(0)
@@ -481,6 +487,8 @@ test.describe('every path that runs imported code asks first (#2342, #2344)', ()
     await expect(ask).toBeVisible({ timeout: 10_000 })
     await page.getByRole('button', { name: 'Run it', exact: true }).click()
     await expect.poll(() => parentRuns(page), { timeout: 20_000 }).toBeGreaterThan(0)
+    // now it runs, and the control offers Pause
+    await expect(vizPlay).toHaveText('\u23F8 Pause', { timeout: 10_000 })
   })
 
   // Inline `.viz()` draws in a worker, which `next dev` can't load (an importScripts
