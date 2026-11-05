@@ -10,9 +10,9 @@ import { getEntryRecord, removeEntry, removeEntryIn } from "../../../../db/repo/
 import { inTransaction } from "../../../../db/repo/tx";
 import { adminReason, logAdminAction } from "../admin";
 import { tokenMatches } from "../auth";
-import { deleteEntryFiles, mirrorRemoved } from "../entryFiles";
+import { deleteEntryFiles } from "../entryFiles";
 import { sessionAuthor } from "../session";
-import { galleryPaths, galleryStore, getJson, type RemovedMarker } from "../store";
+import { galleryPaths, galleryStore, getJson } from "../store";
 import { assertSameOrigin } from "../origin";
 
 // #2299 / #2303 — one gallery entry: open it, or take it down.
@@ -66,9 +66,9 @@ async function handleDELETE(req: Request, { params }: Ctx): Promise<Response> {
   const { entry } = record;
 
   // #2319 — the signed-in author of the entry may delete it with no token.
-  const mine = entry.authorId ? await sessionAuthor(req, { create: false, store }) : null;
+  const mine = entry.authorId ? await sessionAuthor(req, { create: false }) : null;
 
-  let by: RemovedMarker["by"];
+  let by: "author" | "admin";
   let removed: boolean;
   if (
     (mine && mine.authorId === entry.authorId) ||
@@ -92,8 +92,7 @@ async function handleDELETE(req: Request, { params }: Ctx): Promise<Response> {
   }
   if (!removed) return notFound();
 
-  await mirrorRemoved(store, id, { removedAt: Date.now(), by });
-  await deleteEntryFiles(store, entry);
+  await deleteEntryFiles(store, id);
   return new Response(null, { status: 204 });
 }
 
