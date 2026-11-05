@@ -131,3 +131,41 @@ for (const [form, line] of [
     await expect.poll(blue(page), { timeout: 8000 }).toBeGreaterThan(0.4)
   })
 }
+
+// #2396 — Play and Stop only start and stop the music. The background sketch is
+// ONE running instance throughout: it is not restarted by either. The probe draws
+// a red bar that grows with the time since its own setup() (full at 40 s), so a
+// restart shows as the red fraction dropping back toward zero.
+const TIMER = `let t0 = 0
+function setup() { createCanvas(stave.width, stave.height); t0 = millis() }
+function draw() {
+  background(0, 0, 255)
+  fill(255, 0, 0); noStroke()
+  rect(0, 0, width * Math.min(1, (millis() - t0) / 40000), height)
+}
+`
+test('the background keeps running across Play and Stop — never restarted', async ({ page }) => {
+  test.setTimeout(60_000) // ~8 s build-up + four steps
+  await page.evaluate(
+    (code) => (window as unknown as { __staveOverrideVizFile: (n: string, c: string) => string | null })
+      .__staveOverrideVizFile('spiral', code),
+    TIMER,
+  )
+  await seedCode(page, `${TRACK}\nall(x => x.viz("spiral", { theme: 'transparent' }))`)
+  await expect(page.locator(BG)).toHaveAttribute('data-background-file-id', /spiral/, { timeout: 8000 })
+  const grown = red(page)
+  // let it build a lead first: a restart then reads ~0.04 after the 1.5 s step
+  // wait, far below the bar it threw away, so it can't hide inside the tolerance
+  await expect.poll(grown, { timeout: 20000, intervals: [1000] }).toBeGreaterThan(0.2)
+
+  // each step must leave the bar at least where it was (a restart drops it to ~0)
+  let last = await grown()
+  for (const step of ['play', 'stop', 'play', 'stop'] as const) {
+    if (step === 'play') await evalCode(page)
+    else await stopCode(page)
+    await page.waitForTimeout(1500)
+    const now = await grown()
+    expect(now, `after ${step}: ${last} → ${now}`).toBeGreaterThanOrEqual(last - 0.01)
+    last = now
+  }
+})

@@ -36613,7 +36613,7 @@ function PreviewView({
       backdrop
     });
   }, [file, provider, audioPayload, effectivelyHidden, paused, backdrop, reloadTick]);
-  const providerKey = `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
+  const providerKey = backdrop ? `${sourceRefKey(sourceRef)}:${reloadTick}` : `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
   return /* @__PURE__ */ jsx(
     "div",
     {
