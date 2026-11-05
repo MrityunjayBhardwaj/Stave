@@ -845,6 +845,20 @@ export {
   type MasterAll,
   type MasterGainState,
 } from './codeView'
+// The background viz's options as the CODE writes them (literal values read
+// statically, the rest from the last evaluation), and the slot a background
+// mount reads them from — so the background follows the code before Play and
+// after Stop, not only while an evaluation's capture is on the bus.
+export {
+  readVizOptionsLiteral,
+  resolveVizOptions,
+  type CodeVizOptions,
+} from './codeView/mixer/vizOptionsLiteral'
+export {
+  setCodeBackdropOptions,
+  getCodeBackdropOptions,
+  type CodeBackdropOptions,
+} from './workspace/preview/codeBackdropOptions'
 // The display names of the OTHER tracks in a doc (#585) — the set the Song
 // Timeline's rename handler passes to `renameEdit` as `takenNames` so a rename
 // can't silently create a duplicate track name (which would collide on the

@@ -174,6 +174,7 @@ export function PreviewView({
   theme = 'dark',
   hidden = false,
   paused = false,
+  backdrop = false,
 }: PreviewViewProps): React.ReactElement {
   const { file } = useWorkspaceFile(fileId)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -321,13 +322,14 @@ export function PreviewView({
       audioSource: audioPayload,
       hidden: effectivelyHidden,
       paused,
+      backdrop,
     })
     // Note: `reloadTick` is NOT a dep because we want the memo to
     // recompute on every reload. It IS in the key below, which drives
     // the React reconciliation. If we added it as a dep here as well,
     // we'd double-recompute but behavior would be unchanged.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file, provider, audioPayload, effectivelyHidden, paused, reloadTick])
+  }, [file, provider, audioPayload, effectivelyHidden, paused, backdrop, reloadTick])
 
   // React key on the provider mount. Composes three independent
   // remount triggers:

@@ -2594,6 +2594,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
               theme={theme}
               hidden={false}
               paused={paused}
+              backdrop
               onSourceRefChange={() => {}}
             />
           </div>

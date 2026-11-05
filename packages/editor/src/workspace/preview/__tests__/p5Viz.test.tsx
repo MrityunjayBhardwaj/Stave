@@ -63,6 +63,8 @@ vi.mock('../../../visualizers/mountVizRenderer', () => ({
 }))
 
 import { P5_VIZ } from '../p5Viz'
+import { setCodeBackdropOptions } from '../codeBackdropOptions'
+import { act } from '@testing-library/react'
 import { compilePreset } from '../../../visualizers/vizCompiler'
 import { mountVizRenderer } from '../../../visualizers/mountVizRenderer'
 
@@ -180,5 +182,54 @@ describe('P5_VIZ render path', () => {
     const { getByTestId } = render(node as React.ReactElement)
     const panel = getByTestId('compiled-viz-error-pf6')
     expect(panel.textContent).toContain('p5 parse failure')
+  })
+})
+
+// #2385 — a background's `stave.options` follow the CODE: before the first Play
+// and after Stop there is no bus payload, and the sketch used to get `{}`.
+describe('P5_VIZ background options follow the code', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setCodeBackdropOptions(null)
+  })
+  afterEach(() => {
+    cleanup()
+    setCodeBackdropOptions(null)
+  })
+  const mountArgs = () =>
+    (mountVizRenderer as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+
+  it('a background with NO payload (stopped / never played) still gets the code options', () => {
+    setCodeBackdropOptions({ fileId: 'bg1', options: { theme: 'transparent' } })
+    const file = makeFile('bg1', 'background(0)')
+    render(P5_VIZ.render({ ...makeCtx(file, null), backdrop: true }) as React.ReactElement)
+    expect(mountArgs()[2].options).toEqual({ theme: 'transparent' })
+  })
+
+  it('the code options win over the payload capture for a background', () => {
+    setCodeBackdropOptions({ fileId: 'bg2', options: { theme: 'white' } })
+    const payload = {
+      inlineViz: { vizRequests: new Map(), backdropRequest: { vizId: 'x', options: { theme: 'transparent' } } },
+    } as unknown as AudioPayload
+    render(P5_VIZ.render({ ...makeCtx(makeFile('bg2', 'background(0)'), payload), backdrop: true }) as React.ReactElement)
+    expect(mountArgs()[2].options).toEqual({ theme: 'white' })
+  })
+
+  it('an options edit reaches the running sketch without a remount', () => {
+    setCodeBackdropOptions({ fileId: 'bg3', options: { theme: 'transparent' } })
+    render(P5_VIZ.render({ ...makeCtx(makeFile('bg3', 'background(0)'), null), backdrop: true }) as React.ReactElement)
+    const renderer = (mountVizRenderer as unknown as ReturnType<typeof vi.fn>).mock.results[0].value.renderer
+    act(() => setCodeBackdropOptions({ fileId: 'bg3', options: { theme: 'white' } }))
+    expect(mountVizRenderer).toHaveBeenCalledTimes(1)
+    expect(renderer.update).toHaveBeenLastCalledWith(expect.objectContaining({ options: { theme: 'white' } }))
+  })
+
+  it('ignored by a non-background preview, and by a background showing another file', () => {
+    setCodeBackdropOptions({ fileId: 'bg4', options: { theme: 'transparent' } })
+    render(P5_VIZ.render(makeCtx(makeFile('bg4', 'background(0)'), null)) as React.ReactElement)
+    render(P5_VIZ.render({ ...makeCtx(makeFile('other', 'background(0)'), null), backdrop: true }) as React.ReactElement)
+    const calls = (mountVizRenderer as unknown as ReturnType<typeof vi.fn>).mock.calls
+    expect(calls[0][2].options).toBeUndefined()
+    expect(calls[1][2].options).toBeUndefined()
   })
 })
