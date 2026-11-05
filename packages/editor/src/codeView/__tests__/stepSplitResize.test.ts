@@ -25,6 +25,7 @@ import {
   serializeStepGrid,
   splitStep,
   toggleCell,
+  toggleStep,
   type BarTree,
   type DivisionRow,
   type DivisionStep,
@@ -173,7 +174,8 @@ function resizeRefused(mini: string, sound: string, text: string, units: number)
 
 describe('splitStep — a click part-way through a plain step', () => {
   it('half way: the row’s sound joins the step as its second half', () => {
-    splits('bd ~ sn ~', 'bd', 'bd', F(1, 2), '[bd bd] ~ sn ~')
+    // two equal hits of one sound are `bd*2` (#2326, the user's ruling of 2026-11-05)
+    splits('bd ~ sn ~', 'bd', 'bd', F(1, 2), 'bd*2 ~ sn ~')
     splits('bd ~ sn ~', 'bd', '~', F(1, 2), 'bd [~ bd] sn ~')
     splits('bd ~ sn ~', 'bd', 'sn', F(1, 2), 'bd ~ [sn bd] ~')
   })
@@ -185,8 +187,8 @@ describe('splitStep — a click part-way through a plain step', () => {
   })
 
   it('at any depth, and what follows the name stays as written', () => {
-    splits('bd [~ sd] hh', 'sd', 'sd', F(1, 2), 'bd [~ [sd sd]] hh')
-    splits('bd@2 sn', 'bd', 'bd@2', F(1, 2), '[bd bd]@2 sn')
+    splits('bd [~ sd] hh', 'sd', 'sd', F(1, 2), 'bd [~ sd*2] hh')
+    splits('bd@2 sn', 'bd', 'bd@2', F(1, 2), 'bd*2@2 sn')
     splits('bd _ sn ~', 'bd', 'bd _', F(1, 4), '[bd bd ~ ~] _ sn ~')
   })
 
@@ -194,13 +196,25 @@ describe('splitStep — a click part-way through a plain step', () => {
     splits('[bd ~]*2 sn', 'bd', '~', F(1, 2), '[bd [~ bd]]*2 sn')
   })
 
+  it('one hit of `x*k` or copy of `x!k` splits on its own (#2326)', () => {
+    const write = (mini: string, sound: string, text: string, at: Frac): string => {
+      const trees = chunkDivisions(mini, 1)
+      const { address } = stepAt(mini, trees, 0, sound, text)
+      const r = splitStep(mini, trees, address, at, { sound })
+      if (!r.ok) throw new Error(r.why)
+      return applyStepEdit(mini, r.edit)
+    }
+    // `hh*4 sn`: the first hat is [0, 1/8); half way through it
+    expect(write('hh*4 sn', 'hh', 'hh*4', F(1, 16))).toBe('[hh*2 hh hh hh] sn')
+    // `bd!2 sn`: the first copy is [0, 1/3)
+    expect(write('bd!2 sn', 'bd', 'bd!2', F(1, 6))).toBe('bd*2 bd sn')
+    expect(difference(plays('bd!2 sn', 2), plays('bd*2 bd sn', 2))).toEqual({ added: ['bd@0-1/6', 'bd@1-7/6', 'bd@1/6-1/3', 'bd@7/6-4/3'], removed: ['bd@0-1/3', 'bd@1-4/3'] })
+  })
+
   it('refused where the step is not one plain text, or the click is not inside it', () => {
-    const trees = chunkDivisions('hh*4 sn', 1)
-    const { address, end } = stepAt('hh*4 sn', trees, 0, 'hh', 'hh*4')
-    expect(splitStep('hh*4 sn', trees, address, mul(end, F(1, 2)), { sound: 'hh' })).toEqual({ ok: false, why: 'step-is-generated' })
-    const t2 = chunkDivisions('bd!2 sn', 1)
-    const s2 = stepAt('bd!2 sn', t2, 0, 'bd', 'bd!2')
-    expect(splitStep('bd!2 sn', t2, s2.address, F(1, 6), { sound: 'bd' })).toEqual({ ok: false, why: 'step-is-replicated' })
+    const trees = chunkDivisions('hh(3,8) sn', 1)
+    const { address, end } = stepAt('hh(3,8) sn', trees, 0, 'hh', 'hh(3,8)')
+    expect(splitStep('hh(3,8) sn', trees, address, mul(end, F(1, 2)), { sound: 'hh' })).toEqual({ ok: false, why: 'step-is-generated' })
     const t3 = chunkDivisions('bd ~ sn ~', 1)
     const s3 = stepAt('bd ~ sn ~', t3, 0, 'bd', 'bd')
     expect(splitStep('bd ~ sn ~', t3, s3.address, F(0), { sound: 'bd' })).toEqual({ ok: false, why: 'not-inside-the-step' })
@@ -212,35 +226,45 @@ describe('splitStep — a click part-way through a plain step', () => {
 })
 
 describe('resizeStep — a note’s length, inside its group', () => {
-  it('longer: the rests after it become holds; shorter: its last holds become rests', () => {
-    resizes('bd ~ sd ~', 'bd', 'bd', 2, 'bd _ sd ~')
-    resizes('bd ~ ~ sd', 'bd', 'bd', 3, 'bd _ _ sd')
-    resizes('bd _ sd ~', 'bd', 'bd _', 1, 'bd ~ sd ~')
-    resizes('bd _ _ ~', 'bd', 'bd _ _', 2, 'bd _ ~ ~')
-    resizes('bd _ _ ~', 'bd', 'bd _ _', 4, 'bd _ _ _')
-  })
-
-  it('an `@` stays an `@`', () => {
+  // spelled by stepSpell (#2326): a length is `@n`, room given back is written-out rests
+  it('longer: the rests after it are taken into its `@n`; shorter: the room it gives back is rests', () => {
+    resizes('bd ~ sd ~', 'bd', 'bd', 2, 'bd@2 sd ~')
+    resizes('bd ~ ~ sd', 'bd', 'bd', 3, 'bd@3 sd')
     resizes('bd@2 ~ sd ~', 'bd', 'bd@2', 3, 'bd@3 sd ~')
     resizes('bd@3 sd', 'bd', 'bd@3', 2, 'bd@2 ~ sd')
     resizes('bd@3 sd', 'bd', 'bd@3', 1, 'bd ~ ~ sd')
     resizes('bd@2 ~@2 sd', 'bd', 'bd@2', 4, 'bd@4 sd')
   })
 
+  it('holds a note already has are its own text: the edit writes them as `@n`', () => {
+    resizes('bd _ sd ~', 'bd', 'bd _', 1, 'bd ~ sd ~')
+    resizes('bd _ _ ~', 'bd', 'bd _ _', 2, 'bd@2 ~ ~')
+    resizes('bd _ _ ~', 'bd', 'bd _ _', 4, 'bd@4')
+  })
+
   it('at any depth, in every copy', () => {
-    resizes('hh [sd ~ ~] hh', 'sd', 'sd', 2, 'hh [sd _ ~] hh')
-    resizes('[bd ~ sd ~]*2', 'bd', 'bd', 2, '[bd _ sd ~]*2')
+    resizes('hh [sd ~ ~] hh', 'sd', 'sd', 2, 'hh [sd@2 ~] hh')
+    resizes('[bd ~ sd ~]*2', 'bd', 'bd', 2, '[bd@2 sd ~]*2')
   })
 
   it('refused where it would not stay inside the group, or the length is not plain', () => {
     expect(resizeRefused('bd sd ~ ~', 'bd', 'bd', 2)).toEqual({ ok: false, why: 'no-room-to-grow' })
     // the group ends: no room past it
     expect(resizeRefused('[bd ~] sd', 'bd', 'bd', 3)).toEqual({ ok: false, why: 'no-room-to-grow' })
+    // an alternation's next arm is not room: it plays in other bars (`<bd ~ ~ ~>*2`)
+    {
+      const mini = '<bd ~ ~ ~>*2'
+      const trees = chunkDivisions(mini, 2)
+      const { address, end } = stepAt(mini, trees, 0, 'bd', 'bd')
+      expect(resizeStep(mini, trees, address, add(address.at, mul(sub(end, address.at), F(2))), { sound: 'bd' })).toEqual({ ok: false, why: 'no-room-to-grow' })
+    }
     // a rest longer than the room asked would have to be respelled
     expect(resizeRefused('bd ~@2 sd', 'bd', 'bd', 2)).toEqual({ ok: false, why: 'no-room-to-grow' })
     expect(resizeRefused('bd@1.5 ~ sd', 'bd', 'bd@1.5', 2)).toMatchObject({ ok: false })
     expect(resizeRefused('bd ~ sd ~', 'bd', 'bd', 1)).toEqual({ ok: false, why: 'length-not-whole-steps' })
-    expect(resizeRefused('bd*2 ~ sd ~', 'bd', 'bd*2', 2)).toEqual({ ok: false, why: 'step-is-generated' })
+    // one hit of `bd*2` is resized on its own since #2326: the next hit is in its way
+    expect(resizeRefused('bd*2 ~ sd ~', 'bd', 'bd*2', 2)).toEqual({ ok: false, why: 'no-room-to-grow' })
+    expect(resizeRefused('bd(3,8) ~ sd ~', 'bd', 'bd(3,8)', 2)).toEqual({ ok: false, why: 'step-is-generated' })
     expect(resizeRefused('bd ~ sd ~', 'sd', 'sd', 2)).toMatchObject({ ok: true })
     expect(resizeRefused('bd ~ sd ~', 'bd', '~', 2)).toEqual({ ok: false, why: 'not-the-rows-note' })
   })
@@ -285,6 +309,43 @@ interface Side {
   bothRefuse: number
   strudelOk: number
   strudelBad: string[]
+  /** bytes each edit rewrites (removed + inserted): the new writer's, today's column writer's */
+  bytesNew: number[]
+  bytesToday: number[]
+  /** both write and Strudel plays the two the same */
+  playbackIdentical: number
+  /** new edits whose text spells a length with `_` holds, or a generator (`!n`, `*n`) — stepSpell writes neither */
+  spellingBad: string[]
+  /** new edits after which the step, read again, is no longer a step a click can edit */
+  readBackBad: string[]
+}
+
+/** the written step whose name begins at `head` and that has a slot beginning at `begin`, in bar 0 */
+function findStep(trees: readonly BarTree[], head: number, begin: Frac): { start: number; end: number } | null {
+  const t = trees[0]
+  if (!t?.ok) return null
+  let got: { start: number; end: number } | null = null
+  const visit = (r: DivisionRow): void => {
+    for (const s of r.steps) {
+      if (s.head?.start === head && s.span && s.slots.some((x) => x.begin.n * begin.d === begin.n * x.begin.d)) got = s.span
+      for (const k of s.rows ?? []) visit(k)
+    }
+  }
+  t.parts.forEach(visit)
+  return got
+}
+
+/** bytes a change rewrites: removed + inserted, once the common head and tail are set aside */
+function rewritten(before: string, after: string): number {
+  const [a, z] = changed(before, after)
+  return z - a + (after.length - before.length + (z - a))
+}
+
+const stats = (xs: number[]): string => {
+  if (xs.length === 0) return 'n=0'
+  const s = [...xs].sort((a, b) => a - b)
+  const at = (q: number): number => s[Math.min(s.length - 1, Math.floor(q * s.length))]
+  return `n=${s.length} median=${at(0.5)} p95=${at(0.95)} max=${s[s.length - 1]}`
 }
 
 /**
@@ -293,7 +354,10 @@ interface Side {
  * note's length may change. Where both write and differ, the reason is named.
  */
 function sideBySide(writer: typeof resizeStep, limit?: number): Side {
-  const r: Side = { grids: 0, asked: 0, agree: 0, differ: {}, differExamples: [], newRefuses: {}, todayRefusesNewWrites: 0, bothRefuse: 0, strudelOk: 0, strudelBad: [] }
+  const r: Side = {
+    grids: 0, asked: 0, agree: 0, differ: {}, differExamples: [], newRefuses: {}, todayRefusesNewWrites: 0, bothRefuse: 0, strudelOk: 0, strudelBad: [],
+    bytesNew: [], bytesToday: [], playbackIdentical: 0, spellingBad: [], readBackBad: [],
+  }
   for (const mini of minis.slice(0, limit)) {
     const g = parseStepGrid(mini)
     if (!g.ok) continue
@@ -341,8 +405,25 @@ function sideBySide(writer: typeof resizeStep, limit?: number): Side {
               }
               if (ok) r.strudelOk++
               else r.strudelBad.push(`${JSON.stringify(mini)} ${lane.sound} → ${JSON.stringify(mineText)}`)
+              r.bytesNew.push(rewritten(mini, mineText))
+              // the spelling rules (#2326): a length is `@n`, never `_` holds or a generator
+              if (/(^|\s)_(\s|$|\])|[!*]\d|\(\d/.test(mine.ok ? mine.edit.insert : '')) r.spellingBad.push(`${JSON.stringify(mini)} → ${JSON.stringify(mineText)}`)
+              // and what it writes reads back as a step a click edits: the note, found again
+              // where it begins, can be toggled
+              const again = chunkDivisions(mineText, 1)
+              const found = s.head ? findStep(again, s.head.start, slot.begin) : null
+              const back = found ? toggleStep(mineText, again, { bar: 0, span: found, at: slot.begin }, { sound: lane.sound, part: lane.part }) : null
+              if (!back?.ok) r.readBackBad.push(`${JSON.stringify(mineText)} ${lane.sound}: ${back ? back.why : 'step not found'}`)
             }
+            if (today !== null) r.bytesToday.push(rewritten(mini, today))
             if (today !== null && mineText !== null) {
+              let sameMusic = false
+              try {
+                sameMusic = JSON.stringify(plays(today, 2)) === JSON.stringify(plays(mineText, 2))
+              } catch {
+                sameMusic = false
+              }
+              if (sameMusic) r.playbackIdentical++
               if (today === mineText) r.agree++
               else {
                 // WHY: asked, not assumed — do the two play the same, and where does each change the text?
@@ -358,8 +439,8 @@ function sideBySide(writer: typeof resizeStep, limit?: number): Side {
                   ? 'other'
                   : ta < ma || tz > mz
                     ? 'same music — today rewrites text beside the note (other steps’ `@`, spacing)'
-                    : /@/.test(mini.slice(s.span.start, s.span.end))
-                      ? 'same music — today writes the note’s `@` out as holds; the new edit keeps the `@`'
+                    : /(^|\s)_(\s|$|\])/.test(today.slice(ta, today.length - (mini.length - tz))) && /@/.test(mineText.slice(ma, mineText.length - (mini.length - mz)))
+                      ? 'same music — today writes the length as `_` holds; the new edit writes `@n` (#2326)'
                       : 'other'
                 r.differ[kind] = (r.differ[kind] ?? 0) + 1
                 if (r.differExamples.length < 30) r.differExamples.push(`${kind}: ${JSON.stringify(mini)} today ${JSON.stringify(today)} new ${JSON.stringify(mineText)}`)
@@ -381,19 +462,35 @@ describe('resizeStep — the corpus, side by side with today’s column writer',
     const r = sideBySide(resizeStep)
     // `RESIZE_REPORT=/some/file.json` writes the whole measurement; unset, nothing is written
     if (process.env.RESIZE_REPORT) writeFileSync(process.env.RESIZE_REPORT, JSON.stringify(r, null, 1))
+    if (process.env.RESIZE_REPORT) {
+      writeFileSync(process.env.RESIZE_REPORT.replace(/\.json$/, '-bytes.txt'), `new: ${stats(r.bytesNew)}\ntoday: ${stats(r.bytesToday)}\nplayback-identical where both write: ${r.playbackIdentical}\n`)
+    }
     expect(r.asked).toBeGreaterThan(1000)
     expect(r.strudelBad).toEqual([])
     expect(r.differ.other ?? 0).toBe(0)
+    expect(r.spellingBad).toEqual([])
+    expect(r.readBackBad).toEqual([])
   }, 900_000)
 
-  it('can go red: a resize that writes rests for holds is heard', () => {
-    // holds written as rests: the bytes are tiny and plausible, and the note's length never changes
-    const noHolds: typeof resizeStep = (...args) => {
+  it('can go red: a resize that writes the rest it took in, not the length, is heard', () => {
+    // the absorbed rests written back as rests: tiny, plausible bytes, and the length never changes
+    const noLength: typeof resizeStep = (...args) => {
       const r = resizeStep(...args)
-      return r.ok ? { ok: true, edit: { ...r.edit, insert: r.edit.insert.replace(/_/g, '~') } } : r
+      return r.ok ? { ok: true, edit: { ...r.edit, insert: r.edit.insert.replace(/@\d+/g, '') } } : r
     }
-    const r = sideBySide(noHolds, 300)
+    const r = sideBySide(noLength, 300)
     expect(r.strudelBad.length).toBeGreaterThan(0)
+  }, 300_000)
+
+  it('can go red: a length spelled as `_` holds breaks the spelling rule, though it plays the same', () => {
+    // the spelling the user ruled out (#2326): same music, so only the spelling check catches it
+    const holds: typeof resizeStep = (...args) => {
+      const r = resizeStep(...args)
+      return r.ok ? { ok: true, edit: { ...r.edit, insert: r.edit.insert.replace(/@(\d+)/g, (_m, n) => ' _'.repeat(Number(n) - 1)) } } : r
+    }
+    const r = sideBySide(holds, 300)
+    expect(r.strudelBad).toEqual([])
+    expect(r.spellingBad.length).toBeGreaterThan(0)
   }, 300_000)
 })
 
@@ -412,6 +509,9 @@ interface SplitSide {
   bothRefuse: number
   strudelOk: number
   strudelBad: string[]
+  /** bytes each edit rewrites: the new writer's, today's column writer's */
+  bytesNew: number[]
+  bytesToday: number[]
 }
 
 /**
@@ -421,7 +521,7 @@ interface SplitSide {
  * step's own hit (if any) now its first part, at every place it plays.
  */
 function splitSide(writer: typeof splitStep): SplitSide {
-  const r: SplitSide = { asked: 0, agree: 0, sameMusic: 0, sameMusicExamples: [], todayPlaysOther: [], newRefuses: {}, todayRefusesNewWrites: 0, bothRefuse: 0, strudelOk: 0, strudelBad: [] }
+  const r: SplitSide = { asked: 0, agree: 0, sameMusic: 0, sameMusicExamples: [], todayPlaysOther: [], newRefuses: {}, todayRefusesNewWrites: 0, bothRefuse: 0, strudelOk: 0, strudelBad: [], bytesNew: [], bytesToday: [] }
   for (const mini of minis) {
     const g = parseStepGrid(mini)
     if (!g.ok || (g.model.bars ?? 1) !== 1) continue
@@ -435,7 +535,8 @@ function splitSide(writer: typeof splitStep): SplitSide {
         for (const s of row.steps) {
           const inner = s.rows ? innerRow(s, lane.sound) : null
           if (inner) visit(inner)
-          if (s.rows || !s.span || s.slots.length !== 1) continue
+          // a plain step only: a hit of `x*k` / `x!k` splits on its own (#2326), pinned in stepGenerators.test.ts
+          if (s.rows || !s.span || s.slots.length !== 1 || s.reps > 1 || s.ops.some((o) => o !== 'tail')) continue
           const slot = s.slots[0]
           const col = (slot.begin.n * per) / slot.begin.d
           const len = ((slot.end.n * slot.begin.d - slot.begin.n * slot.end.d) * per) / (slot.end.d * slot.begin.d)
@@ -446,6 +547,8 @@ function splitSide(writer: typeof splitStep): SplitSide {
           const at = add(slot.begin, F(1, per))
           const mine = writer(mini, trees, { bar: 0, span: s.span, at: slot.begin }, at, { sound: lane.sound, part: lane.part })
           const mineText = mine.ok ? applyStepEdit(mini, mine.edit) : null
+          if (mineText !== null) r.bytesNew.push(rewritten(mini, mineText))
+          if (today !== null) r.bytesToday.push(rewritten(mini, today))
           if (mineText !== null) {
             // the click is one column in: the step cut into `len` parts, the hit in the second
             const part = F(slot.end.n * slot.begin.d - slot.begin.n * slot.end.d, slot.end.d * slot.begin.d * len)
@@ -499,7 +602,10 @@ describe('splitStep — the corpus, side by side with today’s column writer', 
   it('every new split plays exactly the click', () => {
     const r = splitSide(splitStep)
     // `SPLIT_REPORT=/some/file.json` writes the whole measurement; unset, nothing is written
-    if (process.env.SPLIT_REPORT) writeFileSync(process.env.SPLIT_REPORT, JSON.stringify(r, null, 1))
+    if (process.env.SPLIT_REPORT) {
+      writeFileSync(process.env.SPLIT_REPORT, JSON.stringify(r, null, 1))
+      writeFileSync(process.env.SPLIT_REPORT.replace(/\.json$/, '-bytes.txt'), `new: ${stats(r.bytesNew)}\ntoday: ${stats(r.bytesToday)}\nplayback-identical where both write: ${r.agree + r.sameMusic}\n`)
+    }
     expect(r.asked).toBeGreaterThan(500)
     expect(r.strudelBad).toEqual([])
   }, 900_000)
