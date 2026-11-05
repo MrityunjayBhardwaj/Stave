@@ -48,6 +48,7 @@ import { randomBytes } from 'node:crypto'
 import { chromium, test, expect, type Page } from '@playwright/test'
 import { bootApp, editorValue, evalCode, seedCode, stopCode } from './_appBoot'
 import { MUSIC_CODE, routeGallery } from './_gallery'
+import { NAVIGATED_AWAY } from '../src/gallery/GalleryPreview'
 
 const SHOTS = process.env.GALLERY_SHOT_DIR
 const RUN = Date.now().toString(36)
@@ -291,6 +292,22 @@ test.describe('gallery preview sandbox (#2328)', () => {
       await expect(page.locator('[data-gallery-preview-state]')).not.toContainText('Script error.')
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/sandbox-error-${word.toLowerCase()}.png` })
     }
+  })
+
+  // #2343 — the code can navigate its own frame; what loads there instead must not stay up.
+  test('a preview whose code opens another page in its place is closed, and says so', async ({ page }) => {
+    test.setTimeout(240_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    const lookalike = 'data:text/html,<h1>Sign in to Stave</h1><input placeholder=password>'
+    const nav = await routeEntry(page, 'Navigates', 'nav.strudel', `setTimeout(() => { location.href = '${lookalike}' }, 1500)\ns('bd ~ ~ ~')`)
+    await bootApp(page)
+    await page.goto(`/#gallery=${nav.id}`)
+    await expect(page.locator(`[data-gallery-detail="${nav.id}"]`)).toBeVisible({ timeout: 30_000 })
+    await page.locator('[data-gallery-preview-button]').click()
+    await expect(page.locator('[data-gallery-preview-state]')).toHaveText(NAVIGATED_AWAY, { timeout: 90_000 })
+    await expect(page.locator('[data-gallery-preview-frame]')).toHaveCount(0)
+    expect(page.frames().map((f) => f.url()).filter((u) => u.startsWith('data:')), 'the lookalike is not on the page').toEqual([])
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/sandbox-navigated-away.png` })
   })
 
   test('the first Play after "Open as new project" asks, naming the author; the second does not', async ({ page }) => {
