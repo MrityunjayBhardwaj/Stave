@@ -24,8 +24,9 @@ const noStore = () => Response.json({ error: "the gallery is not set up here" },
 // while one request refreshes it. So the listing query runs at most about twice
 // a minute, however many people open the overlay. The price: a new publish can
 // take up to ~30 s to show in the list, and a deleted entry can linger in it as
-// long. The entry route is not cached that way: a removed entry answers 410
-// straight away, so a lingering card opens to "removed".
+// long. The entry route is not cached that way: an entry an admin removed answers
+// 410 and one its author deleted answers 404, straight away, so a lingering card
+// opens to "removed" or "not found".
 export const LIST_CACHE = "public, s-maxage=30, stale-while-revalidate=300";
 
 // #2346 — ONE listing per cache window, whatever the query string. The CDN
