@@ -233,3 +233,28 @@ describe('P5_VIZ background options follow the code', () => {
     expect(calls[1][2].options).toBeUndefined()
   })
 })
+
+// #2396 — Play/Stop change only the audio inputs. The background (no longer
+// re-keyed by PreviewView) must take them in place: one mount, then update().
+describe('P5_VIZ takes new audio inputs in place', () => {
+  beforeEach(() => vi.clearAllMocks())
+  afterEach(() => cleanup())
+
+  it('a payload arriving and leaving updates the running renderer, never remounts it', () => {
+    const file = makeFile('live1', 'background(0)')
+    const ctx = (audio: AudioPayload | null) => ({ ...makeCtx(file, audio), backdrop: true })
+    const { rerender } = render(P5_VIZ.render(ctx(null)) as React.ReactElement)
+    const renderer = (mountVizRenderer as unknown as ReturnType<typeof vi.fn>).mock.results[0].value.renderer
+
+    const scheduler = { id: 'playing' } as unknown as AudioPayload['scheduler']
+    rerender(P5_VIZ.render(ctx({ scheduler } as AudioPayload)) as React.ReactElement) // Play
+    expect(renderer.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ queryable: expect.objectContaining({ scheduler }) }),
+    )
+    rerender(P5_VIZ.render(ctx(null)) as React.ReactElement) // Stop
+    expect(renderer.update).toHaveBeenLastCalledWith(expect.not.objectContaining({ queryable: expect.anything() }))
+
+    expect(mountVizRenderer).toHaveBeenCalledTimes(1)
+    expect(renderer.destroy).not.toHaveBeenCalled()
+  })
+})
