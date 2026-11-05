@@ -51,11 +51,15 @@ describe('stepAddressAt — the step a column names', () => {
   it('a column part-way through a step names none', () => {
     expect(landsOn(MINI, 'bd', 1)).toBe('refused: inside-a-step')
     expect(landsOn(MINI, 'cp', 13)).toBe('refused: inside-a-step')
-    // a hat that begins part-way through `hh*4` was made by its op, and says so
-    expect(landsOn('bd hh*4', 'hh', 5)).toBe('refused: step-is-generated')
-    expect(click('bd hh*4', 'hh', 4)).toBe('refused: step-is-generated')
-    // and one inside `bd!3` was made by its `!`
-    expect(landsOn('bd!3', 'bd', 1)).toBe('refused: step-is-replicated')
+    // a hit that begins part-way through a euclid step was made by its op, and says so
+    expect(landsOn('bd(3,8)', 'bd', 3)).toBe('refused: step-is-generated')
+    // a hat of a plain `hh*4`, and a copy of `bd!3`, name their step: each is edited on its
+    // own (#2326)
+    expect(landsOn('bd hh*4', 'hh', 5)).toBe('hh*4')
+    expect(click('bd hh*4', 'hh', 4)).toBe('bd [~ hh hh hh]')
+    expect(click('bd hh*4', 'hh', 5)).toBe('bd [hh ~ hh hh]')
+    expect(landsOn('bd!3', 'bd', 1)).toBe('bd!3')
+    expect(click('bd!3', 'bd', 1)).toBe('bd ~ bd')
   })
 
   it('a column part-way through a plain step splits it, at any depth (#2293)', () => {
@@ -69,14 +73,15 @@ describe('stepAddressAt — the step a column names', () => {
       return r.ok ? applyStepEdit(mini, r.edit) : `refused: ${r.why}`
     }
     // `bd` is columns 0–3 of 16: column 2 is its half, column 1 its quarter
-    expect(split(MINI, 'bd', 2)).toBe('[bd bd] [~ bd] sd [hh [~ cp]]')
+    // two equal hits of one sound are `bd*2` (#2326)
+    expect(split(MINI, 'bd', 2)).toBe('bd*2 [~ bd] sd [hh [~ cp]]')
     expect(split(MINI, 'bd', 1)).toBe('[bd bd ~ ~] [~ bd] sd [hh [~ cp]]')
     // inside a group: `hh` is columns 12–13
     expect(split(MINI, 'cp', 13)).toBe('bd [~ bd] sd [[hh cp] [~ cp]]')
     // a column where a step begins is no split
     expect(split(MINI, 'bd', 4)).toBe('none')
-    // a hat inside `hh*4` is no plain step's half
-    expect(split('bd hh*4', 'hh', 5)).toBe('refused: step-is-generated')
+    // a hat of `hh*4` begins at column 5: a click there is a toggle of that hat, not a split
+    expect(split('bd hh*4', 'hh', 5)).toBe('refused: not-inside-the-step')
   })
 
   it('leafStops: the cursor walks each step at every depth, never a column inside one (#2293)', () => {

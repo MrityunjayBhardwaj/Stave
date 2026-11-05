@@ -367,8 +367,12 @@ export function stepAddressAt(
           if (columnOf(slot.begin, 0, per) === want) return { bar: b, span: s.span, at: slot.begin }
         }
         // a hit that begins part-way through its step was made by the step's own op
-        // (`hh*4`'s second hat): that is the reason to give, not "inside a step"
-        if (s.hits.some((h) => columnOf(h.begin, 0, per) === want)) {
+        // (`hh*4`'s second hat, `bd!3`'s second copy). Since #2326 the writer edits one hit
+        // of a plain `x*k` / `x!k`, so the address is the step and where that hit begins; it
+        // gives the refusal itself for the ops it still does not edit (euclid, `?`, …)
+        const hit = s.hits.find((h) => columnOf(h.begin, 0, per) === want)
+        if (hit) {
+          if (s.ops.every((o) => o === 'tail' || o === 'stretch' || o === 'replicate')) return { bar: b, span: s.span, at: hit.begin }
           generated = s.reps > 1 || s.ops.includes('replicate') ? 'step-is-replicated' : 'step-is-generated'
         }
       }

@@ -959,8 +959,10 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // — asked of the tree the edits use, so LCM walks the same steps as Exact
   stopsRef.current = model.lanes.map((_, li) => {
     const nodes = laneNodes?.[li] ?? editNodes?.[li]
-    if (nodes) return leafStops(nodes)
-    return (stepGroups?.[li] ?? []).flatMap(groupStops)
+    const steps = nodes ? leafStops(nodes) : (stepGroups?.[li] ?? []).flatMap(groupStops)
+    // and every hit a click edits on its own (#2326): one hat of `hh*8` is a stop now
+    const hits = (stepToggles?.[li] ?? []).flatMap((a, si) => (a && a.ok && !('split' in a && a.split) ? [si] : []))
+    return [...new Set([...steps, ...hits])].sort((a, b) => a - b)
   })
   const rulerNodes = laneNodes?.[liveCursor?.row ?? 0] ?? null
   const ruler = rulerNodes && drawnRows?.[liveCursor?.row ?? 0]
