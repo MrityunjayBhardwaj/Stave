@@ -214,14 +214,15 @@ function findMuteLine(doc: string): MasterAll | undefined {
   return detectMasterAll(doc).find((m) => arrowBodyText(doc, m) === 'silence')
 }
 
-/** A backdrop-viz call: `.viz(<name>, { backdrop: true })`. The flag is what
- *  distinguishes a MASTER backdrop from a channel-scoped inline `.viz("name")`
- *  (design §4). Matched on the arg source (spacing-tolerant) — the object arg is
- *  raw text at this layer, and WE always emit the canonical `{ backdrop: true }`. */
+/** A backdrop-viz call: any `.viz(<name>, …)` on a master `all(x => …)` line.
+ *  A viz there belongs to no single track, so it IS the backdrop — the
+ *  `{ backdrop: true }` flag is implied, and the engine treats it the same way
+ *  (a `.viz()` run inside an `all()` transform fills the backdrop slot). So
+ *  `all(x => x.viz("Fold", { theme: 'transparent' }))` is found here with its
+ *  options intact, and the set-bg control renames THAT call instead of adding a
+ *  second, option-less line. A `.viz()` on a track line stays inline. */
 function findVizBackdropCall(m: MasterAll): ChainCall | undefined {
-  return m.chain.find(
-    (c) => c.name === 'viz' && c.args.some((a) => /\bbackdrop\s*:\s*true\b/.test(a.raw)),
-  )
+  return m.chain.find((c) => c.name === 'viz')
 }
 
 /** The first string-literal arg of a call (the viz name), or undefined. Its

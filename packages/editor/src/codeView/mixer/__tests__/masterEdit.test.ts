@@ -274,6 +274,19 @@ describe('readMasterViz', () => {
   it('ignores a channel-scoped inline viz (no backdrop flag)', () => {
     expect(readMasterViz('$: s("bd").viz("pianoroll")')).toBeNull()
   })
+
+  // #2382 — a viz on the master line belongs to no track, so it IS the backdrop:
+  // the flag is implied there, options or not.
+  it('reads a master all() viz with NO backdrop flag as the backdrop', () => {
+    expect(
+      readMasterViz(`all(x => x.viz("Fold", { delay: 0.8, theme: 'transparent', emit: true }))`),
+    ).toEqual({ name: 'Fold' })
+    expect(readMasterViz('all(x => x.viz("Fold"))')).toEqual({ name: 'Fold' })
+  })
+
+  it('still ignores a track viz when a master line without a viz is present', () => {
+    expect(readMasterViz('$: s("bd").viz("pianoroll")\nall(x => x.gain(0.8))')).toBeNull()
+  })
 })
 
 describe('masterVizEdit', () => {
@@ -289,6 +302,21 @@ describe('masterVizEdit', () => {
     expect(applied(src, masterVizEdit(src, 'fscope'))).toBe(
       'all(x => x.viz("fscope", { backdrop: true }))',
     )
+  })
+
+  // #2382 — set bg on a document whose master viz carries options and no flag
+  // renames THAT call; it used to append a second, option-less line, so the
+  // sketch saw `{ backdrop: true }` and nothing else.
+  it('renames an unflagged master viz in place, keeping its options', () => {
+    const src = `$: s("bd")\nall(x => x.viz("Fold", { theme: 'transparent', emit: true }))`
+    expect(applied(src, masterVizEdit(src, 'spiral'))).toBe(
+      `$: s("bd")\nall(x => x.viz("spiral", { theme: 'transparent', emit: true }))`,
+    )
+  })
+
+  it('clears an unflagged master viz line', () => {
+    const src = '$: s("bd")\nall(x => x.viz("Fold", { emit: true }))'
+    expect(applied(src, masterVizEdit(src, null))).toBe('$: s("bd")')
   })
 
   it('clears by removing the whole all() line when the viz is all it carries', () => {
