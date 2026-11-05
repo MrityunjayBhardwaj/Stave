@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 
+import type { TurnstileAction } from "./types";
+
 /**
  * #2330 — Cloudflare Turnstile in the publish dialog and the report dialog.
  *
@@ -32,6 +34,7 @@ interface TurnstileApi {
     el: HTMLElement,
     opts: {
       sitekey: string;
+      action?: string;
       callback: (token: string) => void;
       "expired-callback"?: () => void;
       "error-callback"?: () => void;
@@ -88,10 +91,13 @@ function themeOf(el: HTMLElement): "light" | "dark" {
 
 export function TurnstileWidget({
   siteKey,
+  action,
   onToken,
   testId,
 }: {
   siteKey: string;
+  /** #2347 — what the token is for; the server refuses a token made for another action. */
+  action: TurnstileAction;
   onToken: (token: string | null) => void;
   testId?: string;
 }) {
@@ -110,6 +116,7 @@ export function TurnstileWidget({
         if (gone || !box.current) return;
         widgetId = api.render(box.current, {
           sitekey: siteKey,
+          action,
           theme: themeOf(box.current),
           size: "flexible",
           callback: (token) => report.current(token),
@@ -136,7 +143,7 @@ export function TurnstileWidget({
         }
       }
     };
-  }, [siteKey]);
+  }, [siteKey, action]);
 
   return (
     <div data-testid={testId} data-turnstile-status={status}>

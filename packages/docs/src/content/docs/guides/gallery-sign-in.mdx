@@ -22,9 +22,15 @@ Each provider is offered only when its settings are present. Set up GitHub, Goog
 | `AUTH_SECRET` | A long random string that signs the session cookie. Make one with `openssl rand -base64 33`. Required. |
 | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET` | The GitHub OAuth app's Client ID and a client secret. |
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | The Google OAuth client's ID and secret. |
-| `AUTH_URL` | Only off Vercel: your site's public origin, e.g. `https://stave.example.com`. (Or set `AUTH_TRUST_HOST=true` if your proxy sets the host header correctly.) |
+| `AUTH_URL` | Only off Vercel: your site's public origin, e.g. `https://stave.example.com`. (Or set `AUTH_TRUST_HOST=true` if your proxy passes the visitor's `Host` header through unchanged.) |
 
 Sessions live in that signed cookie, so there is no session database to run.
+
+<Aside>
+Gallery changes (publish, delete, edits, reports, links) are accepted only from your site's own pages. Stave recognises its own pages by the `Host` header and by `AUTH_URL`; it never trusts `X-Forwarded-Host`, which any client can send. If your proxy rewrites `Host` to an internal name, set `AUTH_URL`.
+
+Off Vercel, Stave can't tell visitors' addresses apart (the usual `X-Forwarded-For` / `X-Real-IP` headers could be made up by anyone), so the hourly limits on signed-out reports and private links are shared by all signed-out visitors. Signed-in limits are per account and unaffected.
+</Aside>
 
 ## The callback URLs
 

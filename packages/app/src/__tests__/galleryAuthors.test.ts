@@ -52,6 +52,7 @@ import { DELETE as entryDeleteRoute, GET as entryGetRoute } from "../app/api/gal
 import { createAuthor } from "../app/api/gallery/authors";
 import { hashToken, newManageToken } from "../app/api/gallery/auth";
 import { galleryPaths, galleryStore, putJson } from "../app/api/gallery/store";
+import { blobKeys, recordKeys } from "./galleryBlobKeys";
 import { accountForAuthor, accountHashOf, readAccount } from "../app/api/gallery/session";
 import type { GalleryEntry, GallerySessionResponse } from "../gallery/types";
 import { getDb, useDbForTests, type Db } from "../db/client";
@@ -256,9 +257,8 @@ describe("authors made on an account's first gallery use", () => {
     });
     expect((await getEntryRecord(await db(), res.id))?.entry.authorId).toBe(res.authorId);
     expect(await authorKeyHash(await db(), res.authorId)).toBeNull();
-    // #2352 — no Blob copy of the profile any more (phase 1 wrote one).
-    expect(await galleryStore()!.get(galleryPaths.author(res.authorId))).toBeNull();
-    expect(await galleryStore()!.get(galleryPaths.authorPrivate(res.authorId))).toBeNull();
+    // #2352 / #2363 — no Blob copy of the profile (phase 1 wrote one), nor of any other record.
+    expect(recordKeys(await blobKeys(dir))).toEqual([]);
   });
 
   it("lands every publish from one account on the same author", async () => {

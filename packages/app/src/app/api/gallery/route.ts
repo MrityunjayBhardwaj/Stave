@@ -6,11 +6,11 @@ import { getAuthor } from "../../../db/repo/accounts";
 import { getEntryRecord, insertEntry, listEntries } from "../../../db/repo/entries";
 import { inTransaction } from "../../../db/repo/tx";
 import { hashToken, newManageToken } from "./auth";
-import { mirrorPublished, putEntryFiles } from "./entryFiles";
+import { putEntryFiles } from "./entryFiles";
 import { limitAccount } from "./rateLimit";
 import { requireSessionAuthor } from "./session";
 import { requireTurnstile } from "./turnstile";
-import { galleryStore, type PrivateRecord } from "./store";
+import { galleryStore } from "./store";
 import { checkPublish, MAX_PUBLISH_BODY_BYTES, readJsonBody } from "./validate";
 import { assertSameOrigin } from "./origin";
 
@@ -77,7 +77,7 @@ async function handlePOST(req: Request): Promise<Response> {
   if (who instanceof Response) return who;
   const { authorId, account } = who;
   // #2330 — per-account limit, then the Turnstile check (when set up).
-  const limited = (await limitAccount("publish", account.accountHash)) ?? (await requireTurnstile(req));
+  const limited = (await limitAccount("publish", account.accountHash)) ?? (await requireTurnstile(req, "publish"));
   if (limited) return limited;
 
   const body = await readJsonBody(req, MAX_PUBLISH_BODY_BYTES);
@@ -104,7 +104,6 @@ async function handlePOST(req: Request): Promise<Response> {
   if (!profile) return Response.json({ error: "could not find your gallery profile" }, { status: 500 });
 
   const manageToken = newManageToken();
-  const record: PrivateRecord = { authorEmail: account.email, manageTokenHash: hashToken(manageToken) };
   const entry: GalleryEntry = {
     id,
     title: v.title,
@@ -121,9 +120,8 @@ async function handlePOST(req: Request): Promise<Response> {
   // (and thumbnail) already exist. A failure before the insert leaves only
   // unlisted files behind, never a listed entry without them.
   await putEntryFiles(store, id, v.manifestBytes, v.thumbnail);
-  const stored = await inTransaction(db, (tx) => insertEntry(tx, { entry, ...record }));
+  const stored = await inTransaction(db, (tx) => insertEntry(tx, { entry, authorEmail: account.email, manageTokenHash: hashToken(manageToken) }));
   if (!stored) return Response.json({ error: "could not store the entry" }, { status: 500 });
-  await mirrorPublished(store, entry, record);
 
   const res: PublishResponse = { id, manageToken, authorId };
   return Response.json(res, { status: 201, headers: { "Cache-Control": "no-store" } });

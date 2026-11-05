@@ -25,7 +25,7 @@ async function handlePOST(
   const db = store && (await getDb());
   if (!store || !db) return Response.json({ error: "the gallery is not set up here" }, { status: 503 });
   // #2330 — per account (or per address signed out), then Turnstile when set up.
-  const limited = (await limitRequest("report", req)) ?? (await requireTurnstile(req));
+  const limited = (await limitRequest("report", req)) ?? (await requireTurnstile(req, "report"));
   if (limited) return limited;
 
   const body = await readJsonBody(req, MAX_REPORT_BODY_BYTES);

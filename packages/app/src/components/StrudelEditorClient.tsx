@@ -139,6 +139,21 @@ import {
 const askToRun: AskToRun = (message) => showConfirm({ ...message, cancelLabel: "Cancel" });
 
 /**
+ * #2343 — `askToRun`, telling `onAsking` when the question goes up (true) and
+ * when it is answered yes (false), so a dialog behind it (Bounce) can say it is
+ * waiting rather than "Rendering". A no is left to the caller, which ends anyway.
+ */
+function askingFor(onAsking?: (asking: boolean) => void): AskToRun {
+  if (!onAsking) return askToRun;
+  return async (message) => {
+    onAsking(true);
+    const ok = await askToRun(message);
+    if (ok) onAsking(false);
+    return ok;
+  };
+}
+
+/**
  * #2342 — a seek on the ruler re-evaluates the file and, when stopped, starts
  * it (LiveCodingRuntime `seekTo` → `play`). So it asks first, as Play does; a
  * file that may run seeks at once, with no await in between.
@@ -349,12 +364,16 @@ export interface BounceHandle {
    * `onCaptureStart` is never called: there is no capture to wait for.
    * `onRenderProgress` hears the seconds rendered so far (#1650); the live
    * path never calls it, because its progress is its own clock.
+   *
+   * #2343 — `onAsking(true)` when the file came from the gallery and the trust
+   * question goes up first; `onAsking(false)` once it is answered yes.
    */
   bounce(
     seconds: number,
     signal?: AbortSignal,
     onCaptureStart?: () => void,
     onRenderProgress?: (renderedSeconds: number) => void,
+    onAsking?: (asking: boolean) => void,
   ): Promise<BounceResult | null>;
   /**
    * How long the active document is, and at what tempo — so the bounce modal can
@@ -379,11 +398,13 @@ export interface BounceHandle {
    * document order, each named as the mixer names the track. Resolves to null
    * when the active runtime cannot, or when `signal` aborted, before or during
    * the set. A silent or failed stem comes back without a blob.
+   * `onAsking` as for `bounce` (#2343).
    */
   bounceStems(
     seconds: number,
     signal?: AbortSignal,
     onRenderProgress?: (renderedSeconds: number, totalSeconds: number) => void,
+    onAsking?: (asking: boolean) => void,
   ): Promise<BouncedStem[] | null>;
 }
 
@@ -2108,7 +2129,7 @@ export default function StrudelEditorClient({
         if (!rt || !rendersOffline(rt) || !rt.canBounceStems()) return 0;
         return rt.stemTrackCount();
       },
-      bounceStems: async (seconds, signal, onRenderProgress) => {
+      bounceStems: async (seconds, signal, onRenderProgress, onAsking) => {
         const rt = activeRuntime();
         // Through `rendersOffline` for the same reason the mix path is: the
         // capability question and the executor are two readings of one fact,
@@ -2116,16 +2137,16 @@ export default function StrudelEditorClient({
         if (!rt || !rendersOffline(rt) || !rt.canBounceStems()) return null;
         // #2342 — the export evaluates the file: ask first, as Play does. Cancel
         // rejects with GalleryRunDeclined before anything is evaluated or made.
-        const out = await runAfterAsking(storeProjectId(), rt.fileId, askToRun, () =>
+        const out = await runAfterAsking(storeProjectId(), rt.fileId, askingFor(onAsking), () =>
           rt.bounceStemsOffline(seconds, signal, onRenderProgress),
         );
         return out ? out.stems : null;
       },
-      bounce: async (seconds, signal, onCaptureStart, onRenderProgress) => {
+      bounce: async (seconds, signal, onCaptureStart, onRenderProgress, onAsking) => {
         const rt = activeRuntime();
         if (!rt) return null;
         // #2342 — both paths below evaluate the file: ask first, as Play does.
-        return runAfterAsking(storeProjectId(), rt.fileId, askToRun, () =>
+        return runAfterAsking(storeProjectId(), rt.fileId, askingFor(onAsking), () =>
           bounceAsked(rt, seconds, signal, onCaptureStart, onRenderProgress),
         );
       },

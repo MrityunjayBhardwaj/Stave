@@ -194,7 +194,10 @@ export function GalleryPlayer() {
     };
     window.addEventListener("message", onMessage);
     // Errors the entry's code throws later (a callback, a timer) are its errors too.
-    const onError = (ev: ErrorEvent) => reportError(ev.message || "The code threw an error.");
+    // The thrown error's own message where the browser gives it (#2343: it does
+    // now, the app's scripts being CORS-loaded), not "Uncaught Error: …".
+    const onError = (ev: ErrorEvent) =>
+      reportError((ev.error instanceof Error && ev.error.message) || ev.message || "The code threw an error.");
     const onRejection = (ev: PromiseRejectionEvent) =>
       reportError(ev.reason instanceof Error ? ev.reason.message : String(ev.reason));
     window.addEventListener("error", onError);
