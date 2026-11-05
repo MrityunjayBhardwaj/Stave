@@ -34963,7 +34963,8 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     editBtn.onclick = (e) => {
       e.stopPropagation();
       const vizId = floatingBar?.getAttribute("data-viz-id");
-      if (vizId && actions.onEdit) actions.onEdit(vizId);
+      const presetId = floatingBar?.getAttribute("data-preset-id") || null;
+      if (vizId && actions.onEdit) actions.onEdit(vizId, presetId);
     };
     cropBtn.onclick = (e) => {
       e.stopPropagation();
@@ -56187,6 +56188,7 @@ exports.nextTakeName = nextTakeName;
 exports.normalizeChord = normalizeChord;
 exports.normalizeEdits = normalizeEdits;
 exports.normalizeStrudelHap = normalizeStrudelHap;
+exports.normalizeVizName = normalizeVizName;
 exports.noteToMidi = noteToMidi;
 exports.notifyDrumKitChanged = notifyDrumKitChanged;
 exports.notifySoundCatalogChanged = notifySoundCatalogChanged;

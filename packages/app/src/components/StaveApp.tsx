@@ -152,6 +152,11 @@ import {
 } from "@stave/editor";
 import { removedButFailedMessage, removedMessage } from "../assetLibrary/freeSpaceMessages";
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
+import {
+  findVizFileByName,
+  presetIdForVizFile,
+  resolveVizFile,
+} from "../visualizers/vizFileLookup";
 import { mountVizPreview } from "@stave/editor";
 import { getFile } from "@stave/editor";
 import { usePhone, isPhone, usePhoneLayout, startVisibleArea } from "@stave/editor";
@@ -2254,23 +2259,19 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                       : null;
                   setTabContextMenu({ tabId: tab.id, fileId, x, y });
                 }}
-                onEditViz={(vizId) => {
-                  // Resolve viz name to a workspace file — fuzzy match
-                  // (strip spaces, lowercase) so "pianoroll" matches "Piano Roll.p5".
-                  const norm = (s: string) => s.toLowerCase().replace(/[\s\-_]/g, "");
-                  const target = norm(vizId);
-                  const allFiles = listWorkspaceFiles();
-                  for (const f of allFiles) {
-                    const baseName = f.path.replace(/\.[^.]+$/, "");
-                    const lastSeg = baseName.split("/").pop() ?? "";
-                    if (norm(lastSeg) === target || norm(baseName) === target) {
-                      handleOpenFile(f.id);
-                      setActivePanelId("explorer");
-                      setTimeout(() => fileTreeRef.current?.revealFile(f.id), 50);
-                      return;
-                    }
+                onEditViz={(vizId, presetId) => {
+                  // Open the viz file the zone is DRAWING: the file behind its
+                  // resolved preset, else the one the renderer registers under
+                  // this name. Viz files only — a pattern sharing the visual's
+                  // name (fold.strudel beside Fold.p5) is never a match (#2322).
+                  const f = resolveVizFile(listWorkspaceFiles(), vizId, presetId);
+                  if (!f) {
+                    showToast(`Viz file "${vizId}" not found in workspace`, "error");
+                    return;
                   }
-                  showToast(`Viz file "${vizId}" not found in workspace`, "error");
+                  handleOpenFile(f.id);
+                  setActivePanelId("explorer");
+                  setTimeout(() => fileTreeRef.current?.revealFile(f.id), 50);
                 }}
                 onCropViz={(vizId, presetId, trackKey) => {
                   const fileId = activeFileId ?? listWorkspaceFiles().find(f => f.language === 'strudel' || f.language === 'sonicpi')?.id ?? null;
@@ -2279,32 +2280,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                     return;
                   }
                   // If presetId is null (async preset lookup hasn't completed),
-                  // resolve by searching workspace files for a matching viz name.
-                  // A base name can exist for both renderers (scope.p5 +
-                  // scope.hydra), so prefer the renderer the vizId implies
-                  // (bare = p5, ":hydra" suffix = hydra) — a name-only match
-                  // would point the crop at the wrong viz.
+                  // take the preset of the viz file the renderer registers
+                  // under this name — the same lookup ✎ uses, so a base name
+                  // shared across renderers (scope.p5 + scope.hydra) or with a
+                  // pattern (fold.strudel + Fold.p5) crops the drawn viz.
                   let resolvedPresetId = presetId;
                   if (!resolvedPresetId) {
-                    const norm = (s: string) => s.toLowerCase().replace(/[\s\-_:]/g, "");
-                    // vizId may carry a renderer qualifier (`name:hydra` /
-                    // `name:glsl`) mirroring registerAllVizFiles; a bare name
-                    // defaults to the p5 renderer (p5 wins on basename collision).
-                    const qual = /:(hydra|glsl)$/i.exec(vizId)?.[1]?.toLowerCase();
-                    const wantLang = qual === "hydra" ? "hydra" : qual === "glsl" ? "glsl" : "p5js";
-                    const target = norm(vizId.replace(/:(hydra|glsl)$/i, ""));
-                    const allFiles = listWorkspaceFiles();
-                    const matches = allFiles.filter(f => {
-                      if (!isVizLanguage(f.language)) return false;
-                      const base = f.path.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
-                      return norm(base) === target;
-                    });
-                    const vizFile =
-                      matches.find(f => f.language === wantLang) ??
-                      matches[0];
-                    if (vizFile?.meta?.presetId) {
-                      resolvedPresetId = vizFile.meta.presetId as string;
-                    }
+                    const vizFile = findVizFileByName(listWorkspaceFiles(), vizId);
+                    if (vizFile) resolvedPresetId = presetIdForVizFile(vizFile);
                   }
                   if (!resolvedPresetId) {
                     showToast(`No preset found for "${vizId}" — save it first`, "error");

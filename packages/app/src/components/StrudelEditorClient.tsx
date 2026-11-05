@@ -14,6 +14,11 @@ import {
 import { PopoutPreviewController } from "./PopoutPreviewController";
 import { registerVizWorker } from "../visualizers/registerVizWorker";
 import {
+  p5VizBasenames,
+  presetIdForVizFile,
+  qualifiedVizName,
+} from "../visualizers/vizFileLookup";
+import {
   WorkspaceShell,
   getResolvedTheme,
   onThemeChange,
@@ -45,7 +50,6 @@ import {
   VizPresetStore,
   bundledPresetId,
   flushToPreset,
-  getPresetIdForFile,
   isVizLanguage,
   rendererForLanguage,
   compilePreset,
@@ -488,7 +492,7 @@ interface StrudelEditorClientProps {
   } | null) => void;
   onTabContextMenu?: (tab: WorkspaceTab, x: number, y: number) => void;
   /** Navigate to a viz file when the user clicks the edit icon on an inline viz. */
-  onEditViz?: (vizId: string) => void;
+  onEditViz?: (vizId: string, presetId: string | null) => void;
   /** Open crop popup when the user clicks the crop icon on an inline viz. */
   onCropViz?: (vizId: string, presetId: string | null, trackKey: string) => void;
   /** Pass-through of the shell's backdrop change callback — fires on any
@@ -852,22 +856,17 @@ export default function StrudelEditorClient({
     // resolves to the p5 preset instead of last-write-wins (#181). This
     // also keeps inline `.viz("scope")` in lockstep with the `.scope()`
     // backdrop, which always prefers the p5 file.
-    const baseOf = (p: string) =>
-      p.split("/").pop()!.replace(/\.[^.]+$/, "");
-    const p5Basenames = new Set(
-      vizFiles.filter((f) => f.language === "p5js").map((f) => baseOf(f.path)),
-    );
+    //
+    // The preset id and the qualified name come from vizFileLookup — the
+    // same rules ✎ / crop use to find the file a zone draws (#2322).
+    const p5Basenames = p5VizBasenames(vizFiles);
     for (const f of vizFiles) {
       // #2344 — a gallery viz file nobody has agreed to run is not registered:
       // otherwise `.viz("<its name>")` in your own code would mount it unasked.
       // It registers once trusted (the listener below re-runs this).
       // Quiet check: it also skips a file whose import is still landing.
       if (!mayEvaluateQuietly(getActiveProjectId() ?? projectIdRef.current, f.id)) continue;
-      let presetId = getPresetIdForFile(f);
-      if (!presetId) {
-        const baseName = f.path.replace(/\.[^.]+$/, "");
-        presetId = `user_${baseName.replace(/[^a-zA-Z0-9]/g, "_")}`;
-      }
+      const presetId = presetIdForVizFile(f);
       // Persist live code to the preset store — but NEVER while viewing
       // (the override is read-only; persisting historical code would corrupt
       // the live preset, the viz analogue of writing Y.Text).
@@ -889,14 +888,10 @@ export default function StrudelEditorClient({
       const effective = bundledNative
         ? { ...effective0, nativeSize: bundledNative }
         : effective0;
-      const base = baseOf(f.path);
       // A non-p5 file sharing a basename with a p5 file registers under a
       // renderer-qualified name (`<name>:hydra` / `<name>:glsl`) so bare
       // `.viz("<name>")` deterministically resolves to the p5 preset (#181).
-      const name =
-        f.language !== "p5js" && p5Basenames.has(base)
-          ? `${base}:${f.language === "hydra" ? "hydra" : "glsl"}`
-          : preset.name;
+      const name = qualifiedVizName(f, p5Basenames) ?? preset.name;
       registerPresetAsNamedViz(effective, name);
     }
   }, []);
@@ -1792,11 +1787,7 @@ export default function StrudelEditorClient({
 
       // Use existing presetId, or auto-generate one for manually created
       // viz files so they become available to `.viz("name")`.
-      let presetId = getPresetIdForFile(file);
-      if (!presetId) {
-        const baseName = file.path.replace(/\.[^.]+$/, "");
-        presetId = `user_${baseName.replace(/[^a-zA-Z0-9]/g, "_")}`;
-      }
+      const presetId = presetIdForVizFile(file);
 
       flushToPreset(file.id, presetId)
         .then(() => VizPresetStore.get(presetId))
