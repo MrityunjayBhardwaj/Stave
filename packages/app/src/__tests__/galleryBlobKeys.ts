@@ -7,7 +7,7 @@ import path from "node:path";
 // to Blob (the old mirror of entries, private records, author indexes, removed
 // markers, reports and profiles).
 
-/** Every key under `dir`, sorted. Dev's PGlite folder (`pglite/`) is the database, not Blob: skipped. */
+/** Every key under `dir`, sorted. Dev's PGlite database (`pglite/` and its `pglite.lock`, db/client.ts) is not Blob: skipped. */
 export async function blobKeys(dir: string): Promise<string[]> {
   const out: string[] = [];
   async function walk(abs: string, rel: string): Promise<void> {
@@ -22,7 +22,7 @@ export async function blobKeys(dir: string): Promise<string[]> {
       const key = rel ? `${rel}/${item.name}` : item.name;
       if (item.isDirectory()) {
         if (key !== "pglite") await walk(path.join(abs, item.name), key);
-      } else out.push(key);
+      } else if (key !== "pglite.lock") out.push(key);
     }
   }
   await walk(dir, "");
