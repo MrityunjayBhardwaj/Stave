@@ -1,4 +1,4 @@
-import { StrudelEditorDynamic } from "../components/EditorWrapper";
+import { StrudelEditorDynamic } from "../../components/EditorWrapper";
 
 export default function Home() {
   return (

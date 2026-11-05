@@ -80,6 +80,10 @@ export default function RootLayout({
                 color: var(--text-secondary); font-size: 13px; margin-top: 12px;
                 animation: pulse 2s ease-in-out infinite;
               }
+              #stave-preloader .privacy {
+                position: absolute; bottom: 16px;
+                color: var(--text-tertiary); font-size: 12px;
+              }
               #stave-preloader .spinner {
                 margin-top: 24px; width: 36px; height: 36px;
                 border: 3px solid var(--border-subtle);
@@ -100,6 +104,8 @@ export default function RootLayout({
           <h1>Stave</h1>
           <div className="status" id="stave-preloader-status">Starting up…</div>
           <div className="spinner" />
+          {/* #2402 — in the server's HTML, so the home page links to the policy without running any script. */}
+          <a className="privacy" href="/privacy">Privacy</a>
         </div>
         {children}
         {/* Page views for the project's Vercel Analytics tab (#2055): no cookies,
