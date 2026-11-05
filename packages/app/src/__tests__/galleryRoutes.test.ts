@@ -293,6 +293,76 @@ describe("publish writes the files before the row (#2352)", () => {
   });
 });
 
+describe("#2359 a bug inside a transaction is a 500; a database that can't be reached is a 503", () => {
+  type Db = Awaited<ReturnType<typeof freshTestDb>>;
+  /** `db`, except its transactions run on `txDb` (queries outside one still work). */
+  const transactionsOn = (db: Db, txDb: { transaction: Db["transaction"] }): Db =>
+    new Proxy(db, {
+      get: (t, p) => (p === "transaction" ? txDb.transaction.bind(txDb) : Reflect.get(t, p)),
+    });
+  /** `db`, except every insert inside a transaction throws: a bug in our own code. */
+  const buggyInserts = (db: Db, bug: Error): Db =>
+    transactionsOn(db, {
+      transaction: ((fn: (tx: unknown) => Promise<unknown>) =>
+        db.transaction((tx) =>
+          fn(new Proxy(tx, { get: (t, p) => (p === "insert" ? () => { throw bug; } : Reflect.get(t, p)) })),
+        )) as Db["transaction"],
+    });
+
+  /** A fresh database where Ada's account already exists (so publishing reaches its own transaction). */
+  async function withAccount(): Promise<Db> {
+    const db = await freshTestDb();
+    useDbForTests(db);
+    await published({ title: "first" });
+    return db;
+  }
+
+  it("a plain Error inside publish's transaction is that error (Next answers 500), and nothing is listed", async () => {
+    const db = await withAccount();
+    try {
+      const bug = new Error("a bug in our code");
+      useDbForTests(buggyInserts(db, bug));
+      await expect(publish(request({ title: "buggy" }))).rejects.toBe(bug);
+      useDbForTests(db);
+      expect((await list()).entries.map((e) => e.title)).toEqual(["first"]);
+    } finally {
+      useDbForTests(undefined);
+    }
+  });
+
+  it("a closed PGlite at the transaction answers 503 with the plain message", async () => {
+    const db = await withAccount();
+    const { PGlite } = await import("@electric-sql/pglite");
+    const { dbOverPglite } = await import("../db/client");
+    const client = await PGlite.create();
+    await client.close();
+    try {
+      useDbForTests(transactionsOn(db, await dbOverPglite(client)));
+      const res = await publish(request({ title: "down" }));
+      expect(res.status).toBe(503);
+      expect(res.headers.get("retry-after")).toBe("60");
+      expect(await res.json()).toEqual({ error: "the gallery is having trouble right now; try again in a minute" });
+    } finally {
+      useDbForTests(undefined);
+    }
+  }, 60_000);
+
+  it("Neon on a refused port at the transaction answers 503", async () => {
+    const db = await withAccount();
+    const { Pool } = await import("@neondatabase/serverless");
+    const { drizzle } = await import("drizzle-orm/neon-serverless");
+    const pool = new Pool({ connectionString: "postgres://u:p@127.0.0.1:1/db", connectionTimeoutMillis: 5_000 });
+    pool.on("error", () => {});
+    try {
+      useDbForTests(transactionsOn(db, drizzle({ client: pool }) as unknown as Db));
+      expect((await publish(request({ title: "down" }))).status).toBe(503);
+    } finally {
+      useDbForTests(undefined);
+      await pool.end().catch(() => {});
+    }
+  }, 30_000);
+});
+
 describe("#2346 the listing's cache key ignores the query string", () => {
   it("answers any query string with a redirect to the bare path, and runs no query for it", async () => {
     const db = await freshTestDb();
