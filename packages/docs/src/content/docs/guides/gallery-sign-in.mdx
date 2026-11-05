@@ -23,14 +23,38 @@ Each provider is offered only when its settings are present. Set up GitHub, Goog
 | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET` | The GitHub OAuth app's Client ID and a client secret. |
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | The Google OAuth client's ID and secret. |
 | `AUTH_URL` | Only off Vercel: your site's public origin, e.g. `https://stave.example.com`. (Or set `AUTH_TRUST_HOST=true` if your proxy passes the visitor's `Host` header through unchanged.) |
+| `STAVE_TRUSTED_PROXY_HOPS` or `STAVE_CLIENT_IP_HEADER` | Optional, only off Vercel, only behind your own proxy: how to tell signed-out visitors apart for the hourly limits. See [Telling visitors apart behind your own proxy](#telling-visitors-apart-behind-your-own-proxy). |
 
 Sessions live in that signed cookie, so there is no session database to run.
 
 <Aside>
 Gallery changes (publish, delete, edits, reports, links) are accepted only from your site's own pages. Stave recognises its own pages by the `Host` header and by `AUTH_URL`; it never trusts `X-Forwarded-Host`, which any client can send. If your proxy rewrites `Host` to an internal name, set `AUTH_URL`.
 
-Off Vercel, Stave can't tell visitors' addresses apart (the usual `X-Forwarded-For` / `X-Real-IP` headers could be made up by anyone), so the hourly limits on signed-out reports and private links are shared by all signed-out visitors. Signed-in limits are per account and unaffected.
+Off Vercel, Stave can't tell visitors' addresses apart by default (the usual `X-Forwarded-For` / `X-Real-IP` headers could be made up by anyone), so the hourly limits on signed-out reports and private links are shared by all signed-out visitors. Signed-in limits are per account and unaffected. If you run Stave behind your own proxy, you can tell Stave which header to believe: see [Telling visitors apart behind your own proxy](#telling-visitors-apart-behind-your-own-proxy).
 </Aside>
+
+## Telling visitors apart behind your own proxy
+
+On Vercel there's nothing to do: the platform writes the visitor's address itself, and the settings below are ignored there.
+
+Anywhere else, set **one** of these, and only if it matches how your proxy really behaves:
+
+| Variable | Use it when |
+| --- | --- |
+| `STAVE_TRUSTED_PROXY_HOPS=<n>` | `n` proxies that you run sit in front of Stave, and each one **adds** the address it saw to the end of `X-Forwarded-For` (for nginx: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`). One nginx or Caddy in front: `1`. A CDN in front of your nginx: `2`. |
+| `STAVE_CLIENT_IP_HEADER=<header>` | A proxy that you run **replaces** one header with the visitor's address on every request, whatever the visitor sent. For example `x-real-ip` with nginx's `proxy_set_header X-Real-IP $remote_addr;`, or `cf-connecting-ip` behind Cloudflare. |
+
+How Stave reads them:
+
+- **With the hop count**, Stave takes the `n`-th address counted from the **right** of `X-Forwarded-For`. A visitor can put anything they like at the left of that header, and your proxies append after it, so the right-hand end is the only part a visitor can't write. Anything to the left of the `n`-th address is ignored. This is the "trusted proxy count" rule in MDN's [X-Forwarded-For security notes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address), and the same as Express's `trust proxy` set to a number. If the header has fewer than `n` addresses, the request goes into the shared bucket.
+- **With a header name**, Stave reads that one header. If it holds more than one address (a comma), the request goes into the shared bucket, because a header your proxy replaced has exactly one. `X-Forwarded-For` can't be named here; use the hop count for it.
+- A value Stave can't read (a hop count that isn't a whole number from 1 to 20, something that isn't a header name, or both variables set) is logged once (the first time Stave needs a visitor's address), and Stave keeps the shared bucket. A typo never turns into believing whatever the visitor sent.
+
+<Aside type="caution">
+These settings are only safe if visitors **can't reach Stave without going through your proxy**. If Stave's own port is open to the internet, a visitor can skip the proxy and write these headers themselves. Get the hop count right, too: one too many and Stave reads an address the visitor wrote; one too few and every visitor looks like your proxy, which is the shared bucket again.
+</Aside>
+
+The same address is also passed to the "are you human" check when you've set up Turnstile.
 
 ## The callback URLs
 
