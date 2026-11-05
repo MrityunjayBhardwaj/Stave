@@ -171,14 +171,10 @@ function startingName(name: string, claim: StaveAccountClaim): string {
  * The author linked to the session's account, made on first use unless
  * `create: false`. `req` is taken so callers never change if reading the
  * session moves onto the request; Auth.js reads it from the request scope today.
- *
- * `store` is ignored: profiles no longer live in Blob (#2352). It is still
- * accepted so a caller that passes it (DELETE /api/gallery/[id], until its own
- * move) keeps compiling; drop it once no caller does.
  */
 export async function sessionAuthor(
   _req: Request,
-  opts: { create?: boolean; store?: unknown } = {},
+  opts: { create?: boolean } = {},
 ): Promise<SessionAuthor | null> {
   const signedIn = await sessionClaim();
   if (!signedIn) return null;

@@ -34,7 +34,6 @@ import {
   waitPhrase,
 } from "../app/api/gallery/rateLimit";
 import { requireTurnstile, SITEVERIFY_URL } from "../app/api/gallery/turnstile";
-import { galleryStore } from "../app/api/gallery/store";
 import { dbOverPglite, getDb, useDbForTests, type Db } from "../db/client";
 import { DATABASE_UNAVAILABLE_MESSAGE } from "../db/errors";
 import { rateLimitRowKey } from "../db/repo/rateLimits";
@@ -110,6 +109,11 @@ const report = (id: string, headers: Record<string, string> = {}) =>
 const myAuthorId = async () => ((await (await meRoute(new Request("http://x/api/gallery/me"))).json()) as { user: { authorId: string } }).user.authorId;
 
 /** Call `fn` `times` times and expect every answer to be `status`. */
+/** #2363 — how many entries were published (rows, removed or not): the record is in Postgres, never Blob. */
+async function entryCount(db: Db): Promise<number> {
+  return rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from entries`))[0].n;
+}
+
 async function expectAll(times: number, fn: () => Promise<Response>, status: number) {
   for (let i = 0; i < times; i++) {
     const res = await fn();
@@ -416,7 +420,8 @@ describe("when the database is down (#2351)", () => {
 
   it("a limited route answers 503 with the plain message and Retry-After, writes nothing, and works again once it is back", async () => {
     await myAuthorId(); // the account exists; only the limiter's store goes away
-    const listed = async () => (await galleryStore()!.list("gallery/entries/")).length;
+    const live = (await getDb())!; // counted here even while the routes see the dead one
+    const listed = () => entryCount(live);
     const before = await listed();
     useDbForTests(dead);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -454,7 +459,8 @@ describe("Turnstile", () => {
   it("with the always-fail secret: 403, and nothing is published", async () => {
     vi.stubEnv("TURNSTILE_SECRET_KEY", FAIL_SECRET);
     verify.mockImplementation(async () => answer({ success: false, "error-codes": ["invalid-input-response"] }));
-    const listed = async () => (await galleryStore()!.list("gallery/entries/")).length;
+    const live = (await getDb())!;
+    const listed = () => entryCount(live);
     const before = await listed();
     const res = await publish({ [TURNSTILE_HEADER]: DUMMY_TOKEN });
     expect(res.status).toBe(403);

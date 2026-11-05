@@ -22,7 +22,7 @@ import { POST as collectionPost } from "../app/api/gallery/collections/route";
 import { POST as sharePost } from "../app/api/share/route";
 import { sealShare } from "../shareCrypto";
 import { accountHashOf } from "../app/api/gallery/session";
-import { galleryPaths, galleryStore } from "../app/api/gallery/store";
+import { blobKeys, recordKeys } from "./galleryBlobKeys";
 import { dbOverPglite, getDb, useDbForTests, type Db } from "../db/client";
 import { DATABASE_UNAVAILABLE_MESSAGE } from "../db/errors";
 import { rowsOf } from "../db/repo/tx";
@@ -109,9 +109,8 @@ describe("#2349 a new account's first requests, all at once", () => {
       await db.execute(sql`select count(*)::int as n from authors where email = 'ada@example.test' and id = ${[...authorIds][0]!}`),
     );
     expect(authors).toBe(1);
-    // #2352 — the profile lives only in the database: no Blob copy is written any more.
-    expect(await galleryStore()!.get(galleryPaths.author([...authorIds][0]!))).toBeNull();
-    expect(await galleryStore()!.get(galleryPaths.authorPrivate([...authorIds][0]!))).toBeNull();
+    // #2352 / #2363 — the profile lives only in the database: nothing but entry files is in Blob.
+    expect(recordKeys(await blobKeys(dir))).toEqual([]);
   });
 
   it("30 parallel first requests of mixed kinds (me, collection, My shares, a signed-in link): no errors, one profile", async () => {

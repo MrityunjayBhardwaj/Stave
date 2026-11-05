@@ -9,7 +9,6 @@ import { adminAction } from "../../admin";
 import { foreignEntry, servedCollection } from "../../authors";
 import { limitAuthor } from "../../rateLimit";
 import { mayManageAuthor } from "../../session";
-import { galleryStore } from "../../store";
 import { checkCollectionWrite, MAX_COLLECTION_BODY_BYTES, readJsonBody } from "../../validate";
 import { assertSameOrigin } from "../../origin";
 import { withDatabase } from "../../../../../db/errors";
@@ -87,10 +86,7 @@ async function handleDELETE(req: Request, { params }: Ctx): Promise<Response> {
   const stored = await getCollection(db, id);
   if (!stored) return notFound();
   if (!(await mayManageAuthor(req, stored.authorId))) {
-    // The admin log is still written to the gallery store (admin.ts).
-    const store = galleryStore();
-    if (!store) return forbidden();
-    const admin = await adminAction(req, store, { action: "take-down-collection", target: id }, forbidden);
+    const admin = await adminAction(req, { action: "take-down-collection", target: id }, forbidden);
     if (admin instanceof Response) return admin;
   } else {
     const limited = await limitAuthor("edit", stored.authorId); // #2330 — the owner's own edits only
