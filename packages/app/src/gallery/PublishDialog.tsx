@@ -382,6 +382,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
             <TurnstileWidget
               key={turnstileRound}
               siteKey={siteKey}
+              action="publish"
               onToken={setTurnstileToken}
               testId="gallery-publish-turnstile"
             />

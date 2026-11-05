@@ -399,6 +399,12 @@ export const AUTHOR_KEY_HEADER = "x-stave-author-key";
  * only when TURNSTILE_SECRET_KEY is set.
  */
 export const TURNSTILE_HEADER = "cf-turnstile-response";
+/**
+ * #2347 — what each Turnstile widget says it is for (its `action`). The server
+ * checks the token was made for the same action, so a token solved in the
+ * report dialog can't be spent on a publish.
+ */
+export type TurnstileAction = "publish" | "report";
 export const MAX_BIO_CHARS = 10_000;
 export const MAX_COLLECTION_TITLE_CHARS = 80;
 export const MAX_COLLECTION_DESCRIPTION_CHARS = 1_000;
