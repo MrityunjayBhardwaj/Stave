@@ -12,7 +12,8 @@
 #
 # Not here yet, on purpose:
 # - `tsc --noEmit` over the editor's test files: 63 errors on main, all in tests (#2124).
-#   The app's tests already typecheck: `next build` checks them.
+#   The app's tests do typecheck, in their own step below: `next build` checks
+#   only the shipped code (tsconfig.build.json, #2381).
 # - The browser suite: 279 Playwright spec files (about 1,000 tests) needing a dev
 #   server and real audio; it stays a manual gate for now. One file is the
 #   exception: tests/gallery-sandbox.spec.ts runs here, in its own job on a
@@ -62,6 +63,11 @@ jobs:
 
       - name: Build
         run: pnpm turbo run build --filter=@stave/app
+
+      # The build checks only the shipped code (tsconfig.build.json); this checks
+      # everything in tsconfig.json, tests included, from a clean install (#2381).
+      - name: Type-check the app, tests included
+        run: pnpm --filter @stave/app exec tsc --noEmit -p . --incremental false
 
       - name: Editor unit tests
         run: pnpm --filter @stave/editor test
