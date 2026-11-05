@@ -18,6 +18,8 @@ type EvalBehavior =
   | 'one-track'    // single anonymous pattern → "$0"
   | 'viz-backdrop-flag'  // `.viz('name', { backdrop: true })` → backdrop slot (#364)
   | 'viz-inline-no-flag' // `.viz('name')` no flag → inline zone (#364 control)
+  | 'viz-master-all'     // `all(x => x.viz('name', {...}))` no flag → backdrop (#2382)
+  | 'viz-master-all-then-track' // master all() viz + a track `.viz()` → both kept apart (#2382)
   | 'inert-draw'         // `.animate()` twice + `.onPaint()` → one warning each (#2191)
 
 let evalBehavior: EvalBehavior = 'two-anon'
@@ -264,6 +266,19 @@ vi.mock('@strudel/webaudio', () => {
           const p = new MockPattern()
           ;(p as any).viz('spectrum')
           ;(p as any).p('$')
+        } else if (evalBehavior === 'viz-master-all' || evalBehavior === 'viz-master-all-then-track') {
+          // #2382 — Strudel's order (`repl.mjs`): injectPatternMethods sets `.p`
+          // (above), THEN evalScope assigns the repl's own `all` onto globalThis;
+          // the user code runs (tracks `.p()`, `all(fn)` only REGISTERS fn); and
+          // only after that are the registered transforms applied to the stack.
+          const transforms: Array<(pat: unknown) => unknown> = []
+          ;(globalThis as any).all = (fn: (pat: unknown) => unknown) => { transforms.push(fn); return MOCK_SILENCE }
+          const track = new MockPattern()
+          if (evalBehavior === 'viz-master-all-then-track') (track as any).viz('scope')
+          ;(track as any).p('$')
+          ;(globalThis as any).all((x: any) => x.viz('Fold', { theme: 'transparent', emit: true }))
+          let stacked: unknown = new MockPattern()
+          for (const t of transforms) stacked = t(stacked)
         } else if (evalBehavior === 'inert-draw') {
           const p = new MockPattern()
           inertReturns = {
@@ -726,6 +741,37 @@ describe('StrudelEngine .viz() backdrop flag (#364)', () => {
     // Inline request registered for the track; no backdrop promotion.
     expect(inlineViz?.vizRequests.get('$0')?.vizId).toBe('spectrum')
     expect(inlineViz?.backdropRequest).toBeUndefined()
+  })
+
+  // #2382 — a `.viz()` inside a master `all()` belongs to no track: it IS the
+  // backdrop, flag or not, and it carries its options with it.
+  it('`all(x => x.viz(name, {...}))` with no flag fills the backdrop, options included', async () => {
+    evalBehavior = 'viz-master-all'
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('$: note("c")\nall(x => x.viz("Fold"))')
+
+    const inlineViz = engine.components.inlineViz
+    expect(inlineViz?.backdropRequest).toEqual({
+      vizId: 'Fold',
+      options: { theme: 'transparent', emit: true },
+    })
+    expect(inlineViz?.vizRequests.size ?? 0).toBe(0)
+  })
+
+  it('a track `.viz()` stays inline beside a master all() viz, and `all` is put back', async () => {
+    evalBehavior = 'viz-master-all-then-track'
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('$: note("c")\nall(x => x.viz("Fold"))')
+
+    const inlineViz = engine.components.inlineViz
+    expect(inlineViz?.vizRequests.get('$0')?.vizId).toBe('scope')
+    expect(inlineViz?.backdropRequest?.vizId).toBe('Fold')
+    // the trap is gone after evaluate: a plain value again, the repl's own function
+    const desc = Object.getOwnPropertyDescriptor(globalThis, 'all')
+    expect(desc?.get).toBeUndefined()
+    expect(typeof desc?.value).toBe('function')
   })
 })
 

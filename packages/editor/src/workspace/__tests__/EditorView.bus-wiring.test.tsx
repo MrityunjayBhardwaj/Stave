@@ -240,6 +240,31 @@ describe('EditorView bus wiring (Task 07)', () => {
     expect(addInlineViewZones).toHaveBeenCalledTimes(2)
   })
 
+  // #2383 — the last `.viz()` deleted and the code re-evaluated: the runtime
+  // publishes a payload with NO viz requests. That is the document's current
+  // answer, so the old zones go. (They used to stay: neither branch matched.)
+  it('removes the zones when a new evaluation asks for no inline viz', () => {
+    createWorkspaceFile('f1', 'f1.strudel', '// code', 'strudel')
+    render(<EditorView fileId="f1" />)
+
+    act(() => {
+      workspaceAudioBus.publish('f1', {
+        inlineViz: { vizRequests: new Map([['$', { vizId: 'pianoroll', afterLine: 1 }]]) } as any,
+      })
+    })
+    expect(addInlineViewZones).toHaveBeenCalledTimes(1)
+    mockZoneHandle.cleanup.mockClear()
+    mockZoneHandle.pause.mockClear()
+
+    act(() => {
+      workspaceAudioBus.publish('f1', { inlineViz: { vizRequests: new Map() } as any })
+    })
+
+    expect(mockZoneHandle.cleanup).toHaveBeenCalledTimes(1)
+    expect(addInlineViewZones).toHaveBeenCalledTimes(1) // nothing re-added
+    expect(mockZoneHandle.pause).not.toHaveBeenCalled()
+  })
+
   it('cleans up zones on unmount', () => {
     createWorkspaceFile('f1', 'f1.strudel', '// code', 'strudel')
     const { unmount } = render(<EditorView fileId="f1" />)

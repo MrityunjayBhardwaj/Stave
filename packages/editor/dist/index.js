@@ -7687,9 +7687,7 @@ function findMuteLine(doc) {
 }
 __name(findMuteLine, "findMuteLine");
 function findVizBackdropCall(m) {
-  return m.chain.find(
-    (c) => c.name === "viz" && c.args.some((a) => /\bbackdrop\s*:\s*true\b/.test(a.raw))
-  );
+  return m.chain.find((c) => c.name === "viz");
 }
 __name(findVizBackdropCall, "findVizBackdropCall");
 function vizNameArg(c) {
@@ -17739,6 +17737,7 @@ var _StrudelEngine = class _StrudelEngine {
     const capturedVizOptions = /* @__PURE__ */ new Map();
     let capturedBackdropViz = null;
     let capturedBackdropVizOptions = null;
+    let masterTransformDepth = 0;
     let pendingChainViz = null;
     let pendingChainVizOptions = null;
     let anonIndex = 0;
@@ -17762,6 +17761,9 @@ var _StrudelEngine = class _StrudelEngine {
     const { Pattern: Pattern2, silence } = await import('@strudel/core');
     const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "p");
     const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "viz");
+    const savedAllDescriptor = Object.getOwnPropertyDescriptor(globalThis, "all");
+    let allTrapInstalled = false;
+    let strudelAll = savedAllDescriptor?.value;
     const savedLegacyDescriptors = /* @__PURE__ */ new Map();
     const noteForApp = /* @__PURE__ */ __name((notice) => {
       this.evalNotices.notices.push(notice);
@@ -17779,6 +17781,31 @@ var _StrudelEngine = class _StrudelEngine {
       configurable: true,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       set(strudelFn) {
+        if (!allTrapInstalled) {
+          allTrapInstalled = true;
+          Object.defineProperty(globalThis, "all", {
+            configurable: true,
+            enumerable: true,
+            get() {
+              if (typeof strudelAll !== "function") return strudelAll;
+              const register = strudelAll;
+              return (transform) => {
+                if (typeof transform !== "function") return register(transform);
+                return register(function(...args) {
+                  masterTransformDepth++;
+                  try {
+                    return transform.apply(this, args);
+                  } finally {
+                    masterTransformDepth--;
+                  }
+                });
+              };
+            },
+            set(v) {
+              strudelAll = v;
+            }
+          });
+        }
         const strudelViz = Pattern2.prototype.viz;
         Object.defineProperty(Pattern2.prototype, "viz", {
           configurable: true,
@@ -17786,7 +17813,7 @@ var _StrudelEngine = class _StrudelEngine {
           value: /* @__PURE__ */ __name(function(vizName, opts) {
             const resolvedName = extractVizName(vizName);
             const optsObj = opts && typeof opts === "object" ? opts : null;
-            if (resolvedName && optsObj && optsObj.backdrop === true) {
+            if (resolvedName && (optsObj && optsObj.backdrop === true || masterTransformDepth > 0)) {
               capturedBackdropViz = resolvedName;
               capturedBackdropVizOptions = optsObj;
               return strudelViz ? strudelViz.call(this, vizName) : this;
@@ -18010,6 +18037,20 @@ var _StrudelEngine = class _StrudelEngine {
         Object.defineProperty(Pattern2.prototype, "viz", savedVizDescriptor);
       } else {
         delete Pattern2.prototype.viz;
+      }
+      if (allTrapInstalled) {
+        if (strudelAll !== void 0) {
+          Object.defineProperty(globalThis, "all", {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: strudelAll
+          });
+        } else if (savedAllDescriptor) {
+          Object.defineProperty(globalThis, "all", savedAllDescriptor);
+        } else {
+          delete globalThis.all;
+        }
       }
       for (const [methodName2, desc] of savedLegacyDescriptors) {
         if (desc) {
@@ -35981,6 +36022,9 @@ function EditorView({
           viewZoneHandleRef.current?.resume();
         } else if (payload === null) {
           viewZoneHandleRef.current?.pause();
+        } else {
+          viewZoneHandleRef.current?.cleanup();
+          viewZoneHandleRef.current = null;
         }
         if (payload && editorRef.current && monacoRef.current) {
           sliderHandleRef.current?.cleanup();

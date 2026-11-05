@@ -234,6 +234,14 @@ export function EditorView({
           // Runtime stopped — PK3: pause, NOT cleanup. Zones stay visible
           // but frozen so the user sees the last frame.
           viewZoneHandleRef.current?.pause()
+        } else {
+          // A new evaluation that asks for NO inline viz — the last `.viz()` was
+          // deleted. The runtime publishes only after a successful evaluate, so
+          // this payload is the document's current answer: remove the zones the
+          // previous one made. (Without this branch they stayed under the line
+          // with nothing in the code asking for them.)
+          viewZoneHandleRef.current?.cleanup()
+          viewZoneHandleRef.current = null
         }
 
         // #345 — each evaluation's sliders replace the last; a stop (null) keeps
