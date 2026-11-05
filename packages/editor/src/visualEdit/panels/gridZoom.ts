@@ -59,6 +59,19 @@ export function endInBar(m: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, 
   return null
 }
 
+/**
+ * Column `col` as a bar and the exact share of it it begins at (#2294): the roll's address of
+ * a place, as the step writer takes it. Null past the last bar.
+ */
+export function columnPlace(m: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, col: number): { bar: number; at: Frac } | null {
+  const bars = m.bars ?? 1
+  for (let b = 0; b < bars; b++) {
+    const { start, per } = barColumns(m, b)
+    if (col >= start && col < start + per) return { bar: b, at: frac(col - start, per) }
+  }
+  return null
+}
+
 /* ── exact fractions of a bar ───────────────────────────────────── */
 
 const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b))
