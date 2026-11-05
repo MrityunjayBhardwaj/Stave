@@ -9,18 +9,32 @@
  * keys or cookies, and Stave's API refuses what it sends (its Origin is
  * `null`). The code goes in by `postMessage`; only "ready / playing / stopped /
  * error" comes back, from that frame and in that shape (previewProtocol.ts).
+ *
+ * #2343 — the code in the frame can still navigate the frame itself (a sandbox
+ * without `allow-top-navigation` keeps it off the page, not off its own box), so
+ * something else could appear where the preview was: a page that looks like a
+ * sign-in, say. The player never reloads itself, and the code only goes in once
+ * the player has loaded, so any load of the frame after that is the code taking
+ * it somewhere else: the preview is closed and says so.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { parseFromFrame, type FromFrame, type PreviewKind } from "./previewProtocol";
 
 export const PLAYER_PATH = "/gallery-player";
 const LOAD_SLOW_MS = 15_000;
+export const NAVIGATED_AWAY =
+  "The preview was closed: its code tried to open another page in the preview's place.";
 
 export function GalleryPreview({ code, kind, fileKey }: { code: string; kind: PreviewKind; fileKey: string }) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<FromFrame | null>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const wantPlay = useRef(false);
+  // The frame's own load and its "ready", both needed before code goes in; and
+  // whether code has gone in (after which a load is a navigation).
+  const frameLoaded = useRef(false);
+  const frameReady = useRef(false);
+  const codeSent = useRef(false);
 
   const send = useCallback((msg: unknown) => {
     // The frame's origin is opaque, so no origin can name it: "*" is the only
@@ -28,12 +42,39 @@ export function GalleryPreview({ code, kind, fileKey }: { code: string; kind: Pr
     frameRef.current?.contentWindow?.postMessage(msg, "*");
   }, []);
 
+  /** Play, once the player has both loaded and said it is listening. */
+  const playWhenLoaded = useCallback(() => {
+    if (!wantPlay.current || !frameLoaded.current || !frameReady.current) return;
+    wantPlay.current = false;
+    codeSent.current = true;
+    send({ play: true, code, kind });
+  }, [send, code, kind]);
+
   // A different file (or entry) closes the preview rather than playing the old code.
   useEffect(() => {
     setOpen(false);
     setStatus(null);
     wantPlay.current = false;
   }, [fileKey]);
+
+  // A fresh frame each time the preview opens.
+  useEffect(() => {
+    if (!open) return;
+    frameLoaded.current = false;
+    frameReady.current = false;
+    codeSent.current = false;
+  }, [open]);
+
+  const onFrameLoad = () => {
+    if (codeSent.current) {
+      setOpen(false);
+      setStatus({ state: "stopped", message: NAVIGATED_AWAY });
+      wantPlay.current = false;
+      return;
+    }
+    frameLoaded.current = true;
+    playWhenLoaded();
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -45,8 +86,8 @@ export function GalleryPreview({ code, kind, fileKey }: { code: string; kind: Pr
       const msg = parseFromFrame(event.data);
       if (!msg) return;
       if (msg.state === "ready") {
-        if (wantPlay.current) send({ play: true, code, kind });
-        wantPlay.current = false;
+        frameReady.current = true;
+        playWhenLoaded();
         return;
       }
       setStatus(msg);
@@ -70,7 +111,7 @@ export function GalleryPreview({ code, kind, fileKey }: { code: string; kind: Pr
       window.removeEventListener("message", onMessage);
       window.clearTimeout(timer);
     };
-  }, [open, code, kind, send]);
+  }, [open, playWhenLoaded]);
 
   const playing = status?.state === "playing";
   const onPreview = () => {
@@ -81,7 +122,10 @@ export function GalleryPreview({ code, kind, fileKey }: { code: string; kind: Pr
       return;
     }
     if (playing) send({ stop: true });
-    else send({ play: true, code, kind });
+    else {
+      codeSent.current = true;
+      send({ play: true, code, kind });
+    }
   };
 
   return (
@@ -121,6 +165,7 @@ export function GalleryPreview({ code, kind, fileKey }: { code: string; kind: Pr
           src={PLAYER_PATH}
           sandbox="allow-scripts"
           allow="autoplay"
+          onLoad={onFrameLoad}
           data-gallery-preview-frame
         />
       )}

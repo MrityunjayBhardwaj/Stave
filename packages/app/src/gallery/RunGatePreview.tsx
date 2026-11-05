@@ -11,11 +11,12 @@
  * button to be asked again.
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useReducer, useState, type ReactNode } from "react";
 import type { PreviewContext, PreviewProvider } from "@stave/editor";
 
 type PreviewEditorChromeContext = Parameters<NonNullable<PreviewProvider["renderEditorChrome"]>>[0];
 import { askBeforeRunning, mayEvaluate, type AskToRun } from "./runGate";
+import { onGalleryRunnableChange } from "./safeRun";
 
 type Phase = "ok" | "asking" | "declined";
 
@@ -116,6 +117,48 @@ export function GalleryRunGate({
   );
 }
 
+/**
+ * The file's viz controls, for a file that may not run yet. They act as before,
+ * except that the visual hasn't started: while the question is open, or after
+ * Cancel, ▶ Play says Play rather than Pause (#2343), and pressing it asks again
+ * rather than pausing a visual that never ran. Re-rendered when the answer
+ * comes, so the control shows Pause once the visual really runs.
+ */
+function GatedVizChrome({
+  chrome,
+  ctx,
+  projectId,
+}: {
+  chrome: (ctx: PreviewEditorChromeContext) => ReactNode;
+  ctx: PreviewEditorChromeContext;
+  projectId: string;
+}) {
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => onGalleryRunnableChange(bump), []);
+  const key = keyOf(projectId, ctx.file.id);
+  const wrapped = Object.fromEntries(
+    Object.entries(ctx).map(([k, v]) => [
+      k,
+      typeof v === "function"
+        ? (...args: unknown[]) => {
+            if (declined.has(key)) rearm(key);
+            return (v as (...a: unknown[]) => unknown)(...args);
+          }
+        : v,
+    ]),
+  ) as unknown as PreviewEditorChromeContext;
+  const shown: PreviewEditorChromeContext = mayEvaluate(projectId, ctx.file.id)
+    ? wrapped
+    : {
+        ...wrapped,
+        previewPaused: true,
+        onTogglePausePreview: () => {
+          if (declined.has(key)) rearm(key);
+        },
+      };
+  return <>{chrome(shown)}</>;
+}
+
 const wrapped = new WeakMap<PreviewProvider, PreviewProvider>();
 
 /**
@@ -136,21 +179,9 @@ export function gatePreviewProvider(
     // the code as a backdrop, where its "Run it…" button can't be reached).
     ...(chrome
       ? {
-          renderEditorChrome: (ctx: PreviewEditorChromeContext): ReactNode => {
-            const key = keyOf(projectId(), ctx.file.id);
-            const wrapped = Object.fromEntries(
-              Object.entries(ctx).map(([k, v]) => [
-                k,
-                typeof v === "function"
-                  ? (...args: unknown[]) => {
-                      if (declined.has(key)) rearm(key);
-                      return (v as (...a: unknown[]) => unknown)(...args);
-                    }
-                  : v,
-              ]),
-            ) as unknown as PreviewEditorChromeContext;
-            return chrome(wrapped);
-          },
+          renderEditorChrome: (ctx: PreviewEditorChromeContext): ReactNode => (
+            <GatedVizChrome chrome={chrome} ctx={ctx} projectId={projectId()} />
+          ),
         }
       : {}),
     render: (ctx: PreviewContext): ReactNode => {

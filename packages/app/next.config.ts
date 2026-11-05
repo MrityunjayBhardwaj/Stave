@@ -51,8 +51,22 @@ const nextConfig: NextConfig = {
           { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
         ],
       },
+      // #2343 — the gallery's preview frame (`/gallery-player`, sandboxed with an
+      // opaque origin) loads these files from an origin that isn't its own. Without
+      // this header the browser hides every error its code throws later as
+      // "Script error.", drops its rejected promises unreported, and refuses its
+      // font. They are the same public files anyone can download.
+      {
+        source: "/_next/static/:path*",
+        headers: [{ key: "Access-Control-Allow-Origin", value: "*" }],
+      },
     ];
   },
+
+  // #2343 — fetch the app's scripts in CORS mode (with the header above), so a
+  // page with an opaque origin gets their errors in full. Same-origin pages are
+  // unaffected: a CORS request to your own origin always succeeds.
+  crossOrigin: "anonymous",
 
   // ── #322 — serve the @stave/docs (Astro Starlight) site under /docs.
   // DEV: the Astro dev server runs on :4321 with the same '/docs/' base — forward

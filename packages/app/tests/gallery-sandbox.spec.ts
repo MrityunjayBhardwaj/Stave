@@ -2,20 +2,22 @@
  * #2328 — gallery entries preview in a sandbox, and imported code asks before
  * it first runs.
  *
- * 1. HOSTILE ENTRY. Two real entries in the server's gallery store: a "victim"
- *    this browser published (its manage token is in this page's localStorage,
- *    as publishing leaves it) and a hostile one, whose code tries to reach the
- *    person's data from inside the preview: IndexedDB, localStorage,
- *    `document.cookie` (a readable cookie is set on the page), the account's
- *    private-link list, and deleting the victim with its token. It reports what
- *    each attempt got twice — posted to the gallery page (which ignores it; the
- *    spec reads it) and thrown from the playing pattern, so the preview's
- *    status line shows it. Every
- *    attempt must fail or be refused, the victim must still exist, and the
- *    gallery page's localStorage must be exactly what it was. Then, straight at
- *    the server: the victim's own valid token with `Origin: null` is 403, and
- *    the same request with no Origin deletes it (the control: the 403 was the
- *    origin check, not a bad token).
+ * 1. HOSTILE ENTRY. A "victim" this browser published (its manage token is in
+ *    this page's localStorage, as publishing leaves it) and a hostile entry,
+ *    whose code tries to reach the person's data from inside the preview:
+ *    IndexedDB, localStorage, `document.cookie` (a readable cookie is set on the
+ *    page), the account's private-link list, and deleting the victim with its
+ *    token — those two requests go to the REAL server. It reports what each
+ *    attempt got twice — posted to the gallery page (which ignores it; the spec
+ *    reads it) and thrown from the playing pattern, so the preview's status line
+ *    shows it. Every attempt must fail or be refused, no delete may reach the
+ *    server, and the gallery page's localStorage must be exactly what it was.
+ *    Then, straight at the server: a delete with the token and `Origin: null` is
+ *    403, and the same request with no Origin is not (the control: the 403 was
+ *    the origin check). That every write route refuses `Origin: null` before
+ *    anything else, a valid token included, is galleryOrigin.test.ts.
+ *    (#2343: the entries are served by the test, so no database and no sign-in
+ *    are needed, and the test runs on a plain production build.)
  * 2. A normal music entry previews: the frame reports `playing`, and the
  *    entry's top-level statement ran in the FRAME, not on the gallery page. A
  *    Hydra entry renders there too.
@@ -32,28 +34,24 @@
  * HMR socket. Re-serving those scripts from the test isn't enough either: the
  * dev client then loads but never hydrates. `next start` has no such guard,
  * and there the player loads, plays and renders with nothing in between. So
- * on a dev server these two tests SKIP, saying so; run them against a
- * production build (the dev store flag gives it the folder store test 1 seeds):
+ * on a dev server those tests SKIP, saying so. CI runs this file against a
+ * production build (.github/workflows/ci.yml, #2343); by hand:
  *
  *   AUTH_SECRET=dev-only-secret npx next build
- *   STAVE_SHARE_DEV_STORE=1 AUTH_SECRET=dev-only-secret npx next start -p 3359
+ *   AUTH_SECRET=dev-only-secret npx next start -p 3359
  *   STAVE_E2E_PORT=3359 npx playwright test tests/gallery-sandbox.spec.ts --project=chromium --workers=1
  *
- * Test 3 (the trust step) runs on either.
+ * None of them needs a database or a sign-in. The trust-step tests run on either.
  */
-import { createHash, randomBytes } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
-import os from 'node:os'
-import path from 'node:path'
+import { randomBytes } from 'node:crypto'
 
 import { chromium, test, expect, type Page } from '@playwright/test'
 import { bootApp, editorValue, evalCode, seedCode, stopCode } from './_appBoot'
 import { MUSIC_CODE, routeGallery } from './_gallery'
+import { NAVIGATED_AWAY } from '../src/gallery/GalleryPreview'
 
 const SHOTS = process.env.GALLERY_SHOT_DIR
 const RUN = Date.now().toString(36)
-// The folder store the server reads (store.ts), as gallery-account.spec.ts finds it.
-const GALLERY_DIR = process.env.STAVE_GALLERY_DEV_DIR || path.join(os.tmpdir(), 'stave-gallery-dev')
 const MANAGE_TOKEN_HEADER = 'x-stave-manage-token'
 
 /** Is this a `next dev` server? Its pages load the HMR client; a production build's don't. */
@@ -81,31 +79,21 @@ const parentRuns = (page: Page) => page.evaluate(() => (window as unknown as { _
 const playerFrame = (page: Page) => page.frames().find((f) => f.url().includes('/gallery-player'))
 
 const newId = () => randomBytes(8).toString('base64url') // 11 chars, the gallery id shape
-const sha = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex')
 
-async function putJson(rel: string, value: unknown): Promise<void> {
-  const file = path.join(GALLERY_DIR, rel)
-  await mkdir(path.dirname(file), { recursive: true })
-  await writeFile(file, JSON.stringify(value))
-}
-
-/** One listed music entry, as a publish writes it (store.ts galleryPaths). */
-async function seedEntry(title: string, filePath: string, content: string): Promise<{ id: string; manageToken: string }> {
+/**
+ * Serve one music entry from the test (GET /api/gallery/<id> only), so no
+ * database is needed: every other request, the frame's included, goes to the
+ * real server.
+ */
+async function routeEntry(page: Page, title: string, filePath: string, content: string): Promise<{ id: string }> {
   const id = newId()
-  const manageToken = randomBytes(32).toString('base64url')
   const now = Date.now()
-  await putJson(`gallery/private/${id}.json`, { authorEmail: `sandbox-${RUN}@example.invalid`, manageTokenHash: sha(manageToken) })
-  await putJson(`gallery/manifests/${id}.json`, {
-    schemaVersion: 1,
-    project: { name: title, sharedAt: now },
-    files: [{ id: 'f0', path: filePath, language: 'strudel', content }],
-    fileOrder: { '': ['f0'] },
-    subfolderOrder: {},
-  })
-  await putJson(`gallery/entries/${id}.json`, {
-    id, title, kind: 'music', tags: ['sandbox-test'], authorName: 'Mallory', publishedAt: now, fileCount: 1, hasThumbnail: false,
-  })
-  return { id, manageToken }
+  const body = {
+    entry: { id, title, kind: 'music', tags: ['sandbox-test'], authorName: 'Mallory', publishedAt: now, fileCount: 1, hasThumbnail: false },
+    manifest: { schemaVersion: 1, project: { name: title, sharedAt: now }, files: [{ id: 'f0', path: filePath, language: 'strudel', content }], fileOrder: { '': ['f0'] }, subfolderOrder: {} },
+  }
+  await page.route(`**/api/gallery/${id}`, (route) => (route.request().method() === 'GET' ? route.fulfill({ json: body }) : route.fallback()))
+  return { id }
 }
 
 /**
@@ -155,9 +143,8 @@ test.describe('gallery preview sandbox (#2328)', () => {
     test.skip(await isDevServer(page), DEV_SKIP)
     const errors = consoleErrors(page)
 
-    const victim = await seedEntry(`Victim ${RUN}`, 'victim.strudel', 's("hh*4")')
-    expect((await page.request.get(`/api/gallery/${victim.id}`)).status(), 'the server does not read the seeded store').toBe(200)
-    const hostile = await seedEntry(`Hostile ${RUN}`, 'probe.strudel', hostileCode(victim.id, victim.manageToken))
+    const victim = { id: newId(), manageToken: randomBytes(32).toString('base64url') }
+    const hostile = await routeEntry(page, `Hostile ${RUN}`, 'probe.strudel', hostileCode(victim.id, victim.manageToken))
 
     // Every API request the FRAME makes, as it left the browser.
     const frameApi: string[] = []
@@ -179,6 +166,10 @@ test.describe('gallery preview sandbox (#2328)', () => {
     await page.context().addCookies([{ name: 'stave_probe', value: 'readable-by-the-page', url: new URL('/', test.info().project.use.baseURL ?? 'http://localhost').href, sameSite: 'Lax' }])
     await page.addInitScript(
       ([victimId, token]) => {
+        // An init script runs in every frame, the sandboxed preview included, where
+        // reading localStorage throws: that was the stray "SecurityError" this test
+        // used to log from inside the frame (#2343). The page's setup is for the page.
+        if (window.parent !== window) return
         ;(window as unknown as { __hostile: unknown[] }).__hostile = []
         window.addEventListener('message', (e) => {
           const d = e.data as { hostileProbe?: unknown }
@@ -215,23 +206,24 @@ test.describe('gallery preview sandbox (#2328)', () => {
     expect(results.cookie).toMatch(/^FAILED |^GOT cookie=\[\]$/)
     expect(results.myShares).toMatch(/^FAILED /)
     expect(results.deleteEntry).toMatch(/^FAILED /)
-    // no API request from the frame carried a cookie
+    // no API request from the frame carried a cookie, and its delete never got an answer from the server
     expect(frameApi.filter((l) => l.includes('cookie=SENT'))).toEqual([])
+    expect(frameApi.filter((l) => l.startsWith('  -> DELETE'))).toEqual([])
 
-    // The victim is still there, and the gallery page's storage is untouched.
-    expect((await page.request.get(`/api/gallery/${victim.id}`)).status()).toBe(200)
+    // The gallery page's storage is untouched.
     expect(await page.evaluate(() => JSON.stringify(Object.entries(localStorage).sort()))).toBe(storageBefore)
 
-    // Straight at the server: the victim's own valid token from an opaque origin is 403 ...
+    // Straight at the server: the token from an opaque origin is 403 ...
     const forged = await page.request.delete(`/api/gallery/${victim.id}`, { headers: { origin: 'null', [MANAGE_TOKEN_HEADER]: victim.manageToken } })
     expect(forged.status()).toBe(403)
     expect(await forged.json()).toEqual({ error: "this can only be done from Stave's own page" })
-    expect((await page.request.get(`/api/gallery/${victim.id}`)).status()).toBe(200)
-    // ... and the same request with no Origin (curl) deletes it: the 403 was the origin check.
+    // ... and the same request with no Origin (curl) is not: the 403 was the origin check.
     const control = await page.request.delete(`/api/gallery/${victim.id}`, { headers: { [MANAGE_TOKEN_HEADER]: victim.manageToken } })
-    expect(control.status()).toBe(204)
+    expect(control.status()).not.toBe(403)
 
     console.log('CONSOLE ERRORS\n' + errors.join('\n'))
+    // #2343 — nothing went uncaught, in the page or the frame
+    expect(errors.filter((e) => e.startsWith('pageerror:'))).toEqual([])
   })
 
   test('a music entry previews in the frame and reports playing; a Hydra entry renders there', async ({ page }) => {
@@ -282,6 +274,40 @@ test.describe('gallery preview sandbox (#2328)', () => {
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/sandbox-hydra-playing.png` })
 
     console.log('CONSOLE ERRORS\n' + errors.join('\n'))
+  })
+
+  // #2343 — the frame loads the app's scripts from an origin that isn't its own
+  // (its own is opaque), and the browser used to mute what they throw later.
+  test("an error the entry raises later comes through in full: a timer's throw, a rejected promise", async ({ page }) => {
+    test.setTimeout(240_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    const timer = await routeEntry(page, 'Timer', 'timer.strudel', "setTimeout(() => { throw new Error('TIMER-BOOM') }, 300)\ns('bd ~ ~ ~')")
+    const rejected = await routeEntry(page, 'Rejected', 'rejected.strudel', "Promise.reject(new Error('REJECT-BOOM'))\ns('bd ~ ~ ~')")
+    await bootApp(page)
+    for (const [id, word] of [[timer.id, 'TIMER-BOOM'], [rejected.id, 'REJECT-BOOM']] as const) {
+      await page.goto(`/#gallery=${id}`)
+      await expect(page.locator(`[data-gallery-detail="${id}"]`)).toBeVisible({ timeout: 30_000 })
+      await page.locator('[data-gallery-preview-button]').click()
+      await expect(page.locator('[data-gallery-preview-state="playing"]')).toContainText(`The code reported an error: ${word}`, { timeout: 90_000 })
+      await expect(page.locator('[data-gallery-preview-state]')).not.toContainText('Script error.')
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/sandbox-error-${word.toLowerCase()}.png` })
+    }
+  })
+
+  // #2343 — the code can navigate its own frame; what loads there instead must not stay up.
+  test('a preview whose code opens another page in its place is closed, and says so', async ({ page }) => {
+    test.setTimeout(240_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    const lookalike = 'data:text/html,<h1>Sign in to Stave</h1><input placeholder=password>'
+    const nav = await routeEntry(page, 'Navigates', 'nav.strudel', `setTimeout(() => { location.href = '${lookalike}' }, 1500)\ns('bd ~ ~ ~')`)
+    await bootApp(page)
+    await page.goto(`/#gallery=${nav.id}`)
+    await expect(page.locator(`[data-gallery-detail="${nav.id}"]`)).toBeVisible({ timeout: 30_000 })
+    await page.locator('[data-gallery-preview-button]').click()
+    await expect(page.locator('[data-gallery-preview-state]')).toHaveText(NAVIGATED_AWAY, { timeout: 90_000 })
+    await expect(page.locator('[data-gallery-preview-frame]')).toHaveCount(0)
+    expect(page.frames().map((f) => f.url()).filter((u) => u.startsWith('data:')), 'the lookalike is not on the page').toEqual([])
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/sandbox-navigated-away.png` })
   })
 
   test('the first Play after "Open as new project" asks, naming the author; the second does not', async ({ page }) => {
@@ -406,6 +432,9 @@ test.describe('every path that runs imported code asks first (#2342, #2344)', ()
       await startBounce(page, kind)
       await expect(ask).toBeVisible({ timeout: 10_000 })
       expect(await parentRuns(page), 'nothing ran before the answer').toBe(0)
+      // #2343 — behind the question, the Bounce dialog says it is waiting, not rendering
+      await expect(page.locator('[data-bounce-asking]')).toHaveText('Waiting for your answer before running this code…')
+      await expect(page.getByText(/^Rendering/)).toHaveCount(0)
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/bounce-${kind.toLowerCase()}-trust-dialog.png` })
       await trust(page).getByRole('button', { name: 'Cancel' }).click()
       await expect(ask).toHaveCount(0)
@@ -439,9 +468,12 @@ test.describe('every path that runs imported code asks first (#2342, #2344)', ()
     expect(await parentRuns(page), 'adding the file runs nothing').toBe(0)
 
     const ask = page.getByText(ASK.replace('Alice', 'Dee'))
-    await page.locator('[data-testid="viz-chrome-open-preview"]').first().click()
+    const vizPlay = page.locator('[data-testid="viz-chrome-open-preview"]').first()
+    await vizPlay.click()
     await expect(ask).toBeVisible({ timeout: 10_000 })
     expect(await parentRuns(page)).toBe(0)
+    // #2343 — nothing is running yet, so the control offers Play, not Pause
+    await expect(vizPlay).toHaveText('\u25B6 Play')
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/viz-play-trust-dialog.png` })
     await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(ask).toHaveCount(0)
@@ -455,6 +487,8 @@ test.describe('every path that runs imported code asks first (#2342, #2344)', ()
     await expect(ask).toBeVisible({ timeout: 10_000 })
     await page.getByRole('button', { name: 'Run it', exact: true }).click()
     await expect.poll(() => parentRuns(page), { timeout: 20_000 }).toBeGreaterThan(0)
+    // now it runs, and the control offers Pause
+    await expect(vizPlay).toHaveText('\u23F8 Pause', { timeout: 10_000 })
   })
 
   // Inline `.viz()` draws in a worker, which `next dev` can't load (an importScripts
