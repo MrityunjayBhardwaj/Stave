@@ -27,6 +27,7 @@ import { POST as shareRoute } from "../app/api/share/route";
 import { sealShare } from "../shareCrypto";
 import {
   RATE_LIMITS,
+  clientAddress,
   hashedAddress,
   rateLimit,
   type RateLimitStore,
@@ -196,14 +197,29 @@ describe("rateLimit, on its own", () => {
 
   it("hashes the address, keyed by AUTH_SECRET", () => {
     const req = (ip: string) => new Request("http://x", { headers: { "x-forwarded-for": `${ip}, 10.0.0.1` } });
-    const a = hashedAddress(req("203.0.113.7"), { AUTH_SECRET: "one" });
+    const onVercel = (secret: string) => ({ AUTH_SECRET: secret, VERCEL: "1" });
+    const a = hashedAddress(req("203.0.113.7"), onVercel("one"));
     expect(a).toMatch(/^[0-9a-f]{64}$/);
     expect(a).not.toContain("203");
-    expect(hashedAddress(req("203.0.113.7"), { AUTH_SECRET: "two" })).not.toBe(a);
-    expect(hashedAddress(req("203.0.113.8"), { AUTH_SECRET: "one" })).not.toBe(a);
+    expect(hashedAddress(req("203.0.113.7"), onVercel("two"))).not.toBe(a);
+    expect(hashedAddress(req("203.0.113.8"), onVercel("one"))).not.toBe(a);
     // x-real-ip wins over x-forwarded-for
     const real = new Request("http://x", { headers: { "x-real-ip": "203.0.113.7", "x-forwarded-for": "198.51.100.1" } });
-    expect(hashedAddress(real, { AUTH_SECRET: "one" })).toBe(a);
+    expect(hashedAddress(real, onVercel("one"))).toBe(a);
+  });
+
+  // #2347 — off Vercel those headers are whatever the client sent.
+  it("reads the address headers only on Vercel; anywhere else every signed-out request is one address", () => {
+    const req = (headers: Record<string, string>) => new Request("http://x", { headers });
+    expect(clientAddress(req({ "x-real-ip": "203.0.113.7" }), { VERCEL: "1" })).toBe("203.0.113.7");
+    expect(clientAddress(req({ "x-forwarded-for": "198.51.100.1, 10.0.0.1" }), { VERCEL: "1" })).toBe("198.51.100.1");
+    expect(clientAddress(req({}), { VERCEL: "1" })).toBe("unknown");
+    const spoofable: Array<Record<string, string>> = [{ "x-real-ip": "203.0.113.7" }, { "x-forwarded-for": "198.51.100.1" }, {}];
+    for (const headers of spoofable) {
+      expect(clientAddress(req(headers), {})).toBe("unknown");
+    }
+    const rotated = ["192.0.2.1", "192.0.2.2", "192.0.2.3"].map((ip) => hashedAddress(req({ "x-forwarded-for": ip }), { AUTH_SECRET: "s" }));
+    expect(new Set(rotated).size).toBe(1);
   });
 
   it("says how long to wait in plain words", () => {
@@ -234,10 +250,23 @@ describe("each write route applies its limit", () => {
   it(`report signed out: ${RATE_LIMITS.report.max} an hour per address, addresses kept apart`, async () => {
     const { id } = (await (await publish()).json()) as PublishResponse;
     signIn(null);
+    vi.stubEnv("VERCEL", "1"); // where the address headers come from the platform
     const ip = { "x-forwarded-for": `198.51.100.${n++ % 250}` };
     await expectAll(RATE_LIMITS.report.max, () => report(id, ip), 202);
     await expect429(await report(id, ip));
     expect((await report(id, { "x-forwarded-for": "192.0.2.200" })).status).toBe(202);
+  });
+
+  // #2347 — off Vercel a script can't get a fresh bucket by changing the header.
+  it("report signed out, off Vercel: a rotated X-Forwarded-For is still the same address", async () => {
+    const { id } = (await (await publish()).json()) as PublishResponse;
+    signIn(null);
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("STAVE_RATE_LIMIT_REPORT", "3");
+    let k = 0;
+    const rotating = () => report(id, { "x-forwarded-for": `203.0.113.${k++}`, "x-real-ip": `198.51.100.${k}` });
+    await expectAll(3, rotating, 202);
+    await expect429(await rotating());
   });
 
   it(`profile and collection edits share ${RATE_LIMITS.edit.max} an hour per author`, async () => {
@@ -271,6 +300,7 @@ describe("each write route applies its limit", () => {
     const post = (headers: Record<string, string> = {}) =>
       shareRoute(new Request("http://x/api/share", { method: "POST", headers, body: sealed as BodyInit }));
     signIn(null);
+    vi.stubEnv("VERCEL", "1");
     const ip = { "x-real-ip": `203.0.113.${n++ % 250}` };
     await expectAll(RATE_LIMITS.link.max, () => post(ip), 201);
     await expect429(await post(ip));
@@ -450,6 +480,46 @@ describe("Turnstile", () => {
     vi.stubGlobal("fetch", verify);
   });
   const answer = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+  /** What siteverify answers a real (non-test) key for a widget solved on this site ("x", the test URLs' host). */
+  const passed = (action: string, hostname = "x") => ({ success: true, "error-codes": [], hostname, action });
+
+  // #2347 — success alone isn't enough: the token must be for this action, made on this site.
+  it("refuses a passing token made for another action, or on another site", async () => {
+    const { id } = (await (await publish()).json()) as PublishResponse; // before Turnstile is on
+    vi.stubEnv("TURNSTILE_SECRET_KEY", "a-real-looking-secret");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    verify.mockResolvedValueOnce(answer(passed("report")));
+    expect((await publish({ [TURNSTILE_HEADER]: DUMMY_TOKEN })).status).toBe(403);
+    verify.mockResolvedValueOnce(answer(passed("publish")));
+    expect((await report(id, { [TURNSTILE_HEADER]: DUMMY_TOKEN })).status).toBe(403);
+    verify.mockResolvedValueOnce(answer(passed("publish", "evil.example")));
+    expect((await publish({ [TURNSTILE_HEADER]: DUMMY_TOKEN })).status).toBe(403);
+    verify.mockResolvedValueOnce(answer({ success: true })); // no hostname or action at all
+    expect((await publish({ [TURNSTILE_HEADER]: DUMMY_TOKEN })).status).toBe(403);
+    verify.mockResolvedValueOnce(answer(passed("publish", "X")));
+    expect((await publish({ [TURNSTILE_HEADER]: DUMMY_TOKEN })).status).toBe(201); // hostnames are case-blind
+    warn.mockRestore();
+  });
+
+  it("takes the configured site's hostname (AUTH_URL) too, without its port", async () => {
+    const env = { TURNSTILE_SECRET_KEY: "a-real-looking-secret", AUTH_URL: "https://stave.example:8443" };
+    const behindProxy = () =>
+      new Request("http://internal:3000/api/gallery", { method: "POST", headers: { host: "internal:3000", [TURNSTILE_HEADER]: DUMMY_TOKEN } });
+    verify.mockResolvedValueOnce(answer(passed("publish", "stave.example")));
+    expect(await requireTurnstile(behindProxy(), "publish", env)).toBeNull();
+    verify.mockResolvedValueOnce(answer(passed("publish", "internal")));
+    expect(await requireTurnstile(behindProxy(), "publish", env)).toBeNull();
+  });
+
+  it("lets Cloudflare's test-key answers through on success alone (they always say example.com, no action)", async () => {
+    const env = { TURNSTILE_SECRET_KEY: PASS_SECRET };
+    const req = () => new Request("http://localhost:3000/api/gallery", { method: "POST", headers: { [TURNSTILE_HEADER]: DUMMY_TOKEN } });
+    const testKeyAnswer = { success: true, "error-codes": [], hostname: "example.com", metadata: { result_with_testing_key: true } };
+    verify.mockResolvedValueOnce(answer(testKeyAnswer));
+    expect(await requireTurnstile(req(), "publish", env)).toBeNull();
+    verify.mockResolvedValueOnce(answer({ ...testKeyAnswer, success: false }));
+    expect((await requireTurnstile(req(), "publish", env))?.status).toBe(403);
+  });
 
   it("is skipped when TURNSTILE_SECRET_KEY is unset: no header needed, Cloudflare never called", async () => {
     expect((await publish()).status).toBe(201);
@@ -475,7 +545,7 @@ describe("Turnstile", () => {
 
   it("with the always-pass secret: published", async () => {
     vi.stubEnv("TURNSTILE_SECRET_KEY", PASS_SECRET);
-    verify.mockImplementation(async () => answer({ success: true, "error-codes": [] }));
+    verify.mockImplementation(async () => answer(passed("publish")));
     expect((await publish({ [TURNSTILE_HEADER]: DUMMY_TOKEN })).status).toBe(201);
     expect(verify).toHaveBeenCalledTimes(1);
   });
@@ -487,7 +557,7 @@ describe("Turnstile", () => {
     expect(verify).not.toHaveBeenCalled(); // a missing token never reaches Cloudflare
     verify.mockResolvedValueOnce(answer({ success: false }));
     expect((await report(id, { [TURNSTILE_HEADER]: DUMMY_TOKEN })).status).toBe(403);
-    verify.mockResolvedValueOnce(answer({ success: true }));
+    verify.mockResolvedValueOnce(answer(passed("report")));
     expect((await report(id, { [TURNSTILE_HEADER]: DUMMY_TOKEN })).status).toBe(202);
   });
 
@@ -506,7 +576,7 @@ describe("Turnstile", () => {
   it("is checked after the rate limit, so a flood never reaches Cloudflare", async () => {
     vi.stubEnv("STAVE_RATE_LIMIT_PUBLISH", "1");
     vi.stubEnv("TURNSTILE_SECRET_KEY", PASS_SECRET);
-    verify.mockImplementation(async () => answer({ success: true }));
+    verify.mockImplementation(async () => answer(passed("publish")));
     expect((await publish({ [TURNSTILE_HEADER]: DUMMY_TOKEN })).status).toBe(201);
     await expect429(await publish({ [TURNSTILE_HEADER]: DUMMY_TOKEN }));
     expect(verify).toHaveBeenCalledTimes(1);
@@ -518,10 +588,10 @@ describe("Turnstile", () => {
 describe.runIf(process.env.STAVE_TURNSTILE_LIVE === "1")("Turnstile, live against Cloudflare", () => {
   const req = () => new Request("http://x", { method: "POST", headers: { [TURNSTILE_HEADER]: DUMMY_TOKEN } });
   it("the always-pass secret passes the dummy token", async () => {
-    expect(await requireTurnstile(req(), { TURNSTILE_SECRET_KEY: PASS_SECRET })).toBeNull();
+    expect(await requireTurnstile(req(), "publish", { TURNSTILE_SECRET_KEY: PASS_SECRET })).toBeNull();
   });
   it("the always-fail secret refuses it with 403", async () => {
-    const res = await requireTurnstile(req(), { TURNSTILE_SECRET_KEY: FAIL_SECRET });
+    const res = await requireTurnstile(req(), "publish", { TURNSTILE_SECRET_KEY: FAIL_SECRET });
     expect(res?.status).toBe(403);
   });
 });

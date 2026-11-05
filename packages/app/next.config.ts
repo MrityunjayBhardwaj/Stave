@@ -43,6 +43,12 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
           { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
+          // #2347 — only Stave may frame Stave, so another site can't overlay
+          // it and trick a click on "Run it" or "Delete". 'self' still allows
+          // the gallery's sandboxed preview (/gallery-player): the check
+          // compares the framing page (Stave) with this response's URL, not
+          // the frame's sandboxed origin. A full policy is #2365.
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
         ],
       },
     ];

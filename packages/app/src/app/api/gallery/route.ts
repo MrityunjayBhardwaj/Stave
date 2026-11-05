@@ -77,7 +77,7 @@ async function handlePOST(req: Request): Promise<Response> {
   if (who instanceof Response) return who;
   const { authorId, account } = who;
   // #2330 — per-account limit, then the Turnstile check (when set up).
-  const limited = (await limitAccount("publish", account.accountHash)) ?? (await requireTurnstile(req));
+  const limited = (await limitAccount("publish", account.accountHash)) ?? (await requireTurnstile(req, "publish"));
   if (limited) return limited;
 
   const body = await readJsonBody(req, MAX_PUBLISH_BODY_BYTES);
