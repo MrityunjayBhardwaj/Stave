@@ -28,12 +28,15 @@ import {
   type WorkspaceLanguage,
 } from "@stave/editor";
 
+import { addPrivateLink } from "./gallery/localShares";
+import { currentGallerySession } from "./gallery/session";
+import { SHARE_LINK_NAME_HEADER } from "./gallery/types";
 import { fromBase64Url, openShare, parseShortShare, sealShare, toBase64Url } from "./shareCrypto";
 
 export const SHARE_HASH_PREFIX = "#share=";
 const MAX_RAW_BYTES = 2 * 1024 * 1024;
 
-interface ShareManifest {
+export interface ShareManifest {
   schemaVersion: 1;
   project: { name: string; sharedAt: number };
   files: Array<{ id: string; path: string; language: string; content: string }>;
@@ -80,7 +83,8 @@ async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
   return merged;
 }
 
-function collectManifest(project: ProjectMeta): ShareManifest {
+/** The active project's manifest. Also the payload of a gallery entry (#2306). */
+export function collectManifest(project: ProjectMeta): ShareManifest {
   const files = listWorkspaceFiles();
 
   const folderPaths = new Set<string>([""]);
@@ -155,9 +159,19 @@ export const SHARE_RATE_LIMITED = "ShareRateLimited";
  */
 export async function buildShortShareUrl(project: ProjectMeta): Promise<string> {
   const { sealed, key } = await sealShare(await packProject(project));
+  // #2321 — signed in, the link is also listed on the account (by its project
+  // name) so My shares can show and revoke it on every device. #2329 — the key
+  // never leaves this browser, signed in or not: only this browser's own list
+  // (addPrivateLink below) can copy the link again.
+  const session = currentGallerySession();
+  const accountAuthorId = session.status === "ready" ? (session.session.user?.authorId ?? null) : null;
+  const headers: Record<string, string> = { "Content-Type": "application/octet-stream" };
+  if (accountAuthorId) {
+    headers[SHARE_LINK_NAME_HEADER] = encodeURIComponent(project.name);
+  }
   const res = await fetch("/api/share", {
     method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
+    headers,
     body: sealed as BodyInit,
   });
   if (res.status === 429) {
@@ -168,8 +182,25 @@ export async function buildShortShareUrl(project: ProjectMeta): Promise<string> 
     throw err;
   }
   if (!res.ok) throw new Error(`the share store answered ${res.status}`);
-  const { id } = (await res.json()) as { id: string };
-  return `${window.location.origin}/s/${id}#${key}`;
+  const { id, manageToken, onAccount } = (await res.json()) as { id: string; manageToken?: string; onAccount?: boolean };
+  const url = `${window.location.origin}/s/${id}#${key}`;
+  // #2311 — remember it, so My shares can copy it again or revoke it. #2320 —
+  // already on the account: marked so the claim doesn't send it again.
+  if (manageToken) {
+    try {
+      addPrivateLink({
+        id,
+        url,
+        projectName: project.name,
+        createdAt: Date.now(),
+        manageToken,
+        ...(onAccount && accountAuthorId ? { claimedBy: accountAuthorId } : {}),
+      });
+    } catch (err) {
+      console.warn("[stave] couldn't remember the share link:", err);
+    }
+  }
+  return url;
 }
 
 /**

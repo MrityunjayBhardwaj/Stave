@@ -17,7 +17,15 @@ export interface InlineZoneHandle {
 }
 
 export interface VizZoneActions {
-  onEdit?: (vizId: string) => void
+  /**
+   * Fires when the user clicks the edit (✎) button on an inline zone.
+   *
+   * `presetId` is the preset this zone resolved (by name AND renderer), or
+   * `null` while that async lookup is still pending. Hosts open the file
+   * behind the preset — the viz actually drawn — and fall back to the name
+   * only when it is `null`; a name alone can match a pattern file (#2322).
+   */
+  onEdit?: (vizId: string, presetId: string | null) => void
   /**
    * Fires when the user clicks the crop button on an inline zone.
    *
@@ -961,7 +969,8 @@ export function addInlineViewZones(
     editBtn.onclick = (e) => {
       e.stopPropagation()
       const vizId = floatingBar?.getAttribute('data-viz-id')
-      if (vizId && actions.onEdit) actions.onEdit(vizId)
+      const presetId = floatingBar?.getAttribute('data-preset-id') || null
+      if (vizId && actions.onEdit) actions.onEdit(vizId, presetId)
     }
     cropBtn.onclick = (e) => {
       e.stopPropagation()

@@ -160,6 +160,7 @@ export {
   listNamedVizNames,
   listNamedVizEntries,
   onNamedVizChanged,
+  normalizeVizName,
 } from './visualizers/namedVizRegistry'
 export type { VizConfig, VizQualityLevel, VizQualitySettings, WorkerVizConfig } from './visualizers/vizConfig'
 export { DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_QUALITY, createVizConfig, getVizConfig, setVizConfig, updateVizConfig, deriveVizQuality } from './visualizers/vizConfig'

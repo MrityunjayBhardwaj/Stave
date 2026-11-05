@@ -1,0 +1,186 @@
+"use client";
+
+/**
+ * #2331 — the Moderation tab, shown only to admins (GET /api/gallery/me says
+ * `isAdmin`). Flagged entries with every report on them, each with Open, Take
+ * down and Dismiss (both ask for a reason, which goes in the action log), and
+ * the recent log below. The server checks the session on every call; hiding the
+ * tab is only so nobody else sees a view that would answer 403.
+ */
+import React, { useCallback, useEffect, useState } from "react";
+
+import { showPrompt, showToast } from "../dialogs/host";
+import { KIND_LABEL } from "./galleryModel";
+import { ACTION_LABEL, dismissReports, fetchAdminLog, fetchFlagged, takeDownEntry } from "./moderation";
+import { MAX_REPORT_REASON_CHARS, type AdminLogRecord, type FlaggedEntry } from "./types";
+
+type Loaded<T> = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; data: T };
+
+const when = (ms: number) =>
+  Number.isFinite(ms)
+    ? new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+    : "";
+
+export function ModerationView({
+  onOpen,
+  onTakenDown,
+}: {
+  onOpen: (entryId: string) => void;
+  /** An entry left the gallery: the overlay drops it from its list. */
+  onTakenDown: (entryId: string) => void;
+}) {
+  const [flagged, setFlagged] = useState<Loaded<FlaggedEntry[]>>({ status: "loading" });
+  const [log, setLog] = useState<Loaded<AdminLogRecord[]>>({ status: "loading" });
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetchFlagged()
+      .then((r) => setFlagged({ status: "ready", data: r.flagged }))
+      .catch((err: Error) => setFlagged({ status: "error", message: err.message }));
+    fetchAdminLog()
+      .then((r) => setLog({ status: "ready", data: r.actions }))
+      .catch((err: Error) => setLog({ status: "error", message: err.message }));
+  }, []);
+
+  useEffect(load, [load]);
+
+  const act = async (f: FlaggedEntry, kind: "take-down" | "dismiss") => {
+    const title = f.entry?.title ?? f.entryId;
+    const reason = (
+      await showPrompt(
+        kind === "take-down"
+          ? {
+              title: "Take this down?",
+              description: `"${title}" will be removed for everyone. Say why: it goes in the action log with your name.`,
+              placeholder: "e.g. hateful title, copied without credit",
+              confirmLabel: "Take down",
+            }
+          : {
+              title: "Dismiss these reports?",
+              description: `"${title}" stays up and leaves this list. Say why: it goes in the action log with your name.`,
+              placeholder: "e.g. reviewed, nothing wrong",
+              confirmLabel: "Dismiss",
+            },
+      )
+    )?.trim();
+    if (!reason) return;
+    setBusy(f.entryId);
+    try {
+      if (kind === "take-down") {
+        await takeDownEntry(f.entryId, reason.slice(0, MAX_REPORT_REASON_CHARS));
+        onTakenDown(f.entryId);
+        showToast(`Took down "${title}".`, "info");
+      } else {
+        await dismissReports(f.entryId, reason.slice(0, MAX_REPORT_REASON_CHARS));
+        showToast(`Dismissed the reports on "${title}".`, "info");
+      }
+    } catch (err) {
+      showToast(`Couldn't do that — ${(err as Error).message}`, "error");
+    } finally {
+      setBusy(null);
+      load();
+    }
+  };
+
+  return (
+    <div className="sg-mod" data-gallery-moderation>
+      <section data-gallery-section="flagged">
+        <h3 className="sg-section">Reported</h3>
+        <p className="sg-section-note">Each report was sent by someone browsing. Take down or dismiss asks you for a reason.</p>
+        {flagged.status === "loading" ? (
+          <div className="sg-state sg-state-small">Loading the reports…</div>
+        ) : flagged.status === "error" ? (
+          <div className="sg-state sg-state-small" data-gallery-state="flagged-error">
+            <p>Couldn&apos;t load the reports: {flagged.message}.</p>
+            <button className="sg-btn" onClick={load}>Try again</button>
+          </div>
+        ) : flagged.data.length === 0 ? (
+          <div className="sg-state sg-state-small" data-gallery-state="flagged-empty">Nothing is reported right now.</div>
+        ) : (
+          flagged.data.map((f) => (
+            <div key={f.entryId} className="sg-mine-row sg-mod-row" data-gallery-flagged={f.entryId}>
+              <div className="sg-mine-text">
+                <div className="sg-card-title">{f.entry?.title ?? `(entry ${f.entryId} can't be read)`}</div>
+                <div className="sg-card-meta">
+                  {f.entry ? `${KIND_LABEL[f.entry.kind] ?? f.entry.kind} by ${f.entry.authorName} · ` : ""}
+                  {f.reports.length} {f.reports.length === 1 ? "report" : "reports"}
+                </div>
+                <ul className="sg-mod-reasons">
+                  {f.reports.map((r, i) => (
+                    <li key={i} data-gallery-report-reason>
+                      <span className="sg-mod-when">{when(r.reportedAt)}</span> {r.reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="sg-actions">
+                {f.entry && (
+                  <button className="sg-btn" onClick={() => onOpen(f.entryId)}>Open</button>
+                )}
+                <button
+                  className="sg-btn sg-danger"
+                  data-gallery-take-down={f.entryId}
+                  disabled={busy !== null}
+                  onClick={() => void act(f, "take-down")}
+                >
+                  Take down
+                </button>
+                <button
+                  className="sg-btn"
+                  data-gallery-dismiss={f.entryId}
+                  disabled={busy !== null}
+                  onClick={() => void act(f, "dismiss")}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      <section data-gallery-section="admin-log">
+        <h3 className="sg-section">Action log</h3>
+        <p className="sg-section-note">Every take-down and dismissal by any admin, newest first. Only admins see this.</p>
+        {log.status === "loading" ? (
+          <div className="sg-state sg-state-small">Loading the log…</div>
+        ) : log.status === "error" ? (
+          <div className="sg-state sg-state-small" data-gallery-state="log-error">
+            <p>Couldn&apos;t load the log: {log.message}.</p>
+            <button className="sg-btn" onClick={load}>Try again</button>
+          </div>
+        ) : log.data.length === 0 ? (
+          <div className="sg-state sg-state-small" data-gallery-state="log-empty">No admin actions yet.</div>
+        ) : (
+          <ol className="sg-mod-log">
+            {log.data.map((r, i) => (
+              <li key={`${r.at}-${i}`} data-gallery-log-action={r.action} data-gallery-log-target={r.target}>
+                <div className="sg-card-meta">
+                  {when(r.at)} · {r.admin.name || r.admin.accountId}{" "}
+                  <span className="sg-mod-who">({r.admin.provider})</span>
+                </div>
+                <div>
+                  {ACTION_LABEL[r.action] ?? r.action} <code>{r.target}</code>
+                </div>
+                <div className="sg-mod-reason">“{r.reason}”</div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    </div>
+  );
+}
+
+export const MODERATION_CSS = `
+.sg-mod { display: flex; flex-direction: column; gap: 8px; }
+.sg-mod section { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.sg-mod-row { align-items: flex-start; }
+.sg-mod-reasons { margin: 6px 0 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
+.sg-mod-when { font-size: 11px; opacity: .7; }
+.sg-mod-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.sg-mod-log li { padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.sg-mod-log code { font-size: 12px; }
+.sg-mod-who { opacity: .7; }
+.sg-mod-reason { font-style: italic; opacity: .9; margin-top: 2px; }
+`;

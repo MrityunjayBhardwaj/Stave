@@ -8,6 +8,18 @@ const nextConfig: NextConfig = {
   // fail with "Module not found: Can't resolve <dynamic>".
   transpilePackages: ["@stave/editor"],
 
+  // #2352 — PGlite (dev and tests' in-process Postgres) loads its WebAssembly
+  // and data files from its own package folder at runtime; bundling it breaks
+  // those paths. Production uses Neon and never loads it.
+  serverExternalPackages: ["@electric-sql/pglite"],
+  // …and keep its ~20 MB (WebAssembly, extension tarballs) out of every
+  // deployed function: a production build either has DATABASE_URL (Neon) or
+  // no database at all (getDb() → null), so it never opens PGlite.
+  outputFileTracingExcludes: {
+    // Next joins each pattern onto this folder; pnpm keeps the package two levels up.
+    "*": ["../../node_modules/.pnpm/@electric-sql+pglite@*/**", "node_modules/@electric-sql/pglite/**"],
+  },
+
   // #322 — the /docs/[[...slug]] route handler reads the published docs site
   // (pages + assets) from ./docs-dist at runtime. On Vercel these files are not
   // on the serverless function's filesystem by default, so trace the whole tree

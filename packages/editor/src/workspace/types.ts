@@ -354,9 +354,10 @@ export interface EditorViewProps {
   readonly onStop?: () => void
 
   /** Called when the user clicks the "edit" icon on an inline viz zone.
-   *  Receives the viz name (e.g., "Piano Roll"). The host should navigate
-   *  to the corresponding viz file. */
-  readonly onEditViz?: (vizId: string) => void
+   *  Receives the viz name (e.g., "Piano Roll") and the zone's resolved
+   *  preset id (`null` while that lookup is pending). The host should
+   *  navigate to the viz file behind the preset — the one being drawn. */
+  readonly onEditViz?: (vizId: string, presetId: string | null) => void
 
   /** Called when the user clicks the "crop" icon on an inline viz zone.
    *  Receives the viz name, preset id, and `trackKey` — the per-$:-block
@@ -1111,8 +1112,9 @@ export interface WorkspaceShellProps {
     y: number,
   ) => void
 
-  /** Inline viz "edit" icon clicked — navigate to the viz file. */
-  readonly onEditViz?: (vizId: string) => void
+  /** Inline viz "edit" icon clicked — navigate to the viz file behind
+   *  `presetId` (or, while it is `null`, the one the name resolves to). */
+  readonly onEditViz?: (vizId: string, presetId: string | null) => void
 
   /** Inline viz "crop" icon clicked — open crop popup. `trackKey` scopes
    *  the crop to this specific zone instance; see onCropViz above for the
