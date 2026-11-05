@@ -177,7 +177,8 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     // same music: `[bd bd]` occupies the first quarter, so the onsets are 0 and 1/8,
     // exactly where `bd bd ~ ~ …` at eight columns would put them. The minimal edit is
     // the better answer, and the phase did not have to ask for it.
-    expect(after).toBe('$: s("[bd bd] ~ sn ~")')
+    // #2326: two equal hits of one sound are written `bd*2` — the same music, as people write it
+    expect(after).toBe('$: s("bd*2 ~ sn ~")')
     // The refinement is absorbed, and the view stays at eight columns WITHOUT a view
     // scale — the document now genuinely expresses eighth-note resolution, so the
     // reader derives eight columns from the onsets themselves.

@@ -185,7 +185,7 @@ test.describe('sequencer', () => {
       'true',
     )
     await page.keyboard.press("'")
-    await expect.poll(() => source(page), { timeout: 5_000 }).toBe('$: s("[bd bd] _ ~ ~ ~ ~ ~ ~")')
+    await expect.poll(() => source(page), { timeout: 5_000 }).toBe('$: s("bd*2 _ ~ ~ ~ ~ ~ ~")') // `bd*2` (#2326)
     await setCode(page, SEQ)
     await seq.locator('[data-seq-cell="0:1"]').focus()
     await page.keyboard.press('ArrowRight')

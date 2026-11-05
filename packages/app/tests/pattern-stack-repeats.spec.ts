@@ -8,7 +8,8 @@
  * WHAT A CLICK WRITES (#2292, the ruling of 2026-11-04): the clicked step's own text. The
  * snare is written once and plays in both bars, so a click on it in bar 2 changes it in
  * bar 1 too — the text says one thing for both. The kick is written per bar, so a click
- * in bar 2 changes bar 2 only. The hats are made by `*8`, and a click on one is refused.
+ * in bar 2 changes bar 2 only. The hats are made by `*8`, and a click on one edits that hat
+ * alone (#2326).
  *
  * WHY A BROWSER TEST. The unit tests pin the writer; only the panel can show that the
  * grid on screen agrees with the text after the click — so every click here is followed
@@ -32,10 +33,10 @@ const cell = (seq: Locator, label: string): Locator => seq.locator(`[data-seq-ce
 test.describe('a comma pattern with a `<…>` part (#1849)', () => {
   test('opens editable, every bar drawn alike', async ({ page }) => {
     const seq = await open(page, BEAT)
-    // 48 cells; refused: the 16 hats (made by `*8`). The second column of every kick and
-    // snare step (16) is part of a longer step: since #2293 a click there splits it
+    // 48 cells, none refused: the second column of every kick and snare step splits it
+    // (#2293), and each hat `*8` makes is edited on its own (#2326)
     await expect(seq.locator('[data-seq-cell]')).toHaveCount(48)
-    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(16)
+    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(0)
     await expect(cell(seq, 'sd step 15')).toHaveAttribute('aria-pressed', 'true')
     await expect(cell(seq, 'sd step 15')).not.toHaveAttribute('title', /.*/)
   })
@@ -53,13 +54,13 @@ test.describe('a comma pattern with a `<…>` part (#1849)', () => {
     await expect.poll(() => editorValue(page)).toBe(BEAT)
   })
 
-  test('a hat made by `*8` is refused, in either bar', async ({ page }) => {
+  test('a hat made by `*8` is edited on its own, in both bars it plays (#2326)', async ({ page }) => {
     const seq = await open(page, BEAT)
-    await expect(cell(seq, 'hh step 12')).toHaveAttribute('aria-disabled', 'true')
-    await expect(cell(seq, 'hh step 12')).toHaveAttribute('title', /operator on its step/)
-    await cell(seq, 'hh step 12').click({ force: true })
-    await page.waitForTimeout(150)
-    expect(await editorValue(page)).toBe(BEAT)
+    // `hh*8` is written once and plays in both bars: its fourth hat goes in both
+    await cell(seq, 'hh step 12').click()
+    await expect.poll(() => editorValue(page)).toBe('$: s("<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd, [hh hh hh ~ hh hh hh hh]")')
+    await expect(cell(seq, 'hh step 4')).toHaveAttribute('aria-pressed', 'false')
+    await expect(cell(seq, 'hh step 12')).toHaveAttribute('aria-pressed', 'false')
   })
 
   test('an edit to the part written over two bars changes that bar only', async ({ page }) => {

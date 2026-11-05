@@ -71,12 +71,9 @@ test.describe('nested steps in Exact (#1861)', () => {
     await expect.poll(() => editorValue(page)).toBe('$: s("bd [bd bd] sd ~, hh*8")')
     await cell(seq, '0:2').click()
     await expect.poll(() => editorValue(page)).toBe(BEAT)
-    // a hat inside the one hh*8 step is made by `*8`: refused, the generator kept (#2292)
-    await expect(cell(seq, '2:3')).toHaveAttribute('aria-disabled', 'true')
-    await expect(cell(seq, '2:3')).toHaveAttribute('title', /operator on its step/)
-    await cell(seq, '2:3').click({ force: true })
-    await page.waitForTimeout(150)
-    expect(await editorValue(page)).toBe(BEAT)
+    // a hat inside the one hh*8 step is edited on its own: the step written out (#2326)
+    await cell(seq, '2:3').click()
+    await expect.poll(() => editorValue(page)).toBe('$: s("bd [~ bd] sd ~, [hh hh hh ~ hh hh hh hh]")')
   })
 
   test('a faint half of a plain step is not a step: a click there splits the step (#2293)', async ({ page }) => {
@@ -84,7 +81,8 @@ test.describe('nested steps in Exact (#1861)', () => {
     await expect(cell(seq, '0:1')).toHaveAttribute('aria-label', 'bd step 2, held from step 1')
     await expect(cell(seq, '0:1')).toHaveAttribute('title', /Splits this step/)
     await cell(seq, '0:1').click()
-    await expect.poll(() => editorValue(page)).toBe('$: s("[bd bd] [~ bd] sd ~, hh*8")')
+    // two equal hits of one sound are written `bd*2` (#2326)
+    await expect.poll(() => editorValue(page)).toBe('$: s("bd*2 [~ bd] sd ~, hh*8")')
   })
 
   test('the playing column of a plain step is still marked', async ({ page }) => {

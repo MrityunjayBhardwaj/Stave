@@ -85,7 +85,8 @@ test.describe('split, paint, cursor and resize walk steps (#2293)', () => {
     await expect(half).toHaveAttribute('data-seq-splits', 'true')
     await expect(half).toHaveAttribute('title', /Splits this step/)
     await half.click()
-    await becomes(page, NESTED, '$: s("[bd bd] [~ bd] sd [hh [~ cp]]")', [
+    // two equal hits of one sound are written `bd*2` (#2326)
+    await becomes(page, NESTED, '$: s("bd*2 [~ bd] sd [hh [~ cp]]")', [
       '-bd@0-1/4', '+bd@0-1/8', '+bd@1/8-1/4',
       '-bd@1-5/4', '+bd@1-9/8', '+bd@9/8-5/4',
     ])
@@ -161,15 +162,16 @@ test.describe('split, paint, cursor and resize walk steps (#2293)', () => {
     await becomes(page, '$: s("bd@3 sd ~")', code, ['-bd@0-3/5', '+bd@0-2/5', '-bd@1-8/5', '+bd@1-7/5'])
   })
 
-  test('resize, held notes: the rest after the note becomes a hold, and back', async ({ page }) => {
+  // a length is written `@n` (#2326)
+  test('resize, held notes: the rest after the note is taken into its `@n`, and back', async ({ page }) => {
     const code = '$: s("hh sd ~ ~")'
     const seq = await open(page, code)
     const sd = await row(seq, 'sd')
     await cell(seq, `${sd}:1`).focus()
     await page.keyboard.press('Alt+Shift+ArrowRight')
-    await becomes(page, code, '$: s("hh sd _ ~")', ['-sd@1/4-1/2', '+sd@1/4-3/4', '-sd@5/4-3/2', '+sd@5/4-7/4'])
+    await becomes(page, code, '$: s("hh sd@2 ~")', ['-sd@1/4-1/2', '+sd@1/4-3/4', '-sd@5/4-3/2', '+sd@5/4-7/4'])
     await page.keyboard.press('Alt+Shift+ArrowLeft')
-    await becomes(page, '$: s("hh sd _ ~")', code, ['-sd@1/4-3/4', '+sd@1/4-1/2', '-sd@5/4-7/4', '+sd@5/4-3/2'])
+    await becomes(page, '$: s("hh sd@2 ~")', code, ['-sd@1/4-3/4', '+sd@1/4-1/2', '-sd@5/4-7/4', '+sd@5/4-3/2'])
   })
 
   test('resize inside a group: the note takes the rest after it, and nothing outside the group moves', async ({ page }) => {
@@ -178,7 +180,7 @@ test.describe('split, paint, cursor and resize walk steps (#2293)', () => {
     const sd = await row(seq, 'sd')
     await seq.locator(`[data-seq-cell^="${sd}:"][aria-pressed="true"]`).first().focus()
     await page.keyboard.press('Alt+Shift+ArrowRight')
-    await becomes(page, code, '$: s("hh [sd _ ~] hh")', ['-sd@1/3-4/9', '+sd@1/3-5/9', '-sd@4/3-13/9', '+sd@4/3-14/9'])
+    await becomes(page, code, '$: s("hh [sd@2 ~] hh")', ['-sd@1/3-4/9', '+sd@1/3-5/9', '-sd@4/3-13/9', '+sd@4/3-14/9'])
   })
 
   test('resize refused: a note with another note after it in its group keeps its length, and the code is left alone', async ({ page }) => {

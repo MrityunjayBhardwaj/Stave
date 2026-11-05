@@ -295,14 +295,12 @@ test.describe('Sequencer (#382)', () => {
     }
     await expect(grid.locator('[data-seq-cell="0:8"]')).toHaveCount(0) // no 9th column
 
-    // A hat made by `*8` keeps its generator (#2292): select + Delete is refused, and the
-    // `*8` is not expanded into eight written hats
-    await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveAttribute('title', /operator on its step/)
-    await grid.locator('[data-seq-cell="0:3"]').click({ force: true }) // select
+    // One hat made by `*8` is edited on its own (#2326): Delete takes that hat out, and the
+    // step is written out with the change — the other seven stay
+    await grid.locator('[data-seq-cell="0:3"]').focus() // select
     await page.keyboard.press('Delete')
-    await page.waitForTimeout(150)
-    expect(await strudelValue(page)).toBe('$: s("hh*8")')
-    await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect.poll(() => strudelValue(page)).toBe('$: s("[hh hh hh ~ hh hh hh hh]")')
+    await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveAttribute('aria-pressed', 'false')
   })
 
   test('binds `bd(3,8)` euclid as an 8-step lane with 3 hits and expands on toggle (#399)', async ({
@@ -347,13 +345,12 @@ test.describe('Sequencer (#382)', () => {
     }
     await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveCount(0) // no 4th column
 
-    // `bd!3` is one text played as three steps: Delete on one is refused, the `!3` stays (#2292)
-    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('title', /repeated with !/)
-    await grid.locator('[data-seq-cell="0:1"]').click({ force: true }) // select
+    // `bd!3` is one text played as three steps: Delete on one takes that copy out, written
+    // out as its copies (#2326)
+    await grid.locator('[data-seq-cell="0:1"]').focus() // select
     await page.keyboard.press('Delete')
-    await page.waitForTimeout(150)
-    expect(await strudelValue(page)).toBe('$: s("bd!3")')
-    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect.poll(() => strudelValue(page)).toBe('$: s("bd ~ bd")')
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'false')
   })
 
   /**
