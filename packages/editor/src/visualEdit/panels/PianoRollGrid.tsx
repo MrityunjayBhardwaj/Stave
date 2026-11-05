@@ -22,7 +22,7 @@ import { pianoRollCodec, gainWritable as gainWritableOn, slotPress, slotPressCos
 import type { PianoRollModel, RollNote, ColumnOverlap } from '../../codeView'
 import { lookOnlyLine } from '../../codeView'
 import { drawnLayout, chunkDivisions } from '../../codeView'
-import { OPEN_PX, columnPlace, endInBar, openAt, openStarts, partSteps, zoomRuler } from './gridZoom'
+import { OPEN_PX, columnPlace, columnUnit, endInBar, openAt, openStarts, partSteps, zoomRuler } from './gridZoom'
 import { applyStepEdit, rollAdd, rollMove, rollRemove, rollResize, type BarTree, type RollEditResult } from '../../codeView'
 import { GridZoomControl, useGridZoom } from './gridZoomControl'
 import { useExactPlayhead } from './exactPlayhead'
@@ -78,6 +78,8 @@ import { useSoundCatalog } from '../../workspace/soundRegistry'
 import { ExtendHandle } from './ExtendHandle'
 import { linesModel, rulerLabels, useLayoutFollow, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { usePatternLength } from './usePatternLength'
+import { useGridMode } from './gridMode'
+import { rollResizableNotes, rollStepText } from './rollWriter'
 import { InViewBar, PHONE_GRID_WIDTH, PHONE_RULER_HEIGHT, PHONE_STEP_MIN, TurnHint, usePhoneGrid, useRulerPan } from './phoneGrid'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
@@ -197,6 +199,36 @@ function soundFill(names: readonly string[]): string {
   const stops = names.map((n, i) => `${colorForTrack(n)} ${i * band}% ${(i + 1) * band}%`)
   return `linear-gradient(to bottom, ${stops.join(', ')})`
 }
+
+/** the step writer's refusals a reader can act on, in words (#2294); the rest say the general sentence */
+function rollRefusalLine(why: string): string | undefined {
+  switch (why) {
+    case 'source-and-landing-play-in-different-places':
+    case 'copies-come-from-outside-the-step':
+      return 'The note plays in several places and where it lands does not'
+    case 'no-room-to-grow':
+      return 'The next step is not a rest this note can take in'
+    case 'step-is-generated':
+      return 'This note is made by an operator on its step (like (3,8))'
+    case 'loop-shorter-than-the-pattern':
+      return "This note also plays in bars the roll doesn't show"
+    case 'columns-not-whole':
+      return "The pattern's lengths do not add up to whole columns here"
+    default:
+      return undefined
+  }
+}
+
+/** a step-writer gesture refused: its reason when it has words, else the general sentence */
+function sayRollRefusal(attempted: string, why: string | undefined, outcome: string = LEFT_UNCHANGED): void {
+  const line = why ? rollRefusalLine(why) : undefined
+  if (!line) return reportRefusal(attempted, outcome)
+  emitLog({ level: 'warn', runtime: 'stave', message: `${attempted} — ${line.charAt(0).toLowerCase()}${line.slice(1)}, ${outcome}; change it in the code view.` })
+}
+
+/** a gesture on a column that is no exact place, and one on no note, as the step writer's refusals */
+const NO_PLACE: RollEditResult = { ok: false, why: 'columns-not-whole' }
+const NO_NOTE: RollEditResult = { ok: false, why: 'no-note-there' }
 
 function reportRefusal(attempted: string, outcome: string = LEFT_UNCHANGED): void {
   emitLog({
@@ -336,6 +368,8 @@ interface DragState {
   stepBase?: { mini: string; trees: readonly BarTree[] }
   /** the last text a step-writer frame wrote, so a frame that changes nothing writes nothing */
   stepWrote?: string
+  /** why the last step-writer frame was refused, said on release (#2294) */
+  refusedWhy?: string
 }
 
 export interface PianoRollGridProps {
@@ -601,7 +635,14 @@ export function PianoRollGrid({
    * worst 15.88ms over the corpus, against the grid's shipped `placeable` memo at p99
    * 2.54ms / worst 14.4ms.
    */
-  const resizable = React.useMemo(() => (model ? resizableNotes(model) : null), [model])
+  // Settings › Grid: Exact edits through the tree, LCM through the column writer.
+  const gridMode = useGridMode()
+  // The tree mode asks its own writer (`rollResizableNotes`); LCM asks the column writer's.
+  const resizable = React.useMemo(() => {
+    if (!model) return null
+    const base = rollStepText(gridMode, model, chunk?.miniString ?? null)
+    return base ? rollResizableNotes(model, base) : resizableNotes(model)
+  }, [model, gridMode, chunk?.miniString])
   // How many columns this roll DRAWS — not `model.steps`, which is the pattern's length
   // and need not be a whole number of columns (#1087). See `columnCount`.
   const cols = model ? columnCount(model) : 0
@@ -636,29 +677,18 @@ export function PianoRollGrid({
   // writer the step grid uses. Where it cannot write the edit as a step's own text, the edit
   // is refused with its reason, never handed to the column writer to respell the pattern.
   // Paste still goes through the column writer for now.
+  //
+  // ⚠ THE ONE PLACE THE GRID MODE CHOOSES THE WRITER (Settings › Grid). Exact is the tree:
+  // this ref holds the text and its divisions and every gesture below asks the step writer.
+  // LCM is the shared grid: the ref is null, and every gesture falls through to the column
+  // writer exactly as it was before the step writer existed. Gestures branch on this ref
+  // (or the `stepBase` a drag copied from it) and on nothing else.
   const stepTextRef = React.useRef<{ mini: string; trees: readonly BarTree[] } | null>(null)
-  stepTextRef.current = model && !model.lookOnly && chunk?.miniString != null ? { mini: chunk.miniString, trees: chunkDivisions(chunk.miniString, model.bars ?? 1) } : null
-  const rollRefusalLine = (why: string): string | undefined => {
-    switch (why) {
-      case 'source-and-landing-play-in-different-places':
-      case 'copies-come-from-outside-the-step':
-        return 'The note plays in several places and where it lands does not'
-      case 'no-room-to-grow':
-        return 'The next step is not a rest this note can take in'
-      case 'step-is-generated':
-        return 'This note is made by an operator on its step (like (3,8))'
-      case 'loop-shorter-than-the-pattern':
-        return "This note also plays in bars the roll doesn't show"
-      default:
-        return undefined
-    }
-  }
+  stepTextRef.current = rollStepText(gridMode, model, chunk?.miniString ?? null)
   /** one step edit, made in the text it was computed from; says why when refused */
   const writeRoll = (base: { mini: string }, r: RollEditResult, refusal: string): boolean => {
     if (!r.ok) {
-      const why = rollRefusalLine(r.why)
-      if (why) emitLog({ level: 'warn', runtime: 'stave', message: `${refusal} — ${why.charAt(0).toLowerCase()}${why.slice(1)}, ${LEFT_UNCHANGED}; change it in the code view.` })
-      else reportRefusal(refusal)
+      sayRollRefusal(refusal, r.why)
       return false
     }
     const wrote = writeStep(base.mini, r.edit)
@@ -688,7 +718,7 @@ export function PianoRollGrid({
         // a click on a note deletes it: that note's own text becomes a rest (#2294)
         const midi = pitchToMidi(d.origPitch) ?? (d.base.numeric ? Number(d.origPitch) : null)
         const place = columnPlace(d.base, d.origStart)
-        if (midi !== null && place) writeRoll(d.stepBase, rollRemove(d.stepBase.mini, d.stepBase.trees, place, midi), "Couldn't delete that note")
+        writeRoll(d.stepBase, !place ? NO_PLACE : midi === null ? NO_NOTE : rollRemove(d.stepBase.mini, d.stepBase.trees, place, midi), "Couldn't delete that note")
       } else if (!d.moved && d.mode === 'move') {
         // ⚠ GATED ON READBACK, and like a placement it costs nothing here (#1340). A
         // click-delete is ONE gesture, so the check runs on the write rather than being
@@ -725,8 +755,9 @@ export function PianoRollGrid({
         // every frame was the step writer's exact edit of the gesture's start (#2294): nothing
         // to settle. A drop the writer declined stands at the last accepted frame, and says so.
         if (d.dropRefused) {
-          reportRefusal(
+          sayRollRefusal(
             d.mode === 'move' ? "Couldn't move that note there" : "Couldn't set that length",
+            d.refusedWhy,
             d.stepWrote != null ? STAYED_AT_LAST_ACCEPTED : LEFT_UNCHANGED,
           )
         }
@@ -997,9 +1028,10 @@ export function PianoRollGrid({
   const placeAt = (midi: number, step: number): void => {
     const base = stepTextRef.current
     const place = model ? columnPlace(model, step) : null
-    if (base && place && model) {
+    if (base && model) {
       // the note is written as a step's own text: a rest filled, a chord joined, a step split (#2294)
-      writeRoll(base, rollAdd(base.mini, base.trees, place, tokenForRow(!!model.numeric, midi)), "Couldn't add that note")
+      if (!place) writeRoll(base, NO_PLACE, "Couldn't add that note")
+      else writeRoll(base, rollAdd(base.mini, base.trees, place, tokenForRow(!!model.numeric, midi), columnUnit(model, step) ?? undefined), "Couldn't add that note")
       return
     }
     let refused = false
@@ -1060,9 +1092,10 @@ export function PianoRollGrid({
         const midi = pitchToMidi(d.origPitch) ?? (d.base.numeric ? Number(d.origPitch) : null)
         const place = columnPlace(d.base, d.origStart)
         const end = endInBar(d.base, d.origStart, d.origStart + dur)
-        const r: RollEditResult = midi !== null && place && end ? rollResize(d.stepBase.mini, d.stepBase.trees, place, midi, end) : { ok: false, why: 'no-note-there' }
+        const r: RollEditResult = !place ? NO_PLACE : midi === null || !end ? NO_NOTE : rollResize(d.stepBase.mini, d.stepBase.trees, place, midi, end)
         d.moved = true
         d.dropRefused = !writeFrame(d, r)
+        d.refusedWhy = r.ok ? undefined : r.why
         return
       }
       mutate((prev) => resizeNote(prev, d.origStart, d.origPitch, dur))
@@ -1092,14 +1125,17 @@ export function PianoRollGrid({
       const to = columnPlace(d.base, newStart)
       const bars = d.base.bars ?? 1
       const r: RollEditResult =
-        midi === null || !from || !to
-          ? { ok: false, why: 'no-note-there' }
-          : newPitch === d.origPitch && newStart === d.origStart
-            ? { ok: true, edit: { from: 0, to: 0, insert: '' } }
-            : rollMove(d.stepBase.mini, d.stepBase.trees, from, midi, to, newPitch, (t) => chunkDivisions(t, bars))
+        !from || !to
+          ? NO_PLACE
+          : midi === null
+            ? NO_NOTE
+            : newPitch === d.origPitch && newStart === d.origStart
+              ? { ok: true, edit: { from: 0, to: 0, insert: '' } }
+              : rollMove(d.stepBase.mini, d.stepBase.trees, from, midi, to, newPitch, (t) => chunkDivisions(t, bars))
       d.moved = true
       const landed = writeFrame(d, r)
       d.dropRefused = !landed
+      d.refusedWhy = r.ok ? undefined : r.why
       setDeclinedCell(landed ? null : `${midi}:${step}`)
       return
     }
@@ -1147,8 +1183,8 @@ export function PianoRollGrid({
     const base = stepTextRef.current
     const midi = pitchToMidi(note.pitch) ?? (model?.numeric ? Number(note.pitch) : null)
     const place = model ? columnPlace(model, note.start) : null
-    if (base && place && midi !== null) {
-      writeRoll(base, rollRemove(base.mini, base.trees, place, midi), "Couldn't delete that note")
+    if (base) {
+      writeRoll(base, !place ? NO_PLACE : midi === null ? NO_NOTE : rollRemove(base.mini, base.trees, place, midi), "Couldn't delete that note")
       return
     }
     let refused = false
@@ -1291,8 +1327,9 @@ export function PianoRollGrid({
       const base = stepTextRef.current
       const place = columnPlace(model, head)
       const end = endInBar(model, head, head + dur)
-      if (base && place) {
-        if (end) writeRoll(base, rollResize(base.mini, base.trees, place, midi, end), "Couldn't set that length")
+      if (base) {
+        if (!place) writeRoll(base, NO_PLACE, "Couldn't set that length")
+        else if (end) writeRoll(base, rollResize(base.mini, base.trees, place, midi, end), "Couldn't set that length")
         else reportRefusal("Couldn't set that length")
         follow(note.pitch, head)
         return true
@@ -1340,9 +1377,10 @@ export function PianoRollGrid({
     const base = stepTextRef.current
     const from = columnPlace(model, head)
     const to = columnPlace(model, toStart)
-    if (base && from && to) {
+    if (base) {
       const bars = model.bars ?? 1
-      if (writeRoll(base, rollMove(base.mini, base.trees, from, midi, to, toPitch, (t) => chunkDivisions(t, bars)), "Couldn't move that note there")) follow(toPitch, toStart)
+      if (!from || !to) writeRoll(base, NO_PLACE, "Couldn't move that note there")
+      else if (writeRoll(base, rollMove(base.mini, base.trees, from, midi, to, toPitch, (t) => chunkDivisions(t, bars)), "Couldn't move that note there")) follow(toPitch, toStart)
       return true
     }
     const settled = moveNote(model, note.pitch, note.start, toPitch, toStart, { readback: true })

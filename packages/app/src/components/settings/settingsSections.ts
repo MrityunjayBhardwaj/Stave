@@ -111,7 +111,7 @@ export const SECTION_DEFS: readonly SettingsSectionDef[] = [
     navLabel: "Pattern & Timeline",
     title: "Pattern & Timeline",
     fields: [
-      { key: "gridMode", name: "Grid", description: "Exact draws each part of a comma pattern at its own steps, and a click fills one of them. LCM cuts every row to one shared grid.", kind: "select", options: GRID_MODE_OPTIONS },
+      { key: "gridMode", name: "Grid", description: "Exact draws each part of a comma pattern at its own steps and edits the pattern's own steps: a click fills one of them, and a piano roll edit changes only that note's text. LCM cuts every row to one shared grid and edits through it.", kind: "select", options: GRID_MODE_OPTIONS },
       { key: "noteColor", name: "Note colour", description: "How pattern-grid notes are coloured.", kind: "select", options: NOTE_COLOR_OPTIONS },
       { key: "rulerUnits", name: "Ruler units", description: "Timeline ruler numbering: Strudel cycles, or DAW-style bars & beats.", kind: "select", options: RULER_UNITS_OPTIONS },
       { key: "timelineSubRow", name: "Timeline sub-row height", description: "Height of expanded per-voice lanes.", kind: "slider", min: 12, max: 48, unit: "px" },

@@ -55,6 +55,8 @@ export type RollRefusal =
   | 'copies-come-from-outside-the-step'
   /** a move across places in a repeat whose content changes each time round (`[a <b c>]*2`): its copies are not one text */
   | 'repeat-plays-differently-each-time'
+  /** the roll's columns there are not an exact share of the bar (weights that sum to no whole, `c4@1.5 e4@1.2`): no place to address */
+  | 'columns-not-whole'
 
 export type RollEditResult = StepEditResult | { ok: false; why: RollRefusal }
 
@@ -139,9 +141,11 @@ const addressOf = (place: RollPlace, step: DivisionStep, at: Frac): StepAddress 
 
 /**
  * ADD a note named `pitch` (the roll's token for its row: `e4`, or `64` for a numeric
- * pattern) at `place`. One replacement at one step's own text, or why not.
+ * pattern) at `place`. One replacement at one step's own text, or why not. `unit` is the
+ * roll's column as a share of the bar: a rest split part-way is cut into parts that size,
+ * so the new note lasts one column (`splitStep`).
  */
-export function rollAdd(mini: string, trees: readonly BarTree[], place: RollPlace, pitch: string): RollEditResult {
+export function rollAdd(mini: string, trees: readonly BarTree[], place: RollPlace, pitch: string, unit?: Frac): RollEditResult {
   // a note of this pitch already begins here: adding it again is nothing to write (and a
   // toggle of that text would take it away)
   const midi = /^-?[0-9]+(\.[0-9]+)?$/.test(pitch) ? Number(pitch) : pitchToMidi(pitch)
@@ -149,7 +153,7 @@ export function rollAdd(mini: string, trees: readonly BarTree[], place: RollPlac
   const where = placeAt(trees, place)
   if (typeof where === 'string') return { ok: false, why: where }
   const row = { sound: pitch, part: where.part }
-  if (where.inside) return splitStep(mini, trees, addressOf(place, where.step, where.slotBegin), place.at, row)
+  if (where.inside) return splitStep(mini, trees, addressOf(place, where.step, where.slotBegin), place.at, row, unit)
   return toggleStep(mini, trees, addressOf(place, where.step, where.slotBegin), row)
 }
 

@@ -14147,14 +14147,19 @@ function plainNote(mini, step) {
   return null;
 }
 __name(plainNote, "plainNote");
-function splitStepHere(mini, trees, address, at, row) {
+function splitStepHere(mini, trees, address, at, row, unit) {
   const got = locate(trees, address, row);
   if (!got.ok) return refuse(got.why);
   const { step } = got.found;
   const bad = plainNote(mini, step);
   if (bad) return refuse(bad);
-  const p = fdiv(fsub(at, got.slot.begin), fsub(got.slot.end, got.slot.begin));
+  const width = fsub(got.slot.end, got.slot.begin);
+  let p = fdiv(fsub(at, got.slot.begin), width);
   if (p.n <= 0 || p.n >= p.d) return refuse("not-inside-the-step");
+  if (unit && step.rest) {
+    const q = fdiv(width, unit);
+    if (q.d === 1 && q.n > p.d && q.n % p.d === 0) p = { n: p.n * q.n / p.d, d: q.n };
+  }
   const parts = Array.from({ length: p.d }, (_, i) => note(i === 0 ? step.name : i === p.n ? row.sound : REST));
   return write(step.head.start, step.head.end, printElement(group(parts)));
 }
@@ -14287,8 +14292,8 @@ function toggleStep(mini, trees, address, row) {
   return viaWrittenOut(mini, trees, address, row, (m, t, a) => toggleStepHere(m, t, a, row)) ?? toggleStepHere(mini, trees, address, row);
 }
 __name(toggleStep, "toggleStep");
-function splitStep(mini, trees, address, at, row) {
-  return viaWrittenOut(mini, trees, address, row, (m, t, a) => splitStepHere(m, t, a, at, row)) ?? splitStepHere(mini, trees, address, at, row);
+function splitStep(mini, trees, address, at, row, unit) {
+  return viaWrittenOut(mini, trees, address, row, (m, t, a) => splitStepHere(m, t, a, at, row, unit)) ?? splitStepHere(mini, trees, address, at, row, unit);
 }
 __name(splitStep, "splitStep");
 function resizeStep(mini, trees, address, end, row) {
@@ -14364,13 +14369,13 @@ function placeAt(trees, place) {
 }
 __name(placeAt, "placeAt");
 var addressOf = /* @__PURE__ */ __name((place, step, at) => ({ bar: place.bar, span: step.span, at }), "addressOf");
-function rollAdd(mini, trees, place, pitch) {
+function rollAdd(mini, trees, place, pitch, unit) {
   const midi = /^-?[0-9]+(\.[0-9]+)?$/.test(pitch) ? Number(pitch) : pitchToMidi(pitch);
   if (midi !== null && noteAt(trees, place, midi)) return { ok: false, why: "note-already-there" };
   const where = placeAt(trees, place);
   if (typeof where === "string") return { ok: false, why: where };
   const row = { sound: pitch, part: where.part };
-  if (where.inside) return splitStep(mini, trees, addressOf(place, where.step, where.slotBegin), place.at, row);
+  if (where.inside) return splitStep(mini, trees, addressOf(place, where.step, where.slotBegin), place.at, row, unit);
   return toggleStep(mini, trees, addressOf(place, where.step, where.slotBegin), row);
 }
 __name(rollAdd, "rollAdd");
@@ -39833,6 +39838,7 @@ __name(useLayoutFollow, "useLayoutFollow");
 
 // src/visualEdit/panels/gridZoom.ts
 var OPEN_PX = 16;
+var wholeColumns = /* @__PURE__ */ __name((c, ...cols) => Number.isInteger(c.start) && Number.isInteger(c.per) && cols.every(Number.isInteger), "wholeColumns");
 function barColumns(m, b) {
   const bars = m.bars ?? 1;
   if (m.barSteps) return { start: m.barSteps.slice(0, b).reduce((a, n) => a + n, 0), per: m.barSteps[b] };
@@ -39842,8 +39848,10 @@ __name(barColumns, "barColumns");
 function endInBar(m, col, end) {
   const bars = m.bars ?? 1;
   for (let b = 0; b < bars; b++) {
-    const { start, per } = barColumns(m, b);
+    const c = barColumns(m, b);
+    const { start, per } = c;
     if (col < start || col >= start + per) continue;
+    if (!wholeColumns(c, col, end)) return null;
     return end > start && end <= start + per ? frac(end - start, per) : null;
   }
   return null;
@@ -39852,12 +39860,23 @@ __name(endInBar, "endInBar");
 function columnPlace(m, col) {
   const bars = m.bars ?? 1;
   for (let b = 0; b < bars; b++) {
-    const { start, per } = barColumns(m, b);
-    if (col >= start && col < start + per) return { bar: b, at: frac(col - start, per) };
+    const c = barColumns(m, b);
+    const { start, per } = c;
+    if (col >= start && col < start + per) return wholeColumns(c, col) ? { bar: b, at: frac(col - start, per) } : null;
   }
   return null;
 }
 __name(columnPlace, "columnPlace");
+function columnUnit(m, col) {
+  const bars = m.bars ?? 1;
+  for (let b = 0; b < bars; b++) {
+    const c = barColumns(m, b);
+    const { start, per } = c;
+    if (col >= start && col < start + per) return wholeColumns(c, col) ? frac(1, per) : null;
+  }
+  return null;
+}
+__name(columnUnit, "columnUnit");
 var gcd4 = /* @__PURE__ */ __name((a, b) => b === 0 ? Math.abs(a) : gcd4(b, a % b), "gcd");
 function frac(n, d) {
   const g = gcd4(n, d) || 1;
@@ -44604,6 +44623,33 @@ var setDrumKitAccessor = drumKitStore.setAccessor;
 var notifyDrumKitChanged = drumKitStore.notify;
 drumKitStore.read;
 var useDrumKitCatalog = drumKitStore.useCatalog;
+
+// src/visualEdit/panels/rollWriter.ts
+function rollStepText(mode, model, mini) {
+  if (mode !== "exact" || !model || model.lookOnly || mini == null) return null;
+  return { mini, trees: chunkDivisions(mini, model.bars ?? 1) };
+}
+__name(rollStepText, "rollStepText");
+function rollResizableNotes(model, base) {
+  const out = /* @__PURE__ */ new Set();
+  for (const note2 of model.notes) {
+    const midi = pitchToMidi(note2.pitch) ?? (model.numeric ? Number(note2.pitch) : null);
+    const place = columnPlace(model, note2.start);
+    if (midi === null || !place) continue;
+    const cols = Math.max(1, Math.round(note2.duration));
+    for (let dur = 1; ; dur++) {
+      if (dur === cols) continue;
+      const end = endInBar(model, note2.start, note2.start + dur);
+      if (!end) break;
+      if (rollResize(base.mini, base.trees, place, midi, end).ok) {
+        out.add(note2);
+        break;
+      }
+    }
+  }
+  return out;
+}
+__name(rollResizableNotes, "rollResizableNotes");
 var AUDITION_ENVELOPE = {
   gain: 0.9,
   attack: 0.01,
@@ -44725,6 +44771,32 @@ function soundFill(names) {
   return `linear-gradient(to bottom, ${stops.join(", ")})`;
 }
 __name(soundFill, "soundFill");
+function rollRefusalLine(why) {
+  switch (why) {
+    case "source-and-landing-play-in-different-places":
+    case "copies-come-from-outside-the-step":
+      return "The note plays in several places and where it lands does not";
+    case "no-room-to-grow":
+      return "The next step is not a rest this note can take in";
+    case "step-is-generated":
+      return "This note is made by an operator on its step (like (3,8))";
+    case "loop-shorter-than-the-pattern":
+      return "This note also plays in bars the roll doesn't show";
+    case "columns-not-whole":
+      return "The pattern's lengths do not add up to whole columns here";
+    default:
+      return void 0;
+  }
+}
+__name(rollRefusalLine, "rollRefusalLine");
+function sayRollRefusal(attempted, why, outcome = LEFT_UNCHANGED) {
+  const line = why ? rollRefusalLine(why) : void 0;
+  if (!line) return reportRefusal2(attempted, outcome);
+  emitLog({ level: "warn", runtime: "stave", message: `${attempted} \u2014 ${line.charAt(0).toLowerCase()}${line.slice(1)}, ${outcome}; change it in the code view.` });
+}
+__name(sayRollRefusal, "sayRollRefusal");
+var NO_PLACE = { ok: false, why: "columns-not-whole" };
+var NO_NOTE = { ok: false, why: "no-note-there" };
 function reportRefusal2(attempted, outcome = LEFT_UNCHANGED) {
   emitLog({
     level: "warn",
@@ -44881,34 +44953,22 @@ function PianoRollGrid({
     sc.scrollTop = y1 - y0 <= room ? (y0 + y1) / 2 - sc.clientHeight / 2 : y1 + pad - sc.clientHeight;
   });
   const placesNotes = React32.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
-  const resizable = React32.useMemo(() => model ? resizableNotes(model) : null, [model]);
+  const gridMode = useGridMode();
+  const resizable = React32.useMemo(() => {
+    if (!model) return null;
+    const base = rollStepText(gridMode, model, chunk?.miniString ?? null);
+    return base ? rollResizableNotes(model, base) : resizableNotes(model);
+  }, [model, gridMode, chunk?.miniString]);
   const cols = model ? columnCount(model) : 0;
   const gainWritable2 = React32.useMemo(
     () => model ? gainWritable(pianoRollCodec, model) : false,
     [model]
   );
   const stepTextRef = React32.useRef(null);
-  stepTextRef.current = model && !model.lookOnly && chunk?.miniString != null ? { mini: chunk.miniString, trees: chunkDivisions(chunk.miniString, model.bars ?? 1) } : null;
-  const rollRefusalLine = /* @__PURE__ */ __name((why) => {
-    switch (why) {
-      case "source-and-landing-play-in-different-places":
-      case "copies-come-from-outside-the-step":
-        return "The note plays in several places and where it lands does not";
-      case "no-room-to-grow":
-        return "The next step is not a rest this note can take in";
-      case "step-is-generated":
-        return "This note is made by an operator on its step (like (3,8))";
-      case "loop-shorter-than-the-pattern":
-        return "This note also plays in bars the roll doesn't show";
-      default:
-        return void 0;
-    }
-  }, "rollRefusalLine");
+  stepTextRef.current = rollStepText(gridMode, model, chunk?.miniString ?? null);
   const writeRoll = /* @__PURE__ */ __name((base, r, refusal) => {
     if (!r.ok) {
-      const why = rollRefusalLine(r.why);
-      if (why) emitLog({ level: "warn", runtime: "stave", message: `${refusal} \u2014 ${why.charAt(0).toLowerCase()}${why.slice(1)}, ${LEFT_UNCHANGED}; change it in the code view.` });
-      else reportRefusal2(refusal);
+      sayRollRefusal(refusal, r.why);
       return false;
     }
     const wrote = writeStep(base.mini, r.edit);
@@ -44932,7 +44992,7 @@ function PianoRollGrid({
       if (!d.moved && d.mode === "move" && d.stepBase) {
         const midi = pitchToMidi(d.origPitch) ?? (d.base.numeric ? Number(d.origPitch) : null);
         const place = columnPlace(d.base, d.origStart);
-        if (midi !== null && place) writeRoll(d.stepBase, rollRemove(d.stepBase.mini, d.stepBase.trees, place, midi), "Couldn't delete that note");
+        writeRoll(d.stepBase, !place ? NO_PLACE : midi === null ? NO_NOTE : rollRemove(d.stepBase.mini, d.stepBase.trees, place, midi), "Couldn't delete that note");
       } else if (!d.moved && d.mode === "move") {
         let refused2 = false;
         mutate((prev) => {
@@ -44944,8 +45004,9 @@ function PianoRollGrid({
       }
       if (d.stepBase && d.moved) {
         if (d.dropRefused) {
-          reportRefusal2(
+          sayRollRefusal(
             d.mode === "move" ? "Couldn't move that note there" : "Couldn't set that length",
+            d.refusedWhy,
             d.stepWrote != null ? STAYED_AT_LAST_ACCEPTED : LEFT_UNCHANGED
           );
         }
@@ -45103,8 +45164,9 @@ function PianoRollGrid({
   const placeAt2 = /* @__PURE__ */ __name((midi, step) => {
     const base = stepTextRef.current;
     const place = model ? columnPlace(model, step) : null;
-    if (base && place && model) {
-      writeRoll(base, rollAdd(base.mini, base.trees, place, tokenForRow(!!model.numeric, midi)), "Couldn't add that note");
+    if (base && model) {
+      if (!place) writeRoll(base, NO_PLACE, "Couldn't add that note");
+      else writeRoll(base, rollAdd(base.mini, base.trees, place, tokenForRow(!!model.numeric, midi), columnUnit(model, step) ?? void 0), "Couldn't add that note");
       return;
     }
     let refused2 = false;
@@ -45141,9 +45203,10 @@ function PianoRollGrid({
         const midi2 = pitchToMidi(d.origPitch) ?? (d.base.numeric ? Number(d.origPitch) : null);
         const place = columnPlace(d.base, d.origStart);
         const end = endInBar(d.base, d.origStart, d.origStart + dur);
-        const r = midi2 !== null && place && end ? rollResize(d.stepBase.mini, d.stepBase.trees, place, midi2, end) : { ok: false, why: "no-note-there" };
+        const r = !place ? NO_PLACE : midi2 === null || !end ? NO_NOTE : rollResize(d.stepBase.mini, d.stepBase.trees, place, midi2, end);
         d.moved = true;
         d.dropRefused = !writeFrame(d, r);
+        d.refusedWhy = r.ok ? void 0 : r.why;
         return;
       }
       mutate((prev) => resizeNote(prev, d.origStart, d.origPitch, dur));
@@ -45159,10 +45222,11 @@ function PianoRollGrid({
       const from = columnPlace(d.base, d.origStart);
       const to = columnPlace(d.base, newStart);
       const bars = d.base.bars ?? 1;
-      const r = midi2 === null || !from || !to ? { ok: false, why: "no-note-there" } : newPitch === d.origPitch && newStart === d.origStart ? { ok: true, edit: { from: 0, to: 0, insert: "" } } : rollMove(d.stepBase.mini, d.stepBase.trees, from, midi2, to, newPitch, (t) => chunkDivisions(t, bars));
+      const r = !from || !to ? NO_PLACE : midi2 === null ? NO_NOTE : newPitch === d.origPitch && newStart === d.origStart ? { ok: true, edit: { from: 0, to: 0, insert: "" } } : rollMove(d.stepBase.mini, d.stepBase.trees, from, midi2, to, newPitch, (t) => chunkDivisions(t, bars));
       d.moved = true;
       const landed = writeFrame(d, r);
       d.dropRefused = !landed;
+      d.refusedWhy = r.ok ? void 0 : r.why;
       setDeclinedCell(landed ? null : `${midi2}:${step}`);
       return;
     }
@@ -45180,8 +45244,8 @@ function PianoRollGrid({
     const base = stepTextRef.current;
     const midi = pitchToMidi(note2.pitch) ?? (model?.numeric ? Number(note2.pitch) : null);
     const place = model ? columnPlace(model, note2.start) : null;
-    if (base && place && midi !== null) {
-      writeRoll(base, rollRemove(base.mini, base.trees, place, midi), "Couldn't delete that note");
+    if (base) {
+      writeRoll(base, !place ? NO_PLACE : midi === null ? NO_NOTE : rollRemove(base.mini, base.trees, place, midi), "Couldn't delete that note");
       return;
     }
     let refused2 = false;
@@ -45274,8 +45338,9 @@ function PianoRollGrid({
       const base2 = stepTextRef.current;
       const place = columnPlace(model, head);
       const end = endInBar(model, head, head + dur);
-      if (base2 && place) {
-        if (end) writeRoll(base2, rollResize(base2.mini, base2.trees, place, midi, end), "Couldn't set that length");
+      if (base2) {
+        if (!place) writeRoll(base2, NO_PLACE, "Couldn't set that length");
+        else if (end) writeRoll(base2, rollResize(base2.mini, base2.trees, place, midi, end), "Couldn't set that length");
         else reportRefusal2("Couldn't set that length");
         follow(note2.pitch, head);
         return true;
@@ -45318,9 +45383,10 @@ function PianoRollGrid({
     const base = stepTextRef.current;
     const from = columnPlace(model, head);
     const to = columnPlace(model, toStart);
-    if (base && from && to) {
+    if (base) {
       const bars = model.bars ?? 1;
-      if (writeRoll(base, rollMove(base.mini, base.trees, from, midi, to, toPitch, (t) => chunkDivisions(t, bars)), "Couldn't move that note there")) follow(toPitch, toStart);
+      if (!from || !to) writeRoll(base, NO_PLACE, "Couldn't move that note there");
+      else if (writeRoll(base, rollMove(base.mini, base.trees, from, midi, to, toPitch, (t) => chunkDivisions(t, bars)), "Couldn't move that note there")) follow(toPitch, toStart);
       return true;
     }
     const settled = moveNote(model, note2.pitch, note2.start, toPitch, toStart, { readback: true });

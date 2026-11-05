@@ -433,16 +433,30 @@ function plainNote(mini: string, step: DivisionStep): StepEditRefusal | null {
  * many as the click's place needs and no more: half way is two, a quarter of the way four.
  * The step's own hit, if it plays one, now lasts its first part — the music of a split, as
  * the grid has always written it. Refused wherever a toggle of the same step is.
+ *
+ * `unit`, when given, is the smallest part the caller draws, as a share of the bar (the
+ * piano roll's column, #2294): the parts are then that size, so the new note lasts one
+ * column — `~` over 8 columns, clicked at its third, is `[~ ~ d4 ~ ~ ~ ~ ~]`, not
+ * `[~ d4 ~ ~]`. Only a rest is split so: a note's own hit lasts its first part, and finer
+ * parts would cut it shorter than the click needs. Ignored where it does not divide the step
+ * into whole parts that hold the click's place.
  */
-function splitStepHere(mini: string, trees: readonly BarTree[], address: StepAddress, at: Frac, row: StepRow): StepEditResult {
+function splitStepHere(mini: string, trees: readonly BarTree[], address: StepAddress, at: Frac, row: StepRow, unit?: Frac): StepEditResult {
   const got = locate(trees, address, row)
   if (!got.ok) return refuse(got.why)
   const { step } = got.found
   const bad = plainNote(mini, step)
   if (bad) return refuse(bad)
   // where in the step the click is, exactly: k of q equal parts
-  const p = fdiv(fsub(at, got.slot.begin), fsub(got.slot.end, got.slot.begin))
+  const width = fsub(got.slot.end, got.slot.begin)
+  let p = fdiv(fsub(at, got.slot.begin), width)
   if (p.n <= 0 || p.n >= p.d) return refuse('not-inside-the-step')
+  // parts of the caller's unit, where that unit cuts the step into whole parts holding the
+  // click — a rest only: a note split finer would only be cut shorter than it needs to be
+  if (unit && step.rest) {
+    const q = fdiv(width, unit)
+    if (q.d === 1 && q.n > p.d && q.n % p.d === 0) p = { n: (p.n * q.n) / p.d, d: q.n }
+  }
   // the step's name only: whatever follows it (`@2`) still applies to the whole of it
   const parts = Array.from({ length: p.d }, (_, i) => note(i === 0 ? step.name! : i === p.n ? row.sound : REST))
   return write(step.head!.start, step.head!.end, printElement(group(parts)))
@@ -650,8 +664,8 @@ export function toggleStep(mini: string, trees: readonly BarTree[], address: Ste
 }
 
 /** `splitStepHere`, on one hit of `x*k` or copy of `x!k` too (#2326) */
-export function splitStep(mini: string, trees: readonly BarTree[], address: StepAddress, at: Frac, row: StepRow): StepEditResult {
-  return viaWrittenOut(mini, trees, address, row, (m, t, a) => splitStepHere(m, t, a, at, row)) ?? splitStepHere(mini, trees, address, at, row)
+export function splitStep(mini: string, trees: readonly BarTree[], address: StepAddress, at: Frac, row: StepRow, unit?: Frac): StepEditResult {
+  return viaWrittenOut(mini, trees, address, row, (m, t, a) => splitStepHere(m, t, a, at, row, unit)) ?? splitStepHere(mini, trees, address, at, row, unit)
 }
 
 /** `resizeStepHere`, on one hit of `x*k` or copy of `x!k` too (#2326) */
