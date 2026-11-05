@@ -37,7 +37,7 @@ describe("readGalleryFragment", () => {
     expect(readGalleryFragment("#gallery=Ab3_-xY9zQ1")).toBe("Ab3_-xY9zQ1");
   });
   it("decodes a percent-encoded id", () => {
-    expect(readGalleryFragment("#gallery=Ab3_-xY9zQ1".replace("_", "%5F"))).toBe("Ab3_-xY9zQ1");
+    expect(readGalleryFragment("#gallery=Ab3%5F-xY9zQ1")).toBe("Ab3_-xY9zQ1");
   });
   it("refuses anything that is not a gallery id", () => {
     expect(readGalleryFragment("#gallery=")).toBeNull();
