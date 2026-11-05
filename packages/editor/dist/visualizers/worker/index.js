@@ -987,10 +987,10 @@ function updateVizConfig(patch) {
 __name(updateVizConfig, "updateVizConfig");
 
 // src/codeView/notation/noteToMidi.ts
-function noteToMidi(note) {
-  if (typeof note === "number") return Math.round(note);
-  if (typeof note !== "string") return null;
-  const m = note.match(/^([a-gA-G])([#bsf]*)(-?\d*)$/);
+function noteToMidi(note2) {
+  if (typeof note2 === "number") return Math.round(note2);
+  if (typeof note2 !== "string") return null;
+  const m = note2.match(/^([a-gA-G])([#bsf]*)(-?\d*)$/);
   if (!m) return null;
   const [, letter, accidentals, octave] = m;
   if (octave === "-") return null;
@@ -1284,9 +1284,9 @@ var _SignalBus = class _SignalBus {
   /** Normalize a note to a MIDI number (P93 — only when a NUMBER is explicitly
    *  requested; the raw `.note` preserves the user's name|number form). Returns
    *  null for percussion sample names / unrecognized input. */
-  noteToMidi(note) {
-    if (note == null) return null;
-    return noteToMidi(note);
+  noteToMidi(note2) {
+    if (note2 == null) return null;
+    return noteToMidi(note2);
   }
 };
 __name(_SignalBus, "SignalBus");

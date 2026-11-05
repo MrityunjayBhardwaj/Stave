@@ -300,6 +300,61 @@ export function moveBoxCursor(
   return { row: to.row, col: to.col - (to.col % tw) }
 }
 
+/** the stop holding column `col`: the last one at or before it (the first stop when none is) */
+export function stopAt(stops: readonly number[], col: number): number {
+  let got = stops[0] ?? col
+  for (const s of stops) if (s <= col) got = s
+  return got
+}
+
+/**
+ * `moveCursor` on a grid whose rows are drawn as their own STEPS (#2293): `stopsOf(row)` is
+ * each box's first column, in order. ←/→ go to the step before or after, whatever depth it
+ * is drawn at — into a group and out of it; ↑/↓ keep the moment, so the step of the next
+ * row playing then is the one selected. Clamped like `moveCursor`. A row with no stops
+ * falls back to one stop per column.
+ */
+export function moveStepCursor(
+  at: GridCell,
+  move: CursorMove,
+  rows: number,
+  cols: number,
+  stopsOf: (row: number) => readonly number[] | null,
+): GridCell {
+  const stops = (row: number): readonly number[] => {
+    const s = stopsOf(row)
+    return s && s.length > 0 ? s : Array.from({ length: cols }, (_, c) => c)
+  }
+  const clampRow = (r: number): number => Math.max(0, Math.min(rows - 1, r))
+  const here = stops(at.row)
+  const i = here.indexOf(stopAt(here, at.col))
+  switch (move) {
+    case 'left':
+      // from part-way through a step (after ↑/↓ kept a moment), ← is that step's start
+      return { row: at.row, col: here[i] < at.col ? here[i] : here[Math.max(0, i - 1)] }
+    case 'right': {
+      // the next step that begins after the cursor; at the last one, the cursor stays
+      const next = here.find((s) => s > at.col)
+      return { row: at.row, col: next ?? at.col }
+    }
+    case 'up':
+    case 'down':
+      // the moment is kept, as `moveBoxCursor` keeps it: the step holding it is the one selected
+      return { row: clampRow(at.row + (move === 'up' ? -1 : 1)), col: at.col }
+    case 'rowStart':
+      return { row: at.row, col: here[0] }
+    case 'rowEnd':
+      return { row: at.row, col: here[here.length - 1] }
+    case 'first':
+      return { row: 0, col: stops(0)[0] }
+    case 'last': {
+      const row = Math.max(0, rows - 1)
+      const s = stops(row)
+      return { row, col: s[s.length - 1] }
+    }
+  }
+}
+
 /** Is `action` a cursor move? */
 export function isCursorMove(action: GridAction): action is CursorMove {
   return CURSOR_MOVES.has(action)

@@ -895,6 +895,10 @@
     "runs": "gate",
     "why": "A click edits the clicked step's own text (#2292): real mouse clicks on `bd [~ bd] sd [hh [~ cp]]` and `[bd ~]*2 sd` must change only that step's bytes in the code, and what the page's own Strudel plays must change by exactly the hits of that written step (both copies of a repeated one); a chord joined and left again round-trips; a column part-way through a step and a hat made by `*4` are refused with their reason and the code is left alone."
   },
+  "pattern-steps-walk.spec.ts": {
+    "runs": "gate",
+    "why": "Split, paint, cursor and resize walk steps, not columns (#2293): on nested patterns, a click part-way through a plain step splits it (`bd` -> `[bd bd]`, `sd` -> `[sd cp]`); a paint drag paints each step it crosses at any depth and never splits one; the arrow keys walk the drawn steps into a group and out of it; Alt+Shift+arrows lengthen and shorten a note in its own spelling (`bd@2` -> `bd@3`, `sd ~` -> `sd _`) and a length its group cannot take is refused. Every edit is read back from the editor and checked against what the page's own Strudel plays, onset and end, over two cycles."
+  },
   "pattern-zoom.spec.ts": {
     "runs": "gate",
     "why": "Step grid zoom (#2277): 1x keeps every step closed and fits a crowded bar to the panel; zooming in (buttons or Ctrl/Cmd + wheel) widens every column and opens the steps the text nests, with the ruler naming them (`1.2.2`). Pins the labels and open steps at 1x and 1.5x, the wheel, that 60 columns fit at 1x and scroll once zoomed, that a click on a step writes the same code whether its parent is open or not, and that the piano roll's lines and ruler open the same way with its notes unmoved."

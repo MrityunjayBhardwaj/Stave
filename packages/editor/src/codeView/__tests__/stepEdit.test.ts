@@ -86,6 +86,15 @@ interface Toggle {
   sound: string
   /** was the row's own note there (an erase) */
   erase: boolean
+  /** the step is a plain `x*k` / `x!k` (#2326): its `k` — ONE of its hits changes, not all of them */
+  generator?: { k: number; bang: boolean } | null
+}
+
+/** the `k` of a written step that is a plain `x*k` / `x!k` — one note, an integer count, nothing else (#2326) — or null */
+function plainGeneratorK(text: string): { k: number; bang: boolean } | null {
+  const m = /^[^\s[\]<>{}~]+?([*!])([1-9][0-9]*)?(@[1-9][0-9]*)?$/.exec(text.trim())
+  if (!m || (m[1] === '*' && !m[2]) || (m[1] === '!' && m[3])) return null
+  return { k: m[2] ? Number(m[2]) : 2, bang: m[1] === '!' }
 }
 
 /** the hits Strudel plays in cycles `[0, cycles)` whose written place overlaps `[from, to)` */
@@ -136,12 +145,21 @@ function playsTheStep(x: Toggle, edited: string, edit: { from: number; to: numbe
   // one hit at every place the written step sits, and nowhere else
   const begins = beginsOf(x)
   const at = new Set(net.map((k) => k.slice(name.length + 1).split('-')[0]))
+  // A plain `x*k` / `x!k` (#2326) changes ONE of its hits — the one clicked, wherever the
+  // step plays — not one per place the step's slot begins: the clicked hit must be among
+  // them, and fewer hits change than the step plays.
+  const clicked = fr(x.address.at.n + x.address.bar * x.address.at.d, x.address.at.d)
+  // A plain `x*k` / `x!k` (#2326): the clicked hit changes at every place the written step
+  // plays — one per place its slot begins (`x*k`, and `x!k` laid in one slot), or a `k`-th of
+  // its copies' slots (`x!k` whose copies are slots of their own, as in an alternation)
+  const shape = x.generator
+    ? at.has(clicked) && (net.length === begins.size || (x.generator.bang && net.length * x.generator.k === begins.size))
+    : net.length === begins.size && [...begins].every((b) => at.has(b))
   const ok =
     JSON.stringify(got) === JSON.stringify(want) &&
     (x.erase ? want.added : want.removed).length === 0 &&
     net.every((k) => k.startsWith(`${name}@`)) &&
-    net.length === begins.size &&
-    [...begins].every((b) => at.has(b))
+    shape
   return { ok, got, want }
 }
 
@@ -177,8 +195,9 @@ function toggle(mini: string, sound: string, text: string, opts: { bars?: number
   const trees = chunkDivisions(mini, bars)
   const { address } = stepAt(trees, bar, sound, opts.part, text, mini, opts.nth)
   const result = toggleStep(mini, trees, address, { sound, part: opts.part })
-  const erase = text.split(/[@\s_]/)[0] === sound
-  return { result, x: { mini, bars, trees, address, sound, erase } }
+  // the step's name: what comes before its length, holds or op (`hh` of `hh*4`)
+  const erase = text.split(/[@\s_*!(?]/)[0] === sound
+  return { result, x: { mini, bars, trees, address, sound, erase, generator: plainGeneratorK(text) } }
 }
 
 /** the toggle writes `want`, and Strudel plays exactly what the click asks, no more */
@@ -301,12 +320,18 @@ describe('toggleStep — one step, its own text, checked by Strudel', () => {
 
 describe('toggleStep — refused where no change to one text is the one click', () => {
   it('a generated step keeps its generator', () => {
-    refuses('hh*4 ~', 'hh', 'hh*4', 'step-is-generated')
     refuses('bd(3,8) ~', 'bd', 'bd(3,8)', 'step-is-generated')
     refuses('bd? ~', 'bd', 'bd?', 'step-is-generated')
-    refuses('bd!3 ~', 'bd', 'bd!3', 'step-is-replicated')
-    refuses('bd! ~', 'bd', 'bd!', 'step-is-replicated')
+    refuses('hh*<2 4> ~', 'hh', 'hh*<2 4>', 'step-is-generated')
+    refuses('hh*1.5 ~', 'hh', 'hh*1.5', 'step-is-generated')
+    // a rest made copies has no hit to edit
     refuses('bd ~!2', 'bd', '~!2', 'step-is-replicated')
+  })
+
+  it('one hit of a plain `x*k`, one copy of `x!k`, is edited on its own (#2326)', () => {
+    writes('hh*4 ~', 'hh', 'hh*4', '[~ hh hh hh] ~')
+    writes('bd!3 ~', 'bd', 'bd!3', '~ bd bd ~')
+    writes('bd! ~', 'bd', 'bd!', '~ bd ~')
   })
 
   it('a step in a random choice', () => {
@@ -438,6 +463,19 @@ function spelling(mini: string, today: string, mine: string, span: { start: numb
   const spaced = (s: string): string => s.replace(/\s+/g, ' ').replace(/\s*([[\]<>,])\s*/g, '$1')
   if (spaced(today) === spaced(mine)) return 'same music — today changes the spacing beside the step'
   if (/@/.test(mini.slice(span.start, span.end)) && !/@/.test(theirs)) return 'same music — today writes the step’s weight out as steps'
+  // #2326 (the ruling of 2026-11-05): copies the edit leaves side by side are spelled `x!k`, even hits `x*k`
+  // the step was written `x!k` / `x*k` and the new edit keeps that form for what is left, where
+  // today writes every copy out
+  const [ma, mz] = changed(mini, mine)
+  const written = mine.slice(ma, mine.length - (mini.length - mz))
+  const kept = /[!*][0-9]/.test(mini.slice(span.start, span.end)) && /[!*][0-9]/.test(mine.slice(span.start, span.end + (mine.length - mini.length)))
+  // the written-out step keeps the brackets that make it one step; today, where the step is
+  // the whole pattern, writes the copies bare
+  if (today.replace(/[[\]]/g, '') === mine.replace(/[[\]]/g, '')) return 'same music — the written-out step keeps its brackets; today drops them (#2326)'
+  // the written-out step stays ONE step of its group (`[~ bd]`); today writes its hits as
+  // several steps of the group at the group's own resolution (`~ ~ bd`)
+  if (!/[[\]]/.test(theirs) && /^\[[^[\]]*\]$/.test(written.trim())) return 'same music — the written-out step stays one step; today writes it as several steps of its group (#2326)'
+  if ((/[!*][0-9]/.test(written) || kept) && !/[!*][0-9]/.test(theirs)) return 'by design — today writes the copies out; the new edit spells them `x!k` / `x*k` (#2326)'
   return 'same music — unexplained'
 }
 
@@ -535,7 +573,7 @@ function sideBySide(writer: Writer, opts: { strudel: boolean; limit?: number }):
             const mine = writer(mini, trees, address, { sound: lane.sound, part: lane.part, order })
             const mineText = mine.ok ? applyStepEdit(mini, mine.edit) : null
             const where = `${JSON.stringify(mini)} row ${lane.sound}${lane.part === undefined ? '' : ` (part ${lane.part})`} bar ${b} col ${col} step ${JSON.stringify(mini.slice(s.span.start, s.span.end).trim())}`
-            const x: Toggle = { mini, bars, trees, address, sound: lane.sound, erase: s.name === lane.sound && !s.rest }
+            const x: Toggle = { mini, bars, trees, address, sound: lane.sound, erase: s.name === lane.sound && !s.rest, generator: plainGeneratorK(mini.slice(s.span.start, s.span.end)) }
             /** does `text` play exactly what the click asks? today's text is judged by the same rule, through its own edit */
             const isTheClick = (text: string): boolean => {
               try {

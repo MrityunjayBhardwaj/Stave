@@ -105,25 +105,29 @@ test.describe('a click edits the step’s own text (#2292)', () => {
     await clickWrites(page, seq, `${bd}:3`, COPIES, ['-bd@1/8', '-bd@3/8', '-bd@9/8', '-bd@11/8'])
   })
 
-  test('a column part-way through a step is refused with its reason, and the code is left alone', async ({ page }) => {
+  // #2293: a column part-way through a plain step is no longer refused — it SPLITS the step
+  // there (pinned in `pattern-steps-walk.spec.ts`). A quarter of the way into `bd` is four parts.
+  test('a column part-way through a step splits it, and only its own text changes', async ({ page }) => {
     const seq = await open(page, NESTED)
     const bd = await row(seq, 'bd')
-    const inside = cell(seq, `${bd}:1`)
-    await expect(inside).toHaveAttribute('aria-disabled', 'true')
-    await expect(inside).toHaveAttribute('title', /part of a longer step/)
-    await inside.click({ force: true })
-    await page.waitForTimeout(150)
-    expect(await editorValue(page)).toBe(NESTED)
+    await clickWrites(page, seq, `${bd}:1`, '$: s("[bd bd ~ ~] [~ bd] sd [hh [~ cp]]")', ['+bd@1/16', '+bd@17/16'])
   })
 
-  test('a generated step keeps its generator: a hat inside hh*4 is refused', async ({ page }) => {
+  test('one hat inside hh*4 is edited on its own, the step written out (#2326)', async ({ page }) => {
     const seq = await open(page, '$: s("bd hh*4")')
     const hh = await row(seq, 'hh')
-    const hat = cell(seq, `${hh}:5`)
-    await expect(hat).toHaveAttribute('aria-disabled', 'true')
-    await expect(hat).toHaveAttribute('title', /operator on its step/)
-    await hat.click({ force: true })
+    // `hh*4` is columns 4–7: column 5 is its second hat
+    await clickWrites(page, seq, `${hh}:5`, '$: s("bd [hh ~ hh hh]")', ['-hh@5/8', '-hh@13/8'])
+  })
+
+  test('a step made by euclid keeps its generator: a hit inside bd(3,8) is refused', async ({ page }) => {
+    const seq = await open(page, '$: s("sd bd(3,8)")')
+    const bd = await row(seq, 'bd')
+    const hit = seq.locator(`[data-seq-cell^="${bd}:"][aria-pressed="true"]`).nth(1)
+    await expect(hit).toHaveAttribute('aria-disabled', 'true')
+    await expect(hit).toHaveAttribute('title', /operator on its step/)
+    await hit.click({ force: true })
     await page.waitForTimeout(150)
-    expect(await editorValue(page)).toBe('$: s("bd hh*4")')
+    expect(await editorValue(page)).toBe('$: s("sd bd(3,8)")')
   })
 })
