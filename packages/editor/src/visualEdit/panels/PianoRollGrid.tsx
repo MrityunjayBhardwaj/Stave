@@ -642,13 +642,13 @@ export function PianoRollGrid({
     switch (why) {
       case 'source-and-landing-play-in-different-places':
       case 'copies-come-from-outside-the-step':
-        return 'The note plays in several places and where it lands does not — change it in the code view.'
+        return 'The note plays in several places and where it lands does not'
       case 'no-room-to-grow':
-        return 'The next step is not a rest this note can take in — change it in the code view.'
+        return 'The next step is not a rest this note can take in'
       case 'step-is-generated':
-        return "This note is made by an operator on its step (like (3,8)) — change it in the code view."
+        return 'This note is made by an operator on its step (like (3,8))'
       case 'loop-shorter-than-the-pattern':
-        return "This note also plays in bars the roll doesn't show — change it in the code view."
+        return "This note also plays in bars the roll doesn't show"
       default:
         return undefined
     }
@@ -657,7 +657,7 @@ export function PianoRollGrid({
   const writeRoll = (base: { mini: string }, r: RollEditResult, refusal: string): boolean => {
     if (!r.ok) {
       const why = rollRefusalLine(r.why)
-      if (why) emitLog({ level: 'warn', runtime: 'stave', message: `${refusal} — ${why.charAt(0).toLowerCase()}${why.slice(1)}` })
+      if (why) emitLog({ level: 'warn', runtime: 'stave', message: `${refusal} — ${why.charAt(0).toLowerCase()}${why.slice(1)}, ${LEFT_UNCHANGED}; change it in the code view.` })
       else reportRefusal(refusal)
       return false
     }
