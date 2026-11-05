@@ -197,11 +197,22 @@ export function limitAuthor(name: RateLimitName, authorId: string): Promise<Resp
 }
 
 /**
- * The address a request came from. On Vercel, `x-real-ip` and the first
- * `x-forwarded-for` hop are set by the platform, not the client. Off Vercel
- * (dev) there is usually none, and every signed-out request shares one bucket.
+ * The address a request came from, read only where the platform vouches for it
+ * (#2347).
+ *
+ * On Vercel (the platform sets `VERCEL=1` in every deployment), the
+ * platform writes `x-forwarded-for` itself: "we currently overwrite the
+ * X-Forwarded-For header and do not forward external IPs … to prevent IP
+ * spoofing", and `x-real-ip` is "identical to the x-forwarded-for header"
+ * (vercel.com/docs/headers/request-headers).
+ *
+ * Anywhere else (dev, `next start`, a self-hosted proxy) those headers are
+ * whatever the client sent, so a script could rotate them and get a fresh
+ * signed-out bucket each time. There the answer is "unknown": every signed-out
+ * request shares one bucket, which is strict but can't be dodged.
  */
-export function clientAddress(req: Request): string {
+export function clientAddress(req: Request, env: Env = process.env): string {
+  if (!env.VERCEL) return "unknown";
   const real = req.headers.get("x-real-ip")?.trim();
   if (real) return real;
   const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
@@ -209,7 +220,7 @@ export function clientAddress(req: Request): string {
 }
 
 export function hashedAddress(req: Request, env: Env = process.env): string {
-  const address = clientAddress(req);
+  const address = clientAddress(req, env);
   const secret = env.AUTH_SECRET;
   return secret
     ? createHmac("sha256", secret).update(`rate-limit:${address}`, "utf8").digest("hex")

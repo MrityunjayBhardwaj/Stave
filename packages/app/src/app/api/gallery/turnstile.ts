@@ -50,7 +50,7 @@ export async function requireTurnstile(req: Request, env: Env = process.env): Pr
   if (token.length > MAX_TOKEN_CHARS) return refused("the \"are you human\" check didn't pass; please try it again");
 
   const form = new URLSearchParams({ secret, response: token });
-  const address = clientAddress(req);
+  const address = clientAddress(req, env);
   if (address !== "unknown") form.set("remoteip", address);
 
   let answer: SiteverifyAnswer;
