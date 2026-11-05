@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, editorValue, evalCode, seedCode } from './_appBoot'
+import { bootApp, editorValue, evalCode, seedCode, stopCode } from './_appBoot'
 import { vizPixelStats } from './_vizFrames'
 
 // #2382 / #2383 — the three steps of one report, end to end in the real app:
@@ -41,6 +41,8 @@ const red = (page: Page) => async () =>
   (await vizPixelStats(page, `${BG} canvas`, { rMin: 121, gMax: 79, bMax: 89 })).frac
 const blue = (page: Page) => async () =>
   (await vizPixelStats(page, `${BG} canvas`, { bMin: 121, rMax: 79, gMax: 89 })).frac
+const green = (page: Page) => async () =>
+  (await vizPixelStats(page, `${BG} canvas`, { gMin: 121, rMax: 79, bMax: 89 })).frac
 
 async function play(page: Page): Promise<void> {
   await evalCode(page)
@@ -99,3 +101,33 @@ test('deleting .viz(...) from a track and playing again removes its inline viz',
   await play(page)
   await expect(page.locator('[data-viz-zone-track]')).toHaveCount(1, { timeout: 8000 })
 })
+
+// #2385 — the background's options follow the CODE at every moment: before the
+// first Play, while playing, after Stop, and as they are edited. They used to come
+// only from the last evaluation's capture, which Stop withdraws.
+for (const [form, line] of [
+  ['the master line', `all(x => x.viz("spiral", { theme: 'transparent', emit: true }))`],
+  ['the flagged master line', `all(x => x.viz("spiral", { backdrop: true, theme: 'transparent' }))`],
+] as const) {
+  test(`Stop keeps the background's options on ${form}`, async ({ page }) => {
+    await seedCode(page, `${TRACK}\n${line}`)
+    await play(page)
+    await expect(page.locator(BG)).toHaveAttribute('data-background-file-id', /spiral/, { timeout: 8000 })
+    await expect.poll(red(page), { timeout: 8000 }).toBeGreaterThan(0.4)
+
+    await stopCode(page)
+    await page.waitForTimeout(1500)
+    await expect.poll(red(page), { timeout: 8000 }).toBeGreaterThan(0.4)
+    expect(await green(page)()).toBeLessThan(0.05)
+  })
+
+  test(`the background follows ${form}'s options before any Play, and as they are edited`, async ({ page }) => {
+    await seedCode(page, `${TRACK}\n${line}`)
+    await expect(page.locator(BG)).toHaveAttribute('data-background-file-id', /spiral/, { timeout: 8000 })
+    await expect.poll(red(page), { timeout: 8000 }).toBeGreaterThan(0.4)
+
+    // edited, no Play: the sketch sees the new value
+    await seedCode(page, `${TRACK}\n${line.replace("'transparent'", "'white'")}`)
+    await expect.poll(blue(page), { timeout: 8000 }).toBeGreaterThan(0.4)
+  })
+}
