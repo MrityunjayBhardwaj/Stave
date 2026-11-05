@@ -58,6 +58,8 @@ import { TimeSignatureControl } from "./TimeSignatureControl";
 import { FileTree, type FileTreeHandle } from "./FileTree";
 import { TemplateModal } from "./TemplateModal";
 import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
+// #2300 — the community gallery overlay, its command and its `#gallery=` links.
+import { GalleryHost, openGallery } from "../gallery/GalleryHost";
 import {
   bumpEditorFontSize,
   toggleEditorMinimap,
@@ -104,6 +106,11 @@ import {
 } from "@stave/editor";
 import StrudelEditorClient, { type BounceHandle } from "./StrudelEditorClient";
 import { BounceModal, type BounceState } from "./BounceModal";
+import { PublishDialog } from "../gallery/PublishDialog";
+// #2319 — who is signed in (menu bar, drawer, publish dialog), and the
+// `#publish` fragment the sign-in redirect comes back to.
+import { gallerySignIn, gallerySignOut, PUBLISH_HASH, useGallerySession } from "../gallery/session";
+import { buildAccountMenu } from "../gallery/accountMenu";
 import type { BounceSizing } from "./songLength";
 import { DocsSearchPalette } from "./DocsSearchPalette";
 import { isPerfOverlayToggle } from "./perfToggleKey";
@@ -157,6 +164,7 @@ import { createSamplesProvider } from "../assetLibrary/samplesProvider";
 import { createVizProvider } from "../assetLibrary/vizProvider";
 import { createSnippetsProvider } from "../assetLibrary/snippetsProvider";
 import { playSnippet, checkSnippet, previewNotesPlayed } from "../assetLibrary/snippetPreview";
+import { isGalleryRunDeclined } from "../gallery/runGate";
 import { createFileWithContent } from "../lib/newFile";
 import { planVizLibFiles, VIZ_LIB_ROOT, type VizLibItem } from "../assetLibrary/vizLibrary";
 import { PerfOverlay } from "./PerfOverlay";
@@ -295,11 +303,25 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   }, []);
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const gallerySession = useGallerySession();
+  // #2319 — back from signing in to publish: take `#publish` off the URL and
+  // reopen the dialog. Once, on mount; the redirect reloads the page.
+  useEffect(() => {
+    if (window.location.hash !== PUBLISH_HASH) return;
+    clearShareFragment();
+    setPublishOpen(true);
+  }, []);
   // #2019 — the start screen. Decided ONCE, when the app first mounts (which is
   // after the last project has loaded): it greets an arrival and never appears
   // mid-session on its own. A share link has its own question to ask instead.
   const [startScreenOpen, setStartScreenOpen] = useState(() =>
-    showsStartScreen(readStartConditions(readIncomingShare() != null)),
+    // #2319 — coming back from sign-in to publish has its own dialog to show, like a share link.
+    showsStartScreen(
+      readStartConditions(
+        readIncomingShare() != null || (typeof window !== "undefined" && window.location.hash === PUBLISH_HASH),
+      ),
+    ),
   );
   const [startScreenAtStart, setStartScreenAtStart] = useState(startScreenWanted);
   const [switcherModalOpen, setSwitcherModalOpen] = useState(false);
@@ -527,7 +549,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             : " A short link wasn't available, so this is the long one.";
       }
       await navigator.clipboard.writeText(url);
-      showToast(`Share link copied (${url.length.toLocaleString()} chars).${note}`, "info");
+      // #2312 — say it's private, and where public sharing lives, for whoever meant to publish.
+      showToast(
+        `Private link copied — only people you send it to can open it.${note} To show it to everyone, use File → Share → Publish to Gallery.`,
+        "info",
+        7000,
+      );
     } catch (err) {
       console.error("[stave] share failed:", err);
       showToast(
@@ -757,6 +784,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           );
         })
         .catch((err: unknown) => {
+          // #2342 — Cancel on the gallery trust question: nothing ran, nothing saved.
+          if (isGalleryRunDeclined(err)) {
+            showToast("Bounce cancelled — nothing was saved.", "info");
+            return;
+          }
           console.error("[stave] stems export failed:", err);
           showToast("Stems export failed — see console for details.", "error");
         })
@@ -837,6 +869,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         );
       })
       .catch((err: unknown) => {
+        // #2342 — Cancel on the gallery trust question: nothing ran, nothing saved.
+        if (isGalleryRunDeclined(err)) {
+          showToast("Bounce cancelled — nothing was saved.", "info");
+          return;
+        }
         console.error("[stave] bounce failed:", err);
         // #1402 — a bounce that recorded nothing used to download a valid,
         // full-length WAV of silence and call it a success. The capture
@@ -1838,10 +1875,17 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     }));
     unregs.push(registerCommand({
       id: "stave.file.share",
-      title: "Copy Share Link",
+      title: "Copy Private Link",
       category: "File",
-      description: "Copy a URL that imports this project on another machine.",
+      description: "Copy a private link to this project, for people you send it to. Not listed in the gallery.",
       run: () => { void handleShareProject(); },
+    }));
+    unregs.push(registerCommand({
+      id: "stave.file.publishToGallery",
+      title: "Publish to Gallery…",
+      category: "File",
+      description: "Put this project, or one music or viz file, in the community gallery.",
+      run: () => setPublishOpen(true),
     }));
     unregs.push(registerCommand({
       id: "stave.view.shortcuts",
@@ -2067,6 +2111,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     onBounceToWav: openBounceModal,
     canBounceToWav: () => bounceRef.current?.canBounce() ?? false,
     onShareProject: handleShareProject,
+    onPublishToGallery: () => setPublishOpen(true),
     onVersionHistory: openSnapshotPanel,
     onToggleSidebar: () => setSidebarCollapsed((c) => !c),
     sidebarCollapsed,
@@ -2076,6 +2121,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     onRedo: () => { redo(); },
     canUndo: undoState.canUndo,
     canRedo: undoState.canRedo,
+    onOpenGallery: () => openGallery(),
+    account: buildAccountMenu(gallerySession, {
+      onSignIn: (id) => void gallerySignIn(id),
+      onSignOut: () => void gallerySignOut(),
+      onMyProfile: (authorId) => openGallery({ kind: "author", id: authorId }),
+    }),
   };
   // #1348 — the eval lamp: the active file's last evaluation. Pressing it does what
   // pressing that error's toast does, even after the toast is gone; with no error it
@@ -2299,6 +2350,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         }}
       />
 
+      <PublishDialog
+        open={publishOpen}
+        project={activeProject}
+        activeFileId={activeFileId}
+        onClose={() => setPublishOpen(false)}
+      />
+
       <TemplateModal
         open={templateModalOpen}
         onClose={() => setTemplateModalOpen(false)}
@@ -2313,6 +2371,24 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onSelect={doSwitchProject}
         onRename={handleRenameProjectFromSwitcher}
         onDelete={handleDeleteProjectFromSwitcher}
+      />
+
+      <GalleryHost
+        unsavedBlocksLeaving={unsavedBlocksLeaving}
+        onPublish={() => setPublishOpen(true)}
+        openProject={async (load) => {
+          // The editor unmounts while the file store switches under it, as
+          // File → New does; otherwise the open editor writes into the new project.
+          setSwitching(true);
+          try {
+            const meta = await load();
+            setProjects(await listProjects());
+            setActiveProject(meta);
+            return meta;
+          } finally {
+            setSwitching(false);
+          }
+        }}
       />
 
       <StorageFullNotice onExport={handleExportProject} onOpenLibrary={openLibraryAtYourSounds} />

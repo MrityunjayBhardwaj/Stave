@@ -23,7 +23,9 @@ import {
   flushToPreset,
   registerPresetAsNamedViz,
   VizPresetStore,
+  getActiveProjectId,
 } from "@stave/editor";
+import { mayEvaluateQuietly } from "./gallery/runGate";
 import { findVizFileByName, presetIdForVizFile } from "./visualizers/vizFileLookup";
 
 const VIZ_REF_RE = /\.viz\(\s*["']([^"']+)["']\s*\)/g;
@@ -49,6 +51,9 @@ function resolveRefFile(vizName: string): { fileId: string; presetId: string } |
 }
 
 function recompileAndRegister(vizFileId: string, presetId: string): void {
+  // #2344 — a gallery viz file nobody has agreed to run is never registered.
+  const projectId = getActiveProjectId();
+  if (projectId && !mayEvaluateQuietly(projectId, vizFileId)) return;
   flushToPreset(vizFileId, presetId)
     .then(() => VizPresetStore.get(presetId))
     .then((preset) => { if (preset) registerPresetAsNamedViz(preset); })
