@@ -275,6 +275,24 @@ test.describe('gallery preview sandbox (#2328)', () => {
     console.log('CONSOLE ERRORS\n' + errors.join('\n'))
   })
 
+  // #2343 — the frame loads the app's scripts from an origin that isn't its own
+  // (its own is opaque), and the browser used to mute what they throw later.
+  test("an error the entry raises later comes through in full: a timer's throw, a rejected promise", async ({ page }) => {
+    test.setTimeout(240_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    const timer = await routeEntry(page, 'Timer', 'timer.strudel', "setTimeout(() => { throw new Error('TIMER-BOOM') }, 300)\ns('bd ~ ~ ~')")
+    const rejected = await routeEntry(page, 'Rejected', 'rejected.strudel', "Promise.reject(new Error('REJECT-BOOM'))\ns('bd ~ ~ ~')")
+    await bootApp(page)
+    for (const [id, word] of [[timer.id, 'TIMER-BOOM'], [rejected.id, 'REJECT-BOOM']] as const) {
+      await page.goto(`/#gallery=${id}`)
+      await expect(page.locator(`[data-gallery-detail="${id}"]`)).toBeVisible({ timeout: 30_000 })
+      await page.locator('[data-gallery-preview-button]').click()
+      await expect(page.locator('[data-gallery-preview-state="playing"]')).toContainText(`The code reported an error: ${word}`, { timeout: 90_000 })
+      await expect(page.locator('[data-gallery-preview-state]')).not.toContainText('Script error.')
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/sandbox-error-${word.toLowerCase()}.png` })
+    }
+  })
+
   test('the first Play after "Open as new project" asks, naming the author; the second does not', async ({ page }) => {
     test.setTimeout(90_000)
     await routeGallery(page)
