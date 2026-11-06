@@ -36,7 +36,7 @@ import { opensStepGrid } from '../../codeView'
 import { useGridModel } from './useGridModel'
 import { stepToCycle, usePlayingStep } from './usePlayingStep'
 import { addLane, removeLane } from '../../codeView'
-import { applyStepEdit, resizeStep, resizeStepBy, splitStep, toggleStep, type StepEdit, type StepEditResult } from '../../codeView'
+import { resizeStep, resizeStepBy, splitStep, toggleStep, type StepEdit, type StepEditResult } from '../../codeView'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice, chordLanes, stepNotes, stepNoteKey, chunkDivisions } from '../../codeView'
 import { OPEN_PX, drawnSteps, endInBar, groupStops, laneSteps, leafStops, openAt, splitAddressAt, stepAddressAt, zoomRuler, type DrawnStep, type StepAtRefusal } from './gridZoom'
@@ -168,8 +168,6 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // reaches the document until an actual edit is made, and the first write absorbs
   // it (`useGridModel` → `absorbViewScale`).
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const viewScaleRef = React.useRef(viewScale)
-  viewScaleRef.current = viewScale
   const { chunk, model, read, mutate, writeMini, writeStep, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
     ...stepGridCodec,
     source: 'seq',
@@ -510,18 +508,8 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
         for (const r of read.lanes) if (!shown.some((l) => same(r, l))) lanes.push(r)
         return lanes.every((l, i) => l === read.lanes[i]) && lanes.length === read.lanes.length ? read : { ...read, lanes }
       }
-      const steps = modelRef.current?.steps
-      const wrote = writeStep(mini, edit, keep)
-      // A REFINED VIEW IS ABSORBED when the text now spells it (#1057, #2293): a split in a
-      // view drawn finer than the text (Slots ×2) writes the finer step itself, and the text
-      // read alone opens at the columns on screen — so the view's scale is dropped, as the
-      // column writer drops it (`spellsRefinement`). Otherwise the scale would apply AGAIN
-      // to the finer text, and the grid would double under the user's pointer.
-      if (wrote && viewScaleRef.current !== UNREFINED) {
-        const natural = stepGridCodec.parse(applyStepEdit(mini, edit), UNREFINED)
-        if (natural.ok && natural.model.steps === steps) setViewScale(UNREFINED)
-      }
-      return wrote
+      // a refined view the text now spells is absorbed by `writeStep` itself (#2293, #2410)
+      return writeStep(mini, edit, keep)
     },
     [writeStep],
   )

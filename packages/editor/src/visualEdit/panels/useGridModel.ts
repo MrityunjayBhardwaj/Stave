@@ -271,9 +271,13 @@ export function useGridModel<M extends { viewScale?: ViewScale; lookOnly?: unkno
     (from: string, edit: StepEdit, keep?: (read: M) => M): boolean => {
       if (modelRef.current?.lookOnly) return false // same door (#1975)
       let wrote = false
+      let written = null as string | null // set inside the edit callback
+      // the columns on screen before the write, for the refinement check below
+      const drawn = (modelRef.current as { steps?: number } | null)?.steps
       applyEdit((fresh, wb) => {
         if (fresh.miniString !== from || !fresh.miniRange) return
         const after = applyStepEdit(from, edit)
+        written = after
         keepRef.current = keep ? { mini: after, keep } : null
         // the panel's own write keeps the pattern's key, so a zoom the user set stays (#1964)
         ownEchoRef.current = keyOf(fresh.exprRange[0], after)
@@ -285,6 +289,20 @@ export function useGridModel<M extends { viewScale?: ViewScale; lookOnly?: unkno
           end - start === from.length ? [{ range: [start + edit.from, start + edit.to], text: edit.insert }] : gridWriteEdits(fresh, after, null)
         wrote = commit(wb, edits, optsRef.current.source) === 'written'
       })
+      // A REFINED VIEW IS ABSORBED WHEN THE TEXT NOW SPELLS IT (#2410, as `writeModel` does
+      // through `spellsRefinement`): a split in a view drawn finer than the text (Slots ×2)
+      // writes the finer step itself, so the text read alone opens at the columns on screen.
+      // The scale is dropped then — kept, it would apply AGAIN to the finer text and the
+      // grid would double under the pointer. Every panel that writes a step gets this here,
+      // once (the step grid carried its own copy until #2410).
+      const o = optsRef.current
+      if (wrote && written !== null && (o.viewScale ?? UNREFINED) !== UNREFINED) {
+        const natural = o.parse(written, UNREFINED)
+        if (natural.ok && (natural.model as { steps?: number }).steps === drawn) {
+          modelScaleRef.current = UNREFINED
+          o.onViewScaleConsumed?.()
+        }
+      }
       return wrote
     },
     [applyEdit],
