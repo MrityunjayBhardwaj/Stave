@@ -39422,15 +39422,26 @@ function useGridModel(opts) {
     (from, edit, keep) => {
       if (modelRef.current?.lookOnly) return false;
       let wrote = false;
+      let written = null;
+      const drawn = modelRef.current?.steps;
       applyEdit((fresh, wb) => {
         if (fresh.miniString !== from || !fresh.miniRange) return;
         const after = applyStepEdit(from, edit);
+        written = after;
         keepRef.current = keep ? { mini: after, keep } : null;
         ownEchoRef.current = keyOf(fresh.exprRange[0], after);
         const [start, end] = fresh.miniRange;
         const edits = end - start === from.length ? [{ range: [start + edit.from, start + edit.to], text: edit.insert }] : gridWriteEdits(fresh, after, null);
         wrote = commit(wb, edits, optsRef.current.source) === "written";
       });
+      const o = optsRef.current;
+      if (wrote && written !== null && (o.viewScale ?? UNREFINED) !== UNREFINED) {
+        const natural = o.parse(written, UNREFINED);
+        if (natural.ok && natural.model.steps === drawn) {
+          modelScaleRef.current = UNREFINED;
+          o.onViewScaleConsumed?.();
+        }
+      }
       return wrote;
     },
     [applyEdit]
@@ -42690,8 +42701,6 @@ function opensRhythmLine(call) {
 __name(opensRhythmLine, "opensRhythmLine");
 function SequencerGrid({ onResolution, notice = null } = {}) {
   const [viewScale, setViewScale] = React32__namespace.useState(UNREFINED);
-  const viewScaleRef = React32__namespace.useRef(viewScale);
-  viewScaleRef.current = viewScale;
   const { chunk, model, read: read5, mutate, writeMini, writeStep, beginGesture, endGesture, patternKey } = useGridModel({
     ...stepGridCodec,
     source: "seq",
@@ -42857,13 +42866,7 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
         for (const r of read6.lanes) if (!shown.some((l) => same3(r, l))) lanes.push(r);
         return lanes.every((l, i) => l === read6.lanes[i]) && lanes.length === read6.lanes.length ? read6 : { ...read6, lanes };
       }, "keep");
-      const steps = modelRef.current?.steps;
-      const wrote = writeStep(mini, edit, keep);
-      if (wrote && viewScaleRef.current !== UNREFINED) {
-        const natural = stepGridCodec.parse(applyStepEdit(mini, edit), UNREFINED);
-        if (natural.ok && natural.model.steps === steps) setViewScale(UNREFINED);
-      }
-      return wrote;
+      return writeStep(mini, edit, keep);
     },
     [writeStep]
   );
