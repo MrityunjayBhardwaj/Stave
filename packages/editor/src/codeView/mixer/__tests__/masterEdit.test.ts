@@ -264,7 +264,10 @@ describe('adaptMasterChunk', () => {
 
 describe('readMasterViz', () => {
   it('reads the backdrop viz name', () => {
-    expect(readMasterViz('all(x => x.viz("Prism", { backdrop: true }))')).toEqual({ name: 'Prism' })
+    expect(readMasterViz('all(x => x.viz("Prism", { backdrop: true }))')).toEqual({
+      name: 'Prism',
+      options: { kind: 'literal', values: { backdrop: true }, dynamic: [] },
+    })
   })
 
   it('is null when no master backdrop is declared', () => {
@@ -280,8 +283,21 @@ describe('readMasterViz', () => {
   it('reads a master all() viz with NO backdrop flag as the backdrop', () => {
     expect(
       readMasterViz(`all(x => x.viz("Fold", { delay: 0.8, theme: 'transparent', emit: true }))`),
-    ).toEqual({ name: 'Fold' })
-    expect(readMasterViz('all(x => x.viz("Fold"))')).toEqual({ name: 'Fold' })
+    ).toMatchObject({ name: 'Fold' })
+    expect(readMasterViz('all(x => x.viz("Fold"))')).toEqual({ name: 'Fold', options: null })
+  })
+
+  // #2385 — the background follows the options the CODE writes, so the reader
+  // hands them over: literal values, and the keys only an evaluation can fill.
+  it('reads the options the code writes for the master viz', () => {
+    expect(
+      readMasterViz(`all(x => x.viz("Fold", { delay: 0.8, theme: 'transparent', emit: true, followers: [2, 3], levels: slider(0.3) }))`)
+        ?.options,
+    ).toEqual({
+      kind: 'literal',
+      values: { delay: 0.8, theme: 'transparent', emit: true, followers: [2, 3] },
+      dynamic: ['levels'],
+    })
   })
 
   it('still ignores a track viz when a master line without a viz is present', () => {
@@ -336,6 +352,6 @@ describe('masterVizEdit', () => {
   it('round-trips: set then re-read yields the written name', () => {
     const src = '$: s("bd")'
     const next = applied(src, masterVizEdit(src, 'spectrum'))
-    expect(readMasterViz(next)).toEqual({ name: 'spectrum' })
+    expect(readMasterViz(next)?.name).toBe('spectrum')
   })
 })

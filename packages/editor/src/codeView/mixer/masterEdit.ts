@@ -53,6 +53,7 @@
 import { parseTopLevel, collectChain, toArg, type ChainArg, type ChainCall, type ChunkInfo } from '../chunkDetect'
 import { formatNumber } from '../writeback'
 import type { OffsetEdit } from '../writeback'
+import { readVizOptionsLiteral, type CodeVizOptions } from './vizOptionsLiteral'
 
 /** unity gain — an untouched master reads unity from the ABSENCE of a line. */
 export const MASTER_UNITY_GAIN = 1
@@ -318,14 +319,22 @@ export function adaptMasterChunk(doc: string, m: MasterAll): ChunkInfo {
 }
 
 /** the master backdrop the "set backdrop" UI shows: the `all()` backdrop-viz
- *  name, or null when no master backdrop is declared in code. */
-export function readMasterViz(doc: string): { name: string } | null {
+ *  name and what the code says about its options, or null when no master
+ *  backdrop is declared in code. `options` is null when the call has no
+ *  options argument; otherwise it is read statically (see vizOptionsLiteral) so
+ *  the background can follow the code before Play and after Stop, not only
+ *  while an evaluation's capture is on the bus. */
+export function readMasterViz(doc: string): { name: string; options: CodeVizOptions | null } | null {
   for (const m of detectMasterAll(doc)) {
     const v = findVizBackdropCall(m)
     if (!v) continue
     const nameArg = vizNameArg(v)
     if (!nameArg) continue
-    return { name: nameArg.raw.slice(1, -1) }
+    const optionsArg = v.args.find((a) => a !== nameArg)
+    return {
+      name: nameArg.raw.slice(1, -1),
+      options: optionsArg ? readVizOptionsLiteral(optionsArg.raw) : null,
+    }
   }
   return null
 }

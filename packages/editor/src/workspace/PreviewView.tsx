@@ -174,6 +174,7 @@ export function PreviewView({
   theme = 'dark',
   hidden = false,
   paused = false,
+  backdrop = false,
 }: PreviewViewProps): React.ReactElement {
   const { file } = useWorkspaceFile(fileId)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -321,13 +322,14 @@ export function PreviewView({
       audioSource: audioPayload,
       hidden: effectivelyHidden,
       paused,
+      backdrop,
     })
     // Note: `reloadTick` is NOT a dep because we want the memo to
     // recompute on every reload. It IS in the key below, which drives
     // the React reconciliation. If we added it as a dep here as well,
     // we'd double-recompute but behavior would be unchanged.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file, provider, audioPayload, effectivelyHidden, paused, reloadTick])
+  }, [file, provider, audioPayload, effectivelyHidden, paused, backdrop, reloadTick])
 
   // React key on the provider mount. Composes three independent
   // remount triggers:
@@ -342,7 +344,18 @@ export function PreviewView({
   //      render should re-run with the new file content.
   // Any single change to any component forces a full unmount +
   // remount of the provider subtree below the keyed div.
-  const providerKey = `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`
+  //
+  // A BACKGROUND leaves trigger 2 out. Play publishes the pattern on the bus and
+  // Stop unpublishes it, so keying on the publisher restarted the background
+  // sketch on every Play and every Stop — trails, camera and clock gone, when
+  // Play/Stop should only start and stop the music. The sketch instead keeps
+  // running and receives the new (or absent) audio inputs through
+  // `renderer.update()`, which every renderer implements as an in-place rebind
+  // (CompiledVizMount calls it whenever the payload changes). A preview TAB keeps
+  // the remount: there, following a different pattern re-runs `setup()` on purpose.
+  const providerKey = backdrop
+    ? `${sourceRefKey(sourceRef)}:${reloadTick}`
+    : `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`
 
   return (
     <div

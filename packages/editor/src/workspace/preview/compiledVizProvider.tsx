@@ -89,7 +89,7 @@
  * gets a fresh renderer state.
  */
 
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import type { VizDescriptor } from '../../visualizers/types'
 import type { VizPreset } from '../../visualizers/vizPreset'
 import { compilePreset } from '../../visualizers/vizCompiler'
@@ -99,6 +99,7 @@ import { isReportedVizError } from '../../visualizers/reportedVizErrors'
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { PreviewContext, PreviewEditorChromeContext, PreviewProvider } from '../PreviewProvider'
 import { VizEditorChrome } from './VizEditorChrome'
+import { getCodeBackdropOptions, subscribeCodeBackdropOptions } from './codeBackdropOptions'
 import { emitLog, emitFixed, type RuntimeId } from '../../engine/engineLog'
 import { formatFriendlyError } from '../../engine/friendlyErrors'
 import { P5_DOCS_INDEX } from '../../monaco/docs/p5'
@@ -163,6 +164,7 @@ export function createCompiledVizProvider(
           hidden={ctx.hidden}
           paused={ctx.paused ?? false}
           fileId={ctx.file.id}
+          backdrop={ctx.backdrop ?? false}
         />
       )
     },
@@ -201,6 +203,8 @@ interface CompiledVizMountProps {
    */
   readonly paused: boolean
   readonly fileId: string
+  /** a pane background — its options follow the code (codeBackdropOptions) */
+  readonly backdrop: boolean
 }
 
 /**
@@ -221,7 +225,12 @@ interface CompiledVizMountProps {
  * teardown.
  */
 function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
-  const { file, rendererType, audioSource, hidden, paused, fileId } = props
+  const { file, rendererType, audioSource, hidden, paused, fileId, backdrop } = props
+  // What the CODE gives this background (the active pattern's background viz,
+  // read statically): present before the first Play and after Stop, when the
+  // bus payload below is not. Only for a background showing that same file.
+  const codeBackdrop = useSyncExternalStore(subscribeCodeBackdropOptions, getCodeBackdropOptions)
+  const codeOptions = backdrop && codeBackdrop?.fileId === fileId ? codeBackdrop.options : null
 
   // Compile ONCE per file-content change. This is the memoization
   // boundary that keeps the descriptor stable across re-renders
@@ -332,12 +341,18 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
     if (audioSource?.inlineViz?.backdropRequest?.options) {
       bag.options = audioSource.inlineViz.backdropRequest.options
     }
+    // The code's options win for a background: they are what the document says
+    // now, and they survive Stop (which withdraws the payload above). Values only
+    // an evaluation can produce were already folded in from the last one.
+    if (codeOptions) {
+      bag.options = codeOptions
+    }
     return bag
     // We deliberately depend on the audioSource reference, which is stable
     // within a single mount lifetime (PreviewView's key formula enforces
     // this). A shallow-unsafe dep is fine here because a stale value is
     // impossible — the component unmounts before audioSource changes.
-  }, [audioSource])
+  }, [audioSource, codeOptions])
 
   // Mount/unmount the renderer. This effect runs exactly once per mount
   // because descriptor is captured at mount time and PreviewView owns the

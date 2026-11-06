@@ -93,6 +93,8 @@ import {
   commitToFile,
   masterVizEdit,
   readMasterViz,
+  resolveVizOptions,
+  setCodeBackdropOptions,
   onActiveEditorChange,
   readPersistedOpen,
   readPersistedActiveTabId,
@@ -797,8 +799,44 @@ export default function StrudelEditorClient({
   // in prevCodeBackdropRef), so a keystroke elsewhere never disturbs a backdrop set
   // from another surface (file-tree / Cmd+K B) that isn't in the code.
   const prevCodeBackdropRef = useRef<string | null>(null);
+  // The background's OPTIONS follow the code too, not only the last evaluation:
+  // the bus payload that carries the evaluated ones is withdrawn on Stop and
+  // absent before the first Play, and the sketch then fell back to its defaults.
+  // The last evaluation's capture is kept here (per pattern file) for the values
+  // the code computes rather than writes as literals.
+  const lastEvalBackdropRef = useRef<{
+    patternFileId: string;
+    vizId: string;
+    options: Record<string, unknown> | null;
+  } | null>(null);
+  const publishCodeBackdropOptionsRef = useRef<() => void>(() => {});
   useEffect(() => {
     let sub: { dispose?: () => void } | undefined;
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const publishCodeBackdropOptions = () => {
+      const model = getActiveEditor()?.getModel?.();
+      // only a pattern's code declares a background; with a viz file focused the
+      // slot keeps what the pattern last said
+      if (model?.getLanguageId?.() !== "strudel") return;
+      const patternFileId = activeFileIdRef.current;
+      const last =
+        lastEvalBackdropRef.current?.patternFileId === patternFileId ? lastEvalBackdropRef.current : null;
+      const master = readMasterViz(model.getValue?.() ?? "");
+      if (master) {
+        const vizFileId = resolveVizNameToFileId(master.name);
+        const evaluated = last && norm(last.vizId) === norm(master.name) ? last.options : null;
+        setCodeBackdropOptions(
+          vizFileId ? { fileId: vizFileId, options: resolveVizOptions(master.options, evaluated) } : null,
+        );
+        return;
+      }
+      // a background declared on a track (`.viz(name, { backdrop: true })`,
+      // `.pianoroll({...})`) — the code reader doesn't see those, so keep the last
+      // evaluation's options for it rather than none after Stop
+      const vizFileId = last ? resolveVizNameToFileId(last.vizId) : null;
+      setCodeBackdropOptions(vizFileId ? { fileId: vizFileId, options: last?.options ?? {} } : null);
+    };
+    publishCodeBackdropOptionsRef.current = publishCodeBackdropOptions;
     const codeBackdropOf = (): string | null => {
       const model = getActiveEditor()?.getModel?.();
       // master all() is a pattern-file concept — only sync for the Strudel editor
@@ -810,6 +848,7 @@ export default function StrudelEditorClient({
     const sync = () => {
       const fileId = activeFileIdRef.current;
       if (!fileId) return;
+      publishCodeBackdropOptions();
       const code = codeBackdropOf();
       if (code === prevCodeBackdropRef.current) return; // code backdrop unchanged → leave the sticky alone
       prevCodeBackdropRef.current = code;
@@ -1524,6 +1563,11 @@ export default function StrudelEditorClient({
         // StaveApp resolves the id to a viz file (or clears) and the "set bg"
         // UI auto-updates. Idempotent on StaveApp's side (no churn in live mode).
         onCodeBackdropChangeRef.current?.(runtime.getBackdropVizRequest());
+        const evaluatedVizId = runtime.getBackdropVizRequest();
+        lastEvalBackdropRef.current = evaluatedVizId
+          ? { patternFileId: fileId, vizId: evaluatedVizId, options: runtime.getBackdropVizOptions() }
+          : null;
+        publishCodeBackdropOptionsRef.current();
       }
     });
     runtime.onAutoRefreshChanged((enabled: boolean) => {

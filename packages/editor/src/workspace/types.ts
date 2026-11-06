@@ -446,6 +446,12 @@ export interface PreviewViewProps {
    * resume.
    */
   readonly paused?: boolean
+  /**
+   * This preview is a pane BACKGROUND. Its viz options then follow the
+   * active pattern's code (`codeBackdropOptions`) rather than only the last
+   * evaluation's capture on the audio bus, which Stop withdraws.
+   */
+  readonly backdrop?: boolean
 }
 
 // ---------------------------------------------------------------------------
