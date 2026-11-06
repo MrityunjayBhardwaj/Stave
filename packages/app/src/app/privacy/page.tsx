@@ -163,6 +163,11 @@ export default function PrivacyPage() {
           When an admin acts, the action log records the admin&apos;s name and account id, what they did, to what, when
           and why. Only admins can read it, and it has no time limit.
         </p>
+        <p>
+          If an admin suspends an account, we keep the reason and the dates against it until the suspension is lifted or
+          the account is deleted. Suspensions aren&apos;t shown publicly. If the admin also takes down everything the
+          account published, its profile and collections are hidden while the suspension lasts.
+        </p>
       </Section>
 
       <Section title="Limits on abuse">

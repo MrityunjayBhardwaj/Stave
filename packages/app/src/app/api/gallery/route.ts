@@ -9,6 +9,7 @@ import { hashToken, newManageToken } from "./auth";
 import { putEntryFiles } from "./entryFiles";
 import { limitAccount } from "./rateLimit";
 import { requireSessionAuthor } from "./session";
+import { suspendedRefusal } from "./suspension";
 import { requireTurnstile } from "./turnstile";
 import { galleryStore } from "./store";
 import { checkPublish, MAX_PUBLISH_BODY_BYTES, readJsonBody } from "./validate";
@@ -78,6 +79,8 @@ async function handlePOST(req: Request): Promise<Response> {
   if (who instanceof Response) return who;
   const { authorId, account } = who;
   // #2330 — per-account limit, then the Turnstile check (when set up).
+  const suspended = await suspendedRefusal();
+  if (suspended) return suspended;
   const limited = (await limitAccount("publish", account.accountHash)) ?? (await requireTurnstile(req, "publish"));
   if (limited) return limited;
 

@@ -219,6 +219,24 @@ export const adminLog = pgTable(
 );
 
 /**
+ * #2400 — an account suspended by an admin. PRIVATE (admins read it through their
+ * own route), keyed by the account hash, never the email. At most one per account:
+ * lifting deletes the row, and the action log keeps the history. `until` null means
+ * permanent; past `until` it simply stops counting, so it ends by itself.
+ * `hideProfile`: the admin also took everything down, so the profile and collections
+ * answer 404 while it lasts.
+ */
+export const suspensions = pgTable("suspensions", {
+  accountId: text("account_id")
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  at: ms("at").notNull(),
+  until: ms("until"),
+  reason: text("reason").notNull(),
+  hideProfile: boolean("hide_profile").notNull(),
+});
+
+/**
  * #2330 / #2345 — write counters. One row per key holding the CURRENT window:
  * the first take in a new window resets it, so rows never pile up per window.
  * `key` is sha256 of the limiter key (no address or account text). PRIVATE.

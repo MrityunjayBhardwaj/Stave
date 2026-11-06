@@ -120,6 +120,8 @@ With an admin signed in, the Community Gallery gets a **Moderation** tab. It lis
 
 Below that is the **action log**: the newest 200 take-downs and dismissals by any admin, each with who did it (name and account id, never the email), when, and the reason they typed. Only admins can read it. Nobody else sees the tab, and the moderation routes answer `403` to everyone else.
 
+**Suspend** an entry's author from its row (a week, a month or permanently, with a reason) to stop what the account does next: publishing, editing its profile or collections, bringing old shares into the account, and reporting are refused with a plain message, while browsing, deleting its own work and private links keep working. Nothing already published changes and nothing public says it is suspended, unless you tick **also take down everything**: then every entry goes through the normal take-down, and the profile and collections answer `404` while the suspension lasts. **Lift** ends it early, and it ends by itself on its date. Lifting brings the profile and collections back; entries come back with **Restore**.
+
 An admin can also take down a whole collection by sending `DELETE /api/gallery/collections/<id>` with the JSON body `{ "reason": "…" }` while signed in; that is logged the same way. Deleting your *own* entry or collection is an ordinary author delete and needs no reason.
 
 ## Testing without GitHub or Google
