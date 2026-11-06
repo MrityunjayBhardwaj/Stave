@@ -11,6 +11,7 @@ import { dbOverPglite, freshTestDb, getDb, useDbForTests, type Db } from "../cli
 import { DatabaseUnavailableError, isDatabaseUnavailable } from "../errors";
 import * as repo from "../repo";
 import * as schema from "../schema";
+import { inTransaction, type Tx } from "../repo/tx";
 import { rowsOf } from "../repo/tx";
 
 let db: Db & { $client: PGlite };
@@ -262,12 +263,12 @@ describe("entries and the listing", () => {
     expect(await repo.getEntryRecord(db, e.id)).toMatchObject({ removed: { by: "admin" } });
   });
 
-  it("removeEntry: marks it, clears the private side, closes its reports; a second call is false", async () => {
+  it("removeEntry: hides it, keeps the private side for a restore, closes its reports; a second call is false", async () => {
     const e = entry({ authorId: await author() });
     await repo.insertEntry(db, { entry: e, authorEmail: "secret@x", manageTokenHash: "h" });
     await repo.addReport(db, { entryId: e.id, reason: "spam", reportedAt: 5 });
     expect(await repo.removeEntry(db, e.id, 99)).toBe(true);
-    expect(await repo.getEntryRecord(db, e.id)).toMatchObject({ authorEmail: "", manageTokenHash: null, removed: { removedAt: 99, by: "admin" } });
+    expect(await repo.getEntryRecord(db, e.id)).toMatchObject({ authorEmail: "secret@x", manageTokenHash: "h", removed: { removedAt: 99, by: "admin" } });
     expect(await repo.openReportCount(db, e.id)).toBe(0);
     expect(await repo.removeEntry(db, e.id)).toBe(false);
     expect(await repo.removeEntry(db, "nope")).toBe(false);
@@ -390,7 +391,23 @@ describe("account links", () => {
 
 // ── the claim's moves ─────────────────────────────────────────────────────────
 
+const inTx = <T>(fn: (tx: Tx) => Promise<T>) => inTransaction(db, fn);
+
 describe("the claim's moves", () => {
+  it("mergeAuthorInto takes a hidden entry along, so a restore lands on the new author; only live ones are counted (#2401)", async () => {
+    const old = (await repo.insertKeyedAuthor(db, { name: "Old", email: "old@x", keyHash: "khidden" }))!;
+    const to = await author("New");
+    const hidden = entry({ authorId: old, authorName: "Old" });
+    await repo.insertEntry(db, { entry: hidden, authorEmail: "old@x", manageTokenHash: "h" });
+    await repo.removeEntry(db, hidden.id);
+
+    expect(await repo.mergeAuthorInto(db, old, { authorId: to, name: "New", email: "new@x" })).toEqual({ entries: 0, collections: 0 });
+
+    expect(await repo.getEntryRecord(db, hidden.id)).toMatchObject({ entry: { authorId: to, authorName: "New" }, authorEmail: "new@x" });
+    expect(await inTx((tx) => repo.restoreEntryIn(tx, hidden.id))).toBe(true);
+    expect((await repo.entriesOfAuthor(db, to)).map((e) => e.id)).toEqual([hidden.id]);
+  });
+
   it("mergeAuthorInto moves live entries and collections, takes the bio, retires the old author; a rerun moves nothing", async () => {
     const old = (await repo.insertKeyedAuthor(db, { name: "Old", email: "old@x", keyHash: "ko" }))!;
     await repo.updateAuthorProfile(db, old, { name: "Old", bio: "old bio" });

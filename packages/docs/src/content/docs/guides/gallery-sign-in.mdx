@@ -115,7 +115,7 @@ Only you see your own id there (the page never shows it to anyone else). Add it 
 With an admin signed in, the Community Gallery gets a **Moderation** tab. It lists every reported entry with each report's reason, and for each one:
 
 - **Open** shows the entry, as anyone would see it.
-- **Take down** removes it for everyone. Stave asks why.
+- **Take down** hides it from everyone at once. Stave asks why. It stays under **Taken down** for 30 days, where **Restore** brings it back with the same link; within a day after that, the scheduled clean-up deletes its files and the author's email.
 - **Dismiss** clears its reports and leaves it up. Stave asks why.
 
 Below that is the **action log**: the newest 200 take-downs and dismissals by any admin, each with who did it (name and account id, never the email), when, and the reason they typed. Only admins can read it. Nobody else sees the tab, and the moderation routes answer `403` to everyone else.

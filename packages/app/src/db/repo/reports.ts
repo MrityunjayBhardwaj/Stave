@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import type { AdminLogRecord, FlaggedEntry, GalleryReport } from "../../gallery/types";
 import { adminLog, entries, reports } from "../schema";
@@ -9,7 +9,8 @@ import type { Q } from "./tx";
  * #2303 / #2331 — reports and the admin action log.
  *
  * A report is open until an admin dismisses it or the entry is taken down
- * (both set `closed_at`; entries.ts removeEntry closes them on takedown).
+ * (both set `closed_at`; entries.ts removeEntry closes them on takedown, and a
+ * restored entry's stay closed).
  */
 
 export const ADMIN_LOG_LIMIT = 200;
@@ -103,4 +104,17 @@ export async function readAdminLog(db: Q, limit = ADMIN_LOG_LIMIT): Promise<Admi
     target: r.target,
     reason: r.reason,
   }));
+}
+
+/** #2401 — why each of these entries was last taken down, by entry id. */
+export async function takeDownReasons(db: Q, ids: readonly string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (ids.length === 0) return out;
+  const rows = await db
+    .select({ target: adminLog.target, reason: adminLog.reason })
+    .from(adminLog)
+    .where(and(eq(adminLog.action, "take-down-entry"), inArray(adminLog.target, [...ids])))
+    .orderBy(desc(adminLog.at), desc(adminLog.id));
+  for (const r of rows) if (!out.has(r.target)) out.set(r.target, r.reason);
+  return out;
 }

@@ -463,8 +463,8 @@ describe("the author's email stays on the server", () => {
     expect((await remove(id, {}, ADMIN, { reason: "checking privacy" })).status).toBe(204);
     const gone = await getEntryRecord(db, id);
     expect(gone?.removed).toMatchObject({ by: "admin" });
-    expect(gone?.authorEmail).toBe("");
-    expect(gone?.manageTokenHash).toBeNull();
+    expect(gone?.authorEmail).toBe(EMAIL); // #2401 — kept until the purge, and still in no response.
+    expect(gone?.manageTokenHash).not.toBeNull();
   });
 });
 

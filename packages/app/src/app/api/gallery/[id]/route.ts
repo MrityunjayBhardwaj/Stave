@@ -54,9 +54,9 @@ export const GET = withDatabase(handleGET);
 // its reports and its files all go, in one transaction, so a failed file delete
 // rolls the row back and the author can try again.
 //
-// An admin take-down marks the row removed FIRST (410 and out of the listing at
-// once, the email and token hash cleared, its open reports closed), then the Blob
-// files go, so a take-down that fails halfway still reads as removed. It writes
+// An admin take-down only hides the entry (410 and out of the listing at once, its
+// open reports closed). Its files, email and token hash stay for TAKEDOWN_KEEP_MS,
+// so it can be restored (#2401); the clean-up deletes them after that. It writes
 // its log record in the same transaction as the removal (#2352).
 async function handleDELETE(req: Request, { params }: Ctx): Promise<Response> {
   const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
@@ -96,10 +96,7 @@ async function handleDELETE(req: Request, { params }: Ctx): Promise<Response> {
     if (done) await logAdminAction(tx, gate.admin, { action: "take-down-entry", target: id }, gate.reason, at);
     return done;
   });
-  if (!removed) return notFound();
-
-  await deleteEntryFiles(store, id);
-  return new Response(null, { status: 204 });
+  return removed ? new Response(null, { status: 204 }) : notFound();
 }
 
 // #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.

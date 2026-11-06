@@ -162,6 +162,23 @@ test.describe('Moderation by admin accounts (#2331)', () => {
     const logText = JSON.stringify(log)
     expect(logText).not.toContain('@test-login.invalid')
 
+    // ── #2401: it can be restored, with the same link ──
+    const hidden = admin.page.locator(`[data-gallery-taken-down="${entryId}"]`)
+    await expect(hidden).toBeVisible({ timeout: 15_000 })
+    await expect(hidden).toContainText(TITLE)
+    await expect(hidden).toContainText(REASON)
+    await hidden.scrollIntoViewIfNeeded()
+    if (SHOTS) await admin.page.locator('.sg-modal').screenshot({ path: `${SHOTS}/4-taken-down.png` })
+    await hidden.locator(`[data-gallery-restore="${entryId}"]`).click()
+    const why = admin.page.getByPlaceholder('e.g. taken down by mistake')
+    await expect(why).toBeVisible()
+    await why.fill('taken down by mistake')
+    await why.press('Enter')
+    await expect(admin.page.locator('[data-testid="toast"]', { hasText: `Restored "${TITLE}"` })).toBeVisible({ timeout: 15_000 })
+    await expect(hidden).toHaveCount(0, { timeout: 15_000 })
+    await expect(admin.page.locator(`[data-gallery-log-action="restore-entry"][data-gallery-log-target="${entryId}"]`)).toBeVisible({ timeout: 15_000 })
+    expect((await author.context.request.get(`/api/gallery/${entryId}`)).status()).toBe(200)
+
     console.log(`[gallery-moderation] admin errors (${errors.length}):\n${errors.join('\n')}`)
     expect(ours(errors)).toEqual([])
     await author.context.close()
