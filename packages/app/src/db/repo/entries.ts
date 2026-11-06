@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 
 import type { GalleryEntry, GalleryKind } from "../../gallery/types";
 import type { Db } from "../client";
-import { entries, reports } from "../schema";
+import { collectionEntries, entries, reports } from "../schema";
 import { inTransaction, type Q } from "./tx";
 
 /*
@@ -10,8 +10,9 @@ import { inTransaction, type Q } from "./tx";
  * thumbnail stay in Blob (`gallery/manifests/<id>.json`, `gallery/thumbnails/<id>`),
  * found by the entry id; this table holds everything else.
  *
- * A taken-down entry keeps its row with `removed_at` set (so its id is never
- * reused and the entry route can answer 410), and its private columns cleared.
+ * An entry an admin takes down keeps its row with `removed_at` set (the entry
+ * route answers 410), and its private columns cleared. An entry its author
+ * deletes leaves no row at all (#2403): see deleteEntryIn.
  */
 
 /** The most entries one listing returns, newest first. */
@@ -151,30 +152,44 @@ export async function entriesOfAuthor(db: Q, authorId: string): Promise<GalleryE
 }
 
 /**
- * Take an entry down, in one transaction: `removed_at` / `removed_by` set, the
- * private columns cleared (the email goes), and its open reports closed.
+ * An admin takes an entry down, in one transaction: `removed_at` / `removed_by`
+ * set, the private columns cleared (the email goes), and its open reports closed.
  * True when this call removed it; false when it doesn't exist or was already
  * removed. The route deletes the manifest and thumbnail from Blob AFTER this,
- * so a half-finished delete still reads as removed.
- * Phase 2 caller: DELETE /api/gallery/[id] (author or admin).
+ * so a half-finished take-down still reads as removed.
  */
-export async function removeEntry(db: Db, id: string, by: "author" | "admin", at = Date.now()): Promise<boolean> {
-  return inTransaction(db, (tx) => removeEntryIn(tx, id, by, at));
+export async function removeEntry(db: Db, id: string, at = Date.now()): Promise<boolean> {
+  return inTransaction(db, (tx) => removeEntryIn(tx, id, at));
 }
 
 /**
  * removeEntry's two statements, inside a transaction the CALLER holds, so an
  * admin take-down can write its log record in the same one (the record and the
  * removal land together or not at all).
- * Phase 2 caller: DELETE /api/gallery/[id] (admin take-down).
  */
-export async function removeEntryIn(tx: Q, id: string, by: "author" | "admin", at = Date.now()): Promise<boolean> {
+export async function removeEntryIn(tx: Q, id: string, at = Date.now()): Promise<boolean> {
   const done = await tx
     .update(entries)
-    .set({ removedAt: at, removedBy: by, authorEmail: "", manageTokenHash: null })
+    .set({ removedAt: at, removedBy: "admin", authorEmail: "", manageTokenHash: null })
     .where(and(eq(entries.id, id), isNull(entries.removedAt)))
     .returning({ id: entries.id });
   if (done.length === 0) return false;
   await tx.update(reports).set({ closedAt: at }).where(and(eq(reports.entryId, id), isNull(reports.closedAt)));
   return true;
+}
+
+/**
+ * #2403 — an author deletes their own entry: nothing about it is kept. Its
+ * collection memberships go here, its reports by the foreign key's cascade.
+ * True when this call deleted it; false when it doesn't exist or an admin has
+ * taken it down. The caller holds the transaction, so that a failed file delete
+ * undoes this and the author can retry (the route deletes the files inside it).
+ */
+export async function deleteEntryIn(tx: Q, id: string): Promise<boolean> {
+  await tx.delete(collectionEntries).where(eq(collectionEntries.entryId, id));
+  const done = await tx
+    .delete(entries)
+    .where(and(eq(entries.id, id), isNull(entries.removedAt)))
+    .returning({ id: entries.id });
+  return done.length > 0;
 }

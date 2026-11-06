@@ -34,8 +34,9 @@
  *                                            entry's author name: getAuthor (read-only
  *                                            use of accounts.ts).
  *   gallery/[id]/route.ts                    GET (getEntryRecord + manifest from
- *                                            Blob), DELETE (removeEntry, then the
- *                                            Blob files)
+ *                                            Blob), DELETE (author: deleteEntryIn and
+ *                                            the Blob files in one transaction; admin:
+ *                                            removeEntryIn, then the Blob files)
  *   gallery/[id]/thumbnail/route.ts          getEntryRecord (removed → 404), bytes from Blob
  *   gallery/[id]/report/route.ts             getEntryRecord + addReport
  *   gallery/reports/route.ts                 (re-export; nothing to change)

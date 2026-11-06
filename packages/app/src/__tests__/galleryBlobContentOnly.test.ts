@@ -119,7 +119,7 @@ describe("#2363 Blob holds only the entry's manifest and thumbnail", () => {
     signIn(null);
     expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(204);
     expect(await blobKeys(dir)).toEqual([]);
-    expect((await getEntryRecord((await getDb())!, id))?.removed?.by).toBe("author");
+    expect(await getEntryRecord((await getDb())!, id)).toBeNull(); // #2403 — nothing is kept.
   });
 
   it("without a thumbnail, publish writes only the manifest", async () => {

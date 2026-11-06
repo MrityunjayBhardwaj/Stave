@@ -35,7 +35,7 @@ import { DELETE as deleteRoute, GET as entryRoute } from "../app/api/gallery/[id
 import { GET as thumbnailRoute } from "../app/api/gallery/[id]/thumbnail/route";
 import { POST as reportRoute } from "../app/api/gallery/[id]/report/route";
 import { GET as reportsRoute } from "../app/api/gallery/reports/route";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 
 import { LIST_CACHE, LIST_REDIRECT_CACHE } from "../app/api/gallery/route";
 import { freshTestDb, getDb, useDbForTests } from "../db/client";
@@ -450,7 +450,7 @@ describe("the author's email stays on the server", () => {
   });
 
   it("#2352 stays out of the admin views, and leaves the row when the entry is taken down", async () => {
-    const { id, manageToken } = await published();
+    const { id } = await published();
     await report(id, { reason: "checking privacy" });
     const flagged = await (await reports()).text();
     // Control: the admin view really carries the entry.
@@ -460,9 +460,9 @@ describe("the author's email stays on the server", () => {
 
     const db = (await getDb())!;
     expect((await getEntryRecord(db, id))?.authorEmail).toBe(EMAIL);
-    expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(204);
+    expect((await remove(id, {}, ADMIN, { reason: "checking privacy" })).status).toBe(204);
     const gone = await getEntryRecord(db, id);
-    expect(gone?.removed).not.toBeNull();
+    expect(gone?.removed).toMatchObject({ by: "admin" });
     expect(gone?.authorEmail).toBe("");
     expect(gone?.manageTokenHash).toBeNull();
   });
@@ -509,11 +509,49 @@ describe("deleting", () => {
 
     expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(204);
     expect((await list()).entries.map((e) => e.id)).not.toContain(id);
-    expect((await entry(id)).status).toBe(410);
+    expect((await entry(id)).status).toBe(404);
     expect((await thumbnail(id)).status).toBe(404);
-    expect((await report(id, { reason: "late" })).status).toBe(410);
+    expect((await report(id, { reason: "late" })).status).toBe(404);
     // Already gone.
     expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(404);
+  });
+
+  it("an author's delete leaves no row, no report and no file (#2403)", async () => {
+    const db = await freshTestDb();
+    useDbForTests(db);
+    try {
+      const { id, manageToken } = await published();
+      await stat(path.join(dir, "gallery", "thumbnails", id)); // The control: it had one.
+      await report(id, { reason: "spam" });
+      expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(204);
+
+      const count = async (table: string, column: string) =>
+        (await db.$client.query<{ n: number }>(`select count(*)::int as n from ${table} where ${column} = $1`, [id])).rows[0].n;
+      expect(await count("entries", "id")).toBe(0);
+      expect(await count("reports", "entry_id")).toBe(0);
+      await expect(stat(path.join(dir, "gallery", "manifests", `${id}.json`))).rejects.toThrow();
+      await expect(stat(path.join(dir, "gallery", "thumbnails", id))).rejects.toThrow();
+    } finally {
+      useDbForTests(undefined);
+    }
+  });
+
+  it("a failed file delete leaves the entry up, and the author's retry finishes the job (#2403)", async () => {
+    const { id, manageToken } = await published();
+    // A folder where the manifest file was makes the store's delete throw.
+    const manifest = path.join(dir, "gallery", "manifests", `${id}.json`);
+    const bytes = await readFile(manifest);
+    await rm(manifest);
+    await mkdir(manifest);
+
+    await expect(remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).rejects.toThrow();
+    expect((await list()).entries.map((e) => e.id)).toContain(id);
+
+    await rm(manifest, { recursive: true });
+    await writeFile(manifest, bytes);
+    expect((await entry(id)).status).toBe(200);
+    expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(204);
+    expect((await entry(id)).status).toBe(404);
   });
 
   it("lets an admin take an entry down with a reason, clearing its reports", async () => {

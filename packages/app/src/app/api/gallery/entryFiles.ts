@@ -14,9 +14,11 @@ import { galleryPaths, type GalleryBlobStore } from "./store";
  * Ordering, so a reader never sees an entry whose files are missing:
  *   publish   putEntryFiles FIRST, then the row is inserted (a listed entry's
  *             manifest always exists; a failed insert leaves only unlisted files).
- *   delete    the row is marked removed FIRST (410 and out of the listing at
- *             once), then deleteEntryFiles (a delete that fails halfway still
- *             reads as removed).
+ *   take-down the row is marked removed FIRST (410 and out of the listing at
+ *             once), then deleteEntryFiles (one that fails halfway still reads
+ *             as removed).
+ *   own delete the row and the files go in one transaction (#2403): a failed
+ *             file delete rolls the row back, so the author can retry.
  */
 
 /** Write the manifest (and thumbnail, when there is one). Before the row. */
@@ -30,7 +32,10 @@ export async function putEntryFiles(
   if (thumbnail) await store.put(galleryPaths.thumbnail(id), thumbnail.bytes, thumbnail.contentType);
 }
 
-/** Delete the entry's files. After the row is marked removed. */
+/**
+ * Delete the entry's files. Thumbnail first: if the manifest's delete then fails,
+ * an entry rolled back to live has lost only its picture and can still be opened.
+ */
 export async function deleteEntryFiles(store: GalleryBlobStore, id: string): Promise<void> {
-  await store.del([galleryPaths.manifest(id), galleryPaths.thumbnail(id)]);
+  await store.del([galleryPaths.thumbnail(id), galleryPaths.manifest(id)]);
 }
