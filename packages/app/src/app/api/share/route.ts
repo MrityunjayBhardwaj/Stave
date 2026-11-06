@@ -7,7 +7,7 @@ import { limitRequest } from "../gallery/rateLimit";
 import { sessionAuthor } from "../gallery/session";
 import { shareStore } from "./store";
 import { assertSameOrigin } from "../gallery/origin";
-import { withDatabase } from "../../../db/errors";
+import { withDatabase, withoutQueryValues } from "../../../db/errors";
 
 // #2248 — store a sealed shared project and hand back its short id.
 //
@@ -84,7 +84,7 @@ async function recordOnAccount(req: Request, id: string): Promise<boolean> {
     }
     return await recordAccountLink(db, mine.account.accountHash, accountLinkRecord(id, name, Date.now()));
   } catch (err) {
-    console.warn("[stave] couldn't keep the link on the account:", err);
+    console.warn("[stave] couldn't keep the link on the account:", withoutQueryValues(err));
     return false;
   }
 }

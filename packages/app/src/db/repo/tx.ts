@@ -1,5 +1,5 @@
 import type { Db } from "../client";
-import { DatabaseUnavailableError, isOutage } from "../errors";
+import { DatabaseUnavailableError, isOutage, withoutQueryValues } from "../errors";
 
 /** A transaction handle; every repo function accepts one in place of a Db. */
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -51,9 +51,9 @@ export async function inTransaction<T>(db: Db, fn: (tx: Tx) => Promise<T>): Prom
       if (ours.err !== err) {
         console.error(
           "[stave] a gallery transaction failed, and rolling it back failed too.\n  what failed first:",
-          ours.err,
+          withoutQueryValues(ours.err),
           "\n  the rollback's failure:",
-          err,
+          withoutQueryValues(err),
         );
       }
       throw ours.err;

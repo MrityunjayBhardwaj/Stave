@@ -126,8 +126,7 @@ export default function PrivacyPage() {
         <p>
           <strong>Private:</strong> your email is used only to contact you about what you publish. No part of Stave
           shows it to anyone, including other users and gallery admins, and we don&apos;t sell it or send marketing
-          email. If a database request fails, its details can appear in our server error logs, and those details can
-          include your email. Only the people who run Stave can read those logs.
+          email.
         </p>
       </Section>
 
