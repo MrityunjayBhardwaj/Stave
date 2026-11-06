@@ -6745,8 +6745,8 @@ async function previewShapeSwap(ir, a, next, opts) {
 __name(previewShapeSwap, "previewShapeSwap");
 function sharesItsControl(ir, a) {
   if (!ir) return false;
-  const same = /* @__PURE__ */ __name((b) => b.trackId === a.trackId && b.paramKey === a.paramKey, "same");
-  return signalWriters(ir).filter(same).length > 1 || steppedAutomations(ir).some(same);
+  const same2 = /* @__PURE__ */ __name((b) => b.trackId === a.trackId && b.paramKey === a.paramKey, "same");
+  return signalWriters(ir).filter(same2).length > 1 || steppedAutomations(ir).some(same2);
 }
 __name(sharesItsControl, "sharesItsControl");
 function standInPeriodOf(a, next) {
@@ -7679,22 +7679,22 @@ function readVizOptionsLiteral(raw) {
     return { kind: "opaque" };
   }
   if (node.type !== "ObjectExpression" || raw.slice(node.end).trim() !== "") return { kind: "opaque" };
-  const values2 = {};
+  const values3 = {};
   const dynamic = [];
   for (const p of node.properties) {
     const key3 = propertyKey(p);
     if (key3 === null) return { kind: "opaque" };
     const v = literalValue(p.value);
     if (v === NOT_LITERAL) {
-      delete values2[key3];
+      delete values3[key3];
       if (!dynamic.includes(key3)) dynamic.push(key3);
     } else {
-      values2[key3] = v;
+      values3[key3] = v;
       const i = dynamic.indexOf(key3);
       if (i >= 0) dynamic.splice(i, 1);
     }
   }
-  return { kind: "literal", values: values2, dynamic };
+  return { kind: "literal", values: values3, dynamic };
 }
 __name(readVizOptionsLiteral, "readVizOptionsLiteral");
 function resolveVizOptions(code, evaluated) {
@@ -8798,8 +8798,8 @@ function miniValuesAt(mini, times) {
   });
 }
 __name(miniValuesAt, "miniValuesAt");
-function structHits(values2, rhythm, cyc, masks = []) {
-  const pat = mini_mjs.mini(values2).struct(mini_mjs.mini(rhythm));
+function structHits(values3, rhythm, cyc, masks = []) {
+  const pat = mini_mjs.mini(values3).struct(mini_mjs.mini(rhythm));
   const masked = masks.reduce((p, m) => p.mask(mini_mjs.mini(m)), pat);
   const sounding = /* @__PURE__ */ new Set();
   for (const h of masked.queryArc(cyc, cyc + 1)) {
@@ -12222,13 +12222,13 @@ var whole = /* @__PURE__ */ __name((x) => {
   const r = Math.round(x);
   return Math.abs(x - r) < 1e-9 ? r : null;
 }, "whole");
-function rhythmChart(chords, rhythm, model, parse7, masks = []) {
+function rhythmChart(chords, rhythm, model, parse8, masks = []) {
   if (chords === null || model === null) return NONE;
   if (model.barSteps) return NONE;
   const rhythmBars = model.bars ?? 1;
   const colsPerBar = model.steps / rhythmBars;
   if (!Number.isInteger(colsPerBar) || colsPerBar < 1) return NONE;
-  const chordsRead = parse7(chords);
+  const chordsRead = parse8(chords);
   if (!chordsRead.ok) return NONE;
   const chordBars = chordsRead.model.bars ?? 1;
   const readMasks = masks.filter((m) => m !== null);
@@ -13468,16 +13468,16 @@ function noteSounds(chunk, onsets, span, names = ["sound", "s"]) {
   if (!cur || readSoundArg(cur.value).kind === "one" || !(span > 0)) return null;
   const times = [];
   for (const t of onsets) for (let k = 0; k < SOUND_PASSES; k++) times.push(t + k * span);
-  let values2;
+  let values3;
   try {
-    values2 = miniValuesAt(cur.value, times);
+    values3 = miniValuesAt(cur.value, times);
   } catch {
     return null;
   }
   return onsets.map((_, i) => {
     const heard = [];
     for (let k = 0; k < SOUND_PASSES; k++) {
-      for (const v of values2[i * SOUND_PASSES + k]) {
+      for (const v of values3[i * SOUND_PASSES + k]) {
         const n = playedName(v);
         if (n !== null && !heard.includes(n)) heard.push(n);
       }
@@ -14105,27 +14105,27 @@ function appendEmptyBars(mini, bars, add) {
 __name(appendEmptyBars, "appendEmptyBars");
 var VELOCITY_STRING = "its velocities are written per column, and the velocity lane can't follow a longer pattern yet";
 var GRID_CANT_SHOW = "the grid couldn't show the longer pattern";
-function lengthenOffers(parse7, mini, bars, gain) {
+function lengthenOffers(parse8, mini, bars, gain) {
   return {
-    duplicate: offered(parse7, mini, () => duplicateBar(mini, bars), bars + 1, gain),
-    append: appendBarsOffer(parse7, mini, bars, 1, gain)
+    duplicate: offered(parse8, mini, () => duplicateBar(mini, bars), bars + 1, gain),
+    append: appendBarsOffer(parse8, mini, bars, 1, gain)
   };
 }
 __name(lengthenOffers, "lengthenOffers");
-function appendBarsOffer(parse7, mini, bars, add, gain) {
-  return offered(parse7, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
+function appendBarsOffer(parse8, mini, bars, add, gain) {
+  return offered(parse8, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
 }
 __name(appendBarsOffer, "appendBarsOffer");
 var NOT_EDITABLE_HERE = "the grid can show this pattern but can't edit it; make it longer in the code";
-function offered(parse7, mini, rewrite, wantBars, gain) {
-  if (!parse7(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
-  return readsBack(parse7, rewrite(), wantBars, gain);
+function offered(parse8, mini, rewrite, wantBars, gain) {
+  if (!parse8(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
+  return readsBack(parse8, rewrite(), wantBars, gain);
 }
 __name(offered, "offered");
-function readsBack(parse7, r, wantBars, gain) {
+function readsBack(parse8, r, wantBars, gain) {
   if (!r.ok) return r;
   if (gain.mini !== null) return { ok: false, reason: VELOCITY_STRING };
-  const read5 = parse7(r.mini, UNREFINED);
+  const read5 = parse8(r.mini, UNREFINED);
   return read5.ok && (read5.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
 }
 __name(readsBack, "readsBack");
@@ -15496,8 +15496,8 @@ function playsAtDisplayRate(value) {
   return true;
 }
 __name(playsAtDisplayRate, "playsAtDisplayRate");
-function displayRenderRate(values2, liveRate) {
-  for (const value of values2) if (!playsAtDisplayRate(value)) return liveRate;
+function displayRenderRate(values3, liveRate) {
+  for (const value of values3) if (!playsAtDisplayRate(value)) return liveRate;
   return Math.min(liveRate, DISPLAY_RENDER_RATE);
 }
 __name(displayRenderRate, "displayRenderRate");
@@ -15628,8 +15628,8 @@ function createTrackEnvelopeScheduler(deps) {
   return {
     request(trackIds, span) {
       const nextWanted = [...trackIds];
-      const same = span === cycles && nextWanted.length === wanted.length && nextWanted.every((id, i) => id === wanted[i]);
-      if (same) return;
+      const same2 = span === cycles && nextWanted.length === wanted.length && nextWanted.every((id, i) => id === wanted[i]);
+      if (same2) return;
       const reordered = span === cycles && nextWanted.length === wanted.length && nextWanted.every((id) => wanted.includes(id));
       if (span !== cycles) abortInFlight();
       wanted = nextWanted;
@@ -16065,9 +16065,9 @@ function soundIndex(n, length) {
   return (i % length + length) % length;
 }
 __name(soundIndex, "soundIndex");
-function soundWarmJobs(values2, deps) {
+function soundWarmJobs(values3, deps) {
   const jobs = /* @__PURE__ */ new Map();
-  for (const value of values2) {
+  for (const value of values3) {
     const s = asString(value.s);
     if (!s) continue;
     const bank = asString(value.bank);
@@ -16513,7 +16513,7 @@ ${PROBE}()`);
 __name(measureEvalFrame, "measureEvalFrame");
 var BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 function decodeSegment(segment) {
-  const values2 = [];
+  const values3 = [];
   let value = 0;
   let shift = 0;
   for (const ch of segment) {
@@ -16523,12 +16523,12 @@ function decodeSegment(segment) {
     if (digit & 32) {
       shift += 5;
     } else {
-      values2.push(value & 1 ? -(value >>> 1) : value >>> 1);
+      values3.push(value & 1 ? -(value >>> 1) : value >>> 1);
       value = 0;
       shift = 0;
     }
   }
-  return values2;
+  return values3;
 }
 __name(decodeSegment, "decodeSegment");
 function originalPositionFor(mappings, line, column) {
@@ -16586,9 +16586,9 @@ function locateSoundName(code, locations, sound) {
 }
 __name(locateSoundName, "locateSoundName");
 function locateQuotedValue(code, locations, value, message) {
-  const values2 = typeof value === "string" ? [value] : value && typeof value === "object" ? Object.values(value) : [];
+  const values3 = typeof value === "string" ? [value] : value && typeof value === "object" ? Object.values(value) : [];
   const placed = /* @__PURE__ */ new Map();
-  for (const v of values2) {
+  for (const v of values3) {
     if (typeof v !== "string" || !v || !message.includes(`"${v}"`)) continue;
     const at = locateSoundName(code, locations, v);
     if (at) placed.set(v, at);
@@ -18238,12 +18238,12 @@ var _StrudelEngine = class _StrudelEngine {
     if (!pattern || typeof pattern.queryArc !== "function") return [];
     try {
       const haps = pattern.queryArc(from, to, { _cps: scheduler.cps });
-      const values2 = [];
+      const values3 = [];
       for (const hap of haps) {
         if (hap.hasOnset && !hap.hasOnset()) continue;
-        if (hap.value && typeof hap.value === "object") values2.push(hap.value);
+        if (hap.value && typeof hap.value === "object") values3.push(hap.value);
       }
-      return values2;
+      return values3;
     } catch {
       return [];
     }
@@ -18738,19 +18738,19 @@ var _StrudelEngine = class _StrudelEngine {
     const pattern = this.songPatterns.get(trackId);
     if (!pattern) return null;
     let text = `${this.getCps() ?? 0.5}|${cycles}|`;
-    const values2 = [];
+    const values3 = [];
     try {
       for (const hap of pattern.queryArc(0, cycles)) {
         if (hap.whole == null) continue;
         if (typeof hap.hasOnset === "function" && !hap.hasOnset()) continue;
         text += `${Number(hap.whole.begin)},${Number(hap.whole.end)},${JSON.stringify(hap.value)};`;
-        values2.push(hap.value);
+        values3.push(hap.value);
       }
     } catch {
       this.displayRates.delete(trackId);
       return `unreadable:${this.evalEpoch}`;
     }
-    if (this.audioCtx) this.displayRates.set(trackId, displayRenderRate(values2, this.audioCtx.sampleRate));
+    if (this.audioCtx) this.displayRates.set(trackId, displayRenderRate(values3, this.audioCtx.sampleRate));
     return digest(text);
   }
   /**
@@ -27914,9 +27914,9 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners19 = /* @__PURE__ */ new Set();
+  const listeners20 = /* @__PURE__ */ new Set();
   const notify6 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners19) l();
+    for (const l of listeners20) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify6(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify6(), "onStackItemPopped");
@@ -27926,7 +27926,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners19,
+    listeners: listeners20,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -27969,10 +27969,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners19 = active.listeners;
-  listeners19.add(cb);
+  const listeners20 = active.listeners;
+  listeners20.add(cb);
   return () => {
-    listeners19.delete(cb);
+    listeners20.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -36641,7 +36641,7 @@ function PreviewView({
       backdropOwner
     });
   }, [file, provider, audioPayload, effectivelyHidden, paused, backdrop, backdropOwner, reloadTick]);
-  const providerKey = backdrop ? `${sourceRefKey(sourceRef)}:${reloadTick}` : `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
+  const providerKey = backdrop ? `bg:${reloadTick}` : `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
     {
@@ -37289,6 +37289,11 @@ __name(removeGroup, "removeGroup");
 var registry2 = /* @__PURE__ */ new Map();
 var changeListeners = /* @__PURE__ */ new Set();
 var currentlyPlaying = null;
+var alongside = /* @__PURE__ */ new Set();
+function setAlongsideSources(sourceIds) {
+  alongside = new Set(sourceIds);
+}
+__name(setAlongsideSources, "setAlongsideSources");
 function registerPlaybackSource(sourceId, stop, label) {
   registry2.set(sourceId, { stop, label });
   return () => {
@@ -37305,8 +37310,9 @@ function registerPlaybackSource(sourceId, stop, label) {
 __name(registerPlaybackSource, "registerPlaybackSource");
 function notifyPlaybackStarted(sourceId) {
   if (currentlyPlaying === sourceId) return;
+  if (alongside.has(sourceId)) return;
   for (const [id, src] of registry2) {
-    if (id === sourceId) continue;
+    if (id === sourceId || alongside.has(id)) continue;
     try {
       src.stop();
     } catch (err) {
@@ -37884,11 +37890,73 @@ function findBuiltinExampleSource(sourceId) {
 }
 __name(findBuiltinExampleSource, "findBuiltinExampleSource");
 
+// src/workspace/preview/vizSourceChoice.ts
+var STORAGE_PREFIX3 = "stave:vizSource:";
+var DEFAULT = { kind: "default" };
+function safeLocalStorage4() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+__name(safeLocalStorage4, "safeLocalStorage");
+var values2 = /* @__PURE__ */ new Map();
+var listeners10 = /* @__PURE__ */ new Set();
+function keyFor2(fileId) {
+  return `${STORAGE_PREFIX3}${fileId}`;
+}
+__name(keyFor2, "keyFor");
+function parse7(raw) {
+  if (!raw) return DEFAULT;
+  try {
+    const v = JSON.parse(raw);
+    if (v.kind === "none") return { kind: "none" };
+    if (v.kind === "file" && typeof v.fileId === "string" && v.fileId) {
+      return { kind: "file", fileId: v.fileId };
+    }
+  } catch {
+  }
+  return DEFAULT;
+}
+__name(parse7, "parse");
+function same(a, b) {
+  if (a.kind !== b.kind) return false;
+  return a.kind !== "file" || b.kind === "file" && a.fileId === b.fileId;
+}
+__name(same, "same");
+function getVizSourceChoice(fileId) {
+  const cached2 = values2.get(fileId);
+  if (cached2) return cached2;
+  const ref = parse7(safeLocalStorage4()?.getItem(keyFor2(fileId)));
+  values2.set(fileId, ref);
+  return ref;
+}
+__name(getVizSourceChoice, "getVizSourceChoice");
+function setVizSourceChoice(fileId, ref) {
+  if (same(getVizSourceChoice(fileId), ref)) return;
+  values2.set(fileId, ref);
+  const ls = safeLocalStorage4();
+  if (ref.kind === "default") ls?.removeItem(keyFor2(fileId));
+  else ls?.setItem(keyFor2(fileId), JSON.stringify(ref));
+  for (const cb of Array.from(listeners10)) cb(fileId, ref);
+}
+__name(setVizSourceChoice, "setVizSourceChoice");
+function onVizSourceChoiceChange(cb) {
+  listeners10.add(cb);
+  return () => {
+    listeners10.delete(cb);
+  };
+}
+__name(onVizSourceChoiceChange, "onVizSourceChoiceChange");
+
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
-var listeners10 = /* @__PURE__ */ new Set();
+var listeners11 = /* @__PURE__ */ new Set();
 function notify4() {
-  for (const l of listeners10) {
+  for (const l of listeners11) {
     try {
       l();
     } catch {
@@ -37922,9 +37990,9 @@ function getBottomPanelTab(id) {
 }
 __name(getBottomPanelTab, "getBottomPanelTab");
 function subscribeToBottomPanelTabs(cb) {
-  listeners10.add(cb);
+  listeners11.add(cb);
   return () => {
-    listeners10.delete(cb);
+    listeners11.delete(cb);
   };
 }
 __name(subscribeToBottomPanelTabs, "subscribeToBottomPanelTabs");
@@ -37945,7 +38013,7 @@ function clampHeight(value) {
   return value;
 }
 __name(clampHeight, "clampHeight");
-function safeLocalStorage4() {
+function safeLocalStorage5() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -37954,9 +38022,9 @@ function safeLocalStorage4() {
     return null;
   }
 }
-__name(safeLocalStorage4, "safeLocalStorage");
+__name(safeLocalStorage5, "safeLocalStorage");
 function safeGetItem(key3) {
-  const ls = safeLocalStorage4();
+  const ls = safeLocalStorage5();
   if (!ls) return null;
   try {
     return ls.getItem(key3);
@@ -37966,7 +38034,7 @@ function safeGetItem(key3) {
 }
 __name(safeGetItem, "safeGetItem");
 function safeSetItem(key3, value) {
-  const ls = safeLocalStorage4();
+  const ls = safeLocalStorage5();
   if (!ls) return;
   try {
     ls.setItem(key3, value);
@@ -37975,7 +38043,7 @@ function safeSetItem(key3, value) {
 }
 __name(safeSetItem, "safeSetItem");
 function safeRemoveItem(key3) {
-  const ls = safeLocalStorage4();
+  const ls = safeLocalStorage5();
   if (!ls) return;
   try {
     ls.removeItem(key3);
@@ -38019,7 +38087,7 @@ function writePersistedActiveTabId(value) {
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 var SERVER_STATE = { open: false, activeTabId: null };
 var state5 = null;
-var listeners11 = /* @__PURE__ */ new Set();
+var listeners12 = /* @__PURE__ */ new Set();
 function current4() {
   if (state5 === null) state5 = { open: readPersistedOpen(), activeTabId: readPersistedActiveTabId() };
   return state5;
@@ -38027,7 +38095,7 @@ function current4() {
 __name(current4, "current");
 function commit2(next) {
   state5 = next;
-  for (const l of listeners11) {
+  for (const l of listeners12) {
     try {
       l();
     } catch {
@@ -38062,9 +38130,9 @@ function showBottomPanelTab(activeTabId) {
 }
 __name(showBottomPanelTab, "showBottomPanelTab");
 function subscribeToBottomPanelState(cb) {
-  listeners11.add(cb);
+  listeners12.add(cb);
   return () => {
-    listeners11.delete(cb);
+    listeners12.delete(cb);
   };
 }
 __name(subscribeToBottomPanelState, "subscribeToBottomPanelState");
@@ -38220,10 +38288,10 @@ function readStored() {
 }
 __name(readStored, "readStored");
 var current5 = readStored();
-var listeners12 = /* @__PURE__ */ new Set();
+var listeners13 = /* @__PURE__ */ new Set();
 function subscribe5(listener) {
-  listeners12.add(listener);
-  return () => listeners12.delete(listener);
+  listeners13.add(listener);
+  return () => listeners13.delete(listener);
 }
 __name(subscribe5, "subscribe");
 function usePatternSideShown() {
@@ -38237,7 +38305,7 @@ function setPatternSideShown(shown) {
     window.localStorage.setItem(PATTERN_SIDE_KEY, shown ? "shown" : "hidden");
   } catch {
   }
-  listeners12.forEach((l) => l());
+  listeners13.forEach((l) => l());
 }
 __name(setPatternSideShown, "setPatternSideShown");
 function PatternSideToggle() {
@@ -38831,7 +38899,7 @@ function readStored2() {
 }
 __name(readStored2, "readStored");
 var current6 = readStored2();
-var listeners13 = /* @__PURE__ */ new Set();
+var listeners14 = /* @__PURE__ */ new Set();
 function setMode(mode) {
   if (mode === current6) return;
   current6 = mode;
@@ -38839,12 +38907,12 @@ function setMode(mode) {
     window.localStorage.setItem(NOTE_COLOR_MODE_KEY, mode);
   } catch {
   }
-  listeners13.forEach((l) => l());
+  listeners14.forEach((l) => l());
 }
 __name(setMode, "setMode");
 function subscribe6(listener) {
-  listeners13.add(listener);
-  return () => listeners13.delete(listener);
+  listeners14.add(listener);
+  return () => listeners14.delete(listener);
 }
 __name(subscribe6, "subscribe");
 function useNoteColorMode() {
@@ -38894,13 +38962,13 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
-function useViewProver(mini, parse7) {
+function useViewProver(mini, parse8) {
   const cacheRef = React48__namespace.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React48__namespace.useRef(parse7);
-  parseRef.current = parse7;
+  const parseRef = React48__namespace.useRef(parse8);
+  parseRef.current = parse8;
   const key3 = mini ?? null;
   return React48__namespace.useCallback(
     (scale) => {
@@ -40073,10 +40141,10 @@ function readStored3() {
 }
 __name(readStored3, "readStored");
 var current7 = readStored3();
-var listeners14 = /* @__PURE__ */ new Set();
+var listeners15 = /* @__PURE__ */ new Set();
 function subscribe7(listener) {
-  listeners14.add(listener);
-  return () => listeners14.delete(listener);
+  listeners15.add(listener);
+  return () => listeners15.delete(listener);
 }
 __name(subscribe7, "subscribe");
 function useGridMode() {
@@ -40094,16 +40162,16 @@ function setGridMode(mode) {
     window.localStorage.setItem(GRID_MODE_KEY, mode);
   } catch {
   }
-  listeners14.forEach((l) => l());
+  listeners15.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
-function usePatternLength(chunk, model, parse7, writeMini) {
+function usePatternLength(chunk, model, parse8, writeMini) {
   const mini = model ? chunk?.miniString ?? null : null;
   const bars = model?.bars ?? 1;
   const gain = chunk ? readChunkGain(chunk) : null;
   const velocity = gain?.mini != null;
-  const parseRef = React48__namespace.useRef(parse7);
-  parseRef.current = parse7;
+  const parseRef = React48__namespace.useRef(parse8);
+  parseRef.current = parse8;
   const cache3 = React48__namespace.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null || gain === null) return null;
@@ -42338,7 +42406,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners19 = /* @__PURE__ */ new Set();
+  const listeners20 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -42353,16 +42421,16 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners19.forEach((l) => l());
+    listeners20.forEach((l) => l());
   }, "setAccessor");
   const notify6 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners19.forEach((l) => l());
+    listeners20.forEach((l) => l());
   }, "notify");
   const read5 = /* @__PURE__ */ __name(() => cached2, "read");
   const subscribe11 = /* @__PURE__ */ __name((listener) => {
-    listeners19.add(listener);
-    return () => listeners19.delete(listener);
+    listeners20.add(listener);
+    return () => listeners20.delete(listener);
   }, "subscribe");
   const useCatalog = /* @__PURE__ */ __name(() => React48__namespace.useSyncExternalStore(subscribe11, read5, () => null), "useCatalog");
   return { setAccessor, notify: notify6, read: read5, useCatalog };
@@ -45381,7 +45449,7 @@ __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners15 = /* @__PURE__ */ new Set();
+var listeners16 = /* @__PURE__ */ new Set();
 function read2(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
@@ -45393,7 +45461,7 @@ function toggleSolo(fileId, id) {
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners15.forEach((l) => l());
+  listeners16.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -45408,9 +45476,9 @@ function setPreSoloMutes(fileId, snapshot) {
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
 function subscribe8(listener) {
-  listeners15.add(listener);
+  listeners16.add(listener);
   return () => {
-    listeners15.delete(listener);
+    listeners16.delete(listener);
   };
 }
 __name(subscribe8, "subscribe");
@@ -46273,7 +46341,7 @@ function key2(fileId) {
   return KEY_PREFIX + fileId;
 }
 __name(key2, "key");
-function safeLocalStorage5() {
+function safeLocalStorage6() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -46282,9 +46350,9 @@ function safeLocalStorage5() {
     return null;
   }
 }
-__name(safeLocalStorage5, "safeLocalStorage");
+__name(safeLocalStorage6, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners16 = /* @__PURE__ */ new Set();
+var listeners17 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -46296,7 +46364,7 @@ function parseExpanded(raw) {
 }
 __name(parseExpanded, "parseExpanded");
 function load(fileId) {
-  const ls = safeLocalStorage5();
+  const ls = safeLocalStorage6();
   if (!ls) return /* @__PURE__ */ new Set();
   try {
     return parseExpanded(ls.getItem(key2(fileId)));
@@ -46316,7 +46384,7 @@ function read3(fileId) {
 }
 __name(read3, "read");
 function persist(fileId, set2) {
-  const ls = safeLocalStorage5();
+  const ls = safeLocalStorage6();
   if (!ls) return;
   try {
     ls.setItem(key2(fileId), JSON.stringify([...set2]));
@@ -46330,13 +46398,13 @@ function toggleExpanded(fileId, id) {
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners16.forEach((l) => l());
+  listeners17.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
 function subscribe9(listener) {
-  listeners16.add(listener);
+  listeners17.add(listener);
   return () => {
-    listeners16.delete(listener);
+    listeners17.delete(listener);
   };
 }
 __name(subscribe9, "subscribe");
@@ -46386,7 +46454,7 @@ function parseMixerZoom(raw) {
   }
 }
 __name(parseMixerZoom, "parseMixerZoom");
-function safeLocalStorage6() {
+function safeLocalStorage7() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -46395,19 +46463,19 @@ function safeLocalStorage6() {
     return null;
   }
 }
-__name(safeLocalStorage6, "safeLocalStorage");
+__name(safeLocalStorage7, "safeLocalStorage");
 var cached = null;
-var listeners17 = /* @__PURE__ */ new Set();
+var listeners18 = /* @__PURE__ */ new Set();
 function read4() {
   if (cached == null) {
-    const ls = safeLocalStorage6();
+    const ls = safeLocalStorage7();
     cached = ls ? parseMixerZoom(ls.getItem(KEY)) : MIXER_ZOOM_DEFAULT;
   }
   return cached;
 }
 __name(read4, "read");
 function persist2(v) {
-  const ls = safeLocalStorage6();
+  const ls = safeLocalStorage7();
   if (!ls) return;
   try {
     ls.setItem(KEY, JSON.stringify(v));
@@ -46420,7 +46488,7 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners17.forEach((l) => l());
+  listeners18.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
@@ -46428,9 +46496,9 @@ function nudgeMixerZoom(dir) {
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
 function subscribe10(listener) {
-  listeners17.add(listener);
+  listeners18.add(listener);
   return () => {
-    listeners17.delete(listener);
+    listeners18.delete(listener);
   };
 }
 __name(subscribe10, "subscribe");
@@ -48466,15 +48534,24 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
     [updateGroup]
   );
   const backdropSourceByFile = React48.useRef(/* @__PURE__ */ new Map());
-  const [chosenBackdropSources, setChosenBackdropSources] = React48.useState(() => /* @__PURE__ */ new Map());
-  const chooseBackdropSource = React48.useCallback(
+  const syncAlongsideSources = React48.useCallback(() => {
+    const ids = [];
+    for (const ref of backdropSourceByFile.current.values()) {
+      if (ref.kind === "file" && findBuiltinExampleSource(ref.fileId)) ids.push(ref.fileId);
+    }
+    setAlongsideSources(ids);
+  }, []);
+  const recordBackdropSource = React48.useCallback(
     (fileId, ref) => {
-      setChosenBackdropSources((prev) => {
-        const cur = prev.get(fileId);
-        if (cur && JSON.stringify(cur) === JSON.stringify(ref)) return prev;
-        return new Map(prev).set(fileId, ref);
-      });
+      if (ref?.kind === "file") backdropSourceByFile.current.set(fileId, ref);
+      else backdropSourceByFile.current.delete(fileId);
+      syncAlongsideSources();
     },
+    [syncAlongsideSources]
+  );
+  const [sourceChoiceVersion, setSourceChoiceVersion] = React48.useState(0);
+  React48.useEffect(
+    () => onVizSourceChoiceChange(() => setSourceChoiceVersion((n) => n + 1)),
     []
   );
   const sourceForBackdrop = React48.useCallback(
@@ -48485,17 +48562,18 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
         const f = getFile(id);
         return !!f && !isVizLanguage(f.language);
       },
-      (id) => chosenBackdropSources.get(id)
+      (id) => getVizSourceChoice(id)
     ),
-    [chosenBackdropSources]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sourceChoiceVersion]
   );
   const stopBackdropSource = React48.useCallback((fileId) => {
     const ref = backdropSourceByFile.current.get(fileId);
     if (ref?.kind === "file") {
       findBuiltinExampleSource(ref.fileId)?.stopIfRunning();
     }
-    backdropSourceByFile.current.delete(fileId);
-  }, []);
+    recordBackdropSource(fileId, null);
+  }, [recordBackdropSource]);
   const stopDisplacedBackdrop = React48.useCallback(
     (sourceGroupId, tabId, targetGroupId) => {
       if (sourceGroupId === targetGroupId) return;
@@ -48512,16 +48590,15 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
   );
   const handleTabClose = React48.useCallback(
     (groupId, tabId) => {
-      let closedTab = null;
       const existing = groups.get(groupId);
       const wasLastTab = existing !== void 0 && existing.tabs.length === 1;
       const canCollapseGroup = wasLastTab && groups.size > 1;
+      const closedTab = existing?.tabs.find((t) => t.id === tabId) ?? null;
       setGroups((prev) => {
         const cur = prev.get(groupId);
         if (!cur) return prev;
         const idx = cur.tabs.findIndex((t) => t.id === tabId);
         if (idx === -1) return prev;
-        closedTab = cur.tabs[idx];
         const nextTabs = cur.tabs.filter((t) => t.id !== tabId);
         let nextActive = cur.activeTabId;
         if (cur.activeTabId === tabId) {
@@ -49220,9 +49297,8 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
                       }, "getPreviewProvider")
                     });
                     if (willActivate && sourceRef?.kind === "file") {
-                      backdropSourceByFile.current.set(tab.fileId, sourceRef);
+                      recordBackdropSource(tab.fileId, sourceRef);
                     }
-                    if (willActivate && sourceRef) chooseBackdropSource(tab.fileId, sourceRef);
                   }, "onToggleBackground"),
                   // #788 — the popover's source dropdown changed while this
                   // file's backdrop is live. The chrome already swapped the
@@ -49232,15 +49308,10 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
                   // stopped whatever built-in was playing, so teardown has
                   // nothing left to own.
                   onBackdropSourceChange: /* @__PURE__ */ __name((ref) => {
-                    chooseBackdropSource(tab.fileId, ref);
                     if (groups.get(groupId)?.backgroundFileId !== tab.fileId) {
                       return;
                     }
-                    if (ref.kind === "file") {
-                      backdropSourceByFile.current.set(tab.fileId, ref);
-                    } else {
-                      backdropSourceByFile.current.delete(tab.fileId);
-                    }
+                    recordBackdropSource(tab.fileId, ref);
                   }, "onBackdropSourceChange"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
                   // #773 — close THIS file's side preview when the viz-settings
@@ -52955,7 +53026,7 @@ __name(warmMonaco, "warmMonaco");
 
 // src/visualEdit/mixer/purgeLegacyMasterGain.ts
 var KEY_PREFIX2 = "stave:mixer.master:";
-function safeLocalStorage7() {
+function safeLocalStorage8() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -52964,8 +53035,8 @@ function safeLocalStorage7() {
     return null;
   }
 }
-__name(safeLocalStorage7, "safeLocalStorage");
-function purgeLegacyMasterGain(storage = safeLocalStorage7()) {
+__name(safeLocalStorage8, "safeLocalStorage");
+function purgeLegacyMasterGain(storage = safeLocalStorage8()) {
   if (!storage) return 0;
   try {
     const stale = [];
@@ -55069,15 +55140,24 @@ function VizEditorChrome({
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = React48.useState({
-    kind: "default"
-  });
+  const [selectedSource, setSelectedSource] = React48.useState(
+    () => getVizSourceChoice(file.id)
+  );
+  React48.useEffect(() => {
+    setSelectedSource(getVizSourceChoice(file.id));
+    return onVizSourceChoiceChange((id, ref) => {
+      if (id === file.id) setSelectedSource(ref);
+    });
+  }, [file.id]);
   const handleSourceChange = React48.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
       const nextBuiltin = next.kind === "file" ? findBuiltinExampleSource(next.fileId) : void 0;
-      setSelectedSource(next);
+      setVizSourceChoice(file.id, next);
+      if (isBackground && onBackdropSourceChange) {
+        onBackdropSourceChange(next);
+      }
       const previewingAnywhere = isBackground || previewOpen;
       if (previewingAnywhere) {
         if (nextBuiltin && !previewPaused) {
@@ -55090,11 +55170,9 @@ function VizEditorChrome({
       if (previewOpen && onChangePreviewSource) {
         onChangePreviewSource(next);
       }
-      if (isBackground && onBackdropSourceChange) {
-        onBackdropSourceChange(next);
-      }
     },
     [
+      file.id,
       isBackground,
       previewOpen,
       previewPaused,
@@ -55125,8 +55203,8 @@ function VizEditorChrome({
       if (previewMode === "backdrop") onToggleBackground();
       if (next === "side") openSidePreview();
       if (next === "backdrop") {
-        startSelectedBuiltin();
         onToggleBackground(selectedSource);
+        startSelectedBuiltin();
       }
     },
     [
@@ -55143,8 +55221,8 @@ function VizEditorChrome({
   const buttonTitle = buttonState === "running" ? "Pause this viz (side tab or backdrop)" : buttonState === "paused" ? "Resume this viz" : `Play this viz as ${placementPref === "backdrop" ? "backdrop" : "side preview"}`;
   const activatePreferred = React48.useCallback(() => {
     if (placementPref === "backdrop") {
-      startSelectedBuiltin();
       onToggleBackground(selectedSource);
+      startSelectedBuiltin();
     } else {
       openSidePreview();
     }
@@ -55273,7 +55351,7 @@ __name(VizEditorChrome, "VizEditorChrome");
 // src/workspace/preview/codeBackdropOptions.ts
 var LEGACY = "";
 var slots = /* @__PURE__ */ new Map();
-var listeners18 = /* @__PURE__ */ new Set();
+var listeners19 = /* @__PURE__ */ new Set();
 var version = 0;
 function sameOptions(a, b) {
   if (a === b) return true;
@@ -55291,7 +55369,7 @@ function setCodeBackdropOptions(next, patternFileId) {
   if (next) slots.set(key3, next);
   else slots.delete(key3);
   version++;
-  for (const l of [...listeners18]) l();
+  for (const l of [...listeners19]) l();
 }
 __name(setCodeBackdropOptions, "setCodeBackdropOptions");
 function getCodeBackdropOptions(patternFileId) {
@@ -55303,9 +55381,9 @@ function getCodeBackdropOptionsVersion() {
 }
 __name(getCodeBackdropOptionsVersion, "getCodeBackdropOptionsVersion");
 function subscribeCodeBackdropOptions(listener) {
-  listeners18.add(listener);
+  listeners19.add(listener);
   return () => {
-    listeners18.delete(listener);
+    listeners19.delete(listener);
   };
 }
 __name(subscribeCodeBackdropOptions, "subscribeCodeBackdropOptions");
