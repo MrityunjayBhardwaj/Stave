@@ -2,7 +2,7 @@ import { createHash, createHmac } from "node:crypto";
 import { isIP } from "node:net";
 
 import { getDb, type Db } from "../../../db/client";
-import { DATABASE_RETRY_AFTER_SECONDS, databaseUnavailable } from "../../../db/errors";
+import { DATABASE_RETRY_AFTER_SECONDS, databaseUnavailable, withoutQueryValues } from "../../../db/errors";
 import { take } from "../../../db/repo/rateLimits";
 import { accountHashOf, sessionClaim } from "./session";
 
@@ -144,7 +144,7 @@ export async function rateLimit(
     return { ok: false, retryAfter: Math.max(1, windowStart + windowSeconds - now) };
   } catch (err) {
     // #2351 — refuse: the write this guards couldn't be saved either.
-    console.warn("[stave] rate limit store unavailable; refusing the write:", err);
+    console.warn("[stave] rate limit store unavailable; refusing the write:", withoutQueryValues(err));
     return unavailable;
   }
 }
