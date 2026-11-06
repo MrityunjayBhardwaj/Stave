@@ -120,7 +120,31 @@ export interface AdminReasonRequest {
   reason: string;
 }
 
-export type AdminAction = "take-down-entry" | "take-down-collection" | "dismiss-report";
+export type AdminAction =
+  | "take-down-entry"
+  | "take-down-collection"
+  | "dismiss-report"
+  | "restore-entry"
+  | "purge-entry";
+
+/** #2401 — how long an admin take-down can be undone. The clean-up deletes the files within a day after. */
+export const TAKEDOWN_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** #2401 — an entry an admin took down that can still be restored. Never the email. */
+export interface TakenDownEntry {
+  entry: GalleryEntry;
+  /** ms since epoch */
+  removedAt: number;
+  /** ms since epoch: Restore works until then. */
+  restoreBy: number;
+  /** Why it was taken down, from the action log. */
+  reason: string;
+}
+
+export interface TakenDownResponse {
+  /** Newest first. */
+  entries: TakenDownEntry[];
+}
 
 /** Who did it. Never the email. */
 export interface GalleryAdmin {

@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
   // fail with "Module not found: Can't resolve <dynamic>".
   transpilePackages: ["@stave/editor"],
 
+  // #2381 — the build type-checks the shipped code only, with no incremental
+  // cache, so a cache Vercel restores can't turn it red. Tests are checked in
+  // CI against tsconfig.json. The why is in tsconfig.build.json.
+  typescript: { tsconfigPath: "tsconfig.build.json" },
+
   // #2352 — PGlite (dev and tests' in-process Postgres) loads its WebAssembly
   // and data files from its own package folder at runtime; bundling it breaks
   // those paths. Production uses Neon and never loads it.

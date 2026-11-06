@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { GalleryPlayer } from "../../gallery/GalleryPlayer";
+import { GalleryPlayer } from "../../../gallery/GalleryPlayer";
 
 /**
  * #2328 — the gallery's sandboxed preview player. Only meant to be loaded in

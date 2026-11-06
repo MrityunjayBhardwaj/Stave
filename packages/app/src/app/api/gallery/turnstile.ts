@@ -1,4 +1,5 @@
 import { TURNSTILE_HEADER, type TurnstileAction } from "../../../gallery/types";
+import { withoutQueryValues } from "../../../db/errors";
 import { siteHosts } from "./origin";
 import { clientAddress } from "./rateLimit";
 
@@ -111,7 +112,7 @@ export async function requireTurnstile(
     if (!res.ok) throw new Error(`siteverify answered ${res.status}`);
     answer = (await res.json()) as SiteverifyAnswer;
   } catch (err) {
-    console.warn("[stave] couldn't reach Turnstile siteverify:", err);
+    console.warn("[stave] couldn't reach Turnstile siteverify:", withoutQueryValues(err));
     return Response.json(
       { error: "we couldn't run the \"are you human\" check just now; please try again in a moment" },
       { status: 503, headers: { "Cache-Control": "no-store" } },

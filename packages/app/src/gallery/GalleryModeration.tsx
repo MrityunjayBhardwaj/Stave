@@ -3,16 +3,16 @@
 /**
  * #2331 — the Moderation tab, shown only to admins (GET /api/gallery/me says
  * `isAdmin`). Flagged entries with every report on them, each with Open, Take
- * down and Dismiss (both ask for a reason, which goes in the action log), and
- * the recent log below. The server checks the session on every call; hiding the
+ * down and Dismiss (both ask for a reason, which goes in the action log), what
+ * was taken down and can still be restored (#2401), and the recent log below. The server checks the session on every call; hiding the
  * tab is only so nobody else sees a view that would answer 403.
  */
 import React, { useCallback, useEffect, useState } from "react";
 
 import { showPrompt, showToast } from "../dialogs/host";
 import { KIND_LABEL } from "./galleryModel";
-import { ACTION_LABEL, dismissReports, fetchAdminLog, fetchFlagged, takeDownEntry } from "./moderation";
-import { MAX_REPORT_REASON_CHARS, type AdminLogRecord, type FlaggedEntry } from "./types";
+import { ACTION_LABEL, dismissReports, fetchAdminLog, fetchFlagged, fetchTakenDown, restoreEntry, takeDownEntry } from "./moderation";
+import { MAX_REPORT_REASON_CHARS, type AdminLogRecord, type FlaggedEntry, type TakenDownEntry } from "./types";
 
 type Loaded<T> = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; data: T };
 
@@ -30,6 +30,7 @@ export function ModerationView({
   onTakenDown: (entryId: string) => void;
 }) {
   const [flagged, setFlagged] = useState<Loaded<FlaggedEntry[]>>({ status: "loading" });
+  const [takenDown, setTakenDown] = useState<Loaded<TakenDownEntry[]>>({ status: "loading" });
   const [log, setLog] = useState<Loaded<AdminLogRecord[]>>({ status: "loading" });
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -37,6 +38,9 @@ export function ModerationView({
     fetchFlagged()
       .then((r) => setFlagged({ status: "ready", data: r.flagged }))
       .catch((err: Error) => setFlagged({ status: "error", message: err.message }));
+    fetchTakenDown()
+      .then((r) => setTakenDown({ status: "ready", data: r.entries }))
+      .catch((err: Error) => setTakenDown({ status: "error", message: err.message }));
     fetchAdminLog()
       .then((r) => setLog({ status: "ready", data: r.actions }))
       .catch((err: Error) => setLog({ status: "error", message: err.message }));
@@ -74,6 +78,29 @@ export function ModerationView({
         await dismissReports(f.entryId, reason.slice(0, MAX_REPORT_REASON_CHARS));
         showToast(`Dismissed the reports on "${title}".`, "info");
       }
+    } catch (err) {
+      showToast(`Couldn't do that — ${(err as Error).message}`, "error");
+    } finally {
+      setBusy(null);
+      load();
+    }
+  };
+
+  const restore = async (t: TakenDownEntry) => {
+    const reason = (
+      await showPrompt({
+        title: "Restore this?",
+        description: `"${t.entry.title}" comes back for everyone, with the same link. Say why: it goes in the action log with your name.`,
+        placeholder: "e.g. taken down by mistake",
+        confirmLabel: "Restore",
+      })
+    )?.trim();
+    if (!reason) return;
+    setBusy(t.entry.id);
+    try {
+      await restoreEntry(t.entry.id, reason.slice(0, MAX_REPORT_REASON_CHARS));
+      // The public list is cached at the CDN for about a minute.
+      showToast(`Restored "${t.entry.title}". It may take a minute to reappear in the gallery.`, "info");
     } catch (err) {
       showToast(`Couldn't do that — ${(err as Error).message}`, "error");
     } finally {
@@ -139,9 +166,50 @@ export function ModerationView({
         )}
       </section>
 
+      <section data-gallery-section="taken-down">
+        <h3 className="sg-section">Taken down</h3>
+        <p className="sg-section-note">Hidden from everyone, and can be restored with the same link until the date shown. After that its files and the author&apos;s email are deleted.</p>
+        {takenDown.status === "loading" ? (
+          <div className="sg-state sg-state-small">Loading what was taken down…</div>
+        ) : takenDown.status === "error" ? (
+          <div className="sg-state sg-state-small" data-gallery-state="taken-down-error">
+            <p>Couldn&apos;t load what was taken down: {takenDown.message}.</p>
+            <button className="sg-btn" onClick={load}>Try again</button>
+          </div>
+        ) : takenDown.data.length === 0 ? (
+          <div className="sg-state sg-state-small" data-gallery-state="taken-down-empty">Nothing can be restored right now.</div>
+        ) : (
+          takenDown.data.map((t) => {
+            const expired = t.restoreBy <= Date.now();
+            return (
+              <div key={t.entry.id} className="sg-mine-row sg-mod-row" data-gallery-taken-down={t.entry.id}>
+                <div className="sg-mine-text">
+                  <div className="sg-card-title">{t.entry.title}</div>
+                  <div className="sg-card-meta">
+                    {KIND_LABEL[t.entry.kind] ?? t.entry.kind} by {t.entry.authorName} · taken down {when(t.removedAt)} ·{" "}
+                    {expired ? "past its restore date, waiting for the clean-up" : `restore by ${when(t.restoreBy)}`}
+                  </div>
+                  {t.reason && <div className="sg-mod-reason">“{t.reason}”</div>}
+                </div>
+                <div className="sg-actions">
+                  <button
+                    className="sg-btn"
+                    data-gallery-restore={t.entry.id}
+                    disabled={busy !== null || expired}
+                    onClick={() => void restore(t)}
+                  >
+                    Restore
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </section>
+
       <section data-gallery-section="admin-log">
         <h3 className="sg-section">Action log</h3>
-        <p className="sg-section-note">Every take-down and dismissal by any admin, newest first. Only admins see this.</p>
+        <p className="sg-section-note">Every take-down, dismissal and restore by any admin, and what the clean-up deleted, newest first. Only admins see this.</p>
         {log.status === "loading" ? (
           <div className="sg-state sg-state-small">Loading the log…</div>
         ) : log.status === "error" ? (

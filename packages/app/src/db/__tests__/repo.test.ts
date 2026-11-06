@@ -3,13 +3,15 @@
 // memory). Every repository function, each test on its own fresh database
 // (a clone of a migrated template, so it costs milliseconds, not seconds).
 import type { PGlite } from "@electric-sql/pglite";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { GalleryEntry, GalleryVerified } from "../../gallery/types";
 import { dbOverPglite, freshTestDb, getDb, useDbForTests, type Db } from "../client";
 import { DatabaseUnavailableError, isDatabaseUnavailable } from "../errors";
 import * as repo from "../repo";
+import * as schema from "../schema";
+import { inTransaction, type Tx } from "../repo/tx";
 import { rowsOf } from "../repo/tx";
 
 let db: Db & { $client: PGlite };
@@ -191,7 +193,7 @@ describe("entries and the listing", () => {
       made.push(e);
       await repo.insertEntry(db, { entry: e, authorEmail: "", manageTokenHash: "h" });
     }
-    await repo.removeEntry(db, made[3].id, "admin");
+    await repo.removeEntry(db, made[3].id);
     expect((await repo.listEntries(db)).map((e) => e.publishedAt)).toEqual([30, 20, 10]);
     expect((await repo.listEntries(db, { kind: "music" })).map((e) => e.publishedAt)).toEqual([20, 10]);
     expect((await repo.listEntries(db, { limit: 2 })).map((e) => e.publishedAt)).toEqual([30, 20]);
@@ -221,7 +223,7 @@ describe("entries and the listing", () => {
     const authorId = await author();
     const [a, b, c] = [entry({ authorId }), entry({ authorId }), entry({ authorId })];
     for (const e of [a, b, c]) await repo.insertEntry(db, { entry: e, authorEmail: "", manageTokenHash: "h" });
-    await repo.removeEntry(db, b.id, "author");
+    await repo.removeEntry(db, b.id);
     expect(await repo.liveEntry(db, b.id)).toBeNull();
     expect((await repo.liveEntries(db, [c.id, b.id, "nope", a.id])).map((e) => e.id)).toEqual([c.id, a.id]);
     expect(await repo.liveEntries(db, [])).toEqual([]);
@@ -234,15 +236,42 @@ describe("entries and the listing", () => {
     expect((await repo.entriesOfAuthor(db, x)).map((e) => e.id)).toEqual([mid.id, old.id]);
   });
 
-  it("removeEntry: marks it, clears the private side, closes its reports; a second call is false", async () => {
+  it("deleteEntryIn: no row, no collection membership and no report is left; the collection stays", async () => {
+    const authorId = await author();
+    const [gone, kept] = [entry({ authorId }), entry({ authorId })];
+    for (const e of [gone, kept]) await repo.insertEntry(db, { entry: e, authorEmail: "secret@x", manageTokenHash: "h" });
+    await repo.addReport(db, { entryId: gone.id, reason: "spam", reportedAt: 5 });
+    await repo.addReport(db, { entryId: kept.id, reason: "spam", reportedAt: 5 });
+    const collectionId = id11();
+    await repo.insertCollection(db, { id: collectionId, authorId, title: "C", description: "", entryIds: [gone.id, kept.id], createdAt: 1, updatedAt: 1 });
+
+    expect(await repo.deleteEntryIn(db, gone.id)).toBe(true);
+
+    expect(await db.select().from(schema.entries).where(eq(schema.entries.id, gone.id))).toEqual([]);
+    expect(await db.select().from(schema.reports).where(eq(schema.reports.entryId, gone.id))).toEqual([]);
+    expect(await db.select().from(schema.collectionEntries).where(eq(schema.collectionEntries.entryId, gone.id))).toEqual([]);
+    expect(await db.select().from(schema.reports).where(eq(schema.reports.entryId, kept.id))).toHaveLength(1);
+    expect((await db.select().from(schema.collectionEntries).where(eq(schema.collectionEntries.collectionId, collectionId))).map((r) => r.entryId)).toEqual([kept.id]);
+    expect(await repo.deleteEntryIn(db, gone.id)).toBe(false);
+  });
+
+  it("deleteEntryIn: refuses an entry an admin took down, whose row stays", async () => {
+    const e = entry({ authorId: await author() });
+    await repo.insertEntry(db, { entry: e, authorEmail: "", manageTokenHash: "h" });
+    await repo.removeEntry(db, e.id);
+    expect(await repo.deleteEntryIn(db, e.id)).toBe(false);
+    expect(await repo.getEntryRecord(db, e.id)).toMatchObject({ removed: { by: "admin" } });
+  });
+
+  it("removeEntry: hides it, keeps the private side for a restore, closes its reports; a second call is false", async () => {
     const e = entry({ authorId: await author() });
     await repo.insertEntry(db, { entry: e, authorEmail: "secret@x", manageTokenHash: "h" });
     await repo.addReport(db, { entryId: e.id, reason: "spam", reportedAt: 5 });
-    expect(await repo.removeEntry(db, e.id, "author", 99)).toBe(true);
-    expect(await repo.getEntryRecord(db, e.id)).toMatchObject({ authorEmail: "", manageTokenHash: null, removed: { removedAt: 99, by: "author" } });
+    expect(await repo.removeEntry(db, e.id, 99)).toBe(true);
+    expect(await repo.getEntryRecord(db, e.id)).toMatchObject({ authorEmail: "secret@x", manageTokenHash: "h", removed: { removedAt: 99, by: "admin" } });
     expect(await repo.openReportCount(db, e.id)).toBe(0);
-    expect(await repo.removeEntry(db, e.id, "admin")).toBe(false);
-    expect(await repo.removeEntry(db, "nope", "admin")).toBe(false);
+    expect(await repo.removeEntry(db, e.id)).toBe(false);
+    expect(await repo.removeEntry(db, "nope")).toBe(false);
   });
 });
 
@@ -362,14 +391,30 @@ describe("account links", () => {
 
 // ── the claim's moves ─────────────────────────────────────────────────────────
 
+const inTx = <T>(fn: (tx: Tx) => Promise<T>) => inTransaction(db, fn);
+
 describe("the claim's moves", () => {
+  it("mergeAuthorInto takes a hidden entry along, so a restore lands on the new author; only live ones are counted (#2401)", async () => {
+    const old = (await repo.insertKeyedAuthor(db, { name: "Old", email: "old@x", keyHash: "khidden" }))!;
+    const to = await author("New");
+    const hidden = entry({ authorId: old, authorName: "Old" });
+    await repo.insertEntry(db, { entry: hidden, authorEmail: "old@x", manageTokenHash: "h" });
+    await repo.removeEntry(db, hidden.id);
+
+    expect(await repo.mergeAuthorInto(db, old, { authorId: to, name: "New", email: "new@x" })).toEqual({ entries: 0, collections: 0 });
+
+    expect(await repo.getEntryRecord(db, hidden.id)).toMatchObject({ entry: { authorId: to, authorName: "New" }, authorEmail: "new@x" });
+    expect(await inTx((tx) => repo.restoreEntryIn(tx, hidden.id))).toBe(true);
+    expect((await repo.entriesOfAuthor(db, to)).map((e) => e.id)).toEqual([hidden.id]);
+  });
+
   it("mergeAuthorInto moves live entries and collections, takes the bio, retires the old author; a rerun moves nothing", async () => {
     const old = (await repo.insertKeyedAuthor(db, { name: "Old", email: "old@x", keyHash: "ko" }))!;
     await repo.updateAuthorProfile(db, old, { name: "Old", bio: "old bio" });
     const to = await author("New");
     const [live, gone] = [entry({ authorId: old, authorName: "Old" }), entry({ authorId: old, authorName: "Old" })];
     for (const e of [live, gone]) await repo.insertEntry(db, { entry: e, authorEmail: "old@x", manageTokenHash: "h" });
-    await repo.removeEntry(db, gone.id, "author");
+    await repo.removeEntry(db, gone.id);
     await repo.insertCollection(db, { id: id11(), authorId: old, title: "C", description: "", entryIds: [live.id], createdAt: 1, updatedAt: 1 });
 
     const target = { authorId: to, name: "New", email: "new@x" };
@@ -398,7 +443,7 @@ describe("the claim's moves", () => {
     const target = { authorId: to, name: "To", email: "to@x" };
     const [mine, orphan, removed] = [entry({ authorId: from }), entry(), entry({ authorId: from })];
     for (const e of [mine, orphan, removed]) await repo.insertEntry(db, { entry: e, authorEmail: "", manageTokenHash: "h" });
-    await repo.removeEntry(db, removed.id, "admin");
+    await repo.removeEntry(db, removed.id);
     expect(await repo.moveEntry(db, mine.id, to, target)).toBe(false); // not `to`'s yet
     expect(await repo.moveEntry(db, mine.id, from, target)).toBe(true);
     expect(await repo.moveEntry(db, mine.id, from, target)).toBe(false); // already moved

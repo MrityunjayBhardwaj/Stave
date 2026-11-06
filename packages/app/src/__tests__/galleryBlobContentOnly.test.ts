@@ -119,7 +119,7 @@ describe("#2363 Blob holds only the entry's manifest and thumbnail", () => {
     signIn(null);
     expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(204);
     expect(await blobKeys(dir)).toEqual([]);
-    expect((await getEntryRecord((await getDb())!, id))?.removed?.by).toBe("author");
+    expect(await getEntryRecord((await getDb())!, id)).toBeNull(); // #2403 — nothing is kept.
   });
 
   it("without a thumbnail, publish writes only the manifest", async () => {
@@ -127,7 +127,7 @@ describe("#2363 Blob holds only the entry's manifest and thumbnail", () => {
     expect(await blobKeys(dir)).toEqual([`gallery/manifests/${id}.json`]);
   });
 
-  it("a take-down by the signed-in author, and one by an admin, write nothing and remove only that entry's files", async () => {
+  it("an author's delete removes only that entry's files, and an admin's take-down keeps them (#2401); neither writes a record", async () => {
     const mine = await publish();
     const other = await publish();
     const theirs = await publish();
@@ -137,9 +137,9 @@ describe("#2363 Blob holds only the entry's manifest and thumbnail", () => {
     expect((await remove(mine.id)).status).toBe(204);
     expect(await blobKeys(dir)).toEqual([...content(other.id), ...content(theirs.id)].sort());
 
-    // An admin, with a reason (the admin log row is in the database).
+    // An admin, with a reason (the admin log row is in the database): only hidden, so it can be restored.
     signIn(ADMIN);
     expect((await remove(theirs.id, {}, { reason: "checked" })).status).toBe(204);
-    expect(await blobKeys(dir)).toEqual(content(other.id).sort());
+    expect(await blobKeys(dir)).toEqual([...content(other.id), ...content(theirs.id)].sort());
   });
 });
