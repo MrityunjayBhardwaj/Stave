@@ -1,4 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
+import { isIP } from "node:net";
 
 import { getDb, type Db } from "../../../db/client";
 import { DATABASE_RETRY_AFTER_SECONDS, databaseUnavailable } from "../../../db/errors";
@@ -210,13 +211,102 @@ export function limitAuthor(name: RateLimitName, authorId: string): Promise<Resp
  * whatever the client sent, so a script could rotate them and get a fresh
  * signed-out bucket each time. There the answer is "unknown": every signed-out
  * request shares one bucket, which is strict but can't be dodged.
+ *
+ * #2377 — unless the operator says which part to trust (off Vercel only; on
+ * Vercel the settings are ignored):
+ *
+ *   STAVE_TRUSTED_PROXY_HOPS=<n>   n proxies you run sit in front of Stave, each
+ *       appending the address it saw to X-Forwarded-For. The client is the n-th
+ *       entry counted from the RIGHT; anything to its left came from the client
+ *       and is ignored. This is Express's `trust proxy = n` (express 5.2.1
+ *       lib/utils.js compileTrust: `(a, i) => i < n` over proxy-addr 2.0.7's
+ *       [socket, ...XFF right-to-left]) and MDN's "trusted proxy count" rule.
+ *       Fewer than n entries means the chain isn't what was configured: "unknown".
+ *
+ *   STAVE_CLIENT_IP_HEADER=<name>  a proxy you run OVERWRITES this one header with
+ *       the visitor's address (x-real-ip, cf-connecting-ip, …). A value holding
+ *       a list (a comma) is refused, since an overwritten header has one address.
+ *       X-Forwarded-For can't be named here: it is a list, use the hop count.
+ *
+ * Either way the value must be a plain IP address (no port): anything else is
+ * "unknown".
+ *
+ * A setting that can't be read (not a whole number from 1 to 20, not a header
+ * name, both set at once) is logged once and the answer stays "unknown": a
+ * typo never turns into trusting what the client sent.
  */
 export function clientAddress(req: Request, env: Env = process.env): string {
-  if (!env.VERCEL) return "unknown";
-  const real = req.headers.get("x-real-ip")?.trim();
-  if (real) return real;
-  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded || "unknown";
+  if (env.VERCEL) {
+    const real = req.headers.get("x-real-ip")?.trim();
+    if (real) return real;
+    const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    return forwarded || "unknown";
+  }
+  const trust = trustedProxySetting(env);
+  if (trust.kind === "hops") {
+    // Headers.get joins repeated X-Forwarded-For headers with ", ", which is
+    // the single list MDN says to read.
+    const entries = (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim());
+    if (entries.length < trust.hops) return "unknown";
+    return plainIp(entries[entries.length - trust.hops]);
+  }
+  if (trust.kind === "header") {
+    const value = req.headers.get(trust.header)?.trim();
+    if (!value || value.includes(",")) return "unknown";
+    return plainIp(value);
+  }
+  return "unknown";
+}
+
+/**
+ * Only a plain IPv4 / IPv6 address counts. Some proxies write `ip:port`, and the
+ * port changes with every connection, so taking it as-is would make each new
+ * connection a new visitor. Anything that isn't an address is the shared bucket.
+ */
+function plainIp(value: string | undefined): string {
+  return value && isIP(value) ? value : "unknown";
+}
+
+const MAX_TRUSTED_PROXY_HOPS = 20;
+// RFC 9110 §5.6.2 token characters.
+const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+type TrustedProxy = { kind: "none" } | { kind: "hops"; hops: number } | { kind: "header"; header: string };
+
+const warnedSettings = new Set<string>();
+function badSetting(message: string): TrustedProxy {
+  if (!warnedSettings.has(message)) {
+    warnedSettings.add(message);
+    console.warn(`[stave] ${message}; signed-out rate limits stay shared by all visitors`);
+  }
+  return { kind: "none" };
+}
+
+/** Which part of a request off Vercel the operator says to trust for the visitor's address (#2377). */
+export function trustedProxySetting(env: Env = process.env): TrustedProxy {
+  const hopsRaw = env.STAVE_TRUSTED_PROXY_HOPS?.trim();
+  const headerRaw = env.STAVE_CLIENT_IP_HEADER?.trim();
+  if (hopsRaw && headerRaw) {
+    return badSetting("STAVE_TRUSTED_PROXY_HOPS and STAVE_CLIENT_IP_HEADER are both set; set only one");
+  }
+  if (hopsRaw) {
+    const hops = /^\d+$/.test(hopsRaw) ? Number(hopsRaw) : NaN;
+    if (!(hops >= 1 && hops <= MAX_TRUSTED_PROXY_HOPS)) {
+      return badSetting(`STAVE_TRUSTED_PROXY_HOPS=${JSON.stringify(hopsRaw)} isn't a whole number from 1 to ${MAX_TRUSTED_PROXY_HOPS}`);
+    }
+    return { kind: "hops", hops };
+  }
+  if (headerRaw) {
+    const header = headerRaw.toLowerCase();
+    if (!HEADER_NAME.test(header)) {
+      return badSetting(`STAVE_CLIENT_IP_HEADER=${JSON.stringify(headerRaw)} isn't a header name`);
+    }
+    if (header === "x-forwarded-for") {
+      return badSetting("STAVE_CLIENT_IP_HEADER can't be x-forwarded-for (its left part is whatever the client sent); use STAVE_TRUSTED_PROXY_HOPS");
+    }
+    return { kind: "header", header };
+  }
+  return { kind: "none" };
 }
 
 export function hashedAddress(req: Request, env: Env = process.env): string {
