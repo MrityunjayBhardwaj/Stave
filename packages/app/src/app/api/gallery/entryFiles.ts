@@ -14,9 +14,10 @@ import { galleryPaths, type GalleryBlobStore } from "./store";
  * Ordering, so a reader never sees an entry whose files are missing:
  *   publish   putEntryFiles FIRST, then the row is inserted (a listed entry's
  *             manifest always exists; a failed insert leaves only unlisted files).
- *   take-down the row is marked removed FIRST (410 and out of the listing at
- *             once), then deleteEntryFiles (one that fails halfway still reads
- *             as removed).
+ *   take-down nothing here: the entry is only hidden, and its files stay so it
+ *             can be restored (#2401).
+ *   purge     when the take-down's window ends, the row and the files change in
+ *             one transaction: a failed delete leaves it hidden for the next run.
  *   own delete the row and the files go in one transaction (#2403): a failed
  *             file delete rolls the row back, so the author can retry.
  */

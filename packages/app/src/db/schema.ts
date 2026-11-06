@@ -96,9 +96,11 @@ export const accounts = pgTable(
 
 /**
  * A published entry: the public listing fields (GalleryEntry), plus the private
- * ones. An entry an admin takes down keeps its row with `removed_at` set (the
- * entry route answers 410), and its private columns are cleared; an entry its
- * author deletes leaves no row (#2403).
+ * ones. An entry its author deletes leaves no row (#2403). An entry an admin
+ * takes down is hidden (`removed_at` set, the entry route answers 410) and keeps
+ * its files and private columns for TAKEDOWN_KEEP_MS, so it can be restored
+ * (#2401). Then the clean-up deletes the files, clears the private columns and
+ * sets `purged_at`; the row stays as the record of the removal.
  */
 export const entries = pgTable(
   "entries",
@@ -113,12 +115,14 @@ export const entries = pgTable(
     publishedAt: ms("published_at").notNull(),
     fileCount: integer("file_count").notNull(),
     hasThumbnail: boolean("has_thumbnail").notNull(),
-    /** PRIVATE. Cleared on removal. */
+    /** PRIVATE. Cleared when the entry is purged. */
     authorEmail: text("author_email").notNull().default(""),
-    /** PRIVATE. SHA-256 of the manage token, hex. Null once removed. */
+    /** PRIVATE. SHA-256 of the manage token, hex. Null once purged. */
     manageTokenHash: text("manage_token_hash"),
     removedAt: ms("removed_at"),
     removedBy: text("removed_by").$type<"author" | "admin">(),
+    /** #2401 — when the files were deleted and the private columns cleared. A purged entry can't be restored. */
+    purgedAt: ms("purged_at"),
   },
   (t) => [
     check("entries_kind_known", sql`${t.kind} in ('project', 'music', 'viz')`),

@@ -146,8 +146,8 @@ export default function PrivacyPage() {
         </p>
         <p>
           <strong>When an admin removes an entry</strong>, it is hidden from everyone at once. Its content and your email
-          may be kept for up to 30 days so that a mistaken removal can be reversed, and are then deleted. We keep a
-          record of the removal after that: the entry&apos;s title, kind, tags, your profile name and the dates, along
+          are kept for 30 days so that a mistaken removal can be reversed, and are deleted within a day after that. We
+          keep a record of the removal after that: the entry&apos;s title, kind, tags, your profile name and the dates, along
           with any reports about it and the action log entry below.
         </p>
       </Section>
