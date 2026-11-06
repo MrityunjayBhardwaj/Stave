@@ -36076,6 +36076,8 @@ function EditorView({
   const viewZoneHandleRef = useRef(null);
   const sliderHandleRef = useRef(null);
   const lastPayloadRef = useRef(null);
+  const vizHandlersRef = useRef({ onEditViz, onCropViz });
+  vizHandlersRef.current = { onEditViz, onCropViz };
   const [hapStream, setHapStream] = useState(null);
   const [breakpointStore, setBreakpointStore] = useState(null);
   const [onResume, setOnResume] = useState(null);
@@ -36089,6 +36091,13 @@ function EditorView({
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
+  const zoneActions = /* @__PURE__ */ __name((forFileId) => {
+    const { onEditViz: edit, onCropViz: crop } = vizHandlersRef.current;
+    return {
+      onEdit: edit ? (vizId, presetId) => vizHandlersRef.current.onEditViz?.(vizId, presetId) : void 0,
+      onCrop: crop ? (vizId, presetId, trackKey) => vizHandlersRef.current.onCropViz?.(vizId, presetId, trackKey, forFileId) : void 0
+    };
+  }, "zoneActions");
   useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
@@ -36104,7 +36113,7 @@ function EditorView({
             editorRef.current,
             payload.engineComponents ?? payload,
             DEFAULT_VIZ_DESCRIPTORS,
-            { onEdit: onEditViz, onCrop: onCropViz },
+            zoneActions(fileId),
             fileId
           );
           viewZoneHandleRef.current?.resume();
@@ -36143,7 +36152,7 @@ function EditorView({
         editorRef.current,
         payload.engineComponents ?? payload,
         DEFAULT_VIZ_DESCRIPTORS,
-        { onEdit: onEditViz, onCrop: onCropViz },
+        zoneActions(fileId),
         fileId
       );
       viewZoneHandleRef.current?.resume();

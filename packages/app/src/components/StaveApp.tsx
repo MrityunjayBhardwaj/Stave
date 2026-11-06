@@ -2242,12 +2242,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                   setActivePanelId("explorer");
                   setTimeout(() => fileTreeRef.current?.revealFile(f.id), 50);
                 }}
-                onCropViz={(vizId, presetId, trackKey) => {
-                  const fileId = activeFileId ?? listWorkspaceFiles().find(f => f.language === 'strudel' || f.language === 'sonicpi')?.id ?? null;
-                  if (!fileId) {
-                    showToast("Open an editor file before cropping", "error");
-                    return;
-                  }
+                onCropViz={(vizId, presetId, trackKey, fileId) => {
+                  // `fileId` is the file the strip belongs to, named by the
+                  // editor that drew it (#2412). Guessing it from the active
+                  // tab read a stale closure and saved the crop to another
+                  // file's store.
                   // If presetId is null (async preset lookup hasn't completed),
                   // take the preset of the viz file the renderer registers
                   // under this name — the same lookup ✎ uses, so a base name

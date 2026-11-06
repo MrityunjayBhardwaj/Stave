@@ -118,6 +118,7 @@ vi.mock('@monaco-editor/react', () => ({
 import { EditorView } from '../EditorView'
 import {
   createWorkspaceFile,
+  setZoneCropOverride,
   __resetWorkspaceFilesForTests,
 } from '../WorkspaceFile'
 import { __resetWorkspaceLanguagesForTests } from '../languages'
@@ -399,5 +400,74 @@ describe('EditorView bus wiring (Task 07)', () => {
 
     // undefined error → clearEvalErrors called (no squiggles).
     expect(clearEvalErrors).toHaveBeenCalled()
+  })
+
+  // ---- #2412 — zone rebuilds carry the host's CURRENT ✎ / ✂ callbacks ----
+
+  /** The actions object handed to the most recent addInlineViewZones call. */
+  function lastZoneActions(): { onEdit?: (...a: any[]) => void; onCrop?: (...a: any[]) => void } {
+    const calls = vi.mocked(addInlineViewZones).mock.calls
+    return (calls[calls.length - 1][3] ?? {}) as any
+  }
+
+  const vizPayload = (): AudioPayload => ({
+    inlineViz: { vizRequests: new Map([['$0', { vizId: 'pianoroll', afterLine: 1 }]]) } as any,
+  })
+
+  it('#2412: a crop-override rebuild hands the zones the latest onCropViz, with the file it belongs to', () => {
+    createWorkspaceFile('f1', 'f1.strudel', '// code', 'strudel')
+    const firstCrop = vi.fn()
+    const latestCrop = vi.fn()
+    const { rerender } = render(<EditorView fileId="f1" onCropViz={firstCrop} />)
+    act(() => {
+      workspaceAudioBus.publish('f1', vizPayload())
+    })
+    // The host re-renders with a new handler (its closure moved on).
+    rerender(<EditorView fileId="f1" onCropViz={latestCrop} />)
+
+    // Saving a crop writes the override → the override subscription rebuilds the zones.
+    vi.mocked(addInlineViewZones).mockClear()
+    act(() => {
+      setZoneCropOverride('f1', '$0', { x: 0.5, y: 0.5, w: 0.5, h: 0.5 }, 'pianoroll')
+    })
+    expect(addInlineViewZones).toHaveBeenCalledTimes(1)
+
+    // ✂ on the rebuilt strip must reach the CURRENT handler, never the first one.
+    lastZoneActions().onCrop?.('pianoroll', 'preset-1', '$0')
+    expect(firstCrop).not.toHaveBeenCalled()
+    expect(latestCrop).toHaveBeenCalledWith('pianoroll', 'preset-1', '$0', 'f1')
+  })
+
+  it('#2412: a new evaluation after the host re-rendered also uses the latest ✎ / ✂ handlers', () => {
+    createWorkspaceFile('f1', 'f1.strudel', '// code', 'strudel')
+    const firstCrop = vi.fn()
+    const firstEdit = vi.fn()
+    const latestCrop = vi.fn()
+    const latestEdit = vi.fn()
+    const { rerender } = render(
+      <EditorView fileId="f1" onCropViz={firstCrop} onEditViz={firstEdit} />,
+    )
+    rerender(<EditorView fileId="f1" onCropViz={latestCrop} onEditViz={latestEdit} />)
+    act(() => {
+      workspaceAudioBus.publish('f1', vizPayload())
+    })
+    const actions = lastZoneActions()
+    actions.onCrop?.('pianoroll', null, '$0')
+    actions.onEdit?.('pianoroll', null)
+    expect(firstCrop).not.toHaveBeenCalled()
+    expect(firstEdit).not.toHaveBeenCalled()
+    expect(latestCrop).toHaveBeenCalledWith('pianoroll', null, '$0', 'f1')
+    expect(latestEdit).toHaveBeenCalledWith('pianoroll', null)
+  })
+
+  it('#2412: with no ✎ / ✂ handlers the zones get no actions (no floating bar)', () => {
+    createWorkspaceFile('f1', 'f1.strudel', '// code', 'strudel')
+    render(<EditorView fileId="f1" />)
+    act(() => {
+      workspaceAudioBus.publish('f1', vizPayload())
+    })
+    const actions = lastZoneActions()
+    expect(actions.onCrop).toBeUndefined()
+    expect(actions.onEdit).toBeUndefined()
   })
 })

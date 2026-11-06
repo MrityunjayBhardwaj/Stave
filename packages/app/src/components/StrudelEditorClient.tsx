@@ -533,7 +533,7 @@ interface StrudelEditorClientProps {
   /** Navigate to a viz file when the user clicks the edit icon on an inline viz. */
   onEditViz?: (vizId: string, presetId: string | null) => void;
   /** Open crop popup when the user clicks the crop icon on an inline viz. */
-  onCropViz?: (vizId: string, presetId: string | null, trackKey: string) => void;
+  onCropViz?: (vizId: string, presetId: string | null, trackKey: string, fileId: string) => void;
   /** Pass-through of the shell's backdrop change callback — fires on any
    *  group's backgroundFileId transition. StaveApp uses this to mirror
    *  the pinned backdrop into its own React state for the FileTree
