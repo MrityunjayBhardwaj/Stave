@@ -174,7 +174,9 @@ describe("rateLimit, on its own", () => {
     const mine = rows.filter((r) => r.key === rateLimitRowKey(key));
     expect(mine).toEqual([{ key: rateLimitRowKey(key), count: 2 }]);
     expect(rateLimitRowKey(key)).toMatch(/^[0-9a-f]{64}$/);
-    expect(rows.some((r) => r.key.includes("ada"))).toBe(false);
+    // #2406 — every row key is a bare hash, which nothing readable can survive in.
+    // (Not "no key contains ada": a, d and a are hex digits, so hashes do by chance.)
+    expect(rows.filter((r) => !/^[0-9a-f]{64}$/.test(r.key))).toEqual([]);
   });
 
   it("#2351: refuses (unavailable, retry in a minute) when the store fails", async () => {

@@ -141,6 +141,29 @@ export function databaseUnavailable(): Response {
   );
 }
 
+/**
+ * #2404 — the same error, with the values its query carried removed, so it can be
+ * logged. A failed query holds them in five places: drizzle's message, its stack
+ * and its `params`, and the driver's `params` and `detail` ("Failing row contains
+ * (…)"). An email on its way into the database would land in the server logs.
+ * Changes the error in place and keeps its class, its cause and its SQL (with
+ * placeholders), so it can still be judged by isOutage and diagnosed.
+ */
+export function withoutQueryValues<E>(err: E): E {
+  for (const link of causes(err)) {
+    if (typeof link !== "object" || link === null) continue;
+    const e = link as { message: string; stack?: string; query?: unknown; params?: unknown; detail?: unknown };
+    if (link instanceof DrizzleQueryError) {
+      const before = e.message;
+      e.message = `Failed query: ${link.query}`;
+      if (e.stack) e.stack = e.stack.replace(before, e.message);
+    }
+    if (Array.isArray(e.params)) e.params = [];
+    if (typeof e.detail === "string") e.detail = undefined;
+  }
+  return err;
+}
+
 /** Answer 503 (see above) when the database is down anywhere inside `handler`. */
 export function withDatabase<A extends unknown[]>(
   handler: (...args: A) => Promise<Response>,
@@ -149,8 +172,9 @@ export function withDatabase<A extends unknown[]>(
     try {
       return await handler(...args);
     } catch (err) {
-      if (!isDatabaseUnavailable(err)) throw err;
-      console.warn("[stave] gallery database unavailable:", err);
+      // Rethrown too: Next logs what a route throws.
+      if (!isDatabaseUnavailable(err)) throw withoutQueryValues(err);
+      console.warn("[stave] gallery database unavailable:", withoutQueryValues(err));
       return databaseUnavailable();
     }
   };
