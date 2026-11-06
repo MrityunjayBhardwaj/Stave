@@ -75,7 +75,11 @@ function SignInGate({ state }: { state: GallerySessionState }) {
       <p style={styles.gateText}>Sign in to publish to the gallery.</p>
       <p style={styles.note}>
         Your work is shown under your profile, with the account you sign in with. We keep your email private and use
-        it only to contact you about what you publish. You&apos;ll come straight back here afterwards.
+        it only to contact you about what you publish.{" "}
+        <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }} data-testid="gallery-publish-privacy">
+          Privacy policy
+        </a>
+        . You&apos;ll come straight back here afterwards.
       </p>
       <div style={styles.providers}>
         {s.providers.map((p) => (

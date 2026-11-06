@@ -162,6 +162,87 @@ test.describe('Moderation by admin accounts (#2331)', () => {
     const logText = JSON.stringify(log)
     expect(logText).not.toContain('@test-login.invalid')
 
+    // ── #2401: it can be restored, with the same link ──
+    const hidden = admin.page.locator(`[data-gallery-taken-down="${entryId}"]`)
+    await expect(hidden).toBeVisible({ timeout: 15_000 })
+    await expect(hidden).toContainText(TITLE)
+    await expect(hidden).toContainText(REASON)
+    await hidden.scrollIntoViewIfNeeded()
+    if (SHOTS) await admin.page.locator('.sg-modal').screenshot({ path: `${SHOTS}/4-taken-down.png` })
+    await hidden.locator(`[data-gallery-restore="${entryId}"]`).click()
+    const why = admin.page.getByPlaceholder('e.g. taken down by mistake')
+    await expect(why).toBeVisible()
+    await why.fill('taken down by mistake')
+    await why.press('Enter')
+    await expect(admin.page.locator('[data-testid="toast"]', { hasText: `Restored "${TITLE}"` })).toBeVisible({ timeout: 15_000 })
+    await expect(hidden).toHaveCount(0, { timeout: 15_000 })
+    await expect(admin.page.locator(`[data-gallery-log-action="restore-entry"][data-gallery-log-target="${entryId}"]`)).toBeVisible({ timeout: 15_000 })
+    expect((await author.context.request.get(`/api/gallery/${entryId}`)).status()).toBe(200)
+
+    console.log(`[gallery-moderation] admin errors (${errors.length}):\n${errors.join('\n')}`)
+    expect(ours(errors)).toEqual([])
+    await author.context.close()
+    await admin.context.close()
+  })
+
+  test('an admin suspends an author with everything taken down, the author is refused, and lifting undoes it (#2400)', async ({ browser }) => {
+    const who = `suspend-${Date.now().toString(36)}`
+    const author = await signedIn(browser, who)
+    const manifest = {
+      schemaVersion: 1,
+      project: { name: 'Spam', sharedAt: Date.now() },
+      files: [{ id: 'f0', path: 'song.strudel', language: 'strudel', content: 's("bd sd")' }],
+      fileOrder: { '': ['f0'] },
+      subfolderOrder: {},
+    }
+    const title = `Spam ${who}`
+    const pub = await author.context.request.post('/api/gallery', { data: { title, kind: 'music', tags: [], manifest } })
+    expect(pub.status()).toBe(201)
+    const { id, authorId } = (await pub.json()) as { id: string; authorId: string }
+    expect((await author.context.request.post(`/api/gallery/${id}/report`, { data: { reason: 'spam' } })).status()).toBe(202)
+
+    const admin = await signedIn(browser, ADMIN, { viewport: { width: 1280, height: 1100 } })
+    const errors = watchErrors(admin.page)
+    await bootApp(admin.page)
+    await openGallery(admin.page)
+    await admin.page.locator('[data-gallery-tab="moderation"]').click()
+    const row = admin.page.locator(`[data-gallery-flagged="${id}"]`)
+    await expect(row).toBeVisible({ timeout: 15_000 })
+
+    await row.locator(`[data-gallery-suspend="${authorId}"]`).click()
+    const form = row.locator(`[data-gallery-suspend-form="${authorId}"]`)
+    await expect(form.locator('[data-gallery-suspend-confirm]')).toBeDisabled() // No reason yet.
+    await form.locator('[data-gallery-suspend-days]').selectOption('30')
+    await form.locator('[data-gallery-suspend-all]').check()
+    await form.locator('[data-gallery-suspend-reason]').fill('spam account')
+    if (SHOTS) await admin.page.locator('.sg-modal').screenshot({ path: `${SHOTS}/5-suspend-form.png` })
+    await form.locator('[data-gallery-suspend-confirm]').click()
+    await expect(admin.page.locator('[data-testid="toast"]', { hasText: 'Suspended' })).toBeVisible({ timeout: 15_000 })
+
+    const suspended = admin.page.locator(`[data-gallery-suspended="${authorId}"]`)
+    await expect(suspended).toBeVisible({ timeout: 15_000 })
+    await expect(suspended).toContainText('profile hidden')
+    await expect(admin.page.locator(`[data-gallery-taken-down="${id}"]`)).toBeVisible()
+    await suspended.scrollIntoViewIfNeeded()
+    if (SHOTS) await admin.page.locator('.sg-modal').screenshot({ path: `${SHOTS}/6-suspended.png` })
+
+    // The author is refused in plain words, and nothing public is left.
+    const refused = await author.context.request.post('/api/gallery', { data: { title, kind: 'music', tags: [], manifest } })
+    expect(refused.status()).toBe(403)
+    expect(((await refused.json()) as { error: string }).error).toMatch(/suspended .* until/)
+    expect((await author.context.request.get(`/api/gallery/${id}`)).status()).toBe(410)
+    expect((await author.context.request.get(`/api/gallery/authors/${authorId}`)).status()).toBe(404)
+
+    // Lift, then restore.
+    await suspended.locator(`[data-gallery-lift="${authorId}"]`).click()
+    const why = admin.page.getByPlaceholder('e.g. suspended by mistake')
+    await why.fill('suspended by mistake')
+    await why.press('Enter')
+    await expect(suspended).toHaveCount(0, { timeout: 15_000 })
+    await expect(admin.page.locator(`[data-gallery-log-action="lift-suspension"][data-gallery-log-target="${authorId}"]`)).toBeVisible({ timeout: 15_000 })
+    expect((await author.context.request.get(`/api/gallery/authors/${authorId}`)).status()).toBe(200)
+    expect((await author.context.request.post('/api/gallery', { data: { title, kind: 'music', tags: [], manifest } })).status()).toBe(201)
+
     console.log(`[gallery-moderation] admin errors (${errors.length}):\n${errors.join('\n')}`)
     expect(ours(errors)).toEqual([])
     await author.context.close()

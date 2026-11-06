@@ -175,9 +175,9 @@ async function publish(who?: string, over: { title?: string } = {}): Promise<Pub
   return { ...made, authorId, who: user };
 }
 
-/** Take an entry down, the way DELETE /api/gallery/[id] does (repo removeEntry). */
-async function takeDown(id: string, by: "author" | "admin" = "author") {
-  expect(await removeEntry(await db(), id, by)).toBe(true);
+/** Take an entry down, the way DELETE /api/gallery/[id] does for an admin (repo removeEntry). */
+async function takeDown(id: string) {
+  expect(await removeEntry(await db(), id)).toBe(true);
 }
 
 /**
@@ -529,7 +529,7 @@ describe("collections", () => {
     const [e0, e1, e2] = entries;
     const c = await made({ title: "Album", description: "", entryIds: [e0.id, e1.id, e2.id] }, key);
 
-    await takeDown(e1.id, "admin");
+    await takeDown(e1.id);
 
     const page = (await (await getCollection(c.id)).json()) as CollectionPageResponse;
     expect(page.collection.entryIds).toEqual([e0.id, e2.id]);
@@ -653,6 +653,6 @@ describe("publish and entry delete go by the signed-in account", () => {
     const mine = await authorWith(1);
     const id = mine.entries[0].id;
     expect((await deleteEntry(id, mine.key)).status).toBe(204);
-    expect(await entryStatus(id)).toBe(410);
+    expect(await entryStatus(id)).toBe(404);
   });
 });

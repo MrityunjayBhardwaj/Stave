@@ -27,6 +27,9 @@ import { PUT as editProfile } from "../app/api/gallery/authors/[authorId]/route"
 import { POST as createShare } from "../app/api/share/route";
 import { DELETE as revokeShare } from "../app/api/share/[id]/route";
 import { POST as dismissReports } from "../app/api/gallery/admin/reports/[id]/dismiss/route";
+import { POST as restoreEntry } from "../app/api/gallery/admin/removed/[id]/restore/route";
+import { POST as suspendAccount } from "../app/api/gallery/admin/suspensions/route";
+import { DELETE as liftSuspension } from "../app/api/gallery/admin/suspensions/[authorId]/route";
 import { getDb } from "../db/client";
 
 // #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
@@ -108,6 +111,9 @@ const WRITE_ROUTES: Array<[string, string, Handler, Record<string, string>]> = [
   ["POST /api/share", "POST", createShare as Handler, {}],
   ["DELETE /api/share/:id", "DELETE", revokeShare as Handler, { id: ID }],
   ["POST /api/gallery/admin/reports/:id/dismiss", "POST", dismissReports as Handler, { id: ID }],
+  ["POST /api/gallery/admin/removed/:id/restore", "POST", restoreEntry as Handler, { id: ID }],
+  ["POST /api/gallery/admin/suspensions", "POST", suspendAccount as Handler, {}],
+  ["DELETE /api/gallery/admin/suspensions/:authorId", "DELETE", liftSuspension as Handler, { authorId: ID }],
 ];
 
 // Where each listed route lives, so the scan below can tell a route nobody listed.
@@ -123,6 +129,9 @@ const LISTED_FILES: Record<string, string> = {
   "POST /api/share": "share/route.ts",
   "DELETE /api/share/:id": "share/[id]/route.ts",
   "POST /api/gallery/admin/reports/:id/dismiss": "gallery/admin/reports/[id]/dismiss/route.ts",
+  "POST /api/gallery/admin/removed/:id/restore": "gallery/admin/removed/[id]/restore/route.ts",
+  "POST /api/gallery/admin/suspensions": "gallery/admin/suspensions/route.ts",
+  "DELETE /api/gallery/admin/suspensions/:authorId": "gallery/admin/suspensions/[authorId]/route.ts",
 };
 
 /** Every exported POST / PUT / PATCH / DELETE handler under app/api/{gallery,share}, as "METHOD file". */

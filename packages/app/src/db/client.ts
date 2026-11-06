@@ -4,7 +4,7 @@ import path from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 
-import { DatabaseUnavailableError } from "./errors";
+import { DatabaseUnavailableError, withoutQueryValues } from "./errors";
 import * as schema from "./schema";
 
 /*
@@ -97,7 +97,7 @@ async function openNeon(url: string): Promise<Db> {
   const pool = new Pool({ connectionString: url, max: 5, connectionTimeoutMillis: 5_000, idleTimeoutMillis: 10_000 });
   // An idle connection the server dropped must not crash the process; the
   // pool replaces it on the next query.
-  pool.on("error", (err: unknown) => console.warn("[stave] gallery database connection dropped:", err));
+  pool.on("error", (err: unknown) => console.warn("[stave] gallery database connection dropped:", withoutQueryValues(err)));
   return drizzle({ client: pool, schema }) as unknown as Db;
 }
 
@@ -163,7 +163,7 @@ export async function getDb(): Promise<Db | null> {
     const opening = open(process.env).catch((err: unknown) => {
       // Forget the failure, so the next call tries again.
       if (state().opening === opening) state().opening = undefined;
-      console.warn("[stave] couldn't open the gallery database:", err);
+      console.warn("[stave] couldn't open the gallery database:", withoutQueryValues(err));
       throw new DatabaseUnavailableError(err);
     });
     s.opening = opening;

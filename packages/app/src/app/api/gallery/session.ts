@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { auth, type StaveAccountClaim } from "../../../auth";
 import { signInAvailable } from "../../../authProviders";
 import { getDb, type Db } from "../../../db/client";
-import { databaseUnavailable, isDatabaseUnavailable } from "../../../db/errors";
+import { databaseUnavailable, isDatabaseUnavailable, withoutQueryValues } from "../../../db/errors";
 import {
   ensureAccountAuthor,
   getAccount,
@@ -222,7 +222,7 @@ export async function requireSessionAuthor(
   } catch (err) {
     // #2351 — the database can't be reached: "try again shortly", never a 500.
     if (!isDatabaseUnavailable(err)) throw err;
-    console.warn("[stave] gallery database unavailable:", err);
+    console.warn("[stave] gallery database unavailable:", withoutQueryValues(err));
     return databaseUnavailable();
   }
   if (!found) return Response.json({ error: "could not set up your gallery profile" }, { status: 500 });

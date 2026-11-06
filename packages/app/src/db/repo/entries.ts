@@ -1,8 +1,8 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lte } from "drizzle-orm";
 
-import type { GalleryEntry, GalleryKind } from "../../gallery/types";
+import { TAKEDOWN_KEEP_MS, type GalleryEntry, type GalleryKind } from "../../gallery/types";
 import type { Db } from "../client";
-import { entries, reports } from "../schema";
+import { collectionEntries, entries, reports } from "../schema";
 import { inTransaction, type Q } from "./tx";
 
 /*
@@ -10,8 +10,14 @@ import { inTransaction, type Q } from "./tx";
  * thumbnail stay in Blob (`gallery/manifests/<id>.json`, `gallery/thumbnails/<id>`),
  * found by the entry id; this table holds everything else.
  *
- * A taken-down entry keeps its row with `removed_at` set (so its id is never
- * reused and the entry route can answer 410), and its private columns cleared.
+ * An entry its author deletes leaves no row at all (#2403): see deleteEntryIn.
+ * An entry an admin takes down moves through three states (#2401):
+ *
+ *   live      removed_at null
+ *   hidden    removed_at set, purged_at null: answers 410 everywhere, keeps its
+ *             files, email and token, and can be restored for TAKEDOWN_KEEP_MS
+ *   purged    purged_at set: files deleted, private columns cleared, the row
+ *             stays as the record of the removal
  */
 
 /** The most entries one listing returns, newest first. */
@@ -39,9 +45,9 @@ export function toGalleryEntry(r: EntryRow): GalleryEntry {
 /** An entry with its private side. Never served as is. */
 export interface EntryRecord {
   entry: GalleryEntry;
-  /** PRIVATE. "" once removed. */
+  /** PRIVATE. "" once purged. */
   authorEmail: string;
-  /** PRIVATE. Null once removed. */
+  /** PRIVATE. Null once purged. */
   manageTokenHash: string | null;
   removed: { removedAt: number; by: "author" | "admin" } | null;
 }
@@ -151,30 +157,91 @@ export async function entriesOfAuthor(db: Q, authorId: string): Promise<GalleryE
 }
 
 /**
- * Take an entry down, in one transaction: `removed_at` / `removed_by` set, the
- * private columns cleared (the email goes), and its open reports closed.
- * True when this call removed it; false when it doesn't exist or was already
- * removed. The route deletes the manifest and thumbnail from Blob AFTER this,
- * so a half-finished delete still reads as removed.
- * Phase 2 caller: DELETE /api/gallery/[id] (author or admin).
+ * An admin takes an entry down, in one transaction: hidden from everyone at once
+ * and its open reports closed. Its files and private columns stay, so it can be
+ * restored (#2401). True when this call removed it; false when it doesn't exist
+ * or was already removed.
  */
-export async function removeEntry(db: Db, id: string, by: "author" | "admin", at = Date.now()): Promise<boolean> {
-  return inTransaction(db, (tx) => removeEntryIn(tx, id, by, at));
+export async function removeEntry(db: Db, id: string, at = Date.now()): Promise<boolean> {
+  return inTransaction(db, (tx) => removeEntryIn(tx, id, at));
 }
 
 /**
  * removeEntry's two statements, inside a transaction the CALLER holds, so an
  * admin take-down can write its log record in the same one (the record and the
  * removal land together or not at all).
- * Phase 2 caller: DELETE /api/gallery/[id] (admin take-down).
  */
-export async function removeEntryIn(tx: Q, id: string, by: "author" | "admin", at = Date.now()): Promise<boolean> {
+export async function removeEntryIn(tx: Q, id: string, at = Date.now()): Promise<boolean> {
   const done = await tx
     .update(entries)
-    .set({ removedAt: at, removedBy: by, authorEmail: "", manageTokenHash: null })
+    .set({ removedAt: at, removedBy: "admin" })
     .where(and(eq(entries.id, id), isNull(entries.removedAt)))
     .returning({ id: entries.id });
   if (done.length === 0) return false;
   await tx.update(reports).set({ closedAt: at }).where(and(eq(reports.entryId, id), isNull(reports.closedAt)));
   return true;
+}
+
+/** Hidden by an admin and not yet purged: the entries restore and the clean-up act on. */
+const hidden = and(eq(entries.removedBy, "admin"), isNotNull(entries.removedAt), isNull(entries.purgedAt));
+
+/** #2401 — every hidden entry, newest take-down first, whether or not its window has passed. */
+export async function hiddenEntries(db: Q): Promise<Array<{ entry: GalleryEntry; removedAt: number }>> {
+  const rows = await db.select().from(entries).where(hidden).orderBy(desc(entries.removedAt));
+  return rows.map((r) => ({ entry: toGalleryEntry(r), removedAt: r.removedAt as number }));
+}
+
+/**
+ * #2401 — bring a hidden entry back, same id, links and collections. Its reports
+ * stay closed: restoring is the admin's decision about them. False when it isn't
+ * hidden, or its window has passed.
+ */
+export async function restoreEntryIn(tx: Q, id: string, at = Date.now()): Promise<boolean> {
+  const done = await tx
+    .update(entries)
+    .set({ removedAt: null, removedBy: null })
+    .where(and(eq(entries.id, id), hidden, gt(entries.removedAt, at - TAKEDOWN_KEEP_MS)))
+    .returning({ id: entries.id });
+  return done.length > 0;
+}
+
+/** #2401 — ids of hidden entries whose window has passed, oldest first. */
+export async function expiredEntryIds(db: Q, at = Date.now(), limit = 200): Promise<string[]> {
+  const rows = await db
+    .select({ id: entries.id })
+    .from(entries)
+    .where(and(hidden, lte(entries.removedAt, at - TAKEDOWN_KEEP_MS)))
+    .orderBy(entries.removedAt)
+    .limit(limit);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * #2401 — the end of a hidden entry's window: its private columns cleared. The
+ * caller deletes the files in the same transaction, so a failed delete leaves it
+ * hidden for the next run. False when it isn't hidden any more.
+ */
+export async function purgeEntryIn(tx: Q, id: string, at = Date.now()): Promise<boolean> {
+  const done = await tx
+    .update(entries)
+    .set({ purgedAt: at, authorEmail: "", manageTokenHash: null })
+    .where(and(eq(entries.id, id), hidden))
+    .returning({ id: entries.id });
+  return done.length > 0;
+}
+
+/**
+ * #2403 — an author deletes their own entry: nothing about it is kept. Its
+ * collection memberships go here, its reports by the foreign key's cascade.
+ * True when this call deleted it; false when it doesn't exist or an admin has
+ * taken it down. The caller holds the transaction, so that a failed file delete
+ * undoes this and the author can retry (the route deletes the files inside it).
+ */
+export async function deleteEntryIn(tx: Q, id: string): Promise<boolean> {
+  await tx.delete(collectionEntries).where(eq(collectionEntries.entryId, id));
+  const done = await tx
+    .delete(entries)
+    .where(and(eq(entries.id, id), isNull(entries.removedAt)))
+    .returning({ id: entries.id });
+  return done.length > 0;
 }

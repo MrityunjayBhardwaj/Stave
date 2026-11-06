@@ -120,7 +120,63 @@ export interface AdminReasonRequest {
   reason: string;
 }
 
-export type AdminAction = "take-down-entry" | "take-down-collection" | "dismiss-report";
+export type AdminAction =
+  | "take-down-entry"
+  | "take-down-collection"
+  | "dismiss-report"
+  | "restore-entry"
+  | "purge-entry"
+  | "suspend-account"
+  | "lift-suspension";
+
+/** #2400 — how long an admin can suspend an account for, in days. Null is permanent. */
+export const SUSPENSION_DAYS = [7, 30, null] as const;
+export type SuspensionDays = (typeof SUSPENSION_DAYS)[number];
+
+export interface SuspendRequest {
+  authorId: string;
+  /** Why: kept in the action log. Required, at most MAX_REPORT_REASON_CHARS. */
+  reason: string;
+  days: SuspensionDays;
+  /** Also take down everything the account has published, and hide its profile. */
+  takeDownAll: boolean;
+}
+
+/** #2400 — a suspension in force, for admins. Never the email or the account hash. */
+export interface ActiveSuspension {
+  authorId: string;
+  name: string;
+  /** ms since epoch */
+  at: number;
+  /** ms since epoch; null is permanent. */
+  until: number | null;
+  reason: string;
+  hideProfile: boolean;
+}
+
+export interface SuspensionsResponse {
+  /** Newest first. */
+  suspensions: ActiveSuspension[];
+}
+
+/** #2401 — how long an admin take-down can be undone. The clean-up deletes the files within a day after. */
+export const TAKEDOWN_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** #2401 — an entry an admin took down that can still be restored. Never the email. */
+export interface TakenDownEntry {
+  entry: GalleryEntry;
+  /** ms since epoch */
+  removedAt: number;
+  /** ms since epoch: Restore works until then. */
+  restoreBy: number;
+  /** Why it was taken down, from the action log. */
+  reason: string;
+}
+
+export interface TakenDownResponse {
+  /** Newest first. */
+  entries: TakenDownEntry[];
+}
 
 /** Who did it. Never the email. */
 export interface GalleryAdmin {

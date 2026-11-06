@@ -53,8 +53,9 @@ export async function mergeAuthorInto(
         authorName: to.name ? to.name : sql`${entries.authorName}`,
         authorEmail: to.email,
       })
-      .where(and(eq(entries.authorId, fromId), isNull(entries.removedAt)))
-      .returning({ id: entries.id });
+      // #2401 — hidden entries move too, so a restored one isn't left on a retired author.
+      .where(and(eq(entries.authorId, fromId), isNull(entries.purgedAt)))
+      .returning({ id: entries.id, removedAt: entries.removedAt });
     const movedCollections = await tx
       .update(collections)
       .set({ authorId: to.authorId })
@@ -71,7 +72,7 @@ export async function mergeAuthorInto(
       }
       await tx.update(authors).set({ mergedInto: to.authorId, updatedAt: now }).where(eq(authors.id, fromId));
     }
-    return { entries: movedEntries.length, collections: movedCollections.length };
+    return { entries: movedEntries.filter((e) => e.removedAt === null).length, collections: movedCollections.length };
   });
 }
 

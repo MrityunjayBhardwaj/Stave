@@ -207,6 +207,10 @@ export function StartScreen({
                 <LinkIcon />
                 <span style={styles.itemName}>Source on GitHub</span>
               </a>
+              <a style={styles.item} href="/privacy" target="_blank" rel="noopener noreferrer">
+                <LinkIcon />
+                <span style={styles.itemName}>Privacy Policy</span>
+              </a>
             </div>
           </section>
         </div>

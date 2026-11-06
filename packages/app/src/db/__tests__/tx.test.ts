@@ -20,10 +20,10 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { DrizzleQueryError, TransactionRollbackError } from "drizzle-orm/errors";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { dbOverPglite, freshTestDb, type Db } from "../client";
-import { DatabaseUnavailableError, isDatabaseUnavailable, isOutage } from "../errors";
+import { DatabaseUnavailableError, isDatabaseUnavailable, isOutage, withDatabase } from "../errors";
 import { inTransaction } from "../repo/tx";
 
 let live: Db & { $client: PGlite };
@@ -167,6 +167,136 @@ describe("a transaction that fails by itself (connect, begin, commit)", () => {
     const err = await caught(inTransaction(db, async () => "never runs"));
     expect(err).toBeInstanceOf(DatabaseUnavailableError);
     expect(((err as Error).cause as Error).message).toMatch(/after calling end/);
+  });
+});
+
+describe("when our callback throws and the rollback that follows fails too (#2380)", () => {
+  // The driver rolls back before rethrowing, and a failed ROLLBACK replaces our
+  // error (drizzle-orm 0.45.4 neon-serverless/session.js transaction(); PGlite
+  // 0.5.15 src/base.ts transaction()). The connection is dropped the way the
+  // driver would see it: on PGlite, every message to the database fails from
+  // that moment (execProtocolStream, which its ROLLBACK goes through); on
+  // drizzle's Neon session, the client's query for `rollback` fails with the
+  // error pg raises for a dropped connection.
+
+  /** A fresh PGlite whose connection "drops" when `drop()` is called. */
+  async function droppable() {
+    const { PGlite } = await import("@electric-sql/pglite");
+    const client = await PGlite.create();
+    const db = await dbOverPglite(client);
+    const real = client.execProtocolStream.bind(client);
+    const sent: string[] = [];
+    const drop = () => {
+      client.execProtocolStream = async (message) => {
+        sent.push(new TextDecoder().decode(message).replace(/[^ -~]/g, ""));
+        throw new Error("connection dropped");
+      };
+    };
+    const close = async () => {
+      client.execProtocolStream = real;
+      await client.close();
+    };
+    return { db, drop, sent, close };
+  }
+
+  /** Drizzle's real Neon session over a client whose ROLLBACK fails. */
+  async function neonWhoseRollbackFails() {
+    const { drizzle } = await import("drizzle-orm/neon-serverless");
+    const sent: string[] = [];
+    const client = {
+      query: async (q: { text?: string } | string) => {
+        const text = typeof q === "string" ? q : (q.text ?? "");
+        sent.push(text.trim());
+        if (/^rollback/i.test(text.trim())) throw new Error("Connection terminated unexpectedly");
+        return { rows: [], fields: [], rowCount: 0, command: "" };
+      },
+    };
+    return { db: drizzle({ client: client as never }) as unknown as Db, sent };
+  }
+
+  /** A route the way the gallery writes them: withDatabase around a handler that runs a transaction. */
+  const routeOver = (db: Db, fn: Parameters<typeof inTransaction>[1]) =>
+    withDatabase(async () => {
+      await inTransaction(db, fn);
+      return new Response("ok");
+    });
+
+  let logged: unknown[][] = [];
+  let spy: ReturnType<typeof vi.spyOn> | undefined;
+  beforeEach(() => {
+    logged = [];
+    spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => { logged.push(args); });
+  });
+  afterEach(() => spy?.mockRestore());
+
+  it("PGlite: our plain Error comes out (a 500), not the rollback's 'unavailable', and both are logged", async () => {
+    const { db, drop, sent, close } = await droppable();
+    try {
+      const bug = new Error("a bug in our code");
+      const route = routeOver(db, async () => {
+        drop();
+        throw bug;
+      });
+      // A route that throws is a 500; a 503 would be a Response here.
+      const err = await caught(route());
+      expect(sent[0]).toMatch(/ROLLBACK/); // the rollback really was tried, and failed
+      expect(err).toBe(bug);
+      expect(isDatabaseUnavailable(err)).toBe(false);
+      expect(logged).toHaveLength(1);
+      expect(logged[0]).toContain(bug);
+      expect(logged[0].some((x) => x instanceof Error && x.message === "connection dropped")).toBe(true);
+    } finally {
+      await close();
+    }
+  });
+
+  it("Neon: our plain Error comes out (a 500), and the rollback's DrizzleQueryError is logged, not chained", async () => {
+    const { db, sent } = await neonWhoseRollbackFails();
+    const bug = new Error("a bug in our code");
+    const err = await caught(routeOver(db, async () => { throw bug; })());
+    expect(sent).toEqual(["begin", "rollback"]);
+    expect(err).toBe(bug);
+    expect((err as Error).cause).toBeUndefined();
+    expect(isDatabaseUnavailable(err)).toBe(false);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain(bug);
+    const rollback = logged[0].find((x) => x instanceof DrizzleQueryError) as DrizzleQueryError | undefined;
+    expect((rollback?.cause as Error | undefined)?.message).toBe("Connection terminated unexpectedly");
+  });
+
+  it("a TypeError (a bug) is the same: itself, a 500", async () => {
+    const { db } = await neonWhoseRollbackFails();
+    const bug = new TypeError("x is undefined");
+    expect(await caught(routeOver(db, async () => { throw bug; })())).toBe(bug);
+    expect(logged).toHaveLength(1);
+  });
+
+  it("when what failed first was itself an outage (a query that lost the server), the answer is still 503", async () => {
+    const { db, drop, close } = await droppable();
+    try {
+      let first: unknown;
+      const res = await routeOver(db, async (tx) => {
+        try {
+          await tx.execute(raise("08006"));
+        } catch (err) {
+          first = err;
+          drop();
+          throw err;
+        }
+      })();
+      expect(first).toBeInstanceOf(DrizzleQueryError);
+      expect(res.status).toBe(503);
+      expect(logged).toHaveLength(1);
+      expect(logged[0]).toContain(first);
+    } finally {
+      await close();
+    }
+  });
+
+  it("a rollback that succeeds logs nothing", async () => {
+    const bug = new Error("a bug in our code");
+    expect(await caught(inTransaction(live, async () => { throw bug; }))).toBe(bug);
+    expect(logged).toHaveLength(0);
   });
 });
 
