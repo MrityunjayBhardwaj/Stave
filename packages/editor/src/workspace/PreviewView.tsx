@@ -355,8 +355,14 @@ export function PreviewView({
   // `renderer.update()`, which every renderer implements as an in-place rebind
   // (CompiledVizMount calls it whenever the payload changes). A preview TAB keeps
   // the remount: there, following a different pattern re-runs `setup()` on purpose.
+  //
+  // #2428 — for the same reason a background leaves trigger 1 out too. Picking a
+  // different source in the viz's settings, or a tab switch that changes whose
+  // audio the background follows, is new audio, not a new sketch: the bus
+  // subscription above follows `sourceRef`, and the payload reaches the running
+  // sketch through `update()`.
   const providerKey = backdrop
-    ? `${sourceRefKey(sourceRef)}:${reloadTick}`
+    ? `bg:${reloadTick}`
     : `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`
 
   return (

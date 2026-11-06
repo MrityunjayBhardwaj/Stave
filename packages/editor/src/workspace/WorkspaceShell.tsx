@@ -171,6 +171,8 @@ import {
   removeGroup as layoutRemoveGroup,
 } from './groupLayout'
 import { findBuiltinExampleSource } from './builtinExampleSources'
+import { setAlongsideSources } from './playbackCoordinator'
+import { getVizSourceChoice, onVizSourceChoiceChange } from './preview/vizSourceChoice'
 import { BottomPanel } from './bottomPanel/BottomPanel'
 import { SymbolRow } from './SymbolRow'
 import { bottomPanelHiddenForTab } from './bottomPanel/hiddenForTab'
@@ -1099,20 +1101,30 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   const backdropSourceByFile = useRef<
     Map<string, import('./types').AudioSourceRef>
   >(new Map())
-  // #2426 — the audio source chosen in each viz file's settings (any kind,
-  // default included), so the viz's OWN background listens to it. Separate from
-  // the teardown record above, which keeps only the built-ins it must stop.
-  const [chosenBackdropSources, setChosenBackdropSources] = useState<
-    ReadonlyMap<string, import('./types').AudioSourceRef>
-  >(() => new Map())
-  const chooseBackdropSource = useCallback(
-    (fileId: string, ref: import('./types').AudioSourceRef) => {
-      setChosenBackdropSources((prev) => {
-        const cur = prev.get(fileId)
-        if (cur && JSON.stringify(cur) === JSON.stringify(ref)) return prev
-        return new Map(prev).set(fileId, ref)
-      })
+  // #2427 — the built-ins in that record are the backgrounds' own sounds: they
+  // play alongside a pattern instead of being stopped by its Play. Every write
+  // to the record goes through these two, so the coordinator's set never drifts.
+  const syncAlongsideSources = useCallback(() => {
+    const ids: string[] = []
+    for (const ref of backdropSourceByFile.current.values()) {
+      if (ref.kind === 'file' && findBuiltinExampleSource(ref.fileId)) ids.push(ref.fileId)
+    }
+    setAlongsideSources(ids)
+  }, [])
+  const recordBackdropSource = useCallback(
+    (fileId: string, ref: import('./types').AudioSourceRef | null) => {
+      if (ref?.kind === 'file') backdropSourceByFile.current.set(fileId, ref)
+      else backdropSourceByFile.current.delete(fileId)
+      syncAlongsideSources()
     },
+    [syncAlongsideSources],
+  )
+  // #2426/#2429 — the audio source chosen in each viz file's settings lives in
+  // the per-file store the chrome writes; the viz's OWN background listens to
+  // it. Re-render when any choice changes.
+  const [sourceChoiceVersion, setSourceChoiceVersion] = useState(0)
+  useEffect(
+    () => onVizSourceChoiceChange(() => setSourceChoiceVersion((n) => n + 1)),
     [],
   )
   // #2426 — whose audio a background listens to (see backdropSourceFor)
@@ -1125,17 +1137,18 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           const f = getFile(id)
           return !!f && !isVizLanguage(f.language)
         },
-        (id) => chosenBackdropSources.get(id),
+        (id) => getVizSourceChoice(id),
       ),
-    [chosenBackdropSources],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sourceChoiceVersion],
   )
   const stopBackdropSource = useCallback((fileId: string) => {
     const ref = backdropSourceByFile.current.get(fileId)
     if (ref?.kind === 'file') {
       findBuiltinExampleSource(ref.fileId)?.stopIfRunning()
     }
-    backdropSourceByFile.current.delete(fileId)
-  }, [])
+    recordBackdropSource(fileId, null)
+  }, [recordBackdropSource])
 
   // #787 — when a moving tab carries its backdrop onto an EXISTING target
   // group (tab-bar slot / center drop), the target's current backdrop — if it
@@ -1160,7 +1173,6 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
 
   const handleTabClose = useCallback(
     (groupId: string, tabId: string) => {
-      let closedTab: WorkspaceTab | null = null
       // Snapshot the tab count BEFORE the close so we can decide below
       // whether this was the last tab in its group and therefore the
       // group itself should collapse (VS Code parity). We read from
@@ -1172,13 +1184,18 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       const wasLastTab =
         existing !== undefined && existing.tabs.length === 1
       const canCollapseGroup = wasLastTab && groups.size > 1
+      // #2430 — the closed tab comes from that same snapshot. Assigning it inside
+      // the setGroups updater below only worked while React ran the updater
+      // eagerly, which it does only when nothing else is pending; otherwise the
+      // updater runs at render, after the cleanup below has already seen null.
+      const closedTab: WorkspaceTab | null =
+        existing?.tabs.find((t) => t.id === tabId) ?? null
 
       setGroups((prev) => {
         const cur = prev.get(groupId)
         if (!cur) return prev
         const idx = cur.tabs.findIndex((t) => t.id === tabId)
         if (idx === -1) return prev
-        closedTab = cur.tabs[idx]
         const nextTabs = cur.tabs.filter((t) => t.id !== tabId)
         let nextActive: string | null = cur.activeTabId
         if (cur.activeTabId === tabId) {
@@ -1536,13 +1553,30 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       // Leaving or replacing a backdrop stops the built-in audio it started
       // (#785) — covers preview=off, Cmd+K B toggle-off, and switching backdrops.
       if (prev) stopBackdropSource(prev)
+      // #2427 — and a viz's OWN background brings its sound back with it. A tab
+      // switch away clears the pane's background (stopping the sound, above);
+      // switching back restores it here, so its chosen example sound restarts
+      // too — recorded first, so it starts alongside any playing pattern. Not for
+      // a viz the user paused, and not when the pane shows another file (then the
+      // background is someone else's, listening to their audio).
+      if (backgroundFileId) {
+        const g = groups.get(groupId)
+        const shown = paneShownFileId(g?.tabs.find((t) => t.id === g.activeTabId))
+        const ref = getVizSourceChoice(backgroundFileId)
+        const builtin =
+          ref.kind === 'file' ? findBuiltinExampleSource(ref.fileId) : undefined
+        if (builtin && shown === backgroundFileId && !pausedPreviews.has(backgroundFileId)) {
+          recordBackdropSource(backgroundFileId, ref)
+          builtin.startIfIdle()
+        }
+      }
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? undefined,
       }))
       onBackgroundFileChange?.(groupId, backgroundFileId)
     },
-    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource],
+    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource, recordBackdropSource, pausedPreviews],
   )
 
   /**
@@ -2308,11 +2342,11 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                     // existing file-ref entry — that entry tracks audio this
                     // file already started that is still running, and
                     // overwriting it would leak the source past close (#787).
+                    // #2427 — recorded BEFORE the chrome starts the sound, so it
+                    // starts as this background's own, alongside any pattern.
                     if (willActivate && sourceRef?.kind === 'file') {
-                      backdropSourceByFile.current.set(tab.fileId, sourceRef)
+                      recordBackdropSource(tab.fileId, sourceRef)
                     }
-                    // #2426 — the viz's own background listens to this source
-                    if (willActivate && sourceRef) chooseBackdropSource(tab.fileId, sourceRef)
                   },
                   // #788 — the popover's source dropdown changed while this
                   // file's backdrop is live. The chrome already swapped the
@@ -2322,18 +2356,12 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                   // stopped whatever built-in was playing, so teardown has
                   // nothing left to own.
                   onBackdropSourceChange: (ref) => {
-                    // #2426 — the viz's chosen source, for its own background
-                    chooseBackdropSource(tab.fileId, ref)
                     if (
                       groups.get(groupId)?.backgroundFileId !== tab.fileId
                     ) {
                       return
                     }
-                    if (ref.kind === 'file') {
-                      backdropSourceByFile.current.set(tab.fileId, ref)
-                    } else {
-                      backdropSourceByFile.current.delete(tab.fileId)
-                    }
+                    recordBackdropSource(tab.fileId, ref)
                   },
                   isBackground:
                     groups.get(groupId)?.backgroundFileId === tab.fileId,

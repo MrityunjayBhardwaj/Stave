@@ -512,6 +512,46 @@ describe('WorkspaceShell', () => {
       expect(queryByTestId('viz-chrome-settings')).toBeNull()
     })
 
+    // #2427 — a tab switch clears the pane's background (stopping its sound) and
+    // switching back restores it: the viz's own example sound comes back too.
+    it('restoring a viz file\'s own background restarts its chosen example sound (#2427)', async () => {
+      const { HYDRA_VIZ } = await import('../preview/hydraViz')
+      const { __resetVizSourceChoiceForTests } = await import('../preview/vizSourceChoice')
+      __resetVizSourceChoiceForTests()
+      const tabs = [editorTab('t-hydra', 'f-hydra')]
+      const shell = React.createRef<import('../WorkspaceShell').WorkspaceShellHandle>()
+      const { getByTestId } = render(
+        <WorkspaceShell ref={shell} initialTabs={tabs} previewProviderFor={() => HYDRA_VIZ} />,
+      )
+      await act(async () => {
+        fireEvent.click(getByTestId('viz-chrome-settings'))
+      })
+      await act(async () => {
+        fireEvent.change(getByTestId('viz-chrome-source'), {
+          target: { value: 'file:__example_sample__' },
+        })
+      })
+      await act(async () => {
+        fireEvent.click(getByTestId('viz-preview-mode-backdrop'))
+      })
+      builtinSampleStartSpy.mockClear()
+      builtinSampleStopSpy.mockClear()
+
+      await act(async () => {
+        shell.current!.setBackgroundFile(null) // the tab switch away
+      })
+      expect(builtinSampleStopSpy).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        shell.current!.setBackgroundFile('f-hydra') // …and back
+      })
+      expect(builtinSampleStartSpy).toHaveBeenCalledTimes(1)
+      // recorded again, so closing the tab still stops it
+      await act(async () => {
+        fireEvent.click(getByTestId('tab-close-t-hydra'))
+      })
+      expect(builtinSampleStopSpy).toHaveBeenCalledTimes(2)
+    })
+
     it('#787 — backdrop follows its tab across a cross-group move; close after the move still stops the audio', async () => {
       const { HYDRA_VIZ } = await import('../preview/hydraViz')
       const tabs = [
