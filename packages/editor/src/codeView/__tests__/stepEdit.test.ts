@@ -97,6 +97,32 @@ function plainGeneratorK(text: string): { k: number; bang: boolean } | null {
   return { k: m[2] ? Number(m[2]) : 2, bang: m[1] === '!' }
 }
 
+/**
+ * Is a hit where the click is? For a step whose own op places its hits (euclid, #2434) the
+ * grid draws each of its places as a cell, pressed only where Strudel plays a hit: a click on
+ * an empty place ADDS one, even at the step's own start (`oh(1,16,15)`). Any other step is
+ * its hit.
+ */
+function hitThere(s: DivisionStep | null, address: StepAddress): boolean {
+  if (!s || !s.ops.includes('bjorklund')) return true
+  return s.hits.some((h) => h.begin.n * address.at.d === address.at.n * h.begin.d)
+}
+
+/** the step written at `span` in bar `bar`, wherever it sits */
+function stepBySpan(trees: readonly BarTree[], bar: number, span: { start: number; end: number }): DivisionStep | null {
+  const tree = trees[bar]
+  if (!tree || !tree.ok) return null
+  let got: DivisionStep | null = null
+  const visit = (r: DivisionRow): void => {
+    for (const s of r.steps) {
+      if (s.span && s.span.start === span.start && s.span.end === span.end) got = s
+      for (const k of s.rows ?? []) visit(k)
+    }
+  }
+  tree.parts.forEach(visit)
+  return got
+}
+
 /** the hits Strudel plays in cycles `[0, cycles)` whose written place overlaps `[from, to)` */
 function playedFrom(mini: string, cycles: number, from: number, to: number): string[] {
   const pat = miniPattern(mini)
@@ -196,7 +222,7 @@ function toggle(mini: string, sound: string, text: string, opts: { bars?: number
   const { address } = stepAt(trees, bar, sound, opts.part, text, mini, opts.nth)
   const result = toggleStep(mini, trees, address, { sound, part: opts.part })
   // the step's name: what comes before its length, holds or op (`hh` of `hh*4`)
-  const erase = text.split(/[@\s_*!(?]/)[0] === sound
+  const erase = text.split(/[@\s_*!(?]/)[0] === sound && hitThere(stepBySpan(trees, bar, address.span), address)
   return { result, x: { mini, bars, trees, address, sound, erase, generator: plainGeneratorK(text) } }
 }
 
@@ -320,7 +346,7 @@ describe('toggleStep — one step, its own text, checked by Strudel', () => {
 
 describe('toggleStep — refused where no change to one text is the one click', () => {
   it('a generated step keeps its generator', () => {
-    refuses('bd(3,8) ~', 'bd', 'bd(3,8)', 'step-is-generated')
+    refuses('bd(<3 5>,8) ~', 'bd', 'bd(<3 5>,8)', 'step-is-generated')
     refuses('bd? ~', 'bd', 'bd?', 'step-is-generated')
     refuses('hh*<2 4> ~', 'hh', 'hh*<2 4>', 'step-is-generated')
     refuses('hh*1.5 ~', 'hh', 'hh*1.5', 'step-is-generated')
@@ -330,6 +356,10 @@ describe('toggleStep — refused where no change to one text is the one click', 
 
   it('one hit of a plain `x*k`, one copy of `x!k`, is edited on its own (#2326)', () => {
     writes('hh*4 ~', 'hh', 'hh*4', '[~ hh hh hh] ~')
+    // and of a euclid step, where Strudel plays it (#2434)
+    writes('bd(3,8) ~', 'bd', 'bd(3,8)', '[~ ~ ~ bd ~ ~ bd ~] ~')
+    // a euclid step that starts on an empty place: the click there adds the hit the cell shows missing
+    writes('bd(1,4,1) ~', 'bd', 'bd(1,4,1)', '[bd bd ~ ~] ~')
     writes('bd!3 ~', 'bd', 'bd!3', '~ bd bd ~')
     writes('bd! ~', 'bd', 'bd!', '~ bd ~')
   })
@@ -573,7 +603,7 @@ function sideBySide(writer: Writer, opts: { strudel: boolean; limit?: number }):
             const mine = writer(mini, trees, address, { sound: lane.sound, part: lane.part, order })
             const mineText = mine.ok ? applyStepEdit(mini, mine.edit) : null
             const where = `${JSON.stringify(mini)} row ${lane.sound}${lane.part === undefined ? '' : ` (part ${lane.part})`} bar ${b} col ${col} step ${JSON.stringify(mini.slice(s.span.start, s.span.end).trim())}`
-            const x: Toggle = { mini, bars, trees, address, sound: lane.sound, erase: s.name === lane.sound && !s.rest, generator: plainGeneratorK(mini.slice(s.span.start, s.span.end)) }
+            const x: Toggle = { mini, bars, trees, address, sound: lane.sound, erase: s.name === lane.sound && !s.rest && hitThere(s, address), generator: plainGeneratorK(mini.slice(s.span.start, s.span.end)) }
             /** does `text` play exactly what the click asks? today's text is judged by the same rule, through its own edit */
             const isTheClick = (text: string): boolean => {
               try {

@@ -120,14 +120,12 @@ test.describe('a click edits the step’s own text (#2292)', () => {
     await clickWrites(page, seq, `${hh}:5`, '$: s("bd [hh ~ hh hh]")', ['-hh@5/8', '-hh@13/8'])
   })
 
-  test('a step made by euclid keeps its generator: a hit inside bd(3,8) is refused', async ({ page }) => {
+  // #2434: euclid joins `x*k` / `x!k` — only the clicked step is written out, its hits where
+  // Strudel plays them. `bd(3,8)` is columns 8–15, its hits at 8, 11 and 14.
+  test('one hit inside bd(3,8) is erased on its own, and an empty place takes one (#2434)', async ({ page }) => {
     const seq = await open(page, '$: s("sd bd(3,8)")')
     const bd = await row(seq, 'bd')
-    const hit = seq.locator(`[data-seq-cell^="${bd}:"][aria-pressed="true"]`).nth(1)
-    await expect(hit).toHaveAttribute('aria-disabled', 'true')
-    await expect(hit).toHaveAttribute('title', /operator on its step/)
-    await hit.click({ force: true })
-    await page.waitForTimeout(150)
-    expect(await editorValue(page)).toBe('$: s("sd bd(3,8)")')
+    await clickWrites(page, seq, `${bd}:11`, '$: s("sd [bd ~ ~ ~ ~ ~ bd ~]")', ['-bd@11/16', '-bd@27/16'])
+    await clickWrites(page, seq, `${bd}:9`, '$: s("sd [bd bd ~ ~ ~ ~ bd ~]")', ['+bd@9/16', '+bd@25/16'])
   })
 })

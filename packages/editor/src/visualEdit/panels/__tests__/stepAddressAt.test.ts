@@ -51,8 +51,12 @@ describe('stepAddressAt — the step a column names', () => {
   it('a column part-way through a step names none', () => {
     expect(landsOn(MINI, 'bd', 1)).toBe('refused: inside-a-step')
     expect(landsOn(MINI, 'cp', 13)).toBe('refused: inside-a-step')
-    // a hit that begins part-way through a euclid step was made by its op, and says so
-    expect(landsOn('bd(3,8)', 'bd', 3)).toBe('refused: step-is-generated')
+    // a euclid step's hits, and its empty places, name the step: each is edited on its own (#2434)
+    expect(landsOn('bd(3,8)', 'bd', 3)).toBe('bd(3,8)')
+    expect(click('bd(3,8)', 'bd', 3)).toBe('[bd ~ ~ ~ ~ ~ bd ~]')
+    expect(click('bd(3,8)', 'bd', 1)).toBe('[bd bd ~ bd ~ ~ bd ~]')
+    // an op the writer does not edit is the writer's refusal, given for the hit
+    expect(click('bd(<3 5>,8)', 'bd', 3)).toBe('refused: step-is-generated')
     // a hat of a plain `hh*4`, and a copy of `bd!3`, name their step: each is edited on its
     // own (#2326)
     expect(landsOn('bd hh*4', 'hh', 5)).toBe('hh*4')

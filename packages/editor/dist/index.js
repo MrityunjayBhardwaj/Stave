@@ -14233,6 +14233,8 @@ function plainGenerator(mini, step) {
   let after = "";
   const star = /^\*([1-9][0-9]*)(@[1-9][0-9]*)?$/.exec(rest);
   const bang = /^!([1-9][0-9]*)?$/.exec(rest);
+  const euclid = /^(\(\s*-?[0-9]+\s*,\s*([1-9][0-9]*)\s*(?:,\s*[0-9]+\s*)?\))(@[1-9][0-9]*)?$/.exec(rest);
+  if (euclid && ops.length === 1 && ops[0] === "bjorklund" && step.reps === 1) return euclidWrittenOut(name, euclid[1], Number(euclid[2]), euclid[3] ?? "", from, to);
   if (star && ops.length === 1 && ops[0] === "stretch" && step.reps === 1) {
     kind = "star";
     k = Number(star[1]);
@@ -14254,6 +14256,32 @@ function plainGenerator(mini, step) {
   return { kind, k, from, to, out, heads };
 }
 __name(plainGenerator, "plainGenerator");
+function euclidWrittenOut(name, args, n, after, from, to) {
+  if (n < 2) return null;
+  let onsets;
+  try {
+    onsets = miniPattern(`${name}${args}`).hits(0).map((h) => h.begin.valueOf() * n);
+  } catch {
+    return null;
+  }
+  const at = /* @__PURE__ */ new Set();
+  for (const x of onsets) {
+    const i = Math.round(x);
+    if (Math.abs(x - i) > 1e-9 || i < 0 || i >= n || at.has(i)) return null;
+    at.add(i);
+  }
+  if (at.size === 0) return null;
+  const heads = [];
+  let out = "[";
+  for (let i = 0; i < n; i++) {
+    if (i > 0) out += " ";
+    heads.push(from + out.length);
+    out += at.has(i) ? name : REST;
+  }
+  out += `]${after}`;
+  return { kind: "euclid", k: n, from, to, out, heads };
+}
+__name(euclidWrittenOut, "euclidWrittenOut");
 function viaWrittenOut(mini, trees, address, row, writer) {
   const tree = trees[address.bar];
   if (!tree) return null;
@@ -14285,7 +14313,7 @@ function viaWrittenOut(mini, trees, address, row, writer) {
   const replacedEnd = edit.to > end ? gen2.to + (edit.to - end) : gen2.to;
   if (edit.from < gen2.from) return refuse("tree-is-not-this-text");
   const after = applyStepEdit(written, edit);
-  return write(gen2.from, replacedEnd, respellWrittenOut(after.slice(gen2.from, regionEnd), gen2.kind));
+  return write(gen2.from, replacedEnd, respellWrittenOut(after.slice(gen2.from, regionEnd), gen2.kind === "bang" ? "bang" : "star"));
 }
 __name(viaWrittenOut, "viaWrittenOut");
 function toggleStep(mini, trees, address, row) {
@@ -40111,15 +40139,15 @@ function stepAddressAt(model, trees, lane, col) {
           if (columnOf(slot.begin, 0, per) === want) return { bar: b, span: s.span, at: slot.begin };
         }
         const hit = s.hits.find((h) => columnOf(h.begin, 0, per) === want);
-        if (hit) {
-          if (s.ops.every((o) => o === "tail" || o === "stretch" || o === "replicate")) return { bar: b, span: s.span, at: hit.begin };
-          generated = s.reps > 1 || s.ops.includes("replicate") ? "step-is-replicated" : "step-is-generated";
+        if (hit) return { bar: b, span: s.span, at: hit.begin };
+        if (s.ops.includes("bjorklund")) {
+          const at = frac(want, per);
+          if (s.slots.some((slot) => !slot.fromBefore && cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0)) return { bar: b, span: s.span, at };
         }
       }
       return null;
     }, "visit");
-    let generated = null;
-    return visit(d.row) ?? generated ?? "inside-a-step";
+    return visit(d.row) ?? "inside-a-step";
   }
   return "inside-a-step";
 }

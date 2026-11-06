@@ -322,12 +322,11 @@ test.describe('Sequencer (#382)', () => {
     }
     await expect(grid.locator('[data-seq-cell="0:8"]')).toHaveCount(0) // no 9th column
 
-    // the euclid keeps its generator (#2292): a click is refused, the `(3,8)` stays
-    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-disabled', 'true')
-    await grid.locator('[data-seq-cell="0:1"]').click({ force: true })
-    await page.waitForTimeout(150)
-    expect(await strudelValue(page)).toBe('$: s("bd(3,8)")')
-    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'false')
+    // an empty place inside the euclid takes a hit: the step is written out where Strudel
+    // plays it, and only that step changes (#2434; it was refused since #2292)
+    await grid.locator('[data-seq-cell="0:1"]').click()
+    await expect.poll(() => strudelValue(page)).toBe('$: s("[bd bd ~ bd ~ ~ bd ~]")')
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'true')
   })
 
   test('binds `bd!3` replicate as a 3-step lane and expands the sugar on toggle (#407)', async ({

@@ -86,8 +86,9 @@ function oneHitChanged(mini: string, edited: string, s: DivisionStep, clicked: {
   return got.removed.length === 0 && got.added.length * k === mine.length && got.added.every((h) => h.startsWith(`${name}@`)) && got.added.includes(key(name))
 }
 
-/** how many hits the written step makes: `k` of `x*k`, `x!k` */
-const kOf = (mini: string, s: DivisionStep): number => Number(/[*!]([0-9]+)/.exec(mini.slice(s.span!.start, s.span!.end))?.[1] ?? 2)
+/** how many hits the written step makes: `k` of `x*k`, `x!k`; for euclid (#2434), the hits Strudel plays in it */
+const kOf = (mini: string, s: DivisionStep): number =>
+  s.ops.includes('bjorklund') ? s.hits.length : Number(/[*!]([0-9]+)/.exec(mini.slice(s.span!.start, s.span!.end))?.[1] ?? 2)
 
 /** click hit `j` of the step: what it writes, and whether Strudel plays exactly that hit changed */
 function click(mini: string, sound: string, text: string, j: number): { text: string | null; why?: string; heard: boolean } {
@@ -120,8 +121,17 @@ describe('one hit of `x*k` or copy of `x!k` is edited on its own (#2326)', () =>
     expect(click('[hh*2 sd]*2', 'hh', 'hh*2', 1)).toEqual({ text: '[[hh ~] sd]*2', heard: true })
   })
 
-  it('every other op keeps its refusal: euclid, chance, a pattern amount, a decimal', () => {
-    expect(click('bd(3,8)', 'bd', 'bd(3,8)', 1).why).toBe('step-is-generated')
+  it('one hit of a euclid step is edited on its own, where Strudel plays it (#2434)', () => {
+    expect(click('bd(3,8)', 'bd', 'bd(3,8)', 1)).toEqual({ text: '[bd ~ ~ ~ ~ ~ bd ~]', heard: true })
+    expect(click('bd(3,8,2) sd', 'bd', 'bd(3,8,2)', 0)).toEqual({ text: '[~ ~ bd ~ ~ bd ~ ~] sd', heard: true })
+    expect(click('bd(-3,8)', 'bd', 'bd(-3,8)', 4)).toEqual({ text: '[~ bd bd ~ bd bd ~ ~]', heard: true })
+    expect(click('bd(3,8)@2 sd', 'bd', 'bd(3,8)@2', 2)).toEqual({ text: '[bd ~ ~ bd ~ ~ ~ ~]@2 sd', heard: true })
+    // another row's sound joins the hit it lands on, as on any step
+    expect(click('bd(3,8) sd', 'sd', 'bd(3,8)', 1)).toEqual({ text: '[bd ~ ~ [bd,sd] ~ ~ bd ~] sd', heard: true })
+  })
+
+  it('every other op keeps its refusal: chance, a pattern amount, a decimal', () => {
+    expect(click('bd(<3 5>,8)', 'bd', 'bd(<3 5>,8)', 1).why).toBe('step-is-generated')
     expect(click('hh*<2 4>', 'hh', 'hh*<2 4>', 1).why).toBe('step-is-generated')
     expect(click('hh*2? sd', 'hh', 'hh*2?', 1).why).toBe('step-is-generated')
     expect(click('hh*1.5 sd', 'hh', 'hh*1.5', 0).why).toBe('step-is-generated')
@@ -142,13 +152,15 @@ interface GenSide {
   refused: Record<string, number>
   heard: number
   heardBad: string[]
+  /** of the above, the euclid steps (#2434): steps, clicks, edits written */
+  euclid: { steps: number; clicks: number; written: number }
   /** the step's new text parses (krill) */
   parsed: number
   parseBad: string[]
 }
 
 function overCorpus(writer: typeof toggleStep): GenSide {
-  const r: GenSide = { steps: 0, clicks: 0, written: 0, refused: {}, heard: 0, heardBad: [], parsed: 0, parseBad: [] }
+  const r: GenSide = { steps: 0, clicks: 0, written: 0, refused: {}, heard: 0, heardBad: [], euclid: { steps: 0, clicks: 0, written: 0 }, parsed: 0, parseBad: [] }
   for (const mini of minis) {
     const g = parseStepGrid(mini)
     if (!g.ok || (g.model.bars ?? 1) !== 1) continue
@@ -160,17 +172,21 @@ function overCorpus(writer: typeof toggleStep): GenSide {
         for (const s of row.steps) {
           for (const k of s.rows ?? []) walk(k)
           if (s.rows || s.rest || !s.span || s.name !== lane.sound || s.hits.length < 2) continue
-          if (!s.ops.every((o) => o === 'tail' || o === 'stretch' || o === 'replicate') || !s.ops.some((o) => o !== 'tail')) continue
+          if (!s.ops.every((o) => o === 'tail' || o === 'stretch' || o === 'replicate' || o === 'bjorklund') || !s.ops.some((o) => o !== 'tail')) continue
+          const euclid = s.ops.includes('bjorklund')
           r.steps++
+          if (euclid) r.euclid.steps++
           const hits = [...s.hits].sort((x, y) => x.begin.n * y.begin.d - y.begin.n * x.begin.d)
           hits.forEach((h, j) => {
             r.clicks++
+            if (euclid) r.euclid.clicks++
             const res = writer(mini, trees, { bar: 0, span: s.span!, at: h.begin }, { sound: lane.sound, part: lane.part })
             if (!res.ok) {
               r.refused[res.why] = (r.refused[res.why] ?? 0) + 1
               return
             }
             r.written++
+            if (euclid) r.euclid.written++
             const edited = applyStepEdit(mini, res.edit)
             try {
               miniTree(edited)

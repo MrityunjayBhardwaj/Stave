@@ -44,6 +44,7 @@
 import type { StepLane } from './notation/model'
 import { chunkDivisions, laneDivisions, type BarTree, type BarTreeRefusal, type DivisionRow, type DivisionStep, type Frac, type LaneDivisionsRefusal } from './gridDivisions'
 import type { MiniSpan } from './strudelMini/shape'
+import { miniPattern } from './strudelMini/pattern'
 // every step this file writes is spelled there, so no gesture keeps a spelling of its own (#2326)
 import { REST, chord, group, note, printElement, printSeq, respellWrittenOut, rests } from './strudelMini/spell'
 
@@ -554,11 +555,13 @@ function resizeStepHere(mini: string, trees: readonly BarTree[], address: StepAd
  * A step written as a PLAIN generator: one note (its `:` tails allowed) made `k` equal hits
  * by `*k`, or `k` copies by `!k` — an integer `k`, no other op. The user's ruling
  * (2026-11-05): the spelling writes these wherever the shape is even, so the writer must
- * edit them. Anything else on a step — euclid, `?`, `|`, a pattern amount (`*<2 4>`), a
- * decimal — keeps its refusal.
+ * edit them. Euclid joins them (the ruling of 2026-11-07, #2434): `bd(3,8)` is written out as
+ * its eight slots, `[bd ~ ~ bd ~ ~ bd ~]`, where Strudel itself says the hits are. Anything
+ * else on a step — `?`, `|`, a pattern amount (`*<2 4>`, `(<3 5>,8)`), a decimal — keeps its
+ * refusal.
  */
 interface PlainGenerator {
-  kind: 'star' | 'bang'
+  kind: 'star' | 'bang' | 'euclid'
   k: number
   /** where the step's own text is in the string */
   from: number
@@ -583,6 +586,8 @@ function plainGenerator(mini: string, step: DivisionStep): PlainGenerator | null
   let after = ''
   const star = /^\*([1-9][0-9]*)(@[1-9][0-9]*)?$/.exec(rest)
   const bang = /^!([1-9][0-9]*)?$/.exec(rest)
+  const euclid = /^(\(\s*-?[0-9]+\s*,\s*([1-9][0-9]*)\s*(?:,\s*[0-9]+\s*)?\))(@[1-9][0-9]*)?$/.exec(rest)
+  if (euclid && ops.length === 1 && ops[0] === 'bjorklund' && step.reps === 1) return euclidWrittenOut(name, euclid[1], Number(euclid[2]), euclid[3] ?? '', from, to)
   if (star && ops.length === 1 && ops[0] === 'stretch' && step.reps === 1) {
     kind = 'star'
     k = Number(star[1])
@@ -602,6 +607,39 @@ function plainGenerator(mini: string, step: DivisionStep): PlainGenerator | null
   }
   out += kind === 'star' ? `]${after}` : ''
   return { kind, k, from, to, out, heads }
+}
+
+/**
+ * `name(k,n[,r])` written out as its `n` slots: the name where Strudel plays a hit in the
+ * step's first cycle, a rest elsewhere. Strudel is asked by playing the step's own text alone
+ * (`bd(3,8,2)`), so rotation and a negative `k` mean what they mean there. Null where a hit
+ * is not on a slot or the count disagrees: then the step keeps its refusal.
+ */
+function euclidWrittenOut(name: string, args: string, n: number, after: string, from: number, to: number): PlainGenerator | null {
+  if (n < 2) return null
+  let onsets: number[]
+  try {
+    onsets = miniPattern(`${name}${args}`).hits(0).map((h) => h.begin.valueOf() * n)
+  } catch {
+    return null
+  }
+  const at = new Set<number>()
+  for (const x of onsets) {
+    const i = Math.round(x)
+    if (Math.abs(x - i) > 1e-9 || i < 0 || i >= n || at.has(i)) return null
+    at.add(i)
+  }
+  if (at.size === 0) return null
+  const heads: number[] = []
+  let out = '['
+  for (let i = 0; i < n; i++) {
+    if (i > 0) out += ' '
+    // every place is a cell the grid draws: a hit to erase, or an empty place to fill
+    heads.push(from + out.length)
+    out += at.has(i) ? name : REST
+  }
+  out += `]${after}`
+  return { kind: 'euclid', k: n, from, to, out, heads }
 }
 
 type Writer = (mini: string, trees: readonly BarTree[], address: StepAddress) => StepEditResult
@@ -647,7 +685,7 @@ function viaWrittenOut(mini: string, trees: readonly BarTree[], address: StepAdd
   const replacedEnd = edit.to > end ? gen.to + (edit.to - end) : gen.to
   if (edit.from < gen.from) return refuse('tree-is-not-this-text')
   const after = applyStepEdit(written, edit)
-  return write(gen.from, replacedEnd, respellWrittenOut(after.slice(gen.from, regionEnd), gen.kind))
+  return write(gen.from, replacedEnd, respellWrittenOut(after.slice(gen.from, regionEnd), gen.kind === 'bang' ? 'bang' : 'star'))
 }
 
 /* ── the gestures ──────────────────────────────────────────────────── */
