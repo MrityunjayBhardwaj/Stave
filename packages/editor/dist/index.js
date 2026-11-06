@@ -2413,12 +2413,12 @@ var BUILTIN_ALIASES = {
 };
 function resolveAliasesForEngine(custom, engine) {
   const out = {};
-  for (const [name, slots] of Object.entries(BUILTIN_ALIASES)) {
-    const v = slots[engine];
+  for (const [name, slots2] of Object.entries(BUILTIN_ALIASES)) {
+    const v = slots2[engine];
     if (v != null) out[name] = v;
   }
-  for (const [name, slots] of Object.entries(custom)) {
-    const v = slots[engine];
+  for (const [name, slots2] of Object.entries(custom)) {
+    const v = slots2[engine];
     if (v != null) out[name] = v;
   }
   return out;
@@ -4630,13 +4630,13 @@ function expandEuclid(play, op, baseOffset, contentStart) {
   let mask = bjorklund(k, n);
   if (rot) mask = rotateEuclid(mask, rot);
   const restSlot = IR.sleep(1);
-  const slots = mask.map((on) => on ? play : restSlot);
+  const slots2 = mask.map((on) => on ? play : restSlot);
   const closeParen = (rotArg ?? step).span.end + 1;
-  if (slots.length === 1) return { node: slots[0], closeParen };
+  if (slots2.length === 1) return { node: slots2[0], closeParen };
   return {
     node: {
       tag: "Seq",
-      children: slots,
+      children: slots2,
       loc: [{ start: baseOffset + contentStart, end: baseOffset + closeParen }]
     },
     closeParen
@@ -5926,7 +5926,7 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
   const leadingWs = chain.length - chain.trimStart().length;
   let remaining = chain.trim();
   let remainingOffset = baseOffset + leadingWs;
-  let current9 = ir;
+  let current8 = ir;
   while (true) {
     const consumedSep = skipWhitespaceAndLineComments(remaining, 0);
     if (consumedSep > 0) {
@@ -5942,11 +5942,11 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
       remainingOffset + consumed
     ];
     const argsAbsoluteOffset = argsOffset >= 0 ? remainingOffset + argsOffset : remainingOffset;
-    current9 = applyMethod(current9, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
+    current8 = applyMethod(current8, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
     remainingOffset += consumed;
     remaining = rest;
   }
-  return current9;
+  return current8;
 }
 __name(applyChain, "applyChain");
 function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], bindings, numbers) {
@@ -6499,14 +6499,14 @@ __name(splitArgs, "splitArgs");
 function splitArgsWithOffsets(argsStr) {
   const args = [];
   let depth = 0;
-  let current9 = "";
+  let current8 = "";
   let currentStart = 0;
   let inString = false;
   let stringChar = "";
   const pushCurrent = /* @__PURE__ */ __name(() => {
-    if (current9.trim().length === 0) return;
-    const consumed = skipWhitespaceAndLineComments(current9, 0);
-    const value = current9.slice(consumed).trimEnd();
+    if (current8.trim().length === 0) return;
+    const consumed = skipWhitespaceAndLineComments(current8, 0);
+    const value = current8.slice(consumed).trimEnd();
     if (value.length === 0) return;
     args.push({
       value,
@@ -6516,47 +6516,47 @@ function splitArgsWithOffsets(argsStr) {
   for (let i = 0; i < argsStr.length; i++) {
     const ch = argsStr[i];
     if (inString) {
-      current9 += ch;
+      current8 += ch;
       if (ch === stringChar && argsStr[i - 1] !== "\\") inString = false;
       continue;
     }
     if (ch === "/" && argsStr[i + 1] === "/") {
-      if (current9.length === 0) currentStart = i;
+      if (current8.length === 0) currentStart = i;
       while (i < argsStr.length && argsStr[i] !== "\n") {
-        current9 += argsStr[i];
+        current8 += argsStr[i];
         i++;
       }
       if (i < argsStr.length) {
-        current9 += argsStr[i];
+        current8 += argsStr[i];
       }
       continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
-      if (current9.length === 0) currentStart = i;
-      current9 += ch;
+      if (current8.length === 0) currentStart = i;
+      current8 += ch;
       continue;
     }
     if (ch === "(" || ch === "[" || ch === "{") {
       depth++;
-      if (current9.length === 0) currentStart = i;
-      current9 += ch;
+      if (current8.length === 0) currentStart = i;
+      current8 += ch;
       continue;
     }
     if (ch === ")" || ch === "]" || ch === "}") {
       depth--;
-      if (current9.length === 0) currentStart = i;
-      current9 += ch;
+      if (current8.length === 0) currentStart = i;
+      current8 += ch;
       continue;
     }
     if (ch === "," && depth === 0) {
       pushCurrent();
-      current9 = "";
+      current8 = "";
       currentStart = i + 1;
     } else {
-      if (current9.length === 0) currentStart = i;
-      current9 += ch;
+      if (current8.length === 0) currentStart = i;
+      current8 += ch;
     }
   }
   pushCurrent();
@@ -9418,8 +9418,8 @@ function reemitRegion(cols, div, refined = false) {
 __name(reemitRegion, "reemitRegion");
 function stackedRegion(cols, div) {
   if (div < 2) return null;
-  const slots = cols.length / div;
-  if (!Number.isInteger(slots) || slots < 1) return null;
+  const slots2 = cols.length / div;
+  if (!Number.isInteger(slots2) || slots2 < 1) return null;
   const sounds = [];
   for (const col of cols) for (const n of col) if (!sounds.includes(n.token)) sounds.push(n.token);
   if (sounds.length === 0) return null;
@@ -9444,7 +9444,7 @@ function stackedRegion(cols, div) {
     for (let c = 0; c < cols.length; c++) if (covered[c]) seq[c] = "_";
     parts.push(seq.join(" "));
   }
-  return `[${parts.join(", ")}]` + (slots > 1 ? `@${slots}` : "");
+  return `[${parts.join(", ")}]` + (slots2 > 1 ? `@${slots2}` : "");
 }
 __name(stackedRegion, "stackedRegion");
 function sustainTokens(cols, div) {
@@ -9510,14 +9510,14 @@ __name(serializeStepGain, "serializeStepGain");
 function gridBars(model, bounds) {
   const cols = gridColumns(model.lanes, model.steps);
   if (cols === null) return null;
-  const slots = [];
+  const slots2 = [];
   for (let b = 0; b + 1 < bounds.length; b++) {
     const bar2 = cols.slice(bounds[b], bounds[b + 1]);
-    if (bar2.every((c) => c === "~")) slots.push("~");
-    else if (bar2.length === 1) slots.push(bar2[0]);
-    else slots.push(`[${bar2.join(" ")}]`);
+    if (bar2.every((c) => c === "~")) slots2.push("~");
+    else if (bar2.length === 1) slots2.push(bar2[0]);
+    else slots2.push(`[${bar2.join(" ")}]`);
   }
-  return `<${slots.join(" ")}>`;
+  return `<${slots2.join(" ")}>`;
 }
 __name(gridBars, "gridBars");
 function barBounds(model) {
@@ -9740,12 +9740,12 @@ function reemitRollRegionFlat(notes, from, to, div) {
       continue;
     }
     const end = c + div;
-    const slots = [];
+    const slots2 = [];
     let k = c;
     while (k < end) {
       const gg = at.get(k);
       if (!gg) {
-        slots.push("~");
+        slots2.push("~");
         k++;
         continue;
       }
@@ -9753,12 +9753,12 @@ function reemitRollRegionFlat(notes, from, to, div) {
         crossed = true;
         break;
       }
-      slots.push(groupToken({ pitches: gg.pitches, duration: gg.duration }));
+      slots2.push(groupToken({ pitches: gg.pitches, duration: gg.duration }));
       k += gg.duration;
     }
     if (crossed) break;
     tokens.push(
-      slots.every((s) => s === "~") ? "~" : slots.length === 1 ? slots[0] : `[${slots.join(" ")}]`
+      slots2.every((s) => s === "~") ? "~" : slots2.length === 1 ? slots2[0] : `[${slots2.join(" ")}]`
     );
     c = end;
   }
@@ -9896,7 +9896,7 @@ function rollBars(groups, bounds) {
   if (!bounds.every((x) => Number.isInteger(x))) return null;
   const bars = bounds.length - 1;
   const starts = [...groups.keys()].sort((a, b2) => a - b2);
-  const slots = [];
+  const slots2 = [];
   let b = 0;
   while (b < bars) {
     const barStart = bounds[b];
@@ -9907,12 +9907,12 @@ function rollBars(groups, bounds) {
     if (atStart && k >= 1) {
       const heldEnd = barStart + atStart.duration;
       if (starts.some((s) => s > barStart && s < heldEnd)) return null;
-      slots.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
+      slots2.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
       b += k;
       continue;
     }
     if (perBar2 === 1) {
-      slots.push("~");
+      slots2.push("~");
       b++;
       continue;
     }
@@ -9932,10 +9932,10 @@ function rollBars(groups, bounds) {
       consumed++;
     }
     if (consumed !== starts.filter((s) => s >= barStart && s < barEnd).length) return null;
-    slots.push(tokens.every((t) => t === "~") ? "~" : `[${tokens.join(" ")}]`);
+    slots2.push(tokens.every((t) => t === "~") ? "~" : `[${tokens.join(" ")}]`);
     b++;
   }
-  return `<${slots.join(" ")}>`;
+  return `<${slots2.join(" ")}>`;
 }
 __name(rollBars, "rollBars");
 function rollBarLanes(model, bounds) {
@@ -9945,7 +9945,7 @@ function rollBarLanes(model, bounds) {
   const notes = [...model.notes].sort((a, b2) => a.start - b2.start || a.duration - b2.duration);
   for (const n of notes)
     if (n.start < 0 || n.duration < 1 || n.start + n.duration > model.steps + E) return null;
-  const slots = [];
+  const slots2 = [];
   let b = 0;
   while (b < bars) {
     const barStart = bounds[b];
@@ -9953,7 +9953,7 @@ function rollBarLanes(model, bounds) {
     const perBar2 = barEnd - barStart;
     const over = notes.filter((n) => n.start < barEnd - E && n.start + n.duration > barStart + E);
     if (over.length === 0) {
-      slots.push("~");
+      slots2.push("~");
       b++;
       continue;
     }
@@ -9971,7 +9971,7 @@ function rollBarLanes(model, bounds) {
         if (str === null) return null;
         strings.push(str);
       }
-      slots.push(`[${strings.join(", ")}]`);
+      slots2.push(`[${strings.join(", ")}]`);
       b++;
       continue;
     }
@@ -9983,10 +9983,10 @@ function rollBarLanes(model, bounds) {
     if (k < 1) return null;
     if (notes.some((n) => n.start > barStart + E && n.start < barStart + dur - E)) return null;
     const body = groupBody({ pitches: held2.map((n) => n.pitch), duration: dur });
-    slots.push(k === 1 ? body : `${body}@${k}`);
+    slots2.push(k === 1 ? body : `${body}@${k}`);
     b += k;
   }
-  return `<${slots.join(" ")}>`;
+  return `<${slots2.join(" ")}>`;
 }
 __name(rollBarLanes, "rollBarLanes");
 function serializeRollGain(model) {
@@ -10169,7 +10169,7 @@ function readOps(ops) {
 }
 __name(readOps, "readOps");
 function groupSlots(pat, allowNumeric) {
-  const slots = [];
+  const slots2 = [];
   for (const el of pat.source_) {
     const opts = el.options_ ?? {};
     const ops = opts.ops ?? [];
@@ -10183,7 +10183,7 @@ function groupSlots(pat, allowNumeric) {
     if (isAtom(el.source_)) {
       if (isRestAtom(el.source_)) {
         if (ops.length) return { reason: 'a ":" variant on a rest has nothing to name' };
-        slots.push({ atoms: [], units });
+        slots2.push({ atoms: [], units });
         continue;
       }
       const token = tokenOf(el.source_, ops);
@@ -10191,15 +10191,15 @@ function groupSlots(pat, allowNumeric) {
         return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
       }
       if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
-      slots.push({ atoms: [token], units });
+      slots2.push({ atoms: [token], units });
       continue;
     }
     const chord = chordAtoms(el.source_, allowNumeric);
     if (!Array.isArray(chord)) return chord;
-    slots.push({ atoms: chord, units });
+    slots2.push({ atoms: chord, units });
   }
-  if (slots.length === 0) return { reason: "empty group" };
-  return slots;
+  if (slots2.length === 0) return { reason: "empty group" };
+  return slots2;
 }
 __name(groupSlots, "groupSlots");
 function chordAtoms(pat, allowNumeric) {
@@ -10271,19 +10271,19 @@ function elementToSteps(el, allowNumeric) {
     if (mult > 1 && weight > 1) {
       return { reason: "* combined with @ is beyond the editable subset" };
     }
-    const slots = groupSlots(el.source_, allowNumeric);
-    if (!Array.isArray(slots)) return slots;
+    const slots2 = groupSlots(el.source_, allowNumeric);
+    if (!Array.isArray(slots2)) return slots2;
     if (mult > 1) {
       const sub = [];
       for (let r = 0; r < mult; r++) {
-        for (const s of slots) sub.push({ atoms: [...s.atoms], units: s.units });
+        for (const s of slots2) sub.push({ atoms: [...s.atoms], units: s.units });
       }
       return [{ atoms: [], elongation: weight, sub }];
     }
-    if (slots.length === 1 && slots[0].units === 1) {
-      return [{ atoms: slots[0].atoms, elongation: weight, sub: null }];
+    if (slots2.length === 1 && slots2[0].units === 1) {
+      return [{ atoms: slots2[0].atoms, elongation: weight, sub: null }];
     }
-    return [{ atoms: [], elongation: weight, sub: slots }];
+    return [{ atoms: [], elongation: weight, sub: slots2 }];
   }
   const atom = el.source_;
   const rest = isRestAtom(atom);
@@ -10365,9 +10365,9 @@ var tokensOf = /* @__PURE__ */ __name((cols) => cols.map((c) => c.map((n) => ({ 
 function toCells(steps, div) {
   const cells = [];
   for (const step of steps) {
-    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const slots2 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
     const total = stepUnits(step);
-    for (const slot of slots) {
+    for (const slot of slots2) {
       const span = div / total * slot.units;
       cells.push(slot.atoms.map((token) => ({ token, duration: span })));
       for (let j = 1; j < span; j++) cells.push([]);
@@ -11547,9 +11547,9 @@ function rollFromAltElements(mini, viewScale = UNREFINED) {
   let sawNamed = false;
   for (const barSteps of perBarSteps) {
     for (const step of barSteps) {
-      const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+      const slots2 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
       const total = stepUnits(step);
-      for (const slot of slots) {
+      for (const slot of slots2) {
         const span = step.elongation * div * slot.units / total;
         for (const token of slot.atoms) {
           const isNum = /^-?\d+$/.test(token);
@@ -12037,9 +12037,9 @@ function parsePianoRollCore(mini, viewScale = UNREFINED) {
   let sawNumeric = false;
   let sawNamed = false;
   for (const step of tok.steps) {
-    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const slots2 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
     const total = stepUnits(step);
-    for (const slot of slots) {
+    for (const slot of slots2) {
       const span = step.elongation * div * slot.units / total;
       for (const token of slot.atoms) {
         const isNum = /^-?\d+$/.test(token);
@@ -13599,13 +13599,13 @@ function regionTrimEdit(chunk, control, value) {
   if (chunk.headFn !== null && MULTI_VOICE_HEADS.has(chunk.headFn)) {
     return { edit: null, refusal: "not-one-voice", value };
   }
-  const current9 = readRegion(chunk);
-  if (!current9 || !Number.isFinite(value)) {
+  const current8 = readRegion(chunk);
+  if (!current8 || !Number.isFinite(value)) {
     return { edit: null, refusal: "not-a-number", value };
   }
-  const clamped = control === "begin" ? Math.min(Math.max(0, value), current9.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current9.begin + MIN_REGION_SPAN);
+  const clamped = control === "begin" ? Math.min(Math.max(0, value), current8.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current8.begin + MIN_REGION_SPAN);
   if (!Number.isFinite(clamped)) return { edit: null, refusal: "not-a-number", value };
-  const before = current9[control];
+  const before = current8[control];
   if (formatNumber(clamped) === formatNumber(before)) {
     return { edit: null, refusal: "no-change", value: clamped };
   }
@@ -15482,7 +15482,7 @@ function createTrackEnvelopeScheduler(deps) {
   let cycles = 0;
   const envelopes = /* @__PURE__ */ new Map();
   const refused2 = /* @__PURE__ */ new Map();
-  const current9 = /* @__PURE__ */ new Map();
+  const current8 = /* @__PURE__ */ new Map();
   let overCap = [];
   let rendering = null;
   let cancelTimer = null;
@@ -15511,8 +15511,8 @@ function createTrackEnvelopeScheduler(deps) {
       } catch {
         fp = null;
       }
-      if (wanted.includes(id) && current9.get(id) !== fp) {
-        current9.set(id, fp);
+      if (wanted.includes(id) && current8.get(id) !== fp) {
+        current8.set(id, fp);
         deps.onChange();
       }
       deps.schedule(step, 0);
@@ -15538,7 +15538,7 @@ function createTrackEnvelopeScheduler(deps) {
     const seconds = cps > 0 ? cycles / cps : Infinity;
     let spent = 0;
     for (const id of wanted) {
-      const fp = current9.get(id);
+      const fp = current8.get(id);
       if (fp == null) continue;
       const kept = envelopes.get(id)?.fingerprint === fp;
       const cost = seconds * (deps.weight?.(id) ?? 1);
@@ -15567,7 +15567,7 @@ function createTrackEnvelopeScheduler(deps) {
       for (const id of over) if (envelopes.delete(id)) deps.onChange();
       for (const id of todo) {
         if (controller.signal.aborted) break;
-        const fp = current9.get(id);
+        const fp = current8.get(id);
         if (fp == null) continue;
         rendering = id;
         deps.onChange();
@@ -15612,7 +15612,7 @@ function createTrackEnvelopeScheduler(deps) {
         kick();
         return;
       }
-      for (const id of [...current9.keys()]) if (!wanted.includes(id)) current9.delete(id);
+      for (const id of [...current8.keys()]) if (!wanted.includes(id)) current8.delete(id);
       deps.onChange();
       refingerprint();
     },
@@ -15665,7 +15665,7 @@ function createTrackEnvelopeScheduler(deps) {
         data: env.data,
         columns: env.columns,
         cycles: env.cycles,
-        stale: current9.get(trackId) !== env.fingerprint
+        stale: current8.get(trackId) !== env.fingerprint
       };
     },
     status: /* @__PURE__ */ __name(() => ({
@@ -27594,12 +27594,12 @@ var _IdbMissingError = class _IdbMissingError extends Error {
 };
 __name(_IdbMissingError, "IdbMissingError");
 var IdbMissingError = _IdbMissingError;
-function openIdbWithTimeout(name, version, upgrade, opts = {}) {
+function openIdbWithTimeout(name, version2, upgrade, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? IDB_OPEN_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
     let settled = false;
     let missing = false;
-    const req = indexedDB.open(name, version);
+    const req = indexedDB.open(name, version2);
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
@@ -28130,10 +28130,10 @@ function subscribe2(id, cb) {
   }
   set2.add(cb);
   return () => {
-    const current9 = subscribersByFile.get(id);
-    if (!current9) return;
-    current9.delete(cb);
-    if (current9.size === 0) {
+    const current8 = subscribersByFile.get(id);
+    if (!current8) return;
+    current8.delete(cb);
+    if (current8.size === 0) {
       subscribersByFile.delete(id);
     }
   };
@@ -28356,12 +28356,12 @@ function pruneZoneOverrides(fileId, currentViz) {
   const stale = [];
   for (const [trackKey, value] of overrides.entries()) {
     const entry = value;
-    const current9 = currentViz.get(trackKey);
-    if (!current9) {
+    const current8 = currentViz.get(trackKey);
+    if (!current8) {
       stale.push(trackKey);
-    } else if (entry.vizId && entry.vizId !== current9.vizId) {
+    } else if (entry.vizId && entry.vizId !== current8.vizId) {
       stale.push(trackKey);
-    } else if (entry.contentHash && current9.contentHash && entry.contentHash !== current9.contentHash) {
+    } else if (entry.contentHash && current8.contentHash && entry.contentHash !== current8.contentHash) {
       stale.push(trackKey);
     }
   }
@@ -32841,10 +32841,10 @@ function subscribe3(ref, cb) {
   return () => {
     if (unsubscribed) return;
     unsubscribed = true;
-    const current9 = pinnedSubscribers.get(fileId);
-    if (!current9) return;
-    current9.delete(cb);
-    if (current9.size === 0) {
+    const current8 = pinnedSubscribers.get(fileId);
+    if (!current8) return;
+    current8.delete(cb);
+    if (current8.size === 0) {
       pinnedSubscribers.delete(fileId);
     }
   };
@@ -35534,10 +35534,10 @@ function readWorkspaceOrder() {
 }
 __name(readWorkspaceOrder, "readWorkspaceOrder");
 function applySnapshot(files, fileMeta, order) {
-  const current9 = listWorkspaceFiles();
-  const currentIds = new Set(current9.map((f) => f.id));
+  const current8 = listWorkspaceFiles();
+  const currentIds = new Set(current8.map((f) => f.id));
   const wantIds = new Set(Object.keys(files));
-  for (const f of current9) {
+  for (const f of current8) {
     if (!wantIds.has(f.id)) deleteWorkspaceFile(f.id);
   }
   const recreatedMissing = [];
@@ -36525,7 +36525,8 @@ function PreviewView({
   theme = "dark",
   hidden = false,
   paused = false,
-  backdrop = false
+  backdrop = false,
+  backdropOwner
 }) {
   const { file } = useWorkspaceFile(fileId);
   const containerRef = useRef(null);
@@ -36610,9 +36611,10 @@ function PreviewView({
       audioSource: audioPayload,
       hidden: effectivelyHidden,
       paused,
-      backdrop
+      backdrop,
+      backdropOwner
     });
-  }, [file, provider, audioPayload, effectivelyHidden, paused, backdrop, reloadTick]);
+  }, [file, provider, audioPayload, effectivelyHidden, paused, backdrop, backdropOwner, reloadTick]);
   const providerKey = backdrop ? `${sourceRefKey(sourceRef)}:${reloadTick}` : `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
   return /* @__PURE__ */ jsx(
     "div",
@@ -37159,6 +37161,10 @@ function resolveBackdropFileId(stickyFileId, overrideFileId) {
   return overrideFileId ?? stickyFileId;
 }
 __name(resolveBackdropFileId, "resolveBackdropFileId");
+function backdropOwnerFor(bgFileId, paneFileId) {
+  return paneFileId && paneFileId !== bgFileId ? paneFileId : null;
+}
+__name(backdropOwnerFor, "backdropOwnerFor");
 function isOwnBackdropPaused(bgFileId, paneFileId, pausedFiles) {
   return paneFileId === bgFileId && pausedFiles.has(bgFileId);
 }
@@ -40722,9 +40728,9 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
       window.removeEventListener("pointerup", onUp);
     };
   }, [mutate, paintOne, endGesture, gainScoped]);
-  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current9, e) => {
+  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current8, e) => {
     beginGesture();
-    if (current9) {
+    if (current8) {
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
@@ -48302,6 +48308,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   onNewFile,
   onBackgroundFileChange,
   onActiveBackdropChange,
+  spanningBackdrop,
   onOpenPopoutPreview,
   backgroundCrop,
   onTabClose,
@@ -48852,12 +48859,12 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
-      const current9 = onSaveFileRef.current;
-      if (!current9) return;
+      const current8 = onSaveFileRef.current;
+      if (!current8) return;
       const tab = activeTab;
       if (!tab || tab.kind !== "editor") return;
       e.preventDefault();
-      current9(tab);
+      current8(tab);
     }, "handler");
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -49099,24 +49106,24 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     }
                   }, "onTogglePausePreview"),
                   onChangePreviewSource: /* @__PURE__ */ __name((nextRef) => {
-                    const current9 = shellActionsRef.current.findTabByFileId(
+                    const current8 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (!current9) return;
-                    updateGroup(current9.groupId, (g) => ({
+                    if (!current8) return;
+                    updateGroup(current8.groupId, (g) => ({
                       ...g,
                       tabs: g.tabs.map(
-                        (t) => t.id === current9.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
+                        (t) => t.id === current8.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
                       )
                     }));
                   }, "onChangePreviewSource"),
                   onOpenPreview: /* @__PURE__ */ __name((selectedSourceRef) => {
-                    const current9 = shellActionsRef.current.findTabByFileId(
+                    const current8 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (current9) {
+                    if (current8) {
                       return;
                     }
                     const sourceRef = selectedSourceRef ?? { kind: "default" };
@@ -49198,7 +49205,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   // the host (app popups).
                   backdropOpacity: groups.get(groupId)?.backdropOpacity ?? backdropOpacity,
                   backdropQuality: groups.get(groupId)?.backdropQuality ?? backdropQuality,
-                  backdropVizSpan,
+                  // #2423 — a host-owned span is a pattern's setting: no control here
+                  backdropVizSpan: spanningBackdrop === void 0 ? backdropVizSpan : void 0,
                   onSetBackdropOpacity: /* @__PURE__ */ __name((v) => updateGroupBackdropOpacity(groupId, v), "onSetBackdropOpacity"),
                   onSetBackdropQuality: /* @__PURE__ */ __name((q) => updateGroupBackdropQuality(groupId, q), "onSetBackdropQuality"),
                   onSetBackdropVizSpan: /* @__PURE__ */ __name((s) => setBackdropVizSpan(s), "onSetBackdropVizSpan"),
@@ -49350,6 +49358,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       backdropOpacity,
       backdropQuality,
       backdropVizSpan,
+      spanningBackdrop,
       updateGroupBackdropOpacity,
       updateGroupBackdropQuality,
       onCropBackdrop,
@@ -49357,6 +49366,16 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     ]
   );
   const workspaceSpanBackdrop = useMemo(() => {
+    if (spanningBackdrop !== void 0) {
+      if (!spanningBackdrop) return null;
+      const showing = allGroupIds(layout).map((gid) => groups.get(gid)).find((g) => g && paneShownFileId(g.tabs.find((t) => t.id === g.activeTabId)) === spanningBackdrop.ownerFileId);
+      return {
+        fileId: spanningBackdrop.fileId,
+        ownerFileId: spanningBackdrop.ownerFileId,
+        quality: showing?.backdropQuality ?? backdropQuality,
+        opacity: showing?.backdropOpacity ?? backdropOpacity
+      };
+    }
     if (backdropVizSpan !== "workspace") return null;
     for (const gid of allGroupIds(layout)) {
       const g = groups.get(gid);
@@ -49365,18 +49384,19 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       if (fileId) {
         return {
           fileId,
-          groupId: gid,
+          // legacy: the driving pane's file — the viz itself when it is that viz's own pin
+          ownerFileId: paneShownFileId(g.tabs.find((t) => t.id === g.activeTabId)),
           quality: g.backdropQuality ?? backdropQuality,
           opacity: g.backdropOpacity ?? backdropOpacity
         };
       }
     }
     return null;
-  }, [backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity]);
+  }, [spanningBackdrop, backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity]);
   const workspaceSpanActive = workspaceSpanBackdrop != null;
   const renderBackdropLayer = useCallback(
     (params) => {
-      const { bgFileId, dataGroupId, quality, opacity, crop, paused } = params;
+      const { bgFileId, dataGroupId, quality, opacity, crop, paused, owner } = params;
       const bgProvider = previewProviderFor?.({
         kind: "preview",
         id: `bg-${bgFileId}`,
@@ -49401,6 +49421,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           "data-background-file-id": bgFileId,
           "data-backdrop-quality": quality,
           "data-backdrop-live": paused ? "false" : "true",
+          "data-backdrop-owner": owner ?? "own",
           style: {
             position: "absolute",
             inset: 0,
@@ -49428,6 +49449,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   hidden: false,
                   paused,
                   backdrop: true,
+                  backdropOwner: owner,
                   onSourceRefChange: () => {
                   }
                 }
@@ -49528,7 +49550,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                 style: { flex: 1, minHeight: 0, position: "relative" },
                 children: [
                   (() => {
-                    if (backdropVizSpan === "workspace") return null;
+                    if (workspaceSpanBackdrop) return null;
                     const bgFileId = resolveBackdropFileId(
                       group.backgroundFileId,
                       bgOverrides.get(group.id)
@@ -49550,7 +49572,11 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                       // also be a pattern's code background or another tab's pin (a
                       // viz's placement is no longer exclusive); those keep running.
                       // OR it with the hover-gate policy above.
-                      paused: backdropPaused || isOwnBackdropPaused(bgFileId, paneShownFileId(activeTabObj), pausedPreviews)
+                      paused: backdropPaused || isOwnBackdropPaused(bgFileId, paneShownFileId(activeTabObj), pausedPreviews),
+                      // #2423 — the viz file's own background (its tab is this pane's
+                      // active tab) takes its own settings; any other is the
+                      // background of the file the pane shows (a pattern: its code options)
+                      owner: backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj))
                     });
                   })(),
                   activeTabObj ? /* @__PURE__ */ jsx(
@@ -50004,14 +50030,10 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                 // span is a pattern's code background drawn from the same file.
                 paused: isOwnBackdropPaused(
                   workspaceSpanBackdrop.fileId,
-                  paneShownFileId(
-                    (() => {
-                      const g = groups.get(workspaceSpanBackdrop.groupId);
-                      return g?.tabs.find((t) => t.id === g.activeTabId);
-                    })()
-                  ),
+                  workspaceSpanBackdrop.ownerFileId,
                   pausedPreviews
-                )
+                ),
+                owner: backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId)
               }),
               /* @__PURE__ */ jsx(
                 "div",
@@ -53243,10 +53265,10 @@ function getAssetsMap() {
 __name(getAssetsMap, "getAssetsMap");
 var wiredAssetsMap = null;
 function ensureAssetsObserver() {
-  const current9 = getAssetsMap();
-  if (wiredAssetsMap === current9) return;
-  current9.observe(() => notify5());
-  wiredAssetsMap = current9;
+  const current8 = getAssetsMap();
+  if (wiredAssetsMap === current8) return;
+  current8.observe(() => notify5());
+  wiredAssetsMap = current8;
 }
 __name(ensureAssetsObserver, "ensureAssetsObserver");
 function subscribeToAssets(cb) {
@@ -55184,8 +55206,10 @@ function VizEditorChrome({
 __name(VizEditorChrome, "VizEditorChrome");
 
 // src/workspace/preview/codeBackdropOptions.ts
-var current8 = null;
+var LEGACY = "";
+var slots = /* @__PURE__ */ new Map();
 var listeners18 = /* @__PURE__ */ new Set();
+var version = 0;
 function sameOptions(a, b) {
   if (a === b) return true;
   if (!a || !b || a.fileId !== b.fileId) return false;
@@ -55196,16 +55220,23 @@ function sameOptions(a, b) {
   }
 }
 __name(sameOptions, "sameOptions");
-function setCodeBackdropOptions(next) {
-  if (sameOptions(current8, next)) return;
-  current8 = next;
+function setCodeBackdropOptions(next, patternFileId) {
+  const key3 = patternFileId ?? LEGACY;
+  if (sameOptions(slots.get(key3) ?? null, next)) return;
+  if (next) slots.set(key3, next);
+  else slots.delete(key3);
+  version++;
   for (const l of [...listeners18]) l();
 }
 __name(setCodeBackdropOptions, "setCodeBackdropOptions");
-function getCodeBackdropOptions() {
-  return current8;
+function getCodeBackdropOptions(patternFileId) {
+  return slots.get(patternFileId ?? LEGACY) ?? null;
 }
 __name(getCodeBackdropOptions, "getCodeBackdropOptions");
+function getCodeBackdropOptionsVersion() {
+  return version;
+}
+__name(getCodeBackdropOptionsVersion, "getCodeBackdropOptionsVersion");
 function subscribeCodeBackdropOptions(listener) {
   listeners18.add(listener);
   return () => {
@@ -55213,6 +55244,13 @@ function subscribeCodeBackdropOptions(listener) {
   };
 }
 __name(subscribeCodeBackdropOptions, "subscribeCodeBackdropOptions");
+function backdropOptionsFor(owner, vizFileId) {
+  if (owner === null) return { codeOptions: null, busOptions: false };
+  const slot = getCodeBackdropOptions(owner ?? void 0);
+  const codeOptions = slot && slot.fileId === vizFileId ? slot.options : null;
+  return { codeOptions, busOptions: owner === void 0 };
+}
+__name(backdropOptionsFor, "backdropOptionsFor");
 function createCompiledVizProvider(opts) {
   return {
     extensions: opts.extensions,
@@ -55233,7 +55271,8 @@ function createCompiledVizProvider(opts) {
           hidden: ctx.hidden,
           paused: ctx.paused ?? false,
           fileId: ctx.file.id,
-          backdrop: ctx.backdrop ?? false
+          backdrop: ctx.backdrop ?? false,
+          backdropOwner: ctx.backdropOwner
         }
       );
     }, "render"),
@@ -55244,9 +55283,13 @@ function createCompiledVizProvider(opts) {
 }
 __name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
-  const { file, rendererType, audioSource, hidden, paused, fileId, backdrop } = props;
-  const codeBackdrop = useSyncExternalStore(subscribeCodeBackdropOptions, getCodeBackdropOptions);
-  const codeOptions = backdrop && codeBackdrop?.fileId === fileId ? codeBackdrop.options : null;
+  const { file, rendererType, audioSource, hidden, paused, fileId, backdrop, backdropOwner } = props;
+  const optionsVersion = useSyncExternalStore(subscribeCodeBackdropOptions, getCodeBackdropOptionsVersion);
+  const { codeOptions, busOptions } = useMemo(
+    () => backdrop ? backdropOptionsFor(backdropOwner, fileId) : { codeOptions: null, busOptions: true },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [backdrop, backdropOwner, fileId, optionsVersion]
+  );
   const { descriptor, compileError } = useMemo(() => {
     try {
       const preset = {
@@ -55312,14 +55355,14 @@ function CompiledVizMount(props) {
     if (audioSource?.inlineViz) {
       bag.inlineViz = audioSource.inlineViz;
     }
-    if (audioSource?.inlineViz?.backdropRequest?.options) {
+    if (busOptions && audioSource?.inlineViz?.backdropRequest?.options) {
       bag.options = audioSource.inlineViz.backdropRequest.options;
     }
     if (codeOptions) {
       bag.options = codeOptions;
     }
     return bag;
-  }, [audioSource, codeOptions]);
+  }, [audioSource, codeOptions, busOptions]);
   useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;

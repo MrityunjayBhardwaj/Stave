@@ -26,6 +26,23 @@ export function resolveBackdropFileId(
 }
 
 /**
+ * #2423 — whose background a pane draws: the file its active tab shows, unless
+ * that IS the viz being drawn — then it is the viz's own background (`null`),
+ * which takes its own settings rather than any pattern's code options. A
+ * pattern's pane (or a pattern spanning the workspace) is that pattern's.
+ *
+ * @param bgFileId    the viz file the background draws
+ * @param paneFileId  the file the pane's active tab shows (or, for a spanning
+ *                    background, the pattern set to Workspace)
+ */
+export function backdropOwnerFor(
+  bgFileId: string,
+  paneFileId: string | null | undefined,
+): string | null {
+  return paneFileId && paneFileId !== bgFileId ? paneFileId : null
+}
+
+/**
  * #2422 — does a viz tab's ⏸ pause THIS pane's background?
  *
  * The viz chrome's play/pause (#781) flips a per-FILE flag (`pausedPreviews`,

@@ -5,14 +5,16 @@
  * bus payload (`inlineViz.backdropRequest.options`, the last evaluation's
  * capture). Stop withdraws that payload, and before the first Play there is
  * none, so the sketch fell back to its defaults even though the code still
- * said `{ theme: 'transparent', … }`. The app keeps this slot in step with the
- * active pattern's code (read statically, dynamic values from the last
- * evaluation — see `resolveVizOptions`), and a background mount reads it in
+ * said `{ theme: 'transparent', … }`. The app keeps these slots in step with
+ * each pattern's code (read statically, dynamic values from the last
+ * evaluation — see `resolveVizOptions`), and a background mount reads them in
  * preference to the payload.
  *
- * One slot, not a map: one pattern's code is active at a time, and the slot
- * names the viz FILE it is for, so a background showing a different file
- * ignores it and keeps the payload's options.
+ * #2423 — keyed by the PATTERN file that declares them. A background belongs to
+ * a file: a pattern's background takes that pattern's options, while a viz
+ * file's own background takes none, even when both draw the same viz file.
+ * The slot without a pattern key (`setCodeBackdropOptions(x)`) is the legacy
+ * single slot, read by a background that does not say whose it is.
  */
 export interface CodeBackdropOptions {
   /** the viz file the options belong to */
@@ -20,8 +22,10 @@ export interface CodeBackdropOptions {
   readonly options: Readonly<Record<string, unknown>>
 }
 
-let current: CodeBackdropOptions | null = null
+const LEGACY = ''
+const slots = new Map<string, CodeBackdropOptions>()
 const listeners = new Set<() => void>()
+let version = 0
 
 function sameOptions(a: CodeBackdropOptions | null, b: CodeBackdropOptions | null): boolean {
   if (a === b) return true
@@ -33,16 +37,26 @@ function sameOptions(a: CodeBackdropOptions | null, b: CodeBackdropOptions | nul
   }
 }
 
-/** Set (or clear) the code's background options. Unchanged values notify nobody,
- *  so writing on every keystroke costs nothing downstream. */
-export function setCodeBackdropOptions(next: CodeBackdropOptions | null): void {
-  if (sameOptions(current, next)) return
-  current = next
+/** Set (or clear) the code's background options — for `patternFileId` when
+ *  given, else the legacy single slot. Unchanged values notify nobody, so
+ *  writing on every keystroke costs nothing downstream. */
+export function setCodeBackdropOptions(next: CodeBackdropOptions | null, patternFileId?: string): void {
+  const key = patternFileId ?? LEGACY
+  if (sameOptions(slots.get(key) ?? null, next)) return
+  if (next) slots.set(key, next)
+  else slots.delete(key)
+  version++
   for (const l of [...listeners]) l()
 }
 
-export function getCodeBackdropOptions(): CodeBackdropOptions | null {
-  return current
+/** The options `patternFileId`'s code gives its background (legacy slot when omitted). */
+export function getCodeBackdropOptions(patternFileId?: string): CodeBackdropOptions | null {
+  return slots.get(patternFileId ?? LEGACY) ?? null
+}
+
+/** Changes on every write — a snapshot for `useSyncExternalStore`. */
+export function getCodeBackdropOptionsVersion(): number {
+  return version
 }
 
 export function subscribeCodeBackdropOptions(listener: () => void): () => void {
@@ -50,4 +64,26 @@ export function subscribeCodeBackdropOptions(listener: () => void): () => void {
   return () => {
     listeners.delete(listener)
   }
+}
+
+/**
+ * #2423 — which options a background takes, by whose background it is.
+ *
+ * @param owner  the file whose background this is: a pattern file id (its code's
+ *               options apply), `null` for a viz file's OWN background (its own
+ *               settings: no code options, no bus options), or `undefined` when
+ *               the host does not say (legacy: the single slot and the bus)
+ * @returns `codeOptions` to apply (or null) and whether the bus payload's
+ *          backdrop options may apply
+ */
+export function backdropOptionsFor(
+  owner: string | null | undefined,
+  vizFileId: string,
+): { codeOptions: Readonly<Record<string, unknown>> | null; busOptions: boolean } {
+  if (owner === null) return { codeOptions: null, busOptions: false }
+  const slot = getCodeBackdropOptions(owner ?? undefined)
+  const codeOptions = slot && slot.fileId === vizFileId ? slot.options : null
+  // a named owner takes only what its own code says (its slot already folds in
+  // the last evaluation's values); the bus carries whichever pattern played last
+  return { codeOptions, busOptions: owner === undefined }
 }

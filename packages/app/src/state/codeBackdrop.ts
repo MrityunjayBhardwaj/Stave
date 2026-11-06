@@ -95,6 +95,43 @@ export function paneCodeBackdrops(
   return out;
 }
 
+/**
+ * #2423 — the background spanning the workspace, if any.
+ *
+ * A pattern set to Workspace covers every pane with its background (the one its
+ * tab shows: code background, else pinned). Candidates are the pattern files open
+ * as a tab in some pane whose span is Workspace and that have a background. With
+ * more than one, the MOST RECENTLY USED wins — focused, played, or set to
+ * Workspace, whichever happened last (`recency`: later = more recent); patterns
+ * never used yet rank by pane order. Deterministic, and it follows what the user
+ * last touched.
+ *
+ * @param openPatterns  pattern file ids open in the panes, in pane order (deduped)
+ * @param spanOf        a pattern's span
+ * @param shownOf       the background a pattern's tab shows (viz file id) or null
+ * @param recency       pattern file id → monotonically increasing use stamp
+ */
+export function pickSpanningBackdrop(
+  openPatterns: readonly string[],
+  spanOf: (patternFileId: string) => "file" | "workspace",
+  shownOf: (patternFileId: string) => string | null,
+  recency: ReadonlyMap<string, number>,
+): { fileId: string; ownerFileId: string } | null {
+  let best: { fileId: string; ownerFileId: string; stamp: number; order: number } | null = null;
+  openPatterns.forEach((id, order) => {
+    if (spanOf(id) !== "workspace") return;
+    const fileId = shownOf(id);
+    if (!fileId) return;
+    const stamp = recency.get(id) ?? -1;
+    if (!best || stamp > best.stamp || (stamp === best.stamp && order < best.order)) {
+      best = { fileId, ownerFileId: id, stamp, order };
+    }
+  });
+  if (!best) return null;
+  const { fileId, ownerFileId } = best as { fileId: string; ownerFileId: string };
+  return { fileId, ownerFileId };
+}
+
 /** Viz names compare the way the backdrop resolves them: case and punctuation blind. */
 export function sameVizName(a: string | null | undefined, b: string | null | undefined): boolean {
   if (a == null || b == null) return false;

@@ -154,7 +154,7 @@ import type {
   WorkspaceShellProps,
   WorkspaceTab,
 } from './types'
-import { isOwnBackdropPaused, resolveBackdropFileId } from './backdropPrecedence'
+import { backdropOwnerFor, isOwnBackdropPaused, resolveBackdropFileId } from './backdropPrecedence'
 
 /** #2422 — the file a pane's active tab shows (editor or preview), or null. */
 function paneShownFileId(tab: WorkspaceTab | undefined): string | null {
@@ -838,6 +838,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   onNewFile,
   onBackgroundFileChange,
   onActiveBackdropChange,
+  spanningBackdrop,
   onOpenPopoutPreview,
   backgroundCrop,
   onTabClose,
@@ -2321,7 +2322,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                     groups.get(groupId)?.backdropOpacity ?? backdropOpacity,
                   backdropQuality:
                     groups.get(groupId)?.backdropQuality ?? backdropQuality,
-                  backdropVizSpan,
+                  // #2423 — a host-owned span is a pattern's setting: no control here
+                  backdropVizSpan: spanningBackdrop === undefined ? backdropVizSpan : undefined,
                   onSetBackdropOpacity: (v) =>
                     updateGroupBackdropOpacity(groupId, v),
                   onSetBackdropQuality: (q) =>
@@ -2502,6 +2504,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       backdropOpacity,
       backdropQuality,
       backdropVizSpan,
+      spanningBackdrop,
       updateGroupBackdropOpacity,
       updateGroupBackdropQuality,
       onCropBackdrop,
@@ -2513,7 +2516,29 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   // by the FIRST group (in layout order) that has a backdrop set — stable, so it
   // doesn't change or vanish as focus moves between panes. Null in 'file' mode or
   // when no pane has a backdrop.
-  const workspaceSpanBackdrop = useMemo(() => {
+  //
+  // #2423 — when the host decides (`spanningBackdrop`), the span is the background
+  // of ONE pattern set to Workspace: its viz, drawn for that pattern (its code
+  // options), behind every pane. Quality/opacity come from a pane showing that
+  // pattern, else the global defaults. `ownerFileId` is whose background it is.
+  const workspaceSpanBackdrop = useMemo((): {
+    fileId: string
+    ownerFileId: string | null
+    quality: BackdropQuality
+    opacity: number
+  } | null => {
+    if (spanningBackdrop !== undefined) {
+      if (!spanningBackdrop) return null
+      const showing = allGroupIds(layout)
+        .map((gid) => groups.get(gid))
+        .find((g) => g && paneShownFileId(g.tabs.find((t) => t.id === g.activeTabId)) === spanningBackdrop.ownerFileId)
+      return {
+        fileId: spanningBackdrop.fileId,
+        ownerFileId: spanningBackdrop.ownerFileId,
+        quality: showing?.backdropQuality ?? backdropQuality,
+        opacity: showing?.backdropOpacity ?? backdropOpacity,
+      }
+    }
     if (backdropVizSpan !== 'workspace') return null
     for (const gid of allGroupIds(layout)) {
       const g = groups.get(gid)
@@ -2522,14 +2547,15 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       if (fileId) {
         return {
           fileId,
-          groupId: gid,
+          // legacy: the driving pane's file — the viz itself when it is that viz's own pin
+          ownerFileId: paneShownFileId(g.tabs.find((t) => t.id === g.activeTabId)),
           quality: g.backdropQuality ?? backdropQuality,
           opacity: g.backdropOpacity ?? backdropOpacity,
         }
       }
     }
     return null
-  }, [backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity])
+  }, [spanningBackdrop, backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity])
   // True when a single spanning backdrop is active → every pane goes transparent
   // (via `data-stave-backdrop="on"`) so the one backdrop shows behind all of them.
   const workspaceSpanActive = workspaceSpanBackdrop != null
@@ -2547,8 +2573,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       opacity: number
       crop: { x: number; y: number; w: number; h: number } | null
       paused: boolean
+      /** #2423 — whose background: a pattern file (its code options), null = the viz's own */
+      owner: string | null
     }): React.ReactNode => {
-      const { bgFileId, dataGroupId, quality, opacity, crop, paused } = params
+      const { bgFileId, dataGroupId, quality, opacity, crop, paused, owner } = params
       const bgProvider = previewProviderFor?.({
         kind: 'preview',
         id: `bg-${bgFileId}`,
@@ -2572,6 +2600,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           data-background-file-id={bgFileId}
           data-backdrop-quality={quality}
           data-backdrop-live={paused ? 'false' : 'true'}
+          data-backdrop-owner={owner ?? 'own'}
           style={{
             position: 'absolute',
             inset: 0,
@@ -2600,6 +2629,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
               hidden={false}
               paused={paused}
               backdrop
+              backdropOwner={owner}
               onSourceRefChange={() => {}}
             />
           </div>
@@ -2733,7 +2763,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
               // #770: in 'workspace' span mode the single backdrop is rendered
               // ONCE at the workspace level (below), not per-pane — suppress the
               // per-pane layer here so we don't paint N copies.
-              if (backdropVizSpan === 'workspace') return null
+              // #2423 — likewise whenever a pattern's background spans the workspace
+              if (workspaceSpanBackdrop) return null
               // #350a precedence: code override (this eval) wins over the manual
               // sticky; neither set → no backdrop.
               const bgFileId = resolveBackdropFileId(
@@ -2768,6 +2799,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 paused:
                   backdropPaused ||
                   isOwnBackdropPaused(bgFileId, paneShownFileId(activeTabObj), pausedPreviews),
+                // #2423 — the viz file's own background (its tab is this pane's
+                // active tab) takes its own settings; any other is the
+                // background of the file the pane shows (a pattern: its code options)
+                owner: backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj)),
               })
             })()}
             {activeTabObj ? (
@@ -3332,14 +3367,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             // span is a pattern's code background drawn from the same file.
             paused: isOwnBackdropPaused(
               workspaceSpanBackdrop.fileId,
-              paneShownFileId(
-                (() => {
-                  const g = groups.get(workspaceSpanBackdrop.groupId)
-                  return g?.tabs.find((t) => t.id === g.activeTabId)
-                })(),
-              ),
+              workspaceSpanBackdrop.ownerFileId,
               pausedPreviews,
             ),
+            owner: backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId),
           })}
         <div
           data-workspace-groups-content="true"

@@ -6,11 +6,18 @@ import { reportBootFailure } from "../dialogs/bootFailureNotice";
 import { promptAndCreateFile } from "../lib/newFile";
 import { loadPerTabBackdrop, savePerTabBackdrop } from "../state/tabBackdrops";
 import {
+  defaultPatternSpan,
+  loadPatternSpans,
+  savePatternSpans,
+  type PatternSpan,
+} from "../state/patternSpans";
+import {
   codeBackdropName,
   recordEvaluatedBackdrop,
   fileShownIn,
   paneCodeBackdrops,
   panesShowing,
+  pickSpanningBackdrop,
   sameVizName,
   shownTabBackdrop,
   type EvaluatedBackdrop,
@@ -97,8 +104,6 @@ import {
   registerReevalHandler,
   applyEvalSourceTransform,
   purgeLegacyMasterGain,
-  getBackdropVizSpan,
-  setBackdropVizSpan,
   getActiveEditor,
   getActiveFileId,
   commitToFile,
@@ -667,6 +672,31 @@ export default function StrudelEditorClient({
   const [tabBackdrops, setTabBackdrops] = useState<ReadonlyMap<string, string>>(
     () => loadPerTabBackdrop(projectId),
   );
+  // #2423 — each pattern file's background span (File / Workspace), and when each
+  // pattern was last used (focused, played, or set to Workspace) so that, with
+  // two patterns set to Workspace, the one used last spans.
+  const [patternSpans, setPatternSpans] = useState<ReadonlyMap<string, PatternSpan>>(
+    () => loadPatternSpans(projectId),
+  );
+  const [defaultSpan] = useState<PatternSpan>(() => defaultPatternSpan());
+  useEffect(() => {
+    savePatternSpans(projectId, patternSpans);
+  }, [projectId, patternSpans]);
+  const spanOf = useCallback(
+    (fileId: string): PatternSpan => patternSpans.get(fileId) ?? defaultSpan,
+    [patternSpans, defaultSpan],
+  );
+  const recencyRef = useRef<Map<string, number>>(new Map());
+  const useStampRef = useRef(0);
+  const [recencyTick, setRecencyTick] = useState(0);
+  const markPatternUsed = useCallback((fileId: string | null) => {
+    if (!fileId || getFile(fileId)?.language !== "strudel") return;
+    useStampRef.current += 1;
+    recencyRef.current.set(fileId, useStampRef.current);
+    setRecencyTick((t) => t + 1);
+  }, []);
+  // the panes changed (tabs opened/closed/moved): the spanning pick re-reads them
+  const [groupsTick, setGroupsTick] = useState(0);
   const [bgPopover, setBgPopover] = useState<{
     rect: DOMRect;
     fileId: string;
@@ -875,7 +905,8 @@ export default function StrudelEditorClient({
       // slot keeps what the pattern last said
       if (model?.getLanguageId?.() !== "strudel") return;
       const patternFileId = activePatternFileId();
-      const last = patternFileId ? evalBackdropsRef.current.get(patternFileId) ?? null : null;
+      if (!patternFileId) return;
+      const last = evalBackdropsRef.current.get(patternFileId) ?? null;
       const master = readMasterViz(model.getValue?.() ?? "");
       const found = codeBackdropName(master?.name ?? null, last);
       if (found?.source === "code" && master) {
@@ -883,6 +914,7 @@ export default function StrudelEditorClient({
         const evaluated = last && sameVizName(last.vizId, master.name) ? last.options : null;
         setCodeBackdropOptions(
           vizFileId ? { fileId: vizFileId, options: resolveVizOptions(master.options, evaluated) } : null,
+          patternFileId, // #2423 — this pattern's options, for this pattern's background only
         );
         return;
       }
@@ -890,7 +922,7 @@ export default function StrudelEditorClient({
       // `.pianoroll({...})`) — the code reader doesn't see those, so keep the last
       // evaluation's options for it rather than none after Stop
       const vizFileId = found ? resolveVizNameToFileId(found.name) : null;
-      setCodeBackdropOptions(vizFileId ? { fileId: vizFileId, options: last?.options ?? {} } : null);
+      setCodeBackdropOptions(vizFileId ? { fileId: vizFileId, options: last?.options ?? {} } : null, patternFileId);
     };
     publishCodeBackdropOptionsRef.current = publishCodeBackdropOptions;
     const codeBackdropOf = (): string | null => {
@@ -1746,6 +1778,7 @@ export default function StrudelEditorClient({
   // ── Shell callbacks ─────────────────────────────────────────────────
 
   const handlePlay = useCallback((fileId: string) => {
+    markPatternUsed(fileId); // #2423 — a played pattern is the most recently used
     const start = () => {
       const rt = getOrCreateRuntime(fileId);
       if (!rt) return;
@@ -1764,7 +1797,7 @@ export default function StrudelEditorClient({
     void askBeforeRunning(storeProjectId(), fileId, askToRun).then((ok) => {
       if (ok) start();
     });
-  }, [getOrCreateRuntime, storeProjectId]);
+  }, [getOrCreateRuntime, storeProjectId, markPatternUsed]);
 
   const handleStop = useCallback((fileId: string) => {
     const rt = runtimesRef.current.get(fileId);
@@ -2498,9 +2531,30 @@ export default function StrudelEditorClient({
       // #2421 — the panes, for the per-pane background rules above
       groupsRef.current = snapshot.groups;
       applyPaneOverridesRef.current();
+      setGroupsTick((t) => t + 1);
     },
     [projectId],
   );
+
+  // #2423 — the pattern background spanning the workspace (a pattern set to
+  // Workspace that is open in some pane; the most recently used one if several).
+  const spanningBackdrop = React.useMemo(() => {
+    const open: string[] = [];
+    for (const g of groupsRef.current.values()) {
+      for (const t of g.tabs) {
+        if (t.kind !== "editor" || open.includes(t.fileId)) continue;
+        if (getFile(t.fileId)?.language === "strudel") open.push(t.fileId);
+      }
+    }
+    return pickSpanningBackdrop(
+      open,
+      spanOf,
+      (id) => shownTabBackdrop(tabBackdrops.get(id), codeBackdrops.get(id)),
+      recencyRef.current,
+    );
+    // groupsTick / recencyTick stand for the refs read above
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spanOf, tabBackdrops, codeBackdrops, groupsTick, recencyTick]);
 
   return (
     <>
@@ -2525,6 +2579,7 @@ export default function StrudelEditorClient({
       onRevealBackdrop={() => onRevealBackdrop?.()}
       onBackgroundFileChange={handleBackgroundFileChange}
       onActiveBackdropChange={onActiveBackdropChange}
+      spanningBackdrop={spanningBackdrop}
       onOpenPopoutPreview={handleOpenPopout}
       backgroundCrop={backgroundCrop}
       onActiveTabChange={(tab) => {
@@ -2549,6 +2604,7 @@ export default function StrudelEditorClient({
           fid ? codeBackdropsRef.current.get(fid) ?? null : null,
         );
         setWatchedFileId(fid);
+        markPatternUsed(fid); // #2423 — a focused pattern is the most recently used
         onActiveFileChange?.(fid);
         if (!onActiveRuntimeStateChange) return;
         if (!fid) {
@@ -2681,8 +2737,12 @@ export default function StrudelEditorClient({
           }
           onSetOpacity={(v) => shellRef?.current?.setBackdropOpacity?.(v)}
           onSetQuality={(v) => shellRef?.current?.setBackdropQuality?.(v)}
-          vizSpan={getBackdropVizSpan()}
-          onSetVizSpan={(v) => setBackdropVizSpan(v)}
+          // #2423 — the span is THIS pattern's setting
+          vizSpan={spanOf(bgPopover.fileId)}
+          onSetVizSpan={(v) => {
+            setPatternSpans((prev) => new Map(prev).set(bgPopover.fileId, v));
+            markPatternUsed(bgPopover.fileId);
+          }}
         />
       )}
     {/* #240 — viz pop-out window. Mounted only while open; unmount/onClose

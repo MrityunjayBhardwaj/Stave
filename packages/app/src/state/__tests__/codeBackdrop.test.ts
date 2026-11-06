@@ -10,6 +10,7 @@ import {
   isTrackLevel,
   paneCodeBackdrops,
   panesShowing,
+  pickSpanningBackdrop,
   recordEvaluatedBackdrop,
   sameVizName,
   shownTabBackdrop,
@@ -104,6 +105,31 @@ describe("panes in File mode (#2421) — a pattern's background stays in its own
     expect(fileShownIn({ id: "x", tabs: [{ id: "a", kind: "editor", fileId: "song" }, { id: "b", kind: "editor", fileId: "green" }], activeTabId: "b" })).toBe("green");
     expect(fileShownIn({ id: "x", tabs: [{ id: "h", kind: "history" }], activeTabId: "h" })).toBeNull();
     expect(fileShownIn(undefined)).toBeNull();
+  });
+});
+
+describe("pickSpanningBackdrop (#2423) — a pattern set to Workspace covers every pane", () => {
+  const shown = new Map([["a", "fold"], ["b", "scope"], ["c", null as string | null]]);
+  const shownOf = (id: string) => shown.get(id) ?? null;
+
+  it("no pattern set to Workspace: nothing spans (File mode)", () => {
+    expect(pickSpanningBackdrop(["a", "b"], () => "file", shownOf, new Map())).toBeNull();
+  });
+
+  it("the Workspace pattern's own background spans, owned by that pattern", () => {
+    const span = (id: string) => (id === "b" ? "workspace" : "file");
+    expect(pickSpanningBackdrop(["a", "b"], span, shownOf, new Map())).toEqual({ fileId: "scope", ownerFileId: "b" });
+  });
+
+  it("two Workspace patterns: the most recently used wins; unused ones rank by pane order", () => {
+    const ws = () => "workspace" as const;
+    expect(pickSpanningBackdrop(["a", "b"], ws, shownOf, new Map())).toEqual({ fileId: "fold", ownerFileId: "a" });
+    expect(pickSpanningBackdrop(["a", "b"], ws, shownOf, new Map([["b", 2], ["a", 1]]))).toEqual({ fileId: "scope", ownerFileId: "b" });
+    expect(pickSpanningBackdrop(["a", "b"], ws, shownOf, new Map([["a", 3], ["b", 2]]))).toEqual({ fileId: "fold", ownerFileId: "a" });
+  });
+
+  it("a Workspace pattern with no background does not span", () => {
+    expect(pickSpanningBackdrop(["c"], () => "workspace", shownOf, new Map())).toBeNull();
   });
 });
 
