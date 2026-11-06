@@ -1553,13 +1553,30 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       // Leaving or replacing a backdrop stops the built-in audio it started
       // (#785) — covers preview=off, Cmd+K B toggle-off, and switching backdrops.
       if (prev) stopBackdropSource(prev)
+      // #2427 — and a viz's OWN background brings its sound back with it. A tab
+      // switch away clears the pane's background (stopping the sound, above);
+      // switching back restores it here, so its chosen example sound restarts
+      // too — recorded first, so it starts alongside any playing pattern. Not for
+      // a viz the user paused, and not when the pane shows another file (then the
+      // background is someone else's, listening to their audio).
+      if (backgroundFileId) {
+        const g = groups.get(groupId)
+        const shown = paneShownFileId(g?.tabs.find((t) => t.id === g.activeTabId))
+        const ref = getVizSourceChoice(backgroundFileId)
+        const builtin =
+          ref.kind === 'file' ? findBuiltinExampleSource(ref.fileId) : undefined
+        if (builtin && shown === backgroundFileId && !pausedPreviews.has(backgroundFileId)) {
+          recordBackdropSource(backgroundFileId, ref)
+          builtin.startIfIdle()
+        }
+      }
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? undefined,
       }))
       onBackgroundFileChange?.(groupId, backgroundFileId)
     },
-    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource],
+    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource, recordBackdropSource, pausedPreviews],
   )
 
   /**
