@@ -6,7 +6,10 @@
 import { describe, expect, it } from "vitest";
 import {
   codeBackdropName,
+  fileShownIn,
   isTrackLevel,
+  paneCodeBackdrops,
+  panesShowing,
   recordEvaluatedBackdrop,
   sameVizName,
   shownTabBackdrop,
@@ -68,6 +71,39 @@ describe("shownTabBackdrop — what a tab's \"set bg\" button names (#2414)", ()
     expect(shownTabBackdrop("green-file", undefined)).toBe("green-file");
     expect(shownTabBackdrop(undefined, undefined)).toBeNull();
     expect(shownTabBackdrop(null, null)).toBeNull();
+  });
+});
+
+describe("panes in File mode (#2421) — a pattern's background stays in its own pane", () => {
+  const pane = (id: string, fileId: string | null, kind = "editor") => ({
+    id,
+    tabs: fileId ? [{ id: `t-${id}`, kind, fileId }] : [],
+    activeTabId: fileId ? `t-${id}` : null,
+  });
+  const code = new Map([["song", "red-file"]]);
+
+  it("a viz pane beside the pattern gets no code background, whichever pane has focus", () => {
+    const out = paneCodeBackdrops([pane("left", "song"), pane("right", "green")], code);
+    expect(out.get("left")).toBe("red-file");
+    expect(out.get("right")).toBeNull();
+  });
+
+  it("the same with the panes swapped, and an empty pane gets none", () => {
+    const out = paneCodeBackdrops([pane("left", "green"), pane("right", "song"), pane("empty", null)], code);
+    expect(out.get("left")).toBeNull();
+    expect(out.get("right")).toBe("red-file");
+    expect(out.get("empty")).toBeNull();
+  });
+
+  it("the pattern open in two panes shows in both", () => {
+    expect(panesShowing([pane("a", "song"), pane("b", "green"), pane("c", "song")], "song")).toEqual(["a", "c"]);
+  });
+
+  it("fileShownIn reads the pane's ACTIVE tab, editor or preview, not another of its tabs", () => {
+    expect(fileShownIn(pane("p", "green", "preview"))).toBe("green");
+    expect(fileShownIn({ id: "x", tabs: [{ id: "a", kind: "editor", fileId: "song" }, { id: "b", kind: "editor", fileId: "green" }], activeTabId: "b" })).toBe("green");
+    expect(fileShownIn({ id: "x", tabs: [{ id: "h", kind: "history" }], activeTabId: "h" })).toBeNull();
+    expect(fileShownIn(undefined)).toBeNull();
   });
 });
 

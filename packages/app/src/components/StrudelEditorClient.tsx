@@ -8,6 +8,9 @@ import { loadPerTabBackdrop, savePerTabBackdrop } from "../state/tabBackdrops";
 import {
   codeBackdropName,
   recordEvaluatedBackdrop,
+  fileShownIn,
+  paneCodeBackdrops,
+  panesShowing,
   sameVizName,
   shownTabBackdrop,
   type EvaluatedBackdrop,
@@ -724,13 +727,32 @@ export default function StrudelEditorClient({
   // Pass-through that ALSO captures every manual sticky against the ACTIVE tab,
   // so backdrops set from any surface (pattern-bar popover, VizEditorChrome
   // toggle, file-tree, Cmd+K B) become per-tab and travel with the tab.
+  // #2421 — recorded against the file the CHANGED pane shows, not the active
+  // tab: right after a click into another pane the two differ for a moment.
+  // Writes this client makes itself (restoring a tab's own background, or
+  // projecting a pattern's code onto its pane) record their file explicitly and
+  // set `selfWriteRef`, so they are not recorded a second time here.
+  const selfWriteRef = useRef(false);
   const handleBackgroundFileChange = useCallback(
     (groupId: string, fileId: string | null) => {
-      const activeId = activeFileIdRef.current;
-      if (activeId) recordTabBackdrop(activeId, fileId);
+      if (!selfWriteRef.current) {
+        const shown = fileShownIn(groupsRef.current.get(groupId)) ?? activeFileIdRef.current;
+        if (shown) recordTabBackdrop(shown, fileId);
+      }
       onBackgroundFileChange?.(groupId, fileId);
     },
     [recordTabBackdrop, onBackgroundFileChange],
+  );
+  const setPaneBackgroundFile = useCallback(
+    (vizFileId: string | null, groupId?: string) => {
+      selfWriteRef.current = true;
+      try {
+        shellRef?.current?.setBackgroundFile?.(vizFileId, groupId);
+      } finally {
+        selfWriteRef.current = false;
+      }
+    },
+    [shellRef],
   );
 
   // Resolve a backdrop fileId → its display basename (no extension).
@@ -823,13 +845,17 @@ export default function StrudelEditorClient({
       codeBackdropsRef.current = next;
       setCodeBackdrops(next);
     }
-    // the active TAB decides (the editor registry keeps its last editor while a
-    // preview tab is up); whichever of the tab change and the editor change
-    // lands second pushes the value, so both orders end right
-    if (fileId === activeFileIdRef.current) {
-      shellRef?.current?.setBackgroundOverride?.(vizFileId);
+    applyPaneOverridesRef.current();
+  }, []);
+  // #2421 — every pane's override from what it shows: a pane showing a pattern
+  // gets that pattern's code background, any other pane none. Re-applied when the
+  // code background changes and whenever the panes change (tabs, focus, splits).
+  const applyPaneOverridesRef = useRef<() => void>(() => {});
+  applyPaneOverridesRef.current = () => {
+    for (const [groupId, vizFileId] of paneCodeBackdrops(groupsRef.current.values(), codeBackdropsRef.current)) {
+      shellRef?.current?.setBackgroundOverride?.(vizFileId, groupId);
     }
-  }, [shellRef]);
+  };
   // Re-derive one pattern file's code background from `code` (its current text)
   // and what its last evaluation asked for.
   const deriveCodeBackdropRef = useRef<(fileId: string, code: string) => void>(() => {});
@@ -884,14 +910,20 @@ export default function StrudelEditorClient({
       if (model?.getLanguageId?.() === "strudel" && patternFileId) {
         deriveCodeBackdropRef.current(patternFileId, model.getValue?.() ?? "");
       }
-      const fileId = activeFileIdRef.current;
+      // #2421 — the file whose code was just read (the focused editor's), and the
+      // pane(s) showing it: a click into another pane focuses its editor before
+      // that pane and tab become active, so the active ones can still be the
+      // pane beside it
+      const fileId = patternFileId;
       if (!fileId) return;
       publishCodeBackdropOptions();
       const code = codeBackdropOf();
       if (code === prevCodeBackdropRef.current) return; // code backdrop unchanged → leave the sticky alone
       prevCodeBackdropRef.current = code;
       recordTabBackdrop(fileId, code);
-      shellRef?.current?.setBackgroundFile?.(code);
+      const panes = panesShowing(groupsRef.current.values(), fileId);
+      if (panes.length > 0) for (const groupId of panes) setPaneBackgroundFile(code, groupId);
+      else if (fileId === activeFileIdRef.current) setPaneBackgroundFile(code);
     };
     const wire = () => {
       sub?.dispose?.();
@@ -907,7 +939,7 @@ export default function StrudelEditorClient({
       sub?.dispose?.();
       un?.();
     };
-  }, [recordTabBackdrop, resolveVizNameToFileId]);
+  }, [recordTabBackdrop, resolveVizNameToFileId, setPaneBackgroundFile]);
 
   // Track active file for the viz-ref watcher hook.
   const [watchedFileId, setWatchedFileId] = useState<string | null>(null);
@@ -2072,6 +2104,10 @@ export default function StrudelEditorClient({
       return buildDefaultSnapshot("g-main", strudelFile?.id ?? null);
     })(),
   ).current;
+  // #2421 — the shell's panes as last reported (tabs + active tab per pane), so a
+  // background write can find the pane that shows a file rather than assume the
+  // active one.
+  const groupsRef = useRef<ShellSnapshot["groups"]>(initialSnapshot.groups);
 
   // Incremental sync: watch the file list and route adds to
   // openOrFocusFile, deletes to closeTabsForFile. The shell mounts once
@@ -2459,6 +2495,9 @@ export default function StrudelEditorClient({
   const handleGroupsChange = useCallback(
     (snapshot: ShellSnapshot) => {
       saveShellState(projectId, snapshot);
+      // #2421 — the panes, for the per-pane background rules above
+      groupsRef.current = snapshot.groups;
+      applyPaneOverridesRef.current();
     },
     [projectId],
   );
@@ -2502,9 +2541,7 @@ export default function StrudelEditorClient({
         // #347 — per-tab backdrop: swap the active group's backdrop to the new
         // active tab's stored choice (or clear when it has none). This is what
         // makes the backdrop follow the tab instead of bleeding across the pane.
-        shellRef?.current?.setBackgroundFile?.(
-          fid ? tabBackdrops.get(fid) ?? null : null,
-        );
+        setPaneBackgroundFile(fid ? tabBackdrops.get(fid) ?? null : null);
         // #2413 — and the code's background with it: only a pattern file's own
         // code background applies while it is the active tab; any other tab
         // falls back to its pinned one.

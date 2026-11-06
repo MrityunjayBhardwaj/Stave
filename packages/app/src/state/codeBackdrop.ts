@@ -52,6 +52,49 @@ export function shownTabBackdrop(
   return codeFileId ?? pinnedFileId ?? null;
 }
 
+/**
+ * A pane (editor group) as the shell reports it: its tabs and which is active.
+ * Structural, so the shell's `WorkspaceGroupState` fits without importing it.
+ */
+export interface PaneView {
+  readonly id: string;
+  readonly tabs: ReadonlyArray<{ readonly id: string; readonly kind: string; readonly fileId?: string }>;
+  readonly activeTabId: string | null;
+}
+
+/** The file a pane shows (its active editor or preview tab), or null. */
+export function fileShownIn(pane: PaneView | undefined): string | null {
+  if (!pane || pane.activeTabId == null) return null;
+  const tab = pane.tabs.find((t) => t.id === pane.activeTabId);
+  if (!tab || (tab.kind !== "editor" && tab.kind !== "preview")) return null;
+  return tab.fileId ?? null;
+}
+
+/** The panes whose active tab shows `fileId`, in iteration order. */
+export function panesShowing(panes: Iterable<PaneView>, fileId: string): string[] {
+  const out: string[] = [];
+  for (const pane of panes) if (fileShownIn(pane) === fileId) out.push(pane.id);
+  return out;
+}
+
+/**
+ * #2421 — each pane's code-background override: the code background of the
+ * pattern the pane shows, and nothing for a pane showing anything else. In File
+ * mode a background is local to its pane, so a pattern's background never
+ * reaches the viz pane beside it, whichever pane has focus.
+ */
+export function paneCodeBackdrops(
+  panes: Iterable<PaneView>,
+  codeBackdrops: ReadonlyMap<string, string>,
+): Map<string, string | null> {
+  const out = new Map<string, string | null>();
+  for (const pane of panes) {
+    const fileId = fileShownIn(pane);
+    out.set(pane.id, fileId ? codeBackdrops.get(fileId) ?? null : null);
+  }
+  return out;
+}
+
 /** Viz names compare the way the backdrop resolves them: case and punctuation blind. */
 export function sameVizName(a: string | null | undefined, b: string | null | undefined): boolean {
   if (a == null || b == null) return false;

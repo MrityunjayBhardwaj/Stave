@@ -246,3 +246,83 @@ test('picking another background over a code background shows the one picked', a
   await expectGreen(page) // it used to say "bg: Green" with red still up
   await expect(page.locator(TOGGLE)).toContainText('bg: Green')
 })
+
+// ── 4. split view, File mode: a pattern's background stays in its own pane (#2421) ──
+// Each pane is read on its own: the canvas of the background layer INSIDE that pane.
+const REDS = { rMin: 121, gMax: 79, bMax: 89 }
+const GREENS = { gMin: 121, rMax: 79, bMax: 89 }
+const groupsLoc = (page: Page) => page.locator('[data-workspace-group]')
+async function paneFrac(page: Page, i: number, range: Parameters<typeof vizPixelStats>[2]): Promise<number> {
+  const id = await groupsLoc(page).nth(i).getAttribute('data-workspace-group')
+  const sel = `[data-workspace-group="${id}"] ${BG} canvas`
+  if ((await page.locator(sel).count()) === 0) return 0
+  return (await vizPixelStats(page, sel, range)).frac
+}
+/** click into a pane's editor, away from its text — how a user moves focus between panes */
+async function focusPane(page: Page, i: number): Promise<void> {
+  const bb = await groupsLoc(page).nth(i).boundingBox()
+  await page.mouse.click(bb!.x + bb!.width - 40, bb!.y + bb!.height - 60)
+  await page.waitForTimeout(800)
+}
+
+for (const order of ['pattern left', 'viz left'] as const) {
+  for (const viz of ['Green.p5', 'Red.p5'] as const) {
+    const ownBg = viz === 'Green.p5' // Green is its own background; Red.p5 is a viz with none
+    test(`split, ${order}, ${viz}${ownBg ? ' as its own background' : ' with no background'}: the pattern's background stays in its pane`, async ({ page }) => {
+      await boot(page)
+      if (ownBg) {
+        await openTab(page, 'Green.p5')
+        await page.locator('[data-testid="viz-chrome-settings"]').first().click()
+        await page.locator('[data-testid="viz-preview-mode-backdrop"]').first().click()
+        await page.keyboard.press('Escape')
+        await expectGreen(page)
+      }
+      const [first, second] = order === 'pattern left' ? ['song.strudel', viz] : [viz, 'song.strudel']
+      await openTab(page, second)
+      await openTab(page, first)
+      // split with the pane's own button, then drag the second file's tab into the new pane
+      await page.locator('[data-testid^="group-split-"]').first().click()
+      await expect(groupsLoc(page)).toHaveCount(2)
+      const src = await groupsLoc(page).nth(0).locator('[data-workspace-tab]').filter({ hasText: second }).first().boundingBox()
+      const dst = await groupsLoc(page).nth(1).boundingBox()
+      await page.mouse.move(src!.x + src!.width / 2, src!.y + src!.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(src!.x + src!.width / 2 + 30, src!.y + src!.height / 2 + 10, { steps: 5 })
+      await page.mouse.move(dst!.x + dst!.width / 2, dst!.y + dst!.height / 2, { steps: 20 })
+      await page.mouse.up()
+      await expect(groupsLoc(page).nth(1).locator('[data-workspace-tab]').filter({ hasText: second })).toHaveCount(1)
+      await groupsLoc(page).nth(0).locator('[data-workspace-tab]').filter({ hasText: first }).first().click()
+
+      const songPane = order === 'pattern left' ? 0 : 1
+      const vizPane = 1 - songPane
+      const check = async (moment: string) => {
+        await expect.poll(() => paneFrac(page, songPane, REDS), { timeout: 10_000, message: `${moment}: pattern pane red` }).toBeGreaterThan(0.4)
+        if (ownBg) {
+          await expect.poll(() => paneFrac(page, vizPane, GREENS), { timeout: 10_000, message: `${moment}: viz pane green` }).toBeGreaterThan(0.4)
+        }
+        await page.waitForTimeout(500)
+        expect(await paneFrac(page, vizPane, REDS), `${moment}: no red in the viz pane`).toBeLessThan(0.05)
+      }
+
+      await check('before Play')
+      await focusPane(page, songPane)
+      await play(page)
+      await check('playing')
+      await focusPane(page, vizPane)
+      await check('viz pane focused')
+      await focusPane(page, songPane) // the click that used to copy it across
+      await check('pattern pane focused again')
+      await stop(page)
+      await check('after Stop')
+      await focusPane(page, vizPane)
+      await check('viz pane focused after Stop')
+      await focusPane(page, songPane)
+      await groupsLoc(page).nth(songPane).locator('.monaco-editor .view-line').first().click()
+      await page.keyboard.press('End')
+      await page.keyboard.type(' ')
+      await check('after editing the pattern')
+      await focusPane(page, vizPane)
+      await check('viz pane focused after the edit')
+    })
+  }
+}
