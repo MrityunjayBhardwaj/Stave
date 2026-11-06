@@ -853,7 +853,7 @@ export {
   readVizOptionsLiteral,
   resolveVizOptions,
   type CodeVizOptions,
-} from './codeView/mixer/vizOptionsLiteral'
+} from './codeView'
 export {
   setCodeBackdropOptions,
   getCodeBackdropOptions,
