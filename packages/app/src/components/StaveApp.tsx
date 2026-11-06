@@ -1058,47 +1058,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       backgroundFileId;
   });
 
-  /**
-   * Code-driven backdrop — CODE IS THE SOURCE OF TRUTH. Fires on every
-   * Strudel eval with the code's current backdrop viz, or `null` when the
-   * code has no non-underscore viz method:
-   *   - renderer id ("scope", "pianoroll", …) → pin the matching viz file
-   *   - null → clear the backdrop (removing `.scope()` un-pins it; this also
-   *     overrides a manually-picked backdrop on the next eval, by design)
-   *
-   * The backdrop is file-keyed, so we map the renderer id to a project viz
-   * FILE by NORMALIZED basename (lowercase, alphanumerics only) — `Piano
-   * Roll.p5` matches "pianoroll", `scope.p5` matches "scope". p5js wins over
-   * hydra. No-ops when nothing changes (idempotent — no churn in live mode)
-   * or when the project has no matching viz file (leaves the backdrop as-is
-   * rather than clearing, so a typo'd viz name doesn't blank the screen).
-   */
-  const handleCodeBackdropChange = useCallback(
-    (vizId: string | null) => {
-      // #350a — code is a TRANSIENT OVERRIDE on the ACTIVE pane, not the manual
-      // sticky. `null` drops the override so the user's manual sticky (if any)
-      // shows again — previously this WIPED the sticky ("removing .scope()
-      // un-pins"), now superseded by the #350 per-pane precedence model
-      // (override ?? sticky). The shell call is idempotent, so no churn in live.
-      if (vizId === null) {
-        shellRef.current?.setBackgroundOverride?.(null);
-        return;
-      }
-      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-      const target = norm(vizId);
-      const matches = listWorkspaceFiles().filter(
-        (f) =>
-          isVizLanguage(f.language) &&
-          norm(f.path.split("/").pop()!.replace(/\.[^.]+$/, "")) === target,
-      );
-      if (matches.length === 0) return; // no viz file — leave the override as-is
-      const fileId =
-        matches.find((f) => f.language === "p5js")?.id ?? matches[0].id;
-      shellRef.current?.setBackgroundOverride?.(fileId);
-    },
-    [],
-  );
-
   // Restore this project's backdrop CROPS when the active project changes. The
   // backdrop *file* itself is restored per-tab by StrudelEditorClient (#347
   // `tabBackdrops` → `setBackgroundFile` on the active-tab sync), which is the
@@ -2243,7 +2202,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 bounceRef={bounceRef}
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}
-                onCodeBackdropChange={handleCodeBackdropChange}
                 // #347 — pattern-bar "set bg" popover reuses the same crop /
                 // reveal handlers as the menubar bg-popover.
                 onCropBackdrop={handleCropBackdrop}

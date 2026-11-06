@@ -5,6 +5,13 @@ import { useVizRefWatcher } from "../useVizRefWatcher";
 import { reportBootFailure } from "../dialogs/bootFailureNotice";
 import { promptAndCreateFile } from "../lib/newFile";
 import { loadPerTabBackdrop, savePerTabBackdrop } from "../state/tabBackdrops";
+import {
+  codeBackdropName,
+  recordEvaluatedBackdrop,
+  sameVizName,
+  shownTabBackdrop,
+  type EvaluatedBackdrop,
+} from "../state/codeBackdrop";
 import { isPlaceholder } from "../lib/fileTreeOps";
 import { BackdropPopover } from "./BackdropPopover";
 import {
@@ -90,6 +97,7 @@ import {
   getBackdropVizSpan,
   setBackdropVizSpan,
   getActiveEditor,
+  getActiveFileId,
   commitToFile,
   masterVizEdit,
   readMasterViz,
@@ -528,15 +536,6 @@ interface StrudelEditorClientProps {
   onActiveBackdropChange?: (fileId: string | null) => void;
   /** Crop region applied to the pinned backdrop. `null` = full rect. */
   backgroundCrop?: { x: number; y: number; w: number; h: number } | null;
-  /**
-   * Fires after EVERY successful Strudel evaluate with the code's current
-   * backdrop viz — the resolved renderer id of a non-underscore viz method
-   * (`.scope()`, `.pianoroll()`, …), or `null` when the code has none. Code
-   * is the source of truth: StaveApp pins the resolved viz file as the
-   * backdrop, or clears the backdrop when `null` (so removing the method
-   * un-pins it). Fires on every eval so the backdrop tracks code edits.
-   */
-  onCodeBackdropChange?: (vizId: string | null) => void;
   /** #347 — open the crop modal for the active pane's backdrop (same handler
    *  the menubar bg-popover uses). Invoked from the pattern-bar set-bg popover. */
   onCropBackdrop?: () => void;
@@ -642,7 +641,6 @@ export default function StrudelEditorClient({
   onBackgroundFileChange,
   onActiveBackdropChange,
   backgroundCrop,
-  onCodeBackdropChange,
   onCropBackdrop,
   onRevealBackdrop,
 }: StrudelEditorClientProps) {
@@ -802,29 +800,61 @@ export default function StrudelEditorClient({
   // The background's OPTIONS follow the code too, not only the last evaluation:
   // the bus payload that carries the evaluated ones is withdrawn on Stop and
   // absent before the first Play, and the sketch then fell back to its defaults.
-  // The last evaluation's capture is kept here (per pattern file) for the values
-  // the code computes rather than writes as literals.
-  const lastEvalBackdropRef = useRef<{
-    patternFileId: string;
-    vizId: string;
-    options: Record<string, unknown> | null;
-  } | null>(null);
+  // What each pattern file's last evaluation asked for is kept here, per file,
+  // for the values the code computes rather than writes as literals, and for a
+  // background declared on a track, which the code reader cannot see.
+  const evalBackdropsRef = useRef<Map<string, EvaluatedBackdrop>>(new Map());
+  // #2413 — the CODE's background belongs to the pattern file that declared it.
+  // `codeBackdrops` maps a pattern file id → the viz file its code asks for; the
+  // pane's override is that entry for the ACTIVE tab and nothing for any other
+  // tab, so a played pattern's background no longer outranks a viz tab's own
+  // pinned one. It is re-derived on every edit (and after every evaluation), so
+  // deleting or clearing the declaration takes the background away without a
+  // re-run. Kept in state so each tab's "set bg" button can name it (#2414).
+  // This is the ONLY writer of the shell's code override.
+  const [codeBackdrops, setCodeBackdrops] = useState<ReadonlyMap<string, string>>(() => new Map());
+  const codeBackdropsRef = useRef<ReadonlyMap<string, string>>(codeBackdrops);
+  const setCodeBackdrop = useCallback((fileId: string, vizFileId: string | null) => {
+    const prev = codeBackdropsRef.current;
+    if ((prev.get(fileId) ?? null) !== vizFileId) {
+      const next = new Map(prev);
+      if (vizFileId) next.set(fileId, vizFileId);
+      else next.delete(fileId);
+      codeBackdropsRef.current = next;
+      setCodeBackdrops(next);
+    }
+    // the active TAB decides (the editor registry keeps its last editor while a
+    // preview tab is up); whichever of the tab change and the editor change
+    // lands second pushes the value, so both orders end right
+    if (fileId === activeFileIdRef.current) {
+      shellRef?.current?.setBackgroundOverride?.(vizFileId);
+    }
+  }, [shellRef]);
+  // Re-derive one pattern file's code background from `code` (its current text)
+  // and what its last evaluation asked for.
+  const deriveCodeBackdropRef = useRef<(fileId: string, code: string) => void>(() => {});
+  deriveCodeBackdropRef.current = (fileId: string, code: string) => {
+    const found = codeBackdropName(readMasterViz(code)?.name ?? null, evalBackdropsRef.current.get(fileId) ?? null);
+    setCodeBackdrop(fileId, found ? resolveVizNameToFileId(found.name) : null);
+  };
   const publishCodeBackdropOptionsRef = useRef<() => void>(() => {});
   useEffect(() => {
     let sub: { dispose?: () => void } | undefined;
-    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    // the file the focused editor shows — read from the editor registry, so it is
+    // right even when the editor change lands before the tab-change callback
+    const activePatternFileId = (): string | null => getActiveFileId() ?? activeFileIdRef.current;
     const publishCodeBackdropOptions = () => {
       const model = getActiveEditor()?.getModel?.();
       // only a pattern's code declares a background; with a viz file focused the
       // slot keeps what the pattern last said
       if (model?.getLanguageId?.() !== "strudel") return;
-      const patternFileId = activeFileIdRef.current;
-      const last =
-        lastEvalBackdropRef.current?.patternFileId === patternFileId ? lastEvalBackdropRef.current : null;
+      const patternFileId = activePatternFileId();
+      const last = patternFileId ? evalBackdropsRef.current.get(patternFileId) ?? null : null;
       const master = readMasterViz(model.getValue?.() ?? "");
-      if (master) {
+      const found = codeBackdropName(master?.name ?? null, last);
+      if (found?.source === "code" && master) {
         const vizFileId = resolveVizNameToFileId(master.name);
-        const evaluated = last && norm(last.vizId) === norm(master.name) ? last.options : null;
+        const evaluated = last && sameVizName(last.vizId, master.name) ? last.options : null;
         setCodeBackdropOptions(
           vizFileId ? { fileId: vizFileId, options: resolveVizOptions(master.options, evaluated) } : null,
         );
@@ -833,7 +863,7 @@ export default function StrudelEditorClient({
       // a background declared on a track (`.viz(name, { backdrop: true })`,
       // `.pianoroll({...})`) — the code reader doesn't see those, so keep the last
       // evaluation's options for it rather than none after Stop
-      const vizFileId = last ? resolveVizNameToFileId(last.vizId) : null;
+      const vizFileId = found ? resolveVizNameToFileId(found.name) : null;
       setCodeBackdropOptions(vizFileId ? { fileId: vizFileId, options: last?.options ?? {} } : null);
     };
     publishCodeBackdropOptionsRef.current = publishCodeBackdropOptions;
@@ -846,6 +876,14 @@ export default function StrudelEditorClient({
       return name ? resolveVizNameToFileId(name) : null;
     };
     const sync = () => {
+      // #2413 — the code background follows the code on every edit. Derived
+      // before the tab guard below: when the editor change lands before the tab
+      // change the entry is still recorded, and the tab change then shows it.
+      const model = getActiveEditor()?.getModel?.();
+      const patternFileId = activePatternFileId();
+      if (model?.getLanguageId?.() === "strudel" && patternFileId) {
+        deriveCodeBackdropRef.current(patternFileId, model.getValue?.() ?? "");
+      }
       const fileId = activeFileIdRef.current;
       if (!fileId) return;
       publishCodeBackdropOptions();
@@ -1107,12 +1145,6 @@ export default function StrudelEditorClient({
   // runtime state (isPlaying/error/bpm/autoRefresh) mirrors runtime events
   // into React state so chromeForTab can read it cheaply.
   const runtimesRef = useRef<Map<string, LiveCodingRuntime>>(new Map());
-  // Latest-value ref: each runtime's onEvaluateSuccess handler is registered
-  // ONCE (runtimes are cached in runtimesRef), so reading the prop directly in
-  // that closure would capture the first-render value. The ref keeps the call
-  // fresh across re-renders without re-creating runtimes.
-  const onCodeBackdropChangeRef = useRef(onCodeBackdropChange);
-  onCodeBackdropChangeRef.current = onCodeBackdropChange;
   const [runtimeStates, setRuntimeStates] = useState<Map<string, {
     isPlaying: boolean; error: Error | null; bpm?: number; autoRefresh: boolean;
     // #2259 — Play was pressed and the clock hasn't started yet (runtime.onPlayPendingChanged).
@@ -1557,16 +1589,23 @@ export default function StrudelEditorClient({
         }
 
         // Code-driven backdrop — a non-underscore viz method (`.scope()`,
-        // `.pianoroll()`, …) maps to Stave's backdrop; its absence clears it.
-        // Code is the source of truth, so we forward on EVERY eval (null
-        // included) — removing the method un-pins the backdrop on next eval.
-        // StaveApp resolves the id to a viz file (or clears) and the "set bg"
-        // UI auto-updates. Idempotent on StaveApp's side (no churn in live mode).
-        onCodeBackdropChangeRef.current?.(runtime.getBackdropVizRequest());
-        const evaluatedVizId = runtime.getBackdropVizRequest();
-        lastEvalBackdropRef.current = evaluatedVizId
-          ? { patternFileId: fileId, vizId: evaluatedVizId, options: runtime.getBackdropVizOptions() }
-          : null;
+        // `.pianoroll()`, …), `.viz(name, { backdrop: true })` or a master
+        // `all(x => x.viz(name))` maps to Stave's backdrop; its absence clears it.
+        // Recorded for THIS file on every eval (null included), with the master
+        // line the evaluated code carried, then the file's code background is
+        // re-derived (#2413): it shows only while this file is the active tab.
+        const evaluated = recordEvaluatedBackdrop(
+          runtime.getBackdropVizRequest(),
+          runtime.getBackdropVizOptions(),
+          readMasterViz(evaluatedCode)?.name ?? null,
+        );
+        if (evaluated) evalBackdropsRef.current.set(fileId, evaluated);
+        else evalBackdropsRef.current.delete(fileId);
+        // the live text when this file is focused (an edit may have landed since
+        // the evaluation started), else the code that was evaluated
+        const liveCode =
+          getActiveFileId() === fileId ? getActiveEditor()?.getModel?.()?.getValue?.() : undefined;
+        deriveCodeBackdropRef.current(fileId, liveCode ?? evaluatedCode);
         publishCodeBackdropOptionsRef.current();
       }
     });
@@ -1793,11 +1832,14 @@ export default function StrudelEditorClient({
     const state = runtimeStates.get(tab.fileId) ?? {
       isPlaying: false, error: null, autoRefresh: false,
     };
-    // #347 — per-tab "set bg" dropdown. Pinned state + filename come from THIS
-    // tab's backdrop (tabBackdrops), so other tabs read their own. The button
-    // opens the BackdropPopover (rendered at the component root) anchored to
-    // itself and scoped to this tab's file id.
-    const tabBg = tabBackdrops.get(tab.fileId) ?? null;
+    // #347 — per-tab "set bg" dropdown, scoped to THIS tab, so other tabs read
+    // their own. #2414 — it names what the pane draws for this tab: the code's
+    // background when the code sets one, else the pinned one (the same
+    // precedence the shell resolves), so a background on screen is always one
+    // the button names and can clear. The button opens the BackdropPopover
+    // (rendered at the component root) anchored to itself.
+    const tabBg =
+      shownTabBackdrop(tabBackdrops.get(tab.fileId), codeBackdrops.get(tab.fileId));
     const ctx: ChromeContext = {
       runtime: rt,
       file,
@@ -1833,7 +1875,7 @@ export default function StrudelEditorClient({
       ),
     };
     return runtimeProvider.renderChrome(ctx);
-  }, [getOrCreateRuntime, runtimeStates, handlePlay, handleStop, handleToggleAutoRefresh, handleToggleStopAtEnd, tabBackdrops, backdropName]);
+  }, [getOrCreateRuntime, runtimeStates, handlePlay, handleStop, handleToggleAutoRefresh, handleToggleStopAtEnd, tabBackdrops, codeBackdrops, backdropName]);
 
   // onSaveFile: Cmd+S / Save button handler. For viz files, flush the
   // current in-memory content back to VizPresetStore via the bridge,
@@ -2463,6 +2505,12 @@ export default function StrudelEditorClient({
         shellRef?.current?.setBackgroundFile?.(
           fid ? tabBackdrops.get(fid) ?? null : null,
         );
+        // #2413 — and the code's background with it: only a pattern file's own
+        // code background applies while it is the active tab; any other tab
+        // falls back to its pinned one.
+        shellRef?.current?.setBackgroundOverride?.(
+          fid ? codeBackdropsRef.current.get(fid) ?? null : null,
+        );
         setWatchedFileId(fid);
         onActiveFileChange?.(fid);
         if (!onActiveRuntimeStateChange) return;
@@ -2562,15 +2610,27 @@ export default function StrudelEditorClient({
               id: f.id,
               name: f.path.split("/").pop()!.replace(/\.[^.]+$/, ""),
             }))}
-          backgroundFileId={tabBackdrops.get(bgPopover.fileId) ?? null}
+          // #2414 — what this tab shows (code background, else pinned), so a
+          // background on screen is offered for Clear
+          backgroundFileId={shownTabBackdrop(
+            tabBackdrops.get(bgPopover.fileId),
+            codeBackdrops.get(bgPopover.fileId),
+          )}
           backgroundFileName={backdropName(
-            tabBackdrops.get(bgPopover.fileId) ?? null,
+            shownTabBackdrop(tabBackdrops.get(bgPopover.fileId), codeBackdrops.get(bgPopover.fileId)),
           )}
           onSetBackdrop={(id) => {
             // Record against the tab the popover was opened from, and (since
             // that tab is the active one) drive the active group's backdrop.
             recordTabBackdrop(bgPopover.fileId, id);
             shellRef?.current?.setBackgroundFile?.(id);
+            // #2413 — a pick or a Clear here replaces what the code asked for:
+            // a track-level background known only from the last evaluation is
+            // dropped (the next evaluation brings it back if the code still
+            // declares it), and the master line is rewritten just below, whose
+            // edit re-derives the code background.
+            evalBackdropsRef.current.delete(bgPopover.fileId);
+            setCodeBackdrop(bgPopover.fileId, null);
             // #792 — ALSO write the choice into the document as
             // all(x=>x.viz("name",{backdrop:true})), so the global backdrop
             // round-trips to code (portable with the file, editable as text).
