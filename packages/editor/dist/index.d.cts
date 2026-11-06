@@ -7562,6 +7562,8 @@ interface PreviewContext {
     readonly paused?: boolean;
     /** The mount is a pane background (see `PreviewViewProps.backdrop`). */
     readonly backdrop?: boolean;
+    /** #2423 — whose background this is (see `PreviewViewProps.backdropOwner`). */
+    readonly backdropOwner?: string | null;
 }
 /**
  * The provider contract. Every extension module exports one or more
@@ -8150,6 +8152,12 @@ interface PreviewViewProps {
      * evaluation's capture on the audio bus, which Stop withdraws.
      */
     readonly backdrop?: boolean;
+    /**
+     * #2423 — whose background this is: the pattern file whose code names it (its
+     * code options apply), `null` for a viz file's OWN background (its own
+     * settings only), or omitted when the host does not say.
+     */
+    readonly backdropOwner?: string | null;
 }
 /**
  * A single tab inside the workspace shell. Tabs are the user-visible units
@@ -8661,6 +8669,19 @@ interface WorkspaceShellProps {
      * Fires once per real change (ref-guarded); no per-eval churn for steady code.
      */
     readonly onActiveBackdropChange?: (fileId: string | null) => void;
+    /**
+     * #2423 — the background spanning the whole workspace, decided by the host:
+     * the viz `fileId` a pattern (`ownerFileId`) set to Workspace span draws behind
+     * EVERY pane, with that pattern's code options; `null` = none spans, every pane
+     * draws its own (File mode). When this prop is given the shell ignores the
+     * legacy global span setting (`get/setBackdropVizSpan`) and the viz settings
+     * popover hides its span control — the span is a pattern's setting. Omitted:
+     * the legacy behaviour (global switch, first pane with a background).
+     */
+    readonly spanningBackdrop?: {
+        readonly fileId: string;
+        readonly ownerFileId: string;
+    } | null;
     /**
      * #240 — open a viz file's preview in a pop-out browser window. The shell
      * forwards the Cmd+K W command (`workspace.openPreviewInWindow` →
@@ -10056,7 +10077,7 @@ declare class ErrorBoundary extends React__default.Component<ErrorBoundaryProps,
  * Task 04 / Task 05 may dress it up further.
  */
 
-declare function PreviewView({ fileId, provider, sourceRef, onSourceRefChange, theme, hidden, paused, backdrop, }: PreviewViewProps): React__default.ReactElement;
+declare function PreviewView({ fileId, provider, sourceRef, onSourceRefChange, theme, hidden, paused, backdrop, backdropOwner, }: PreviewViewProps): React__default.ReactElement;
 
 /**
  * WorkspaceFile store — Yjs-backed (PM Phase 1).
@@ -14082,24 +14103,28 @@ declare function startClipPreview(url: string, gain?: 0.9): ClipPreviewHandle;
  * bus payload (`inlineViz.backdropRequest.options`, the last evaluation's
  * capture). Stop withdraws that payload, and before the first Play there is
  * none, so the sketch fell back to its defaults even though the code still
- * said `{ theme: 'transparent', … }`. The app keeps this slot in step with the
- * active pattern's code (read statically, dynamic values from the last
- * evaluation — see `resolveVizOptions`), and a background mount reads it in
+ * said `{ theme: 'transparent', … }`. The app keeps these slots in step with
+ * each pattern's code (read statically, dynamic values from the last
+ * evaluation — see `resolveVizOptions`), and a background mount reads them in
  * preference to the payload.
  *
- * One slot, not a map: one pattern's code is active at a time, and the slot
- * names the viz FILE it is for, so a background showing a different file
- * ignores it and keeps the payload's options.
+ * #2423 — keyed by the PATTERN file that declares them. A background belongs to
+ * a file: a pattern's background takes that pattern's options, while a viz
+ * file's own background takes none, even when both draw the same viz file.
+ * The slot without a pattern key (`setCodeBackdropOptions(x)`) is the legacy
+ * single slot, read by a background that does not say whose it is.
  */
 interface CodeBackdropOptions {
     /** the viz file the options belong to */
     readonly fileId: string;
     readonly options: Readonly<Record<string, unknown>>;
 }
-/** Set (or clear) the code's background options. Unchanged values notify nobody,
- *  so writing on every keystroke costs nothing downstream. */
-declare function setCodeBackdropOptions(next: CodeBackdropOptions | null): void;
-declare function getCodeBackdropOptions(): CodeBackdropOptions | null;
+/** Set (or clear) the code's background options — for `patternFileId` when
+ *  given, else the legacy single slot. Unchanged values notify nobody, so
+ *  writing on every keystroke costs nothing downstream. */
+declare function setCodeBackdropOptions(next: CodeBackdropOptions | null, patternFileId?: string): void;
+/** The options `patternFileId`'s code gives its background (legacy slot when omitted). */
+declare function getCodeBackdropOptions(patternFileId?: string): CodeBackdropOptions | null;
 
 declare function pruneTrackMetaForCode(fileId: string, code: string): void;
 
