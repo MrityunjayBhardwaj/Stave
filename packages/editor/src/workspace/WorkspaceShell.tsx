@@ -154,7 +154,8 @@ import type {
   WorkspaceShellProps,
   WorkspaceTab,
 } from './types'
-import { backdropOwnerFor, isOwnBackdropPaused, resolveBackdropFileId } from './backdropPrecedence'
+import { backdropOwnerFor, backdropSourceFor, isOwnBackdropPaused, resolveBackdropFileId } from './backdropPrecedence'
+import { isVizLanguage } from './vizLanguages'
 
 /** #2422 — the file a pane's active tab shows (editor or preview), or null. */
 function paneShownFileId(tab: WorkspaceTab | undefined): string | null {
@@ -1098,6 +1099,36 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   const backdropSourceByFile = useRef<
     Map<string, import('./types').AudioSourceRef>
   >(new Map())
+  // #2426 — the audio source chosen in each viz file's settings (any kind,
+  // default included), so the viz's OWN background listens to it. Separate from
+  // the teardown record above, which keeps only the built-ins it must stop.
+  const [chosenBackdropSources, setChosenBackdropSources] = useState<
+    ReadonlyMap<string, import('./types').AudioSourceRef>
+  >(() => new Map())
+  const chooseBackdropSource = useCallback(
+    (fileId: string, ref: import('./types').AudioSourceRef) => {
+      setChosenBackdropSources((prev) => {
+        const cur = prev.get(fileId)
+        if (cur && JSON.stringify(cur) === JSON.stringify(ref)) return prev
+        return new Map(prev).set(fileId, ref)
+      })
+    },
+    [],
+  )
+  // #2426 — whose audio a background listens to (see backdropSourceFor)
+  const sourceForBackdrop = useCallback(
+    (owner: string | null, bgFileId: string) =>
+      backdropSourceFor(
+        owner,
+        bgFileId,
+        (id) => {
+          const f = getFile(id)
+          return !!f && !isVizLanguage(f.language)
+        },
+        (id) => chosenBackdropSources.get(id),
+      ),
+    [chosenBackdropSources],
+  )
   const stopBackdropSource = useCallback((fileId: string) => {
     const ref = backdropSourceByFile.current.get(fileId)
     if (ref?.kind === 'file') {
@@ -2280,6 +2311,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                     if (willActivate && sourceRef?.kind === 'file') {
                       backdropSourceByFile.current.set(tab.fileId, sourceRef)
                     }
+                    // #2426 — the viz's own background listens to this source
+                    if (willActivate && sourceRef) chooseBackdropSource(tab.fileId, sourceRef)
                   },
                   // #788 — the popover's source dropdown changed while this
                   // file's backdrop is live. The chrome already swapped the
@@ -2289,6 +2322,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                   // stopped whatever built-in was playing, so teardown has
                   // nothing left to own.
                   onBackdropSourceChange: (ref) => {
+                    // #2426 — the viz's chosen source, for its own background
+                    chooseBackdropSource(tab.fileId, ref)
                     if (
                       groups.get(groupId)?.backgroundFileId !== tab.fileId
                     ) {
@@ -2575,8 +2610,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       paused: boolean
       /** #2423 — whose background: a pattern file (its code options), null = the viz's own */
       owner: string | null
+      /** #2426 — the audio this background listens to (its owner's) */
+      sourceRef: import('./types').AudioSourceRef
     }): React.ReactNode => {
-      const { bgFileId, dataGroupId, quality, opacity, crop, paused, owner } = params
+      const { bgFileId, dataGroupId, quality, opacity, crop, paused, owner, sourceRef } = params
       const bgProvider = previewProviderFor?.({
         kind: 'preview',
         id: `bg-${bgFileId}`,
@@ -2601,6 +2638,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           data-backdrop-quality={quality}
           data-backdrop-live={paused ? 'false' : 'true'}
           data-backdrop-owner={owner ?? 'own'}
+          data-backdrop-source={sourceRef.kind === 'file' ? sourceRef.fileId : sourceRef.kind}
           style={{
             position: 'absolute',
             inset: 0,
@@ -2624,7 +2662,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             <PreviewView
               fileId={bgFileId}
               provider={bgProvider}
-              sourceRef={{ kind: 'default' }}
+              sourceRef={sourceRef}
               theme={theme}
               hidden={false}
               paused={paused}
@@ -2803,6 +2841,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 // active tab) takes its own settings; any other is the
                 // background of the file the pane shows (a pattern: its code options)
                 owner: backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj)),
+                sourceRef: sourceForBackdrop(backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj)), bgFileId),
               })
             })()}
             {activeTabObj ? (
@@ -2883,6 +2922,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       // play/pause button). Omit it and toggling pause never reaches the
       // backdrop — the same P239 stale-closure trap.
       pausedPreviews,
+      // #2426 — each background's audio source reads the chosen sources
+      sourceForBackdrop,
     ],
   )
 
@@ -3371,6 +3412,11 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
               pausedPreviews,
             ),
             owner: backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId),
+            // #2426 — the spanning background is the pattern's: the pattern's audio
+            sourceRef: sourceForBackdrop(
+              backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId),
+              workspaceSpanBackdrop.fileId,
+            ),
           })}
         <div
           data-workspace-groups-content="true"

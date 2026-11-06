@@ -37165,10 +37165,40 @@ function backdropOwnerFor(bgFileId, paneFileId) {
   return paneFileId && paneFileId !== bgFileId ? paneFileId : null;
 }
 __name(backdropOwnerFor, "backdropOwnerFor");
+function backdropSourceFor(owner, bgFileId, isPattern, chosen) {
+  if (owner && isPattern(owner)) return { kind: "file", fileId: owner };
+  return chosen(bgFileId) ?? { kind: "default" };
+}
+__name(backdropSourceFor, "backdropSourceFor");
 function isOwnBackdropPaused(bgFileId, paneFileId, pausedFiles) {
   return paneFileId === bgFileId && pausedFiles.has(bgFileId);
 }
 __name(isOwnBackdropPaused, "isOwnBackdropPaused");
+
+// src/workspace/vizLanguages.ts
+var VIZ_LANGUAGES = ["p5js", "hydra", "glsl"];
+var LANGUAGE_TO_RENDERER = {
+  p5js: "p5",
+  hydra: "hydra",
+  glsl: "glsl"
+};
+var RENDERER_TO_LANGUAGE = {
+  p5: "p5js",
+  hydra: "hydra",
+  glsl: "glsl"
+};
+function isVizLanguage(lang) {
+  return VIZ_LANGUAGES.includes(lang);
+}
+__name(isVizLanguage, "isVizLanguage");
+function rendererForLanguage(lang) {
+  return isVizLanguage(lang) ? LANGUAGE_TO_RENDERER[lang] : null;
+}
+__name(rendererForLanguage, "rendererForLanguage");
+function languageForRenderer(renderer) {
+  return RENDERER_TO_LANGUAGE[renderer];
+}
+__name(languageForRenderer, "languageForRenderer");
 
 // src/workspace/groupLayout.ts
 function findGroupCoords(layout, groupId) {
@@ -47818,31 +47848,6 @@ function SymbolRow() {
 }
 __name(SymbolRow, "SymbolRow");
 
-// src/workspace/vizLanguages.ts
-var VIZ_LANGUAGES = ["p5js", "hydra", "glsl"];
-var LANGUAGE_TO_RENDERER = {
-  p5js: "p5",
-  hydra: "hydra",
-  glsl: "glsl"
-};
-var RENDERER_TO_LANGUAGE = {
-  p5: "p5js",
-  hydra: "hydra",
-  glsl: "glsl"
-};
-function isVizLanguage(lang) {
-  return VIZ_LANGUAGES.includes(lang);
-}
-__name(isVizLanguage, "isVizLanguage");
-function rendererForLanguage(lang) {
-  return isVizLanguage(lang) ? LANGUAGE_TO_RENDERER[lang] : null;
-}
-__name(rendererForLanguage, "rendererForLanguage");
-function languageForRenderer(renderer) {
-  return RENDERER_TO_LANGUAGE[renderer];
-}
-__name(languageForRenderer, "languageForRenderer");
-
 // src/workspace/bottomPanel/hiddenForTab.ts
 function bottomPanelHiddenForTab(tab) {
   if (!tab) return false;
@@ -48435,6 +48440,29 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     [updateGroup]
   );
   const backdropSourceByFile = useRef(/* @__PURE__ */ new Map());
+  const [chosenBackdropSources, setChosenBackdropSources] = useState(() => /* @__PURE__ */ new Map());
+  const chooseBackdropSource = useCallback(
+    (fileId, ref) => {
+      setChosenBackdropSources((prev) => {
+        const cur = prev.get(fileId);
+        if (cur && JSON.stringify(cur) === JSON.stringify(ref)) return prev;
+        return new Map(prev).set(fileId, ref);
+      });
+    },
+    []
+  );
+  const sourceForBackdrop = useCallback(
+    (owner, bgFileId) => backdropSourceFor(
+      owner,
+      bgFileId,
+      (id) => {
+        const f = getFile(id);
+        return !!f && !isVizLanguage(f.language);
+      },
+      (id) => chosenBackdropSources.get(id)
+    ),
+    [chosenBackdropSources]
+  );
   const stopBackdropSource = useCallback((fileId) => {
     const ref = backdropSourceByFile.current.get(fileId);
     if (ref?.kind === "file") {
@@ -49168,6 +49196,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     if (willActivate && sourceRef?.kind === "file") {
                       backdropSourceByFile.current.set(tab.fileId, sourceRef);
                     }
+                    if (willActivate && sourceRef) chooseBackdropSource(tab.fileId, sourceRef);
                   }, "onToggleBackground"),
                   // #788 — the popover's source dropdown changed while this
                   // file's backdrop is live. The chrome already swapped the
@@ -49177,6 +49206,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   // stopped whatever built-in was playing, so teardown has
                   // nothing left to own.
                   onBackdropSourceChange: /* @__PURE__ */ __name((ref) => {
+                    chooseBackdropSource(tab.fileId, ref);
                     if (groups.get(groupId)?.backgroundFileId !== tab.fileId) {
                       return;
                     }
@@ -49396,7 +49426,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   const workspaceSpanActive = workspaceSpanBackdrop != null;
   const renderBackdropLayer = useCallback(
     (params) => {
-      const { bgFileId, dataGroupId, quality, opacity, crop, paused, owner } = params;
+      const { bgFileId, dataGroupId, quality, opacity, crop, paused, owner, sourceRef } = params;
       const bgProvider = previewProviderFor?.({
         kind: "preview",
         id: `bg-${bgFileId}`,
@@ -49422,6 +49452,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           "data-backdrop-quality": quality,
           "data-backdrop-live": paused ? "false" : "true",
           "data-backdrop-owner": owner ?? "own",
+          "data-backdrop-source": sourceRef.kind === "file" ? sourceRef.fileId : sourceRef.kind,
           style: {
             position: "absolute",
             inset: 0,
@@ -49444,7 +49475,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                 {
                   fileId: bgFileId,
                   provider: bgProvider,
-                  sourceRef: { kind: "default" },
+                  sourceRef,
                   theme,
                   hidden: false,
                   paused,
@@ -49576,7 +49607,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                       // #2423 — the viz file's own background (its tab is this pane's
                       // active tab) takes its own settings; any other is the
                       // background of the file the pane shows (a pattern: its code options)
-                      owner: backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj))
+                      owner: backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj)),
+                      sourceRef: sourceForBackdrop(backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj)), bgFileId)
                     });
                   })(),
                   activeTabObj ? /* @__PURE__ */ jsx(
@@ -49656,7 +49688,9 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       // #781: the backdrop `paused` now also reads `pausedPreviews` (the chrome
       // play/pause button). Omit it and toggling pause never reaches the
       // backdrop — the same P239 stale-closure trap.
-      pausedPreviews
+      pausedPreviews,
+      // #2426 — each background's audio source reads the chosen sources
+      sourceForBackdrop
     ]
   );
   const totalGroupCount = useMemo(
@@ -50033,7 +50067,12 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   workspaceSpanBackdrop.ownerFileId,
                   pausedPreviews
                 ),
-                owner: backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId)
+                owner: backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId),
+                // #2426 — the spanning background is the pattern's: the pattern's audio
+                sourceRef: sourceForBackdrop(
+                  backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId),
+                  workspaceSpanBackdrop.fileId
+                )
               }),
               /* @__PURE__ */ jsx(
                 "div",
