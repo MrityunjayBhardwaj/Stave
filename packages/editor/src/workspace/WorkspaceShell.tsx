@@ -1160,7 +1160,6 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
 
   const handleTabClose = useCallback(
     (groupId: string, tabId: string) => {
-      let closedTab: WorkspaceTab | null = null
       // Snapshot the tab count BEFORE the close so we can decide below
       // whether this was the last tab in its group and therefore the
       // group itself should collapse (VS Code parity). We read from
@@ -1172,13 +1171,18 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       const wasLastTab =
         existing !== undefined && existing.tabs.length === 1
       const canCollapseGroup = wasLastTab && groups.size > 1
+      // #2430 — the closed tab comes from that same snapshot. Assigning it inside
+      // the setGroups updater below only worked while React ran the updater
+      // eagerly, which it does only when nothing else is pending; otherwise the
+      // updater runs at render, after the cleanup below has already seen null.
+      const closedTab: WorkspaceTab | null =
+        existing?.tabs.find((t) => t.id === tabId) ?? null
 
       setGroups((prev) => {
         const cur = prev.get(groupId)
         if (!cur) return prev
         const idx = cur.tabs.findIndex((t) => t.id === tabId)
         if (idx === -1) return prev
-        closedTab = cur.tabs[idx]
         const nextTabs = cur.tabs.filter((t) => t.id !== tabId)
         let nextActive: string | null = cur.activeTabId
         if (cur.activeTabId === tabId) {
