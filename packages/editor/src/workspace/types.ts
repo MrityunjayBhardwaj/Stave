@@ -363,8 +363,15 @@ export interface EditorViewProps {
    *  Receives the viz name, preset id, and `trackKey` — the per-$:-block
    *  identifier (same key used for trackSchedulers / trackAnalysers /
    *  vizRequests). Required so the host can save the crop as a per-instance
-   *  override rather than overwriting the shared VizPreset. */
-  readonly onCropViz?: (vizId: string, presetId: string | null, trackKey: string) => void
+   *  override rather than overwriting the shared VizPreset. `fileId` is the
+   *  file this editor shows — the one the strip belongs to — so the host
+   *  crops that file, not whichever tab it thinks is active (#2412). */
+  readonly onCropViz?: (
+    vizId: string,
+    presetId: string | null,
+    trackKey: string,
+    fileId: string,
+  ) => void
 }
 
 /**
@@ -1118,8 +1125,13 @@ export interface WorkspaceShellProps {
 
   /** Inline viz "crop" icon clicked — open crop popup. `trackKey` scopes
    *  the crop to this specific zone instance; see onCropViz above for the
-   *  per-instance rationale. */
-  readonly onCropViz?: (vizId: string, presetId: string | null, trackKey: string) => void
+   *  per-instance rationale; `fileId` is the file the strip belongs to. */
+  readonly onCropViz?: (
+    vizId: string,
+    presetId: string | null,
+    trackKey: string,
+    fileId: string,
+  ) => void
 
   /**
    * #773 — open the app's backdrop crop popup for the active group's backdrop.

@@ -62,7 +62,7 @@ import { forkToEditFromCommit } from './history/historyService'
 import { DEFAULT_VIZ_DESCRIPTORS } from '../visualizers/defaultDescriptors'
 import type { EditorViewProps } from './types'
 import type { AudioPayload } from './types'
-import type { InlineZoneHandle } from '../visualizers/viewZones'
+import type { InlineZoneHandle, VizZoneActions } from '../visualizers/viewZones'
 import type { HapStream } from '../engine/HapStream'
 import type { BreakpointStore } from '../engine/BreakpointStore'
 
@@ -152,6 +152,15 @@ export function EditorView({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const lastPayloadRef = useRef<any>(null)
 
+  // #2412 — the host's ✎ / ✂ handlers, refreshed on every render. Both zone
+  // builders below live in effects that do NOT re-run when these props change
+  // (the bus effect keys on [fileId, editorReady], the hot-reload one on
+  // [fileId]); reading the props directly there froze the FIRST render's
+  // closures into every later rebuild, so a crop saved from a rebuilt strip
+  // went to whatever file the host's first closure guessed.
+  const vizHandlersRef = useRef({ onEditViz, onCropViz })
+  vizHandlersRef.current = { onEditViz, onCropViz }
+
   // HapStream from the bus payload — drives useHighlighting.
   const [hapStream, setHapStream] = useState<HapStream | null>(null)
 
@@ -195,6 +204,24 @@ export function EditorView({
     monaco.editor.setTheme(monacoThemeNameFor(theme))
   }, [theme])
 
+  // #2412 — the zone actions both builders hand to addInlineViewZones. Each
+  // action reads the handler at CLICK time through the ref, and ✂ names the
+  // file this view shows, so the host crops the strip's own file instead of
+  // guessing from the active tab. An action is present only when the host
+  // gave the handler (no handlers → no floating bar, as before).
+  const zoneActions = (forFileId: string): VizZoneActions => {
+    const { onEditViz: edit, onCropViz: crop } = vizHandlersRef.current
+    return {
+      onEdit: edit
+        ? (vizId, presetId) => vizHandlersRef.current.onEditViz?.(vizId, presetId)
+        : undefined,
+      onCrop: crop
+        ? (vizId, presetId, trackKey) =>
+            vizHandlersRef.current.onCropViz?.(vizId, presetId, trackKey, forFileId)
+        : undefined,
+    }
+  }
+
   // ----------------------------------------------------------------
   // Bus subscription — inline view zones + highlighting (D-08, PK3, S5)
   // ----------------------------------------------------------------
@@ -226,7 +253,7 @@ export function EditorView({
             editorRef.current,
             payload.engineComponents ?? payload as any,
             DEFAULT_VIZ_DESCRIPTORS,
-            { onEdit: onEditViz, onCrop: onCropViz },
+            zoneActions(fileId),
             fileId,
           )
           viewZoneHandleRef.current?.resume()
@@ -286,7 +313,7 @@ export function EditorView({
         editorRef.current,
         payload.engineComponents ?? payload,
         DEFAULT_VIZ_DESCRIPTORS,
-        { onEdit: onEditViz, onCrop: onCropViz },
+        zoneActions(fileId),
         fileId,
       )
       viewZoneHandleRef.current?.resume()
