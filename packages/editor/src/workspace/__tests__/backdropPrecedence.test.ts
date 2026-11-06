@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveBackdropFileId } from '../backdropPrecedence'
+import { isOwnBackdropPaused, resolveBackdropFileId } from '../backdropPrecedence'
 
 describe('resolveBackdropFileId (#350a per-pane precedence)', () => {
   it('shows nothing when neither layer is set', () => {
@@ -25,5 +25,26 @@ describe('resolveBackdropFileId (#350a per-pane precedence)', () => {
     const sticky = 'user-pinned'
     expect(resolveBackdropFileId(sticky, 'code-scope')).toBe('code-scope') // code playing
     expect(resolveBackdropFileId(sticky, undefined)).toBe(sticky) // code removed → sticky back
+  })
+})
+
+describe('isOwnBackdropPaused (#2422) — a viz tab pauses only its own background', () => {
+  const paused = new Set(['fold'])
+
+  it('pauses the viz file’s own background while it is the pane’s active tab', () => {
+    expect(isOwnBackdropPaused('fold', 'fold', paused)).toBe(true)
+  })
+
+  it('a pattern pane whose code background is the same viz keeps running', () => {
+    expect(isOwnBackdropPaused('fold', 'song', paused)).toBe(false)
+  })
+
+  it('a pane with no tab keeps running', () => {
+    expect(isOwnBackdropPaused('fold', null, paused)).toBe(false)
+  })
+
+  it('a viz that is not paused runs on its own tab too', () => {
+    expect(isOwnBackdropPaused('fold', 'fold', new Set())).toBe(false)
+    expect(isOwnBackdropPaused('fold', 'fold', new Set(['other']))).toBe(false)
   })
 })

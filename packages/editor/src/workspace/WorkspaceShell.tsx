@@ -154,7 +154,12 @@ import type {
   WorkspaceShellProps,
   WorkspaceTab,
 } from './types'
-import { resolveBackdropFileId } from './backdropPrecedence'
+import { isOwnBackdropPaused, resolveBackdropFileId } from './backdropPrecedence'
+
+/** #2422 — the file a pane's active tab shows (editor or preview), or null. */
+function paneShownFileId(tab: WorkspaceTab | undefined): string | null {
+  return tab && (tab.kind === 'editor' || tab.kind === 'preview') ? tab.fileId : null
+}
 import {
   type GroupLayout,
   type DropDirection,
@@ -2755,9 +2760,14 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 crop: backgroundCrop ?? null,
                 // #781 — the viz chrome's play/pause button pauses the backdrop
                 // through the same per-file `pausedPreviews` set it uses for
-                // side previews (a viz's placement is exclusive, so one flag
-                // covers both). OR it with the hover-gate policy above.
-                paused: backdropPaused || pausedPreviews.has(bgFileId),
+                // side previews. #2422 — but only the viz's OWN background: this
+                // pane's, while the viz file is its active tab. The same file can
+                // also be a pattern's code background or another tab's pin (a
+                // viz's placement is no longer exclusive); those keep running.
+                // OR it with the hover-gate policy above.
+                paused:
+                  backdropPaused ||
+                  isOwnBackdropPaused(bgFileId, paneShownFileId(activeTabObj), pausedPreviews),
               })
             })()}
             {activeTabObj ? (
@@ -3317,7 +3327,19 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             crop: backgroundCrop ?? null,
             // #781 — pause the shared span backdrop when its source viz is
             // paused via the chrome play/pause button (same per-file set).
-            paused: pausedPreviews.has(workspaceSpanBackdrop.fileId),
+            // #2422 — "own" here is the pane DRIVING the span: the pause applies
+            // when that pane's active tab is the viz file itself, not when the
+            // span is a pattern's code background drawn from the same file.
+            paused: isOwnBackdropPaused(
+              workspaceSpanBackdrop.fileId,
+              paneShownFileId(
+                (() => {
+                  const g = groups.get(workspaceSpanBackdrop.groupId)
+                  return g?.tabs.find((t) => t.id === g.activeTabId)
+                })(),
+              ),
+              pausedPreviews,
+            ),
           })}
         <div
           data-workspace-groups-content="true"

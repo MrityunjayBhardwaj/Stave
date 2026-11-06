@@ -37185,6 +37185,10 @@ function resolveBackdropFileId(stickyFileId, overrideFileId) {
   return overrideFileId ?? stickyFileId;
 }
 __name(resolveBackdropFileId, "resolveBackdropFileId");
+function isOwnBackdropPaused(bgFileId, paneFileId, pausedFiles) {
+  return paneFileId === bgFileId && pausedFiles.has(bgFileId);
+}
+__name(isOwnBackdropPaused, "isOwnBackdropPaused");
 
 // src/workspace/groupLayout.ts
 function findGroupCoords(layout, groupId) {
@@ -47866,6 +47870,10 @@ function bottomPanelHiddenForTab(tab) {
   return language != null && isVizLanguage(language);
 }
 __name(bottomPanelHiddenForTab, "bottomPanelHiddenForTab");
+function paneShownFileId(tab) {
+  return tab && (tab.kind === "editor" || tab.kind === "preview") ? tab.fileId : null;
+}
+__name(paneShownFileId, "paneShownFileId");
 var tabbarScrollStyleInjected = false;
 function ensureTabbarScrollStyle() {
   if (tabbarScrollStyleInjected) return;
@@ -49563,9 +49571,12 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
                       crop: backgroundCrop ?? null,
                       // #781 — the viz chrome's play/pause button pauses the backdrop
                       // through the same per-file `pausedPreviews` set it uses for
-                      // side previews (a viz's placement is exclusive, so one flag
-                      // covers both). OR it with the hover-gate policy above.
-                      paused: backdropPaused || pausedPreviews.has(bgFileId)
+                      // side previews. #2422 — but only the viz's OWN background: this
+                      // pane's, while the viz file is its active tab. The same file can
+                      // also be a pattern's code background or another tab's pin (a
+                      // viz's placement is no longer exclusive); those keep running.
+                      // OR it with the hover-gate policy above.
+                      paused: backdropPaused || isOwnBackdropPaused(bgFileId, paneShownFileId(activeTabObj), pausedPreviews)
                     });
                   })(),
                   activeTabObj ? /* @__PURE__ */ jsxRuntime.jsx(
@@ -50014,7 +50025,19 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
                 crop: backgroundCrop ?? null,
                 // #781 — pause the shared span backdrop when its source viz is
                 // paused via the chrome play/pause button (same per-file set).
-                paused: pausedPreviews.has(workspaceSpanBackdrop.fileId)
+                // #2422 — "own" here is the pane DRIVING the span: the pause applies
+                // when that pane's active tab is the viz file itself, not when the
+                // span is a pattern's code background drawn from the same file.
+                paused: isOwnBackdropPaused(
+                  workspaceSpanBackdrop.fileId,
+                  paneShownFileId(
+                    (() => {
+                      const g = groups.get(workspaceSpanBackdrop.groupId);
+                      return g?.tabs.find((t) => t.id === g.activeTabId);
+                    })()
+                  ),
+                  pausedPreviews
+                )
               }),
               /* @__PURE__ */ jsxRuntime.jsx(
                 "div",
