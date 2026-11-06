@@ -21,6 +21,18 @@ export type Q = Db | Tx;
  * closed client, too many connections) → DatabaseUnavailableError, so routes
  * answer 503 (#2351); anything else (a serialization failure at COMMIT, say)
  * comes out as itself.
+ *
+ * When `fn` throws, the driver rolls back before rethrowing — and if that
+ * ROLLBACK fails too (the connection dropped, say), the driver throws the
+ * rollback's error INSTEAD of ours (#2380; drizzle-orm 0.45.4
+ * neon-serverless/session.js `catch (error) { await tx.execute(sql\`rollback\`);
+ * throw error; }`, and PGlite's own transaction(), which drizzle's pglite
+ * session hands the callback to, does the same). So the rollback's failure is
+ * logged, and what `fn` threw still comes out as itself, judged as above: our
+ * bug stays a 500 with its own stack; a query that lost the server stays a 503.
+ * The rollback's failure is deliberately NOT attached as the error's `cause`:
+ * isDatabaseUnavailable walks the cause chain, and a dropped connection there
+ * would turn our bug back into a 503.
  */
 export async function inTransaction<T>(db: Db, fn: (tx: Tx) => Promise<T>): Promise<T> {
   const ours: { err?: unknown; set: boolean } = { set: false };
@@ -35,7 +47,17 @@ export async function inTransaction<T>(db: Db, fn: (tx: Tx) => Promise<T>): Prom
       }
     });
   } catch (err) {
-    if (ours.set && ours.err === err) throw err;
+    if (ours.set) {
+      if (ours.err !== err) {
+        console.error(
+          "[stave] a gallery transaction failed, and rolling it back failed too.\n  what failed first:",
+          ours.err,
+          "\n  the rollback's failure:",
+          err,
+        );
+      }
+      throw ours.err;
+    }
     if (isOutage(err)) throw new DatabaseUnavailableError(err);
     throw err;
   }
