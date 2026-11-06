@@ -364,7 +364,7 @@ export function partSteps(model: Pick<StepGridModel, 'steps' | 'bars' | 'barStep
 }
 
 /** why a drawn column names no step a click can edit */
-export type StepAtRefusal = LaneStepsRefusal | 'inside-a-step' | 'step-is-generated' | 'step-is-replicated'
+export type StepAtRefusal = LaneStepsRefusal | 'inside-a-step'
 
 /**
  * The written step a click on lane `lane`, drawn column `col` lands on (#2292): the step
