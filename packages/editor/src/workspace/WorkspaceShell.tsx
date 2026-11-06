@@ -154,7 +154,13 @@ import type {
   WorkspaceShellProps,
   WorkspaceTab,
 } from './types'
-import { resolveBackdropFileId } from './backdropPrecedence'
+import { backdropOwnerFor, backdropSourceFor, isOwnBackdropPaused, resolveBackdropFileId } from './backdropPrecedence'
+import { isVizLanguage } from './vizLanguages'
+
+/** #2422 — the file a pane's active tab shows (editor or preview), or null. */
+function paneShownFileId(tab: WorkspaceTab | undefined): string | null {
+  return tab && (tab.kind === 'editor' || tab.kind === 'preview') ? tab.fileId : null
+}
 import {
   type GroupLayout,
   type DropDirection,
@@ -165,6 +171,8 @@ import {
   removeGroup as layoutRemoveGroup,
 } from './groupLayout'
 import { findBuiltinExampleSource } from './builtinExampleSources'
+import { setAlongsideSources } from './playbackCoordinator'
+import { getVizSourceChoice, onVizSourceChoiceChange } from './preview/vizSourceChoice'
 import { BottomPanel } from './bottomPanel/BottomPanel'
 import { SymbolRow } from './SymbolRow'
 import { bottomPanelHiddenForTab } from './bottomPanel/hiddenForTab'
@@ -833,6 +841,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   onNewFile,
   onBackgroundFileChange,
   onActiveBackdropChange,
+  spanningBackdrop,
   onOpenPopoutPreview,
   backgroundCrop,
   onTabClose,
@@ -1092,13 +1101,54 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   const backdropSourceByFile = useRef<
     Map<string, import('./types').AudioSourceRef>
   >(new Map())
+  // #2427 — the built-ins in that record are the backgrounds' own sounds: they
+  // play alongside a pattern instead of being stopped by its Play. Every write
+  // to the record goes through these two, so the coordinator's set never drifts.
+  const syncAlongsideSources = useCallback(() => {
+    const ids: string[] = []
+    for (const ref of backdropSourceByFile.current.values()) {
+      if (ref.kind === 'file' && findBuiltinExampleSource(ref.fileId)) ids.push(ref.fileId)
+    }
+    setAlongsideSources(ids)
+  }, [])
+  const recordBackdropSource = useCallback(
+    (fileId: string, ref: import('./types').AudioSourceRef | null) => {
+      if (ref?.kind === 'file') backdropSourceByFile.current.set(fileId, ref)
+      else backdropSourceByFile.current.delete(fileId)
+      syncAlongsideSources()
+    },
+    [syncAlongsideSources],
+  )
+  // #2426/#2429 — the audio source chosen in each viz file's settings lives in
+  // the per-file store the chrome writes; the viz's OWN background listens to
+  // it. Re-render when any choice changes.
+  const [sourceChoiceVersion, setSourceChoiceVersion] = useState(0)
+  useEffect(
+    () => onVizSourceChoiceChange(() => setSourceChoiceVersion((n) => n + 1)),
+    [],
+  )
+  // #2426 — whose audio a background listens to (see backdropSourceFor)
+  const sourceForBackdrop = useCallback(
+    (owner: string | null, bgFileId: string) =>
+      backdropSourceFor(
+        owner,
+        bgFileId,
+        (id) => {
+          const f = getFile(id)
+          return !!f && !isVizLanguage(f.language)
+        },
+        (id) => getVizSourceChoice(id),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sourceChoiceVersion],
+  )
   const stopBackdropSource = useCallback((fileId: string) => {
     const ref = backdropSourceByFile.current.get(fileId)
     if (ref?.kind === 'file') {
       findBuiltinExampleSource(ref.fileId)?.stopIfRunning()
     }
-    backdropSourceByFile.current.delete(fileId)
-  }, [])
+    recordBackdropSource(fileId, null)
+  }, [recordBackdropSource])
 
   // #787 — when a moving tab carries its backdrop onto an EXISTING target
   // group (tab-bar slot / center drop), the target's current backdrop — if it
@@ -1123,7 +1173,6 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
 
   const handleTabClose = useCallback(
     (groupId: string, tabId: string) => {
-      let closedTab: WorkspaceTab | null = null
       // Snapshot the tab count BEFORE the close so we can decide below
       // whether this was the last tab in its group and therefore the
       // group itself should collapse (VS Code parity). We read from
@@ -1135,13 +1184,18 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       const wasLastTab =
         existing !== undefined && existing.tabs.length === 1
       const canCollapseGroup = wasLastTab && groups.size > 1
+      // #2430 — the closed tab comes from that same snapshot. Assigning it inside
+      // the setGroups updater below only worked while React ran the updater
+      // eagerly, which it does only when nothing else is pending; otherwise the
+      // updater runs at render, after the cleanup below has already seen null.
+      const closedTab: WorkspaceTab | null =
+        existing?.tabs.find((t) => t.id === tabId) ?? null
 
       setGroups((prev) => {
         const cur = prev.get(groupId)
         if (!cur) return prev
         const idx = cur.tabs.findIndex((t) => t.id === tabId)
         if (idx === -1) return prev
-        closedTab = cur.tabs[idx]
         const nextTabs = cur.tabs.filter((t) => t.id !== tabId)
         let nextActive: string | null = cur.activeTabId
         if (cur.activeTabId === tabId) {
@@ -1499,13 +1553,30 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       // Leaving or replacing a backdrop stops the built-in audio it started
       // (#785) — covers preview=off, Cmd+K B toggle-off, and switching backdrops.
       if (prev) stopBackdropSource(prev)
+      // #2427 — and a viz's OWN background brings its sound back with it. A tab
+      // switch away clears the pane's background (stopping the sound, above);
+      // switching back restores it here, so its chosen example sound restarts
+      // too — recorded first, so it starts alongside any playing pattern. Not for
+      // a viz the user paused, and not when the pane shows another file (then the
+      // background is someone else's, listening to their audio).
+      if (backgroundFileId) {
+        const g = groups.get(groupId)
+        const shown = paneShownFileId(g?.tabs.find((t) => t.id === g.activeTabId))
+        const ref = getVizSourceChoice(backgroundFileId)
+        const builtin =
+          ref.kind === 'file' ? findBuiltinExampleSource(ref.fileId) : undefined
+        if (builtin && shown === backgroundFileId && !pausedPreviews.has(backgroundFileId)) {
+          recordBackdropSource(backgroundFileId, ref)
+          builtin.startIfIdle()
+        }
+      }
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? undefined,
       }))
       onBackgroundFileChange?.(groupId, backgroundFileId)
     },
-    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource],
+    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource, recordBackdropSource, pausedPreviews],
   )
 
   /**
@@ -2271,8 +2342,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                     // existing file-ref entry — that entry tracks audio this
                     // file already started that is still running, and
                     // overwriting it would leak the source past close (#787).
+                    // #2427 — recorded BEFORE the chrome starts the sound, so it
+                    // starts as this background's own, alongside any pattern.
                     if (willActivate && sourceRef?.kind === 'file') {
-                      backdropSourceByFile.current.set(tab.fileId, sourceRef)
+                      recordBackdropSource(tab.fileId, sourceRef)
                     }
                   },
                   // #788 — the popover's source dropdown changed while this
@@ -2288,11 +2361,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                     ) {
                       return
                     }
-                    if (ref.kind === 'file') {
-                      backdropSourceByFile.current.set(tab.fileId, ref)
-                    } else {
-                      backdropSourceByFile.current.delete(tab.fileId)
-                    }
+                    recordBackdropSource(tab.fileId, ref)
                   },
                   isBackground:
                     groups.get(groupId)?.backgroundFileId === tab.fileId,
@@ -2316,7 +2385,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                     groups.get(groupId)?.backdropOpacity ?? backdropOpacity,
                   backdropQuality:
                     groups.get(groupId)?.backdropQuality ?? backdropQuality,
-                  backdropVizSpan,
+                  // #2423 — a host-owned span is a pattern's setting: no control here
+                  backdropVizSpan: spanningBackdrop === undefined ? backdropVizSpan : undefined,
                   onSetBackdropOpacity: (v) =>
                     updateGroupBackdropOpacity(groupId, v),
                   onSetBackdropQuality: (q) =>
@@ -2497,6 +2567,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       backdropOpacity,
       backdropQuality,
       backdropVizSpan,
+      spanningBackdrop,
       updateGroupBackdropOpacity,
       updateGroupBackdropQuality,
       onCropBackdrop,
@@ -2508,7 +2579,29 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   // by the FIRST group (in layout order) that has a backdrop set — stable, so it
   // doesn't change or vanish as focus moves between panes. Null in 'file' mode or
   // when no pane has a backdrop.
-  const workspaceSpanBackdrop = useMemo(() => {
+  //
+  // #2423 — when the host decides (`spanningBackdrop`), the span is the background
+  // of ONE pattern set to Workspace: its viz, drawn for that pattern (its code
+  // options), behind every pane. Quality/opacity come from a pane showing that
+  // pattern, else the global defaults. `ownerFileId` is whose background it is.
+  const workspaceSpanBackdrop = useMemo((): {
+    fileId: string
+    ownerFileId: string | null
+    quality: BackdropQuality
+    opacity: number
+  } | null => {
+    if (spanningBackdrop !== undefined) {
+      if (!spanningBackdrop) return null
+      const showing = allGroupIds(layout)
+        .map((gid) => groups.get(gid))
+        .find((g) => g && paneShownFileId(g.tabs.find((t) => t.id === g.activeTabId)) === spanningBackdrop.ownerFileId)
+      return {
+        fileId: spanningBackdrop.fileId,
+        ownerFileId: spanningBackdrop.ownerFileId,
+        quality: showing?.backdropQuality ?? backdropQuality,
+        opacity: showing?.backdropOpacity ?? backdropOpacity,
+      }
+    }
     if (backdropVizSpan !== 'workspace') return null
     for (const gid of allGroupIds(layout)) {
       const g = groups.get(gid)
@@ -2517,14 +2610,15 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       if (fileId) {
         return {
           fileId,
-          groupId: gid,
+          // legacy: the driving pane's file — the viz itself when it is that viz's own pin
+          ownerFileId: paneShownFileId(g.tabs.find((t) => t.id === g.activeTabId)),
           quality: g.backdropQuality ?? backdropQuality,
           opacity: g.backdropOpacity ?? backdropOpacity,
         }
       }
     }
     return null
-  }, [backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity])
+  }, [spanningBackdrop, backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity])
   // True when a single spanning backdrop is active → every pane goes transparent
   // (via `data-stave-backdrop="on"`) so the one backdrop shows behind all of them.
   const workspaceSpanActive = workspaceSpanBackdrop != null
@@ -2542,8 +2636,12 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       opacity: number
       crop: { x: number; y: number; w: number; h: number } | null
       paused: boolean
+      /** #2423 — whose background: a pattern file (its code options), null = the viz's own */
+      owner: string | null
+      /** #2426 — the audio this background listens to (its owner's) */
+      sourceRef: import('./types').AudioSourceRef
     }): React.ReactNode => {
-      const { bgFileId, dataGroupId, quality, opacity, crop, paused } = params
+      const { bgFileId, dataGroupId, quality, opacity, crop, paused, owner, sourceRef } = params
       const bgProvider = previewProviderFor?.({
         kind: 'preview',
         id: `bg-${bgFileId}`,
@@ -2567,6 +2665,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           data-background-file-id={bgFileId}
           data-backdrop-quality={quality}
           data-backdrop-live={paused ? 'false' : 'true'}
+          data-backdrop-owner={owner ?? 'own'}
+          data-backdrop-source={sourceRef.kind === 'file' ? sourceRef.fileId : sourceRef.kind}
           style={{
             position: 'absolute',
             inset: 0,
@@ -2590,10 +2690,12 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             <PreviewView
               fileId={bgFileId}
               provider={bgProvider}
-              sourceRef={{ kind: 'default' }}
+              sourceRef={sourceRef}
               theme={theme}
               hidden={false}
               paused={paused}
+              backdrop
+              backdropOwner={owner}
               onSourceRefChange={() => {}}
             />
           </div>
@@ -2727,7 +2829,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
               // #770: in 'workspace' span mode the single backdrop is rendered
               // ONCE at the workspace level (below), not per-pane — suppress the
               // per-pane layer here so we don't paint N copies.
-              if (backdropVizSpan === 'workspace') return null
+              // #2423 — likewise whenever a pattern's background spans the workspace
+              if (workspaceSpanBackdrop) return null
               // #350a precedence: code override (this eval) wins over the manual
               // sticky; neither set → no backdrop.
               const bgFileId = resolveBackdropFileId(
@@ -2754,9 +2857,19 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 crop: backgroundCrop ?? null,
                 // #781 — the viz chrome's play/pause button pauses the backdrop
                 // through the same per-file `pausedPreviews` set it uses for
-                // side previews (a viz's placement is exclusive, so one flag
-                // covers both). OR it with the hover-gate policy above.
-                paused: backdropPaused || pausedPreviews.has(bgFileId),
+                // side previews. #2422 — but only the viz's OWN background: this
+                // pane's, while the viz file is its active tab. The same file can
+                // also be a pattern's code background or another tab's pin (a
+                // viz's placement is no longer exclusive); those keep running.
+                // OR it with the hover-gate policy above.
+                paused:
+                  backdropPaused ||
+                  isOwnBackdropPaused(bgFileId, paneShownFileId(activeTabObj), pausedPreviews),
+                // #2423 — the viz file's own background (its tab is this pane's
+                // active tab) takes its own settings; any other is the
+                // background of the file the pane shows (a pattern: its code options)
+                owner: backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj)),
+                sourceRef: sourceForBackdrop(backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj)), bgFileId),
               })
             })()}
             {activeTabObj ? (
@@ -2837,6 +2950,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       // play/pause button). Omit it and toggling pause never reaches the
       // backdrop — the same P239 stale-closure trap.
       pausedPreviews,
+      // #2426 — each background's audio source reads the chosen sources
+      sourceForBackdrop,
     ],
   )
 
@@ -3316,7 +3431,20 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             crop: backgroundCrop ?? null,
             // #781 — pause the shared span backdrop when its source viz is
             // paused via the chrome play/pause button (same per-file set).
-            paused: pausedPreviews.has(workspaceSpanBackdrop.fileId),
+            // #2422 — "own" here is the pane DRIVING the span: the pause applies
+            // when that pane's active tab is the viz file itself, not when the
+            // span is a pattern's code background drawn from the same file.
+            paused: isOwnBackdropPaused(
+              workspaceSpanBackdrop.fileId,
+              workspaceSpanBackdrop.ownerFileId,
+              pausedPreviews,
+            ),
+            owner: backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId),
+            // #2426 — the spanning background is the pattern's: the pattern's audio
+            sourceRef: sourceForBackdrop(
+              backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId),
+              workspaceSpanBackdrop.fileId,
+            ),
           })}
         <div
           data-workspace-groups-content="true"

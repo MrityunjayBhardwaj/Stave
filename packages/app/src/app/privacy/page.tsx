@@ -126,8 +126,7 @@ export default function PrivacyPage() {
         <p>
           <strong>Private:</strong> your email is used only to contact you about what you publish. No part of Stave
           shows it to anyone, including other users and gallery admins, and we don&apos;t sell it or send marketing
-          email. If a database request fails, its details can appear in our server error logs, and those details can
-          include your email. Only the people who run Stave can read those logs.
+          email.
         </p>
       </Section>
 
@@ -147,8 +146,8 @@ export default function PrivacyPage() {
         </p>
         <p>
           <strong>When an admin removes an entry</strong>, it is hidden from everyone at once. Its content and your email
-          may be kept for up to 30 days so that a mistaken removal can be reversed, and are then deleted. We keep a
-          record of the removal after that: the entry&apos;s title, kind, tags, your profile name and the dates, along
+          are kept for 30 days so that a mistaken removal can be reversed, and are deleted within a day after that. We
+          keep a record of the removal after that: the entry&apos;s title, kind, tags, your profile name and the dates, along
           with any reports about it and the action log entry below.
         </p>
       </Section>
@@ -162,6 +161,11 @@ export default function PrivacyPage() {
         <p>
           When an admin acts, the action log records the admin&apos;s name and account id, what they did, to what, when
           and why. Only admins can read it, and it has no time limit.
+        </p>
+        <p>
+          If an admin suspends an account, we keep the reason and the dates against it until the suspension is lifted or
+          the account is deleted. Suspensions aren&apos;t shown publicly. If the admin also takes down everything the
+          account published, its profile and collections are hidden while the suspension lasts.
         </p>
       </Section>
 

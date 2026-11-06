@@ -453,6 +453,18 @@ export interface PreviewViewProps {
    * resume.
    */
   readonly paused?: boolean
+  /**
+   * This preview is a pane BACKGROUND. Its viz options then follow the
+   * active pattern's code (`codeBackdropOptions`) rather than only the last
+   * evaluation's capture on the audio bus, which Stop withdraws.
+   */
+  readonly backdrop?: boolean
+  /**
+   * #2423 — whose background this is: the pattern file whose code names it (its
+   * code options apply), `null` for a viz file's OWN background (its own
+   * settings only), or omitted when the host does not say.
+   */
+  readonly backdropOwner?: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -1009,6 +1021,17 @@ export interface WorkspaceShellProps {
    * Fires once per real change (ref-guarded); no per-eval churn for steady code.
    */
   readonly onActiveBackdropChange?: (fileId: string | null) => void
+
+  /**
+   * #2423 — the background spanning the whole workspace, decided by the host:
+   * the viz `fileId` a pattern (`ownerFileId`) set to Workspace span draws behind
+   * EVERY pane, with that pattern's code options; `null` = none spans, every pane
+   * draws its own (File mode). When this prop is given the shell ignores the
+   * legacy global span setting (`get/setBackdropVizSpan`) and the viz settings
+   * popover hides its span control — the span is a pattern's setting. Omitted:
+   * the legacy behaviour (global switch, first pane with a background).
+   */
+  readonly spanningBackdrop?: { readonly fileId: string; readonly ownerFileId: string } | null
 
   /**
    * #240 — open a viz file's preview in a pop-out browser window. The shell

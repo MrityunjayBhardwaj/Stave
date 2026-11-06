@@ -1502,6 +1502,16 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     return this.engine.components.inlineViz?.backdropRequest?.vizId ?? null
   }
 
+  /**
+   * The options the last evaluation captured for its backdrop viz, or null. The
+   * app keeps them beside the code so a background viz option the code computes
+   * (not a literal) still reaches the sketch after Stop, when the bus payload
+   * that carried it is gone.
+   */
+  getBackdropVizOptions(): Record<string, unknown> | null {
+    return (this.engine.components.inlineViz?.backdropRequest?.options as Record<string, unknown> | undefined) ?? null
+  }
+
   // -------------------------------------------------------------------------
   // Phase 20-07 — debugger pause/resume + BreakpointStore accessor.
   //

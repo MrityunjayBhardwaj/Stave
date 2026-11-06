@@ -239,6 +239,8 @@ export {
 export { masterGainEdit, masterMuteEdit, masterVizEdit, masterAudioLineEdit } from './mixer/masterEdit'
 export { renameEdit, gainEdit, panEdit, muteEdit, reconcileSoloMutes, soloMuteEdits } from './mixer/writeStrip'
 export type { SoloStripFacts } from './mixer/writeStrip'
+export { readVizOptionsLiteral, resolveVizOptions } from './mixer/vizOptionsLiteral'
+export type { CodeVizOptions } from './mixer/vizOptionsLiteral'
 export {
   knobEdit,
   knobRangeEdit,

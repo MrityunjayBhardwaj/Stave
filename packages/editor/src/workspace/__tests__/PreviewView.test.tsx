@@ -185,6 +185,86 @@ describe('PreviewView', () => {
     expect(mountCount.current).toBeGreaterThan(mountsBeforeB)
   })
 
+  // #2396 — a BACKGROUND keeps running across Play (publish) and Stop
+  // (unpublish): same mount, the new inputs arrive as props (→ renderer.update()).
+  it('a background is NOT re-mounted when a pattern starts or stops publishing', () => {
+    createWorkspaceFile('bgv', 'bgv.hydra', '// v', 'hydra')
+    const { provider, mountCount } = makeRecordingProvider()
+    const audioSeen: Array<unknown> = []
+    const recording = {
+      ...provider,
+      render: (ctx: Parameters<typeof provider.render>[0]) => {
+        audioSeen.push(ctx.audioSource)
+        return provider.render(ctx)
+      },
+    }
+    const { getByTestId } = render(
+      <PreviewView
+        fileId="bgv"
+        provider={recording}
+        sourceRef={{ kind: 'default' }}
+        onSourceRefChange={() => {}}
+        backdrop
+      />,
+    )
+    const key0 = getByTestId('preview-provider-mount-bgv').getAttribute('data-provider-key')
+    const mounts0 = mountCount.current
+
+    const payload = makePayload('play')
+    act(() => {
+      workspaceAudioBus.publish('pub-play', payload) // Play
+    })
+    act(() => {
+      workspaceAudioBus.unpublish('pub-play') // Stop
+    })
+    act(() => {
+      workspaceAudioBus.publish('pub-play', makePayload('play-again')) // Play again
+    })
+
+    expect(getByTestId('preview-provider-mount-bgv').getAttribute('data-provider-key')).toBe(key0)
+    expect(mountCount.current).toBe(mounts0)
+    // …and the inputs still reach it: the payload, then none, then the next one
+    expect(audioSeen).toContain(payload)
+    expect(audioSeen[audioSeen.length - 1]).not.toBeNull()
+  })
+
+  // #2428 — nor when its SOURCE changes (the viz's ⚙ → Source, or a tab switch
+  // that changes whose audio it follows): same mount, the new source's payload
+  // arrives as props.
+  it('a background is NOT re-mounted when its source changes, and hears the new one', () => {
+    createWorkspaceFile('bgs', 'bgs.hydra', '// v', 'hydra')
+    const { provider, mountCount } = makeRecordingProvider()
+    const audioSeen: Array<unknown> = []
+    const recording = {
+      ...provider,
+      render: (ctx: Parameters<typeof provider.render>[0]) => {
+        audioSeen.push(ctx.audioSource)
+        return provider.render(ctx)
+      },
+    }
+    const sample = makePayload('sample')
+    act(() => {
+      workspaceAudioBus.publish('pub-sample', sample)
+    })
+    const props = {
+      fileId: 'bgs',
+      provider: recording,
+      onSourceRefChange: () => {},
+      backdrop: true,
+    }
+    const { getByTestId, rerender } = render(
+      <PreviewView {...props} sourceRef={{ kind: 'none' }} />,
+    )
+    const key0 = getByTestId('preview-provider-mount-bgs').getAttribute('data-provider-key')
+    const mounts0 = mountCount.current
+
+    rerender(<PreviewView {...props} sourceRef={{ kind: 'file', fileId: 'pub-sample' }} />)
+
+    expect(getByTestId('preview-provider-mount-bgs').getAttribute('data-provider-key')).toBe(key0)
+    expect(mountCount.current).toBe(mounts0)
+    expect(audioSeen[audioSeen.length - 1]).toBe(sample)
+  })
+
   it('re-mounts the provider output when sourceRef is explicitly swapped (Task 2)', () => {
     // Task 2 invariant: changing sourceRef at the prop level must
     // always force a fresh mount, even if both old and new sources

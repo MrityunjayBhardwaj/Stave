@@ -52,6 +52,9 @@ import { checkReport, MAX_REPORT_BODY_BYTES, readJsonBody } from "./validate";
 
 export const ADMIN_LOG_LIMIT = reportsRepo.ADMIN_LOG_LIMIT;
 
+/** #2401 — who the action log names for what the scheduled clean-up does. */
+export const CLEAN_UP: GalleryAdmin = { provider: "system", accountId: "clean-up", name: "Scheduled clean-up" };
+
 /** The ids `STAVE_GALLERY_ADMINS` lists, as "provider:id". Blank entries are dropped. */
 export function parseAdminList(raw: string | undefined | null): Set<string> {
   const out = new Set<string>();

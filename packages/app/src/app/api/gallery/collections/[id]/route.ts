@@ -1,3 +1,5 @@
+import { suspensionOfAuthor } from "../../../../../db/repo/suspensions";
+import { suspendedRefusal } from "../../suspension";
 import {
   GALLERY_ID_PATTERN,
   type CollectionPageResponse,
@@ -41,6 +43,8 @@ async function handleGET(_req: Request, { params }: Ctx): Promise<Response> {
   if (!stored) return notFound();
   const author = await getAuthor(db, stored.authorId);
   if (!author) return notFound();
+  // #2400 — suspended with everything taken down: hidden while it lasts.
+  if ((await suspensionOfAuthor(db, stored.authorId))?.hideProfile) return notFound();
 
   const { collection, entries } = await servedCollection(db, stored);
   const body: CollectionPageResponse = {
@@ -61,6 +65,8 @@ async function handlePUT(req: Request, { params }: Ctx): Promise<Response> {
   const stored = await getCollection(db, id);
   if (!stored) return notFound();
   if (!(await mayManageAuthor(req, stored.authorId))) return forbidden();
+  const suspended = await suspendedRefusal(stored.authorId); // #2400
+  if (suspended) return suspended;
   const limited = await limitAuthor("edit", stored.authorId); // #2330
   if (limited) return limited;
 
