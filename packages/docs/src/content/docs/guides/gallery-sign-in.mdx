@@ -164,7 +164,7 @@ With no `DATABASE_URL`, `npm run dev` uses [PGlite](https://pglite.dev), which i
 
 ### The listing's cache
 
-The gallery list is cached at the CDN for 30 seconds, then served stale for up to 5 minutes while one request refreshes it. So the database builds the listing about twice a minute, however many people open the gallery. A new entry can take up to 30 seconds to appear.
+The gallery list is cached at the CDN for 30 seconds, then served stale for up to 5 minutes while one request refreshes it. So the database builds the listing about twice a minute, however many people open the gallery. On a quiet site, a cached list can be served once more at up to about 5 minutes old, so a new or removed entry can take that long to reach other people. The browser that made the change shows it straight away.
 
 The CDN keeps a separate copy for every different query string, so `/api/gallery?x=1` and `/api/gallery?x=2` would each cost a fresh listing. To stop that being used to make the server do extra work, a listing request with any query string is redirected to plain `/api/gallery` without touching the database, so only that one address is ever built.
 

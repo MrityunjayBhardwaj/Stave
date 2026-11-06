@@ -7,7 +7,7 @@
  * person is told before anything is uploaded.
  */
 import { publishToGallery, galleryEntryLink } from "./client";
-import { addLocalShare } from "./localShares";
+import { addLocalShare, recordListChange } from "./localShares";
 import {
   MAX_MANIFEST_BYTES,
   MAX_TAGS,
@@ -176,7 +176,8 @@ export async function publishAndRemember(
   request: PublishRequest,
   turnstileToken?: string | null,
 ): Promise<{ id: string; link: string }> {
-  const { id, manageToken } = await publishToGallery(request, turnstileToken);
+  const { id, manageToken, entry } = await publishToGallery(request, turnstileToken);
+  if (entry) recordListChange(id, entry);
   addLocalShare({ id, title: request.title, kind: request.kind, publishedAt: Date.now(), manageToken });
   return { id, link: galleryEntryLink(id) };
 }

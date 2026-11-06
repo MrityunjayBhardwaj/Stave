@@ -11,6 +11,7 @@ import React, { useCallback, useEffect, useState } from "react";
 
 import { showPrompt, showToast } from "../dialogs/host";
 import { KIND_LABEL } from "./galleryModel";
+import { recordListChange } from "./localShares";
 import {
   ACTION_LABEL,
   dismissReports,
@@ -116,14 +117,7 @@ function SuspendForm({
   );
 }
 
-export function ModerationView({
-  onOpen,
-  onTakenDown,
-}: {
-  onOpen: (entryId: string) => void;
-  /** An entry left the gallery: the overlay drops it from its list. */
-  onTakenDown: (entryId: string) => void;
-}) {
+export function ModerationView({ onOpen }: { onOpen: (entryId: string) => void }) {
   const [flagged, setFlagged] = useState<Loaded<FlaggedEntry[]>>({ status: "loading" });
   const [takenDown, setTakenDown] = useState<Loaded<TakenDownEntry[]>>({ status: "loading" });
   const [log, setLog] = useState<Loaded<AdminLogRecord[]>>({ status: "loading" });
@@ -172,7 +166,7 @@ export function ModerationView({
     try {
       if (kind === "take-down") {
         await takeDownEntry(f.entryId, reason.slice(0, MAX_REPORT_REASON_CHARS));
-        onTakenDown(f.entryId);
+        recordListChange(f.entryId, null);
         showToast(`Took down "${title}".`, "info");
       } else {
         await dismissReports(f.entryId, reason.slice(0, MAX_REPORT_REASON_CHARS));
@@ -239,8 +233,9 @@ export function ModerationView({
     setBusy(t.entry.id);
     try {
       await restoreEntry(t.entry.id, reason.slice(0, MAX_REPORT_REASON_CHARS));
-      // The public list is cached at the CDN for about a minute.
-      showToast(`Restored "${t.entry.title}". It may take a minute to reappear in the gallery.`, "info");
+      recordListChange(t.entry.id, t.entry);
+      // #2433 — this browser shows it now; the CDN's cached list reaches everyone else later.
+      showToast(`Restored "${t.entry.title}". It can take a few minutes to reappear for everyone else.`, "info");
     } catch (err) {
       showToast(`Couldn't do that — ${(err as Error).message}`, "error");
     } finally {

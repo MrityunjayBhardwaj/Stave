@@ -24,6 +24,7 @@ import {
   MAX_TAGS,
   MAX_THUMBNAIL_BYTES,
   MAX_TITLE_CHARS,
+  type GalleryEntry,
   type GalleryEntryResponse,
   type GalleryListResponse,
   type GalleryManifest,
@@ -427,6 +428,16 @@ describe("listing and opening", () => {
   });
 });
 
+describe("#2433 the publish answer", () => {
+  it("carries the entry exactly as the public list shows it", async () => {
+    const { id, entry: answered } = await published();
+    const { entries } = (await (await listRoute()).json()) as { entries: GalleryEntry[] };
+    const listed = entries.find((e) => e.id === id);
+    expect(listed).toBeDefined();
+    expect(answered).toEqual(listed);
+  });
+});
+
 describe("the author's email stays on the server", () => {
   it("appears in no public response", async () => {
     // The account's email (EMAIL), and one an old client put in the body.
@@ -438,6 +449,7 @@ describe("the author's email stays on the server", () => {
     const ack = await report(id, { reason: "testing the ack" });
     expect(ack.status).toBe(202);
     bodies.push(await ack.text());
+    bodies.push(JSON.stringify(await published({ authorEmail: EMAIL })));
 
     // The control: the entry really is in the list and the entry route really answered,
     // so an empty body can't pass this vacuously.

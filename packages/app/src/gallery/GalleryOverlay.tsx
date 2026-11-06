@@ -31,6 +31,7 @@ import { CollectionView, PROFILE_CSS, ProfileView } from "./GalleryProfile";
 import { MODERATION_CSS, ModerationView } from "./GalleryModeration";
 import { MARKDOWN_CSS } from "./markdown";
 import {
+  applyListChanges,
   loadAuthor,
   listLocalShares,
   listPrivateLinks,
@@ -171,7 +172,8 @@ export function GalleryOverlay({
   const loadList = useCallback(() => {
     setList({ status: "loading" });
     fetchGalleryList()
-      .then((r) => setList({ status: "ready", entries: Array.isArray(r.entries) ? r.entries : [] }))
+      // #2433 — the list may be cached from before this browser's latest change.
+      .then((r) => setList({ status: "ready", entries: applyListChanges(Array.isArray(r.entries) ? r.entries : []) }))
       .catch((err: Error) => setList({ status: "error", message: err.message || "the gallery couldn't be loaded" }));
   }, []);
 
@@ -235,6 +237,8 @@ export function GalleryOverlay({
       setMyAuthorId(loadAuthor()?.authorId ?? null);
       // A claim just landed, or something was deleted: the account's list changed too.
       loadAccount();
+      // #2433 — published, deleted, taken down or restored here: show it straight away.
+      setList((l) => (l.status === "ready" ? { ...l, entries: applyListChanges(l.entries) } : l));
     };
     window.addEventListener(LOCAL_SHARES_CHANGED, refresh);
     return () => window.removeEventListener(LOCAL_SHARES_CHANGED, refresh);
@@ -314,9 +318,6 @@ export function GalleryOverlay({
       );
       if (outcome === "deleted") {
         showToast(`Deleted "${share.title}" from the gallery.`, "info");
-        if (list.status === "ready") {
-          setList({ status: "ready", entries: list.entries.filter((e) => e.id !== share.id) });
-        }
         loadAccount();
       }
     } catch (err) {
@@ -444,12 +445,7 @@ export function GalleryOverlay({
 
             <div className="sg-body">
               {tab === "moderation" && isAdmin ? (
-                <ModerationView
-                  onOpen={openOne}
-                  onTakenDown={(id) =>
-                    setList((l) => (l.status === "ready" ? { status: "ready", entries: l.entries.filter((e) => e.id !== id) } : l))
-                  }
-                />
+                <ModerationView onOpen={openOne} />
               ) : tab === "mine" ? (
                 <MyShares
                   myAuthorId={accountAuthorId ?? myAuthorId}

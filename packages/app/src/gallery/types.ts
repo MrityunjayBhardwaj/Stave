@@ -74,6 +74,11 @@ export interface PublishResponse {
   /** #2314 — the author this entry landed on. */
   authorId: string;
   /**
+   * #2433 — the entry as the public list shows it, so the author sees it at once
+   * while a cached list catches up. Absent from a deployment older than this field.
+   */
+  entry?: GalleryEntry;
+  /**
    * #2314 — present only when a publish CREATED a key-held author. Since #2319 a
    * publish always lands on the signed-in account's author, which has no key, so
    * the server no longer sends it; kept so older stored responses still type.

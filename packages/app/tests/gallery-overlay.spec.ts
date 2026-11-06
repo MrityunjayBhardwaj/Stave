@@ -23,7 +23,7 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 import { bootApp, editorValue, evalCode, seedCode } from './_appBoot'
-import { COUNTER_LINE, MUSIC_CODE, routeGallery } from './_gallery'
+import { ADA_SESSION_USER, COUNTER_LINE, MUSIC_CODE, routeGallery, routeSession } from './_gallery'
 
 async function enablePerf(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -204,5 +204,151 @@ test.describe('community gallery overlay', () => {
     expect(deleted).toEqual(['musc1CCCCCC'])
     const left = await page.evaluate(() => JSON.parse(localStorage.getItem('stave.gallery.shares') ?? '[]').map((s: { id: string }) => s.id))
     expect(left).toEqual(['gone0ZZZZZZ'])
+  })
+
+  test('#2433 your own publish and delete show at once, even while the cached list is older', async ({ page }) => {
+    const NEW_ID = 'newEntry001'
+    const published = {
+      id: NEW_ID,
+      title: 'Fresh Tune',
+      kind: 'music',
+      tags: [],
+      authorName: 'Ada',
+      authorId: ADA_SESSION_USER.authorId,
+      publishedAt: Date.UTC(2026, 10, 2),
+      fileCount: 1,
+      hasThumbnail: false,
+    }
+    const lists: string[][] = []
+    await routeGallery(page)
+    // Every read is the list the CDN cached before either change, however often it is asked for.
+    const stale = [
+      { id: 'musc1CCCCCC', title: 'Four On The Floor', kind: 'music', tags: [], authorName: 'Carol', publishedAt: Date.UTC(2026, 10, 1), fileCount: 1, hasThumbnail: false },
+    ]
+    await page.route('**/api/gallery', (route) => {
+      const method = route.request().method()
+      if (method === 'POST') return route.fulfill({ status: 201, json: { id: NEW_ID, manageToken: 'tok-new', authorId: ADA_SESSION_USER.authorId, entry: published } })
+      lists.push(stale.map((e) => e.id))
+      return route.fulfill({ json: { entries: stale } })
+    })
+    await routeSession(page, ADA_SESSION_USER)
+    await bootApp(page)
+    await openGalleryFromMenu(page)
+    await page.locator('[data-gallery-tab="music"]').click()
+    const card = page.locator(`[data-gallery-card="${NEW_ID}"]`)
+    await expect(page.locator('[data-gallery-card="musc1CCCCCC"]')).toBeVisible()
+    await expect(card).toHaveCount(0) // the control: it isn't there before publishing
+
+    // Publish from the gallery's own button, as a person does. It closes the gallery,
+    // so coming back to it fetches the list again, and the list is still the old one.
+    await page.locator('[data-gallery-publish]').click()
+    await expect(page.getByTestId('gallery-publish-dialog')).toBeVisible()
+    await page.getByTestId('gallery-publish-dialog').getByRole('button', { name: /^Publish/ }).click()
+    await expect(page.getByTestId('gallery-publish-dialog')).toBeHidden()
+    const reads = lists.length
+    await openGalleryFromMenu(page)
+    await expect.poll(() => lists.length).toBeGreaterThan(reads)
+    await page.locator('[data-gallery-tab="music"]').click()
+    await expect(card).toBeVisible()
+    await expect(card).toHaveCount(1)
+
+    // My shares must not call it "no longer in the gallery" while the list catches up.
+    await page.locator('[data-gallery-tab="mine"]').click()
+    const row = page.locator(`[data-gallery-mine="${NEW_ID}"]`)
+    await expect(row).toHaveAttribute('data-gallery-status', 'listed')
+    await row.getByRole('button', { name: 'Delete' }).click()
+    await page.getByRole('button', { name: 'Delete', exact: true }).last().click() // the confirm
+    await expect(row).toHaveCount(0)
+    await page.locator('[data-gallery-tab="music"]').click()
+    await expect(page.locator('[data-gallery-card="musc1CCCCCC"]')).toBeVisible()
+    await expect(card).toHaveCount(0)
+  })
+
+  test('#2433 an admin\'s take-down and restore show at once, even while the cached list is older', async ({ page }) => {
+    const entry = (id: string, title: string, kind: string) => ({
+      id, title, kind, tags: [], authorName: 'Carol', publishedAt: Date.UTC(2026, 10, 1), fileCount: 1, hasThumbnail: false,
+    })
+    const reported = entry('musc1CCCCCC', 'Four On The Floor', 'music')
+    const hidden = entry('vizz2HIDDEN', 'Back Again', 'viz')
+    await routeGallery(page)
+    const restored: string[] = []
+    await page.route('**/api/gallery/admin/**', (route) => {
+      const path = new URL(route.request().url()).pathname
+      if (path.endsWith('/reports')) return route.fulfill({ json: { flagged: [{ entryId: reported.id, entry: reported, reports: [{ reason: 'copied', reportedAt: 1 }] }] } })
+      if (path.endsWith('/removed')) return route.fulfill({ json: { entries: [{ entry: hidden, removedAt: 1, restoreBy: Date.now() + 86_400_000, reason: 'mistake' }] } })
+      if (path.endsWith('/suspensions')) return route.fulfill({ json: { suspensions: [] } })
+      if (path.endsWith('/log')) return route.fulfill({ json: { actions: [] } })
+      if (path.endsWith('/restore')) {
+        restored.push(path)
+        return route.fulfill({ status: 204 })
+      }
+      return route.fulfill({ status: 404 })
+    })
+    // The list the CDN cached before either change: it has the one, not the other.
+    await page.route('**/api/gallery', (route) => route.fulfill({ json: { entries: [reported] } }))
+    await page.route('**/api/gallery/me', (route) =>
+      route.fulfill({ json: { signInAvailable: true, providers: [{ id: 'github', name: 'GitHub' }], user: ADA_SESSION_USER, isAdmin: true } }),
+    )
+    await bootApp(page)
+    await openGalleryFromMenu(page)
+    await page.locator('[data-gallery-tab="music"]').click()
+    await expect(page.locator(`[data-gallery-card="${reported.id}"]`)).toBeVisible() // the control
+
+    await page.locator('[data-gallery-tab="moderation"]').click()
+    await page.locator(`[data-gallery-take-down="${reported.id}"]`).click()
+    const why = page.getByPlaceholder('e.g. hateful title, copied without credit')
+    await why.fill('copied')
+    await why.press('Enter')
+    await expect(page.locator('[data-testid="toast"]', { hasText: 'Took down' })).toBeVisible()
+    await page.locator(`[data-gallery-restore="${hidden.id}"]`).click()
+    const back = page.getByPlaceholder('e.g. taken down by mistake')
+    await back.fill('a mistake')
+    await back.press('Enter')
+    await expect(page.locator('[data-testid="toast"]', { hasText: 'Restored' })).toBeVisible()
+    expect(restored).toHaveLength(1)
+
+    const check = async () => {
+      await page.locator('[data-gallery-tab="music"]').click()
+      await expect(page.locator(`[data-gallery-card="${reported.id}"]`)).toHaveCount(0)
+      await page.locator('[data-gallery-tab="viz"]').click()
+      await expect(page.locator(`[data-gallery-card="${hidden.id}"]`)).toBeVisible()
+    }
+    await check() // while the gallery stayed open
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-gallery-tab="music"]')).toHaveCount(0)
+    await openGalleryFromMenu(page)
+    await check() // and from a fresh read of the same old list
+  })
+
+  test('#2433 a delete stays gone when the next cached list still has the entry', async ({ page }) => {
+    await routeGallery(page)
+    const stale = [
+      { id: 'musc1CCCCCC', title: 'Four On The Floor', kind: 'music', tags: [], authorName: 'Carol', publishedAt: Date.UTC(2026, 10, 1), fileCount: 1, hasThumbnail: false },
+    ]
+    await page.route('**/api/gallery', (route) => route.fulfill({ json: { entries: stale } }))
+    await page.addInitScript(() => {
+      if (localStorage.getItem('stave.gallery.shares')) return
+      localStorage.setItem(
+        'stave.gallery.shares',
+        JSON.stringify([{ id: 'musc1CCCCCC', title: 'Four On The Floor', kind: 'music', publishedAt: Date.UTC(2026, 10, 1), manageToken: 'tok-a' }]),
+      )
+    })
+    await bootApp(page)
+    await openGalleryFromMenu(page)
+    await page.locator('[data-gallery-tab="music"]').click()
+    const card = page.locator('[data-gallery-card="musc1CCCCCC"]')
+    await expect(card).toBeVisible() // the control: the list really has it
+
+    await page.locator('[data-gallery-tab="mine"]').click()
+    await page.locator('[data-gallery-mine="musc1CCCCCC"]').getByRole('button', { name: 'Delete' }).click()
+    await page.getByRole('button', { name: 'Delete', exact: true }).last().click() // the confirm
+    await expect(page.locator('[data-gallery-mine="musc1CCCCCC"]')).toHaveCount(0)
+
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-gallery-tab="music"]')).toHaveCount(0)
+    await openGalleryFromMenu(page)
+    await page.locator('[data-gallery-tab="music"]').click()
+    await expect(page.locator('[data-gallery-state]').or(page.locator('[data-gallery-card]')).first()).toBeVisible()
+    await expect(card).toHaveCount(0)
   })
 })
