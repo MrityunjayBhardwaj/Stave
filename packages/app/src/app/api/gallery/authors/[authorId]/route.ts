@@ -1,3 +1,5 @@
+import { suspensionOfAuthor } from "../../../../../db/repo/suspensions";
+import { suspendedRefusal } from "../../suspension";
 import {
   GALLERY_ID_PATTERN,
   type AuthorMovedResponse,
@@ -48,6 +50,9 @@ async function handleGET(_req: Request, { params }: Ctx): Promise<Response> {
     return Response.json(moved, { headers: NO_STORE });
   }
 
+  // #2400 — suspended with everything taken down: nothing public is left behind.
+  if ((await suspensionOfAuthor(db, authorId))?.hideProfile) return notFound();
+
   const { entries, collections } = await authorWork(db, authorId);
   const body: AuthorPageResponse = { author: publicProfile(author), entries, collections };
   return Response.json(body, { headers: NO_STORE });
@@ -70,6 +75,8 @@ async function handlePUT(req: Request, { params }: Ctx): Promise<Response> {
   if (!(await mayManageAuthor(req, authorId))) {
     return Response.json({ error: "you can't edit this profile" }, { status: 403 });
   }
+  const suspended = await suspendedRefusal(authorId); // #2400
+  if (suspended) return suspended;
   const limited = await limitAuthor("edit", authorId); // #2330
   if (limited) return limited;
 

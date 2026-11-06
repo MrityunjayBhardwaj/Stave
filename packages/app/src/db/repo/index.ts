@@ -109,4 +109,5 @@ export * from "./entries";
 export * from "./links";
 export * from "./rateLimits";
 export * from "./reports";
+export * from "./suspensions";
 export { inTransaction, type Q, type Tx } from "./tx";

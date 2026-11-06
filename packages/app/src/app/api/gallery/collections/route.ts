@@ -1,3 +1,4 @@
+import { suspendedRefusal } from "../suspension";
 import { newShareId } from "../../../../shareCrypto";
 import { type GalleryCollection } from "../../../../gallery/types";
 import { getDb } from "../../../../db/client";
@@ -24,6 +25,8 @@ async function handlePOST(req: Request): Promise<Response> {
 
   const authorId = await actingAuthor(req);
   if (!authorId) return Response.json({ error: "sign in to make a collection" }, { status: 403 });
+  const suspended = await suspendedRefusal(authorId); // #2400
+  if (suspended) return suspended;
   const limited = await limitAuthor("edit", authorId); // #2330
   if (limited) return limited;
 

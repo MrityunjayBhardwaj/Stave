@@ -125,7 +125,39 @@ export type AdminAction =
   | "take-down-collection"
   | "dismiss-report"
   | "restore-entry"
-  | "purge-entry";
+  | "purge-entry"
+  | "suspend-account"
+  | "lift-suspension";
+
+/** #2400 — how long an admin can suspend an account for, in days. Null is permanent. */
+export const SUSPENSION_DAYS = [7, 30, null] as const;
+export type SuspensionDays = (typeof SUSPENSION_DAYS)[number];
+
+export interface SuspendRequest {
+  authorId: string;
+  /** Why: kept in the action log. Required, at most MAX_REPORT_REASON_CHARS. */
+  reason: string;
+  days: SuspensionDays;
+  /** Also take down everything the account has published, and hide its profile. */
+  takeDownAll: boolean;
+}
+
+/** #2400 — a suspension in force, for admins. Never the email or the account hash. */
+export interface ActiveSuspension {
+  authorId: string;
+  name: string;
+  /** ms since epoch */
+  at: number;
+  /** ms since epoch; null is permanent. */
+  until: number | null;
+  reason: string;
+  hideProfile: boolean;
+}
+
+export interface SuspensionsResponse {
+  /** Newest first. */
+  suspensions: ActiveSuspension[];
+}
 
 /** #2401 — how long an admin take-down can be undone. The clean-up deletes the files within a day after. */
 export const TAKEDOWN_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
