@@ -48812,13 +48812,23 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
       if (prev) stopBackdropSource(prev);
+      if (backgroundFileId) {
+        const g = groups.get(groupId);
+        const shown = paneShownFileId(g?.tabs.find((t) => t.id === g.activeTabId));
+        const ref = getVizSourceChoice(backgroundFileId);
+        const builtin = ref.kind === "file" ? findBuiltinExampleSource(ref.fileId) : void 0;
+        if (builtin && shown === backgroundFileId && !pausedPreviews.has(backgroundFileId)) {
+          recordBackdropSource(backgroundFileId, ref);
+          builtin.startIfIdle();
+        }
+      }
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? void 0
       }));
       onBackgroundFileChange?.(groupId, backgroundFileId);
     },
-    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource]
+    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource, recordBackdropSource, pausedPreviews]
   );
   const updateGroupOverride = React48.useCallback(
     (groupId, overrideFileId) => {
