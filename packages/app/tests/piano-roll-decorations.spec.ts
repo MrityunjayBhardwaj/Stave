@@ -19,6 +19,10 @@
  * covers whole columns and is the in-fixture control.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
@@ -169,7 +173,7 @@ test.describe('roll decorations follow the note, not the column (#1078)', () => 
     }
   })
 
-  test("the handle of a note ending mid-column sits at the BAR's trailing edge", async ({ page }) => {
+  test("the handle of a note ending mid-column sits at the BAR's trailing edge (LCM grid)", async ({ page }) => {
     await page.setViewportSize(NARROW_VIEWPORT)
     await boot(page)
     await setStrudelCode(page, PARTIAL)
@@ -234,7 +238,7 @@ test.describe('roll decorations follow the note, not the column (#1078)', () => 
     }
   })
 
-  test('CONTROL — a whole-column note is untouched: name at the cell, handle at its edge', async ({
+  test('CONTROL — a whole-column note is untouched: name at the cell, handle at its edge (LCM grid)', async ({
     page,
   }) => {
     // The arm that must NOT move. Whole-column notes are all but 12/18 of the

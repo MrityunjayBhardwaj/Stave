@@ -141,16 +141,19 @@ export function group(parts: readonly SElement[], weight = 1): SElement {
  * they are.
  */
 export function siblings(els: readonly SElement[]): SElement[] {
+  // a copy is any step written once with nothing on it — a note, or a group (`[c4 e4]`, the
+  // copies of a repeat written out, #2294) — compared by its text
+  const key = (e: SElement): string | null =>
+    e.options_.weight === 1 && e.options_.reps === 1 && e.options_.ops.every((o) => o.type_ === 'tail') ? printElement(e) : null
   const out: SElement[] = []
   for (let i = 0; i < els.length; ) {
-    const n = plainName(els[i])
+    const n = key(els[i])
     let j = i + 1
-    while (n !== null && n !== REST && j < els.length && plainName(els[j]) === n) j++
+    while (n !== null && n !== REST && j < els.length && key(els[j]) === n) j++
     const k = j - i
     if (n !== null && n !== REST && k >= 3) {
-      const e = note(n, k)
-      e.options_.reps = k
-      e.options_.ops = [...e.options_.ops, { type_: 'replicate', arguments_: { amount: k } }]
+      const e: SElement = JSON.parse(JSON.stringify(els[i]))
+      e.options_ = { weight: k, reps: k, ops: [...e.options_.ops, { type_: 'replicate', arguments_: { amount: k } }] }
       out.push(e)
     } else out.push(...els.slice(i, j))
     i = j
@@ -180,7 +183,7 @@ const bare = <T>(n: T): T => JSON.parse(JSON.stringify(n, (key, v) => (key === '
  * folds back to `x*k` (`EVEN_HITS_ARE_STAR`), a run of three or more copies to `x!k`
  * (`COPIES_FROM_THREE_ARE_BANG`). Only this text is read — never a neighbour. Krill reads it.
  */
-export function respellWrittenOut(text: string, kind: 'star' | 'bang'): string {
+function respellWrittenOutHere(text: string, kind: 'star' | 'bang'): string {
   const els = (miniTree(text).source_ as KElement[]).map((e) => bare(e) as unknown as SElement)
   if (kind === 'bang') return printSeq(siblings(els))
   if (els.length !== 1) return text
@@ -188,4 +191,40 @@ export function respellWrittenOut(text: string, kind: 'star' | 'bang'): string {
   const src = e.source_
   if (src.type_ !== 'pattern' || src.arguments_.alignment !== 'fastcat' || e.options_.ops.length > 0 || e.options_.reps !== 1) return text
   return printElement(group(src.source_ as SElement[], e.options_.weight))
+}
+
+/**
+ * The copies of a repeat written out (#2294, a drag across places), one of them changed,
+ * SPELLED AGAIN: copies left side by side three or more are `x!k`
+ * (`COPIES_FROM_THREE_ARE_BANG`) — `[c4 e4] [c4 e4] [c4 e4] [c4 ~]` → `[c4 e4]!3 [c4 ~]`.
+ * `'bang'`: the text is the copies side by side; `'star'`: one step holding them
+ * (`[[c4 e4] [c4 ~]]`), its own weight kept. Only this text is read. Krill reads it.
+ */
+function respellCopiesHere(text: string, kind: 'star' | 'bang'): string {
+  const els = (miniTree(text).source_ as KElement[]).map((e) => bare(e) as unknown as SElement)
+  if (kind === 'bang') return printSeq(siblings(els))
+  if (els.length !== 1) return text
+  const e = els[0]
+  const src = e.source_
+  if (src.type_ !== 'pattern' || src.arguments_.alignment !== 'fastcat' || e.options_.ops.length > 0 || e.options_.reps !== 1) return text
+  const inner = `[${printSeq(siblings(src.source_ as SElement[]))}]`
+  return e.options_.weight === 1 ? inner : `${inner}@${e.options_.weight}`
+}
+
+/** `respellWrittenOutHere`, or the text as it stands where a node in it has no spelling here yet (`<a b>`, `{a b}`): never a guess */
+export function respellWrittenOut(text: string, kind: 'star' | 'bang'): string {
+  try {
+    return respellWrittenOutHere(text, kind)
+  } catch {
+    return text
+  }
+}
+
+/** `respellCopiesHere`, or the text as it stands where a node in it has no spelling here yet (`<a b>`, `{a b}`): never a guess */
+export function respellCopies(text: string, kind: 'star' | 'bang'): string {
+  try {
+    return respellCopiesHere(text, kind)
+  } catch {
+    return text
+  }
 }

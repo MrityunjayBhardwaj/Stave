@@ -251,6 +251,8 @@ export { noteSounds, soundLane, soundBlockEdit, stepNotes, stepNoteKey, type Sou
 export { chunkDivisions, chunkPeriod, laneDivisions } from './gridDivisions'
 export type { BarTree, BarTreeRefusal, DivisionRow, DivisionStep, DivisionHit, LaneDivisions, LaneDivisionsRefusal, Frac, Slot, DivisionsRefusal } from './gridDivisions'
 export { toggleStep, splitStep, resizeStep, resizeStepBy, applyStepEdit, laneRowForEdit } from './stepEdit'
+export { rollAdd, rollRemove, rollResize, rollMove, noteAt, moveAcrossPlaces } from './rollEdit'
+export type { RollPlace, RollRefusal, RollEditResult } from './rollEdit'
 export type { StepAddress, StepEdit, StepEditRefusal, StepEditResult } from './stepEdit'
 export type { SoundArg, SoundPickEdit } from './soundArg'
 export type { ChainArgRef } from './chainEdit'

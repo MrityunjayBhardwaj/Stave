@@ -39,6 +39,14 @@ export interface StepNode {
 }
 
 /** where bar `b` starts and how many drawn columns it has */
+/**
+ * Do bar `b`'s columns fall on whole numbers? A pattern whose weights do not sum to a whole
+ * (`c4@1.5 e4@1.2`, 2.7 columns) draws columns that are not an exact share of the bar, so no
+ * column there is an address the step writer can take (#2294).
+ */
+const wholeColumns = (c: { start: number; per: number }, ...cols: number[]): boolean =>
+  Number.isInteger(c.start) && Number.isInteger(c.per) && cols.every(Number.isInteger)
+
 function barColumns(m: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, b: number): { start: number; per: number } {
   const bars = m.bars ?? 1
   if (m.barSteps) return { start: m.barSteps.slice(0, b).reduce((a, n) => a + n, 0), per: m.barSteps[b] }
@@ -52,9 +60,37 @@ function barColumns(m: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, b: nu
 export function endInBar(m: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, col: number, end: number): Frac | null {
   const bars = m.bars ?? 1
   for (let b = 0; b < bars; b++) {
-    const { start, per } = barColumns(m, b)
+    const c = barColumns(m, b)
+    const { start, per } = c
     if (col < start || col >= start + per) continue
+    if (!wholeColumns(c, col, end)) return null
     return end > start && end <= start + per ? frac(end - start, per) : null
+  }
+  return null
+}
+
+/**
+ * Column `col` as a bar and the exact share of it it begins at (#2294): the roll's address of
+ * a place, as the step writer takes it. Null past the last bar, and where the bar's columns
+ * are not whole (`wholeColumns`).
+ */
+export function columnPlace(m: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, col: number): { bar: number; at: Frac } | null {
+  const bars = m.bars ?? 1
+  for (let b = 0; b < bars; b++) {
+    const c = barColumns(m, b)
+    const { start, per } = c
+    if (col >= start && col < start + per) return wholeColumns(c, col) ? { bar: b, at: frac(col - start, per) } : null
+  }
+  return null
+}
+
+/** One column of the bar column `col` is in, as a share of that bar (#2294). Null past the last bar. */
+export function columnUnit(m: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, col: number): Frac | null {
+  const bars = m.bars ?? 1
+  for (let b = 0; b < bars; b++) {
+    const c = barColumns(m, b)
+    const { start, per } = c
+    if (col >= start && col < start + per) return wholeColumns(c, col) ? frac(1, per) : null
   }
   return null
 }

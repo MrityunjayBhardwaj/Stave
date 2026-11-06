@@ -1,13 +1,17 @@
 /**
- * gridMode.ts — how the step grid lays out a `,`-stack's rows (#1855).
+ * gridMode.ts — how the grids draw a pattern and how they edit it (#1855, #2294).
  *
- *   exact  each row at its own part's steps: `~ sd ~ sd, hh*8` draws the snare as 4 boxes
- *          and the hats as 8, and a click fills one whole box (the default)
- *   lcm    every row cut to one shared grid, the least common multiple of the parts —
- *          the snare's steps are drawn 2 cells wide, as the grid always drew them
+ *   exact  the tree: each row at its own part's steps (`~ sd ~ sd, hh*8` draws the snare as
+ *          4 boxes and the hats as 8), and every edit is of one step's own text — a click
+ *          fills one whole box, and the piano roll's add, delete, length and move go through
+ *          the step writer (`codeView/stepEdit.ts`, `codeView/rollEdit.ts`) (the default)
+ *   lcm    the shared grid: every row cut to the least common multiple of the parts — the
+ *          snare's steps drawn 2 cells wide, as the grid always drew them — and edits go
+ *          through the column writer that respells the pattern from that grid
  *
- * A VIEW, not a model: both modes edit the same `StepGridModel` through the same writer,
- * so the code a click writes is the same either way; Exact only decides what a box is.
+ * NOT ONLY A VIEW any more: the two modes can write different code for the same gesture.
+ * The roll's choice lives in one place, `rollWriter.ts` (`rollStepText`). The stored values
+ * stay `'exact'` and `'lcm'` so a saved choice survives.
  *
  * A global UI setting, shared by every grid and persisted — the same tiny external
  * store + SSR-safe localStorage as `noteColor.ts`, set from the app's Settings

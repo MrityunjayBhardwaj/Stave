@@ -1,6 +1,9 @@
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 import { expectNoRefusalReported, expectRefusalReported } from './_console'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 /**
  * #1822 — after Slots ×2 (a view-only change) the piano roll refused every delete,
@@ -54,7 +57,7 @@ test.describe('a delete on a refined view (#1822)', () => {
     await expectNoRefusalReported(page)
   })
 
-  test('the delete the document cannot keep (#1340) is still refused at ×2', async ({ page }) => {
+  test('the delete the document cannot keep (#1340) is still refused at ×2 (LCM grid)', async ({ page }) => {
     const code = '$: note("<g1, c1> - <c3, g4 - - >")'
     await open(page, code)
     await refine(page)

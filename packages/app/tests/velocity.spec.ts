@@ -9,7 +9,11 @@
  * The Piano Roll velocity test lives below once the shared path is extended.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 import { slotsControl, preset } from './_resolutionControl'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
@@ -226,7 +230,7 @@ test.describe('velocity — Piano Roll (#409)', () => {
     await expect(roll.locator('[data-vel-bar="0"]')).toHaveAttribute('data-gain', '1')
   })
 
-  test('a note placed in a slot that only exists at a finer view is velocity-editable (#607)', async ({
+  test('a note placed in a slot that only exists at a finer view is velocity-editable (#607) (LCM grid)', async ({
     page,
   }) => {
     // THE RULE IS UNCHANGED; THE GESTURE THAT REACHES IT HAD TO MOVE (#1126).
