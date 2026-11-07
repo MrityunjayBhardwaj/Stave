@@ -214,7 +214,8 @@ describe('splitStep — a click part-way through a plain step', () => {
   it('refused where the step is not one plain text, or the click is not inside it', () => {
     const trees = chunkDivisions('hh(3,8) sn', 1)
     const { address, end } = stepAt('hh(3,8) sn', trees, 0, 'hh', 'hh(3,8)')
-    expect(splitStep('hh(3,8) sn', trees, address, mul(end, F(1, 2)), { sound: 'hh' })).toEqual({ ok: false, why: 'step-is-generated' })
+    // a euclid hit is written out and split on its own since #2434: half the whole step is past the clicked hit (an eighth of it)
+    expect(splitStep('hh(3,8) sn', trees, address, mul(end, F(1, 2)), { sound: 'hh' })).toEqual({ ok: false, why: 'not-inside-the-step' })
     const t3 = chunkDivisions('bd ~ sn ~', 1)
     const s3 = stepAt('bd ~ sn ~', t3, 0, 'bd', 'bd')
     expect(splitStep('bd ~ sn ~', t3, s3.address, F(0), { sound: 'bd' })).toEqual({ ok: false, why: 'not-inside-the-step' })
@@ -264,7 +265,8 @@ describe('resizeStep — a note’s length, inside its group', () => {
     expect(resizeRefused('bd ~ sd ~', 'bd', 'bd', 1)).toEqual({ ok: false, why: 'length-not-whole-steps' })
     // one hit of `bd*2` is resized on its own since #2326: the next hit is in its way
     expect(resizeRefused('bd*2 ~ sd ~', 'bd', 'bd*2', 2)).toEqual({ ok: false, why: 'no-room-to-grow' })
-    expect(resizeRefused('bd(3,8) ~ sd ~', 'bd', 'bd(3,8)', 2)).toEqual({ ok: false, why: 'step-is-generated' })
+    // and one hit of a euclid step since #2434: the hit after it is in its way
+    expect(resizeRefused('bd(3,8) ~ sd ~', 'bd', 'bd(3,8)', 2)).toEqual({ ok: false, why: 'no-room-to-grow' })
     expect(resizeRefused('bd ~ sd ~', 'sd', 'sd', 2)).toMatchObject({ ok: true })
     expect(resizeRefused('bd ~ sd ~', 'bd', '~', 2)).toEqual({ ok: false, why: 'not-the-rows-note' })
   })

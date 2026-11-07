@@ -364,7 +364,7 @@ export function partSteps(model: Pick<StepGridModel, 'steps' | 'bars' | 'barStep
 }
 
 /** why a drawn column names no step a click can edit */
-export type StepAtRefusal = LaneStepsRefusal | 'inside-a-step' | 'step-is-generated' | 'step-is-replicated'
+export type StepAtRefusal = LaneStepsRefusal | 'inside-a-step'
 
 /**
  * The written step a click on lane `lane`, drawn column `col` lands on (#2292): the step
@@ -403,19 +403,21 @@ export function stepAddressAt(
           if (columnOf(slot.begin, 0, per) === want) return { bar: b, span: s.span, at: slot.begin }
         }
         // a hit that begins part-way through its step was made by the step's own op
-        // (`hh*4`'s second hat, `bd!3`'s second copy). Since #2326 the writer edits one hit
-        // of a plain `x*k` / `x!k`, so the address is the step and where that hit begins; it
-        // gives the refusal itself for the ops it still does not edit (euclid, `?`, …)
+        // (`hh*4`'s second hat, `bd!3`'s second copy, `bd(3,8)`'s second hit). The address
+        // is the step and where that hit begins. Which ops the writer edits is the WRITER's
+        // rule (#2326, #2434): it is asked, and refuses with its own reason (`?`, `*<2 4>`, …)
         const hit = s.hits.find((h) => columnOf(h.begin, 0, per) === want)
-        if (hit) {
-          if (s.ops.every((o) => o === 'tail' || o === 'stretch' || o === 'replicate')) return { bar: b, span: s.span, at: hit.begin }
-          generated = s.reps > 1 || s.ops.includes('replicate') ? 'step-is-replicated' : 'step-is-generated'
+        if (hit) return { bar: b, span: s.span, at: hit.begin }
+        // an empty place inside a euclid step is a cell too: a click there adds the hit
+        // (#2434). Where that is no place of the step's own slots, the writer says so.
+        if (s.ops.includes('bjorklund')) {
+          const at = frac(want, per)
+          if (s.slots.some((slot) => !slot.fromBefore && cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0)) return { bar: b, span: s.span, at }
         }
       }
       return null
     }
-    let generated: 'step-is-generated' | 'step-is-replicated' | null = null
-    return visit(d.row) ?? generated ?? 'inside-a-step'
+    return visit(d.row) ?? 'inside-a-step'
   }
   return 'inside-a-step'
 }
