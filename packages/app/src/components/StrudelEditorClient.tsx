@@ -1697,8 +1697,11 @@ export default function StrudelEditorClient({
         const liveCode =
           getActiveFileId() === fileId ? getActiveEditor()?.getModel?.()?.getValue?.() : undefined;
         deriveCodeBackdropRef.current(fileId, liveCode ?? evaluatedCode);
-        // #2395 — THIS file's options, whether or not it is the focused one
-        publishCodeBackdropOptionsRef.current(fileId, liveCode ?? evaluatedCode);
+        // #2395 — THIS file's options, whether or not it is the focused one, and
+        // only while one of its tabs is open (a pattern played with its tab
+        // closed has no background to give them to; reopening reads its code)
+        const open = openPatternFiles(groupsRef.current.values(), (id) => getFile(id)?.language === "strudel");
+        if (open.includes(fileId)) publishCodeBackdropOptionsRef.current(fileId, liveCode ?? evaluatedCode);
       }
     });
     runtime.onAutoRefreshChanged((enabled: boolean) => {
