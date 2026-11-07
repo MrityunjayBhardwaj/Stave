@@ -218,8 +218,10 @@ export default function PrivacyPage() {
           </tbody>
         </table>
         <p>
-          Avatars and images in profile bios load directly from wherever they are hosted. A project you run, including
-          one from the gallery or a shared link, can also connect to other sites.
+          Avatars load directly from GitHub or Google, whichever service that person signed in with. Images in profile
+          bios load directly from GitHub or from Stave, and any other image shows its description instead, so the
+          person who wrote a bio doesn&apos;t get your network address from it. A project you run, including one from
+          the gallery or a shared link, can also connect to other sites.
         </p>
       </Section>
 
