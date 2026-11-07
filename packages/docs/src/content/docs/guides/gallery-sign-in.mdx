@@ -27,7 +27,7 @@ Each provider is offered only when its settings are present. Set up GitHub, Goog
 | `AUTH_URL` | Only off Vercel: your site's public origin, e.g. `https://stave.example.com`. (Or set `AUTH_TRUST_HOST=true` if your proxy passes the visitor's `Host` header through unchanged.) |
 | `STAVE_TRUSTED_PROXY_HOPS` or `STAVE_CLIENT_IP_HEADER` | Optional, only off Vercel, only behind your own proxy: how to tell signed-out visitors apart for the hourly limits. See [Telling visitors apart behind your own proxy](#telling-visitors-apart-behind-your-own-proxy). |
 
-Sessions live in that signed cookie, so there is no session database to run.
+Sessions live in that signed cookie, so there is no session database to run. A session lasts 7 days and is renewed while you use the site, at most once a day; after 7 days away you sign in again. With no session database, signing out only clears the cookie in that browser: a copy taken earlier keeps working until it expires.
 
 <Aside>
 Gallery changes (publish, delete, edits, reports, links) are accepted only from your site's own pages. Stave recognises its own pages by the `Host` header and by `AUTH_URL`; it never trusts `X-Forwarded-Host`, which any client can send. If your proxy rewrites `Host` to an internal name, set `AUTH_URL`.

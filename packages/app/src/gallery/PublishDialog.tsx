@@ -5,7 +5,7 @@ import type { ProjectMeta } from "@stave/editor";
 
 import { showToast } from "../dialogs/host";
 import { collectManifest } from "../shareProject";
-import { gallerySignIn, useGallerySession, type GallerySessionState } from "./session";
+import { gallerySignIn, loadGallerySession, useGallerySession, type GallerySessionState } from "./session";
 import {
   buildPublishRequest,
   filesForKind,
@@ -219,6 +219,8 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
     } catch (err) {
       setErrors([(err as Error)?.message || "Publishing failed."]);
       setSending(false);
+      // #2367 — if that was the session ending, this swaps the form for the sign-in offer.
+      void loadGallerySession();
       if (siteKey) setTurnstileRound((r) => r + 1); // the token was spent; get a fresh one
     }
   }, [manifest, sending, siteKey, turnstileToken, form, thumbnail, onClose]);
