@@ -20,9 +20,11 @@
  * "both copies went" cannot be satisfied by a grid that clears whole rows.
  */
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 import { expectNoRefusalReported } from './_console'
 
+
+pinLcmGrid(test)
 /** Two bars (the `< >` entries). The third `bd` sits outside every `< >`: one note, drawn in both bars. */
 const TWO_BARS = '$: s("<bd [~ bd]>@2 hh@2 bd <bd ~> [hh bd] [~ hh]")'
 /** that `bd`'s box in bar 1 — a box #1836 refused */
@@ -70,7 +72,7 @@ test.describe('a hit drawn twice from one written note: the click erases the not
     expect(lit.filter((c) => c.inert).map((c) => c.key), 'no lit cell is refused').toEqual([])
   })
 
-  test('two bars: erasing the third `bd` in bar 1 writes `~`, and bar 2’s copy goes too', async ({ page }) => {
+  test('two bars: erasing the third `bd` in bar 1 writes `~`, and bar 2’s copy goes too (LCM grid)', async ({ page }) => {
     const grid = await openSequencer(page, TWO_BARS)
     const before = (await litKeys(page)).map((c) => c.key)
     await grid.locator(`[data-seq-cell="${TWICE}"]`).click()
@@ -88,7 +90,7 @@ test.describe('a hit drawn twice from one written note: the click erases the not
     await expectNoRefusalReported(page)
   })
 
-  test('two bars, by key: Delete on that `bd` box erases the written note', async ({ page }) => {
+  test('two bars, by key: Delete on that `bd` box erases the written note (LCM grid)', async ({ page }) => {
     const grid = await openSequencer(page, TWO_BARS)
     await grid.locator(`[data-seq-cell="${TWICE}"]`).focus()
     await page.keyboard.press('Delete')
@@ -96,7 +98,7 @@ test.describe('a hit drawn twice from one written note: the click erases the not
     await expectNoRefusalReported(page)
   })
 
-  test('CONTROL, two bars: a note drawn once erases only its own box', async ({ page }) => {
+  test('CONTROL, two bars: a note drawn once erases only its own box (LCM grid)', async ({ page }) => {
     const grid = await openSequencer(page, TWO_BARS)
     const kicks = await litOf(page, 'bd')
     await grid.locator('[data-seq-cell="0:0"]').click()
@@ -114,7 +116,7 @@ test.describe('a hit drawn twice from one written note: the click erases the not
     await expectNoRefusalReported(page)
   })
 
-  test('CONTROL, one bar: the first kick erases alone', async ({ page }) => {
+  test('CONTROL, one bar: the first kick erases alone (LCM grid)', async ({ page }) => {
     const grid = await openSequencer(page, ONE_BAR)
     const kicks = await litOf(page, 'bd')
     await grid.locator('[data-seq-cell="0:0"]').click()

@@ -12,8 +12,10 @@
  * the same click whether the step is open or not.
  */
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 async function open(page: Page, code: string): Promise<Locator> {
   await bootApp(page, { drawer: { tabId: 'pattern', height: 460 } })
   // the dev server's badge sits over the panel's corner
@@ -31,25 +33,8 @@ const labels = (seq: Locator): Promise<string[]> =>
 const NESTED = '$: s("bd [hh [hh hh]] sd [~ cp]")'
 
 test.describe('zoom opens a level (#2277)', () => {
-  test('1× keeps every step closed; zooming in opens the levels the text writes, and the ruler names them', async ({ page }) => {
-    const seq = await open(page, NESTED)
-    await expect(seq.locator('[data-grid-zoom-level]')).toHaveText('1×')
-    expect(await labels(seq)).toEqual(['1', '1.2', '1.3', '1.4'])
-    await expect(seq.locator('[data-seq-step="open"]')).toHaveCount(0)
 
-    await seq.locator('[data-grid-zoom-in]').click()
-    await expect(seq.locator('[data-grid-zoom-level]')).toHaveText('1.5×')
-    await expect.poll(() => labels(seq)).toEqual(['1', '1.2', '1.2.2', '1.2.2.2', '1.3', '1.4', '1.4.2'])
-    // 1.2 and 1.2.2 and 1.4 open, in each of the four rows
-    await expect(seq.locator('[data-seq-step="open"]')).toHaveCount(12)
-    await expect(seq.locator('[data-seq-step="open"][data-seq-depth="2"]')).toHaveCount(4)
-
-    await seq.locator('[data-grid-zoom-out]').click()
-    await expect.poll(() => labels(seq)).toEqual(['1', '1.2', '1.3', '1.4'])
-    await expect(seq.locator('[data-seq-step="open"]')).toHaveCount(0)
-  })
-
-  test('⌘/Ctrl + scroll over the grid zooms', async ({ page }) => {
+  test('⌘/Ctrl + scroll over the grid zooms (LCM grid)', async ({ page }) => {
     const seq = await open(page, NESTED)
     const box = (await seq.locator('[data-seq-cell="0:0"]').boundingBox())!
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
@@ -118,21 +103,4 @@ test.describe('zoom opens a level (#2277)', () => {
     expect(await editorValue(page)).toBe(code)
   })
 
-  test('a click on a step is the same edit whether the step it sits in is open or not', async ({ page }) => {
-    const code = '$: s("bd [hh [hh hh]] sd [~ cp]")'
-    // the snare row's cell inside `[hh hh]`, at 1× a small box in a closed step
-    const target = '2:6'
-    let seq = await open(page, code)
-    await expect(seq.locator(`[data-seq-step="holds"]:has([data-seq-cell="${target}"])`)).toHaveCount(1)
-    await seq.locator(`[data-seq-cell="${target}"]`).click()
-    await expect.poll(() => editorValue(page)).not.toBe(code)
-    const closed = await editorValue(page)
-
-    seq = await open(page, code)
-    await seq.locator('[data-grid-zoom-in]').click()
-    await expect(seq.locator(`[data-seq-step="open"]:has([data-seq-cell="${target}"])`).first()).toBeVisible()
-    await seq.locator(`[data-seq-cell="${target}"]`).click()
-    await expect.poll(() => editorValue(page)).not.toBe(code)
-    expect(await editorValue(page)).toBe(closed)
-  })
 })

@@ -260,36 +260,28 @@ test.describe('a step that holds several hits, on a phone held upright (#1861)',
     test.skip(!['phone', 'iphone'].includes(testInfo.project.name), 'upright phones only')
   })
 
-  // the kick and snare rows are four steps with `[~ bd]` holding two; the hat row is ONE
-  // step holding eight, so its columns line up with the other rows only if every step,
-  // grouped or not, is exactly as wide as its columns drawn one by one
-  test('its columns are as wide as every other column, and every row stays in line', async ({ page }, testInfo) => {
+  test('in Exact every place a finger can press is at least 40 px, none overlap, and rows agree on time', async ({ page }, testInfo) => {
     await openPattern(page, testInfo.project.name, 1, '$: s("bd [~ bd] sd ~, hh*8")\n')
-    await expect(page.locator(STEP_GRID)).toBeVisible()
-    const rows = await page.evaluate((gridSel) => {
-      const root = document.querySelector(gridSel)!
-      return [...root.querySelectorAll('[role="row"]')]
-        .map((row) => ({
-          grouped: row.querySelectorAll('[data-seq-step]').length,
-          cells: [...row.querySelectorAll('[role="gridcell"]')]
-            .map((c) => c.getBoundingClientRect())
-            .map((r) => ({ left: r.left, right: r.right, width: r.width }))
-            .sort((x, y) => x.left - y.left),
-        }))
-        .filter((r) => r.cells.length > 0)
-    }, STEP_GRID)
+    await expect(page.locator('[data-exact-grid]')).toBeVisible()
+    const rows = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-exact-grid] [role="row"]')].map((row) =>
+        [...row.querySelectorAll('[role="gridcell"]')]
+          .map((c) => ({ at: c.getAttribute('data-seq-at')!, ...c.getBoundingClientRect().toJSON() as { left: number; right: number; width: number } }))
+          .sort((x, y) => x.left - y.left),
+      ),
+    )
     expect(rows.length).toBeGreaterThanOrEqual(3)
-    // the case under test is on screen: rows drawn with grouped steps
-    expect(rows.every((r) => r.grouped > 0)).toBe(true)
-    for (const r of rows) {
-      expect(r.cells.length).toBe(rows[0].cells.length)
-      expect(Math.min(...r.cells.map((c) => c.width))).toBeGreaterThanOrEqual(40)
-      // no column runs into the next one
-      for (let i = 1; i < r.cells.length; i++) expect(r.cells[i].left).toBeGreaterThanOrEqual(r.cells[i - 1].right - 0.5)
-    }
-    // every row's columns fall on the first row's
-    for (const r of rows.slice(1)) {
-      r.cells.forEach((c, i) => expect(Math.abs(c.left - rows[0].cells[i].left)).toBeLessThan(1.5))
+    const lefts = new Map<string, number>()
+    for (const cells of rows) {
+      expect(cells.length).toBeGreaterThan(0)
+      expect(Math.min(...cells.map((c) => c.width))).toBeGreaterThanOrEqual(40)
+      for (let i = 1; i < cells.length; i++) expect(cells[i].left).toBeGreaterThanOrEqual(cells[i - 1].right - 0.5)
+      for (const c of cells) {
+        const seen = lefts.get(c.at)
+        if (seen !== undefined) expect(Math.abs(c.left - seen)).toBeLessThan(1.5)
+        lefts.set(c.at, c.left)
+      }
     }
   })
+
 })

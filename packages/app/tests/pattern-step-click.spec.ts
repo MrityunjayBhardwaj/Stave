@@ -13,8 +13,10 @@
  * exactly the step's bytes, and that the grid redraws from what was written.
  */
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 const NESTED = '$: s("bd [~ bd] sd [hh [~ cp]]")'
 const COPIES = '$: s("[bd ~]*2 sd")'
 
@@ -77,7 +79,7 @@ async function clickWrites(page: Page, seq: Locator, key: string, want: string, 
 }
 
 test.describe('a click edits the step’s own text (#2292)', () => {
-  test('nested steps: a rest becomes the row’s sound, and a second click takes it back out', async ({ page }) => {
+  test('nested steps: a rest becomes the row’s sound, and a second click takes it back out (LCM grid)', async ({ page }) => {
     const seq = await open(page, NESTED)
     const bd = await row(seq, 'bd')
     const cp = await row(seq, 'cp')
@@ -89,14 +91,14 @@ test.describe('a click edits the step’s own text (#2292)', () => {
     await clickWrites(page, seq, `${cp}:14`, NESTED, ['-cp@7/8', '-cp@15/8'])
   })
 
-  test('a step another sound plays: the row joins it as a chord, and leaves it again', async ({ page }) => {
+  test('a step another sound plays: the row joins it as a chord, and leaves it again (LCM grid)', async ({ page }) => {
     const seq = await open(page, NESTED)
     const cp = await row(seq, 'cp')
     await clickWrites(page, seq, `${cp}:12`, '$: s("bd [~ bd] sd [[hh,cp] [~ cp]]")', ['+cp@3/4', '+cp@7/4'])
     await clickWrites(page, seq, `${cp}:12`, NESTED, ['-cp@3/4', '-cp@7/4'])
   })
 
-  test('a step written once and played twice changes in both places', async ({ page }) => {
+  test('a step written once and played twice changes in both places (LCM grid)', async ({ page }) => {
     const seq = await open(page, COPIES)
     const bd = await row(seq, 'bd')
     await clickWrites(page, seq, `${bd}:1`, '$: s("[bd bd]*2 sd")', ['+bd@1/8', '+bd@3/8', '+bd@9/8', '+bd@11/8'])
@@ -107,13 +109,13 @@ test.describe('a click edits the step’s own text (#2292)', () => {
 
   // #2293: a column part-way through a plain step is no longer refused — it SPLITS the step
   // there (pinned in `pattern-steps-walk.spec.ts`). A quarter of the way into `bd` is four parts.
-  test('a column part-way through a step splits it, and only its own text changes', async ({ page }) => {
+  test('a column part-way through a step splits it, and only its own text changes (LCM grid)', async ({ page }) => {
     const seq = await open(page, NESTED)
     const bd = await row(seq, 'bd')
     await clickWrites(page, seq, `${bd}:1`, '$: s("[bd bd ~ ~] [~ bd] sd [hh [~ cp]]")', ['+bd@1/16', '+bd@17/16'])
   })
 
-  test('one hat inside hh*4 is edited on its own, the step written out (#2326)', async ({ page }) => {
+  test('one hat inside hh*4 is edited on its own, the step written out (#2326) (LCM grid)', async ({ page }) => {
     const seq = await open(page, '$: s("bd hh*4")')
     const hh = await row(seq, 'hh')
     // `hh*4` is columns 4–7: column 5 is its second hat
@@ -134,7 +136,7 @@ test.describe('a click edits the step’s own text (#2292)', () => {
 
   // #2434: euclid joins `x*k` / `x!k` — only the clicked step is written out, its hits where
   // Strudel plays them. `bd(3,8)` is columns 8–15, its hits at 8, 11 and 14.
-  test('one hit inside bd(3,8) is erased on its own, and an empty place takes one (#2434)', async ({ page }) => {
+  test('one hit inside bd(3,8) is erased on its own, and an empty place takes one (#2434) (LCM grid)', async ({ page }) => {
     const seq = await open(page, '$: s("sd bd(3,8)")')
     const bd = await row(seq, 'bd')
     await clickWrites(page, seq, `${bd}:11`, '$: s("sd [bd ~ ~ ~ ~ ~ bd ~]")', ['-bd@11/16', '-bd@27/16'])

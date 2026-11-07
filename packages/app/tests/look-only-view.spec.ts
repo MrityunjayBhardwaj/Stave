@@ -13,8 +13,11 @@
  *     are not passing because the gestures missed.
  */
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 import { slotsControl, preset } from './_resolutionControl'
 
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -104,7 +107,7 @@ async function everyGridGesture(page: Page, grid: Locator): Promise<void> {
 }
 
 test.describe('a pattern nobody can edit note by note is still shown (#1975)', () => {
-  test('`[hh ~]!16` opens look-only, draws sixteen hits, and no gesture writes', async ({ page }) => {
+  test('`[hh ~]!16` opens look-only, draws sixteen hits, and no gesture writes (LCM grid)', async ({ page }) => {
     await boot(page)
     const code = '$: s("[hh ~]!16")'
     await setCode(page, code)
@@ -130,7 +133,7 @@ test.describe('a pattern nobody can edit note by note is still shown (#1975)', (
     await expect(grid.locator('[data-seq-cell][aria-pressed="true"]')).toHaveCount(16)
   })
 
-  test('`~ ~ ~ bd(<2 4!2>, 8)` opens look-only over its three bars, ten hits', async ({ page }) => {
+  test('`~ ~ ~ bd(<2 4!2>, 8)` opens look-only over its three bars, ten hits (LCM grid)', async ({ page }) => {
     await boot(page)
     const code = '$: s("~ ~ ~ bd(<2 4!2>, 8)")'
     await setCode(page, code)
@@ -151,7 +154,7 @@ test.describe('a pattern nobody can edit note by note is still shown (#1975)', (
     expect(await docValue(page)).toBe(code)
   })
 
-  test('`<bd>*4` — whole-step hits, which a rebuild from the cells COULD spell — still writes nothing', async ({ page }) => {
+  test('`<bd>*4` — whole-step hits, which a rebuild from the cells COULD spell — still writes nothing (LCM grid)', async ({ page }) => {
     // The two patterns above play half-step hits, and the grid's rebuild has no
     // spelling for those: they would stay unwritten even with the look-only guards
     // gone. This one plays four whole steps, so only the guards keep it unwritten —
@@ -168,7 +171,7 @@ test.describe('a pattern nobody can edit note by note is still shown (#1975)', (
     await expect(grid.locator('[data-seq-cell][aria-pressed="true"]')).toHaveCount(4)
   })
 
-  test('the Slots control and the + handle offer nothing on a look-only view', async ({ page }) => {
+  test('the Slots control and the + handle offer nothing on a look-only view (LCM grid)', async ({ page }) => {
     await boot(page)
     const code = '$: s("<clap clap>*8")'
     await setCode(page, code)
@@ -223,7 +226,7 @@ test.describe('a pattern nobody can edit note by note is still shown (#1975)', (
     expect(await docValue(page)).toBe(code)
   })
 
-  test('CONTROL: the same gestures on an editable pattern write', async ({ page }) => {
+  test('CONTROL: the same gestures on an editable pattern write (LCM grid)', async ({ page }) => {
     await boot(page)
     const code = '$: s("hh ~ hh ~")'
     await setCode(page, code)
@@ -236,7 +239,7 @@ test.describe('a pattern nobody can edit note by note is still shown (#1975)', (
     await expect.poll(() => docValue(page)).toBe('$: s("hh hh hh ~")')
   })
 
-  test('typing an editable pattern over a look-only one brings the editing grid back', async ({ page }) => {
+  test('typing an editable pattern over a look-only one brings the editing grid back (LCM grid)', async ({ page }) => {
     await boot(page)
     await setCode(page, '$: s("[hh ~]!16")')
     const drawer = await openPattern(page)

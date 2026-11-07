@@ -20,6 +20,8 @@
  * address and returns its answer, refusal included.
  */
 import {
+  applyStepEdit,
+  chunkDivisions,
   splitStep,
   toggleStep,
   type BarTree,
@@ -27,7 +29,7 @@ import {
   type Frac,
   type StepEditResult,
 } from '../../codeView'
-import { barStepsOrWhy, frac, fracNum, splitAddressAtPlace, stepAddressAtPlace, type FracStep, type StepAtRefusal } from './gridZoom'
+import { barStepsOrWhy, frac, fracNum, OPEN_PX, splitAddressAtPlace, stepAddressAtPlace, type FracStep, type StepAtRefusal } from './gridZoom'
 import { probeTrees, repeatingBars, treeGridFrom, type TreeRow } from './treeGrid'
 
 /** no bar is cut finer than this: past it a plain step shows no snap halves, and is still one cell */
@@ -125,15 +127,35 @@ function leavesOf(steps: readonly FracStep[], out: FracStep[] = []): FracStep[] 
   return out
 }
 
+/** a row the view keeps on screen though the text writes no note of it: just added, or just emptied */
+export interface KeptRow {
+  sound: string
+  part: number
+}
+
 /** a pattern as rows of cells, from the trees of bars `0 … n−1` — or why it has none */
-export function exactGridFrom(probed: readonly BarTree[]): ExactGrid {
+export function exactGridFrom(probed: readonly BarTree[], kept: readonly KeptRow[] = []): ExactGrid {
   const rep = repeatingBars(probed)
   const grid = treeGridFrom(probed, 'allowed')
   if (!rep.ok) return rep
   if (!grid.ok) return grid
   const divisions = new Map<number, number>()
   for (const t of rep.trees) t.parts.forEach((row, p) => divisions.set(p, finest(row, divisions.get(p) ?? 1)))
-  const rows = grid.rows.map((r): ExactRow => {
+  // rows the view keeps come after the rows the text writes, in their own part's place
+  const written = grid.rows.map((r) => `${r.part}\u0000${r.sound}`)
+  const extra = kept
+    .filter((k) => !written.includes(`${k.part}\u0000${k.sound}`) && rep.trees[0].parts[k.part])
+    .map((k): TreeRow => {
+      const perBar: FracStep[][] = []
+      let why: string | null = null
+      for (const t of rep.trees) {
+        const steps = barStepsOrWhy(t.parts[k.part], k.sound)
+        if (typeof steps === 'string') why = why ?? steps
+        else perBar.push(steps)
+      }
+      return { sound: k.sound, part: k.part, bars: why ? null : perBar, why, hits: [] }
+    })
+  const rows = [...grid.rows, ...extra].map((r): ExactRow => {
     const cells: ExactCell[] = []
     for (let b = 0; b < rep.bars; b++) {
       const row = rep.trees[b].parts[r.part]
@@ -154,8 +176,65 @@ export function exactGridFrom(probed: readonly BarTree[]): ExactGrid {
 }
 
 /** a pattern as rows of cells, from its mini string */
-export function exactGridOf(mini: string): ExactGrid {
-  return exactGridFrom(probeTrees(mini))
+export function exactGridOf(mini: string, kept: readonly KeptRow[] = []): ExactGrid {
+  return exactGridFrom(probeTrees(mini), kept)
+}
+
+/** a cell's position in cycles from the pattern's start */
+export const cellAt = (c: Pick<ExactCell, 'bar' | 'begin'>): number => c.bar + fracNum(c.begin)
+export const cellEnd = (c: Pick<ExactCell, 'bar' | 'end'>): number => c.bar + fracNum(c.end)
+
+/**
+ * The cells a row draws when a bar is `barPx` wide (the design's option B): a snap half only once
+ * it is wide enough to aim at. Until then the step is one cell, and a click on it is the click on
+ * its first place. A step's own places (`hh*4`) are always drawn: each is a hit.
+ */
+export function drawnCells(cells: readonly ExactCell[], barPx: number, openPx = OPEN_PX): ExactCell[] {
+  const out: ExactCell[] = []
+  for (const c of cells) {
+    const wide = (fracNum(c.end) - fracNum(c.begin)) * barPx >= openPx - 1e-6
+    const last = out[out.length - 1]
+    if (c.split && !wide && last) out[out.length - 1] = { ...last, end: c.end }
+    else out.push(c)
+  }
+  return out
+}
+
+/**
+ * The text with every note of a row taken out, one step at a time through the writer — or why
+ * not: the first note the writer refuses. Nothing is written unless all of them can be.
+ */
+export function removeRowText(mini: string, bars: number, row: KeptRow, order: readonly string[]): { ok: true; mini: string } | { ok: false; why: string } {
+  let text = mini
+  for (let guard = 0; guard < 4096; guard++) {
+    const g = exactGridFrom(chunkDivisions(text, 2 * bars), [row])
+    if (!g.ok) return { ok: false, why: g.why }
+    const r = g.rows.find((x) => x.sound === row.sound && x.part === row.part)
+    const on = r?.cells.find((c) => c.on)
+    if (!r || !on) return { ok: true, mini: text }
+    const e = cellEdit(text, g.trees, r, order, on)
+    if (!e.ok) return { ok: false, why: e.why }
+    text = applyStepEdit(text, e.edit)
+  }
+  return { ok: false, why: 'too-many-notes' }
+}
+
+/** does the pattern play numbers, which the roll shows, rather than a row of sounds? */
+export function playsNumbers(trees: readonly BarTree[]): boolean {
+  let any = false
+  let all = true
+  const visit = (row: DivisionRow): void => {
+    for (const s of row.steps) {
+      for (const h of s.hits) {
+        any = true
+        const v = Array.isArray(h.value) ? h.value[0] : h.value
+        if (typeof v !== 'number') all = false
+      }
+      for (const r of s.rows ?? []) visit(r)
+    }
+  }
+  for (const t of trees) if (t.ok) t.parts.forEach(visit)
+  return any && all
 }
 
 /**

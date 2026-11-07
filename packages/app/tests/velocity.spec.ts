@@ -84,7 +84,7 @@ async function dragVertical(page: Page, cell: Locator, dy: number): Promise<void
 }
 
 test.describe('velocity — Sequencer (#409)', () => {
-  test('dragging a cell down writes a column-aligned .gain and softens its fill', async ({
+  test('dragging a cell down writes a column-aligned .gain and softens its fill (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -119,7 +119,7 @@ test.describe('velocity — Sequencer (#409)', () => {
     expect(softH).toBeLessThan(fullH - 2)
   })
 
-  test('dragging back to neutral removes the .gain method', async ({ page }) => {
+  test('dragging back to neutral removes the .gain method (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd hh sn hh")')
     const drawer = await openSequencer(page)
@@ -133,7 +133,7 @@ test.describe('velocity — Sequencer (#409)', () => {
     expect(await strudelValue(page)).toBe('$: s("bd hh sn hh")') // .gain removed
   })
 
-  test('reads an existing column .gain back onto the grid (round-trip)', async ({ page }) => {
+  test('reads an existing column .gain back onto the grid (round-trip) (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd hh sn hh").gain("1 0.5 1 0.25")')
     await page.evaluate(() => {
@@ -157,7 +157,7 @@ test.describe('velocity — Sequencer (#409)', () => {
     await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('data-gain', '1')
   })
 
-  test('reads a scalar .gain(0.4) as a uniform base and expands it on drag', async ({ page }) => {
+  test('reads a scalar .gain(0.4) as a uniform base and expands it on drag (LCM grid)', async ({ page }) => {
     await boot(page)
     // a track-level numeric .gain (the Mixer-knob form, as in the starter patterns)
     await setStrudelCode(page, '$: s("bd hh sn hh").gain(0.4)')

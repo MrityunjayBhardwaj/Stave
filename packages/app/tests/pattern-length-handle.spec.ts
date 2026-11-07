@@ -147,7 +147,7 @@ test.describe('piano roll', () => {
 })
 
 test.describe('step sequencer', () => {
-  test('click + adds a bar to a drum pattern', async ({ page }) => {
+  test('click + adds a bar to a drum pattern (LCM grid)', async ({ page }) => {
     const seq = await open(page, '$: s("bd sd bd sd")', SEQ, '[data-seq-cell="0:0"]')
     expect(await columns(seq, 'data-seq-cell')).toBe(4)
     await seq.locator('[data-extend-handle]').click()
@@ -156,7 +156,7 @@ test.describe('step sequencer', () => {
     await expectNoRefusalReported(page)
   })
 
-  test('REFUSES a bar the step grid could not show, rather than sending it to standby', async ({ page }) => {
+  test('REFUSES a bar the step grid could not show, rather than sending it to standby (LCM grid)', async ({ page }) => {
     const code = '$: s("bd*2 sd")'
     const seq = await open(page, code, SEQ, '[data-seq-cell="0:0"]')
     await seq.locator('[data-extend-handle]').hover()

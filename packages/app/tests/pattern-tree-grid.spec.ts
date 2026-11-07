@@ -16,8 +16,10 @@
  *   - CONTROL: a pattern the columns hold still opens the column grid, not this one.
  */
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 const NINETY_SIX = '$: s("hh hh [hh hh] hh [hh hh hh] hh hh [hh hh hh hh]")'
 const DEEP = '$: s("bd [hh [hh [hh*4 [cp]]]] sd [~ cp]")'
 
@@ -42,7 +44,7 @@ const boxes = (l: Locator): Promise<Array<{ x: number; w: number }>> =>
   }))
 
 test.describe('a grid drawn from the tree, look-only (#1834)', () => {
-  test('a bar of 96 columns draws its eight steps, each an eighth, with its groups as small boxes', async ({ page }) => {
+  test('a bar of 96 columns draws its eight steps, each an eighth, with its groups as small boxes (LCM grid)', async ({ page }) => {
     const grid = await open(page, NINETY_SIX)
     await expect(grid.locator('[data-seq-look-only]')).toContainText('Look only')
     await expect(grid.locator('[data-seq-look-only]')).toContainText('more than 64 steps')
@@ -71,7 +73,7 @@ test.describe('a grid drawn from the tree, look-only (#1834)', () => {
     expect(await editorValue(page)).toBe(before)
   })
 
-  test('zooming in opens its groups, and the ruler names their steps; the hits stay where they play', async ({ page }) => {
+  test('zooming in opens its groups, and the ruler names their steps; the hits stay where they play (LCM grid)', async ({ page }) => {
     const grid = await open(page, NINETY_SIX)
     const hitsAt = async (): Promise<number[]> => {
       const bar = (await grid.locator('[data-tree-step]').first().boundingBox())!
@@ -103,7 +105,7 @@ test.describe('a grid drawn from the tree, look-only (#1834)', () => {
     expect(at3).toEqual(at1)
   })
 
-  test('nested five deep, an onset off every column: every row draws, and zoom opens each level', async ({ page }) => {
+  test('nested five deep, an onset off every column: every row draws, and zoom opens each level (LCM grid)', async ({ page }) => {
     const grid = await open(page, DEEP)
     await expect(grid.locator('[data-seq-look-only]')).toContainText('does not land on any step column')
     expect(await grid.locator('[data-tree-row]').evaluateAll((els) => els.map((e) => e.getAttribute('data-tree-row')))).toEqual(['bd', 'hh', 'cp', 'sd'])
@@ -117,7 +119,7 @@ test.describe('a grid drawn from the tree, look-only (#1834)', () => {
     await expect(grid.locator('[data-tree-row="hh"] [data-tree-line="4"]')).toHaveCount(1)
   })
 
-  test('the playhead moves with the exact position playing, in the tree grid and in the column grid', async ({ page }) => {
+  test('the playhead moves with the exact position playing, in the tree grid and in the column grid (LCM grid)', async ({ page }) => {
     const play = async (): Promise<void> => {
       await page.evaluate(() => {
         const eds = (window as unknown as { monaco: { editor: { getEditors: () => { getModel: () => { getValue: () => string } | null; focus: () => void }[] } } }).monaco.editor.getEditors()

@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { applyStepEdit, chunkDivisions, isCellOn, parseStepGrid, splitStep, toggleStep, type Frac, type StepGridModel } from '../../../codeView'
 import { miniPattern } from '../../../codeView/strudelMini/pattern'
-import { cellEdit, exactGridOf, type ExactCell, type ExactGrid, type ExactRow } from '../exactGrid'
+import { cellEdit, drawnCells, exactGridOf, playsNumbers, type ExactCell, type ExactGrid, type ExactRow } from '../exactGrid'
 import { frac, splitAddressAt, stepAddressAt } from '../gridZoom'
 import { linesModel, ownStepWidths, rowBoxes } from '../writtenSteps'
 
@@ -84,6 +84,25 @@ describe('a row’s cells, from the tree alone', () => {
   it('a row whose steps do not tile keeps its notes as cells', () => {
     const g = grid('<<f#1 g1!3>*4!3 [[c2 -] [b1 -]]>*4')
     for (const r of g.rows) if (r.why) expect(r.cells.every((c) => c.on)).toBe(true)
+  })
+})
+
+describe('what a row draws at a width (#2458)', () => {
+  const at = (mini: string, sound: string, barPx: number): string =>
+    drawnCells(rowOf(grid(mini), sound).cells, barPx)
+      .map((c) => `${fr(c.begin)}-${fr(c.end)}`)
+      .join(' ')
+
+  it('a snap half too narrow to aim at is part of its step, so a click there is the click on its start', () => {
+    expect(at('bd [~ bd]', 'bd', 40)).toBe('0-1/2 1/2-3/4 3/4-1')
+  })
+
+  it('it opens once it is wide enough', () => {
+    expect(at('bd [~ bd]', 'bd', 64)).toBe('0-1/4 1/4-1/2 1/2-3/4 3/4-1')
+  })
+
+  it('a step’s own places are always drawn: each is a hit', () => {
+    expect(at('hh*4', 'hh', 8)).toBe('0-1/4 1/4-1/2 1/2-3/4 3/4-1')
   })
 })
 
@@ -311,6 +330,40 @@ const PINNED = {
   noCellRefuses: 516,
   cellsOnlyHere: 766,
 }
+
+/**
+ * What opens, counted the way the panel decides (2026-11-08, on the epic at 71c726ab + the tree
+ * shapes). Today's column grid over the same patterns: 1,018 editable.
+ */
+const OPENS_PINNED: Record<string, number> = {
+  'today editable → opens': 1018,
+  'today refused → opens': 161,
+  'today refused → plays numbers: the roll shows it': 367,
+  'today refused → no grid: does-not-repeat': 74,
+  'today refused → no grid: steps-do-not-tile': 3,
+  'today refused → no grid: hit-outside-its-step': 1,
+  'today refused → no grid: does-not-evaluate': 1,
+}
+
+describe('what opens in Exact', () => {
+  it('every pattern that opens as an editable grid today still opens, and what else does is counted', () => {
+    const c: Record<string, number> = {}
+    const bump = (k: string): void => {
+      c[k] = (c[k] ?? 0) + 1
+    }
+    const lost: string[] = []
+    for (const mini of minis) {
+      const g = parseStepGrid(mini) as { ok: boolean; gate?: string; model?: StepGridModel }
+      const today = g.ok && !g.model?.lookOnly ? 'editable' : g.ok ? 'look-only' : 'refused'
+      const x = exactGridOf(mini)
+      const now = !x.ok ? `no grid: ${x.why}` : playsNumbers(x.trees) ? 'plays numbers: the roll shows it' : 'opens'
+      bump(`today ${today} → ${now}`)
+      if (today === 'editable' && now !== 'opens') lost.push(`${now}: ${mini}`)
+    }
+    expect(lost.length, lost.slice(0, 40).join('\n')).toBe(0)
+    expect(c).toEqual(OPENS_PINNED)
+  }, 900_000)
+})
 
 describe('the corpus, side by side with today’s grid', () => {
   it('a click on the same place writes the same bytes, or refuses for the same reason', () => {

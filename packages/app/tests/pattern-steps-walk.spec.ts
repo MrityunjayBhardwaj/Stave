@@ -19,8 +19,10 @@
  * goes red when its path is put back.
  */
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 async function open(page: Page, code: string): Promise<Locator> {
   await bootApp(page, { drawer: { tabId: 'pattern', height: 460 } })
   await seedCode(page, code)
@@ -77,7 +79,7 @@ async function cursorAt(seq: Locator): Promise<string | null> {
 const NESTED = '$: s("bd [~ bd] sd [hh [~ cp]]")'
 
 test.describe('split, paint, cursor and resize walk steps (#2293)', () => {
-  test('split: a click on a step’s second half adds the hit there, and the step’s own hit keeps the first half', async ({ page }) => {
+  test('split: a click on a step’s second half adds the hit there, and the step’s own hit keeps the first half (LCM grid)', async ({ page }) => {
     const seq = await open(page, NESTED)
     const bd = await row(seq, 'bd')
     // `bd` is columns 0–3 of the bar's 16: column 2 is its second half
@@ -92,7 +94,7 @@ test.describe('split, paint, cursor and resize walk steps (#2293)', () => {
     ])
   })
 
-  test('split, a step another sound plays: the row’s sound joins it as the second half', async ({ page }) => {
+  test('split, a step another sound plays: the row’s sound joins it as the second half (LCM grid)', async ({ page }) => {
     const seq = await open(page, NESTED)
     const cp = await row(seq, 'cp')
     // `sd` is columns 8–11: column 10 is its half, on the cp row
@@ -103,7 +105,7 @@ test.describe('split, paint, cursor and resize walk steps (#2293)', () => {
     ])
   })
 
-  test('paint: a drag paints every step it crosses, at any depth, and never splits one', async ({ page }) => {
+  test('paint: a drag paints every step it crosses, at any depth, and never splits one (LCM grid)', async ({ page }) => {
     const code = '$: s("bd [~ ~] ~ ~")'
     const seq = await open(page, code)
     const bd = await row(seq, 'bd')
@@ -129,7 +131,7 @@ test.describe('split, paint, cursor and resize walk steps (#2293)', () => {
     ])
   })
 
-  test('cursor: the arrows walk the steps a row draws, into a group and out of it', async ({ page }) => {
+  test('cursor: the arrows walk the steps a row draws, into a group and out of it (LCM grid)', async ({ page }) => {
     const seq = await open(page, NESTED)
     const bd = await row(seq, 'bd')
     await cell(seq, `${bd}:0`).focus()
@@ -151,7 +153,7 @@ test.describe('split, paint, cursor and resize walk steps (#2293)', () => {
     expect(await editorValue(page)).toBe('$: s("bd [bd bd] sd [hh [~ cp]]")')
   })
 
-  test('resize: ⌥⇧→ and ⌥⇧← change the note’s length in its own spelling', async ({ page }) => {
+  test('resize: ⌥⇧→ and ⌥⇧← change the note’s length in its own spelling (LCM grid)', async ({ page }) => {
     const code = '$: s("bd@2 ~ sd ~")'
     const seq = await open(page, code)
     const bd = await row(seq, 'bd')
@@ -163,7 +165,7 @@ test.describe('split, paint, cursor and resize walk steps (#2293)', () => {
   })
 
   // a length is written `@n` (#2326)
-  test('resize, held notes: the rest after the note is taken into its `@n`, and back', async ({ page }) => {
+  test('resize, held notes: the rest after the note is taken into its `@n`, and back (LCM grid)', async ({ page }) => {
     const code = '$: s("hh sd ~ ~")'
     const seq = await open(page, code)
     const sd = await row(seq, 'sd')
@@ -183,7 +185,7 @@ test.describe('split, paint, cursor and resize walk steps (#2293)', () => {
     await becomes(page, code, '$: s("hh [sd@2 ~] hh")', ['-sd@1/3-4/9', '+sd@1/3-5/9', '-sd@4/3-13/9', '+sd@4/3-14/9'])
   })
 
-  test('resize refused: a note with another note after it in its group keeps its length, and the code is left alone', async ({ page }) => {
+  test('resize refused: a note with another note after it in its group keeps its length, and the code is left alone (LCM grid)', async ({ page }) => {
     const code = '$: s("[bd sd] ~")'
     const seq = await open(page, code)
     const bd = await row(seq, 'bd')

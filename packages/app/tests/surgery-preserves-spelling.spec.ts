@@ -27,7 +27,10 @@
  * from production. Verified by doing exactly that — see the break note in the issue.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -120,7 +123,7 @@ test.describe('byte surgery keeps the user’s own spelling (#1233)', () => {
    */
   // #2292 — a voice leaves its chord, and a chord left with one voice is that voice (the
   // ruling of 2026-11-04): a second click gives back the text the first click changed.
-  test('deleting one voice of a two-voice chord leaves the other voice', async ({ page }) => {
+  test('deleting one voice of a two-voice chord leaves the other voice (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("<[bd,hh] [sd,cp]>")')
     const drawer = await openSequencer(page)
