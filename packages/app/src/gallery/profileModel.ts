@@ -4,7 +4,7 @@
  * list is reordered, added to and trimmed. No React, no fetch.
  */
 import type { GalleryAuthor } from "./localShares";
-import { isReservedName, RESERVED_NAME_ERROR } from "./reservedNames";
+import { hasVisibleCharacter, isReservedName, RESERVED_NAME_ERROR } from "./reservedNames";
 import {
   MAX_AUTHOR_NAME_CHARS,
   MAX_BIO_CHARS,
@@ -105,6 +105,8 @@ export function buildProfileRequest(form: AuthorUpdateRequest, currentName?: str
   const errors: string[] = [];
   const name = form.name.trim();
   if (!name) errors.push("Add your name.");
+  // #2450 — refused even unchanged, as on the server.
+  else if (!hasVisibleCharacter(name)) errors.push("Your name needs a letter, number or symbol you can see.");
   else if (name.length > MAX_AUTHOR_NAME_CHARS) errors.push(`Your name can be at most ${MAX_AUTHOR_NAME_CHARS} characters.`);
   else if (name !== currentName && isReservedName(name)) errors.push(`Sorry, ${RESERVED_NAME_ERROR}.`);
   if (form.bio.length > MAX_BIO_CHARS) errors.push(`The bio can be at most ${MAX_BIO_CHARS.toLocaleString("en")} characters.`);

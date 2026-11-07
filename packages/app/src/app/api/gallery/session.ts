@@ -16,7 +16,7 @@ import {
   type AccountClaimInput,
   type AccountRecord,
 } from "../../../db/repo/accounts";
-import { isReservedName } from "../../../gallery/reservedNames";
+import { hasVisibleCharacter, isReservedName } from "../../../gallery/reservedNames";
 import { AUTHOR_KEY_HEADER, MAX_AUTHOR_NAME_CHARS, type GalleryVerified } from "../../../gallery/types";
 import { sessionRenewalDue } from "../../../sessionLifetime";
 import { authorForKey, keyOwnsAuthor } from "./authors";
@@ -194,12 +194,13 @@ export async function attachAuthorToAccount(
  * The name a new author starts with: the account's name, else its login, else a
  * placeholder. #2368 — a reserved one is passed over, never a reason to refuse
  * the sign-in: a GitHub account really named "Stave" gets the next one down.
- * Checked after the cut, because the cut is what gets stored.
+ * Checked after the cut, because the cut is what gets stored. #2450 — so is a
+ * name with nothing visible in it, the way an empty one always was.
  */
 function startingName(name: string, claim: StaveAccountClaim): string {
   for (const candidate of [name, claim.login ?? ""]) {
     const n = candidate.trim().slice(0, MAX_AUTHOR_NAME_CHARS);
-    if (n && !isReservedName(n)) return n;
+    if (hasVisibleCharacter(n) && !isReservedName(n)) return n;
   }
   return "New artist";
 }

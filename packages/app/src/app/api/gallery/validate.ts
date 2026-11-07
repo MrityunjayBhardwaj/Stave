@@ -17,7 +17,7 @@ import {
   type GalleryKind,
   type GalleryManifest,
 } from "../../../gallery/types";
-import { isReservedName, RESERVED_NAME_ERROR } from "../../../gallery/reservedNames";
+import { BLANK_NAME_ERROR, hasVisibleCharacter, isReservedName, RESERVED_NAME_ERROR } from "../../../gallery/reservedNames";
 
 // #2299 — what the server accepts. The limits come from the shared contract
 // (gallery/types.ts) so the publish dialog can say the same thing before it uploads.
@@ -189,11 +189,14 @@ export const MAX_COLLECTION_BODY_BYTES = 64 * 1024;
  * #2368 — a new name can't be a reserved one. `currentName` is the name stored
  * now: keeping it is always allowed, so a profile named before the rule existed
  * can still edit its bio. Only a change is checked.
+ *
+ * #2450 — a name with nothing visible in it is refused, changed or not.
  */
 export function checkAuthorUpdate(body: unknown, currentName: string): Checked<AuthorUpdateRequest> {
   if (!isObject(body)) return bad("expected a JSON object");
   const name = boundedText(body.name, "name", MAX_AUTHOR_NAME_CHARS);
   if (!name.ok) return name;
+  if (!hasVisibleCharacter(name.value)) return bad(BLANK_NAME_ERROR);
   if (name.value !== currentName && isReservedName(name.value)) return bad(RESERVED_NAME_ERROR);
   if (typeof body.bio !== "string") return bad("bio is missing");
   if (body.bio.length > MAX_BIO_CHARS) return bad(`bio is longer than ${MAX_BIO_CHARS} characters`);

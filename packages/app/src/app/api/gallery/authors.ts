@@ -1,4 +1,4 @@
-import { isReservedName } from "../../../gallery/reservedNames";
+import { hasVisibleCharacter, isReservedName } from "../../../gallery/reservedNames";
 import type { GalleryCollection, GalleryEntry } from "../../../gallery/types";
 import type { Db } from "../../../db/client";
 import {
@@ -54,14 +54,15 @@ export async function keyOwnsAuthor(db: Q, authorId: string, key: string | null)
  * Make a new key-held author (the #2314 way, before sign-in): the author and
  * its key hash in one transaction. Publishing no longer calls this (#2319); it
  * stays for #2320's claim tests and the browser specs' dev-only seeding. Null
- * for a reserved name (#2368), like every other door that sets one.
+ * for a reserved name (#2368), or one with nothing visible in it (#2450), like
+ * every other door that sets one.
  */
 export async function createAuthor(
   db: Db,
   name: string,
   email: string,
 ): Promise<{ authorId: string; authorKey: string } | null> {
-  if (isReservedName(name)) return null;
+  if (!hasVisibleCharacter(name) || isReservedName(name)) return null;
   const authorKey = newAuthorKey();
   const authorId = await insertKeyedAuthor(db, { name, email, keyHash: hashToken(authorKey) });
   return authorId ? { authorId, authorKey } : null;

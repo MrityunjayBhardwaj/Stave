@@ -125,3 +125,60 @@ test.describe('Reserved names (#2368)', () => {
     await expect(profileName(page)).toHaveText('Mjay')
   })
 })
+
+// #2450 — the six in the issue, as escapes so the list can be read.
+const INVISIBLE = ['​', '‍', '⁠', '­', 'ㅤ', '⠀']
+const BLANK_FORM = 'Your name needs a letter, number or symbol you can see.'
+const BLANK_SERVER = 'name has nothing you can see in it, so please add a letter, number or symbol'
+
+test.describe('Names with nothing visible in them (#2450)', () => {
+  test('the editor and the server refuse each one; the name stays as it was', async ({ page, request }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    const id = `blank-${RUN}`
+    await signIn(request, id, `Ada ${RUN}`, id)
+    await page.context().addCookies((await request.storageState()).cookies)
+    await bootApp(page)
+    const authorId = await openMyProfile(page)
+
+    await page.locator('[data-gallery-edit-profile]').click()
+    const editor = page.locator('[data-gallery-profile-editor]')
+    const nameBox = editor.getByLabel('Display name')
+    const errors = editor.locator('[data-gallery-form-errors]')
+    for (const bad of INVISIBLE) {
+      await nameBox.fill(bad)
+      await editor.getByRole('button', { name: 'Save' }).click()
+      await expect(errors).toHaveText(BLANK_FORM)
+      await expect(editor).toBeVisible()
+    }
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/blank-name-refused.png` })
+
+    const direct = await page.evaluate(
+      async ({ authorId, names }) => {
+        const out: Array<{ status: number; error: string }> = []
+        for (const name of names) {
+          const res = await fetch(`/api/gallery/authors/${authorId}`, {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ name, bio: '' }),
+          })
+          out.push({ status: res.status, error: ((await res.json()) as { error: string }).error })
+        }
+        return out
+      },
+      { authorId, names: INVISIBLE },
+    )
+    expect(direct).toEqual(INVISIBLE.map(() => ({ status: 400, error: BLANK_SERVER })))
+    const held = await (await request.get(`/api/gallery/authors/${authorId}`)).json()
+    expect(held.author.name).toBe(`Ada ${RUN}`)
+  })
+
+  test('an account whose name shows nothing signs in under its login', async ({ page, request }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    const id = `blank-login-${RUN}`
+    await signIn(request, id, 'ㅤ', id)
+    await page.context().addCookies((await request.storageState()).cookies)
+    await bootApp(page)
+    await openMyProfile(page)
+    await expect(profileName(page)).toHaveText(id)
+  })
+})

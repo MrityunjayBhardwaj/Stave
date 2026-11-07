@@ -12,7 +12,9 @@
  *   a key-held profile              authors.ts createAuthor (no real route calls
  *                                   it any more)
  * The profile form asks the same function first (profileModel.ts), as it does
- * with the other limits.
+ * with the other limits. #2450 — each door also refuses a name with nothing
+ * visible in it (hasVisibleCharacter, below), and the trust question reads such
+ * a name, already stored, as "someone else".
  *
  * ── How far it goes ─────────────────────────────────────────────────────────
  *
@@ -39,6 +41,27 @@
 
 /** What a refused name is told. Lowercase and unpunctuated, like the server's other errors. */
 export const RESERVED_NAME_ERROR = "that name is kept for the people who run Stave, so please choose a different one";
+
+/** #2450 — what a name with nothing visible in it is told, in the same style. */
+export const BLANK_NAME_ERROR = "name has nothing you can see in it, so please add a letter, number or symbol";
+
+/**
+ * #2450 — characters that show nothing on their own: spaces of every width,
+ * invisible format characters (zero-width space and joiners, word joiner, soft
+ * hyphen), the Hangul fillers (default-ignorable), the blank Braille cell U+2800
+ * (which isn't), control characters, and accents with no letter to sit on.
+ */
+const SHOWS_SOMETHING = /[^\p{White_Space}\p{Default_Ignorable_Code_Point}\p{Cc}\p{Cf}\p{Z}\p{M}⠀]/u;
+
+/**
+ * Does this name show at least one letter, number or symbol? A name that doesn't
+ * reads as blank wherever it appears, including the trust question, so the same
+ * doors as the reserved check refuse it, and refuse it even unchanged: unlike a
+ * name chosen before the reserved rule, nobody's real name is invisible.
+ */
+export function hasVisibleCharacter(name: string): boolean {
+  return SHOWS_SOMETHING.test(name);
+}
 
 /** Letters that look like a Latin letter, after lowercasing. Pairs: look-alike, then the letter. */
 const LOOKALIKES = new Map<string, string>(
