@@ -519,6 +519,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project; there only its trust-step tests run \u2014 the preview tests skip themselves, saying why, because the gate's server is next dev, which can't host the sandboxed frame. CI runs the whole file against the production build (ci.yml, #2343)"
   },
+  "gallery-reserved-names.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN"
+  },
   "gallery-sign-in.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN"

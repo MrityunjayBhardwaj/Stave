@@ -302,6 +302,46 @@ test.describe('gallery profiles and collections (#2314, #2315)', () => {
     expect(await bioRan(page)).toBeNull()
   })
 
+  test('#2368 a profile already named Stave can still edit its bio, and the server\'s refusal shows in the editor', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    const store = await routeProfiles(page)
+    store.author.name = 'Stave' // named before the rule existed
+    await rememberAuthor(page, { name: 'Stave', email: 'ada@example.com', authorId: ADA, authorKey: KEY })
+    await bootApp(page)
+    await openGalleryFromMenu(page)
+    await page.locator('[data-gallery-tab="mine"]').click()
+    await page.locator(`[data-gallery-my-profile="${ADA}"]`).click()
+    await page.locator('[data-gallery-edit-profile]').click()
+
+    const editor = page.locator('[data-gallery-profile-editor]')
+    const errors = editor.locator('[data-gallery-form-errors]')
+    const save = editor.getByRole('button', { name: 'Save' })
+
+    // Any change to the name is checked, even to another spelling of the same one.
+    await editor.getByLabel('Display name').fill('STAVE')
+    await save.click()
+    await expect(errors).toContainText('kept for the people who run Stave')
+    const puts = () => store.seen.filter((s) => s.method === 'PUT').length
+    expect(puts()).toBe(0)
+
+    // The server can refuse a name the form let through (renamed in another tab, say).
+    await page.route(`**/api/gallery/authors/${ADA}`, (route) =>
+      route.request().method() === 'PUT'
+        ? route.fulfill({ status: 400, json: { error: 'that name is kept for the people who run Stave, so please choose a different one' } })
+        : route.fallback(),
+    )
+    await editor.getByLabel('Display name').fill('Stave')
+    await save.click()
+    await expect(errors).toHaveText("Couldn't save — that name is kept for the people who run Stave, so please choose a different one.")
+    await page.unroute(`**/api/gallery/authors/${ADA}`)
+
+    // Unchanged, the form sends it and the bio saves.
+    await editor.getByLabel('Bio (markdown)').fill('A new bio.')
+    await save.click()
+    await expect(editor).toHaveCount(0)
+    expect(store.seen.filter((s) => s.method === 'PUT').at(-1)!.body).toEqual({ name: 'Stave', bio: 'A new bio.' })
+  })
+
   test('someone else with their own identity sees the profile but no Edit', async ({ page }) => {
     await routeProfiles(page, { seedCollection: true })
     await rememberAuthor(page, { name: 'Eve', email: 'eve@example.com', authorId: 'eveAuthor01', authorKey: 'key-eve' })
