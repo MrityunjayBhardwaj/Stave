@@ -14219,30 +14219,38 @@ function resizeStepHere(mini, trees, address, end, row) {
   }
   const unit = fdiv(fsub(slot.end, slot.begin), { n: step.weight, d: 1 });
   const want = fdiv(fsub(end, slot.begin), unit);
-  if (want.d !== 1 || want.n < 1 || want.n === step.weight) return refuse("length-not-whole-steps");
-  const w = want.n;
   const from = step.head.start;
   const name = step.name;
-  if (w < step.weight) return write(from, textEnd(mini, step), printSeq([note(name, w), ...rests(step.weight - w)]));
+  const part = fdiv(want, { n: step.weight, d: 1 });
+  if (want.d !== 1 && part.n > 0 && part.n < part.d) {
+    return write(from, textEnd(mini, step), printElement(group([note(name, part.n), ...rests(part.d - part.n)], step.weight)));
+  }
+  if (want.n < 1 || sameFrac(want, { n: step.weight, d: 1 })) return refuse("length-not-whole-steps");
+  if (want.d === 1 && want.n < step.weight) return write(from, textEnd(mini, step), printSeq([note(name, want.n), ...rests(step.weight - want.n)]));
   const ownRow = got.found.rows[got.found.rows.length - 1].row;
   if (ownRow.written !== ownRow.steps.length) return refuse("no-room-to-grow");
   const rowSteps2 = ownRow.steps;
   const i = rowSteps2.indexOf(step);
-  let need = w - step.weight;
+  let need = fsub(want, { n: step.weight, d: 1 });
+  let room = step.weight;
   let atTime = slot.end;
   const taken = [];
-  for (let j = i + 1; j < rowSteps2.length && need > 0; j++) {
+  for (let j = i + 1; j < rowSteps2.length && need.n > 0; j++) {
     const r = rowSteps2[j];
     const next = r.slots.find((x) => sameFrac(x.begin, atTime));
     if (!next || !r.rest || r.rows || r.ops.length > 0 || r.reps !== 1 || !r.span || !r.head || next.pastEnd) return refuse("no-room-to-grow");
     const u = fdiv(fsub(next.end, next.begin), unit);
-    if (u.d !== 1 || u.n > need) return refuse("no-room-to-grow");
+    if (u.d !== 1) return refuse("no-room-to-grow");
     taken.push(r);
-    need -= u.n;
+    room += u.n;
+    need = need.n * 1 > u.n * need.d ? fsub(need, u) : { n: 0, d: 1 };
     atTime = next.end;
   }
-  if (need > 0) return refuse("no-room-to-grow");
-  return write(from, textEnd(mini, taken[taken.length - 1]), printElement(note(name, w)));
+  if (need.n > 0) return refuse("no-room-to-grow");
+  const last = taken[taken.length - 1];
+  if (want.d === 1) return write(from, textEnd(mini, last), printSeq([note(name, want.n), ...rests(room - want.n)]));
+  const share = fdiv(want, { n: room, d: 1 });
+  return write(from, textEnd(mini, last), printElement(group([note(name, share.n), ...rests(share.d - share.n)], room)));
 }
 __name(resizeStepHere, "resizeStepHere");
 function plainGenerator(mini, step) {

@@ -521,13 +521,19 @@ function resizeStepHere(mini: string, trees: readonly BarTree[], address: StepAd
   // the note's unit: its slot over its weight; the length asked, in units
   const unit = fdiv(fsub(slot.end, slot.begin), { n: step.weight, d: 1 })
   const want = fdiv(fsub(end, slot.begin), unit)
-  if (want.d !== 1 || want.n < 1 || want.n === step.weight) return refuse('length-not-whole-steps')
-  const w = want.n
   // the note's own text: its name and whatever length it writes after it
   const from = step.head!.start
   const name = step.name!
+  // SHORTER BY PART OF A UNIT (#2443): `g3` held for two of its three columns. The step keeps
+  // its place and weight and is cut inside its own text: the note for `p` parts of `q`, rests
+  // for the rest (`g3` → `[g3@2 ~]`, `c4@2` → `[c4@3 ~]@2`). Nothing outside the step moves.
+  const part = fdiv(want, { n: step.weight, d: 1 })
+  if (want.d !== 1 && part.n > 0 && part.n < part.d) {
+    return write(from, textEnd(mini, step), printElement(group([note(name, part.n), ...rests(part.d - part.n)], step.weight)))
+  }
+  if (want.n < 1 || sameFrac(want, { n: step.weight, d: 1 })) return refuse('length-not-whole-steps')
 
-  if (w < step.weight) return write(from, textEnd(mini, step), printSeq([note(name, w), ...rests(step.weight - w)]))
+  if (want.d === 1 && want.n < step.weight) return write(from, textEnd(mini, step), printSeq([note(name, want.n), ...rests(step.weight - want.n)]))
 
   // LONGER: the rests after the note in its own row, next in time, until the room is filled.
   // Only in a row whose steps are all heard in this bar — a sequence. An alternation's next arm
@@ -537,23 +543,33 @@ function resizeStepHere(mini: string, trees: readonly BarTree[], address: StepAd
   if (ownRow.written !== ownRow.steps.length) return refuse('no-room-to-grow')
   const rowSteps = ownRow.steps
   const i = rowSteps.indexOf(step)
-  let need = w - step.weight
+  // what is still to fill, in the note's units; the weight the note and its rests take
+  let need: Frac = fsub(want, { n: step.weight, d: 1 })
+  let room = step.weight
   let atTime = slot.end
   const taken: DivisionStep[] = []
-  for (let j = i + 1; j < rowSteps.length && need > 0; j++) {
+  for (let j = i + 1; j < rowSteps.length && need.n > 0; j++) {
     const r = rowSteps[j]
     // the next step in TIME in this bar — an alternation's next arm is not
     const next = r.slots.find((x) => sameFrac(x.begin, atTime))
     if (!next || !r.rest || r.rows || r.ops.length > 0 || r.reps !== 1 || !r.span || !r.head || next.pastEnd) return refuse('no-room-to-grow')
     const u = fdiv(fsub(next.end, next.begin), unit)
-    if (u.d !== 1 || u.n > need) return refuse('no-room-to-grow')
+    if (u.d !== 1) return refuse('no-room-to-grow')
     taken.push(r)
-    need -= u.n
+    room += u.n
+    // a rest longer than what is left is taken in whole, and the note covers part of it (#2443)
+    need = need.n * 1 > u.n * need.d ? fsub(need, u) : { n: 0, d: 1 }
     atTime = next.end
   }
-  if (need > 0) return refuse('no-room-to-grow')
-  // the note and the rests it takes in become one step
-  return write(from, textEnd(mini, taken[taken.length - 1]), printElement(note(name, w)))
+  if (need.n > 0) return refuse('no-room-to-grow')
+  const last = taken[taken.length - 1]
+  // a whole number of units: the note, then what is left of the last rest, side by side
+  // (`c4 ~` → `c4@2`; `bd ~@2` held for two → `bd@2 ~`)
+  if (want.d === 1) return write(from, textEnd(mini, last), printSeq([note(name, want.n), ...rests(room - want.n)]))
+  // part of a unit: one step of the weight they had, the note for its share and rests after
+  // it (`c4 ~` longer by half a step → `[c4@3 ~]@2`)
+  const share = fdiv(want, { n: room, d: 1 })
+  return write(from, textEnd(mini, last), printElement(group([note(name, share.n), ...rests(share.d - share.n)], room)))
 }
 
 /* ── a hit of `x*k`, a copy of `x!k` (#2326) ─────────────────────── */
