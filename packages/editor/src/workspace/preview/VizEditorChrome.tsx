@@ -32,6 +32,7 @@ import {
   toggleVizLive,
 } from './vizLiveToggle'
 import { rendererForLanguage } from '../vizLanguages'
+import { isWaitingForGesture, onGestureWaitChange } from '../audioGestureGate'
 import { StaveInputsPanel } from './StaveInputsPanel'
 import { VizSettingsPopover, type VizPreviewMode } from './VizSettingsPopover'
 
@@ -116,6 +117,17 @@ export function VizEditorChrome({
     return onVizSourceChoiceChange((id, ref) => {
       if (id === file.id) setSelectedSource(ref)
     })
+  }, [file.id])
+
+  // #2451 — after a reload this viz's own background may have its example sound
+  // waiting for the page's first click (browsers don't play audio before one).
+  // Say so, rather than leave the background looking silent for no reason.
+  const [soundWaiting, setSoundWaiting] = useState<boolean>(() =>
+    isWaitingForGesture(file.id),
+  )
+  useEffect(() => {
+    setSoundWaiting(isWaitingForGesture(file.id))
+    return onGestureWaitChange(() => setSoundWaiting(isWaitingForGesture(file.id)))
   }, [file.id])
 
   const handleSourceChange = useCallback(
@@ -396,6 +408,23 @@ export function VizEditorChrome({
       >
         {'\u2699'}
       </button>
+
+      {soundWaiting && (
+        <span
+          data-testid="viz-chrome-sound-waiting"
+          title="Browsers only play sound after you interact with the page. Its sound starts on your first click or key press."
+          style={{
+            padding: '3px 8px',
+            borderRadius: 3,
+            fontSize: 10,
+            color: 'var(--foreground-muted)',
+            border: '1px dashed var(--border)',
+            userSelect: 'none',
+          }}
+        >
+          {'\u{1F507} sound starts on your first click'}
+        </span>
+      )}
 
       <div style={{ flex: 1 }} />
     </div>
