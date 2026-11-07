@@ -158,6 +158,15 @@ export function markSteps(root: KPattern, path: readonly number[], marks: readon
   }
   for (const mark of marks) {
     const el = kids(row)[mark.child]
+    // a foot (`a b . c d`) is a bare pattern in its row, with no element around it (#2454)
+    if (el?.type_ === 'pattern') {
+      const foot = el as unknown as { arguments_?: unknown } & KElement
+      delete foot.arguments_
+      foot.type_ = 'element'
+      foot.source_ = { type_: 'atom', source_: mark.marker, location_: { start: { offset: 0 }, end: { offset: 0 } } }
+      foot.options_ = { weight: 1, reps: 1, ops: [] }
+      continue
+    }
     if (el?.type_ !== 'element') throw new Error(`markSteps: no step ${mark.child} at ${path.join('.')}`)
     el.source_ = { type_: 'atom', source_: mark.marker, location_: el.location_ ?? { start: { offset: 0 }, end: { offset: 0 } } }
     if (!mark.keepOps && el.options_) el.options_ = { ...el.options_, ops: [] }

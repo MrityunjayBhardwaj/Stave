@@ -234,14 +234,14 @@ const ROLL_PINNED = { rolls: 603, nodes: 561, compared: 524, refused: { 'does-no
 const PINNED = {
   grids: 1018,
   rows: 2496,
-  nodes: 2431,
-  compared: 2211,
-  treeFiner: 122,
+  nodes: 2437,
+  compared: 2216,
+  treeFiner: 123,
   parserFiner: 27,
   maxDepth: 4,
   // 2026-11-03 (#2287): the 14 rows that named no part under several now draw the one part
   // writing their sound — 13 get nodes, 1 is off-grid
-  refused: { 'off-grid': 16, 'does-not-tile': 25, feet: 6, 'lane-sound-not-in-part': 18 },
+  refused: { 'off-grid': 16, 'does-not-tile': 25, 'lane-sound-not-in-part': 18 }, // feet have steps since #2454
 }
 
 describe('laneSteps — columns are the exact fractions, laid on the bar (#1834)', () => {
@@ -296,7 +296,7 @@ describe('laneSteps — columns are the exact fractions, laid on the bar (#1834)
     }
     expect(bad).toEqual([])
     // editable 2,431 + look-only 133 (pinned above and below)
-    expect({ rows, edges }).toEqual({ rows: 2564, edges: COLUMN_EDGES })
+    expect({ rows, edges }).toEqual({ rows: 2570, edges: COLUMN_EDGES })
   }, 600_000)
 })
 
@@ -331,7 +331,7 @@ describe('laneSteps — the corpus, look-only grids (#2287)', () => {
  * unknown are a sound two parts both write.
  */
 /** every edge of every drawn step, at every depth, of the 2,564 rows */
-const COLUMN_EDGES = 52_580
+const COLUMN_EDGES = 52_688
 
 const LOOK_ONLY_PINNED = {
   grids: 56,

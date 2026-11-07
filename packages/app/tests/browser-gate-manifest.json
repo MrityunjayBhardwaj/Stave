@@ -883,6 +883,10 @@
     "runs": "gate",
     "why": "Exact grid (#1861): a written step that holds several hits is drawn as one step with its hits inside (`[~ bd]`, `hh*8` as one step of 8), and a plain step a sibling cuts into columns is one box with faint halves. Pins which steps group in each row, that a grouped step's edges still fall on the other rows' columns, that clicks inside a step and on a faint half write what they always wrote, and LCM plus one-column steps unchanged as controls."
   },
+  "pattern-tree-shapes.spec.ts": {
+    "runs": "gate",
+    "why": "What the bar's tree learned to hold (#2454): a real click on a pattern written with feet writes the step's own bytes and Strudel plays exactly that; a 16-bar repeat draws all its bars look-only and a click writes nothing; a repeat within 12 bars still opens the column grid."
+  },
   "pattern-tree-grid.spec.ts": {
     "runs": "gate",
     "why": "Grid drawn from the pattern's own divisions, look-only (#1834): a pattern the columns cannot hold (96 columns, an onset off every column) draws every step at its exact share of the bar, closed groups as small boxes, its hits, and a ruler naming steps by place. Pins the box and hit counts, equal eighths, that a click writes nothing, that Ctrl/Cmd + wheel opens the groups with the hits unmoved, five levels opening on a deep pattern, the roll opening a beat of five, and an editable pattern still opening the column grid."

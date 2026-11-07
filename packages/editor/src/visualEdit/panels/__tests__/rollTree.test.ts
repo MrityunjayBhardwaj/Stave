@@ -134,20 +134,23 @@ describe('lookOnlyTreeRoll — the corpus', () => {
  * `wrong-surface`), 51 now draw; 45 do not repeat within 12 bars, 19 the roll reads as
  * sounds, 5 mix numbers and names, 1 the tree refuses. Notes with no text of their own
  * never reach this population: all 27 such patterns already open a look-only view (#1975).
+ *
+ * 2026-11-07 (#2454): a repeat is looked for up to 64 bars, so 100 rolls draw (76 of the 121
+ * that play numbers) and 34 do not repeat there.
  */
 const ROLL_TREE_PINNED = {
   nothing: 256,
   noTextLookOnly: 27,
-  rolls: 63,
-  notes: 7694,
-  withLines: 58,
-  alsoTreeGrid: 12,
+  rolls: 100,
+  notes: 10784,
+  withLines: 91,
+  alsoTreeGrid: 24,
   numbers: {
     patterns: 121,
-    drawn: 51,
-    not: { 'does-not-repeat': 45, 'hit-outside-its-step': 1, 'mixed-pitch-domain': 2, 'roll-gate:mixed-pitch-domain': 3, 'roll-gate:wrong-surface': 19 },
+    drawn: 76,
+    not: { 'does-not-repeat': 20, 'hit-outside-its-step': 1, 'mixed-pitch-domain': 2, 'roll-gate:mixed-pitch-domain': 3, 'roll-gate:wrong-surface': 19 },
   },
   noText: { patterns: 0, drawn: 0 },
   notARoll: { 'escaped-source': 1, 'mixed-pitch-domain': 3, 'no-note-content': 7, 'wrong-surface': 105 },
-  refused: { 'does-not-repeat': 71, 'hit-outside-its-step': 1, 'mixed-pitch-domain': 2, 'steps-do-not-tile': 3 },
+  refused: { 'does-not-repeat': 34, 'hit-outside-its-step': 1, 'mixed-pitch-domain': 2, 'steps-do-not-tile': 3 },
 }
