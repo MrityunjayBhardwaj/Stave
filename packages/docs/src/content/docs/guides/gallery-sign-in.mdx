@@ -196,9 +196,13 @@ Addresses are never stored as they are, only as a keyed hash. If the database ca
 
 To raise a limit without a code change, set `STAVE_RATE_LIMIT_<NAME>` to a whole number: `STAVE_RATE_LIMIT_PUBLISH`, `_REPORT`, `_EDIT`, `_LINK` or `_CLAIM`. The tests use this; production should normally leave them unset.
 
-### Cloudflare Turnstile on publish and report
+### Cloudflare Turnstile on publish, report and signed-out private links
 
-[Turnstile](https://developers.cloudflare.com/turnstile/) is Cloudflare's check that most people pass without doing anything. When it is set up, a small widget appears in the Publish dialog and the Report dialog, and the server checks its answer before accepting either. A failed check is refused with `403` and a plain message; if Cloudflare can't be reached, the server says so (`503`) rather than letting the request through.
+[Turnstile](https://developers.cloudflare.com/turnstile/) is Cloudflare's check that most people pass without doing anything. When it is set up, a small widget appears in the Publish dialog and the Report dialog, and the server checks its answer before accepting either.
+
+Making a private link asks for it only when you're signed out; signed-in links stay one click. Signed out, **Copy Private Link** opens a small dialog with the widget and copies the link as soon as the check passes, which for most people is a moment later. A session the server can't read counts as signed out. If the check can't pass (a content blocker, say), the same dialog offers the long link, which stores nothing and needs no check.
+
+A failed check is refused with `403` and a plain message; if Cloudflare can't be reached, the server says so (`503`) rather than letting the request through.
 
 | Variable | What it is |
 | --- | --- |

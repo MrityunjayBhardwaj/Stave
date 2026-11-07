@@ -43,11 +43,16 @@ import { readStartConditions, setStartScreenWanted, showsStartScreen, startScree
 import {
   buildShareUrl,
   buildShortShareUrl,
+  copyLink,
   loadIncomingShare,
   applyShareManifest,
   readIncomingShare,
   clearShareFragment,
+  SHARE_CHECK_CANCELLED,
+  SHARE_CHECK_REFUSED,
+  SHARE_CHECK_SKIPPED,
   SHARE_RATE_LIMITED,
+  type ShareCheckAnswer,
 } from "../shareProject";
 import { MenuBar } from "./MenuBar";
 import { buildMenus, type MenuActions } from "./menuModel";
@@ -107,6 +112,8 @@ import {
 import StrudelEditorClient, { type BounceHandle } from "./StrudelEditorClient";
 import { BounceModal, type BounceState } from "./BounceModal";
 import { PublishDialog } from "../gallery/PublishDialog";
+import { ShareCheckDialog } from "../gallery/ShareCheckDialog";
+import { turnstileSiteKey } from "../gallery/TurnstileWidget";
 // #2319 — who is signed in (menu bar, drawer, publish dialog), and the
 // `#publish` fragment the sign-in redirect comes back to.
 import { gallerySignIn, gallerySignOut, PUBLISH_HASH, useGallerySession } from "../gallery/session";
@@ -304,6 +311,22 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  // #2364 — Copy Private Link is waiting on the "are you human" check; this answers it.
+  const shareCheckAnswer = useRef<((answer: ShareCheckAnswer) => void) | null>(null);
+  const [shareCheckOpen, setShareCheckOpen] = useState(false);
+  const answerShareCheck = useCallback((answer: ShareCheckAnswer) => {
+    setShareCheckOpen(false);
+    shareCheckAnswer.current?.(answer);
+    shareCheckAnswer.current = null;
+  }, []);
+  const askShareCheck = useCallback(
+    () =>
+      new Promise<ShareCheckAnswer>((resolve) => {
+        shareCheckAnswer.current = resolve;
+        setShareCheckOpen(true);
+      }),
+    [],
+  );
   const gallerySession = useGallerySession();
   // #2319 — back from signing in to publish: take `#publish` off the URL and
   // reopen the dialog. Once, on mount; the redirect reloads the page.
@@ -539,16 +562,22 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       let url: string;
       let note = "";
       try {
-        url = await buildShortShareUrl(activeProject);
+        url = await buildShortShareUrl(activeProject, askShareCheck);
       } catch (err) {
+        const reason = (err as Error)?.name;
+        if (reason === SHARE_CHECK_CANCELLED) return;
         console.warn("[stave] short share link unavailable:", err);
         url = await buildShareUrl(activeProject);
         note =
-          (err as Error)?.name === SHARE_RATE_LIMITED
+          reason === SHARE_RATE_LIMITED
             ? " You've made several short links in the last few minutes, so this is the long one."
-            : " A short link wasn't available, so this is the long one.";
+            : reason === SHARE_CHECK_REFUSED
+              ? " The \u201care you human\u201d check didn't pass, so this is the long one."
+              : reason === SHARE_CHECK_SKIPPED
+                ? " This is the long one, which carries the project itself."
+                : " A short link wasn't available, so this is the long one.";
       }
-      await navigator.clipboard.writeText(url);
+      if (!(await copyLink(url))) return;
       // #2312 — say it's private, and where public sharing lives, for whoever meant to publish.
       showToast(
         `Private link copied — only people you send it to can open it.${note} To show it to everyone, use File → Share → Publish to Gallery.`,
@@ -562,7 +591,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         "error",
       );
     }
-  }, [activeProject]);
+  }, [activeProject, askShareCheck]);
 
   // On-mount: if we landed with #share= or a short /s/<id> link, decode and offer to import.
   // Runs once per session — the fragment is cleared either way so a
@@ -2317,6 +2346,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           triggerImportPicker();
         }}
       />
+
+      {shareCheckOpen && <ShareCheckDialog siteKey={turnstileSiteKey()} onAnswer={answerShareCheck} />}
 
       <PublishDialog
         open={publishOpen}
