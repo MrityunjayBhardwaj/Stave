@@ -37547,6 +37547,7 @@ __name(_DrumPatternScheduler, "DrumPatternScheduler");
 var DrumPatternScheduler = _DrumPatternScheduler;
 var state3 = null;
 var starting = false;
+var stopRequested = false;
 async function renderDrumLoopBuffer() {
   const sampleRate = 44100;
   const durationSeconds = 2;
@@ -37653,11 +37654,20 @@ async function renderDrumLoopBuffer() {
 }
 __name(renderDrumLoopBuffer, "renderDrumLoopBuffer");
 async function startDrumPattern() {
-  if (state3 || starting) return;
+  if (state3) return;
+  if (starting) {
+    stopRequested = false;
+    return;
+  }
   starting = true;
+  stopRequested = false;
   try {
     const ctx = new AudioContext();
     const buffer = await renderDrumLoopBuffer();
+    if (stopRequested) {
+      void ctx.close();
+      return;
+    }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -37687,7 +37697,10 @@ async function startDrumPattern() {
 }
 __name(startDrumPattern, "startDrumPattern");
 function stopDrumPattern() {
-  if (!state3) return;
+  if (!state3) {
+    if (starting) stopRequested = true;
+    return;
+  }
   try {
     state3.source.stop();
   } catch {
@@ -37772,6 +37785,7 @@ __name(_ChordProgressionScheduler, "ChordProgressionScheduler");
 var ChordProgressionScheduler = _ChordProgressionScheduler;
 var state4 = null;
 var starting2 = false;
+var stopRequested2 = false;
 async function renderChordLoopBuffer() {
   const sampleRate = 44100;
   const durationSeconds = 8;
@@ -37807,11 +37821,20 @@ async function renderChordLoopBuffer() {
 }
 __name(renderChordLoopBuffer, "renderChordLoopBuffer");
 async function startChordProgression() {
-  if (state4 || starting2) return;
+  if (state4) return;
+  if (starting2) {
+    stopRequested2 = false;
+    return;
+  }
   starting2 = true;
+  stopRequested2 = false;
   try {
     const ctx = new AudioContext();
     const buffer = await renderChordLoopBuffer();
+    if (stopRequested2) {
+      void ctx.close();
+      return;
+    }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -37841,7 +37864,10 @@ async function startChordProgression() {
 }
 __name(startChordProgression, "startChordProgression");
 function stopChordProgression() {
-  if (!state4) return;
+  if (!state4) {
+    if (starting2) stopRequested2 = true;
+    return;
+  }
   try {
     state4.source.stop();
   } catch {
@@ -37887,8 +37913,10 @@ var BUILTIN_EXAMPLE_SOURCES = [
   {
     sourceId: DRUM_PATTERN_SOURCE_ID,
     label: DRUM_PATTERN_LABEL,
+    // Not guarded on "playing", which includes "starting": a start must reach a
+    // render already under way, to take back a stop that came meanwhile.
     startIfIdle: /* @__PURE__ */ __name(() => {
-      if (!isDrumPatternPlaying()) startDrumPattern();
+      void startDrumPattern();
     }, "startIfIdle"),
     stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isDrumPatternPlaying()) stopDrumPattern();
@@ -37898,7 +37926,7 @@ var BUILTIN_EXAMPLE_SOURCES = [
     sourceId: CHORD_PROGRESSION_SOURCE_ID,
     label: CHORD_PROGRESSION_LABEL,
     startIfIdle: /* @__PURE__ */ __name(() => {
-      if (!isChordProgressionPlaying()) startChordProgression();
+      void startChordProgression();
     }, "startIfIdle"),
     stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isChordProgressionPlaying()) stopChordProgression();

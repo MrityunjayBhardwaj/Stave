@@ -77,8 +77,10 @@ export const BUILTIN_EXAMPLE_SOURCES: readonly BuiltinExampleSource[] = [
   {
     sourceId: DRUM_PATTERN_SOURCE_ID,
     label: DRUM_PATTERN_LABEL,
+    // Not guarded on "playing", which includes "starting": a start must reach a
+    // render already under way, to take back a stop that came meanwhile.
     startIfIdle: () => {
-      if (!isDrumPatternPlaying()) startDrumPattern()
+      void startDrumPattern()
     },
     stopIfRunning: () => {
       if (isDrumPatternPlaying()) stopDrumPattern()
@@ -88,7 +90,7 @@ export const BUILTIN_EXAMPLE_SOURCES: readonly BuiltinExampleSource[] = [
     sourceId: CHORD_PROGRESSION_SOURCE_ID,
     label: CHORD_PROGRESSION_LABEL,
     startIfIdle: () => {
-      if (!isChordProgressionPlaying()) startChordProgression()
+      void startChordProgression()
     },
     stopIfRunning: () => {
       if (isChordProgressionPlaying()) stopChordProgression()
