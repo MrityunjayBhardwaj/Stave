@@ -258,7 +258,14 @@ type Located =
   | { ok: true; lane: { row: DivisionRow }; found: Found; slot: DivisionStep['slots'][number] }
   | { ok: false; why: StepEditRefusal }
 
-function locate(trees: readonly BarTree[], address: StepAddress, row: StepRow): Located {
+/**
+ * `fromItsStart`: a toggle may edit a step that sounds on past its bar (`A1@4` in
+ * `<A1@4 D2@4>`, `[oh]/8`) when the click is where the step STARTS (#2441): the edit is the
+ * step's own name, so it changes the one note however long it lasts. A split or resize
+ * measures inside the slot the bar shows, which is not the whole step, so it keeps the
+ * refusal; and so does any click on a bar the step only sounds through.
+ */
+function locate(trees: readonly BarTree[], address: StepAddress, row: StepRow, fromItsStart = false): Located {
   const no = (why: StepEditRefusal): Located => ({ ok: false, why })
   const tree = trees[address.bar]
   if (!tree) return no('no-such-bar')
@@ -292,7 +299,7 @@ function locate(trees: readonly BarTree[], address: StepAddress, row: StepRow): 
   // every other op makes, moves, thins or stretches the step's hits — only `:` tails are
   // part of the name
   if (step.ops.some((o) => o !== 'tail')) return no('step-is-generated')
-  if (slot.fromBefore || slot.pastEnd) return no('step-crosses-a-bar')
+  if (slot.fromBefore || (slot.pastEnd && !fromItsStart)) return no('step-crosses-a-bar')
 
   // Where the text plays over the loop: once, or in several places that all change together
   // (a group played in every bar, `{…}%n`, a repeated group). The loop must be the whole of
@@ -316,7 +323,7 @@ function locate(trees: readonly BarTree[], address: StepAddress, row: StepRow): 
  * view's whole loop. Nothing is evaluated here.
  */
 function toggleStepHere(mini: string, trees: readonly BarTree[], address: StepAddress, row: StepRow): StepEditResult {
-  const at = locate(trees, address, row)
+  const at = locate(trees, address, row, true)
   if (!at.ok) return refuse(at.why)
   const { lane, found } = at
   const { step, around } = found

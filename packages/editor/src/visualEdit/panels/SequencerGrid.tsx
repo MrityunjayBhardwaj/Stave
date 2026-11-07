@@ -136,7 +136,7 @@ function stepRefusalLine(why: string, on: boolean): string {
     case 'loop-shorter-than-the-pattern':
       return "This step also plays in bars the grid doesn't show — change it in the code view."
     case 'step-crosses-a-bar':
-      return 'This note runs over a bar line — change it in the code view.'
+      return 'This note runs over a bar line — switch it where it starts, or change it in the code view.'
     case 'step-is-a-group':
       return on
         ? 'This hit sits in a group the grid cannot take it out of — change it in the code view.'

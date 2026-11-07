@@ -14043,7 +14043,7 @@ __name(rank, "rank");
 var REPEATS = /* @__PURE__ */ new Set(["replicate", "stretch", "bjorklund"]);
 var refuse = /* @__PURE__ */ __name((why) => ({ ok: false, why }), "refuse");
 var write = /* @__PURE__ */ __name((from, to, insert) => ({ ok: true, edit: { from, to, insert } }), "write");
-function locate(trees, address, row) {
+function locate(trees, address, row, fromItsStart = false) {
   const no2 = /* @__PURE__ */ __name((why) => ({ ok: false, why }), "no");
   const tree = trees[address.bar];
   if (!tree) return no2("no-such-bar");
@@ -14062,7 +14062,7 @@ function locate(trees, address, row) {
   if (around.some((g) => g.ops.some((o) => !REPEATS.has(o)))) return no2("step-under-a-generator");
   if (step.reps > 1 || step.ops.includes("replicate")) return no2("step-is-replicated");
   if (step.ops.some((o) => o !== "tail")) return no2("step-is-generated");
-  if (slot.fromBefore || slot.pastEnd) return no2("step-crosses-a-bar");
+  if (slot.fromBefore || slot.pastEnd && !fromItsStart) return no2("step-crosses-a-bar");
   const loop = overTheLoop(trees);
   if (typeof loop === "string") return no2(loop);
   for (const { row: r, key: key3 } of found.rows) {
@@ -14072,7 +14072,7 @@ function locate(trees, address, row) {
 }
 __name(locate, "locate");
 function toggleStepHere(mini, trees, address, row) {
-  const at = locate(trees, address, row);
+  const at = locate(trees, address, row, true);
   if (!at.ok) return refuse(at.why);
   const { lane, found } = at;
   const { step, around } = found;
@@ -42688,7 +42688,7 @@ function stepRefusalLine(why, on) {
     case "loop-shorter-than-the-pattern":
       return "This step also plays in bars the grid doesn't show \u2014 change it in the code view.";
     case "step-crosses-a-bar":
-      return "This note runs over a bar line \u2014 change it in the code view.";
+      return "This note runs over a bar line \u2014 switch it where it starts, or change it in the code view.";
     case "step-is-a-group":
       return on ? "This hit sits in a group the grid cannot take it out of \u2014 change it in the code view." : "This step holds a group the grid can't add a sound to \u2014 change it in the code view.";
     default:
