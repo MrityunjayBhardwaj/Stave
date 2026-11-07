@@ -3,7 +3,7 @@ import type { GallerySessionResponse } from "../../../../gallery/types";
 import { getDb } from "../../../../db/client";
 import { getAuthor } from "../../../../db/repo/accounts";
 import { adminIdOf, isAdmin } from "../admin";
-import { sessionAuthor, sessionClaim } from "../session";
+import { renewSessionCookie, sessionAuthor, sessionClaim } from "../session";
 import { withDatabase } from "../../../../db/errors";
 
 // #2319 — who the gallery thinks you are: what sign-in offers here, and, when
@@ -13,6 +13,10 @@ import { withDatabase } from "../../../../db/errors";
 // answers three things in one request — whether sign-in exists here, which
 // providers to offer, and which author is yours (for My profile and Edit) —
 // and because it never sends the email back to the page.
+//
+// #2367 — every page load reads this route, so it's also where an active session
+// is renewed (session.ts renewSessionCookie). NO_STORE matters doubly then: an
+// answer carrying a Set-Cookie must never be cached.
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
@@ -40,7 +44,9 @@ async function handleGET(req: Request): Promise<Response> {
       body.isAdmin = await isAdmin(req);
     }
   }
-  return Response.json(body, { headers: NO_STORE });
+  const res = Response.json(body, { headers: NO_STORE });
+  if (body.user) await renewSessionCookie(req, res);
+  return res;
 }
 
 // #2351 — a database outage anywhere in the handler answers 503 "try again shortly", never a 500.

@@ -185,7 +185,7 @@ export default function PrivacyPage() {
       <Section title="Cookies and browser storage">
         <p>
           Using Stave without signing in sets no cookies of ours. Signing in sets a session cookie: encrypted, readable
-          only by our server, holding your name, email, avatar and account id. It expires after 30 days without use. The
+          only by our server, holding your name, email, avatar and account id. It expires after 7 days without use. The
           sign-in process also uses short-lived security cookies. We use no advertising or tracking cookies.
         </p>
         <p>
