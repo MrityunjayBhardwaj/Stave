@@ -120,6 +120,18 @@ test.describe('a click edits the step’s own text (#2292)', () => {
     await clickWrites(page, seq, `${hh}:5`, '$: s("bd [hh ~ hh hh]")', ['-hh@5/8', '-hh@13/8'])
   })
 
+  // #2441: a step that sounds past its bar is edited where it starts. In `<bd ~@3 bd ~@4>`
+  // each arm takes a bar per weight, so the `~@3` starts in bar 2 and sounds through bars 3–4.
+  test('a long rest takes the note where it starts, and a bar it only sounds through stays inert (#2441)', async ({ page }) => {
+    const seq = await open(page, '$: s("<bd ~@3 bd ~@4>")')
+    const bd = await row(seq, 'bd')
+    const at = (bar: number) => seq.locator(`[data-seq-cell^="${bd}:"]`).nth(bar)
+    await expect(at(2)).toHaveAttribute('aria-disabled', 'true')
+    await at(1).click()
+    await expect.poll(() => editorValue(page)).toBe('$: s("<bd bd@3 bd ~@4>")')
+    expect(await change(page, '$: s("<bd ~@3 bd ~@4>")', '$: s("<bd bd@3 bd ~@4>")')).toEqual(['+bd@1'])
+  })
+
   // #2434: euclid joins `x*k` / `x!k` — only the clicked step is written out, its hits where
   // Strudel plays them. `bd(3,8)` is columns 8–15, its hits at 8, 11 and 14.
   test('one hit inside bd(3,8) is erased on its own, and an empty place takes one (#2434)', async ({ page }) => {

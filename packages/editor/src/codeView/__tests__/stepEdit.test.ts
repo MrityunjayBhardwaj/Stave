@@ -141,7 +141,10 @@ function beginsOf(x: Toggle): Set<string> {
   const visit = (r: DivisionRow, b: number): void => {
     for (const s of r.steps) {
       if (s.span && s.span.start === x.address.span.start && s.span.end === x.address.span.end) {
+        // a slot carried over from the bar before is the same note sounding on, not a hit
+        // that starts there (`A1@4` in `<A1@4 D2@4>`, #2441)
         for (const slot of s.slots) for (let k = 0; k < 2; k++) {
+          if (slot.fromBefore) continue
           const at = k * x.bars + b
           out.add(fr(at * slot.begin.d + slot.begin.n, slot.begin.d))
         }
@@ -362,6 +365,15 @@ describe('toggleStep — refused where no change to one text is the one click', 
     writes('bd(1,4,1) ~', 'bd', 'bd(1,4,1)', '[bd bd ~ ~] ~')
     writes('bd!3 ~', 'bd', 'bd!3', '~ bd bd ~')
     writes('bd! ~', 'bd', 'bd!', '~ bd ~')
+  })
+
+  it('a step that sounds past its bar is edited where it starts, and only there (#2441)', () => {
+    // the one note, however long: off, on, a member out of its chord
+    writes('<A1@4 D2@4 C#2@1>', 'A1', 'A1@4', '<~@4 D2@4 C#2@1>', { bars: 9 })
+    writes('<bd ~@3 bd ~@4>', 'bd', '~@3', '<bd bd@3 bd ~@4>', { bars: 9, bar: 1 })
+    writes('<[C4,D,F,A] [F,A,C,D4]>/2', 'A', 'A', '<[C4,D,F] [F,A,C,D4]>/2', { bars: 4 })
+    // a bar the note only sounds through is not where it starts
+    refuses('<A1@4 D2@4 C#2@1>', 'A1', 'A1@4', 'step-crosses-a-bar', { bars: 9, bar: 1 })
   })
 
   it('a step in a random choice', () => {
