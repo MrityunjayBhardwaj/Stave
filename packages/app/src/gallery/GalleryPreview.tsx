@@ -16,6 +16,12 @@
  * sign-in, say. The player never reloads itself, and the code only goes in once
  * the player has loaded, so any load of the frame after that is the code taking
  * it somewhere else: the preview is closed and says so.
+ *
+ * #2374 — the app's `frame-src` policy (next.config.ts) refuses a navigation to
+ * another site before anything from it shows, a page that never finishes loading
+ * included. In Chromium and WebKit the refusal still fires this frame's load, so
+ * the preview closes as above; in a browser where it doesn't, the player just
+ * stays up. Code can still draw whatever it likes inside its own page.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { parseFromFrame, type FromFrame, type PreviewKind } from "./previewProtocol";
