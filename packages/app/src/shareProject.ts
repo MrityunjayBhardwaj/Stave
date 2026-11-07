@@ -2,7 +2,8 @@
  * Share-by-URL — encode the active project into a gzipped base64url blob
  * that can be pasted into the location hash. The hash stays client-side
  * (never transmitted to the server). Receivers hit the same origin with
- * `#share=<blob>` and get a confirm dialog to import it as a new project.
+ * `#share=<blob>` and get a confirm dialog to import it into the project they
+ * have open, under `shared/<when>/` (#2288).
  *
  * Size cap: 2 MB raw manifest to keep URLs under typical browser limits
  * (Chrome: ~2 MB for location.hash; most paste targets tolerate this).
@@ -16,10 +17,6 @@ import {
   listWorkspaceFiles,
   getFolderOrder,
   getSubfolderOrder,
-  createProject,
-  touchProject,
-  switchProject,
-  resetFileStore,
   createWorkspaceFile,
   setFolderOrder,
   setSubfolderOrder,
@@ -32,6 +29,8 @@ import { addPrivateLink } from "./gallery/localShares";
 import { currentGallerySession } from "./gallery/session";
 import { SHARE_LINK_NAME_HEADER } from "./gallery/types";
 import { fromBase64Url, openShare, parseShortShare, sealShare, toBase64Url } from "./shareCrypto";
+import { placeImport, SHARED_DIR, type Placement } from "./importPlacement";
+import { withoutAutoOpen } from "./quietAdds";
 
 export const SHARE_HASH_PREFIX = "#share=";
 const MAX_RAW_BYTES = 2 * 1024 * 1024;
@@ -222,29 +221,36 @@ async function unpackManifest(zipped: Uint8Array): Promise<ShareManifest> {
 }
 
 /**
- * Apply a decoded share manifest as a new project. Creates + switches
- * to the new project and seeds all files + orders in one struct batch.
+ * Apply a decoded share manifest to the project that is open (#2288): its files go under
+ * `shared/<when it was shared>/`, with new ids, in one struct batch — one undo step.
+ * Returns where they went and which file to open.
  */
-export async function applyShareManifest(manifest: ShareManifest): Promise<ProjectMeta> {
-  const name = `${manifest.project.name} (shared)`;
-  const meta = await createProject(name);
-  resetFileStore();
-  await switchProject(meta.id);
-  await touchProject(meta.id);
+export function applyShareManifest(manifest: ShareManifest): Placement {
+  const placed = placeImport(
+    {
+      sharedAt: manifest.project.sharedAt,
+      files: manifest.files,
+      fileOrder: manifest.fileOrder,
+      subfolderOrder: manifest.subfolderOrder,
+    },
+    listWorkspaceFiles().map((f) => f.path),
+    getSubfolderOrder(SHARED_DIR),
+    () => crypto.randomUUID(),
+  );
 
-  withStructBatch(() => {
-    for (const f of manifest.files) {
+  // the caller opens `placed.open`; the files do not each open a tab
+  withoutAutoOpen(() => withStructBatch(() => {
+    for (const f of placed.files) {
       createWorkspaceFile(f.id, f.path, f.content, f.language as WorkspaceLanguage);
     }
-    for (const [folder, ids] of Object.entries(manifest.fileOrder)) {
+    for (const [folder, ids] of Object.entries(placed.fileOrder)) {
       setFolderOrder(folder, ids);
     }
-    for (const [parent, names] of Object.entries(manifest.subfolderOrder)) {
+    for (const [parent, names] of Object.entries(placed.subfolderOrder)) {
       setSubfolderOrder(parent, names);
     }
-  });
-
-  return meta;
+  }));
+  return placed;
 }
 
 /**
