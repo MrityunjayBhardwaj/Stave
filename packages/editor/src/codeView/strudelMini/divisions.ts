@@ -13,6 +13,10 @@
  * replaced by a marker sound with the step's own ops set aside, and the marker's hap is
  * the step's slot. The weights, the alternations and everything above the row are
  * Strudel's, untouched; the copy is checked to play every other note exactly as before.
+ * Every row at one depth is marked together in ONE copy, each step with its own marker
+ * (#2278): every copy evaluates the whole pattern, so a copy per row made a stack of N
+ * parts cost N whole patterns. Rows at one depth never hold one another, so their marks
+ * cannot overlap.
  *
  * A step whose own op repeats a GROUP (`[a b]*2`, `[a b](3,8)`) is asked a second time
  * with the op kept, so the row inside can be cut against each copy rather than against
@@ -30,7 +34,7 @@
  * graph must not reach it.
  */
 import { joinedCycle, type JoinedCycle, type JoinedHit } from './joined'
-import { markedPattern, type MarkedPattern, type MiniPattern, type MiniTime } from './pattern'
+import { markedPattern, type MarkedPattern, type MiniPattern, type MiniTime, type RowMarks } from './pattern'
 import { isRest, type MiniAtom, type MiniElement, type MiniGroup } from './shape'
 
 /** an exact fraction of the cycle — plain data, so no Strudel object leaves the adapter */
@@ -150,14 +154,14 @@ const markOf = (value: unknown): string | null => {
 type Copy = MarkedPattern | 'fails'
 const COPIES = new WeakMap<MiniPattern, Map<string, Copy>>()
 
-function copyOf(pat: MiniPattern, path: number[], children: number[], keepOps: boolean): Copy {
+function copyOf(pat: MiniPattern, rows: RowMarks[]): Copy {
   let byKey = COPIES.get(pat)
   if (!byKey) COPIES.set(pat, (byKey = new Map()))
-  const key = `${path.join('.')}|${children.join(',')}|${keepOps ? 'ops' : 'step'}`
+  const key = rows.map((r) => `${r.path.join('.')}:${r.marks.map((m) => `${m.child}=${m.marker}${m.keepOps ? '+ops' : ''}`).join(',')}`).join(';')
   let copy = byKey.get(key)
   if (copy === undefined) {
     try {
-      copy = markedPattern(pat.mini, path, children.map((child) => ({ child, marker: markerOf(child), keepOps })))
+      copy = markedPattern(pat.mini, rows)
     } catch {
       copy = 'fails'
     }
@@ -173,6 +177,8 @@ interface Ctx {
   pat: MiniPattern
   cyc: number
   joined: JoinedCycle
+  /** what the copy of each depth said, asked the first time a row of that depth is reached */
+  levels: Map<number, Asked | DivisionsRefusal>
 }
 
 function notesIn(node: MiniElement | MiniGroup | MiniAtom, out: Set<MiniAtom>): Set<MiniAtom> {
@@ -183,7 +189,7 @@ function notesIn(node: MiniElement | MiniGroup | MiniAtom, out: Set<MiniAtom>): 
 }
 
 /**
- * The slots the markers of one copy take in this bar, per marked child — or the refusal.
+ * The slots the markers of one copy take in this bar, per marker number — or the refusal.
  * `inside` is every note the marks replaced: all OTHER notes must play as they did.
  */
 function slotsOf(ctx: Ctx, copy: Copy, inside: Set<MiniAtom>): Map<number, Slot[]> | DivisionsRefusal {
@@ -282,13 +288,91 @@ function rowSlots(row: Row): Slot[] {
   return row.steps.flatMap((s) => s.slots).sort((a, b) => fracCompare(a.begin, b.begin))
 }
 
+type Laid = { group: MiniGroup; path: number[] }
+
+/** what one ask of a depth's rows says: slots per marker number, and the first marker of each row */
+interface Asked {
+  slots: Map<number, Slot[]>
+  /** the group steps whose own op repeats them: where each copy of their content sits */
+  copies: Map<number, Slot[]>
+  /** the row at path `p` has its step i as marker `base.get(p.join('.')) + i` */
+  base: Map<string, number>
+}
+
+/**
+ * Every row `depth` groups down. A group whose rows do not lay out is left out: if this
+ * bar reaches it, its own visit refuses, as it would have without the others.
+ */
+function rowsAt(root: MiniGroup, depth: number): Laid[] {
+  const top = rowsOf(root, [])
+  let level: Laid[] = isRefusal(top) ? [] : top.rows
+  for (let d = 0; d < depth; d++) {
+    const next: Laid[] = []
+    for (const r of level) {
+      ;(r.group.children as MiniElement[]).forEach((e, i) => {
+        if (e.content.kind !== 'group') return
+        const laid = rowsOf(e.content, [...r.path, i])
+        if (!isRefusal(laid)) next.push(...laid.rows)
+      })
+    }
+    level = next
+  }
+  return level
+}
+
+/** the ask of every row at `depth`, made once per bar */
+function levelOf(ctx: Ctx, depth: number): Asked | DivisionsRefusal {
+  let asked = ctx.levels.get(depth)
+  if (asked === undefined) ctx.levels.set(depth, (asked = askRows(ctx, rowsAt(ctx.joined.root, depth))))
+  return asked
+}
+
+/**
+ * Where every step of every row sits, asked in one marked copy for all the rows — and
+ * once more, op kept, for the group steps whose own op repeats them.
+ */
+function askRows(ctx: Ctx, rows: Laid[]): Asked | DivisionsRefusal {
+  const base = new Map<string, number>()
+  let next = 0
+  for (const r of rows) {
+    base.set(r.path.join('.'), next)
+    next += r.group.children.length
+  }
+  const inside = new Set<MiniAtom>()
+  for (const r of rows) notesIn(r.group, inside)
+  const marks = rows.map((r) => ({
+    path: r.path,
+    marks: r.group.children.map((_, i) => ({ child: i, marker: markerOf(base.get(r.path.join('.'))! + i), keepOps: false })),
+  }))
+  const slots = slotsOf(ctx, copyOf(ctx.pat, marks), inside)
+  if (isRefusal(slots)) return slots
+  const within = new Set<MiniAtom>()
+  const opMarks: RowMarks[] = []
+  for (const r of rows) {
+    const elements = r.group.children as MiniElement[]
+    const repeated = elements.flatMap((e, i) => (e.content.kind === 'group' && e.ops.length > 0 ? [i] : []))
+    if (repeated.length === 0) continue
+    for (const i of repeated) notesIn(elements[i], within)
+    const first = base.get(r.path.join('.'))!
+    opMarks.push({ path: r.path, marks: repeated.map((i) => ({ child: i, marker: markerOf(first + i), keepOps: true })) })
+  }
+  if (opMarks.length === 0) return { slots, copies: new Map(), base }
+  const copies = slotsOf(ctx, copyOf(ctx.pat, opMarks), within)
+  if (isRefusal(copies)) return copies
+  return { slots, copies, base }
+}
+
 /** the rows of `group`, checked against the slots they cut */
-function container(ctx: Ctx, group: MiniGroup, path: number[], cut: Slot[]): { rows: Row[]; oneOf: boolean } | DivisionsRefusal {
+function container(ctx: Ctx, group: MiniGroup, path: number[], cut: Slot[], depth: number): { rows: Row[]; oneOf: boolean } | DivisionsRefusal {
   const laid = rowsOf(group, path)
   if (isRefusal(laid)) return laid
+  const asked = levelOf(ctx, depth)
+  if (isRefusal(asked)) return asked
   const rows: Row[] = []
   for (const r of laid.rows) {
-    const steps = rowSteps(ctx, r.group, r.path)
+    const base = asked.base.get(r.path.join('.'))
+    if (base === undefined) throw new Error(`divisions: the row at ${r.path.join('.')} was not asked with its depth`)
+    const steps = rowSteps(ctx, r.group, r.path, asked, base, depth)
     if (isRefusal(steps)) return steps
     rows.push({ group: r.group, steps })
   }
@@ -312,26 +396,12 @@ function container(ctx: Ctx, group: MiniGroup, path: number[], cut: Slot[]): { r
   return { rows, oneOf: laid.together === 'one' }
 }
 
-function rowSteps(ctx: Ctx, group: MiniGroup, path: number[]): Step[] | DivisionsRefusal {
+function rowSteps(ctx: Ctx, group: MiniGroup, path: number[], asked: Asked, base: number, depth: number): Step[] | DivisionsRefusal {
   const elements = group.children as MiniElement[]
-  const all = elements.map((_, i) => i)
-  const inside = notesIn(group, new Set())
-  const slots = slotsOf(ctx, copyOf(ctx.pat, path, all, false), inside)
-  if (isRefusal(slots)) return slots
-  // the group steps whose own op repeats them are asked again, op kept
-  const repeated = all.filter((i) => elements[i].content.kind === 'group' && elements[i].ops.length > 0)
-  let copies = new Map<number, Slot[]>()
-  if (repeated.length > 0) {
-    const within = new Set<MiniAtom>()
-    for (const i of repeated) notesIn(elements[i], within)
-    const asked = slotsOf(ctx, copyOf(ctx.pat, path, repeated, true), within)
-    if (isRefusal(asked)) return asked
-    copies = asked
-  }
   const steps: Step[] = []
-  for (const i of all) {
+  for (let i = 0; i < elements.length; i++) {
     const element = elements[i]
-    const mine = slots.get(i) ?? []
+    const mine = asked.slots.get(base + i) ?? []
     if (element.content.kind === 'atom') {
       const hits = ctx.joined.of(element.content)
       for (const j of hits) {
@@ -341,13 +411,13 @@ function rowSteps(ctx: Ctx, group: MiniGroup, path: number[]): Step[] | Division
       if (mine.length > 0) steps.push({ element, slots: mine, rest: isRest(element.content), hits, copies: null, rows: null, oneOf: false })
       continue
     }
-    const own = repeated.includes(i) ? (copies.get(i) ?? []) : null
+    const own = element.ops.length > 0 ? (asked.copies.get(base + i) ?? []) : null
     if (mine.length === 0) {
       // an arm this bar does not play: nothing of it may sound
       if (ctx.joined.of(element).length > 0) return 'hit-outside-its-step'
       continue
     }
-    const inner = container(ctx, element.content, [...path, i], own ?? mine)
+    const inner = container(ctx, element.content, [...path, i], own ?? mine, depth + 1)
     if (isRefusal(inner)) return inner
     steps.push({ element, slots: mine, rest: false, hits: [], copies: own, rows: inner.rows, oneOf: inner.oneOf })
   }
@@ -364,7 +434,7 @@ export function barDivisions(pat: MiniPattern, cyc: number): BarDivisions {
   if (pat.mini.includes(MARK)) return { ok: false, why: 'marker-in-pattern' }
   const joined = joinedCycle(pat, cyc)
   if (joined.hits.some((j) => j.atom === null)) return { ok: false, why: 'unpaired-hit' }
-  const top = container({ pat, cyc, joined }, joined.root, [], [WHOLE_BAR])
+  const top = container({ pat, cyc, joined, levels: new Map() }, joined.root, [], [WHOLE_BAR], 0)
   if (isRefusal(top)) return { ok: false, why: top }
   return { ok: true, parts: top.rows, oneOf: top.oneOf }
 }
