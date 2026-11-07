@@ -117,7 +117,8 @@ export type BarDivisions =
 
 const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b))
 
-function fracOf(t: MiniTime, cyc: number): Frac {
+/** a time of bar `cyc` as an exact fraction from the bar's start */
+export function fracOf(t: MiniTime, cyc: number): Frac {
   const rel = t.sub ? t.sub(cyc) : null
   const text = rel?.toFraction?.()
   const m = text === undefined ? null : /^(-?\d+)(?:\/(\d+))?$/.exec(text)

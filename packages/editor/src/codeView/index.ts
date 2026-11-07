@@ -250,6 +250,8 @@ export {
 } from './chainEdit'
 export { readSoundCall, soundArgLabel, soundPickEdit, soundPickRefusal } from './soundArg'
 export { noteSounds, soundLane, soundBlockEdit, stepNotes, stepNoteKey, type SoundBlock, type StepNotes } from './noteSounds'
+export { chunkDivisions, laneDivisions } from './gridDivisions'
+export type { BarTree, BarTreeRefusal, DivisionRow, DivisionStep, DivisionHit, LaneDivisions, LaneDivisionsRefusal, Frac, Slot, DivisionsRefusal } from './gridDivisions'
 export type { SoundArg, SoundPickEdit } from './soundArg'
 export type { ChainArgRef } from './chainEdit'
 export {
