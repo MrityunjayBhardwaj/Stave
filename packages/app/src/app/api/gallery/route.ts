@@ -23,11 +23,13 @@ const noStore = () => Response.json({ error: "the gallery is not set up here" },
 
 // The listing is cached at the CDN for 30 s, then served stale for up to 5 min
 // while one request refreshes it. So the listing query runs at most about twice
-// a minute, however many people open the overlay. The price: a new publish can
-// take up to ~30 s to show in the list, and a deleted entry can linger in it as
-// long. The entry route is not cached that way: an entry an admin removed answers
-// 410 and one its author deleted answers 404, straight away, so a lingering card
-// opens to "removed" or "not found".
+// a minute, however many people open the overlay. The price: a quiet list can be
+// served once at up to 330 s old, so a new publish can take that long to show in
+// it and a deleted entry can linger as long. The browser that made the change
+// shows it at once (#2433, recordListChange in localShares.ts). The entry route is
+// not cached that way: an entry an admin removed answers 410 and one its author
+// deleted answers 404, straight away, so a lingering card opens to "removed" or
+// "not found".
 export const LIST_CACHE = "public, s-maxage=30, stale-while-revalidate=300";
 
 // #2346 — ONE listing per cache window, whatever the query string. The CDN
@@ -128,7 +130,7 @@ async function handlePOST(req: Request): Promise<Response> {
   const stored = await inTransaction(db, (tx) => insertEntry(tx, { entry, authorEmail: account.email, manageTokenHash: hashToken(manageToken) }));
   if (!stored) return Response.json({ error: "could not store the entry" }, { status: 500 });
 
-  const res: PublishResponse = { id, manageToken, authorId };
+  const res: PublishResponse = { id, manageToken, authorId, entry };
   return Response.json(res, { status: 201, headers: { "Cache-Control": "no-store" } });
 }
 

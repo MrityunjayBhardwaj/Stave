@@ -10,7 +10,7 @@
  * no manage token is managed through the session.
  */
 import { deleteFromGallery, revokeShareLink } from "./client";
-import { removeLocalShare, removePrivateLink, type LocalPrivateLink, type LocalShare } from "./localShares";
+import { recordListChange, removeLocalShare, removePrivateLink, type LocalPrivateLink, type LocalShare } from "./localShares";
 import type { AccountLink, ClaimResponse, GalleryCollection, GalleryEntry, GalleryKind, MySharesResponse } from "./types";
 
 /** Where a row lives: on the signed-in account, or only in this browser's storage. */
@@ -101,7 +101,10 @@ export interface DeleteDeps {
 export const defaultDeleteDeps = (confirm: DeleteDeps["confirm"]): DeleteDeps => ({
   confirm,
   remove: deleteFromGallery,
-  forget: removeLocalShare,
+  forget: (id) => {
+    recordListChange(id, null);
+    removeLocalShare(id);
+  },
 });
 
 /**
