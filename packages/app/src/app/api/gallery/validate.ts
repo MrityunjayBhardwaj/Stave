@@ -17,6 +17,7 @@ import {
   type GalleryKind,
   type GalleryManifest,
 } from "../../../gallery/types";
+import { isReservedName, RESERVED_NAME_ERROR } from "../../../gallery/reservedNames";
 
 // #2299 — what the server accepts. The limits come from the shared contract
 // (gallery/types.ts) so the publish dialog can say the same thing before it uploads.
@@ -184,11 +185,16 @@ export const MAX_COLLECTION_BODY_BYTES = 64 * 1024;
  * and kept exactly as typed (no trimming, no sanitising): it is only ever
  * served as JSON, and the client renders it with raw HTML escaped. The server
  * must never render it into a page itself.
+ *
+ * #2368 — a new name can't be a reserved one. `currentName` is the name stored
+ * now: keeping it is always allowed, so a profile named before the rule existed
+ * can still edit its bio. Only a change is checked.
  */
-export function checkAuthorUpdate(body: unknown): Checked<AuthorUpdateRequest> {
+export function checkAuthorUpdate(body: unknown, currentName: string): Checked<AuthorUpdateRequest> {
   if (!isObject(body)) return bad("expected a JSON object");
   const name = boundedText(body.name, "name", MAX_AUTHOR_NAME_CHARS);
   if (!name.ok) return name;
+  if (name.value !== currentName && isReservedName(name.value)) return bad(RESERVED_NAME_ERROR);
   if (typeof body.bio !== "string") return bad("bio is missing");
   if (body.bio.length > MAX_BIO_CHARS) return bad(`bio is longer than ${MAX_BIO_CHARS} characters`);
   return { ok: true, value: { name: name.value, bio: body.bio } };

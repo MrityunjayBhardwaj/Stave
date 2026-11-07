@@ -292,7 +292,7 @@ function ProfileEditor({
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
-    const built = buildProfileRequest({ name, bio });
+    const built = buildProfileRequest({ name, bio }, page.author.name);
     setErrors(built.errors);
     if (!built.request) return;
     setSaving(true);
