@@ -72,9 +72,19 @@ const nextConfig: NextConfig = {
       // reads the page HOLDING a frame, so it doesn't reach a frame nested in the
       // preview. Same key as above, so this replaces it on this path (the last
       // match wins): keep frame-ancestors.
+      //
+      // #2461 — and the page has to say it may be loaded by an origin that isn't
+      // its own. The app page's COEP treats a framed page with no CORP header as
+      // same-origin only, and Firefox checks that against the frame's sandboxed
+      // (opaque) origin, so it refused the preview outright; Chromium checks the
+      // parent's origin and let it through. 'same-site' isn't enough: an opaque
+      // origin is same-site with nothing. frame-ancestors still limits who frames it.
       {
         source: "/gallery-player",
-        headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'self'; frame-src 'none'" }],
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'; frame-src 'none'" },
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+        ],
       },
       // #2343 — the gallery's preview frame (`/gallery-player`, sandboxed with an
       // opaque origin) loads these files from an origin that isn't its own. Without
