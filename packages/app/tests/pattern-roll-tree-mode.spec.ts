@@ -92,6 +92,15 @@ test.describe('the roll on the tree grid edits one note’s own text (#2294)', (
     await staysAndSays(page, code, "Couldn't set that length — the next step is not a rest this note can take in")
   })
 
+  // #2443: `b2` is one step but three of the roll's columns (`[c3 e3 g3]` sets them at sixths).
+  // Its handle pulled back one column cuts it inside its own text; nothing else moves.
+  test('length: a drag back by part of a step writes the step as note and rest (#2443)', async ({ page }) => {
+    const code = '$: note("[c3 e3 g3] b2")'
+    const roll = await open(page, code, '[data-roll-cell="47:3"]')
+    await drag(page, await centre(roll.locator('[data-roll-resize="47:3"]')), await centre(cell(roll, '47:4')))
+    await becomes(page, code, '$: note("[c3 e3 g3] [b2@2 ~]")', ['-b2@1/2-1', '+b2@1/2-5/6', '-b2@3/2-2', '+b2@3/2-11/6'])
+  })
+
   test('length: one note of a chord, by key, is refused and says why', async ({ page }) => {
     const code = '$: note("[c3,e3] ~ ~ ~")'
     const roll = await open(page, code, '[data-roll-cell="48:0"]')

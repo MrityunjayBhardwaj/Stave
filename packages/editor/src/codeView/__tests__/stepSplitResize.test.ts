@@ -146,11 +146,13 @@ function splits(mini: string, sound: string, text: string, p: Frac, want: string
 }
 
 /** resize `text` (the row's note) to `units` of its own units; Strudel must hear only the length change */
-function resizes(mini: string, sound: string, text: string, units: number, want: string, bars = 1): void {
+function resizes(mini: string, sound: string, text: string, length: number | Frac, want: string, bars = 1): void {
+  // the length asked, in the note's own units: a whole number, or part of one (#2443)
+  const units = typeof length === 'number' ? F(length) : length
   const trees = chunkDivisions(mini, bars)
   const { address, end, step } = stepAt(mini, trees, 0, sound, text)
   const unit = mul(sub(end, address.at), F(1, step.weight))
-  const r = resizeStep(mini, trees, address, add(address.at, mul(unit, F(units))), { sound })
+  const r = resizeStep(mini, trees, address, add(address.at, mul(unit, units)), { sound })
   if (!r.ok) throw new Error(`${mini}: refused ${r.why}`)
   const edited = applyStepEdit(mini, r.edit)
   expect(edited).toBe(want)
@@ -159,7 +161,7 @@ function resizes(mini: string, sound: string, text: string, units: number, want:
   for (const pl of placesOf(trees, address.span)) {
     const u = mul(sub(pl.e, pl.b), F(1, step.weight))
     expected.removed.push(`${name}@${str(pl.b)}-${str(pl.e)}`)
-    expected.added.push(`${name}@${str(pl.b)}-${str(add(pl.b, mul(u, F(units))))}`)
+    expected.added.push(`${name}@${str(pl.b)}-${str(add(pl.b, mul(u, units)))}`)
   }
   const got = difference(plays(mini, bars * 2), plays(edited, bars * 2))
   expect(got).toEqual({ added: expected.added.sort(), removed: expected.removed.sort() })
@@ -226,6 +228,22 @@ describe('splitStep — a click part-way through a plain step', () => {
   })
 })
 
+describe('resizeStep — part of a step, and part of a rest (#2443)', () => {
+  it('shorter by part of its step: the step is cut inside its own text', () => {
+    resizes('g3 f#3', 'g3', 'g3', F(2, 3), '[g3@2 ~] f#3')
+    resizes('c4@2 e4', 'c4', 'c4@2', F(3, 2), '[c4@3 ~]@2 e4')
+  })
+  it('longer into a rest: the note takes in the silence it grows over, and no more', () => {
+    resizes('c4 ~ e4', 'c4', 'c4', F(3, 2), '[c4@3 ~]@2 e4')
+    // a whole unit into a longer rest: what is left of the rest stays beside the note
+    resizes('bd ~@2 sd', 'bd', 'bd', 2, 'bd@2 ~ sd')
+  })
+  it('never over the next note, and never on a chord member', () => {
+    expect(resizeRefused('c4 e4', 'c4', 'c4', 2)).toEqual({ ok: false, why: 'no-room-to-grow' })
+    expect(resizeRefused('[c4,e4] g4', 'c4', '[c4,e4]', 2)).toMatchObject({ ok: false })
+  })
+})
+
 describe('resizeStep — a note’s length, inside its group', () => {
   // spelled by stepSpell (#2326): a length is `@n`, room given back is written-out rests
   it('longer: the rests after it are taken into its `@n`; shorter: the room it gives back is rests', () => {
@@ -259,8 +277,6 @@ describe('resizeStep — a note’s length, inside its group', () => {
       const { address, end } = stepAt(mini, trees, 0, 'bd', 'bd')
       expect(resizeStep(mini, trees, address, add(address.at, mul(sub(end, address.at), F(2))), { sound: 'bd' })).toEqual({ ok: false, why: 'no-room-to-grow' })
     }
-    // a rest longer than the room asked would have to be respelled
-    expect(resizeRefused('bd ~@2 sd', 'bd', 'bd', 2)).toEqual({ ok: false, why: 'no-room-to-grow' })
     expect(resizeRefused('bd@1.5 ~ sd', 'bd', 'bd@1.5', 2)).toMatchObject({ ok: false })
     expect(resizeRefused('bd ~ sd ~', 'bd', 'bd', 1)).toEqual({ ok: false, why: 'length-not-whole-steps' })
     // one hit of `bd*2` is resized on its own since #2326: the next hit is in its way
