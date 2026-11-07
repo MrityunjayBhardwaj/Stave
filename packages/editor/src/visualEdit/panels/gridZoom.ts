@@ -129,6 +129,8 @@ export interface FracStep {
   depth: number
   /** the steps inside, tiling `[begin, end)`; null for a note or a rest, and for a step whose inside is not one row of this sound */
   children: FracStep[] | null
+  /** the written step this is; absent on a level `[~ hh]*4`'s copies make, which is no step of its own */
+  step?: DivisionStep
 }
 
 /**
@@ -175,7 +177,7 @@ function nodesOf(row: DivisionRow, within: { b: Frac; e: Frac }, depth: number, 
 }
 
 function stepNode(s: DivisionStep, b: Frac, e: Frac, depth: number, sound: string): FracStep {
-  const node: FracStep = { begin: b, end: e, depth, children: null }
+  const node: FracStep = { begin: b, end: e, depth, children: null, step: s }
   const inner = innerRow(s, sound)
   if (!inner) return node
   if (s.copies) {
@@ -366,103 +368,117 @@ export function partSteps(model: Pick<StepGridModel, 'steps' | 'bars' | 'barStep
 /** why a drawn column names no step a click can edit */
 export type StepAtRefusal = LaneStepsRefusal | 'inside-a-step'
 
+/** a grid row, as a click names it */
+type ClickedRow = Pick<StepGridModel['lanes'][number], 'sound' | 'part'>
+
 /**
- * The written step a click on lane `lane`, drawn column `col` lands on (#2292): the step
- * of the row this lane draws (the same `innerRow` rule the drawing uses) whose slot BEGINS
- * at that column. A column part-way through a step (`bd@2`'s second column) names none —
- * splitting a step is a later stage's gesture. The address is what `toggleStep` takes.
+ * The written step a click at `at` of bar `bar` lands on, in the row `lane` draws (#2292,
+ * #2454): the step (by the same `innerRow` rule the drawing uses) whose slot BEGINS there. A
+ * place part-way through a step (`bd@2`'s second half) names none — `splitAddressAtPlace` is
+ * that gesture. The address is what `toggleStep` takes. Exact shares: no columns are involved.
  */
+export function stepAddressAtPlace(trees: readonly BarTree[], lane: ClickedRow, bar: number, at: Frac): StepAddress | StepAtRefusal {
+  const tree = trees[bar]
+  if (!tree) return 'inside-a-step'
+  // the row the click edits, a voice the text does not write yet included
+  const d = laneRowForEdit(tree, lane)
+  if (!d.ok) return d.why
+  const visit = (row: DivisionRow): StepAddress | null => {
+    for (const s of row.steps) {
+      const inner = s.rows ? innerRow(s, lane.sound) : null
+      if (inner) {
+        const got = visit(inner)
+        if (got) return got
+        continue
+      }
+      if (!s.span) continue
+      for (const slot of s.slots) {
+        if (slot.fromBefore) continue
+        if (cmp(slot.begin, at) === 0) return { bar, span: s.span, at: slot.begin }
+      }
+      // a hit that begins part-way through its step was made by the step's own op
+      // (`hh*4`'s second hat, `bd!3`'s second copy, `bd(3,8)`'s second hit). The address
+      // is the step and where that hit begins. Which ops the writer edits is the WRITER's
+      // rule (#2326, #2434): it is asked, and refuses with its own reason (`?`, `*<2 4>`, …)
+      const hit = s.hits.find((h) => cmp(h.begin, at) === 0)
+      if (hit) return { bar, span: s.span, at: hit.begin }
+      // an empty place inside a euclid step is a cell too: a click there adds the hit
+      // (#2434). Where that is no place of the step's own slots, the writer says so.
+      if (s.ops.includes('bjorklund')) {
+        if (s.slots.some((slot) => !slot.fromBefore && cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0)) return { bar, span: s.span, at }
+      }
+    }
+    return null
+  }
+  return visit(d.row) ?? 'inside-a-step'
+}
+
+/** column `col`'s bar and its share of that bar, or null past the last bar */
+function placeOfColumn(m: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps'>, col: number): { bar: number; at: Frac } | null {
+  const bars = m.bars ?? 1
+  for (let b = 0; b < bars; b++) {
+    const { start, per } = barColumns(m, b)
+    // a bar of `c4@1.5 e4@1.2` is 2.7 columns: not a fraction in lowest terms, compared as written
+    if (col >= start && col < start + per) return { bar: b, at: Number.isInteger(per) ? frac(col - start, per) : { n: col - start, d: per } }
+  }
+  return null
+}
+
+/** `stepAddressAtPlace`, from a drawn column: the column grid's way in */
 export function stepAddressAt(
   model: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps' | 'lanes'>,
   trees: readonly BarTree[],
   lane: number,
   col: number,
 ): StepAddress | StepAtRefusal {
-  const bars = model.bars ?? 1
-  if (trees.length !== bars) return 'bar-count'
+  if (trees.length !== (model.bars ?? 1)) return 'bar-count'
   const l = model.lanes[lane]
   if (!l) return 'lane-part-missing'
-  for (let b = 0; b < bars; b++) {
-    const { start, per } = barColumns(model, b)
-    if (col < start || col >= start + per) continue
-    // the row the click edits, a voice the text does not write yet included
-    const d = laneRowForEdit(trees[b], l)
-    if (!d.ok) return d.why
-    const want = col - start
-    const visit = (row: DivisionRow): StepAddress | null => {
-      for (const s of row.steps) {
-        const inner = s.rows ? innerRow(s, l.sound) : null
-        if (inner) {
-          const got = visit(inner)
-          if (got) return got
-          continue
-        }
-        if (!s.span) continue
-        for (const slot of s.slots) {
-          if (slot.fromBefore) continue
-          if (columnOf(slot.begin, 0, per) === want) return { bar: b, span: s.span, at: slot.begin }
-        }
-        // a hit that begins part-way through its step was made by the step's own op
-        // (`hh*4`'s second hat, `bd!3`'s second copy, `bd(3,8)`'s second hit). The address
-        // is the step and where that hit begins. Which ops the writer edits is the WRITER's
-        // rule (#2326, #2434): it is asked, and refuses with its own reason (`?`, `*<2 4>`, …)
-        const hit = s.hits.find((h) => columnOf(h.begin, 0, per) === want)
-        if (hit) return { bar: b, span: s.span, at: hit.begin }
-        // an empty place inside a euclid step is a cell too: a click there adds the hit
-        // (#2434). Where that is no place of the step's own slots, the writer says so.
-        if (s.ops.includes('bjorklund')) {
-          const at = frac(want, per)
-          if (s.slots.some((slot) => !slot.fromBefore && cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0)) return { bar: b, span: s.span, at }
-        }
-      }
-      return null
-    }
-    return visit(d.row) ?? 'inside-a-step'
-  }
-  return 'inside-a-step'
+  const place = placeOfColumn(model, col)
+  return place ? stepAddressAtPlace(trees, l, place.bar, place.at) : 'inside-a-step'
 }
 
 /**
- * The plain step a column PART-WAY THROUGH it belongs to, and where in the bar that column
- * is (#2293): what `splitStep` takes when a click lands on a step's faint snap half. The
- * step is found by the same row rule as `stepAddressAt`; a column that begins a step, or one
- * inside a step that holds others (a group the lane does not draw open), names none.
+ * The plain step a place PART-WAY THROUGH it belongs to (#2293, #2454): what `splitStep` takes
+ * when a click lands on a step's faint snap half. The step is found by the same row rule as
+ * `stepAddressAtPlace`; a place that begins a step, or one inside a step that holds others (a
+ * group the row does not draw open), names none.
  */
+export function splitAddressAtPlace(trees: readonly BarTree[], lane: ClickedRow, bar: number, at: Frac): { address: StepAddress; at: Frac } | null {
+  const tree = trees[bar]
+  if (!tree) return null
+  const d = laneRowForEdit(tree, lane)
+  if (!d.ok) return null
+  const visit = (row: DivisionRow): { address: StepAddress; at: Frac } | null => {
+    for (const s of row.steps) {
+      const inner = s.rows ? innerRow(s, lane.sound) : null
+      if (inner) {
+        const got = visit(inner)
+        if (got) return got
+        continue
+      }
+      if (!s.span || s.rows) continue
+      for (const slot of s.slots) {
+        if (slot.fromBefore || slot.pastEnd) continue
+        if (cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0) return { address: { bar, span: s.span, at: slot.begin }, at }
+      }
+    }
+    return null
+  }
+  return visit(d.row)
+}
+
+/** `splitAddressAtPlace`, from a drawn column: the column grid's way in */
 export function splitAddressAt(
   model: Pick<StepGridModel, 'steps' | 'bars' | 'barSteps' | 'lanes'>,
   trees: readonly BarTree[],
   lane: number,
   col: number,
 ): { address: StepAddress; at: Frac } | null {
-  const bars = model.bars ?? 1
-  if (trees.length !== bars) return null
+  if (trees.length !== (model.bars ?? 1)) return null
   const l = model.lanes[lane]
-  if (!l) return null
-  for (let b = 0; b < bars; b++) {
-    const { start, per } = barColumns(model, b)
-    if (col < start || col >= start + per) continue
-    const d = laneRowForEdit(trees[b], l)
-    if (!d.ok) return null
-    const at = frac(col - start, per)
-    const visit = (row: DivisionRow): { address: StepAddress; at: Frac } | null => {
-      for (const s of row.steps) {
-        const inner = s.rows ? innerRow(s, l.sound) : null
-        if (inner) {
-          const got = visit(inner)
-          if (got) return got
-          continue
-        }
-        if (!s.span || s.rows) continue
-        for (const slot of s.slots) {
-          if (slot.fromBefore || slot.pastEnd) continue
-          if (cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0) return { address: { bar: b, span: s.span, at: slot.begin }, at }
-        }
-      }
-      return null
-    }
-    return visit(d.row)
-  }
-  return null
+  const place = l ? placeOfColumn(model, col) : null
+  return l && place ? splitAddressAtPlace(trees, l, place.bar, place.at) : null
 }
 
 /**

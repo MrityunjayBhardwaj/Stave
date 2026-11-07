@@ -98,10 +98,12 @@ describe('treeGridOf — rows, boxes, ruler', () => {
   })
 
   it('refuses a pattern that does not repeat, a random choice of parts, a hit with no plain name', () => {
-    expect(treeGridFrom(Array.from({ length: 16 }, (_, b) => ({ ok: true as const, parts: [{ steps: [], written: 0, sounds: [String(b)] }], oneOf: false })))).toEqual({ ok: false, why: 'does-not-repeat' })
-    const choice = { ok: true as const, parts: [{ steps: [], written: 0, sounds: ['bd'] }, { steps: [], written: 0, sounds: ['hh'] }], oneOf: true }
+    expect(treeGridFrom(Array.from({ length: 16 }, (_, b) => ({ ok: true as const, parts: [{ steps: [], written: 0, sounds: [String(b)], notes: [String(b)] }], oneOf: false })))).toEqual({ ok: false, why: 'does-not-repeat' })
+    const choice = { ok: true as const, parts: [{ steps: [], written: 0, sounds: ['bd'], notes: ['bd'] }, { steps: [], written: 0, sounds: ['hh'], notes: ['hh'] }], oneOf: true }
     expect(treeGridFrom(Array(16).fill(choice))).toEqual({ ok: false, why: 'parts-are-a-choice' })
-    expect(treeGridOf('bd:<1 2> sd')).toEqual({ ok: false, why: 'unnamed-hit' })
+    // a note with no plain name is a row called what the text writes (#2454)
+    const named = treeGridOf('bd:<1 2> sd')
+    expect(named.ok && named.rows.map((r) => r.sound)).toEqual(['bd:<1 2>', 'sd'])
     expect(treeGridOf('~ ~')).toEqual({ ok: false, why: 'no-hits' })
   })
 
@@ -168,20 +170,23 @@ describe('treeGridOf — the corpus', () => {
  * for. Of the other 127, 33 draw look-only (118 rows; the 13 rows whose bar steps do not tile
  * draw their hits alone). The rest: 89 do not repeat within 12 bars (the step grid's own
  * cap, so the grid's `unstable-period`), 3 the tree refuses, 2 play a note with no plain name.
+ *
+ * 2026-11-07 (#2454): 79 draw look-only. A repeat is looked for up to 64 bars (44 of the 89
+ * repeat there), and a note with no plain name is a row called what the text writes (the 2).
  */
 const TREE_PINNED = {
   nothing: 256,
   notAGrid: 129,
-  drawn: 33,
-  rows: 118,
-  rowsWithSteps: 105,
-  refused: { 'does-not-repeat': 89, 'steps-do-not-tile': 3, 'unnamed-hit': 2 },
-  rowWhy: { 'does-not-tile': 13 },
+  drawn: 79,
+  rows: 311,
+  rowsWithSteps: 294,
+  refused: { 'does-not-repeat': 45, 'steps-do-not-tile': 3 },
+  rowWhy: { 'does-not-tile': 17 },
   byGate: {
     'edit-unsafe': { drawn: 0, refused: 1 },
-    'irrational-onset': { drawn: 11, refused: 1 },
-    resolution: { drawn: 22, refused: 1 },
-    'unstable-period': { drawn: 0, refused: 90 },
+    'irrational-onset': { drawn: 12, refused: 0 },
+    resolution: { drawn: 23, refused: 0 },
+    'unstable-period': { drawn: 44, refused: 46 },
     'view-unusable': { drawn: 0, refused: 1 },
   },
 }

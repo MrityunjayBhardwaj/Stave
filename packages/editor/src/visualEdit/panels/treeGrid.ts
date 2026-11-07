@@ -22,8 +22,14 @@ import { chunkDivisions, chunkPeriod, parseStepGrid, type BarTree, type Division
 import { barStepsOrWhy, fracNum, OPEN_PX, type FracStep } from './gridZoom'
 import { perText, type PerText } from './useDeferredPerText'
 
-/** the longest repeat drawn: the step grid's own cap (it reads a pattern leaf by leaf up to 12 bars) */
+/** the repeat first looked for: the step grid's own cap when it reads a pattern leaf by leaf */
 export const TREE_MAX_BARS = 12
+/**
+ * The longest repeat drawn. A long `< >` is an ordinary pattern (the corpus opens one of 28
+ * bars), and asking its hits is what it costs; trees of those bars took under 40 ms each
+ * pattern (#2454, measured over the corpus).
+ */
+export const TREE_LONG_BARS = 64
 /**
  * How many bars are read to find where the pattern repeats: every repeat up to the cap is
  * seen twice, the grid's own rule (`detectPeriod`). Reading all 24 as trees cost up to 39 s
@@ -54,7 +60,7 @@ export type TreeGrid = { ok: true; bars: number; rows: TreeRow[] } | { ok: false
 
 /** why no tree grid: the tree's own reason, or one of these */
 export type TreeGridRefusal =
-  /** the pattern's bars do not repeat within `TREE_MAX_BARS` */
+  /** the pattern's bars do not repeat within `TREE_LONG_BARS` */
   | 'does-not-repeat'
   /** the comma parts are a random choice (`a | b`): no part is a row of its own */
   | 'parts-are-a-choice'
@@ -63,10 +69,10 @@ export type TreeGridRefusal =
   /** the pattern plays nothing */
   | 'no-hits'
 
-/** the smallest period `p ≤ TREE_MAX_BARS` the bars repeat at, seen twice; null when none */
+/** the smallest period `p ≤ TREE_LONG_BARS` the bars repeat at, seen twice; null when none */
 function period(trees: readonly BarTree[]): number | null {
   const keys = trees.map((t) => JSON.stringify(t))
-  for (let p = 1; p <= TREE_MAX_BARS && 2 * p <= keys.length; p++) {
+  for (let p = 1; p <= TREE_LONG_BARS && 2 * p <= keys.length; p++) {
     let ok = true
     for (let k = 0; k + p < keys.length && ok; k++) if (keys[k] !== keys[k + p]) ok = false
     if (ok) return p
@@ -78,7 +84,7 @@ export type OkTree = Extract<BarTree, { ok: true }>
 
 /**
  * The bars the pattern repeats over, each a tree — or why not: a bar the tree refuses, no
- * repeat within `TREE_MAX_BARS`, or comma parts that are a random choice. Shared by the
+ * repeat within `TREE_LONG_BARS`, or comma parts that are a random choice. Shared by the
  * step grid and the roll drawn from the tree.
  */
 export function repeatingBars(probed: readonly BarTree[]): { ok: true; bars: number; trees: OkTree[] } | { ok: false; why: string } {
@@ -98,7 +104,8 @@ export function repeatingBars(probed: readonly BarTree[]): { ok: true; bars: num
  * `PROBE_BARS` are built and `repeatingBars` decides on them, as before.
  */
 export function probeTrees(mini: string): BarTree[] {
-  const p = chunkPeriod(mini, TREE_MAX_BARS)
+  // the long question only once the short one has no answer: it reads 128 bars of hits
+  const p = chunkPeriod(mini, TREE_MAX_BARS) ?? chunkPeriod(mini, TREE_LONG_BARS)
   if (p === null) return chunkDivisions(mini, PROBE_BARS)
   const first = chunkDivisions(mini, 2 * p)
   // the trees can repeat later than the hits: `<r l r l>` plays as `<r l>` but is written
@@ -111,7 +118,7 @@ export function probeTrees(mini: string): BarTree[] {
 /** every note step in the row at any depth, with its name */
 function eachNote(row: DivisionRow, visit: (name: string | null, hits: readonly { begin: Frac; end: Frac }[]) => void): void {
   for (const s of row.steps) {
-    if (s.hits.length > 0) visit(s.name, s.hits)
+    if (s.hits.length > 0) visit(s.text, s.hits)
     for (const r of s.rows ?? []) eachNote(r, visit)
   }
 }
@@ -122,7 +129,7 @@ export function treeGridOf(mini: string): TreeGrid {
 }
 
 /** `treeGridOf`, from the trees of bars `0 … n−1` */
-export function treeGridFrom(probed: readonly BarTree[]): TreeGrid {
+export function treeGridFrom(probed: readonly BarTree[], silent: 'refused' | 'allowed' = 'refused'): TreeGrid {
   const rep = repeatingBars(probed)
   if (!rep.ok) return rep
   const { bars, trees } = rep
@@ -131,7 +138,7 @@ export function treeGridFrom(probed: readonly BarTree[]): TreeGrid {
   let played = 0
   for (let p = 0; p < parts; p++) {
     // the sounds are every note the part writes, in every arm: the same in every bar
-    for (const sound of trees[0].parts[p].sounds) {
+    for (const sound of trees[0].parts[p].notes) {
       const hits: TreeHit[] = []
       let why: string | null = null
       const perBar: FracStep[][] = []
@@ -159,7 +166,8 @@ export function treeGridFrom(probed: readonly BarTree[]): TreeGrid {
       if (unnamed) return { ok: false, why: 'unnamed-hit' }
     }
   }
-  if (played === 0) return { ok: false, why: 'no-hits' }
+  // nothing to look at; an editable grid still has its rests to write into
+  if (played === 0 && silent === 'refused') return { ok: false, why: 'no-hits' }
   return { ok: true, bars, rows }
 }
 

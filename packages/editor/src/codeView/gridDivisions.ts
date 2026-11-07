@@ -46,6 +46,12 @@ export interface DivisionStep {
    * is not a plain token (`bd:<1 2>`).
    */
   name: string | null
+  /**
+   * A note or rest step's name as the text writes it, `:` tails of any shape included: `name`
+   * where it has one, and `bd:<1 2>` where it has none. What a grid row built from the tree
+   * alone is called (#2454). Null for a group.
+   */
+  text: string | null
   rest: boolean
   /**
    * A note or rest step's name in the string, tight: the atom and its `:` tails (`bd:4` of
@@ -58,6 +64,8 @@ export interface DivisionStep {
    * `bjorklund`, `degradeBy`, `range`, … — `@n` and `_` are its weight, not ops.
    */
   ops: string[]
+  /** a euclid's `n` when it is a plain number (`8` of `bd:6(3,8)`): how many places it has; else null */
+  euclidPlaces: number | null
   /**
    * `!n` / a bare `!`: the step is written once and plays as `reps` steps side by side,
    * each an equal share of its slot (Strudel counts `bd!3 sd` as four steps). 1 when unwritten.
@@ -96,6 +104,8 @@ export interface DivisionRow {
    * of these (`StepLane.sound`).
    */
   sounds: string[]
+  /** `sounds`, and the notes whose name is not a plain token (`bd:<1 2>`), as the text writes them */
+  notes: string[]
 }
 
 /** why a bar has no tree: the builder's own reasons, or that the string did not evaluate */
@@ -124,6 +134,45 @@ function nameOf(e: MiniElement): string | null {
   return name
 }
 
+/** a note's name as the text writes it, whatever its `:` tails hold; null for a group */
+function textOf(e: MiniElement, name: string | null, mini: string): string | null {
+  if (e.content.kind !== 'atom') return null
+  if (name !== null) return name
+  const start = e.content.span.start
+  let end = start + e.content.text.length
+  for (const op of e.ops) {
+    if (op.kind !== 'tail') continue
+    const tail = op.args.element
+    if (!tail || typeof tail !== 'object') return null
+    if ('span' in tail) {
+      if (!tail.span) return null
+      end = Math.max(end, tail.span.end)
+      continue
+    }
+    // krill gives a group no span: it ends at the bracket after its last step (`<1 2>`, `[.25 .75]`)
+    let last: MiniGroup | MiniElement = tail
+    while (last.kind === 'group') {
+      const k: MiniGroup | MiniElement | undefined = last.children[last.children.length - 1]
+      if (!k) return null
+      last = k
+    }
+    if (!last.span) return null
+    const from = last.span.end
+    const closer = mini.slice(from).search(/[\]>)}]/)
+    if (closer < 0) return null
+    end = Math.max(end, from + closer + 1)
+  }
+  return mini.slice(start, end).trim()
+}
+
+/** the `n` of the step's own euclid, read off krill's argument; null when it is none or not a number */
+function euclidPlaces(e: MiniElement): number | null {
+  const op = e.ops.find((o) => o.kind === 'bjorklund')
+  const n = op ? argAtom(op.args.step) : null
+  const v = n ? Number(n.text) : NaN
+  return Number.isInteger(v) && v > 0 ? v : null
+}
+
 /** a played value as plain data, or null — no Strudel object leaves the adapter */
 function plainValue(v: unknown): DivisionHit['value'] {
   if (typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v))) return v
@@ -144,8 +193,10 @@ function stepOut(s: Step, cyc: number, mini: string): DivisionStep {
   return {
     span: s.element.span,
     name,
+    text: textOf(s.element, name, mini),
     head: headOf(s.element, name, mini),
     ops: s.element.ops.map((o) => o.kind),
+    euclidPlaces: euclidPlaces(s.element),
     rest: s.rest,
     reps: s.element.reps,
     weight: s.element.weight,
@@ -174,10 +225,23 @@ function soundsIn(group: MiniGroup, out: Set<string>): Set<string> {
   return out
 }
 
+function notesWritten(group: MiniGroup, mini: string, out: Set<string>): Set<string> {
+  for (const c of group.children) {
+    if (c.kind === 'group') notesWritten(c, mini, out)
+    else if (c.content.kind === 'group') notesWritten(c.content, mini, out)
+    else if (!isRest(c.content)) {
+      const text = textOf(c, nameOf(c), mini)
+      if (text !== null) out.add(text)
+    }
+  }
+  return out
+}
+
 const rowOut = (r: Row, cyc: number, mini: string): DivisionRow => ({
   steps: r.steps.map((s) => stepOut(s, cyc, mini)),
   written: r.group.children.length,
   sounds: [...soundsIn(r.group, new Set())],
+  notes: [...notesWritten(r.group, mini, new Set())],
 })
 
 /** the tree of each bar, by chunk text — a handful, since only the shown chunk is asked */
