@@ -32,7 +32,7 @@ const BIO = [
   '',
   'I make **slow electronic music** and the visuals that go with it, live, in the browser.',
   '',
-  '![banner](https://img.example.test/banner.svg)',
+  '![banner](https://raw.githubusercontent.com/ada/ada/main/banner.svg)',
   '',
   '## What I’m working on',
   '',
@@ -97,7 +97,7 @@ async function routeProfiles(page: Page, opts: { seedCollection?: boolean } = {}
   const byId = new Map(ENTRIES.map((e) => [e.id, e]))
   let n = 0
 
-  await page.route('https://img.example.test/**', (route) =>
+  await page.route('https://raw.githubusercontent.com/**', (route) =>
     route.fulfill({ status: 200, contentType: 'image/svg+xml', body: BANNER_SVG }),
   )
   await page.route(/\/api\/gallery(\/.*)?$/, async (route: Route) => {
@@ -225,7 +225,7 @@ test.describe('gallery profiles and collections (#2314, #2315)', () => {
     const md = profile.locator('[data-gallery-markdown]')
     // First, before anything else can fail: the bio has rendered (its banner has
     // loaded, so a broken <img> beside it has had its error too) and nothing in it ran.
-    const banner = md.locator('img[src="https://img.example.test/banner.svg"]')
+    const banner = md.locator('img[src="https://raw.githubusercontent.com/ada/ada/main/banner.svg"]')
     await expect.poll(() => banner.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBeGreaterThan(0)
     await page.waitForTimeout(300)
     expect(await bioRan(page), 'code in the bio ran').toBeNull()
@@ -266,6 +266,81 @@ test.describe('gallery profiles and collections (#2314, #2315)', () => {
     await page.getByRole('button', { name: '← Back to the gallery' }).click()
     await expect(page.locator('[data-gallery-card="adaEnt1AAAA"]')).toBeVisible()
     expect(await bioRan(page)).toBeNull()
+  })
+
+  test('#2366 a profile asks no host the bio picked: refused images never reach the network', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    const store = await routeProfiles(page)
+    const REFUSED = [
+      'https://tracker.example.test/plain.png',
+      'https://github.com@tracker.example.test/username.png',
+      'https://avatars.githubusercontent.com.tracker.example.test/prefix.png',
+      '//tracker.example.test/no-scheme.png',
+      'https://tracker.example.test/avatars.githubusercontent.com/path.png',
+    ]
+    // Short and at the top, so loading="lazy" can't be what keeps these off the network.
+    store.author.bio = [
+      '![mine](/api/gallery/adaEnt1AAAA/thumbnail)',
+      ...REFUSED.map((src, i) => `![refused-${i}](${src})`),
+      '![insecure](http://avatars.githubusercontent.com/u/1)',
+      '![](https://tracker.example.test/no-alt.png)',
+      '![me](https://avatars.githubusercontent.com/u/1?v=4)',
+      '[a link stays a link](https://tracker.example.test/page)',
+    ].join('\n\n')
+
+    // Answered like real images, so a refused one would show if it were ever asked for.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+    await page.route(/tracker\.example\.test|avatars\.githubusercontent\.com/, (route) =>
+      route.fulfill({ status: 200, contentType: 'image/png', body: png }),
+    )
+    const asked: string[] = []
+    page.on('request', (r) => asked.push(r.url()))
+
+    await bootApp(page)
+    await page.goto(`/#gallery-author=${ADA}`)
+    const md = page.locator(`[data-gallery-profile="${ADA}"] [data-gallery-markdown]`)
+    await expect(md).toBeVisible({ timeout: 30_000 })
+
+    // The control: this log does see image requests, from both kinds of allowed host.
+    const avatar = md.locator('img[alt="me"]')
+    const mine = md.locator('img[alt="mine"]')
+    await expect.poll(() => avatar.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBeGreaterThan(0)
+    await expect.poll(() => mine.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBeGreaterThan(0)
+    await page.waitForTimeout(500)
+    expect(asked).toContain('https://avatars.githubusercontent.com/u/1?v=4')
+    expect(asked.some((u) => u.endsWith('/api/gallery/adaEnt1AAAA/thumbnail'))).toBe(true)
+
+    // The harm itself: nothing went to a host the bio picked.
+    expect(asked.filter((u) => /tracker\.example\.test/.test(u))).toEqual([])
+    expect(asked.filter((u) => u.startsWith('http://avatars.'))).toEqual([])
+
+    await expect(md.locator('img')).toHaveCount(2)
+    for (let i = 0; i < REFUSED.length; i++) await expect(md).toContainText(`refused-${i}`)
+    await expect(md).toContainText('insecure')
+    await expect(md.getByRole('link', { name: 'a link stays a link' })).toHaveAttribute('href', 'https://tracker.example.test/page')
+  })
+
+  test('#2366 the bio preview follows the same rule as it is typed', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await routeProfiles(page)
+    await rememberAuthor(page, { name: 'Ada', email: 'ada@example.com', authorId: ADA, authorKey: KEY })
+    const asked: string[] = []
+    page.on('request', (r) => asked.push(r.url()))
+    await page.route(/tracker\.example\.test/, (route) => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: BANNER_SVG }))
+    await bootApp(page)
+    await page.goto(`/#gallery-author=${ADA}`)
+    await page.locator('[data-gallery-edit-profile]').click({ timeout: 30_000 })
+
+    const editor = page.locator('[data-gallery-profile-editor]')
+    await editor.getByLabel('Bio (markdown)').fill('![typed](https://tracker.example.test/typed.png)\n\n![ok](https://raw.githubusercontent.com/a/b/main/c.svg)')
+    const preview = editor.locator('[data-gallery-bio-preview]')
+    const ok = preview.locator('img[alt="ok"]')
+    await expect.poll(() => ok.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBeGreaterThan(0)
+    await expect(preview).toContainText('typed')
+    await expect(preview.locator('img')).toHaveCount(1)
+    await expect(editor).toContainText('Images load from GitHub or Stave only')
+    await page.waitForTimeout(300)
+    expect(asked.filter((u) => /tracker\.example\.test/.test(u))).toEqual([])
   })
 
   test('the owner edits the profile: live preview, PUT with the author key', async ({ page }) => {

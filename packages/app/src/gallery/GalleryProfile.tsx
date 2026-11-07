@@ -329,7 +329,7 @@ function ProfileEditor({
             placeholder={"# Hi, I'm …\n\nWhat you make, where to find you, links."}
             spellCheck
           />
-          <span className="sg-hint">Headings, lists, links, code, tables and images work. HTML is shown as text.</span>
+          <span className="sg-hint">Headings, lists, links, code and tables work. Images load from GitHub or Stave only; others show their alt text. HTML is shown as text.</span>
         </label>
         <div className="sg-field">
           <span className="sg-label">Preview</span>
