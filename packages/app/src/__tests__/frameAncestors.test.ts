@@ -53,3 +53,15 @@ describe("frame-src", () => {
     );
   });
 });
+
+// #2461 — Firefox refuses the sandboxed preview's page unless it allows a
+// cross-origin load; the browser tests run Chromium, which never noticed.
+describe("Cross-Origin-Resource-Policy", () => {
+  it("lets the sandboxed preview frame load its page", async () => {
+    const rules = (await nextConfig.headers?.()) ?? [];
+    const corp = rules
+      .filter((r) => r.source === "/:path*" || r.source === "/gallery-player")
+      .flatMap((r) => r.headers.filter((h) => h.key.toLowerCase() === "cross-origin-resource-policy"));
+    expect(corp.map((h) => h.value)).toEqual(["cross-origin"]);
+  });
+});
