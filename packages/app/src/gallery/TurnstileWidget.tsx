@@ -5,7 +5,8 @@ import React, { useEffect, useRef, useState } from "react";
 import type { TurnstileAction } from "./types";
 
 /**
- * #2330 — Cloudflare Turnstile in the publish dialog and the report dialog.
+ * #2330 — Cloudflare Turnstile in the publish dialog, the report dialog and (#2364)
+ * the check before a private link made signed out (ShareCheckDialog.tsx).
  *
  * Shown only when NEXT_PUBLIC_TURNSTILE_SITE_KEY is set (it is inlined at build
  * time). The widget hands back a token through `onToken`; the caller sends it

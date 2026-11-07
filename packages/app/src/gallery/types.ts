@@ -368,7 +368,8 @@ export interface GallerySessionResponse {
 //   POST   /api/share  with SHARE_LINK_NAME_HEADER, signed in: also lists the link on
 //       the account as an AccountLink (id, name, date; never the key or the full
 //       link, #2329). Signed out, the header is ignored and nothing about the link
-//       is kept beyond its sealed bytes and its manage-token hash.
+//       is kept beyond its sealed bytes and its manage-token hash. #2364 — signed out,
+//       TURNSTILE_HEADER too when this site has the check: 403 without a good token.
 //   DELETE /api/share/<id>        MANAGE_TOKEN_HEADER, or the session when the link is on the account.
 
 export interface ClaimItem {
@@ -455,8 +456,8 @@ export const SHARE_LINK_NAME_HEADER = "x-stave-share-name";
 export const AUTHOR_KEY_HEADER = "x-stave-author-key";
 
 /**
- * #2330 — the Cloudflare Turnstile token on publish and report (the name
- * Cloudflare gives the widget's form field). Checked by api/gallery/turnstile.ts
+ * #2330 — the Cloudflare Turnstile token on publish, report and (#2364) a private
+ * link made signed out (the name Cloudflare gives the widget's form field). Checked by api/gallery/turnstile.ts
  * only when TURNSTILE_SECRET_KEY is set.
  */
 export const TURNSTILE_HEADER = "cf-turnstile-response";
@@ -465,7 +466,7 @@ export const TURNSTILE_HEADER = "cf-turnstile-response";
  * checks the token was made for the same action, so a token solved in the
  * report dialog can't be spent on a publish.
  */
-export type TurnstileAction = "publish" | "report";
+export type TurnstileAction = "publish" | "report" | "share-link";
 export const MAX_BIO_CHARS = 10_000;
 export const MAX_COLLECTION_TITLE_CHARS = 80;
 export const MAX_COLLECTION_DESCRIPTION_CHARS = 1_000;
