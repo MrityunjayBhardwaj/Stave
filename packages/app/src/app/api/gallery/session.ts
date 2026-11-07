@@ -14,6 +14,7 @@ import {
   type AccountClaimInput,
   type AccountRecord,
 } from "../../../db/repo/accounts";
+import { isReservedName } from "../../../gallery/reservedNames";
 import { AUTHOR_KEY_HEADER, MAX_AUTHOR_NAME_CHARS, type GalleryVerified } from "../../../gallery/types";
 import { authorForKey, keyOwnsAuthor } from "./authors";
 
@@ -51,7 +52,7 @@ import { authorForKey, keyOwnsAuthor } from "./authors";
  *   sessionAuthor(req, { create? })      → { authorId, account } | null
  *       The author linked to the session's account. With `create` (default
  *       true) the first call for an account makes its author (named after the
- *       account) — "first gallery use". #2349: race-safe; any number of first
+ *       account, unless that name is reserved, #2368) — "first gallery use". #2349: race-safe; any number of first
  *       requests at once, on any servers, make ONE author and all answer with
  *       it (db/repo/accounts.ts ensureAccountAuthor). With create:false it only
  *       looks (ownership checks use this, so checking never makes one).
@@ -161,10 +162,18 @@ export async function attachAuthorToAccount(
   return linked.ok ? { ok: true, account: linked.account } : linked;
 }
 
-/** The name a new author starts with: the account's name, else its login, else a placeholder. */
+/**
+ * The name a new author starts with: the account's name, else its login, else a
+ * placeholder. #2368 — a reserved one is passed over, never a reason to refuse
+ * the sign-in: a GitHub account really named "Stave" gets the next one down.
+ * Checked after the cut, because the cut is what gets stored.
+ */
 function startingName(name: string, claim: StaveAccountClaim): string {
-  const n = (name || claim.login || "").trim();
-  return (n || "New artist").slice(0, MAX_AUTHOR_NAME_CHARS);
+  for (const candidate of [name, claim.login ?? ""]) {
+    const n = candidate.trim().slice(0, MAX_AUTHOR_NAME_CHARS);
+    if (n && !isReservedName(n)) return n;
+  }
+  return "New artist";
 }
 
 /**

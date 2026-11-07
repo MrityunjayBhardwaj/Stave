@@ -1,0 +1,127 @@
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
+
+import { bootApp } from './_appBoot'
+
+/**
+ * #2368 — a profile can't name itself as Stave. Real server, real Auth.js session
+ * (the test-only provider), real database, real profile editor.
+ *
+ * Like gallery-sign-in.spec.ts, it SKIPS (saying why) unless the server was
+ * started with STAVE_AUTH_TEST_LOGIN=1 and an AUTH_SECRET, which the browser
+ * gate's server is not. To run it:
+ *
+ *   STAVE_AUTH_TEST_LOGIN=1 AUTH_SECRET=dev-only-secret npm run dev -- -p 3443
+ *   STAVE_E2E_PORT=3443 npx playwright test tests/gallery-reserved-names.spec.ts --project=chromium --retries=0
+ *
+ * Screenshots go to $GALLERY_SHOT_DIR when it is set.
+ */
+
+const SHOTS = process.env.GALLERY_SHOT_DIR
+const RUN = Date.now().toString(36)
+const REFUSAL = 'that name is kept for the people who run Stave, so please choose a different one'
+
+test.beforeEach(async ({ request }) => {
+  const res = await request.get('/api/gallery/me')
+  const me = res.ok() ? ((await res.json()) as { signInAvailable: boolean; providers: Array<{ id: string }> }) : null
+  test.skip(
+    !me?.signInAvailable || !me.providers.some((p) => p.id === 'test-login'),
+    'sign-in is unavailable on this server: start it with STAVE_AUTH_TEST_LOGIN=1 and AUTH_SECRET (the gate does not)',
+  )
+})
+
+/** The Auth.js callback the sign-in UI posts to; `request` shares the page's cookies. */
+async function signIn(request: APIRequestContext, id: string, name: string, login: string): Promise<void> {
+  const { csrfToken } = (await (await request.get('/api/auth/csrf')).json()) as { csrfToken: string }
+  const res = await request.post('/api/auth/callback/test-login', {
+    form: { csrfToken, id, name, login, email: `${id}@test-login.invalid`, as: 'github', callbackUrl: '/' },
+    maxRedirects: 0,
+  })
+  expect(res.status()).toBe(302)
+  expect(res.headers()['location']).not.toContain('error')
+}
+
+async function openMyProfile(page: Page): Promise<string> {
+  await page.getByTestId('menubar-account').click()
+  await page.locator('[data-stave-menu-item]', { hasText: 'My Profile' }).click()
+  const profile = page.locator('[data-gallery-profile]')
+  await expect(profile).toBeVisible({ timeout: 15_000 })
+  return (await profile.getAttribute('data-gallery-profile')) ?? ''
+}
+
+const profileName = (page: Page) => page.locator('[data-gallery-profile] .sg-profile-name').first()
+
+test.describe('Reserved names (#2368)', () => {
+  test('a refused rename says what to do in the editor; a good rename then saves', async ({ page, request }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    const id = `rename-${RUN}`
+    await signIn(request, id, `Ada ${RUN}`, id)
+    await page.context().addCookies((await request.storageState()).cookies)
+    await bootApp(page)
+    const authorId = await openMyProfile(page)
+    await expect(profileName(page)).toHaveText(`Ada ${RUN}`)
+
+    const puts: number[] = []
+    page.on('response', (r) => {
+      if (r.request().method() === 'PUT' && r.url().includes(`/api/gallery/authors/${authorId}`)) puts.push(r.status())
+    })
+
+    await page.locator('[data-gallery-edit-profile]').click()
+    const editor = page.locator('[data-gallery-profile-editor]')
+    const nameBox = editor.getByLabel('Display name')
+    const errors = editor.locator('[data-gallery-form-errors]')
+    const save = editor.getByRole('button', { name: 'Save' })
+
+    // ── each of these is refused where the other errors show, and the editor stays open ──
+    for (const bad of ['Stave', 'S t a v e', 'ＳＴＡＶＥ', 'Ѕtave', 'stave-team', 'The Stave Team']) {
+      await nameBox.fill(bad)
+      await save.click()
+      await expect(errors).toHaveText(`Sorry, ${REFUSAL}.`)
+      await expect(editor).toBeVisible()
+    }
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/reserved-name-refused.png` })
+
+    // ── the server says the same on its own, without the form's help ──
+    const direct = await page.evaluate(
+      async ({ authorId, name }) => {
+        const res = await fetch(`/api/gallery/authors/${authorId}`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name, bio: '' }),
+        })
+        return { status: res.status, body: await res.json() }
+      },
+      { authorId, name: 'Ѕtave' },
+    )
+    expect(direct).toEqual({ status: 400, body: { error: REFUSAL } })
+    puts.length = 0
+
+    // ── a real name that starts the same way saves ──
+    await nameBox.fill('Stavros')
+    await save.click()
+    await expect(profileName(page)).toHaveText('Stavros')
+    await expect(editor).toHaveCount(0)
+    expect(puts).toEqual([200])
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/reserved-name-good-rename.png` })
+
+    // ── and it is what the server now holds ──
+    const page2 = await (await request.get(`/api/gallery/authors/${authorId}`)).json()
+    expect(page2.author.name).toBe('Stavros')
+  })
+
+  test('an account really named Stave signs in and gets the normal fallback, then can edit its profile', async ({ page, request }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    const id = `stave-${RUN}`
+    await signIn(request, id, 'Stave', 'stave')
+    await page.context().addCookies((await request.storageState()).cookies)
+    await bootApp(page)
+    await openMyProfile(page)
+    await expect(profileName(page)).toHaveText('New artist')
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/reserved-name-fallback.png` })
+
+    await page.locator('[data-gallery-edit-profile]').click()
+    const editor = page.locator('[data-gallery-profile-editor]')
+    await editor.getByLabel('Display name').fill('Mjay')
+    await editor.getByRole('button', { name: 'Save' }).click()
+    await expect(profileName(page)).toHaveText('Mjay')
+  })
+})
