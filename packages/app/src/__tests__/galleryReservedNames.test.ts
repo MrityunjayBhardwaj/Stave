@@ -22,7 +22,7 @@ import { POST as publishRoute } from "../app/api/gallery/route";
 import { getDb, useDbForTests, type Db } from "../db/client";
 import { getAuthor, insertKeyedAuthor, updateAuthorProfile } from "../db/repo/accounts";
 import { buildProfileRequest } from "../gallery/profileModel";
-import { isReservedName, RESERVED_NAME_ERROR } from "../gallery/reservedNames";
+import { BLANK_NAME_ERROR, hasVisibleCharacter, isReservedName, RESERVED_NAME_ERROR } from "../gallery/reservedNames";
 import { galleryTrustMessage } from "../gallery/safeRun";
 import { AUTHOR_KEY_HEADER, MAX_AUTHOR_NAME_CHARS, type GalleryManifest, type GallerySessionResponse, type PublishResponse } from "../gallery/types";
 
@@ -356,5 +356,98 @@ describe("not doors: what looks like one and isn't", () => {
     expect(res.status).toBe(200);
     expect((await getAuthor(database, mine))!).toMatchObject({ name: "Ada", bio: "old bio" });
     expect((await getAuthor(database, oldId))!.mergedInto).toBe(mine);
+  });
+});
+
+// ── #2450: a name with nothing visible in it ─────────────────────────────────
+
+/** The six in the issue, then neighbours a looser rule would miss. Escapes, so the list can be read. */
+const INVISIBLE: Array<[string, string]> = [
+  ["zero-width space", "​"],
+  ["zero-width joiner", "‍"],
+  ["word joiner", "⁠"],
+  ["soft hyphen", "­"],
+  ["Hangul filler", "ㅤ"],
+  ["blank Braille cell", "⠀"],
+  ["several mixed, padded with spaces", " ​ㅤ⠀­ "],
+  ["ideographic space", "　"],
+  ["halfwidth Hangul filler", "ﾠ"],
+  ["accents with no letter", "́̈"],
+  ["a right-to-left override and a zero-width space", "‮​"],
+];
+
+/** Names that only look unusual: each shows something. */
+const VISIBLE = ["Ada", "A​", "⠀Ada", "🎵", "李雷", "कि", "한", "⠁", ".", "👩‍💻"];
+
+describe("#2450: the visible-character check", () => {
+  it.each(INVISIBLE)("finds nothing visible in a %s", (_, name) => {
+    expect(hasVisibleCharacter(name)).toBe(false);
+  });
+
+  it.each(VISIBLE)("finds something visible in %j", (name) => {
+    expect(hasVisibleCharacter(name)).toBe(true);
+  });
+});
+
+describe("#2450: every door refuses a name with nothing visible in it", () => {
+  // A name trim() empties (the ideographic space) was refused before, as empty.
+  it.each(INVISIBLE)("the profile form, for a %s", (_, name) => {
+    expect(buildProfileRequest({ name, bio: "" }, "Ada")).toEqual({
+      request: null,
+      errors: [name.trim() ? "Your name needs a letter, number or symbol you can see." : "Add your name."],
+    });
+  });
+
+  it.each(INVISIBLE)("PUT /api/gallery/authors/<id>, for a %s, storing nothing", async (_, name) => {
+    const id = await account();
+    const res = await putAuthor(id, { name, bio: "still here" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: name.trim() ? BLANK_NAME_ERROR : "name is empty" });
+    expect(await getAuthor(await db(), id)).toMatchObject({ name: "Ada", bio: "" });
+  });
+
+  it("refuses an invisible name already stored, even unchanged, until a visible one replaces it", async () => {
+    const id = await account();
+    await updateAuthorProfile(await db(), id, { name: "​", bio: "" }); // stored before the rule
+    expect(buildProfileRequest({ name: "​", bio: "a bio" }, "​").request).toBeNull();
+    expect((await putAuthor(id, { name: "​", bio: "a bio" })).status).toBe(400);
+    expect((await putAuthor(id, { name: "Ada", bio: "a bio" })).status).toBe(200);
+    expect(await getAuthor(await db(), id)).toMatchObject({ name: "Ada", bio: "a bio" });
+  });
+
+  it.each(INVISIBLE)("first sign-in, for a %s: the login is used instead", async (_, name) => {
+    signIn(freshId(), { name, login: "ada-x" });
+    expect((await firstUse()).name).toBe("ada-x");
+  });
+
+  it("first sign-in with nothing visible in the name or the login gets the placeholder", async () => {
+    signIn(freshId(), { name: "ㅤ", login: "⠀" });
+    const made = await firstUse();
+    expect(made.name).toBe("New artist");
+    expect(await storedName(made.authorId)).toBe("New artist");
+  });
+
+  it.each(INVISIBLE)("making a key-held profile, for a %s, makes nothing", async (_, name) => {
+    expect(await createAuthor(await db(), name, "")).toBeNull();
+  });
+
+  it("still lets every visible name through the form and the server", async () => {
+    for (const name of VISIBLE) {
+      expect(buildProfileRequest({ name, bio: "" }, "Ada").errors).toEqual([]);
+      const id = await account();
+      expect((await putAuthor(id, { name, bio: "" })).status).toBe(200);
+      expect(await storedName(id)).toBe(name.trim());
+    }
+  });
+});
+
+describe("#2450: the trust question", () => {
+  it.each(INVISIBLE)("says someone else for a stored %s", (_, name) => {
+    expect(galleryTrustMessage(name).description).toContain("written by someone else.");
+  });
+
+  it("names a visible author, trimmed", () => {
+    expect(galleryTrustMessage("  Ada ").description).toContain("written by Ada.");
+    expect(galleryTrustMessage("李雷").description).toContain("written by 李雷.");
   });
 });
