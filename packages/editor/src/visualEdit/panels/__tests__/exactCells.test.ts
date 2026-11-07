@@ -100,6 +100,9 @@ describe('the shapes the tree learned (#2454)', () => {
     expect(rowOf(g, 'bd:<1 2>').hits.map((h) => h.begin)).toEqual([0, 1])
     expect(click('bd:<1 2> sd', 'bd:<1 2>', '0')).toBe('refused: step-has-no-text')
     expect(click('bd:<1 2> sd', 'sd', '1/2')).toBe('bd:<1 2> ~')
+    // under several rows it finds its own, by the same name
+    expect(click('~ [rim, sd:<1 3>]', 'sd:<1 3>', '1/2')).toBe('refused: step-has-no-text')
+    expect(cellsOf('~ [rim, sd:<1 3>]', 'sd:<1 3>')).toBe('0 1/2* 1:0 1:1/2*')
   })
 
   it('a long repeat has all its bars', () => {

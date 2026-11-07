@@ -40047,7 +40047,7 @@ __name(columnOf, "columnOf");
 function innerRow(s, sound) {
   if (!s.rows || s.oneOf) return null;
   if (s.rows.length === 1) return s.rows[0];
-  const mine = s.rows.filter((r) => r.sounds.includes(sound));
+  const mine = s.rows.filter((r) => r.notes.includes(sound));
   return mine.length === 1 ? mine[0] : null;
 }
 __name(innerRow, "innerRow");
