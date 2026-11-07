@@ -523,6 +523,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN"
   },
+  "gallery-session-lifetime.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN"
+  },
   "getting-started-walkthrough.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"

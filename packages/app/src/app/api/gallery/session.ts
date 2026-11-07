@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import type { GetServerSidePropsContext } from "next";
+
 import { auth, type StaveAccountClaim } from "../../../auth";
 import { signInAvailable } from "../../../authProviders";
 import { getDb, type Db } from "../../../db/client";
@@ -15,6 +17,7 @@ import {
   type AccountRecord,
 } from "../../../db/repo/accounts";
 import { AUTHOR_KEY_HEADER, MAX_AUTHOR_NAME_CHARS, type GalleryVerified } from "../../../gallery/types";
+import { sessionRenewalDue } from "../../../sessionLifetime";
 import { authorForKey, keyOwnsAuthor } from "./authors";
 
 /*
@@ -47,6 +50,11 @@ import { authorForKey, keyOwnsAuthor } from "./authors";
  *   sessionClaim()                       → StaveAccountClaim | null
  *       The signed-in account from the cookie; null when signed out, or when
  *       sign-in isn't set up (auth() failing counts as signed out).
+ *
+ *   renewSessionCookie(req, res)
+ *       #2367 — puts a renewed session cookie on `res` when the request's cookie
+ *       is at least a day old. Only GET /api/gallery/me calls it: every page load
+ *       reads that route, and it answers no-store.
  *
  *   sessionAuthor(req, { create? })      → { authorId, account } | null
  *       The author linked to the session's account. With `create` (default
@@ -136,6 +144,26 @@ export async function sessionClaim(): Promise<{ claim: StaveAccountClaim; email:
   const claim = session?.account;
   if (!claim?.provider || !claim.providerAccountId) return null;
   return { claim, email: session?.user?.email ?? "", name: session?.user?.name ?? "" };
+}
+
+/** Auth.js's session cookie: `__Secure-` over https, `.0`, `.1`… when it's long enough to be split. */
+const SESSION_COOKIE = /^(__Secure-)?authjs\.session-token(\.\d+)?=/;
+
+/**
+ * Keep an active session alive. Auth.js re-issues the cookie on every session
+ * read, but plain `auth()` drops it; this form of `auth()` hands it over, on the
+ * Response it's given. So: read into a spare Response, and copy the cookie across
+ * only when it's due, which keeps most answers free of Set-Cookie. Only the session
+ * cookie: the read also mints Auth.js's sign-in cookies (CSRF, callback URL), which
+ * a session read has no business setting.
+ */
+export async function renewSessionCookie(req: Request, res: Response): Promise<void> {
+  const reissued = new Response();
+  const session = await auth({ req, res: reissued } as unknown as GetServerSidePropsContext);
+  if (!sessionRenewalDue(session?.issuedAt)) return;
+  for (const cookie of reissued.headers.getSetCookie()) {
+    if (SESSION_COOKIE.test(cookie)) res.headers.append("Set-Cookie", cookie);
+  }
 }
 
 const claimInput = (claim: StaveAccountClaim, email: string): AccountClaimInput => ({
