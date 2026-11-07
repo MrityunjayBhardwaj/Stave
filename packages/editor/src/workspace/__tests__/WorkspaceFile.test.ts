@@ -27,6 +27,7 @@ import {
   pruneZoneOverrides,
   subscribeToZoneOverrides,
   subscribeToFileList,
+  subscribeToFileDeletes,
   listWorkspaceFiles,
   renameWorkspaceFile,
   getTrackMeta,
@@ -541,6 +542,24 @@ describe('20-12 α-2 — trackMeta', () => {
     // Without the cache cleanup the stale snapshot (bass→#ff0000) would persist;
     // with it the entry is dropped and the file reads empty.
     expect(getTrackMetaMapSnapshot('f1').size).toBe(0)
+  })
+
+  // #2452 — per-file state kept elsewhere (a viz's chosen source) needs to know
+  // WHICH file was deleted, and must not mistake a rename for one.
+  it('subscribeToFileDeletes names the deleted file — and only on a delete', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    createWorkspaceFile('f2', 'q.strudel', 'y', 'strudel')
+    const cb = vi.fn()
+    const off = subscribeToFileDeletes(cb)
+    renameWorkspaceFile('f1', 'moved/p.strudel')
+    setContent('f1', 'z')
+    expect(cb).not.toHaveBeenCalled()
+    deleteWorkspaceFile('f1')
+    expect(cb).toHaveBeenCalledTimes(1)
+    expect(cb).toHaveBeenCalledWith('f1')
+    off()
+    deleteWorkspaceFile('f2')
+    expect(cb).toHaveBeenCalledTimes(1)
   })
 
   it('pruneTrackMeta notifies subscribers only when something was actually pruned', () => {

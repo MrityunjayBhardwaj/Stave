@@ -122,7 +122,7 @@ import { PreviewView } from './PreviewView'
 import { useKeyboardCommands } from './commands/useKeyboardCommands'
 import { executeCommand } from './commands/CommandRegistry'
 import { getPreviewProviderForLanguage } from './preview/registry'
-import { getFile, subscribe as subscribeToWorkspaceFile } from './WorkspaceFile'
+import { getFile, subscribe as subscribeToWorkspaceFile, subscribeToFileDeletes } from './WorkspaceFile'
 import { HistoryDiffOverlay } from './history/HistoryDiffOverlay'
 import { HistoryViewOverlay } from './history/HistoryViewOverlay'
 import { getCurrentHistory } from './history/historyService'
@@ -172,7 +172,11 @@ import {
 } from './groupLayout'
 import { findBuiltinExampleSource } from './builtinExampleSources'
 import { setAlongsideSources } from './playbackCoordinator'
-import { getVizSourceChoice, onVizSourceChoiceChange } from './preview/vizSourceChoice'
+import {
+  forgetVizSourceChoicesFor,
+  getVizSourceChoice,
+  onVizSourceChoiceChange,
+} from './preview/vizSourceChoice'
 import { BottomPanel } from './bottomPanel/BottomPanel'
 import { SymbolRow } from './SymbolRow'
 import { bottomPanelHiddenForTab } from './bottomPanel/hiddenForTab'
@@ -1127,6 +1131,9 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
     () => onVizSourceChoiceChange(() => setSourceChoiceVersion((n) => n + 1)),
     [],
   )
+  // #2452 — a deleted file can't be listened to: every viz that chose it goes
+  // back to the default source (the store tells the pickers and this shell).
+  useEffect(() => subscribeToFileDeletes(forgetVizSourceChoicesFor), [])
   // #2426 — whose audio a background listens to (see backdropSourceFor)
   const sourceForBackdrop = useCallback(
     (owner: string | null, bgFileId: string) =>

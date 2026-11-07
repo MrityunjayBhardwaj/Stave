@@ -28068,6 +28068,7 @@ function ensureFilesMapObserver() {
             unwireTextObserver(key3);
             cachedSnapshots.delete(key3);
             notify2(key3);
+            notifyFileDeleted(key3);
             anyStructuralChange = true;
           }
         }
@@ -28178,6 +28179,18 @@ function subscribeToFileList(cb) {
   };
 }
 __name(subscribeToFileList, "subscribeToFileList");
+var fileDeleteSubscribers = /* @__PURE__ */ new Set();
+function subscribeToFileDeletes(cb) {
+  fileDeleteSubscribers.add(cb);
+  return () => {
+    fileDeleteSubscribers.delete(cb);
+  };
+}
+__name(subscribeToFileDeletes, "subscribeToFileDeletes");
+function notifyFileDeleted(fileId) {
+  for (const cb of Array.from(fileDeleteSubscribers)) cb(fileId);
+}
+__name(notifyFileDeleted, "notifyFileDeleted");
 function listWorkspaceFiles() {
   ensureDoc();
   ensureFilesMapObserver();
@@ -28198,6 +28211,7 @@ __name(listWorkspaceFiles, "listWorkspaceFiles");
 function deleteWorkspaceFile(id) {
   const filesMap = getFilesMap();
   if (!filesMap.has(id)) return;
+  ensureFilesMapObserver();
   const doc = ensureDoc();
   doc.transact(() => {
     filesMap.delete(id);
@@ -37953,6 +37967,28 @@ function setVizSourceChoice(fileId, ref) {
   for (const cb of Array.from(listeners10)) cb(fileId, ref);
 }
 __name(setVizSourceChoice, "setVizSourceChoice");
+function forgetVizSourceChoicesFor(deletedFileId) {
+  const ls = safeLocalStorage4();
+  const vizIds = new Set(values2.keys());
+  if (ls && typeof ls.key === "function") {
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i);
+      if (k?.startsWith(STORAGE_PREFIX3)) vizIds.add(k.slice(STORAGE_PREFIX3.length));
+    }
+  }
+  for (const vizId of vizIds) {
+    if (vizId === deletedFileId) {
+      values2.delete(vizId);
+      ls?.removeItem(keyFor2(vizId));
+      continue;
+    }
+    const ref = getVizSourceChoice(vizId);
+    if (ref.kind === "file" && ref.fileId === deletedFileId) {
+      setVizSourceChoice(vizId, DEFAULT);
+    }
+  }
+}
+__name(forgetVizSourceChoicesFor, "forgetVizSourceChoicesFor");
 function onVizSourceChoiceChange(cb) {
   listeners10.add(cb);
   return () => {
@@ -48563,6 +48599,7 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
     () => onVizSourceChoiceChange(() => setSourceChoiceVersion((n) => n + 1)),
     []
   );
+  React48.useEffect(() => subscribeToFileDeletes(forgetVizSourceChoicesFor), []);
   const sourceForBackdrop = React48.useCallback(
     (owner, bgFileId) => backdropSourceFor(
       owner,
