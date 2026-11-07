@@ -8,6 +8,7 @@ import {
   codeBackdropName,
   fileShownIn,
   isTrackLevel,
+  openPatternFiles,
   paneCodeBackdrops,
   panesShowing,
   pickSpanningBackdrop,
@@ -105,6 +106,23 @@ describe("panes in File mode (#2421) — a pattern's background stays in its own
     expect(fileShownIn({ id: "x", tabs: [{ id: "a", kind: "editor", fileId: "song" }, { id: "b", kind: "editor", fileId: "green" }], activeTabId: "b" })).toBe("green");
     expect(fileShownIn({ id: "x", tabs: [{ id: "h", kind: "history" }], activeTabId: "h" })).toBeNull();
     expect(fileShownIn(undefined)).toBeNull();
+  });
+});
+
+describe("openPatternFiles (#2395) — the patterns whose backgrounds may hold options", () => {
+  const isPattern = (id: string) => id.startsWith("song") || id === "other";
+  it("every pattern open as an editor tab, active or not, in pane order, once", () => {
+    const panes = [
+      { id: "l", tabs: [{ id: "a", kind: "editor", fileId: "song" }, { id: "b", kind: "editor", fileId: "fold" }], activeTabId: "b" },
+      { id: "r", tabs: [{ id: "c", kind: "editor", fileId: "other" }, { id: "d", kind: "editor", fileId: "song" }], activeTabId: "c" },
+    ];
+    expect(openPatternFiles(panes, isPattern)).toEqual(["song", "other"]);
+  });
+  it("a closed pattern is not open; a preview or history tab does not count", () => {
+    const panes = [
+      { id: "l", tabs: [{ id: "p", kind: "preview", fileId: "song2" }, { id: "h", kind: "history" }], activeTabId: "p" },
+    ];
+    expect(openPatternFiles(panes, isPattern)).toEqual([]);
   });
 });
 

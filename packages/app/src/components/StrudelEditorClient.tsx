@@ -15,6 +15,7 @@ import {
   codeBackdropName,
   recordEvaluatedBackdrop,
   fileShownIn,
+  openPatternFiles,
   paneCodeBackdrops,
   panesShowing,
   pickSpanningBackdrop,
@@ -111,6 +112,8 @@ import {
   readMasterViz,
   resolveVizOptions,
   setCodeBackdropOptions,
+  getCodeBackdropOptions,
+  retainCodeBackdropOptions,
   onActiveEditorChange,
   readPersistedOpen,
   readPersistedActiveTabId,
@@ -893,38 +896,59 @@ export default function StrudelEditorClient({
     const found = codeBackdropName(readMasterViz(code)?.name ?? null, evalBackdropsRef.current.get(fileId) ?? null);
     setCodeBackdrop(fileId, found ? resolveVizNameToFileId(found.name) : null);
   };
-  const publishCodeBackdropOptionsRef = useRef<() => void>(() => {});
+  // Write ONE pattern file's background options from `code` (its current text)
+  // and what its last evaluation asked for. #2395 — per pattern, for any pattern
+  // open in any pane, not only the focused one: each pane's background reads the
+  // slot of the pattern it shows.
+  const publishCodeBackdropOptionsRef = useRef<(patternFileId: string, code: string) => void>(() => {});
+  publishCodeBackdropOptionsRef.current = (patternFileId: string, code: string) => {
+    const last = evalBackdropsRef.current.get(patternFileId) ?? null;
+    const master = readMasterViz(code);
+    const found = codeBackdropName(master?.name ?? null, last);
+    if (found?.source === "code" && master) {
+      const vizFileId = resolveVizNameToFileId(master.name);
+      const evaluated = last && sameVizName(last.vizId, master.name) ? last.options : null;
+      setCodeBackdropOptions(
+        vizFileId ? { fileId: vizFileId, options: resolveVizOptions(master.options, evaluated) } : null,
+        patternFileId, // #2423 — this pattern's options, for this pattern's background only
+      );
+      return;
+    }
+    // a background declared on a track (`.viz(name, { backdrop: true })`,
+    // `.pianoroll({...})`) — the code reader doesn't see those, so keep the last
+    // evaluation's options for it rather than none after Stop
+    const vizFileId = found ? resolveVizNameToFileId(found.name) : null;
+    setCodeBackdropOptions(vizFileId ? { fileId: vizFileId, options: last?.options ?? {} } : null, patternFileId);
+  };
+  // #2395 — the options of every pattern open in a pane, and only those. A
+  // pattern whose last tab closed loses its slot (reopening re-reads its code);
+  // one open in a pane but not yet read this session (after a reload, the
+  // patterns in the panes that are not focused) is read from its file, so its
+  // background has its options without being focused first. The focused file is
+  // read from its editor (the live text; the file's stored content can lag it).
+  const syncOpenPatternOptionsRef = useRef<() => void>(() => {});
+  // the files (and the viz files the code names) load after the panes on a
+  // reload: read the open patterns again whenever the file list changes
+  useEffect(() => {
+    syncOpenPatternOptionsRef.current();
+    return subscribeToFileList(() => syncOpenPatternOptionsRef.current());
+  }, []);
+  syncOpenPatternOptionsRef.current = () => {
+    const open = openPatternFiles(groupsRef.current.values(), (id) => getFile(id)?.language === "strudel");
+    retainCodeBackdropOptions(open);
+    const model = getActiveEditor()?.getModel?.();
+    const focused = model?.getLanguageId?.() === "strudel" ? getActiveFileId() : null;
+    for (const id of open) {
+      if (getCodeBackdropOptions(id)) continue;
+      const content = id === focused ? model?.getValue?.() : getFile(id)?.content;
+      if (content != null) publishCodeBackdropOptionsRef.current(id, content);
+    }
+  };
   useEffect(() => {
     let sub: { dispose?: () => void } | undefined;
     // the file the focused editor shows — read from the editor registry, so it is
     // right even when the editor change lands before the tab-change callback
     const activePatternFileId = (): string | null => getActiveFileId() ?? activeFileIdRef.current;
-    const publishCodeBackdropOptions = () => {
-      const model = getActiveEditor()?.getModel?.();
-      // only a pattern's code declares a background; with a viz file focused the
-      // slot keeps what the pattern last said
-      if (model?.getLanguageId?.() !== "strudel") return;
-      const patternFileId = activePatternFileId();
-      if (!patternFileId) return;
-      const last = evalBackdropsRef.current.get(patternFileId) ?? null;
-      const master = readMasterViz(model.getValue?.() ?? "");
-      const found = codeBackdropName(master?.name ?? null, last);
-      if (found?.source === "code" && master) {
-        const vizFileId = resolveVizNameToFileId(master.name);
-        const evaluated = last && sameVizName(last.vizId, master.name) ? last.options : null;
-        setCodeBackdropOptions(
-          vizFileId ? { fileId: vizFileId, options: resolveVizOptions(master.options, evaluated) } : null,
-          patternFileId, // #2423 — this pattern's options, for this pattern's background only
-        );
-        return;
-      }
-      // a background declared on a track (`.viz(name, { backdrop: true })`,
-      // `.pianoroll({...})`) — the code reader doesn't see those, so keep the last
-      // evaluation's options for it rather than none after Stop
-      const vizFileId = found ? resolveVizNameToFileId(found.name) : null;
-      setCodeBackdropOptions(vizFileId ? { fileId: vizFileId, options: last?.options ?? {} } : null, patternFileId);
-    };
-    publishCodeBackdropOptionsRef.current = publishCodeBackdropOptions;
     const codeBackdropOf = (): string | null => {
       const model = getActiveEditor()?.getModel?.();
       // master all() is a pattern-file concept — only sync for the Strudel editor
@@ -940,7 +964,11 @@ export default function StrudelEditorClient({
       const model = getActiveEditor()?.getModel?.();
       const patternFileId = activePatternFileId();
       if (model?.getLanguageId?.() === "strudel" && patternFileId) {
-        deriveCodeBackdropRef.current(patternFileId, model.getValue?.() ?? "");
+        const text = model.getValue?.() ?? "";
+        deriveCodeBackdropRef.current(patternFileId, text);
+        // only a pattern's code declares a background; with a viz file focused
+        // the slots keep what each pattern last said
+        publishCodeBackdropOptionsRef.current(patternFileId, text);
       }
       // #2421 — the file whose code was just read (the focused editor's), and the
       // pane(s) showing it: a click into another pane focuses its editor before
@@ -948,7 +976,6 @@ export default function StrudelEditorClient({
       // pane beside it
       const fileId = patternFileId;
       if (!fileId) return;
-      publishCodeBackdropOptions();
       const code = codeBackdropOf();
       if (code === prevCodeBackdropRef.current) return; // code backdrop unchanged → leave the sticky alone
       prevCodeBackdropRef.current = code;
@@ -1670,7 +1697,11 @@ export default function StrudelEditorClient({
         const liveCode =
           getActiveFileId() === fileId ? getActiveEditor()?.getModel?.()?.getValue?.() : undefined;
         deriveCodeBackdropRef.current(fileId, liveCode ?? evaluatedCode);
-        publishCodeBackdropOptionsRef.current();
+        // #2395 — THIS file's options, whether or not it is the focused one, and
+        // only while one of its tabs is open (a pattern played with its tab
+        // closed has no background to give them to; reopening reads its code)
+        const open = openPatternFiles(groupsRef.current.values(), (id) => getFile(id)?.language === "strudel");
+        if (open.includes(fileId)) publishCodeBackdropOptionsRef.current(fileId, liveCode ?? evaluatedCode);
       }
     });
     runtime.onAutoRefreshChanged((enabled: boolean) => {
@@ -2531,6 +2562,8 @@ export default function StrudelEditorClient({
       // #2421 — the panes, for the per-pane background rules above
       groupsRef.current = snapshot.groups;
       applyPaneOverridesRef.current();
+      // #2395 — a tab opened, closed or moved: options for exactly the open patterns
+      syncOpenPatternOptionsRef.current();
       setGroupsTick((t) => t + 1);
     },
     [projectId],
@@ -2539,13 +2572,7 @@ export default function StrudelEditorClient({
   // #2423 — the pattern background spanning the workspace (a pattern set to
   // Workspace that is open in some pane; the most recently used one if several).
   const spanningBackdrop = React.useMemo(() => {
-    const open: string[] = [];
-    for (const g of groupsRef.current.values()) {
-      for (const t of g.tabs) {
-        if (t.kind !== "editor" || open.includes(t.fileId)) continue;
-        if (getFile(t.fileId)?.language === "strudel") open.push(t.fileId);
-      }
-    }
+    const open = openPatternFiles(groupsRef.current.values(), (id) => getFile(id)?.language === "strudel");
     return pickSpanningBackdrop(
       open,
       spanOf,
