@@ -19,6 +19,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "background-options-per-pattern.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project"
+  },
   "background-owns-its-options.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"

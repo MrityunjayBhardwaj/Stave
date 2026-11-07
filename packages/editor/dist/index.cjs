@@ -55391,6 +55391,19 @@ function setCodeBackdropOptions(next, patternFileId) {
   for (const l of [...listeners19]) l();
 }
 __name(setCodeBackdropOptions, "setCodeBackdropOptions");
+function retainCodeBackdropOptions(openPatternFileIds) {
+  const keep = new Set(openPatternFileIds);
+  let dropped = false;
+  for (const key3 of [...slots.keys()]) {
+    if (key3 === LEGACY || keep.has(key3)) continue;
+    slots.delete(key3);
+    dropped = true;
+  }
+  if (!dropped) return;
+  version++;
+  for (const l of [...listeners19]) l();
+}
+__name(retainCodeBackdropOptions, "retainCodeBackdropOptions");
 function getCodeBackdropOptions(patternFileId) {
   return slots.get(patternFileId ?? LEGACY) ?? null;
 }
@@ -56686,6 +56699,7 @@ exports.resolveVizOptions = resolveVizOptions;
 exports.restoreFileToCommit = restoreFileToCommit;
 exports.restoreProject = restoreProject;
 exports.restoreSnapshot = restoreSnapshot;
+exports.retainCodeBackdropOptions = retainCodeBackdropOptions;
 exports.retryDocSave = retryDocSave;
 exports.revealLineInFile = revealLineInFile;
 exports.revealOffsetInFile = revealOffsetInFile;
