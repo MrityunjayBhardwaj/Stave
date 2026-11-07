@@ -4,8 +4,9 @@ import { siteHosts } from "./origin";
 import { clientAddress } from "./rateLimit";
 
 /*
- * #2330 — Cloudflare Turnstile on publish and report: a check that most people
- * pass without doing anything, and that a script can't.
+ * #2330 — Cloudflare Turnstile on publish, report and (#2364) a private link made
+ * signed out: a check that most people pass without doing anything, and that a
+ * script can't.
  *
  *   requireTurnstile(req, action) → the Response to send instead, or null to go on.
  *       A token passes only if Cloudflare says it succeeded, was made for
