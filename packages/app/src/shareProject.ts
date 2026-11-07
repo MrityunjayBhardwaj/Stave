@@ -10,7 +10,7 @@
  *
  * #2248 — the short form, `/s/<id>#<key>`, carries the same gzipped manifest,
  * sealed with a key that stays in the link and stored by id (see shareCrypto.ts).
- * Copy Share Link tries it first and falls back to the long link.
+ * Copy Private Link tries it first and falls back to the long link.
  */
 import {
   listWorkspaceFiles,

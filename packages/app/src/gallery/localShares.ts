@@ -34,7 +34,7 @@ export interface LocalShare {
   claimRefusedBy?: string;
 }
 
-/** #2311 — a private short link this browser made (Copy Share Link). */
+/** #2311 — a private short link this browser made (Copy Private Link). */
 export interface LocalPrivateLink {
   id: string;
   /**
