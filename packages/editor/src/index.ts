@@ -853,6 +853,9 @@ export {
   readVizOptionsLiteral,
   resolveVizOptions,
   type CodeVizOptions,
+  // #2394 — the background the code declares, master line or track
+  readCodeViz,
+  type CodeViz,
 } from './codeView'
 export {
   setCodeBackdropOptions,

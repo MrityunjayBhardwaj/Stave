@@ -12,11 +12,12 @@
  *    `all(x => x.viz("name"))` line, or clearing it from the "set bg" popover,
  *    takes it away without a re-run.
  *
- * The code reader (`readMasterViz`) sees only the master `all()` form. A
- * background declared on a TRACK (`.viz(name, { backdrop: true })`,
- * `.scope()`, `.pianoroll({...})`) is known only from the last evaluation of
- * that file, so it is kept until the file is evaluated again or the user
- * clears it — still scoped to its file.
+ * The code reader (`readCodeViz`) sees the master `all()` line and the track
+ * lines (`.viz(name, { backdrop: true })`, `.scope()`, `.pianoroll({...})`) —
+ * #2394 — and names what the engine would play. What it cannot read (a name in
+ * a variable, a call nested in an argument) is known only from the last
+ * evaluation of that file, so it is kept until the file is evaluated again or
+ * the user clears it — still scoped to its file.
  *
  * Pure and dependency-free so the rule is unit-tested without React or Monaco.
  */
@@ -27,8 +28,10 @@ export interface EvaluatedBackdrop {
   vizId: string;
   /** the options the evaluation captured with it */
   options: Record<string, unknown> | null;
-  /** the master `all()` viz name in the code that was evaluated, or null */
-  masterAtEval: string | null;
+  /** the background the code reader (`readCodeViz`) named in the code that was
+   *  evaluated, or null; a request that differs from it came from something the
+   *  reader can't see */
+  declaredAtEval: string | null;
 }
 
 /** Where a pattern's code background came from. */
@@ -140,45 +143,47 @@ export function sameVizName(a: string | null | undefined, b: string | null | und
 }
 
 /**
- * Record what an evaluation asked for, with the master `all()` viz the
- * evaluated code carried, so a later edit can tell whether the request came
- * from that line (and so follows the code) or from a track (and so stays until
- * the next evaluation). `null` when the evaluation asked for no background.
+ * Record what an evaluation asked for, with the background the code reader named
+ * in the evaluated code, so a later edit can tell whether the request came from
+ * what the reader sees (and so follows the code) or from something only an
+ * evaluation can find (and so stays until the next evaluation). `null` when the
+ * evaluation asked for no background.
  */
 export function recordEvaluatedBackdrop(
   vizId: string | null,
   options: Record<string, unknown> | null,
-  masterAtEval: string | null,
+  declaredAtEval: string | null,
 ): EvaluatedBackdrop | null {
-  return vizId ? { vizId, options, masterAtEval } : null;
+  return vizId ? { vizId, options, declaredAtEval } : null;
 }
 
-/** True when the evaluation's request came from a track, not the master line. */
-export function isTrackLevel(evaluated: EvaluatedBackdrop | null): boolean {
-  return evaluated != null && !sameVizName(evaluated.vizId, evaluated.masterAtEval);
+/** True when the evaluation's request is one the code reader did not name. */
+export function isEvaluationOnly(evaluated: EvaluatedBackdrop | null): boolean {
+  return evaluated != null && !sameVizName(evaluated.vizId, evaluated.declaredAtEval);
 }
 
 /**
  * The background a pattern file's code asks for now.
  *
- * @param masterNow  the master `all()` viz name in the file's CURRENT code, or null
- * @param evaluated  what the file's last evaluation asked for, or null
+ * @param declaredNow  the background the code reader names in the file's CURRENT
+ *                     code (master line or track, #2394), or null
+ * @param evaluated    what the file's last evaluation asked for, or null
  *
- * - the master line, when present — unless the evaluation chose a track's
- *   background while the master line was the same as it is now (the engine's
- *   last declaration wins, so that is what played);
- * - else a track-level background from the last evaluation;
- * - else none. A master-line request whose line has since been deleted is
- *   NOT kept: the code no longer declares it.
+ * - what the code declares, when it names one — unless the evaluation chose
+ *   something else while the code reader's answer was the same as it is now
+ *   (the engine's last call wins, so that is what played);
+ * - else a background only the last evaluation found;
+ * - else none. A declared request whose call has since been deleted is NOT kept:
+ *   the code no longer declares it.
  */
 export function codeBackdropName(
-  masterNow: string | null,
+  declaredNow: string | null,
   evaluated: EvaluatedBackdrop | null,
 ): CodeBackdropName | null {
-  const trackLevel = isTrackLevel(evaluated);
-  if (masterNow && !(trackLevel && sameVizName(masterNow, evaluated?.masterAtEval))) {
-    return { name: masterNow, source: "code" };
+  const evaluationOnly = isEvaluationOnly(evaluated);
+  if (declaredNow && !(evaluationOnly && sameVizName(declaredNow, evaluated?.declaredAtEval))) {
+    return { name: declaredNow, source: "code" };
   }
-  if (trackLevel && evaluated) return { name: evaluated.vizId, source: "evaluation" };
+  if (evaluationOnly && evaluated) return { name: evaluated.vizId, source: "evaluation" };
   return null;
 }
