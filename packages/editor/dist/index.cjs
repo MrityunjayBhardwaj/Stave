@@ -43316,6 +43316,20 @@ function ExactStepGrid({ notice = null }) {
     return out;
   }, [drawn, rows, gain]);
   const levelOf = /* @__PURE__ */ __name((t) => levelAt.get(t.toFixed(9)), "levelOf");
+  const velocityIn = React32__namespace.useMemo(() => ({ mini, gain, rows, bars }), [mini, gain, rows, bars]);
+  const velocityLate = React32__namespace.useDeferredValue(velocityIn);
+  const offered2 = React32__namespace.useMemo(() => {
+    const out = /* @__PURE__ */ new Set();
+    const { mini: m, gain: g, rows: rs, bars: b } = velocityLate;
+    if (m === null || !g || g.foreign) return out;
+    for (const r of rs) {
+      for (const h of r.hits) {
+        const k = h.begin.toFixed(9);
+        if (!out.has(k) && h.begin < b && stepGainEdit(m, g, b, { begin: h.begin, end: h.end }, 0.5).ok) out.add(k);
+      }
+    }
+    return out;
+  }, [velocityLate]);
   const drawings = React32__namespace.useMemo(() => rows.map((r) => r.bars ? drawTreeRow(r.bars, barPx, openPx) : null), [rows, barPx, openPx]);
   const orderOf = /* @__PURE__ */ __name((r) => rows.filter((k) => k.part === r.part).map((k) => k.sound), "orderOf");
   const answers = React32__namespace.useMemo(() => {
@@ -43706,7 +43720,7 @@ function ExactStepGrid({ notice = null }) {
                       "data-seq-splits": splits ? "true" : void 0,
                       "data-seq-sustain": held2 ? "true" : void 0,
                       "data-seq-step-note": plays ?? void 0,
-                      "data-gain": cell.on && levelOf(at) != null ? fmtLevel(levelOf(at)) : void 0,
+                      "data-gain": cell.on && offered2.has(at.toFixed(9)) && levelOf(at) != null ? fmtLevel(levelOf(at)) : void 0,
                       "data-playing": playAt !== null && inCell(playAt) ? "true" : void 0,
                       title: can ? splits ? `Splits this step: adds ${row.sound} here` : plays ? `${row.sound} plays ${plays}` : void 0 : answer && !answer.ok ? refusalLine(answer.why, cell.on) : void 0,
                       onFocus: () => {

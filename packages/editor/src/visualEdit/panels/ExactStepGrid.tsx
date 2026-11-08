@@ -247,6 +247,25 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
   }, [drawn, rows, gain])
   /** the level at `t`: undefined where nothing is known (a `.gain` velocity does not manage) */
   const levelOf = (t: number): number | null | undefined => levelAt.get(t.toFixed(9))
+
+  // WHERE A VELOCITY DRAG IS OFFERED: where the writer would write it, asked of `stepGainEdit`
+  // itself for every hit (#1839's rule — never predicted beside the writer). `data-gain` says so
+  // on the cell. Read from deferred inputs: a drag rewrites the `.gain` on every move, and these
+  // dry runs must never hold the pointer up.
+  const velocityIn = React.useMemo(() => ({ mini, gain, rows, bars }), [mini, gain, rows, bars])
+  const velocityLate = React.useDeferredValue(velocityIn)
+  const offered = React.useMemo(() => {
+    const out = new Set<string>()
+    const { mini: m, gain: g, rows: rs, bars: b } = velocityLate
+    if (m === null || !g || g.foreign) return out
+    for (const r of rs) {
+      for (const h of r.hits) {
+        const k = h.begin.toFixed(9)
+        if (!out.has(k) && h.begin < b && stepGainEdit(m, g, b, { begin: h.begin, end: h.end }, 0.5).ok) out.add(k)
+      }
+    }
+    return out
+  }, [velocityLate])
   const drawings = React.useMemo(() => rows.map((r) => (r.bars ? drawTreeRow(r.bars, barPx, openPx) : null)), [rows, barPx, openPx])
   const orderOf = (r: ExactRow): string[] => rows.filter((k) => k.part === r.part).map((k) => k.sound)
 
@@ -699,7 +718,7 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
                         data-seq-splits={splits ? 'true' : undefined}
                         data-seq-sustain={held ? 'true' : undefined}
                         data-seq-step-note={plays ?? undefined}
-                        data-gain={cell.on && levelOf(at) != null ? fmtLevel(levelOf(at) as number) : undefined}
+                        data-gain={cell.on && offered.has(at.toFixed(9)) && levelOf(at) != null ? fmtLevel(levelOf(at) as number) : undefined}
                         data-playing={playAt !== null && inCell(playAt) ? 'true' : undefined}
                         title={can ? (splits ? `Splits this step: adds ${row.sound} here` : plays ? `${row.sound} plays ${plays}` : undefined) : answer && !answer.ok ? refusalLine(answer.why, cell.on) : undefined}
                         onFocus={() => {

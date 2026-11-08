@@ -105,6 +105,8 @@ test.describe('velocity per step in Exact (#2468)', () => {
     const code = '$: s("bd sd hh cp").gain("0.5 1")'
     const grid = await open(page, code)
     const bd = await rowOf(grid, 'bd')
+    // velocity is not offered where the writer refuses it: the cell makes no claim of a level (#1839)
+    await expect(cell(grid, bd, 0, '0/1')).not.toHaveAttribute('data-gain', /.*/)
     await dragUpDown(page, cell(grid, bd, 0, '0/1'), 40)
     await page.waitForTimeout(300)
     expect(await editorValue(page)).toBe(code)
