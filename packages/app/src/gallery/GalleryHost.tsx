@@ -16,13 +16,12 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getActiveProjectId,
   isPhone,
-  type AppTabState,
   type ProjectMeta,
   type WorkspaceFile,
   type WorkspaceShellHandle,
 } from "@stave/editor";
 import { GalleryOverlay } from "./GalleryOverlay";
-import { GALLERY_APP_KEY, galleryTabStore, openGalleryStore, placeOf, type GalleryPlace } from "./galleryTab";
+import { GALLERY_APP_KEY, galleryTabStore, openGalleryStore, placeOf, placeTabState } from "./galleryTab";
 import { claimIntoAccount } from "./client";
 import { runClaimOnce } from "./claimRun";
 import { useGallerySession } from "./session";
@@ -73,11 +72,6 @@ export interface GalleryHostProps {
 }
 
 const RUN_HINT = "Nothing has run yet — press Play when you're ready.";
-
-/** A gallery place as the shell stores it (plain JSON). */
-export function placeTabState(place: GalleryPlace): AppTabState {
-  return JSON.parse(JSON.stringify(place)) as AppTabState;
-}
 
 export function GalleryHost({ actions, shellRef, onPublish }: GalleryHostProps) {
   const [open, setOpen] = useState(false);

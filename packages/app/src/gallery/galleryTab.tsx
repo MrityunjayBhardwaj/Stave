@@ -30,11 +30,11 @@ import {
   type GalleryTab,
 } from "./galleryModel";
 import type { GalleryEntry, GalleryEntryResponse } from "./types";
+import type { GalleryEntryActions } from "./GalleryHost";
+import type { AppTabDefinition } from "../components/appTabs";
 
 /** The gallery's key among the shell's app tabs. */
 export const GALLERY_APP_KEY = "gallery";
-/** What the app passes to `loadShellState` so a restored gallery tab is kept. */
-export const GALLERY_APP_KEYS: ReadonlySet<string> = new Set([GALLERY_APP_KEY]);
 
 /** Where you are in the gallery, for the whole page: the tab and the phone overlay share it. */
 export const galleryTabStore: GalleryStore = createGalleryStore();
@@ -98,14 +98,18 @@ export function readPlace(state: AppTabState | undefined): GalleryPlace | null {
   return { tab, stack, ...(title ? { title } : {}) };
 }
 
+/** A gallery place as the shell stores it (plain JSON). */
+export function placeTabState(place: GalleryPlace): AppTabState {
+  return JSON.parse(JSON.stringify(place)) as AppTabState;
+}
+
 /** Same place? (What decides whether the shell's copy needs writing.) */
 function samePlace(a: GalleryPlace, b: GalleryPlace): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** The tab's label: where you are. */
-export function galleryTabLabel(tab: WorkspaceTab & { kind: "app" }): AppTabLabel | undefined {
-  if (tab.appKey !== GALLERY_APP_KEY) return undefined;
+export function galleryTabLabel(tab: WorkspaceTab & { kind: "app" }): AppTabLabel {
   const place = readPlace(tab.state);
   const top = place?.stack[place.stack.length - 1];
   const where =
@@ -174,6 +178,23 @@ export function GalleryTabBody({
       <GalleryView store={store} onOpenAsProject={onOpenAsProject} onAddToProject={onAddToProject} onPublish={onPublish} />
     </div>
   );
+}
+
+/** The gallery's entry in the app's table of workspace tabs (components/appTabs.ts). */
+export function galleryAppTab({ actions, onPublish }: { actions: GalleryEntryActions; onPublish?: () => void }): AppTabDefinition {
+  return {
+    key: GALLERY_APP_KEY,
+    label: galleryTabLabel,
+    render: (tab, ctx) => (
+      <GalleryTabBody
+        tab={tab}
+        onOpenAsProject={actions.openAsProject}
+        onAddToProject={actions.addToProject}
+        onPublish={onPublish}
+        onPlaceChange={(place) => ctx.setState(placeTabState(place))}
+      />
+    ),
+  };
 }
 
 /** Test seam: forget that the page's store was opened. */

@@ -25,7 +25,6 @@ import {
   type CropRegion,
   type ProjectMeta,
   type WorkspaceShellHandle,
-  type WorkspaceTab,
   type HapStream,
   type IREvent,
   type BreakpointStore,
@@ -65,8 +64,9 @@ import { FileTree, type FileTreeHandle } from "./FileTree";
 import { TemplateModal } from "./TemplateModal";
 import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
 // #2300 — the community gallery overlay, its command and its `#gallery=` links.
-import { GalleryHost, openGallery, placeTabState, useGalleryEntryActions } from "../gallery/GalleryHost";
-import { GALLERY_APP_KEY, GALLERY_APP_KEYS, GalleryTabBody, galleryTabLabel } from "../gallery/galleryTab";
+import { GalleryHost, openGallery, useGalleryEntryActions } from "../gallery/GalleryHost";
+import { galleryAppTab } from "../gallery/galleryTab";
+import { appTabShellProps } from "./appTabs";
 import {
   bumpEditorFontSize,
   toggleEditorMinimap,
@@ -738,18 +738,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   }, []);
   const galleryActions = useGalleryEntryActions({ unsavedBlocksLeaving, openProject: openGalleryProject });
   const openPublish = useCallback(() => setPublishOpen(true), []);
-  // The gallery tab's body (the shell draws it only while the tab is in front).
-  const renderAppTab = useCallback(
-    (tab: WorkspaceTab & { kind: "app" }) =>
-      tab.appKey === GALLERY_APP_KEY ? (
-        <GalleryTabBody
-          tab={tab}
-          onOpenAsProject={galleryActions.openAsProject}
-          onAddToProject={galleryActions.addToProject}
-          onPublish={openPublish}
-          onPlaceChange={(place) => shellRef.current?.setAppTabState(GALLERY_APP_KEY, placeTabState(place))}
-        />
-      ) : null,
+  // #2473 — the workspace tabs that show no file, from one table (appTabs.ts).
+  const appTabs = useMemo(
+    () => appTabShellProps([galleryAppTab({ actions: galleryActions, onPublish: openPublish })], shellRef),
     [galleryActions, openPublish],
   );
   // #1346 — the File menu's "Bounce to WAV" needs the LIVE audio graph, which
@@ -2261,9 +2252,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 key={activeProject.id}
                 projectId={activeProject.id}
                 shellRef={shellRef}
-                renderAppTab={renderAppTab}
-                appTabLabel={galleryTabLabel}
-                validAppKeys={GALLERY_APP_KEYS}
+                renderAppTab={appTabs.renderAppTab}
+                appTabLabel={appTabs.appTabLabel}
+                validAppKeys={appTabs.validAppKeys}
                 bounceRef={bounceRef}
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}
