@@ -4244,6 +4244,14 @@ function markSteps(root, path, marks) {
   }
   for (const mark of marks) {
     const el = kids(row)[mark.child];
+    if (el?.type_ === "pattern") {
+      const foot = el;
+      delete foot.arguments_;
+      foot.type_ = "element";
+      foot.source_ = { type_: "atom", source_: mark.marker, location_: { start: { offset: 0 }, end: { offset: 0 } } };
+      foot.options_ = { weight: 1, reps: 1, ops: [] };
+      continue;
+    }
     if (el?.type_ !== "element") throw new Error(`markSteps: no step ${mark.child} at ${path.join(".")}`);
     el.source_ = { type_: "atom", source_: mark.marker, location_: el.location_ ?? { start: { offset: 0 }, end: { offset: 0 } } };
     if (!mark.keepOps && el.options_) el.options_ = { ...el.options_, ops: [] };
@@ -13620,7 +13628,9 @@ __name(slotsOf, "slotsOf");
 var isRefusal = /* @__PURE__ */ __name((v) => typeof v === "string", "isRefusal");
 function rowsOf(group2, path) {
   if (group2.children.every((c) => c.kind === "element")) return { rows: [{ group: group2, path }], together: "all" };
-  if (group2.alignment === "feet") return "feet";
+  if (group2.alignment === "feet") {
+    return group2.children.every((c) => c.kind === "group") ? { rows: [{ group: group2, path }], together: "all" } : "unknown-shape";
+  }
   const rows = [];
   for (let i = 0; i < group2.children.length; i++) {
     const child = group2.children[i];
@@ -13679,8 +13689,19 @@ function container(ctx, group2, path, cut) {
   return { rows, oneOf: laid.together === "one" };
 }
 __name(container, "container");
+function footStep(foot) {
+  const first = foot.children[0];
+  if (first?.kind !== "element" || !first.span || !foot.children.every((c) => c.kind === "element")) return "unknown-shape";
+  return { kind: "element", content: foot, span: { start: first.span.start, end: first.span.start }, weight: 1, reps: 1, ops: [] };
+}
+__name(footStep, "footStep");
 function rowSteps(ctx, group2, path) {
-  const elements = group2.children;
+  const elements = [];
+  for (const c of group2.children) {
+    const e = c.kind === "element" ? c : footStep(c);
+    if (isRefusal(e)) return e;
+    elements.push(e);
+  }
   const all = elements.map((_, i) => i);
   const inside = notesIn2(group2, /* @__PURE__ */ new Set());
   const slots = slotsOf(ctx, copyOf(ctx.pat, path, all, false), inside);
@@ -13742,6 +13763,42 @@ function nameOf2(e) {
   return name;
 }
 __name(nameOf2, "nameOf");
+function textOf(e, name, mini) {
+  if (e.content.kind !== "atom") return null;
+  if (name !== null) return name;
+  const start = e.content.span.start;
+  let end = start + e.content.text.length;
+  for (const op of e.ops) {
+    if (op.kind !== "tail") continue;
+    const tail = op.args.element;
+    if (!tail || typeof tail !== "object") return null;
+    if ("span" in tail) {
+      if (!tail.span) return null;
+      end = Math.max(end, tail.span.end);
+      continue;
+    }
+    let last = tail;
+    while (last.kind === "group") {
+      const k = last.children[last.children.length - 1];
+      if (!k) return null;
+      last = k;
+    }
+    if (!last.span) return null;
+    const from = last.span.end;
+    const closer = mini.slice(from).search(/[\]>)}]/);
+    if (closer < 0) return null;
+    end = Math.max(end, from + closer + 1);
+  }
+  return mini.slice(start, end).trim();
+}
+__name(textOf, "textOf");
+function euclidPlaces(e) {
+  const op = e.ops.find((o) => o.kind === "bjorklund");
+  const n = op ? argAtom(op.args.step) : null;
+  const v = n ? Number(n.text) : NaN;
+  return Number.isInteger(v) && v > 0 ? v : null;
+}
+__name(euclidPlaces, "euclidPlaces");
 function plainValue(v) {
   if (typeof v === "string" || typeof v === "number" && Number.isFinite(v)) return v;
   if (Array.isArray(v) && v.every((p) => typeof p === "string" || typeof p === "number")) return [...v];
@@ -13760,8 +13817,10 @@ function stepOut(s, cyc, mini) {
   return {
     span: s.element.span,
     name,
+    text: textOf(s.element, name, mini),
     head: headOf(s.element, name, mini),
     ops: s.element.ops.map((o) => o.kind),
+    euclidPlaces: euclidPlaces(s.element),
     rest: s.rest,
     reps: s.element.reps,
     weight: s.element.weight,
@@ -13790,10 +13849,23 @@ function soundsIn(group2, out) {
   return out;
 }
 __name(soundsIn, "soundsIn");
+function notesWritten(group2, mini, out) {
+  for (const c of group2.children) {
+    if (c.kind === "group") notesWritten(c, mini, out);
+    else if (c.content.kind === "group") notesWritten(c.content, mini, out);
+    else if (!isRest(c.content)) {
+      const text = textOf(c, nameOf2(c), mini);
+      if (text !== null) out.add(text);
+    }
+  }
+  return out;
+}
+__name(notesWritten, "notesWritten");
 var rowOut = /* @__PURE__ */ __name((r, cyc, mini) => ({
   steps: r.steps.map((s) => stepOut(s, cyc, mini)),
   written: r.group.children.length,
-  sounds: [...soundsIn(r.group, /* @__PURE__ */ new Set())]
+  sounds: [...soundsIn(r.group, /* @__PURE__ */ new Set())],
+  notes: [...notesWritten(r.group, mini, /* @__PURE__ */ new Set())]
 }), "rowOut");
 var KEEP = 16;
 var BUILT = /* @__PURE__ */ new Map();
@@ -39975,7 +40047,7 @@ __name(columnOf, "columnOf");
 function innerRow(s, sound) {
   if (!s.rows || s.oneOf) return null;
   if (s.rows.length === 1) return s.rows[0];
-  const mine = s.rows.filter((r) => r.sounds.includes(sound));
+  const mine = s.rows.filter((r) => r.notes.includes(sound));
   return mine.length === 1 ? mine[0] : null;
 }
 __name(innerRow, "innerRow");
@@ -39996,7 +40068,7 @@ function nodesOf(row, within2, depth, sound) {
 }
 __name(nodesOf, "nodesOf");
 function stepNode(s, b, e, depth, sound) {
-  const node = { begin: b, end: e, depth, children: null };
+  const node = { begin: b, end: e, depth, children: null, step: s };
   const inner = innerRow(s, sound);
   if (!inner) return node;
   if (s.copies) {
@@ -40148,74 +40220,81 @@ function partSteps(model, trees, part) {
   return typeof r === "string" ? null : r;
 }
 __name(partSteps, "partSteps");
-function stepAddressAt(model, trees, lane, col) {
-  const bars = model.bars ?? 1;
-  if (trees.length !== bars) return "bar-count";
-  const l = model.lanes[lane];
-  if (!l) return "lane-part-missing";
-  for (let b = 0; b < bars; b++) {
-    const { start, per } = barColumns(model, b);
-    if (col < start || col >= start + per) continue;
-    const d = laneRowForEdit(trees[b], l);
-    if (!d.ok) return d.why;
-    const want = col - start;
-    const visit = /* @__PURE__ */ __name((row) => {
-      for (const s of row.steps) {
-        const inner = s.rows ? innerRow(s, l.sound) : null;
-        if (inner) {
-          const got = visit(inner);
-          if (got) return got;
-          continue;
-        }
-        if (!s.span) continue;
-        for (const slot of s.slots) {
-          if (slot.fromBefore) continue;
-          if (columnOf(slot.begin, 0, per) === want) return { bar: b, span: s.span, at: slot.begin };
-        }
-        const hit = s.hits.find((h) => columnOf(h.begin, 0, per) === want);
-        if (hit) return { bar: b, span: s.span, at: hit.begin };
-        if (s.ops.includes("bjorklund")) {
-          const at = frac(want, per);
-          if (s.slots.some((slot) => !slot.fromBefore && cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0)) return { bar: b, span: s.span, at };
-        }
+function stepAddressAtPlace(trees, lane, bar2, at) {
+  const tree = trees[bar2];
+  if (!tree) return "inside-a-step";
+  const d = laneRowForEdit(tree, lane);
+  if (!d.ok) return d.why;
+  const visit = /* @__PURE__ */ __name((row) => {
+    for (const s of row.steps) {
+      const inner = s.rows ? innerRow(s, lane.sound) : null;
+      if (inner) {
+        const got = visit(inner);
+        if (got) return got;
+        continue;
       }
-      return null;
-    }, "visit");
-    return visit(d.row) ?? "inside-a-step";
-  }
-  return "inside-a-step";
+      if (!s.span) continue;
+      for (const slot of s.slots) {
+        if (slot.fromBefore) continue;
+        if (cmp(slot.begin, at) === 0) return { bar: bar2, span: s.span, at: slot.begin };
+      }
+      const hit = s.hits.find((h) => cmp(h.begin, at) === 0);
+      if (hit) return { bar: bar2, span: s.span, at: hit.begin };
+      if (s.ops.includes("bjorklund")) {
+        if (s.slots.some((slot) => !slot.fromBefore && cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0)) return { bar: bar2, span: s.span, at };
+      }
+    }
+    return null;
+  }, "visit");
+  return visit(d.row) ?? "inside-a-step";
 }
-__name(stepAddressAt, "stepAddressAt");
-function splitAddressAt(model, trees, lane, col) {
-  const bars = model.bars ?? 1;
-  if (trees.length !== bars) return null;
-  const l = model.lanes[lane];
-  if (!l) return null;
+__name(stepAddressAtPlace, "stepAddressAtPlace");
+function placeOfColumn(m, col) {
+  const bars = m.bars ?? 1;
   for (let b = 0; b < bars; b++) {
-    const { start, per } = barColumns(model, b);
-    if (col < start || col >= start + per) continue;
-    const d = laneRowForEdit(trees[b], l);
-    if (!d.ok) return null;
-    const at = frac(col - start, per);
-    const visit = /* @__PURE__ */ __name((row) => {
-      for (const s of row.steps) {
-        const inner = s.rows ? innerRow(s, l.sound) : null;
-        if (inner) {
-          const got = visit(inner);
-          if (got) return got;
-          continue;
-        }
-        if (!s.span || s.rows) continue;
-        for (const slot of s.slots) {
-          if (slot.fromBefore || slot.pastEnd) continue;
-          if (cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0) return { address: { bar: b, span: s.span, at: slot.begin }, at };
-        }
-      }
-      return null;
-    }, "visit");
-    return visit(d.row);
+    const { start, per } = barColumns(m, b);
+    if (col >= start && col < start + per) return { bar: b, at: Number.isInteger(per) ? frac(col - start, per) : { n: col - start, d: per } };
   }
   return null;
+}
+__name(placeOfColumn, "placeOfColumn");
+function stepAddressAt(model, trees, lane, col) {
+  if (trees.length !== (model.bars ?? 1)) return "bar-count";
+  const l = model.lanes[lane];
+  if (!l) return "lane-part-missing";
+  const place = placeOfColumn(model, col);
+  return place ? stepAddressAtPlace(trees, l, place.bar, place.at) : "inside-a-step";
+}
+__name(stepAddressAt, "stepAddressAt");
+function splitAddressAtPlace(trees, lane, bar2, at) {
+  const tree = trees[bar2];
+  if (!tree) return null;
+  const d = laneRowForEdit(tree, lane);
+  if (!d.ok) return null;
+  const visit = /* @__PURE__ */ __name((row) => {
+    for (const s of row.steps) {
+      const inner = s.rows ? innerRow(s, lane.sound) : null;
+      if (inner) {
+        const got = visit(inner);
+        if (got) return got;
+        continue;
+      }
+      if (!s.span || s.rows) continue;
+      for (const slot of s.slots) {
+        if (slot.fromBefore || slot.pastEnd) continue;
+        if (cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0) return { address: { bar: bar2, span: s.span, at: slot.begin }, at };
+      }
+    }
+    return null;
+  }, "visit");
+  return visit(d.row);
+}
+__name(splitAddressAtPlace, "splitAddressAtPlace");
+function splitAddressAt(model, trees, lane, col) {
+  if (trees.length !== (model.bars ?? 1)) return null;
+  const l = model.lanes[lane];
+  const place = l ? placeOfColumn(model, col) : null;
+  return l && place ? splitAddressAtPlace(trees, l, place.bar, place.at) : null;
 }
 __name(splitAddressAt, "splitAddressAt");
 function leafStops(nodes) {
@@ -40421,10 +40500,11 @@ __name(useDeferredPerText, "useDeferredPerText");
 
 // src/visualEdit/panels/treeGrid.ts
 var TREE_MAX_BARS = 12;
+var TREE_LONG_BARS = 64;
 var PROBE_BARS = 2 * TREE_MAX_BARS;
 function period(trees) {
   const keys = trees.map((t) => JSON.stringify(t));
-  for (let p = 1; p <= TREE_MAX_BARS && 2 * p <= keys.length; p++) {
+  for (let p = 1; p <= TREE_LONG_BARS && 2 * p <= keys.length; p++) {
     let ok = true;
     for (let k = 0; k + p < keys.length && ok; k++) if (keys[k] !== keys[k + p]) ok = false;
     if (ok) return p;
@@ -40442,7 +40522,7 @@ function repeatingBars(probed) {
 }
 __name(repeatingBars, "repeatingBars");
 function probeTrees(mini) {
-  const p = chunkPeriod(mini, TREE_MAX_BARS);
+  const p = chunkPeriod(mini, TREE_MAX_BARS) ?? chunkPeriod(mini, TREE_LONG_BARS);
   if (p === null) return chunkDivisions(mini, PROBE_BARS);
   const first = chunkDivisions(mini, 2 * p);
   const rep = repeatingBars(first);
@@ -40452,7 +40532,7 @@ function probeTrees(mini) {
 __name(probeTrees, "probeTrees");
 function eachNote(row, visit) {
   for (const s of row.steps) {
-    if (s.hits.length > 0) visit(s.name, s.hits);
+    if (s.hits.length > 0) visit(s.text, s.hits);
     for (const r of s.rows ?? []) eachNote(r, visit);
   }
 }
@@ -40461,7 +40541,7 @@ function treeGridOf(mini) {
   return treeGridFrom(probeTrees(mini));
 }
 __name(treeGridOf, "treeGridOf");
-function treeGridFrom(probed) {
+function treeGridFrom(probed, silent = "refused") {
   const rep = repeatingBars(probed);
   if (!rep.ok) return rep;
   const { bars, trees } = rep;
@@ -40469,7 +40549,7 @@ function treeGridFrom(probed) {
   const parts = trees[0].parts.length;
   let played = 0;
   for (let p = 0; p < parts; p++) {
-    for (const sound of trees[0].parts[p].sounds) {
+    for (const sound of trees[0].parts[p].notes) {
       const hits = [];
       let why = null;
       const perBar2 = [];
@@ -40496,7 +40576,7 @@ function treeGridFrom(probed) {
       if (unnamed) return { ok: false, why: "unnamed-hit" };
     }
   }
-  if (played === 0) return { ok: false, why: "no-hits" };
+  if (played === 0 && silent === "refused") return { ok: false, why: "no-hits" };
   return { ok: true, bars, rows };
 }
 __name(treeGridFrom, "treeGridFrom");

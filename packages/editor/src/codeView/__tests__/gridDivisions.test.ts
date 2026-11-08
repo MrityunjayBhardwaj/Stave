@@ -110,7 +110,6 @@ describe('chunkDivisions — each bar as plain data', () => {
 
   it('a bar with no tree says why, in every bar it applies to', () => {
     const why = (mini: string, bars = 1): unknown[] => chunkDivisions(mini, bars).map((t) => (t.ok ? 'tree' : t.why))
-    expect(why('a b . c d', 2)).toEqual(['feet', 'feet'])
     expect(why('zzq1 bd')).toEqual(['marker-in-pattern'])
     expect(why('[bd sd', 2)).toEqual(['does-not-evaluate', 'does-not-evaluate'])
   })
@@ -145,7 +144,7 @@ describe('laneDivisions — the row each grid row draws', () => {
     const [one] = chunkDivisions('bd sd', 1)
     expect(laneDivisions(one, { sound: 'bd' }).ok).toBe(true)
     // a refused bar hands its reason on
-    expect(laneDivisions(chunkDivisions('a . b', 1)[0], { sound: 'a' })).toEqual({ ok: false, why: 'feet' })
+    expect(laneDivisions(chunkDivisions('zzq1 bd', 1)[0], { sound: 'bd' })).toEqual({ ok: false, why: 'marker-in-pattern' })
   })
 
   it('a tree shifted by one slot does not agree with the grid (the check below can go red)', () => {
@@ -196,9 +195,11 @@ describe('laneDivisions — the corpus', () => {
 
 /**
  * Measured 2026-11-02 on main c26ca5e7 + this change, 1,625 distinct corpus patterns:
- * 1,018 open as a step grid, 4,919 grid rows × bars. Refused: `feet` (not modelled by the
- * tree), `lane-sound-not-in-part` (the row's sound is a value the text does not write as
- * such: `hh:<1 2>`, `hh:3:.2` read as `hh:3:0.2`).
+ * 1,018 open as a step grid, 4,919 grid rows × bars. Refused: `lane-sound-not-in-part` (the
+ * row's sound is a value the text does not write as such: `hh:<1 2>`, `hh:3:.2` read as
+ * `hh:3:0.2`).
+ *
+ * 2026-11-07 (#2454): the 7 `feet` rows agree, now the tree has feet.
  *
  * 2026-11-03 (#2287): the 62 `lane-part-unknown` rows — a stack the grid reads leaf by
  * leaf, whose rows name no part — each have exactly one part writing their sound, and
@@ -206,7 +207,6 @@ describe('laneDivisions — the corpus', () => {
  */
 const PINNED = {
   grids: 1018,
-  agrees: 4874,
-  feet: 7,
+  agrees: 4881,
   'lane-sound-not-in-part': 38,
 }
