@@ -36722,6 +36722,7 @@ function generateTabId(prefix) {
 }
 __name(generateTabId, "generateTabId");
 function getLanguageFromTab(tab) {
+  if (tab.kind === "app") return void 0;
   const file = getFile(tab.fileId);
   if (file) return file.language;
   const dot = tab.fileId.lastIndexOf(".");
@@ -36752,6 +36753,7 @@ function registerBuiltinCommands() {
       const { activeTab, activeGroupId, shell, getPreviewProvider } = ctx;
       if (!activeTab || !activeGroupId) return;
       if (activeTab.kind === "preview") return;
+      if (activeTab.kind === "app") return;
       const language = getLanguageFromTab(activeTab);
       if (!language) return;
       const provider = getPreviewProvider(language);
@@ -47954,6 +47956,7 @@ __name(SymbolRow, "SymbolRow");
 // src/workspace/bottomPanel/hiddenForTab.ts
 function bottomPanelHiddenForTab(tab) {
   if (!tab) return false;
+  if (tab.kind === "app") return false;
   const language = getFile(tab.fileId)?.language;
   return language != null && isVizLanguage(language);
 }
@@ -48011,13 +48014,30 @@ function createInitialGroupState(initialTabs) {
   return { groups, layout: [[id]], activeGroupId: id };
 }
 __name(createInitialGroupState, "createInitialGroupState");
-function tabFileName(tab) {
+function tabFileName(tab, appTabLabel) {
+  if (tab.kind === "app") return appTabLabel?.(tab)?.title ?? tab.appKey;
   const file = getFile(tab.fileId);
   if (!file) return tab.fileId;
   const parts = file.path.split("/");
   return parts[parts.length - 1];
 }
 __name(tabFileName, "tabFileName");
+function AppTabIcon({
+  tab,
+  appTabLabel
+}) {
+  const icon = appTabLabel?.(tab)?.icon;
+  if (icon === void 0 || icon === null) return null;
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "span",
+    {
+      "data-app-tab-icon": tab.appKey,
+      style: { display: "inline-flex", alignItems: "center", marginRight: 4, fontStyle: "normal" },
+      children: icon
+    }
+  );
+}
+__name(AppTabIcon, "AppTabIcon");
 function GroupTabBar({
   group,
   canClose,
@@ -48028,6 +48048,7 @@ function GroupTabBar({
   onTabDragStart,
   onTabContextMenu,
   onTabPromote,
+  appTabLabel,
   onNewFile,
   onSplitRight,
   onSplitDown,
@@ -48181,8 +48202,8 @@ function GroupTabBar({
                                   },
                                   children: tab.mode === "view" ? "VIEW" : "DIFF"
                                 }
-                              ) : tab.kind === "preview" ? "\u{1F3A5} " : null,
-                              tabFileName(tab)
+                              ) : tab.kind === "preview" ? "\u{1F3A5} " : tab.kind === "app" ? /* @__PURE__ */ jsxRuntime.jsx(AppTabIcon, { tab, appTabLabel }) : null,
+                              tabFileName(tab, appTabLabel)
                             ] }),
                             /* @__PURE__ */ jsxRuntime.jsx(
                               "button",
@@ -48373,7 +48394,8 @@ function GroupTabBar({
                               },
                               children: [
                                 tab.kind === "preview" ? "\u{1F3A5} " : "",
-                                tabFileName(tab)
+                                tab.kind === "app" ? /* @__PURE__ */ jsxRuntime.jsx(AppTabIcon, { tab, appTabLabel }) : null,
+                                tabFileName(tab, appTabLabel)
                               ]
                             }
                           ),
@@ -48421,6 +48443,8 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
   backgroundCrop,
   onTabClose,
   previewProviderFor,
+  renderAppTab,
+  appTabLabel,
   chromeForTab,
   editorExtrasForTab,
   onSaveFile,
@@ -48955,7 +48979,7 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
       if (fromRegistry) return fromRegistry;
       if (previewProviderFor) {
         const currentTab = activeTab;
-        const fileId = currentTab?.fileId ?? "";
+        const fileId = currentTab && currentTab.kind !== "app" ? currentTab.fileId : "";
         return previewProviderFor({
           kind: "preview",
           id: "__cmd-lookup__",
@@ -49466,6 +49490,40 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
             `${tab.id}:diff`
           ) });
         }
+        case "app": {
+          const body = renderAppTab?.(tab);
+          return /* @__PURE__ */ jsxRuntime.jsx(
+            "div",
+            {
+              "data-workspace-view": "app",
+              "data-app-tab": tab.appKey,
+              style: {
+                position: "relative",
+                zIndex: 1,
+                height: "100%",
+                width: "100%",
+                overflow: "auto",
+                background: "var(--background)"
+              },
+              children: body ?? /* @__PURE__ */ jsxRuntime.jsx(
+                "div",
+                {
+                  "data-testid": `app-tab-unavailable-${tab.id}`,
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    height: "100%",
+                    color: "var(--foreground-muted)",
+                    fontSize: 12
+                  },
+                  children: "This tab is not available."
+                }
+              )
+            },
+            tab.id
+          );
+        }
         default:
           return assertNever(tab);
       }
@@ -49498,6 +49556,8 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
       findGroupWithAnyPreview,
       editorExtrasForTab,
       closeTabById,
+      // #2471 — the app tab's body comes from this host hook
+      renderAppTab,
       // P239 guard — the viz-settings ctx (#773) reads these; without them
       // in the deps the callback closes over stale backdrop settings /
       // handlers and the popover controls act on outdated values.
@@ -49684,6 +49744,7 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
                     return nx;
                   });
                 },
+                appTabLabel,
                 onNewFile,
                 onSplitRight: () => handleSplit(group.id, "east"),
                 onSplitDown: () => handleSplit(group.id, "south"),
@@ -49698,6 +49759,7 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
                 children: [
                   (() => {
                     if (workspaceSpanBackdrop) return null;
+                    if (activeTabObj?.kind === "app") return null;
                     const bgFileId = resolveBackdropFileId(
                       group.backgroundFileId,
                       bgOverrides.get(group.id)
@@ -49732,13 +49794,14 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
                     {
                       "data-stave-code-panel": "true",
                       "data-stave-backdrop": (
-                        // #770: in workspace-span mode EVERY pane goes transparent so the
+                        // #2471 — never for an app tab: its page is opaque.
+                        activeTabObj.kind !== "app" && // #770: in workspace-span mode EVERY pane goes transparent so the
                         // single shared backdrop shows behind all of them — not just panes
                         // that have their own backdrop (the file-mode condition).
-                        workspaceSpanActive || resolveBackdropFileId(
+                        (workspaceSpanActive || resolveBackdropFileId(
                           group.backgroundFileId,
                           bgOverrides.get(group.id)
-                        ) ? "on" : "off"
+                        )) ? "on" : "off"
                       ),
                       style: {
                         position: "relative",
@@ -49806,7 +49869,9 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
       // backdrop — the same P239 stale-closure trap.
       pausedPreviews,
       // #2426 — each background's audio source reads the chosen sources
-      sourceForBackdrop
+      sourceForBackdrop,
+      // #2471 — app tab chips read the host's label hook
+      appTabLabel
     ]
   );
   const totalGroupCount = React48.useMemo(
@@ -49969,6 +50034,68 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
         });
         setActiveGroupId(activeGroupId);
       }, "openHistoryTab"),
+      openAppTab: /* @__PURE__ */ __name((appKey, opts) => {
+        const hasState = opts?.state !== void 0;
+        let foundGroupId = null;
+        for (const [gid, g] of groups) {
+          if (g.tabs.some((t) => t.kind === "app" && t.appKey === appKey)) {
+            foundGroupId = gid;
+            break;
+          }
+        }
+        const targetGid = foundGroupId ?? activeGroupId;
+        setGroups((prev) => {
+          for (const [gid, g2] of prev) {
+            const hit = g2.tabs.find((t) => t.kind === "app" && t.appKey === appKey);
+            if (!hit) continue;
+            if (g2.activeTabId === hit.id && !hasState) return prev;
+            const next2 = new Map(prev);
+            next2.set(gid, {
+              ...g2,
+              tabs: hasState ? g2.tabs.map((t) => t.id === hit.id ? { ...t, state: opts.state } : t) : g2.tabs,
+              activeTabId: hit.id
+            });
+            return next2;
+          }
+          const g = prev.get(targetGid);
+          if (!g) return prev;
+          const newTab = {
+            kind: "app",
+            id: `app-${appKey}`,
+            appKey,
+            ...hasState ? { state: opts.state } : {}
+          };
+          const next = new Map(prev);
+          next.set(targetGid, { ...g, tabs: [...g.tabs, newTab], activeTabId: newTab.id });
+          return next;
+        });
+        setActiveGroupId(targetGid);
+      }, "openAppTab"),
+      setAppTabState: /* @__PURE__ */ __name((appKey, state6) => {
+        setGroups((prev) => {
+          for (const [gid, g] of prev) {
+            const hit = g.tabs.find(
+              (t) => t.kind === "app" && t.appKey === appKey
+            );
+            if (!hit) continue;
+            if (JSON.stringify(hit.state) === JSON.stringify(state6)) return prev;
+            const next = new Map(prev);
+            next.set(gid, {
+              ...g,
+              tabs: g.tabs.map((t) => {
+                if (t.id !== hit.id || t.kind !== "app") return t;
+                if (state6 === void 0) {
+                  const { state: _dropped, ...rest } = t;
+                  return rest;
+                }
+                return { ...t, state: state6 };
+              })
+            });
+            return next;
+          }
+          return prev;
+        });
+      }, "setAppTabState"),
       promoteTab: /* @__PURE__ */ __name((tabId) => {
         setGroups((prev) => {
           let changed = false;
@@ -56035,7 +56162,8 @@ function shellStateKeyFor(projectId) {
   return `${SHELL_STATE_KEY_PREFIX}${projectId}:state`;
 }
 __name(shellStateKeyFor, "shellStateKeyFor");
-function loadShellState(projectId, validFileIds) {
+var NO_APP_KEYS = /* @__PURE__ */ new Set();
+function loadShellState(projectId, validFileIds, validAppKeys = NO_APP_KEYS) {
   if (typeof window === "undefined") return null;
   let raw = null;
   try {
@@ -56050,10 +56178,10 @@ function loadShellState(projectId, validFileIds) {
   } catch {
     return null;
   }
-  return validatePersistedState(parsed, validFileIds);
+  return validatePersistedState(parsed, validFileIds, validAppKeys);
 }
 __name(loadShellState, "loadShellState");
-function validatePersistedState(input, validFileIds) {
+function validatePersistedState(input, validFileIds, validAppKeys = NO_APP_KEYS) {
   if (!input || typeof input !== "object") return null;
   const s = input;
   if (s.version !== SHELL_STATE_VERSION) return null;
@@ -56061,6 +56189,7 @@ function validatePersistedState(input, validFileIds) {
   if (!Array.isArray(s.layout)) return null;
   if (typeof s.activeGroupId !== "string") return null;
   const cleanedGroups = {};
+  const seenAppKeys = /* @__PURE__ */ new Set();
   for (const [gid, rawGroup] of Object.entries(s.groups)) {
     const g = rawGroup;
     if (!g || typeof g !== "object" || g.id !== gid) continue;
@@ -56068,6 +56197,19 @@ function validatePersistedState(input, validFileIds) {
     const cleanedTabs = [];
     for (const t of inTabs) {
       if (!t || typeof t !== "object") continue;
+      if (t.kind === "app") {
+        const at = t;
+        if (typeof at.id !== "string" || typeof at.appKey !== "string") continue;
+        if (!validAppKeys.has(at.appKey) || seenAppKeys.has(at.appKey)) continue;
+        seenAppKeys.add(at.appKey);
+        cleanedTabs.push({
+          kind: "app",
+          id: at.id,
+          appKey: at.appKey,
+          ...at.state !== void 0 ? { state: at.state } : {}
+        });
+        continue;
+      }
       if (t.kind !== "editor") continue;
       const tt = t;
       if (typeof tt.id !== "string" || typeof tt.fileId !== "string") continue;
@@ -56121,10 +56263,19 @@ __name(validatePersistedState, "validatePersistedState");
 function serializeShellState(snapshot) {
   const groups = {};
   for (const [gid, g] of snapshot.groups.entries()) {
-    const editorTabs = [];
+    const keptTabs = [];
     for (const t of g.tabs) {
       if (!isPersistableTab(t)) continue;
-      editorTabs.push({
+      if (t.kind === "app") {
+        keptTabs.push({
+          kind: "app",
+          id: t.id,
+          appKey: t.appKey,
+          ...t.state !== void 0 ? { state: t.state } : {}
+        });
+        continue;
+      }
+      keptTabs.push({
         kind: "editor",
         id: t.id,
         fileId: t.fileId,
@@ -56132,12 +56283,12 @@ function serializeShellState(snapshot) {
       });
     }
     let activeTabId = g.activeTabId;
-    if (activeTabId !== null && !editorTabs.some((t) => t.id === activeTabId)) {
-      activeTabId = editorTabs.length > 0 ? editorTabs[0].id : null;
+    if (activeTabId !== null && !keptTabs.some((t) => t.id === activeTabId)) {
+      activeTabId = keptTabs.length > 0 ? keptTabs[0].id : null;
     }
     groups[gid] = {
       id: gid,
-      tabs: editorTabs,
+      tabs: keptTabs,
       activeTabId,
       ...g.backgroundFileId !== void 0 ? { backgroundFileId: g.backgroundFileId } : {},
       ...g.backdropOpacity !== void 0 ? { backdropOpacity: g.backdropOpacity } : {},
@@ -56190,12 +56341,19 @@ function hydrateSnapshot(persisted) {
   for (const [gid, pg] of Object.entries(persisted.groups)) {
     groups.set(gid, {
       id: pg.id,
-      tabs: pg.tabs.map((t) => ({
-        kind: "editor",
-        id: t.id,
-        fileId: t.fileId,
-        ...t.preview === true ? { preview: true } : {}
-      })),
+      tabs: pg.tabs.map(
+        (t) => t.kind === "app" ? {
+          kind: "app",
+          id: t.id,
+          appKey: t.appKey,
+          ...t.state !== void 0 ? { state: t.state } : {}
+        } : {
+          kind: "editor",
+          id: t.id,
+          fileId: t.fileId,
+          ...t.preview === true ? { preview: true } : {}
+        }
+      ),
       activeTabId: pg.activeTabId,
       ...pg.backgroundFileId !== void 0 ? { backgroundFileId: pg.backgroundFileId } : {},
       ...pg.backdropOpacity !== void 0 ? { backdropOpacity: pg.backdropOpacity } : {},
@@ -56210,7 +56368,7 @@ function hydrateSnapshot(persisted) {
 }
 __name(hydrateSnapshot, "hydrateSnapshot");
 function isPersistableTab(t) {
-  return t.kind === "editor";
+  return t.kind === "editor" || t.kind === "app";
 }
 __name(isPersistableTab, "isPersistableTab");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)

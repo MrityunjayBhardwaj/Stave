@@ -627,6 +627,8 @@ export type {
   WorkspaceGroupState,
   WorkspaceShellProps,
   ChromeForTab,
+  AppTabState,
+  AppTabLabel,
 } from './workspace/types'
 
 // Engine log + friendly-error plumbing
@@ -948,6 +950,8 @@ export type {
   PersistedShellState,
   PersistedGroup,
   PersistedEditorTab,
+  PersistedAppTab,
+  PersistedTab,
   ShellSnapshot,
 } from './workspace/tabPersistence'
 
