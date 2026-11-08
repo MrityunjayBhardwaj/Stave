@@ -644,7 +644,8 @@ test.describe('every path that runs imported code asks first (#2342, #2344)', ()
     await page.goto('/#gallery=vizz1DDDDDD')
     await expect(page.locator('[data-gallery-detail="vizz1DDDDDD"]')).toBeVisible({ timeout: 30_000 })
     await page.getByRole('button', { name: 'Add to this project' }).click()
-    await expect(page.locator('[data-gallery="overlay"]')).toHaveCount(0)
+    // #2473 — the added file opens in front of the gallery tab
+    await expect(page.locator('[data-gallery="tab"]')).toHaveCount(0)
     await page.waitForTimeout(2000)
     expect(await parentRuns(page), 'adding the file runs nothing').toBe(0)
 
@@ -697,7 +698,8 @@ test.describe('every path that runs imported code asks first (#2342, #2344)', ()
       await page.goto('/#gallery=vizz1DDDDDD')
       await expect(page.locator('[data-gallery-detail="vizz1DDDDDD"]')).toBeVisible({ timeout: 30_000 })
       await page.getByRole('button', { name: 'Add to this project' }).click()
-      await expect(page.locator('[data-gallery="overlay"]')).toHaveCount(0)
+      // #2473 — the added file opens in front of the gallery tab
+      await expect(page.locator('[data-gallery="tab"]')).toHaveCount(0)
       await page.waitForTimeout(2000)
       if (trusted) {
         // as if the person had already said yes to this file
