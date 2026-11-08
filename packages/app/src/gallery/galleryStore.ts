@@ -86,6 +86,12 @@ export interface GalleryStore {
   subscribe(listener: () => void): () => void;
   /** A fresh open: fetch the list again, re-read this browser's shares, start the Back stack from `first`, forget the scroll. */
   open(first: GalleryLinkTarget | null): void;
+  /**
+   * #2473 — come back to a place saved earlier (a gallery tab restored after a
+   * reload): fetch the list, re-read this browser's shares, and put back the
+   * list tab and the whole Back stack. Like `open`, a fresh start for the data.
+   */
+  resume(place: { tab: GalleryTab; stack: readonly GalleryLinkTarget[] }): void;
   setTab(tab: GalleryTab): void;
   setQuery(query: string): void;
   loadList(): void;
@@ -186,6 +192,15 @@ export function createGalleryStore(): GalleryStore {
       scroll = null;
       set({ stack: first ? [first] : [] });
       if (first?.kind === "entry") openEntry(first.id);
+      else set({ detail: null });
+    },
+    resume(place) {
+      loadList();
+      refreshLocal();
+      scroll = null;
+      set({ tab: place.tab, stack: [...place.stack] });
+      const top = place.stack[place.stack.length - 1];
+      if (top?.kind === "entry") openEntry(top.id);
       else set({ detail: null });
     },
     setTab: (tab) => set({ tab }),

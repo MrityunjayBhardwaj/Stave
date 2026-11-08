@@ -11,7 +11,7 @@
  * The flag staying unset after the profile has rendered (and the link was clicked)
  * is the harm itself not happening, not a proxy for it.
  */
-import { test, expect, type Page, type Route } from '@playwright/test'
+import { test, expect, devices, type Page, type Route } from '@playwright/test'
 import { bootApp } from './_appBoot'
 
 const SHOTS = process.env.GALLERY_SHOTS
@@ -200,7 +200,8 @@ async function rememberAuthor(page: Page, author: Record<string, string>): Promi
 async function openGalleryFromMenu(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'View', exact: true }).click()
   await page.getByText('Community Gallery...', { exact: true }).click()
-  await expect(page.locator('[data-gallery="overlay"]')).toBeVisible()
+  // #2473 — on a desktop the gallery opens as a workspace tab
+  await expect(page.locator('[data-gallery="tab"]')).toBeVisible()
 }
 
 const bioRan = (page: Page) => page.evaluate(() => (window as unknown as { __bioRan?: number }).__bioRan ?? null)
@@ -534,8 +535,11 @@ test.describe('gallery profiles and collections (#2314, #2315)', () => {
     await expect(page.locator(`[data-gallery-profile="${ADA}"]`)).toBeVisible()
   })
 
-  test('on a phone the profile fills the screen and reads', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 })
+  test('on a phone the profile fills the screen and reads', async ({ browser }) => {
+    // #2473 — a real phone (touch, small screen): a narrow desktop window now
+    // shows the gallery as a workspace tab, and only a phone gets the full screen.
+    const ctx = await browser.newContext({ ...devices['Pixel 7'] })
+    const page = await ctx.newPage()
     await routeProfiles(page, { seedCollection: true })
     await rememberAuthor(page, { name: 'Ada', email: 'ada@example.com', authorId: ADA, authorKey: KEY })
     await bootApp(page)
@@ -543,12 +547,13 @@ test.describe('gallery profiles and collections (#2314, #2315)', () => {
     const profile = page.locator(`[data-gallery-profile="${ADA}"]`)
     await expect(profile.locator('[data-gallery-markdown] h1')).toBeVisible({ timeout: 30_000 })
     const box = (await page.getByRole('dialog', { name: 'Community Gallery' }).boundingBox())!
-    expect(box.width).toBeGreaterThanOrEqual(389)
+    expect(box.width).toBeGreaterThanOrEqual((page.viewportSize()?.width ?? 0) - 1)
     // nothing in the bio is wider than the screen (the table scrolls inside itself)
     const overflow = await profile.evaluate((el) => el.scrollWidth - el.clientWidth)
     expect(overflow).toBeLessThanOrEqual(1)
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/phone-profile.png` })
     await page.locator('[data-gallery-edit-profile]').click()
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/phone-profile-edit.png` })
+    await ctx.close()
   })
 })

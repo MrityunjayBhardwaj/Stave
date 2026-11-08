@@ -1,6 +1,10 @@
 /**
  * Community gallery on a phone (#2300): reachable from the phone's menu, fills
  * the screen, and an entry can be read and opened by tapping.
+ *
+ * #2473 — phones keep the full-screen gallery; a tablet isn't a phone, so there
+ * the gallery opens as a workspace tab. Which one each project gets is fixed
+ * here by project name, not by re-deriving the app's phone rule.
  */
 import { test, expect } from '@playwright/test'
 import { editorValue, waitForEditorLoaded } from './_appBoot'
@@ -8,22 +12,28 @@ import { COUNTER_LINE, MUSIC_CODE, routeGallery } from './_gallery'
 
 test('the gallery opens from a #gallery link, browses, and opens an entry by tapping', async ({ page }) => {
   await routeGallery(page)
+  const phone = ['phone', 'phone-sideways'].includes(test.info().project.name)
   await page.goto('/#gallery=musc1CCCCCC')
-  await waitForEditorLoaded(page)
+  // On a tablet the link opens the gallery TAB in front, so no code editor is
+  // drawn to wait for; nothing is seeded here, so the shell being up is enough.
+  if (phone) await waitForEditorLoaded(page)
+  else await page.locator('[data-bottom-panel="root"]').waitFor({ state: 'attached', timeout: 30_000 })
   await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
 
-  const overlay = page.locator('[data-gallery="overlay"]')
+  const gallery = phone ? page.getByRole('dialog', { name: 'Community Gallery' }) : page.locator('[data-gallery="tab"]')
+  await expect(page.locator('[data-gallery="overlay"]')).toHaveCount(phone ? 1 : 0)
+  await expect(page.locator('[data-workspace-tab="app-gallery"]')).toHaveCount(phone ? 0 : 1)
   await expect(page.locator('[data-gallery-detail="musc1CCCCCC"]')).toBeVisible({ timeout: 30_000 })
   await expect(page.locator('[data-gallery-code="floor.strudel"]')).toContainText(COUNTER_LINE)
 
   // it fits the screen, and on a narrow one it takes the whole width
   const vp = page.viewportSize()!
-  const box = (await page.getByRole('dialog', { name: 'Community Gallery' }).boundingBox())!
+  const box = (await gallery.boundingBox())!
   expect(box.x).toBeGreaterThanOrEqual(0)
   expect(box.y).toBeGreaterThanOrEqual(0)
   expect(box.x + box.width).toBeLessThanOrEqual(vp.width + 0.5)
   expect(box.y + box.height).toBeLessThanOrEqual(vp.height + 0.5)
-  if (vp.width <= 640) expect(box.width).toBeGreaterThanOrEqual(vp.width - 1)
+  if (phone && vp.width <= 640) expect(box.width).toBeGreaterThanOrEqual(vp.width - 1)
   if (process.env.GALLERY_SHOTS) await page.screenshot({ path: `${process.env.GALLERY_SHOTS}/phone-detail-${test.info().project.name}.png` })
 
   await page.getByRole('button', { name: '← Back to the gallery' }).tap()
@@ -33,7 +43,8 @@ test('the gallery opens from a #gallery link, browses, and opens an entry by tap
 
   await page.locator('[data-gallery-card="proj1AAAAAA"]').tap()
   await page.getByRole('button', { name: 'Open as new project' }).tap()
-  await expect(overlay).toHaveCount(0)
+  // the overlay closes; a tab isn't carried into the new project's layout
+  await expect(page.locator(phone ? '[data-gallery="overlay"]' : '[data-workspace-tab="app-gallery"]')).toHaveCount(0)
   await expect.poll(() => editorValue(page), { timeout: 20_000 }).toBe(MUSIC_CODE)
   expect(await page.evaluate(() => (window as unknown as { __galleryRuns?: number }).__galleryRuns ?? 0)).toBe(0)
 })

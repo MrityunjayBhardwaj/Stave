@@ -360,6 +360,13 @@ export interface WorkspaceShellHandle {
   closeTabsForFile(fileId: string): void
 
   /**
+   * #2473 — close one tab by its id, whatever its kind (editor, preview,
+   * history or app). The tab bar's context-menu Close uses it: an app or
+   * history tab has no file to close by. No-op if the tab doesn't exist.
+   */
+  closeTab(tabId: string): void
+
+  /**
    * Close every tab in the tab's group EXCEPT the given tab. No-op if
    * the tab doesn't exist.
    */
@@ -3350,6 +3357,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           return changed ? next : prev
         })
       },
+      closeTab: (tabId: string) => closeTabById(tabId),
       closeTabsForFile: (fileId: string) => {
         const targets: string[] = []
         for (const g of groups.values()) {
