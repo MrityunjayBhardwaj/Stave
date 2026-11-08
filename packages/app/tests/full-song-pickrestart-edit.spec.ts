@@ -16,7 +16,10 @@
  * 0); without the readGainState fix the drums strip reads `1`, not `sig`.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 const SONG = `drums: "<~@2 verse@2 chorus@2>".pickRestart({
   verse: s("bd ~ sd ~").bank("RolandTR909").gain(0.8),
   chorus: s("sd ~ sd ~").bank("RolandTR909").gain(0.5),
@@ -99,7 +102,7 @@ async function openMixer(page: Page) {
   return root.locator('[data-bottom-panel-tab="mixer-console"]')
 }
 
-test('#667: caret in a pick section opens the SequencerGrid + surgical edit', async ({ page }) => {
+test('#667: caret in a pick section opens the SequencerGrid + surgical edit (LCM grid)', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
   page.on('console', (m) => {

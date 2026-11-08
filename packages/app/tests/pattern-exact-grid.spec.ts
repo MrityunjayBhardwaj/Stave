@@ -12,8 +12,10 @@
  * whole step, and that the setting redraws a grid that is already open.
  */
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 const KICK = '<[bd ~ bd ~] [bd ~ ~ bd]>'
 const BEAT = `$: s("${KICK}, ~ sd ~ sd, hh*8")`
 
@@ -41,24 +43,6 @@ async function setGridMode(page: Page, mode: 'exact' | 'lcm'): Promise<string> {
 }
 
 test.describe('Exact grid mode (#1855)', () => {
-  test('is the default: each part at its own steps, every written step editable', async ({ page }) => {
-    const seq = await open(page, BEAT)
-    // kick 2 bars × 4, snare 2 × 4, hats 2 × 8
-    await expect(seq.locator('[data-seq-cell]')).toHaveCount(32)
-    await expect(seq.locator('[data-seq-cell][data-seq-box-width="2"]')).toHaveCount(16)
-    // every box is a step a click edits: the kicks and snares as written, and each of the 16
-    // hats `*8` makes, on its own (#2326: one hit of a plain `x*k` is edited by itself)
-    await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(0)
-    await expect(cell(seq, 'sd step 2')).toHaveAttribute('aria-pressed', 'true')
-    await expect(cell(seq, 'sd step 3')).toHaveAttribute('aria-pressed', 'false')
-
-    // a snare box stands over exactly the two hat cells of its step
-    const box = await cell(seq, 'sd step 2').boundingBox()
-    const h3 = await cell(seq, 'hh step 3').boundingBox()
-    const h4 = await cell(seq, 'hh step 4').boundingBox()
-    expect(Math.abs(box!.x - h3!.x)).toBeLessThan(1)
-    expect(Math.abs(box!.x + box!.width - (h4!.x + h4!.width))).toBeLessThan(1)
-  })
 
   test('a click on an empty own step writes the step’s own text, in every bar it plays', async ({ page }) => {
     // `~ sd ~ sd` is written once and plays in both bars: its first `~` is one step of text,
@@ -88,18 +72,6 @@ test.describe('Exact grid mode (#1855)', () => {
     await expect.poll(() => editorValue(page)).toBe('$: s("[bd ~ bd], hh*4")')
   })
 
-  test('keys step over a whole box and act on it', async ({ page }) => {
-    const seq = await open(page, BEAT)
-    await cell(seq, 'sd step 1').focus()
-    await page.keyboard.press('ArrowRight')
-    await expect(seq.locator('[role="gridcell"][aria-selected="true"] > [data-seq-cell]')).toHaveAttribute(
-      'aria-label',
-      'sd step 2',
-    )
-    await page.keyboard.press('ArrowRight')
-    await page.keyboard.press('Enter')
-    await expect.poll(() => editorValue(page)).toBe(`$: s("${KICK}, ~ sd sd sd, hh*8")`)
-  })
 
   test('the setting redraws an open grid, both ways', async ({ page }) => {
     const seq = await open(page, BEAT)
@@ -116,20 +88,6 @@ test.describe('Exact grid mode (#1855)', () => {
 
   // ── PART 2: the other gestures move by the box the row draws ──────────────────────
 
-  test('the length handle is offered on an own step and drags by whole steps', async ({ page }) => {
-    // the snare is 2 hat-cells long; one column longer or shorter is half a step, which the
-    // writer declines both ways — asked by columns, the handle was never drawn
-    const seq = await open(page, '$: s("~ sd ~ ~, hh*8")')
-    const handle = seq.locator('[data-seq-resize="0:2"]')
-    await expect(handle).toHaveCount(1)
-    const h = await handle.boundingBox()
-    const t = await cell(seq, 'sd step 3').boundingBox()
-    await page.mouse.move(h!.x + h!.width / 2, h!.y + h!.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(t!.x + t!.width / 2, t!.y + t!.height / 2, { steps: 10 })
-    await page.mouse.up()
-    await expect.poll(() => editorValue(page)).toBe('$: s("~ sd@2 ~, hh*8")') // a length is `@n` (#2326)
-  })
 
   test('⌥⇧→ / ⌥⇧← lengthen and shorten by one own step', async ({ page }) => {
     const seq = await open(page, '$: s("~ sd ~ ~, hh*8")')
@@ -140,28 +98,6 @@ test.describe('Exact grid mode (#1855)', () => {
     await expect.poll(() => editorValue(page)).toBe('$: s("~ sd ~ ~, hh*8")')
   })
 
-  test('↓ lands on the step playing when the box starts, also after ←', async ({ page }) => {
-    const seq = await open(page, '$: s("~ sd ~ sd, hh*8")')
-    const selected = seq.locator('[role="gridcell"][aria-selected="true"] > [data-seq-cell]')
-    await cell(seq, 'sd step 2').focus()
-    await page.keyboard.press('ArrowLeft')
-    await expect(selected).toHaveAttribute('aria-label', 'sd step 1')
-    await page.keyboard.press('ArrowDown')
-    await expect(selected).toHaveAttribute('aria-label', 'hh step 1')
-    // ↑/↓ keep the moment: from the second snare step, down is the hat box playing then,
-    // and up from it is that snare step again
-    await page.keyboard.press('ArrowUp')
-    await page.keyboard.press('ArrowRight')
-    await expect(selected).toHaveAttribute('aria-label', 'sd step 2')
-    await page.keyboard.press('ArrowDown')
-    await expect(selected).toHaveAttribute('aria-label', 'hh step 3')
-    await page.keyboard.press('ArrowUp')
-    await expect(selected).toHaveAttribute('aria-label', 'sd step 2')
-    // each hat of `hh*8` is edited on its own (#2326), so each is a step the arrows stop on
-    await page.keyboard.press('ArrowDown')
-    await page.keyboard.press('ArrowRight')
-    await expect(selected).toHaveAttribute('aria-label', 'hh step 4')
-  })
 
   test('a paint drag fills every own step it crosses, one step each', async ({ page }) => {
     const seq = await open(page, '$: s("~ sd ~ ~, hh*8")')

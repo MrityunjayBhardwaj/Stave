@@ -1,5 +1,8 @@
 import { test, expect, type Page, type Locator } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 /**
  * #1802 — the grids are ARIA grids with one tab stop and an arrow-key cursor, and
  * keys place and remove notes. Every keyboard edit is compared with the SAME edit
@@ -154,7 +157,7 @@ test.describe('piano roll', () => {
 })
 
 test.describe('sequencer', () => {
-  test('is a grid with ONE tab stop among its cells', async ({ page }) => {
+  test('is a grid with ONE tab stop among its cells (LCM grid)', async ({ page }) => {
     await boot(page)
     await setCode(page, SEQ)
     const seq = await openPattern(page, 'sequencer', '[data-seq-cell="0:0"]')
@@ -166,7 +169,7 @@ test.describe('sequencer', () => {
     await expect(seq.locator('[data-seq-cell]:not([tabindex="-1"])')).toHaveCount(1)
   })
 
-  test("arrows + ' write what a click writes, on an empty and a held column; Delete clears a hit", async ({ page }) => {
+  test("arrows + ' write what a click writes, on an empty and a held column; Delete clears a hit (LCM grid)", async ({ page }) => {
     await boot(page)
     await setCode(page, SEQ)
     const seq = await openPattern(page, 'sequencer', '[data-seq-cell="0:0"]')
@@ -200,7 +203,7 @@ test.describe('sequencer', () => {
     await expect.poll(() => source(page), { timeout: 5_000 }).toBe(cleared)
   })
 
-  test('the cursor survives an edit but not a move to another pattern', async ({ page }) => {
+  test('the cursor survives an edit but not a move to another pattern (LCM grid)', async ({ page }) => {
     await boot(page)
     const two = `${SEQ}\n$: s("hh ~ ~ ~ ~ ~ ~ ~")`
     await setCode(page, two)
@@ -224,7 +227,7 @@ test.describe('sequencer', () => {
     await expect.poll(tabStop, { timeout: 5_000 }).toBe('0:0')
   })
 
-  test('Enter on "remove voice" is still the button\'s, not a toggle', async ({ page }) => {
+  test('Enter on "remove voice" is still the button\'s, not a toggle (LCM grid)', async ({ page }) => {
     await boot(page)
     await setCode(page, '$: s("bd ~ ~ ~, hh ~ hh ~")')
     const seq = await openPattern(page, 'sequencer', '[data-seq-cell="0:0"]')

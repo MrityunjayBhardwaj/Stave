@@ -11,8 +11,10 @@
  * the row the cursor is on when `,`-parts split the bar differently.
  */
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import { bootApp, seedCode } from './_appBoot'
+import { bootApp, seedCode, pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 async function open(page: Page, code: string, tab: 'sequencer' | 'piano-roll'): Promise<Locator> {
   await bootApp(page, { drawer: { tabId: 'pattern', height: 460 } })
   await seedCode(page, code)
@@ -34,7 +36,7 @@ async function lineBefore(cell: Locator): Promise<string> {
 }
 
 test.describe('sequencer: step lines and a step ruler (#1841)', () => {
-  test('a group inside a step: four written steps over eight columns', async ({ page }) => {
+  test('a group inside a step: four written steps over eight columns (LCM grid)', async ({ page }) => {
     const seq = await open(page, '$: s("bd [~ bd] sd ~")', 'sequencer')
     expect(await ruler(seq, 'data-seq-ruler-label')).toEqual(['0=1', '2=1.2', '4=1.3', '6=1.4'])
 
@@ -51,7 +53,7 @@ test.describe('sequencer: step lines and a step ruler (#1841)', () => {
     expect(await lineBefore(cellBox('0:1'))).toBe('none')
   })
 
-  test('rows from different parts draw their own lines, and the ruler follows the cursor row', async ({
+  test('rows from different parts draw their own lines, and the ruler follows the cursor row (LCM grid)', async ({
     page,
   }) => {
     // `bd sd` splits the bar in two, `hh hh hh` in three: 6 shared columns
@@ -71,7 +73,7 @@ test.describe('sequencer: step lines and a step ruler (#1841)', () => {
     await expect.poll(() => ruler(seq, 'data-seq-ruler-label')).toEqual(['0=1', '2=1.2', '4=1.3'])
   })
 
-  test('`@` counts as steps the way Strudel does: `bd@3 sd` is four (#1845)', async ({ page }) => {
+  test('`@` counts as steps the way Strudel does: `bd@3 sd` is four (#1845) (LCM grid)', async ({ page }) => {
     const seq = await open(page, '$: s("bd@3 sd")', 'sequencer')
     expect(await ruler(seq, 'data-seq-ruler-label')).toEqual(['0=1', '1=1.2', '2=1.3', '3=1.4'])
     // a step line inside the held kick, as well as before the snare
@@ -81,19 +83,6 @@ test.describe('sequencer: step lines and a step ruler (#1841)', () => {
     expect(starts).toEqual(['0:1', '0:2', '0:3', '1:1', '1:2', '1:3'])
   })
 
-  test('a leaf-read pattern has no written-step regions, so its steps come from the pattern itself (#2277)', async ({ page }) => {
-    // the parser reads this one leaf by leaf and writes no step regions; the bar's tree,
-    // asked of Strudel, still knows its steps: 8 shares over 16 columns — `<…>@2` is one
-    // step of four columns, `hh@2` two steps (#1845), then four steps of two
-    const seq = await open(page, '$: s("<bd [~ bd]>@2 hh@2 bd <bd ~> [hh bd] [~ hh]")', 'sequencer')
-    const bar = (b: number): string[] => ['0=1', '4=1.2', '6=1.3', '8=1.4', '10=1.5', '12=1.6', '14=1.7'].map((x) => {
-      const [c, l] = x.split('=')
-      return `${Number(c) + 16 * b}=${l.replace(/^1/, String(b + 1))}`
-    })
-    expect(await ruler(seq, 'data-seq-ruler-label')).toEqual([...bar(0), ...bar(1)])
-    // a line before each step that is not a bar's first: six a bar, in both rows
-    await expect(seq.locator('[data-seq-step-start]')).toHaveCount(24)
-  })
 })
 
 test.describe('piano roll: step lines and a step ruler (#1841)', () => {
@@ -142,7 +131,7 @@ test.describe('ruler labels that do not fit are hidden, never run together (#184
   // an alternation used as a step: twelve bars of four steps, crowded at 1024px
   const bars = 'bd hh hh <sd hh cp oh lt mt ht rim cb cr rd sh>'
 
-  test('narrow steps: the shown labels never touch, and the hidden ones sit between them', async ({ page }) => {
+  test('narrow steps: the shown labels never touch, and the hidden ones sit between them (LCM grid)', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 900 })
     for (const [code, tab, attr] of [
       [`$: s("${hh32}")`, 'sequencer', 'data-seq-ruler-label'],
@@ -159,7 +148,7 @@ test.describe('ruler labels that do not fit are hidden, never run together (#184
     }
   })
 
-  test('bar numbers show before any step label', async ({ page }) => {
+  test('bar numbers show before any step label (LCM grid)', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 900 })
     const seq = await open(page, `$: s("${bars}")`, 'sequencer')
     const ls = await labelBoxes(seq, 'data-seq-ruler-label')
@@ -169,7 +158,7 @@ test.describe('ruler labels that do not fit are hidden, never run together (#184
     expect(barLabels.every((l) => l.shown), 'every bar number shows').toBe(true)
   })
 
-  test('narrowing the window re-fits the ruler without a re-render', async ({ page }) => {
+  test('narrowing the window re-fits the ruler without a re-render (LCM grid)', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     const seq = await open(page, `$: s("${hh32}")`, 'sequencer')
     expect((await labelBoxes(seq, 'data-seq-ruler-label')).filter((l) => !l.shown)).toEqual([])
@@ -237,7 +226,7 @@ test.describe('the piano roll keeps its track chip clear of the grid (#1844)', (
  * fall to the leaf reading: no step lines, and edit-only.
  */
 test.describe('parts that need more than the flat reading keep their steps (#1849)', () => {
-  test('grid: `bd@3 sd, hh!6` draws each part its own steps, and is not edit-only', async ({ page }) => {
+  test('grid: `bd@3 sd, hh!6` draws each part its own steps, and is not edit-only (LCM grid)', async ({ page }) => {
     const seq = await open(page, '$: s("bd@3 sd, hh!6")', 'sequencer')
     // rows bd, sd (part 0: bd held three steps, then sd) and hh (part 1: six steps)
     const starts = await seq

@@ -9,7 +9,10 @@
  * coordinates.
  */
 import { test, expect, chromium, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -501,7 +504,7 @@ test.describe('Mixer strip mute (#543 / S3)', () => {
     expect(low, 'meter follows the lowered fader live').toBeLessThan(high - 8)
   })
 
-  test('LIVE sequencer: silencing a track\'s steps while playing goes dark immediately (centralised at the write path)', async ({
+  test('LIVE sequencer: silencing a track\'s steps while playing goes dark immediately (centralised at the write path) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)

@@ -8,8 +8,11 @@
  *   - a pattern outside the grid subset falls back to standby (code-only).
  */
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 import { slotsControl, preset } from './_resolutionControl'
 
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -111,7 +114,7 @@ async function placeCursorOn(page: Page, needle: string): Promise<void> {
 }
 
 test.describe('Sequencer (#382)', () => {
-  test('renders one lane per sound with cells from the mini', async ({ page }) => {
+  test('renders one lane per sound with cells from the mini (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd ~ sn ~")')
     const drawer = await openSequencer(page)
@@ -122,7 +125,7 @@ test.describe('Sequencer (#382)', () => {
     await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'false')
   })
 
-  test('toggling a cell round-trips the mini-notation', async ({ page }) => {
+  test('toggling a cell round-trips the mini-notation (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd ~ ~ ~")')
     const drawer = await openSequencer(page)
@@ -146,7 +149,7 @@ test.describe('Sequencer (#382)', () => {
    * model: the writer's caller replaces the WHOLE mini range, so a unit test on
    * the serializer alone cannot see what actually lands in the user's file.
    */
-  test('an edit keeps the notation it did not touch (#913)', async ({ page }) => {
+  test('an edit keeps the notation it did not touch (#913) (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd hh*2 sd cp")')
     const drawer = await openSequencer(page)
@@ -165,7 +168,7 @@ test.describe('Sequencer (#382)', () => {
    * Editing the alternation's bar-1 slot writes back `bd <sd ~>` — the leading
    * `bd` untouched — never a whole-cycle `<[bd sd] [bd ~]>` rebuild.
    */
-  test('opens and edits a <...>-as-element pattern (#920)', async ({ page }) => {
+  test('opens and edits a <...>-as-element pattern (#920) (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd <sd hh>")')
     const drawer = await openSequencer(page)
@@ -182,7 +185,7 @@ test.describe('Sequencer (#382)', () => {
   })
 
   /** #913 — opening a pattern and clicking nothing must not touch the document. */
-  test('opening a euclid pattern leaves the source alone (#913)', async ({ page }) => {
+  test('opening a euclid pattern leaves the source alone (#913) (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd(3,8)")')
     const drawer = await openSequencer(page)
@@ -239,7 +242,7 @@ test.describe('Sequencer (#382)', () => {
   // Every General MIDI sound is `gm_*`, so this whole family used to land in
   // standby, reported as "uses mini-notation features beyond the editable
   // subset" though no such feature is present.
-  test('binds a General MIDI sound whose name contains an underscore (#904)', async ({ page }) => {
+  test('binds a General MIDI sound whose name contains an underscore (#904) (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("gm_agogo ~ LinnDrum_bd ~")')
     const drawer = await openSequencer(page)
@@ -256,7 +259,7 @@ test.describe('Sequencer (#382)', () => {
     expect(await strudelValue(page)).toBe('$: s("gm_agogo gm_agogo LinnDrum_bd ~")')
   })
 
-  test('binds a drum track nested inside stack(...) and round-trips it (#395)', async ({
+  test('binds a drum track nested inside stack(...) and round-trips it (#395) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -280,7 +283,7 @@ test.describe('Sequencer (#382)', () => {
     )
   })
 
-  test('binds `hh*8` as an 8-step lane and expands the sugar on toggle (#396)', async ({
+  test('binds `hh*8` as an 8-step lane and expands the sugar on toggle (#396) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -303,7 +306,7 @@ test.describe('Sequencer (#382)', () => {
     await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveAttribute('aria-pressed', 'false')
   })
 
-  test('binds `bd(3,8)` euclid as an 8-step lane with 3 hits and expands on toggle (#399)', async ({
+  test('binds `bd(3,8)` euclid as an 8-step lane with 3 hits and expands on toggle (#399) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -329,7 +332,7 @@ test.describe('Sequencer (#382)', () => {
     await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  test('binds `bd!3` replicate as a 3-step lane and expands the sugar on toggle (#407)', async ({
+  test('binds `bd!3` replicate as a 3-step lane and expands the sugar on toggle (#407) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -377,7 +380,7 @@ test.describe('Sequencer (#382)', () => {
   // #2292 — the step writer reaches what the leaf writer could not: each `-` of
   // `<bd - - ->*2` is a step of its own text, so the grid now takes a note there, written
   // as that step's text, and the banner that said it takes none is gone.
-  test('a leaf-anchored grid now takes a note on a rest step, and still deletes (#1070, #2292)', async ({
+  test('a leaf-anchored grid now takes a note on a rest step, and still deletes (#1070, #2292) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -421,7 +424,7 @@ test.describe('Sequencer (#382)', () => {
    * back. And this is the arm the widening needs — the corpus sweeps count 248
    * such cells, but only this says a user can reach one.
    */
-  test('a leaf grid whose rest column is writable takes the note (#1154)', async ({ page }) => {
+  test('a leaf grid whose rest column is writable takes the note (#1154) (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("<~ oh ~@2 oh ~@3 oh>")')
     await placeCursorOn(page, 'oh')
@@ -448,7 +451,7 @@ test.describe('Sequencer (#382)', () => {
    * not have been narrowed by any of this. No view-level message, no inert
    * cells, and the placement lands.
    */
-  test('an ordinary grid is unchanged — no message, no inert cells (#1064)', async ({ page }) => {
+  test('an ordinary grid is unchanged — no message, no inert cells (#1064) (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd ~ ~ ~")')
     const drawer = await openSequencer(page)
@@ -481,7 +484,7 @@ test.describe('Sequencer (#382)', () => {
    * driving the panel. `tests/_1161-lane-survives.spec.ts` is the (inert)
    * observation record of that; this is the guard.
    */
-  test('a lane emptied of its last note stays on screen and takes the note back (#1161)', async ({
+  test('a lane emptied of its last note stays on screen and takes the note back (#1161) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -530,7 +533,7 @@ test.describe('Sequencer (#382)', () => {
    * it — so the panel treated its own click as a move to another pattern: the view snapped
    * back to 4 columns and the kept model went with it, taking the emptied lane (#1161).
    */
-  test('a note edit made while zoomed keeps the zoom and the emptied lane (#1964)', async ({
+  test('a note edit made while zoomed keeps the zoom and the emptied lane (#1964) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -562,7 +565,7 @@ test.describe('Sequencer (#382)', () => {
   })
 
   /** #1964's other half — the reset it narrowed still fires where #1117 needs it. */
-  test('moving to another pattern still drops the zoom (#1964, #1117)', async ({ page }) => {
+  test('moving to another pattern still drops the zoom (#1964, #1117) (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd ~ sn ~")\n$: s("hh hh hh hh")')
     const drawer = await openSequencer(page)
@@ -594,7 +597,7 @@ test.describe('Sequencer (#382)', () => {
    * ⚠ ONE PART, NOT `bd ~ ~ ~, hh hh hh hh`: the writer declines a `.gain` across stacked
    * parts, so on that pattern no velocity is offered and the drag is a plain click (#1964).
    */
-  test('an emptied lane survives a velocity drag made through a refined view (#1950)', async ({
+  test('an emptied lane survives a velocity drag made through a refined view (#1950) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)

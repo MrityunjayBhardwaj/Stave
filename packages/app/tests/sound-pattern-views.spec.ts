@@ -16,8 +16,10 @@
  *    plays and says which written notes never play.
  */
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, seedCode, evalCode } from './_appBoot'
+import { bootApp, seedCode, evalCode, pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 const GUITAR = 'gm_electric_guitar_muted'
 const MULTI = `$: note("48 67 63 [62, 58]").sound("piano ${GUITAR}")`
 
@@ -154,7 +156,7 @@ test.describe('a sound that is a pattern is shown where it plays (#2226)', () =>
 
   // Sound first, the sounds set the rhythm: each step plays the note written where it
   // starts. Recorded at the audio graph for this line: only 48 and 63 ever start.
-  test('sound first: the step grid names the note each step plays, and the notes that never play', async ({ page }) => {
+  test('sound first: the step grid names the note each step plays, and the notes that never play (LCM grid)', async ({ page }) => {
     await bootApp(page)
     await seedCode(page, `$: sound("piano ${GUITAR}").note("48 67 63 [62, 58]")`)
     await cursorAt(page, 1)

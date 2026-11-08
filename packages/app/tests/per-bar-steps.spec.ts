@@ -1,7 +1,9 @@
 import { test, expect, type Page, type Locator } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 import { expectNoRefusalReported } from './_console'
 
+
+pinLcmGrid(test)
 /**
  * #1827 — each bar of a pattern is drawn at its own step count.
  *   `<[c3 e3 g3] [c3 e3 g3 b3]>` used to open as 24 columns (both bars at 12), and
@@ -85,7 +87,7 @@ test.describe('piano roll', () => {
 })
 
 test.describe('step sequencer', () => {
-  test('a bar of 3 and a bar of 4, and a hit added to the first is spelled at 3 steps', async ({ page }) => {
+  test('a bar of 3 and a bar of 4, and a hit added to the first is spelled at 3 steps (LCM grid)', async ({ page }) => {
     const seq = await open(page, '$: s("<[bd sd hh] [bd sd hh oh]>")', SEQ, '[data-seq-cell="0:0"]')
     const cells = await row(seq, '[data-seq-cell^="0:"]')
     expect(cells).toHaveLength(7)

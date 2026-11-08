@@ -13678,7 +13678,11 @@ interface SequencerGridProps {
     /** a sentence shown over the grid: why a rhythm line is drawn without its chords (#2120) */
     notice?: string | null;
 }
-declare function SequencerGrid({ onResolution, notice }?: SequencerGridProps): React.ReactElement;
+/**
+ * The step grid: Settings › Grid chooses it. Exact draws and edits from the bar's tree
+ * (`ExactStepGrid`), with no equal columns; LCM is the column grid below (#2458).
+ */
+declare function SequencerGrid(props?: SequencerGridProps): React.ReactElement;
 
 /**
  * inspector — the Pattern grids' selection key + the shared `.gain` (velocity)

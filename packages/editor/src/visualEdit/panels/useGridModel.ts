@@ -128,6 +128,16 @@ export interface GridModel<M> {
 const keyOf = (at: number, mini: string | null): string => `${at}:${mini ?? ''}`
 
 
+/**
+ * The document edits one step edit makes: the step's own bytes, where the string's text is the
+ * document's text one for one. A literal with escapes (`\"`) is not, and is written whole, as a
+ * whole-mini write is — the same mini either way.
+ */
+export function stepWriteEdits(fresh: ChunkInfo, from: string, edit: StepEdit): OffsetEdit[] | null {
+  const [start, end] = fresh.miniRange!
+  return end - start === from.length ? [{ range: [start + edit.from, start + edit.to], text: edit.insert }] : gridWriteEdits(fresh, applyStepEdit(from, edit), null)
+}
+
 export function useGridModel<M extends { viewScale?: ViewScale; lookOnly?: unknown }>(
   opts: GridModelOptions<M>,
 ): GridModel<M> {
@@ -281,13 +291,7 @@ export function useGridModel<M extends { viewScale?: ViewScale; lookOnly?: unkno
         keepRef.current = keep ? { mini: after, keep } : null
         // the panel's own write keeps the pattern's key, so a zoom the user set stays (#1964)
         ownEchoRef.current = keyOf(fresh.exprRange[0], after)
-        const [start, end] = fresh.miniRange
-        // The step's own bytes, where the string's text is the document's text one for
-        // one. A literal with escapes (`\"`) is not, and is written whole, as `writeMini`
-        // writes it — the same mini either way.
-        const edits: OffsetEdit[] | null =
-          end - start === from.length ? [{ range: [start + edit.from, start + edit.to], text: edit.insert }] : gridWriteEdits(fresh, after, null)
-        wrote = commit(wb, edits, optsRef.current.source) === 'written'
+        wrote = commit(wb, stepWriteEdits(fresh, from, edit), optsRef.current.source) === 'written'
       })
       // A REFINED VIEW IS ABSORBED WHEN THE TEXT NOW SPELLS IT (#2410, as `writeModel` does
       // through `spellsRefinement`): a split in a view drawn finer than the text (Slots ×2)

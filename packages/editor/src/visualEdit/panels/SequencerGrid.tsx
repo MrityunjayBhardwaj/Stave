@@ -65,6 +65,7 @@ import {
   writtenStepStarts,
 } from './writtenSteps'
 import { useGridMode } from './gridMode'
+import { ExactStepGrid } from './ExactStepGrid'
 import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
 import { InViewBar, PHONE_GRID_WIDTH, PHONE_RULER_HEIGHT, PHONE_STEP_MIN, TurnHint, usePhoneGrid, useRulerPan } from './phoneGrid'
@@ -163,7 +164,21 @@ export interface SequencerGridProps {
   notice?: string | null
 }
 
-export function SequencerGrid({ onResolution, notice = null }: SequencerGridProps = {}): React.ReactElement {
+/**
+ * The step grid: Settings › Grid chooses it. Exact draws and edits from the bar's tree
+ * (`ExactStepGrid`), with no equal columns; LCM is the column grid below (#2458).
+ */
+export function SequencerGrid(props: SequencerGridProps = {}): React.ReactElement {
+  const mode = useGridMode()
+  const { onResolution } = props
+  // Exact has no column resolution to lift (Slots comes back there as zoom and snap)
+  React.useEffect(() => {
+    if (mode === 'exact') onResolution?.(null)
+  }, [mode, onResolution])
+  return mode === 'exact' ? <ExactStepGrid notice={props.notice ?? null} /> : <ColumnStepGrid {...props} />
+}
+
+function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}): React.ReactElement {
   // How finely this panel DRAWS the pattern (#1057). Purely a view: nothing here
   // reaches the document until an actual edit is made, and the first write absorbs
   // it (`useGridModel` → `absorbViewScale`).
