@@ -3262,7 +3262,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         setActiveGroupId(activeGroupId)
       },
       openAppTab: (appKey: string, opts?: { state?: AppTabState }) => {
-        const hasState = opts !== undefined && 'state' in opts && opts.state !== undefined
+        const hasState = opts?.state !== undefined
         // One tab per key: focus the open one, in whichever group holds it.
         let foundGroupId: string | null = null
         for (const [gid, g] of groups) {

@@ -326,6 +326,64 @@ describe('WorkspaceShell — app tabs (#2471)', () => {
     expect(tabsIn(container, container.querySelector('[data-workspace-group]')!.getAttribute('data-workspace-group')!)).toEqual(['app-gallery'])
   })
 
+  it('the file commands (Cmd+K V / B / W) do nothing while it is the active tab', () => {
+    const shell = React.createRef<WorkspaceShellHandle>()
+    const onOpenPopoutPreview = vi.fn()
+    const { container } = render(
+      <WorkspaceShell
+        ref={shell}
+        initialTabs={[editorTab('t-a', 'f-hydra')]}
+        renderAppTab={renderAppTab}
+        previewProviderFor={() => stubProvider()}
+        onOpenPopoutPreview={onOpenPopoutPreview}
+      />,
+    )
+    act(() => shell.current!.openAppTab('gallery'))
+    // A command that reached for the tab's (absent) file would throw inside
+    // the keydown listener — collect those instead of letting them escape.
+    const thrown: unknown[] = []
+    const onError = (e: ErrorEvent) => {
+      thrown.push(e.error)
+      e.preventDefault()
+    }
+    window.addEventListener('error', onError)
+    try {
+      for (const key of ['v', 'b', 'w']) {
+        act(() => {
+          fireEvent.keyDown(window, { key: 'k', metaKey: true })
+        })
+        act(() => {
+          fireEvent.keyDown(window, { key })
+        })
+      }
+    } finally {
+      window.removeEventListener('error', onError)
+    }
+    expect(thrown).toEqual([])
+    expect(container.querySelectorAll('[data-workspace-group]')).toHaveLength(1)
+    expect(container.querySelectorAll('[data-tab-kind="preview"]')).toHaveLength(0)
+    expect(shell.current!.getBackgroundFileId()).toBeUndefined()
+    expect(onOpenPopoutPreview).not.toHaveBeenCalled()
+    expect(container.querySelector('[data-testid="gallery-body"]')).not.toBeNull()
+  })
+
+  it('(control) the same chord DOES act on a file tab in this harness', () => {
+    const { container } = render(
+      <WorkspaceShell
+        initialTabs={[editorTab('t-a', 'f-hydra')]}
+        renderAppTab={renderAppTab}
+        previewProviderFor={() => stubProvider()}
+      />,
+    )
+    act(() => {
+      fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    })
+    act(() => {
+      fireEvent.keyDown(window, { key: 'v' })
+    })
+    expect(container.querySelectorAll('[data-workspace-group]')).toHaveLength(2)
+  })
+
   it('drags to another group like any tab, and its body is drawn there', () => {
     const shell = React.createRef<WorkspaceShellHandle>()
     const { container } = render(

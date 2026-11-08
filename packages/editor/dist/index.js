@@ -50009,7 +50009,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         setActiveGroupId(activeGroupId);
       }, "openHistoryTab"),
       openAppTab: /* @__PURE__ */ __name((appKey, opts) => {
-        const hasState = opts !== void 0 && "state" in opts && opts.state !== void 0;
+        const hasState = opts?.state !== void 0;
         let foundGroupId = null;
         for (const [gid, g] of groups) {
           if (g.tabs.some((t) => t.kind === "app" && t.appKey === appKey)) {
