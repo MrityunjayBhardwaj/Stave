@@ -172,6 +172,32 @@ test.describe('Names with nothing visible in them (#2450)', () => {
     expect(held.author.name).toBe(`Ada ${RUN}`)
   })
 
+  // #2465 — a name like that stored before the rule shows as "Unnamed artist":
+  // on its card, its entry's page and its profile. The seed route writes it
+  // straight onto the row, as no door can now.
+  test('one stored before the rule shows as Unnamed artist on the card, the entry and the profile', async ({ page, request }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    const title = `Blank author ${RUN}`
+    const res = await request.post('/api/test-seed', { data: { title, collectionTitle: `Blank EP ${RUN}`, authorName: 'ㅤ' } })
+    expect(res.status(), await res.text()).toBe(201)
+    const { entryId, authorId } = (await res.json()) as { entryId: string; authorId: string }
+
+    await bootApp(page)
+    await page.getByRole('button', { name: 'View', exact: true }).click()
+    await page.getByText('Community Gallery...', { exact: true }).click()
+    await page.locator('[data-gallery-tab="music"]').click()
+    const card = page.locator(`[data-gallery-card="${entryId}"]`)
+    await expect(card.locator(`[data-gallery-author-link="${authorId}"]`)).toHaveText('Unnamed artist', { timeout: 30_000 })
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/blank-name-card.png` })
+
+    await card.click()
+    const detail = page.locator(`[data-gallery-detail="${entryId}"]`)
+    await expect(detail.locator(`[data-gallery-author-link="${authorId}"]`)).toHaveText('Unnamed artist')
+    await detail.locator(`[data-gallery-author-link="${authorId}"]`).click()
+    await expect(profileName(page)).toHaveText('Unnamed artist')
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/blank-name-profile.png` })
+  })
+
   test('an account whose name shows nothing signs in under its login', async ({ page, request }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     const id = `blank-login-${RUN}`

@@ -11,6 +11,7 @@ import React, { useState } from "react";
 import { galleryThumbnailUrl } from "./client";
 import { KIND_LABEL, formatGalleryDate, generatedCard } from "./galleryModel";
 import { collectionCover } from "./profileModel";
+import { shownName } from "./reservedNames";
 import type { GalleryCollection, GalleryEntry } from "./types";
 
 export function Thumb({ entry }: { entry: GalleryEntry }) {
@@ -47,10 +48,11 @@ function GeneratedThumb({ id, title, label }: { id: string; title: string; label
  * The author's name: a link to their profile when the entry carries an author id
  * (#2314), plain text otherwise (entries published before profiles existed).
  * A real link, so it can be copied or opened in a new tab; a plain click opens the
- * profile inside the overlay.
+ * profile inside the overlay. #2465 — shown through shownName, so a name with
+ * nothing visible in it reads "Unnamed artist", not as an empty link.
  */
 export function AuthorName({
-  name,
+  name: stored,
   authorId,
   onAuthor,
 }: {
@@ -58,6 +60,7 @@ export function AuthorName({
   authorId?: string;
   onAuthor?: (authorId: string) => void;
 }) {
+  const name = shownName(stored);
   if (!authorId || !onAuthor) return <span data-gallery-author-plain>{name}</span>;
   return (
     <a

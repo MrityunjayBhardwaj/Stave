@@ -63,6 +63,20 @@ export function hasVisibleCharacter(name: string): boolean {
   return SHOWS_SOMETHING.test(name);
 }
 
+/** #2465 — what a name with nothing visible in it is shown as. */
+export const UNNAMED_AUTHOR = "Unnamed artist";
+
+/**
+ * #2465 — the name to show for an author. One stored before #2450 may have
+ * nothing visible in it; everywhere a name is shown goes through here, so it
+ * reads as UNNAMED_AUTHOR rather than as a gap. The stored name is unchanged:
+ * the profile editor shows (and refuses) what's really there, and the trust
+ * question keeps its own words for it (safeRun.ts galleryTrustMessage).
+ */
+export function shownName(name: string): string {
+  return hasVisibleCharacter(name) ? name : UNNAMED_AUTHOR;
+}
+
 /** Letters that look like a Latin letter, after lowercasing. Pairs: look-alike, then the letter. */
 const LOOKALIKES = new Map<string, string>(
   (
