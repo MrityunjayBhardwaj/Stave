@@ -13473,9 +13473,9 @@ function rowSteps(ctx, group2, path) {
   if (repeated.length > 0) {
     const within2 = /* @__PURE__ */ new Set();
     for (const i of repeated) notesIn2(elements[i], within2);
-    const asked2 = slotsOf(ctx, copyOf(ctx.pat, path, repeated, true), within2);
-    if (isRefusal(asked2)) return asked2;
-    copies = asked2;
+    const asked3 = slotsOf(ctx, copyOf(ctx.pat, path, repeated, true), within2);
+    if (isRefusal(asked3)) return asked3;
+    copies = asked3;
   }
   const steps = [];
   for (const i of all) {
@@ -14292,6 +14292,25 @@ __name(resizeStepBy, "resizeStepBy");
 // src/codeView/stepGain.ts
 var EPS2 = 1e-9;
 var no2 = /* @__PURE__ */ __name((why) => ({ ok: false, why }), "no");
+var ASKED = /* @__PURE__ */ new Map();
+var ASKED_MAX = 2048;
+function asked2(key3, ask) {
+  let got = ASKED.get(key3);
+  if (!got) {
+    try {
+      got = { v: ask() };
+    } catch (e) {
+      got = { e };
+    }
+    if (ASKED.size >= ASKED_MAX) ASKED.delete(ASKED.keys().next().value);
+    ASKED.set(key3, got);
+  }
+  if ("e" in got) throw got.e;
+  return got.v;
+}
+__name(asked2, "asked");
+var heardIn = /* @__PURE__ */ __name((mini, gain, cyc) => asked2(`s\0${cyc}\0${mini}\0${gain}`, () => soundGainHits(mini, gain, cyc)), "heardIn");
+var playsIn = /* @__PURE__ */ __name((mini, cyc) => asked2(`p\0${cyc}\0${mini}`, () => miniPattern(mini).hits(cyc)), "playsIn");
 function fmtLevel(v) {
   if (!Number.isFinite(v)) return "1";
   const c = Math.min(1, Math.max(0, v));
@@ -14345,12 +14364,14 @@ function stepGainEdit(mini, gain, bars, hit, level) {
   let heard;
   let plain;
   try {
-    heard = soundGainHits(mini, text, cyc);
-    plain = miniPattern(mini).hits(cyc);
+    heard = heardIn(mini, text, cyc);
+    plain = playsIn(mini, cyc);
     if (created) {
-      for (let c = 0; c < bars; c++) {
-        if (soundGainHits(mini, text, c).length !== miniPattern(mini).hits(c).length) return no2("no-gain-for-this-pattern");
-      }
+      const lands = asked2(`m\0${bars}\0${mini}\0${text}`, () => {
+        for (let c = 0; c < bars; c++) if (heardIn(mini, text, c).length !== playsIn(mini, c).length) return false;
+        return true;
+      });
+      if (!lands) return no2("no-gain-for-this-pattern");
     }
   } catch {
     return no2("gain-does-not-evaluate");
@@ -14359,7 +14380,7 @@ function stepGainEdit(mini, gain, bars, hit, level) {
   if (!target) return no2(plain.some((h) => near(h.begin, hit.begin)) ? "hit-is-silent" : "no-hit-there");
   let levels;
   try {
-    levels = miniPattern(text).hits(cyc);
+    levels = playsIn(text, cyc);
   } catch {
     return no2("gain-does-not-evaluate");
   }
@@ -14368,7 +14389,7 @@ function stepGainEdit(mini, gain, bars, hit, level) {
   if (!own || !near(own.begin, hit.begin) || !near(own.end, hit.end)) return no2("gain-step-not-the-hit");
   try {
     for (let c = Math.floor(own.begin.valueOf() + EPS2); c < own.end.valueOf() - EPS2; c++) {
-      const hits = c === cyc ? heard : soundGainHits(mini, text, c);
+      const hits = c === cyc ? heard : heardIn(mini, text, c);
       if (hits.some((h) => h.begin.valueOf() > own.begin.valueOf() + EPS2 && h.begin.valueOf() < own.end.valueOf() - EPS2)) return no2("gain-step-not-the-hit");
     }
   } catch {
@@ -14893,15 +14914,15 @@ __name(regionTrimEdit, "regionTrimEdit");
 // src/codeView/notation/place.ts
 function viewPlacesNotes(model) {
   if (model.lookOnly) return false;
-  let asked2 = 0;
+  let asked3 = 0;
   if ("lanes" in model) {
     for (let lane = 0; lane < model.lanes.length; lane++)
       for (let col = 0; col < model.steps; col++) {
         if (isCellOn(model.lanes[lane].cells[col])) continue;
-        asked2++;
+        asked3++;
         if (canToggleCell(model, lane, col, true)) return true;
       }
-    return asked2 === 0;
+    return asked3 === 0;
   }
   const pitches = new Set(model.notes.map((n) => n.pitch));
   if (model.notes.some((n) => pitchToMidi(n.pitch) !== null)) {
@@ -14911,10 +14932,10 @@ function viewPlacesNotes(model) {
   for (const pitch of pitches)
     for (let step = 0; step < model.steps; step++) {
       if (model.notes.some((n) => n.pitch === pitch && n.start === step)) continue;
-      asked2++;
+      asked3++;
       if (canPlaceNote(model, pitch, step, 1)) return true;
     }
-  return asked2 === 0;
+  return asked3 === 0;
 }
 __name(viewPlacesNotes, "viewPlacesNotes");
 var paint = /* @__PURE__ */ __name((value, length = 1) => value ? cellOn(length) : false, "paint");
@@ -40050,14 +40071,14 @@ function rowBoxes(cells, steps, width, isOn) {
 }
 __name(rowBoxes, "rowBoxes");
 function boxesPlaceNotes(lanes, boxes, isOn, placeable) {
-  let asked2 = 0;
+  let asked3 = 0;
   for (let li = 0; li < lanes.length; li++)
     for (const b of boxes[li] ?? []) {
       if (isOn(lanes[li].cells[b.start])) continue;
-      asked2++;
+      asked3++;
       if (placeable[li]?.[b.start]) return true;
     }
-  return asked2 === 0;
+  return asked3 === 0;
 }
 __name(boxesPlaceNotes, "boxesPlaceNotes");
 function groupBoxesBySteps(boxes, starts2, steps, owners2) {
@@ -43290,20 +43311,38 @@ function ExactStepGrid({ notice = null }) {
     return out;
   }, [drawn, rows, gain]);
   const levelOf = /* @__PURE__ */ __name((t) => levelAt.get(t.toFixed(9)), "levelOf");
-  const velocityIn = React32.useMemo(() => ({ mini, gain, rows, bars }), [mini, gain, rows, bars]);
-  const velocityLate = React32.useDeferredValue(velocityIn);
-  const offered2 = React32.useMemo(() => {
+  const [offered2, setOffered] = React32.useState(() => /* @__PURE__ */ new Set());
+  React32.useEffect(() => {
     const out = /* @__PURE__ */ new Set();
-    const { mini: m, gain: g, rows: rs, bars: b } = velocityLate;
-    if (m === null || !g || g.foreign) return out;
-    for (const r of rs) {
+    setOffered(/* @__PURE__ */ new Set());
+    if (mini === null || !gain || gain.foreign) return;
+    const todo = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const r of rows) {
       for (const h of r.hits) {
         const k = h.begin.toFixed(9);
-        if (!out.has(k) && h.begin < b && stepGainEdit(m, g, b, { begin: h.begin, end: h.end }, 0.5).ok) out.add(k);
+        if (h.begin < bars && !seen.has(k)) {
+          seen.add(k);
+          todo.push({ begin: h.begin, end: h.end });
+        }
       }
     }
-    return out;
-  }, [velocityLate]);
+    let i = 0;
+    let timer = null;
+    const slice = /* @__PURE__ */ __name(() => {
+      const until = performance.now() + 8;
+      while (i < todo.length && performance.now() < until) {
+        const h = todo[i++];
+        if (stepGainEdit(mini, gain, bars, h, 0.5).ok) out.add(h.begin.toFixed(9));
+      }
+      if (i < todo.length) timer = setTimeout(slice, 0);
+      else setOffered(out);
+    }, "slice");
+    slice();
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [mini, gain, rows, bars]);
   const drawings = React32.useMemo(() => rows.map((r) => r.bars ? drawTreeRow(r.bars, barPx, openPx) : null), [rows, barPx, openPx]);
   const orderOf = /* @__PURE__ */ __name((r) => rows.filter((k) => k.part === r.part).map((k) => k.sound), "orderOf");
   const answers = React32.useMemo(() => {
@@ -43394,13 +43433,23 @@ function ExactStepGrid({ notice = null }) {
       const from = miniRef.current;
       const g = gainRef.current;
       if (from === null || !g) return { ok: false, why: "gain-not-ours" };
-      const r = stepGainEdit(from, g, bars, hit, level);
-      if (!r.ok || dryRun) return r.ok ? { ok: true } : r;
+      if (dryRun) {
+        const r = stepGainEdit(from, g, bars, hit, level);
+        return r.ok ? { ok: true } : r;
+      }
+      let out = { ok: false, why: "gain-not-ours" };
       applyEdit((fresh, wb) => {
-        if (fresh.miniString !== from) return;
-        commit(wb, stepGainWriteEdits(fresh, g.mini, r), "seq");
+        if (fresh.miniString === null) return;
+        const now2 = readChunkGain(fresh);
+        const r = stepGainEdit(fresh.miniString, now2, bars, hit, level);
+        if (!r.ok) {
+          out = r;
+          return;
+        }
+        commit(wb, stepGainWriteEdits(fresh, now2.mini, r), "seq");
+        out = { ok: true };
       });
-      return { ok: true };
+      return out;
     },
     [applyEdit, bars]
   );
@@ -46167,8 +46216,8 @@ function PianoRollGrid({
           );
         }
       } else if (d.mode === "resize" && d.moved && d.askedDur != null) {
-        const asked2 = d.askedDur;
-        const settled = resizeNote(d.base, d.origStart, d.origPitch, asked2, {
+        const asked3 = d.askedDur;
+        const settled = resizeNote(d.base, d.origStart, d.origPitch, asked3, {
           readback: true
         });
         const refused2 = settled === d.base;

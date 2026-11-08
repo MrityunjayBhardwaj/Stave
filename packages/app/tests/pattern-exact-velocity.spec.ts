@@ -90,6 +90,22 @@ test.describe('velocity per step in Exact (#2468)', () => {
     expect(await heard(page, want)).toEqual(['hh@0=1', 'hh@1/2=1', 'hh@1/4=0.5', 'hh@3/4=1'])
   })
 
+  test('a fast drag, several moves before the panel redraws, ends at the level of the last move', async ({ page }) => {
+    const grid = await open(page, '$: s("bd sd")')
+    const sd = await rowOf(grid, 'sd')
+    const box = (await cell(grid, sd, 0, '1/2').boundingBox())!
+    const x = box.x + box.width / 2
+    const y = box.y + box.height / 2
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    // every move in one task: React cannot redraw between them, as with a quick flick of the hand
+    await page.evaluate(([px, py]) => {
+      for (const dy of [10, 20, 30, 40]) window.dispatchEvent(new PointerEvent('pointermove', { clientX: px, clientY: py + dy, bubbles: true }))
+    }, [x, y])
+    await page.mouse.up()
+    await expect.poll(() => editorValue(page)).toBe('$: s("bd sd").gain("1 0.5")')
+  })
+
   test('one drag is one undo step', async ({ page }) => {
     const code = '$: s("bd sd")'
     const grid = await open(page, code)

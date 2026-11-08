@@ -59,6 +59,32 @@ export type StepGainResult =
 const EPS = 1e-9
 const no = (why: StepGainRefusal): StepGainResult => ({ ok: false, why })
 
+/**
+ * WHAT STRUDEL SAYS ABOUT ONE TEXT, KEPT. A panel asks `stepGainEdit` for every hit of a
+ * pattern after each edit (where velocity is offered), and every one of those asks the same
+ * questions of the same strings: what the sound plays, what the gain plays, whether a new
+ * gain lands on every hit. Asked once per text, a 400-hit pattern costs what one hit did
+ * (measured 2026-11-08: 72 ms a hit, 30 s a text, before). Thrown answers are kept too.
+ */
+const ASKED = new Map<string, { v?: unknown; e?: unknown }>()
+const ASKED_MAX = 2048
+function asked<T>(key: string, ask: () => T): T {
+  let got = ASKED.get(key)
+  if (!got) {
+    try {
+      got = { v: ask() }
+    } catch (e) {
+      got = { e }
+    }
+    if (ASKED.size >= ASKED_MAX) ASKED.delete(ASKED.keys().next().value as string)
+    ASKED.set(key, got)
+  }
+  if ('e' in got) throw got.e
+  return got.v as T
+}
+const heardIn = (mini: string, gain: string, cyc: number) => asked(`s\u0000${cyc}\u0000${mini}\u0000${gain}`, () => soundGainHits(mini, gain, cyc))
+const playsIn = (mini: string, cyc: number) => asked(`p\u0000${cyc}\u0000${mini}`, () => miniPattern(mini).hits(cyc))
+
 /** a level as the `.gain` writes it: `0.5`, `1`, two decimals at most */
 export function fmtLevel(v: number): string {
   if (!Number.isFinite(v)) return '1'
@@ -127,13 +153,15 @@ export function stepGainEdit(mini: string, gain: ChunkGain, bars: number, hit: {
   let heard: ReturnType<typeof soundGainHits>
   let plain: ReturnType<ReturnType<typeof miniPattern>['hits']>
   try {
-    heard = soundGainHits(mini, text, cyc)
-    plain = miniPattern(mini).hits(cyc)
+    heard = heardIn(mini, text, cyc)
+    plain = playsIn(mini, cyc)
     // a new string must land a level on every hit of the loop, or it would silence some
     if (created) {
-      for (let c = 0; c < bars; c++) {
-        if (soundGainHits(mini, text, c).length !== miniPattern(mini).hits(c).length) return no('no-gain-for-this-pattern')
-      }
+      const lands = asked(`m\u0000${bars}\u0000${mini}\u0000${text}`, () => {
+        for (let c = 0; c < bars; c++) if (heardIn(mini, text, c).length !== playsIn(mini, c).length) return false
+        return true
+      })
+      if (!lands) return no('no-gain-for-this-pattern')
     }
   } catch {
     return no('gain-does-not-evaluate')
@@ -144,7 +172,7 @@ export function stepGainEdit(mini: string, gain: ChunkGain, bars: number, hit: {
   // the level that plays on it: its own hit must be exactly the dragged hit
   let levels: ReturnType<ReturnType<typeof miniPattern>['hits']>
   try {
-    levels = miniPattern(text).hits(cyc)
+    levels = playsIn(text, cyc)
   } catch {
     return no('gain-does-not-evaluate')
   }
@@ -157,7 +185,7 @@ export function stepGainEdit(mini: string, gain: ChunkGain, bars: number, hit: {
   try {
     // every bar the level spans: a level held over a bar line (`1@2`) covers the next bar's hits too
     for (let c = Math.floor(own.begin.valueOf() + EPS); c < own.end.valueOf() - EPS; c++) {
-      const hits = c === cyc ? heard : soundGainHits(mini, text, c)
+      const hits = c === cyc ? heard : heardIn(mini, text, c)
       if (hits.some((h) => h.begin.valueOf() > own.begin.valueOf() + EPS && h.begin.valueOf() < own.end.valueOf() - EPS)) return no('gain-step-not-the-hit')
     }
   } catch {

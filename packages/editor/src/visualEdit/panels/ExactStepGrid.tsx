@@ -250,22 +250,41 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
 
   // WHERE A VELOCITY DRAG IS OFFERED: where the writer would write it, asked of `stepGainEdit`
   // itself for every hit (#1839's rule — never predicted beside the writer). `data-gain` says so
-  // on the cell. Read from deferred inputs: a drag rewrites the `.gain` on every move, and these
-  // dry runs must never hold the pointer up.
-  const velocityIn = React.useMemo(() => ({ mini, gain, rows, bars }), [mini, gain, rows, bars])
-  const velocityLate = React.useDeferredValue(velocityIn)
-  const offered = React.useMemo(() => {
+  // on the cell. Asked in slices of a few ms between frames: one ask is about 1-5 ms, and a
+  // pattern can have hundreds of hits (measured 2026-11-08: 416 hits, 1.4 s in all), which in one
+  // go would hold the page. Until a text's answers are in, no cell claims a velocity.
+  const [offered, setOffered] = React.useState<ReadonlySet<string>>(() => new Set())
+  React.useEffect(() => {
     const out = new Set<string>()
-    const { mini: m, gain: g, rows: rs, bars: b } = velocityLate
-    if (m === null || !g || g.foreign) return out
-    for (const r of rs) {
+    setOffered(new Set())
+    if (mini === null || !gain || gain.foreign) return
+    const todo: Array<{ begin: number; end: number }> = []
+    const seen = new Set<string>()
+    for (const r of rows) {
       for (const h of r.hits) {
         const k = h.begin.toFixed(9)
-        if (!out.has(k) && h.begin < b && stepGainEdit(m, g, b, { begin: h.begin, end: h.end }, 0.5).ok) out.add(k)
+        if (h.begin < bars && !seen.has(k)) {
+          seen.add(k)
+          todo.push({ begin: h.begin, end: h.end })
+        }
       }
     }
-    return out
-  }, [velocityLate])
+    let i = 0
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const slice = (): void => {
+      const until = performance.now() + 8
+      while (i < todo.length && performance.now() < until) {
+        const h = todo[i++]
+        if (stepGainEdit(mini, gain, bars, h, 0.5).ok) out.add(h.begin.toFixed(9))
+      }
+      if (i < todo.length) timer = setTimeout(slice, 0)
+      else setOffered(out)
+    }
+    slice()
+    return () => {
+      if (timer !== null) clearTimeout(timer)
+    }
+  }, [mini, gain, rows, bars])
   const drawings = React.useMemo(() => rows.map((r) => (r.bars ? drawTreeRow(r.bars, barPx, openPx) : null)), [rows, barPx, openPx])
   const orderOf = (r: ExactRow): string[] => rows.filter((k) => k.part === r.part).map((k) => k.sound)
 
@@ -373,13 +392,25 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
       const from = miniRef.current
       const g = gainRef.current
       if (from === null || !g) return { ok: false, why: 'gain-not-ours' }
-      const r = stepGainEdit(from, g, bars, hit, level)
-      if (!r.ok || dryRun) return r.ok ? { ok: true } : r
+      if (dryRun) {
+        const r = stepGainEdit(from, g, bars, hit, level)
+        return r.ok ? { ok: true } : r
+      }
+      // THE WRITE READS THE TEXT AS IT IS NOW, not as the panel last drew it: a fast drag sends
+      // several moves before a redraw, and each one must edit the `.gain` the last one wrote
+      let out: { ok: true } | { ok: false; why: StepGainRefusal } = { ok: false, why: 'gain-not-ours' }
       applyEdit((fresh, wb) => {
-        if (fresh.miniString !== from) return
-        commit(wb, stepGainWriteEdits(fresh, g.mini, r), 'seq')
+        if (fresh.miniString === null) return
+        const now = readChunkGain(fresh)
+        const r = stepGainEdit(fresh.miniString, now, bars, hit, level)
+        if (!r.ok) {
+          out = r
+          return
+        }
+        commit(wb, stepGainWriteEdits(fresh, now.mini, r), 'seq')
+        out = { ok: true }
       })
-      return { ok: true }
+      return out
     },
     [applyEdit, bars],
   )
