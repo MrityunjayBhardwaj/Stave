@@ -99,7 +99,7 @@ function SignInGate({ state }: { state: GallerySessionState }) {
   );
 }
 
-const KIND_LABEL: Record<GalleryKind, string> = { project: "Project", music: "Music", viz: "Viz" };
+const KIND_LABEL: Record<GalleryKind, string> = { project: "Project", music: "Music", viz: "Visual" };
 const KIND_NOTE: Record<GalleryKind, string> = {
   project: "Every file in this project.",
   music: "One pattern file.",

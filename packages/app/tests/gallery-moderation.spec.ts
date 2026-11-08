@@ -258,8 +258,8 @@ test.describe('Moderation by admin accounts (#2331)', () => {
     await user.page.locator('[data-gallery-tab="mine"]').click()
     await expect(user.page.locator('[data-gallery-mine-source="account"]')).toBeVisible({ timeout: 15_000 })
     await expect(user.page.locator('[data-gallery-tab="moderation"]')).toHaveCount(0)
-    // Control: the tab bar really rendered.
-    await expect(user.page.locator('[data-gallery-tab="project"]')).toBeVisible()
+    // Control: the header's buttons really rendered.
+    await expect(user.page.locator('[data-gallery-tab="mine"]')).toBeVisible()
 
     const r = user.context.request
     expect((await r.get('/api/gallery/admin/reports')).status()).toBe(403)
