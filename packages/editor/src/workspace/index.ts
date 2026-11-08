@@ -62,6 +62,8 @@ export type {
   WorkspaceShellProps,
   ChromeForTab,
   LiveCodingRuntimeProviderStub,
+  AppTabState,
+  AppTabLabel,
 } from './types'
 export type {
   LiveCodingRuntime as LiveCodingRuntimeInterface,

@@ -149,6 +149,8 @@ function generateTabId(prefix: string): string {
  * 2. Falling back to extension parsing from fileId (e.g., 'pianoroll.hydra').
  */
 function getLanguageFromTab(tab: WorkspaceTab): string | undefined {
+  // #2471 — an app tab shows no file, so it has no language.
+  if (tab.kind === 'app') return undefined
   // Primary: look up the WorkspaceFile store.
   const file = getFile(tab.fileId)
   if (file) return file.language
@@ -182,6 +184,7 @@ function registerBuiltinCommands(): void {
       const { activeTab, activeGroupId, shell, getPreviewProvider } = ctx
       if (!activeTab || !activeGroupId) return
       if (activeTab.kind === 'preview') return // can't preview a preview
+      if (activeTab.kind === 'app') return // #2471 — no file to preview
 
       const language = getLanguageFromTab(activeTab)
       if (!language) return
