@@ -25,6 +25,7 @@ import {
   type CropRegion,
   type ProjectMeta,
   type WorkspaceShellHandle,
+  type WorkspaceTab,
   type HapStream,
   type IREvent,
   type BreakpointStore,
@@ -64,7 +65,8 @@ import { FileTree, type FileTreeHandle } from "./FileTree";
 import { TemplateModal } from "./TemplateModal";
 import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
 // #2300 — the community gallery overlay, its command and its `#gallery=` links.
-import { GalleryHost, openGallery } from "../gallery/GalleryHost";
+import { GalleryHost, openGallery, placeTabState, useGalleryEntryActions } from "../gallery/GalleryHost";
+import { GALLERY_APP_KEY, GALLERY_APP_KEYS, GalleryTabBody, galleryTabLabel } from "../gallery/galleryTab";
 import {
   bumpEditorFontSize,
   toggleEditorMinimap,
@@ -719,6 +721,37 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   //   onActiveTabChange. Passed to FileTree so it highlights the active
   //   file in the tree.
   const shellRef = useRef<WorkspaceShellHandle | null>(null);
+
+  // #2473 — the community gallery: Open as new project runs as a project switch
+  // (the editor unmounts while the file store switches under it, as File → New
+  // does; otherwise the open editor writes into the new project).
+  const openGalleryProject = useCallback(async (load: () => Promise<ProjectMeta>) => {
+    setSwitching(true);
+    try {
+      const meta = await load();
+      setProjects(await listProjects());
+      setActiveProject(meta);
+      return meta;
+    } finally {
+      setSwitching(false);
+    }
+  }, []);
+  const galleryActions = useGalleryEntryActions({ unsavedBlocksLeaving, openProject: openGalleryProject });
+  const openPublish = useCallback(() => setPublishOpen(true), []);
+  // The gallery tab's body (the shell draws it only while the tab is in front).
+  const renderAppTab = useCallback(
+    (tab: WorkspaceTab & { kind: "app" }) =>
+      tab.appKey === GALLERY_APP_KEY ? (
+        <GalleryTabBody
+          tab={tab}
+          onOpenAsProject={galleryActions.openAsProject}
+          onAddToProject={galleryActions.addToProject}
+          onPublish={openPublish}
+          onPlaceChange={(place) => shellRef.current?.setAppTabState(GALLERY_APP_KEY, placeTabState(place))}
+        />
+      ) : null,
+    [galleryActions, openPublish],
+  );
   // #1346 — the File menu's "Bounce to WAV" needs the LIVE audio graph, which
   // lives in StrudelEditorClient's runtime map. Same shape as `shellRef`: we
   // own the ref, the child attaches the handle.
@@ -2228,6 +2261,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 key={activeProject.id}
                 projectId={activeProject.id}
                 shellRef={shellRef}
+                renderAppTab={renderAppTab}
+                appTabLabel={galleryTabLabel}
+                validAppKeys={GALLERY_APP_KEYS}
                 bounceRef={bounceRef}
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}
@@ -2372,23 +2408,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onDelete={handleDeleteProjectFromSwitcher}
       />
 
-      <GalleryHost
-        unsavedBlocksLeaving={unsavedBlocksLeaving}
-        onPublish={() => setPublishOpen(true)}
-        openProject={async (load) => {
-          // The editor unmounts while the file store switches under it, as
-          // File → New does; otherwise the open editor writes into the new project.
-          setSwitching(true);
-          try {
-            const meta = await load();
-            setProjects(await listProjects());
-            setActiveProject(meta);
-            return meta;
-          } finally {
-            setSwitching(false);
-          }
-        }}
-      />
+      <GalleryHost actions={galleryActions} shellRef={shellRef} onPublish={openPublish} />
 
       <StorageFullNotice onExport={handleExportProject} onOpenLibrary={openLibraryAtYourSounds} />
 
@@ -2424,9 +2444,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
               data-stave-menu-item
               style={styles.menuItem}
               onClick={() => {
-                shellRef.current?.closeTabsForFile(
-                  tabContextMenu.fileId ?? tabContextMenu.tabId,
-                );
+                // A file's tabs close together; an app or history tab has no
+                // file, so it closes by its own id (#2473).
+                if (tabContextMenu.fileId) shellRef.current?.closeTabsForFile(tabContextMenu.fileId);
+                else shellRef.current?.closeTab(tabContextMenu.tabId);
                 setTabContextMenu(null);
               }}
             >Close</button>

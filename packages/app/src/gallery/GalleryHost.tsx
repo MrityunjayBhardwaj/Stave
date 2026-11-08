@@ -1,15 +1,28 @@
 "use client";
 
 /**
- * Community gallery (#2300) — mounts the overlay and connects it to the app:
- * the `stave.view.gallery` command, a `#gallery=<id>` link on load, and the two
+ * Community gallery (#2300) — connects the gallery to the app: the
+ * `stave.view.gallery` command, a `#gallery=<id>` link on load, and the two
  * ways an entry lands in Stave (a new project, or one file in this project).
+ *
+ * #2473 — on a desktop every way in opens (or focuses) the one gallery tab in
+ * the workspace, on the view asked for; on a phone it opens the full-screen
+ * overlay, as before (#2470: phones keep it until #1989). Both draw the same
+ * GalleryView over the page's one store (galleryTab.tsx).
  *
  * Kept out of StaveApp so the app shell gains one element and one menu action.
  */
-import React, { useCallback, useEffect, useState } from "react";
-import { getActiveProjectId, type ProjectMeta, type WorkspaceFile } from "@stave/editor";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  getActiveProjectId,
+  isPhone,
+  type AppTabState,
+  type ProjectMeta,
+  type WorkspaceFile,
+  type WorkspaceShellHandle,
+} from "@stave/editor";
 import { GalleryOverlay } from "./GalleryOverlay";
+import { GALLERY_APP_KEY, galleryTabStore, openGalleryStore, placeOf, type GalleryPlace } from "./galleryTab";
 import { claimIntoAccount } from "./client";
 import { runClaimOnce } from "./claimRun";
 import { useGallerySession } from "./session";
@@ -24,15 +37,16 @@ import { showToast } from "../dialogs/host";
 const OPEN_EVENT = "stave:open-gallery";
 
 /**
- * Open the gallery overlay (the menu item; anything else that wants it) — on an
- * entry id, or (#2314 / #2315) on a profile or collection.
+ * Open the gallery (the menu item; anything else that wants it) — on an entry
+ * id, or (#2314 / #2315) on a profile or collection. A tab on a desktop, the
+ * overlay on a phone.
  */
 export function openGallery(target?: string | GalleryLinkTarget): void {
   const view: GalleryLinkTarget | null = typeof target === "string" ? { kind: "entry", id: target } : (target ?? null);
   window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: view }));
 }
 
-export interface GalleryHostProps {
+export interface GalleryEntryActionsInput {
   /** StaveApp's guard: true (and it has said why) when the open project can't be left. */
   unsavedBlocksLeaving: () => boolean;
   /**
@@ -41,20 +55,48 @@ export interface GalleryHostProps {
    * the new project becomes the app's active one. Same shape as File → New.
    */
   openProject: (load: () => Promise<ProjectMeta>) => Promise<ProjectMeta>;
+}
+
+/** The two ways an entry lands in Stave; each resolves true when it did. */
+export interface GalleryEntryActions {
+  openAsProject: (entry: GalleryEntry, manifest: GalleryManifest) => Promise<boolean>;
+  addToProject: (entry: GalleryEntry, manifest: GalleryManifest) => Promise<boolean>;
+}
+
+export interface GalleryHostProps {
+  /** From `useGalleryEntryActions` — the tab body (StaveApp draws it) uses the same pair. */
+  actions: GalleryEntryActions;
+  /** The workspace shell: where the gallery tab opens on a desktop. */
+  shellRef: React.RefObject<WorkspaceShellHandle | null>;
   /** #2312 — the gallery's "Publish yours" button opens the Publish dialog. */
   onPublish?: () => void;
 }
 
 const RUN_HINT = "Nothing has run yet — press Play when you're ready.";
 
-export function GalleryHost({ unsavedBlocksLeaving, openProject, onPublish }: GalleryHostProps) {
+/** A gallery place as the shell stores it (plain JSON). */
+export function placeTabState(place: GalleryPlace): AppTabState {
+  return JSON.parse(JSON.stringify(place)) as AppTabState;
+}
+
+export function GalleryHost({ actions, shellRef, onPublish }: GalleryHostProps) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<GalleryLinkTarget | null>(null);
 
-  const show = useCallback((target: GalleryLinkTarget | null) => {
-    setView(target);
-    setOpen(true);
-  }, []);
+  const show = useCallback(
+    (target: GalleryLinkTarget | null) => {
+      const shell = shellRef.current;
+      if (isPhone() || !shell) {
+        setView(target);
+        setOpen(true);
+        return;
+      }
+      // A real open: fetch again, start from the view asked for, then show the tab there.
+      openGalleryStore(galleryTabStore, target);
+      shell.openAppTab(GALLERY_APP_KEY, { state: placeTabState(placeOf(galleryTabStore.getState())) });
+    },
+    [shellRef],
+  );
 
   useEffect(() => {
     const onOpen = (e: Event) => show(((e as CustomEvent).detail as GalleryLinkTarget | null) ?? null);
@@ -103,6 +145,25 @@ export function GalleryHost({ unsavedBlocksLeaving, openProject, onPublish }: Ga
     return () => window.removeEventListener("hashchange", check);
   }, [show]);
 
+  return (
+    <GalleryOverlay
+      open={open}
+      initialEntryId={null}
+      initialView={view}
+      store={galleryTabStore}
+      onClose={() => {
+        setOpen(false);
+        setView(null);
+      }}
+      onOpenAsProject={actions.openAsProject}
+      onAddToProject={actions.addToProject}
+      onPublish={onPublish}
+    />
+  );
+}
+
+/** Open as new project / Add to this project, for the tab and the overlay alike. */
+export function useGalleryEntryActions({ unsavedBlocksLeaving, openProject }: GalleryEntryActionsInput): GalleryEntryActions {
   const openAsProject = useCallback(
     async (entry: GalleryEntry, manifest: GalleryManifest): Promise<boolean> => {
       if (unsavedBlocksLeaving()) return false;
@@ -148,18 +209,5 @@ export function GalleryHost({ unsavedBlocksLeaving, openProject, onPublish }: Ga
     return true;
   }, []);
 
-  return (
-    <GalleryOverlay
-      open={open}
-      initialEntryId={null}
-      initialView={view}
-      onClose={() => {
-        setOpen(false);
-        setView(null);
-      }}
-      onOpenAsProject={openAsProject}
-      onAddToProject={addToProject}
-      onPublish={onPublish}
-    />
-  );
+  return useMemo(() => ({ openAsProject, addToProject }), [openAsProject, addToProject]);
 }

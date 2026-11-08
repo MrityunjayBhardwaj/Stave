@@ -50087,6 +50087,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           return changed ? next : prev;
         });
       }, "promoteTab"),
+      closeTab: /* @__PURE__ */ __name((tabId) => closeTabById(tabId), "closeTab"),
       closeTabsForFile: /* @__PURE__ */ __name((fileId) => {
         const targets = [];
         for (const g of groups.values()) {

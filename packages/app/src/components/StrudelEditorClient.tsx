@@ -40,6 +40,7 @@ import {
   getResolvedTheme,
   onThemeChange,
   type WorkspaceShellHandle,
+  type WorkspaceShellProps,
   type ResolvedTheme,
   getFile,
   subscribeToWorkspaceFile,
@@ -436,6 +437,15 @@ interface StrudelEditorClientProps {
    */
   projectId: string;
   shellRef?: React.RefObject<WorkspaceShellHandle | null>;
+  /** #2473 — draws app tabs (the gallery); passed straight to the shell. */
+  renderAppTab?: WorkspaceShellProps["renderAppTab"];
+  /** #2473 — labels app tabs; passed straight to the shell. */
+  appTabLabel?: WorkspaceShellProps["appTabLabel"];
+  /**
+   * #2473 — the app tabs the host can draw. A saved layout keeps an app tab
+   * only if its key is here, so without it a gallery tab is dropped on reload.
+   */
+  validAppKeys?: ReadonlySet<string>;
   /**
    * #1346 — populated with a handle onto the ACTIVE file's live audio graph so
    * StaveApp can offer "Bounce to WAV" from the File menu.
@@ -640,6 +650,9 @@ export function shownError(st: { error: Error | null; errorMessage?: string }): 
 export default function StrudelEditorClient({
   projectId,
   shellRef,
+  renderAppTab,
+  appTabLabel,
+  validAppKeys,
   bounceRef,
   onActiveFileChange,
   onActiveRuntimeStateChange,
@@ -2130,7 +2143,7 @@ export default function StrudelEditorClient({
     (() => {
       const files = listWorkspaceFiles();
       const validIds = new Set(files.map((f) => f.id));
-      const persisted = loadShellState(projectId, validIds);
+      const persisted = loadShellState(projectId, validIds, validAppKeys);
       if (persisted) return hydrateSnapshot(persisted);
       // First load (or wiped persistence) → single Strudel tab.
       const strudelFile = files.find((f) => f.language === "strudel") ?? files[0];
@@ -2560,6 +2573,8 @@ export default function StrudelEditorClient({
     <>
     <WorkspaceShell
       ref={shellRef}
+      renderAppTab={renderAppTab}
+      appTabLabel={appTabLabel}
       initialGroups={initialSnapshot.groups}
       initialLayout={initialSnapshot.layout}
       initialActiveGroupId={initialSnapshot.activeGroupId}
