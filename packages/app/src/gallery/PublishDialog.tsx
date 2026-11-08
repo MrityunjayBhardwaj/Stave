@@ -13,6 +13,7 @@ import {
   publishAndRemember,
   type PublishForm,
 } from "./publish";
+import { shownName } from "./reservedNames";
 import { captureLiveVizThumbnail, type CaptureResult } from "./thumbnail";
 import { TurnstileWidget, turnstileSiteKey } from "./TurnstileWidget";
 import {
@@ -267,7 +268,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
           noValidate
         >
           <p style={styles.as} data-testid="gallery-publish-as">
-            Publishing as <strong>{user.name}</strong> ({accountLabel(user.verified)}). To change the name shown, edit
+            Publishing as <strong>{shownName(user.name)}</strong> ({accountLabel(user.verified)}). To change the name shown, edit
             your profile.
           </p>
 

@@ -23,6 +23,7 @@ import {
 import { AuthorName, Card, CollectionCard } from "./GalleryCards";
 import { loadAuthor } from "./localShares";
 import { renderMarkdown } from "./markdown";
+import { shownName } from "./reservedNames";
 import {
   buildCollectionRequest,
   buildProfileRequest,
@@ -214,7 +215,7 @@ export function ProfileView({
         <>
           <div className="sg-detail-head">
             <div>
-              <h3 className="sg-profile-name">{author.name}</h3>
+              <h3 className="sg-profile-name">{shownName(author.name)}</h3>
               {author.verified && <VerifiedBadge verified={author.verified} />}
               <div className="sg-card-meta">
                 {entries.length === 1 ? "1 entry" : `${entries.length} entries`} · since{" "}

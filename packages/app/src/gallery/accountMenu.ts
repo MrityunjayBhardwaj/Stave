@@ -5,6 +5,7 @@
  * the menu bar then draws no account button rather than a wrong one.
  */
 import type { AccountMenu } from "../components/menuModel";
+import { shownName } from "./reservedNames";
 import type { GallerySessionState } from "./session";
 
 export function buildAccountMenu(
@@ -17,7 +18,7 @@ export function buildAccountMenu(
     const { authorId } = s.user;
     return {
       state: "signed-in",
-      name: s.user.name,
+      name: shownName(s.user.name), // #2465
       avatarUrl: s.user.verified.avatarUrl,
       onMyProfile: () => on.onMyProfile(authorId),
       onSignOut: on.onSignOut,
