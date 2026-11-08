@@ -891,6 +891,10 @@
     "runs": "gate",
     "why": "The step grid in Exact, drawn and edited from the bar's tree with no equal columns (#2458): real clicks, a paint drag, the length handle, the keys, add and remove a voice, the + handle, zoom and the playhead, each with the code read back and what the page's own Strudel plays."
   },
+  "pattern-exact-velocity.spec.ts": {
+    "runs": "gate",
+    "why": "Velocity per step on the Exact grid (#2468) and the click under a gain rest (#2467): real vertical drags on lit cells write a new .gain that mirrors the steps, rewrite an existing level in place, write out one hit of 1*4, undo as one step, and refuse with a reason where the level covers more than the hit; a click under a gain ~ is inert and says why. Each with the code read back and what the page's own Strudel plays, hit by hit."
+  },
   "pattern-tree-grid.spec.ts": {
     "runs": "gate",
     "why": "Grid drawn from the pattern's own divisions, look-only (#1834): a pattern the columns cannot hold (96 columns, an onset off every column) draws every step at its exact share of the bar, closed groups as small boxes, its hits, and a ruler naming steps by place. Pins the box and hit counts, equal eighths, that a click writes nothing, that Ctrl/Cmd + wheel opens the groups with the hits unmoved, five levels opening on a deep pattern, the roll opening a beat of five, and an editable pattern still opening the column grid."

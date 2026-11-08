@@ -228,3 +228,98 @@ export function respellCopies(text: string, kind: 'star' | 'bang'): string {
     return text
   }
 }
+
+/* ── a `.gain` that mirrors the steps ─────────────────────────────── */
+
+/** the plain text an op argument holds (`8` of `bd(3,8)`), or null for anything else */
+function argText(a: unknown): string | null {
+  if (!a || typeof a !== 'object') return null
+  const n = a as { type_?: string; source_?: unknown }
+  if (n.type_ === 'atom' && typeof n.source_ === 'string') return n.source_
+  if (n.type_ === 'element') return argText(n.source_)
+  return null
+}
+
+/** one element of the pattern, every step of it `level`: null where it has no such spelling here */
+function mirrorElement(e: SElement, level: string): string | null {
+  const src = e.source_
+  let body: string | null
+  if (src.type_ === 'atom') body = level
+  else if (src.arguments_.alignment === 'stack') body = level // a chord sounds once there: one value for all of it
+  else {
+    const inner = mirrorPattern(src, level)
+    if (inner === null) return null
+    body = src.arguments_.alignment === 'polymeter_slowcat' ? inner : `[${inner}]`
+  }
+  let text = body
+  for (const op of e.options_.ops) {
+    const a = op.arguments_ ?? {}
+    if (op.type_ === 'tail' || op.type_ === 'degradeBy') continue // a variant has no level; `?` would drop a level, and the hit with it
+    if (op.type_ === 'stretch' && (a.type === 'fast' || a.type === 'slow')) {
+      const k = argText(a.amount)
+      if (k === null || !/^[0-9]+(\.[0-9]+)?$/.test(k)) return null
+      text += (a.type === 'fast' ? '*' : '/') + k
+    } else if (op.type_ === 'replicate') text += '!' + String(a.amount)
+    else if (op.type_ === 'bjorklund') {
+      // every place of the euclid gets its own level, hit or not: a click that fills one is never silenced
+      const n = argText(a.step)
+      if (n === null || !/^[1-9][0-9]*$/.test(n)) return null
+      text += '*' + n
+    } else return null
+  }
+  const reps = e.options_.reps
+  const held = reps > 1 ? e.options_.weight - reps : e.options_.weight
+  if (reps > 1 && held !== 0) return null
+  return held > 1 || (reps === 1 && held !== 1) ? `${text}@${held}` : text
+}
+
+/**
+ * A pattern's inside, every step `level`: a sequence (`fastcat`), steps split by `.` (`feet`,
+ * each foot a sequence), or `<…>` with one layer (`polymeter_slowcat`, returned with its angle
+ * brackets). Null for anything else.
+ */
+function mirrorPattern(p: SPattern, level: string): string | null {
+  const a = p.arguments_.alignment
+  if (a === 'fastcat') return mirrorSeq(p.source_ as SElement[], level)
+  const layers = p.source_ as Array<SElement | SPattern>
+  const seqOf = (l: SElement | SPattern): string | null =>
+    l.type_ === 'pattern' && l.arguments_.alignment === 'fastcat' ? mirrorSeq(l.source_ as SElement[], level) : null
+  if (a === 'feet') {
+    const feet = layers.map(seqOf)
+    return feet.some((f) => f === null) ? null : feet.join(' . ')
+  }
+  if (a === 'polymeter_slowcat' && layers.length === 1) {
+    const inner = seqOf(layers[0])
+    return inner === null ? null : `<${inner}>`
+  }
+  return null
+}
+
+function mirrorSeq(els: readonly SElement[], level: string): string | null {
+  const out: string[] = []
+  for (const e of els) {
+    const t = mirrorElement(e, level)
+    if (t === null) return null
+    out.push(t)
+  }
+  return out.join(' ')
+}
+
+/**
+ * A `.gain` string with the pattern's own steps, each one `level` (#2468, the user's ruling
+ * 2026-11-08): `bd [hh hh] sd hh` → `0.5 [0.5 0.5] 0.5 0.5`. Rests take a level too, so a hit
+ * a later click adds is never under a gain `~`; a chord is one level, a euclid one per place,
+ * a `?` none of its own. Null where the pattern has a part this does not spell (`,` parts side
+ * by side, `|`, `{…}`, a pattern as an op's amount): a stack of levels would play each hit once
+ * per layer. Krill reads the pattern; whether the levels land on every hit is the caller's to
+ * ask of Strudel.
+ */
+export function gainMirror(mini: string, level: string): string | null {
+  try {
+    const root = bare(miniTree(mini)) as unknown as SPattern
+    // `<…>` at the top is a pattern of its own, not this one's inside
+    return root.arguments_.alignment === 'polymeter_slowcat' ? null : mirrorPattern(root, level)
+  } catch {
+    return null
+  }
+}
