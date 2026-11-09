@@ -62,6 +62,8 @@ export type {
   WorkspaceShellProps,
   ChromeForTab,
   LiveCodingRuntimeProviderStub,
+  AppTabState,
+  AppTabLabel,
 } from './types'
 export type {
   LiveCodingRuntime as LiveCodingRuntimeInterface,
@@ -141,6 +143,7 @@ export {
   HYDRA_VIZ,
   P5_VIZ,
   GLSL_VIZ,
+  THREE_VIZ,
   seedFromPreset,
   seedFromPresetId,
   flushToPreset,

@@ -96,7 +96,14 @@ test.describe('Publish to Gallery (#2301)', () => {
 
     expect(seen).toHaveLength(1)
     const body = seen[0].postDataJSON() as Record<string, unknown>
-    expect(Object.keys(body).sort()).toEqual(['kind', 'manifest', 'tags', 'thumbnail', 'title'])
+    expect(Object.keys(body).sort()).toEqual(['kind', 'manifest', 'recording', 'tags', 'thumbnail', 'title'])
+    // #2487 — what the patterns play, recorded here by the author's own Stave
+    const rec = body.recording as { v: number; cover: string | null; contents: { patterns: number }; files: Array<{ path: string; cycles: number; lanes: unknown[]; events: unknown[] }> }
+    expect(rec.v).toBe(1)
+    expect(rec.contents.patterns).toBeGreaterThan(0)
+    expect(rec.files.length).toBeGreaterThan(0)
+    expect(rec.files[0].events.length).toBeGreaterThan(0)
+    expect(rec.files.map((f) => f.path)).toContain(rec.cover)
     expect(body).toMatchObject({ title: 'Night drive', kind: 'project', tags: ['ambient', 'Drums'] })
     const manifest = body.manifest as { schemaVersion: number; files: unknown[] }
     expect(manifest.schemaVersion).toBe(1)
@@ -121,7 +128,7 @@ test.describe('Publish to Gallery (#2301)', () => {
     await expect(page.getByTestId('gallery-publish-as')).toBeVisible()
 
     await page.getByTestId('gallery-publish-kind-music').click()
-    await expect(page.getByTestId('gallery-publish-thumbnail')).toContainText('card with the title')
+    await expect(page.getByTestId('gallery-publish-thumbnail')).toContainText('draws what it plays')
     const fileId = await page.getByTestId('gallery-publish-file').inputValue()
     await page.getByTestId('gallery-publish-submit').click()
     await expect(page.locator('[data-testid="toast"]', { hasText: 'Published' })).toBeVisible({ timeout: 10_000 })
@@ -130,6 +137,11 @@ test.describe('Publish to Gallery (#2301)', () => {
     expect(body.kind).toBe('music')
     expect(body.thumbnail).toBeUndefined()
     expect(body.manifest.files.map((f) => f.id)).toEqual([fileId])
+    // #2487 — and what it plays, its one file the cover
+    const rec = (body as unknown as { recording: { cover: string; files: Array<{ path: string; lanes: unknown[]; events: unknown[] }> } }).recording
+    expect(rec.files).toHaveLength(1)
+    expect(rec.cover).toBe(rec.files[0].path)
+    expect(rec.files[0].lanes.length).toBeGreaterThan(0)
     expect(['strudel', 'sonicpi']).toContain(body.manifest.files[0].language)
   })
 

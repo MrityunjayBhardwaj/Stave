@@ -39,6 +39,7 @@ export function toGalleryEntry(r: EntryRow): GalleryEntry {
     publishedAt: r.publishedAt,
     fileCount: r.fileCount,
     hasThumbnail: r.hasThumbnail,
+    ...(r.hasRecording ? { hasRecording: true } : {}),
   };
 }
 
@@ -82,6 +83,7 @@ export async function insertEntry(
       publishedAt: e.publishedAt,
       fileCount: e.fileCount,
       hasThumbnail: e.hasThumbnail,
+      hasRecording: e.hasRecording === true,
       authorEmail: input.authorEmail,
       manageTokenHash: input.manageTokenHash,
     })

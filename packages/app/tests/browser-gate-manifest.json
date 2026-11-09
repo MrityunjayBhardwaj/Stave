@@ -19,6 +19,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "background-options-per-pattern.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project"
+  },
   "background-owns-its-options.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
@@ -517,9 +521,17 @@
   },
   "gallery-sandbox.spec.ts": {
     "runs": "gate",
-    "why": "collected by the gate \u2014 it runs the whole chromium project; there only its trust-step tests run \u2014 the preview tests skip themselves, saying why, because the gate's server is next dev, which can't host the sandboxed frame. CI runs the whole file against the production build (ci.yml, #2343)"
+    "why": "collected by the gate \u2014 it runs the whole chromium project; there only its trust-step and embed tests run \u2014 the preview tests skip themselves, saying why, because the gate's server is next dev, which can't host the sandboxed frame. CI runs the whole file against the production build (ci.yml, #2343)"
+  },
+  "gallery-reserved-names.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN"
   },
   "gallery-sign-in.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN"
+  },
+  "gallery-session-lifetime.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN"
   },
@@ -979,6 +991,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "share-link-check.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "share-short-link.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
@@ -1070,6 +1086,10 @@
   "take-waveform.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "three-viz.spec.ts": {
+    "runs": "measurement",
+    "why": "measures real-time rendering \u2014 serialised alone on the GPU (MEASUREMENT_SPECS in playwright.config.ts)"
   },
   "time-signature.spec.ts": {
     "runs": "gate",

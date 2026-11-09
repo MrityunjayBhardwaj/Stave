@@ -97,6 +97,20 @@ function docParses(doc) {
   return parseTopLevel(doc) !== null;
 }
 __name(docParses, "docParses");
+function parseModule(code) {
+  try {
+    return { ok: true, program: parse(code, { ecmaVersion: "latest", sourceType: "module", locations: true }) };
+  } catch (e) {
+    const err = e;
+    return {
+      ok: false,
+      message: String(err.message ?? e).replace(/\s*\(\d+:\d+\)$/, ""),
+      line: err.loc?.line,
+      column: err.loc?.column
+    };
+  }
+}
+__name(parseModule, "parseModule");
 
 // src/codeView/tempo.ts
 var SETTERS = {
@@ -7682,64 +7696,6 @@ function resolveVizOptions(code, evaluated) {
 }
 __name(resolveVizOptions, "resolveVizOptions");
 
-// src/codeView/mixer/backdropCall.ts
-function stringLiteral(raw) {
-  const m = /^(['"`])([\s\S]*)\1$/.exec(raw);
-  if (!m) return null;
-  if (m[1] === "`" && m[2].includes("${")) return null;
-  if (m[2].includes(m[1])) return null;
-  return m[2];
-}
-__name(stringLiteral, "stringLiteral");
-function isVizMethod(name) {
-  return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, name);
-}
-__name(isVizMethod, "isVizMethod");
-function readBackdropCall(call, onMaster) {
-  if (call.name === "viz") {
-    const nameArg = call.args[0];
-    const optionsArg2 = call.args[1];
-    const options = optionsArg2 ? readVizOptionsLiteral(optionsArg2.raw) : null;
-    if (!onMaster && !(options?.kind === "literal" && options.values.backdrop === true)) return null;
-    return { name: nameArg ? stringLiteral(nameArg.raw) : null, options, call };
-  }
-  const underscore = call.name.startsWith("_");
-  const method = underscore ? call.name.slice(1) : call.name;
-  if (!isVizMethod(method)) return null;
-  if (underscore && !onMaster) return null;
-  const optionsArg = call.args[0];
-  return {
-    name: STRUDEL_VIZ_METHODS[method],
-    options: optionsArg ? readVizOptionsLiteral(optionsArg.raw) : null,
-    call
-  };
-}
-__name(readBackdropCall, "readBackdropCall");
-function lastTrackBackdropCall(doc) {
-  const statements = parseTopLevel(doc);
-  if (!statements) return null;
-  let last = null;
-  for (const node of statements) {
-    const body = node.type === "LabeledStatement" ? node.body : node;
-    if (body?.type !== "ExpressionStatement") continue;
-    const expr = body.expression;
-    if (expr?.type === "CallExpression" && expr.callee?.type === "Identifier" && expr.callee.name === "all") continue;
-    const r = lastBackdropCall(collectChain(doc, expr, { ref: null }), false);
-    if (r) last = r;
-  }
-  return last;
-}
-__name(lastTrackBackdropCall, "lastTrackBackdropCall");
-function lastBackdropCall(chain, onMaster) {
-  let last = null;
-  for (const c of chain) {
-    const r = readBackdropCall(c, onMaster);
-    if (r) last = r;
-  }
-  return last;
-}
-__name(lastBackdropCall, "lastBackdropCall");
-
 // src/codeView/mixer/masterEdit.ts
 var MASTER_UNITY_GAIN = 1;
 function matchAllArrow(node) {
@@ -7828,19 +7784,14 @@ function findMuteLine(doc) {
   return detectMasterAll(doc).find((m) => arrowBodyText(doc, m) === "silence");
 }
 __name(findMuteLine, "findMuteLine");
-function findMasterBackdrop(doc) {
-  let found = null;
-  for (const m of detectMasterAll(doc)) {
-    const bc = lastBackdropCall(m.chain, true);
-    if (bc) found = { m, bc };
-  }
-  return found;
+function findVizBackdropCall(m) {
+  return m.chain.find((c) => c.name === "viz");
 }
-__name(findMasterBackdrop, "findMasterBackdrop");
-function masterBackdropCall(doc) {
-  return findMasterBackdrop(doc)?.bc ?? null;
+__name(findVizBackdropCall, "findVizBackdropCall");
+function vizNameArg(c) {
+  return c.args.find((a) => /^['"`]/.test(a.raw));
 }
-__name(masterBackdropCall, "masterBackdropCall");
+__name(vizNameArg, "vizNameArg");
 function readMasterGain(doc) {
   const site = findMasterGainSite(doc);
   if (!site) return { value: MASTER_UNITY_GAIN, foreign: false };
@@ -7857,7 +7808,7 @@ __name(readMasterMute, "readMasterMute");
 function detectMasterAudioAll(doc) {
   return detectMasterAll(doc).find((m) => {
     if (arrowBodyText(doc, m) === "silence") return false;
-    if (m.chain.length >= 1 && m.chain.every((c) => readBackdropCall(c, true) !== null)) return false;
+    if (m.chain.length >= 1 && m.chain.every((c) => c.name === "viz")) return false;
     return true;
   });
 }
@@ -7891,9 +7842,18 @@ function adaptMasterChunk(doc, m) {
 }
 __name(adaptMasterChunk, "adaptMasterChunk");
 function readMasterViz(doc) {
-  const bc = masterBackdropCall(doc);
-  if (!bc || bc.name === null) return null;
-  return { name: bc.name, options: bc.options };
+  for (const m of detectMasterAll(doc)) {
+    const v = findVizBackdropCall(m);
+    if (!v) continue;
+    const nameArg = vizNameArg(v);
+    if (!nameArg) continue;
+    const optionsArg = v.args.find((a) => a !== nameArg);
+    return {
+      name: nameArg.raw.slice(1, -1),
+      options: optionsArg ? readVizOptionsLiteral(optionsArg.raw) : null
+    };
+  }
+  return null;
 }
 __name(readMasterViz, "readMasterViz");
 function scaleCall(value) {
@@ -7916,25 +7876,18 @@ function masterMuteEdit(doc, muted3) {
 }
 __name(masterMuteEdit, "masterMuteEdit");
 function masterVizEdit(doc, name) {
-  const found = findMasterBackdrop(doc);
-  if (found) {
-    const { m, bc } = found;
+  for (const m of detectMasterAll(doc)) {
+    const v = findVizBackdropCall(m);
+    if (!v) continue;
     if (name === null) {
       if (m.chain.length === 1) return removeStatement(doc, m.statementRange);
-      return { range: bc.call.range, text: "" };
+      return { range: v.range, text: "" };
     }
-    if (bc.call.name === "viz") {
-      const nameArg = bc.call.args[0];
-      if (!nameArg || bc.name === null) return null;
-      return { range: nameArg.range, text: JSON.stringify(name) };
-    }
-    const optionsArg = bc.call.args[0];
-    return { range: bc.call.range, text: `.viz(${JSON.stringify(name)}${optionsArg ? `, ${optionsArg.raw}` : ""})` };
+    const nameArg = vizNameArg(v);
+    if (!nameArg) return null;
+    return { range: nameArg.range, text: JSON.stringify(name) };
   }
-  if (name === null) {
-    const track = lastTrackBackdropCall(doc);
-    return track ? { range: track.call.range, text: "" } : null;
-  }
+  if (name === null) return null;
   return insertStatement(doc, `all(x => x.viz(${JSON.stringify(name)}, { backdrop: true }))`);
 }
 __name(masterVizEdit, "masterVizEdit");
@@ -13453,18 +13406,6 @@ function gridWritePlan(codec, next) {
 }
 __name(gridWritePlan, "gridWritePlan");
 
-// src/codeView/mixer/codeViz.ts
-function readCodeViz(doc) {
-  const master = masterBackdropCall(doc);
-  if (master) {
-    return master.name === null ? null : { name: master.name, options: master.options, level: "master" };
-  }
-  const track = lastTrackBackdropCall(doc);
-  if (!track || track.name === null) return null;
-  return { name: track.name, options: track.options, level: "track" };
-}
-__name(readCodeViz, "readCodeViz");
-
 // src/codeView/noteSounds.ts
 var VALUE_ONLY = /* @__PURE__ */ new Set([
   "gain",
@@ -17998,11 +17939,6 @@ var _StrudelEngine = class _StrudelEngine {
             configurable: true,
             writable: true,
             value: /* @__PURE__ */ __name(function(opts) {
-              if (masterTransformDepth > 0) {
-                capturedBackdropViz = renderer;
-                capturedBackdropVizOptions = opts && typeof opts === "object" ? opts : null;
-                return this;
-              }
               this._pendingViz = renderer;
               pendingChainViz = renderer;
               if (opts && typeof opts === "object") {
@@ -20290,6 +20226,10 @@ var VizFramePump = _VizFramePump;
 var vizFramePump = new VizFramePump();
 
 // src/visualizers/renderers/WorkerVizRenderer.ts
+function currentVizSignalAliases() {
+  return resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE);
+}
+__name(currentVizSignalAliases, "currentVizSignalAliases");
 var workerPerfSeq = 0;
 var optionsKeySeq = 0;
 function stableKey(options) {
@@ -20445,7 +20385,7 @@ ${d.stack}` : "");
       };
       worker.addEventListener("message", this.diagHandler);
       this.bindSampler(components);
-      const aliases = resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE);
+      const aliases = currentVizSignalAliases();
       const mountOptions = this.postOptions(components);
       const mountMsg = {
         type: "mount",
@@ -32640,7 +32580,8 @@ var G_GLSL_TRACK = "signals \xB7 per-track";
 var RULE = {
   p5: "rule: every signal lives on sig \u2014 sig.kick is a number, sig.fft an array, sig('bd') one sound",
   hydra: "rule: every signal lives on stave.sig \u2014 sig.kick() a number, sig.fft an array, sig('bd') one sound",
-  glsl: "rule: scalars are floats \xB7 spectrum/waveform = iChannel0 texture \xB7 per-track via staveTrack(i)"
+  glsl: "rule: scalars are floats \xB7 spectrum/waveform = iChannel0 texture \xB7 per-track via staveTrack(i)",
+  three: "rule: plain three.js; every signal lives on sig \u2014 sig.bass is a number, sig.fft an array, sig('bd') one sound"
 };
 var ENV_LIVE = /* @__PURE__ */ __name((env) => ({ kind: "scalar", read: env }), "ENV_LIVE");
 var GLSL_GLOBALS = [
@@ -32707,6 +32648,11 @@ var P5_GLOBALS = [
   { group: G_STRUCTURED, decl: "string[] sig.tracks, sig.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] },
   { group: G_STRUCTURED, decl: "number   sig.density;", comment: "quality LOD multiplier (1 = full)", tokens: ["density"] }
 ];
+var THREE_GLOBALS = [
+  { group: G_CONTEXT, decl: "object            stave.options;", comment: "the .viz({ ... }) argument", tokens: ["options"] },
+  { group: G_CONTEXT, decl: "number            stave.width, stave.height;", comment: "the viz size (also innerWidth / innerHeight)", tokens: ["width", "height"] },
+  ...P5_GLOBALS.filter((g) => g.group !== G_CONTEXT)
+];
 var HYDRA_GLOBALS = [
   {
     group: G_SCALARS_THUNK,
@@ -32738,6 +32684,7 @@ var HYDRA_GLOBALS = [
 ];
 var CATALOGUE = {
   p5: P5_GLOBALS,
+  three: THREE_GLOBALS,
   hydra: HYDRA_GLOBALS,
   glsl: GLSL_GLOBALS
 };
@@ -33076,7 +33023,8 @@ var vizSignalProbe = new VizSignalProbe();
 var FENCE_LANG = {
   p5: "javascript",
   hydra: "javascript",
-  glsl: "glsl"
+  glsl: "glsl",
+  three: "javascript"
 };
 function bar(v) {
   const cells = 8;
@@ -33608,6 +33556,8 @@ function toMonacoLanguage(lang) {
       return "p5js";
     case "glsl":
       return "glsl";
+    case "three":
+      return "javascript";
     case "markdown":
       return "markdown";
   }
@@ -36774,6 +36724,7 @@ function generateTabId(prefix) {
 }
 __name(generateTabId, "generateTabId");
 function getLanguageFromTab(tab) {
+  if (tab.kind === "app") return void 0;
   const file = getFile(tab.fileId);
   if (file) return file.language;
   const dot = tab.fileId.lastIndexOf(".");
@@ -36804,6 +36755,7 @@ function registerBuiltinCommands() {
       const { activeTab, activeGroupId, shell, getPreviewProvider } = ctx;
       if (!activeTab || !activeGroupId) return;
       if (activeTab.kind === "preview") return;
+      if (activeTab.kind === "app") return;
       const language = getLanguageFromTab(activeTab);
       if (!language) return;
       const provider = getPreviewProvider(language);
@@ -36941,6 +36893,8 @@ function extensionToLanguage(ext) {
       return "p5js";
     case ".glsl":
       return "glsl";
+    case ".three":
+      return "three";
     case ".md":
       return "markdown";
     default:
@@ -37263,16 +37217,18 @@ function isOwnBackdropPaused(bgFileId, paneFileId, pausedFiles) {
 __name(isOwnBackdropPaused, "isOwnBackdropPaused");
 
 // src/workspace/vizLanguages.ts
-var VIZ_LANGUAGES = ["p5js", "hydra", "glsl"];
+var VIZ_LANGUAGES = ["p5js", "hydra", "glsl", "three"];
 var LANGUAGE_TO_RENDERER = {
   p5js: "p5",
   hydra: "hydra",
-  glsl: "glsl"
+  glsl: "glsl",
+  three: "three"
 };
 var RENDERER_TO_LANGUAGE = {
   p5: "p5js",
   hydra: "hydra",
-  glsl: "glsl"
+  glsl: "glsl",
+  three: "three"
 };
 function isVizLanguage(lang) {
   return VIZ_LANGUAGES.includes(lang);
@@ -48006,6 +47962,7 @@ __name(SymbolRow, "SymbolRow");
 // src/workspace/bottomPanel/hiddenForTab.ts
 function bottomPanelHiddenForTab(tab) {
   if (!tab) return false;
+  if (tab.kind === "app") return false;
   const language = getFile(tab.fileId)?.language;
   return language != null && isVizLanguage(language);
 }
@@ -48063,13 +48020,30 @@ function createInitialGroupState(initialTabs) {
   return { groups, layout: [[id]], activeGroupId: id };
 }
 __name(createInitialGroupState, "createInitialGroupState");
-function tabFileName(tab) {
+function tabFileName(tab, appTabLabel) {
+  if (tab.kind === "app") return appTabLabel?.(tab)?.title ?? tab.appKey;
   const file = getFile(tab.fileId);
   if (!file) return tab.fileId;
   const parts = file.path.split("/");
   return parts[parts.length - 1];
 }
 __name(tabFileName, "tabFileName");
+function AppTabIcon({
+  tab,
+  appTabLabel
+}) {
+  const icon = appTabLabel?.(tab)?.icon;
+  if (icon === void 0 || icon === null) return null;
+  return /* @__PURE__ */ jsx(
+    "span",
+    {
+      "data-app-tab-icon": tab.appKey,
+      style: { display: "inline-flex", alignItems: "center", marginRight: 4, fontStyle: "normal" },
+      children: icon
+    }
+  );
+}
+__name(AppTabIcon, "AppTabIcon");
 function GroupTabBar({
   group,
   canClose,
@@ -48080,6 +48054,7 @@ function GroupTabBar({
   onTabDragStart,
   onTabContextMenu,
   onTabPromote,
+  appTabLabel,
   onNewFile,
   onSplitRight,
   onSplitDown,
@@ -48233,8 +48208,8 @@ function GroupTabBar({
                                   },
                                   children: tab.mode === "view" ? "VIEW" : "DIFF"
                                 }
-                              ) : tab.kind === "preview" ? "\u{1F3A5} " : null,
-                              tabFileName(tab)
+                              ) : tab.kind === "preview" ? "\u{1F3A5} " : tab.kind === "app" ? /* @__PURE__ */ jsx(AppTabIcon, { tab, appTabLabel }) : null,
+                              tabFileName(tab, appTabLabel)
                             ] }),
                             /* @__PURE__ */ jsx(
                               "button",
@@ -48425,7 +48400,8 @@ function GroupTabBar({
                               },
                               children: [
                                 tab.kind === "preview" ? "\u{1F3A5} " : "",
-                                tabFileName(tab)
+                                tab.kind === "app" ? /* @__PURE__ */ jsx(AppTabIcon, { tab, appTabLabel }) : null,
+                                tabFileName(tab, appTabLabel)
                               ]
                             }
                           ),
@@ -48473,6 +48449,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   backgroundCrop,
   onTabClose,
   previewProviderFor,
+  renderAppTab,
+  appTabLabel,
   chromeForTab,
   editorExtrasForTab,
   onSaveFile,
@@ -49007,7 +48985,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       if (fromRegistry) return fromRegistry;
       if (previewProviderFor) {
         const currentTab = activeTab;
-        const fileId = currentTab?.fileId ?? "";
+        const fileId = currentTab && currentTab.kind !== "app" ? currentTab.fileId : "";
         return previewProviderFor({
           kind: "preview",
           id: "__cmd-lookup__",
@@ -49518,6 +49496,40 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             `${tab.id}:diff`
           ) });
         }
+        case "app": {
+          const body = renderAppTab?.(tab);
+          return /* @__PURE__ */ jsx(
+            "div",
+            {
+              "data-workspace-view": "app",
+              "data-app-tab": tab.appKey,
+              style: {
+                position: "relative",
+                zIndex: 1,
+                height: "100%",
+                width: "100%",
+                overflow: "auto",
+                background: "var(--background)"
+              },
+              children: body ?? /* @__PURE__ */ jsx(
+                "div",
+                {
+                  "data-testid": `app-tab-unavailable-${tab.id}`,
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    height: "100%",
+                    color: "var(--foreground-muted)",
+                    fontSize: 12
+                  },
+                  children: "This tab is not available."
+                }
+              )
+            },
+            tab.id
+          );
+        }
         default:
           return assertNever(tab);
       }
@@ -49550,6 +49562,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       findGroupWithAnyPreview,
       editorExtrasForTab,
       closeTabById,
+      // #2471 — the app tab's body comes from this host hook
+      renderAppTab,
       // P239 guard — the viz-settings ctx (#773) reads these; without them
       // in the deps the callback closes over stale backdrop settings /
       // handlers and the popover controls act on outdated values.
@@ -49736,6 +49750,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     return nx;
                   });
                 },
+                appTabLabel,
                 onNewFile,
                 onSplitRight: () => handleSplit(group.id, "east"),
                 onSplitDown: () => handleSplit(group.id, "south"),
@@ -49750,6 +49765,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                 children: [
                   (() => {
                     if (workspaceSpanBackdrop) return null;
+                    if (activeTabObj?.kind === "app") return null;
                     const bgFileId = resolveBackdropFileId(
                       group.backgroundFileId,
                       bgOverrides.get(group.id)
@@ -49784,13 +49800,14 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     {
                       "data-stave-code-panel": "true",
                       "data-stave-backdrop": (
-                        // #770: in workspace-span mode EVERY pane goes transparent so the
+                        // #2471 — never for an app tab: its page is opaque.
+                        activeTabObj.kind !== "app" && // #770: in workspace-span mode EVERY pane goes transparent so the
                         // single shared backdrop shows behind all of them — not just panes
                         // that have their own backdrop (the file-mode condition).
-                        workspaceSpanActive || resolveBackdropFileId(
+                        (workspaceSpanActive || resolveBackdropFileId(
                           group.backgroundFileId,
                           bgOverrides.get(group.id)
-                        ) ? "on" : "off"
+                        )) ? "on" : "off"
                       ),
                       style: {
                         position: "relative",
@@ -49858,7 +49875,9 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       // backdrop — the same P239 stale-closure trap.
       pausedPreviews,
       // #2426 — each background's audio source reads the chosen sources
-      sourceForBackdrop
+      sourceForBackdrop,
+      // #2471 — app tab chips read the host's label hook
+      appTabLabel
     ]
   );
   const totalGroupCount = useMemo(
@@ -50021,6 +50040,68 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         });
         setActiveGroupId(activeGroupId);
       }, "openHistoryTab"),
+      openAppTab: /* @__PURE__ */ __name((appKey, opts) => {
+        const hasState = opts?.state !== void 0;
+        let foundGroupId = null;
+        for (const [gid, g] of groups) {
+          if (g.tabs.some((t) => t.kind === "app" && t.appKey === appKey)) {
+            foundGroupId = gid;
+            break;
+          }
+        }
+        const targetGid = foundGroupId ?? activeGroupId;
+        setGroups((prev) => {
+          for (const [gid, g2] of prev) {
+            const hit = g2.tabs.find((t) => t.kind === "app" && t.appKey === appKey);
+            if (!hit) continue;
+            if (g2.activeTabId === hit.id && !hasState) return prev;
+            const next2 = new Map(prev);
+            next2.set(gid, {
+              ...g2,
+              tabs: hasState ? g2.tabs.map((t) => t.id === hit.id ? { ...t, state: opts.state } : t) : g2.tabs,
+              activeTabId: hit.id
+            });
+            return next2;
+          }
+          const g = prev.get(targetGid);
+          if (!g) return prev;
+          const newTab = {
+            kind: "app",
+            id: `app-${appKey}`,
+            appKey,
+            ...hasState ? { state: opts.state } : {}
+          };
+          const next = new Map(prev);
+          next.set(targetGid, { ...g, tabs: [...g.tabs, newTab], activeTabId: newTab.id });
+          return next;
+        });
+        setActiveGroupId(targetGid);
+      }, "openAppTab"),
+      setAppTabState: /* @__PURE__ */ __name((appKey, state6) => {
+        setGroups((prev) => {
+          for (const [gid, g] of prev) {
+            const hit = g.tabs.find(
+              (t) => t.kind === "app" && t.appKey === appKey
+            );
+            if (!hit) continue;
+            if (JSON.stringify(hit.state) === JSON.stringify(state6)) return prev;
+            const next = new Map(prev);
+            next.set(gid, {
+              ...g,
+              tabs: g.tabs.map((t) => {
+                if (t.id !== hit.id || t.kind !== "app") return t;
+                if (state6 === void 0) {
+                  const { state: _dropped, ...rest } = t;
+                  return rest;
+                }
+                return { ...t, state: state6 };
+              })
+            });
+            return next;
+          }
+          return prev;
+        });
+      }, "setAppTabState"),
       promoteTab: /* @__PURE__ */ __name((tabId) => {
         setGroups((prev) => {
           let changed = false;
@@ -50038,6 +50119,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           return changed ? next : prev;
         });
       }, "promoteTab"),
+      closeTab: /* @__PURE__ */ __name((tabId) => closeTabById(tabId), "closeTab"),
       closeTabsForFile: /* @__PURE__ */ __name((fileId) => {
         const targets = [];
         for (const g of groups.values()) {
@@ -52817,6 +52899,661 @@ function VizEditor({
 }
 __name(VizEditor, "VizEditor");
 
+// src/visualizers/renderers/threeSketch.ts
+var ADDONS = {
+  "environments/RoomEnvironment.js": /* @__PURE__ */ __name(() => import('three/addons/environments/RoomEnvironment.js'), "environments/RoomEnvironment.js"),
+  "postprocessing/EffectComposer.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/EffectComposer.js'), "postprocessing/EffectComposer.js"),
+  "postprocessing/RenderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/RenderPass.js'), "postprocessing/RenderPass.js"),
+  "postprocessing/ShaderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/ShaderPass.js'), "postprocessing/ShaderPass.js"),
+  "postprocessing/OutputPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/OutputPass.js'), "postprocessing/OutputPass.js"),
+  "postprocessing/UnrealBloomPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/UnrealBloomPass.js'), "postprocessing/UnrealBloomPass.js"),
+  "postprocessing/BokehPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/BokehPass.js'), "postprocessing/BokehPass.js"),
+  "postprocessing/AfterimagePass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/AfterimagePass.js'), "postprocessing/AfterimagePass.js"),
+  "postprocessing/FilmPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/FilmPass.js'), "postprocessing/FilmPass.js"),
+  "postprocessing/GlitchPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/GlitchPass.js'), "postprocessing/GlitchPass.js"),
+  "postprocessing/SMAAPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/SMAAPass.js'), "postprocessing/SMAAPass.js"),
+  "postprocessing/FXAAPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/FXAAPass.js'), "postprocessing/FXAAPass.js"),
+  "shaders/CopyShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/CopyShader.js'), "shaders/CopyShader.js"),
+  "shaders/FXAAShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/FXAAShader.js'), "shaders/FXAAShader.js"),
+  "shaders/RGBShiftShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/RGBShiftShader.js'), "shaders/RGBShiftShader.js"),
+  "shaders/VignetteShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/VignetteShader.js'), "shaders/VignetteShader.js"),
+  "loaders/GLTFLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/GLTFLoader.js'), "loaders/GLTFLoader.js"),
+  "loaders/RGBELoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/RGBELoader.js'), "loaders/RGBELoader.js"),
+  "loaders/HDRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/HDRLoader.js'), "loaders/HDRLoader.js"),
+  "loaders/EXRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/EXRLoader.js'), "loaders/EXRLoader.js"),
+  "geometries/RoundedBoxGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/RoundedBoxGeometry.js'), "geometries/RoundedBoxGeometry.js"),
+  "utils/BufferGeometryUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/BufferGeometryUtils.js'), "utils/BufferGeometryUtils.js"),
+  "math/SimplexNoise.js": /* @__PURE__ */ __name(() => import('three/addons/math/SimplexNoise.js'), "math/SimplexNoise.js"),
+  "math/ImprovedNoise.js": /* @__PURE__ */ __name(() => import('three/addons/math/ImprovedNoise.js'), "math/ImprovedNoise.js")
+};
+var THREE_ADDONS = Object.keys(ADDONS);
+var NEEDS_INPUT = /(^|\/)(OrbitControls|TrackballControls|FlyControls|FirstPersonControls|PointerLockControls|DragControls|TransformControls|MapControls|ArcballControls)\.js$/;
+function resolveSpecifier(spec) {
+  if (spec === "three") return { kind: "three" };
+  const m = /^three\/(?:addons|examples\/jsm)\/(.+)$/.exec(spec);
+  if (!m) return null;
+  const path = m[1].endsWith(".js") ? m[1] : `${m[1]}.js`;
+  return { kind: "addon", path };
+}
+__name(resolveSpecifier, "resolveSpecifier");
+function unsupportedImportMessage(spec) {
+  const resolved = resolveSpecifier(spec);
+  if (resolved?.kind === "addon" && NEEDS_INPUT.test(resolved.path)) {
+    return `'${spec}' needs pointer input, which a Stave viz doesn't receive. Move the camera in code instead (for example from \`sig\` or the time).`;
+  }
+  return `'${spec}' isn't available in Stave. A three.js sketch can import 'three' and these addons: ${THREE_ADDONS.map((p) => `three/addons/${p}`).join(", ")}.`;
+}
+__name(unsupportedImportMessage, "unsupportedImportMessage");
+var _ThreeImportError = class _ThreeImportError extends Error {
+  constructor(message, line) {
+    super(message);
+    this.line = line;
+    this.name = "ThreeImportError";
+  }
+};
+__name(_ThreeImportError, "ThreeImportError");
+var ThreeImportError = _ThreeImportError;
+var THREE_LINE_OFFSET = 3;
+var PARAMS = ["__env", "__mod", "__import"];
+function isIdent(s) {
+  return /^[A-Za-z_$][\w$]*$/.test(s);
+}
+__name(isIdent, "isIdent");
+function compileThreeSketch(code) {
+  const parsed = parseModule(code);
+  if (!parsed.ok) {
+    return {
+      imports: [],
+      source: "",
+      syntaxError: new VizSyntaxError(parsed.message, parsed.line, parsed.column !== void 0 ? parsed.column + 1 : void 0)
+    };
+  }
+  const ast = parsed.program;
+  const chars = code.split("");
+  const blank = /* @__PURE__ */ __name((start, end) => {
+    for (let i = start; i < end; i++) if (chars[i] !== "\n") chars[i] = " ";
+  }, "blank");
+  const imports = [];
+  const bindings = [];
+  for (const node of ast.body) {
+    if (node.type === "ImportDeclaration") {
+      const index = imports.length;
+      imports.push({ spec: String(node.source.value), line: node.loc.start.line });
+      for (const s of node.specifiers) {
+        if (s.type === "ImportDefaultSpecifier") bindings.push({ module: index, imported: "default", local: s.local.name });
+        else if (s.type === "ImportNamespaceSpecifier") bindings.push({ module: index, imported: "*", local: s.local.name });
+        else {
+          const imported = s.imported.type === "Identifier" ? s.imported.name : String(s.imported.value);
+          bindings.push({ module: index, imported, local: s.local.name });
+        }
+      }
+      blank(node.start, node.end);
+    } else if (node.type === "ExportNamedDeclaration" || node.type === "ExportDefaultDeclaration") {
+      if (node.declaration) blank(node.start, node.declaration.start);
+      else blank(node.start, node.end);
+    } else if (node.type === "ExportAllDeclaration") {
+      blank(node.start, node.end);
+    }
+  }
+  const dynamic = [];
+  const walk5 = /* @__PURE__ */ __name((n) => {
+    if (!n || typeof n.type !== "string") return;
+    if (n.type === "ImportExpression") dynamic.push(n.start);
+    for (const key3 of Object.keys(n)) {
+      const v = n[key3];
+      if (Array.isArray(v)) v.forEach(walk5);
+      else if (v && typeof v === "object" && typeof v.type === "string") walk5(v);
+    }
+  }, "walk");
+  walk5(ast);
+  for (const at of dynamic) {
+    chars[at] = "__import";
+    for (let i = at + 1; i < at + 6; i++) chars[i] = "";
+  }
+  const decls = bindings.map((b) => {
+    const from = `__mod[${b.module}]`;
+    if (b.imported === "*") return `const ${b.local} = ${from};`;
+    const key3 = isIdent(b.imported) ? `.${b.imported}` : `[${JSON.stringify(b.imported)}]`;
+    return `const ${b.local} = ${from}${key3};`;
+  });
+  const head = `with (__env) { return (async () => { 'use strict'; ${decls.join(" ")}`;
+  const source = `${head}
+${chars.join("")}
+})() }`;
+  return { imports, source, syntaxError: null };
+}
+__name(compileThreeSketch, "compileThreeSketch");
+var threePromise = null;
+function loadThree() {
+  threePromise ?? (threePromise = import('three'));
+  return threePromise;
+}
+__name(loadThree, "loadThree");
+async function loadThreeModules(compiled) {
+  for (const imp of compiled.imports) {
+    const r = resolveSpecifier(imp.spec);
+    if (!r || r.kind === "addon" && !ADDONS[r.path]) {
+      throw new ThreeImportError(unsupportedImportMessage(imp.spec), imp.line);
+    }
+  }
+  const THREE = await loadThree();
+  const modules = await Promise.all(
+    compiled.imports.map((imp) => {
+      const r = resolveSpecifier(imp.spec);
+      return r.kind === "three" ? null : ADDONS[r.path]();
+    })
+  );
+  return { THREE, modules };
+}
+__name(loadThreeModules, "loadThreeModules");
+var INPUT_EVENTS = /* @__PURE__ */ new Set([
+  "pointerdown",
+  "pointerup",
+  "pointermove",
+  "pointerenter",
+  "pointerleave",
+  "pointerover",
+  "pointerout",
+  "pointercancel",
+  "mousedown",
+  "mouseup",
+  "mousemove",
+  "mouseenter",
+  "mouseleave",
+  "mouseover",
+  "mouseout",
+  "click",
+  "dblclick",
+  "contextmenu",
+  "wheel",
+  "touchstart",
+  "touchmove",
+  "touchend",
+  "touchcancel",
+  "keydown",
+  "keyup",
+  "keypress"
+]);
+function threeUserLine(err) {
+  const loc = parseStackLocation(err);
+  if (!loc) return void 0;
+  const line = loc.line - THREE_LINE_OFFSET;
+  return line >= 1 ? { line, column: loc.column } : void 0;
+}
+__name(threeUserLine, "threeUserLine");
+function errorOf(e) {
+  return e instanceof Error ? e : new Error(String(e));
+}
+__name(errorOf, "errorOf");
+function runThreeSketch(compiled, loaded, host) {
+  var _a;
+  const BaseRenderer = loaded.THREE.WebGLRenderer;
+  let disposed = false;
+  let topLevelDone = false;
+  let renderedThisFrame = false;
+  const renderers2 = [];
+  const loops = /* @__PURE__ */ new Map();
+  let rafQueue = /* @__PURE__ */ new Map();
+  let rafSeq = 0;
+  const resizeListeners = /* @__PURE__ */ new Set();
+  const seen = /* @__PURE__ */ new Set();
+  const reportOnce = /* @__PURE__ */ __name((level, e, prefix = "") => {
+    const err = errorOf(e);
+    const at = threeUserLine(err);
+    const key3 = `${level}|${err.message}|${at?.line ?? ""}`;
+    if (seen.has(key3)) return;
+    if (seen.size > 64) seen.clear();
+    seen.add(key3);
+    host.report({
+      level,
+      message: prefix + err.message,
+      line: at?.line,
+      column: at?.column,
+      stack: String(err.stack ?? "").split("\n").slice(0, 6).join("\n")
+    });
+  }, "reportOnce");
+  const warnHere = /* @__PURE__ */ __name((message) => reportOnce("warn", new Error(message)), "warnHere");
+  const warnInput = /* @__PURE__ */ __name((type) => warnHere(`'${type}' events don't reach a three.js sketch in Stave (a viz receives no pointer or keyboard input). Move things in code instead.`), "warnInput");
+  const warnDom = /* @__PURE__ */ __name(() => warnHere(`HTML overlays (panels, stats meters, text) aren't shown in Stave: a three.js sketch draws only on its canvas.`), "warnDom");
+  const addListener = /* @__PURE__ */ __name((type, fn) => {
+    if (type === "resize" && typeof fn === "function") resizeListeners.add(fn);
+    else if (INPUT_EVENTS.has(type)) warnInput(type);
+  }, "addListener");
+  const removeListener = /* @__PURE__ */ __name((type, fn) => {
+    if (type === "resize") resizeListeners.delete(fn);
+  }, "removeListener");
+  const canvas = host.canvas;
+  if (!("style" in canvas)) canvas.style = {};
+  const canvasAddListener = canvas.addEventListener;
+  let canvasPatched = false;
+  const _StaveWebGLRenderer = class _StaveWebGLRenderer extends BaseRenderer {
+    constructor(params = {}) {
+      if (disposed) throw new Error("this sketch was stopped");
+      super({ ...params, canvas: host.canvas });
+      const self = this;
+      renderers2.push(self);
+      const render = self.render;
+      self.render = function(scene, camera) {
+        renderedThisFrame = true;
+        return render.call(self, scene, camera);
+      };
+      const setSize = self.setSize;
+      self.setSize = function(w, h) {
+        return setSize.call(self, w, h, false);
+      };
+      self.setAnimationLoop = (cb) => {
+        if (typeof cb === "function") loops.set(self, cb);
+        else loops.delete(self);
+      };
+      if (!canvasPatched && typeof canvasAddListener === "function") {
+        canvasPatched = true;
+        canvas.addEventListener = function(type, ...rest) {
+          if (INPUT_EVENTS.has(type)) warnInput(type);
+          return canvasAddListener.call(canvas, type, ...rest);
+        };
+      }
+    }
+  };
+  __name(_StaveWebGLRenderer, "StaveWebGLRenderer");
+  let StaveWebGLRenderer = _StaveWebGLRenderer;
+  let TextureLoader = loaded.THREE.TextureLoader;
+  if (typeof document === "undefined" && loaded.THREE.ImageBitmapLoader) {
+    const { Loader, Texture, ImageBitmapLoader } = loaded.THREE;
+    TextureLoader = (_a = class extends Loader {
+      load(url, onLoad, onProgress, onError) {
+        const texture = new Texture();
+        const loader2 = new ImageBitmapLoader(this.manager);
+        loader2.setOptions({ imageOrientation: "flipY" });
+        loader2.setCrossOrigin(this.crossOrigin);
+        loader2.setPath(this.path);
+        loader2.load(
+          url,
+          (bitmap) => {
+            texture.image = bitmap;
+            texture.flipY = false;
+            texture.needsUpdate = true;
+            onLoad?.(texture);
+          },
+          onProgress,
+          onError
+        );
+        return texture;
+      }
+    }, __name(_a, "StaveTextureLoader"), _a);
+  }
+  const THREE = { ...loaded.THREE, WebGLRenderer: StaveWebGLRenderer, TextureLoader };
+  const modules = loaded.modules.map((m) => m === null ? THREE : m);
+  const requestAnimationFrame2 = /* @__PURE__ */ __name((cb) => {
+    const id = ++rafSeq;
+    if (!disposed && typeof cb === "function") rafQueue.set(id, cb);
+    return id;
+  }, "requestAnimationFrame");
+  const cancelAnimationFrame2 = /* @__PURE__ */ __name((id) => {
+    rafQueue.delete(id);
+  }, "cancelAnimationFrame");
+  const stave = {
+    get width() {
+      return host.size().w;
+    },
+    get height() {
+      return host.size().h;
+    },
+    get options() {
+      return host.options();
+    },
+    get sig() {
+      return host.uniforms().sig;
+    }
+  };
+  const stubElement = /* @__PURE__ */ __name(() => {
+    warnDom();
+    const el = {
+      style: {},
+      dataset: {},
+      classList: { add() {
+      }, remove() {
+      }, toggle() {
+      }, contains: /* @__PURE__ */ __name(() => false, "contains") },
+      appendChild: /* @__PURE__ */ __name((c) => c, "appendChild"),
+      removeChild: /* @__PURE__ */ __name((c) => c, "removeChild"),
+      remove() {
+      },
+      setAttribute() {
+      },
+      getAttribute: /* @__PURE__ */ __name(() => null, "getAttribute"),
+      addEventListener: addListener,
+      removeEventListener: removeListener,
+      textContent: "",
+      innerHTML: ""
+    };
+    return el;
+  }, "stubElement");
+  const createElement7 = /* @__PURE__ */ __name((tag) => String(tag).toLowerCase() === "canvas" ? host.createCanvas() : stubElement(), "createElement");
+  const body = {
+    style: {},
+    appendChild: /* @__PURE__ */ __name((c) => c, "appendChild"),
+    removeChild: /* @__PURE__ */ __name((c) => c, "removeChild"),
+    addEventListener: addListener,
+    removeEventListener: removeListener
+  };
+  const documentShim = {
+    body,
+    documentElement: body,
+    createElement: createElement7,
+    createElementNS: /* @__PURE__ */ __name((_ns, tag) => createElement7(tag), "createElementNS"),
+    getElementById: /* @__PURE__ */ __name(() => null, "getElementById"),
+    querySelector: /* @__PURE__ */ __name(() => null, "querySelector"),
+    addEventListener: addListener,
+    removeEventListener: removeListener
+  };
+  const own = {};
+  Object.defineProperties(own, {
+    innerWidth: { get: /* @__PURE__ */ __name(() => host.size().w, "get"), enumerable: true },
+    innerHeight: { get: /* @__PURE__ */ __name(() => host.size().h, "get"), enumerable: true },
+    devicePixelRatio: { get: /* @__PURE__ */ __name(() => host.dpr(), "get"), enumerable: true }
+  });
+  Object.assign(own, {
+    addEventListener: addListener,
+    removeEventListener: removeListener,
+    requestAnimationFrame: requestAnimationFrame2,
+    cancelAnimationFrame: cancelAnimationFrame2,
+    document: documentShim
+  });
+  const boundCache = /* @__PURE__ */ new Map();
+  const windowShim = new Proxy(own, {
+    get(t, key3) {
+      if (key3 in t) return t[key3];
+      if (key3 === "window" || key3 === "self" || key3 === "globalThis") return windowShim;
+      const v = globalThis[key3];
+      if (typeof v !== "function") return v;
+      if (/^[A-Z]/.test(String(key3))) return v;
+      if (!boundCache.has(key3)) boundCache.set(key3, v.bind(globalThis));
+      return boundCache.get(key3);
+    },
+    has(t, key3) {
+      return key3 in t || key3 in globalThis;
+    }
+  });
+  const env = {};
+  Object.defineProperties(env, {
+    innerWidth: { get: /* @__PURE__ */ __name(() => host.size().w, "get") },
+    innerHeight: { get: /* @__PURE__ */ __name(() => host.size().h, "get") },
+    devicePixelRatio: { get: /* @__PURE__ */ __name(() => host.dpr(), "get") },
+    sig: { get: /* @__PURE__ */ __name(() => host.uniforms().sig, "get") }
+  });
+  Object.assign(env, {
+    stave,
+    window: windowShim,
+    self: windowShim,
+    document: documentShim,
+    requestAnimationFrame: requestAnimationFrame2,
+    cancelAnimationFrame: cancelAnimationFrame2,
+    addEventListener: addListener,
+    removeEventListener: removeListener
+  });
+  const importDynamic = /* @__PURE__ */ __name(async (spec) => {
+    const r = resolveSpecifier(String(spec));
+    if (r?.kind === "three") return THREE;
+    if (r?.kind === "addon" && ADDONS[r.path]) return ADDONS[r.path]();
+    throw new ThreeImportError(unsupportedImportMessage(String(spec)));
+  }, "importDynamic");
+  let done;
+  try {
+    const fn = new Function(...PARAMS, compiled.source);
+    done = Promise.resolve(fn(env, modules, importDynamic)).then(
+      () => {
+        topLevelDone = true;
+        return { error: null };
+      },
+      (e) => {
+        topLevelDone = true;
+        if (!disposed) reportOnce("error", e);
+        return { error: errorOf(e) };
+      }
+    );
+  } catch (e) {
+    topLevelDone = true;
+    const err = errorOf(e);
+    host.report({ level: "error", message: err.message });
+    done = Promise.resolve({ error: err });
+  }
+  return {
+    done,
+    ready: /* @__PURE__ */ __name(() => topLevelDone || loops.size > 0 || rafQueue.size > 0, "ready"),
+    rendered: /* @__PURE__ */ __name(() => renderedThisFrame, "rendered"),
+    frame(timeMs) {
+      if (disposed) return;
+      renderedThisFrame = false;
+      const queued = rafQueue;
+      rafQueue = /* @__PURE__ */ new Map();
+      for (const cb of queued.values()) {
+        try {
+          cb(timeMs);
+        } catch (e) {
+          reportOnce("error", e);
+        }
+      }
+      for (const cb of [...loops.values()]) {
+        try {
+          cb(timeMs);
+        } catch (e) {
+          reportOnce("error", e);
+        }
+      }
+    },
+    resize() {
+      if (disposed) return;
+      if (resizeListeners.size > 0) {
+        const ev = { type: "resize", target: windowShim };
+        for (const fn of [...resizeListeners]) {
+          try {
+            fn(ev);
+          } catch (e) {
+            reportOnce("error", e);
+          }
+        }
+        return;
+      }
+      const { w, h } = host.size();
+      for (const r of renderers2) {
+        try {
+          r.setSize(w, h, false);
+        } catch {
+        }
+      }
+    },
+    gl() {
+      try {
+        return renderers2[0]?.getContext?.() ?? null;
+      } catch {
+        return null;
+      }
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      loops.clear();
+      rafQueue.clear();
+      resizeListeners.clear();
+      for (const r of renderers2) {
+        try {
+          r.dispose();
+        } catch {
+        }
+        try {
+          const gl = r.getContext?.();
+          if (gl && !gl.isContextLost?.()) r.forceContextLoss();
+        } catch {
+        }
+      }
+      renderers2.length = 0;
+      if (canvasPatched) {
+        try {
+          delete canvas.addEventListener;
+        } catch {
+        }
+      }
+    }
+  };
+}
+__name(runThreeSketch, "runThreeSketch");
+
+// src/visualizers/renderers/ThreeVizRenderer.ts
+var threePerfSeq = 0;
+var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
+  /** `code` = the sketch; `name` = its workspace path, for error attribution. */
+  constructor(code, name = "") {
+    super();
+    this.code = code;
+    this.name = name;
+    this.canvas = null;
+    this.run = null;
+    this.rafId = null;
+    this.paused = false;
+    this.destroyed = false;
+    this.size = { w: 400, h: 300 };
+    this.perfId = `three#${++threePerfSeq}`;
+    this.bus = new SignalBus();
+    this.hapStream = null;
+    this.busHapHandler = null;
+    this.loop = /* @__PURE__ */ __name((now2) => {
+      if (this.paused || this.destroyed || !this.run) {
+        this.rafId = null;
+        return;
+      }
+      perf.frame(this.perfId);
+      perf.begin("three.draw");
+      try {
+        if (this.bus) {
+          this.bus.tick();
+          this.bus.refreshActive(this.bus.now());
+          this.bus.readAudio();
+        }
+        this.run.frame(now2);
+      } finally {
+        perf.end("three.draw");
+      }
+      this.rafId = requestAnimationFrame(this.loop);
+    }, "loop");
+    this.uniforms = buildStaveUniforms(this.bus);
+  }
+  onMount(container, components, size, onError) {
+    perf.gauge("viz.three", 1);
+    this.size = { w: size.w, h: size.h };
+    this.bus?.bindScheduler(components.queryable?.scheduler, components.queryable?.trackSchedulers);
+    this.bus?.bindAnalysers(components.audio?.analyser, components.audio?.trackAnalysers);
+    this.bus?.setAliases(currentVizSignalAliases());
+    this.hapStream = components.streaming?.hapStream ?? null;
+    if (this.hapStream && this.bus) {
+      this.busHapHandler = (e) => this.bus?.bump(e);
+      this.hapStream.on(this.busHapHandler);
+    }
+    const canvas = document.createElement("canvas");
+    const dpr = effectiveDpr();
+    canvas.width = Math.max(1, Math.round(size.w * dpr));
+    canvas.height = Math.max(1, Math.round(size.h * dpr));
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    canvas.style.display = "block";
+    container.appendChild(canvas);
+    this.canvas = canvas;
+    void this.start(onError);
+  }
+  /** A sketch that can't start: one Console row on its line, then the host's onError. */
+  fail(err, line, onError) {
+    emitLog({ level: "error", runtime: "three", source: this.name || void 0, message: err.message, line });
+    markVizErrorReported(err);
+    onError(err);
+  }
+  async start(onError) {
+    const compiled = compileThreeSketch(this.code);
+    if (compiled.syntaxError) {
+      this.fail(compiled.syntaxError, compiled.syntaxError.line, onError);
+      return;
+    }
+    let loaded;
+    try {
+      loaded = await loadThreeModules(compiled);
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      this.fail(err, e instanceof ThreeImportError ? e.line : void 0, onError);
+      return;
+    }
+    if (this.destroyed || !this.canvas) return;
+    this.run = runThreeSketch(compiled, loaded, {
+      canvas: this.canvas,
+      size: /* @__PURE__ */ __name(() => this.size, "size"),
+      dpr: effectiveDpr,
+      uniforms: /* @__PURE__ */ __name(() => this.uniforms, "uniforms"),
+      options: /* @__PURE__ */ __name(() => this.optionsRef.current ?? {}, "options"),
+      createCanvas: /* @__PURE__ */ __name(() => document.createElement("canvas"), "createCanvas"),
+      // The core places each problem on its line; runtime and file come from here.
+      report: /* @__PURE__ */ __name((entry) => emitLog({ ...entry, runtime: "three", source: this.name || void 0 }), "report")
+    });
+    void this.run.done.then(({ error }) => {
+      if (error && !this.destroyed) {
+        markVizErrorReported(error);
+        onError(error);
+      }
+    });
+    if (!this.paused && !this.destroyed && this.rafId == null) {
+      this.rafId = requestAnimationFrame(this.loop);
+    }
+  }
+  onUpdate(components) {
+    this.bus?.bindScheduler(components.queryable?.scheduler ?? null, components.queryable?.trackSchedulers);
+    this.bus?.bindAnalysers(components.audio?.analyser ?? null, components.audio?.trackAnalysers);
+  }
+  resize(w, h) {
+    this.size = { w, h };
+    this.run?.resize();
+  }
+  pause() {
+    this.paused = true;
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+  resume() {
+    this.paused = false;
+    if (this.rafId == null && !this.destroyed && this.run) {
+      this.rafId = requestAnimationFrame(this.loop);
+    }
+  }
+  destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    perf.gauge("viz.three", -1);
+    perf.dropFrames(this.perfId);
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.run?.dispose();
+    this.run = null;
+    this.canvas?.remove();
+    this.canvas = null;
+    if (this.hapStream && this.busHapHandler) {
+      this.hapStream.off(this.busHapHandler);
+      this.busHapHandler = null;
+    }
+    this.hapStream = null;
+    this.bus = null;
+  }
+};
+__name(_ThreeVizRenderer, "ThreeVizRenderer");
+var ThreeVizRenderer = _ThreeVizRenderer;
+
+// src/visualizers/renderers/makeThreeRenderer.ts
+function makeThreeRenderer(code, name) {
+  return shouldUseWorkerRenderer() ? new FallbackVizRenderer(
+    () => new WorkerVizRenderer("three", code, name),
+    () => new ThreeVizRenderer(code, name)
+  ) : new ThreeVizRenderer(code, name);
+}
+__name(makeThreeRenderer, "makeThreeRenderer");
+
 // src/visualizers/vizCompiler.ts
 function compilePreset(preset) {
   const { id, name, renderer, code, requires } = preset;
@@ -52847,6 +53584,18 @@ function compilePreset(preset) {
       // the main-thread GLSLVizRenderer. A `.glsl` sketch is the wrapped fragment
       // source — a plain transferable string, so it crosses to the worker cleanly.
       factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(code, source), "factory")
+    };
+  }
+  if (renderer === "three") {
+    return {
+      id,
+      label: name,
+      renderer: "three",
+      requires,
+      ...preset.nativeSize ? { nativeSize: preset.nativeSize } : {},
+      // #2516: a plain three.js sketch, worker-offloaded with a main-thread
+      // fallback (makeThreeRenderer), like GLSL.
+      factory: /* @__PURE__ */ __name(() => makeThreeRenderer(code, source), "factory")
     };
   }
   if (renderer === "p5") {
@@ -54672,7 +55421,8 @@ var SONICPI_RUNTIME = {
 var KIND_LABEL2 = {
   p5: "p5",
   hydra: "hydra",
-  glsl: "glsl"
+  glsl: "glsl",
+  three: "three.js"
 };
 var PAINT_INTERVAL_MS = 1e3 / 12;
 var SPARK2 = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588";
@@ -55443,6 +56193,19 @@ function setCodeBackdropOptions(next, patternFileId) {
   for (const l of [...listeners19]) l();
 }
 __name(setCodeBackdropOptions, "setCodeBackdropOptions");
+function retainCodeBackdropOptions(openPatternFileIds) {
+  const keep = new Set(openPatternFileIds);
+  let dropped = false;
+  for (const key3 of [...slots.keys()]) {
+    if (key3 === LEGACY || keep.has(key3)) continue;
+    slots.delete(key3);
+    dropped = true;
+  }
+  if (!dropped) return;
+  version++;
+  for (const l of [...listeners19]) l();
+}
+__name(retainCodeBackdropOptions, "retainCodeBackdropOptions");
 function getCodeBackdropOptions(patternFileId) {
   return slots.get(patternFileId ?? LEGACY) ?? null;
 }
@@ -55736,6 +56499,13 @@ var GLSL_VIZ = createCompiledVizProvider({
   extensions: ["glsl"],
   label: "GLSL Visualization",
   renderer: "glsl"
+});
+
+// src/workspace/preview/threeViz.tsx
+var THREE_VIZ = createCompiledVizProvider({
+  extensions: ["three"],
+  label: "three.js Visualization",
+  renderer: "three"
 });
 
 // src/workspace/preview/namedVizBridge.ts
@@ -56087,7 +56857,8 @@ function shellStateKeyFor(projectId) {
   return `${SHELL_STATE_KEY_PREFIX}${projectId}:state`;
 }
 __name(shellStateKeyFor, "shellStateKeyFor");
-function loadShellState(projectId, validFileIds) {
+var NO_APP_KEYS = /* @__PURE__ */ new Set();
+function loadShellState(projectId, validFileIds, validAppKeys = NO_APP_KEYS) {
   if (typeof window === "undefined") return null;
   let raw = null;
   try {
@@ -56102,10 +56873,10 @@ function loadShellState(projectId, validFileIds) {
   } catch {
     return null;
   }
-  return validatePersistedState(parsed, validFileIds);
+  return validatePersistedState(parsed, validFileIds, validAppKeys);
 }
 __name(loadShellState, "loadShellState");
-function validatePersistedState(input, validFileIds) {
+function validatePersistedState(input, validFileIds, validAppKeys = NO_APP_KEYS) {
   if (!input || typeof input !== "object") return null;
   const s = input;
   if (s.version !== SHELL_STATE_VERSION) return null;
@@ -56113,6 +56884,7 @@ function validatePersistedState(input, validFileIds) {
   if (!Array.isArray(s.layout)) return null;
   if (typeof s.activeGroupId !== "string") return null;
   const cleanedGroups = {};
+  const seenAppKeys = /* @__PURE__ */ new Set();
   for (const [gid, rawGroup] of Object.entries(s.groups)) {
     const g = rawGroup;
     if (!g || typeof g !== "object" || g.id !== gid) continue;
@@ -56120,6 +56892,19 @@ function validatePersistedState(input, validFileIds) {
     const cleanedTabs = [];
     for (const t of inTabs) {
       if (!t || typeof t !== "object") continue;
+      if (t.kind === "app") {
+        const at = t;
+        if (typeof at.id !== "string" || typeof at.appKey !== "string") continue;
+        if (!validAppKeys.has(at.appKey) || seenAppKeys.has(at.appKey)) continue;
+        seenAppKeys.add(at.appKey);
+        cleanedTabs.push({
+          kind: "app",
+          id: at.id,
+          appKey: at.appKey,
+          ...at.state !== void 0 ? { state: at.state } : {}
+        });
+        continue;
+      }
       if (t.kind !== "editor") continue;
       const tt = t;
       if (typeof tt.id !== "string" || typeof tt.fileId !== "string") continue;
@@ -56173,10 +56958,19 @@ __name(validatePersistedState, "validatePersistedState");
 function serializeShellState(snapshot) {
   const groups = {};
   for (const [gid, g] of snapshot.groups.entries()) {
-    const editorTabs = [];
+    const keptTabs = [];
     for (const t of g.tabs) {
       if (!isPersistableTab(t)) continue;
-      editorTabs.push({
+      if (t.kind === "app") {
+        keptTabs.push({
+          kind: "app",
+          id: t.id,
+          appKey: t.appKey,
+          ...t.state !== void 0 ? { state: t.state } : {}
+        });
+        continue;
+      }
+      keptTabs.push({
         kind: "editor",
         id: t.id,
         fileId: t.fileId,
@@ -56184,12 +56978,12 @@ function serializeShellState(snapshot) {
       });
     }
     let activeTabId = g.activeTabId;
-    if (activeTabId !== null && !editorTabs.some((t) => t.id === activeTabId)) {
-      activeTabId = editorTabs.length > 0 ? editorTabs[0].id : null;
+    if (activeTabId !== null && !keptTabs.some((t) => t.id === activeTabId)) {
+      activeTabId = keptTabs.length > 0 ? keptTabs[0].id : null;
     }
     groups[gid] = {
       id: gid,
-      tabs: editorTabs,
+      tabs: keptTabs,
       activeTabId,
       ...g.backgroundFileId !== void 0 ? { backgroundFileId: g.backgroundFileId } : {},
       ...g.backdropOpacity !== void 0 ? { backdropOpacity: g.backdropOpacity } : {},
@@ -56242,12 +57036,19 @@ function hydrateSnapshot(persisted) {
   for (const [gid, pg] of Object.entries(persisted.groups)) {
     groups.set(gid, {
       id: pg.id,
-      tabs: pg.tabs.map((t) => ({
-        kind: "editor",
-        id: t.id,
-        fileId: t.fileId,
-        ...t.preview === true ? { preview: true } : {}
-      })),
+      tabs: pg.tabs.map(
+        (t) => t.kind === "app" ? {
+          kind: "app",
+          id: t.id,
+          appKey: t.appKey,
+          ...t.state !== void 0 ? { state: t.state } : {}
+        } : {
+          kind: "editor",
+          id: t.id,
+          fileId: t.fileId,
+          ...t.preview === true ? { preview: true } : {}
+        }
+      ),
       activeTabId: pg.activeTabId,
       ...pg.backgroundFileId !== void 0 ? { backgroundFileId: pg.backgroundFileId } : {},
       ...pg.backdropOpacity !== void 0 ? { backdropOpacity: pg.backdropOpacity } : {},
@@ -56262,11 +57063,11 @@ function hydrateSnapshot(persisted) {
 }
 __name(hydrateSnapshot, "hydrateSnapshot");
 function isPersistableTab(t) {
-  return t.kind === "editor";
+  return t.kind === "editor" || t.kind === "app";
 }
 __name(isPersistableTab, "isPersistableTab");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCodeViz, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, THREE_ADDONS, THREE_VIZ, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, compileThreeSketch, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retainCodeBackdropOptions, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

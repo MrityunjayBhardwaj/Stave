@@ -107,7 +107,8 @@ async function signInByApi(request: APIRequestContext, id: string): Promise<void
 async function openMyShares(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'View', exact: true }).click()
   await page.getByText('Community Gallery...', { exact: true }).click()
-  await expect(page.locator('[data-gallery="overlay"]')).toBeVisible()
+  // #2473 — on a desktop the gallery opens as a workspace tab
+  await expect(page.locator('[data-gallery="tab"]')).toBeVisible()
   await page.locator('[data-gallery-tab="mine"]').click()
 }
 
@@ -208,8 +209,7 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
     expect(mySharesText).not.toContain(linkKey)
     expect(mySharesText).not.toContain('#')
 
-    // The old profile link opens the account's profile.
-    await page.keyboard.press('Escape')
+    // The old profile link opens the account's profile (in the open gallery tab).
     await page.evaluate((id) => {
       window.location.hash = `#gallery-author=${id}`
     }, seed.authorId)
@@ -221,7 +221,6 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/4-old-profile-follows.png` })
 
     // A reload doesn't claim again: no second toast.
-    await page.keyboard.press('Escape')
     const claims: string[] = []
     page.on('request', (r) => {
       if (r.url().includes('/api/gallery/claim')) claims.push(r.method())

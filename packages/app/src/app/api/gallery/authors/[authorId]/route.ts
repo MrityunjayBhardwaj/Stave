@@ -82,7 +82,7 @@ async function handlePUT(req: Request, { params }: Ctx): Promise<Response> {
 
   const body = await readJsonBody(req, MAX_AUTHOR_BODY_BYTES);
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });
-  const checked = checkAuthorUpdate(body.value);
+  const checked = checkAuthorUpdate(body.value, author.name);
   if (!checked.ok) return Response.json({ error: checked.error }, { status: checked.status });
 
   // Null: merged away (or gone) since it was read above.

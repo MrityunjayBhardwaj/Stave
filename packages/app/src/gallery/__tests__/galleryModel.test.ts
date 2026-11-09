@@ -1,11 +1,12 @@
 /**
- * #2300 — the overlay's pure rules: the `#gallery=` link, search, tab grouping,
- * and where an added file lands.
+ * #2300 — the gallery's pure rules: the `#gallery=` link, search, the browse
+ * grid's filter, order and counts (#2486), and where an added file lands.
  */
 import { describe, it, expect } from "vitest";
 import {
-  countByKind,
-  entriesForTab,
+  browseEntries,
+  countByFilter,
+  GALLERY_SORTS,
   entryMatches,
   fileToAdd,
   generatedCard,
@@ -67,18 +68,55 @@ describe("search", () => {
   });
 });
 
-describe("tab grouping", () => {
-  it("each kind tab shows only its kind, newest first", () => {
-    expect(entriesForTab(ENTRIES, "project", "").map((e) => e.id)).toEqual(["p2xxxxxxxxx", "p1xxxxxxxxx"]);
-    expect(entriesForTab(ENTRIES, "music", "").map((e) => e.id)).toEqual(["m1xxxxxxxxx"]);
-    expect(entriesForTab(ENTRIES, "viz", "").map((e) => e.id)).toEqual(["v1xxxxxxxxx"]);
+describe("browse grid (#2486)", () => {
+  const ids = (es: GalleryEntry[]) => es.map((e) => e.id);
+  it("All shows every entry, newest first", () => {
+    expect(ids(browseEntries(ENTRIES, "all", "", "newest"))).toEqual(
+      [...ENTRIES].sort((a, b) => b.publishedAt - a.publishedAt).map((e) => e.id),
+    );
+    expect(browseEntries(ENTRIES, "all", "", "newest")).toHaveLength(ENTRIES.length);
   });
-  it("search narrows within the tab, never across tabs", () => {
-    expect(entriesForTab(ENTRIES, "project", "alice").map((e) => e.id)).toEqual(["p1xxxxxxxxx"]);
-    expect(entriesForTab(ENTRIES, "viz", "alice")).toEqual([]);
+  it("each kind filter shows only its kind", () => {
+    expect(ids(browseEntries(ENTRIES, "project", "", "newest"))).toEqual(["p2xxxxxxxxx", "p1xxxxxxxxx"]);
+    expect(ids(browseEntries(ENTRIES, "music", "", "newest"))).toEqual(["m1xxxxxxxxx"]);
+    expect(ids(browseEntries(ENTRIES, "viz", "", "newest"))).toEqual(["v1xxxxxxxxx"]);
   });
-  it("counts each kind", () => {
-    expect(countByKind(ENTRIES)).toEqual({ project: 2, music: 1, viz: 1 });
+  it("search narrows within the filter, never across it", () => {
+    expect(ids(browseEntries(ENTRIES, "project", "alice", "newest"))).toEqual(["p1xxxxxxxxx"]);
+    expect(browseEntries(ENTRIES, "viz", "alice", "newest")).toEqual([]);
+  });
+  it("a #tag search still finds tags with no chips", () => {
+    expect(ids(browseEntries(ENTRIES, "all", "#techno", "newest"))).toEqual(["p1xxxxxxxxx"]);
+  });
+  it("counts follow the search, and All is the sum of the kinds", () => {
+    expect(countByFilter(ENTRIES, "")).toEqual({ all: 4, project: 2, music: 1, viz: 1 });
+    expect(countByFilter(ENTRIES, "alice")).toEqual({ all: 2, project: 1, music: 1, viz: 0 });
+  });
+
+  const SORTABLE: GalleryEntry[] = [
+    entry({ id: "s1xxxxxxxxx", title: "track 10", authorName: "zed", publishedAt: 50 }),
+    entry({ id: "s2xxxxxxxxx", title: "Track 2", authorName: "Émile", publishedAt: 40 }),
+    entry({ id: "s3xxxxxxxxx", title: "alpha", authorName: "   ", publishedAt: 60 }),
+    entry({ id: "s4xxxxxxxxx", title: "Alpha", authorName: "bea", publishedAt: 10 }),
+  ];
+  it("Oldest is Newest reversed", () => {
+    expect(ids(browseEntries(SORTABLE, "all", "", "oldest"))).toEqual(["s4xxxxxxxxx", "s2xxxxxxxxx", "s1xxxxxxxxx", "s3xxxxxxxxx"]);
+  });
+  it("Title A–Z ignores case and reads numbers as numbers; equal titles go by artist", () => {
+    // "alpha" (blank name → "Unnamed artist") and "Alpha" (bea) tie on the title: bea comes first.
+    expect(ids(browseEntries(SORTABLE, "all", "", "title"))).toEqual(["s4xxxxxxxxx", "s3xxxxxxxxx", "s2xxxxxxxxx", "s1xxxxxxxxx"]);
+  });
+  it("Artist A–Z sorts by the name the card shows, accents folded", () => {
+    // bea, Émile, Unnamed artist (blank), zed
+    expect(ids(browseEntries(SORTABLE, "all", "", "artist"))).toEqual(["s4xxxxxxxxx", "s2xxxxxxxxx", "s3xxxxxxxxx", "s1xxxxxxxxx"]);
+  });
+  it("offers exactly Newest, Oldest, Title A–Z, Artist A–Z", () => {
+    expect(GALLERY_SORTS.map((s) => s.label)).toEqual(["Newest", "Oldest", "Title A–Z", "Artist A–Z"]);
+  });
+  it("never reorders the list it was given", () => {
+    const before = ids(SORTABLE);
+    browseEntries(SORTABLE, "all", "", "title");
+    expect(ids(SORTABLE)).toEqual(before);
   });
 });
 

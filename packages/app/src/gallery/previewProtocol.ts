@@ -21,8 +21,8 @@
  */
 
 /** What the code is: a Strudel pattern (sound) or one of the visual languages. */
-export type PreviewKind = "strudel" | "hydra" | "p5" | "glsl";
-export const PREVIEW_KINDS: readonly PreviewKind[] = ["strudel", "hydra", "p5", "glsl"];
+export type PreviewKind = "strudel" | "hydra" | "p5" | "glsl" | "three";
+export const PREVIEW_KINDS: readonly PreviewKind[] = ["strudel", "hydra", "p5", "glsl", "three"];
 
 export type PreviewState = "ready" | "playing" | "stopped" | "error";
 const STATES: readonly PreviewState[] = ["ready", "playing", "stopped", "error"];
@@ -91,8 +91,9 @@ export function previewKindOf(file: { path: string; language?: string }): Previe
     glsl: "glsl",
     frag: "glsl",
     shader: "glsl",
+    three: "three",
   };
   if (byExt[ext]) return byExt[ext];
-  const byLang: Record<string, PreviewKind> = { strudel: "strudel", hydra: "hydra", p5js: "p5", p5: "p5", glsl: "glsl" };
+  const byLang: Record<string, PreviewKind> = { strudel: "strudel", hydra: "hydra", p5js: "p5", p5: "p5", glsl: "glsl", three: "three" };
   return byLang[(file.language ?? "").toLowerCase()] ?? null;
 }

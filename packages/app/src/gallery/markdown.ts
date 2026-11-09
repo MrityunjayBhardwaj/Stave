@@ -10,15 +10,74 @@
  *    text, and a markdown link or image to a dangerous protocol gets an empty URL.
  * 2. A DOM pass over that output, inside an inert `<template>` (nothing in it
  *    loads or runs): links keep only http(s) / mailto targets and open in a new tab
- *    with `rel="noopener noreferrer nofollow"`; images keep only http(s) sources and
- *    are sent with no referrer. Attributes are set through the DOM, never by
- *    splicing strings into HTML.
+ *    with `rel="noopener noreferrer nofollow"`; images keep only the sources
+ *    `allowedImageSrc` accepts and are sent with no referrer. Attributes are set
+ *    through the DOM, never by splicing strings into HTML.
+ *
+ * #2366 — a bio's image is requested by every viewer's browser, so whoever runs its
+ * host sees who opened the profile and when. Images therefore load only from GitHub's
+ * image hosts and Stave's own origin; anything else shows its alt text. This pass
+ * runs before an image reaches a live document, so a refused one is never fetched.
  */
 import { micromark } from "micromark";
 import { gfm, gfmHtml } from "micromark-extension-gfm";
 
 const SAFE_LINK = /^(https?:|mailto:)/i;
-const SAFE_IMAGE = /^https?:/i;
+
+/**
+ * Where a bio's image may load from, over HTTPS, by exact hostname. A bio's author
+ * can choose the file on these hosts but can't read who fetched it.
+ *
+ * - avatars: any account's avatar.
+ * - user-images: older images uploaded to GitHub issues and READMEs.
+ * - raw: a file in a public repo, the usual way to show one in a profile README.
+ *   The repo's owner can change the picture at any time. A file stored with Git LFS
+ *   may count towards the owner's LFS bandwidth, a total with no viewer in it.
+ *
+ * Left out on purpose:
+ * - private-user-images: its links are signed and stop working after five minutes.
+ * - camo: GitHub's image proxy, which fetches from any site its link names.
+ * - the rest of github.com: release downloads keep a public per-file count, which
+ *   would let an author count the views of a profile (see GITHUB_ATTACHMENTS).
+ */
+const IMAGE_HOSTS: ReadonlySet<string> = new Set([
+  "avatars.githubusercontent.com",
+  "user-images.githubusercontent.com",
+  "raw.githubusercontent.com",
+]);
+
+/**
+ * Images uploaded to GitHub today. github.com answers with a redirect to GitHub's
+ * own storage, so only this path on that host is allowed.
+ */
+const GITHUB_ATTACHMENTS = "/user-attachments/assets/";
+
+/** Characters a URL parser drops or treats as a slash. A real image address has no need of them. */
+const URL_TRICKS = /[\\\u0000-\u0020\u007f]/;
+
+/**
+ * The address to load a bio image from, or null if it isn't allowed. The answer comes
+ * from the parsed URL, the way the browser will read it, never from the string's
+ * shape; and it's returned normalised, so the browser fetches what was checked.
+ */
+export function allowedImageSrc(src: string, pageUrl: string): string | null {
+  if (!src || URL_TRICKS.test(src)) return null;
+  let url: URL;
+  let page: URL;
+  try {
+    url = new URL(src, pageUrl);
+    page = new URL(pageUrl);
+  } catch {
+    return null;
+  }
+  if (url.username || url.password) return null;
+  // Stave's own, however it's written. The scheme test keeps out blob:, whose origin is the page's.
+  if ((url.protocol === "https:" || url.protocol === "http:") && url.origin === page.origin) return url.href;
+  if (url.protocol !== "https:" || url.port) return null;
+  const allowed =
+    IMAGE_HOSTS.has(url.hostname) || (url.hostname === "github.com" && url.pathname.startsWith(GITHUB_ATTACHMENTS));
+  return allowed ? url.href : null;
+}
 
 /** Markdown → micromark's escaped HTML, before the link / image pass. Exported for the tests. */
 export function markdownToEscapedHtml(markdown: string): string {
@@ -35,8 +94,9 @@ function isSafeLink(href: string): boolean {
 
 /** The bio as HTML that is safe to put into the page. */
 export function renderMarkdown(markdown: string): string {
+  // No DOM means no way to filter it, and micromark's output still has every image.
+  if (typeof document === "undefined") return "";
   const html = markdownToEscapedHtml(markdown);
-  if (typeof document === "undefined") return html;
   const tpl = document.createElement("template");
   tpl.innerHTML = html;
   const root = tpl.content;
@@ -53,12 +113,13 @@ export function renderMarkdown(markdown: string): string {
   });
 
   root.querySelectorAll("img").forEach((img) => {
-    const src = img.getAttribute("src") ?? "";
-    if (!SAFE_IMAGE.test(src.trim())) {
+    const src = allowedImageSrc(img.getAttribute("src") ?? "", window.location.href);
+    if (src === null) {
       // Keep the alt text so the reader still sees what was meant.
       img.replaceWith(document.createTextNode(img.getAttribute("alt") ?? ""));
       return;
     }
+    img.setAttribute("src", src);
     img.setAttribute("loading", "lazy");
     img.setAttribute("referrerpolicy", "no-referrer");
   });

@@ -57,7 +57,8 @@ async function signedIn(browser: Browser, id: string, opts: Parameters<Browser['
 async function openGallery(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'View', exact: true }).click()
   await page.getByText('Community Gallery...', { exact: true }).click()
-  await expect(page.locator('[data-gallery="overlay"]')).toBeVisible()
+  // #2473 — on a desktop the gallery opens as a workspace tab
+  await expect(page.locator('[data-gallery="tab"]')).toBeVisible()
 }
 
 /** Errors from this feature; a refused call logs a 403 on purpose, so that's filtered by the caller. */
@@ -257,8 +258,8 @@ test.describe('Moderation by admin accounts (#2331)', () => {
     await user.page.locator('[data-gallery-tab="mine"]').click()
     await expect(user.page.locator('[data-gallery-mine-source="account"]')).toBeVisible({ timeout: 15_000 })
     await expect(user.page.locator('[data-gallery-tab="moderation"]')).toHaveCount(0)
-    // Control: the tab bar really rendered.
-    await expect(user.page.locator('[data-gallery-tab="project"]')).toBeVisible()
+    // Control: the header's buttons really rendered.
+    await expect(user.page.locator('[data-gallery-tab="mine"]')).toBeVisible()
 
     const r = user.context.request
     expect((await r.get('/api/gallery/admin/reports')).status()).toBe(403)

@@ -23,7 +23,17 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 import { bootApp, editorValue, evalCode, seedCode } from './_appBoot'
-import { ADA_SESSION_USER, COUNTER_LINE, MUSIC_CODE, routeGallery, routeSession } from './_gallery'
+import {
+  ADA_SESSION_USER,
+  COUNTER_LINE,
+  GALLERY_BODY,
+  GALLERY_TAB,
+  MUSIC_CODE,
+  closeGalleryTab,
+  openGalleryFromMenu,
+  routeGallery,
+  routeSession,
+} from './_gallery'
 
 async function enablePerf(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -54,11 +64,6 @@ async function peak(page: Page, read: (p: Page) => Promise<number | null>, ms: n
   }
 }
 
-async function openGalleryFromMenu(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'View', exact: true }).click()
-  await page.getByText('Community Gallery...', { exact: true }).click()
-  await expect(page.locator('[data-gallery="overlay"]')).toBeVisible()
-}
 
 const SONG_VIEW = { tabId: 'musical-timeline', height: 300 } as const
 
@@ -82,27 +87,91 @@ test.describe('community gallery overlay', () => {
     await openGalleryFromMenu(page)
 
     const cards = page.locator('[data-gallery-card]')
-    await expect(cards).toHaveCount(2)
+    // #2486 — All shows every entry
+    await expect(cards).toHaveCount(4)
     await expect(page.locator('[data-gallery-card="proj1AAAAAA"] img')).toHaveAttribute('src', '/api/gallery/proj1AAAAAA/thumbnail')
     await expect(page.locator('[data-gallery-card="proj2BBBBBB"] [data-gallery-thumb="generated"]')).toBeVisible()
     if (process.env.GALLERY_SHOTS) await page.screenshot({ path: `${process.env.GALLERY_SHOTS}/desktop-grid.png` })
 
-    await page.locator('[data-gallery-tab="music"]').click()
+    await page.locator('[data-gallery-filter="music"]').click()
     await expect(cards).toHaveCount(1)
     await expect(cards.first()).toContainText('Four On The Floor')
-    await page.locator('[data-gallery-tab="viz"]').click()
+    await page.locator('[data-gallery-filter="viz"]').click()
     await expect(cards).toHaveCount(1)
     await expect(cards.first()).toContainText('Oscillator Bloom')
 
-    await page.locator('[data-gallery-tab="project"]').click()
+    // #2486 — Sort by, in the real select
+    await page.locator('[data-gallery-filter="all"]').click()
+    const order = () => cards.evaluateAll((els) => els.map((el) => el.getAttribute('data-gallery-card')))
+    await page.locator('[data-gallery-sort]').selectOption({ label: 'Oldest' })
+    await expect.poll(order).toEqual(['proj2BBBBBB', 'vizz1DDDDDD', 'proj1AAAAAA', 'musc1CCCCCC'])
+    await page.locator('[data-gallery-sort]').selectOption({ label: 'Title A–Z' })
+    await expect.poll(order).toEqual(['proj2BBBBBB', 'proj1AAAAAA', 'musc1CCCCCC', 'vizz1DDDDDD'])
+    await page.locator('[data-gallery-sort]').selectOption({ label: 'Artist A–Z' })
+    await expect.poll(order).toEqual(['proj1AAAAAA', 'proj2BBBBBB', 'musc1CCCCCC', 'vizz1DDDDDD'])
+    await page.locator('[data-gallery-sort]').selectOption({ label: 'Newest' })
+    await expect.poll(order).toEqual(['musc1CCCCCC', 'proj1AAAAAA', 'vizz1DDDDDD', 'proj2BBBBBB'])
+    // "/" puts the cursor in the search
+    await page.locator('[data-gallery-filter="all"]').focus()
+    await page.keyboard.press('/')
+    await expect(page.getByLabel('Search the gallery')).toBeFocused()
+
+    await page.locator('[data-gallery-filter="project"]').click()
     await page.getByLabel('Search the gallery').fill('bob')
     await expect(cards).toHaveCount(1)
     await expect(cards.first()).toContainText('Ambient Drift')
     await page.getByLabel('Search the gallery').fill('nothing-like-this')
     await expect(page.locator('[data-gallery-state="empty"]')).toBeVisible()
 
-    await page.keyboard.press('Escape')
-    await expect(page.locator('[data-gallery="overlay"]')).toHaveCount(0)
+    await closeGalleryTab(page)
+  })
+
+  test('#2491 an entry page: coloured code, and each file in a project plays from its own row, one at a time', async ({ page }) => {
+    await routeGallery(page)
+    await bootApp(page)
+    await openGalleryFromMenu(page)
+    await page.locator('[data-gallery-card="proj1AAAAAA"]').click()
+    await expect(page.locator('.sg-crumbs')).toContainText('Gallery/Projects/Dub Techno Starter')
+    const code = page.locator('[data-gallery-code="main.strudel"]')
+    await expect(code.locator('.sg-code-line').first()).toBeVisible()
+    // coloured: the string and the function name carry their colours
+    const colour = (sel: string) => code.locator(sel).first().evaluate((el) => getComputedStyle(el).color)
+    expect(await colour('.sg-ts')).toBe('rgb(158, 230, 184)')
+    expect(await colour('.sg-tf')).toBe('rgb(143, 200, 255)')
+    await expect(page.locator('[data-gallery-preview-frame]')).toHaveCount(0) // nothing runs to show it
+
+    await page.locator('[data-gallery-file-play="viz/bloom.hydra"]').click()
+    await expect(page.locator('[data-gallery-preview-frame]')).toHaveCount(1)
+    await expect(page.locator('[data-gallery-preview]')).toHaveAttribute('data-gallery-preview', /\/g_prj_viz$/)
+    await expect(page.locator('[data-gallery-code="viz/bloom.hydra"]')).toBeVisible()
+    await page.locator('[data-gallery-file-play="main.strudel"]').click()
+    await expect(page.locator('[data-gallery-preview]')).toHaveAttribute('data-gallery-preview', /\/g_prj_main$/)
+    await expect(page.locator('[data-gallery-preview-frame]')).toHaveCount(1)
+    await page.locator('[data-gallery-crumb="gallery"]').click()
+    await expect(page.locator('[data-gallery-card]')).toHaveCount(4)
+  })
+
+  test('#2486 the filter, sort and search are part of the tab\'s place: a reload brings them back', async ({ page }) => {
+    await routeGallery(page)
+    await bootApp(page)
+    await openGalleryFromMenu(page)
+    await page.locator('[data-gallery-filter="music"]').click()
+    await page.locator('[data-gallery-sort]').selectOption({ label: 'Title A–Z' })
+    await page.getByLabel('Search the gallery').fill('floor')
+    await expect(page.locator('[data-gallery-card]')).toHaveCount(1)
+    // the search is written once typing pauses (400 ms); wait until the layout holds it
+    await expect
+      .poll(() => page.evaluate(() => Object.values(localStorage).some((v) => v.includes('"query":"floor"'))), { timeout: 10_000 })
+      .toBe(true)
+
+    await page.reload()
+    // the gallery tab is in front: there is no editor to wait for
+    await page.locator('[data-bottom-panel="root"]').waitFor({ state: 'attached', timeout: 30_000 })
+    await expect(page.locator('[data-gallery-filter="music"]')).toHaveAttribute('aria-checked', 'true', { timeout: 30_000 })
+    await expect(page.locator('[data-gallery-sort]')).toHaveValue('title')
+    await expect(page.getByLabel('Search the gallery')).toHaveValue('floor')
+    await expect(page.locator('[data-gallery-card]')).toHaveCount(1)
+    await expect(page.locator('[data-gallery-card="musc1CCCCCC"]')).toBeVisible()
   })
 
   test('SUBJECT: a gallery project opens with its code visible and runs nothing until Play', async ({ page }) => {
@@ -120,7 +189,8 @@ test.describe('community gallery overlay', () => {
     expect(await runs(page), 'reading an entry must not run it').toBe(0)
 
     await page.getByRole('button', { name: 'Open as new project' }).click()
-    await expect(page.locator('[data-gallery="overlay"]')).toHaveCount(0)
+    // #2473 — the new project's layout doesn't carry the gallery tab
+    await expect(page.locator(GALLERY_TAB)).toHaveCount(0)
     // the new project is the active one and its code is in the editor
     await expect.poll(() => editorValue(page), { timeout: 20_000 }).toBe(MUSIC_CODE)
     await expect(page.getByText('Dub Techno Starter (shared)').first()).toBeVisible()
@@ -156,17 +226,17 @@ test.describe('community gallery overlay', () => {
     await expect(page.locator('[data-gallery-detail="musc1CCCCCC"]')).toBeVisible({ timeout: 30_000 })
     await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('')
     await page.getByRole('button', { name: 'Add to this project' }).click()
-    await expect(page.locator('[data-gallery="overlay"]')).toHaveCount(0)
-    // the added file opens as the active tab
+    // #2473 — the added file opens as the active tab, in front of the gallery tab
+    await expect(page.locator(GALLERY_BODY)).toHaveCount(0)
     await expect.poll(() => editorValue(page), { timeout: 15_000 }).toBe(MUSIC_CODE)
     await expect(page.getByText('floor.strudel').first()).toBeVisible()
 
     await openGalleryFromMenu(page)
-    await page.locator('[data-gallery-tab="viz"]').click()
+    await page.locator('[data-gallery-filter="viz"]').click()
     await page.locator('[data-gallery-card="vizz1DDDDDD"]').click()
     await expect(page.locator('[data-gallery-code="bloom.hydra"]')).toContainText('osc(10')
     await page.getByRole('button', { name: 'Add to this project' }).click()
-    await expect(page.locator('[data-gallery="overlay"]')).toHaveCount(0)
+    await expect(page.locator(GALLERY_BODY)).toHaveCount(0)
 
     expect(await peak(page, runs, 6_000), 'added gallery code ran without Play').toBe(0)
   })
@@ -234,7 +304,7 @@ test.describe('community gallery overlay', () => {
     await routeSession(page, ADA_SESSION_USER)
     await bootApp(page)
     await openGalleryFromMenu(page)
-    await page.locator('[data-gallery-tab="music"]').click()
+    await page.locator('[data-gallery-filter="music"]').click()
     const card = page.locator(`[data-gallery-card="${NEW_ID}"]`)
     await expect(page.locator('[data-gallery-card="musc1CCCCCC"]')).toBeVisible()
     await expect(card).toHaveCount(0) // the control: it isn't there before publishing
@@ -248,7 +318,7 @@ test.describe('community gallery overlay', () => {
     const reads = lists.length
     await openGalleryFromMenu(page)
     await expect.poll(() => lists.length).toBeGreaterThan(reads)
-    await page.locator('[data-gallery-tab="music"]').click()
+    await page.locator('[data-gallery-filter="music"]').click()
     await expect(card).toBeVisible()
     await expect(card).toHaveCount(1)
 
@@ -259,7 +329,8 @@ test.describe('community gallery overlay', () => {
     await row.getByRole('button', { name: 'Delete' }).click()
     await page.getByRole('button', { name: 'Delete', exact: true }).last().click() // the confirm
     await expect(row).toHaveCount(0)
-    await page.locator('[data-gallery-tab="music"]').click()
+    await page.locator('[data-gallery-browse]').click()
+    await page.locator('[data-gallery-filter="music"]').click()
     await expect(page.locator('[data-gallery-card="musc1CCCCCC"]')).toBeVisible()
     await expect(card).toHaveCount(0)
   })
@@ -291,7 +362,7 @@ test.describe('community gallery overlay', () => {
     )
     await bootApp(page)
     await openGalleryFromMenu(page)
-    await page.locator('[data-gallery-tab="music"]').click()
+    await page.locator('[data-gallery-filter="music"]').click()
     await expect(page.locator(`[data-gallery-card="${reported.id}"]`)).toBeVisible() // the control
 
     await page.locator('[data-gallery-tab="moderation"]').click()
@@ -308,14 +379,15 @@ test.describe('community gallery overlay', () => {
     expect(restored).toHaveLength(1)
 
     const check = async () => {
-      await page.locator('[data-gallery-tab="music"]').click()
+      await page.locator('[data-gallery-filter="music"]').click()
       await expect(page.locator(`[data-gallery-card="${reported.id}"]`)).toHaveCount(0)
-      await page.locator('[data-gallery-tab="viz"]').click()
+      await page.locator('[data-gallery-filter="viz"]').click()
       await expect(page.locator(`[data-gallery-card="${hidden.id}"]`)).toBeVisible()
     }
+    await page.locator('[data-gallery-browse]').click() // from Moderation back to the grid
     await check() // while the gallery stayed open
-    await page.keyboard.press('Escape')
-    await expect(page.locator('[data-gallery-tab="music"]')).toHaveCount(0)
+    await closeGalleryTab(page)
+    await expect(page.locator('[data-gallery-filter="music"]')).toHaveCount(0)
     await openGalleryFromMenu(page)
     await check() // and from a fresh read of the same old list
   })
@@ -335,7 +407,7 @@ test.describe('community gallery overlay', () => {
     })
     await bootApp(page)
     await openGalleryFromMenu(page)
-    await page.locator('[data-gallery-tab="music"]').click()
+    await page.locator('[data-gallery-filter="music"]').click()
     const card = page.locator('[data-gallery-card="musc1CCCCCC"]')
     await expect(card).toBeVisible() // the control: the list really has it
 
@@ -344,10 +416,11 @@ test.describe('community gallery overlay', () => {
     await page.getByRole('button', { name: 'Delete', exact: true }).last().click() // the confirm
     await expect(page.locator('[data-gallery-mine="musc1CCCCCC"]')).toHaveCount(0)
 
-    await page.keyboard.press('Escape')
-    await expect(page.locator('[data-gallery-tab="music"]')).toHaveCount(0)
+    await closeGalleryTab(page)
+    await expect(page.locator('[data-gallery-filter="music"]')).toHaveCount(0)
     await openGalleryFromMenu(page)
-    await page.locator('[data-gallery-tab="music"]').click()
+    await page.locator('[data-gallery-browse]').click() // it comes back on My shares, where it was left
+    await page.locator('[data-gallery-filter="music"]').click()
     await expect(page.locator('[data-gallery-state]').or(page.locator('[data-gallery-card]')).first()).toBeVisible()
     await expect(card).toHaveCount(0)
   })

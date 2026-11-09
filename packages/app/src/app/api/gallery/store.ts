@@ -36,6 +36,8 @@ export interface GalleryBlobStore {
 export const galleryPaths = {
   manifest: (id: string) => `gallery/manifests/${id}.json`,
   thumbnail: (id: string) => `gallery/thumbnails/${id}`,
+  /** #2487 — what the entry plays, recorded at publish. */
+  recording: (id: string) => `gallery/recordings/${id}.json`,
 };
 
 const blobStore: GalleryBlobStore = {

@@ -6,6 +6,7 @@
  * The limits are the server's (types.ts); the dialog checks them first so a
  * person is told before anything is uploaded.
  */
+import { VIZ_LANGUAGES as EDITOR_VIZ_LANGUAGES } from "@stave/editor";
 import { publishToGallery, galleryEntryLink } from "./client";
 import { addLocalShare, recordListChange } from "./localShares";
 import {
@@ -21,8 +22,9 @@ import {
 
 /** File languages a music entry can be. */
 export const MUSIC_LANGUAGES: readonly string[] = ["strudel", "sonicpi"];
-/** File languages a viz entry can be. */
-export const VIZ_LANGUAGES: readonly string[] = ["hydra", "p5js", "glsl"];
+/** File languages a viz entry can be: the editor's own list, so a new viz
+ *  kind can be published the day it can be written (#2516). */
+export const VIZ_LANGUAGES: readonly string[] = EDITOR_VIZ_LANGUAGES;
 
 type ManifestFile = GalleryManifest["files"][number];
 
