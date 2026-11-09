@@ -25,8 +25,12 @@ export interface ExtensionManager {
   activate(id: string): Promise<void>
   /** Undo everything it registered. Returns the errors of any undo step that threw. */
   deactivate(id: string): unknown[]
-  /** Make the active set equal `ids`: switch off the rest, then switch on the missing. */
-  sync(ids: ReadonlySet<string>): Promise<{ failed: { id: string; error: unknown }[] }>
+  /**
+   * Make the active set equal `ids`: switch off the rest, then switch on the missing.
+   * An id with no manifest (an extension Stave no longer ships, still saved as on) is
+   * skipped and listed in `unknown`, not reported as a failure on every start.
+   */
+  sync(ids: ReadonlySet<string>): Promise<{ failed: { id: string; error: unknown }[]; unknown: string[] }>
 }
 
 export function createExtensionManager(opts: {
@@ -46,11 +50,13 @@ export function createExtensionManager(opts: {
   async function run(m: ExtensionManifest, ticket: { cancelled: boolean }): Promise<void> {
     const mod = await m.load()
     if (ticket.cancelled) return
-    const rec = createRecordingHost(m.id, opts.registries())
+    const rec = createRecordingHost(m.id, opts.registries(), m.provides)
     try {
       await mod.activate(rec.host)
     } catch (e) {
-      rec.undo()
+      const undoErrors = rec.undo()
+      // The cleanup's own failures travel with the error, so whoever reports it can say so.
+      if (undoErrors.length && typeof e === 'object' && e !== null) (e as { undoErrors?: unknown[] }).undoErrors = undoErrors
       throw e
     }
     if (ticket.cancelled) {
@@ -94,14 +100,15 @@ export function createExtensionManager(opts: {
     async sync(ids) {
       for (const id of [...active.keys(), ...pending.keys()]) if (!ids.has(id)) manager.deactivate(id)
       const failed: { id: string; error: unknown }[] = []
+      const unknown = [...ids].filter((id) => !byId.has(id))
       await Promise.all(
-        [...ids].map((id) =>
+        [...ids].filter((id) => byId.has(id)).map((id) =>
           manager.activate(id).catch((error: unknown) => {
             failed.push({ id, error })
           }),
         ),
       )
-      return { failed }
+      return { failed, unknown }
     },
   }
   return manager

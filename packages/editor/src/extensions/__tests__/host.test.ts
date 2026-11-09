@@ -53,11 +53,28 @@ describe('createRecordingHost', () => {
 
   it('the control it adds works as Strudel controls do, as a method and as a global', async () => {
     const rec = createRecordingHost('zzext', reg)
-    await testModule().activate(rec.host)
-    const pat = (core as any).note('c4')[TEST_CONTROL]('hi')
-    expect(pat.firstCycle()[0].value[TEST_CONTROL]).toBe('hi')
-    expect(g[TEST_CONTROL]('hi').firstCycle()[0].value).toEqual({ [TEST_CONTROL]: 'hi' })
-    rec.undo()
+    try {
+      await testModule().activate(rec.host)
+      const pat = (core as any).note('c4')[TEST_CONTROL]('hi')
+      expect(pat.firstCycle()[0].value[TEST_CONTROL]).toBe('hi')
+      expect(g[TEST_CONTROL]('hi').firstCycle()[0].value).toEqual({ [TEST_CONTROL]: 'hi' })
+    } finally {
+      rec.undo()
+    }
+  })
+
+  it('with the manifest\'s names given, refuses anything it did not declare, and accepts what it did', () => {
+    const rec = createRecordingHost('zzext', reg, { sounds: [TEST_SOUND], controls: [TEST_CONTROL] })
+    try {
+      expect(() => rec.host.registerSound('zz_undeclared', () => undefined)).toThrow(/without declaring it/)
+      expect(() => rec.host.registerControl('zzundeclared')).toThrow(/without declaring it/)
+      expect(Object.keys((webaudio as any).soundMap.get())).not.toContain('zz_undeclared')
+      expect('zzundeclared' in (core as any).Pattern.prototype).toBe(false)
+      rec.host.registerSound(TEST_SOUND.toUpperCase(), () => undefined)
+      rec.host.registerControl(TEST_CONTROL)
+    } finally {
+      rec.undo()
+    }
   })
 
   it('refuses a name that is already taken, and says which, without touching the original', () => {

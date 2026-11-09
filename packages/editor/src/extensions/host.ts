@@ -95,8 +95,6 @@ export function isNameTaken(e: unknown): e is NameTakenError {
 
 export interface RecordingHost {
   host: ExtensionHost
-  /** how many registrations are recorded (for tests and reports) */
-  readonly size: number
   /**
    * Undo everything, newest first. Each undo runs even if an earlier one throws;
    * the errors are returned rather than thrown so one bad step cannot strand the rest.
@@ -104,7 +102,20 @@ export interface RecordingHost {
   undo(): unknown[]
 }
 
-export function createRecordingHost(id: string, reg: HostRegistries): RecordingHost {
+/**
+ * `declared`: the names the extension's manifest says it provides. When given, the host
+ * refuses any sound or control not on it, so the manifest can never claim less than the
+ * extension does: Stave names a switched-off extension from its manifest alone (#2512).
+ */
+export function createRecordingHost(
+  id: string,
+  reg: HostRegistries,
+  declared?: { readonly sounds?: readonly string[]; readonly controls?: readonly string[] },
+): RecordingHost {
+  const declaredSounds = new Set((declared?.sounds ?? []).map((n) => n.toLowerCase()))
+  const declaredControls = new Set(declared?.controls ?? [])
+  const undeclared = (kind: 'sound' | 'control', name: string) =>
+    new Error(`The ${id} extension registered the ${kind} "${name}" without declaring it in its manifest, so it was not added.`)
   const undos: (() => void)[] = []
   const onOff: (() => void)[] = []
   let closed = false
@@ -116,12 +127,14 @@ export function createRecordingHost(id: string, reg: HostRegistries): RecordingH
     id,
     registerSound(name, onTrigger, data = {}) {
       open()
+      if (declared && !declaredSounds.has(name.toLowerCase())) throw undeclared('sound', name)
       if (reg.sounds.has(name)) throw nameTaken(id, 'sound', name)
       reg.sounds.add(name, onTrigger, data)
       undos.push(() => reg.sounds.remove(name))
     },
     registerControl(name) {
       open()
+      if (declared && !declaredControls.has(name)) throw undeclared('control', name)
       if (reg.controls.has(name)) throw nameTaken(id, 'control', name)
       if (name in reg.globals) throw nameTaken(id, 'global', name)
       const fn = reg.controls.add(name)
@@ -147,9 +160,6 @@ export function createRecordingHost(id: string, reg: HostRegistries): RecordingH
 
   return {
     host,
-    get size() {
-      return undos.length + onOff.length
-    },
     undo() {
       closed = true
       const errors: unknown[] = []

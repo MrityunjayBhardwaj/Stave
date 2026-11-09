@@ -61,6 +61,36 @@ describe('createExtensionManager', () => {
     expect(sounds()).toEqual(before)
   })
 
+  it('an extension that registers a name its manifest does not declare is refused, leaving nothing', async () => {
+    const before = sounds()
+    const liar = testManifest({ provides: { sounds: [TEST_SOUND] } }) // its module also adds a control and a global
+    const m = createExtensionManager({ manifests: [liar], registries })
+    await expect(m.activate('zzext')).rejects.toThrow(/without declaring it/)
+    expect(sounds()).toEqual(before)
+    expect(m.isActive('zzext')).toBe(false)
+  })
+
+  it('when cleanup after a failed activation also fails, those errors travel with the error', async () => {
+    const reg = registries()
+    const flaky = { ...reg, sounds: { ...reg.sounds, remove: () => { throw new Error('stuck') } } }
+    const m = createExtensionManager({
+      manifests: [
+        testManifest({
+          load: async () => ({
+            activate(host) {
+              host.registerSound(TEST_SOUND, () => undefined)
+              throw new Error('half-way')
+            },
+          }),
+        }),
+      ],
+      registries: () => flaky,
+    })
+    const err = await m.activate('zzext').catch((e: unknown) => e)
+    expect((err as { undoErrors?: unknown[] }).undoErrors).toHaveLength(1)
+    reg.sounds.remove(TEST_SOUND)
+  })
+
   it('switching off while it is still loading wins: nothing is registered when the load ends', async () => {
     const gate = deferred<void>()
     const m = createExtensionManager({
@@ -113,9 +143,11 @@ describe('createExtensionManager', () => {
   it('sync makes the active set equal the ids, and reports failures without stopping the rest', async () => {
     const bad = testManifest({ id: 'bad', load: async () => Promise.reject(new Error('no network')) })
     const m = createExtensionManager({ manifests: [testManifest(), bad], registries })
-    const r1 = await m.sync(new Set(['zzext', 'bad']))
+    const r1 = await m.sync(new Set(['zzext', 'bad', 'gone']))
     expect(m.activeIds()).toEqual(['zzext'])
     expect(r1.failed.map((f) => f.id)).toEqual(['bad'])
+    // an id saved as on for an extension Stave no longer ships is skipped, not a failure
+    expect(r1.unknown).toEqual(['gone'])
     await m.sync(new Set())
     expect(m.activeIds()).toEqual([])
     expect(sounds()).not.toContain(TEST_SOUND)
