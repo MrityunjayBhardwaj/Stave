@@ -7755,7 +7755,7 @@ function readBackdropCall(call, onMaster) {
   };
 }
 __name(readBackdropCall, "readBackdropCall");
-function lastTrackBackdropCall(doc) {
+function lastTrackBackdropCall(doc, { declaredOnly: declaredOnly2 = false } = {}) {
   const statements = parseTopLevel(doc);
   if (!statements) return null;
   let last = null;
@@ -7764,7 +7764,8 @@ function lastTrackBackdropCall(doc) {
     if (body?.type !== "ExpressionStatement") continue;
     const expr = body.expression;
     if (expr?.type === "CallExpression" && expr.callee?.type === "Identifier" && expr.callee.name === "all") continue;
-    const r = lastBackdropCall(collectChain(doc, expr, { ref: null }), false);
+    const chain = collectChain(doc, expr, { ref: null });
+    const r = lastBackdropCall(declaredOnly2 ? chain.filter((c) => c.name === "viz") : chain, false);
     if (r) last = r;
   }
   return last;
@@ -13499,7 +13500,7 @@ function readCodeViz(doc) {
   if (master) {
     return master.name === null ? null : { name: master.name, options: master.options, level: "master" };
   }
-  const track = lastTrackBackdropCall(doc);
+  const track = lastTrackBackdropCall(doc, { declaredOnly: true });
   if (!track || track.name === null) return null;
   return { name: track.name, options: track.options, level: "track" };
 }
