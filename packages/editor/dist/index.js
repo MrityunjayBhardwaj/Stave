@@ -15685,7 +15685,8 @@ function createExtensionAudio(opts) {
       }
       return started2;
     },
-    async prepare(capMs) {
+    async prepare(capMs, signal) {
+      if (signal?.aborted) return;
       const jobs = manager.preparers();
       if (!jobs.length) return;
       const pending = new Set(jobs);
@@ -15701,14 +15702,20 @@ function createExtensionAudio(opts) {
         })
       );
       let timer;
-      const capped = await Promise.race([
-        all.then(() => false),
+      let onAbort;
+      const ended = await Promise.race([
+        all.then(() => "done"),
         new Promise((resolve) => {
-          timer = setTimeout(() => resolve(true), capMs);
+          timer = setTimeout(() => resolve("capped"), capMs);
+        }),
+        new Promise((resolve) => {
+          onAbort = /* @__PURE__ */ __name(() => resolve("cancelled"), "onAbort");
+          signal?.addEventListener("abort", onAbort, { once: true });
         })
       ]);
       clearTimeout(timer);
-      if (capped && pending.size) {
+      if (onAbort) signal?.removeEventListener("abort", onAbort);
+      if (ended === "capped" && pending.size) {
         const names = [...new Set([...pending].map((j) => j.id))].map(nameOf2).join(", ");
         report2("warn", `${names} extension was still getting ready after ${Math.round(capMs / 100) / 10} s, so its sounds may be missing at the start.`);
       }
@@ -19007,7 +19014,7 @@ var _StrudelEngine = class _StrudelEngine {
     if (!this.audioCtx) {
       throw new Error("StrudelEngine not initialized \u2014 call init() first");
     }
-    await pageExtensionAudio().prepare(EXTENSIONS_RENDER_PREPARE_MS);
+    await pageExtensionAudio().prepare(EXTENSIONS_RENDER_PREPARE_MS, signal);
     if (signal?.aborted) throw new RenderCancelledError();
     const wa = await import('@strudel/webaudio');
     const options = {

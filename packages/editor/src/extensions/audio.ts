@@ -61,8 +61,12 @@ export interface ExtensionAudio {
    * Run every active extension's `onPrepare`, waiting at most `capMs`. A failure is
    * reported under the extension's name; one still running at the cap is reported too,
    * so a sound missing from the start of a render is never silent.
+   *
+   * `signal`: stop waiting the moment it aborts (a cancelled bounce must not sit out a
+   * slow preparation). The preparations themselves keep running, so they are ready for
+   * the next Play or render; a cancel is not reported as a slow extension.
    */
-  prepare(capMs: number): Promise<void>
+  prepare(capMs: number, signal?: AbortSignal): Promise<void>
   /** Hear when the set of active extensions has changed (sound names to read again). */
   onChange(fn: () => void): () => void
   readonly manager: ExtensionManager
@@ -151,7 +155,8 @@ export function createExtensionAudio(opts: {
       return started
     },
 
-    async prepare(capMs) {
+    async prepare(capMs, signal) {
+      if (signal?.aborted) return
       const jobs = manager.preparers()
       if (!jobs.length) return
       const pending = new Set(jobs)
@@ -167,14 +172,20 @@ export function createExtensionAudio(opts: {
         }),
       )
       let timer: ReturnType<typeof setTimeout> | undefined
-      const capped = await Promise.race([
-        all.then(() => false),
-        new Promise<boolean>((resolve) => {
-          timer = setTimeout(() => resolve(true), capMs)
+      let onAbort: (() => void) | undefined
+      const ended = await Promise.race([
+        all.then(() => 'done' as const),
+        new Promise<'capped'>((resolve) => {
+          timer = setTimeout(() => resolve('capped'), capMs)
+        }),
+        new Promise<'cancelled'>((resolve) => {
+          onAbort = () => resolve('cancelled')
+          signal?.addEventListener('abort', onAbort, { once: true })
         }),
       ])
       clearTimeout(timer)
-      if (capped && pending.size) {
+      if (onAbort) signal?.removeEventListener('abort', onAbort)
+      if (ended === 'capped' && pending.size) {
         const names = [...new Set([...pending].map((j) => j.id))].map(nameOf).join(', ')
         report('warn', `${names} extension was still getting ready after ${Math.round(capMs / 100) / 10} s, so its sounds may be missing at the start.`)
       }

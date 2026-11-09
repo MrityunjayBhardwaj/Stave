@@ -202,6 +202,47 @@ describe('createExtensionAudio', () => {
     release()
   })
 
+  it('a cancelled render stops waiting for a slow preparation at once, and says nothing about the extension being slow', async () => {
+    let release!: () => void
+    let finished = false
+    const h = harness({
+      manifests: [
+        testManifest({
+          load: async () => ({
+            activate(host) {
+              host.registerSound(TEST_SOUND, () => undefined)
+              host.onPrepare(() =>
+                new Promise<void>((r) => (release = r)).then(() => {
+                  finished = true
+                }),
+              )
+            },
+          }),
+        }),
+      ],
+    })
+    cleanup = () => h.audio.manager.deactivate('zzext')
+    await h.audio.start(h.doors)
+
+    const cancel = new AbortController()
+    const t0 = Date.now()
+    const waiting = h.audio.prepare(10_000, cancel.signal)
+    setTimeout(() => cancel.abort(), 10)
+    await waiting
+    expect(Date.now() - t0).toBeLessThan(1000)
+    expect(h.rows).toEqual([])
+
+    // already cancelled: returns without starting anything
+    const before = Date.now()
+    await h.audio.prepare(10_000, cancel.signal)
+    expect(Date.now() - before).toBeLessThan(50)
+
+    // the preparation itself kept going, ready for next time
+    release()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(finished).toBe(true)
+  })
+
   it('an undo that throws on switch-off reaches the Console', async () => {
     const h = harness({
       manifests: [

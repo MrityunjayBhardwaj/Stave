@@ -2680,7 +2680,8 @@ export class StrudelEngine implements LiveCodingEngine {
     // #2510 — a render has no warm step of its own (Play's is `warmSounds`), so the
     // extensions get ready here: bounce, stems and the waveform all come through this
     // door. Before the graph is borrowed, so a slow preparation holds no render lock.
-    await pageExtensionAudio().prepare(EXTENSIONS_RENDER_PREPARE_MS)
+    // A cancel stops the wait at once (the preparation itself goes on for next time).
+    await pageExtensionAudio().prepare(EXTENSIONS_RENDER_PREPARE_MS, signal)
     if (signal?.aborted) throw new RenderCancelledError()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const wa: any = await import('@strudel/webaudio')
