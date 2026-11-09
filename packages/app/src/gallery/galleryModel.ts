@@ -178,7 +178,7 @@ export type FileRole = "pattern" | "visual" | "file";
 export function fileRole(path: string): FileRole {
   const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
   if (ext === "strudel") return "pattern";
-  if (["hydra", "hy", "p5", "p5js", "js", "glsl", "frag", "shader"].includes(ext)) return "visual";
+  if (["hydra", "hy", "p5", "p5js", "js", "glsl", "frag", "shader", "three"].includes(ext)) return "visual";
   return "file";
 }
 

@@ -1,13 +1,16 @@
 /**
  * hostVizWorker — the bundler-AGNOSTIC worker host that runs a viz sketch in a
  * `WorkerGlobalScope` and renders it to a transferred `OffscreenCanvas` (Phase B,
- * epic #228). Hosts BOTH renderer kinds, branching on `MountMessage.kind`:
+ * epic #228). Hosts every renderer kind, branching on `MountMessage.kind`:
  *   - `'p5'`    (B-3) — install the 6-part p5 DOM shim, compile via the shared
  *     `compileP5Code`, drive `redraw()` then BLIT p5's worker-local canvas onto the
  *     transferred presenting canvas (p5 makes its OWN canvases — Tier 2).
  *   - `'hydra'` (B-5) — install the 2-part hydra shim, `new Hydra({ canvas })` on
  *     the transferred canvas DIRECTLY (Tier 1: hydra accepts a canvas → no blit),
  *     feed `s.a.fft[]` from the frame's master bytes, drive `hydra.tick()`.
+ *   - `'glsl'`  (#281) — raw WebGL2 on the transferred canvas.
+ *   - `'three'` (#2516) — a plain three.js sketch run by `threeSketch.ts`; its
+ *     renderer is built on the transferred canvas and its loop driven per frame.
  *
  * The app's `viz-worker.ts` (bundled by Next via `new Worker(new URL(...))`) is a
  * two-line shell: `hostVizWorker(self)`. ONE worker hosts ONE kind (B-3/B-5; a
@@ -46,6 +49,7 @@ import { compileP5Code } from '../p5Compiler'
 import { compileHydraCode, getHydraLineOffset } from '../hydraCompiler'
 import { createGLSLProgram, type GLSLProgram } from '../renderers/glslCore'
 import { readGLSLEvents, readGLSLTracks } from '../renderers/glslEvents'
+import { compileThreeSketch, loadThreeModules, runThreeSketch } from '../renderers/threeSketch'
 import { subscribeLog, type LogEntry } from '../../engine/engineLog'
 import { parseStackLocation } from '../../engine/friendlyErrors'
 import { getVizConfig, updateVizConfig } from '../vizConfig'
@@ -222,6 +226,7 @@ export function hostVizWorker(scope: WorkerScope): void {
   // WEBGL_lose_context extension; `glAccounted` guards the one-shot `glctx+` report
   // and the matching loseContext on teardown.
   let glLoseExt: { loseContext?: () => void } | null = null
+  let glCtx: GLLoseCtx | null = null
   let glAccounted = false
   const accountGL = (): void => {
     if (glAccounted || !state) return
@@ -230,6 +235,7 @@ export function hostVizWorker(scope: WorkerScope): void {
       const ext = ctx?.getExtension?.('WEBGL_lose_context') ?? null
       if (ext) {
         glLoseExt = ext
+        glCtx = ctx
         glAccounted = true
         diag('info', GLCTX_UP) // main → perf.gauge('viz.glctx', +1)
       }
@@ -241,8 +247,13 @@ export function hostVizWorker(scope: WorkerScope): void {
     if (!glAccounted) return
     glAccounted = false
     const ext = glLoseExt
+    const ctx = glCtx
     glLoseExt = null
+    glCtx = null
     try {
+      // A kind whose teardown already lost the context (three: forceContextLoss)
+      // needs nothing more; losing it twice is a WebGL error in the console.
+      if (ctx?.isContextLost?.()) return
       if (GLCTX_RELEASE) ext?.loseContext?.() // #266 fix — free the context slot
     } catch {
       /* already lost / unsupported — ignore */
@@ -313,7 +324,9 @@ export function hostVizWorker(scope: WorkerScope): void {
         ? await mountHydra(msg, feed, rawAnalyser, rawScheduler, dpr)
         : msg.kind === 'glsl'
           ? mountGLSL(msg, rawAnalyser, feed)
-          : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr)
+          : msg.kind === 'three'
+            ? await mountThree(msg, feed, containerSizeRef, dpr)
+            : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr)
 
     const reader = createPostMessageReader(scope as any)
     state = {
@@ -697,6 +710,71 @@ export function hostVizWorker(scope: WorkerScope): void {
         } catch {
           /* ignore */
         }
+      },
+    }
+  }
+
+  // ── three (#2516: a plain three.js sketch; its renderer draws on the canvas) ──
+  async function mountThree(
+    msg: MountMessage,
+    feed: WorkerBusFeed,
+    containerSizeRef: { current: { w: number; h: number } },
+    dpr: number,
+  ): Promise<RendererStrategy> {
+    // A syntax error or an import outside the bundle throws here, before any
+    // frame: mount's caller posts diag('error'), and the main FallbackVizRenderer
+    // falls back to ThreeVizRenderer, which reports it on its line (GLSL's model).
+    const compiled = compileThreeSketch(msg.code)
+    if (compiled.syntaxError) throw compiled.syntaxError
+    const loaded = await loadThreeModules(compiled)
+
+    // No onTick: the feed has already ticked the bus this frame (PK22).
+    const uniforms = buildStaveUniforms(feed.bus)
+    const optionsRef = { current: (msg.options ?? {}) as Record<string, unknown> }
+    let currentDpr = dpr
+    msg.canvas.width = Math.max(1, Math.round(msg.size.w * dpr))
+    msg.canvas.height = Math.max(1, Math.round(msg.size.h * dpr))
+
+    // Before the first frame, an error belongs to the fallback (it re-runs the
+    // sketch on the main thread and reports it there); after it, the worker
+    // reports it itself, like a p5 draw() error (#257).
+    let drawn = false
+    let disposed = false
+    const run = runThreeSketch(compiled, loaded, {
+      canvas: msg.canvas,
+      size: () => containerSizeRef.current,
+      dpr: () => currentDpr,
+      uniforms: () => uniforms,
+      options: () => optionsRef.current,
+      createCanvas: () => new OffscreenCanvas(1, 1),
+      report: (entry) => {
+        if (entry.level === 'error' && !drawn) return
+        postVizLog({ ...entry, runtime: 'three' })
+      },
+    })
+    void run.done.then(({ error }) => {
+      if (error && !drawn && !disposed) diag('error', `three: ${error.message}`, errStack(error))
+    })
+
+    return {
+      setupDone: () => run.ready(),
+      gl: () => run.gl() as GLLoseCtx | null,
+      setOptions: (options: Record<string, unknown>) => {
+        optionsRef.current = options
+      },
+      draw: () => {
+        run.frame(globalThis.performance?.now?.() ?? 0)
+        drawn = true
+      },
+      resizeKind: (_w, _h, dprNew) => {
+        // containerSizeRef already holds the new size; the sketch's own resize
+        // listener (or Stave, when it has none) sizes the renderer and canvas.
+        currentDpr = dprNew
+        run.resize()
+      },
+      teardown: () => {
+        disposed = true
+        run.dispose()
       },
     }
   }

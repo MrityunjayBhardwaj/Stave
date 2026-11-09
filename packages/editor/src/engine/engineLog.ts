@@ -23,6 +23,7 @@ export type RuntimeId =
   | 'p5'
   | 'hydra'
   | 'glsl'
+  | 'three'
   /** Stave-itself errors (engine init, host-side failures). */
   | 'stave'
 

@@ -8,14 +8,15 @@ import {
 import type { WorkspaceLanguage } from '../types'
 
 describe('vizLanguages — the single language↔renderer home', () => {
-  it('VIZ_LANGUAGES is exactly the three viz languages', () => {
-    expect([...VIZ_LANGUAGES].sort()).toEqual(['glsl', 'hydra', 'p5js'])
+  it('VIZ_LANGUAGES is exactly the four viz languages', () => {
+    expect([...VIZ_LANGUAGES].sort()).toEqual(['glsl', 'hydra', 'p5js', 'three'])
   })
 
   it('isVizLanguage is true for viz languages, false for non-viz', () => {
     expect(isVizLanguage('p5js')).toBe(true)
     expect(isVizLanguage('hydra')).toBe(true)
     expect(isVizLanguage('glsl')).toBe(true)
+    expect(isVizLanguage('three')).toBe(true)
     expect(isVizLanguage('strudel')).toBe(false)
     expect(isVizLanguage('sonicpi')).toBe(false)
     expect(isVizLanguage('markdown')).toBe(false)
@@ -25,6 +26,7 @@ describe('vizLanguages — the single language↔renderer home', () => {
     expect(rendererForLanguage('p5js')).toBe('p5')
     expect(rendererForLanguage('hydra')).toBe('hydra')
     expect(rendererForLanguage('glsl')).toBe('glsl')
+    expect(rendererForLanguage('three')).toBe('three')
   })
 
   it('rendererForLanguage returns null for non-viz languages', () => {
@@ -36,6 +38,7 @@ describe('vizLanguages — the single language↔renderer home', () => {
     expect(languageForRenderer('p5')).toBe('p5js')
     expect(languageForRenderer('hydra')).toBe('hydra')
     expect(languageForRenderer('glsl')).toBe('glsl')
+    expect(languageForRenderer('three')).toBe('three')
   })
 
   it('round-trips language → renderer → language for every viz language', () => {
