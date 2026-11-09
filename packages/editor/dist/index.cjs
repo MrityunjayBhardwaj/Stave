@@ -1857,7 +1857,7 @@ function rootStackArms(ir) {
   if (node.tag !== "Stack") return null;
   if (node.userMethod !== void 0) return null;
   if (node.tracks.length < 2) return null;
-  return node.tracks.map((arm, i) => ({ arm, laneId: `d${i + 1}` }));
+  return node.tracks.map((arm2, i) => ({ arm: arm2, laneId: `d${i + 1}` }));
 }
 __name(rootStackArms, "rootStackArms");
 function walkLeafItems(ir, nCycles) {
@@ -2071,8 +2071,8 @@ function collect(node, overridden, timeMoved, steps, found, seen, ids) {
   if (node.tag === "Arrange") {
     const windows = sectionWindows(node);
     node.arms.forEach(
-      (arm, i) => visit(
-        arm.pattern,
+      (arm2, i) => visit(
+        arm2.pattern,
         windows ? [...steps, { node, arm: i, step: windows[i] }] : steps,
         timeMoved || windows === null
       )
@@ -2100,7 +2100,7 @@ function routeKey(steps, ids) {
 }
 __name(routeKey, "routeKey");
 function sectionWindows(node) {
-  const weights = node.arms.map((arm) => arm.weight);
+  const weights = node.arms.map((arm2) => arm2.weight);
   if (!weights.every((w) => Number.isInteger(w) && w >= 0)) return null;
   const total = weights.reduce((sum, w) => sum + w, 0);
   if (total === 0) return null;
@@ -5125,10 +5125,10 @@ function collectTopLevelBindings(body, baseOffset, numbers) {
   if (tail.length === 0) return null;
   if (descs.length === 0) return null;
   const bindings = /* @__PURE__ */ new Map();
-  const pending = new Set(descs.map((_, i) => i));
-  for (let iter = 0; iter < descs.length && pending.size > 0; iter++) {
+  const pending2 = new Set(descs.map((_, i) => i));
+  for (let iter = 0; iter < descs.length && pending2.size > 0; iter++) {
     let progress = false;
-    for (const i of [...pending]) {
+    for (const i of [...pending2]) {
       const d = descs[i];
       const parsed = parseExpression(d.rhs, d.rhsOffset, void 0, bindings, void 0, numbers);
       const lit = classifyLiteralRhs(d.rhs);
@@ -5137,7 +5137,7 @@ function collectTopLevelBindings(body, baseOffset, numbers) {
       const bare = ir.tag === "Code" && ir.via === void 0;
       if (!bare) {
         bindings.set(d.name, ir);
-        pending.delete(i);
+        pending2.delete(i);
         progress = true;
       }
     }
@@ -5748,9 +5748,9 @@ function parseTimeSequenceRoot(trimmed, baseOffset, leadingWs, bindings, opts, n
   const arms = [];
   for (const a of args) {
     if (fn === "arrange") {
-      const arm = parseArrangeArm(a.value, innerAbs + a.offset, bindings, opts, numbers);
-      if (!arm) return null;
-      arms.push(arm);
+      const arm2 = parseArrangeArm(a.value, innerAbs + a.offset, bindings, opts, numbers);
+      if (!arm2) return null;
+      arms.push(arm2);
     } else {
       const armStart = innerAbs + a.offset;
       arms.push({
@@ -7542,15 +7542,15 @@ function validateNode(raw, path) {
         if (typeof a !== "object" || a === null) {
           throw new Error(`${path}.arms[${i}]: expected object`);
         }
-        const arm = a;
-        if (typeof arm.weight !== "number") {
+        const arm2 = a;
+        if (typeof arm2.weight !== "number") {
           throw new Error(`${path}.arms[${i}]: field "weight" must be a number`);
         }
         const out2 = {
-          weight: arm.weight,
-          pattern: validateNode(arm.pattern, `${path}.arms[${i}].pattern`)
+          weight: arm2.weight,
+          pattern: validateNode(arm2.pattern, `${path}.arms[${i}].pattern`)
         };
-        if (Array.isArray(arm.loc)) out2.loc = arm.loc;
+        if (Array.isArray(arm2.loc)) out2.loc = arm2.loc;
         return out2;
       });
       const out = {
@@ -12910,9 +12910,9 @@ function buildCall(doc, node) {
   if (node.arguments.length === 0) return null;
   const arms = [];
   for (const arg of node.arguments) {
-    const arm = armFromArg(mode, arg);
-    if (!arm) return null;
-    arms.push(arm);
+    const arm2 = armFromArg(mode, arg);
+    if (!arm2) return null;
+    arms.push(arm2);
   }
   const open = doc.indexOf("(", node.callee.end);
   if (open < 0) return null;
@@ -12987,11 +12987,11 @@ function patternText(doc, call, i) {
 __name(patternText, "patternText");
 function setWeight(doc, call, i, weight) {
   const w = asWeight(weight);
-  const arm = call.arms[i];
-  if (!arm) return [];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
   if (call.mode === "arrange") {
-    if (!arm.weightRange) return [];
-    return [{ range: arm.weightRange, text: String(w) }];
+    if (!arm2.weightRange) return [];
+    return [{ range: arm2.weightRange, text: String(w) }];
   }
   if (w === 1) return [];
   const edits = [{ range: call.calleeRange, text: "arrange" }];
@@ -13026,13 +13026,13 @@ function insertArm(doc, call, at, armSource) {
 }
 __name(insertArm, "insertArm");
 function insertSilenceArm(doc, call, i) {
-  const arm = call.arms[i];
-  if (!arm) return [];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
   if (call.mode !== "arrange") {
     return insertArm(doc, call, i + 1, "silence");
   }
-  if (!arm.weightRange) return [];
-  const weightText = doc.slice(arm.weightRange[0], arm.weightRange[1]);
+  if (!arm2.weightRange) return [];
+  const weightText = doc.slice(arm2.weightRange[0], arm2.weightRange[1]);
   return insertArm(doc, call, i + 1, `[${weightText}, silence]`);
 }
 __name(insertSilenceArm, "insertSilenceArm");
@@ -13046,19 +13046,19 @@ function removeArm(doc, call, i) {
 }
 __name(removeArm, "removeArm");
 function silenceArm(doc, call, i) {
-  const arm = call.arms[i];
-  if (!arm) return [];
-  if (doc.slice(arm.patternRange[0], arm.patternRange[1]) === "silence") return [];
-  return [{ range: arm.patternRange, text: "silence" }];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
+  if (doc.slice(arm2.patternRange[0], arm2.patternRange[1]) === "silence") return [];
+  return [{ range: arm2.patternRange, text: "silence" }];
 }
 __name(silenceArm, "silenceArm");
 function setArmPattern(doc, call, i, source) {
-  const arm = call.arms[i];
-  if (!arm) return [];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
   const next = source.trim();
   if (next === "") return [];
   if (patternText(doc, call, i).trim() === next) return [];
-  return [{ range: arm.patternRange, text: next }];
+  return [{ range: arm2.patternRange, text: next }];
 }
 __name(setArmPattern, "setArmPattern");
 function wrapBare(patternRange, leadingWeight, patternWeight) {
@@ -13093,14 +13093,14 @@ function materializeBareSplit(doc, patternRange, barIndex, span) {
 }
 __name(materializeBareSplit, "materializeBareSplit");
 function splitArm(doc, call, i, firstWeight) {
-  const arm = call.arms[i];
-  if (!arm || !arm.weightRange) return [];
-  const n = parseInt(doc.slice(arm.weightRange[0], arm.weightRange[1]), 10);
+  const arm2 = call.arms[i];
+  if (!arm2 || !arm2.weightRange) return [];
+  const n = parseInt(doc.slice(arm2.weightRange[0], arm2.weightRange[1]), 10);
   if (!Number.isFinite(n) || n < 2) return [];
   const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
   const n2 = n - n1;
-  const pat = doc.slice(arm.patternRange[0], arm.patternRange[1]);
-  return [{ range: arm.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
+  const pat = doc.slice(arm2.patternRange[0], arm2.patternRange[1]);
+  return [{ range: arm2.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
 }
 __name(splitArm, "splitArm");
 var NOT_A_NAME = "__proto__";
@@ -13150,8 +13150,8 @@ function isBindingIntroduction(parent, key3) {
 }
 __name(isBindingIntroduction, "isBindingIntroduction");
 function armIdentifier(doc, call, i) {
-  const arm = call.arms[i];
-  return arm ? sectionNameAt(doc, arm.patternRange) : null;
+  const arm2 = call.arms[i];
+  return arm2 ? sectionNameAt(doc, arm2.patternRange) : null;
 }
 __name(armIdentifier, "armIdentifier");
 function countSectionArms(doc, call, i) {
@@ -14384,40 +14384,40 @@ function headText(doc, control, i) {
 __name(headText, "headText");
 function setWeight2(doc, control, i, weight) {
   const w = asWeight2(weight);
-  const arm = control.arms[i];
-  if (!arm) return [];
-  if (arm.weightRange) return [{ range: arm.weightRange, text: String(w) }];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
+  if (arm2.weightRange) return [{ range: arm2.weightRange, text: String(w) }];
   if (w === 1) return [];
-  return [{ range: [arm.headRange[1], arm.headRange[1]], text: `@${w}` }];
+  return [{ range: [arm2.headRange[1], arm2.headRange[1]], text: `@${w}` }];
 }
 __name(setWeight2, "setWeight");
 function splitArm2(doc, control, i, firstWeight) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  const n = asWeight2(arm.weight);
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
+  const n = asWeight2(arm2.weight);
   if (n < 2) return [];
   const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
   const n2 = n - n1;
   const head = headText(doc, control, i);
-  return [{ range: arm.armRange, text: `${head}@${n1} ${head}@${n2}` }];
+  return [{ range: arm2.armRange, text: `${head}@${n1} ${head}@${n2}` }];
 }
 __name(splitArm2, "splitArm");
 function silenceArm2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   if (headText(doc, control, i) === "~") return [];
-  return [{ range: arm.headRange, text: "~" }];
+  return [{ range: arm2.headRange, text: "~" }];
 }
 __name(silenceArm2, "silenceArm");
 var SELECTOR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 function setArmHead(doc, control, i, key3) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   const next = key3.trim();
   if (!SELECTOR_NAME.test(next)) return [];
   if (!control.entries.some((e) => e.key === next)) return [];
   if (headText(doc, control, i) === next) return [];
-  return [{ range: arm.headRange, text: next }];
+  return [{ range: arm2.headRange, text: next }];
 }
 __name(setArmHead, "setArmHead");
 function listSectionParts2(control) {
@@ -14430,9 +14430,9 @@ function listSectionParts2(control) {
 }
 __name(listSectionParts2, "listSectionParts");
 function insertSilenceArm2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  const armSource = arm.weightRange ? `~@${doc.slice(arm.weightRange[0], arm.weightRange[1])}` : "~";
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
+  const armSource = arm2.weightRange ? `~@${doc.slice(arm2.weightRange[0], arm2.weightRange[1])}` : "~";
   return insertArm2(doc, control, i + 1, armSource);
 }
 __name(insertSilenceArm2, "insertSilenceArm");
@@ -14467,8 +14467,8 @@ function insertArm2(doc, control, at, armSource) {
 }
 __name(insertArm2, "insertArm");
 function duplicateArm(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   return insertArm2(doc, control, i + 1, armText2(doc, control, i));
 }
 __name(duplicateArm, "duplicateArm");
@@ -14495,8 +14495,8 @@ function everyOccurrenceIsAnArmHead(doc, control, name) {
 }
 __name(everyOccurrenceIsAnArmHead, "everyOccurrenceIsAnArmHead");
 function countSectionArms2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return 0;
+  const arm2 = control.arms[i];
+  if (!arm2) return 0;
   const name = headText(doc, control, i);
   if (control.entries.filter((e) => e.key === name).length !== 1) return 0;
   if (!everyOccurrenceIsAnArmHead(doc, control, name)) return 0;
@@ -14504,8 +14504,8 @@ function countSectionArms2(doc, control, i) {
 }
 __name(countSectionArms2, "countSectionArms");
 function renameSection2(doc, control, i, newName) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   if (!SECTION_NAME.test(newName) || newName === NOT_A_KEY) return [];
   const oldName = headText(doc, control, i);
   if (newName === oldName) return [];
@@ -15751,10 +15751,10 @@ function createTrackEnvelopeScheduler(deps) {
       suspended++;
       cancelTimer?.();
       cancelTimer = null;
-      const pending = inFlight2;
-      pending?.controller.abort();
+      const pending2 = inFlight2;
+      pending2?.controller.abort();
       try {
-        if (pending) await pending.done;
+        if (pending2) await pending2.done;
         return await fn();
       } finally {
         suspended--;
@@ -15762,15 +15762,15 @@ function createTrackEnvelopeScheduler(deps) {
       }
     },
     interrupt() {
-      const pending = inFlight2;
-      if (pending == null) {
+      const pending2 = inFlight2;
+      if (pending2 == null) {
         if (cancelTimer != null) kick();
         return null;
       }
       cancelTimer?.();
       cancelTimer = null;
-      pending.controller.abort();
-      return pending.done;
+      pending2.controller.abort();
+      return pending2.done;
     },
     get(trackId) {
       const env = envelopes.get(trackId);
@@ -28011,19 +28011,19 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners20 = /* @__PURE__ */ new Set();
-  const notify6 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners20) l();
+  const listeners21 = /* @__PURE__ */ new Set();
+  const notify7 = /* @__PURE__ */ __name(() => {
+    for (const l of listeners21) l();
   }, "notify");
-  const onStackItemAdded = /* @__PURE__ */ __name(() => notify6(), "onStackItemAdded");
-  const onStackItemPopped = /* @__PURE__ */ __name(() => notify6(), "onStackItemPopped");
-  const onStackCleared = /* @__PURE__ */ __name(() => notify6(), "onStackCleared");
+  const onStackItemAdded = /* @__PURE__ */ __name(() => notify7(), "onStackItemAdded");
+  const onStackItemPopped = /* @__PURE__ */ __name(() => notify7(), "onStackItemPopped");
+  const onStackCleared = /* @__PURE__ */ __name(() => notify7(), "onStackCleared");
   um.on("stack-item-added", onStackItemAdded);
   um.on("stack-item-popped", onStackItemPopped);
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners20,
+    listeners: listeners21,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -28066,10 +28066,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners20 = active.listeners;
-  listeners20.add(cb);
+  const listeners21 = active.listeners;
+  listeners21.add(cb);
   return () => {
-    listeners20.delete(cb);
+    listeners21.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -28165,6 +28165,7 @@ function ensureFilesMapObserver() {
             unwireTextObserver(key3);
             cachedSnapshots.delete(key3);
             notify2(key3);
+            notifyFileDeleted(key3);
             anyStructuralChange = true;
           }
         }
@@ -28275,6 +28276,18 @@ function subscribeToFileList(cb) {
   };
 }
 __name(subscribeToFileList, "subscribeToFileList");
+var fileDeleteSubscribers = /* @__PURE__ */ new Set();
+function subscribeToFileDeletes(cb) {
+  fileDeleteSubscribers.add(cb);
+  return () => {
+    fileDeleteSubscribers.delete(cb);
+  };
+}
+__name(subscribeToFileDeletes, "subscribeToFileDeletes");
+function notifyFileDeleted(fileId) {
+  for (const cb of Array.from(fileDeleteSubscribers)) cb(fileId);
+}
+__name(notifyFileDeleted, "notifyFileDeleted");
 function listWorkspaceFiles() {
   ensureDoc();
   ensureFilesMapObserver();
@@ -28295,6 +28308,7 @@ __name(listWorkspaceFiles, "listWorkspaceFiles");
 function deleteWorkspaceFile(id) {
   const filesMap = getFilesMap();
   if (!filesMap.has(id)) return;
+  ensureFilesMapObserver();
   const doc = ensureDoc();
   doc.transact(() => {
     filesMap.delete(id);
@@ -37646,6 +37660,7 @@ __name(_DrumPatternScheduler, "DrumPatternScheduler");
 var DrumPatternScheduler = _DrumPatternScheduler;
 var state3 = null;
 var starting = false;
+var stopRequested = false;
 async function renderDrumLoopBuffer() {
   const sampleRate = 44100;
   const durationSeconds = 2;
@@ -37752,11 +37767,20 @@ async function renderDrumLoopBuffer() {
 }
 __name(renderDrumLoopBuffer, "renderDrumLoopBuffer");
 async function startDrumPattern() {
-  if (state3 || starting) return;
+  if (state3) return;
+  if (starting) {
+    stopRequested = false;
+    return;
+  }
   starting = true;
+  stopRequested = false;
   try {
     const ctx = new AudioContext();
     const buffer = await renderDrumLoopBuffer();
+    if (stopRequested) {
+      void ctx.close();
+      return;
+    }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -37786,7 +37810,10 @@ async function startDrumPattern() {
 }
 __name(startDrumPattern, "startDrumPattern");
 function stopDrumPattern() {
-  if (!state3) return;
+  if (!state3) {
+    if (starting) stopRequested = true;
+    return;
+  }
   try {
     state3.source.stop();
   } catch {
@@ -37871,6 +37898,7 @@ __name(_ChordProgressionScheduler, "ChordProgressionScheduler");
 var ChordProgressionScheduler = _ChordProgressionScheduler;
 var state4 = null;
 var starting2 = false;
+var stopRequested2 = false;
 async function renderChordLoopBuffer() {
   const sampleRate = 44100;
   const durationSeconds = 8;
@@ -37906,11 +37934,20 @@ async function renderChordLoopBuffer() {
 }
 __name(renderChordLoopBuffer, "renderChordLoopBuffer");
 async function startChordProgression() {
-  if (state4 || starting2) return;
+  if (state4) return;
+  if (starting2) {
+    stopRequested2 = false;
+    return;
+  }
   starting2 = true;
+  stopRequested2 = false;
   try {
     const ctx = new AudioContext();
     const buffer = await renderChordLoopBuffer();
+    if (stopRequested2) {
+      void ctx.close();
+      return;
+    }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -37940,7 +37977,10 @@ async function startChordProgression() {
 }
 __name(startChordProgression, "startChordProgression");
 function stopChordProgression() {
-  if (!state4) return;
+  if (!state4) {
+    if (starting2) stopRequested2 = true;
+    return;
+  }
   try {
     state4.source.stop();
   } catch {
@@ -37986,8 +38026,10 @@ var BUILTIN_EXAMPLE_SOURCES = [
   {
     sourceId: DRUM_PATTERN_SOURCE_ID,
     label: DRUM_PATTERN_LABEL,
+    // Not guarded on "playing", which includes "starting": a start must reach a
+    // render already under way, to take back a stop that came meanwhile.
     startIfIdle: /* @__PURE__ */ __name(() => {
-      if (!isDrumPatternPlaying()) startDrumPattern();
+      void startDrumPattern();
     }, "startIfIdle"),
     stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isDrumPatternPlaying()) stopDrumPattern();
@@ -37997,7 +38039,7 @@ var BUILTIN_EXAMPLE_SOURCES = [
     sourceId: CHORD_PROGRESSION_SOURCE_ID,
     label: CHORD_PROGRESSION_LABEL,
     startIfIdle: /* @__PURE__ */ __name(() => {
-      if (!isChordProgressionPlaying()) startChordProgression();
+      void startChordProgression();
     }, "startIfIdle"),
     stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isChordProgressionPlaying()) stopChordProgression();
@@ -38011,6 +38053,71 @@ function findBuiltinExampleSource(sourceId) {
   return BUILTIN_EXAMPLE_SOURCES.find((s) => s.sourceId === sourceId);
 }
 __name(findBuiltinExampleSource, "findBuiltinExampleSource");
+
+// src/workspace/audioGestureGate.ts
+var pending = /* @__PURE__ */ new Map();
+var listeners10 = /* @__PURE__ */ new Set();
+var armed = false;
+var GESTURES2 = ["pointerdown", "pointerup", "touchend", "click", "keydown"];
+function audioMayStart() {
+  if (typeof navigator === "undefined") return true;
+  const ua = navigator.userActivation;
+  return ua ? ua.hasBeenActive : true;
+}
+__name(audioMayStart, "audioMayStart");
+function notify4() {
+  for (const cb of Array.from(listeners10)) cb();
+}
+__name(notify4, "notify");
+function onGesture() {
+  if (!audioMayStart()) return;
+  disarm();
+  const starts = Array.from(pending.values());
+  pending.clear();
+  notify4();
+  for (const start of starts) start();
+}
+__name(onGesture, "onGesture");
+function arm() {
+  if (armed || typeof window === "undefined") return;
+  armed = true;
+  for (const type of GESTURES2) window.addEventListener(type, onGesture, true);
+}
+__name(arm, "arm");
+function disarm() {
+  if (!armed) return;
+  armed = false;
+  for (const type of GESTURES2) window.removeEventListener(type, onGesture, true);
+}
+__name(disarm, "disarm");
+function startWhenAudioAllowed(key3, start) {
+  if (audioMayStart()) {
+    cancelAudioStart(key3);
+    start();
+    return;
+  }
+  pending.set(key3, start);
+  arm();
+  notify4();
+}
+__name(startWhenAudioAllowed, "startWhenAudioAllowed");
+function cancelAudioStart(key3) {
+  if (!pending.delete(key3)) return;
+  if (pending.size === 0) disarm();
+  notify4();
+}
+__name(cancelAudioStart, "cancelAudioStart");
+function isWaitingForGesture(key3) {
+  return pending.has(key3);
+}
+__name(isWaitingForGesture, "isWaitingForGesture");
+function onGestureWaitChange(cb) {
+  listeners10.add(cb);
+  return () => {
+    listeners10.delete(cb);
+  };
+}
+__name(onGestureWaitChange, "onGestureWaitChange");
 
 // src/workspace/preview/vizSourceChoice.ts
 var STORAGE_PREFIX3 = "stave:vizSource:";
@@ -38026,7 +38133,7 @@ function safeLocalStorage4() {
 }
 __name(safeLocalStorage4, "safeLocalStorage");
 var values2 = /* @__PURE__ */ new Map();
-var listeners10 = /* @__PURE__ */ new Set();
+var listeners11 = /* @__PURE__ */ new Set();
 function keyFor2(fileId) {
   return `${STORAGE_PREFIX3}${fileId}`;
 }
@@ -38063,43 +38170,65 @@ function setVizSourceChoice(fileId, ref) {
   const ls = safeLocalStorage4();
   if (ref.kind === "default") ls?.removeItem(keyFor2(fileId));
   else ls?.setItem(keyFor2(fileId), JSON.stringify(ref));
-  for (const cb of Array.from(listeners10)) cb(fileId, ref);
+  for (const cb of Array.from(listeners11)) cb(fileId, ref);
 }
 __name(setVizSourceChoice, "setVizSourceChoice");
+function forgetVizSourceChoicesFor(deletedFileId) {
+  const ls = safeLocalStorage4();
+  const vizIds = new Set(values2.keys());
+  if (ls && typeof ls.key === "function") {
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i);
+      if (k?.startsWith(STORAGE_PREFIX3)) vizIds.add(k.slice(STORAGE_PREFIX3.length));
+    }
+  }
+  for (const vizId of vizIds) {
+    if (vizId === deletedFileId) {
+      values2.delete(vizId);
+      ls?.removeItem(keyFor2(vizId));
+      continue;
+    }
+    const ref = getVizSourceChoice(vizId);
+    if (ref.kind === "file" && ref.fileId === deletedFileId) {
+      setVizSourceChoice(vizId, DEFAULT);
+    }
+  }
+}
+__name(forgetVizSourceChoicesFor, "forgetVizSourceChoicesFor");
 function onVizSourceChoiceChange(cb) {
-  listeners10.add(cb);
+  listeners11.add(cb);
   return () => {
-    listeners10.delete(cb);
+    listeners11.delete(cb);
   };
 }
 __name(onVizSourceChoiceChange, "onVizSourceChoiceChange");
 
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
-var listeners11 = /* @__PURE__ */ new Set();
-function notify4() {
-  for (const l of listeners11) {
+var listeners12 = /* @__PURE__ */ new Set();
+function notify5() {
+  for (const l of listeners12) {
     try {
       l();
     } catch {
     }
   }
 }
-__name(notify4, "notify");
+__name(notify5, "notify");
 function registerBottomPanelTab(tab) {
   tabs.set(tab.id, tab);
-  notify4();
+  notify5();
   return () => {
     if (tabs.get(tab.id) === tab) {
       tabs.delete(tab.id);
-      notify4();
+      notify5();
     }
   };
 }
 __name(registerBottomPanelTab, "registerBottomPanelTab");
 function unregisterBottomPanelTab(id) {
   if (tabs.delete(id)) {
-    notify4();
+    notify5();
   }
 }
 __name(unregisterBottomPanelTab, "unregisterBottomPanelTab");
@@ -38112,9 +38241,9 @@ function getBottomPanelTab(id) {
 }
 __name(getBottomPanelTab, "getBottomPanelTab");
 function subscribeToBottomPanelTabs(cb) {
-  listeners11.add(cb);
+  listeners12.add(cb);
   return () => {
-    listeners11.delete(cb);
+    listeners12.delete(cb);
   };
 }
 __name(subscribeToBottomPanelTabs, "subscribeToBottomPanelTabs");
@@ -38209,7 +38338,7 @@ function writePersistedActiveTabId(value) {
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 var SERVER_STATE = { open: false, activeTabId: null };
 var state5 = null;
-var listeners12 = /* @__PURE__ */ new Set();
+var listeners13 = /* @__PURE__ */ new Set();
 function current4() {
   if (state5 === null) state5 = { open: readPersistedOpen(), activeTabId: readPersistedActiveTabId() };
   return state5;
@@ -38217,7 +38346,7 @@ function current4() {
 __name(current4, "current");
 function commit2(next) {
   state5 = next;
-  for (const l of listeners12) {
+  for (const l of listeners13) {
     try {
       l();
     } catch {
@@ -38252,9 +38381,9 @@ function showBottomPanelTab(activeTabId) {
 }
 __name(showBottomPanelTab, "showBottomPanelTab");
 function subscribeToBottomPanelState(cb) {
-  listeners12.add(cb);
+  listeners13.add(cb);
   return () => {
-    listeners12.delete(cb);
+    listeners13.delete(cb);
   };
 }
 __name(subscribeToBottomPanelState, "subscribeToBottomPanelState");
@@ -38410,10 +38539,10 @@ function readStored() {
 }
 __name(readStored, "readStored");
 var current5 = readStored();
-var listeners13 = /* @__PURE__ */ new Set();
+var listeners14 = /* @__PURE__ */ new Set();
 function subscribe5(listener) {
-  listeners13.add(listener);
-  return () => listeners13.delete(listener);
+  listeners14.add(listener);
+  return () => listeners14.delete(listener);
 }
 __name(subscribe5, "subscribe");
 function usePatternSideShown() {
@@ -38427,7 +38556,7 @@ function setPatternSideShown(shown) {
     window.localStorage.setItem(PATTERN_SIDE_KEY, shown ? "shown" : "hidden");
   } catch {
   }
-  listeners13.forEach((l) => l());
+  listeners14.forEach((l) => l());
 }
 __name(setPatternSideShown, "setPatternSideShown");
 function PatternSideToggle() {
@@ -39021,7 +39150,7 @@ function readStored2() {
 }
 __name(readStored2, "readStored");
 var current6 = readStored2();
-var listeners14 = /* @__PURE__ */ new Set();
+var listeners15 = /* @__PURE__ */ new Set();
 function setMode(mode) {
   if (mode === current6) return;
   current6 = mode;
@@ -39029,12 +39158,12 @@ function setMode(mode) {
     window.localStorage.setItem(NOTE_COLOR_MODE_KEY, mode);
   } catch {
   }
-  listeners14.forEach((l) => l());
+  listeners15.forEach((l) => l());
 }
 __name(setMode, "setMode");
 function subscribe6(listener) {
-  listeners14.add(listener);
-  return () => listeners14.delete(listener);
+  listeners15.add(listener);
+  return () => listeners15.delete(listener);
 }
 __name(subscribe6, "subscribe");
 function useNoteColorMode() {
@@ -40263,10 +40392,10 @@ function readStored3() {
 }
 __name(readStored3, "readStored");
 var current7 = readStored3();
-var listeners15 = /* @__PURE__ */ new Set();
+var listeners16 = /* @__PURE__ */ new Set();
 function subscribe7(listener) {
-  listeners15.add(listener);
-  return () => listeners15.delete(listener);
+  listeners16.add(listener);
+  return () => listeners16.delete(listener);
 }
 __name(subscribe7, "subscribe");
 function useGridMode() {
@@ -40284,7 +40413,7 @@ function setGridMode(mode) {
     window.localStorage.setItem(GRID_MODE_KEY, mode);
   } catch {
   }
-  listeners15.forEach((l) => l());
+  listeners16.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
 function usePatternLength(chunk, model, parse8, writeMini) {
@@ -42528,7 +42657,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners20 = /* @__PURE__ */ new Set();
+  const listeners21 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -42543,19 +42672,19 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners20.forEach((l) => l());
+    listeners21.forEach((l) => l());
   }, "setAccessor");
-  const notify6 = /* @__PURE__ */ __name(() => {
+  const notify7 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners20.forEach((l) => l());
+    listeners21.forEach((l) => l());
   }, "notify");
   const read5 = /* @__PURE__ */ __name(() => cached2, "read");
   const subscribe11 = /* @__PURE__ */ __name((listener) => {
-    listeners20.add(listener);
-    return () => listeners20.delete(listener);
+    listeners21.add(listener);
+    return () => listeners21.delete(listener);
   }, "subscribe");
   const useCatalog = /* @__PURE__ */ __name(() => React48__namespace.useSyncExternalStore(subscribe11, read5, () => null), "useCatalog");
-  return { setAccessor, notify: notify6, read: read5, useCatalog };
+  return { setAccessor, notify: notify7, read: read5, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
 var instrumentStore = createCatalogStore();
@@ -45571,7 +45700,7 @@ __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners16 = /* @__PURE__ */ new Set();
+var listeners17 = /* @__PURE__ */ new Set();
 function read2(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
@@ -45583,7 +45712,7 @@ function toggleSolo(fileId, id) {
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners16.forEach((l) => l());
+  listeners17.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -45598,9 +45727,9 @@ function setPreSoloMutes(fileId, snapshot) {
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
 function subscribe8(listener) {
-  listeners16.add(listener);
+  listeners17.add(listener);
   return () => {
-    listeners16.delete(listener);
+    listeners17.delete(listener);
   };
 }
 __name(subscribe8, "subscribe");
@@ -46474,7 +46603,7 @@ function safeLocalStorage6() {
 }
 __name(safeLocalStorage6, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners17 = /* @__PURE__ */ new Set();
+var listeners18 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -46520,13 +46649,13 @@ function toggleExpanded(fileId, id) {
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners17.forEach((l) => l());
+  listeners18.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
 function subscribe9(listener) {
-  listeners17.add(listener);
+  listeners18.add(listener);
   return () => {
-    listeners17.delete(listener);
+    listeners18.delete(listener);
   };
 }
 __name(subscribe9, "subscribe");
@@ -46587,7 +46716,7 @@ function safeLocalStorage7() {
 }
 __name(safeLocalStorage7, "safeLocalStorage");
 var cached = null;
-var listeners18 = /* @__PURE__ */ new Set();
+var listeners19 = /* @__PURE__ */ new Set();
 function read4() {
   if (cached == null) {
     const ls = safeLocalStorage7();
@@ -46610,7 +46739,7 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners18.forEach((l) => l());
+  listeners19.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
@@ -46618,9 +46747,9 @@ function nudgeMixerZoom(dir) {
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
 function subscribe10(listener) {
-  listeners18.add(listener);
+  listeners19.add(listener);
   return () => {
-    listeners18.delete(listener);
+    listeners19.delete(listener);
   };
 }
 __name(subscribe10, "subscribe");
@@ -48698,6 +48827,7 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
     () => onVizSourceChoiceChange(() => setSourceChoiceVersion((n) => n + 1)),
     []
   );
+  React48.useEffect(() => subscribeToFileDeletes(forgetVizSourceChoicesFor), []);
   const sourceForBackdrop = React48.useCallback(
     (owner, bgFileId) => backdropSourceFor(
       owner,
@@ -48716,8 +48846,25 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
     if (ref?.kind === "file") {
       findBuiltinExampleSource(ref.fileId)?.stopIfRunning();
     }
+    cancelAudioStart(fileId);
     recordBackdropSource(fileId, null);
   }, [recordBackdropSource]);
+  const restoreOwnBackdropSound = React48.useCallback(
+    (g, bgFileId) => {
+      const shown = paneShownFileId(g?.tabs.find((t) => t.id === g.activeTabId));
+      const ref = getVizSourceChoice(bgFileId);
+      if (ref.kind !== "file" || !findBuiltinExampleSource(ref.fileId)) return;
+      if (shown !== bgFileId || pausedPreviews.has(bgFileId)) return;
+      recordBackdropSource(bgFileId, ref);
+      startWhenAudioAllowed(bgFileId, () => {
+        const now2 = getVizSourceChoice(bgFileId);
+        const builtin = now2.kind === "file" ? findBuiltinExampleSource(now2.fileId) : void 0;
+        recordBackdropSource(bgFileId, builtin ? now2 : null);
+        builtin?.startIfIdle();
+      });
+    },
+    [recordBackdropSource, pausedPreviews]
+  );
   const stopDisplacedBackdrop = React48.useCallback(
     (sourceGroupId, tabId, targetGroupId) => {
       if (sourceGroupId === targetGroupId) return;
@@ -48956,24 +49103,24 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
       if (prev) stopBackdropSource(prev);
-      if (backgroundFileId) {
-        const g = groups.get(groupId);
-        const shown = paneShownFileId(g?.tabs.find((t) => t.id === g.activeTabId));
-        const ref = getVizSourceChoice(backgroundFileId);
-        const builtin = ref.kind === "file" ? findBuiltinExampleSource(ref.fileId) : void 0;
-        if (builtin && shown === backgroundFileId && !pausedPreviews.has(backgroundFileId)) {
-          recordBackdropSource(backgroundFileId, ref);
-          builtin.startIfIdle();
-        }
-      }
+      if (backgroundFileId) restoreOwnBackdropSound(groups.get(groupId), backgroundFileId);
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? void 0
       }));
       onBackgroundFileChange?.(groupId, backgroundFileId);
     },
-    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource, recordBackdropSource, pausedPreviews]
+    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource, restoreOwnBackdropSound]
   );
+  React48.useEffect(() => {
+    for (const g of groups.values()) {
+      if (g.backgroundFileId) restoreOwnBackdropSound(g, g.backgroundFileId);
+    }
+    const waiting = backdropSourceByFile.current;
+    return () => {
+      for (const id of waiting.keys()) cancelAudioStart(id);
+    };
+  }, []);
   const updateGroupOverride = React48.useCallback(
     (groupId, overrideFileId) => {
       setBgOverrides((prev) => {
@@ -51338,12 +51485,12 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
   isPlayPending() {
     return this.playPendingState;
   }
-  setPlayPending(pending) {
-    if (this.playPendingState === pending) return;
-    this.playPendingState = pending;
+  setPlayPending(pending2) {
+    if (this.playPendingState === pending2) return;
+    this.playPendingState = pending2;
     for (const cb of Array.from(this.playPendingListeners)) {
       try {
-        cb(pending);
+        cb(pending2);
       } catch {
       }
     }
@@ -54241,8 +54388,8 @@ var inFlight = /* @__PURE__ */ new Map();
 async function resolveAsset(blobHash) {
   const cached2 = urlCache.get(blobHash);
   if (cached2) return cached2;
-  const pending = inFlight.get(blobHash);
-  if (pending) return pending;
+  const pending2 = inFlight.get(blobHash);
+  if (pending2) return pending2;
   const work = (async () => {
     const blob = await getAsset(blobHash);
     if (!blob) return null;
@@ -54316,10 +54463,10 @@ __name(importAsset, "importAsset");
 
 // src/workspace/assetDoc.ts
 var subscribers = /* @__PURE__ */ new Set();
-function notify5() {
+function notify6() {
   for (const cb of Array.from(subscribers)) cb();
 }
-__name(notify5, "notify");
+__name(notify6, "notify");
 function getAssetsMap() {
   return ensureDoc().getMap("assets");
 }
@@ -54328,7 +54475,7 @@ var wiredAssetsMap = null;
 function ensureAssetsObserver() {
   const current8 = getAssetsMap();
   if (wiredAssetsMap === current8) return;
-  current8.observe(() => notify5());
+  current8.observe(() => notify6());
   wiredAssetsMap = current8;
 }
 __name(ensureAssetsObserver, "ensureAssetsObserver");
@@ -56075,6 +56222,13 @@ function VizEditorChrome({
       if (id === file.id) setSelectedSource(ref);
     });
   }, [file.id]);
+  const [soundWaiting, setSoundWaiting] = React48.useState(
+    () => isWaitingForGesture(file.id)
+  );
+  React48.useEffect(() => {
+    setSoundWaiting(isWaitingForGesture(file.id));
+    return onGestureWaitChange(() => setSoundWaiting(isWaitingForGesture(file.id)));
+  }, [file.id]);
   const handleSourceChange = React48.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
@@ -56246,6 +56400,22 @@ function VizEditorChrome({
               children: "\u2699"
             }
           ),
+          soundWaiting && /* @__PURE__ */ jsxRuntime.jsx(
+            "span",
+            {
+              "data-testid": "viz-chrome-sound-waiting",
+              title: "Browsers only play sound after you interact with the page. Its sound starts on your first click or key press.",
+              style: {
+                padding: "3px 8px",
+                borderRadius: 3,
+                fontSize: 10,
+                color: "var(--foreground-muted)",
+                border: "1px dashed var(--border)",
+                userSelect: "none"
+              },
+              children: "\u{1F507} sound starts on your first click"
+            }
+          ),
           /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1 } })
         ]
       }
@@ -56277,7 +56447,7 @@ __name(VizEditorChrome, "VizEditorChrome");
 // src/workspace/preview/codeBackdropOptions.ts
 var LEGACY = "";
 var slots = /* @__PURE__ */ new Map();
-var listeners19 = /* @__PURE__ */ new Set();
+var listeners20 = /* @__PURE__ */ new Set();
 var version = 0;
 function sameOptions(a, b) {
   if (a === b) return true;
@@ -56295,7 +56465,7 @@ function setCodeBackdropOptions(next, patternFileId) {
   if (next) slots.set(key3, next);
   else slots.delete(key3);
   version++;
-  for (const l of [...listeners19]) l();
+  for (const l of [...listeners20]) l();
 }
 __name(setCodeBackdropOptions, "setCodeBackdropOptions");
 function retainCodeBackdropOptions(openPatternFileIds) {
@@ -56308,7 +56478,7 @@ function retainCodeBackdropOptions(openPatternFileIds) {
   }
   if (!dropped) return;
   version++;
-  for (const l of [...listeners19]) l();
+  for (const l of [...listeners20]) l();
 }
 __name(retainCodeBackdropOptions, "retainCodeBackdropOptions");
 function getCodeBackdropOptions(patternFileId) {
@@ -56320,9 +56490,9 @@ function getCodeBackdropOptionsVersion() {
 }
 __name(getCodeBackdropOptionsVersion, "getCodeBackdropOptionsVersion");
 function subscribeCodeBackdropOptions(listener) {
-  listeners19.add(listener);
+  listeners20.add(listener);
   return () => {
-    listeners19.delete(listener);
+    listeners20.delete(listener);
   };
 }
 __name(subscribeCodeBackdropOptions, "subscribeCodeBackdropOptions");

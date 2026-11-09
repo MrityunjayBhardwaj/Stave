@@ -122,7 +122,7 @@ import { PreviewView } from './PreviewView'
 import { useKeyboardCommands } from './commands/useKeyboardCommands'
 import { executeCommand } from './commands/CommandRegistry'
 import { getPreviewProviderForLanguage } from './preview/registry'
-import { getFile, subscribe as subscribeToWorkspaceFile } from './WorkspaceFile'
+import { getFile, subscribe as subscribeToWorkspaceFile, subscribeToFileDeletes } from './WorkspaceFile'
 import { HistoryDiffOverlay } from './history/HistoryDiffOverlay'
 import { HistoryViewOverlay } from './history/HistoryViewOverlay'
 import { getCurrentHistory } from './history/historyService'
@@ -173,7 +173,12 @@ import {
 } from './groupLayout'
 import { findBuiltinExampleSource } from './builtinExampleSources'
 import { setAlongsideSources } from './playbackCoordinator'
-import { getVizSourceChoice, onVizSourceChoiceChange } from './preview/vizSourceChoice'
+import { cancelAudioStart, startWhenAudioAllowed } from './audioGestureGate'
+import {
+  forgetVizSourceChoicesFor,
+  getVizSourceChoice,
+  onVizSourceChoiceChange,
+} from './preview/vizSourceChoice'
 import { BottomPanel } from './bottomPanel/BottomPanel'
 import { SymbolRow } from './SymbolRow'
 import { bottomPanelHiddenForTab } from './bottomPanel/hiddenForTab'
@@ -1192,6 +1197,9 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
     () => onVizSourceChoiceChange(() => setSourceChoiceVersion((n) => n + 1)),
     [],
   )
+  // #2452 — a deleted file can't be listened to: every viz that chose it goes
+  // back to the default source (the store tells the pickers and this shell).
+  useEffect(() => subscribeToFileDeletes(forgetVizSourceChoicesFor), [])
   // #2426 — whose audio a background listens to (see backdropSourceFor)
   const sourceForBackdrop = useCallback(
     (owner: string | null, bgFileId: string) =>
@@ -1212,8 +1220,34 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
     if (ref?.kind === 'file') {
       findBuiltinExampleSource(ref.fileId)?.stopIfRunning()
     }
+    // #2451 — a sound still waiting for the first click goes with its background
+    cancelAudioStart(fileId)
     recordBackdropSource(fileId, null)
   }, [recordBackdropSource])
+
+  // #2427 — a viz's OWN background brings its chosen example sound with it:
+  // recorded first, so it starts alongside any playing pattern. Not for a viz the
+  // user paused, and not when the pane shows another file (then the background is
+  // someone else's, listening to their audio). #2451 — started through the
+  // gesture gate: before the page's first click it waits for that click.
+  // The choice is read again when the sound finally starts: it may have changed
+  // while it waited.
+  const restoreOwnBackdropSound = useCallback(
+    (g: WorkspaceGroupState | undefined, bgFileId: string): void => {
+      const shown = paneShownFileId(g?.tabs.find((t) => t.id === g.activeTabId))
+      const ref = getVizSourceChoice(bgFileId)
+      if (ref.kind !== 'file' || !findBuiltinExampleSource(ref.fileId)) return
+      if (shown !== bgFileId || pausedPreviews.has(bgFileId)) return
+      recordBackdropSource(bgFileId, ref)
+      startWhenAudioAllowed(bgFileId, () => {
+        const now = getVizSourceChoice(bgFileId)
+        const builtin = now.kind === 'file' ? findBuiltinExampleSource(now.fileId) : undefined
+        recordBackdropSource(bgFileId, builtin ? now : null)
+        builtin?.startIfIdle()
+      })
+    },
+    [recordBackdropSource, pausedPreviews],
+  )
 
   // #787 — when a moving tab carries its backdrop onto an EXISTING target
   // group (tab-bar slot / center drop), the target's current backdrop — if it
@@ -1620,29 +1654,32 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       if (prev) stopBackdropSource(prev)
       // #2427 — and a viz's OWN background brings its sound back with it. A tab
       // switch away clears the pane's background (stopping the sound, above);
-      // switching back restores it here, so its chosen example sound restarts
-      // too — recorded first, so it starts alongside any playing pattern. Not for
-      // a viz the user paused, and not when the pane shows another file (then the
-      // background is someone else's, listening to their audio).
-      if (backgroundFileId) {
-        const g = groups.get(groupId)
-        const shown = paneShownFileId(g?.tabs.find((t) => t.id === g.activeTabId))
-        const ref = getVizSourceChoice(backgroundFileId)
-        const builtin =
-          ref.kind === 'file' ? findBuiltinExampleSource(ref.fileId) : undefined
-        if (builtin && shown === backgroundFileId && !pausedPreviews.has(backgroundFileId)) {
-          recordBackdropSource(backgroundFileId, ref)
-          builtin.startIfIdle()
-        }
-      }
+      // switching back restores it here (see restoreOwnBackdropSound).
+      if (backgroundFileId) restoreOwnBackdropSound(groups.get(groupId), backgroundFileId)
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? undefined,
       }))
       onBackgroundFileChange?.(groupId, backgroundFileId)
     },
-    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource, recordBackdropSource, pausedPreviews],
+    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource, restoreOwnBackdropSound],
   )
+
+  // #2451 — after a reload the panes come back with their backgrounds already in
+  // place, so the restore above never runs: bring back each viz's own example
+  // sound here, once. The page can't play audio before the first click, so the
+  // sound waits for it (the viz's chrome says so meanwhile).
+  useEffect(() => {
+    for (const g of groups.values()) {
+      if (g.backgroundFileId) restoreOwnBackdropSound(g, g.backgroundFileId)
+    }
+    // a sound still waiting must not start after the shell has gone
+    const waiting = backdropSourceByFile.current
+    return () => {
+      for (const id of waiting.keys()) cancelAudioStart(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /**
    * Set/clear a group's transient code-override backdrop (#350a). `null` deletes
