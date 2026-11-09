@@ -12,6 +12,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { showPrompt, showToast } from "../dialogs/host";
 import { KIND_LABEL } from "./galleryModel";
 import { recordListChange } from "./localShares";
+import { shownName } from "./reservedNames";
 import {
   ACTION_LABEL,
   dismissReports,
@@ -264,7 +265,7 @@ export function ModerationView({ onOpen }: { onOpen: (entryId: string) => void }
               <div className="sg-mine-text">
                 <div className="sg-card-title">{f.entry?.title ?? `(entry ${f.entryId} can't be read)`}</div>
                 <div className="sg-card-meta">
-                  {f.entry ? `${KIND_LABEL[f.entry.kind] ?? f.entry.kind} by ${f.entry.authorName} · ` : ""}
+                  {f.entry ? `${KIND_LABEL[f.entry.kind] ?? f.entry.kind} by ${shownName(f.entry.authorName)} · ` : ""}
                   {f.reports.length} {f.reports.length === 1 ? "report" : "reports"}
                 </div>
                 <ul className="sg-mod-reasons">
@@ -295,7 +296,7 @@ export function ModerationView({ onOpen }: { onOpen: (entryId: string) => void }
                 >
                   Dismiss
                 </button>
-                {f.entry && suspendControls(`flagged:${f.entryId}`, f.entry.authorId, f.entry.authorName)}
+                {f.entry && suspendControls(`flagged:${f.entryId}`, f.entry.authorId, shownName(f.entry.authorName))}
               </div>
             </div>
           ))
@@ -322,7 +323,7 @@ export function ModerationView({ onOpen }: { onOpen: (entryId: string) => void }
                 <div className="sg-mine-text">
                   <div className="sg-card-title">{t.entry.title}</div>
                   <div className="sg-card-meta">
-                    {KIND_LABEL[t.entry.kind] ?? t.entry.kind} by {t.entry.authorName} · taken down {when(t.removedAt)} ·{" "}
+                    {KIND_LABEL[t.entry.kind] ?? t.entry.kind} by {shownName(t.entry.authorName)} · taken down {when(t.removedAt)} ·{" "}
                     {expired ? "past its restore date, waiting for the clean-up" : `restore by ${when(t.restoreBy)}`}
                   </div>
                   {t.reason && <div className="sg-mod-reason">“{t.reason}”</div>}
@@ -336,7 +337,7 @@ export function ModerationView({ onOpen }: { onOpen: (entryId: string) => void }
                   >
                     Restore
                   </button>
-                  {suspendControls(`taken-down:${t.entry.id}`, t.entry.authorId, t.entry.authorName)}
+                  {suspendControls(`taken-down:${t.entry.id}`, t.entry.authorId, shownName(t.entry.authorName))}
                 </div>
               </div>
             );

@@ -34,6 +34,8 @@ import {
 import { GET as listRoute, POST as publishRoute } from "../app/api/gallery/route";
 import { DELETE as deleteRoute, GET as entryRoute } from "../app/api/gallery/[id]/route";
 import { GET as thumbnailRoute } from "../app/api/gallery/[id]/thumbnail/route";
+import { GET as recordingRoute } from "../app/api/gallery/[id]/recording/route";
+import { RECORDING_LIMITS, type GalleryRecording } from "../gallery/recording";
 import { POST as reportRoute } from "../app/api/gallery/[id]/report/route";
 import { GET as reportsRoute } from "../app/api/gallery/reports/route";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -158,6 +160,81 @@ async function published(over: Record<string, unknown> = {}): Promise<PublishRes
   expect(res.status).toBe(201);
   return (await res.json()) as PublishResponse;
 }
+
+// #2487 — what an entry plays, recorded at publish on the author's machine.
+const recordingOf = (id: string) => recordingRoute(new Request(`http://x/api/gallery/${id}/recording`), ctx(id));
+const RECORD: GalleryRecording = {
+  v: 1,
+  cover: "song0.strudel",
+  contents: { patterns: 1, visuals: 0, other: 0 },
+  files: [
+    {
+      path: "song0.strudel",
+      span: "arranged",
+      cycles: 8,
+      lanes: [{ name: "drums" }, { name: "bass" }],
+      events: [
+        [0, 0, 0.25, null],
+        [1, 0.5, 0.5, 36],
+      ],
+      sections: [
+        [0, 4, "intro"],
+        [4, 8, "drop"],
+      ],
+    },
+  ],
+};
+
+describe("recordings (#2487)", () => {
+  it("stores a valid record beside the entry, says so in the list, and serves it back", async () => {
+    const { id } = await published({ recording: RECORD });
+    const listed = (await list()).entries.find((e) => e.id === id)!;
+    expect(listed.hasRecording).toBe(true);
+    const res = await recordingOf(id);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await res.json()).toEqual(RECORD);
+  });
+
+  it("an entry published without one has none, and the list doesn't mention it", async () => {
+    const { id } = await published();
+    const listed = (await list()).entries.find((e) => e.id === id)!;
+    expect("hasRecording" in listed).toBe(false);
+    expect((await recordingOf(id)).status).toBe(404);
+  });
+
+  it.each([
+    ["the wrong version", { ...RECORD, v: 2 }],
+    ["a cover the entry doesn't have", { ...RECORD, cover: "other.strudel" }],
+    ["a file the entry doesn't have", { ...RECORD, files: [{ ...RECORD.files[0], path: "nope.strudel" }] }],
+    ["an event on a lane that doesn't exist", { ...RECORD, files: [{ ...RECORD.files[0], events: [[5, 0, 1, null]] }] }],
+    ["an event past the end", { ...RECORD, files: [{ ...RECORD.files[0], events: [[0, 9, 1, null]] }] }],
+    ["a section that ends before it starts", { ...RECORD, files: [{ ...RECORD.files[0], sections: [[4, 2, "x"]] }] }],
+    ["a pitch out of range", { ...RECORD, files: [{ ...RECORD.files[0], events: [[0, 0, 1, 300]] }] }],
+    ["text where a number goes", { ...RECORD, files: [{ ...RECORD.files[0], cycles: "8" }] }],
+    ["too many events", { ...RECORD, files: [{ ...RECORD.files[0], events: Array.from({ length: RECORDING_LIMITS.eventsPerFile + 1 }, () => [0, 0, 0.1, null]) }] }],
+  ])("refuses %s with 400 and stores nothing", async (_why, recording) => {
+    const before = (await list()).entries.length;
+    const res = await publish(request({ recording }));
+    expect(res.status).toBe(400);
+    expect((await list()).entries.length).toBe(before);
+  });
+
+  it("keeps only the fields the record has", async () => {
+    const smuggled = { ...RECORD, extra: "smuggled", files: [{ ...RECORD.files[0], secret: "smuggled" }] };
+    const { id } = await published({ recording: smuggled });
+    expect(JSON.stringify(await (await recordingOf(id)).json())).not.toContain("smuggled");
+  });
+
+  it("a taken-down entry's record isn't served; the author's delete removes it", async () => {
+    const { id, manageToken } = await published({ recording: RECORD });
+    const file = path.join(dir, "gallery", "recordings", `${id}.json`);
+    expect((await stat(file)).isFile()).toBe(true);
+    expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBeLessThan(300);
+    expect((await recordingOf(id)).status).toBe(404);
+    await expect(stat(file)).rejects.toThrow();
+  });
+});
 
 describe("publishing", () => {
   it("stores an entry and hands back its id and a manage token", async () => {

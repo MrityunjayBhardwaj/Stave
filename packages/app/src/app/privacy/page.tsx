@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   description: "What Stave keeps about you, who can see it, and how to delete it.",
 };
 
-const LAST_UPDATED = "6 November 2026";
+const LAST_UPDATED = "7 November 2026";
 const CONTACT_EMAIL = "support@stave.live";
 
 const styles: Record<string, CSSProperties> = {
@@ -56,7 +56,7 @@ const Mail = () => (
 const SERVICES: ReadonlyArray<readonly [string, string, string]> = [
   ["Vercel", "Hosts the site, stores gallery files and private links, and counts page views", "Every visit"],
   ["Neon", "Runs the database that holds accounts, profiles, gallery records and reports", "When you use the gallery or sign in"],
-  ["Cloudflare Turnstile", "Checks that a person, not a bot, is publishing or reporting", "Publishing or reporting"],
+  ["Cloudflare Turnstile", "Checks that a person, not a bot, is publishing, reporting or making a private link", "Publishing, reporting, or making a private link when not signed in"],
   ["GitHub, Google", "Sign you in", "Signing in with that service"],
   ["strudel.b-cdn.net, GitHub, felixroos.github.io", "Serve sound samples and instruments", "Opening the app or playing music"],
   ["unpkg.com", "Serves the Sonic Pi engine's code", "Starting the Sonic Pi engine"],
@@ -177,15 +177,16 @@ export default function PrivacyPage() {
           without already knowing your address and our secret key.
         </p>
         <p>
-          When you publish or report, Cloudflare Turnstile runs a check in your browser, and our server sends Cloudflare
-          the result along with your network address. Cloudflare handles this under its own privacy policy.
+          When you publish or report, or make a private link without being signed in, Cloudflare Turnstile runs a check
+          in your browser, and our server sends Cloudflare the result along with your network address. Cloudflare handles
+          this under its own privacy policy.
         </p>
       </Section>
 
       <Section title="Cookies and browser storage">
         <p>
           Using Stave without signing in sets no cookies of ours. Signing in sets a session cookie: encrypted, readable
-          only by our server, holding your name, email, avatar and account id. It expires after 30 days without use. The
+          only by our server, holding your name, email, avatar and account id. It expires after 7 days without use. The
           sign-in process also uses short-lived security cookies. We use no advertising or tracking cookies.
         </p>
         <p>
@@ -218,8 +219,10 @@ export default function PrivacyPage() {
           </tbody>
         </table>
         <p>
-          Avatars and images in profile bios load directly from wherever they are hosted. A project you run, including
-          one from the gallery or a shared link, can also connect to other sites.
+          Avatars load directly from GitHub or Google, whichever service that person signed in with. Images in profile
+          bios load directly from GitHub or from Stave, and any other image shows its description instead, so the
+          person who wrote a bio doesn&apos;t get your network address from it. A project you run, including one from
+          the gallery or a shared link, can also connect to other sites.
         </p>
       </Section>
 

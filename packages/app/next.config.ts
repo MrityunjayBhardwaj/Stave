@@ -53,7 +53,37 @@ const nextConfig: NextConfig = {
           // the gallery's sandboxed preview (/gallery-player): the check
           // compares the framing page (Stave) with this response's URL, not
           // the frame's sandboxed origin. A full policy is #2365.
-          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+          //
+          // #2374 — and only these may appear in a frame on a Stave page, checked
+          // again each time a frame navigates itself, so a preview's code can't
+          // put another site in the preview's place, even a page that never
+          // finishes loading. 'self' is /gallery-player; the others are the start
+          // screen's film and Cloudflare's Turnstile check. A frame with no URL
+          // (the audio frame) needs no entry. A new embed must be added here.
+          {
+            key: "Content-Security-Policy",
+            value:
+              "frame-ancestors 'self'; frame-src 'self' https://www.youtube-nocookie.com https://challenges.cloudflare.com",
+          },
+        ],
+      },
+      // #2374 — the preview's own page holds no embeds, and it runs the entry's
+      // code, so that code may put no site in a frame of its own: the check above
+      // reads the page HOLDING a frame, so it doesn't reach a frame nested in the
+      // preview. Same key as above, so this replaces it on this path (the last
+      // match wins): keep frame-ancestors.
+      //
+      // #2461 — and the page has to say it may be loaded by an origin that isn't
+      // its own. The app page's COEP treats a framed page with no CORP header as
+      // same-origin only, and Firefox checks that against the frame's sandboxed
+      // (opaque) origin, so it refused the preview outright; Chromium checks the
+      // parent's origin and let it through. 'same-site' isn't enough: an opaque
+      // origin is same-site with nothing. frame-ancestors still limits who frames it.
+      {
+        source: "/gallery-player",
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'; frame-src 'none'" },
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
         ],
       },
       // #2343 — the gallery's preview frame (`/gallery-player`, sandboxed with an

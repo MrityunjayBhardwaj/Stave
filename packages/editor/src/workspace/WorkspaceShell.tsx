@@ -150,6 +150,7 @@ import { planSoundAssignment } from '../codeView'
 import { planVizAssignment } from '../codeView'
 import type { WorkspaceShellActions } from './commands/CommandRegistry'
 import type {
+  AppTabState,
   WorkspaceGroupState,
   WorkspaceShellProps,
   WorkspaceTab,
@@ -330,6 +331,25 @@ export interface WorkspaceShellHandle {
   }): void
 
   /**
+   * #2471 — open the app-drawn tab for `appKey` (e.g. `'gallery'`). If a tab
+   * with that key is already open in ANY group, that tab is activated and its
+   * group focused — never a second copy. Otherwise a new `kind: 'app'` tab is
+   * appended to the active group and activated.
+   *
+   * `opts.state`, when given, becomes the tab's state in both cases (so a
+   * link that names a place can move an already-open tab there); omitted, an
+   * open tab keeps its state and a new one starts without.
+   */
+  openAppTab(appKey: string, opts?: { state?: AppTabState }): void
+
+  /**
+   * #2471 — replace the state the app tab for `appKey` carries (where the
+   * user is inside it). Persisted with the layout, so it comes back after a
+   * reload. No-op when no such tab is open or the state is unchanged.
+   */
+  setAppTabState(appKey: string, state: AppTabState | undefined): void
+
+  /**
    * Promote the given tab out of preview mode — it becomes pinned and
    * stops being eligible for replacement by the next preview open. No-op
    * if the tab doesn't exist or was already pinned.
@@ -343,6 +363,13 @@ export interface WorkspaceShellHandle {
    * reference the file.
    */
   closeTabsForFile(fileId: string): void
+
+  /**
+   * #2473 — close one tab by its id, whatever its kind (editor, preview,
+   * history or app). The tab bar's context-menu Close uses it: an app or
+   * history tab has no file to close by. No-op if the tab doesn't exist.
+   */
+  closeTab(tabId: string): void
 
   /**
    * Close every tab in the tab's group EXCEPT the given tab. No-op if
@@ -422,12 +449,40 @@ export interface WorkspaceShellHandle {
   assignVizToCursor(name: string): boolean
 }
 
-/** Resolve a tab's display name from the file store. Falls back to fileId. */
-function tabFileName(tab: WorkspaceTab): string {
+/** #2471 — the host's label hook for app tabs, as GroupTabBar receives it. */
+type AppTabLabelFn = WorkspaceShellProps['appTabLabel']
+
+/**
+ * Resolve a tab's display name: a file tab's from the file store (falls back
+ * to fileId); an app tab's from the host's `appTabLabel` (falls back to its
+ * `appKey`).
+ */
+function tabFileName(tab: WorkspaceTab, appTabLabel?: AppTabLabelFn): string {
+  if (tab.kind === 'app') return appTabLabel?.(tab)?.title ?? tab.appKey
   const file = getFile(tab.fileId)
   if (!file) return tab.fileId
   const parts = file.path.split('/')
   return parts[parts.length - 1]
+}
+
+/** #2471 — an app tab's optional icon, ahead of its title in the tab chip. */
+function AppTabIcon({
+  tab,
+  appTabLabel,
+}: {
+  tab: WorkspaceTab & { kind: 'app' }
+  appTabLabel?: AppTabLabelFn
+}): React.ReactElement | null {
+  const icon = appTabLabel?.(tab)?.icon
+  if (icon === undefined || icon === null) return null
+  return (
+    <span
+      data-app-tab-icon={tab.appKey}
+      style={{ display: 'inline-flex', alignItems: 'center', marginRight: 4, fontStyle: 'normal' }}
+    >
+      {icon}
+    </span>
+  )
 }
 
 interface GroupTabBarProps {
@@ -440,6 +495,8 @@ interface GroupTabBarProps {
   onTabDragStart: (e: React.DragEvent<HTMLDivElement>, tab: WorkspaceTab) => void
   onTabContextMenu?: (tab: WorkspaceTab, x: number, y: number) => void
   onTabPromote: (tabId: string) => void
+  /** #2471 — label hook for app tabs (title + optional icon). */
+  appTabLabel?: AppTabLabelFn
   onNewFile?: () => void
   onSplitRight: () => void
   onSplitDown: () => void
@@ -458,6 +515,7 @@ function GroupTabBar({
   onTabDragStart,
   onTabContextMenu,
   onTabPromote,
+  appTabLabel,
   onNewFile,
   onSplitRight,
   onSplitDown,
@@ -626,8 +684,10 @@ function GroupTabBar({
                     </span>
                   ) : tab.kind === 'preview' ? (
                     '🎥 '
+                  ) : tab.kind === 'app' ? (
+                    <AppTabIcon tab={tab} appTabLabel={appTabLabel} />
                   ) : null}
-                  {tabFileName(tab)}
+                  {tabFileName(tab, appTabLabel)}
                 </span>
                 <button
                   data-testid={`tab-close-${tab.id}`}
@@ -812,7 +872,10 @@ function GroupTabBar({
                     }}
                   >
                     {tab.kind === 'preview' ? '🎥 ' : ''}
-                    {tabFileName(tab)}
+                    {tab.kind === 'app' ? (
+                      <AppTabIcon tab={tab} appTabLabel={appTabLabel} />
+                    ) : null}
+                    {tabFileName(tab, appTabLabel)}
                   </span>
                   <button
                     data-testid={`tab-overflow-close-${tab.id}`}
@@ -851,6 +914,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   backgroundCrop,
   onTabClose,
   previewProviderFor,
+  renderAppTab,
+  appTabLabel,
   chromeForTab,
   editorExtrasForTab,
   onSaveFile,
@@ -1814,7 +1879,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       // using the current active editor tab's fileId.
       if (previewProviderFor) {
         const currentTab = activeTab
-        const fileId = currentTab?.fileId ?? ''
+        // #2471 — an app tab has no file; the lookup then matches no file.
+        const fileId = currentTab && currentTab.kind !== 'app' ? currentTab.fileId : ''
         return previewProviderFor({
           kind: 'preview',
           id: '__cmd-lookup__',
@@ -2566,6 +2632,44 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             </div>
           )
         }
+        case 'app': {
+          // #2471 — the host draws this tab. Only the group's ACTIVE tab is
+          // rendered, so this unmounts on switch-away; the host keeps its own
+          // state. The wrapper is OPAQUE: a pane background (per-pane or
+          // spanning) must never show through an app's page.
+          const body = renderAppTab?.(tab)
+          return (
+            <div
+              key={tab.id}
+              data-workspace-view="app"
+              data-app-tab={tab.appKey}
+              style={{
+                position: 'relative',
+                zIndex: 1,
+                height: '100%',
+                width: '100%',
+                overflow: 'auto',
+                background: 'var(--background)',
+              }}
+            >
+              {body ?? (
+                <div
+                  data-testid={`app-tab-unavailable-${tab.id}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100%',
+                    color: 'var(--foreground-muted)',
+                    fontSize: 12,
+                  }}
+                >
+                  This tab is not available.
+                </div>
+              )}
+            </div>
+          )
+        }
         default:
           return assertNever(tab)
       }
@@ -2598,6 +2702,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       findGroupWithAnyPreview,
       editorExtrasForTab,
       closeTabById,
+      // #2471 — the app tab's body comes from this host hook
+      renderAppTab,
       // P239 guard — the viz-settings ctx (#773) reads these; without them
       // in the deps the callback closes over stale backdrop settings /
       // handlers and the popover controls act on outdated values.
@@ -2843,6 +2949,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 return nx
               })
             }}
+            appTabLabel={appTabLabel}
             onNewFile={onNewFile}
             onSplitRight={() => handleSplit(group.id, 'east')}
             onSplitDown={() => handleSplit(group.id, 'south')}
@@ -2868,6 +2975,11 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
               // per-pane layer here so we don't paint N copies.
               // #2423 — likewise whenever a pattern's background spans the workspace
               if (workspaceSpanBackdrop) return null
+              // #2471 — an app tab shows no file and is drawn opaque: the
+              // pane's background does not apply while it is the active tab
+              // (not drawn, so no GPU spent behind it). The setting stays on
+              // the group and returns with the next file tab.
+              if (activeTabObj?.kind === 'app') return null
               // #350a precedence: code override (this eval) wins over the manual
               // sticky; neither set → no backdrop.
               const bgFileId = resolveBackdropFileId(
@@ -2913,14 +3025,16 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
               <div
                 data-stave-code-panel="true"
                 data-stave-backdrop={
+                  // #2471 — never for an app tab: its page is opaque.
+                  activeTabObj.kind !== 'app' &&
                   // #770: in workspace-span mode EVERY pane goes transparent so the
                   // single shared backdrop shows behind all of them — not just panes
                   // that have their own backdrop (the file-mode condition).
-                  workspaceSpanActive ||
+                  (workspaceSpanActive ||
                   resolveBackdropFileId(
                     group.backgroundFileId,
                     bgOverrides.get(group.id),
-                  )
+                  ))
                     ? 'on'
                     : 'off'
                 }
@@ -2989,6 +3103,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       pausedPreviews,
       // #2426 — each background's audio source reads the chosen sources
       sourceForBackdrop,
+      // #2471 — app tab chips read the host's label hook
+      appTabLabel,
     ],
   )
 
@@ -3189,6 +3305,75 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         })
         setActiveGroupId(activeGroupId)
       },
+      openAppTab: (appKey: string, opts?: { state?: AppTabState }) => {
+        const hasState = opts?.state !== undefined
+        // One tab per key: focus the open one, in whichever group holds it.
+        let foundGroupId: string | null = null
+        for (const [gid, g] of groups) {
+          if (g.tabs.some((t) => t.kind === 'app' && t.appKey === appKey)) {
+            foundGroupId = gid
+            break
+          }
+        }
+        const targetGid = foundGroupId ?? activeGroupId
+        setGroups((prev) => {
+          // Re-check against `prev` so two opens in one tick still make one tab.
+          for (const [gid, g] of prev) {
+            const hit = g.tabs.find((t) => t.kind === 'app' && t.appKey === appKey)
+            if (!hit) continue
+            // Already in front with nothing to change → keep identity.
+            if (g.activeTabId === hit.id && !hasState) return prev
+            const next = new Map(prev)
+            next.set(gid, {
+              ...g,
+              tabs: hasState
+                ? g.tabs.map((t) => (t.id === hit.id ? { ...t, state: opts!.state } : t))
+                : g.tabs,
+              activeTabId: hit.id,
+            })
+            return next
+          }
+          const g = prev.get(targetGid)
+          if (!g) return prev
+          const newTab: WorkspaceTab = {
+            kind: 'app',
+            id: `app-${appKey}`,
+            appKey,
+            ...(hasState ? { state: opts!.state } : {}),
+          }
+          const next = new Map(prev)
+          next.set(targetGid, { ...g, tabs: [...g.tabs, newTab], activeTabId: newTab.id })
+          return next
+        })
+        setActiveGroupId(targetGid)
+      },
+      setAppTabState: (appKey: string, state: AppTabState | undefined) => {
+        setGroups((prev) => {
+          for (const [gid, g] of prev) {
+            const hit = g.tabs.find(
+              (t): t is WorkspaceTab & { kind: 'app' } => t.kind === 'app' && t.appKey === appKey,
+            )
+            if (!hit) continue
+            // Unchanged → keep identity (no persistence write, no
+            // onActiveTabChange churn).
+            if (JSON.stringify(hit.state) === JSON.stringify(state)) return prev
+            const next = new Map(prev)
+            next.set(gid, {
+              ...g,
+              tabs: g.tabs.map((t) => {
+                if (t.id !== hit.id || t.kind !== 'app') return t
+                if (state === undefined) {
+                  const { state: _dropped, ...rest } = t
+                  return rest
+                }
+                return { ...t, state }
+              }),
+            })
+            return next
+          }
+          return prev
+        })
+      },
       promoteTab: (tabId: string) => {
         setGroups((prev) => {
           let changed = false
@@ -3209,6 +3394,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           return changed ? next : prev
         })
       },
+      closeTab: (tabId: string) => closeTabById(tabId),
       closeTabsForFile: (fileId: string) => {
         const targets: string[] = []
         for (const g of groups.values()) {

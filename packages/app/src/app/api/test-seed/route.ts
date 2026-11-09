@@ -29,7 +29,7 @@ import { galleryPaths, galleryStore, putJson } from "../gallery/store";
 // API, and the gallery's write-route inventory (galleryOrigin.test.ts) lists
 // only real routes. It still refuses another site's page, like every write route.
 //
-// POST { title?, collectionTitle? } → 201 { authorId, authorKey, entryId, manageToken, collectionId, title }
+// POST { title?, collectionTitle?, authorName? } → 201 { authorId, authorKey, entryId, manageToken, collectionId, title }
 // GET → { accountLinks: [...] }, every stored account-link row, every column as
 //   stored, so the spec can check what the real server kept (#2329: id, name and
 //   date only, never a link's key).
@@ -44,14 +44,17 @@ export async function POST(req: Request): Promise<Response> {
   const store = galleryStore();
   if (!db || !store) return notFound();
 
-  const body = (await req.json().catch(() => ({}))) as { title?: unknown; collectionTitle?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { title?: unknown; collectionTitle?: unknown; authorName?: unknown };
   const text = (v: unknown, fallback: string) => (typeof v === "string" && v ? v.slice(0, 100) : fallback);
   const title = text(body.title, "Before sign-in");
   const email = "seeded-before-sign-in@example.invalid";
+  // #2465 — a name stored before a rule refused it (no door can write one now),
+  // set straight on the row, so the spec can see how it is shown.
+  const authorName = text(body.authorName, "Old me");
 
   const made = await createAuthor(db, "Old me", email);
   if (!made) return Response.json({ error: "could not make the profile" }, { status: 500 });
-  await updateAuthorProfile(db, made.authorId, { name: "Old me", bio: "Made before sign-in." });
+  await updateAuthorProfile(db, made.authorId, { name: authorName, bio: "Made before sign-in." });
 
   const now = Date.now();
   const entryId = newShareId();
@@ -65,7 +68,7 @@ export async function POST(req: Request): Promise<Response> {
   };
   await putJson(store, galleryPaths.manifest(entryId), manifest);
   const entry: GalleryEntry = {
-    id: entryId, title, kind: "music", tags: [], authorName: "Old me", authorId: made.authorId,
+    id: entryId, title, kind: "music", tags: [], authorName, authorId: made.authorId,
     publishedAt: now, fileCount: 1, hasThumbnail: false,
   };
   await insertEntry(db, { entry, authorEmail: email, manageTokenHash: hashToken(manageToken) });

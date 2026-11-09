@@ -206,6 +206,9 @@ export {
   generateUniquePresetId,
 } from './visualizers/vizPreset'
 export { compilePreset } from './visualizers/vizCompiler'
+// #2516 — the three.js sketch parser + its bundled addon list (the app checks its
+// starter against them; editor support for `.three` builds on them next).
+export { compileThreeSketch, THREE_ADDONS } from './visualizers/renderers/threeSketch'
 export { mountVizRenderer } from './visualizers/mountVizRenderer'
 export { mountVizPreview, type VizPreviewSpec } from './visualizers/mountVizPreview'
 // #240 — viz pop-out: the hook drives a window.open() preview; the app host
@@ -606,6 +609,7 @@ export {
   HYDRA_VIZ,
   P5_VIZ,
   GLSL_VIZ,
+  THREE_VIZ,
   seedFromPreset,
   seedFromPresetId,
   flushToPreset,
@@ -627,6 +631,8 @@ export type {
   WorkspaceGroupState,
   WorkspaceShellProps,
   ChromeForTab,
+  AppTabState,
+  AppTabLabel,
 } from './workspace/types'
 
 // Engine log + friendly-error plumbing
@@ -857,6 +863,7 @@ export {
 export {
   setCodeBackdropOptions,
   getCodeBackdropOptions,
+  retainCodeBackdropOptions,
   type CodeBackdropOptions,
 } from './workspace/preview/codeBackdropOptions'
 // The display names of the OTHER tracks in a doc (#585) — the set the Song
@@ -948,6 +955,8 @@ export type {
   PersistedShellState,
   PersistedGroup,
   PersistedEditorTab,
+  PersistedAppTab,
+  PersistedTab,
   ShellSnapshot,
 } from './workspace/tabPersistence'
 

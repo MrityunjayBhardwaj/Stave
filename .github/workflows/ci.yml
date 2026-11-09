@@ -18,7 +18,9 @@
 #   server and real audio; it stays a manual gate for now. One file is the
 #   exception: tests/gallery-sandbox.spec.ts runs here, in its own job on a
 #   production build, because `next dev` can't host the gallery's sandboxed
-#   preview frame, so the manual gate skips most of it (#2343).
+#   preview frame, so the manual gate skips most of it (#2343). The job also runs
+#   tests/start-screen-intro.spec.ts, the last embed the app's frame policy lists
+#   whose test lives elsewhere (#2374).
 name: CI
 
 on:
@@ -116,6 +118,6 @@ jobs:
         run: |
           npx next start -p 3359 > "$RUNNER_TEMP/next-start.log" 2>&1 &
           for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:3359/ && break; sleep 2; done
-          npx playwright test tests/gallery-sandbox.spec.ts --project=chromium --workers=1 --reporter=line || {
+          npx playwright test tests/gallery-sandbox.spec.ts tests/start-screen-intro.spec.ts --project=chromium --workers=1 --reporter=line || {
             echo "--- next start log ---"; cat "$RUNNER_TEMP/next-start.log"; exit 1;
           }

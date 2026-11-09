@@ -55,6 +55,13 @@ import type {
 } from '../worker/workerMessages'
 import { VizRendererBase } from './VizRendererBase'
 
+/** The signal aliases a viz bus resolves: the stored custom ones plus the
+ *  built-ins, for the active viz engine. One home for the expression every
+ *  renderer repeats (a three.js viz on the main thread reads it from here, #2516). */
+export function currentVizSignalAliases(): ReturnType<typeof resolveAliasesForEngine> {
+  return resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE)
+}
+
 let workerPerfSeq = 0
 /** Tie-break counter for options bags that can't be serialized to a change key.
  *  Its own counter, NOT the perfId sequence — that one names renderers. */
@@ -91,7 +98,7 @@ const MAX_FRAMES_IN_FLIGHT = 2
 /** Effective device pixel ratio for worker viz, capped by `vizConfig.maxDpr`
  *  (#261). The worker p5 sketch renders at 1×; capping the presenting canvas to
  *  match avoids compositing an upscaled 1× image at 2× for nothing. */
-function effectiveDpr(): number {
+export function effectiveDpr(): number {
   const raw = typeof devicePixelRatio === 'number' && devicePixelRatio > 0 ? devicePixelRatio : 1
   const cap = getVizConfig().maxDpr
   return cap > 0 ? Math.min(raw, cap) : raw
@@ -164,7 +171,7 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5 / `'glsl'` #281).
    *  @param code raw sketch source. @param name workspace path (error attribution). */
   constructor(
-    private readonly kind: 'p5' | 'hydra' | 'glsl',
+    private readonly kind: 'p5' | 'hydra' | 'glsl' | 'three',
     private readonly code: string,
     private readonly name: string,
   ) {
@@ -282,7 +289,7 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
 
       // Bind the live signal feed, then ship the mount with the transferred canvas.
       this.bindSampler(components)
-      const aliases = resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE)
+      const aliases = currentVizSignalAliases()
       const mountOptions = this.postOptions(components)
       const mountMsg: MountMessage = {
         type: 'mount',

@@ -7,7 +7,7 @@
  * or another file's song. Any view of a visual counts: its code, its preview,
  * its history.
  *
- * No tab at all, or a tab whose file is gone, hides nothing: the panel's
+ * No tab at all, an app tab, or a tab whose file is gone, hides nothing: the panel's
  * default is to be there.
  */
 import { getFile } from '../WorkspaceFile'
@@ -16,6 +16,9 @@ import type { WorkspaceTab } from '../types'
 
 export function bottomPanelHiddenForTab(tab: WorkspaceTab | null): boolean {
   if (!tab) return false
+  // #2471 — an app tab (the gallery) shows no file and describes no music of
+  // its own; the panel keeps its default of being there.
+  if (tab.kind === 'app') return false
   const language = getFile(tab.fileId)?.language
   return language != null && isVizLanguage(language)
 }

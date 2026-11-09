@@ -23,6 +23,7 @@ import {
 import { AuthorName, Card, CollectionCard } from "./GalleryCards";
 import { loadAuthor } from "./localShares";
 import { renderMarkdown } from "./markdown";
+import { shownName } from "./reservedNames";
 import {
   buildCollectionRequest,
   buildProfileRequest,
@@ -214,7 +215,7 @@ export function ProfileView({
         <>
           <div className="sg-detail-head">
             <div>
-              <h3 className="sg-profile-name">{author.name}</h3>
+              <h3 className="sg-profile-name">{shownName(author.name)}</h3>
               {author.verified && <VerifiedBadge verified={author.verified} />}
               <div className="sg-card-meta">
                 {entries.length === 1 ? "1 entry" : `${entries.length} entries`} · since{" "}
@@ -292,7 +293,7 @@ function ProfileEditor({
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
-    const built = buildProfileRequest({ name, bio });
+    const built = buildProfileRequest({ name, bio }, page.author.name);
     setErrors(built.errors);
     if (!built.request) return;
     setSaving(true);
@@ -329,7 +330,7 @@ function ProfileEditor({
             placeholder={"# Hi, I'm …\n\nWhat you make, where to find you, links."}
             spellCheck
           />
-          <span className="sg-hint">Headings, lists, links, code, tables and images work. HTML is shown as text.</span>
+          <span className="sg-hint">Headings, lists, links, code and tables work. Images load from GitHub or Stave only; others show their alt text. HTML is shown as text.</span>
         </label>
         <div className="sg-field">
           <span className="sg-label">Preview</span>
