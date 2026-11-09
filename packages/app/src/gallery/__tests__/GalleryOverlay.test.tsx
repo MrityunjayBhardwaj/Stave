@@ -183,13 +183,24 @@ describe("GalleryOverlay", () => {
     expect(mine.getAttribute("aria-current")).toBeNull();
   });
 
-  it("My shares from an open entry closes the entry", async () => {
+  it("an entry's breadcrumb: Gallery goes back to the grid, the kind to the grid filtered to it", async () => {
     mockGallery();
     renderOverlay("musc1xxxxxx");
     await waitFor(() => expect(document.querySelector('[data-gallery-detail="musc1xxxxxx"]')).toBeTruthy());
-    fireEvent.click(document.querySelector('[data-gallery-tab="mine"]')!);
+    const crumbs = document.querySelector(".sg-crumbs")!;
+    expect(crumbs.textContent).toBe("Gallery/Music/Breakbeat×");
+    // the page's own bar replaces the header (its × still closes the overlay)
+    expect(document.querySelector(".sg-header")).toBeNull();
+    fireEvent.click(document.querySelector('[data-gallery-crumb="kind"]')!);
     expect(document.querySelector("[data-gallery-detail]")).toBeNull();
-    expect(document.querySelector('[data-gallery-state="mine-empty"]')).toBeTruthy();
+    expect(document.querySelector('[data-gallery-filter="music"]')!.getAttribute("aria-checked")).toBe("true");
+    expect(cards()).toEqual(["musc1xxxxxx"]);
+
+    fireEvent.click(document.querySelector('[data-gallery-card="musc1xxxxxx"]')!);
+    await waitFor(() => expect(document.querySelector('[data-gallery-detail="musc1xxxxxx"]')).toBeTruthy());
+    fireEvent.click(document.querySelector('[data-gallery-crumb="gallery"]')!);
+    expect(document.querySelector("[data-gallery-detail]")).toBeNull();
+    expect(cards()).toEqual(["musc1xxxxxx"]); // the filter chosen stays
   });
 
   it("thumbnails come from the thumbnail route, otherwise a generated card", async () => {

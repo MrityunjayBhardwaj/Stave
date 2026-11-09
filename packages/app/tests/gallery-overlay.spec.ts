@@ -126,6 +126,31 @@ test.describe('community gallery overlay', () => {
     await closeGalleryTab(page)
   })
 
+  test('#2491 an entry page: coloured code, and each file in a project plays from its own row, one at a time', async ({ page }) => {
+    await routeGallery(page)
+    await bootApp(page)
+    await openGalleryFromMenu(page)
+    await page.locator('[data-gallery-card="proj1AAAAAA"]').click()
+    await expect(page.locator('.sg-crumbs')).toContainText('Gallery/Projects/Dub Techno Starter')
+    const code = page.locator('[data-gallery-code="main.strudel"]')
+    await expect(code.locator('.sg-code-line').first()).toBeVisible()
+    // coloured: the string and the function name carry their colours
+    const colour = (sel: string) => code.locator(sel).first().evaluate((el) => getComputedStyle(el).color)
+    expect(await colour('.sg-ts')).toBe('rgb(158, 230, 184)')
+    expect(await colour('.sg-tf')).toBe('rgb(143, 200, 255)')
+    await expect(page.locator('[data-gallery-preview-frame]')).toHaveCount(0) // nothing runs to show it
+
+    await page.locator('[data-gallery-file-play="viz/bloom.hydra"]').click()
+    await expect(page.locator('[data-gallery-preview-frame]')).toHaveCount(1)
+    await expect(page.locator('[data-gallery-preview]')).toHaveAttribute('data-gallery-preview', /\/g_prj_viz$/)
+    await expect(page.locator('[data-gallery-code="viz/bloom.hydra"]')).toBeVisible()
+    await page.locator('[data-gallery-file-play="main.strudel"]').click()
+    await expect(page.locator('[data-gallery-preview]')).toHaveAttribute('data-gallery-preview', /\/g_prj_main$/)
+    await expect(page.locator('[data-gallery-preview-frame]')).toHaveCount(1)
+    await page.locator('[data-gallery-crumb="gallery"]').click()
+    await expect(page.locator('[data-gallery-card]')).toHaveCount(4)
+  })
+
   test('#2486 the filter, sort and search are part of the tab\'s place: a reload brings them back', async ({ page }) => {
     await routeGallery(page)
     await bootApp(page)

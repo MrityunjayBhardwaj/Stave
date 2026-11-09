@@ -106,7 +106,7 @@ describe("gallery store", () => {
 
     fireEvent.click(screen.getByText("← Back"));
     await waitFor(() => expect(document.querySelector('[data-gallery-detail="musc1xxxxxx"]')).toBeTruthy());
-    fireEvent.click(screen.getByText("← Back to the gallery"));
+    fireEvent.click(document.querySelector('[data-gallery-crumb="gallery"]')!);
     expect(selectedFilter()).toBe("music");
     expect(cards()).toEqual(["musc1xxxxxx", "musc2xxxxxx"]);
     expect(calls(fetchMock, "/api/gallery")).toBe(1);

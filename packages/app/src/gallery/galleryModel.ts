@@ -172,6 +172,39 @@ export function countByFilter(entries: readonly GalleryEntry[], query: string): 
   return out;
 }
 
+/** #2491 — what a file in an entry is: a pattern plays, a visual draws, anything else is a file. */
+export type FileRole = "pattern" | "visual" | "file";
+
+export function fileRole(path: string): FileRole {
+  const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+  if (ext === "strudel") return "pattern";
+  if (["hydra", "hy", "p5", "p5js", "js", "glsl", "frag", "shader"].includes(ext)) return "visual";
+  return "file";
+}
+
+/** "3 patterns · 2 visuals" — what an entry holds, counted from its files' names. */
+export function contentsSummary(files: ReadonlyArray<{ path: string }>, sep = " · "): string {
+  const n: Record<FileRole, number> = { pattern: 0, visual: 0, file: 0 };
+  for (const f of files) n[fileRole(f.path)] += 1;
+  const part = (count: number, one: string) => (count ? `${count} ${one}${count === 1 ? "" : "s"}` : null);
+  return [part(n.pattern, "pattern"), part(n.visual, "visual"), part(n.file, "other file")].filter(Boolean).join(sep);
+}
+
+/** "2 days ago" — how long ago, in the reader's language; the full date past a year. */
+export function publishedAgo(ms: number, now: number = Date.now()): string {
+  if (!Number.isFinite(ms)) return "";
+  const s = Math.round((ms - now) / 1000);
+  const abs = Math.abs(s);
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  if (abs < 60) return rtf.format(0, "second");
+  if (abs < 3600) return rtf.format(Math.round(s / 60), "minute");
+  if (abs < 86400) return rtf.format(Math.round(s / 3600), "hour");
+  if (abs < 86400 * 7) return rtf.format(Math.round(s / 86400), "day");
+  if (abs < 86400 * 35) return rtf.format(Math.round(s / (86400 * 7)), "week");
+  if (abs < 86400 * 365) return rtf.format(Math.round(s / (86400 * 30)), "month");
+  return formatGalleryDate(ms);
+}
+
 export function formatGalleryDate(ms: number): string {
   if (!Number.isFinite(ms)) return "";
   return new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
