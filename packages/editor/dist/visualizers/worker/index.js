@@ -7582,8 +7582,8 @@ function hostVizWorker(scope) {
         optionsRef.current = options;
       }, "setOptions"),
       draw: /* @__PURE__ */ __name(() => {
-        run.frame(globalThis.performance?.now?.() ?? 0);
         drawn = true;
+        run.frame(globalThis.performance?.now?.() ?? 0);
       }, "draw"),
       resizeKind: /* @__PURE__ */ __name((_w, _h, dprNew) => {
         currentDpr = dprNew;
