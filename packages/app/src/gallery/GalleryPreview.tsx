@@ -23,7 +23,7 @@
  * the preview closes as above; in a browser where it doesn't, the player just
  * stays up. Code can still draw whatever it likes inside its own page.
  */
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { parseFromFrame, type FromFrame, type PreviewKind } from "./previewProtocol";
 
 export const PLAYER_PATH = "/gallery-player";
@@ -31,7 +31,31 @@ const LOAD_SLOW_MS = 15_000;
 export const NAVIGATED_AWAY =
   "The preview was closed: its code tried to open another page in the preview's place.";
 
-export function GalleryPreview({ code, kind, fileKey }: { code: string; kind: PreviewKind; fileKey: string }) {
+/** #2491 — what the entry page's file rows can do with the one preview. */
+export interface GalleryPreviewHandle {
+  /** Play, or stop when playing — the big button's press. */
+  toggle(): void;
+}
+
+export interface GalleryPreviewProps {
+  code: string;
+  kind: PreviewKind;
+  fileKey: string;
+  /** Start playing as soon as this file is shown (a file row's play button chose it). */
+  autoStart?: boolean;
+  /** Playing or not — so the file row that started it can show Stop. */
+  onPlayingChange?: (playing: boolean) => void;
+}
+
+/**
+ * #2491 — the preview leads the entry page: a large stage with the play button
+ * and the sealed-frame note on it. One preview, so one sound at a time: a file
+ * row's play button switches the file it holds.
+ */
+export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewProps>(function GalleryPreview(
+  { code, kind, fileKey, autoStart = false, onPlayingChange },
+  ref,
+) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<FromFrame | null>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -56,8 +80,19 @@ export function GalleryPreview({ code, kind, fileKey }: { code: string; kind: Pr
     send({ play: true, code, kind });
   }, [send, code, kind]);
 
-  // A different file (or entry) closes the preview rather than playing the old code.
+  // A different file (or entry) closes the preview rather than playing the old code —
+  // and, when a file row asked for it, opens a fresh one for the new file.
+  const autoStartRef = useRef(autoStart);
+  autoStartRef.current = autoStart;
   useEffect(() => {
+    if (autoStartRef.current) {
+      wantPlay.current = true;
+      setStatus({ state: "stopped", message: "Loading the preview…" });
+      setOpen(false);
+      // A new frame for the new code: close, then open on the next frame.
+      const t = requestAnimationFrame(() => setOpen(true));
+      return () => cancelAnimationFrame(t);
+    }
     setOpen(false);
     setStatus(null);
     wantPlay.current = false;
@@ -120,6 +155,9 @@ export function GalleryPreview({ code, kind, fileKey }: { code: string; kind: Pr
   }, [open, playWhenLoaded]);
 
   const playing = status?.state === "playing";
+  const playingChange = useRef(onPlayingChange);
+  playingChange.current = onPlayingChange;
+  useEffect(() => playingChange.current?.(playing), [playing]);
   const onPreview = () => {
     if (!open) {
       wantPlay.current = true;
@@ -134,15 +172,63 @@ export function GalleryPreview({ code, kind, fileKey }: { code: string; kind: Pr
     }
   };
 
+  useImperativeHandle(ref, () => ({ toggle: onPreview }));
+
+  const statusText =
+    status?.state === "playing"
+      ? status.message
+        ? `Playing in a sealed preview. The code reported an error: ${status.message}`
+        : "Playing in a sealed preview."
+      : status?.state === "stopped"
+        ? (status.message ?? "Stopped.")
+        : status?.state === "error"
+          ? `The code reported an error: ${status.message ?? "unknown"}`
+          : "Plays in a sealed frame. It can't reach your projects or account.";
+
   return (
-    <div className="sg-sandbox" data-gallery-preview={fileKey}>
-      <div className="sg-sandbox-bar">
-        <button className="sg-btn" data-gallery-preview-button onClick={onPreview}>
-          {playing ? "Stop preview" : "Preview"}
+    <div className={kind === "strudel" ? "sg-stage sg-stage-sound" : "sg-stage"} data-gallery-preview={fileKey}>
+      {open ? (
+        <iframe
+          ref={frameRef}
+          className="sg-stage-frame"
+          title="Gallery preview"
+          src={PLAYER_PATH}
+          sandbox="allow-scripts"
+          allow="autoplay"
+          onLoad={onFrameLoad}
+          data-gallery-preview-frame
+        />
+      ) : (
+        <div className="sg-stage-idle" aria-hidden="true">
+          <span>{kind === "strudel" ? "Pattern" : "Visual"}</span>
+        </div>
+      )}
+      <div className="sg-stage-bar">
+        <button
+          className="sg-bigplay"
+          data-gallery-preview-button
+          aria-label={playing ? "Stop preview" : "Preview"}
+          title={playing ? "Stop preview" : "Preview"}
+          onClick={onPreview}
+        >
+          {playing ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5" /></svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z" /></svg>
+          )}
         </button>
+        <span className="sg-sealed" data-gallery-preview-state={status?.state ?? "closed"}>
+          {!status && (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <rect x="5" y="11" width="14" height="10" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+          )}
+          {statusText}
+        </span>
         {open && (
           <button
-            className="sg-btn sg-quiet"
+            className="sg-stage-close"
             onClick={() => {
               setOpen(false);
               setStatus(null);
@@ -151,30 +237,7 @@ export function GalleryPreview({ code, kind, fileKey }: { code: string; kind: Pr
             Close preview
           </button>
         )}
-        <span className="sg-sandbox-status" data-gallery-preview-state={status?.state ?? "closed"}>
-          {status?.state === "playing" &&
-            (status.message
-              ? `Playing in a sealed preview. The code reported an error: ${status.message}`
-              : "Playing in a sealed preview.")}
-          {status?.state === "stopped" && (status.message ?? "Stopped.")}
-          {status?.state === "error" && `The code reported an error: ${status.message ?? "unknown"}`}
-          {!status && "Plays in a sealed frame that can't reach your projects or account."}
-        </span>
       </div>
-      {open && (
-        <iframe
-          ref={frameRef}
-          className="sg-sandbox-frame"
-          // sound needs only a status line (and room for a Play button); a picture needs room
-          style={kind === "strudel" ? { height: 96 } : undefined}
-          title="Gallery preview"
-          src={PLAYER_PATH}
-          sandbox="allow-scripts"
-          allow="autoplay"
-          onLoad={onFrameLoad}
-          data-gallery-preview-frame
-        />
-      )}
     </div>
   );
-}
+});

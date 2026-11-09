@@ -189,7 +189,7 @@ describe("GalleryTabBody", () => {
     expect(places.length).toBe(writes);
 
     // a real navigation is written
-    fireEvent.click(screen.getByText("← Back to the gallery"));
+    fireEvent.click(document.querySelector('[data-gallery-crumb="gallery"]')!);
     await waitFor(() => expect(places.at(-1)).toEqual({ ...saved, stack: [] }));
     // the filter and sort it came back with are the grid's
     expect(document.querySelector('[data-gallery-filter="music"]')!.getAttribute("aria-checked")).toBe("true");

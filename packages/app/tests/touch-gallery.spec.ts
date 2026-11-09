@@ -36,7 +36,13 @@ test('the gallery opens from a #gallery link, browses, and opens an entry by tap
   if (phone && vp.width <= 640) expect(box.width).toBeGreaterThanOrEqual(vp.width - 1)
   if (process.env.GALLERY_SHOTS) await page.screenshot({ path: `${process.env.GALLERY_SHOTS}/phone-detail-${test.info().project.name}.png` })
 
-  await page.getByRole('button', { name: '← Back to the gallery' }).tap()
+  // #2491 — the main actions sit in a sheet at the bottom of the gallery, while the page scrolls under it
+  const sheetBox = (await page.locator('[data-gallery-actions]').boundingBox())!
+  const pageBox = (await page.locator('.sg-entry-page').boundingBox())!
+  // (only when narrow: a wide page, a phone held sideways too, has the actions in its side column)
+  if (pageBox.width <= 760) expect(Math.abs(sheetBox.y + sheetBox.height - (pageBox.y + pageBox.height))).toBeLessThan(2)
+  else expect(sheetBox.x).toBeGreaterThan(pageBox.x + pageBox.width / 2)
+  await page.locator('[data-gallery-crumb="gallery"]').tap()
   // #2486 — search, then the filter with the sort beside it, on one row
   const search = page.getByLabel('Search the gallery')
   const filters = page.locator('[data-gallery-filter]')

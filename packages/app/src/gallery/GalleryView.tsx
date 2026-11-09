@@ -58,8 +58,7 @@ import {
 import { useGallerySession } from "./session";
 import { showConfirm, showToast } from "../dialogs/host";
 import { REPORT_CSS, ReportDialog } from "./ReportDialog";
-import { GalleryPreview } from "./GalleryPreview";
-import { previewKindOf } from "./previewProtocol";
+import { ENTRY_CSS, EntryPage } from "./GalleryEntry";
 import { scrollKey, useGalleryStore, type AccountState, type DetailState, type GalleryStore } from "./galleryStore";
 
 export interface GalleryViewProps {
@@ -305,7 +304,9 @@ export function GalleryView({
 
   return (
     <div className="sg-view" data-gallery-view ref={rootRef}>
-      <style>{CSS + CARD_CSS + PROFILE_CSS + MARKDOWN_CSS + MODERATION_CSS + REPORT_CSS}</style>
+      <style>{CSS + CARD_CSS + PROFILE_CSS + MARKDOWN_CSS + MODERATION_CSS + REPORT_CSS + ENTRY_CSS}</style>
+      {/* #2491 — an entry's page has its breadcrumb bar in place of the header. */}
+      {top?.kind !== "entry" && (
       <div className={tab === "browse" && !top ? "sg-header" : "sg-header sg-header-ruled"}>
         <div className="sg-headline">
           <h2 className="sg-title">Community Gallery</h2>
@@ -343,6 +344,7 @@ export function GalleryView({
           )}
         </div>
       </div>
+      )}
 
       {top?.kind === "author" ? (
         <ProfileView
@@ -364,16 +366,25 @@ export function GalleryView({
           onDeleted={back}
         />
       ) : top?.kind === "entry" && detail ? (
-        <EntryDetail
+        <EntryPage
           detail={detail}
           busy={busy}
-          backLabel={backLabel}
+          backLabel={stack.length > 1 ? "← Back" : null}
           onBack={back}
+          onHome={() => store.setTab("browse")}
+          onKind={(kind) => {
+            store.setFilter(kind);
+            store.setTab("browse");
+          }}
           onAuthor={openAuthor}
           onRetry={() => store.openEntry(detail.id)}
           onOpenAsProject={(e, m) => runAction(() => onOpenAsProject(e, m))}
           onAddToProject={(e, m) => runAction(() => onAddToProject(e, m))}
+          onCopyLink={(id) => void copyLink(id)}
           onReport={report}
+          listed={entries}
+          onOpenEntry={openOne}
+          onClose={onClose}
         />
       ) : (
         <>
@@ -489,131 +500,6 @@ function emptyMessage(filter: GalleryFilter, query: string, total: number): stri
   if (q) return filter === "all" ? `Nothing in the gallery matches "${q}".` : `Nothing in ${label} matches "${q}".`;
   if (total === 0 || filter === "all") return "Nothing has been published yet.";
   return filter === "music" ? "No music has been published yet." : `No ${label.toLowerCase()} have been published yet.`;
-}
-
-function EntryDetail({
-  detail,
-  busy,
-  backLabel,
-  onBack,
-  onAuthor,
-  onRetry,
-  onOpenAsProject,
-  onAddToProject,
-  onReport,
-}: {
-  detail: DetailState;
-  busy: boolean;
-  backLabel: string;
-  onBack: () => void;
-  onAuthor: (authorId: string) => void;
-  onRetry: () => void;
-  onOpenAsProject: (e: GalleryEntry, m: GalleryEntryResponse["manifest"]) => void;
-  onAddToProject: (e: GalleryEntry, m: GalleryEntryResponse["manifest"]) => void;
-  onReport: (e: GalleryEntry) => void;
-}) {
-  const [fileIdx, setFileIdx] = useState(0);
-  useEffect(() => setFileIdx(0), [detail.id]);
-
-  const back = (
-    <button className="sg-btn sg-back" onClick={onBack}>
-      {backLabel}
-    </button>
-  );
-
-  if (detail.status === "loading") {
-    return (
-      <div className="sg-body">
-        {back}
-        <div className="sg-state" data-gallery-state="loading">Loading the entry…</div>
-      </div>
-    );
-  }
-  if (detail.status === "removed") {
-    return (
-      <div className="sg-body">
-        {back}
-        <div className="sg-state" data-gallery-state="removed">This was removed from the gallery.</div>
-      </div>
-    );
-  }
-  if (detail.status === "error") {
-    return (
-      <div className="sg-body">
-        {back}
-        <div className="sg-state" data-gallery-state="error">
-          <p>Couldn&apos;t open the entry: {detail.message}.</p>
-          <button className="sg-btn" onClick={onRetry}>Try again</button>
-        </div>
-      </div>
-    );
-  }
-
-  const { entry, manifest } = detail.data;
-  const files = manifest.files ?? [];
-  const file = files[Math.min(fileIdx, Math.max(0, files.length - 1))];
-  return (
-    <div className="sg-body sg-detail" data-gallery-detail={entry.id}>
-      {back}
-      <div className="sg-detail-head">
-        <div>
-          <div className="sg-detail-title">{entry.title}</div>
-          <div className="sg-card-meta">
-            {KIND_LABEL[entry.kind]} by{" "}
-            <AuthorName name={entry.authorName} authorId={entry.authorId} onAuthor={onAuthor} /> · {formatGalleryDate(entry.publishedAt)}
-          </div>
-          {entry.tags.length > 0 && (
-            <div className="sg-tags">
-              {entry.tags.map((t) => (
-                <span key={t} className="sg-tag">#{t}</span>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="sg-actions">
-          <button className="sg-btn sg-primary" disabled={busy} onClick={() => onOpenAsProject(entry, manifest)}>
-            Open as new project
-          </button>
-          {entry.kind !== "project" && (
-            <button className="sg-btn" disabled={busy} onClick={() => onAddToProject(entry, manifest)}>
-              Add to this project
-            </button>
-          )}
-          <button className="sg-btn" onClick={() => void copyLink(entry.id)}>Copy link</button>
-          <button className="sg-btn sg-quiet" onClick={() => onReport(entry)}>Report</button>
-        </div>
-      </div>
-      <p className="sg-safe" data-gallery-safe-note>
-        Nothing from this entry has run. Read the code below, or preview it in a sealed frame; once it is open, it plays only when you press Play.
-      </p>
-      {files.length > 1 && (
-        <div className="sg-files" role="tablist" aria-label="Files">
-          {files.map((f, i) => (
-            <button
-              key={f.id}
-              role="tab"
-              aria-selected={i === fileIdx}
-              className={i === fileIdx ? "sg-file sg-file-on" : "sg-file"}
-              onClick={() => setFileIdx(i)}
-            >
-              {f.path}
-            </button>
-          ))}
-        </div>
-      )}
-      {file && previewKindOf(file) && (
-        <GalleryPreview code={file.content} kind={previewKindOf(file)!} fileKey={`${entry.id}/${file.id}`} />
-      )}
-      {file ? (
-        <div className="sg-code-wrap">
-          <div className="sg-code-path">{file.path}</div>
-          <pre className="sg-code" data-gallery-code={file.path}>{file.content}</pre>
-        </div>
-      ) : (
-        <div className="sg-state">This entry has no files.</div>
-      )}
-    </div>
-  );
 }
 
 function MyShares({
@@ -826,21 +712,8 @@ const CSS = `
 .sg-danger { color: var(--text-error, #f27878); }
 .sg-quiet { opacity: .8; }
 .sg-back { align-self: flex-start; margin-bottom: 12px; background: none; border-color: transparent; padding-left: 0; }
-.sg-detail { display: flex; flex-direction: column; }
 .sg-detail-head { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
-.sg-detail-title { font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
 .sg-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.sg-safe { font-size: 12px; margin: 12px 0 10px; padding: 7px 10px; border-left: 3px solid var(--accent, #4a6cf7); background: var(--bg-hover, rgba(255,255,255,.04)); }
-.sg-files { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
-.sg-file { background: none; border: 1px solid var(--border-subtle); color: var(--text-chrome); padding: 3px 8px; border-radius: 5px; cursor: pointer; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.sg-file-on { border-color: var(--accent, #4a6cf7); color: var(--text-primary); }
-.sg-sandbox { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
-.sg-sandbox-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.sg-sandbox-status { font-size: 12px; opacity: .85; min-width: 0; flex: 1 1 260px; overflow-wrap: anywhere; }
-.sg-sandbox-frame { width: 100%; height: 220px; border: 1px solid var(--border-subtle); border-radius: 6px; background: #000; }
-.sg-code-wrap { flex: 1; min-height: 160px; display: flex; flex-direction: column; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; }
-.sg-code-path { font-size: 11px; padding: 5px 10px; border-bottom: 1px solid var(--border-subtle); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .8; }
-.sg-code { flex: 1; margin: 0; padding: 10px 12px; overflow: auto; font-size: 12.5px; line-height: 1.5; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; color: var(--text-primary); background: var(--bg-editor, rgba(0,0,0,.25)); user-select: text; }
 .sg-mine { display: flex; flex-direction: column; gap: 8px; }
 .sg-mine-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; }
 .sg-mine-text { min-width: 0; flex: 1 1 220px; }
