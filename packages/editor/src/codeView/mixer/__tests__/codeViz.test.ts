@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readMasterViz, masterVizEdit, detectMasterAudioAll } from '../masterEdit'
 import { readCodeViz } from '../codeViz'
+import { lastTrackBackdropCall } from '../backdropCall'
 import type { OffsetEdit } from '../../writeback'
 
 const applied = (src: string, e: OffsetEdit | null): string =>
@@ -56,17 +57,25 @@ describe('readCodeViz — the background the code declares, wherever it is', () 
     })
   })
 
-  it('reads a non-underscore viz method on a $: track', () => {
-    expect(readCodeViz(`$: note("c").pianoroll({ background: '#cc1133' })`)).toEqual({
-      name: 'pianoroll',
-      options: literal({ background: '#cc1133' }),
-      level: 'track',
-    })
+  it('does NOT read an implicit viz method on a track: it is a background only once it plays', () => {
+    expect(readCodeViz(`$: note("c").pianoroll({ background: '#cc1133' })`)).toBeNull()
+    expect(readCodeViz('$: note("c").scope().gain(0.5)')).toBeNull()
+    expect(readCodeViz('_lead: note("c").spiral()')).toBeNull()
   })
 
-  it('reads a viz method mid-chain, and a muted track (its methods still run)', () => {
-    expect(readCodeViz('$: note("c").scope().gain(0.5)')?.name).toBe('scope')
-    expect(readCodeViz('_lead: note("c").spiral()')?.name).toBe('spiral')
+  it('reads a declared call on a muted track (its methods still run)', () => {
+    expect(readCodeViz('_lead: note("c").viz("Fold", { backdrop: true })')?.name).toBe('Fold')
+  })
+
+  it('reads the declared track call even when a later implicit one will win at Play', () => {
+    // the evaluation then reports `scope`, and the app keeps that answer
+    const doc = 'lead: note("e").viz("Fold", { backdrop: true })\n$: note("c").scope()'
+    expect(readCodeViz(doc)).toMatchObject({ name: 'Fold', level: 'track' })
+  })
+
+  it("Clear's reader still finds an implicit track call, so Clear can remove it", () => {
+    expect(lastTrackBackdropCall('$: note("c").scope().gain(0.5)')?.name).toBe('scope')
+    expect(lastTrackBackdropCall('$: note("c").scope()', { declaredOnly: true })).toBeNull()
   })
 
   it('leaves an unflagged .viz() and an underscore method on a track inline', () => {

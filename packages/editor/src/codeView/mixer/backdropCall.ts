@@ -71,8 +71,18 @@ export function readBackdropCall(call: ChainCall, onMaster: boolean): BackdropCa
  * statement's own chain is read (`note(…).pianoroll().gain(…)`); a call nested in
  * an argument (`stack(a.scope(), b)`) or in a `const` is left to the last
  * evaluation. A muted track (`_lead:`) counts: its methods still run.
+ *
+ * `declaredOnly` keeps only calls that ASK to be the background in so many words,
+ * `.viz(name, { backdrop: true })`, and skips the implicit viz methods
+ * (`.scope()`, `.pianoroll()`). The engine still sends those to the background when
+ * it plays, but a viz written on a track reads as an inline viz, so only a
+ * declared one follows the code before Play (#2394, the user's rule). Clear still
+ * reads every call, so it can remove whichever one is playing.
  */
-export function lastTrackBackdropCall(doc: string): BackdropCall | null {
+export function lastTrackBackdropCall(
+  doc: string,
+  { declaredOnly = false }: { declaredOnly?: boolean } = {},
+): BackdropCall | null {
   const statements = parseTopLevel(doc)
   if (!statements) return null
   let last: BackdropCall | null = null
@@ -81,7 +91,11 @@ export function lastTrackBackdropCall(doc: string): BackdropCall | null {
     if (body?.type !== 'ExpressionStatement') continue
     const expr = body.expression
     if (expr?.type === 'CallExpression' && expr.callee?.type === 'Identifier' && expr.callee.name === 'all') continue
-    const r = lastBackdropCall(collectChain(doc, expr, { ref: null }), false)
+    const chain = collectChain(doc, expr, { ref: null })
+    // off the master line, a `.viz()` is a background only with `backdrop: true`
+    // (readBackdropCall checks that), so keeping `.viz()` calls keeps exactly
+    // the declared ones
+    const r = lastBackdropCall(declaredOnly ? chain.filter((c) => c.name === 'viz') : chain, false)
     if (r) last = r
   }
   return last
