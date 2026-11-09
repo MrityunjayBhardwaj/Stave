@@ -49,6 +49,27 @@ export function setCodeBackdropOptions(next: CodeBackdropOptions | null, pattern
   for (const l of [...listeners]) l()
 }
 
+/**
+ * #2395 — keep only the slots of the pattern files in `openPatternFileIds` (the
+ * patterns open as a tab in some pane); every other pattern's slot is dropped.
+ * A background belongs to a pattern's tab, so when the last tab of a pattern
+ * closes its options go with it, and reopening re-reads them from its code. The
+ * legacy single slot is not a pattern's and is left alone. One notification at
+ * most, and none when nothing was dropped.
+ */
+export function retainCodeBackdropOptions(openPatternFileIds: Iterable<string>): void {
+  const keep = new Set(openPatternFileIds)
+  let dropped = false
+  for (const key of [...slots.keys()]) {
+    if (key === LEGACY || keep.has(key)) continue
+    slots.delete(key)
+    dropped = true
+  }
+  if (!dropped) return
+  version++
+  for (const l of [...listeners]) l()
+}
+
 /** The options `patternFileId`'s code gives its background (legacy slot when omitted). */
 export function getCodeBackdropOptions(patternFileId?: string): CodeBackdropOptions | null {
   return slots.get(patternFileId ?? LEGACY) ?? null

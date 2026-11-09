@@ -78,6 +78,25 @@ export function panesShowing(panes: Iterable<PaneView>, fileId: string): string[
 }
 
 /**
+ * The pattern files open as an editor tab in some pane (active or not), in pane
+ * order, each once. A pattern's background, and the options its code gives it,
+ * live exactly as long as one of its tabs is open (#2395).
+ */
+export function openPatternFiles(
+  panes: Iterable<PaneView>,
+  isPattern: (fileId: string) => boolean,
+): string[] {
+  const open: string[] = [];
+  for (const pane of panes) {
+    for (const t of pane.tabs) {
+      if (t.kind !== "editor" || !t.fileId || open.includes(t.fileId)) continue;
+      if (isPattern(t.fileId)) open.push(t.fileId);
+    }
+  }
+  return open;
+}
+
+/**
  * #2421 — each pane's code-background override: the code background of the
  * pattern the pane shows, and nothing for a pane showing anything else. In File
  * mode a background is local to its pane, so a pattern's background never

@@ -863,6 +863,7 @@ export {
 export {
   setCodeBackdropOptions,
   getCodeBackdropOptions,
+  retainCodeBackdropOptions,
   type CodeBackdropOptions,
 } from './workspace/preview/codeBackdropOptions'
 // The display names of the OTHER tracks in a doc (#585) — the set the Song
