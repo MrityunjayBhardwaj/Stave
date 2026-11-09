@@ -31,9 +31,9 @@ for (const mode of ['exact', 'lcm'] as const) {
   })
 
   test(`the step grid, ${mode}: the split is written and the 8 columns stay 8`, async ({ page }) => {
-    // Slots is not on Exact's step grid until it comes back as zoom and snap (#2295)
-    test.skip(mode === 'exact', 'Slots comes back on Exact as zoom and snap')
-    const grid = await refineAndSplit(page, mode, '$: s("bd ~ sd ~")', '[data-bottom-panel-tab="sequencer"]', '[data-seq-cell^="0:"]', '[data-seq-cell="0:3"]')
+    // Exact names a cell by its place in the bar (`row:bar:n/d`), LCM by its column (#2526)
+    const at = mode === 'exact' ? '[data-seq-cell="0:0:3/8"]' : '[data-seq-cell="0:3"]'
+    const grid = await refineAndSplit(page, mode, '$: s("bd ~ sd ~")', '[data-bottom-panel-tab="sequencer"]', '[data-seq-cell^="0:"]', at)
     await expect.poll(() => editorValue(page)).toBe('$: s("bd [~ bd] sd ~")')
     await page.waitForTimeout(300)
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)

@@ -171,12 +171,8 @@ export interface SequencerGridProps {
  */
 export function SequencerGrid(props: SequencerGridProps = {}): React.ReactElement {
   const mode = useGridMode()
-  const { onResolution } = props
-  // Exact has no column resolution to lift (Slots comes back there as zoom and snap)
-  React.useEffect(() => {
-    if (mode === 'exact') onResolution?.(null)
-  }, [mode, onResolution])
-  return mode === 'exact' ? <ExactStepGrid notice={props.notice ?? null} /> : <ColumnStepGrid {...props} />
+  // Exact lifts its own Slots control: a snap over the tree, never a write (#2526)
+  return mode === 'exact' ? <ExactStepGrid notice={props.notice ?? null} onResolution={props.onResolution} /> : <ColumnStepGrid {...props} />
 }
 
 function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}): React.ReactElement {

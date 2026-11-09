@@ -22,7 +22,8 @@ import { chordLanes, commit, fmtLevel, gainLevelsAt, gridWriteEdits, lookOnlyLin
 import { emitLog } from '../../engine/engineLog'
 import { readCurrentCycle } from '../../workspace/currentCycle'
 import { ExtendHandle } from './ExtendHandle'
-import { cellAt, cellEdit, cellEnd, drawnCells, exactGridFrom, playsNumbers, removeRowText, type ExactCell, type ExactRow, type KeptRow } from './exactGrid'
+import { cellAt, cellEdit, cellEnd, drawnCells, exactGridFrom, exactSlotState, placesPerBar, playsNumbers, removeRowText, snapFor, snappable, type ExactCell, type ExactRow, type KeptRow } from './exactGrid'
+import { useLiftResolution, type ResolutionControlProps } from './ResolutionControl'
 import { OPEN_PX, stepAddressAtPlace } from './gridZoom'
 import { GridZoomControl, useGridZoom } from './gridZoomControl'
 import { GRID_SCOPE, isCursorMove, isNoteEdit, matchGridKey, mountGridGestures, moveStepCursor, stopAt, type GridAction } from './gridGestures'
@@ -155,7 +156,7 @@ interface Press {
   sound: string
 }
 
-export function ExactStepGrid({ notice = null }: { notice?: string | null }): React.ReactElement {
+export function ExactStepGrid({ notice = null, onResolution }: { notice?: string | null; onResolution?: (r: ResolutionControlProps | null) => void }): React.ReactElement {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk()
   const mini = chunk?.miniString ?? null
   const eligible = !!chunk && mini !== null && opensStepGrid(chunk)
@@ -173,7 +174,16 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
   }, [stmtId, mini])
 
   const probed = React.useMemo(() => (eligible ? probeTrees(mini!) : null), [eligible, mini])
-  const grid = React.useMemo(() => (probed ? exactGridFrom(probed, kept) : null), [probed, kept])
+  // SLOTS ON THIS GRID IS A SNAP (#2526): the count of places per bar the user chose, kept as a
+  // COUNT so a write that makes the text spell it (`~` → `[~ bd]` at 8) brings the snap back to 1
+  // and 8 stays 8. Never written to the pattern; dropped when the cursor moves to another one.
+  const [slotsWanted, setSlotsWanted] = React.useState<number | null>(null)
+  const ownPlaces = React.useMemo(() => {
+    const g = probed ? exactGridFrom(probed, kept) : null
+    return g && g.ok ? placesPerBar(g.rows) : 0
+  }, [probed, kept])
+  const snap = snapFor(slotsWanted, ownPlaces)
+  const grid = React.useMemo(() => (probed ? exactGridFrom(probed, kept, snap) : null), [probed, kept, snap])
   const ok = grid && grid.ok && !playsNumbers(grid.trees) ? grid : null
   const bars = ok?.bars ?? 1
 
@@ -213,6 +223,16 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
     [applyEdit],
   )
 
+  // THE SLOTS CONTROL, lifted to the inspector like the column grid's (#601), as a view only
+  const placesNow = ok ? placesPerBar(ok.rows) : null
+  useLiftResolution(
+    placesNow,
+    // a pattern with a row no snap reaches (its steps do not tile its bars) offers none (#2526)
+    (target) => (ok && snappable(ok.rows) ? exactSlotState(target, ownPlaces, placesNow ?? 0) : target === placesNow ? 'active' : 'disabled'),
+    (target) => setSlotsWanted(target === ownPlaces ? null : target),
+    onResolution,
+  )
+
   const length = usePatternLength<{ bars: number }>(chunk as ChunkInfo | null, ok ? { bars: ok.bars } : null, parseForLength, writeMini)
 
   const span = bars
@@ -237,7 +257,17 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
   const fit = zoom.avail !== null ? Math.max(40, (zoom.avail - BAR_GAP * (bars - 1)) / bars) : 320
   // (a cell is drawn 2 px narrower than its place, so a finger's width needs those 2 px on top)
   const fingerPx = PHONE_STEP_MIN + 2
-  const barPx = phone.phone ? Math.max(fit, maxCellsInBar * fingerPx) : fit * zoom.level
+  // a snap half opens only once it can be aimed at: by a pointer, or on a phone by a finger
+  const halfPx = phone.phone ? fingerPx : OPEN_PX
+  // SLOTS ZOOMS AS IT SNAPS (#2526): with a snap chosen, the bar is wide enough that its
+  // narrowest place can be aimed at, so every place the snap made is drawn
+  const narrowest = React.useMemo(() => {
+    let w = 1
+    for (const r of ok?.rows ?? []) for (const c of r.cells) w = Math.min(w, cellEnd(c) - cellAt(c))
+    return w
+  }, [ok])
+  const snapPx = snap > 1 && narrowest > 0 ? halfPx / narrowest : 0
+  const barPx = Math.max(phone.phone ? Math.max(fit, maxCellsInBar * fingerPx) : fit * zoom.level, snapPx)
   const openPx = zoom.level > 1 ? OPEN_PX : Infinity
   const x = (t: number): number => {
     const b = Math.min(bars - 1, Math.max(0, Math.floor(t)))
@@ -248,8 +278,6 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
   const trackPx = bars * barPx + (bars - 1) * BAR_GAP
 
   const rows = ok?.rows ?? NO_ROWS
-  // a snap half opens only once it can be aimed at: by a pointer, or on a phone by a finger
-  const halfPx = phone.phone ? fingerPx : OPEN_PX
   const drawn = React.useMemo(() => rows.map((r) => drawnCells(r.cells, barPx, halfPx)), [rows, barPx, halfPx])
   // the level at every place drawn and every hit: one ask of Strudel per text
   const levelAt = React.useMemo(() => {
@@ -347,6 +375,7 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId
       setCursor(null)
+      setSlotsWanted(null)
     }
   }, [stmtId])
   const tab = liveCursor ?? { row: 0, col: 0 }

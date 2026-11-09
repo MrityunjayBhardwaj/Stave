@@ -92,8 +92,11 @@ function finest(row: DivisionRow, d = 1): number {
   return d
 }
 
-/** one leaf's cells: its places, equal shares of it */
-function leafCells(leaf: FracStep, bar: number, division: number, mine: Set<string>): ExactCell[] {
+/**
+ * One leaf's cells: its places, equal shares of it. `snap` cuts every place again into that many
+ * (Slots ×k on the Exact grid, #2526): the new places are snap halves, where a click splits.
+ */
+function leafCells(leaf: FracStep, bar: number, division: number, mine: Set<string>, snap = 1): ExactCell[] {
   const hits = (leaf.step?.hits ?? []).filter((h) => fracNum(h.begin) >= fracNum(leaf.begin) && fracNum(h.begin) < fracNum(leaf.end))
   const cell = (begin: Frac, end: Frac, split: boolean): ExactCell => ({ bar, begin, end, on: mine.has(keyOf(begin)), split })
   const span = frac(leaf.end.n * leaf.begin.d - leaf.begin.n * leaf.end.d, leaf.end.d * leaf.begin.d)
@@ -108,7 +111,7 @@ function leafCells(leaf: FracStep, bar: number, division: number, mine: Set<stri
     own = whole((span.n * d) / span.d)
   }
   // ...cut again by the part's division: a place that is not the step's own is a snap half
-  const parts = lcm(own, division > MAX_DIVISION ? 1 : whole((span.n * division) / span.d))
+  const parts = lcm(own, division > MAX_DIVISION ? 1 : whole((span.n * division) / span.d)) * snap
   if (parts <= 1) return [cell(leaf.begin, leaf.end, false)]
   const place = (k: number): Frac => {
     // begin + k · (span / parts)
@@ -133,8 +136,11 @@ export interface KeptRow {
   part: number
 }
 
-/** a pattern as rows of cells, from the trees of bars `0 … n−1` — or why it has none */
-export function exactGridFrom(probed: readonly BarTree[], kept: readonly KeptRow[] = []): ExactGrid {
+/**
+ * A pattern as rows of cells, from the trees of bars `0 … n−1` — or why it has none. `snap` cuts
+ * every place into that many (Slots on the Exact grid, #2526): a view, nothing is written.
+ */
+export function exactGridFrom(probed: readonly BarTree[], kept: readonly KeptRow[] = [], snap = 1): ExactGrid {
   const rep = repeatingBars(probed)
   const grid = treeGridFrom(probed, 'allowed')
   if (!rep.ok) return rep
@@ -165,7 +171,7 @@ export function exactGridFrom(probed: readonly BarTree[], kept: readonly KeptRow
         continue
       }
       const mine = starts(row, r.sound, new Set())
-      for (const leaf of leavesOf(steps)) cells.push(...leafCells(leaf, b, divisions.get(r.part) ?? 1, mine))
+      for (const leaf of leavesOf(steps)) cells.push(...leafCells(leaf, b, divisions.get(r.part) ?? 1, mine, snap))
     }
     return { ...r, cells }
   })
@@ -176,8 +182,8 @@ export function exactGridFrom(probed: readonly BarTree[], kept: readonly KeptRow
 }
 
 /** a pattern as rows of cells, from its mini string */
-export function exactGridOf(mini: string, kept: readonly KeptRow[] = []): ExactGrid {
-  return exactGridFrom(probeTrees(mini), kept)
+export function exactGridOf(mini: string, kept: readonly KeptRow[] = [], snap = 1): ExactGrid {
+  return exactGridFrom(probeTrees(mini), kept, snap)
 }
 
 /** a cell's position in cycles from the pattern's start */
@@ -268,4 +274,44 @@ export function cellEdit(
   if (typeof at === 'string') return { ok: false, why: at }
   const r = toggleStep(mini, trees, at, writerRow)
   return r.ok && silent && !cell.on ? { ok: false, why: 'under-a-gain-rest' } : r
+}
+
+/** the most places any row has in one bar: what the Slots control reads out on the Exact grid */
+export function placesPerBar(rows: readonly Pick<ExactRow, 'cells'>[]): number {
+  let most = 0
+  for (const r of rows) {
+    const perBar = new Map<number, number>()
+    for (const c of r.cells) perBar.set(c.bar, (perBar.get(c.bar) ?? 0) + 1)
+    for (const n of perBar.values()) most = Math.max(most, n)
+  }
+  return most
+}
+
+/**
+ * Can Slots snap this pattern? Only where every row's steps tile its bars (`bars`): a row that
+ * does not (`why`) is drawn from its hits, and no snap would reach its cells — offering ×2 there
+ * would promise places the grid never draws.
+ */
+export function snappable(rows: readonly Pick<ExactRow, 'bars'>[]): boolean {
+  return rows.length > 0 && rows.every((r) => r.bars !== null)
+}
+
+/** the finest snap Slots offers: places in one bar, as the column grid's view cap */
+export const MAX_SNAP_PLACES = 256
+
+/**
+ * Slots on the Exact grid (#2526): a count of places per bar, read as a snap over the pattern's
+ * own places (`own`, at snap 1). A whole multiple of `own` is a view; anything below `own` would
+ * be a rewrite, which Exact never offers, and anything that is not a multiple has no even snap.
+ */
+export function exactSlotState(target: number, own: number, current: number): 'active' | 'view' | 'disabled' {
+  if (target === current) return 'active'
+  if (own <= 0 || target < own || target % own !== 0 || target > MAX_SNAP_PLACES) return 'disabled'
+  return 'view'
+}
+
+/** the snap a chosen count asks for, over the pattern's own places: 1 where it does not divide evenly */
+export function snapFor(target: number | null, own: number): number {
+  if (target === null || own <= 0 || target % own !== 0 || target < own) return 1
+  return target / own
 }

@@ -43182,7 +43182,7 @@ function finest(row, d = 1) {
   return d;
 }
 __name(finest, "finest");
-function leafCells(leaf, bar2, division2, mine) {
+function leafCells(leaf, bar2, division2, mine, snap = 1) {
   const hits = (leaf.step?.hits ?? []).filter((h) => fracNum(h.begin) >= fracNum(leaf.begin) && fracNum(h.begin) < fracNum(leaf.end));
   const cell = /* @__PURE__ */ __name((begin, end, split) => ({ bar: bar2, begin, end, on: mine.has(keyOf2(begin)), split }), "cell");
   const span = frac(leaf.end.n * leaf.begin.d - leaf.begin.n * leaf.end.d, leaf.end.d * leaf.begin.d);
@@ -43194,7 +43194,7 @@ function leafCells(leaf, bar2, division2, mine) {
     for (const h of hits) d = lcm2(d, frac(h.begin.n * lead.d - lead.n * h.begin.d, h.begin.d * lead.d).d);
     own = whole2(span.n * d / span.d);
   }
-  const parts = lcm2(own, division2 > MAX_DIVISION ? 1 : whole2(span.n * division2 / span.d));
+  const parts = lcm2(own, division2 > MAX_DIVISION ? 1 : whole2(span.n * division2 / span.d)) * snap;
   if (parts <= 1) return [cell(leaf.begin, leaf.end, false)];
   const place = /* @__PURE__ */ __name((k) => {
     const step = frac(span.n, span.d * parts);
@@ -43212,7 +43212,7 @@ function leavesOf(steps, out = []) {
   return out;
 }
 __name(leavesOf, "leavesOf");
-function exactGridFrom(probed, kept = []) {
+function exactGridFrom(probed, kept = [], snap = 1) {
   const rep = repeatingBars(probed);
   const grid = treeGridFrom(probed, "allowed");
   if (!rep.ok) return rep;
@@ -43240,7 +43240,7 @@ function exactGridFrom(probed, kept = []) {
         continue;
       }
       const mine = starts(row, r.sound, /* @__PURE__ */ new Set());
-      for (const leaf of leavesOf(steps)) cells.push(...leafCells(leaf, b, divisions.get(r.part) ?? 1, mine));
+      for (const leaf of leavesOf(steps)) cells.push(...leafCells(leaf, b, divisions.get(r.part) ?? 1, mine, snap));
     }
     return { ...r, cells };
   });
@@ -43309,6 +43309,32 @@ function cellEdit(mini, trees, row, order, cell, silent = false) {
   return r.ok && silent && !cell.on ? { ok: false, why: "under-a-gain-rest" } : r;
 }
 __name(cellEdit, "cellEdit");
+function placesPerBar(rows) {
+  let most = 0;
+  for (const r of rows) {
+    const perBar2 = /* @__PURE__ */ new Map();
+    for (const c of r.cells) perBar2.set(c.bar, (perBar2.get(c.bar) ?? 0) + 1);
+    for (const n of perBar2.values()) most = Math.max(most, n);
+  }
+  return most;
+}
+__name(placesPerBar, "placesPerBar");
+function snappable(rows) {
+  return rows.length > 0 && rows.every((r) => r.bars !== null);
+}
+__name(snappable, "snappable");
+var MAX_SNAP_PLACES = 256;
+function exactSlotState(target, own, current9) {
+  if (target === current9) return "active";
+  if (own <= 0 || target < own || target % own !== 0 || target > MAX_SNAP_PLACES) return "disabled";
+  return "view";
+}
+__name(exactSlotState, "exactSlotState");
+function snapFor(target, own) {
+  if (target === null || own <= 0 || target % own !== 0 || target < own) return 1;
+  return target / own;
+}
+__name(snapFor, "snapFor");
 
 // src/keys/chord.ts
 function isMacPlatform() {
@@ -43786,7 +43812,7 @@ function parseForLength(mini, _scale) {
   return g.ok ? { ok: true, model: { bars: g.bars } } : { ok: false, reason: "this pattern doesn't open as a grid" };
 }
 __name(parseForLength, "parseForLength");
-function ExactStepGrid({ notice = null }) {
+function ExactStepGrid({ notice = null, onResolution }) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const mini = chunk?.miniString ?? null;
   const eligible = !!chunk && mini !== null && opensStepGrid(chunk);
@@ -43800,7 +43826,13 @@ function ExactStepGrid({ notice = null }) {
     if (was.stmt !== stmtId || was.mini !== mini && ownWrite.current !== mini) setKept([]);
   }, [stmtId, mini]);
   const probed = React33__namespace.useMemo(() => eligible ? probeTrees(mini) : null, [eligible, mini]);
-  const grid = React33__namespace.useMemo(() => probed ? exactGridFrom(probed, kept) : null, [probed, kept]);
+  const [slotsWanted, setSlotsWanted] = React33__namespace.useState(null);
+  const ownPlaces = React33__namespace.useMemo(() => {
+    const g = probed ? exactGridFrom(probed, kept) : null;
+    return g && g.ok ? placesPerBar(g.rows) : 0;
+  }, [probed, kept]);
+  const snap = snapFor(slotsWanted, ownPlaces);
+  const grid = React33__namespace.useMemo(() => probed ? exactGridFrom(probed, kept, snap) : null, [probed, kept, snap]);
   const ok = grid && grid.ok && !playsNumbers(grid.trees) ? grid : null;
   const bars = ok?.bars ?? 1;
   const gain = React33__namespace.useMemo(() => chunk ? readChunkGain(chunk) : null, [chunk]);
@@ -43834,6 +43866,14 @@ function ExactStepGrid({ notice = null }) {
     },
     [applyEdit]
   );
+  const placesNow = ok ? placesPerBar(ok.rows) : null;
+  useLiftResolution(
+    placesNow,
+    // a pattern with a row no snap reaches (its steps do not tile its bars) offers none (#2526)
+    (target) => ok && snappable(ok.rows) ? exactSlotState(target, ownPlaces, placesNow ?? 0) : target === placesNow ? "active" : "disabled",
+    (target) => setSlotsWanted(target === ownPlaces ? null : target),
+    onResolution
+  );
   const length = usePatternLength(chunk, ok ? { bars: ok.bars } : null, parseForLength, writeMini);
   const span = bars;
   const playedNotes = React33__namespace.useMemo(() => chunk && ok ? stepNotes(chunk, span) : null, [chunk, ok, span]);
@@ -43853,7 +43893,14 @@ function ExactStepGrid({ notice = null }) {
   }, [ok]);
   const fit = zoom.avail !== null ? Math.max(40, (zoom.avail - BAR_GAP3 * (bars - 1)) / bars) : 320;
   const fingerPx = PHONE_STEP_MIN + 2;
-  const barPx = phone.phone ? Math.max(fit, maxCellsInBar * fingerPx) : fit * zoom.level;
+  const halfPx = phone.phone ? fingerPx : OPEN_PX;
+  const narrowest = React33__namespace.useMemo(() => {
+    let w = 1;
+    for (const r of ok?.rows ?? []) for (const c of r.cells) w = Math.min(w, cellEnd(c) - cellAt(c));
+    return w;
+  }, [ok]);
+  const snapPx = snap > 1 && narrowest > 0 ? halfPx / narrowest : 0;
+  const barPx = Math.max(phone.phone ? Math.max(fit, maxCellsInBar * fingerPx) : fit * zoom.level, snapPx);
   const openPx = zoom.level > 1 ? OPEN_PX : Infinity;
   const x = /* @__PURE__ */ __name((t) => {
     const b = Math.min(bars - 1, Math.max(0, Math.floor(t)));
@@ -43863,7 +43910,6 @@ function ExactStepGrid({ notice = null }) {
   xRef.current = x;
   const trackPx = bars * barPx + (bars - 1) * BAR_GAP3;
   const rows = ok?.rows ?? NO_ROWS;
-  const halfPx = phone.phone ? fingerPx : OPEN_PX;
   const drawn = React33__namespace.useMemo(() => rows.map((r) => drawnCells(r.cells, barPx, halfPx)), [rows, barPx, halfPx]);
   const levelAt = React33__namespace.useMemo(() => {
     const times = [.../* @__PURE__ */ new Set([...drawn.flatMap((cs) => cs.map(cellAt)), ...rows.flatMap((r) => r.hits.map((h) => h.begin))])];
@@ -43944,6 +43990,7 @@ function ExactStepGrid({ notice = null }) {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setCursor(null);
+      setSlotsWanted(null);
     }
   }, [stmtId]);
   const tab = liveCursor ?? { row: 0, col: 0 };
@@ -44430,11 +44477,7 @@ function opensRhythmLine2(call) {
 __name(opensRhythmLine2, "opensRhythmLine");
 function SequencerGrid(props = {}) {
   const mode = useGridMode();
-  const { onResolution } = props;
-  React33__namespace.useEffect(() => {
-    if (mode === "exact") onResolution?.(null);
-  }, [mode, onResolution]);
-  return mode === "exact" ? /* @__PURE__ */ jsxRuntime.jsx(ExactStepGrid, { notice: props.notice ?? null }) : /* @__PURE__ */ jsxRuntime.jsx(ColumnStepGrid, { ...props });
+  return mode === "exact" ? /* @__PURE__ */ jsxRuntime.jsx(ExactStepGrid, { notice: props.notice ?? null, onResolution: props.onResolution }) : /* @__PURE__ */ jsxRuntime.jsx(ColumnStepGrid, { ...props });
 }
 __name(SequencerGrid, "SequencerGrid");
 function ColumnStepGrid({ onResolution, notice = null } = {}) {
