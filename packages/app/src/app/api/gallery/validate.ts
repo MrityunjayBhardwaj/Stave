@@ -1,3 +1,4 @@
+import { RECORDING_LIMITS, encodeRecording, readRecording } from "../../../gallery/recording";
 import {
   GALLERY_ID_PATTERN,
   GALLERY_KINDS,
@@ -29,7 +30,7 @@ const tooLarge = (error: string): Checked<never> => ({ ok: false, status: 413, e
 
 /** The largest request body worth reading: a full manifest, a full thumbnail as base64, and room for the rest. */
 export const MAX_PUBLISH_BODY_BYTES =
-  MAX_MANIFEST_BYTES + Math.ceil((MAX_THUMBNAIL_BYTES * 4) / 3) + 64 * 1024;
+  MAX_MANIFEST_BYTES + Math.ceil((MAX_THUMBNAIL_BYTES * 4) / 3) + RECORDING_LIMITS.bytes + 64 * 1024;
 export const MAX_REPORT_BODY_BYTES = 16 * 1024;
 
 export interface ValidPublish {
@@ -39,6 +40,25 @@ export interface ValidPublish {
   manifest: GalleryManifest;
   manifestBytes: Uint8Array;
   thumbnail: { bytes: Uint8Array; contentType: "image/png" | "image/webp" } | null;
+  /** #2487 — what the entry plays, recorded at publish; stored beside it as JSON. */
+  recording: Uint8Array | null;
+}
+
+/**
+ * #2487 — the recorded events and sections, when sent. Read by the same reader
+ * the cards use (`readRecording`), so a record this route stores is one they can
+ * draw. Every recorded file and the cover must be a file of the entry.
+ */
+export function checkRecording(v: unknown, manifest: GalleryManifest): Checked<Uint8Array | null> {
+  if (v === undefined || v === null) return { ok: true, value: null };
+  const rec = readRecording(v);
+  if (!rec) return bad("the recording isn't in the expected shape");
+  const paths = new Set(manifest.files.map((f) => f.path));
+  if (rec.cover !== null && !paths.has(rec.cover)) return bad("the recording's cover isn't a file of the entry");
+  if (rec.files.some((f) => !paths.has(f.path))) return bad("the recording names a file the entry doesn't have");
+  const bytes = encodeRecording(rec);
+  if (!bytes) return tooLarge(`the recording is larger than ${RECORDING_LIMITS.bytes} bytes`);
+  return { ok: true, value: bytes };
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -162,6 +182,9 @@ export function checkPublish(body: unknown): Checked<ValidPublish> {
   const thumbnail = checkThumbnail(body.thumbnail);
   if (!thumbnail.ok) return thumbnail;
 
+  const recording = checkRecording(body.recording, manifest.value);
+  if (!recording.ok) return recording;
+
   return {
     ok: true,
     value: {
@@ -171,6 +194,7 @@ export function checkPublish(body: unknown): Checked<ValidPublish> {
       manifest: manifest.value,
       manifestBytes,
       thumbnail: thumbnail.value,
+      recording: recording.value,
     },
   };
 }

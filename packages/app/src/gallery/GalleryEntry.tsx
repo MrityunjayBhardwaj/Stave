@@ -20,10 +20,11 @@
  * #2489.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AuthorName, Thumb } from "./GalleryCards";
+import { AuthorName, EntryPicture, avatarColour, useEntryRecording } from "./GalleryCards";
 import { GalleryPreview, type GalleryPreviewHandle } from "./GalleryPreview";
 import { previewKindOf } from "./previewProtocol";
 import { codeLanguageOf, colourLines, type TokenKind } from "./codeColour";
+import { RecordingTimeline, lengthLabel } from "./GalleryTimeline";
 import { GALLERY_FILTERS, KIND_LABEL, contentsSummary, fileRole, formatGalleryDate, publishedAgo } from "./galleryModel";
 import { shownName } from "./reservedNames";
 import type { DetailState } from "./galleryStore";
@@ -142,16 +143,19 @@ const STOP_ICON = (
 
 export function EntryPage(props: EntryPageProps) {
   const { detail, busy, backLabel, onBack, onHome, onKind, onAuthor, onRetry, onClose } = props;
-  const [fileIdx, setFileIdx] = useState(0);
+  // The file chosen, by path: the list is re-ordered (cover first) once the record arrives.
+  const [chosen, setChosen] = useState<string | null>(null);
   const [autoStart, setAutoStart] = useState(false);
   const [playing, setPlaying] = useState(false);
   const preview = useRef<GalleryPreviewHandle>(null);
   useEffect(() => {
-    setFileIdx(0);
+    setChosen(null);
     setAutoStart(false);
   }, [detail.id]);
 
   const ready = detail.status === "ready" ? detail.data : null;
+  // #2487 — what each pattern plays, recorded at publish (none for older entries)
+  const rec = useEntryRecording(ready?.entry ?? { id: detail.id, hasRecording: false });
   const crumbs = (
     <Crumbs
       entry={ready?.entry ?? null}
@@ -185,8 +189,11 @@ export function EntryPage(props: EntryPageProps) {
   }
 
   const { entry, manifest } = ready;
-  const files = manifest.files ?? [];
-  const idx = Math.min(fileIdx, Math.max(0, files.length - 1));
+  // #2488 — the cover first, as the author chose it; the rest in the project's order
+  const files = [...(manifest.files ?? [])].sort((a, b) => Number(b.path === rec?.cover) - Number(a.path === rec?.cover));
+  // nothing chosen yet: the first file, which is the cover once the record has arrived
+  const found = chosen === null ? -1 : files.findIndex((f) => f.path === chosen);
+  const idx = found >= 0 ? found : 0;
   const file = files[idx];
   const kind = file ? previewKindOf(file) : null;
 
@@ -198,12 +205,14 @@ export function EntryPage(props: EntryPageProps) {
     }
     setAutoStart(true);
     setPlaying(false);
-    setFileIdx(i);
+    setChosen(files[i]?.path ?? null);
   };
   const showFile = (i: number) => {
     setAutoStart(false);
-    setFileIdx(i);
+    setChosen(files[i]?.path ?? null);
   };
+
+  const recordedFor = (path: string) => rec?.files.find((r) => r.path === path) ?? null;
 
   const more = (props.listed ?? [])
     .filter((e) => e.authorId && e.authorId === entry.authorId && e.id !== entry.id)
@@ -217,6 +226,7 @@ export function EntryPage(props: EntryPageProps) {
         <div className="sg-entry-main">
           {file && kind ? (
             <GalleryPreview
+              idle={recordedFor(file.path) ? <RecordingTimeline rec={recordedFor(file.path)!} className="sg-stage-canvas" /> : undefined}
               ref={preview}
               code={file.content}
               kind={kind}
@@ -242,6 +252,8 @@ export function EntryPage(props: EntryPageProps) {
                 const on = i === idx;
                 const role = fileRole(f.path);
                 const lines = f.content.split("\n").length;
+                const recorded = rec?.files.find((r) => r.path === f.path) ?? null;
+                const isCover = rec?.cover === f.path;
                 return (
                   <div
                     key={f.id}
@@ -264,9 +276,13 @@ export function EntryPage(props: EntryPageProps) {
                     <button className="sg-fname" onClick={() => showFile(i)}>
                       <b>{f.path}</b>
                       <span>
-                        {role === "file" ? "file" : role} · {lines} {lines === 1 ? "line" : "lines"}
+                        {recorded ? lengthLabel(recorded) : `${role} · ${lines} ${lines === 1 ? "line" : "lines"}`}
                       </span>
                     </button>
+                    <div className="sg-frow-strip">
+                      {recorded && <RecordingTimeline rec={recorded} compact className="sg-frow-canvas" />}
+                    </div>
+                    {isCover ? <span className="sg-frow-tag" data-gallery-cover>Cover</span> : <span />}
                   </div>
                 );
               })}
@@ -335,6 +351,15 @@ export function EntryPage(props: EntryPageProps) {
             <dd>{KIND_LABEL[entry.kind] ?? entry.kind}</dd>
             <dt>Contains</dt>
             <dd>{contentsSummary(files, ", ") || "nothing"}</dd>
+            {rec?.cover && (
+              <>
+                <dt>Cover</dt>
+                <dd>
+                  {rec.cover}
+                  {rec.files.find((r) => r.path === rec.cover) ? `, ${lengthLabel(rec.files.find((r) => r.path === rec.cover)!)}` : ""}
+                </dd>
+              </>
+            )}
             <dt>Published</dt>
             <dd>{formatGalleryDate(entry.publishedAt)}</dd>
           </dl>
@@ -350,7 +375,9 @@ export function EntryPage(props: EntryPageProps) {
               <h4>More by {name}</h4>
               {more.map((e) => (
                 <button key={e.id} className="sg-mini" data-gallery-more={e.id} onClick={() => props.onOpenEntry(e.id)}>
-                  <Thumb entry={e} />
+                  <span className="sg-mini-pic">
+                    <EntryPicture entry={e} />
+                  </span>
                   <span>
                     {e.title}
                     <small>
@@ -367,13 +394,6 @@ export function EntryPage(props: EntryPageProps) {
   );
 }
 
-/** A soft colour per artist, stable across visits. */
-function avatarColour(key: string): string {
-  let h = 0;
-  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return `hsl(${h % 360} 70% 78%)`;
-}
-
 export const ENTRY_CSS = `
 .sg-entry-page { padding: 0; container-type: inline-size; display: flex; flex-direction: column; }
 .sg-entry-page > .sg-entry { flex: 1 0 auto; }
@@ -388,6 +408,7 @@ export const ENTRY_CSS = `
 .sg-entry-main { display: grid; gap: 14px; min-width: 0; }
 .sg-stage { position: relative; aspect-ratio: 2 / 1; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-subtle); background: radial-gradient(120% 90% at 30% 20%, rgba(124,108,255,.22), transparent 60%), radial-gradient(90% 80% at 85% 90%, rgba(127,214,194,.14), transparent 60%), var(--bg-input, #12121f); }
 .sg-stage-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+.sg-stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .sg-stage-idle { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted, var(--text-chrome)); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
 .sg-stage-bar { position: absolute; inset: auto 0 0 0; display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: linear-gradient(transparent, rgba(8,8,15,.88)); }
 .sg-bigplay { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--text-primary, #eee); color: var(--bg-elevated, #111); display: grid; place-items: center; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
@@ -397,8 +418,11 @@ export const ENTRY_CSS = `
 .sg-contents { border: 1px solid var(--border-subtle); border-radius: 12px; overflow: hidden; }
 .sg-contents-head { display: flex; align-items: baseline; gap: 10px; padding: 10px 14px; background: var(--bg-hover, rgba(255,255,255,.03)); border-bottom: 1px solid var(--border-subtle); font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .sg-contents-head span { font-weight: 400; font-size: 12px; color: var(--text-muted, var(--text-chrome)); }
-.sg-frow { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); }
+.sg-frow { display: grid; grid-template-columns: 32px minmax(0, 170px) minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); }
 .sg-frow:last-child { border-bottom: 0; }
+.sg-frow-strip { min-width: 0; height: 34px; }
+.sg-frow-canvas { width: 100%; height: 34px; display: block; border-radius: 6px; }
+.sg-frow-tag { font-size: 11px; color: var(--text-muted, var(--text-chrome)); border: 1px solid var(--border-subtle); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
 .sg-frow-on { background: var(--bg-hover, rgba(255,255,255,.05)); }
 .sg-miniplay { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-strong); background: none; display: grid; place-items: center; color: var(--text-primary); cursor: pointer; padding: 0; }
 .sg-frow-on .sg-miniplay { background: var(--text-primary, #eee); color: var(--bg-elevated, #111); border-color: var(--text-primary, #eee); }
@@ -439,7 +463,8 @@ export const ENTRY_CSS = `
 .sg-more { display: grid; gap: 10px; }
 .sg-more h4 { margin: 0; font-size: 12.5px; font-weight: 500; color: var(--text-muted, var(--text-chrome)); }
 .sg-mini { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; align-items: center; background: none; border: 0; padding: 0; text-align: left; cursor: pointer; color: var(--text-primary); font: inherit; font-size: 13px; }
-.sg-mini .sg-thumb { width: 64px; height: 40px; aspect-ratio: auto; border-radius: 6px; border: 1px solid var(--border-subtle); }
+.sg-mini-pic { position: relative; display: block; width: 64px; height: 40px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-subtle); background: #101022; }
+.sg-mini-pic .sg-thumb, .sg-mini-pic canvas { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; }
 .sg-mini .sg-initials { font-size: 13px; }
 .sg-mini .sg-kind-tag { display: none; }
 .sg-mini small { display: block; color: var(--text-muted, var(--text-chrome)); font-size: 12px; }
@@ -462,5 +487,7 @@ export const ENTRY_CSS = `
   .sg-side-actions { order: 99; margin-top: auto !important; position: sticky; bottom: 0; z-index: 2; width: calc(100% + 32px) !important; margin-left: -16px; margin-right: -16px; margin-bottom: 0; padding: 12px 16px 16px; background: var(--bg-elevated); border-top: 1px solid var(--border-subtle); }
   .sg-side-actions .sg-btn { height: 46px; }
   .sg-crumbs { padding: 12px 16px; }
+  .sg-frow { grid-template-columns: 32px minmax(0, 1fr) auto; }
+  .sg-frow-strip { display: none; }
 }
 `;

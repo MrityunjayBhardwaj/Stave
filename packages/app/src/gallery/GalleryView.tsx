@@ -693,7 +693,7 @@ const CSS = `
 .sg-sortlabel { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted, var(--text-chrome)); }
 .sg-sort { height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--bg-input, var(--bg-elevated)); color: var(--text-primary); font-size: 13px; cursor: pointer; }
 .sg-body { flex: 1; overflow: auto; padding: 16px 18px; min-height: 0; }
-.sg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.sg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 22px 18px; }
 .sg-thumb { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; background: #111; }
 .sg-thumb-gen { position: relative; display: flex; align-items: center; justify-content: center; }
 .sg-initials { font-size: 30px; font-weight: 700; color: rgba(255,255,255,.88); letter-spacing: 1px; }
