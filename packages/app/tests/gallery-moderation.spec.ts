@@ -130,7 +130,7 @@ test.describe('Moderation by admin accounts (#2331)', () => {
     await expect(row).toBeVisible({ timeout: 15_000 })
     await expect(row).toContainText(TITLE)
     await expect(row.locator('[data-gallery-report-reason]')).toContainText(['this is copied from my track'])
-    if (SHOTS) await admin.page.locator('.sg-modal').screenshot({ path: `${SHOTS}/1-moderation-tab.png` })
+    if (SHOTS) await admin.page.locator('[data-gallery="tab"]').screenshot({ path: `${SHOTS}/1-moderation-tab.png` })
 
     // ── take it down, with a reason ──
     await row.locator(`[data-gallery-take-down="${entryId}"]`).click()
@@ -148,7 +148,7 @@ test.describe('Moderation by admin accounts (#2331)', () => {
     await expect(logged).toContainText(`Test ${ADMIN}`)
     await expect(logged).toContainText(REASON)
     await logged.scrollIntoViewIfNeeded()
-    if (SHOTS) await admin.page.locator('.sg-modal').screenshot({ path: `${SHOTS}/3-action-log.png` })
+    if (SHOTS) await admin.page.locator('[data-gallery="tab"]').screenshot({ path: `${SHOTS}/3-action-log.png` })
 
     // ── and it's gone for everyone ──
     expect((await author.context.request.get(`/api/gallery/${entryId}`)).status()).toBe(410)
@@ -169,7 +169,7 @@ test.describe('Moderation by admin accounts (#2331)', () => {
     await expect(hidden).toContainText(TITLE)
     await expect(hidden).toContainText(REASON)
     await hidden.scrollIntoViewIfNeeded()
-    if (SHOTS) await admin.page.locator('.sg-modal').screenshot({ path: `${SHOTS}/4-taken-down.png` })
+    if (SHOTS) await admin.page.locator('[data-gallery="tab"]').screenshot({ path: `${SHOTS}/4-taken-down.png` })
     await hidden.locator(`[data-gallery-restore="${entryId}"]`).click()
     const why = admin.page.getByPlaceholder('e.g. taken down by mistake')
     await expect(why).toBeVisible()
@@ -216,7 +216,7 @@ test.describe('Moderation by admin accounts (#2331)', () => {
     await form.locator('[data-gallery-suspend-days]').selectOption('30')
     await form.locator('[data-gallery-suspend-all]').check()
     await form.locator('[data-gallery-suspend-reason]').fill('spam account')
-    if (SHOTS) await admin.page.locator('.sg-modal').screenshot({ path: `${SHOTS}/5-suspend-form.png` })
+    if (SHOTS) await admin.page.locator('[data-gallery="tab"]').screenshot({ path: `${SHOTS}/5-suspend-form.png` })
     await form.locator('[data-gallery-suspend-confirm]').click()
     await expect(admin.page.locator('[data-testid="toast"]', { hasText: 'Suspended' })).toBeVisible({ timeout: 15_000 })
 
@@ -225,7 +225,7 @@ test.describe('Moderation by admin accounts (#2331)', () => {
     await expect(suspended).toContainText('profile hidden')
     await expect(admin.page.locator(`[data-gallery-taken-down="${id}"]`)).toBeVisible()
     await suspended.scrollIntoViewIfNeeded()
-    if (SHOTS) await admin.page.locator('.sg-modal').screenshot({ path: `${SHOTS}/6-suspended.png` })
+    if (SHOTS) await admin.page.locator('[data-gallery="tab"]').screenshot({ path: `${SHOTS}/6-suspended.png` })
 
     // The author is refused in plain words, and nothing public is left.
     const refused = await author.context.request.post('/api/gallery', { data: { title, kind: 'music', tags: [], manifest } })
