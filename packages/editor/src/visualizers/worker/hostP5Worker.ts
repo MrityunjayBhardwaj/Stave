@@ -763,8 +763,11 @@ export function hostVizWorker(scope: WorkerScope): void {
         optionsRef.current = options
       },
       draw: () => {
-        run.frame(globalThis.performance?.now?.() ?? 0)
+        // Set BEFORE the frame: an error inside the loop's first frame is the
+        // worker's to report (the fallback would only re-run the same loop), and
+        // the core reports each error once, so one dropped here is lost for good.
         drawn = true
+        run.frame(globalThis.performance?.now?.() ?? 0)
       },
       resizeKind: (_w, _h, dprNew) => {
         // containerSizeRef already holds the new size; the sketch's own resize

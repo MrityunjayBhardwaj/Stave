@@ -344,12 +344,23 @@ renderer.setAnimationLoop(() => {
 })
 `,
     )
+    // Throws from its very first frame (#2524).
+    await makeThreeFile(
+      page,
+      'First',
+      `import * as THREE from 'three'
+const renderer = new THREE.WebGLRenderer()
+renderer.setAnimationLoop(() => {
+  firstTypo()
+})
+`,
+    )
     await seedCode(
       page,
-      `$: s("rim").viz("Late")\n$: s("bd").viz("Broken")\n$: s("hh").viz("Gui")\n$: s("sd").viz("Mouse")\n$: s("cp").viz("Pointer")`,
+      `$: s("rim").viz("First")\n$: s("rim").viz("Late")\n$: s("bd").viz("Broken")\n$: s("hh").viz("Gui")\n$: s("sd").viz("Mouse")\n$: s("cp").viz("Pointer")`,
     )
     await evalCode(page)
-    await expect.poll(async () => (await threeRows(page)).length, { timeout: 20000 }).toBeGreaterThanOrEqual(5)
+    await expect.poll(async () => (await threeRows(page)).length, { timeout: 20000 }).toBeGreaterThanOrEqual(6)
     const rows = await threeRows(page)
     console.log(`[#2516] rows ${JSON.stringify(rows)}`)
     const row = (file: string) => rows.find((r) => (r.source ?? '').endsWith(file))
@@ -362,6 +373,8 @@ renderer.setAnimationLoop(() => {
     expect(row('Pointer.three'), 'a pointer listener').toMatchObject({ level: 'warn', line: 3 })
     expect(row('Late.three'), 'an error in the loop, after it started drawing').toMatchObject({ level: 'error', line: 6 })
     expect(row('Late.three')!.message).toMatch(/lateTypo/)
+    expect(row('First.three'), 'an error in the loop from its first frame').toMatchObject({ level: 'error', line: 4 })
+    expect(row('First.three')!.message).toMatch(/firstTypo/)
     await stopCode(page)
   })
 
