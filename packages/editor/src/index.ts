@@ -428,6 +428,7 @@ export {
   type NoteColorMode,
 } from './visualEdit/panels/noteColor'
 export { getGridMode, setGridMode, useGridMode, type GridMode } from './visualEdit/panels/gridMode'
+export { getVelocityDrag, setVelocityDrag, useVelocityDrag, VELOCITY_DRAG_KEY } from './visualEdit/panels/velocityDrag'
 // #2000 — the one rule for "is this a phone", so the app's shell asks what the Pattern tab asks
 export { usePhone, isPhone, usePhoneLayout, phoneLayout } from './workspace/usePhone'
 export type { PhoneLayout } from './workspace/usePhone'

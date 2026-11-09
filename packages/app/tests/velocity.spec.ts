@@ -9,8 +9,11 @@
  * The Piano Roll velocity test lives below once the shared path is extended.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
-import { pinLcmGrid } from './_appBoot'
+import { pinLcmGrid, velocityDragOn } from './_appBoot'
 import { slotsControl, preset } from './_resolutionControl'
+
+// velocity drags are off by default (#2525); this spec is about the gesture, so it turns them on
+velocityDragOn(test)
 
 // The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
 pinLcmGrid(test)

@@ -1,7 +1,7 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
 import { parse } from 'acorn';
-import * as React32 from 'react';
-import React32__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React33 from 'react';
+import React33__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import { parse as parse$1 } from '@strudel/mini/krill-parser.js';
 import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
 import { isControlName, getControlName } from '@strudel/core/controls.mjs';
@@ -3044,7 +3044,7 @@ function subscribe(changed) {
 }
 __name(subscribe, "subscribe");
 function usePhone() {
-  return React32.useSyncExternalStore(subscribe, isPhone, () => false);
+  return React33.useSyncExternalStore(subscribe, isPhone, () => false);
 }
 __name(usePhone, "usePhone");
 function phoneLayout() {
@@ -3054,7 +3054,7 @@ function phoneLayout() {
 }
 __name(phoneLayout, "phoneLayout");
 function usePhoneLayout() {
-  return React32.useSyncExternalStore(subscribe, phoneLayout, () => "none");
+  return React33.useSyncExternalStore(subscribe, phoneLayout, () => "none");
 }
 __name(usePhoneLayout, "usePhoneLayout");
 
@@ -5951,7 +5951,7 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
   const leadingWs = chain.length - chain.trimStart().length;
   let remaining = chain.trim();
   let remainingOffset = baseOffset + leadingWs;
-  let current8 = ir;
+  let current9 = ir;
   while (true) {
     const consumedSep = skipWhitespaceAndLineComments(remaining, 0);
     if (consumedSep > 0) {
@@ -5967,11 +5967,11 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
       remainingOffset + consumed
     ];
     const argsAbsoluteOffset = argsOffset >= 0 ? remainingOffset + argsOffset : remainingOffset;
-    current8 = applyMethod(current8, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
+    current9 = applyMethod(current9, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
     remainingOffset += consumed;
     remaining = rest;
   }
-  return current8;
+  return current9;
 }
 __name(applyChain, "applyChain");
 function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], bindings, numbers) {
@@ -6524,14 +6524,14 @@ __name(splitArgs, "splitArgs");
 function splitArgsWithOffsets(argsStr) {
   const args = [];
   let depth = 0;
-  let current8 = "";
+  let current9 = "";
   let currentStart = 0;
   let inString = false;
   let stringChar = "";
   const pushCurrent = /* @__PURE__ */ __name(() => {
-    if (current8.trim().length === 0) return;
-    const consumed = skipWhitespaceAndLineComments(current8, 0);
-    const value = current8.slice(consumed).trimEnd();
+    if (current9.trim().length === 0) return;
+    const consumed = skipWhitespaceAndLineComments(current9, 0);
+    const value = current9.slice(consumed).trimEnd();
     if (value.length === 0) return;
     args.push({
       value,
@@ -6541,47 +6541,47 @@ function splitArgsWithOffsets(argsStr) {
   for (let i = 0; i < argsStr.length; i++) {
     const ch = argsStr[i];
     if (inString) {
-      current8 += ch;
+      current9 += ch;
       if (ch === stringChar && argsStr[i - 1] !== "\\") inString = false;
       continue;
     }
     if (ch === "/" && argsStr[i + 1] === "/") {
-      if (current8.length === 0) currentStart = i;
+      if (current9.length === 0) currentStart = i;
       while (i < argsStr.length && argsStr[i] !== "\n") {
-        current8 += argsStr[i];
+        current9 += argsStr[i];
         i++;
       }
       if (i < argsStr.length) {
-        current8 += argsStr[i];
+        current9 += argsStr[i];
       }
       continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
       continue;
     }
     if (ch === "(" || ch === "[" || ch === "{") {
       depth++;
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
       continue;
     }
     if (ch === ")" || ch === "]" || ch === "}") {
       depth--;
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
       continue;
     }
     if (ch === "," && depth === 0) {
       pushCurrent();
-      current8 = "";
+      current9 = "";
       currentStart = i + 1;
     } else {
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
     }
   }
   pushCurrent();
@@ -14895,13 +14895,13 @@ function regionTrimEdit(chunk, control, value) {
   if (chunk.headFn !== null && MULTI_VOICE_HEADS.has(chunk.headFn)) {
     return { edit: null, refusal: "not-one-voice", value };
   }
-  const current8 = readRegion(chunk);
-  if (!current8 || !Number.isFinite(value)) {
+  const current9 = readRegion(chunk);
+  if (!current9 || !Number.isFinite(value)) {
     return { edit: null, refusal: "not-a-number", value };
   }
-  const clamped = control === "begin" ? Math.min(Math.max(0, value), current8.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current8.begin + MIN_REGION_SPAN);
+  const clamped = control === "begin" ? Math.min(Math.max(0, value), current9.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current9.begin + MIN_REGION_SPAN);
   if (!Number.isFinite(clamped)) return { edit: null, refusal: "not-a-number", value };
-  const before2 = current8[control];
+  const before2 = current9[control];
   if (formatNumber(clamped) === formatNumber(before2)) {
     return { edit: null, refusal: "no-change", value: clamped };
   }
@@ -16741,7 +16741,7 @@ function createTrackEnvelopeScheduler(deps) {
   let cycles = 0;
   const envelopes = /* @__PURE__ */ new Map();
   const refused2 = /* @__PURE__ */ new Map();
-  const current8 = /* @__PURE__ */ new Map();
+  const current9 = /* @__PURE__ */ new Map();
   let overCap = [];
   let rendering = null;
   let cancelTimer = null;
@@ -16770,8 +16770,8 @@ function createTrackEnvelopeScheduler(deps) {
       } catch {
         fp = null;
       }
-      if (wanted.includes(id) && current8.get(id) !== fp) {
-        current8.set(id, fp);
+      if (wanted.includes(id) && current9.get(id) !== fp) {
+        current9.set(id, fp);
         deps.onChange();
       }
       deps.schedule(step, 0);
@@ -16797,7 +16797,7 @@ function createTrackEnvelopeScheduler(deps) {
     const seconds = cps > 0 ? cycles / cps : Infinity;
     let spent = 0;
     for (const id of wanted) {
-      const fp = current8.get(id);
+      const fp = current9.get(id);
       if (fp == null) continue;
       const kept = envelopes.get(id)?.fingerprint === fp;
       const cost = seconds * (deps.weight?.(id) ?? 1);
@@ -16826,7 +16826,7 @@ function createTrackEnvelopeScheduler(deps) {
       for (const id of over) if (envelopes.delete(id)) deps.onChange();
       for (const id of todo) {
         if (controller.signal.aborted) break;
-        const fp = current8.get(id);
+        const fp = current9.get(id);
         if (fp == null) continue;
         rendering = id;
         deps.onChange();
@@ -16871,7 +16871,7 @@ function createTrackEnvelopeScheduler(deps) {
         kick();
         return;
       }
-      for (const id of [...current8.keys()]) if (!wanted.includes(id)) current8.delete(id);
+      for (const id of [...current9.keys()]) if (!wanted.includes(id)) current9.delete(id);
       deps.onChange();
       refingerprint();
     },
@@ -16924,7 +16924,7 @@ function createTrackEnvelopeScheduler(deps) {
         data: env.data,
         columns: env.columns,
         cycles: env.cycles,
-        stale: current8.get(trackId) !== env.fingerprint
+        stale: current9.get(trackId) !== env.fingerprint
       };
     },
     status: /* @__PURE__ */ __name(() => ({
@@ -28515,8 +28515,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React32__default.Children.count(children);
-  const childArray = React32__default.Children.toArray(children);
+  const count = React33__default.Children.count(children);
+  const childArray = React33__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -28561,7 +28561,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React32__default.useEffect(() => {
+  React33__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -28577,7 +28577,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React32__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React33__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -29104,9 +29104,9 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners18 = /* @__PURE__ */ new Set();
+  const listeners19 = /* @__PURE__ */ new Set();
   const notify6 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners18) l();
+    for (const l of listeners19) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify6(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify6(), "onStackItemPopped");
@@ -29116,7 +29116,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners18,
+    listeners: listeners19,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -29159,10 +29159,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners18 = active.listeners;
-  listeners18.add(cb);
+  const listeners19 = active.listeners;
+  listeners19.add(cb);
   return () => {
-    listeners18.delete(cb);
+    listeners19.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -29346,10 +29346,10 @@ function subscribe2(id, cb) {
   }
   set2.add(cb);
   return () => {
-    const current8 = subscribersByFile.get(id);
-    if (!current8) return;
-    current8.delete(cb);
-    if (current8.size === 0) {
+    const current9 = subscribersByFile.get(id);
+    if (!current9) return;
+    current9.delete(cb);
+    if (current9.size === 0) {
       subscribersByFile.delete(id);
     }
   };
@@ -29572,12 +29572,12 @@ function pruneZoneOverrides(fileId, currentViz) {
   const stale = [];
   for (const [trackKey, value] of overrides.entries()) {
     const entry = value;
-    const current8 = currentViz.get(trackKey);
-    if (!current8) {
+    const current9 = currentViz.get(trackKey);
+    if (!current9) {
       stale.push(trackKey);
-    } else if (entry.vizId && entry.vizId !== current8.vizId) {
+    } else if (entry.vizId && entry.vizId !== current9.vizId) {
       stale.push(trackKey);
-    } else if (entry.contentHash && current8.contentHash && entry.contentHash !== current8.contentHash) {
+    } else if (entry.contentHash && current9.contentHash && entry.contentHash !== current9.contentHash) {
       stale.push(trackKey);
     }
   }
@@ -29741,12 +29741,12 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe11 = useCallback(
+  const subscribe12 = useCallback(
     (onStoreChange) => subscribe2(id, onStoreChange),
     [id]
   );
   const getSnapshot = useCallback(() => getFile(id), [id]);
-  const file = useSyncExternalStore(subscribe11, getSnapshot, getSnapshot);
+  const file = useSyncExternalStore(subscribe12, getSnapshot, getSnapshot);
   const setContent2 = useCallback(
     (content) => setContent(id, content),
     [id]
@@ -33315,7 +33315,7 @@ function ensureStrudelLintCodeActionProvider(monaco, languageId) {
 __name(ensureStrudelLintCodeActionProvider, "ensureStrudelLintCodeActionProvider");
 var EMPTY_META_MAP = /* @__PURE__ */ new Map();
 function useTrackMetaMap(fileId) {
-  const subscribe11 = useCallback(
+  const subscribe12 = useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -33327,7 +33327,7 @@ function useTrackMetaMap(fileId) {
     if (!fileId) return EMPTY_META_MAP;
     return getTrackMetaMapSnapshot(fileId);
   }, [fileId]);
-  return useSyncExternalStore(subscribe11, getSnapshot, getSnapshot);
+  return useSyncExternalStore(subscribe12, getSnapshot, getSnapshot);
 }
 __name(useTrackMetaMap, "useTrackMetaMap");
 
@@ -34057,10 +34057,10 @@ function subscribe3(ref, cb) {
   return () => {
     if (unsubscribed) return;
     unsubscribed = true;
-    const current8 = pinnedSubscribers.get(fileId);
-    if (!current8) return;
-    current8.delete(cb);
-    if (current8.size === 0) {
+    const current9 = pinnedSubscribers.get(fileId);
+    if (!current9) return;
+    current9.delete(cb);
+    if (current9.size === 0) {
       pinnedSubscribers.delete(fileId);
     }
   };
@@ -35378,7 +35378,7 @@ function subscribe4(listener) {
 }
 __name(subscribe4, "subscribe");
 function useKeyboardUp() {
-  return React32.useSyncExternalStore(subscribe4, () => current2.keyboardUp, () => false);
+  return React33.useSyncExternalStore(subscribe4, () => current2.keyboardUp, () => false);
 }
 __name(useKeyboardUp, "useKeyboardUp");
 function getVisibleArea() {
@@ -36750,10 +36750,10 @@ function readWorkspaceOrder() {
 }
 __name(readWorkspaceOrder, "readWorkspaceOrder");
 function applySnapshot(files, fileMeta, order) {
-  const current8 = listWorkspaceFiles();
-  const currentIds = new Set(current8.map((f) => f.id));
+  const current9 = listWorkspaceFiles();
+  const currentIds = new Set(current9.map((f) => f.id));
   const wantIds = new Set(Object.keys(files));
-  for (const f of current8) {
+  for (const f of current9) {
     if (!wantIds.has(f.id)) deleteWorkspaceFile(f.id);
   }
   const recreatedMissing = [];
@@ -37593,7 +37593,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React32__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React33__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -37815,7 +37815,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React32__default.useMemo(() => {
+  const providerNode = React33__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -38108,25 +38108,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React32.useMemo(
+  const changedIds = React33.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit3.files),
     [commit3, pickerFileIds]
   );
-  const [mode, setMode2] = React32.useState(defaultMode);
-  React32.useEffect(() => {
+  const [mode, setMode2] = React33.useState(defaultMode);
+  React33.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React32.useState(
+  const [fileId, setFileId] = React33.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React32.useRef(null);
-  const handleMount = React32.useCallback(
+  const diffEditorRef = React33.useRef(null);
+  const handleMount = React33.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -38136,7 +38136,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -38261,18 +38261,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React32.useMemo(() => snapshotAt(history2, commit3.id), [history2, commit3]);
-  const fileIds = React32.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React32.useState(
+  const snapshot = React33.useMemo(() => snapshotAt(history2, commit3.id), [history2, commit3]);
+  const fileIds = React33.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React33.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React32.useCallback(
+  const handleMount = React33.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -39214,7 +39214,7 @@ function subscribeToBottomPanelState(cb) {
 }
 __name(subscribeToBottomPanelState, "subscribeToBottomPanelState");
 function useBottomPanelState() {
-  return React32.useSyncExternalStore(subscribeToBottomPanelState, getBottomPanelState, () => SERVER_STATE);
+  return React33.useSyncExternalStore(subscribeToBottomPanelState, getBottomPanelState, () => SERVER_STATE);
 }
 __name(useBottomPanelState, "useBottomPanelState");
 
@@ -39241,7 +39241,7 @@ function useTouchBar() {
 }
 __name(useTouchBar, "useTouchBar");
 function EmptyTimelineStub() {
-  return React32.createElement(
+  return React33.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -39259,7 +39259,7 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React32.createElement(EmptyTimelineStub)
+  content: React33.createElement(EmptyTimelineStub)
 });
 
 // src/workspace/codeUndo.ts
@@ -39283,14 +39283,14 @@ function codeUndoForFocus(el, which) {
 }
 __name(codeUndoForFocus, "codeUndoForFocus");
 function useActiveWriter() {
-  const [editor, setEditor] = React32.useState(() => getActiveEditor());
-  const editorRef = React32.useRef(null);
-  const writerRef = React32.useRef(null);
-  React32.useEffect(() => {
+  const [editor, setEditor] = React33.useState(() => getActiveEditor());
+  const editorRef = React33.useRef(null);
+  const writerRef = React33.useRef(null);
+  React33.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     editorRef.current = editor;
     writerRef.current = editor ? createWriter(editor) : null;
   }, [editor]);
@@ -39301,10 +39301,10 @@ __name(useActiveWriter, "useActiveWriter");
 // src/visualEdit/panels/useActiveChunk.ts
 function useActiveChunk() {
   const { editor, editorRef, writerRef } = useActiveWriter();
-  const [chunk, setChunk] = React32.useState(null);
-  const anchorRef = React32.useRef(null);
+  const [chunk, setChunk] = React33.useState(null);
+  const anchorRef = React33.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -39331,7 +39331,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React32.useCallback(
+  const applyEdit = React33.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writerRef.current;
@@ -39346,8 +39346,8 @@ function useActiveChunk() {
     },
     [editorRef, writerRef]
   );
-  const beginGesture = React32.useCallback(() => openGesture(writerRef.current), [writerRef]);
-  const endGesture = React32.useCallback(() => closeGesture(writerRef.current), [writerRef]);
+  const beginGesture = React33.useCallback(() => openGesture(writerRef.current), [writerRef]);
+  const endGesture = React33.useCallback(() => closeGesture(writerRef.current), [writerRef]);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -39372,7 +39372,7 @@ function subscribe5(listener) {
 }
 __name(subscribe5, "subscribe");
 function usePatternSideShown() {
-  return React32.useSyncExternalStore(subscribe5, () => current5, () => DEFAULT_SHOWN);
+  return React33.useSyncExternalStore(subscribe5, () => current5, () => DEFAULT_SHOWN);
 }
 __name(usePatternSideShown, "usePatternSideShown");
 function setPatternSideShown(shown) {
@@ -39425,11 +39425,11 @@ function reducedMotion() {
 }
 __name(reducedMotion, "reducedMotion");
 function PatternSideDrawer({ children }) {
-  const [open, setOpen] = React32.useState(false);
-  const [built, setBuilt] = React32.useState(false);
-  const railRef = React32.useRef(null);
-  const closeRef = React32.useRef(null);
-  const moved = React32.useRef(false);
+  const [open, setOpen] = React33.useState(false);
+  const [built, setBuilt] = React33.useState(false);
+  const railRef = React33.useRef(null);
+  const closeRef = React33.useRef(null);
+  const moved = React33.useRef(false);
   const slide = reducedMotion() ? 0 : SLIDE_MS;
   const show = /* @__PURE__ */ __name(() => {
     moved.current = true;
@@ -39440,11 +39440,11 @@ function PatternSideDrawer({ children }) {
     moved.current = true;
     setOpen(false);
   }, "hide");
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!moved.current) return;
     (open ? closeRef : railRef).current?.focus({ preventScroll: true });
   }, [open]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!open) return;
     const onKey = /* @__PURE__ */ __name((e) => {
       if (e.key === "Escape") hide();
@@ -39607,7 +39607,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React32.createElement(
+  return React33.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -39626,12 +39626,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React32.createElement("span", {
+    icon ? React33.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React32.createElement("span", null, hint)
+    React33.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -39664,26 +39664,26 @@ function stepWriteEdits(fresh, from, edit) {
 __name(stepWriteEdits, "stepWriteEdits");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React32.useState(null);
-  const [read5, setRead] = React32.useState(null);
-  const modelRef = React32.useRef(null);
-  React32.useEffect(() => {
+  const [model, setModel] = React33.useState(null);
+  const [read5, setRead] = React33.useState(null);
+  const modelRef = React33.useRef(null);
+  React33.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React32.useRef(opts);
+  const optsRef = React33.useRef(opts);
   optsRef.current = opts;
   const viewScale = opts.viewScale ?? UNREFINED;
-  const modelScaleRef = React32.useRef(UNREFINED);
-  const ownEchoRef = React32.useRef(null);
-  const keepRef = React32.useRef(null);
-  const patternKeyRef = React32.useRef(null);
-  const patternKey = React32.useMemo(() => {
+  const modelScaleRef = React33.useRef(UNREFINED);
+  const ownEchoRef = React33.useRef(null);
+  const keepRef = React33.useRef(null);
+  const patternKeyRef = React33.useRef(null);
+  const patternKey = React33.useMemo(() => {
     if (!chunk) return patternKeyRef.current = null;
     const key3 = keyOf(chunk.exprRange[0], chunk.miniString);
     if (key3 !== ownEchoRef.current) patternKeyRef.current = key3;
     return patternKeyRef.current;
   }, [chunk]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -39713,7 +39713,7 @@ function useGridModel(opts) {
     modelRef.current = kept;
     setModel(kept);
   }, [chunk, viewScale]);
-  const writeModel = React32.useCallback(
+  const writeModel = React33.useCallback(
     (next) => {
       if (modelRef.current?.lookOnly) return;
       const o = optsRef.current;
@@ -39730,7 +39730,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  const mutate = React32.useCallback(
+  const mutate = React33.useCallback(
     (fn) => {
       const prev = modelRef.current;
       if (prev == null) return;
@@ -39740,8 +39740,8 @@ function useGridModel(opts) {
     },
     [writeModel]
   );
-  const settle2 = React32.useCallback((next) => writeModel(next), [writeModel]);
-  const writeMini = React32.useCallback(
+  const settle2 = React33.useCallback((next) => writeModel(next), [writeModel]);
+  const writeMini = React33.useCallback(
     (mini) => {
       if (modelRef.current?.lookOnly) return;
       applyEdit((fresh, wb) => {
@@ -39750,7 +39750,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  const writeStep = React32.useCallback(
+  const writeStep = React33.useCallback(
     (from, edit, keep) => {
       if (modelRef.current?.lookOnly) return false;
       let wrote = false;
@@ -39824,9 +39824,9 @@ function stepToCycle(start, steps, bars, barSteps) {
 }
 __name(stepToCycle, "stepToCycle");
 function usePlayingStep(steps, bars, cols, barSteps) {
-  const [step, setStep] = React32.useState(null);
+  const [step, setStep] = React33.useState(null);
   const layoutKey = barSteps?.join(",") ?? "";
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     let raf = 0;
     const counts = layoutKey ? layoutKey.split(",").map(Number) : void 0;
     const tick = /* @__PURE__ */ __name(() => {
@@ -40168,7 +40168,7 @@ function fitLabels(boxes) {
 }
 __name(fitLabels, "fitLabels");
 function useRulerFit(rulerRef, labelAttr) {
-  const fit = React32.useCallback(() => {
+  const fit = React33.useCallback(() => {
     const root = rulerRef.current;
     if (!root) return;
     const els = [...root.querySelectorAll(`[${labelAttr}]`)];
@@ -40185,10 +40185,10 @@ function useRulerFit(rulerRef, labelAttr) {
 }
 __name(useRulerFit, "useRulerFit");
 function useLayoutFollow(ref, run) {
-  const runRef = React32.useRef(run);
+  const runRef = React33.useRef(run);
   runRef.current = run;
-  const observed = React32.useRef(null);
-  React32.useLayoutEffect(() => {
+  const observed = React33.useRef(null);
+  React33.useLayoutEffect(() => {
     runRef.current();
     const el = ref.current;
     if (observed.current?.el === el) return;
@@ -40199,7 +40199,7 @@ function useLayoutFollow(ref, run) {
     ro.observe(el);
     observed.current = { el, ro };
   });
-  React32.useEffect(() => () => observed.current?.ro.disconnect(), []);
+  React33.useEffect(() => () => observed.current?.ro.disconnect(), []);
 }
 __name(useLayoutFollow, "useLayoutFollow");
 
@@ -40615,11 +40615,11 @@ __name(drawnSteps, "drawnSteps");
 var ZOOM_LEVELS = [1, 1.5, 2, 3, 4, 6, 8, 12, 16];
 var CHROME_PX = 16 + 16 + 28 + 104;
 function useGridZoom(scrollRef, enabled, mounted2, trackRef) {
-  const [index, setIndex] = React32.useState(0);
-  const [avail, setAvail] = React32.useState(null);
-  const indexRef = React32.useRef(index);
+  const [index, setIndex] = React33.useState(0);
+  const [avail, setAvail] = React33.useState(null);
+  const indexRef = React33.useRef(index);
   indexRef.current = index;
-  React32.useLayoutEffect(() => {
+  React33.useLayoutEffect(() => {
     const el = trackRef?.current ?? scrollRef.current;
     if (!el || !enabled) return;
     const measure = /* @__PURE__ */ __name(() => {
@@ -40631,7 +40631,7 @@ function useGridZoom(scrollRef, enabled, mounted2, trackRef) {
     ro.observe(el);
     return () => ro.disconnect();
   }, [scrollRef, trackRef, enabled, mounted2]);
-  const go = React32.useCallback(
+  const go = React33.useCallback(
     (next, x) => {
       const el = scrollRef.current;
       const from = ZOOM_LEVELS[indexRef.current];
@@ -40646,7 +40646,7 @@ function useGridZoom(scrollRef, enabled, mounted2, trackRef) {
     },
     [scrollRef]
   );
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const el = scrollRef.current;
     if (!el || !enabled) return;
     const onWheel = /* @__PURE__ */ __name((e) => {
@@ -40707,9 +40707,9 @@ function perText(fn, keep = 16) {
 __name(perText, "perText");
 var DEFER_MS = 250;
 function useDeferredPerText(text, f, delayMs = DEFER_MS) {
-  const [last, setLast] = React32.useState(null);
+  const [last, setLast] = React33.useState(null);
   const kept = text === null ? void 0 : f.cached(text);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (text === null || kept !== void 0) return;
     const id = setTimeout(() => setLast({ text, value: f(text) }), delayMs);
     return () => clearTimeout(id);
@@ -40928,12 +40928,12 @@ function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
 __name(jumpCursorToTrack, "jumpCursorToTrack");
 function useMixerModel() {
   const { editor, editorRef, writerRef: writebackRef } = useActiveWriter();
-  const [derived, setDerived] = React32.useState(EMPTY_DERIVED);
-  const lastJumpRef = React32.useRef(null);
-  React32.useEffect(() => {
+  const [derived, setDerived] = React33.useState(EMPTY_DERIVED);
+  const lastJumpRef = React33.useRef(null);
+  React33.useEffect(() => {
     lastJumpRef.current = null;
   }, [editor]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!editor) {
       setDerived(EMPTY_DERIVED);
       return;
@@ -40960,7 +40960,7 @@ function useMixerModel() {
     const sub2 = model?.onDidChangeContent?.(rederive);
     return () => sub2?.dispose?.();
   }, [editor]);
-  const applyToStrip = React32.useCallback(
+  const applyToStrip = React33.useCallback(
     (id, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -40978,7 +40978,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToStripAt = React32.useCallback(
+  const applyToStripAt = React33.useCallback(
     (anchor, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -40993,7 +40993,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToMaster = React32.useCallback(
+  const applyToMaster = React33.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -41004,7 +41004,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToMasterChunk = React32.useCallback(
+  const applyToMasterChunk = React33.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -41028,12 +41028,12 @@ function useMixerModel() {
     },
     []
   );
-  const beginGesture = React32.useCallback(() => openGesture(writebackRef.current), [writebackRef]);
-  const endGesture = React32.useCallback(() => closeGesture(writebackRef.current), [writebackRef]);
-  const [selectedId, setSelectedId] = React32.useState(null);
-  const stripsRef = React32.useRef(EMPTY_DERIVED.strips);
+  const beginGesture = React33.useCallback(() => openGesture(writebackRef.current), [writebackRef]);
+  const endGesture = React33.useCallback(() => closeGesture(writebackRef.current), [writebackRef]);
+  const [selectedId, setSelectedId] = React33.useState(null);
+  const stripsRef = React33.useRef(EMPTY_DERIVED.strips);
   stripsRef.current = derived.strips;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!editor) {
       setSelectedId(null);
       return;
@@ -41062,7 +41062,7 @@ function useMixerModel() {
     const sub2 = editor.onDidChangeCursorPosition?.(recompute);
     return () => sub2?.dispose?.();
   }, [editor, derived.strips]);
-  const selectTrack = React32.useCallback((id) => {
+  const selectTrack = React33.useCallback((id) => {
     const ed = editorRef.current;
     if (!ed) return;
     const model = ed.getModel?.();
@@ -41095,8 +41095,8 @@ function StripColorPopover({
   onReset,
   onClose
 }) {
-  const ref = React32.useRef(null);
-  React32.useEffect(() => {
+  const ref = React33.useRef(null);
+  React33.useEffect(() => {
     const onDown = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) onClose();
     }, "onDown");
@@ -41242,12 +41242,12 @@ __name(StripColorPopover, "StripColorPopover");
 function PatternTrackChip() {
   const { chunk } = useActiveChunk();
   const { strips, applyToStripAt } = useMixerModel();
-  const [fileId, setFileId] = React32.useState(() => getActiveFileId());
-  React32.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React33.useState(() => getActiveFileId());
+  React33.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
-  const [colorAnchor, setColorAnchor] = React32.useState(null);
-  const [renaming, setRenaming] = React32.useState(false);
-  const settledRef = React32.useRef(false);
+  const [colorAnchor, setColorAnchor] = React33.useState(null);
+  const [renaming, setRenaming] = React33.useState(false);
+  const settledRef = React33.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {
     settledRef.current = false;
     setRenaming(true);
@@ -41408,20 +41408,20 @@ function gridInView(scrollLeft, clientWidth, scrollWidth) {
 }
 __name(gridInView, "gridInView");
 function useRulerPan(scrollRef, enabled) {
-  const [inView, setInView] = React32.useState(ALL_IN_VIEW);
-  const [viewWidth, setViewWidth] = React32.useState(0);
-  const [scroller, setScroller] = React32.useState(null);
-  const read5 = React32.useCallback(() => {
+  const [inView, setInView] = React33.useState(ALL_IN_VIEW);
+  const [viewWidth, setViewWidth] = React33.useState(0);
+  const [scroller, setScroller] = React33.useState(null);
+  const read5 = React33.useCallback(() => {
     const sc = scrollRef.current;
     const next = enabled && sc ? gridInView(sc.scrollLeft, sc.clientWidth, sc.scrollWidth) : ALL_IN_VIEW;
     setInView((prev) => prev.start === next.start && prev.end === next.end && prev.more === next.more ? prev : next);
     setViewWidth(enabled && sc ? sc.clientWidth : 0);
   }, [scrollRef, enabled]);
-  React32.useLayoutEffect(() => {
+  React33.useLayoutEffect(() => {
     if (scrollRef.current !== scroller) setScroller(scrollRef.current);
     read5();
   });
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!enabled || !scroller) return;
     scroller.addEventListener("scroll", read5, { passive: true });
     window.addEventListener("resize", read5);
@@ -41433,7 +41433,7 @@ function useRulerPan(scrollRef, enabled) {
       observer?.disconnect();
     };
   }, [enabled, scroller, read5]);
-  const onPointerDown = React32.useCallback(
+  const onPointerDown = React33.useCallback(
     (e) => {
       const sc = scrollRef.current;
       if (!sc) return;
@@ -41520,7 +41520,7 @@ function lineColor(depth) {
 }
 __name(lineColor, "lineColor");
 function TreeStepGrid({ grid, reason, notice = null }) {
-  const scrollRef = React32.useRef(null);
+  const scrollRef = React33.useRef(null);
   const phone = usePhoneGrid().phone;
   const zoom = useGridZoom(scrollRef, !phone, true);
   const bars = grid.bars;
@@ -41532,19 +41532,19 @@ function TreeStepGrid({ grid, reason, notice = null }) {
     return b * (barPx + BAR_GAP) + (t - b) * barPx;
   }, "x");
   const trackPx = bars * barPx + (bars - 1) * BAR_GAP;
-  const drawings = React32.useMemo(
+  const drawings = React33.useMemo(
     () => grid.rows.map((r) => r.bars ? drawTreeRow(r.bars, barPx, openPx) : null),
     [grid, barPx, openPx]
   );
   const rulerRow = grid.rows.find((r) => r.bars);
-  const ruler = React32.useMemo(
+  const ruler = React33.useMemo(
     () => rulerRow?.bars ? treeRuler(rulerRow.bars, barPx, openPx) : Array.from({ length: bars }, (_, b) => ({ at: b, label: String(b + 1) })),
     [rulerRow, barPx, openPx, bars]
   );
-  const headRef = React32.useRef(null);
-  const xRef = React32.useRef(x);
+  const headRef = React33.useRef(null);
+  const xRef = React33.useRef(x);
   xRef.current = x;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const el = headRef.current;
@@ -41818,7 +41818,7 @@ function lineColor2(depth) {
 }
 __name(lineColor2, "lineColor");
 function TreeRollGrid({ roll, reason }) {
-  const scrollRef = React32.useRef(null);
+  const scrollRef = React33.useRef(null);
   const phone = usePhoneGrid().phone;
   const zoom = useGridZoom(scrollRef, !phone, true);
   const { bars } = roll;
@@ -41830,22 +41830,22 @@ function TreeRollGrid({ roll, reason }) {
     return b * (barPx + BAR_GAP2) + (t - b) * barPx;
   }, "x");
   const trackPx = bars * barPx + (bars - 1) * BAR_GAP2;
-  const rows = React32.useMemo(() => {
+  const rows = React33.useMemo(() => {
     const ms = roll.notes.map((n) => n.midi);
     const lo = Math.min(...ms);
     const hi = Math.max(...ms);
     return Array.from({ length: hi - lo + 1 }, (_, i) => hi - i);
   }, [roll]);
   const rowOf2 = /* @__PURE__ */ __name((midi) => rows[0] - midi, "rowOf");
-  const drawing = React32.useMemo(() => roll.lines ? drawTreeRow(roll.lines, barPx, openPx) : null, [roll, barPx, openPx]);
-  const ruler = React32.useMemo(
+  const drawing = React33.useMemo(() => roll.lines ? drawTreeRow(roll.lines, barPx, openPx) : null, [roll, barPx, openPx]);
+  const ruler = React33.useMemo(
     () => roll.lines ? treeRuler(roll.lines, barPx, openPx) : Array.from({ length: bars }, (_, b) => ({ at: b, label: String(b + 1) })),
     [roll, barPx, openPx, bars]
   );
-  const headRef = React32.useRef(null);
-  const xRef = React32.useRef(x);
+  const headRef = React33.useRef(null);
+  const xRef = React33.useRef(x);
   xRef.current = x;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const el = headRef.current;
@@ -42003,9 +42003,9 @@ function useExactPlayhead(box, line, layout, column) {
   const steps = layout?.steps ?? 0;
   const bars = layout?.bars ?? 1;
   const layoutKey = layout?.barSteps?.join(",") ?? "";
-  const columnRef = React32.useRef(column);
+  const columnRef = React33.useRef(column);
   columnRef.current = column;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (steps <= 0) return;
     const counts = layoutKey ? layoutKey.split(",").map(Number) : void 0;
     let raf = 0;
@@ -42070,7 +42070,7 @@ function subscribe6(listener) {
 }
 __name(subscribe6, "subscribe");
 function useNoteColorMode() {
-  const mode = React32.useSyncExternalStore(subscribe6, () => current6, () => DEFAULT_MODE);
+  const mode = React33.useSyncExternalStore(subscribe6, () => current6, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -42087,20 +42087,20 @@ function subscribeNoteColorMode(listener) {
 }
 __name(subscribeNoteColorMode, "subscribeNoteColorMode");
 function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
-  const slotStateRef = React32.useRef(slotState2);
+  const slotStateRef = React33.useRef(slotState2);
   slotStateRef.current = slotState2;
-  const onScaleToRef = React32.useRef(onScaleTo);
+  const onScaleToRef = React33.useRef(onScaleTo);
   onScaleToRef.current = onScaleTo;
-  const effectRef = React32.useRef(effect);
+  const effectRef = React33.useRef(effect);
   effectRef.current = effect;
-  const stableSlotState = React32.useCallback((t) => slotStateRef.current(t), []);
-  const stableScaleTo = React32.useCallback((t) => onScaleToRef.current(t), []);
+  const stableSlotState = React33.useCallback((t) => slotStateRef.current(t), []);
+  const stableScaleTo = React33.useCallback((t) => onScaleToRef.current(t), []);
   const hasEffect = effect !== void 0;
-  const stableEffect = React32.useCallback(
+  const stableEffect = React33.useCallback(
     (t) => effectRef.current?.(t) ?? NO_RESOLUTION_EFFECT,
     []
   );
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!onResolution) return;
     onResolution(
       steps == null ? null : {
@@ -42111,20 +42111,20 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
       }
     );
   }, [steps, onResolution, stableSlotState, stableScaleTo, hasEffect, stableEffect]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     return () => onResolution?.(null);
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
 function useViewProver(mini, parse7) {
-  const cacheRef = React32.useRef({
+  const cacheRef = React33.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React32.useRef(parse7);
+  const parseRef = React33.useRef(parse7);
   parseRef.current = parse7;
   const key3 = mini ?? null;
-  return React32.useCallback(
+  return React33.useCallback(
     (scale2) => {
       if (key3 == null) return false;
       const c = cacheRef.current;
@@ -42189,9 +42189,9 @@ function ResolutionControl({
   onScaleTo,
   effect
 }) {
-  const [open, setOpen] = React32.useState(false);
-  const rootRef = React32.useRef(null);
-  React32.useEffect(() => {
+  const [open, setOpen] = React33.useState(false);
+  const rootRef = React33.useRef(null);
+  React33.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       if (!rootRef.current?.contains(e.target)) setOpen(false);
@@ -42387,13 +42387,13 @@ function setColumnGain(model, stepIndex, gain) {
 __name(setColumnGain, "setColumnGain");
 var CLICK_SLOP_PX = 4;
 function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
-  const selfRef = React32.useRef(null);
-  const [frame, setFrame] = React32.useState(null);
-  const [added, setAdded] = React32.useState(0);
-  const [engaged, setEngaged] = React32.useState(false);
-  const dragRef = React32.useRef(null);
-  const swallowClick = React32.useRef(false);
-  const measure = React32.useCallback(() => {
+  const selfRef = React33.useRef(null);
+  const [frame, setFrame] = React33.useState(null);
+  const [added, setAdded] = React33.useState(0);
+  const [engaged, setEngaged] = React33.useState(false);
+  const dragRef = React33.useRef(null);
+  const swallowClick = React33.useRef(false);
+  const measure = React33.useCallback(() => {
     const grid = gridRef.current;
     const parent = selfRef.current?.offsetParent;
     if (!grid || !parent || cols < 1) return;
@@ -42416,8 +42416,8 @@ function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
       (f) => f && f.left === next.left && f.top === next.top && f.height === next.height && f.pitch === next.pitch && f.maxRight === next.maxRight ? f : next
     );
   }, [gridRef, cellAttr, cols]);
-  React32.useLayoutEffect(measure);
-  React32.useEffect(() => {
+  React33.useLayoutEffect(measure);
+  React33.useEffect(() => {
     const grid = gridRef.current;
     if (!grid || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => measure());
@@ -42573,7 +42573,7 @@ function subscribe7(listener) {
 }
 __name(subscribe7, "subscribe");
 function useGridMode() {
-  return React32.useSyncExternalStore(subscribe7, () => current7, () => DEFAULT_MODE2);
+  return React33.useSyncExternalStore(subscribe7, () => current7, () => DEFAULT_MODE2);
 }
 __name(useGridMode, "useGridMode");
 function getGridMode() {
@@ -42590,6 +42590,43 @@ function setGridMode(mode) {
   listeners14.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
+var VELOCITY_DRAG_KEY = "stave:visualEdit.velocityDrag";
+var DEFAULT_ON = false;
+function readStored4() {
+  if (typeof window === "undefined") return DEFAULT_ON;
+  try {
+    const v = window.localStorage.getItem(VELOCITY_DRAG_KEY);
+    return v === "1" ? true : v === "0" ? false : DEFAULT_ON;
+  } catch {
+    return DEFAULT_ON;
+  }
+}
+__name(readStored4, "readStored");
+var current8 = readStored4();
+var listeners15 = /* @__PURE__ */ new Set();
+function subscribe8(listener) {
+  listeners15.add(listener);
+  return () => listeners15.delete(listener);
+}
+__name(subscribe8, "subscribe");
+function useVelocityDrag() {
+  return React33.useSyncExternalStore(subscribe8, () => current8, () => DEFAULT_ON);
+}
+__name(useVelocityDrag, "useVelocityDrag");
+function getVelocityDrag() {
+  return current8;
+}
+__name(getVelocityDrag, "getVelocityDrag");
+function setVelocityDrag(on) {
+  if (on === current8) return;
+  current8 = on;
+  try {
+    window.localStorage.setItem(VELOCITY_DRAG_KEY, on ? "1" : "0");
+  } catch {
+  }
+  listeners15.forEach((l) => l());
+}
+__name(setVelocityDrag, "setVelocityDrag");
 
 // src/visualEdit/panels/exactGrid.ts
 var MAX_DIVISION = 4096;
@@ -43130,9 +43167,9 @@ function usePatternLength(chunk, model, parse7, writeMini) {
   const bars = model?.bars ?? 1;
   const gain = chunk ? readChunkGain(chunk) : null;
   const velocity = gain?.mini != null;
-  const parseRef = React32.useRef(parse7);
+  const parseRef = React33.useRef(parse7);
   parseRef.current = parse7;
-  const cache3 = React32.useRef(null);
+  const cache3 = React33.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null || gain === null) return null;
     const key3 = `${bars}|${velocity}|${mini}`;
@@ -43232,26 +43269,29 @@ function ExactStepGrid({ notice = null }) {
   const mini = chunk?.miniString ?? null;
   const eligible = !!chunk && mini !== null && opensStepGrid(chunk);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const [kept, setKept] = React32.useState([]);
-  const ownWrite = React32.useRef(null);
-  const lastText = React32.useRef({ stmt: stmtId, mini });
-  React32.useEffect(() => {
+  const [kept, setKept] = React33.useState([]);
+  const ownWrite = React33.useRef(null);
+  const lastText = React33.useRef({ stmt: stmtId, mini });
+  React33.useEffect(() => {
     const was = lastText.current;
     lastText.current = { stmt: stmtId, mini };
     if (was.stmt !== stmtId || was.mini !== mini && ownWrite.current !== mini) setKept([]);
   }, [stmtId, mini]);
-  const probed = React32.useMemo(() => eligible ? probeTrees(mini) : null, [eligible, mini]);
-  const grid = React32.useMemo(() => probed ? exactGridFrom(probed, kept) : null, [probed, kept]);
+  const probed = React33.useMemo(() => eligible ? probeTrees(mini) : null, [eligible, mini]);
+  const grid = React33.useMemo(() => probed ? exactGridFrom(probed, kept) : null, [probed, kept]);
   const ok = grid && grid.ok && !playsNumbers(grid.trees) ? grid : null;
   const bars = ok?.bars ?? 1;
-  const gain = React32.useMemo(() => chunk ? readChunkGain(chunk) : null, [chunk]);
-  const gainRef = React32.useRef(gain);
+  const gain = React33.useMemo(() => chunk ? readChunkGain(chunk) : null, [chunk]);
+  const gainRef = React33.useRef(gain);
   gainRef.current = gain;
-  const gridRef_ = React32.useRef(ok);
+  const velocityOn = useVelocityDrag();
+  const velocityOnRef = React33.useRef(velocityOn);
+  velocityOnRef.current = velocityOn;
+  const gridRef_ = React33.useRef(ok);
   gridRef_.current = ok;
-  const miniRef = React32.useRef(mini);
+  const miniRef = React33.useRef(mini);
   miniRef.current = mini;
-  const writeEdit = React32.useCallback(
+  const writeEdit = React33.useCallback(
     (from, edit) => {
       let wrote = false;
       applyEdit((fresh, wb) => {
@@ -43263,7 +43303,7 @@ function ExactStepGrid({ notice = null }) {
     },
     [applyEdit]
   );
-  const writeMini = React32.useCallback(
+  const writeMini = React33.useCallback(
     (text) => {
       applyEdit((fresh, wb) => {
         ownWrite.current = text;
@@ -43274,13 +43314,13 @@ function ExactStepGrid({ notice = null }) {
   );
   const length = usePatternLength(chunk, ok ? { bars: ok.bars } : null, parseForLength, writeMini);
   const span = bars;
-  const playedNotes = React32.useMemo(() => chunk && ok ? stepNotes(chunk, span) : null, [chunk, ok, span]);
+  const playedNotes = React33.useMemo(() => chunk && ok ? stepNotes(chunk, span) : null, [chunk, ok, span]);
   const [colorMode] = useNoteColorMode();
   const phone = usePhoneGrid();
-  const scrollRef = React32.useRef(null);
+  const scrollRef = React33.useRef(null);
   const rulerPan = useRulerPan(scrollRef, phone.phone);
   const zoom = useGridZoom(scrollRef, !phone.phone, !!ok);
-  const maxCellsInBar = React32.useMemo(() => {
+  const maxCellsInBar = React33.useMemo(() => {
     let most = 1;
     for (const r of ok?.rows ?? []) {
       const perBar2 = /* @__PURE__ */ new Map();
@@ -43297,13 +43337,13 @@ function ExactStepGrid({ notice = null }) {
     const b = Math.min(bars - 1, Math.max(0, Math.floor(t)));
     return b * (barPx + BAR_GAP3) + (t - b) * barPx;
   }, "x");
-  const xRef = React32.useRef(x);
+  const xRef = React33.useRef(x);
   xRef.current = x;
   const trackPx = bars * barPx + (bars - 1) * BAR_GAP3;
   const rows = ok?.rows ?? [];
   const halfPx = phone.phone ? fingerPx : OPEN_PX;
-  const drawn = React32.useMemo(() => rows.map((r) => drawnCells(r.cells, barPx, halfPx)), [rows, barPx, halfPx]);
-  const levelAt = React32.useMemo(() => {
+  const drawn = React33.useMemo(() => rows.map((r) => drawnCells(r.cells, barPx, halfPx)), [rows, barPx, halfPx]);
+  const levelAt = React33.useMemo(() => {
     const times = [.../* @__PURE__ */ new Set([...drawn.flatMap((cs) => cs.map(cellAt)), ...rows.flatMap((r) => r.hits.map((h) => h.begin))])];
     const levels = gain ? gainLevelsAt(gain, times) : null;
     const out = /* @__PURE__ */ new Map();
@@ -43311,11 +43351,11 @@ function ExactStepGrid({ notice = null }) {
     return out;
   }, [drawn, rows, gain]);
   const levelOf = /* @__PURE__ */ __name((t) => levelAt.get(t.toFixed(9)), "levelOf");
-  const [offered2, setOffered] = React32.useState(() => /* @__PURE__ */ new Set());
-  React32.useEffect(() => {
+  const [offered2, setOffered] = React33.useState(() => /* @__PURE__ */ new Set());
+  React33.useEffect(() => {
     const out = /* @__PURE__ */ new Set();
     setOffered(/* @__PURE__ */ new Set());
-    if (mini === null || !gain || gain.foreign) return;
+    if (!velocityOn || mini === null || !gain || gain.foreign) return;
     const todo = [];
     const seen = /* @__PURE__ */ new Set();
     for (const r of rows) {
@@ -43342,10 +43382,10 @@ function ExactStepGrid({ notice = null }) {
     return () => {
       if (timer !== null) clearTimeout(timer);
     };
-  }, [mini, gain, rows, bars]);
-  const drawings = React32.useMemo(() => rows.map((r) => r.bars ? drawTreeRow(r.bars, barPx, openPx) : null), [rows, barPx, openPx]);
+  }, [mini, gain, rows, bars, velocityOn]);
+  const drawings = React33.useMemo(() => rows.map((r) => r.bars ? drawTreeRow(r.bars, barPx, openPx) : null), [rows, barPx, openPx]);
   const orderOf = /* @__PURE__ */ __name((r) => rows.filter((k) => k.part === r.part).map((k) => k.sound), "orderOf");
-  const answers = React32.useMemo(() => {
+  const answers = React33.useMemo(() => {
     const out = /* @__PURE__ */ new Map();
     if (!ok || mini === null) return out;
     rows.forEach((r, ri) => {
@@ -43354,9 +43394,9 @@ function ExactStepGrid({ notice = null }) {
     });
     return out;
   }, [ok, mini, drawn, levelAt]);
-  const answersRef = React32.useRef(answers);
+  const answersRef = React33.useRef(answers);
   answersRef.current = answers;
-  const resizable = React32.useMemo(() => {
+  const resizable = React33.useMemo(() => {
     const out = /* @__PURE__ */ new Set();
     if (!ok || mini === null) return out;
     rows.forEach((r, ri) => {
@@ -43370,30 +43410,30 @@ function ExactStepGrid({ notice = null }) {
     });
     return out;
   }, [ok, mini]);
-  const [cursor, setCursor] = React32.useState(null);
+  const [cursor, setCursor] = React33.useState(null);
   const liveCursor = cursor && cursor.row < rows.length && cursor.col < bars ? cursor : null;
-  const cursorRef = React32.useRef(liveCursor);
+  const cursorRef = React33.useRef(liveCursor);
   cursorRef.current = liveCursor;
-  const stops = React32.useMemo(() => rows.map((r) => r.cells.filter((c) => !c.split).map(cellAt)), [rows]);
-  const stopsRef = React32.useRef(stops);
+  const stops = React33.useMemo(() => rows.map((r) => r.cells.filter((c) => !c.split).map(cellAt)), [rows]);
+  const stopsRef = React33.useRef(stops);
   stopsRef.current = stops;
-  const stmtRef = React32.useRef(stmtId);
-  React32.useEffect(() => {
+  const stmtRef = React33.useRef(stmtId);
+  React33.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setCursor(null);
     }
   }, [stmtId]);
   const tab = liveCursor ?? { row: 0, col: 0 };
-  const focusNext = React32.useRef(false);
-  const gridBox = React32.useRef(null);
-  React32.useEffect(() => {
+  const focusNext = React33.useRef(false);
+  const gridBox = React33.useRef(null);
+  React33.useEffect(() => {
     if (!focusNext.current) return;
     focusNext.current = false;
     gridBox.current?.querySelector('[role="gridcell"][aria-selected="true"]')?.focus();
   });
   const cellHolding = /* @__PURE__ */ __name((ri, t) => drawn[ri]?.find((c) => cellAt(c) <= t + 1e-9 && t < cellEnd(c) - 1e-9) ?? null, "cellHolding");
-  const paint2 = React32.useCallback(
+  const paint2 = React33.useCallback(
     (ri, cell, on, drag = false) => {
       if (cell.on === on) return { refused: false };
       const answer = answersRef.current.get(cellKeyOf(ri, cell));
@@ -43411,9 +43451,9 @@ function ExactStepGrid({ notice = null }) {
     const { refused: refused2, why } = paint2(ri, cell, on);
     if (refused2) report2(on ? "Couldn't add that hit" : "Couldn't remove that hit", why ? refusalLine(why, !on) : void 0);
   }, "paintOne");
-  const paintOneRef = React32.useRef(paintOne);
+  const paintOneRef = React33.useRef(paintOne);
   paintOneRef.current = paintOne;
-  const resizeNote2 = React32.useCallback(
+  const resizeNote2 = React33.useCallback(
     (ri, cell, to, dryRun = false) => {
       const g = gridRef_.current;
       const from = miniRef.current;
@@ -43428,7 +43468,7 @@ function ExactStepGrid({ notice = null }) {
     },
     [writeEdit]
   );
-  const writeLevel = React32.useCallback(
+  const writeLevel = React33.useCallback(
     (hit, level, dryRun = false) => {
       const from = miniRef.current;
       const g = gainRef.current;
@@ -43453,17 +43493,17 @@ function ExactStepGrid({ notice = null }) {
     },
     [applyEdit, bars]
   );
-  const press = React32.useRef(null);
-  const writeLevelRef = React32.useRef(writeLevel);
+  const press = React33.useRef(null);
+  const writeLevelRef = React33.useRef(writeLevel);
   writeLevelRef.current = writeLevel;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = press.current;
       if (!g) return;
       const dx = e.clientX - g.startX;
       const dy = e.clientY - g.startY;
       if (g.mode === "pending") {
-        if (g.hit && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
+        if (g.hit && velocityOnRef.current && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
           const can = writeLevelRef.current(g.hit, (g.startLevel ?? 1) === 0 ? 1 : 0, true);
           if (!can.ok) {
             if (!g.saidNo) report2("Couldn't change that hit's velocity", velocityLine(can.why));
@@ -43573,15 +43613,15 @@ function ExactStepGrid({ notice = null }) {
     }
     return true;
   }, "runGesture");
-  const runRef = React32.useRef(runGesture);
+  const runRef = React33.useRef(runGesture);
   runRef.current = runGesture;
-  React32.useEffect(() => mountGridGestures(GRID_SCOPE.sequencer, (a, dry) => runRef.current(a, dry)), []);
-  const headRef = React32.useRef(null);
-  const [playAt, setPlayAt] = React32.useState(null);
-  const edges2 = React32.useMemo(() => [...new Set(rows.flatMap((r) => r.cells.map(cellAt)))].sort((a, b) => a - b), [rows]);
-  const edgesRef = React32.useRef(edges2);
+  React33.useEffect(() => mountGridGestures(GRID_SCOPE.sequencer, (a, dry) => runRef.current(a, dry)), []);
+  const headRef = React33.useRef(null);
+  const [playAt, setPlayAt] = React33.useState(null);
+  const edges2 = React33.useMemo(() => [...new Set(rows.flatMap((r) => r.cells.map(cellAt)))].sort((a, b) => a - b), [rows]);
+  const edgesRef = React33.useRef(edges2);
   edgesRef.current = edges2;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const t = treePlayhead(readCurrentCycle(), bars);
@@ -43610,7 +43650,7 @@ function ExactStepGrid({ notice = null }) {
   const chordChart = chunk?.headFn === "chord" || chordLanes(rows.map((r) => r.sound));
   if (!ok) {
     if (lookRoll && "roll" in lookRoll) return /* @__PURE__ */ jsx(TreeRollGrid, { roll: lookRoll.roll, reason: lookRoll.reason });
-    return React32.createElement(VisualEditStandby, {
+    return React33.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: eligible ? "This pattern isn't grid-editable \u2014 edit it as code." : "Click a drum pattern to edit it as a step grid.",
       icon: "symbol-array"
@@ -43712,7 +43752,7 @@ function ExactStepGrid({ notice = null }) {
                 d?.inner.map((s) => /* @__PURE__ */ jsx("div", { "data-tree-inner": s.depth, style: { position: "absolute", left: x(s.begin) + 2, width: Math.max(1, x(s.end) - x(s.begin) - 3), top: 4, bottom: 4, boxSizing: "border-box", border: "1px solid var(--border, #3a3a42)", borderRadius: 2, background: "var(--background-elevated, #26262c)", pointerEvents: "none" } }, `i${s.begin}`)),
                 d?.lines.map((l) => /* @__PURE__ */ jsx("div", { "data-tree-line": l.depth, style: { position: "absolute", left: x(l.at) - 1, width: 2, top: 0, bottom: 0, background: lineColor3(l.depth), pointerEvents: "none" } }, `l${l.at}`)),
                 row.hits.map((h, i) => {
-                  const level = clamp012(levelOf(h.begin) ?? 1);
+                  const level = velocityOn ? clamp012(levelOf(h.begin) ?? 1) : 1;
                   return /* @__PURE__ */ jsx("div", { "data-seq-fill": true, "data-tree-hit": h.begin.toFixed(6), style: { position: "absolute", left: x(h.begin) + 2, width: Math.max(2, x(Math.min(h.end, bars)) - x(h.begin) - 3), top: 3 + (1 - level) * (ROW_PX3 - 6), bottom: 3, borderRadius: 2, background: colorMode === "velocity" ? velocityColor(level) : voice.color, pointerEvents: "none" } }, `h${i}`);
                 }),
                 drawn[ri].map((cell) => {
@@ -43869,14 +43909,14 @@ __name(opensRhythmLine2, "opensRhythmLine");
 function SequencerGrid(props = {}) {
   const mode = useGridMode();
   const { onResolution } = props;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (mode === "exact") onResolution?.(null);
   }, [mode, onResolution]);
   return mode === "exact" ? /* @__PURE__ */ jsx(ExactStepGrid, { notice: props.notice ?? null }) : /* @__PURE__ */ jsx(ColumnStepGrid, { ...props });
 }
 __name(SequencerGrid, "SequencerGrid");
 function ColumnStepGrid({ onResolution, notice = null } = {}) {
-  const [viewScale, setViewScale] = React32.useState(UNREFINED);
+  const [viewScale, setViewScale] = React33.useState(UNREFINED);
   const { chunk, model, read: read5, mutate, writeMini, writeStep, beginGesture, endGesture, patternKey } = useGridModel({
     ...stepGridCodec,
     source: "seq",
@@ -43885,7 +43925,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, stepGridCodec.parse, writeMini);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     setViewScale(UNREFINED);
   }, [patternKey]);
   const playingStep = usePlayingStep(
@@ -43897,32 +43937,33 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   const [colorMode] = useNoteColorMode();
   const gridMode = useGridMode();
   const span = model?.bars ?? 1;
-  const playedNotes = React32.useMemo(() => chunk ? stepNotes(chunk, span) : null, [chunk, span]);
-  const gestureRef = React32.useRef(null);
-  const paintSoundRef = React32.useRef(null);
-  const gainScoped = React32.useMemo(() => model ? gainWritable(stepGridCodec, model) : false, [model]);
+  const playedNotes = React33.useMemo(() => chunk ? stepNotes(chunk, span) : null, [chunk, span]);
+  const gestureRef = React33.useRef(null);
+  const paintSoundRef = React33.useRef(null);
+  const velocityOn = useVelocityDrag();
+  const gainScoped = React33.useMemo(() => velocityOn && model ? gainWritable(stepGridCodec, model) : false, [model, velocityOn]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
   const chordHead = chunk?.headFn === "chord";
-  const isChordChart = React32.useMemo(
+  const isChordChart = React33.useMemo(
     () => chordHead || chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
     [chordHead, laneKey]
   );
-  const boxes = React32.useMemo(() => {
+  const boxes = React33.useMemo(() => {
     if (!model) return null;
     const widths = gridMode === "exact" ? ownStepWidths(linesModel(model, read5)) : /* @__PURE__ */ new Map();
     return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn));
   }, [model, read5, gridMode]);
-  const boxesRef = React32.useRef(boxes);
+  const boxesRef = React33.useRef(boxes);
   boxesRef.current = boxes;
   const boxWidth = /* @__PURE__ */ __name((laneIndex) => boxesRef.current?.[laneIndex]?.[0]?.width ?? 1, "boxWidth");
   const stepMini = chunk?.miniString ?? null;
-  const stepTrees = React32.useMemo(
+  const stepTrees = React33.useMemo(
     () => model && stepMini !== null && !model.lookOnly ? chunkDivisions(stepMini, model.bars ?? 1) : null,
     // the tree depends on the text and the bar count, not on every model a drag makes
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [stepMini, model?.bars, !!model, !!model?.lookOnly]
   );
-  const stepToggles = React32.useMemo(() => {
+  const stepToggles = React33.useMemo(() => {
     if (!model || !stepTrees || stepMini === null) return null;
     return model.lanes.map((lane, li) => {
       const w = boxes?.[li]?.[0]?.width ?? 1;
@@ -43942,33 +43983,33 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
       });
     });
   }, [model, boxes, stepTrees, stepMini]);
-  const stepTreesRef = React32.useRef(stepTrees);
+  const stepTreesRef = React33.useRef(stepTrees);
   stepTreesRef.current = stepTrees;
-  const modelRef = React32.useRef(model);
+  const modelRef = React33.useRef(model);
   modelRef.current = model;
-  const stepTogglesRef = React32.useRef(stepToggles);
+  const stepTogglesRef = React33.useRef(stepToggles);
   stepTogglesRef.current = stepToggles;
-  const stepMiniRef = React32.useRef(stepMini);
+  const stepMiniRef = React33.useRef(stepMini);
   stepMiniRef.current = stepMini;
-  const toggleable = React32.useMemo(
+  const toggleable = React33.useMemo(
     () => stepToggles ? stepToggles.map((row) => row.map((r) => !!r && r.ok)) : model ? model.lanes.map((l) => l.cells.map(() => false)) : null,
     [stepToggles, model]
   );
-  const placesNotes = React32.useMemo(
+  const placesNotes = React33.useMemo(
     () => model && boxes && toggleable ? boxesPlaceNotes(model.lanes, boxes, isCellOn, toggleable) : false,
     [model, boxes, toggleable]
   );
-  const coverage = React32.useMemo(
+  const coverage = React33.useMemo(
     () => model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null,
     [model]
   );
-  const stepStarts = React32.useMemo(() => {
+  const stepStarts = React33.useMemo(() => {
     if (!model) return null;
     const out = /* @__PURE__ */ new Map();
     for (const [part, cols] of writtenStepStarts(linesModel(model, read5))) out.set(part, new Set(cols));
     return out;
   }, [model, read5]);
-  const stepGroups = React32.useMemo(() => {
+  const stepGroups = React33.useMemo(() => {
     if (!model || !boxes || !coverage) return null;
     return model.lanes.map((lane, li) => {
       const part = lane.part ?? 0;
@@ -43982,7 +44023,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   const miniText2 = chunk?.miniString ?? null;
   const hasModel = !!model;
   const barCount = model?.bars ?? 1;
-  const trees = React32.useMemo(
+  const trees = React33.useMemo(
     () => hasModel && miniText2 !== null && gridMode === "exact" ? chunkDivisions(miniText2, barCount) : null,
     [hasModel, barCount, miniText2, gridMode]
   );
@@ -43990,15 +44031,15 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   const lookTree = useDeferredPerText(!hasModel && stepEligible ? miniText2 : null, lookOnlyTreeGrid);
   const silentHead = !!chunk && !["s", "sound", "chord"].includes(chunk.headFn ?? "");
   const lookRoll = useDeferredPerText(!hasModel && stepEligible && silentHead && lookTree === null ? miniText2 : null, lookOnlyTreeRoll);
-  const laneNodes = React32.useMemo(
+  const laneNodes = React33.useMemo(
     () => model && trees ? model.lanes.map((_, li) => laneSteps(model, trees, li)) : null,
     [model, trees]
   );
-  const editNodes = React32.useMemo(
+  const editNodes = React33.useMemo(
     () => model && stepTrees ? model.lanes.map((_, li) => laneSteps(model, stepTrees, li)) : null,
     [model, stepTrees]
   );
-  const resizable = React32.useMemo(() => {
+  const resizable = React33.useMemo(() => {
     if (!model || !stepTrees || stepMini === null) return null;
     return model.lanes.map((lane, li) => {
       const out = /* @__PURE__ */ new Set();
@@ -44031,7 +44072,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     if (!r.ok) return false;
     return dryRun || writeEdit(mini, r.edit);
   }, "resizeNote");
-  const writeEdit = React32.useCallback(
+  const writeEdit = React33.useCallback(
     (mini, edit) => {
       const shown = modelRef.current?.lanes ?? [];
       const keep = /* @__PURE__ */ __name((read6) => {
@@ -44046,7 +44087,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     },
     [writeStep]
   );
-  const paintCell = React32.useCallback(
+  const paintCell = React33.useCallback(
     (laneIndex, stepIndex, value, drag = false) => {
       const lane = modelRef.current?.lanes[laneIndex];
       if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) return { refused: false };
@@ -44059,7 +44100,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     },
     [writeEdit]
   );
-  const paintOne = React32.useCallback(
+  const paintOne = React33.useCallback(
     (laneIndex, stepIndex, value) => {
       const { refused: refused2, why } = paintCell(laneIndex, stepIndex, value);
       if (refused2) {
@@ -44068,20 +44109,20 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     },
     [paintCell]
   );
-  const addVoice = React32.useCallback(
+  const addVoice = React33.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React32.useCallback(
+  const removeVoice = React33.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
   const canDrawView = useViewProver(chunk?.miniString, stepGridCodec.parse);
-  const scaleToSlots = React32.useCallback(
+  const scaleToSlots = React33.useCallback(
     (target) => {
       if (!model) return;
       const press = slotPress(stepGridCodec, model, target, canDrawView);
@@ -44101,7 +44142,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     // looking closer costs nothing.
     (t) => model ? slotPressCost(stepGridCodec, model, t, canDrawView) : NO_RESOLUTION_EFFECT
   );
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -44137,10 +44178,10 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
       window.removeEventListener("pointerup", onUp);
     };
   }, [mutate, paintOne, endGesture, gainScoped]);
-  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current8, e) => {
+  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current9, e) => {
     beginGesture();
     paintSoundRef.current = model?.lanes[laneIndex]?.sound ?? null;
-    if (current8) {
+    if (current9) {
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
@@ -44186,24 +44227,24 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     if (laneIndex !== g.lane || modelRef.current?.lanes[laneIndex]?.sound !== paintSoundRef.current) return;
     paintCell(laneIndex, stepIndex, g.paintValue, true);
   }, "onCellEnter");
-  const [cursor, setCursor] = React32.useState(null);
-  const stopsRef = React32.useRef(null);
+  const [cursor, setCursor] = React33.useState(null);
+  const stopsRef = React33.useRef(null);
   const rowsN = model?.lanes.length ?? 0;
   const colsN = model?.steps ?? 0;
   const liveCursor = cursor && cursor.row < rowsN && cursor.col < colsN ? cursor : null;
-  const cursorRef = React32.useRef(liveCursor);
+  const cursorRef = React33.useRef(liveCursor);
   cursorRef.current = liveCursor;
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React32.useRef(stmtId);
-  React32.useEffect(() => {
+  const stmtRef = React33.useRef(stmtId);
+  React33.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setCursor(null);
     }
   }, [stmtId]);
-  const focusCursorRef = React32.useRef(false);
-  const gridRef = React32.useRef(null);
-  React32.useEffect(() => {
+  const focusCursorRef = React33.useRef(false);
+  const gridRef = React33.useRef(null);
+  React33.useEffect(() => {
     if (!focusCursorRef.current) return;
     focusCursorRef.current = false;
     gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-seq-cell]')?.focus();
@@ -44276,16 +44317,16 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
         return false;
     }
   }, "runGesture");
-  const runGestureRef = React32.useRef(runGesture);
+  const runGestureRef = React33.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React32.useEffect(
+  React33.useEffect(
     () => mountGridGestures(GRID_SCOPE.sequencer, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React32.useRef(null);
+  const rulerRef = React33.useRef(null);
   useRulerFit(rulerRef, "data-seq-ruler-label");
   const phoneGrid = usePhoneGrid();
-  const scrollRef = React32.useRef(null);
+  const scrollRef = React33.useRef(null);
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone);
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 16;
   const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model);
@@ -44304,12 +44345,12 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   const maxPer = zoomed ? 56 * zoom.level : 56;
   const perPx = Math.max(minPer, Math.min(fitPer ?? stepMin, maxPer));
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
-  const playheadRef = React32.useRef(null);
+  const playheadRef = React33.useRef(null);
   useExactPlayhead(gridRef, playheadRef, model, (c) => gridRef.current?.querySelector(`[data-seq-col="ruler:${c}"]`) ?? null);
   if (!model) {
     if (lookTree && "grid" in lookTree) return /* @__PURE__ */ jsx(TreeStepGrid, { grid: lookTree.grid, reason: lookTree.reason, notice });
     if (lookRoll && "roll" in lookRoll) return /* @__PURE__ */ jsx(TreeRollGrid, { roll: lookRoll.roll, reason: lookRoll.reason });
-    return React32.createElement(VisualEditStandby, {
+    return React33.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && opensStepGrid(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -44915,11 +44956,11 @@ function RhythmChartGrid({ onResolution }) {
     source: "seq",
     eligible: opensStepGrid
   });
-  const result = React32.useMemo(
+  const result = React33.useMemo(
     () => chunk?.structRhythm && chunk.miniString !== null ? rhythmChart(chunk.structOver?.miniString ?? null, chunk.miniString, model, parseChords, chunk.structOver?.masks) : { ok: false, reason: null },
     [chunk, model]
   );
-  const toggleable = React32.useMemo(() => {
+  const toggleable = React33.useMemo(() => {
     if (!model || !result.ok || result.chart.lookOnly) return null;
     return Array.from({ length: model.steps }, (_, m) => {
       const on = model.lanes.findIndex((l) => isCellOn(l.cells[m]));
@@ -44927,7 +44968,7 @@ function RhythmChartGrid({ onResolution }) {
     });
   }, [model, result]);
   const chartShown = result.ok;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (chartShown) onResolution?.(null);
   }, [chartShown, onResolution]);
   if (!result.ok) return /* @__PURE__ */ jsx(SequencerGrid, { onResolution, notice: result.reason });
@@ -45152,11 +45193,11 @@ function viewportRect() {
 }
 __name(viewportRect, "viewportRect");
 function useAnchorScroll(open, anchorRef, menuRef, place, close) {
-  const placedAt = React32.useRef(null);
-  React32.useLayoutEffect(() => {
+  const placedAt = React33.useRef(null);
+  React33.useLayoutEffect(() => {
     placedAt.current = open ? anchorRef.current?.getBoundingClientRect() ?? null : null;
   }, [open, anchorRef]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!open) return;
     const onScroll = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -45237,15 +45278,15 @@ function SoundPickerMenu({
   onAudition,
   renderTrigger
 }) {
-  const [open, setOpen] = React32.useState(false);
-  const [query, setQuery] = React32.useState("");
-  const [category, setCategory] = React32.useState(null);
-  const [pos, setPos] = React32.useState(null);
-  const btnRef = React32.useRef(null);
-  const menuRef = React32.useRef(null);
+  const [open, setOpen] = React33.useState(false);
+  const [query, setQuery] = React33.useState("");
+  const [category, setCategory] = React33.useState(null);
+  const [pos, setPos] = React33.useState(null);
+  const btnRef = React33.useRef(null);
+  const menuRef = React33.useRef(null);
   const lc = label.toLowerCase();
   const currentLabel = summary ?? (groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder);
-  const place = React32.useCallback(() => {
+  const place = React33.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -45259,17 +45300,17 @@ function SoundPickerMenu({
       maxHeight
     });
   }, []);
-  React32.useLayoutEffect(() => {
+  React33.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (open) {
       ensureCatScrollStyle();
       setQuery("");
       setCategory(null);
     }
   }, [open]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -45289,7 +45330,7 @@ function SoundPickerMenu({
       window.removeEventListener("resize", dismiss);
     };
   }, [open]);
-  const close = React32.useCallback(() => setOpen(false), []);
+  const close = React33.useCallback(() => setOpen(false), []);
   useAnchorScroll(open, btnRef, menuRef, place, close);
   const pick = /* @__PURE__ */ __name((v) => {
     onChange(v);
@@ -45788,7 +45829,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners18 = /* @__PURE__ */ new Set();
+  const listeners19 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -45803,18 +45844,18 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners18.forEach((l) => l());
+    listeners19.forEach((l) => l());
   }, "setAccessor");
   const notify6 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners18.forEach((l) => l());
+    listeners19.forEach((l) => l());
   }, "notify");
   const read5 = /* @__PURE__ */ __name(() => cached2, "read");
-  const subscribe11 = /* @__PURE__ */ __name((listener) => {
-    listeners18.add(listener);
-    return () => listeners18.delete(listener);
+  const subscribe12 = /* @__PURE__ */ __name((listener) => {
+    listeners19.add(listener);
+    return () => listeners19.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React32.useSyncExternalStore(subscribe11, read5, () => null), "useCatalog");
+  const useCatalog = /* @__PURE__ */ __name(() => React33.useSyncExternalStore(subscribe12, read5, () => null), "useCatalog");
   return { setAccessor, notify: notify6, read: read5, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
@@ -46051,8 +46092,8 @@ function PianoRollGrid({
   division: division2 = DEFAULT_DIVISION,
   onResolution
 } = {}) {
-  const [viewScale, setViewScale] = React32.useState(UNREFINED);
-  const [declinedCell, setDeclinedCell] = React32.useState(null);
+  const [viewScale, setViewScale] = React33.useState(UNREFINED);
+  const [declinedCell, setDeclinedCell] = React33.useState(null);
   const { chunk, model, read: read5, mutate, settle: settle2, writeMini, writeStep, beginGesture, endGesture, patternKey, applyEdit } = useGridModel({
     ...pianoRollCodec,
     source: "roll",
@@ -46061,11 +46102,11 @@ function PianoRollGrid({
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, pianoRollCodec.parse, writeMini);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     setViewScale(UNREFINED);
   }, [patternKey]);
-  const dragRef = React32.useRef(null);
-  const velRef = React32.useRef(null);
+  const dragRef = React33.useRef(null);
+  const velRef = React33.useRef(null);
   const playingStep = usePlayingStep(
     model?.steps ?? 0,
     model?.bars ?? 1,
@@ -46073,7 +46114,7 @@ function PianoRollGrid({
     model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
-  const sounds = React32.useMemo(() => {
+  const sounds = React33.useMemo(() => {
     if (!chunk || !model) return null;
     const span = model.bars ?? 1;
     const onsets = model.notes.map((n) => stepToCycle(n.start, model.steps, span, model.barSteps));
@@ -46083,8 +46124,8 @@ function PianoRollGrid({
     if (names.length < 2) return null;
     return { names, byNote: new Map(model.notes.map((n, i) => [n, per[i]])) };
   }, [chunk, model]);
-  const lane = React32.useMemo(() => chunk && model ? soundLane(chunk, model.bars ?? 1) : null, [chunk, model]);
-  const laneSegments = React32.useMemo(() => {
+  const lane = React33.useMemo(() => chunk && model ? soundLane(chunk, model.bars ?? 1) : null, [chunk, model]);
+  const laneSegments = React33.useMemo(() => {
     const out = [];
     if (!lane || !model) return out;
     const span = model.bars ?? 1;
@@ -46097,7 +46138,7 @@ function PianoRollGrid({
     });
     return out;
   }, [lane, model]);
-  const laneToggles = React32.useRef(/* @__PURE__ */ new Map());
+  const laneToggles = React33.useRef(/* @__PURE__ */ new Map());
   const instruments = useSoundCatalog();
   const writeBlock = /* @__PURE__ */ __name((block, value) => {
     if (value === "") return;
@@ -46107,21 +46148,21 @@ function PianoRollGrid({
       commit(wb, "edit" in r ? r.edit : null, "roll");
     });
   }, "writeBlock");
-  const [hoveredMidi, setHoveredMidi] = React32.useState(null);
-  const holdMidiRef = React32.useRef(null);
-  const holdTimerRef = React32.useRef(null);
-  const onSelectRef = React32.useRef(onSelect);
+  const [hoveredMidi, setHoveredMidi] = React33.useState(null);
+  const holdMidiRef = React33.useRef(null);
+  const holdTimerRef = React33.useRef(null);
+  const onSelectRef = React33.useRef(onSelect);
   onSelectRef.current = onSelect;
-  const selectedRef = React32.useRef(selected);
+  const selectedRef = React33.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range2, setRange] = React32.useState(
+  const [range2, setRange] = React33.useState(
     () => rollContentRange({ notes: [] })
   );
-  const stmtIdRef = React32.useRef(null);
-  const scrollRef = React32.useRef(null);
-  const openScrollRef = React32.useRef(false);
-  React32.useEffect(() => {
+  const stmtIdRef = React33.useRef(null);
+  const scrollRef = React33.useRef(null);
+  const openScrollRef = React33.useRef(false);
+  React33.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = rollContentRange(model);
@@ -46157,19 +46198,19 @@ function PianoRollGrid({
     const room = sc.clientHeight - 2 * pad;
     sc.scrollTop = y1 - y0 <= room ? (y0 + y1) / 2 - sc.clientHeight / 2 : y1 + pad - sc.clientHeight;
   });
-  const placesNotes = React32.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
+  const placesNotes = React33.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
   const gridMode = useGridMode();
-  const resizable = React32.useMemo(() => {
+  const resizable = React33.useMemo(() => {
     if (!model) return null;
     const base = rollStepText(gridMode, model, chunk?.miniString ?? null);
     return base ? rollResizableNotes(model, base) : resizableNotes(model);
   }, [model, gridMode, chunk?.miniString]);
   const cols = model ? columnCount(model) : 0;
-  const gainWritable2 = React32.useMemo(
+  const gainWritable2 = React33.useMemo(
     () => model ? gainWritable(pianoRollCodec, model) : false,
     [model]
   );
-  const stepTextRef = React32.useRef(null);
+  const stepTextRef = React33.useRef(null);
   stepTextRef.current = rollStepText(gridMode, model, chunk?.miniString ?? null);
   const writeRoll = /* @__PURE__ */ __name((base, r, refusal) => {
     if (!r.ok) {
@@ -46189,7 +46230,7 @@ function PianoRollGrid({
     }
     return true;
   }, "writeFrame");
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
@@ -46250,7 +46291,7 @@ function PianoRollGrid({
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
@@ -46318,7 +46359,7 @@ function PianoRollGrid({
       holdTimerRef.current = null;
     }
   }, "stopHold");
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     window.addEventListener("pointerup", stopHold);
     window.addEventListener("pointercancel", stopHold);
     return () => {
@@ -46515,9 +46556,9 @@ function PianoRollGrid({
     }
     return best ?? { row: 0, col: 0 };
   }, "defaultCell");
-  const focusCursorRef = React32.useRef(false);
-  const gridRef = React32.useRef(null);
-  React32.useEffect(() => {
+  const focusCursorRef = React33.useRef(false);
+  const gridRef = React33.useRef(null);
+  React33.useEffect(() => {
     if (!focusCursorRef.current) return;
     const cell = gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-roll-cell]');
     if (!cell) return;
@@ -46641,31 +46682,31 @@ function PianoRollGrid({
         return true;
     }
   }, "runGesture");
-  const runGestureRef = React32.useRef(runGesture);
+  const runGestureRef = React33.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React32.useEffect(
+  React33.useEffect(
     () => mountGridGestures(GRID_SCOPE.pianoRoll, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React32.useRef(null);
+  const rulerRef = React33.useRef(null);
   useRulerFit(rulerRef, "data-roll-ruler-label");
   const phoneGrid = usePhoneGrid();
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone);
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 12;
-  const trackRef = React32.useRef(null);
+  const trackRef = React33.useRef(null);
   const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model, trackRef);
   const zoomed = !phoneGrid.phone;
   const rollMini = chunk?.miniString ?? null;
   const hasModel = !!model;
   const barCount = model?.bars ?? 1;
-  const trees = React32.useMemo(
+  const trees = React33.useMemo(
     () => hasModel && rollMini !== null ? chunkDivisions(rollMini, barCount) : null,
     [hasModel, barCount, rollMini]
   );
   const linesFrom = model ? linesModel(model, read5) : null;
   const parts = linesFrom?.source?.parts ?? null;
   const midiOf = /* @__PURE__ */ __name((token) => model?.numeric ? Number(token) : pitchToMidi(token), "midiOf");
-  const notesByPart = React32.useMemo(() => {
+  const notesByPart = React33.useMemo(() => {
     if (!parts || parts.length < 2) return null;
     const out = /* @__PURE__ */ new Map();
     for (const p of parts) {
@@ -46688,19 +46729,19 @@ function PianoRollGrid({
     }
     return rollPart(linesFrom);
   })();
-  const nodes = React32.useMemo(
+  const nodes = React33.useMemo(
     () => linesFrom && trees ? partSteps(linesFrom, trees, editedPart) : null,
     [linesFrom, trees, editedPart]
   );
   const otherNotes = notesByPart ? (key3) => !notesByPart.get(editedPart)?.has(key3) : null;
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
-  const playheadRef = React32.useRef(null);
+  const playheadRef = React33.useRef(null);
   useExactPlayhead(gridRef, playheadRef, model, (c) => trackRef.current?.children[c] ?? null);
   const rollEligible = !!chunk && opensPianoRoll(chunk);
   const lookTree = useDeferredPerText(!hasModel && rollEligible ? rollMini : null, lookOnlyTreeRoll);
   if (!model) {
     if (lookTree && "roll" in lookTree) return /* @__PURE__ */ jsx(TreeRollGrid, { roll: lookTree.roll, reason: lookTree.reason });
-    return React32.createElement(VisualEditStandby, {
+    return React33.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && opensPianoRoll(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -47436,13 +47477,13 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React32.useRef(null);
-  const [editing, setEditing] = React32.useState(false);
-  const [draftMin, setDraftMin] = React32.useState("");
-  const [draftMax, setDraftMax] = React32.useState("");
-  const [popupPos, setPopupPos] = React32.useState(null);
-  const sliderRef = React32.useRef(null);
-  const popupRef = React32.useRef(null);
+  const dragRef = React33.useRef(null);
+  const [editing, setEditing] = React33.useState(false);
+  const [draftMin, setDraftMin] = React33.useState("");
+  const [draftMax, setDraftMax] = React33.useState("");
+  const [popupPos, setPopupPos] = React33.useState(null);
+  const sliderRef = React33.useRef(null);
+  const popupRef = React33.useRef(null);
   const POPUP_W = 132;
   const openRangeEditor = /* @__PURE__ */ __name(() => {
     if (!onRangeChange) return;
@@ -47458,7 +47499,7 @@ function Knob({
     }
     setEditing(false);
   }, "commitRange");
-  const placePopup = React32.useCallback(() => {
+  const placePopup = React33.useCallback(() => {
     const r = sliderRef.current?.getBoundingClientRect();
     if (!r) return;
     const margin = 8;
@@ -47472,10 +47513,10 @@ function Knob({
       )
     });
   }, []);
-  React32.useLayoutEffect(() => {
+  React33.useLayoutEffect(() => {
     if (editing) placePopup();
   }, [editing, placePopup]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!editing) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -47490,7 +47531,7 @@ function Knob({
       window.removeEventListener("resize", dismiss);
     };
   }, [editing]);
-  const closePopup = React32.useCallback(() => setEditing(false), []);
+  const closePopup = React33.useCallback(() => setEditing(false), []);
   useAnchorScroll(editing, sliderRef, popupRef, placePopup, closePopup);
   const pos = toPosition(value, range2);
   const angle = -135 + pos * 270;
@@ -48323,12 +48364,12 @@ function AddEffectMenu({
   present,
   onToggle
 }) {
-  const [open, setOpen] = React32.useState(false);
-  const [query, setQuery] = React32.useState("");
-  const [pos, setPos] = React32.useState(null);
-  const btnRef = React32.useRef(null);
-  const menuRef = React32.useRef(null);
-  const place = React32.useCallback(() => {
+  const [open, setOpen] = React33.useState(false);
+  const [query, setQuery] = React33.useState("");
+  const [pos, setPos] = React33.useState(null);
+  const btnRef = React33.useRef(null);
+  const menuRef = React33.useRef(null);
+  const place = React33.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -48342,10 +48383,10 @@ function AddEffectMenu({
       maxHeight
     });
   }, []);
-  React32.useLayoutEffect(() => {
+  React33.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -48365,7 +48406,7 @@ function AddEffectMenu({
       window.removeEventListener("resize", dismiss);
     };
   }, [open]);
-  const close = React32.useCallback(() => setOpen(false), []);
+  const close = React33.useCallback(() => setOpen(false), []);
   useAnchorScroll(open, btnRef, menuRef, place, close);
   const q = query.trim().toLowerCase();
   const groups = EFFECT_GROUPS.map(
@@ -48610,37 +48651,37 @@ function MixerBody({
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
   const knobs = knobsFromChunk(chunk, showGain);
-  const writeKnob = React32.useCallback(
+  const writeKnob = React33.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => commit(wb, knobEdit(fresh, entry, value), "knob"));
     },
     [applyEdit]
   );
-  const writeRange = React32.useCallback(
+  const writeRange = React33.useCallback(
     (entry, min, max) => {
       applyEdit((fresh, wb) => commit(wb, knobRangeEdit(fresh, entry, min, max), "knob"));
     },
     [applyEdit]
   );
-  const resetRange = React32.useCallback(
+  const resetRange = React33.useCallback(
     (entry) => {
       applyEdit((fresh, wb) => commit(wb, knobRangeResetEdit(fresh, entry), "knob"));
     },
     [applyEdit]
   );
-  const toggleEffect = React32.useCallback(
+  const toggleEffect = React33.useCallback(
     (e) => {
       applyEdit((fresh, wb) => commit(wb, toggleCallEdit(fresh, effectNames(e), e.method, e.def), "knob"));
     },
     [applyEdit]
   );
-  const removeMethod = React32.useCallback(
+  const removeMethod = React33.useCallback(
     (method) => {
       applyEdit((fresh, wb) => commit(wb, removeNamedCall(fresh, method), "knob"));
     },
     [applyEdit]
   );
-  const writeChainMethod = React32.useCallback(
+  const writeChainMethod = React33.useCallback(
     (names, canonical, value, noun) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -48822,7 +48863,7 @@ var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function Mixer({ division: division2, onDivisionChange, resolution } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   if (!chunk || chunk.chain.length === 0) {
-    return React32.createElement(VisualEditStandby, {
+    return React33.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -48944,24 +48985,24 @@ __name(levelColor, "levelColor");
 var MIN_FRAME_MS = 1e3 / 60;
 var QUERY_WINDOW_CYCLES = 0.01;
 function useTrackMeters() {
-  const elsRef = React32.useRef(/* @__PURE__ */ new Map());
-  const stateRef = React32.useRef(/* @__PURE__ */ new Map());
-  const schedulersRef = React32.useRef(null);
-  const rafRef = React32.useRef(null);
-  const lastTsRef = React32.useRef(0);
-  const [fileId, setFileId] = React32.useState(() => getActiveFileId());
-  React32.useEffect(() => {
+  const elsRef = React33.useRef(/* @__PURE__ */ new Map());
+  const stateRef = React33.useRef(/* @__PURE__ */ new Map());
+  const schedulersRef = React33.useRef(null);
+  const rafRef = React33.useRef(null);
+  const lastTsRef = React33.useRef(0);
+  const [fileId, setFileId] = React33.useState(() => getActiveFileId());
+  React33.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React32.useCallback((captureId, els) => {
+  const register = React33.useCallback((captureId, els) => {
     if (els) elsRef.current.set(captureId, els);
     else {
       elsRef.current.delete(captureId);
       stateRef.current.delete(captureId);
     }
   }, []);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       schedulersRef.current = schedulersOf(payload);
     }) : (() => {
@@ -49052,13 +49093,13 @@ function useTrackMeters() {
       stateRef.current.clear();
     };
   }, [fileId]);
-  return React32.useMemo(() => ({ register }), [register]);
+  return React33.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners15 = /* @__PURE__ */ new Set();
+var listeners16 = /* @__PURE__ */ new Set();
 function read2(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
@@ -49070,7 +49111,7 @@ function toggleSolo(fileId, id) {
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners15.forEach((l) => l());
+  listeners16.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -49084,16 +49125,16 @@ function setPreSoloMutes(fileId, snapshot) {
   else snapshots.set(fileId, snapshot);
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
-function subscribe8(listener) {
-  listeners15.add(listener);
+function subscribe9(listener) {
+  listeners16.add(listener);
   return () => {
-    listeners15.delete(listener);
+    listeners16.delete(listener);
   };
 }
-__name(subscribe8, "subscribe");
+__name(subscribe9, "subscribe");
 function useActiveFileId() {
-  const [id, setId] = React32.useState(() => getActiveFileId());
-  React32.useEffect(() => {
+  const [id, setId] = React33.useState(() => getActiveFileId());
+  React33.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -49102,8 +49143,8 @@ function useActiveFileId() {
 __name(useActiveFileId, "useActiveFileId");
 function useSoloedIds() {
   const fileId = useActiveFileId();
-  return React32.useSyncExternalStore(
-    subscribe8,
+  return React33.useSyncExternalStore(
+    subscribe9,
     () => read2(fileId),
     () => EMPTY
   );
@@ -49112,7 +49153,7 @@ __name(useSoloedIds, "useSoloedIds");
 function useSoloStrips() {
   const fileId = useActiveFileId();
   const soloed = useSoloedIds();
-  const toggle = React32.useCallback(
+  const toggle = React33.useCallback(
     (id) => {
       if (fileId) toggleSolo(fileId, id);
     },
@@ -49125,7 +49166,7 @@ __name(useSoloStrips, "useSoloStrips");
 // src/visualEdit/mixer/soloMuteSync.ts
 function useSoloMuteSync() {
   const { soloed, toggle: toggleSet } = useSoloStrips();
-  const toggle = React32.useCallback(
+  const toggle = React33.useCallback(
     (id) => {
       const fileId = getActiveFileId();
       const editor = getActiveEditor();
@@ -49153,9 +49194,9 @@ function StripMeter({
   controller,
   horizontal = false
 }) {
-  const fillRef = React32.useRef(null);
-  const peakRef = React32.useRef(null);
-  React32.useEffect(() => {
+  const fillRef = React33.useRef(null);
+  const peakRef = React33.useRef(null);
+  React33.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -49261,14 +49302,14 @@ function ChannelStrip({
   orientation = "vertical"
 }) {
   const horizontal = orientation === "horizontal";
-  const [colorAnchor, setColorAnchor] = React32.useState(null);
+  const [colorAnchor, setColorAnchor] = React33.useState(null);
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
-  const [renaming, setRenaming] = React32.useState(false);
+  const [renaming, setRenaming] = React33.useState(false);
   const bareLabel = strip.label ?? "";
   const renameSeed = bareLabel !== "" && bareLabel !== "$" ? bareLabel : "";
   const renameEnabled = onRename !== void 0;
-  const settledRef = React32.useRef(false);
+  const settledRef = React33.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {
     settledRef.current = false;
     setRenaming(true);
@@ -49289,8 +49330,8 @@ function ChannelStrip({
   const faderEnabled = gain !== null && onGainChange !== void 0;
   const panEnabled = !strip.panForeign && onPanChange !== void 0;
   const panValue = strip.pan ?? 0.5;
-  const faderDrag = React32.useRef(null);
-  const panDrag = React32.useRef(null);
+  const faderDrag = React33.useRef(null);
+  const panDrag = React33.useRef(null);
   const onFaderDown = /* @__PURE__ */ __name((e) => {
     if (!faderEnabled) return;
     e.preventDefault();
@@ -49895,17 +49936,17 @@ function PatternPanel() {
   const phone = usePhone();
   const sideShown = usePatternSideShown();
   const gridAlone = phone || !sideShown;
-  const [selected, setSelected] = React32.useState(null);
+  const [selected, setSelected] = React33.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React32.useRef(stmtId);
-  React32.useEffect(() => {
+  const stmtRef = React33.useRef(stmtId);
+  React33.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setSelected(null);
     }
   }, [stmtId]);
-  const [division2, setDivision] = React32.useState(DEFAULT_DIVISION);
-  const [resolution, setResolution] = React32.useState(null);
+  const [division2, setDivision] = React33.useState(DEFAULT_DIVISION);
+  const [resolution, setResolution] = React33.useState(null);
   const grid = kind === "step" ? (
     // a `.struct` rhythm line draws the chords it times (#2120)
     chunk?.structRhythm ? /* @__PURE__ */ jsx(RhythmChartGrid, { onResolution: setResolution }) : /* @__PURE__ */ jsx(SequencerGrid, { onResolution: setResolution })
@@ -49961,7 +50002,7 @@ function safeLocalStorage5() {
 }
 __name(safeLocalStorage5, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners16 = /* @__PURE__ */ new Set();
+var listeners17 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -50007,19 +50048,19 @@ function toggleExpanded(fileId, id) {
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners16.forEach((l) => l());
+  listeners17.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
-function subscribe9(listener) {
-  listeners16.add(listener);
+function subscribe10(listener) {
+  listeners17.add(listener);
   return () => {
-    listeners16.delete(listener);
+    listeners17.delete(listener);
   };
 }
-__name(subscribe9, "subscribe");
+__name(subscribe10, "subscribe");
 function useActiveFileId2() {
-  const [id, setId] = React32.useState(() => getActiveFileId());
-  React32.useEffect(() => {
+  const [id, setId] = React33.useState(() => getActiveFileId());
+  React33.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -50028,12 +50069,12 @@ function useActiveFileId2() {
 __name(useActiveFileId2, "useActiveFileId");
 function useExpandedStrips() {
   const fileId = useActiveFileId2();
-  const expanded = React32.useSyncExternalStore(
-    subscribe9,
+  const expanded = React33.useSyncExternalStore(
+    subscribe10,
     () => read3(fileId),
     () => EMPTY2
   );
-  const toggle = React32.useCallback(
+  const toggle = React33.useCallback(
     (id) => {
       if (fileId) toggleExpanded(fileId, id);
     },
@@ -50074,7 +50115,7 @@ function safeLocalStorage6() {
 }
 __name(safeLocalStorage6, "safeLocalStorage");
 var cached = null;
-var listeners17 = /* @__PURE__ */ new Set();
+var listeners18 = /* @__PURE__ */ new Set();
 function read4() {
   if (cached == null) {
     const ls = safeLocalStorage6();
@@ -50097,27 +50138,27 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners17.forEach((l) => l());
+  listeners18.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
   setMixerZoom(read4() + dir * MIXER_ZOOM_STEP);
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
-function subscribe10(listener) {
-  listeners17.add(listener);
+function subscribe11(listener) {
+  listeners18.add(listener);
   return () => {
-    listeners17.delete(listener);
+    listeners18.delete(listener);
   };
 }
-__name(subscribe10, "subscribe");
+__name(subscribe11, "subscribe");
 function useMixerZoom() {
-  const zoom = React32.useSyncExternalStore(subscribe10, read4, () => MIXER_ZOOM_DEFAULT);
+  const zoom = React33.useSyncExternalStore(subscribe11, read4, () => MIXER_ZOOM_DEFAULT);
   return {
     zoom,
     percent: Math.round(zoom * 100),
-    zoomIn: React32.useCallback(() => nudgeMixerZoom(1), []),
-    zoomOut: React32.useCallback(() => nudgeMixerZoom(-1), []),
+    zoomIn: React33.useCallback(() => nudgeMixerZoom(1), []),
+    zoomOut: React33.useCallback(() => nudgeMixerZoom(-1), []),
     canZoomIn: zoom < MIXER_ZOOM_MAX,
     canZoomOut: zoom > MIXER_ZOOM_MIN
   };
@@ -50191,22 +50232,22 @@ function levelColor2(frac2) {
 }
 __name(levelColor2, "levelColor");
 function useMasterMeter() {
-  const elsRef = React32.useRef(null);
-  const stateRef = React32.useRef(ZERO_METER);
-  const analyserRef = React32.useRef(null);
-  const bufRef = React32.useRef(null);
-  const rafRef = React32.useRef(null);
-  const lastTsRef = React32.useRef(0);
-  const [fileId, setFileId] = React32.useState(() => getActiveFileId());
-  React32.useEffect(() => {
+  const elsRef = React33.useRef(null);
+  const stateRef = React33.useRef(ZERO_METER);
+  const analyserRef = React33.useRef(null);
+  const bufRef = React33.useRef(null);
+  const rafRef = React33.useRef(null);
+  const lastTsRef = React33.useRef(0);
+  const [fileId, setFileId] = React33.useState(() => getActiveFileId());
+  React33.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React32.useCallback((els) => {
+  const register = React33.useCallback((els) => {
     elsRef.current = els;
     if (!els) stateRef.current = ZERO_METER;
   }, []);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       analyserRef.current = analyserOf(payload);
     }) : (() => {
@@ -50280,7 +50321,7 @@ function useMasterMeter() {
       stateRef.current = ZERO_METER;
     };
   }, [fileId]);
-  return React32.useMemo(() => ({ register }), [register]);
+  return React33.useMemo(() => ({ register }), [register]);
 }
 __name(useMasterMeter, "useMasterMeter");
 var FADER_HEIGHT2 = 80;
@@ -50299,9 +50340,9 @@ function MasterStrip({
   onGestureEnd
 }) {
   const meter = useMasterMeter();
-  const fillRef = React32.useRef(null);
-  const peakRef = React32.useRef(null);
-  React32.useEffect(() => {
+  const fillRef = React33.useRef(null);
+  const peakRef = React33.useRef(null);
+  React33.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -50309,7 +50350,7 @@ function MasterStrip({
     return () => meter.register(null);
   }, [meter]);
   const pos = gainToFaderPos(gain);
-  const drag = React32.useRef(null);
+  const drag = React33.useRef(null);
   const onDown = /* @__PURE__ */ __name((e) => {
     if (foreign) return;
     e.preventDefault();
@@ -50590,8 +50631,8 @@ function MixerStrips({
     selectTrack
   } = useMixerModel();
   const meters = useTrackMeters();
-  const [fileId, setFileId] = React32.useState(() => getActiveFileId());
-  React32.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React33.useState(() => getActiveFileId());
+  React33.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
   const { expanded, toggle } = useExpandedStrips();
   const masterExpanded = expanded.has(MASTER_EXPAND_ID);
@@ -50884,9 +50925,9 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React32.createElement(Panel),
+      content: React33.createElement(Panel),
       // the Pattern tab's button for its right side panel (#2044)
-      headerActions: tab.id === PATTERN_TAB_ID ? React32.createElement(PatternSideToggle) : void 0
+      headerActions: tab.id === PATTERN_TAB_ID ? React33.createElement(PatternSideToggle) : void 0
     });
   }
 }
@@ -50927,24 +50968,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React32.useState(opts.initial);
-  const [dragging, setDragging] = React32.useState(false);
-  const startYRef = React32.useRef(0);
-  const startValueRef = React32.useRef(opts.initial);
-  const pointerIdRef = React32.useRef(null);
-  const draggingRef = React32.useRef(false);
-  const minRef = React32.useRef(opts.min);
-  const maxRef = React32.useRef(opts.max);
-  React32.useEffect(() => {
+  const [value, setValueState] = React33.useState(opts.initial);
+  const [dragging, setDragging] = React33.useState(false);
+  const startYRef = React33.useRef(0);
+  const startValueRef = React33.useRef(opts.initial);
+  const pointerIdRef = React33.useRef(null);
+  const draggingRef = React33.useRef(false);
+  const minRef = React33.useRef(opts.min);
+  const maxRef = React33.useRef(opts.max);
+  React33.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React32.useCallback((v) => {
+  const setValue = React33.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React32.useCallback(
+  const onPointerDown = React33.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -50959,7 +51000,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React32.useCallback(
+  const endDrag = React33.useCallback(
     (e, commit3) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -50974,7 +51015,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React32.useCallback(
+  const onPointerMove = React33.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -50990,13 +51031,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React32.useCallback(
+  const onPointerUp = React33.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React32.useCallback(
+  const onPointerCancel = React33.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -51023,18 +51064,18 @@ function pickActiveTabId(tabs2, chosen) {
 }
 __name(pickActiveTabId, "pickActiveTabId");
 function BottomPanel({ hidden = false } = {}) {
-  const [tabs2, setTabs] = React32.useState(
+  const [tabs2, setTabs] = React33.useState(
     () => listBottomPanelTabs()
   );
   const { open, activeTabId: chosenTabId } = useBottomPanelState();
   const setOpen = setBottomPanelOpen;
   const setActiveTabId = setBottomPanelActiveTab;
-  const [height, setHeight] = React32.useState(readPersistedHeight);
+  const [height, setHeight] = React33.useState(readPersistedHeight);
   const activeTabId = pickActiveTabId(tabs2, chosenTabId);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     return subscribeToBottomPanelTabs(() => setTabs(listBottomPanelTabs()));
   }, []);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (activeTabId !== chosenTabId) setBottomPanelActiveTab(activeTabId);
   }, [activeTabId, chosenTabId]);
   const drag = useDragResize({
@@ -51049,12 +51090,12 @@ function BottomPanel({ hidden = false } = {}) {
   const layout = usePhoneLayout();
   const sheet = layout === "upright";
   const wholeView = layout === "sideways";
-  const [sheetRest, setSheetRest] = React32.useState("half");
+  const [sheetRest, setSheetRest] = React33.useState("half");
   const stop = !open ? "closed" : typeof sheetRest === "number" ? "free" : sheetRest;
-  const [pulled, setPulled] = React32.useState(null);
-  const [room, setRoom] = React32.useState(null);
-  const spaceRef = React32.useRef(null);
-  const measureRoom = React32.useCallback(() => {
+  const [pulled, setPulled] = React33.useState(null);
+  const [room, setRoom] = React33.useState(null);
+  const spaceRef = React33.useRef(null);
+  const measureRoom = React33.useCallback(() => {
     const parent = spaceRef.current?.parentElement;
     if (!parent) return null;
     const box = parent.getBoundingClientRect();
@@ -51065,7 +51106,7 @@ function BottomPanel({ hidden = false } = {}) {
     return next;
   }, []);
   const drawn = tabs2.length > 0 && !hidden;
-  React32.useLayoutEffect(() => {
+  React33.useLayoutEffect(() => {
     if (!(sheet || wholeView) || !drawn) return;
     measureRoom();
     const parent = spaceRef.current?.parentElement;
@@ -51077,7 +51118,7 @@ function BottomPanel({ hidden = false } = {}) {
       observer?.disconnect();
     };
   }, [sheet, wholeView, drawn, open, measureRoom]);
-  const goToRest = React32.useCallback((next) => {
+  const goToRest = React33.useCallback((next) => {
     if (next === "closed") {
       setBottomPanelOpen(false);
       return;
@@ -51085,13 +51126,13 @@ function BottomPanel({ hidden = false } = {}) {
     setSheetRest(next);
     setBottomPanelOpen(true);
   }, []);
-  const pullRef = React32.useRef(null);
-  const swallowClickRef = React32.useRef(false);
-  const restRef = React32.useRef(open ? sheetRest : "closed");
+  const pullRef = React33.useRef(null);
+  const swallowClickRef = React33.useRef(false);
+  const restRef = React33.useRef(open ? sheetRest : "closed");
   restRef.current = open ? sheetRest : "closed";
-  const endPullRef = React32.useRef(null);
-  React32.useEffect(() => () => endPullRef.current?.(), []);
-  const onStripPointerDown = React32.useCallback(
+  const endPullRef = React33.useRef(null);
+  React33.useEffect(() => () => endPullRef.current?.(), []);
+  const onStripPointerDown = React33.useCallback(
     (e) => {
       swallowClickRef.current = false;
       if (!sheet || pullRef.current) return;
@@ -51138,25 +51179,25 @@ function BottomPanel({ hidden = false } = {}) {
     },
     [sheet, measureRoom, goToRest]
   );
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const wasOpenOnTabPressRef = React32.useRef(open);
-  const tabButtonRefs = React32.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React32.useCallback(
+  const wasOpenOnTabPressRef = React33.useRef(open);
+  const tabButtonRefs = React33.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React33.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React32.useCallback((id) => {
+  const focusTab = React33.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React32.useCallback(
+  const onTabsKeyDown = React33.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -51183,8 +51224,8 @@ function BottomPanel({ hidden = false } = {}) {
     [tabs2, activeTabId, focusTab]
   );
   const keyboardUp = useKeyboardUp();
-  const [, refocused] = React32.useReducer((n) => n + 1, 0);
-  React32.useEffect(() => {
+  const [, refocused] = React33.useReducer((n) => n + 1, 0);
+  React33.useEffect(() => {
     if (!keyboardUp) return;
     document.addEventListener("focusin", refocused);
     return () => document.removeEventListener("focusin", refocused);
@@ -51490,8 +51531,8 @@ __name(typeSymbol, "typeSymbol");
 function SymbolRow() {
   const upright = usePhoneLayout() === "upright";
   const keyboardUp = useKeyboardUp();
-  const [, focusMoved] = React32.useReducer((n) => n + 1, 0);
-  React32.useEffect(() => {
+  const [, focusMoved] = React33.useReducer((n) => n + 1, 0);
+  React33.useEffect(() => {
     if (!keyboardUp) return;
     document.addEventListener("focusin", focusMoved);
     document.addEventListener("focusout", focusMoved);
@@ -52587,12 +52628,12 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
-      const current8 = onSaveFileRef.current;
-      if (!current8) return;
+      const current9 = onSaveFileRef.current;
+      if (!current9) return;
       const tab = activeTab;
       if (!tab || tab.kind !== "editor") return;
       e.preventDefault();
-      current8(tab);
+      current9(tab);
     }, "handler");
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -52834,24 +52875,24 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     }
                   }, "onTogglePausePreview"),
                   onChangePreviewSource: /* @__PURE__ */ __name((nextRef) => {
-                    const current8 = shellActionsRef.current.findTabByFileId(
+                    const current9 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (!current8) return;
-                    updateGroup(current8.groupId, (g) => ({
+                    if (!current9) return;
+                    updateGroup(current9.groupId, (g) => ({
                       ...g,
                       tabs: g.tabs.map(
-                        (t) => t.id === current8.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
+                        (t) => t.id === current9.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
                       )
                     }));
                   }, "onChangePreviewSource"),
                   onOpenPreview: /* @__PURE__ */ __name((selectedSourceRef) => {
-                    const current8 = shellActionsRef.current.findTabByFileId(
+                    const current9 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (current8) {
+                    if (current9) {
                       return;
                     }
                     const sourceRef = selectedSourceRef ?? { kind: "default" };
@@ -53764,7 +53805,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
                     if (column.length === 1) {
                       const g = groups.get(column[0]);
-                      return /* @__PURE__ */ jsx(React32__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                      return /* @__PURE__ */ jsx(React33__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
                     }
                     return /* @__PURE__ */ jsx(
                       SplitPane,
@@ -53772,7 +53813,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                         direction: "vertical",
                         children: column.map((gid) => {
                           const g = groups.get(gid);
-                          return /* @__PURE__ */ jsx(React32__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                          return /* @__PURE__ */ jsx(React33__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                         })
                       },
                       `col-${colIdx}-${column.join("+")}`
@@ -56953,10 +56994,10 @@ function getAssetsMap() {
 __name(getAssetsMap, "getAssetsMap");
 var wiredAssetsMap = null;
 function ensureAssetsObserver() {
-  const current8 = getAssetsMap();
-  if (wiredAssetsMap === current8) return;
-  current8.observe(() => notify5());
-  wiredAssetsMap = current8;
+  const current9 = getAssetsMap();
+  if (wiredAssetsMap === current9) return;
+  current9.observe(() => notify5());
+  wiredAssetsMap = current9;
 }
 __name(ensureAssetsObserver, "ensureAssetsObserver");
 function subscribeToAssets(cb) {
@@ -57450,10 +57491,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React32.useReducer((x) => x + 1, 0);
-  React32.useEffect(() => subscribeToHistory(force), []);
-  React32.useEffect(() => subscribeToRuntimeView(force), []);
-  React32.useEffect(() => {
+  const [, force] = React33.useReducer((x) => x + 1, 0);
+  React33.useEffect(() => subscribeToHistory(force), []);
+  React33.useEffect(() => subscribeToRuntimeView(force), []);
+  React33.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -57470,17 +57511,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React32.useState(null);
-  const [forkName, setForkName] = React32.useState("");
-  const [committing, setCommitting] = React32.useState(false);
-  const [commitLabel, setCommitLabel] = React32.useState("");
-  const [expanded, setExpanded] = React32.useState(null);
-  const [hovered, setHovered] = React32.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React32.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React32.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React32.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React33.useState(null);
+  const [forkName, setForkName] = React33.useState("");
+  const [committing, setCommitting] = React33.useState(false);
+  const [commitLabel, setCommitLabel] = React33.useState("");
+  const [expanded, setExpanded] = React33.useState(null);
+  const [hovered, setHovered] = React33.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React33.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React33.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React33.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -59454,13 +59495,13 @@ function silencedNamesFrom(strips, soloed) {
 __name(silencedNamesFrom, "silencedNamesFrom");
 function useSilencedTrackNames() {
   const soloed = useSoloedIds();
-  const [editor, setEditor] = React32.useState(() => getActiveEditor());
-  const [strips, setStrips] = React32.useState([]);
-  React32.useEffect(() => {
+  const [editor, setEditor] = React33.useState(() => getActiveEditor());
+  const [strips, setStrips] = React33.useState([]);
+  React33.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!editor) {
       setStrips([]);
       return;
@@ -59484,7 +59525,7 @@ function useSilencedTrackNames() {
     const sub2 = model?.onDidChangeContent?.(rederive);
     return () => sub2?.dispose?.();
   }, [editor]);
-  return React32.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
+  return React33.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
 }
 __name(useSilencedTrackNames, "useSilencedTrackNames");
 
@@ -59683,6 +59724,6 @@ function isPersistableTab(t) {
 __name(isPersistableTab, "isPersistableTab");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VELOCITY_DRAG_KEY, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getVelocityDrag, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVelocityDrag, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useVelocityDrag, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

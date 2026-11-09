@@ -37,6 +37,7 @@ const STORAGE = {
   open: 'stave:bottomPanel.open',
   activeTabId: 'stave:bottomPanel.activeTabId',
   gridMode: 'stave:visualEdit.gridMode',
+  velocityDrag: 'stave:visualEdit.velocityDrag',
 } as const
 
 export interface BootOptions {
@@ -267,4 +268,23 @@ export async function evalCode(page: Page): Promise<void> {
 export async function stopCode(page: Page): Promise<void> {
   await page.locator('.monaco-editor').first().click()
   await page.keyboard.press(`${MOD}+Period`)
+}
+
+/**
+ * TURN THE STEP GRIDS' VELOCITY DRAG ON for every test of a spec file (#2525).
+ *
+ * Velocity drags are off by default (Settings › Pattern & Timeline › Velocity drag): a gain is
+ * almost always one number in community code. A spec about the velocity gesture says so by
+ * calling this once at the top level; it seeds the setting before each page loads.
+ */
+export function velocityDragOn(t: typeof test): void {
+  t.beforeEach(async ({ page }) => {
+    await page.addInitScript((key: string) => {
+      try {
+        window.localStorage.setItem(key, '1')
+      } catch {
+        /* private mode — the grid opens with velocity off */
+      }
+    }, STORAGE.velocityDrag)
+  })
 }

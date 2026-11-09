@@ -65,6 +65,7 @@ import {
   writtenStepStarts,
 } from './writtenSteps'
 import { useGridMode } from './gridMode'
+import { useVelocityDrag } from './velocityDrag'
 import { ExactStepGrid } from './ExactStepGrid'
 import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
@@ -250,7 +251,11 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   // Asked of the CURRENT model: the writer's skips are shape (foreign `.gain`, bars,
   // parts, leaf, unspellable columns), which a gain edit does not move. Memoized on
   // the model, as `mutate` fires every pointermove of the drag it gates.
-  const gainScoped = React.useMemo(() => (model ? gainWritable(stepGridCodec, model) : false), [model])
+  //
+  // And only where the user turned velocity on (#2525: off by default — a gain is almost always
+  // one number in community code, and a wobbly click would rewrite it per column).
+  const velocityOn = useVelocityDrag()
+  const gainScoped = React.useMemo(() => (velocityOn && model ? gainWritable(stepGridCodec, model) : false), [model, velocityOn])
 
 
   // Is this a CHORD CHART rather than a drum kit (#1241)? Asked of the lane

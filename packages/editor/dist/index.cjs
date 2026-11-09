@@ -2,7 +2,7 @@
 
 var core = require('@strudel/core');
 var acorn = require('acorn');
-var React32 = require('react');
+var React33 = require('react');
 var krillParser_js = require('@strudel/mini/krill-parser.js');
 var euclid_mjs = require('@strudel/core/euclid.mjs');
 var controls_mjs = require('@strudel/core/controls.mjs');
@@ -35,7 +35,7 @@ function _interopNamespace(e) {
   return Object.freeze(n);
 }
 
-var React32__namespace = /*#__PURE__*/_interopNamespace(React32);
+var React33__namespace = /*#__PURE__*/_interopNamespace(React33);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
 var Y3__namespace = /*#__PURE__*/_interopNamespace(Y3);
@@ -3070,7 +3070,7 @@ function subscribe(changed) {
 }
 __name(subscribe, "subscribe");
 function usePhone() {
-  return React32__namespace.useSyncExternalStore(subscribe, isPhone, () => false);
+  return React33__namespace.useSyncExternalStore(subscribe, isPhone, () => false);
 }
 __name(usePhone, "usePhone");
 function phoneLayout() {
@@ -3080,7 +3080,7 @@ function phoneLayout() {
 }
 __name(phoneLayout, "phoneLayout");
 function usePhoneLayout() {
-  return React32__namespace.useSyncExternalStore(subscribe, phoneLayout, () => "none");
+  return React33__namespace.useSyncExternalStore(subscribe, phoneLayout, () => "none");
 }
 __name(usePhoneLayout, "usePhoneLayout");
 
@@ -5977,7 +5977,7 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
   const leadingWs = chain.length - chain.trimStart().length;
   let remaining = chain.trim();
   let remainingOffset = baseOffset + leadingWs;
-  let current8 = ir;
+  let current9 = ir;
   while (true) {
     const consumedSep = skipWhitespaceAndLineComments(remaining, 0);
     if (consumedSep > 0) {
@@ -5993,11 +5993,11 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
       remainingOffset + consumed
     ];
     const argsAbsoluteOffset = argsOffset >= 0 ? remainingOffset + argsOffset : remainingOffset;
-    current8 = applyMethod(current8, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
+    current9 = applyMethod(current9, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
     remainingOffset += consumed;
     remaining = rest;
   }
-  return current8;
+  return current9;
 }
 __name(applyChain, "applyChain");
 function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], bindings, numbers) {
@@ -6550,14 +6550,14 @@ __name(splitArgs, "splitArgs");
 function splitArgsWithOffsets(argsStr) {
   const args = [];
   let depth = 0;
-  let current8 = "";
+  let current9 = "";
   let currentStart = 0;
   let inString = false;
   let stringChar = "";
   const pushCurrent = /* @__PURE__ */ __name(() => {
-    if (current8.trim().length === 0) return;
-    const consumed = skipWhitespaceAndLineComments(current8, 0);
-    const value = current8.slice(consumed).trimEnd();
+    if (current9.trim().length === 0) return;
+    const consumed = skipWhitespaceAndLineComments(current9, 0);
+    const value = current9.slice(consumed).trimEnd();
     if (value.length === 0) return;
     args.push({
       value,
@@ -6567,47 +6567,47 @@ function splitArgsWithOffsets(argsStr) {
   for (let i = 0; i < argsStr.length; i++) {
     const ch = argsStr[i];
     if (inString) {
-      current8 += ch;
+      current9 += ch;
       if (ch === stringChar && argsStr[i - 1] !== "\\") inString = false;
       continue;
     }
     if (ch === "/" && argsStr[i + 1] === "/") {
-      if (current8.length === 0) currentStart = i;
+      if (current9.length === 0) currentStart = i;
       while (i < argsStr.length && argsStr[i] !== "\n") {
-        current8 += argsStr[i];
+        current9 += argsStr[i];
         i++;
       }
       if (i < argsStr.length) {
-        current8 += argsStr[i];
+        current9 += argsStr[i];
       }
       continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
       continue;
     }
     if (ch === "(" || ch === "[" || ch === "{") {
       depth++;
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
       continue;
     }
     if (ch === ")" || ch === "]" || ch === "}") {
       depth--;
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
       continue;
     }
     if (ch === "," && depth === 0) {
       pushCurrent();
-      current8 = "";
+      current9 = "";
       currentStart = i + 1;
     } else {
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
     }
   }
   pushCurrent();
@@ -14921,13 +14921,13 @@ function regionTrimEdit(chunk, control, value) {
   if (chunk.headFn !== null && MULTI_VOICE_HEADS.has(chunk.headFn)) {
     return { edit: null, refusal: "not-one-voice", value };
   }
-  const current8 = readRegion(chunk);
-  if (!current8 || !Number.isFinite(value)) {
+  const current9 = readRegion(chunk);
+  if (!current9 || !Number.isFinite(value)) {
     return { edit: null, refusal: "not-a-number", value };
   }
-  const clamped = control === "begin" ? Math.min(Math.max(0, value), current8.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current8.begin + MIN_REGION_SPAN);
+  const clamped = control === "begin" ? Math.min(Math.max(0, value), current9.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current9.begin + MIN_REGION_SPAN);
   if (!Number.isFinite(clamped)) return { edit: null, refusal: "not-a-number", value };
-  const before2 = current8[control];
+  const before2 = current9[control];
   if (formatNumber(clamped) === formatNumber(before2)) {
     return { edit: null, refusal: "no-change", value: clamped };
   }
@@ -16767,7 +16767,7 @@ function createTrackEnvelopeScheduler(deps) {
   let cycles = 0;
   const envelopes = /* @__PURE__ */ new Map();
   const refused2 = /* @__PURE__ */ new Map();
-  const current8 = /* @__PURE__ */ new Map();
+  const current9 = /* @__PURE__ */ new Map();
   let overCap = [];
   let rendering = null;
   let cancelTimer = null;
@@ -16796,8 +16796,8 @@ function createTrackEnvelopeScheduler(deps) {
       } catch {
         fp = null;
       }
-      if (wanted.includes(id) && current8.get(id) !== fp) {
-        current8.set(id, fp);
+      if (wanted.includes(id) && current9.get(id) !== fp) {
+        current9.set(id, fp);
         deps.onChange();
       }
       deps.schedule(step, 0);
@@ -16823,7 +16823,7 @@ function createTrackEnvelopeScheduler(deps) {
     const seconds = cps > 0 ? cycles / cps : Infinity;
     let spent = 0;
     for (const id of wanted) {
-      const fp = current8.get(id);
+      const fp = current9.get(id);
       if (fp == null) continue;
       const kept = envelopes.get(id)?.fingerprint === fp;
       const cost = seconds * (deps.weight?.(id) ?? 1);
@@ -16852,7 +16852,7 @@ function createTrackEnvelopeScheduler(deps) {
       for (const id of over) if (envelopes.delete(id)) deps.onChange();
       for (const id of todo) {
         if (controller.signal.aborted) break;
-        const fp = current8.get(id);
+        const fp = current9.get(id);
         if (fp == null) continue;
         rendering = id;
         deps.onChange();
@@ -16897,7 +16897,7 @@ function createTrackEnvelopeScheduler(deps) {
         kick();
         return;
       }
-      for (const id of [...current8.keys()]) if (!wanted.includes(id)) current8.delete(id);
+      for (const id of [...current9.keys()]) if (!wanted.includes(id)) current9.delete(id);
       deps.onChange();
       refingerprint();
     },
@@ -16950,7 +16950,7 @@ function createTrackEnvelopeScheduler(deps) {
         data: env.data,
         columns: env.columns,
         cycles: env.cycles,
-        stale: current8.get(trackId) !== env.fingerprint
+        stale: current9.get(trackId) !== env.fingerprint
       };
     },
     status: /* @__PURE__ */ __name(() => ({
@@ -28541,14 +28541,14 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React32__namespace.default.Children.count(children);
-  const childArray = React32__namespace.default.Children.toArray(children);
+  const count = React33__namespace.default.Children.count(children);
+  const childArray = React33__namespace.default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
-  const [sizes, setSizes] = React32.useState(defaultSizes);
-  const containerRef = React32.useRef(null);
-  const draggingRef = React32.useRef(null);
+  const [sizes, setSizes] = React33.useState(defaultSizes);
+  const containerRef = React33.useRef(null);
+  const draggingRef = React33.useRef(null);
   const isHorizontal = direction === "horizontal";
-  const handleMouseDown = React32.useCallback((dividerIndex, e) => {
+  const handleMouseDown = React33.useCallback((dividerIndex, e) => {
     e.preventDefault();
     draggingRef.current = dividerIndex;
     const startPos = isHorizontal ? e.clientX : e.clientY;
@@ -28587,7 +28587,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React32__namespace.default.useEffect(() => {
+  React33__namespace.default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -28603,7 +28603,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React32__namespace.default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React33__namespace.default.Fragment, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
@@ -29130,9 +29130,9 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners18 = /* @__PURE__ */ new Set();
+  const listeners19 = /* @__PURE__ */ new Set();
   const notify6 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners18) l();
+    for (const l of listeners19) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify6(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify6(), "onStackItemPopped");
@@ -29142,7 +29142,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners18,
+    listeners: listeners19,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -29185,10 +29185,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners18 = active.listeners;
-  listeners18.add(cb);
+  const listeners19 = active.listeners;
+  listeners19.add(cb);
   return () => {
-    listeners18.delete(cb);
+    listeners19.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -29372,10 +29372,10 @@ function subscribe2(id, cb) {
   }
   set2.add(cb);
   return () => {
-    const current8 = subscribersByFile.get(id);
-    if (!current8) return;
-    current8.delete(cb);
-    if (current8.size === 0) {
+    const current9 = subscribersByFile.get(id);
+    if (!current9) return;
+    current9.delete(cb);
+    if (current9.size === 0) {
       subscribersByFile.delete(id);
     }
   };
@@ -29598,12 +29598,12 @@ function pruneZoneOverrides(fileId, currentViz) {
   const stale = [];
   for (const [trackKey, value] of overrides.entries()) {
     const entry = value;
-    const current8 = currentViz.get(trackKey);
-    if (!current8) {
+    const current9 = currentViz.get(trackKey);
+    if (!current9) {
       stale.push(trackKey);
-    } else if (entry.vizId && entry.vizId !== current8.vizId) {
+    } else if (entry.vizId && entry.vizId !== current9.vizId) {
       stale.push(trackKey);
-    } else if (entry.contentHash && current8.contentHash && entry.contentHash !== current8.contentHash) {
+    } else if (entry.contentHash && current9.contentHash && entry.contentHash !== current9.contentHash) {
       stale.push(trackKey);
     }
   }
@@ -29767,13 +29767,13 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe11 = React32.useCallback(
+  const subscribe12 = React33.useCallback(
     (onStoreChange) => subscribe2(id, onStoreChange),
     [id]
   );
-  const getSnapshot = React32.useCallback(() => getFile(id), [id]);
-  const file = React32.useSyncExternalStore(subscribe11, getSnapshot, getSnapshot);
-  const setContent2 = React32.useCallback(
+  const getSnapshot = React33.useCallback(() => getFile(id), [id]);
+  const file = React33.useSyncExternalStore(subscribe12, getSnapshot, getSnapshot);
+  const setContent2 = React33.useCallback(
     (content) => setContent(id, content),
     [id]
   );
@@ -33341,7 +33341,7 @@ function ensureStrudelLintCodeActionProvider(monaco, languageId) {
 __name(ensureStrudelLintCodeActionProvider, "ensureStrudelLintCodeActionProvider");
 var EMPTY_META_MAP = /* @__PURE__ */ new Map();
 function useTrackMetaMap(fileId) {
-  const subscribe11 = React32.useCallback(
+  const subscribe12 = React33.useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -33349,11 +33349,11 @@ function useTrackMetaMap(fileId) {
     },
     [fileId]
   );
-  const getSnapshot = React32.useCallback(() => {
+  const getSnapshot = React33.useCallback(() => {
     if (!fileId) return EMPTY_META_MAP;
     return getTrackMetaMapSnapshot(fileId);
   }, [fileId]);
-  return React32.useSyncExternalStore(subscribe11, getSnapshot, getSnapshot);
+  return React33.useSyncExternalStore(subscribe12, getSnapshot, getSnapshot);
 }
 __name(useTrackMetaMap, "useTrackMetaMap");
 
@@ -33375,11 +33375,11 @@ __name(trackBarSegments, "trackBarSegments");
 var BAR_WIDTH_PX = 3;
 function useTrackColourBars(editor, fileId) {
   const trackMeta = useTrackMetaMap(fileId);
-  const trackMetaRef = React32.useRef(trackMeta);
+  const trackMetaRef = React33.useRef(trackMeta);
   trackMetaRef.current = trackMeta;
-  const [enabled, setEnabled] = React32.useState(getTrackColourBarsEnabled);
-  React32.useEffect(() => onTrackColourBarsChange(setEnabled), []);
-  React32.useEffect(() => {
+  const [enabled, setEnabled] = React33.useState(getTrackColourBarsEnabled);
+  React33.useEffect(() => onTrackColourBarsChange(setEnabled), []);
+  React33.useEffect(() => {
     if (!editor || !enabled) return;
     const host = editor.getDomNode?.();
     if (!host) return;
@@ -34083,10 +34083,10 @@ function subscribe3(ref, cb) {
   return () => {
     if (unsubscribed) return;
     unsubscribed = true;
-    const current8 = pinnedSubscribers.get(fileId);
-    if (!current8) return;
-    current8.delete(cb);
-    if (current8.size === 0) {
+    const current9 = pinnedSubscribers.get(fileId);
+    if (!current9) return;
+    current9.delete(cb);
+    if (current9.size === 0) {
       pinnedSubscribers.delete(fileId);
     }
   };
@@ -34865,23 +34865,23 @@ function teardown(timeoutIds, collections) {
 }
 __name(teardown, "teardown");
 function useHighlighting(editor, hapStream) {
-  const timeoutIdsRef = React32.useRef([]);
-  const hapCollectionsRef = React32.useRef(/* @__PURE__ */ new Map());
-  const hapCounterRef = React32.useRef(0);
-  const anchorsRef = React32.useRef(/* @__PURE__ */ new Map());
-  const epochRef = React32.useRef(void 0);
-  const editsRef = React32.useRef(
+  const timeoutIdsRef = React33.useRef([]);
+  const hapCollectionsRef = React33.useRef(/* @__PURE__ */ new Map());
+  const hapCounterRef = React33.useRef(0);
+  const anchorsRef = React33.useRef(/* @__PURE__ */ new Map());
+  const epochRef = React33.useRef(void 0);
+  const editsRef = React33.useRef(
     []
   );
-  const clearAnchors = React32.useCallback(() => {
+  const clearAnchors = React33.useCallback(() => {
     for (const a of anchorsRef.current.values()) a.clear();
     anchorsRef.current.clear();
   }, []);
-  const clearAll = React32.useCallback(() => {
+  const clearAll = React33.useCallback(() => {
     teardown(timeoutIdsRef.current, hapCollectionsRef.current);
     clearAnchors();
   }, [clearAnchors]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!editor || !hapStream) return;
     ensureBaseHighlightStyle();
     epochRef.current = void 0;
@@ -35240,12 +35240,12 @@ function ensureBaseBreakpointStyle() {
 }
 __name(ensureBaseBreakpointStyle, "ensureBaseBreakpointStyle");
 function useBreakpoints(editor, store, onResume) {
-  const collectionRef = React32.useRef(null);
-  const clearAll = React32.useCallback(() => {
+  const collectionRef = React33.useRef(null);
+  const clearAll = React33.useCallback(() => {
     collectionRef.current?.clear();
     collectionRef.current = null;
   }, []);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!editor || !onResume) return;
     const action = editor.addAction({
       id: "stave.debugger.resume",
@@ -35260,7 +35260,7 @@ function useBreakpoints(editor, store, onResume) {
       action.dispose();
     };
   }, [editor, onResume]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!editor || !store) return;
     ensureBaseBreakpointStyle();
     let currentSnapshot = getIRSnapshot();
@@ -35404,7 +35404,7 @@ function subscribe4(listener) {
 }
 __name(subscribe4, "subscribe");
 function useKeyboardUp() {
-  return React32__namespace.useSyncExternalStore(subscribe4, () => current2.keyboardUp, () => false);
+  return React33__namespace.useSyncExternalStore(subscribe4, () => current2.keyboardUp, () => false);
 }
 __name(useKeyboardUp, "useKeyboardUp");
 function getVisibleArea() {
@@ -36776,10 +36776,10 @@ function readWorkspaceOrder() {
 }
 __name(readWorkspaceOrder, "readWorkspaceOrder");
 function applySnapshot(files, fileMeta, order) {
-  const current8 = listWorkspaceFiles();
-  const currentIds = new Set(current8.map((f) => f.id));
+  const current9 = listWorkspaceFiles();
+  const currentIds = new Set(current9.map((f) => f.id));
   const wantIds = new Set(Object.keys(files));
-  for (const f of current8) {
+  for (const f of current9) {
     if (!wantIds.has(f.id)) deleteWorkspaceFile(f.id);
   }
   const recreatedMissing = [];
@@ -37307,31 +37307,31 @@ function EditorView({
   onCropViz
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
-  const containerRef = React32.useRef(null);
-  const [, forceViewTick] = React32.useState(0);
-  React32.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
+  const containerRef = React33.useRef(null);
+  const [, forceViewTick] = React33.useState(0);
+  React33.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
   const viewedContent = getViewedContent(fileId);
   const viewing = viewedContent !== null;
   const viewedCommit = getViewedCommit();
-  const editorRef = React32.useRef(null);
-  const monacoRef = React32.useRef(null);
-  const viewZoneHandleRef = React32.useRef(null);
-  const sliderHandleRef = React32.useRef(null);
-  const lastPayloadRef = React32.useRef(null);
-  const [hapStream, setHapStream] = React32.useState(null);
-  const [breakpointStore, setBreakpointStore] = React32.useState(null);
-  const [onResume, setOnResume] = React32.useState(null);
-  const [editorReady, setEditorReady] = React32.useState(false);
-  React32.useEffect(() => {
+  const editorRef = React33.useRef(null);
+  const monacoRef = React33.useRef(null);
+  const viewZoneHandleRef = React33.useRef(null);
+  const sliderHandleRef = React33.useRef(null);
+  const lastPayloadRef = React33.useRef(null);
+  const [hapStream, setHapStream] = React33.useState(null);
+  const [breakpointStore, setBreakpointStore] = React33.useState(null);
+  const [onResume, setOnResume] = React33.useState(null);
+  const [editorReady, setEditorReady] = React33.useState(false);
+  React33.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const monaco = monacoRef.current;
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
       { kind: "file", fileId },
@@ -37372,7 +37372,7 @@ function EditorView({
       sliderHandleRef.current = null;
     };
   }, [fileId, editorReady]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!fileId) return;
     const remount = /* @__PURE__ */ __name(() => {
       const payload = lastPayloadRef.current;
@@ -37397,12 +37397,12 @@ function EditorView({
   useHighlighting(editorRef.current, hapStream);
   useBreakpoints(editorRef.current, breakpointStore, onResume ?? void 0);
   useTrackColourBars(editorRef.current, fileId);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     return () => {
       if (editorRef.current) unregisterEditor(fileId, editorRef.current);
     };
   }, [fileId]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     if (!editor || !monaco) return;
@@ -37414,9 +37414,9 @@ function EditorView({
       clearEvalErrors(monaco, model);
     }
   }, [error]);
-  const onPlayRef = React32.useRef(onPlay);
+  const onPlayRef = React33.useRef(onPlay);
   onPlayRef.current = onPlay;
-  const onStopRef = React32.useRef(onStop);
+  const onStopRef = React33.useRef(onStop);
   onStopRef.current = onStop;
   const handleMonacoBeforeMount = /* @__PURE__ */ __name((monaco) => {
     if (monaco.editor?.defineTheme) defineStrudelMonacoTheme(monaco);
@@ -37619,7 +37619,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React32__namespace.default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React33__namespace.default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -37766,34 +37766,34 @@ function PreviewView({
   paused = false
 }) {
   const { file } = useWorkspaceFile(fileId);
-  const containerRef = React32.useRef(null);
-  const [audioPayload, setAudioPayload] = React32.useState(null);
-  const [reloadTick, setReloadTick] = React32.useState(0);
-  const [, forceSourcesRerender] = React32.useState(0);
-  const catchUpNeededRef = React32.useRef(false);
-  const [liveOn, setLiveOn] = React32.useState(() => getVizLive(fileId));
-  React32.useEffect(() => {
+  const containerRef = React33.useRef(null);
+  const [audioPayload, setAudioPayload] = React33.useState(null);
+  const [reloadTick, setReloadTick] = React33.useState(0);
+  const [, forceSourcesRerender] = React33.useState(0);
+  const catchUpNeededRef = React33.useRef(false);
+  const [liveOn, setLiveOn] = React33.useState(() => getVizLive(fileId));
+  React33.useEffect(() => {
     setLiveOn(getVizLive(fileId));
     return onVizLiveChange(fileId, setLiveOn);
   }, [fileId]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const unsubscribe = workspaceAudioBus.subscribe(sourceRef, (payload) => {
       setAudioPayload(payload);
     });
     return unsubscribe;
   }, [sourceRef]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const unsubscribe = workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
     return unsubscribe;
   }, []);
   const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!file) return;
     if (provider.reload === "manual") return;
     if (!liveOn) {
@@ -37823,8 +37823,8 @@ function PreviewView({
     liveOn,
     file
   ]);
-  const prevEffectivelyHiddenRef = React32.useRef(effectivelyHidden);
-  React32.useEffect(() => {
+  const prevEffectivelyHiddenRef = React33.useRef(effectivelyHidden);
+  React33.useEffect(() => {
     const wasHidden = prevEffectivelyHiddenRef.current;
     prevEffectivelyHiddenRef.current = effectivelyHidden;
     if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
@@ -37832,8 +37832,8 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
-  const prevLiveOnRef = React32.useRef(liveOn);
-  React32.useEffect(() => {
+  const prevLiveOnRef = React33.useRef(liveOn);
+  React33.useEffect(() => {
     const wasOff = !prevLiveOnRef.current;
     prevLiveOnRef.current = liveOn;
     if (wasOff && liveOn && catchUpNeededRef.current) {
@@ -37841,7 +37841,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React32__namespace.default.useMemo(() => {
+  const providerNode = React33__namespace.default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -38020,9 +38020,9 @@ var CHORD_MAP = {
   w: "workspace.openPreviewInWindow"
 };
 function useKeyboardCommands(opts) {
-  const optsRef = React32.useRef(opts);
+  const optsRef = React33.useRef(opts);
   optsRef.current = opts;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     let chordPending = false;
     let chordTimer = null;
     function clearChord() {
@@ -38134,25 +38134,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React32__namespace.useMemo(
+  const changedIds = React33__namespace.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit3.files),
     [commit3, pickerFileIds]
   );
-  const [mode, setMode2] = React32__namespace.useState(defaultMode);
-  React32__namespace.useEffect(() => {
+  const [mode, setMode2] = React33__namespace.useState(defaultMode);
+  React33__namespace.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React32__namespace.useState(
+  const [fileId, setFileId] = React33__namespace.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React32__namespace.useRef(null);
-  const handleMount = React32__namespace.useCallback(
+  const diffEditorRef = React33__namespace.useRef(null);
+  const handleMount = React33__namespace.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -38162,7 +38162,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -38287,18 +38287,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React32__namespace.useMemo(() => snapshotAt(history2, commit3.id), [history2, commit3]);
-  const fileIds = React32__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React32__namespace.useState(
+  const snapshot = React33__namespace.useMemo(() => snapshotAt(history2, commit3.id), [history2, commit3]);
+  const fileIds = React33__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React33__namespace.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React32__namespace.useCallback(
+  const handleMount = React33__namespace.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -39240,7 +39240,7 @@ function subscribeToBottomPanelState(cb) {
 }
 __name(subscribeToBottomPanelState, "subscribeToBottomPanelState");
 function useBottomPanelState() {
-  return React32__namespace.useSyncExternalStore(subscribeToBottomPanelState, getBottomPanelState, () => SERVER_STATE);
+  return React33__namespace.useSyncExternalStore(subscribeToBottomPanelState, getBottomPanelState, () => SERVER_STATE);
 }
 __name(useBottomPanelState, "useBottomPanelState");
 
@@ -39267,7 +39267,7 @@ function useTouchBar() {
 }
 __name(useTouchBar, "useTouchBar");
 function EmptyTimelineStub() {
-  return React32__namespace.createElement(
+  return React33__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -39285,7 +39285,7 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React32__namespace.createElement(EmptyTimelineStub)
+  content: React33__namespace.createElement(EmptyTimelineStub)
 });
 
 // src/workspace/codeUndo.ts
@@ -39309,14 +39309,14 @@ function codeUndoForFocus(el, which) {
 }
 __name(codeUndoForFocus, "codeUndoForFocus");
 function useActiveWriter() {
-  const [editor, setEditor] = React32__namespace.useState(() => getActiveEditor());
-  const editorRef = React32__namespace.useRef(null);
-  const writerRef = React32__namespace.useRef(null);
-  React32__namespace.useEffect(() => {
+  const [editor, setEditor] = React33__namespace.useState(() => getActiveEditor());
+  const editorRef = React33__namespace.useRef(null);
+  const writerRef = React33__namespace.useRef(null);
+  React33__namespace.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     editorRef.current = editor;
     writerRef.current = editor ? createWriter(editor) : null;
   }, [editor]);
@@ -39327,10 +39327,10 @@ __name(useActiveWriter, "useActiveWriter");
 // src/visualEdit/panels/useActiveChunk.ts
 function useActiveChunk() {
   const { editor, editorRef, writerRef } = useActiveWriter();
-  const [chunk, setChunk] = React32__namespace.useState(null);
-  const anchorRef = React32__namespace.useRef(null);
+  const [chunk, setChunk] = React33__namespace.useState(null);
+  const anchorRef = React33__namespace.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -39357,7 +39357,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React32__namespace.useCallback(
+  const applyEdit = React33__namespace.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writerRef.current;
@@ -39372,8 +39372,8 @@ function useActiveChunk() {
     },
     [editorRef, writerRef]
   );
-  const beginGesture = React32__namespace.useCallback(() => openGesture(writerRef.current), [writerRef]);
-  const endGesture = React32__namespace.useCallback(() => closeGesture(writerRef.current), [writerRef]);
+  const beginGesture = React33__namespace.useCallback(() => openGesture(writerRef.current), [writerRef]);
+  const endGesture = React33__namespace.useCallback(() => closeGesture(writerRef.current), [writerRef]);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -39398,7 +39398,7 @@ function subscribe5(listener) {
 }
 __name(subscribe5, "subscribe");
 function usePatternSideShown() {
-  return React32__namespace.useSyncExternalStore(subscribe5, () => current5, () => DEFAULT_SHOWN);
+  return React33__namespace.useSyncExternalStore(subscribe5, () => current5, () => DEFAULT_SHOWN);
 }
 __name(usePatternSideShown, "usePatternSideShown");
 function setPatternSideShown(shown) {
@@ -39451,11 +39451,11 @@ function reducedMotion() {
 }
 __name(reducedMotion, "reducedMotion");
 function PatternSideDrawer({ children }) {
-  const [open, setOpen] = React32__namespace.useState(false);
-  const [built, setBuilt] = React32__namespace.useState(false);
-  const railRef = React32__namespace.useRef(null);
-  const closeRef = React32__namespace.useRef(null);
-  const moved = React32__namespace.useRef(false);
+  const [open, setOpen] = React33__namespace.useState(false);
+  const [built, setBuilt] = React33__namespace.useState(false);
+  const railRef = React33__namespace.useRef(null);
+  const closeRef = React33__namespace.useRef(null);
+  const moved = React33__namespace.useRef(false);
   const slide = reducedMotion() ? 0 : SLIDE_MS;
   const show = /* @__PURE__ */ __name(() => {
     moved.current = true;
@@ -39466,11 +39466,11 @@ function PatternSideDrawer({ children }) {
     moved.current = true;
     setOpen(false);
   }, "hide");
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!moved.current) return;
     (open ? closeRef : railRef).current?.focus({ preventScroll: true });
   }, [open]);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!open) return;
     const onKey = /* @__PURE__ */ __name((e) => {
       if (e.key === "Escape") hide();
@@ -39633,7 +39633,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React32__namespace.createElement(
+  return React33__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -39652,12 +39652,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React32__namespace.createElement("span", {
+    icon ? React33__namespace.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React32__namespace.createElement("span", null, hint)
+    React33__namespace.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -39690,26 +39690,26 @@ function stepWriteEdits(fresh, from, edit) {
 __name(stepWriteEdits, "stepWriteEdits");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React32__namespace.useState(null);
-  const [read5, setRead] = React32__namespace.useState(null);
-  const modelRef = React32__namespace.useRef(null);
-  React32__namespace.useEffect(() => {
+  const [model, setModel] = React33__namespace.useState(null);
+  const [read5, setRead] = React33__namespace.useState(null);
+  const modelRef = React33__namespace.useRef(null);
+  React33__namespace.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React32__namespace.useRef(opts);
+  const optsRef = React33__namespace.useRef(opts);
   optsRef.current = opts;
   const viewScale = opts.viewScale ?? UNREFINED;
-  const modelScaleRef = React32__namespace.useRef(UNREFINED);
-  const ownEchoRef = React32__namespace.useRef(null);
-  const keepRef = React32__namespace.useRef(null);
-  const patternKeyRef = React32__namespace.useRef(null);
-  const patternKey = React32__namespace.useMemo(() => {
+  const modelScaleRef = React33__namespace.useRef(UNREFINED);
+  const ownEchoRef = React33__namespace.useRef(null);
+  const keepRef = React33__namespace.useRef(null);
+  const patternKeyRef = React33__namespace.useRef(null);
+  const patternKey = React33__namespace.useMemo(() => {
     if (!chunk) return patternKeyRef.current = null;
     const key3 = keyOf(chunk.exprRange[0], chunk.miniString);
     if (key3 !== ownEchoRef.current) patternKeyRef.current = key3;
     return patternKeyRef.current;
   }, [chunk]);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -39739,7 +39739,7 @@ function useGridModel(opts) {
     modelRef.current = kept;
     setModel(kept);
   }, [chunk, viewScale]);
-  const writeModel = React32__namespace.useCallback(
+  const writeModel = React33__namespace.useCallback(
     (next) => {
       if (modelRef.current?.lookOnly) return;
       const o = optsRef.current;
@@ -39756,7 +39756,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  const mutate = React32__namespace.useCallback(
+  const mutate = React33__namespace.useCallback(
     (fn) => {
       const prev = modelRef.current;
       if (prev == null) return;
@@ -39766,8 +39766,8 @@ function useGridModel(opts) {
     },
     [writeModel]
   );
-  const settle2 = React32__namespace.useCallback((next) => writeModel(next), [writeModel]);
-  const writeMini = React32__namespace.useCallback(
+  const settle2 = React33__namespace.useCallback((next) => writeModel(next), [writeModel]);
+  const writeMini = React33__namespace.useCallback(
     (mini) => {
       if (modelRef.current?.lookOnly) return;
       applyEdit((fresh, wb) => {
@@ -39776,7 +39776,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  const writeStep = React32__namespace.useCallback(
+  const writeStep = React33__namespace.useCallback(
     (from, edit, keep) => {
       if (modelRef.current?.lookOnly) return false;
       let wrote = false;
@@ -39850,9 +39850,9 @@ function stepToCycle(start, steps, bars, barSteps) {
 }
 __name(stepToCycle, "stepToCycle");
 function usePlayingStep(steps, bars, cols, barSteps) {
-  const [step, setStep] = React32__namespace.useState(null);
+  const [step, setStep] = React33__namespace.useState(null);
   const layoutKey = barSteps?.join(",") ?? "";
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     let raf = 0;
     const counts = layoutKey ? layoutKey.split(",").map(Number) : void 0;
     const tick = /* @__PURE__ */ __name(() => {
@@ -40194,7 +40194,7 @@ function fitLabels(boxes) {
 }
 __name(fitLabels, "fitLabels");
 function useRulerFit(rulerRef, labelAttr) {
-  const fit = React32__namespace.useCallback(() => {
+  const fit = React33__namespace.useCallback(() => {
     const root = rulerRef.current;
     if (!root) return;
     const els = [...root.querySelectorAll(`[${labelAttr}]`)];
@@ -40211,10 +40211,10 @@ function useRulerFit(rulerRef, labelAttr) {
 }
 __name(useRulerFit, "useRulerFit");
 function useLayoutFollow(ref, run) {
-  const runRef = React32__namespace.useRef(run);
+  const runRef = React33__namespace.useRef(run);
   runRef.current = run;
-  const observed = React32__namespace.useRef(null);
-  React32__namespace.useLayoutEffect(() => {
+  const observed = React33__namespace.useRef(null);
+  React33__namespace.useLayoutEffect(() => {
     runRef.current();
     const el = ref.current;
     if (observed.current?.el === el) return;
@@ -40225,7 +40225,7 @@ function useLayoutFollow(ref, run) {
     ro.observe(el);
     observed.current = { el, ro };
   });
-  React32__namespace.useEffect(() => () => observed.current?.ro.disconnect(), []);
+  React33__namespace.useEffect(() => () => observed.current?.ro.disconnect(), []);
 }
 __name(useLayoutFollow, "useLayoutFollow");
 
@@ -40641,11 +40641,11 @@ __name(drawnSteps, "drawnSteps");
 var ZOOM_LEVELS = [1, 1.5, 2, 3, 4, 6, 8, 12, 16];
 var CHROME_PX = 16 + 16 + 28 + 104;
 function useGridZoom(scrollRef, enabled, mounted2, trackRef) {
-  const [index, setIndex] = React32__namespace.useState(0);
-  const [avail, setAvail] = React32__namespace.useState(null);
-  const indexRef = React32__namespace.useRef(index);
+  const [index, setIndex] = React33__namespace.useState(0);
+  const [avail, setAvail] = React33__namespace.useState(null);
+  const indexRef = React33__namespace.useRef(index);
   indexRef.current = index;
-  React32__namespace.useLayoutEffect(() => {
+  React33__namespace.useLayoutEffect(() => {
     const el = trackRef?.current ?? scrollRef.current;
     if (!el || !enabled) return;
     const measure = /* @__PURE__ */ __name(() => {
@@ -40657,7 +40657,7 @@ function useGridZoom(scrollRef, enabled, mounted2, trackRef) {
     ro.observe(el);
     return () => ro.disconnect();
   }, [scrollRef, trackRef, enabled, mounted2]);
-  const go = React32__namespace.useCallback(
+  const go = React33__namespace.useCallback(
     (next, x) => {
       const el = scrollRef.current;
       const from = ZOOM_LEVELS[indexRef.current];
@@ -40672,7 +40672,7 @@ function useGridZoom(scrollRef, enabled, mounted2, trackRef) {
     },
     [scrollRef]
   );
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     const el = scrollRef.current;
     if (!el || !enabled) return;
     const onWheel = /* @__PURE__ */ __name((e) => {
@@ -40733,9 +40733,9 @@ function perText(fn, keep = 16) {
 __name(perText, "perText");
 var DEFER_MS = 250;
 function useDeferredPerText(text, f, delayMs = DEFER_MS) {
-  const [last, setLast] = React32__namespace.useState(null);
+  const [last, setLast] = React33__namespace.useState(null);
   const kept = text === null ? void 0 : f.cached(text);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (text === null || kept !== void 0) return;
     const id = setTimeout(() => setLast({ text, value: f(text) }), delayMs);
     return () => clearTimeout(id);
@@ -40954,12 +40954,12 @@ function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
 __name(jumpCursorToTrack, "jumpCursorToTrack");
 function useMixerModel() {
   const { editor, editorRef, writerRef: writebackRef } = useActiveWriter();
-  const [derived, setDerived] = React32__namespace.useState(EMPTY_DERIVED);
-  const lastJumpRef = React32__namespace.useRef(null);
-  React32__namespace.useEffect(() => {
+  const [derived, setDerived] = React33__namespace.useState(EMPTY_DERIVED);
+  const lastJumpRef = React33__namespace.useRef(null);
+  React33__namespace.useEffect(() => {
     lastJumpRef.current = null;
   }, [editor]);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!editor) {
       setDerived(EMPTY_DERIVED);
       return;
@@ -40986,7 +40986,7 @@ function useMixerModel() {
     const sub2 = model?.onDidChangeContent?.(rederive);
     return () => sub2?.dispose?.();
   }, [editor]);
-  const applyToStrip = React32__namespace.useCallback(
+  const applyToStrip = React33__namespace.useCallback(
     (id, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -41004,7 +41004,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToStripAt = React32__namespace.useCallback(
+  const applyToStripAt = React33__namespace.useCallback(
     (anchor, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -41019,7 +41019,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToMaster = React32__namespace.useCallback(
+  const applyToMaster = React33__namespace.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -41030,7 +41030,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToMasterChunk = React32__namespace.useCallback(
+  const applyToMasterChunk = React33__namespace.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -41054,12 +41054,12 @@ function useMixerModel() {
     },
     []
   );
-  const beginGesture = React32__namespace.useCallback(() => openGesture(writebackRef.current), [writebackRef]);
-  const endGesture = React32__namespace.useCallback(() => closeGesture(writebackRef.current), [writebackRef]);
-  const [selectedId, setSelectedId] = React32__namespace.useState(null);
-  const stripsRef = React32__namespace.useRef(EMPTY_DERIVED.strips);
+  const beginGesture = React33__namespace.useCallback(() => openGesture(writebackRef.current), [writebackRef]);
+  const endGesture = React33__namespace.useCallback(() => closeGesture(writebackRef.current), [writebackRef]);
+  const [selectedId, setSelectedId] = React33__namespace.useState(null);
+  const stripsRef = React33__namespace.useRef(EMPTY_DERIVED.strips);
   stripsRef.current = derived.strips;
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!editor) {
       setSelectedId(null);
       return;
@@ -41088,7 +41088,7 @@ function useMixerModel() {
     const sub2 = editor.onDidChangeCursorPosition?.(recompute);
     return () => sub2?.dispose?.();
   }, [editor, derived.strips]);
-  const selectTrack = React32__namespace.useCallback((id) => {
+  const selectTrack = React33__namespace.useCallback((id) => {
     const ed = editorRef.current;
     if (!ed) return;
     const model = ed.getModel?.();
@@ -41121,8 +41121,8 @@ function StripColorPopover({
   onReset,
   onClose
 }) {
-  const ref = React32__namespace.useRef(null);
-  React32__namespace.useEffect(() => {
+  const ref = React33__namespace.useRef(null);
+  React33__namespace.useEffect(() => {
     const onDown = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) onClose();
     }, "onDown");
@@ -41268,12 +41268,12 @@ __name(StripColorPopover, "StripColorPopover");
 function PatternTrackChip() {
   const { chunk } = useActiveChunk();
   const { strips, applyToStripAt } = useMixerModel();
-  const [fileId, setFileId] = React32__namespace.useState(() => getActiveFileId());
-  React32__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React33__namespace.useState(() => getActiveFileId());
+  React33__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
-  const [colorAnchor, setColorAnchor] = React32__namespace.useState(null);
-  const [renaming, setRenaming] = React32__namespace.useState(false);
-  const settledRef = React32__namespace.useRef(false);
+  const [colorAnchor, setColorAnchor] = React33__namespace.useState(null);
+  const [renaming, setRenaming] = React33__namespace.useState(false);
+  const settledRef = React33__namespace.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {
     settledRef.current = false;
     setRenaming(true);
@@ -41434,20 +41434,20 @@ function gridInView(scrollLeft, clientWidth, scrollWidth) {
 }
 __name(gridInView, "gridInView");
 function useRulerPan(scrollRef, enabled) {
-  const [inView, setInView] = React32__namespace.useState(ALL_IN_VIEW);
-  const [viewWidth, setViewWidth] = React32__namespace.useState(0);
-  const [scroller, setScroller] = React32__namespace.useState(null);
-  const read5 = React32__namespace.useCallback(() => {
+  const [inView, setInView] = React33__namespace.useState(ALL_IN_VIEW);
+  const [viewWidth, setViewWidth] = React33__namespace.useState(0);
+  const [scroller, setScroller] = React33__namespace.useState(null);
+  const read5 = React33__namespace.useCallback(() => {
     const sc = scrollRef.current;
     const next = enabled && sc ? gridInView(sc.scrollLeft, sc.clientWidth, sc.scrollWidth) : ALL_IN_VIEW;
     setInView((prev) => prev.start === next.start && prev.end === next.end && prev.more === next.more ? prev : next);
     setViewWidth(enabled && sc ? sc.clientWidth : 0);
   }, [scrollRef, enabled]);
-  React32__namespace.useLayoutEffect(() => {
+  React33__namespace.useLayoutEffect(() => {
     if (scrollRef.current !== scroller) setScroller(scrollRef.current);
     read5();
   });
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!enabled || !scroller) return;
     scroller.addEventListener("scroll", read5, { passive: true });
     window.addEventListener("resize", read5);
@@ -41459,7 +41459,7 @@ function useRulerPan(scrollRef, enabled) {
       observer?.disconnect();
     };
   }, [enabled, scroller, read5]);
-  const onPointerDown = React32__namespace.useCallback(
+  const onPointerDown = React33__namespace.useCallback(
     (e) => {
       const sc = scrollRef.current;
       if (!sc) return;
@@ -41546,7 +41546,7 @@ function lineColor(depth) {
 }
 __name(lineColor, "lineColor");
 function TreeStepGrid({ grid, reason, notice = null }) {
-  const scrollRef = React32__namespace.useRef(null);
+  const scrollRef = React33__namespace.useRef(null);
   const phone = usePhoneGrid().phone;
   const zoom = useGridZoom(scrollRef, !phone, true);
   const bars = grid.bars;
@@ -41558,19 +41558,19 @@ function TreeStepGrid({ grid, reason, notice = null }) {
     return b * (barPx + BAR_GAP) + (t - b) * barPx;
   }, "x");
   const trackPx = bars * barPx + (bars - 1) * BAR_GAP;
-  const drawings = React32__namespace.useMemo(
+  const drawings = React33__namespace.useMemo(
     () => grid.rows.map((r) => r.bars ? drawTreeRow(r.bars, barPx, openPx) : null),
     [grid, barPx, openPx]
   );
   const rulerRow = grid.rows.find((r) => r.bars);
-  const ruler = React32__namespace.useMemo(
+  const ruler = React33__namespace.useMemo(
     () => rulerRow?.bars ? treeRuler(rulerRow.bars, barPx, openPx) : Array.from({ length: bars }, (_, b) => ({ at: b, label: String(b + 1) })),
     [rulerRow, barPx, openPx, bars]
   );
-  const headRef = React32__namespace.useRef(null);
-  const xRef = React32__namespace.useRef(x);
+  const headRef = React33__namespace.useRef(null);
+  const xRef = React33__namespace.useRef(x);
   xRef.current = x;
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const el = headRef.current;
@@ -41844,7 +41844,7 @@ function lineColor2(depth) {
 }
 __name(lineColor2, "lineColor");
 function TreeRollGrid({ roll, reason }) {
-  const scrollRef = React32__namespace.useRef(null);
+  const scrollRef = React33__namespace.useRef(null);
   const phone = usePhoneGrid().phone;
   const zoom = useGridZoom(scrollRef, !phone, true);
   const { bars } = roll;
@@ -41856,22 +41856,22 @@ function TreeRollGrid({ roll, reason }) {
     return b * (barPx + BAR_GAP2) + (t - b) * barPx;
   }, "x");
   const trackPx = bars * barPx + (bars - 1) * BAR_GAP2;
-  const rows = React32__namespace.useMemo(() => {
+  const rows = React33__namespace.useMemo(() => {
     const ms = roll.notes.map((n) => n.midi);
     const lo = Math.min(...ms);
     const hi = Math.max(...ms);
     return Array.from({ length: hi - lo + 1 }, (_, i) => hi - i);
   }, [roll]);
   const rowOf2 = /* @__PURE__ */ __name((midi) => rows[0] - midi, "rowOf");
-  const drawing = React32__namespace.useMemo(() => roll.lines ? drawTreeRow(roll.lines, barPx, openPx) : null, [roll, barPx, openPx]);
-  const ruler = React32__namespace.useMemo(
+  const drawing = React33__namespace.useMemo(() => roll.lines ? drawTreeRow(roll.lines, barPx, openPx) : null, [roll, barPx, openPx]);
+  const ruler = React33__namespace.useMemo(
     () => roll.lines ? treeRuler(roll.lines, barPx, openPx) : Array.from({ length: bars }, (_, b) => ({ at: b, label: String(b + 1) })),
     [roll, barPx, openPx, bars]
   );
-  const headRef = React32__namespace.useRef(null);
-  const xRef = React32__namespace.useRef(x);
+  const headRef = React33__namespace.useRef(null);
+  const xRef = React33__namespace.useRef(x);
   xRef.current = x;
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const el = headRef.current;
@@ -42029,9 +42029,9 @@ function useExactPlayhead(box, line, layout, column) {
   const steps = layout?.steps ?? 0;
   const bars = layout?.bars ?? 1;
   const layoutKey = layout?.barSteps?.join(",") ?? "";
-  const columnRef = React32__namespace.useRef(column);
+  const columnRef = React33__namespace.useRef(column);
   columnRef.current = column;
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (steps <= 0) return;
     const counts = layoutKey ? layoutKey.split(",").map(Number) : void 0;
     let raf = 0;
@@ -42096,7 +42096,7 @@ function subscribe6(listener) {
 }
 __name(subscribe6, "subscribe");
 function useNoteColorMode() {
-  const mode = React32__namespace.useSyncExternalStore(subscribe6, () => current6, () => DEFAULT_MODE);
+  const mode = React33__namespace.useSyncExternalStore(subscribe6, () => current6, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -42113,20 +42113,20 @@ function subscribeNoteColorMode(listener) {
 }
 __name(subscribeNoteColorMode, "subscribeNoteColorMode");
 function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
-  const slotStateRef = React32__namespace.useRef(slotState2);
+  const slotStateRef = React33__namespace.useRef(slotState2);
   slotStateRef.current = slotState2;
-  const onScaleToRef = React32__namespace.useRef(onScaleTo);
+  const onScaleToRef = React33__namespace.useRef(onScaleTo);
   onScaleToRef.current = onScaleTo;
-  const effectRef = React32__namespace.useRef(effect);
+  const effectRef = React33__namespace.useRef(effect);
   effectRef.current = effect;
-  const stableSlotState = React32__namespace.useCallback((t) => slotStateRef.current(t), []);
-  const stableScaleTo = React32__namespace.useCallback((t) => onScaleToRef.current(t), []);
+  const stableSlotState = React33__namespace.useCallback((t) => slotStateRef.current(t), []);
+  const stableScaleTo = React33__namespace.useCallback((t) => onScaleToRef.current(t), []);
   const hasEffect = effect !== void 0;
-  const stableEffect = React32__namespace.useCallback(
+  const stableEffect = React33__namespace.useCallback(
     (t) => effectRef.current?.(t) ?? NO_RESOLUTION_EFFECT,
     []
   );
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!onResolution) return;
     onResolution(
       steps == null ? null : {
@@ -42137,20 +42137,20 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
       }
     );
   }, [steps, onResolution, stableSlotState, stableScaleTo, hasEffect, stableEffect]);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     return () => onResolution?.(null);
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
 function useViewProver(mini, parse7) {
-  const cacheRef = React32__namespace.useRef({
+  const cacheRef = React33__namespace.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React32__namespace.useRef(parse7);
+  const parseRef = React33__namespace.useRef(parse7);
   parseRef.current = parse7;
   const key3 = mini ?? null;
-  return React32__namespace.useCallback(
+  return React33__namespace.useCallback(
     (scale2) => {
       if (key3 == null) return false;
       const c = cacheRef.current;
@@ -42215,9 +42215,9 @@ function ResolutionControl({
   onScaleTo,
   effect
 }) {
-  const [open, setOpen] = React32__namespace.useState(false);
-  const rootRef = React32__namespace.useRef(null);
-  React32__namespace.useEffect(() => {
+  const [open, setOpen] = React33__namespace.useState(false);
+  const rootRef = React33__namespace.useRef(null);
+  React33__namespace.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       if (!rootRef.current?.contains(e.target)) setOpen(false);
@@ -42413,13 +42413,13 @@ function setColumnGain(model, stepIndex, gain) {
 __name(setColumnGain, "setColumnGain");
 var CLICK_SLOP_PX = 4;
 function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
-  const selfRef = React32__namespace.useRef(null);
-  const [frame, setFrame] = React32__namespace.useState(null);
-  const [added, setAdded] = React32__namespace.useState(0);
-  const [engaged, setEngaged] = React32__namespace.useState(false);
-  const dragRef = React32__namespace.useRef(null);
-  const swallowClick = React32__namespace.useRef(false);
-  const measure = React32__namespace.useCallback(() => {
+  const selfRef = React33__namespace.useRef(null);
+  const [frame, setFrame] = React33__namespace.useState(null);
+  const [added, setAdded] = React33__namespace.useState(0);
+  const [engaged, setEngaged] = React33__namespace.useState(false);
+  const dragRef = React33__namespace.useRef(null);
+  const swallowClick = React33__namespace.useRef(false);
+  const measure = React33__namespace.useCallback(() => {
     const grid = gridRef.current;
     const parent = selfRef.current?.offsetParent;
     if (!grid || !parent || cols < 1) return;
@@ -42442,8 +42442,8 @@ function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
       (f) => f && f.left === next.left && f.top === next.top && f.height === next.height && f.pitch === next.pitch && f.maxRight === next.maxRight ? f : next
     );
   }, [gridRef, cellAttr, cols]);
-  React32__namespace.useLayoutEffect(measure);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useLayoutEffect(measure);
+  React33__namespace.useEffect(() => {
     const grid = gridRef.current;
     if (!grid || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => measure());
@@ -42599,7 +42599,7 @@ function subscribe7(listener) {
 }
 __name(subscribe7, "subscribe");
 function useGridMode() {
-  return React32__namespace.useSyncExternalStore(subscribe7, () => current7, () => DEFAULT_MODE2);
+  return React33__namespace.useSyncExternalStore(subscribe7, () => current7, () => DEFAULT_MODE2);
 }
 __name(useGridMode, "useGridMode");
 function getGridMode() {
@@ -42616,6 +42616,43 @@ function setGridMode(mode) {
   listeners14.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
+var VELOCITY_DRAG_KEY = "stave:visualEdit.velocityDrag";
+var DEFAULT_ON = false;
+function readStored4() {
+  if (typeof window === "undefined") return DEFAULT_ON;
+  try {
+    const v = window.localStorage.getItem(VELOCITY_DRAG_KEY);
+    return v === "1" ? true : v === "0" ? false : DEFAULT_ON;
+  } catch {
+    return DEFAULT_ON;
+  }
+}
+__name(readStored4, "readStored");
+var current8 = readStored4();
+var listeners15 = /* @__PURE__ */ new Set();
+function subscribe8(listener) {
+  listeners15.add(listener);
+  return () => listeners15.delete(listener);
+}
+__name(subscribe8, "subscribe");
+function useVelocityDrag() {
+  return React33__namespace.useSyncExternalStore(subscribe8, () => current8, () => DEFAULT_ON);
+}
+__name(useVelocityDrag, "useVelocityDrag");
+function getVelocityDrag() {
+  return current8;
+}
+__name(getVelocityDrag, "getVelocityDrag");
+function setVelocityDrag(on) {
+  if (on === current8) return;
+  current8 = on;
+  try {
+    window.localStorage.setItem(VELOCITY_DRAG_KEY, on ? "1" : "0");
+  } catch {
+  }
+  listeners15.forEach((l) => l());
+}
+__name(setVelocityDrag, "setVelocityDrag");
 
 // src/visualEdit/panels/exactGrid.ts
 var MAX_DIVISION = 4096;
@@ -43156,9 +43193,9 @@ function usePatternLength(chunk, model, parse7, writeMini) {
   const bars = model?.bars ?? 1;
   const gain = chunk ? readChunkGain(chunk) : null;
   const velocity = gain?.mini != null;
-  const parseRef = React32__namespace.useRef(parse7);
+  const parseRef = React33__namespace.useRef(parse7);
   parseRef.current = parse7;
-  const cache3 = React32__namespace.useRef(null);
+  const cache3 = React33__namespace.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null || gain === null) return null;
     const key3 = `${bars}|${velocity}|${mini}`;
@@ -43258,26 +43295,29 @@ function ExactStepGrid({ notice = null }) {
   const mini = chunk?.miniString ?? null;
   const eligible = !!chunk && mini !== null && opensStepGrid(chunk);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const [kept, setKept] = React32__namespace.useState([]);
-  const ownWrite = React32__namespace.useRef(null);
-  const lastText = React32__namespace.useRef({ stmt: stmtId, mini });
-  React32__namespace.useEffect(() => {
+  const [kept, setKept] = React33__namespace.useState([]);
+  const ownWrite = React33__namespace.useRef(null);
+  const lastText = React33__namespace.useRef({ stmt: stmtId, mini });
+  React33__namespace.useEffect(() => {
     const was = lastText.current;
     lastText.current = { stmt: stmtId, mini };
     if (was.stmt !== stmtId || was.mini !== mini && ownWrite.current !== mini) setKept([]);
   }, [stmtId, mini]);
-  const probed = React32__namespace.useMemo(() => eligible ? probeTrees(mini) : null, [eligible, mini]);
-  const grid = React32__namespace.useMemo(() => probed ? exactGridFrom(probed, kept) : null, [probed, kept]);
+  const probed = React33__namespace.useMemo(() => eligible ? probeTrees(mini) : null, [eligible, mini]);
+  const grid = React33__namespace.useMemo(() => probed ? exactGridFrom(probed, kept) : null, [probed, kept]);
   const ok = grid && grid.ok && !playsNumbers(grid.trees) ? grid : null;
   const bars = ok?.bars ?? 1;
-  const gain = React32__namespace.useMemo(() => chunk ? readChunkGain(chunk) : null, [chunk]);
-  const gainRef = React32__namespace.useRef(gain);
+  const gain = React33__namespace.useMemo(() => chunk ? readChunkGain(chunk) : null, [chunk]);
+  const gainRef = React33__namespace.useRef(gain);
   gainRef.current = gain;
-  const gridRef_ = React32__namespace.useRef(ok);
+  const velocityOn = useVelocityDrag();
+  const velocityOnRef = React33__namespace.useRef(velocityOn);
+  velocityOnRef.current = velocityOn;
+  const gridRef_ = React33__namespace.useRef(ok);
   gridRef_.current = ok;
-  const miniRef = React32__namespace.useRef(mini);
+  const miniRef = React33__namespace.useRef(mini);
   miniRef.current = mini;
-  const writeEdit = React32__namespace.useCallback(
+  const writeEdit = React33__namespace.useCallback(
     (from, edit) => {
       let wrote = false;
       applyEdit((fresh, wb) => {
@@ -43289,7 +43329,7 @@ function ExactStepGrid({ notice = null }) {
     },
     [applyEdit]
   );
-  const writeMini = React32__namespace.useCallback(
+  const writeMini = React33__namespace.useCallback(
     (text) => {
       applyEdit((fresh, wb) => {
         ownWrite.current = text;
@@ -43300,13 +43340,13 @@ function ExactStepGrid({ notice = null }) {
   );
   const length = usePatternLength(chunk, ok ? { bars: ok.bars } : null, parseForLength, writeMini);
   const span = bars;
-  const playedNotes = React32__namespace.useMemo(() => chunk && ok ? stepNotes(chunk, span) : null, [chunk, ok, span]);
+  const playedNotes = React33__namespace.useMemo(() => chunk && ok ? stepNotes(chunk, span) : null, [chunk, ok, span]);
   const [colorMode] = useNoteColorMode();
   const phone = usePhoneGrid();
-  const scrollRef = React32__namespace.useRef(null);
+  const scrollRef = React33__namespace.useRef(null);
   const rulerPan = useRulerPan(scrollRef, phone.phone);
   const zoom = useGridZoom(scrollRef, !phone.phone, !!ok);
-  const maxCellsInBar = React32__namespace.useMemo(() => {
+  const maxCellsInBar = React33__namespace.useMemo(() => {
     let most = 1;
     for (const r of ok?.rows ?? []) {
       const perBar2 = /* @__PURE__ */ new Map();
@@ -43323,13 +43363,13 @@ function ExactStepGrid({ notice = null }) {
     const b = Math.min(bars - 1, Math.max(0, Math.floor(t)));
     return b * (barPx + BAR_GAP3) + (t - b) * barPx;
   }, "x");
-  const xRef = React32__namespace.useRef(x);
+  const xRef = React33__namespace.useRef(x);
   xRef.current = x;
   const trackPx = bars * barPx + (bars - 1) * BAR_GAP3;
   const rows = ok?.rows ?? [];
   const halfPx = phone.phone ? fingerPx : OPEN_PX;
-  const drawn = React32__namespace.useMemo(() => rows.map((r) => drawnCells(r.cells, barPx, halfPx)), [rows, barPx, halfPx]);
-  const levelAt = React32__namespace.useMemo(() => {
+  const drawn = React33__namespace.useMemo(() => rows.map((r) => drawnCells(r.cells, barPx, halfPx)), [rows, barPx, halfPx]);
+  const levelAt = React33__namespace.useMemo(() => {
     const times = [.../* @__PURE__ */ new Set([...drawn.flatMap((cs) => cs.map(cellAt)), ...rows.flatMap((r) => r.hits.map((h) => h.begin))])];
     const levels = gain ? gainLevelsAt(gain, times) : null;
     const out = /* @__PURE__ */ new Map();
@@ -43337,11 +43377,11 @@ function ExactStepGrid({ notice = null }) {
     return out;
   }, [drawn, rows, gain]);
   const levelOf = /* @__PURE__ */ __name((t) => levelAt.get(t.toFixed(9)), "levelOf");
-  const [offered2, setOffered] = React32__namespace.useState(() => /* @__PURE__ */ new Set());
-  React32__namespace.useEffect(() => {
+  const [offered2, setOffered] = React33__namespace.useState(() => /* @__PURE__ */ new Set());
+  React33__namespace.useEffect(() => {
     const out = /* @__PURE__ */ new Set();
     setOffered(/* @__PURE__ */ new Set());
-    if (mini === null || !gain || gain.foreign) return;
+    if (!velocityOn || mini === null || !gain || gain.foreign) return;
     const todo = [];
     const seen = /* @__PURE__ */ new Set();
     for (const r of rows) {
@@ -43368,10 +43408,10 @@ function ExactStepGrid({ notice = null }) {
     return () => {
       if (timer !== null) clearTimeout(timer);
     };
-  }, [mini, gain, rows, bars]);
-  const drawings = React32__namespace.useMemo(() => rows.map((r) => r.bars ? drawTreeRow(r.bars, barPx, openPx) : null), [rows, barPx, openPx]);
+  }, [mini, gain, rows, bars, velocityOn]);
+  const drawings = React33__namespace.useMemo(() => rows.map((r) => r.bars ? drawTreeRow(r.bars, barPx, openPx) : null), [rows, barPx, openPx]);
   const orderOf = /* @__PURE__ */ __name((r) => rows.filter((k) => k.part === r.part).map((k) => k.sound), "orderOf");
-  const answers = React32__namespace.useMemo(() => {
+  const answers = React33__namespace.useMemo(() => {
     const out = /* @__PURE__ */ new Map();
     if (!ok || mini === null) return out;
     rows.forEach((r, ri) => {
@@ -43380,9 +43420,9 @@ function ExactStepGrid({ notice = null }) {
     });
     return out;
   }, [ok, mini, drawn, levelAt]);
-  const answersRef = React32__namespace.useRef(answers);
+  const answersRef = React33__namespace.useRef(answers);
   answersRef.current = answers;
-  const resizable = React32__namespace.useMemo(() => {
+  const resizable = React33__namespace.useMemo(() => {
     const out = /* @__PURE__ */ new Set();
     if (!ok || mini === null) return out;
     rows.forEach((r, ri) => {
@@ -43396,30 +43436,30 @@ function ExactStepGrid({ notice = null }) {
     });
     return out;
   }, [ok, mini]);
-  const [cursor, setCursor] = React32__namespace.useState(null);
+  const [cursor, setCursor] = React33__namespace.useState(null);
   const liveCursor = cursor && cursor.row < rows.length && cursor.col < bars ? cursor : null;
-  const cursorRef = React32__namespace.useRef(liveCursor);
+  const cursorRef = React33__namespace.useRef(liveCursor);
   cursorRef.current = liveCursor;
-  const stops = React32__namespace.useMemo(() => rows.map((r) => r.cells.filter((c) => !c.split).map(cellAt)), [rows]);
-  const stopsRef = React32__namespace.useRef(stops);
+  const stops = React33__namespace.useMemo(() => rows.map((r) => r.cells.filter((c) => !c.split).map(cellAt)), [rows]);
+  const stopsRef = React33__namespace.useRef(stops);
   stopsRef.current = stops;
-  const stmtRef = React32__namespace.useRef(stmtId);
-  React32__namespace.useEffect(() => {
+  const stmtRef = React33__namespace.useRef(stmtId);
+  React33__namespace.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setCursor(null);
     }
   }, [stmtId]);
   const tab = liveCursor ?? { row: 0, col: 0 };
-  const focusNext = React32__namespace.useRef(false);
-  const gridBox = React32__namespace.useRef(null);
-  React32__namespace.useEffect(() => {
+  const focusNext = React33__namespace.useRef(false);
+  const gridBox = React33__namespace.useRef(null);
+  React33__namespace.useEffect(() => {
     if (!focusNext.current) return;
     focusNext.current = false;
     gridBox.current?.querySelector('[role="gridcell"][aria-selected="true"]')?.focus();
   });
   const cellHolding = /* @__PURE__ */ __name((ri, t) => drawn[ri]?.find((c) => cellAt(c) <= t + 1e-9 && t < cellEnd(c) - 1e-9) ?? null, "cellHolding");
-  const paint2 = React32__namespace.useCallback(
+  const paint2 = React33__namespace.useCallback(
     (ri, cell, on, drag = false) => {
       if (cell.on === on) return { refused: false };
       const answer = answersRef.current.get(cellKeyOf(ri, cell));
@@ -43437,9 +43477,9 @@ function ExactStepGrid({ notice = null }) {
     const { refused: refused2, why } = paint2(ri, cell, on);
     if (refused2) report2(on ? "Couldn't add that hit" : "Couldn't remove that hit", why ? refusalLine(why, !on) : void 0);
   }, "paintOne");
-  const paintOneRef = React32__namespace.useRef(paintOne);
+  const paintOneRef = React33__namespace.useRef(paintOne);
   paintOneRef.current = paintOne;
-  const resizeNote2 = React32__namespace.useCallback(
+  const resizeNote2 = React33__namespace.useCallback(
     (ri, cell, to, dryRun = false) => {
       const g = gridRef_.current;
       const from = miniRef.current;
@@ -43454,7 +43494,7 @@ function ExactStepGrid({ notice = null }) {
     },
     [writeEdit]
   );
-  const writeLevel = React32__namespace.useCallback(
+  const writeLevel = React33__namespace.useCallback(
     (hit, level, dryRun = false) => {
       const from = miniRef.current;
       const g = gainRef.current;
@@ -43479,17 +43519,17 @@ function ExactStepGrid({ notice = null }) {
     },
     [applyEdit, bars]
   );
-  const press = React32__namespace.useRef(null);
-  const writeLevelRef = React32__namespace.useRef(writeLevel);
+  const press = React33__namespace.useRef(null);
+  const writeLevelRef = React33__namespace.useRef(writeLevel);
   writeLevelRef.current = writeLevel;
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = press.current;
       if (!g) return;
       const dx = e.clientX - g.startX;
       const dy = e.clientY - g.startY;
       if (g.mode === "pending") {
-        if (g.hit && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
+        if (g.hit && velocityOnRef.current && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
           const can = writeLevelRef.current(g.hit, (g.startLevel ?? 1) === 0 ? 1 : 0, true);
           if (!can.ok) {
             if (!g.saidNo) report2("Couldn't change that hit's velocity", velocityLine(can.why));
@@ -43599,15 +43639,15 @@ function ExactStepGrid({ notice = null }) {
     }
     return true;
   }, "runGesture");
-  const runRef = React32__namespace.useRef(runGesture);
+  const runRef = React33__namespace.useRef(runGesture);
   runRef.current = runGesture;
-  React32__namespace.useEffect(() => mountGridGestures(GRID_SCOPE.sequencer, (a, dry) => runRef.current(a, dry)), []);
-  const headRef = React32__namespace.useRef(null);
-  const [playAt, setPlayAt] = React32__namespace.useState(null);
-  const edges2 = React32__namespace.useMemo(() => [...new Set(rows.flatMap((r) => r.cells.map(cellAt)))].sort((a, b) => a - b), [rows]);
-  const edgesRef = React32__namespace.useRef(edges2);
+  React33__namespace.useEffect(() => mountGridGestures(GRID_SCOPE.sequencer, (a, dry) => runRef.current(a, dry)), []);
+  const headRef = React33__namespace.useRef(null);
+  const [playAt, setPlayAt] = React33__namespace.useState(null);
+  const edges2 = React33__namespace.useMemo(() => [...new Set(rows.flatMap((r) => r.cells.map(cellAt)))].sort((a, b) => a - b), [rows]);
+  const edgesRef = React33__namespace.useRef(edges2);
   edgesRef.current = edges2;
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     let raf = 0;
     const tick = /* @__PURE__ */ __name(() => {
       const t = treePlayhead(readCurrentCycle(), bars);
@@ -43636,7 +43676,7 @@ function ExactStepGrid({ notice = null }) {
   const chordChart = chunk?.headFn === "chord" || chordLanes(rows.map((r) => r.sound));
   if (!ok) {
     if (lookRoll && "roll" in lookRoll) return /* @__PURE__ */ jsxRuntime.jsx(TreeRollGrid, { roll: lookRoll.roll, reason: lookRoll.reason });
-    return React32__namespace.createElement(VisualEditStandby, {
+    return React33__namespace.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: eligible ? "This pattern isn't grid-editable \u2014 edit it as code." : "Click a drum pattern to edit it as a step grid.",
       icon: "symbol-array"
@@ -43738,7 +43778,7 @@ function ExactStepGrid({ notice = null }) {
                 d?.inner.map((s) => /* @__PURE__ */ jsxRuntime.jsx("div", { "data-tree-inner": s.depth, style: { position: "absolute", left: x(s.begin) + 2, width: Math.max(1, x(s.end) - x(s.begin) - 3), top: 4, bottom: 4, boxSizing: "border-box", border: "1px solid var(--border, #3a3a42)", borderRadius: 2, background: "var(--background-elevated, #26262c)", pointerEvents: "none" } }, `i${s.begin}`)),
                 d?.lines.map((l) => /* @__PURE__ */ jsxRuntime.jsx("div", { "data-tree-line": l.depth, style: { position: "absolute", left: x(l.at) - 1, width: 2, top: 0, bottom: 0, background: lineColor3(l.depth), pointerEvents: "none" } }, `l${l.at}`)),
                 row.hits.map((h, i) => {
-                  const level = clamp012(levelOf(h.begin) ?? 1);
+                  const level = velocityOn ? clamp012(levelOf(h.begin) ?? 1) : 1;
                   return /* @__PURE__ */ jsxRuntime.jsx("div", { "data-seq-fill": true, "data-tree-hit": h.begin.toFixed(6), style: { position: "absolute", left: x(h.begin) + 2, width: Math.max(2, x(Math.min(h.end, bars)) - x(h.begin) - 3), top: 3 + (1 - level) * (ROW_PX3 - 6), bottom: 3, borderRadius: 2, background: colorMode === "velocity" ? velocityColor(level) : voice.color, pointerEvents: "none" } }, `h${i}`);
                 }),
                 drawn[ri].map((cell) => {
@@ -43895,14 +43935,14 @@ __name(opensRhythmLine2, "opensRhythmLine");
 function SequencerGrid(props = {}) {
   const mode = useGridMode();
   const { onResolution } = props;
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (mode === "exact") onResolution?.(null);
   }, [mode, onResolution]);
   return mode === "exact" ? /* @__PURE__ */ jsxRuntime.jsx(ExactStepGrid, { notice: props.notice ?? null }) : /* @__PURE__ */ jsxRuntime.jsx(ColumnStepGrid, { ...props });
 }
 __name(SequencerGrid, "SequencerGrid");
 function ColumnStepGrid({ onResolution, notice = null } = {}) {
-  const [viewScale, setViewScale] = React32__namespace.useState(UNREFINED);
+  const [viewScale, setViewScale] = React33__namespace.useState(UNREFINED);
   const { chunk, model, read: read5, mutate, writeMini, writeStep, beginGesture, endGesture, patternKey } = useGridModel({
     ...stepGridCodec,
     source: "seq",
@@ -43911,7 +43951,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, stepGridCodec.parse, writeMini);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     setViewScale(UNREFINED);
   }, [patternKey]);
   const playingStep = usePlayingStep(
@@ -43923,32 +43963,33 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   const [colorMode] = useNoteColorMode();
   const gridMode = useGridMode();
   const span = model?.bars ?? 1;
-  const playedNotes = React32__namespace.useMemo(() => chunk ? stepNotes(chunk, span) : null, [chunk, span]);
-  const gestureRef = React32__namespace.useRef(null);
-  const paintSoundRef = React32__namespace.useRef(null);
-  const gainScoped = React32__namespace.useMemo(() => model ? gainWritable(stepGridCodec, model) : false, [model]);
+  const playedNotes = React33__namespace.useMemo(() => chunk ? stepNotes(chunk, span) : null, [chunk, span]);
+  const gestureRef = React33__namespace.useRef(null);
+  const paintSoundRef = React33__namespace.useRef(null);
+  const velocityOn = useVelocityDrag();
+  const gainScoped = React33__namespace.useMemo(() => velocityOn && model ? gainWritable(stepGridCodec, model) : false, [model, velocityOn]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
   const chordHead = chunk?.headFn === "chord";
-  const isChordChart = React32__namespace.useMemo(
+  const isChordChart = React33__namespace.useMemo(
     () => chordHead || chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
     [chordHead, laneKey]
   );
-  const boxes = React32__namespace.useMemo(() => {
+  const boxes = React33__namespace.useMemo(() => {
     if (!model) return null;
     const widths = gridMode === "exact" ? ownStepWidths(linesModel(model, read5)) : /* @__PURE__ */ new Map();
     return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn));
   }, [model, read5, gridMode]);
-  const boxesRef = React32__namespace.useRef(boxes);
+  const boxesRef = React33__namespace.useRef(boxes);
   boxesRef.current = boxes;
   const boxWidth = /* @__PURE__ */ __name((laneIndex) => boxesRef.current?.[laneIndex]?.[0]?.width ?? 1, "boxWidth");
   const stepMini = chunk?.miniString ?? null;
-  const stepTrees = React32__namespace.useMemo(
+  const stepTrees = React33__namespace.useMemo(
     () => model && stepMini !== null && !model.lookOnly ? chunkDivisions(stepMini, model.bars ?? 1) : null,
     // the tree depends on the text and the bar count, not on every model a drag makes
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [stepMini, model?.bars, !!model, !!model?.lookOnly]
   );
-  const stepToggles = React32__namespace.useMemo(() => {
+  const stepToggles = React33__namespace.useMemo(() => {
     if (!model || !stepTrees || stepMini === null) return null;
     return model.lanes.map((lane, li) => {
       const w = boxes?.[li]?.[0]?.width ?? 1;
@@ -43968,33 +44009,33 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
       });
     });
   }, [model, boxes, stepTrees, stepMini]);
-  const stepTreesRef = React32__namespace.useRef(stepTrees);
+  const stepTreesRef = React33__namespace.useRef(stepTrees);
   stepTreesRef.current = stepTrees;
-  const modelRef = React32__namespace.useRef(model);
+  const modelRef = React33__namespace.useRef(model);
   modelRef.current = model;
-  const stepTogglesRef = React32__namespace.useRef(stepToggles);
+  const stepTogglesRef = React33__namespace.useRef(stepToggles);
   stepTogglesRef.current = stepToggles;
-  const stepMiniRef = React32__namespace.useRef(stepMini);
+  const stepMiniRef = React33__namespace.useRef(stepMini);
   stepMiniRef.current = stepMini;
-  const toggleable = React32__namespace.useMemo(
+  const toggleable = React33__namespace.useMemo(
     () => stepToggles ? stepToggles.map((row) => row.map((r) => !!r && r.ok)) : model ? model.lanes.map((l) => l.cells.map(() => false)) : null,
     [stepToggles, model]
   );
-  const placesNotes = React32__namespace.useMemo(
+  const placesNotes = React33__namespace.useMemo(
     () => model && boxes && toggleable ? boxesPlaceNotes(model.lanes, boxes, isCellOn, toggleable) : false,
     [model, boxes, toggleable]
   );
-  const coverage = React32__namespace.useMemo(
+  const coverage = React33__namespace.useMemo(
     () => model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null,
     [model]
   );
-  const stepStarts = React32__namespace.useMemo(() => {
+  const stepStarts = React33__namespace.useMemo(() => {
     if (!model) return null;
     const out = /* @__PURE__ */ new Map();
     for (const [part, cols] of writtenStepStarts(linesModel(model, read5))) out.set(part, new Set(cols));
     return out;
   }, [model, read5]);
-  const stepGroups = React32__namespace.useMemo(() => {
+  const stepGroups = React33__namespace.useMemo(() => {
     if (!model || !boxes || !coverage) return null;
     return model.lanes.map((lane, li) => {
       const part = lane.part ?? 0;
@@ -44008,7 +44049,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   const miniText2 = chunk?.miniString ?? null;
   const hasModel = !!model;
   const barCount = model?.bars ?? 1;
-  const trees = React32__namespace.useMemo(
+  const trees = React33__namespace.useMemo(
     () => hasModel && miniText2 !== null && gridMode === "exact" ? chunkDivisions(miniText2, barCount) : null,
     [hasModel, barCount, miniText2, gridMode]
   );
@@ -44016,15 +44057,15 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   const lookTree = useDeferredPerText(!hasModel && stepEligible ? miniText2 : null, lookOnlyTreeGrid);
   const silentHead = !!chunk && !["s", "sound", "chord"].includes(chunk.headFn ?? "");
   const lookRoll = useDeferredPerText(!hasModel && stepEligible && silentHead && lookTree === null ? miniText2 : null, lookOnlyTreeRoll);
-  const laneNodes = React32__namespace.useMemo(
+  const laneNodes = React33__namespace.useMemo(
     () => model && trees ? model.lanes.map((_, li) => laneSteps(model, trees, li)) : null,
     [model, trees]
   );
-  const editNodes = React32__namespace.useMemo(
+  const editNodes = React33__namespace.useMemo(
     () => model && stepTrees ? model.lanes.map((_, li) => laneSteps(model, stepTrees, li)) : null,
     [model, stepTrees]
   );
-  const resizable = React32__namespace.useMemo(() => {
+  const resizable = React33__namespace.useMemo(() => {
     if (!model || !stepTrees || stepMini === null) return null;
     return model.lanes.map((lane, li) => {
       const out = /* @__PURE__ */ new Set();
@@ -44057,7 +44098,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     if (!r.ok) return false;
     return dryRun || writeEdit(mini, r.edit);
   }, "resizeNote");
-  const writeEdit = React32__namespace.useCallback(
+  const writeEdit = React33__namespace.useCallback(
     (mini, edit) => {
       const shown = modelRef.current?.lanes ?? [];
       const keep = /* @__PURE__ */ __name((read6) => {
@@ -44072,7 +44113,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     },
     [writeStep]
   );
-  const paintCell = React32__namespace.useCallback(
+  const paintCell = React33__namespace.useCallback(
     (laneIndex, stepIndex, value, drag = false) => {
       const lane = modelRef.current?.lanes[laneIndex];
       if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) return { refused: false };
@@ -44085,7 +44126,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     },
     [writeEdit]
   );
-  const paintOne = React32__namespace.useCallback(
+  const paintOne = React33__namespace.useCallback(
     (laneIndex, stepIndex, value) => {
       const { refused: refused2, why } = paintCell(laneIndex, stepIndex, value);
       if (refused2) {
@@ -44094,20 +44135,20 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     },
     [paintCell]
   );
-  const addVoice = React32__namespace.useCallback(
+  const addVoice = React33__namespace.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React32__namespace.useCallback(
+  const removeVoice = React33__namespace.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
   const canDrawView = useViewProver(chunk?.miniString, stepGridCodec.parse);
-  const scaleToSlots = React32__namespace.useCallback(
+  const scaleToSlots = React33__namespace.useCallback(
     (target) => {
       if (!model) return;
       const press = slotPress(stepGridCodec, model, target, canDrawView);
@@ -44127,7 +44168,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     // looking closer costs nothing.
     (t) => model ? slotPressCost(stepGridCodec, model, t, canDrawView) : NO_RESOLUTION_EFFECT
   );
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -44163,10 +44204,10 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
       window.removeEventListener("pointerup", onUp);
     };
   }, [mutate, paintOne, endGesture, gainScoped]);
-  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current8, e) => {
+  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current9, e) => {
     beginGesture();
     paintSoundRef.current = model?.lanes[laneIndex]?.sound ?? null;
-    if (current8) {
+    if (current9) {
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
@@ -44212,24 +44253,24 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     if (laneIndex !== g.lane || modelRef.current?.lanes[laneIndex]?.sound !== paintSoundRef.current) return;
     paintCell(laneIndex, stepIndex, g.paintValue, true);
   }, "onCellEnter");
-  const [cursor, setCursor] = React32__namespace.useState(null);
-  const stopsRef = React32__namespace.useRef(null);
+  const [cursor, setCursor] = React33__namespace.useState(null);
+  const stopsRef = React33__namespace.useRef(null);
   const rowsN = model?.lanes.length ?? 0;
   const colsN = model?.steps ?? 0;
   const liveCursor = cursor && cursor.row < rowsN && cursor.col < colsN ? cursor : null;
-  const cursorRef = React32__namespace.useRef(liveCursor);
+  const cursorRef = React33__namespace.useRef(liveCursor);
   cursorRef.current = liveCursor;
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React32__namespace.useRef(stmtId);
-  React32__namespace.useEffect(() => {
+  const stmtRef = React33__namespace.useRef(stmtId);
+  React33__namespace.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setCursor(null);
     }
   }, [stmtId]);
-  const focusCursorRef = React32__namespace.useRef(false);
-  const gridRef = React32__namespace.useRef(null);
-  React32__namespace.useEffect(() => {
+  const focusCursorRef = React33__namespace.useRef(false);
+  const gridRef = React33__namespace.useRef(null);
+  React33__namespace.useEffect(() => {
     if (!focusCursorRef.current) return;
     focusCursorRef.current = false;
     gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-seq-cell]')?.focus();
@@ -44302,16 +44343,16 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
         return false;
     }
   }, "runGesture");
-  const runGestureRef = React32__namespace.useRef(runGesture);
+  const runGestureRef = React33__namespace.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React32__namespace.useEffect(
+  React33__namespace.useEffect(
     () => mountGridGestures(GRID_SCOPE.sequencer, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React32__namespace.useRef(null);
+  const rulerRef = React33__namespace.useRef(null);
   useRulerFit(rulerRef, "data-seq-ruler-label");
   const phoneGrid = usePhoneGrid();
-  const scrollRef = React32__namespace.useRef(null);
+  const scrollRef = React33__namespace.useRef(null);
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone);
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 16;
   const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model);
@@ -44330,12 +44371,12 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   const maxPer = zoomed ? 56 * zoom.level : 56;
   const perPx = Math.max(minPer, Math.min(fitPer ?? stepMin, maxPer));
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
-  const playheadRef = React32__namespace.useRef(null);
+  const playheadRef = React33__namespace.useRef(null);
   useExactPlayhead(gridRef, playheadRef, model, (c) => gridRef.current?.querySelector(`[data-seq-col="ruler:${c}"]`) ?? null);
   if (!model) {
     if (lookTree && "grid" in lookTree) return /* @__PURE__ */ jsxRuntime.jsx(TreeStepGrid, { grid: lookTree.grid, reason: lookTree.reason, notice });
     if (lookRoll && "roll" in lookRoll) return /* @__PURE__ */ jsxRuntime.jsx(TreeRollGrid, { roll: lookRoll.roll, reason: lookRoll.reason });
-    return React32__namespace.createElement(VisualEditStandby, {
+    return React33__namespace.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && opensStepGrid(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -44941,11 +44982,11 @@ function RhythmChartGrid({ onResolution }) {
     source: "seq",
     eligible: opensStepGrid
   });
-  const result = React32__namespace.useMemo(
+  const result = React33__namespace.useMemo(
     () => chunk?.structRhythm && chunk.miniString !== null ? rhythmChart(chunk.structOver?.miniString ?? null, chunk.miniString, model, parseChords, chunk.structOver?.masks) : { ok: false, reason: null },
     [chunk, model]
   );
-  const toggleable = React32__namespace.useMemo(() => {
+  const toggleable = React33__namespace.useMemo(() => {
     if (!model || !result.ok || result.chart.lookOnly) return null;
     return Array.from({ length: model.steps }, (_, m) => {
       const on = model.lanes.findIndex((l) => isCellOn(l.cells[m]));
@@ -44953,7 +44994,7 @@ function RhythmChartGrid({ onResolution }) {
     });
   }, [model, result]);
   const chartShown = result.ok;
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (chartShown) onResolution?.(null);
   }, [chartShown, onResolution]);
   if (!result.ok) return /* @__PURE__ */ jsxRuntime.jsx(SequencerGrid, { onResolution, notice: result.reason });
@@ -45178,11 +45219,11 @@ function viewportRect() {
 }
 __name(viewportRect, "viewportRect");
 function useAnchorScroll(open, anchorRef, menuRef, place, close) {
-  const placedAt = React32__namespace.useRef(null);
-  React32__namespace.useLayoutEffect(() => {
+  const placedAt = React33__namespace.useRef(null);
+  React33__namespace.useLayoutEffect(() => {
     placedAt.current = open ? anchorRef.current?.getBoundingClientRect() ?? null : null;
   }, [open, anchorRef]);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!open) return;
     const onScroll = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -45263,15 +45304,15 @@ function SoundPickerMenu({
   onAudition,
   renderTrigger
 }) {
-  const [open, setOpen] = React32__namespace.useState(false);
-  const [query, setQuery] = React32__namespace.useState("");
-  const [category, setCategory] = React32__namespace.useState(null);
-  const [pos, setPos] = React32__namespace.useState(null);
-  const btnRef = React32__namespace.useRef(null);
-  const menuRef = React32__namespace.useRef(null);
+  const [open, setOpen] = React33__namespace.useState(false);
+  const [query, setQuery] = React33__namespace.useState("");
+  const [category, setCategory] = React33__namespace.useState(null);
+  const [pos, setPos] = React33__namespace.useState(null);
+  const btnRef = React33__namespace.useRef(null);
+  const menuRef = React33__namespace.useRef(null);
   const lc = label.toLowerCase();
   const currentLabel = summary ?? (groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder);
-  const place = React32__namespace.useCallback(() => {
+  const place = React33__namespace.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -45285,17 +45326,17 @@ function SoundPickerMenu({
       maxHeight
     });
   }, []);
-  React32__namespace.useLayoutEffect(() => {
+  React33__namespace.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (open) {
       ensureCatScrollStyle();
       setQuery("");
       setCategory(null);
     }
   }, [open]);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -45315,7 +45356,7 @@ function SoundPickerMenu({
       window.removeEventListener("resize", dismiss);
     };
   }, [open]);
-  const close = React32__namespace.useCallback(() => setOpen(false), []);
+  const close = React33__namespace.useCallback(() => setOpen(false), []);
   useAnchorScroll(open, btnRef, menuRef, place, close);
   const pick = /* @__PURE__ */ __name((v) => {
     onChange(v);
@@ -45814,7 +45855,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners18 = /* @__PURE__ */ new Set();
+  const listeners19 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -45829,18 +45870,18 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners18.forEach((l) => l());
+    listeners19.forEach((l) => l());
   }, "setAccessor");
   const notify6 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners18.forEach((l) => l());
+    listeners19.forEach((l) => l());
   }, "notify");
   const read5 = /* @__PURE__ */ __name(() => cached2, "read");
-  const subscribe11 = /* @__PURE__ */ __name((listener) => {
-    listeners18.add(listener);
-    return () => listeners18.delete(listener);
+  const subscribe12 = /* @__PURE__ */ __name((listener) => {
+    listeners19.add(listener);
+    return () => listeners19.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React32__namespace.useSyncExternalStore(subscribe11, read5, () => null), "useCatalog");
+  const useCatalog = /* @__PURE__ */ __name(() => React33__namespace.useSyncExternalStore(subscribe12, read5, () => null), "useCatalog");
   return { setAccessor, notify: notify6, read: read5, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
@@ -46077,8 +46118,8 @@ function PianoRollGrid({
   division: division2 = DEFAULT_DIVISION,
   onResolution
 } = {}) {
-  const [viewScale, setViewScale] = React32__namespace.useState(UNREFINED);
-  const [declinedCell, setDeclinedCell] = React32__namespace.useState(null);
+  const [viewScale, setViewScale] = React33__namespace.useState(UNREFINED);
+  const [declinedCell, setDeclinedCell] = React33__namespace.useState(null);
   const { chunk, model, read: read5, mutate, settle: settle2, writeMini, writeStep, beginGesture, endGesture, patternKey, applyEdit } = useGridModel({
     ...pianoRollCodec,
     source: "roll",
@@ -46087,11 +46128,11 @@ function PianoRollGrid({
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, pianoRollCodec.parse, writeMini);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     setViewScale(UNREFINED);
   }, [patternKey]);
-  const dragRef = React32__namespace.useRef(null);
-  const velRef = React32__namespace.useRef(null);
+  const dragRef = React33__namespace.useRef(null);
+  const velRef = React33__namespace.useRef(null);
   const playingStep = usePlayingStep(
     model?.steps ?? 0,
     model?.bars ?? 1,
@@ -46099,7 +46140,7 @@ function PianoRollGrid({
     model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
-  const sounds = React32__namespace.useMemo(() => {
+  const sounds = React33__namespace.useMemo(() => {
     if (!chunk || !model) return null;
     const span = model.bars ?? 1;
     const onsets = model.notes.map((n) => stepToCycle(n.start, model.steps, span, model.barSteps));
@@ -46109,8 +46150,8 @@ function PianoRollGrid({
     if (names.length < 2) return null;
     return { names, byNote: new Map(model.notes.map((n, i) => [n, per[i]])) };
   }, [chunk, model]);
-  const lane = React32__namespace.useMemo(() => chunk && model ? soundLane(chunk, model.bars ?? 1) : null, [chunk, model]);
-  const laneSegments = React32__namespace.useMemo(() => {
+  const lane = React33__namespace.useMemo(() => chunk && model ? soundLane(chunk, model.bars ?? 1) : null, [chunk, model]);
+  const laneSegments = React33__namespace.useMemo(() => {
     const out = [];
     if (!lane || !model) return out;
     const span = model.bars ?? 1;
@@ -46123,7 +46164,7 @@ function PianoRollGrid({
     });
     return out;
   }, [lane, model]);
-  const laneToggles = React32__namespace.useRef(/* @__PURE__ */ new Map());
+  const laneToggles = React33__namespace.useRef(/* @__PURE__ */ new Map());
   const instruments = useSoundCatalog();
   const writeBlock = /* @__PURE__ */ __name((block, value) => {
     if (value === "") return;
@@ -46133,21 +46174,21 @@ function PianoRollGrid({
       commit(wb, "edit" in r ? r.edit : null, "roll");
     });
   }, "writeBlock");
-  const [hoveredMidi, setHoveredMidi] = React32__namespace.useState(null);
-  const holdMidiRef = React32__namespace.useRef(null);
-  const holdTimerRef = React32__namespace.useRef(null);
-  const onSelectRef = React32__namespace.useRef(onSelect);
+  const [hoveredMidi, setHoveredMidi] = React33__namespace.useState(null);
+  const holdMidiRef = React33__namespace.useRef(null);
+  const holdTimerRef = React33__namespace.useRef(null);
+  const onSelectRef = React33__namespace.useRef(onSelect);
   onSelectRef.current = onSelect;
-  const selectedRef = React32__namespace.useRef(selected);
+  const selectedRef = React33__namespace.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range2, setRange] = React32__namespace.useState(
+  const [range2, setRange] = React33__namespace.useState(
     () => rollContentRange({ notes: [] })
   );
-  const stmtIdRef = React32__namespace.useRef(null);
-  const scrollRef = React32__namespace.useRef(null);
-  const openScrollRef = React32__namespace.useRef(false);
-  React32__namespace.useEffect(() => {
+  const stmtIdRef = React33__namespace.useRef(null);
+  const scrollRef = React33__namespace.useRef(null);
+  const openScrollRef = React33__namespace.useRef(false);
+  React33__namespace.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = rollContentRange(model);
@@ -46183,19 +46224,19 @@ function PianoRollGrid({
     const room = sc.clientHeight - 2 * pad;
     sc.scrollTop = y1 - y0 <= room ? (y0 + y1) / 2 - sc.clientHeight / 2 : y1 + pad - sc.clientHeight;
   });
-  const placesNotes = React32__namespace.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
+  const placesNotes = React33__namespace.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
   const gridMode = useGridMode();
-  const resizable = React32__namespace.useMemo(() => {
+  const resizable = React33__namespace.useMemo(() => {
     if (!model) return null;
     const base = rollStepText(gridMode, model, chunk?.miniString ?? null);
     return base ? rollResizableNotes(model, base) : resizableNotes(model);
   }, [model, gridMode, chunk?.miniString]);
   const cols = model ? columnCount(model) : 0;
-  const gainWritable2 = React32__namespace.useMemo(
+  const gainWritable2 = React33__namespace.useMemo(
     () => model ? gainWritable(pianoRollCodec, model) : false,
     [model]
   );
-  const stepTextRef = React32__namespace.useRef(null);
+  const stepTextRef = React33__namespace.useRef(null);
   stepTextRef.current = rollStepText(gridMode, model, chunk?.miniString ?? null);
   const writeRoll = /* @__PURE__ */ __name((base, r, refusal) => {
     if (!r.ok) {
@@ -46215,7 +46256,7 @@ function PianoRollGrid({
     }
     return true;
   }, "writeFrame");
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
@@ -46276,7 +46317,7 @@ function PianoRollGrid({
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
@@ -46344,7 +46385,7 @@ function PianoRollGrid({
       holdTimerRef.current = null;
     }
   }, "stopHold");
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     window.addEventListener("pointerup", stopHold);
     window.addEventListener("pointercancel", stopHold);
     return () => {
@@ -46541,9 +46582,9 @@ function PianoRollGrid({
     }
     return best ?? { row: 0, col: 0 };
   }, "defaultCell");
-  const focusCursorRef = React32__namespace.useRef(false);
-  const gridRef = React32__namespace.useRef(null);
-  React32__namespace.useEffect(() => {
+  const focusCursorRef = React33__namespace.useRef(false);
+  const gridRef = React33__namespace.useRef(null);
+  React33__namespace.useEffect(() => {
     if (!focusCursorRef.current) return;
     const cell = gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-roll-cell]');
     if (!cell) return;
@@ -46667,31 +46708,31 @@ function PianoRollGrid({
         return true;
     }
   }, "runGesture");
-  const runGestureRef = React32__namespace.useRef(runGesture);
+  const runGestureRef = React33__namespace.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React32__namespace.useEffect(
+  React33__namespace.useEffect(
     () => mountGridGestures(GRID_SCOPE.pianoRoll, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React32__namespace.useRef(null);
+  const rulerRef = React33__namespace.useRef(null);
   useRulerFit(rulerRef, "data-roll-ruler-label");
   const phoneGrid = usePhoneGrid();
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone);
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 12;
-  const trackRef = React32__namespace.useRef(null);
+  const trackRef = React33__namespace.useRef(null);
   const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model, trackRef);
   const zoomed = !phoneGrid.phone;
   const rollMini = chunk?.miniString ?? null;
   const hasModel = !!model;
   const barCount = model?.bars ?? 1;
-  const trees = React32__namespace.useMemo(
+  const trees = React33__namespace.useMemo(
     () => hasModel && rollMini !== null ? chunkDivisions(rollMini, barCount) : null,
     [hasModel, barCount, rollMini]
   );
   const linesFrom = model ? linesModel(model, read5) : null;
   const parts = linesFrom?.source?.parts ?? null;
   const midiOf = /* @__PURE__ */ __name((token) => model?.numeric ? Number(token) : pitchToMidi(token), "midiOf");
-  const notesByPart = React32__namespace.useMemo(() => {
+  const notesByPart = React33__namespace.useMemo(() => {
     if (!parts || parts.length < 2) return null;
     const out = /* @__PURE__ */ new Map();
     for (const p of parts) {
@@ -46714,19 +46755,19 @@ function PianoRollGrid({
     }
     return rollPart(linesFrom);
   })();
-  const nodes = React32__namespace.useMemo(
+  const nodes = React33__namespace.useMemo(
     () => linesFrom && trees ? partSteps(linesFrom, trees, editedPart) : null,
     [linesFrom, trees, editedPart]
   );
   const otherNotes = notesByPart ? (key3) => !notesByPart.get(editedPart)?.has(key3) : null;
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
-  const playheadRef = React32__namespace.useRef(null);
+  const playheadRef = React33__namespace.useRef(null);
   useExactPlayhead(gridRef, playheadRef, model, (c) => trackRef.current?.children[c] ?? null);
   const rollEligible = !!chunk && opensPianoRoll(chunk);
   const lookTree = useDeferredPerText(!hasModel && rollEligible ? rollMini : null, lookOnlyTreeRoll);
   if (!model) {
     if (lookTree && "roll" in lookTree) return /* @__PURE__ */ jsxRuntime.jsx(TreeRollGrid, { roll: lookTree.roll, reason: lookTree.reason });
-    return React32__namespace.createElement(VisualEditStandby, {
+    return React33__namespace.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && opensPianoRoll(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -47462,13 +47503,13 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React32__namespace.useRef(null);
-  const [editing, setEditing] = React32__namespace.useState(false);
-  const [draftMin, setDraftMin] = React32__namespace.useState("");
-  const [draftMax, setDraftMax] = React32__namespace.useState("");
-  const [popupPos, setPopupPos] = React32__namespace.useState(null);
-  const sliderRef = React32__namespace.useRef(null);
-  const popupRef = React32__namespace.useRef(null);
+  const dragRef = React33__namespace.useRef(null);
+  const [editing, setEditing] = React33__namespace.useState(false);
+  const [draftMin, setDraftMin] = React33__namespace.useState("");
+  const [draftMax, setDraftMax] = React33__namespace.useState("");
+  const [popupPos, setPopupPos] = React33__namespace.useState(null);
+  const sliderRef = React33__namespace.useRef(null);
+  const popupRef = React33__namespace.useRef(null);
   const POPUP_W = 132;
   const openRangeEditor = /* @__PURE__ */ __name(() => {
     if (!onRangeChange) return;
@@ -47484,7 +47525,7 @@ function Knob({
     }
     setEditing(false);
   }, "commitRange");
-  const placePopup = React32__namespace.useCallback(() => {
+  const placePopup = React33__namespace.useCallback(() => {
     const r = sliderRef.current?.getBoundingClientRect();
     if (!r) return;
     const margin = 8;
@@ -47498,10 +47539,10 @@ function Knob({
       )
     });
   }, []);
-  React32__namespace.useLayoutEffect(() => {
+  React33__namespace.useLayoutEffect(() => {
     if (editing) placePopup();
   }, [editing, placePopup]);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!editing) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -47516,7 +47557,7 @@ function Knob({
       window.removeEventListener("resize", dismiss);
     };
   }, [editing]);
-  const closePopup = React32__namespace.useCallback(() => setEditing(false), []);
+  const closePopup = React33__namespace.useCallback(() => setEditing(false), []);
   useAnchorScroll(editing, sliderRef, popupRef, placePopup, closePopup);
   const pos = toPosition(value, range2);
   const angle = -135 + pos * 270;
@@ -48349,12 +48390,12 @@ function AddEffectMenu({
   present,
   onToggle
 }) {
-  const [open, setOpen] = React32__namespace.useState(false);
-  const [query, setQuery] = React32__namespace.useState("");
-  const [pos, setPos] = React32__namespace.useState(null);
-  const btnRef = React32__namespace.useRef(null);
-  const menuRef = React32__namespace.useRef(null);
-  const place = React32__namespace.useCallback(() => {
+  const [open, setOpen] = React33__namespace.useState(false);
+  const [query, setQuery] = React33__namespace.useState("");
+  const [pos, setPos] = React33__namespace.useState(null);
+  const btnRef = React33__namespace.useRef(null);
+  const menuRef = React33__namespace.useRef(null);
+  const place = React33__namespace.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -48368,10 +48409,10 @@ function AddEffectMenu({
       maxHeight
     });
   }, []);
-  React32__namespace.useLayoutEffect(() => {
+  React33__namespace.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -48391,7 +48432,7 @@ function AddEffectMenu({
       window.removeEventListener("resize", dismiss);
     };
   }, [open]);
-  const close = React32__namespace.useCallback(() => setOpen(false), []);
+  const close = React33__namespace.useCallback(() => setOpen(false), []);
   useAnchorScroll(open, btnRef, menuRef, place, close);
   const q = query.trim().toLowerCase();
   const groups = EFFECT_GROUPS.map(
@@ -48636,37 +48677,37 @@ function MixerBody({
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
   const knobs = knobsFromChunk(chunk, showGain);
-  const writeKnob = React32__namespace.useCallback(
+  const writeKnob = React33__namespace.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => commit(wb, knobEdit(fresh, entry, value), "knob"));
     },
     [applyEdit]
   );
-  const writeRange = React32__namespace.useCallback(
+  const writeRange = React33__namespace.useCallback(
     (entry, min, max) => {
       applyEdit((fresh, wb) => commit(wb, knobRangeEdit(fresh, entry, min, max), "knob"));
     },
     [applyEdit]
   );
-  const resetRange = React32__namespace.useCallback(
+  const resetRange = React33__namespace.useCallback(
     (entry) => {
       applyEdit((fresh, wb) => commit(wb, knobRangeResetEdit(fresh, entry), "knob"));
     },
     [applyEdit]
   );
-  const toggleEffect = React32__namespace.useCallback(
+  const toggleEffect = React33__namespace.useCallback(
     (e) => {
       applyEdit((fresh, wb) => commit(wb, toggleCallEdit(fresh, effectNames(e), e.method, e.def), "knob"));
     },
     [applyEdit]
   );
-  const removeMethod = React32__namespace.useCallback(
+  const removeMethod = React33__namespace.useCallback(
     (method) => {
       applyEdit((fresh, wb) => commit(wb, removeNamedCall(fresh, method), "knob"));
     },
     [applyEdit]
   );
-  const writeChainMethod = React32__namespace.useCallback(
+  const writeChainMethod = React33__namespace.useCallback(
     (names, canonical, value, noun) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -48848,7 +48889,7 @@ var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function Mixer({ division: division2, onDivisionChange, resolution } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   if (!chunk || chunk.chain.length === 0) {
-    return React32__namespace.createElement(VisualEditStandby, {
+    return React33__namespace.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -48970,24 +49011,24 @@ __name(levelColor, "levelColor");
 var MIN_FRAME_MS = 1e3 / 60;
 var QUERY_WINDOW_CYCLES = 0.01;
 function useTrackMeters() {
-  const elsRef = React32__namespace.useRef(/* @__PURE__ */ new Map());
-  const stateRef = React32__namespace.useRef(/* @__PURE__ */ new Map());
-  const schedulersRef = React32__namespace.useRef(null);
-  const rafRef = React32__namespace.useRef(null);
-  const lastTsRef = React32__namespace.useRef(0);
-  const [fileId, setFileId] = React32__namespace.useState(() => getActiveFileId());
-  React32__namespace.useEffect(() => {
+  const elsRef = React33__namespace.useRef(/* @__PURE__ */ new Map());
+  const stateRef = React33__namespace.useRef(/* @__PURE__ */ new Map());
+  const schedulersRef = React33__namespace.useRef(null);
+  const rafRef = React33__namespace.useRef(null);
+  const lastTsRef = React33__namespace.useRef(0);
+  const [fileId, setFileId] = React33__namespace.useState(() => getActiveFileId());
+  React33__namespace.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React32__namespace.useCallback((captureId, els) => {
+  const register = React33__namespace.useCallback((captureId, els) => {
     if (els) elsRef.current.set(captureId, els);
     else {
       elsRef.current.delete(captureId);
       stateRef.current.delete(captureId);
     }
   }, []);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       schedulersRef.current = schedulersOf(payload);
     }) : (() => {
@@ -49078,13 +49119,13 @@ function useTrackMeters() {
       stateRef.current.clear();
     };
   }, [fileId]);
-  return React32__namespace.useMemo(() => ({ register }), [register]);
+  return React33__namespace.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners15 = /* @__PURE__ */ new Set();
+var listeners16 = /* @__PURE__ */ new Set();
 function read2(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
@@ -49096,7 +49137,7 @@ function toggleSolo(fileId, id) {
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners15.forEach((l) => l());
+  listeners16.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -49110,16 +49151,16 @@ function setPreSoloMutes(fileId, snapshot) {
   else snapshots.set(fileId, snapshot);
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
-function subscribe8(listener) {
-  listeners15.add(listener);
+function subscribe9(listener) {
+  listeners16.add(listener);
   return () => {
-    listeners15.delete(listener);
+    listeners16.delete(listener);
   };
 }
-__name(subscribe8, "subscribe");
+__name(subscribe9, "subscribe");
 function useActiveFileId() {
-  const [id, setId] = React32__namespace.useState(() => getActiveFileId());
-  React32__namespace.useEffect(() => {
+  const [id, setId] = React33__namespace.useState(() => getActiveFileId());
+  React33__namespace.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -49128,8 +49169,8 @@ function useActiveFileId() {
 __name(useActiveFileId, "useActiveFileId");
 function useSoloedIds() {
   const fileId = useActiveFileId();
-  return React32__namespace.useSyncExternalStore(
-    subscribe8,
+  return React33__namespace.useSyncExternalStore(
+    subscribe9,
     () => read2(fileId),
     () => EMPTY
   );
@@ -49138,7 +49179,7 @@ __name(useSoloedIds, "useSoloedIds");
 function useSoloStrips() {
   const fileId = useActiveFileId();
   const soloed = useSoloedIds();
-  const toggle = React32__namespace.useCallback(
+  const toggle = React33__namespace.useCallback(
     (id) => {
       if (fileId) toggleSolo(fileId, id);
     },
@@ -49151,7 +49192,7 @@ __name(useSoloStrips, "useSoloStrips");
 // src/visualEdit/mixer/soloMuteSync.ts
 function useSoloMuteSync() {
   const { soloed, toggle: toggleSet } = useSoloStrips();
-  const toggle = React32__namespace.useCallback(
+  const toggle = React33__namespace.useCallback(
     (id) => {
       const fileId = getActiveFileId();
       const editor = getActiveEditor();
@@ -49179,9 +49220,9 @@ function StripMeter({
   controller,
   horizontal = false
 }) {
-  const fillRef = React32__namespace.useRef(null);
-  const peakRef = React32__namespace.useRef(null);
-  React32__namespace.useEffect(() => {
+  const fillRef = React33__namespace.useRef(null);
+  const peakRef = React33__namespace.useRef(null);
+  React33__namespace.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -49287,14 +49328,14 @@ function ChannelStrip({
   orientation = "vertical"
 }) {
   const horizontal = orientation === "horizontal";
-  const [colorAnchor, setColorAnchor] = React32__namespace.useState(null);
+  const [colorAnchor, setColorAnchor] = React33__namespace.useState(null);
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
-  const [renaming, setRenaming] = React32__namespace.useState(false);
+  const [renaming, setRenaming] = React33__namespace.useState(false);
   const bareLabel = strip.label ?? "";
   const renameSeed = bareLabel !== "" && bareLabel !== "$" ? bareLabel : "";
   const renameEnabled = onRename !== void 0;
-  const settledRef = React32__namespace.useRef(false);
+  const settledRef = React33__namespace.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {
     settledRef.current = false;
     setRenaming(true);
@@ -49315,8 +49356,8 @@ function ChannelStrip({
   const faderEnabled = gain !== null && onGainChange !== void 0;
   const panEnabled = !strip.panForeign && onPanChange !== void 0;
   const panValue = strip.pan ?? 0.5;
-  const faderDrag = React32__namespace.useRef(null);
-  const panDrag = React32__namespace.useRef(null);
+  const faderDrag = React33__namespace.useRef(null);
+  const panDrag = React33__namespace.useRef(null);
   const onFaderDown = /* @__PURE__ */ __name((e) => {
     if (!faderEnabled) return;
     e.preventDefault();
@@ -49921,17 +49962,17 @@ function PatternPanel() {
   const phone = usePhone();
   const sideShown = usePatternSideShown();
   const gridAlone = phone || !sideShown;
-  const [selected, setSelected] = React32__namespace.useState(null);
+  const [selected, setSelected] = React33__namespace.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React32__namespace.useRef(stmtId);
-  React32__namespace.useEffect(() => {
+  const stmtRef = React33__namespace.useRef(stmtId);
+  React33__namespace.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setSelected(null);
     }
   }, [stmtId]);
-  const [division2, setDivision] = React32__namespace.useState(DEFAULT_DIVISION);
-  const [resolution, setResolution] = React32__namespace.useState(null);
+  const [division2, setDivision] = React33__namespace.useState(DEFAULT_DIVISION);
+  const [resolution, setResolution] = React33__namespace.useState(null);
   const grid = kind === "step" ? (
     // a `.struct` rhythm line draws the chords it times (#2120)
     chunk?.structRhythm ? /* @__PURE__ */ jsxRuntime.jsx(RhythmChartGrid, { onResolution: setResolution }) : /* @__PURE__ */ jsxRuntime.jsx(SequencerGrid, { onResolution: setResolution })
@@ -49987,7 +50028,7 @@ function safeLocalStorage5() {
 }
 __name(safeLocalStorage5, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners16 = /* @__PURE__ */ new Set();
+var listeners17 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -50033,19 +50074,19 @@ function toggleExpanded(fileId, id) {
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners16.forEach((l) => l());
+  listeners17.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
-function subscribe9(listener) {
-  listeners16.add(listener);
+function subscribe10(listener) {
+  listeners17.add(listener);
   return () => {
-    listeners16.delete(listener);
+    listeners17.delete(listener);
   };
 }
-__name(subscribe9, "subscribe");
+__name(subscribe10, "subscribe");
 function useActiveFileId2() {
-  const [id, setId] = React32__namespace.useState(() => getActiveFileId());
-  React32__namespace.useEffect(() => {
+  const [id, setId] = React33__namespace.useState(() => getActiveFileId());
+  React33__namespace.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -50054,12 +50095,12 @@ function useActiveFileId2() {
 __name(useActiveFileId2, "useActiveFileId");
 function useExpandedStrips() {
   const fileId = useActiveFileId2();
-  const expanded = React32__namespace.useSyncExternalStore(
-    subscribe9,
+  const expanded = React33__namespace.useSyncExternalStore(
+    subscribe10,
     () => read3(fileId),
     () => EMPTY2
   );
-  const toggle = React32__namespace.useCallback(
+  const toggle = React33__namespace.useCallback(
     (id) => {
       if (fileId) toggleExpanded(fileId, id);
     },
@@ -50100,7 +50141,7 @@ function safeLocalStorage6() {
 }
 __name(safeLocalStorage6, "safeLocalStorage");
 var cached = null;
-var listeners17 = /* @__PURE__ */ new Set();
+var listeners18 = /* @__PURE__ */ new Set();
 function read4() {
   if (cached == null) {
     const ls = safeLocalStorage6();
@@ -50123,27 +50164,27 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners17.forEach((l) => l());
+  listeners18.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
   setMixerZoom(read4() + dir * MIXER_ZOOM_STEP);
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
-function subscribe10(listener) {
-  listeners17.add(listener);
+function subscribe11(listener) {
+  listeners18.add(listener);
   return () => {
-    listeners17.delete(listener);
+    listeners18.delete(listener);
   };
 }
-__name(subscribe10, "subscribe");
+__name(subscribe11, "subscribe");
 function useMixerZoom() {
-  const zoom = React32__namespace.useSyncExternalStore(subscribe10, read4, () => MIXER_ZOOM_DEFAULT);
+  const zoom = React33__namespace.useSyncExternalStore(subscribe11, read4, () => MIXER_ZOOM_DEFAULT);
   return {
     zoom,
     percent: Math.round(zoom * 100),
-    zoomIn: React32__namespace.useCallback(() => nudgeMixerZoom(1), []),
-    zoomOut: React32__namespace.useCallback(() => nudgeMixerZoom(-1), []),
+    zoomIn: React33__namespace.useCallback(() => nudgeMixerZoom(1), []),
+    zoomOut: React33__namespace.useCallback(() => nudgeMixerZoom(-1), []),
     canZoomIn: zoom < MIXER_ZOOM_MAX,
     canZoomOut: zoom > MIXER_ZOOM_MIN
   };
@@ -50217,22 +50258,22 @@ function levelColor2(frac2) {
 }
 __name(levelColor2, "levelColor");
 function useMasterMeter() {
-  const elsRef = React32__namespace.useRef(null);
-  const stateRef = React32__namespace.useRef(ZERO_METER);
-  const analyserRef = React32__namespace.useRef(null);
-  const bufRef = React32__namespace.useRef(null);
-  const rafRef = React32__namespace.useRef(null);
-  const lastTsRef = React32__namespace.useRef(0);
-  const [fileId, setFileId] = React32__namespace.useState(() => getActiveFileId());
-  React32__namespace.useEffect(() => {
+  const elsRef = React33__namespace.useRef(null);
+  const stateRef = React33__namespace.useRef(ZERO_METER);
+  const analyserRef = React33__namespace.useRef(null);
+  const bufRef = React33__namespace.useRef(null);
+  const rafRef = React33__namespace.useRef(null);
+  const lastTsRef = React33__namespace.useRef(0);
+  const [fileId, setFileId] = React33__namespace.useState(() => getActiveFileId());
+  React33__namespace.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React32__namespace.useCallback((els) => {
+  const register = React33__namespace.useCallback((els) => {
     elsRef.current = els;
     if (!els) stateRef.current = ZERO_METER;
   }, []);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       analyserRef.current = analyserOf(payload);
     }) : (() => {
@@ -50306,7 +50347,7 @@ function useMasterMeter() {
       stateRef.current = ZERO_METER;
     };
   }, [fileId]);
-  return React32__namespace.useMemo(() => ({ register }), [register]);
+  return React33__namespace.useMemo(() => ({ register }), [register]);
 }
 __name(useMasterMeter, "useMasterMeter");
 var FADER_HEIGHT2 = 80;
@@ -50325,9 +50366,9 @@ function MasterStrip({
   onGestureEnd
 }) {
   const meter = useMasterMeter();
-  const fillRef = React32__namespace.useRef(null);
-  const peakRef = React32__namespace.useRef(null);
-  React32__namespace.useEffect(() => {
+  const fillRef = React33__namespace.useRef(null);
+  const peakRef = React33__namespace.useRef(null);
+  React33__namespace.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -50335,7 +50376,7 @@ function MasterStrip({
     return () => meter.register(null);
   }, [meter]);
   const pos = gainToFaderPos(gain);
-  const drag = React32__namespace.useRef(null);
+  const drag = React33__namespace.useRef(null);
   const onDown = /* @__PURE__ */ __name((e) => {
     if (foreign) return;
     e.preventDefault();
@@ -50616,8 +50657,8 @@ function MixerStrips({
     selectTrack
   } = useMixerModel();
   const meters = useTrackMeters();
-  const [fileId, setFileId] = React32__namespace.useState(() => getActiveFileId());
-  React32__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React33__namespace.useState(() => getActiveFileId());
+  React33__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
   const { expanded, toggle } = useExpandedStrips();
   const masterExpanded = expanded.has(MASTER_EXPAND_ID);
@@ -50910,9 +50951,9 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React32__namespace.createElement(Panel),
+      content: React33__namespace.createElement(Panel),
       // the Pattern tab's button for its right side panel (#2044)
-      headerActions: tab.id === PATTERN_TAB_ID ? React32__namespace.createElement(PatternSideToggle) : void 0
+      headerActions: tab.id === PATTERN_TAB_ID ? React33__namespace.createElement(PatternSideToggle) : void 0
     });
   }
 }
@@ -50953,24 +50994,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React32__namespace.useState(opts.initial);
-  const [dragging, setDragging] = React32__namespace.useState(false);
-  const startYRef = React32__namespace.useRef(0);
-  const startValueRef = React32__namespace.useRef(opts.initial);
-  const pointerIdRef = React32__namespace.useRef(null);
-  const draggingRef = React32__namespace.useRef(false);
-  const minRef = React32__namespace.useRef(opts.min);
-  const maxRef = React32__namespace.useRef(opts.max);
-  React32__namespace.useEffect(() => {
+  const [value, setValueState] = React33__namespace.useState(opts.initial);
+  const [dragging, setDragging] = React33__namespace.useState(false);
+  const startYRef = React33__namespace.useRef(0);
+  const startValueRef = React33__namespace.useRef(opts.initial);
+  const pointerIdRef = React33__namespace.useRef(null);
+  const draggingRef = React33__namespace.useRef(false);
+  const minRef = React33__namespace.useRef(opts.min);
+  const maxRef = React33__namespace.useRef(opts.max);
+  React33__namespace.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React32__namespace.useCallback((v) => {
+  const setValue = React33__namespace.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React32__namespace.useCallback(
+  const onPointerDown = React33__namespace.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -50985,7 +51026,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React32__namespace.useCallback(
+  const endDrag = React33__namespace.useCallback(
     (e, commit3) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -51000,7 +51041,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React32__namespace.useCallback(
+  const onPointerMove = React33__namespace.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -51016,13 +51057,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React32__namespace.useCallback(
+  const onPointerUp = React33__namespace.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React32__namespace.useCallback(
+  const onPointerCancel = React33__namespace.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -51049,18 +51090,18 @@ function pickActiveTabId(tabs2, chosen) {
 }
 __name(pickActiveTabId, "pickActiveTabId");
 function BottomPanel({ hidden = false } = {}) {
-  const [tabs2, setTabs] = React32__namespace.useState(
+  const [tabs2, setTabs] = React33__namespace.useState(
     () => listBottomPanelTabs()
   );
   const { open, activeTabId: chosenTabId } = useBottomPanelState();
   const setOpen = setBottomPanelOpen;
   const setActiveTabId = setBottomPanelActiveTab;
-  const [height, setHeight] = React32__namespace.useState(readPersistedHeight);
+  const [height, setHeight] = React33__namespace.useState(readPersistedHeight);
   const activeTabId = pickActiveTabId(tabs2, chosenTabId);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     return subscribeToBottomPanelTabs(() => setTabs(listBottomPanelTabs()));
   }, []);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (activeTabId !== chosenTabId) setBottomPanelActiveTab(activeTabId);
   }, [activeTabId, chosenTabId]);
   const drag = useDragResize({
@@ -51075,12 +51116,12 @@ function BottomPanel({ hidden = false } = {}) {
   const layout = usePhoneLayout();
   const sheet = layout === "upright";
   const wholeView = layout === "sideways";
-  const [sheetRest, setSheetRest] = React32__namespace.useState("half");
+  const [sheetRest, setSheetRest] = React33__namespace.useState("half");
   const stop = !open ? "closed" : typeof sheetRest === "number" ? "free" : sheetRest;
-  const [pulled, setPulled] = React32__namespace.useState(null);
-  const [room, setRoom] = React32__namespace.useState(null);
-  const spaceRef = React32__namespace.useRef(null);
-  const measureRoom = React32__namespace.useCallback(() => {
+  const [pulled, setPulled] = React33__namespace.useState(null);
+  const [room, setRoom] = React33__namespace.useState(null);
+  const spaceRef = React33__namespace.useRef(null);
+  const measureRoom = React33__namespace.useCallback(() => {
     const parent = spaceRef.current?.parentElement;
     if (!parent) return null;
     const box = parent.getBoundingClientRect();
@@ -51091,7 +51132,7 @@ function BottomPanel({ hidden = false } = {}) {
     return next;
   }, []);
   const drawn = tabs2.length > 0 && !hidden;
-  React32__namespace.useLayoutEffect(() => {
+  React33__namespace.useLayoutEffect(() => {
     if (!(sheet || wholeView) || !drawn) return;
     measureRoom();
     const parent = spaceRef.current?.parentElement;
@@ -51103,7 +51144,7 @@ function BottomPanel({ hidden = false } = {}) {
       observer?.disconnect();
     };
   }, [sheet, wholeView, drawn, open, measureRoom]);
-  const goToRest = React32__namespace.useCallback((next) => {
+  const goToRest = React33__namespace.useCallback((next) => {
     if (next === "closed") {
       setBottomPanelOpen(false);
       return;
@@ -51111,13 +51152,13 @@ function BottomPanel({ hidden = false } = {}) {
     setSheetRest(next);
     setBottomPanelOpen(true);
   }, []);
-  const pullRef = React32__namespace.useRef(null);
-  const swallowClickRef = React32__namespace.useRef(false);
-  const restRef = React32__namespace.useRef(open ? sheetRest : "closed");
+  const pullRef = React33__namespace.useRef(null);
+  const swallowClickRef = React33__namespace.useRef(false);
+  const restRef = React33__namespace.useRef(open ? sheetRest : "closed");
   restRef.current = open ? sheetRest : "closed";
-  const endPullRef = React32__namespace.useRef(null);
-  React32__namespace.useEffect(() => () => endPullRef.current?.(), []);
-  const onStripPointerDown = React32__namespace.useCallback(
+  const endPullRef = React33__namespace.useRef(null);
+  React33__namespace.useEffect(() => () => endPullRef.current?.(), []);
+  const onStripPointerDown = React33__namespace.useCallback(
     (e) => {
       swallowClickRef.current = false;
       if (!sheet || pullRef.current) return;
@@ -51164,25 +51205,25 @@ function BottomPanel({ hidden = false } = {}) {
     },
     [sheet, measureRoom, goToRest]
   );
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const wasOpenOnTabPressRef = React32__namespace.useRef(open);
-  const tabButtonRefs = React32__namespace.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React32__namespace.useCallback(
+  const wasOpenOnTabPressRef = React33__namespace.useRef(open);
+  const tabButtonRefs = React33__namespace.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React33__namespace.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React32__namespace.useCallback((id) => {
+  const focusTab = React33__namespace.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React32__namespace.useCallback(
+  const onTabsKeyDown = React33__namespace.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -51209,8 +51250,8 @@ function BottomPanel({ hidden = false } = {}) {
     [tabs2, activeTabId, focusTab]
   );
   const keyboardUp = useKeyboardUp();
-  const [, refocused] = React32__namespace.useReducer((n) => n + 1, 0);
-  React32__namespace.useEffect(() => {
+  const [, refocused] = React33__namespace.useReducer((n) => n + 1, 0);
+  React33__namespace.useEffect(() => {
     if (!keyboardUp) return;
     document.addEventListener("focusin", refocused);
     return () => document.removeEventListener("focusin", refocused);
@@ -51516,8 +51557,8 @@ __name(typeSymbol, "typeSymbol");
 function SymbolRow() {
   const upright = usePhoneLayout() === "upright";
   const keyboardUp = useKeyboardUp();
-  const [, focusMoved] = React32__namespace.useReducer((n) => n + 1, 0);
-  React32__namespace.useEffect(() => {
+  const [, focusMoved] = React33__namespace.useReducer((n) => n + 1, 0);
+  React33__namespace.useEffect(() => {
     if (!keyboardUp) return;
     document.addEventListener("focusin", focusMoved);
     document.addEventListener("focusout", focusMoved);
@@ -51680,16 +51721,16 @@ function GroupTabBar({
   onSplitDown,
   onCloseGroup
 }) {
-  const scrollRef = React32.useRef(null);
-  const activeTabElRef = React32.useRef(null);
-  const menuBtnRef = React32.useRef(null);
-  const menuRef = React32.useRef(null);
-  const [overflow, setOverflow] = React32.useState({
+  const scrollRef = React33.useRef(null);
+  const activeTabElRef = React33.useRef(null);
+  const menuBtnRef = React33.useRef(null);
+  const menuRef = React33.useRef(null);
+  const [overflow, setOverflow] = React33.useState({
     left: false,
     right: false
   });
-  const [menuOpen, setMenuOpen] = React32.useState(false);
-  React32.useEffect(() => {
+  const [menuOpen, setMenuOpen] = React33.useState(false);
+  React33.useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const update2 = /* @__PURE__ */ __name(() => {
@@ -51708,12 +51749,12 @@ function GroupTabBar({
       ro?.disconnect();
     };
   }, [group2.tabs.length]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const el = activeTabElRef.current;
     if (!el || typeof el.scrollIntoView !== "function") return;
     el.scrollIntoView({ inline: "nearest", block: "nearest" });
   }, [group2.activeTabId]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!menuOpen) return;
     const onDoc = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -52051,7 +52092,7 @@ function GroupTabBar({
   );
 }
 __name(GroupTabBar, "GroupTabBar");
-var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
+var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
   initialTabs = [],
   initialGroups,
   initialLayout,
@@ -52076,28 +52117,28 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
   onCropBackdrop,
   onRevealBackdrop
 }, forwardedRef) {
-  const shellRootRef = React32.useRef(null);
-  const initialState = React32.useRef(
+  const shellRootRef = React33.useRef(null);
+  const initialState = React33.useRef(
     initialGroups !== void 0 && initialLayout !== void 0 && initialLayout.length > 0 && initialActiveGroupId !== void 0 ? {
       groups: new Map(initialGroups),
       layout: initialLayout,
       activeGroupId: initialActiveGroupId
     } : createInitialGroupState(initialTabs)
   );
-  const [groups, setGroups] = React32.useState(
+  const [groups, setGroups] = React33.useState(
     () => initialState.current.groups
   );
-  const [layout, setLayout] = React32.useState(
+  const [layout, setLayout] = React33.useState(
     () => initialState.current.layout
   );
-  const [activeGroupId, setActiveGroupId] = React32.useState(
+  const [activeGroupId, setActiveGroupId] = React33.useState(
     () => initialState.current.activeGroupId
   );
-  const [bgOverrides, setBgOverrides] = React32.useState(
+  const [bgOverrides, setBgOverrides] = React33.useState(
     () => /* @__PURE__ */ new Map()
   );
-  const lastActiveBackdropRef = React32.useRef(null);
-  React32.useEffect(() => {
+  const lastActiveBackdropRef = React33.useRef(null);
+  React33.useEffect(() => {
     const g = groups.get(activeGroupId);
     const resolved = resolveBackdropFileId(g?.backgroundFileId, bgOverrides.get(activeGroupId)) ?? null;
     if (resolved !== lastActiveBackdropRef.current) {
@@ -52105,71 +52146,71 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
       onActiveBackdropChange?.(resolved);
     }
   }, [groups, bgOverrides, activeGroupId, onActiveBackdropChange]);
-  const didMountRef = React32.useRef(false);
-  React32.useEffect(() => {
+  const didMountRef = React33.useRef(false);
+  React33.useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
       return;
     }
     onGroupsChange?.({ groups, layout, activeGroupId });
   }, [groups, layout, activeGroupId, onGroupsChange]);
-  const [dragOverTarget, setDragOverTarget] = React32.useState(null);
-  const [dragOverEdge, setDragOverEdge] = React32.useState(
+  const [dragOverTarget, setDragOverTarget] = React33.useState(null);
+  const [dragOverEdge, setDragOverEdge] = React33.useState(
     null
   );
-  const [tabDragInProgress, setTabDragInProgress] = React32.useState(false);
-  const [pausedPreviews, setPausedPreviews] = React32.useState(
+  const [tabDragInProgress, setTabDragInProgress] = React33.useState(false);
+  const [pausedPreviews, setPausedPreviews] = React33.useState(
     () => /* @__PURE__ */ new Set()
   );
-  const [backdropQuality, setBackdropQualityState] = React32.useState(
+  const [backdropQuality, setBackdropQualityState] = React33.useState(
     () => getBackdropQuality()
   );
-  React32.useEffect(
+  React33.useEffect(
     () => onBackdropQualityChange(setBackdropQualityState),
     []
   );
-  const [backdropOpacity, setBackdropOpacityState] = React32.useState(
+  const [backdropOpacity, setBackdropOpacityState] = React33.useState(
     () => getBackdropOpacity()
   );
-  React32.useEffect(
+  React33.useEffect(
     () => onBackdropOpacityChange(setBackdropOpacityState),
     []
   );
-  const [playVizOnHover, setPlayVizOnHoverState] = React32.useState(
+  const [playVizOnHover, setPlayVizOnHoverState] = React33.useState(
     () => getPlayVizOnHoverEnabled()
   );
-  React32.useEffect(
+  React33.useEffect(
     () => onPlayVizOnHoverChange(setPlayVizOnHoverState),
     []
   );
-  const [hoveredGroupId, setHoveredGroupId] = React32.useState(null);
-  const [backdropVizSpan, setBackdropVizSpanState] = React32.useState(
+  const [hoveredGroupId, setHoveredGroupId] = React33.useState(null);
+  const [backdropVizSpan, setBackdropVizSpanState] = React33.useState(
     () => getBackdropVizSpan()
   );
-  React32.useEffect(
+  React33.useEffect(
     () => onBackdropVizSpanChange(setBackdropVizSpanState),
     []
   );
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
   }, [theme]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     ensureTabbarScrollStyle();
   }, []);
-  const activeTab = React32.useMemo(() => {
+  const activeTab = React33.useMemo(() => {
     const group2 = groups.get(activeGroupId);
     if (!group2 || group2.activeTabId === null) return null;
     return group2.tabs.find((t) => t.id === group2.activeTabId) ?? null;
   }, [groups, activeGroupId]);
-  const prevActiveTabRef = React32.useRef(void 0);
-  React32.useEffect(() => {
+  const prevActiveTabRef = React33.useRef(void 0);
+  React33.useEffect(() => {
     if (prevActiveTabRef.current !== activeTab) {
       prevActiveTabRef.current = activeTab;
       onActiveTabChange?.(activeTab);
     }
   }, [activeTab, onActiveTabChange]);
-  const updateGroup = React32.useCallback(
+  const updateGroup = React33.useCallback(
     (groupId, patch) => {
       setGroups((prev) => {
         const existing = prev.get(groupId);
@@ -52181,22 +52222,22 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleTabClick = React32.useCallback(
+  const handleTabClick = React33.useCallback(
     (groupId, tabId) => {
       updateGroup(groupId, (g) => ({ ...g, activeTabId: tabId }));
       setActiveGroupId(groupId);
     },
     [updateGroup]
   );
-  const backdropSourceByFile = React32.useRef(/* @__PURE__ */ new Map());
-  const stopBackdropSource = React32.useCallback((fileId) => {
+  const backdropSourceByFile = React33.useRef(/* @__PURE__ */ new Map());
+  const stopBackdropSource = React33.useCallback((fileId) => {
     const ref = backdropSourceByFile.current.get(fileId);
     if (ref?.kind === "file") {
       findBuiltinExampleSource(ref.fileId)?.stopIfRunning();
     }
     backdropSourceByFile.current.delete(fileId);
   }, []);
-  const stopDisplacedBackdrop = React32.useCallback(
+  const stopDisplacedBackdrop = React33.useCallback(
     (sourceGroupId, tabId, targetGroupId) => {
       if (sourceGroupId === targetGroupId) return;
       const src = groups.get(sourceGroupId);
@@ -52210,7 +52251,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, stopBackdropSource]
   );
-  const handleTabClose = React32.useCallback(
+  const handleTabClose = React33.useCallback(
     (groupId, tabId) => {
       let closedTab = null;
       const existing = groups.get(groupId);
@@ -52289,7 +52330,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout, onTabClose, stopBackdropSource]
   );
-  const handleSplit = React32.useCallback(
+  const handleSplit = React33.useCallback(
     (groupId, direction = "east") => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -52301,7 +52342,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const findNeighborGroupId = React32.useCallback(
+  const findNeighborGroupId = React33.useCallback(
     (closingId) => {
       for (const id of allGroupIds(layout)) {
         if (id !== closingId) return id;
@@ -52310,7 +52351,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [layout]
   );
-  const handleCloseGroup = React32.useCallback(
+  const handleCloseGroup = React33.useCallback(
     (groupId) => {
       const neighborId = findNeighborGroupId(groupId);
       if (!neighborId) return;
@@ -52337,7 +52378,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [findNeighborGroupId, activeGroupId]
   );
-  const splitGroupWithTab = React32.useCallback(
+  const splitGroupWithTab = React33.useCallback(
     (originGroupId, _direction, newTab) => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -52353,7 +52394,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const moveTabToNewQuadrant = React32.useCallback(
+  const moveTabToNewQuadrant = React33.useCallback(
     (sourceGroupId, tabId, targetGroupId, direction) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -52394,7 +52435,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout]
   );
-  const moveTabToNewEdgeGroup = React32.useCallback(
+  const moveTabToNewEdgeGroup = React33.useCallback(
     (sourceGroupId, tabId, position) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -52430,7 +52471,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups]
   );
-  const updateGroupBackground = React32.useCallback(
+  const updateGroupBackground = React33.useCallback(
     (groupId, backgroundFileId) => {
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
@@ -52443,7 +52484,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup, onBackgroundFileChange, stopBackdropSource]
   );
-  const updateGroupOverride = React32.useCallback(
+  const updateGroupOverride = React33.useCallback(
     (groupId, overrideFileId) => {
       setBgOverrides((prev) => {
         const cur = prev.get(groupId) ?? null;
@@ -52456,7 +52497,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const updateGroupBackdropOpacity = React32.useCallback(
+  const updateGroupBackdropOpacity = React33.useCallback(
     (groupId, opacity) => {
       const prev = groups.get(groupId)?.backdropOpacity;
       const nextVal = opacity == null ? void 0 : Math.min(1, Math.max(0, opacity));
@@ -52465,7 +52506,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup]
   );
-  const updateGroupBackdropQuality = React32.useCallback(
+  const updateGroupBackdropQuality = React33.useCallback(
     (groupId, quality) => {
       const prev = groups.get(groupId)?.backdropQuality;
       const nextVal = quality ?? void 0;
@@ -52474,7 +52515,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup]
   );
-  const closeTabById = React32.useCallback(
+  const closeTabById = React33.useCallback(
     (tabId) => {
       let ownerGroupId = null;
       for (const [gid, g] of groups.entries()) {
@@ -52507,7 +52548,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout, handleTabClose]
   );
-  const findTabByFileId = React32.useCallback(
+  const findTabByFileId = React33.useCallback(
     (fileId, kind) => {
       for (const [gid, g] of groups.entries()) {
         for (const t of g.tabs) {
@@ -52520,14 +52561,14 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups]
   );
-  const findGroupWithAnyPreview = React32.useCallback(() => {
+  const findGroupWithAnyPreview = React33.useCallback(() => {
     for (const [gid, g] of groups.entries()) {
       if (g.tabs.some((t) => t.kind === "preview")) return gid;
     }
     return null;
   }, [groups]);
-  const shellActionsRef = React32.useRef(null);
-  const shellActions = React32.useMemo(
+  const shellActionsRef = React33.useRef(null);
+  const shellActions = React33.useMemo(
     () => ({
       addTab: /* @__PURE__ */ __name((groupId, tab) => {
         updateGroup(groupId, (g) => ({
@@ -52548,12 +52589,12 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId, onOpenPopoutPreview]
   );
   shellActionsRef.current = shellActions;
-  const getActiveTab = React32.useCallback(() => activeTab, [activeTab]);
-  const getActiveGroupId = React32.useCallback(() => activeGroupId, [activeGroupId]);
-  const getActiveGroup = React32.useCallback(() => {
+  const getActiveTab = React33.useCallback(() => activeTab, [activeTab]);
+  const getActiveGroupId = React33.useCallback(() => activeGroupId, [activeGroupId]);
+  const getActiveGroup = React33.useCallback(() => {
     return groups.get(activeGroupId) ?? null;
   }, [groups, activeGroupId]);
-  const getPreviewProviderForCommand = React32.useCallback(
+  const getPreviewProviderForCommand = React33.useCallback(
     (language) => {
       const fromRegistry = getPreviewProviderForLanguage(language);
       if (fromRegistry) return fromRegistry;
@@ -52578,7 +52619,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     shellActions,
     getPreviewProvider: getPreviewProviderForCommand
   });
-  const handleEdgeDrop = React32.useCallback(
+  const handleEdgeDrop = React33.useCallback(
     (e, position) => {
       e.preventDefault();
       e.stopPropagation();
@@ -52595,7 +52636,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [moveTabToNewEdgeGroup]
   );
-  const handleEdgeDragOver = React32.useCallback(
+  const handleEdgeDragOver = React33.useCallback(
     (e, position) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -52604,26 +52645,26 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [dragOverEdge]
   );
-  const handleEdgeDragLeave = React32.useCallback(() => {
+  const handleEdgeDragLeave = React33.useCallback(() => {
     setDragOverEdge(null);
   }, []);
-  const onSaveFileRef = React32.useRef(onSaveFile);
+  const onSaveFileRef = React33.useRef(onSaveFile);
   onSaveFileRef.current = onSaveFile;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
-      const current8 = onSaveFileRef.current;
-      if (!current8) return;
+      const current9 = onSaveFileRef.current;
+      if (!current9) return;
       const tab = activeTab;
       if (!tab || tab.kind !== "editor") return;
       e.preventDefault();
-      current8(tab);
+      current9(tab);
     }, "handler");
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab]);
-  const handleTabDragStart = React32.useCallback(
+  const handleTabDragStart = React33.useCallback(
     (e, groupId, tab) => {
       const payload = { sourceGroupId: groupId, tabId: tab.id };
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
@@ -52632,7 +52673,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const onDragEnd = /* @__PURE__ */ __name(() => {
       setTabDragInProgress(false);
       setDragOverEdge(null);
@@ -52645,7 +52686,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
       window.removeEventListener("drop", onDragEnd);
     };
   }, []);
-  const computeQuadrant = React32.useCallback(
+  const computeQuadrant = React33.useCallback(
     (e, el) => {
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return "center";
@@ -52670,7 +52711,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleTabBarDrop = React32.useCallback(
+  const handleTabBarDrop = React33.useCallback(
     (e, targetGroupId) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -52744,7 +52785,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [stopDisplacedBackdrop]
   );
-  const handleDropOnGroup = React32.useCallback(
+  const handleDropOnGroup = React33.useCallback(
     (e, targetGroupId) => {
       e.preventDefault();
       e.stopPropagation();
@@ -52815,7 +52856,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [computeQuadrant, groups, moveTabToNewQuadrant, stopDisplacedBackdrop]
   );
-  const renderTabContent = React32.useCallback(
+  const renderTabContent = React33.useCallback(
     (tab, groupId, isActive) => {
       switch (tab.kind) {
         case "editor": {
@@ -52860,24 +52901,24 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
                     }
                   }, "onTogglePausePreview"),
                   onChangePreviewSource: /* @__PURE__ */ __name((nextRef) => {
-                    const current8 = shellActionsRef.current.findTabByFileId(
+                    const current9 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (!current8) return;
-                    updateGroup(current8.groupId, (g) => ({
+                    if (!current9) return;
+                    updateGroup(current9.groupId, (g) => ({
                       ...g,
                       tabs: g.tabs.map(
-                        (t) => t.id === current8.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
+                        (t) => t.id === current9.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
                       )
                     }));
                   }, "onChangePreviewSource"),
                   onOpenPreview: /* @__PURE__ */ __name((selectedSourceRef) => {
-                    const current8 = shellActionsRef.current.findTabByFileId(
+                    const current9 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (current8) {
+                    if (current9) {
                       return;
                     }
                     const sourceRef = selectedSourceRef ?? { kind: "default" };
@@ -53117,7 +53158,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
       onRevealBackdrop
     ]
   );
-  const workspaceSpanBackdrop = React32.useMemo(() => {
+  const workspaceSpanBackdrop = React33.useMemo(() => {
     if (backdropVizSpan !== "workspace") return null;
     for (const gid of allGroupIds(layout)) {
       const g = groups.get(gid);
@@ -53135,7 +53176,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     return null;
   }, [backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity]);
   const workspaceSpanActive = workspaceSpanBackdrop != null;
-  const renderBackdropLayer = React32.useCallback(
+  const renderBackdropLayer = React33.useCallback(
     (params) => {
       const { bgFileId, dataGroupId, quality, opacity, crop, paused } = params;
       const bgProvider = previewProviderFor?.({
@@ -53199,7 +53240,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [previewProviderFor, theme]
   );
-  const renderGroup = React32.useCallback(
+  const renderGroup = React33.useCallback(
     (group2) => {
       const activeTabObj = group2.tabs.find((t) => t.id === group2.activeTabId);
       const isShellActiveGroup = activeGroupId === group2.id;
@@ -53390,11 +53431,11 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
       pausedPreviews
     ]
   );
-  const totalGroupCount = React32.useMemo(
+  const totalGroupCount = React33.useMemo(
     () => allGroupIds(layout).length,
     [layout]
   );
-  const previewTabIds = React32.useMemo(() => {
+  const previewTabIds = React33.useMemo(() => {
     const out = [];
     for (const g of groups.values()) {
       for (const t of g.tabs) {
@@ -53405,7 +53446,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
     }
     return out;
   }, [groups]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const unsubs = previewTabIds.map(
       ({ tabId, fileId }) => subscribe2(fileId, () => {
         setGroups((prev) => {
@@ -53428,7 +53469,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
       for (const u of unsubs) u();
     };
   }, [previewTabIds]);
-  React32.useImperativeHandle(
+  React33.useImperativeHandle(
     forwardedRef,
     () => ({
       openOrFocusFile: /* @__PURE__ */ __name((fileId, options) => {
@@ -53790,7 +53831,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
                   })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
                     if (column.length === 1) {
                       const g = groups.get(column[0]);
-                      return /* @__PURE__ */ jsxRuntime.jsx(React32__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                      return /* @__PURE__ */ jsxRuntime.jsx(React33__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
                     }
                     return /* @__PURE__ */ jsxRuntime.jsx(
                       SplitPane,
@@ -53798,7 +53839,7 @@ var WorkspaceShell = React32.forwardRef(/* @__PURE__ */ __name(function Workspac
                         direction: "vertical",
                         children: column.map((gid) => {
                           const g = groups.get(gid);
-                          return /* @__PURE__ */ jsxRuntime.jsx(React32__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                          return /* @__PURE__ */ jsxRuntime.jsx(React33__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                         })
                       },
                       `col-${colIdx}-${column.join("+")}`
@@ -55032,14 +55073,14 @@ function LiveCodingEditor({
 }) {
   const isControlled = controlledCode !== void 0;
   const initialCode = controlledCode ?? defaultCode ?? DEFAULT_CODE;
-  const runtimeRef = React32.useRef(null);
-  const [isPlaying, setIsPlaying] = React32.useState(false);
-  const [error, setError] = React32.useState(null);
-  const [bpm, setBpm] = React32.useState(bpmProp);
-  const [autoRefresh, setAutoRefresh] = React32.useState(false);
-  const fileIdRef = React32.useRef(FILE_ID);
-  const [seeded, setSeeded] = React32.useState(false);
-  React32.useEffect(() => {
+  const runtimeRef = React33.useRef(null);
+  const [isPlaying, setIsPlaying] = React33.useState(false);
+  const [error, setError] = React33.useState(null);
+  const [bpm, setBpm] = React33.useState(bpmProp);
+  const [autoRefresh, setAutoRefresh] = React33.useState(false);
+  const fileIdRef = React33.useRef(FILE_ID);
+  const [seeded, setSeeded] = React33.useState(false);
+  React33.useEffect(() => {
     seedWorkspaceFile(
       fileIdRef.current,
       "pattern.strudel",
@@ -55048,7 +55089,7 @@ function LiveCodingEditor({
     );
     setSeeded(true);
   }, []);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!seeded) return;
     const rt = new LiveCodingRuntime(
       fileIdRef.current,
@@ -55084,41 +55125,41 @@ function LiveCodingEditor({
       runtimeRef.current = null;
     };
   }, [seeded, engine]);
-  const autoPlayedRef = React32.useRef(false);
-  React32.useEffect(() => {
+  const autoPlayedRef = React33.useRef(false);
+  React33.useEffect(() => {
     if (!autoPlay || !runtimeRef.current || autoPlayedRef.current) return;
     autoPlayedRef.current = true;
     runtimeRef.current.play();
   }, [autoPlay, seeded]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!isControlled || !seeded) return;
     const file = getFile(fileIdRef.current);
     if (file && controlledCode !== file.content) {
       setContent(fileIdRef.current, controlledCode);
     }
   }, [controlledCode, isControlled, seeded]);
-  const onChangeRef = React32.useRef(onChange);
+  const onChangeRef = React33.useRef(onChange);
   onChangeRef.current = onChange;
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!seeded) return;
     return subscribe2(fileIdRef.current, () => {
       const file = getFile(fileIdRef.current);
       if (file) onChangeRef.current?.(file.content);
     });
   }, [seeded]);
-  const handlePlay = React32.useCallback(() => {
+  const handlePlay = React33.useCallback(() => {
     setError(null);
     runtimeRef.current?.play();
   }, []);
-  const handleStop = React32.useCallback(() => {
+  const handleStop = React33.useCallback(() => {
     runtimeRef.current?.stop();
   }, []);
-  const handleToggleAutoRefresh = React32.useCallback(() => {
+  const handleToggleAutoRefresh = React33.useCallback(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
     rt.setAutoRefresh(!rt.isAutoRefreshEnabled());
   }, []);
-  const chromeForTab = React32.useCallback(
+  const chromeForTab = React33.useCallback(
     (tab) => {
       if (tab.kind !== "editor") return void 0;
       const rt = runtimeRef.current;
@@ -55141,7 +55182,7 @@ function LiveCodingEditor({
     },
     [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra, autoRefresh, handleToggleAutoRefresh]
   );
-  const editorExtrasForTab = React32.useCallback(
+  const editorExtrasForTab = React33.useCallback(
     () => ({
       onPlay: handlePlay,
       onStop: handleStop,
@@ -55189,10 +55230,10 @@ function StrudelEditor({
   onExport,
   engineRef: engineRefProp
 }) {
-  const engineRef = React32.useRef(null);
-  const [bpm, setBpm] = React32.useState(120);
-  const [soundNames2, setSoundNames] = React32.useState([]);
-  const [isExporting, setIsExporting] = React32.useState(false);
+  const engineRef = React33.useRef(null);
+  const [bpm, setBpm] = React33.useState(120);
+  const [soundNames2, setSoundNames] = React33.useState([]);
+  const [isExporting, setIsExporting] = React33.useState(false);
   function getEngine() {
     if (!engineRef.current) {
       engineRef.current = new StrudelEngine();
@@ -55201,19 +55242,19 @@ function StrudelEditor({
     return engineRef.current;
   }
   __name(getEngine, "getEngine");
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (engineRefProp) {
       engineRefProp.current = engineRef.current;
     }
   });
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     return () => {
       engineRef.current?.dispose();
     };
   }, []);
-  const codeRef = React32.useRef(controlledCode ?? defaultCode);
+  const codeRef = React33.useRef(controlledCode ?? defaultCode);
   codeRef.current = controlledCode ?? defaultCode;
-  const handlePostEvaluate = React32.useCallback((engine2) => {
+  const handlePostEvaluate = React33.useCallback((engine2) => {
     const written = writtenBpm(codeRef.current);
     if (written !== void 0) setBpm(written);
     const strudelEngine = engine2;
@@ -55221,7 +55262,7 @@ function StrudelEditor({
       setSoundNames(strudelEngine.getSoundNames());
     }
   }, [soundNames2]);
-  const handleExport = React32.useCallback(async () => {
+  const handleExport = React33.useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
     try {
@@ -55804,7 +55845,7 @@ __name(mountVizRenderer, "mountVizRenderer");
 
 // src/visualizers/useVizRenderer.ts
 function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
-  const rendererRef = React32.useRef(null);
+  const rendererRef = React33.useRef(null);
   const components = {};
   if (hapStream) {
     components.streaming = { hapStream };
@@ -55818,7 +55859,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
   if (rendererRef.current) {
     rendererRef.current.update(components);
   }
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!containerRef.current) return;
     const size = {
       w: containerRef.current.clientWidth || 400,
@@ -55841,7 +55882,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
 }
 __name(useVizRenderer, "useVizRenderer");
 function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
-  const containerRef = React32.useRef(null);
+  const containerRef = React33.useRef(null);
   useVizRenderer(containerRef, source, hapStream, analyser, scheduler);
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
@@ -55999,9 +56040,9 @@ function VizDropdown({
   onNewViz,
   availableComponents
 }) {
-  const [open, setOpen] = React32.useState(false);
-  const ref = React32.useRef(null);
-  React32.useEffect(() => {
+  const [open, setOpen] = React33.useState(false);
+  const ref = React33.useRef(null);
+  React33.useEffect(() => {
     if (!open) return;
     const handler = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) {
@@ -56249,12 +56290,12 @@ function VizEditor({
   previewHeight: _previewHeight = 200,
   theme = "dark"
 }) {
-  const containerRef = React32.useRef(null);
-  const [initialTabs, setInitialTabs] = React32.useState(null);
-  React32.useEffect(() => {
+  const containerRef = React33.useRef(null);
+  const [initialTabs, setInitialTabs] = React33.useState(null);
+  React33.useEffect(() => {
     if (containerRef.current) applyTheme(containerRef.current, theme);
   }, [theme]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     VizPresetStore.getAll().then((presets) => {
       const tabs2 = [];
       for (const preset of presets) {
@@ -56274,7 +56315,7 @@ function VizEditor({
       setInitialTabs(tabs2.length > 0 ? tabs2 : []);
     });
   }, []);
-  const handleSaveFile = React32.useCallback(
+  const handleSaveFile = React33.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return;
@@ -56288,7 +56329,7 @@ function VizEditor({
     },
     [onPresetSaved]
   );
-  const previewProviderFor = React32.useCallback(
+  const previewProviderFor = React33.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return void 0;
@@ -56503,10 +56544,10 @@ function usePopoutPreview({
   onClose,
   theme = "dark"
 }) {
-  const windowRef = React32.useRef(null);
-  const rendererRef = React32.useRef(null);
-  const rafRef = React32.useRef(null);
-  const cleanup = React32.useCallback(() => {
+  const windowRef = React33.useRef(null);
+  const rendererRef = React33.useRef(null);
+  const rafRef = React33.useRef(null);
+  const cleanup = React33.useCallback(() => {
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -56518,7 +56559,7 @@ function usePopoutPreview({
     }
     windowRef.current = null;
   }, []);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!descriptor) {
       cleanup();
       return;
@@ -56577,7 +56618,7 @@ function usePopoutPreview({
       cleanup();
     };
   }, [descriptor?.id]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!rendererRef.current) return;
     const components = {};
     if (hapStream) components.streaming = { hapStream };
@@ -56979,10 +57020,10 @@ function getAssetsMap() {
 __name(getAssetsMap, "getAssetsMap");
 var wiredAssetsMap = null;
 function ensureAssetsObserver() {
-  const current8 = getAssetsMap();
-  if (wiredAssetsMap === current8) return;
-  current8.observe(() => notify5());
-  wiredAssetsMap = current8;
+  const current9 = getAssetsMap();
+  if (wiredAssetsMap === current9) return;
+  current9.observe(() => notify5());
+  wiredAssetsMap = current9;
 }
 __name(ensureAssetsObserver, "ensureAssetsObserver");
 function subscribeToAssets(cb) {
@@ -57476,10 +57517,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React32__namespace.useReducer((x) => x + 1, 0);
-  React32__namespace.useEffect(() => subscribeToHistory(force), []);
-  React32__namespace.useEffect(() => subscribeToRuntimeView(force), []);
-  React32__namespace.useEffect(() => {
+  const [, force] = React33__namespace.useReducer((x) => x + 1, 0);
+  React33__namespace.useEffect(() => subscribeToHistory(force), []);
+  React33__namespace.useEffect(() => subscribeToRuntimeView(force), []);
+  React33__namespace.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -57496,17 +57537,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React32__namespace.useState(null);
-  const [forkName, setForkName] = React32__namespace.useState("");
-  const [committing, setCommitting] = React32__namespace.useState(false);
-  const [commitLabel, setCommitLabel] = React32__namespace.useState("");
-  const [expanded, setExpanded] = React32__namespace.useState(null);
-  const [hovered, setHovered] = React32__namespace.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React32__namespace.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React32__namespace.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React32__namespace.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React33__namespace.useState(null);
+  const [forkName, setForkName] = React33__namespace.useState("");
+  const [committing, setCommitting] = React33__namespace.useState(false);
+  const [commitLabel, setCommitLabel] = React33__namespace.useState("");
+  const [expanded, setExpanded] = React33__namespace.useState(null);
+  const [hovered, setHovered] = React33__namespace.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React33__namespace.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React33__namespace.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React33__namespace.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -58205,17 +58246,17 @@ function barString(v, cells = 8) {
 }
 __name(barString, "barString");
 function StaveInputsPanel({ kind }) {
-  const [open, setOpen] = React32.useState(false);
-  const [liveEnabled, setLiveEnabled] = React32.useState(true);
-  React32.useEffect(() => vizSignalProbe.acquire(), []);
-  React32.useEffect(() => {
+  const [open, setOpen] = React33.useState(false);
+  const [liveEnabled, setLiveEnabled] = React33.useState(true);
+  React33.useEffect(() => vizSignalProbe.acquire(), []);
+  React33.useEffect(() => {
     setLiveEnabled(getVizInputsLiveValuesEnabled());
     return onVizInputsLiveValuesChange(setLiveEnabled);
   }, []);
-  const rows = React32.useMemo(() => buildVizInputRows(kind), [kind]);
-  const liveRows = React32.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
-  const valueRefs = React32.useRef([]);
-  React32.useEffect(() => {
+  const rows = React33.useMemo(() => buildVizInputRows(kind), [kind]);
+  const liveRows = React33.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
+  const valueRefs = React33.useRef([]);
+  React33.useEffect(() => {
     if (!open || !liveEnabled) return;
     if (typeof requestAnimationFrame !== "function") return;
     let raf = 0;
@@ -58401,8 +58442,8 @@ var MODES = [
   { key: "backdrop", label: "backdrop" }
 ];
 function VizSettingsPopover(props) {
-  const ref = React32.useRef(null);
-  React32.useEffect(() => {
+  const ref = React33.useRef(null);
+  React33.useEffect(() => {
     const onDown = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) props.onClose();
     }, "onDown");
@@ -58417,8 +58458,8 @@ function VizSettingsPopover(props) {
       document.removeEventListener("keydown", onKey);
     };
   }, [props]);
-  const [, forceSourcesRerender] = React32.useState(0);
-  React32.useEffect(
+  const [, forceSourcesRerender] = React33.useState(0);
+  React33.useEffect(
     () => workspaceAudioBus.onSourcesChanged(
       () => forceSourcesRerender((n) => n + 1)
     ),
@@ -58712,16 +58753,16 @@ function VizEditorChrome({
   onCropBackdrop,
   onRevealBackdrop
 }) {
-  const [settingsAnchor, setSettingsAnchor] = React32.useState(null);
-  const [liveOn, setLiveOn] = React32.useState(() => getVizLive(file.id));
-  React32.useEffect(() => {
+  const [settingsAnchor, setSettingsAnchor] = React33.useState(null);
+  const [liveOn, setLiveOn] = React33.useState(() => getVizLive(file.id));
+  React33.useEffect(() => {
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = React32.useState({
+  const [selectedSource, setSelectedSource] = React33.useState({
     kind: "default"
   });
-  const handleSourceChange = React32.useCallback(
+  const handleSourceChange = React33.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
@@ -58752,21 +58793,21 @@ function VizEditorChrome({
       selectedSource
     ]
   );
-  const startSelectedBuiltin = React32.useCallback(() => {
+  const startSelectedBuiltin = React33.useCallback(() => {
     if (selectedSource.kind === "file") {
       const builtin = findBuiltinExampleSource(selectedSource.fileId);
       if (builtin) builtin.startIfIdle();
     }
   }, [selectedSource]);
-  const openSidePreview = React32.useCallback(() => {
+  const openSidePreview = React33.useCallback(() => {
     startSelectedBuiltin();
     onOpenPreview(selectedSource);
   }, [startSelectedBuiltin, onOpenPreview, selectedSource]);
   const previewMode = isBackground ? "backdrop" : previewOpen ? "side" : "off";
-  const [placementPref, setPlacementPref] = React32.useState(
+  const [placementPref, setPlacementPref] = React33.useState(
     "backdrop"
   );
-  const handleSetPreviewMode = React32.useCallback(
+  const handleSetPreviewMode = React33.useCallback(
     (next) => {
       if (next !== "off") setPlacementPref(next);
       if (next === previewMode) return;
@@ -58790,7 +58831,7 @@ function VizEditorChrome({
   const buttonState = previewMode === "off" ? "idle" : previewPaused ? "paused" : "running";
   const buttonLabel = buttonState === "running" ? "\u23F8 Pause" : "\u25B6 Play";
   const buttonTitle = buttonState === "running" ? "Pause this viz (side tab or backdrop)" : buttonState === "paused" ? "Resume this viz" : `Play this viz as ${placementPref === "backdrop" ? "backdrop" : "side preview"}`;
-  const activatePreferred = React32.useCallback(() => {
+  const activatePreferred = React33.useCallback(() => {
     if (placementPref === "backdrop") {
       startSelectedBuiltin();
       onToggleBackground(selectedSource);
@@ -58804,7 +58845,7 @@ function VizEditorChrome({
     openSidePreview,
     selectedSource
   ]);
-  const handlePrimaryClick = React32.useCallback(() => {
+  const handlePrimaryClick = React33.useCallback(() => {
     if (previewMode === "off") activatePreferred();
     else onTogglePausePreview?.();
   }, [previewMode, activatePreferred, onTogglePausePreview]);
@@ -58949,7 +58990,7 @@ function createCompiledVizProvider(opts) {
 __name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
   const { file, rendererType, audioSource, hidden, paused, fileId } = props;
-  const { descriptor, compileError } = React32.useMemo(() => {
+  const { descriptor, compileError } = React33.useMemo(() => {
     try {
       const preset = {
         id: file.id,
@@ -58985,9 +59026,9 @@ function CompiledVizMount(props) {
       return { descriptor: null, compileError: message };
     }
   }, [file.id, file.content, file.language, rendererType, file.path]);
-  const containerRef = React32.useRef(null);
-  const rendererRef = React32.useRef(null);
-  const components = React32.useMemo(() => {
+  const containerRef = React33.useRef(null);
+  const rendererRef = React33.useRef(null);
+  const components = React33.useMemo(() => {
     const bag = {};
     if (audioSource?.hapStream) {
       bag.streaming = { hapStream: audioSource.hapStream };
@@ -59019,7 +59060,7 @@ function CompiledVizMount(props) {
     }
     return bag;
   }, [audioSource]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;
     if (!el) return;
@@ -59081,7 +59122,7 @@ function CompiledVizMount(props) {
       }
     };
   }, [descriptor]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r || !r.update) return;
     try {
@@ -59089,7 +59130,7 @@ function CompiledVizMount(props) {
     } catch {
     }
   }, [components]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (hidden) {
@@ -59104,7 +59145,7 @@ function CompiledVizMount(props) {
       }
     }
   }, [hidden]);
-  React32.useEffect(() => {
+  React33.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (paused) {
@@ -59480,13 +59521,13 @@ function silencedNamesFrom(strips, soloed) {
 __name(silencedNamesFrom, "silencedNamesFrom");
 function useSilencedTrackNames() {
   const soloed = useSoloedIds();
-  const [editor, setEditor] = React32__namespace.useState(() => getActiveEditor());
-  const [strips, setStrips] = React32__namespace.useState([]);
-  React32__namespace.useEffect(() => {
+  const [editor, setEditor] = React33__namespace.useState(() => getActiveEditor());
+  const [strips, setStrips] = React33__namespace.useState([]);
+  React33__namespace.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React32__namespace.useEffect(() => {
+  React33__namespace.useEffect(() => {
     if (!editor) {
       setStrips([]);
       return;
@@ -59510,7 +59551,7 @@ function useSilencedTrackNames() {
     const sub2 = model?.onDidChangeContent?.(rederive);
     return () => sub2?.dispose?.();
   }, [editor]);
-  return React32__namespace.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
+  return React33__namespace.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
 }
 __name(useSilencedTrackNames, "useSilencedTrackNames");
 
@@ -59808,6 +59849,7 @@ exports.StrudelEngine = StrudelEngine;
 exports.TAKE_NAME_PREFIX = TAKE_NAME_PREFIX;
 exports.TRACK_PALETTE_32 = TRACK_PALETTE_32;
 exports.UI_ICON_SIZE_VAR = UI_ICON_SIZE_VAR;
+exports.VELOCITY_DRAG_KEY = VELOCITY_DRAG_KEY;
 exports.VISUAL_EDIT_TABS = VISUAL_EDIT_TABS;
 exports.VIZ_FLAG_KEYS = VIZ_FLAG_KEYS;
 exports.VIZ_LANGUAGES = VIZ_LANGUAGES;
@@ -59978,6 +60020,7 @@ exports.getTierFlags = getTierFlags;
 exports.getTrackColourBarsEnabled = getTrackColourBarsEnabled;
 exports.getTrackMeta = getTrackMeta;
 exports.getTrackMetaMapSnapshot = getTrackMetaMapSnapshot;
+exports.getVelocityDrag = getVelocityDrag;
 exports.getViewedCommit = getViewedCommit;
 exports.getViewedContent = getViewedContent;
 exports.getViewedFileIds = getViewedFileIds;
@@ -60232,6 +60275,7 @@ exports.setTakesPhoneAudio = setTakesPhoneAudio;
 exports.setTierFlag = setTierFlag;
 exports.setTrackColourBarsEnabled = setTrackColourBarsEnabled;
 exports.setTrackMeta = setTrackMeta;
+exports.setVelocityDrag = setVelocityDrag;
 exports.setVizConfig = setVizConfig;
 exports.setVizInputsLiveValuesEnabled = setVizInputsLiveValuesEnabled;
 exports.setVizQuality = setVizQuality;
@@ -60317,6 +60361,7 @@ exports.usePhoneLayout = usePhoneLayout;
 exports.usePopoutPreview = usePopoutPreview;
 exports.useSilencedTrackNames = useSilencedTrackNames;
 exports.useTrackMetaMap = useTrackMetaMap;
+exports.useVelocityDrag = useVelocityDrag;
 exports.useWorkspaceFile = useWorkspaceFile;
 exports.validatePersistedState = validatePersistedState;
 exports.valueAtPosition = valueAtPosition;

@@ -17,7 +17,10 @@
  * exactly where the drag is armed.
  */
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid, velocityDragOn } from './_appBoot'
+
+// velocity drags are off by default (#2525); this spec is about the gesture, so it turns them on
+velocityDragOn(test)
 
 
 pinLcmGrid(test)

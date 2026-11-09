@@ -27,8 +27,11 @@
  * can be queried directly, and is not duplicated here.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
-import { pinLcmGrid } from './_appBoot'
+import { pinLcmGrid, velocityDragOn } from './_appBoot'
 import { slotsControl, preset } from './_resolutionControl'
+
+// velocity drags are off by default (#2525); this spec is about the gesture, so it turns them on
+velocityDragOn(test)
 
 
 pinLcmGrid(test)

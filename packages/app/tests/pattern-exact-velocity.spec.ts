@@ -6,7 +6,7 @@
  * tests pin the writer and only the panel shows a drag reaches it.
  */
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, velocityDragOn } from './_appBoot'
 import { expectRefusalReported } from './_console'
 
 async function open(page: Page, code: string): Promise<Locator> {
@@ -58,6 +58,9 @@ async function dragUpDown(page: Page, target: Locator, dy: number): Promise<void
 }
 
 test.describe('velocity per step in Exact (#2468)', () => {
+  // off by default (#2525): this block is about the gesture
+  velocityDragOn(test)
+
   test('no .gain: a drag writes a new one that mirrors the steps, and the hit plays at its level', async ({ page }) => {
     const grid = await open(page, '$: s("bd [hh hh] sd hh")')
     const bd = await rowOf(grid, 'bd')
@@ -148,5 +151,45 @@ test.describe('a click under a .gain rest (#2467)', () => {
     const want = '$: s("bd ~ [bd,sd] ~").gain("0.5 ~ 1 ~")'
     await expect.poll(() => editorValue(page)).toBe(want)
     expect(await heard(page, want)).toEqual(['bd@0=0.5', 'bd@1/2=1', 'sd@1/2=1'])
+  })
+})
+
+test.describe('velocity drag is off by default, in both grid modes (#2525)', () => {
+  for (const mode of ['exact', 'lcm'] as const) {
+    test(`${mode}: no cell claims a level, and a vertical drag writes no .gain`, async ({ page }) => {
+      const code = '$: s("bd sd").gain("0.5 1")'
+      await bootApp(page, { drawer: { tabId: 'pattern', height: 460 }, gridMode: mode })
+      await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
+      await seedCode(page, code)
+      const grid = page.locator('[data-bottom-panel-tab="sequencer"]')
+      const lit = grid.locator('[data-seq-cell][aria-pressed="true"]')
+      await expect(lit.first()).toBeVisible()
+      // CONTROL: the lit cells are drawn, so "no data-gain" is about velocity, not an empty grid
+      expect(await lit.count()).toBe(2)
+      expect(await lit.evaluateAll((els) => els.map((e) => e.getAttribute('data-gain')))).toEqual([null, null])
+      await dragUpDown(page, lit.first(), 40)
+      await page.waitForTimeout(300)
+      // the press was a click, as on any grid where velocity is not offered: no level written
+      expect(await editorValue(page)).not.toMatch(/gain\("0\.(?!5 1)/)
+      expect(await editorValue(page)).toContain('.gain("0.5 1")')
+    })
+  }
+
+  test('turned on in Settings, it is armed at once: a drag writes the level', async ({ page }) => {
+    const grid = await open(page, '$: s("bd sd")')
+    const sd = await rowOf(grid, 'sd')
+    await expect(cell(grid, sd, 0, '1/2')).not.toHaveAttribute('data-gain', /.*/)
+    await page.getByRole('button', { name: 'File', exact: true }).click()
+    await page.getByText('Editor Settings...').click()
+    await page.getByTestId('settings-shell').waitFor({ timeout: 5000 })
+    await page.getByTestId('settings-nav-pattern').click()
+    const toggle = page.getByTestId('setting-velocityDrag')
+    await expect(toggle).not.toBeChecked()
+    await toggle.click()
+    await expect(toggle).toBeChecked()
+    await page.getByTestId('settings-shell').getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(cell(grid, sd, 0, '1/2')).toHaveAttribute('data-gain', '1')
+    await dragUpDown(page, cell(grid, sd, 0, '1/2'), 40)
+    await expect.poll(() => editorValue(page)).toBe('$: s("bd sd").gain("1 0.5")')
   })
 })

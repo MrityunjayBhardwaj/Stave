@@ -28,6 +28,7 @@ import { GridZoomControl, useGridZoom } from './gridZoomControl'
 import { GRID_SCOPE, isCursorMove, isNoteEdit, matchGridKey, mountGridGestures, moveStepCursor, stopAt, type GridAction } from './gridGestures'
 import { InViewBar, PHONE_RULER_HEIGHT, PHONE_STEP_MIN, TurnHint, usePhoneGrid, useRulerPan } from './phoneGrid'
 import { useNoteColorMode, velocityColor } from './noteColor'
+import { useVelocityDrag } from './velocityDrag'
 import { PatternTrackChip } from './PatternTrackChip'
 import { lookOnlyTreeRoll } from './rollTree'
 import { DRUM_SOUNDS } from './soundCatalog'
@@ -171,6 +172,10 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
   const gain = React.useMemo(() => (chunk ? readChunkGain(chunk) : null), [chunk])
   const gainRef = React.useRef(gain)
   gainRef.current = gain
+  // a vertical drag sets a level only where the user turned velocity on (#2525)
+  const velocityOn = useVelocityDrag()
+  const velocityOnRef = React.useRef(velocityOn)
+  velocityOnRef.current = velocityOn
 
   const gridRef_ = React.useRef(ok)
   gridRef_.current = ok
@@ -257,7 +262,7 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
   React.useEffect(() => {
     const out = new Set<string>()
     setOffered(new Set())
-    if (mini === null || !gain || gain.foreign) return
+    if (!velocityOn || mini === null || !gain || gain.foreign) return
     const todo: Array<{ begin: number; end: number }> = []
     const seen = new Set<string>()
     for (const r of rows) {
@@ -284,7 +289,7 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
     return () => {
       if (timer !== null) clearTimeout(timer)
     }
-  }, [mini, gain, rows, bars])
+  }, [mini, gain, rows, bars, velocityOn])
   const drawings = React.useMemo(() => rows.map((r) => (r.bars ? drawTreeRow(r.bars, barPx, openPx) : null)), [rows, barPx, openPx])
   const orderOf = (r: ExactRow): string[] => rows.filter((k) => k.part === r.part).map((k) => k.sound)
 
@@ -428,7 +433,7 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
       const dx = e.clientX - g.startX
       const dy = e.clientY - g.startY
       if (g.mode === 'pending') {
-        if (g.hit && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
+        if (g.hit && velocityOnRef.current && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
           // a vertical drag on a lit cell is its velocity, where the `.gain` can take it
           const can = writeLevelRef.current(g.hit, (g.startLevel ?? 1) === 0 ? 1 : 0, true)
           if (!can.ok) {
@@ -715,7 +720,7 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
                   {/* what the row plays, at its exact time and length */}
                   {row.hits.map((h, i) => {
                     // HEIGHT is the level the hit plays at, bottom-anchored and full at 1 (#2468)
-                    const level = clamp01(levelOf(h.begin) ?? 1)
+                    const level = velocityOn ? clamp01(levelOf(h.begin) ?? 1) : 1
                     return (
                       <div key={`h${i}`} data-seq-fill data-tree-hit={h.begin.toFixed(6)} style={{ position: 'absolute', left: x(h.begin) + 2, width: Math.max(2, x(Math.min(h.end, bars)) - x(h.begin) - 3), top: 3 + (1 - level) * (ROW_PX - 6), bottom: 3, borderRadius: 2, background: colorMode === 'velocity' ? velocityColor(level) : voice.color, pointerEvents: 'none' }} />
                     )
