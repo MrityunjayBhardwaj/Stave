@@ -127,6 +127,17 @@ describe('createRecordingHost', () => {
     expect(fake.globals).toEqual({})
   })
 
+  it('onPrepare callbacks are listed while on and gone once undone (#2510)', () => {
+    const rec = createRecordingHost('zzext', reg)
+    const a = () => undefined
+    const b = () => undefined
+    rec.host.onPrepare(a)
+    rec.host.onPrepare(b)
+    expect(rec.preparers()).toEqual([a, b])
+    expect(rec.undo()).toEqual([])
+    expect(rec.preparers()).toEqual([])
+  })
+
   it('a host that has been undone refuses further registrations', () => {
     const rec = createRecordingHost('zzext', reg)
     rec.undo()

@@ -35,9 +35,12 @@ export interface ExtensionManifest {
 /** The code half. */
 export interface ExtensionModule {
   /**
-   * Audio worklet module URLs. Declared here, not registered by the extension, so the
-   * host can hand them to Strudel before it sets up audio and every audio context made
-   * afterwards gets them: live, bounce, stems, the disposable render frame (#2510).
+   * Audio worklet module URLs. Declared here, not registered by the extension (#2510):
+   * before `activate`, Stave adds each one to the live audio context, and only once that
+   * worked hands it to Strudel's `registerWorklet`, so every audio context made later
+   * gets it too: bounce, stems, the disposable render frame. A URL that fails to load
+   * stops the extension switching on, and is never handed on (Strudel loads its list
+   * all together, so one bad URL would cut short every later context's wait).
    */
   readonly worklets?: readonly string[]
   /** Register everything through `host`. May be async; a throw leaves nothing behind. */
@@ -63,4 +66,13 @@ export interface ExtensionHost {
   setGlobal(name: string, value: unknown): void
   /** Run `fn` when the extension is switched off, before the host's own undo. */
   onDeactivate(fn: () => void): void
+  /**
+   * Get ready before sound starts (#2510): load a wasm, fetch a model. Stave calls every
+   * active extension's `fn` before each Play and before each bounce, stem and waveform
+   * render, and waits for it (up to a limit), so cache your own work: the second call
+   * should return at once. A throw is reported under the extension's name and the rest
+   * of the song still plays. Never load anything inside a sound's trigger instead: the
+   * first notes would be lost, and an offline render would hold its memory for good.
+   */
+  onPrepare(fn: () => unknown): void
 }

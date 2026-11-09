@@ -14,7 +14,7 @@
  *  - switching off returns the undo errors instead of throwing, so every undo runs.
  */
 import { createRecordingHost, type HostRegistries, type RecordingHost } from './host'
-import type { ExtensionManifest } from './types'
+import type { ExtensionManifest, ExtensionModule } from './types'
 
 export interface ExtensionManager {
   /** the manifests it was given, by id */
@@ -31,12 +31,19 @@ export interface ExtensionManager {
    * skipped and listed in `unknown`, not reported as a failure on every start.
    */
   sync(ids: ReadonlySet<string>): Promise<{ failed: { id: string; error: unknown }[]; unknown: string[] }>
+  /** The `onPrepare` callbacks of every active extension (#2510), with whose they are. */
+  preparers(): { id: string; run: () => unknown }[]
 }
 
 export function createExtensionManager(opts: {
   manifests: readonly ExtensionManifest[]
   /** Asked for on each activation, because Strudel's registries exist only after the engine starts. */
   registries: () => HostRegistries
+  /**
+   * Runs after the code is loaded and before `activate` (#2510: the worklets go into the
+   * audio context here). A throw stops the switch-on with nothing registered.
+   */
+  beforeActivate?: (manifest: ExtensionManifest, mod: ExtensionModule) => Promise<void>
 }): ExtensionManager {
   const byId = new Map<string, ExtensionManifest>()
   for (const m of opts.manifests) {
@@ -49,6 +56,8 @@ export function createExtensionManager(opts: {
 
   async function run(m: ExtensionManifest, ticket: { cancelled: boolean }): Promise<void> {
     const mod = await m.load()
+    if (ticket.cancelled) return
+    await opts.beforeActivate?.(m, mod)
     if (ticket.cancelled) return
     const rec = createRecordingHost(m.id, opts.registries(), m.provides)
     try {
@@ -109,6 +118,12 @@ export function createExtensionManager(opts: {
         ),
       )
       return { failed, unknown }
+    },
+
+    preparers() {
+      const out: { id: string; run: () => unknown }[] = []
+      for (const [id, rec] of active) for (const run of rec.preparers()) out.push({ id, run })
+      return out
     },
   }
   return manager

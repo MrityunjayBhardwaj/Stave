@@ -25,6 +25,8 @@ import type { ExtensionHost, SoundTrigger } from './types'
 export const RESIDUE = {
   control:
     "the control's name stays known to Strudel's control list, so Stave's parser still reads `.name(…)` as a parameter",
+  worklet:
+    "an audio worklet module stays loaded in the live context and on Strudel's worklet list (superdough's `registerWorklet` has no remove), so later renders load it too; nothing uses it",
 } as const
 
 /** The registries an extension writes to. In the app: `fromStrudel(webaudio, core)`. */
@@ -100,6 +102,8 @@ export interface RecordingHost {
    * the errors are returned rather than thrown so one bad step cannot strand the rest.
    */
   undo(): unknown[]
+  /** the `onPrepare` callbacks registered so far; empty once undone */
+  preparers(): readonly (() => unknown)[]
 }
 
 /**
@@ -118,6 +122,7 @@ export function createRecordingHost(
     new Error(`The ${id} extension registered the ${kind} "${name}" without declaring it in its manifest, so it was not added.`)
   const undos: (() => void)[] = []
   const onOff: (() => void)[] = []
+  const prepares: (() => unknown)[] = []
   let closed = false
   const open = () => {
     if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`)
@@ -156,6 +161,14 @@ export function createRecordingHost(
       open()
       onOff.push(fn)
     },
+    onPrepare(fn) {
+      open()
+      prepares.push(fn)
+      undos.push(() => {
+        const i = prepares.indexOf(fn)
+        if (i >= 0) prepares.splice(i, 1)
+      })
+    },
   }
 
   return {
@@ -172,5 +185,6 @@ export function createRecordingHost(
       }
       return errors
     },
+    preparers: () => [...prepares],
   }
 }

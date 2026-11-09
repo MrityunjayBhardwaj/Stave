@@ -4723,6 +4723,8 @@ declare class StrudelEngine implements LiveCodingEngine {
     private stopListeningForPlayErrors;
     /** #2201 — stops this engine owning Strudel's messages. See `strudelLogBridge`. */
     private stopOwningLogs;
+    /** #2510 — stop reading the sound names again when extensions switch on or off */
+    private stopFollowingExtensions;
     /** #2201 — above zero while this engine's evaluate runs */
     private evaluating;
     /** #2201 — above zero while this engine hands a note to superdough */
@@ -5346,6 +5348,8 @@ declare class StrudelEngine implements LiveCodingEngine {
     setRuntimeErrorHandler(handler: (err: Error) => void): void;
     /** Returns all sound names registered after init() — useful for editor autocompletion. */
     getSoundNames(): string[];
+    /** Read the registered sound names: at init, and again when an extension switches on or off (#2510). */
+    private readSoundNames;
     /**
      * #2200–#2202 — the file this engine plays, as the Console names it. The app
      * knows it; the engine doesn't. Rows the engine writes on its own (play-time
