@@ -2,6 +2,7 @@
  * Community gallery (#2306) — the browser side of the routes in types.ts.
  * Every function throws an Error whose message a person can act on.
  */
+import { readRecording, type GalleryRecording } from "./recording";
 import {
   AUTHOR_KEY_HEADER,
   MANAGE_TOKEN_HEADER,
@@ -78,6 +79,32 @@ export async function fetchGalleryEntry(id: string): Promise<GalleryEntryRespons
   if (res.status === 404) throw new Error("this gallery entry wasn't found");
   if (!res.ok) throw await failure(res, "loading the entry");
   return (await res.json()) as GalleryEntryResponse;
+}
+
+const recordings = new Map<string, Promise<GalleryRecording | null>>();
+
+/**
+ * #2487 — what an entry plays, recorded at publish; null when it has none or it
+ * couldn't be read. Read through `readRecording` again here: the card draws only
+ * a record of the right shape. One request per entry per page: the card and the
+ * entry page share it. A failed fetch is forgotten, so a later draw tries again.
+ */
+export function fetchGalleryRecording(id: string): Promise<GalleryRecording | null> {
+  const had = recordings.get(id);
+  if (had) return had;
+  const p = fetch(`/api/gallery/${encodeURIComponent(id)}/recording`)
+    .then(async (res) => (res.ok ? readRecording(await res.json()) : null))
+    .catch(() => {
+      recordings.delete(id);
+      return null;
+    });
+  recordings.set(id, p);
+  return p;
+}
+
+/** Test seam: forget fetched records. */
+export function forgetGalleryRecordingsForTests(): void {
+  recordings.clear();
 }
 
 export function galleryThumbnailUrl(id: string): string {

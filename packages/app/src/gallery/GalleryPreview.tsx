@@ -45,6 +45,8 @@ export interface GalleryPreviewProps {
   autoStart?: boolean;
   /** Playing or not — so the file row that started it can show Stop. */
   onPlayingChange?: (playing: boolean) => void;
+  /** #2488 — what the stage shows before it plays: the file's recorded timeline, when there is one. */
+  idle?: React.ReactNode;
 }
 
 /**
@@ -53,7 +55,7 @@ export interface GalleryPreviewProps {
  * row's play button switches the file it holds.
  */
 export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewProps>(function GalleryPreview(
-  { code, kind, fileKey, autoStart = false, onPlayingChange },
+  { code, kind, fileKey, autoStart = false, onPlayingChange, idle },
   ref,
 ) {
   const [open, setOpen] = useState(false);
@@ -199,9 +201,11 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
           data-gallery-preview-frame
         />
       ) : (
-        <div className="sg-stage-idle" aria-hidden="true">
-          <span>{kind === "strudel" ? "Pattern" : "Visual"}</span>
-        </div>
+        (idle ?? (
+          <div className="sg-stage-idle" aria-hidden="true">
+            <span>{kind === "strudel" ? "Pattern" : "Visual"}</span>
+          </div>
+        ))
       )}
       <div className="sg-stage-bar">
         <button

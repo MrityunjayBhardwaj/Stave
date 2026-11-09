@@ -6,9 +6,14 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EntryPage, type EntryPageProps } from "../GalleryEntry";
+import { forgetGalleryRecordingsForTests } from "../client";
 import type { GalleryEntry, GalleryEntryResponse } from "../types";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  forgetGalleryRecordingsForTests();
+});
 
 const ENTRY: GalleryEntry = {
   id: "proj1xxxxxx",
@@ -150,5 +155,26 @@ describe("EntryPage", () => {
     cleanup();
     renderPage();
     expect(screen.queryByText("← Back")).toBeNull();
+  });
+
+  it("with a record: the cover first and open, its timeline on the stage, each recorded row with its strip and length", async () => {
+    const rec = {
+      v: 1,
+      cover: "bass.strudel",
+      contents: { patterns: 2, visuals: 1, other: 1 },
+      files: [{ path: "bass.strudel", span: "loop", cycles: 8, lanes: [{ name: "sawtooth" }], events: [[0, 0, 1, 36]], sections: [] }],
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(rec)));
+    renderPage({ detail: { status: "ready", id: ENTRY.id, data: { entry: { ...ENTRY, hasRecording: true }, manifest: MANIFEST } } });
+    await waitFor(() => expect(document.querySelector("[data-gallery-file-row]")!.getAttribute("data-gallery-file-row")).toBe("bass.strudel"));
+    const row = document.querySelector('[data-gallery-file-row="bass.strudel"]')!;
+    expect(row.getAttribute("aria-current")).toBe("true");
+    expect(row.querySelector("[data-gallery-cover]")).not.toBeNull();
+    expect(row.textContent).toContain("8-bar loop");
+    expect(row.querySelector('[data-gallery-timeline="bass.strudel"]')).not.toBeNull();
+    // the stage, before Play, shows what the cover plays
+    expect(document.querySelector('[data-gallery-preview] [data-gallery-timeline="bass.strudel"]')).not.toBeNull();
+    expect(document.querySelector('[data-gallery-code="bass.strudel"]')).not.toBeNull();
+    expect(document.querySelector(".sg-facts")!.textContent).toContain("Coverbass.strudel, 8-bar loop");
   });
 });

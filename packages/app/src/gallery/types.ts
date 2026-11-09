@@ -1,3 +1,4 @@
+import type { GalleryRecording } from "./recording";
 /**
  * Community gallery (#2306) — the contract shared by the server routes
  * (`app/api/gallery/`), the publish dialog, and the browse overlay.
@@ -39,6 +40,8 @@ export interface GalleryEntry {
   publishedAt: number;
   fileCount: number;
   hasThumbnail: boolean;
+  /** #2487 — a record of what it plays was stored at publish (GET /api/gallery/<id>/recording). Absent: none. */
+  hasRecording?: boolean;
 }
 
 /** The project payload — the same manifest short share links carry (shareProject.ts). */
@@ -65,6 +68,8 @@ export interface PublishRequest {
   manifest: GalleryManifest;
   /** Optional `data:image/webp;base64,…` or `data:image/png;base64,…`, at most MAX_THUMBNAIL_BYTES decoded. */
   thumbnail?: string;
+  /** #2487 — what the entry plays, recorded at publish on the author's machine (recording.ts). */
+  recording?: GalleryRecording;
 }
 
 export interface PublishResponse {
