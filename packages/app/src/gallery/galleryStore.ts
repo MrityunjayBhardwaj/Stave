@@ -42,7 +42,15 @@ import { useSyncExternalStore } from "react";
 import { fetchAccountShares, fetchGalleryEntry, fetchGalleryList, GalleryEntryRemoved } from "./client";
 import { applyListChanges, listLocalShares, listPrivateLinks, loadAuthor, type LocalPrivateLink, type LocalShare } from "./localShares";
 import { MAX_LISTED_ENTRIES, type GalleryEntry, type GalleryEntryResponse, type MySharesResponse } from "./types";
-import type { GalleryFilter, GalleryLinkTarget, GallerySort, GalleryTab, MineFilter, MineSort } from "./galleryModel";
+import type {
+  GalleryFilter,
+  GalleryLinkTarget,
+  GallerySort,
+  GalleryTab,
+  MineFilter,
+  MineSort,
+  ProfileSort,
+} from "./galleryModel";
 
 export type ListState =
   | { status: "loading" }
@@ -77,6 +85,27 @@ export interface SavedScroll {
   top: number;
 }
 
+/**
+ * #2493 — a profile's search, filter and order, for the profile at one place in
+ * the Back stack (`key`, profileListKey). Kept here so it survives opening one of
+ * their entries and coming Back; another profile, the same one opened again
+ * further up the stack, or any fresh open or change of view starts fresh. Not
+ * saved with the tab across reloads.
+ */
+export interface ProfileList {
+  key: string;
+  filter: GalleryFilter;
+  sort: ProfileSort;
+  query: string;
+}
+
+export const PROFILE_LIST_START: Omit<ProfileList, "key"> = { filter: "all", sort: "newest", query: "" };
+
+/** Which profile view a ProfileList belongs to: its depth in the Back stack, and the author. */
+export function profileListKey(depth: number, authorId: string): string {
+  return `${depth}:${authorId}`;
+}
+
 export interface GalleryState {
   /** The view chosen (browse is shown instead when Moderation is chosen but you're not an admin). */
   tab: GalleryTab;
@@ -92,6 +121,10 @@ export interface GalleryState {
   detail: DetailState | null;
   /** What is open on top of the browse grid, innermost last; Back pops one. */
   stack: GalleryLinkTarget[];
+  /** #2493 — the open profile's search, filter and order (ProfileList). */
+  profileList: ProfileList | null;
+  /** #2493 — the open profile's name once it has loaded, for the tab's label. */
+  profileName: { id: string; name: string } | null;
   myAuthorId: string | null;
   mine: LocalShare[];
   links: LocalPrivateLink[];
@@ -118,6 +151,10 @@ export interface GalleryStore {
   setMineFilter(filter: MineFilter): void;
   setMineSort(sort: MineSort): void;
   setMineQuery(query: string): void;
+  /** #2493 — change the search, filter or order of the profile at `key`. */
+  setProfileList(key: string, patch: Partial<Omit<ProfileList, "key">>): void;
+  /** #2493 — the profile `id` loaded, and is called `name`. */
+  setProfileName(id: string, name: string): void;
   loadList(): void;
   /** (Re)load the entry `id` into the detail. */
   openEntry(id: string): void;
@@ -164,6 +201,8 @@ const initialState = (): GalleryState => ({
   list: { status: "loading" },
   detail: null,
   stack: [],
+  profileList: null,
+  profileName: null,
   myAuthorId: null,
   mine: [],
   links: [],
@@ -231,7 +270,7 @@ export function createGalleryStore(): GalleryStore {
       loadList();
       refreshLocal();
       scroll = null;
-      set({ stack: first ? [first] : [] });
+      set({ stack: first ? [first] : [], profileList: null });
       if (first?.kind === "entry") openEntry(first.id);
       else set({ detail: null });
     },
@@ -240,7 +279,7 @@ export function createGalleryStore(): GalleryStore {
       refreshLocal();
       scroll = null;
       const { tab, filter, sort, query, mineFilter, mineSort, mineQuery } = place;
-      set({ tab, filter, sort, query, mineFilter, mineSort, mineQuery, stack: [...place.stack] });
+      set({ tab, filter, sort, query, mineFilter, mineSort, mineQuery, stack: [...place.stack], profileList: null });
       const top = place.stack[place.stack.length - 1];
       if (top?.kind === "entry") openEntry(top.id);
       else set({ detail: null });
@@ -248,7 +287,7 @@ export function createGalleryStore(): GalleryStore {
     setTab(tab) {
       // A view of its own: whatever was open on top of the grid closes.
       scroll = null;
-      set({ tab, stack: [], detail: null });
+      set({ tab, stack: [], detail: null, profileList: null });
     },
     setFilter: (filter) => set({ filter }),
     setSort: (sort) => set({ sort }),
@@ -256,6 +295,12 @@ export function createGalleryStore(): GalleryStore {
     setMineFilter: (mineFilter) => set({ mineFilter }),
     setMineSort: (mineSort) => set({ mineSort }),
     setMineQuery: (mineQuery) => set({ mineQuery }),
+    setProfileList: (key, patch) =>
+      set((s) => ({
+        profileList: { ...(s.profileList?.key === key ? s.profileList : { key, ...PROFILE_LIST_START }), ...patch },
+      })),
+    setProfileName: (id, name) =>
+      set((s) => (s.profileName?.id === id && s.profileName.name === name ? {} : { profileName: { id, name } })),
     loadList,
     openEntry,
     push(view) {

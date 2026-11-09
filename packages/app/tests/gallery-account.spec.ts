@@ -180,7 +180,10 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
     await expect(page.locator('[data-gallery-mine-source="account"]')).toBeVisible()
     await expect(page.locator(`[data-gallery-mine="${seed.entryId}"]`)).toHaveAttribute('data-gallery-home', 'account', { timeout: 15_000 })
     await expect(page.locator(`[data-gallery-link="${linkId}"]`)).toHaveAttribute('data-gallery-home', 'account')
-    await expect(page.locator(`[data-gallery-my-collection="${seed.collectionId}"]`)).toBeVisible()
+    // #2494 — the collection came into the account (the account's own list says so), and My shares doesn't list collections for now.
+    const sharesA = (await (await page.request.get('/api/gallery/me/shares')).json()) as { collections: Array<{ id: string }> }
+    expect(sharesA.collections.map((c) => c.id)).toContain(seed.collectionId)
+    await expect(page.locator(`[data-gallery-my-collection="${seed.collectionId}"]`)).toHaveCount(0)
     await expect(page.locator('[data-gallery-browser-only]')).toHaveCount(0)
     await expect(page.locator('[data-gallery-links-note]')).toContainText('only you can see this list')
     await expect(page.locator('[data-gallery-links-note]')).toContainText("A link's key is kept only in the browser that made it")
@@ -226,7 +229,8 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
     const profile = page.locator(`[data-gallery-profile="${accountAuthorId}"]`)
     await expect(profile).toBeVisible({ timeout: 15_000 })
     await expect(profile).toContainText(seed.title)
-    await expect(profile).toContainText(`Old EP ${RUN}`)
+    // #2494 — the profile lists no collections for now (the account's list above has it).
+    await expect(profile.locator('[data-gallery-collection-card]')).toHaveCount(0)
     await expect(profile.locator('[data-gallery-edit-profile]')).toBeVisible()
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/4-old-profile-follows.png` })
 
@@ -257,7 +261,10 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
       const link = b.page.locator(`[data-gallery-link="${linkId}"]`)
       await expect(entry).toHaveAttribute('data-gallery-home', 'account', { timeout: 15_000 })
       await expect(link).toHaveAttribute('data-gallery-home', 'account')
-      await expect(b.page.locator(`[data-gallery-my-collection="${seed.collectionId}"]`)).toBeVisible()
+      // #2494 — on the account from any device (its list says so); My shares doesn't list collections for now.
+      const sharesB = (await (await b.page.request.get('/api/gallery/me/shares')).json()) as { collections: Array<{ id: string }> }
+      expect(sharesB.collections.map((c) => c.id)).toContain(seed.collectionId)
+      await expect(b.page.locator(`[data-gallery-my-collection="${seed.collectionId}"]`)).toHaveCount(0)
       // This browser holds no keys at all.
       expect(await b.page.evaluate(() => localStorage.getItem('stave.share.links'))).toBeNull()
       if (SHOTS) await b.page.screenshot({ path: `${SHOTS}/3-my-shares-browser-b.png` })

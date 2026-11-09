@@ -27,6 +27,7 @@ import { codeLanguageOf, colourLines, type TokenKind } from "./codeColour";
 import { RecordingTimeline, lengthLabel } from "./GalleryTimeline";
 import { GALLERY_FILTERS, KIND_LABEL, contentsSummary, fileRole, formatGalleryDate, publishedAgo } from "./galleryModel";
 import { shownName } from "./reservedNames";
+import { GalleryCrumbs } from "./GalleryBar";
 import type { DetailState } from "./galleryStore";
 import type { GalleryEntry, GalleryEntryResponse, GalleryKind } from "./types";
 
@@ -87,53 +88,6 @@ export function CodeView({ path, content }: { path: string; content: string }) {
   );
 }
 
-function Crumbs({
-  entry,
-  title,
-  backLabel,
-  onBack,
-  onHome,
-  onKind,
-  onClose,
-}: {
-  entry: GalleryEntry | null;
-  title: string;
-  backLabel: string | null;
-  onBack: () => void;
-  onHome: () => void;
-  onKind: (kind: GalleryKind) => void;
-  onClose?: () => void;
-}) {
-  const kindLabel = entry ? GALLERY_FILTERS.find((f) => f.id === entry.kind)?.label : null;
-  return (
-    <nav className="sg-crumbs" aria-label="Where you are">
-      {backLabel && (
-        <button className="sg-btn sg-crumb-back" onClick={onBack}>
-          {backLabel}
-        </button>
-      )}
-      <button className="sg-crumb" data-gallery-crumb="gallery" onClick={onHome}>
-        Gallery
-      </button>
-      {entry && kindLabel && (
-        <>
-          <span className="sg-crumb-sep" aria-hidden="true">/</span>
-          <button className="sg-crumb" data-gallery-crumb="kind" onClick={() => onKind(entry.kind)}>
-            {kindLabel}
-          </button>
-        </>
-      )}
-      <span className="sg-crumb-sep" aria-hidden="true">/</span>
-      <span className="sg-crumb-here" aria-current="page">{title}</span>
-      {onClose && (
-        <button className="sg-close sg-crumb-close" aria-label="Close gallery" onClick={onClose}>
-          ×
-        </button>
-      )}
-    </nav>
-  );
-}
-
 const PLAY_ICON = (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z" /></svg>
 );
@@ -156,14 +110,16 @@ export function EntryPage(props: EntryPageProps) {
   const ready = detail.status === "ready" ? detail.data : null;
   // #2487 — what each pattern plays, recorded at publish (none for older entries)
   const rec = useEntryRecording(ready?.entry ?? { id: detail.id, hasRecording: false });
+  const kindLabel = ready ? GALLERY_FILTERS.find((f) => f.id === ready.entry.kind)?.label : undefined;
+  const kindCrumb =
+    ready && kindLabel ? [{ label: kindLabel, hook: "kind", onClick: () => onKind(ready.entry.kind) }] : [];
   const crumbs = (
-    <Crumbs
-      entry={ready?.entry ?? null}
-      title={ready?.entry.title ?? "Entry"}
+    <GalleryCrumbs
       backLabel={backLabel}
       onBack={onBack}
       onHome={onHome}
-      onKind={onKind}
+      middle={kindCrumb}
+      here={ready?.entry.title ?? "Entry"}
       onClose={onClose}
     />
   );
@@ -397,13 +353,6 @@ export function EntryPage(props: EntryPageProps) {
 export const ENTRY_CSS = `
 .sg-entry-page { padding: 0; container-type: inline-size; display: flex; flex-direction: column; }
 .sg-entry-page > .sg-entry { flex: 1 0 auto; }
-.sg-crumbs { display: flex; align-items: center; gap: 8px; padding: 12px 24px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; color: var(--text-muted, var(--text-chrome)); position: sticky; top: 0; z-index: 2; background: var(--bg-elevated); }
-.sg-crumb { background: none; border: 0; padding: 0; color: var(--text-chrome); cursor: pointer; font: inherit; }
-.sg-crumb:hover { color: var(--text-primary); text-decoration: underline; }
-.sg-crumb-sep { opacity: .6; }
-.sg-crumb-here { color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sg-crumb-back { padding: 3px 8px; font-size: 12px; margin-right: 4px; }
-.sg-crumb-close { margin-left: auto; }
 .sg-entry { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; padding: 22px 24px 40px; align-items: start; }
 .sg-entry-main { display: grid; gap: 14px; min-width: 0; }
 .sg-stage { position: relative; aspect-ratio: 2 / 1; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-subtle); background: radial-gradient(120% 90% at 30% 20%, rgba(124,108,255,.22), transparent 60%), radial-gradient(90% 80% at 85% 90%, rgba(127,214,194,.14), transparent 60%), var(--bg-input, #12121f); }

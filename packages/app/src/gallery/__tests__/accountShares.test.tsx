@@ -328,7 +328,9 @@ describe("the overlay signed in", () => {
     expect(document.querySelector("[data-gallery-mine-who]")!.textContent).toBe(
       "Signed in as Ada with GitHub. Everything you've shared, from any device.",
     );
-    expect(document.querySelector('[data-gallery-my-collection="coll0000000"]')).not.toBeNull();
+    // #2494 — the account has a collection (coll0000000 above), and My shares doesn't list it for now.
+    expect(document.querySelector('[data-gallery-my-collection="coll0000000"]')).toBeNull();
+    expect(document.querySelector('[data-gallery-section="collections"]')).toBeNull();
     expect(document.querySelector('[data-gallery-links-note]')!.textContent).toContain("only you can see this list");
     expect(document.querySelector('[data-gallery-links-note]')!.textContent).toContain(
       "A link's key is kept only in the browser that made it",

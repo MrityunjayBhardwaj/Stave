@@ -175,8 +175,9 @@ export function GalleryView({
     [entries, tab, filter, query, sort],
   );
 
-  // #2486, #2492 — the browse grid and My shares each have a search.
-  const browsing = (tab === "browse" || tab === "mine") && stack.length === 0;
+  // #2486, #2492, #2493 — the browse grid, My shares and a profile each have a search.
+  const browsing =
+    ((tab === "browse" || tab === "mine") && stack.length === 0) || stack[stack.length - 1]?.kind === "author";
   // #2486 — "/" goes to the search, as on most sites, unless you are typing somewhere.
   useEffect(() => {
     if (!browsing) return;
@@ -202,7 +203,6 @@ export function GalleryView({
   const backLabel = stack.length > 1 ? "← Back" : "← Back to the gallery";
   const back = () => store.back();
   const openAuthor = (id: string) => store.push({ kind: "author", id });
-  const openCollection = (id: string) => store.push({ kind: "collection", id });
   const openOne = (id: string) => store.push({ kind: "entry", id });
   const loadAccount = () => store.loadAccount(accountAuthorId);
 
@@ -286,8 +286,8 @@ export function GalleryView({
   return (
     <div className="sg-view" data-gallery-view ref={rootRef}>
       <style>{CSS + BAR_CSS + CARD_CSS + PROFILE_CSS + MARKDOWN_CSS + MODERATION_CSS + REPORT_CSS + ENTRY_CSS + MINE_CSS}</style>
-      {/* #2491, #2492 — an entry's page and My shares have a breadcrumb bar in place of the header. */}
-      {top?.kind !== "entry" && !mineView && (
+      {/* #2491, #2492, #2493 — an entry's page, My shares and a profile have a breadcrumb bar in place of the header. */}
+      {top?.kind !== "entry" && top?.kind !== "author" && !mineView && (
       <div className={tab === "browse" && !top ? "sg-header" : "sg-header sg-header-ruled"}>
         <div className="sg-headline">
           <h2 className="sg-title">Community Gallery</h2>
@@ -331,10 +331,14 @@ export function GalleryView({
         <ProfileView
           key={`a:${top.id}:${stack.length}`}
           authorId={top.id}
-          backLabel={backLabel}
+          store={store}
+          depth={stack.length}
+          backLabel={stack.length > 1 ? "← Back" : null}
           onBack={back}
+          onHome={() => store.setTab("browse")}
+          onClose={onClose}
           onOpenEntry={openOne}
-          onOpenCollection={openCollection}
+          searchRef={searchRef}
         />
       ) : top?.kind === "collection" ? (
         <CollectionView
@@ -361,7 +365,6 @@ export function GalleryView({
           onPublish={onPublish}
           onMyProfile={openAuthor}
           onRetryAccount={loadAccount}
-          onOpenCollection={openCollection}
           onOpen={openOne}
           onCopy={copyLink}
           onDelete={deleteShare}

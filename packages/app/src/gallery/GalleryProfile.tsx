@@ -1,17 +1,18 @@
 "use client";
 
 /**
- * #2314 artist profiles and #2315 collections, inside the gallery overlay.
+ * #2314 artist profiles and #2315 collections, inside the gallery.
  *
  * A profile is a README-style page: name, a markdown bio (rendered safely by
- * markdown.ts), the author's collections, then everything they published. When
- * this browser is signed in as the author (#2319), or holds the author's key from
- * before sign-in, it can edit the profile and make, edit and delete collections.
- * Nothing here evaluates code.
+ * markdown.ts), then everything they published (#2493: searched, filtered and
+ * sorted like the gallery). When this browser is signed in as the author
+ * (#2319), or holds the author's key from before sign-in, it can edit the
+ * profile, and edit and delete a collection from the collection's own page.
+ * #2494 — making and listing collections is hidden for now; their data, routes
+ * and links stay. Nothing here evaluates code.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  createCollection,
   deleteCollection,
   fetchAuthorPage,
   fetchCollectionPage,
@@ -20,7 +21,9 @@ import {
   updateAuthor,
   updateCollection,
 } from "./client";
-import { AuthorName, Card, CollectionCard } from "./GalleryCards";
+import { AuthorName, Avatar, Card } from "./GalleryCards";
+import { GalleryBar, GalleryCrumbs } from "./GalleryBar";
+import { PROFILE_LIST_START, profileListKey, useGalleryStore, type GalleryStore } from "./galleryStore";
 import { loadAuthor } from "./localShares";
 import { renderMarkdown } from "./markdown";
 import { shownName } from "./reservedNames";
@@ -34,7 +37,14 @@ import {
   toggleEntry,
 } from "./profileModel";
 import { useGallerySession } from "./session";
-import { KIND_LABEL, formatGalleryDate } from "./galleryModel";
+import {
+  GALLERY_FILTERS,
+  KIND_LABEL,
+  PROFILE_SORTS,
+  browseEntries,
+  countByFilter,
+  formatGalleryDate,
+} from "./galleryModel";
 import {
   MAX_AUTHOR_NAME_CHARS,
   MAX_BIO_CHARS,
@@ -134,25 +144,49 @@ export function VerifiedBadge({ verified }: { verified: GalleryVerified }) {
 
 // ── profile ────────────────────────────────────────────────────────────────
 
+/**
+ * #2493 — an artist's page: crumbs "Gallery / name", a header (large initial,
+ * name, the verified badge, how many they published, Copy profile link, and Edit
+ * profile on your own), the bio full width, then **Published**: the gallery's
+ * search, filter and sort (GalleryBar) over their work, and the same cards.
+ *
+ * #2494 — collections are hidden for now: no New collection, no Collections
+ * section. A collection link still opens its page (CollectionView).
+ */
 export function ProfileView({
   authorId,
+  store,
+  depth,
   backLabel,
   onBack,
+  onHome,
+  onClose,
   onOpenEntry,
-  onOpenCollection,
+  searchRef,
 }: {
   authorId: string;
-  backLabel: string;
+  store: GalleryStore;
+  /** Where this profile sits in the Back stack (its length), for its search's place. */
+  depth: number;
+  /** "← Back", when there is a view under this one (null: the crumbs' Gallery is the way back). */
+  backLabel: string | null;
   onBack: () => void;
+  onHome: () => void;
+  onClose?: () => void;
   onOpenEntry: (id: string) => void;
-  onOpenCollection: (id: string) => void;
+  searchRef?: React.Ref<HTMLInputElement>;
 }) {
   const [page, setPage] = useState<Load<AuthorPageResponse>>({ status: "loading" });
-  const [mode, setMode] = useState<"view" | "edit" | "new-collection">("view");
+  const [mode, setMode] = useState<"view" | "edit">("view");
   // #2320 — an old profile link lands on the profile it was merged into; who
   // may edit is decided for the profile actually shown.
   const shownId = page.status === "ready" ? page.data.author.authorId : authorId;
   const { canEdit, key: ownerKey } = editAccess(useSessionAuthorId(), loadAuthor(), shownId);
+
+  // #2493 — the search, filter and order over their work, kept in the store (ProfileList).
+  const listKey = profileListKey(depth, authorId);
+  const { profileList } = useGalleryStore(store);
+  const { filter, sort, query } = profileList?.key === listKey ? profileList : PROFILE_LIST_START;
 
   const load = useCallback(() => {
     setPage({ status: "loading" });
@@ -162,116 +196,141 @@ export function ProfileView({
   }, [authorId]);
   useEffect(load, [load]);
 
-  const back = <BackButton label={backLabel} onBack={onBack} />;
+  const name = page.status === "ready" ? shownName(page.data.author.name) : null;
+  // The tab says whose profile this is (#2493), once the name is known.
+  useEffect(() => {
+    if (name) store.setProfileName(authorId, name);
+  }, [store, authorId, name]);
+
+  const entries = page.status === "ready" ? page.data.entries : null;
+  const counts = useMemo(() => countByFilter(entries ?? [], query), [entries, query]);
+  const shown = useMemo(() => browseEntries(entries ?? [], filter, query, sort), [entries, filter, query, sort]);
+
+  const crumbs = (
+    <GalleryCrumbs backLabel={backLabel} onBack={onBack} onHome={onHome} here={name ?? "Profile"} onClose={onClose} />
+  );
   if (page.status === "loading") {
     return (
-      <div className="sg-body">
-        {back}
-        <div className="sg-state" data-gallery-state="loading">Loading the profile…</div>
-      </div>
+      <>
+        {crumbs}
+        <div className="sg-body">
+          <div className="sg-state" data-gallery-state="loading">Loading the profile…</div>
+        </div>
+      </>
     );
   }
   if (page.status === "error") {
     return (
-      <div className="sg-body">
-        {back}
-        <div className="sg-state" data-gallery-state="error">
-          <p>Couldn&apos;t open the profile: {page.message}.</p>
-          <button className="sg-btn" onClick={load}>Try again</button>
+      <>
+        {crumbs}
+        <div className="sg-body">
+          <div className="sg-state" data-gallery-state="error">
+            <p>Couldn&apos;t open the profile: {page.message}.</p>
+            <button className="sg-btn" onClick={load}>Try again</button>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
-  const { author, entries, collections } = page.data;
+  const { author } = page.data;
+  const all = page.data.entries;
+  const setList = (patch: Parameters<GalleryStore["setProfileList"]>[1]) => store.setProfileList(listKey, patch);
   return (
-    <div className="sg-body sg-profile" data-gallery-profile={author.authorId}>
-      {back}
-      {mode === "edit" && canEdit ? (
-        <ProfileEditor
-          page={page.data}
-          authorKey={ownerKey}
-          onCancel={() => setMode("view")}
-          onSaved={(a) => {
-            setPage({ status: "ready", data: { ...page.data, author: a } });
-            setMode("view");
-          }}
-        />
-      ) : mode === "new-collection" && canEdit ? (
-        <CollectionEditor
-          heading="New collection"
-          own={entries}
-          initial={{ title: "", description: "", entryIds: [] }}
-          saveLabel="Create collection"
-          onCancel={() => setMode("view")}
-          onSave={async (req) => {
-            const c = await createCollection(ownerKey, req);
-            showToast(`Made the collection "${c.title}".`, "info");
-            setMode("view");
-            onOpenCollection(c.id);
-          }}
-        />
-      ) : (
-        <>
-          <div className="sg-detail-head">
-            <div>
-              <h3 className="sg-profile-name">{shownName(author.name)}</h3>
-              {author.verified && <VerifiedBadge verified={author.verified} />}
-              <div className="sg-card-meta">
-                {entries.length === 1 ? "1 entry" : `${entries.length} entries`} · since{" "}
-                {formatGalleryDate(author.createdAt)}
+    <>
+      {crumbs}
+      <div className="sg-body sg-profile" data-gallery-profile={author.authorId}>
+        {mode === "edit" && canEdit ? (
+          <ProfileEditor
+            page={page.data}
+            authorKey={ownerKey}
+            onCancel={() => setMode("view")}
+            onSaved={(a) => {
+              setPage({ status: "ready", data: { ...page.data, author: a } });
+              setMode("view");
+            }}
+          />
+        ) : (
+          <>
+            <div className="sg-phead" data-gallery-profile-head>
+              <Avatar name={shownName(author.name)} colourKey={author.authorId} size={72} />
+              <div className="sg-phead-id">
+                <h2 className="sg-profile-name sg-phead-name">{shownName(author.name)}</h2>
+                <div className="sg-phead-meta">
+                  {author.verified && <VerifiedBadge verified={author.verified} />}
+                  <span data-gallery-published-count title={`Since ${formatGalleryDate(author.createdAt)}`}>
+                    {all.length} published
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="sg-actions">
-              {canEdit && (
-                <>
+              <div className="sg-phead-actions">
+                <button
+                  className="sg-btn"
+                  data-gallery-copy-profile
+                  onClick={() => void copy(galleryAuthorLink(author.authorId), "Profile link")}
+                >
+                  Copy profile link
+                </button>
+                {canEdit && (
                   <button className="sg-btn sg-primary" data-gallery-edit-profile onClick={() => setMode("edit")}>
                     Edit profile
                   </button>
-                  <button className="sg-btn" data-gallery-new-collection onClick={() => setMode("new-collection")}>
-                    New collection
-                  </button>
+                )}
+              </div>
+            </div>
+            {author.bio.trim() ? (
+              <div className="sg-readme">
+                <Markdown source={author.bio} />
+              </div>
+            ) : canEdit ? (
+              <p className="sg-muted sg-left">Your profile has no bio yet. Edit profile to write one in markdown.</p>
+            ) : null}
+
+            <section data-gallery-section="entries">
+              <h4 className="sg-section">
+                Published <span className="sg-count">{all.length}</span>
+              </h4>
+              {all.length === 0 ? (
+                <div className="sg-state sg-state-small">Nothing published yet.</div>
+              ) : (
+                <>
+                  <GalleryBar
+                    barHook="data-gallery-profilebar"
+                    filterHook="data-gallery-profile-filter"
+                    sortHook="data-gallery-profile-sort"
+                    searchRef={searchRef}
+                    placeholder={`Search ${shownName(author.name)}'s work`}
+                    searchLabel={`Search ${shownName(author.name)}'s work`}
+                    query={query}
+                    onQuery={(q) => setList({ query: q })}
+                    filters={GALLERY_FILTERS}
+                    filter={filter}
+                    onFilter={(f) => setList({ filter: f })}
+                    counts={counts}
+                    sorts={PROFILE_SORTS}
+                    sort={sort}
+                    onSort={(o) => setList({ sort: o })}
+                  />
+                  {shown.length === 0 ? (
+                    <div className="sg-state sg-state-small" data-gallery-state="profile-none">
+                      {query.trim()
+                        ? `Nothing of ${shownName(author.name)}'s matches "${query.trim()}".`
+                        : `Nothing in ${GALLERY_FILTERS.find((f) => f.id === filter)?.label ?? ""} yet.`}
+                    </div>
+                  ) : (
+                    <div className="sg-grid">
+                      {shown.map((e) => (
+                        <Card key={e.id} entry={e} onOpen={() => onOpenEntry(e.id)} />
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
-              <button className="sg-btn" onClick={() => void copy(galleryAuthorLink(author.authorId), "Profile link")}>
-                Copy link
-              </button>
-            </div>
-          </div>
-          {author.bio.trim() ? (
-            <div className="sg-readme">
-              <Markdown source={author.bio} />
-            </div>
-          ) : canEdit ? (
-            <p className="sg-muted sg-left">Your profile has no bio yet. Edit profile to write one in markdown.</p>
-          ) : null}
-
-          {collections.length > 0 && (
-            <section data-gallery-section="collections">
-              <h4 className="sg-section">Collections</h4>
-              <div className="sg-grid">
-                {collections.map((c) => (
-                  <CollectionCard key={c.id} collection={c} entries={entries} onOpen={() => onOpenCollection(c.id)} />
-                ))}
-              </div>
             </section>
-          )}
-
-          <section data-gallery-section="entries">
-            <h4 className="sg-section">Published</h4>
-            {entries.length === 0 ? (
-              <div className="sg-state sg-state-small">Nothing published yet.</div>
-            ) : (
-              <div className="sg-grid">
-                {entries.map((e) => (
-                  <Card key={e.id} entry={e} onOpen={() => onOpenEntry(e.id)} />
-                ))}
-              </div>
-            )}
-          </section>
-        </>
-      )}
-    </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -674,6 +733,16 @@ export const PROFILE_CSS = `
 .sg-profile { display: flex; flex-direction: column; gap: 14px; }
 .sg-profile section { display: flex; flex-direction: column; gap: 8px; }
 .sg-profile-name { margin: 0 0 2px; font-size: 20px; font-weight: 600; color: var(--text-primary); }
+.sg-phead { container-type: inline-size; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle); }
+.sg-phead-id { display: grid; gap: 6px; min-width: 0; flex: 1 1 220px; }
+.sg-phead-name { margin: 0; font-size: 26px; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.sg-phead-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; color: var(--text-muted, var(--text-chrome)); font-size: 13px; }
+.sg-phead-meta .sg-verified { margin: 0; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border-subtle); }
+.sg-phead-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.sg-phead > .sg-gcard-av { flex: none; font-weight: 600; color: #1a1530; }
+.sg-profile section .sg-section .sg-count { margin-left: 6px; }
+/* Inside the profile the bar sits in the page, not across the top of the view. */
+.sg-profile .sg-browsebar { padding: 0; border-bottom: 0; }
 .sg-verified { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 4px; font-size: 12px; color: var(--text-secondary); }
 .sg-verified a { color: var(--accent); text-decoration: none; }
 .sg-verified a:hover { text-decoration: underline; }

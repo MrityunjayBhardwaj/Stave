@@ -68,7 +68,7 @@ export interface GalleryPlace {
   mineSort: MineSort;
   mineQuery: string;
   stack: GalleryLinkTarget[];
-  /** The open entry's title, once it has loaded — the tab's label. */
+  /** The open entry's title or profile's name, once it has loaded — the tab's label. */
   title?: string;
 }
 
@@ -78,7 +78,9 @@ export function placeOf(s: GalleryState): GalleryPlace {
   const title =
     top?.kind === "entry" && s.detail?.status === "ready" && s.detail.id === top.id
       ? s.detail.data.entry.title
-      : undefined;
+      : top?.kind === "author" && s.profileName?.id === top.id
+        ? s.profileName.name
+        : undefined;
   return {
     tab: s.tab,
     filter: s.filter,
@@ -180,7 +182,7 @@ export function galleryTabLabel(tab: WorkspaceTab & { kind: "app" }): AppTabLabe
     : top.kind === "entry"
       ? (place?.title ?? null)
       : top.kind === "author"
-        ? "Profile"
+        ? (place?.title ?? "Profile")
         : "Collection";
   return { title: where ? `Gallery · ${where}` : "Gallery", icon: GALLERY_ICON };
 }

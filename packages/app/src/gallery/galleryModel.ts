@@ -45,6 +45,13 @@ export function isGallerySort(v: unknown): v is GallerySort {
   return GALLERY_SORTS.some((s) => s.id === v);
 }
 
+/** #2493 — a profile's order: the grid's, less Artist (every entry there is the same artist's). */
+export type ProfileSort = Exclude<GallerySort, "artist">;
+
+export const PROFILE_SORTS: ReadonlyArray<{ id: ProfileSort; label: string }> = GALLERY_SORTS.filter(
+  (s): s is { id: ProfileSort; label: string } => s.id !== "artist",
+);
+
 /** #2492 — My shares' filter: everything you shared, what you published, or your private links. */
 export type MineFilter = "all" | "published" | "links";
 
