@@ -968,6 +968,7 @@ export default function StrudelEditorClient({
   };
   useEffect(() => {
     let sub: { dispose?: () => void } | undefined;
+    let langSub: { dispose?: () => void } | undefined;
     // the file the focused editor shows — read from the editor registry, so it is
     // right even when the editor change lands before the tab-change callback
     const activePatternFileId = (): string | null => getActiveFileId() ?? activeFileIdRef.current;
@@ -1011,16 +1012,23 @@ export default function StrudelEditorClient({
     };
     const wire = () => {
       sub?.dispose?.();
+      langSub?.dispose?.();
       // reset per active file so its code backdrop is (re)projected on entry
       prevCodeBackdropRef.current = null;
       const model = getActiveEditor()?.getModel?.();
       sub = model?.onDidChangeContent?.(sync);
+      // #2528 — on a reload the editor registers with its model still
+      // `plaintext`; the language turns `strudel` a moment later, which is no
+      // content change, so the read above found nothing and nothing read again.
+      // (A master line hid this: its background is also restored per tab.)
+      langSub = model?.onDidChangeLanguage?.(sync);
       sync();
     };
     wire();
     const un = onActiveEditorChange(wire);
     return () => {
       sub?.dispose?.();
+      langSub?.dispose?.();
       un?.();
     };
   }, [recordTabBackdrop, resolveVizNameToFileId, setPaneBackgroundFile]);
