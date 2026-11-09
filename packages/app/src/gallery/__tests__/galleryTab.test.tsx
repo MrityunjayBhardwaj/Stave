@@ -24,6 +24,7 @@ import {
   galleryTabLabel,
   openGalleryStore,
   readPlace,
+  SEARCH_WRITE_DELAY_MS,
   resetGalleryTabForTests,
   type GalleryPlace,
 } from "../galleryTab";
@@ -78,14 +79,44 @@ afterEach(() => {
 
 describe("readPlace — a saved place is read back like a link", () => {
   it("keeps a well-formed place", () => {
-    expect(readPlace({ tab: "music", stack: [{ kind: "entry", id: "musc1xxxxxx" }, { kind: "author", id: "alice" }], title: "Breakbeat" })).toEqual({
-      tab: "music",
+    expect(
+      readPlace({
+        tab: "browse",
+        filter: "music",
+        sort: "artist",
+        query: "dub",
+        stack: [{ kind: "entry", id: "musc1xxxxxx" }, { kind: "author", id: "alice" }],
+        title: "Breakbeat",
+      }),
+    ).toEqual({
+      tab: "browse",
+      filter: "music",
+      sort: "artist",
+      query: "dub",
       stack: [{ kind: "entry", id: "musc1xxxxxx" }, { kind: "author", id: "alice" }],
       title: "Breakbeat",
     });
+    expect(readPlace({ tab: "mine", stack: [] })).toMatchObject({ tab: "mine" });
   });
 
-  it("drops views a pasted link would refuse, and an unknown list tab becomes Projects", () => {
+  it("a place saved before #2486 (a kind as its tab, no filter or sort) opens on All, Newest", () => {
+    for (const old of ["project", "music", "viz"]) {
+      expect(readPlace({ tab: old, stack: [] })).toEqual({ tab: "browse", filter: "all", sort: "newest", query: "", stack: [] });
+    }
+  });
+
+  it("an unknown filter or sort, or a search no one typed, falls back to the start", () => {
+    expect(readPlace({ tab: "browse", filter: "albums", sort: "random", query: "x".repeat(201), stack: [] })).toEqual({
+      tab: "browse",
+      filter: "all",
+      sort: "newest",
+      query: "",
+      stack: [],
+    });
+    expect(readPlace({ tab: "browse", filter: "viz", sort: "title", query: 5, stack: [] })).toMatchObject({ filter: "viz", sort: "title", query: "" });
+  });
+
+  it("drops views a pasted link would refuse, and an unknown view becomes browse", () => {
     const place = readPlace({
       tab: "nonsense",
       stack: [
@@ -98,7 +129,7 @@ describe("readPlace — a saved place is read back like a link", () => {
       ],
       title: 42,
     });
-    expect(place).toEqual({ tab: "project", stack: [{ kind: "collection", id: "late-bus_1" }] });
+    expect(place).toEqual({ tab: "browse", filter: "all", sort: "newest", query: "", stack: [{ kind: "collection", id: "late-bus_1" }] });
   });
 
   it("is null for no state or a state that isn't an object", () => {
@@ -132,7 +163,7 @@ describe("GalleryTabBody", () => {
   it("a tab restored after a reload picks up its place once; coming back fetches nothing again", async () => {
     const fetchMock = mockGallery();
     const store = createGalleryStore();
-    const saved = { tab: "music", stack: [{ kind: "entry", id: "musc1xxxxxx" }] };
+    const saved = { tab: "browse", filter: "music", sort: "title", query: "", stack: [{ kind: "entry", id: "musc1xxxxxx" }] };
     const places: GalleryPlace[] = [];
     // as the shell does: what the body writes is the state the next draw gets
     let state: AppTabState = saved;
@@ -159,7 +190,38 @@ describe("GalleryTabBody", () => {
 
     // a real navigation is written
     fireEvent.click(screen.getByText("← Back to the gallery"));
-    await waitFor(() => expect(places.at(-1)).toEqual({ tab: "music", stack: [] }));
+    await waitFor(() => expect(places.at(-1)).toEqual({ ...saved, stack: [] }));
+    // the filter and sort it came back with are the grid's
+    expect(document.querySelector('[data-gallery-filter="music"]')!.getAttribute("aria-checked")).toBe("true");
+    expect((document.querySelector("[data-gallery-sort]") as HTMLSelectElement).value).toBe("title");
+  });
+
+  it("filter and sort are written at once; the search only once typing pauses, and on leaving the tab", async () => {
+    mockGallery();
+    const store = createGalleryStore();
+    openGalleryStore(store, null);
+    const places: GalleryPlace[] = [];
+    const view = render(
+      <GalleryTabBody tab={tab()} store={store} onOpenAsProject={noop} onAddToProject={noop} onPlaceChange={(p) => places.push(p)} />,
+    );
+    await waitFor(() => expect(document.querySelector('[data-gallery-card="proj1xxxxxx"]')).toBeTruthy());
+
+    fireEvent.click(document.querySelector('[data-gallery-filter="viz"]')!);
+    expect(places.at(-1)).toMatchObject({ filter: "viz" });
+    fireEvent.change(document.querySelector("[data-gallery-sort]")!, { target: { value: "oldest" } });
+    expect(places.at(-1)).toMatchObject({ filter: "viz", sort: "oldest" });
+
+    const n = places.length;
+    const search = screen.getByLabelText("Search the gallery");
+    fireEvent.change(search, { target: { value: "k" } });
+    fireEvent.change(search, { target: { value: "ka" } });
+    expect(places.length).toBe(n);
+    await waitFor(() => expect(places.at(-1)).toMatchObject({ query: "ka" }), { timeout: SEARCH_WRITE_DELAY_MS * 4 });
+    expect(places.length).toBe(n + 1);
+
+    fireEvent.change(search, { target: { value: "kal" } });
+    view.unmount();
+    expect(places.at(-1)).toMatchObject({ query: "kal" });
   });
 
   it("after a real open the body doesn't resume over it", async () => {
@@ -168,7 +230,7 @@ describe("GalleryTabBody", () => {
     openGalleryStore(store, { kind: "entry", id: "musc1xxxxxx" });
     render(
       <GalleryTabBody
-        tab={tab({ tab: "project", stack: [] })}
+        tab={tab({ tab: "browse", stack: [] })}
         store={store}
         onOpenAsProject={noop}
         onAddToProject={noop}

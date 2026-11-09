@@ -8,7 +8,8 @@
  * useSyncExternalStore, and survives the view being unmounted and drawn again.
  *
  * In the store (it is your place, or it is what that place shows):
- *   - the chosen list tab and the search text;
+ *   - the view (browse, My shares, Moderation), and the browse grid's filter,
+ *     sort and search text (#2486);
  *   - the loaded list, the entry being shown, and the Back stack of what is
  *     open on top of the list (entries, profiles, collections);
  *   - My shares' inputs: this browser's shares and private links, its author
@@ -41,7 +42,7 @@ import { useSyncExternalStore } from "react";
 import { fetchAccountShares, fetchGalleryEntry, fetchGalleryList, GalleryEntryRemoved } from "./client";
 import { applyListChanges, listLocalShares, listPrivateLinks, loadAuthor, type LocalPrivateLink, type LocalShare } from "./localShares";
 import type { GalleryEntry, GalleryEntryResponse, MySharesResponse } from "./types";
-import { isKindTab, type GalleryLinkTarget, type GalleryTab } from "./galleryModel";
+import type { GalleryFilter, GalleryLinkTarget, GallerySort, GalleryTab } from "./galleryModel";
 
 export type ListState =
   | { status: "loading" }
@@ -68,8 +69,11 @@ export interface SavedScroll {
 }
 
 export interface GalleryState {
-  /** The list tab chosen (the view shows Projects instead when Moderation is chosen but you're not an admin). */
+  /** The view chosen (browse is shown instead when Moderation is chosen but you're not an admin). */
   tab: GalleryTab;
+  /** #2486 — the browse grid's filter, order and search. */
+  filter: GalleryFilter;
+  sort: GallerySort;
   query: string;
   list: ListState;
   detail: DetailState | null;
@@ -89,13 +93,17 @@ export interface GalleryStore {
   /**
    * #2473 — come back to a place saved earlier (a gallery tab restored after a
    * reload): fetch the list, re-read this browser's shares, and put back the
-   * list tab and the whole Back stack. Like `open`, a fresh start for the data.
+   * view, the grid's filter, sort and search, and the whole Back stack. Like
+   * `open`, a fresh start for the data.
    */
-  resume(place: { tab: GalleryTab; stack: readonly GalleryLinkTarget[] }): void;
+  resume(place: GalleryResumePlace): void;
+  /** Show browse, My shares or Moderation; closes whatever was open on top (the Back stack empties). */
   setTab(tab: GalleryTab): void;
+  setFilter(filter: GalleryFilter): void;
+  setSort(sort: GallerySort): void;
   setQuery(query: string): void;
   loadList(): void;
-  /** (Re)load the entry `id` into the detail; switches the kind tab to the entry's kind. */
+  /** (Re)load the entry `id` into the detail. */
   openEntry(id: string): void;
   /** Open a view on top of what is showing. */
   push(view: GalleryLinkTarget): void;
@@ -111,6 +119,15 @@ export interface GalleryStore {
   savedScroll(): SavedScroll | null;
 }
 
+/** What `resume` puts back. */
+export interface GalleryResumePlace {
+  tab: GalleryTab;
+  filter: GalleryFilter;
+  sort: GallerySort;
+  query: string;
+  stack: readonly GalleryLinkTarget[];
+}
+
 /** Which view a scroll offset belongs to: the top of the Back stack, at its depth. */
 export function scrollKey(stack: readonly GalleryLinkTarget[]): string {
   const top = stack[stack.length - 1];
@@ -118,7 +135,9 @@ export function scrollKey(stack: readonly GalleryLinkTarget[]): string {
 }
 
 const initialState = (): GalleryState => ({
-  tab: "project",
+  tab: "browse",
+  filter: "all",
+  sort: "newest",
   query: "",
   list: { status: "loading" },
   detail: null,
@@ -152,10 +171,7 @@ export function createGalleryStore(): GalleryStore {
     set({ detail: { status: "loading", id } });
     fetchGalleryEntry(id)
       .then((data) => {
-        set((s) => ({
-          detail: s.detail?.id === id ? { status: "ready", id, data } : s.detail,
-          tab: isKindTab(s.tab) ? data.entry.kind : s.tab,
-        }));
+        set((s) => ({ detail: s.detail?.id === id ? { status: "ready", id, data } : s.detail }));
       })
       .catch((err: Error) => {
         set((s) => ({
@@ -198,12 +214,19 @@ export function createGalleryStore(): GalleryStore {
       loadList();
       refreshLocal();
       scroll = null;
-      set({ tab: place.tab, stack: [...place.stack] });
+      const { tab, filter, sort, query } = place;
+      set({ tab, filter, sort, query, stack: [...place.stack] });
       const top = place.stack[place.stack.length - 1];
       if (top?.kind === "entry") openEntry(top.id);
       else set({ detail: null });
     },
-    setTab: (tab) => set({ tab }),
+    setTab(tab) {
+      // A view of its own: whatever was open on top of the grid closes.
+      scroll = null;
+      set({ tab, stack: [], detail: null });
+    },
+    setFilter: (filter) => set({ filter }),
+    setSort: (sort) => set({ sort }),
     setQuery: (query) => set({ query }),
     loadList,
     openEntry,

@@ -33,10 +33,10 @@ const E = (over: Partial<GalleryEntry>): GalleryEntry => ({
 });
 
 const LIST: GalleryEntry[] = [
-  E({ id: "proj1xxxxxx", title: "Dub Techno", kind: "project", tags: ["dub"], authorName: "Alice" }),
-  E({ id: "proj2xxxxxx", title: "Ambient", kind: "project", authorName: "Bob", hasThumbnail: true }),
-  E({ id: "musc1xxxxxx", title: "Breakbeat", kind: "music", authorName: "Alice" }),
-  E({ id: "vizz1xxxxxx", title: "Kaleido", kind: "viz", authorName: "Carol" }),
+  E({ id: "proj1xxxxxx", title: "Dub Techno", kind: "project", tags: ["dub"], authorName: "Alice", publishedAt: 4 }),
+  E({ id: "proj2xxxxxx", title: "Ambient", kind: "project", authorName: "Bob", hasThumbnail: true, publishedAt: 3 }),
+  E({ id: "musc1xxxxxx", title: "Breakbeat", kind: "music", authorName: "Alice", publishedAt: 2 }),
+  E({ id: "vizz1xxxxxx", title: "Kaleido", kind: "viz", authorName: "Carol", publishedAt: 1 }),
 ];
 
 const ENTRY: GalleryEntryResponse = {
@@ -87,21 +87,115 @@ afterEach(() => {
 });
 
 describe("GalleryOverlay", () => {
-  it("shows loading, then groups cards by kind per tab", async () => {
+  it("shows loading, then every entry under All; each filter shows its kind, with counts", async () => {
     mockGallery();
     renderOverlay();
     expect(screen.getByText("Loading the gallery…")).toBeTruthy();
-    await waitFor(() => expect(cards()).toEqual(["proj1xxxxxx", "proj2xxxxxx"]));
-    fireEvent.click(document.querySelector('[data-gallery-tab="music"]')!);
+    await waitFor(() => expect(cards()).toEqual(["proj1xxxxxx", "proj2xxxxxx", "musc1xxxxxx", "vizz1xxxxxx"]));
+    const filterText = (id: string) => document.querySelector(`[data-gallery-filter="${id}"]`)!.textContent;
+    expect([filterText("all"), filterText("project"), filterText("music"), filterText("viz")]).toEqual([
+      "All4",
+      "Projects2",
+      "Music1",
+      "Visuals1",
+    ]);
+    fireEvent.click(document.querySelector('[data-gallery-filter="project"]')!);
+    expect(cards()).toEqual(["proj1xxxxxx", "proj2xxxxxx"]);
+    fireEvent.click(document.querySelector('[data-gallery-filter="music"]')!);
     expect(cards()).toEqual(["musc1xxxxxx"]);
-    fireEvent.click(document.querySelector('[data-gallery-tab="viz"]')!);
+    fireEvent.click(document.querySelector('[data-gallery-filter="viz"]')!);
     expect(cards()).toEqual(["vizz1xxxxxx"]);
+    // no tag chips and no "Viz" left anywhere in the browse view
+    expect(document.querySelector("[data-gallery-view]")!.textContent).not.toMatch(/\bViz\b/);
+  });
+
+  it("the filter is one Tab stop; arrow keys move along it, wrapping, as a radio group does", async () => {
+    mockGallery();
+    renderOverlay();
+    await waitFor(() => expect(cards()).toHaveLength(4));
+    const f = (id: string) => document.querySelector(`[data-gallery-filter="${id}"]`) as HTMLElement;
+    expect([f("all").tabIndex, f("project").tabIndex]).toEqual([0, -1]);
+    f("all").focus();
+    fireEvent.keyDown(f("all"), { key: "ArrowRight" });
+    expect(f("project").getAttribute("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(f("project"));
+    expect(cards()).toEqual(["proj1xxxxxx", "proj2xxxxxx"]);
+    fireEvent.keyDown(f("project"), { key: "ArrowLeft" });
+    fireEvent.keyDown(f("all"), { key: "ArrowLeft" });
+    expect(f("viz").getAttribute("aria-checked")).toBe("true");
+    fireEvent.keyDown(f("viz"), { key: "Home" });
+    expect(f("all").getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("Sort by orders the grid: Newest, Oldest, Title A–Z, Artist A–Z", async () => {
+    mockGallery();
+    renderOverlay();
+    await waitFor(() => expect(cards()).toHaveLength(4));
+    const sortBy = (v: string) => fireEvent.change(document.querySelector("[data-gallery-sort]")!, { target: { value: v } });
+    sortBy("oldest");
+    expect(cards()).toEqual(["vizz1xxxxxx", "musc1xxxxxx", "proj2xxxxxx", "proj1xxxxxx"]);
+    sortBy("title");
+    expect(cards()).toEqual(["proj2xxxxxx", "musc1xxxxxx", "proj1xxxxxx", "vizz1xxxxxx"]);
+    sortBy("artist");
+    // Alice's two (by title), Bob, Carol
+    expect(cards()).toEqual(["musc1xxxxxx", "proj1xxxxxx", "proj2xxxxxx", "vizz1xxxxxx"]);
+    sortBy("newest");
+    expect(cards()).toEqual(["proj1xxxxxx", "proj2xxxxxx", "musc1xxxxxx", "vizz1xxxxxx"]);
+  });
+
+  it("/ puts the cursor in the search, but not while typing somewhere else", async () => {
+    mockGallery();
+    renderOverlay();
+    await waitFor(() => expect(cards()).toHaveLength(4));
+    const search = screen.getByLabelText("Search the gallery");
+    fireEvent.keyDown(document.body, { key: "/" });
+    expect(document.activeElement).toBe(search);
+
+    search.blur();
+    // a control inside the gallery that takes typed keys keeps them
+    const sort = document.querySelector("[data-gallery-sort]") as HTMLSelectElement;
+    sort.focus();
+    fireEvent.keyDown(sort, { key: "/" });
+    expect(document.activeElement).toBe(sort);
+
+    const elsewhere = document.createElement("textarea");
+    document.body.appendChild(elsewhere);
+    elsewhere.focus();
+    fireEvent.keyDown(elsewhere, { key: "/" });
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
+
+  it("My shares is a header button: it always opens My shares, and Back returns to the grid", async () => {
+    mockGallery();
+    renderOverlay();
+    await waitFor(() => expect(cards()).toHaveLength(4));
+    const mine = document.querySelector('[data-gallery-tab="mine"]')!;
+    expect(mine.closest(".sg-header")).toBeTruthy();
+    fireEvent.click(mine);
+    expect(mine.getAttribute("aria-current")).toBe("page");
+    expect(document.querySelector("[data-gallery-browsebar]")).toBeNull();
+    // pressed again it stays (opening the gallery on My shares and pressing it must not leave)
+    fireEvent.click(mine);
+    expect(document.querySelector('[data-gallery-state="mine-empty"]')).toBeTruthy();
+    fireEvent.click(document.querySelector("[data-gallery-browse]")!);
+    expect(cards()).toHaveLength(4);
+    expect(mine.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("My shares from an open entry closes the entry", async () => {
+    mockGallery();
+    renderOverlay("musc1xxxxxx");
+    await waitFor(() => expect(document.querySelector('[data-gallery-detail="musc1xxxxxx"]')).toBeTruthy());
+    fireEvent.click(document.querySelector('[data-gallery-tab="mine"]')!);
+    expect(document.querySelector("[data-gallery-detail]")).toBeNull();
+    expect(document.querySelector('[data-gallery-state="mine-empty"]')).toBeTruthy();
   });
 
   it("thumbnails come from the thumbnail route, otherwise a generated card", async () => {
     mockGallery();
     renderOverlay();
-    await waitFor(() => expect(cards().length).toBe(2));
+    await waitFor(() => expect(cards().length).toBe(4));
     const withThumb = document.querySelector('[data-gallery-card="proj2xxxxxx"] img') as HTMLImageElement;
     expect(withThumb.getAttribute("src")).toBe("/api/gallery/proj2xxxxxx/thumbnail");
     expect(document.querySelector('[data-gallery-card="proj1xxxxxx"] [data-gallery-thumb="generated"]')).toBeTruthy();
@@ -110,9 +204,14 @@ describe("GalleryOverlay", () => {
   it("search filters by author, and says so when nothing matches", async () => {
     mockGallery();
     renderOverlay();
-    await waitFor(() => expect(cards().length).toBe(2));
+    await waitFor(() => expect(cards().length).toBe(4));
     fireEvent.change(screen.getByLabelText("Search the gallery"), { target: { value: "alice" } });
+    expect(cards()).toEqual(["proj1xxxxxx", "musc1xxxxxx"]);
+    fireEvent.click(document.querySelector('[data-gallery-filter="project"]')!);
     expect(cards()).toEqual(["proj1xxxxxx"]);
+    fireEvent.change(screen.getByLabelText("Search the gallery"), { target: { value: "carol" } });
+    expect(document.querySelector('[data-gallery-state="empty"]')!.textContent).toBe('Nothing in Projects matches "carol".');
+    fireEvent.click(document.querySelector('[data-gallery-filter="all"]')!);
     fireEvent.change(screen.getByLabelText("Search the gallery"), { target: { value: "zzz" } });
     expect(document.querySelector('[data-gallery-state="empty"]')!.textContent).toContain('matches "zzz"');
   });
@@ -127,8 +226,7 @@ describe("GalleryOverlay", () => {
   it("opening an entry shows its code as text, with the actions its kind allows", async () => {
     mockGallery();
     renderOverlay();
-    await waitFor(() => expect(cards().length).toBe(2));
-    fireEvent.click(document.querySelector('[data-gallery-tab="music"]')!);
+    await waitFor(() => expect(cards().length).toBe(4));
     fireEvent.click(document.querySelector('[data-gallery-card="musc1xxxxxx"]')!);
     const code = await waitFor(() => {
       const el = document.querySelector('[data-gallery-code="break.strudel"]');
@@ -178,7 +276,7 @@ describe("GalleryOverlay", () => {
       addLocalShare({ id: "gone1xxxxxx", title: "Old thing", kind: "viz", publishedAt: 1, manageToken: "t2" });
       const fetchMock = mockGallery({ "DELETE /api/gallery/musc1xxxxxx": () => new Response(null, { status: 204 }) });
       renderOverlay();
-      await waitFor(() => expect(cards().length).toBe(2));
+      await waitFor(() => expect(cards().length).toBe(4));
       fireEvent.click(document.querySelector('[data-gallery-tab="mine"]')!);
 
       const listed = document.querySelector('[data-gallery-mine="musc1xxxxxx"]') as HTMLElement;

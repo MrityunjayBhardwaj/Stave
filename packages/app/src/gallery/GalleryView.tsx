@@ -4,7 +4,8 @@
  * Community gallery (#2300, #2302, #2304) — the gallery itself, apart from what
  * holds it (#2472). GalleryOverlay holds it today; a workspace tab will (#2470).
  *
- * Browse what people published (Projects / Music / Viz), read an entry's code,
+ * Browse what people published (All / Projects / Music / Visuals, #2486),
+ * search it and sort it, read an entry's code,
  * and open it — as a new project, or (music / viz) as a file in this one. My
  * shares lists what you published, with delete: signed out, from this
  * browser; signed in (#2321), from your account, plus anything this browser
@@ -18,7 +19,7 @@
  * Preview (#2328): the detail view can play the file it shows, but only inside
  * a sandboxed frame with an opaque origin (GalleryPreview.tsx) — never here.
  *
- * Where you are (list tab, lists, entry, Back stack, scroll) lives in a
+ * Where you are (view, filter, sort, search, lists, entry, Back stack, scroll) lives in a
  * GalleryStore (galleryStore.ts), so the view can be unmounted and drawn again
  * without losing your place. The container decides the rest: whether there is
  * a close button, what happens once an entry has been opened, and when a fresh
@@ -32,7 +33,17 @@ import { MODERATION_CSS, ModerationView } from "./GalleryModeration";
 import { MARKDOWN_CSS } from "./markdown";
 import { LOCAL_SHARES_CHANGED } from "./localShares";
 import { type GalleryEntry, type GalleryEntryResponse, type GalleryKind } from "./types";
-import { KIND_LABEL, countByKind, entriesForTab, formatGalleryDate, galleryTabs, isKindTab, type GalleryTab } from "./galleryModel";
+import {
+  GALLERY_FILTERS,
+  GALLERY_SORTS,
+  KIND_LABEL,
+  browseEntries,
+  countByFilter,
+  formatGalleryDate,
+  isGallerySort,
+  type GalleryFilter,
+  type GalleryTab,
+} from "./galleryModel";
 import {
   defaultDeleteDeps,
   defaultRevokeDeps,
@@ -99,16 +110,17 @@ export function GalleryView({
   onPublish,
   onReportOpenChange,
 }: GalleryViewProps) {
-  const { tab: chosenTab, query, list, detail, stack, myAuthorId, mine, links, account } = useGalleryStore(store);
+  const { tab: chosenTab, filter, sort, query, list, detail, stack, myAuthorId, mine, links, account } = useGalleryStore(store);
   const [busy, setBusy] = useState(false);
   const [reporting, setReporting] = useState<GalleryEntry | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const session = useGallerySession();
   const accountAuthorId = session.status === "ready" ? (session.session.user?.authorId ?? null) : null;
   // #2331 — only an admin's session says so; the routes check again on every call.
   const isAdmin = session.status === "ready" && session.session.isAdmin === true;
-  // Moderation chosen, then no longer an admin (the session changed): back to Projects.
-  const tab: GalleryTab = chosenTab === "moderation" && !isAdmin ? "project" : chosenTab;
+  // Moderation chosen, then no longer an admin (the session changed): back to browsing.
+  const tab: GalleryTab = chosenTab === "moderation" && !isAdmin ? "browse" : chosenTab;
 
   // Drawn (again): what this browser holds may have changed while nothing listened.
   useEffect(() => store.refreshLocal(), [store]);
@@ -167,11 +179,28 @@ export function GalleryView({
   }, [store]);
 
   const entries = list.status === "ready" ? list.entries : null;
-  const counts = useMemo(() => countByKind(entries ?? []), [entries]);
+  const counts = useMemo(() => countByFilter(entries ?? [], query), [entries, query]);
   const shown = useMemo(
-    () => (entries && isKindTab(tab) ? entriesForTab(entries, tab, query) : []),
-    [entries, tab, query],
+    () => (entries && tab === "browse" ? browseEntries(entries, filter, query, sort) : []),
+    [entries, tab, filter, query, sort],
   );
+
+  const browsing = tab === "browse" && stack.length === 0;
+  // #2486 — "/" goes to the search, as on most sites, unless you are typing somewhere.
+  useEffect(() => {
+    if (!browsing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      // Somewhere else on the page has focus (the editor, a dialog): not ours to take.
+      if (t && t !== document.body && !rootRef.current?.contains(t)) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [browsing]);
 
   const rows: MyRows = useMemo(
     () => myRows(account.status === "ready" ? account.data : null, mine, links),
@@ -251,12 +280,57 @@ export function GalleryView({
     }
   };
 
+  const myCount = rows.entries.length + rows.links.length;
+
+  // A radio group moves with the arrow keys: one Tab stop, ← → (and Home / End) pick.
+  const moveFilter = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const i = GALLERY_FILTERS.findIndex((f) => f.id === filter);
+    const n = GALLERY_FILTERS.length;
+    const next =
+      e.key === "ArrowRight" || e.key === "ArrowDown"
+        ? (i + 1) % n
+        : e.key === "ArrowLeft" || e.key === "ArrowUp"
+          ? (i - 1 + n) % n
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? n - 1
+              : -1;
+    if (next < 0) return;
+    e.preventDefault();
+    const id = GALLERY_FILTERS[next].id;
+    store.setFilter(id);
+    e.currentTarget.querySelector<HTMLElement>(`[data-gallery-filter="${id}"]`)?.focus();
+  };
+
   return (
     <div className="sg-view" data-gallery-view ref={rootRef}>
       <style>{CSS + CARD_CSS + PROFILE_CSS + MARKDOWN_CSS + MODERATION_CSS + REPORT_CSS}</style>
-      <div className="sg-header">
-        <h2 className="sg-title">Community Gallery</h2>
+      <div className={tab === "browse" && !top ? "sg-header" : "sg-header sg-header-ruled"}>
+        <div className="sg-headline">
+          <h2 className="sg-title">Community Gallery</h2>
+          <p className="sg-promise">Patterns, songs and visuals made in Stave. Nothing runs until you press Play.</p>
+        </div>
         <div className="sg-header-actions">
+          <button
+            className={tab === "mine" && !top ? "sg-btn sg-headbtn sg-headbtn-on" : "sg-btn sg-headbtn"}
+            data-gallery-tab="mine"
+            aria-current={tab === "mine" && !top ? "page" : undefined}
+            onClick={() => store.setTab("mine")}
+          >
+            My shares
+            {myCount > 0 ? <span className="sg-count">{myCount}</span> : null}
+          </button>
+          {isAdmin && (
+            <button
+              className={tab === "moderation" && !top ? "sg-btn sg-headbtn sg-headbtn-on" : "sg-btn sg-headbtn"}
+              data-gallery-tab="moderation"
+              aria-current={tab === "moderation" && !top ? "page" : undefined}
+              onClick={() => store.setTab("moderation")}
+            >
+              Moderation
+            </button>
+          )}
           {onPublish && (
             <button className="sg-btn sg-primary" data-gallery-publish onClick={onPublish}>
               Publish yours
@@ -303,38 +377,68 @@ export function GalleryView({
         />
       ) : (
         <>
-          <div className="sg-toolbar">
-            <div className="sg-tabs" role="tablist">
-              {galleryTabs(isAdmin).map((t) => (
-                <button
-                  key={t.id}
-                  role="tab"
-                  aria-selected={tab === t.id}
-                  data-gallery-tab={t.id}
-                  className={tab === t.id ? "sg-tab sg-tab-on" : "sg-tab"}
-                  onClick={() => store.setTab(t.id)}
-                >
-                  {t.label}
-                  {isKindTab(t.id) && entries ? <span className="sg-count">{counts[t.id]}</span> : null}
-                  {t.id === "mine" && rows.entries.length + rows.links.length > 0 ? (
-                    <span className="sg-count">{rows.entries.length + rows.links.length}</span>
-                  ) : null}
-                </button>
-              ))}
+          {tab === "browse" && (
+            <div className="sg-browsebar" data-gallery-browsebar>
+              <label className="sg-searchbox">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-3.5-3.5" />
+                </svg>
+                <input
+                  ref={searchRef}
+                  className="sg-search"
+                  type="search"
+                  placeholder="Search titles, tags and artists"
+                  aria-label="Search the gallery"
+                  aria-keyshortcuts="/"
+                  value={query}
+                  onChange={(e) => store.setQuery(e.target.value)}
+                />
+                <kbd className="sg-search-key" aria-hidden="true">/</kbd>
+              </label>
+              <div className="sg-filterrow">
+                <div className="sg-filters" role="radiogroup" aria-label="Show" onKeyDown={moveFilter}>
+                  {GALLERY_FILTERS.map((f) => (
+                    <button
+                      key={f.id}
+                      role="radio"
+                      aria-checked={filter === f.id}
+                      tabIndex={filter === f.id ? 0 : -1}
+                      data-gallery-filter={f.id}
+                      className={filter === f.id ? "sg-filter sg-filter-on" : "sg-filter"}
+                      onClick={() => store.setFilter(f.id)}
+                    >
+                      {f.label}
+                      {entries ? <span className="sg-count" data-gallery-filter-count>{counts[f.id]}</span> : null}
+                    </button>
+                  ))}
+                </div>
+                <label className="sg-sortlabel">
+                  <span className="sg-sortword">Sort by</span>
+                  <select
+                    className="sg-sort"
+                    data-gallery-sort
+                    aria-label="Sort by"
+                    value={sort}
+                    onChange={(e) => isGallerySort(e.target.value) && store.setSort(e.target.value)}
+                  >
+                    {GALLERY_SORTS.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </div>
-            {isKindTab(tab) && (
-              <input
-                className="sg-search"
-                type="search"
-                placeholder="Search title, tags, author"
-                aria-label="Search the gallery"
-                value={query}
-                onChange={(e) => store.setQuery(e.target.value)}
-              />
-            )}
-          </div>
+          )}
 
           <div className="sg-body">
+            {tab !== "browse" && (
+              <button className="sg-btn sg-back" data-gallery-browse onClick={() => store.setTab("browse")}>
+                ← Back to the gallery
+              </button>
+            )}
             {tab === "moderation" && isAdmin ? (
               <ModerationView onOpen={openOne} />
             ) : tab === "mine" ? (
@@ -361,9 +465,7 @@ export function GalleryView({
               </div>
             ) : shown.length === 0 ? (
               <div className="sg-state" data-gallery-state="empty">
-                {query.trim()
-                  ? `Nothing in ${KIND_LABEL[tab as GalleryKind]} matches "${query.trim()}".`
-                  : `No ${KIND_LABEL[tab as GalleryKind].toLowerCase()} entries have been published yet.`}
+                {emptyMessage(filter, query, (entries ?? []).length)}
               </div>
             ) : (
               <div className="sg-grid">
@@ -378,6 +480,15 @@ export function GalleryView({
       {reporting && <ReportDialog entry={reporting} send={sendReport} onClose={() => setReporting(null)} />}
     </div>
   );
+}
+
+/** What an empty grid says: why it is empty, in the words of the filter and search chosen. */
+function emptyMessage(filter: GalleryFilter, query: string, total: number): string {
+  const q = query.trim();
+  const label = GALLERY_FILTERS.find((f) => f.id === filter)?.label ?? "";
+  if (q) return filter === "all" ? `Nothing in the gallery matches "${q}".` : `Nothing in ${label} matches "${q}".`;
+  if (total === 0 || filter === "all") return "Nothing has been published yet.";
+  return filter === "music" ? "No music has been published yet." : `No ${label.toLowerCase()} have been published yet.`;
 }
 
 function EntryDetail({
@@ -672,16 +783,29 @@ function MyShares({
 
 const CSS = `
 .sg-view { display: contents; }
-.sg-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border-subtle); }
-.sg-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--text-primary); }
+.sg-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px 16px; padding: 16px 20px 12px; }
+.sg-header-ruled { border-bottom: 1px solid var(--border-subtle); }
+.sg-headline { display: grid; gap: 2px; min-width: 0; flex: 1 1 260px; }
+.sg-title { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--text-primary); }
+.sg-promise { margin: 0; font-size: 12.5px; color: var(--text-muted, var(--text-chrome)); }
+.sg-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .sg-close { background: none; border: none; color: var(--text-icon); font-size: 24px; cursor: pointer; padding: 0 6px; line-height: 1; }
-.sg-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 18px; border-bottom: 1px solid var(--border-subtle); }
-.sg-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
-.sg-tab { background: none; border: 1px solid transparent; color: var(--text-chrome); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
-.sg-tab:hover { background: var(--bg-hover, rgba(255,255,255,.06)); }
-.sg-tab-on { border-color: var(--border-strong); background: var(--bg-hover, rgba(255,255,255,.08)); color: var(--text-primary); font-weight: 600; }
-.sg-count { font-size: 11px; opacity: .7; }
-.sg-search { flex: 1 1 200px; max-width: 320px; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg-input, var(--bg-elevated)); color: var(--text-primary); font-size: 13px; }
+.sg-headbtn { display: inline-flex; align-items: center; gap: 6px; background: none; }
+.sg-headbtn-on { background: var(--bg-hover, rgba(255,255,255,.08)); }
+.sg-browsebar { container-type: inline-size; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 0 20px 12px; border-bottom: 1px solid var(--border-subtle); }
+.sg-searchbox { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--bg-input, var(--bg-elevated)); color: var(--text-muted, var(--text-chrome)); cursor: text; }
+.sg-searchbox:focus-within { border-color: var(--accent, #4a6cf7); }
+.sg-search { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: none; color: var(--text-primary); font-size: 14px; }
+.sg-search-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--border-strong); }
+/* One row at every width (#2486): the filter scrolls sideways before the sort is pushed under it. */
+.sg-filterrow { display: flex; align-items: center; gap: 8px 12px; }
+.sg-filters { display: inline-flex; flex: 0 1 auto; min-width: 0; gap: 2px; padding: 3px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-hover, rgba(255,255,255,.03)); overflow-x: auto; scrollbar-width: none; }
+.sg-filter { height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: none; color: var(--text-chrome); cursor: pointer; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.sg-filter:hover { color: var(--text-primary); }
+.sg-filter-on { background: var(--bg-elevated); color: var(--text-primary); font-weight: 600; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.sg-count { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 400; opacity: .7; }
+.sg-sortlabel { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted, var(--text-chrome)); }
+.sg-sort { height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--bg-input, var(--bg-elevated)); color: var(--text-primary); font-size: 13px; cursor: pointer; }
 .sg-body { flex: 1; overflow: auto; padding: 16px 18px; min-height: 0; }
 .sg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
 .sg-thumb { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; background: #111; }
@@ -720,19 +844,26 @@ const CSS = `
 .sg-mine { display: flex; flex-direction: column; gap: 8px; }
 .sg-mine-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; }
 .sg-mine-text { min-width: 0; flex: 1 1 220px; }
-.sg-header-actions { display: flex; align-items: center; gap: 8px; }
 .sg-section { margin: 4px 0 2px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-primary); }
 .sg-section-note { margin: 0 0 8px; font-size: 12px; opacity: .75; }
 .sg-mine section { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
 .sg-state-small { padding: 14px 12px; }
 .sg-missing { color: var(--text-error, #f27878); }
 .sg-browser-only { font-style: italic; opacity: .85; }
+@media (hover: none) { .sg-search-key { display: none; } }
+/* By the bar's own width, not the screen's: a gallery tab can be narrow on a wide screen. */
+@container (max-width: 520px) {
+  .sg-sortword { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .sg-filter { padding: 0 9px; }
+  /* As the phone mockup: no counts, so all four filters fit beside the sort. */
+  .sg-filter .sg-count { display: none; }
+}
 @media (max-width: 640px) {
   .sg-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
-  .sg-search { max-width: none; }
   .sg-body { padding: 12px; }
-  .sg-toolbar { padding: 8px 12px; }
-  .sg-tab { padding: 8px 10px; }
+  .sg-header { padding: 12px 12px 10px; }
+  .sg-browsebar { padding: 0 12px 10px; gap: 10px; }
+  .sg-filter { padding: 0 10px; }
   .sg-btn { padding: 8px 12px; }
 }
 `;
