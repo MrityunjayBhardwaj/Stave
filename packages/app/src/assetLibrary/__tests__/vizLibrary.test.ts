@@ -31,6 +31,7 @@ describe("VIZ_LIBRARY corpus (#834)", () => {
       glsl: { language: "glsl", ext: ".glsl" },
       p5: { language: "p5js", ext: ".p5" },
       hydra: { language: "hydra", ext: ".hydra" },
+      three: { language: "three", ext: ".three" },
     } as const;
     for (const item of VIZ_LIBRARY) {
       const primary = item.files.find((f) => f.relPath.startsWith(`${item.name}.`))!;
@@ -50,7 +51,7 @@ describe("VIZ_LIBRARY corpus (#834)", () => {
 
   it("ships real source (not an empty stub) with its renderer's entry point", () => {
     // GLSL: the ShaderToy entry point. p5: the sketch's own draw loop.
-    const entry = { glsl: "mainImage", p5: "function draw()", hydra: ".out(" } as const;
+    const entry = { glsl: "mainImage", p5: "function draw()", hydra: ".out(", three: "from 'three'" } as const;
     for (const item of VIZ_LIBRARY) {
       for (const f of item.files) {
         expect(f.content, item.name).toContain(entry[item.renderer]);

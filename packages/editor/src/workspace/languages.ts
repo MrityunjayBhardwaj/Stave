@@ -540,6 +540,9 @@ export function toMonacoLanguage(lang: WorkspaceLanguage): string {
       return 'p5js'
     case 'glsl':
       return 'glsl'
+    case 'three':
+      // #2516 — a plain three.js script: Monaco's own JavaScript.
+      return 'javascript'
     case 'markdown':
       return 'markdown'
   }

@@ -143,6 +143,7 @@ export {
   HYDRA_VIZ,
   P5_VIZ,
   GLSL_VIZ,
+  THREE_VIZ,
   seedFromPreset,
   seedFromPresetId,
   flushToPreset,

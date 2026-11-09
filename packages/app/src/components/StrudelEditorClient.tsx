@@ -64,6 +64,7 @@ import {
   HYDRA_VIZ,
   P5_VIZ,
   GLSL_VIZ,
+  THREE_VIZ,
   LiveCodingRuntime,
   VizPresetStore,
   bundledPresetId,
@@ -333,6 +334,7 @@ function ensureProviders() {
   registerPreviewProvider(HYDRA_VIZ);
   registerPreviewProvider(P5_VIZ);
   registerPreviewProvider(GLSL_VIZ);
+  registerPreviewProvider(THREE_VIZ);
 }
 
 // ---------------------------------------------------------------------------

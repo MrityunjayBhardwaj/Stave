@@ -22,6 +22,8 @@ import {
   bundledPresetId,
   workspaceFileIdForPreset,
   isVizLanguage,
+  languageForRenderer,
+  type VizRendererKind,
   type WorkspaceLanguage,
   // Bundled p5 viz source — moved into @stave/editor in #184 so the
   // viz picker (compiled from DEFAULT_VIZ_DESCRIPTORS) and these
@@ -278,12 +280,13 @@ function makeStarterFiles(): TemplateFile[] {
   // so the preset bridge picks it up on mount.
   const vizFile = (
     name: string,
-    ext: "p5" | "hydra" | "glsl",
+    ext: VizRendererKind,
     code: string,
   ): TemplateFile => {
-    const lang: WorkspaceLanguage =
-      ext === "hydra" ? "hydra" : ext === "glsl" ? "glsl" : "p5js";
-    const renderer = ext === "hydra" ? "hydra" : ext === "glsl" ? "glsl" : "p5";
+    // A viz file's extension is its renderer kind (`.p5`, `.glsl`, `.three`…),
+    // so the editor's table gives its language: no hand-kept copy to drift.
+    const renderer = ext;
+    const lang: WorkspaceLanguage = languageForRenderer(renderer);
     const presetId = bundledPresetId(name, renderer);
     return {
       id: workspaceFileIdForPreset(presetId),

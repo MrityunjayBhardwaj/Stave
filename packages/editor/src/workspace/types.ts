@@ -53,6 +53,7 @@ export type WorkspaceLanguage =
   | 'hydra'
   | 'p5js'
   | 'glsl'
+  | 'three'
   | 'markdown'
 
 /**

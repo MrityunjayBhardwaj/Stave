@@ -20,6 +20,7 @@ export { createCompiledVizProvider } from './compiledVizProvider'
 export { HYDRA_VIZ } from './hydraViz'
 export { P5_VIZ } from './p5Viz'
 export { GLSL_VIZ } from './glslViz'
+export { THREE_VIZ } from './threeViz'
 
 export {
   seedFromPreset,
