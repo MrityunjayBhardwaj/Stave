@@ -53,6 +53,7 @@ export type WorkspaceLanguage =
   | 'hydra'
   | 'p5js'
   | 'glsl'
+  | 'three'
   | 'markdown'
 
 /**
@@ -481,6 +482,9 @@ export interface PreviewViewProps {
  *     inside `PreviewView` drives state up to the shell, which persists
  *     it per tab — two viz preview tabs of the same file can be pinned to
  *     different publishers).
+ *   - `kind: 'history'` → the commit Diff / View, drawn by the shell.
+ *   - `kind: 'app'` → drawn by the HOST through `renderAppTab` (#2471); the
+ *     only kind without a `fileId`.
  *
  * Each tab carries its own `id` separate from `fileId` because multiple
  * tabs can reference the same file (e.g., an editor tab AND a preview tab
@@ -527,7 +531,7 @@ export type WorkspaceTab =
        * Reuses the preview-tab mechanism: opened as a single italic
        * `preview` slot that the next Diff/View replaces, promoted to a
        * pinned tab on double-click (same UX as opening a file in preview).
-       * Never persisted — `tabPersistence` keeps only `editor` tabs, and a
+       * Never persisted — `tabPersistence` keeps only `editor` and `app` tabs, and a
        * commit can be pruned between sessions, so a stale history tab would
        * be a ghost.
        */
@@ -554,6 +558,53 @@ export type WorkspaceTab =
       /** Preview slot (italic, replaced by the next open). Promoted on double-click. */
       readonly preview?: boolean
     }
+  | {
+      /**
+       * #2471 — a tab whose content the HOST APP draws (the Community Gallery
+       * is `appKey: 'gallery'`). The editor package cannot import app code, so
+       * the shell only owns the tab's lifecycle (open / focus / drag / split /
+       * close); the app draws its body through
+       * `WorkspaceShellProps.renderAppTab` and names it through `appTabLabel`.
+       *
+       * Deliberately has NO `fileId`: it shows no file, so the pane's
+       * background / backdrop settings never apply to it and file-scoped
+       * operations (close-tabs-for-file, preview, save) skip it.
+       *
+       * At most one tab per `appKey` exists — `openAppTab` focuses an open
+       * one in any group rather than adding a second. Persisted with its
+       * `state` (`serializeShellState`) and dropped on read when the host no
+       * longer knows `appKey` (`loadShellState`'s `validAppKeys`).
+       */
+      readonly kind: 'app'
+      readonly id: string
+      /** What the tab shows, as the host names it (e.g. `'gallery'`). */
+      readonly appKey: string
+      /**
+       * Small JSON-serialisable state the host keeps with the tab (e.g. where
+       * the gallery was) so it survives a reload. Set via `setAppTabState`.
+       */
+      readonly state?: AppTabState
+    }
+
+/**
+ * #2471 — the small value an app tab carries across reloads. JSON-shaped so
+ * it round-trips through the persisted layout unchanged.
+ */
+export type AppTabState =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly AppTabState[]
+  | { readonly [key: string]: AppTabState }
+
+/** #2471 — what the host gives the shell to label an app tab. */
+export interface AppTabLabel {
+  /** The tab's title text. */
+  readonly title: string
+  /** Optional small glyph drawn before the title (an emoji or an element). */
+  readonly icon?: ReactNode
+}
 
 /**
  * A single tab group inside the shell. Groups are the unit the `SplitPane`
@@ -1093,6 +1144,22 @@ export interface WorkspaceShellProps {
   readonly previewProviderFor?: (tab: WorkspaceTab & {
     kind: 'preview'
   }) => PreviewProvider | undefined
+
+  /**
+   * #2471 — draw the body of an app tab (`kind: 'app'`). Called only while
+   * the tab is its group's ACTIVE tab, so the returned content unmounts when
+   * the user switches away; the host keeps whatever it must remember in its
+   * own store (or in the tab's `state`). The shell wraps it in an opaque
+   * container — the pane's background never shows through. Returning
+   * `null` / omitting the prop draws an "unavailable" placeholder.
+   */
+  readonly renderAppTab?: (tab: WorkspaceTab & { kind: 'app' }) => ReactNode
+
+  /**
+   * #2471 — label (title + optional icon) for an app tab's chip in the tab
+   * bar. Omitted or returning `undefined` → the tab shows its `appKey`.
+   */
+  readonly appTabLabel?: (tab: WorkspaceTab & { kind: 'app' }) => AppTabLabel | undefined
 
   /**
    * Callback for resolving per-tab runtime chrome (transport bar for

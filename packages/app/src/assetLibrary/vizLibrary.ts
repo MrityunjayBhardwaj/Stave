@@ -21,17 +21,20 @@
  * `templates.ts`; they now live here so the library is their single source.
  */
 
+import type { VizLanguage, VizRendererKind } from "@stave/editor";
+
 /** The viz languages a package file can be (a subset of `WorkspaceLanguage`).
- *  Kept as local literals so this module — and the provider's tests — stay free
- *  of a runtime `@stave/editor` import (which the app's tests could not load
- *  until #1938). */
+ *  A TYPE import of the editor's list (erased at runtime, so this module and the
+ *  provider's tests still load no `@stave/editor`), so a new viz kind is a
+ *  compile error here until every per-kind table below has its arm (#2516). */
 import { BAKED_VIZ_THUMBNAILS } from "./vizThumbnails.data";
 import { NIGHT_DRIVE_GLSL_CODE } from "./vizSources/nightDrive";
 import { ROBOT_GUITARIST_P5_CODE } from "./vizSources/robotGuitarist";
 import { SUNSET_DRIVE_P5_CODE } from "./vizSources/sunsetDrive";
 import { TUNNEL_GLSL_CODE } from "./vizSources/tunnel";
 
-export type VizFileLanguage = "glsl" | "p5js" | "hydra";
+/** A viz file's language: the editor's list, so a new kind is type-forced here. */
+export type VizFileLanguage = VizLanguage;
 
 /** One file inside a viz package. */
 export interface VizLibFile {
@@ -50,7 +53,7 @@ export interface VizLibItem {
    *  (`.viz("<name>")`), e.g. `"Prism"`. */
   readonly name: string;
   /** The renderer kind — drives the group label / category chip. */
-  readonly renderer: "glsl" | "p5" | "hydra";
+  readonly renderer: VizRendererKind;
   /** The files that make up this package. The primary viz file (the one whose
    *  basename matches {@link name}) is what registers as a named viz. */
   readonly files: readonly VizLibFile[];

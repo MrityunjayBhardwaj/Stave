@@ -4,7 +4,8 @@ import { getDb } from "../../../db/client";
 import { hashToken, newManageToken } from "../gallery/auth";
 import { accountLinkRecord, recordAccountLink } from "../gallery/accountLinks";
 import { limitRequest } from "../gallery/rateLimit";
-import { sessionAuthor } from "../gallery/session";
+import { sessionAuthor, sessionClaim } from "../gallery/session";
+import { requireTurnstile } from "../gallery/turnstile";
 import { shareStore } from "./store";
 import { assertSameOrigin } from "../gallery/origin";
 import { withDatabase, withoutQueryValues } from "../../../db/errors";
@@ -28,6 +29,18 @@ import { withDatabase, withoutQueryValues } from "../../../db/errors";
 // fixed window, 10 per 10 minutes, keyed by IP, answered 429. It lives in the
 // project's Firewall settings, not in this repo; a deploy elsewhere needs its own.
 // The client copies the long link on a 429 and says why.
+//
+// #2364 — signed out, a link also needs the "are you human" check when this site
+// has one (requireTurnstile). A signed-in session skips it, so its links stay one
+// click. sessionClaim answers null for a session it can't read, so that gets the
+// check too: only a session actually read as signed in goes without.
+//
+// The limit runs first, as on publish and report. It is what stops a script making
+// this server call Cloudflare without end (each check is a request that can take
+// ten seconds), and it means a request that would be turned away anyway doesn't use
+// up a token, which is good only once. The cost is that a request with no token
+// counts toward its address's limit; the page never sends one when it knows it is
+// signed out. Both run before the body is read.
 
 async function handlePOST(req: Request): Promise<Response> {
   const refused = assertSameOrigin(req); if (refused) return refused; // #2328 — Stave's own page only
@@ -35,6 +48,10 @@ async function handlePOST(req: Request): Promise<Response> {
   if (!store) return Response.json({ error: "short links are not set up here" }, { status: 503 });
   const limited = await limitRequest("link", req); // #2330 — per account, or per address signed out
   if (limited) return limited;
+  if (!(await sessionClaim())) {
+    const unchecked = await requireTurnstile(req, "share-link"); // #2364
+    if (unchecked) return unchecked;
+  }
 
   const declared = Number(req.headers.get("content-length") ?? "0");
   if (declared > MAX_SEALED_BYTES) {

@@ -59,3 +59,24 @@ export function syntaxErrorAt(code: string): { pos: number; line: number; column
 export function docParses(doc: string): boolean {
   return parseTopLevel(doc) !== null
 }
+
+/**
+ * Parse `code` as an ES module, with node locations (#2516): a three.js sketch
+ * is a module (`import … from 'three'`, top-level `await`). The Program, or
+ * acorn's message and place (line 1-based, column 0-based) when it doesn't parse.
+ */
+export function parseModule(
+  code: string,
+): { ok: true; program: any } | { ok: false; message: string; line?: number; column?: number } {
+  try {
+    return { ok: true, program: parse(code, { ecmaVersion: 'latest', sourceType: 'module', locations: true }) }
+  } catch (e) {
+    const err = e as { message?: string; loc?: { line: number; column: number } }
+    return {
+      ok: false,
+      message: String(err.message ?? e).replace(/\s*\(\d+:\d+\)$/, ''),
+      line: err.loc?.line,
+      column: err.loc?.column,
+    }
+  }
+}

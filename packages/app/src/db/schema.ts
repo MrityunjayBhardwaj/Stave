@@ -123,6 +123,8 @@ export const entries = pgTable(
     removedBy: text("removed_by").$type<"author" | "admin">(),
     /** #2401 — when the files were deleted and the private columns cleared. A purged entry can't be restored. */
     purgedAt: ms("purged_at"),
+    /** #2487 — a record of what the entry plays is stored beside it. Last: added by migration 0003. */
+    hasRecording: boolean("has_recording").notNull().default(false),
   },
   (t) => [
     check("entries_kind_known", sql`${t.kind} in ('project', 'music', 'viz')`),

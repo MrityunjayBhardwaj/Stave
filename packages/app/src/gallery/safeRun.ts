@@ -19,6 +19,8 @@
  * project/file ids — by holding everything until `endGalleryImport`.
  */
 
+import { hasVisibleCharacter } from "./reservedNames";
+
 const KEY = "stave.gallery.unplayed";
 let importsInFlight = 0;
 // Declared up here because the test seam below clears it (#2328's trust step).
@@ -170,9 +172,12 @@ export function trustGalleryFile(projectId: string, fileId: string): void {
   }
 }
 
-/** What the confirm says (#2328's wording). */
+/**
+ * What the confirm says (#2328's wording). #2450 — a name with nothing visible
+ * in it, stored before the doors refused one, reads as "someone else" too.
+ */
 export function galleryTrustMessage(author: string): { title: string; description: string; confirmLabel: string } {
-  const who = author.trim() || "someone else";
+  const who = hasVisibleCharacter(author) ? author.trim() : "someone else";
   return {
     title: "Run code from the gallery?",
     description:
