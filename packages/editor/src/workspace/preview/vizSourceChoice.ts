@@ -72,6 +72,35 @@ export function setVizSourceChoice(fileId: string, ref: AudioSourceRef): void {
   for (const cb of Array.from(listeners)) cb(fileId, ref)
 }
 
+/**
+ * #2452 — a file was deleted. Every viz that listened to it goes back to
+ * `default` (the picker shows it, listeners hear it, the stored entry goes, so a
+ * reload doesn't bring the dead choice back), and a deleted viz's own entry goes
+ * too. Stored entries not yet read this session are checked as well: after a
+ * reload the in-memory copy only holds the files someone has looked at.
+ */
+export function forgetVizSourceChoicesFor(deletedFileId: string): void {
+  const ls = safeLocalStorage()
+  const vizIds = new Set(values.keys())
+  if (ls && typeof ls.key === 'function') {
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i)
+      if (k?.startsWith(STORAGE_PREFIX)) vizIds.add(k.slice(STORAGE_PREFIX.length))
+    }
+  }
+  for (const vizId of vizIds) {
+    if (vizId === deletedFileId) {
+      values.delete(vizId)
+      ls?.removeItem(keyFor(vizId))
+      continue
+    }
+    const ref = getVizSourceChoice(vizId)
+    if (ref.kind === 'file' && ref.fileId === deletedFileId) {
+      setVizSourceChoice(vizId, DEFAULT)
+    }
+  }
+}
+
 /** Called after any viz file's choice changes. Returns an unsubscribe. */
 export function onVizSourceChoiceChange(
   cb: (fileId: string, ref: AudioSourceRef) => void,
