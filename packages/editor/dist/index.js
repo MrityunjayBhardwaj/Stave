@@ -15636,7 +15636,7 @@ function createExtensionAudio(opts) {
     }, "registries"),
     async beforeActivate(m, mod) {
       for (const url of mod.worklets ?? []) {
-        const live = doors?.liveContext();
+        const live = await doors?.liveContext();
         if (!live?.audioWorklet) throw new Error("this browser cannot run audio worklets, which it needs");
         try {
           await live.audioWorklet.addModule(url);
@@ -18027,12 +18027,14 @@ var _StrudelEngine = class _StrudelEngine {
     const postAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
     console.log(`[StrudelEngine] aliasBank: soundMap keys ${preAliasCount} \u2192 ${postAliasCount} (\u0394 ${postAliasCount - preAliasCount}; expect non-negative)`);
     const extensions = pageExtensionAudio();
-    const liveCtx = getAudioContext4();
     const extensionsStarted = extensions.start({
       registries: /* @__PURE__ */ __name(() => fromStrudel(webaudioMod, coreMod), "registries"),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       registerWorklet: /* @__PURE__ */ __name((url) => webaudioMod.registerWorklet(url), "registerWorklet"),
-      liveContext: /* @__PURE__ */ __name(() => liveCtx, "liveContext"),
+      // Read when used, once no render holds the globals (a render swaps superdough's
+      // context for its own offline one). Never captured here: this engine may be
+      // starting while another engine renders.
+      liveContext: /* @__PURE__ */ __name(() => new Promise((resolve) => whenGraphFree(() => resolve(getAudioContext4()))), "liveContext"),
       report: /* @__PURE__ */ __name((level, message) => emitLog({ level, runtime: "stave", message }), "report")
     });
     let extensionsWait;

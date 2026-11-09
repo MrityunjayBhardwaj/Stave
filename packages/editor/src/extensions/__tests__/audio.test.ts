@@ -23,7 +23,7 @@ function harness(opts: { manifests?: ExtensionManifest[]; on?: string[]; badUrls
   const doors: ExtensionAudioDoors = {
     registries: () => fromStrudel(webaudio, core),
     registerWorklet: (url) => steps.push(`registerWorklet ${url}`),
-    liveContext: () => ({
+    liveContext: async () => ({
       audioWorklet: {
         addModule: async (url: string) => {
           steps.push(`addModule ${url}`)
@@ -46,8 +46,10 @@ function harness(opts: { manifests?: ExtensionManifest[]; on?: string[]; badUrls
   const flip = async (next: string[]) => {
     ids = new Set(next)
     for (const fn of subs) fn(ids)
-    // the runtime applies switches in turn; start() joins the queue and so waits for it
-    await audio.start(doors)
+    // Only the subscription may act here: calling start() would re-read the switches
+    // itself and hide a runtime that stopped following them. Let the load/activate
+    // chain settle (every step in it is a resolved promise or a macrotask away).
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0))
   }
   return { audio, doors, steps, rows, flip, changes: () => changes, subscribers: () => subs.size }
 }

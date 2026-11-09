@@ -40,10 +40,13 @@ export interface ExtensionAudioDoors {
   /** superdough's `registerWorklet`: every later `initAudio` adds the URL to its context */
   registerWorklet(url: string): void
   /**
-   * The LIVE audio context. Not superdough's current one: a bounce swaps that for its
-   * offline context while it renders.
+   * The LIVE audio context, resolved when it is needed and only once no offline render
+   * holds superdough's globals: while one renders, superdough's "current" context is the
+   * render's. (Captured once at start-up instead, an engine that started while a render
+   * ran handed over a closed OfflineAudioContext, and a switch-on put the worklet there:
+   * observed 2026-11-09, the bounce had the sound and live playback did not.)
    */
-  liveContext(): { audioWorklet?: { addModule(url: string): Promise<void> } } | null
+  liveContext(): Promise<{ audioWorklet?: { addModule(url: string): Promise<void> } } | null>
   /** Write a row to Stave's Console. */
   report(level: 'info' | 'warn' | 'error', message: string): void
 }
@@ -93,7 +96,7 @@ export function createExtensionAudio(opts: {
     },
     async beforeActivate(m, mod) {
       for (const url of mod.worklets ?? []) {
-        const live = doors?.liveContext()
+        const live = await doors?.liveContext()
         if (!live?.audioWorklet) throw new Error('this browser cannot run audio worklets, which it needs')
         try {
           await live.audioWorklet.addModule(url)

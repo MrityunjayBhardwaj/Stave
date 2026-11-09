@@ -1084,12 +1084,14 @@ export class StrudelEngine implements LiveCodingEngine {
     // must not mean the extensions never start; past the wait they finish in the
     // background and `onChange` reads the names again.
     const extensions = pageExtensionAudio()
-    const liveCtx = getAudioContext()
     const extensionsStarted = extensions.start({
       registries: () => fromStrudel(webaudioMod, coreMod),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       registerWorklet: (url) => (webaudioMod as any).registerWorklet(url),
-      liveContext: () => liveCtx,
+      // Read when used, once no render holds the globals (a render swaps superdough's
+      // context for its own offline one). Never captured here: this engine may be
+      // starting while another engine renders.
+      liveContext: () => new Promise((resolve) => whenGraphFree(() => resolve(getAudioContext()))),
       report: (level, message) => emitLog({ level, runtime: 'stave', message }),
     })
     let extensionsWait: ReturnType<typeof setTimeout> | undefined
