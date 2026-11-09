@@ -10,10 +10,15 @@
  * What a gesture can edit is the step writer's alone: every cell asks `cellEdit`, and a cell the
  * writer refuses is inert and says why. A click on a place part-way through a plain step splits
  * it. A paint drag walks steps and passes over those places.
+ *
+ * Velocity (#2468): a lit cell's fill is as tall as the level its hit plays at, and a vertical
+ * drag on it writes that hit's own level of the chain's `.gain("…")` (`stepGainEdit`) — a new
+ * `.gain` mirrors the steps when there is none. A click that would add a hit under a gain `~`
+ * is refused (#2467): the hit would play nothing.
  */
 import * as React from 'react'
 
-import { chordLanes, commit, gridWriteEdits, lookOnlyLine, opensStepGrid, resizeStep, resizeStepBy, sampleVoice, stepNoteKey, stepNotes, type ChunkInfo, type Frac, type ParseResult, type StepEdit, type StepEditResult, type ViewScale } from '../../codeView'
+import { chordLanes, commit, fmtLevel, gainLevelsAt, gridWriteEdits, lookOnlyLine, opensStepGrid, readChunkGain, resizeStep, resizeStepBy, sampleVoice, stepGainEdit, stepGainWriteEdits, stepNoteKey, stepNotes, type ChunkInfo, type Frac, type ParseResult, type StepEdit, type StepEditResult, type StepGainRefusal, type ViewScale } from '../../codeView'
 import { emitLog } from '../../engine/engineLog'
 import { readCurrentCycle } from '../../workspace/currentCycle'
 import { ExtendHandle } from './ExtendHandle'
@@ -23,6 +28,7 @@ import { GridZoomControl, useGridZoom } from './gridZoomControl'
 import { GRID_SCOPE, isCursorMove, isNoteEdit, matchGridKey, mountGridGestures, moveStepCursor, stopAt, type GridAction } from './gridGestures'
 import { InViewBar, PHONE_RULER_HEIGHT, PHONE_STEP_MIN, TurnHint, usePhoneGrid, useRulerPan } from './phoneGrid'
 import { useNoteColorMode, velocityColor } from './noteColor'
+import { useVelocityDrag } from './velocityDrag'
 import { PatternTrackChip } from './PatternTrackChip'
 import { lookOnlyTreeRoll } from './rollTree'
 import { DRUM_SOUNDS } from './soundCatalog'
@@ -52,6 +58,9 @@ const ROW_PX = 22
 const RESIZE_ZONE_PX = 8
 /** px of movement before a press on a note becomes a drag (not a click) */
 const DRAG_THRESHOLD = 4
+/** px of vertical drag that spans the full 0→1 velocity range, as the column grid's */
+const VELOCITY_FULL_PX = 80
+const clamp01 = (v: number): number => Math.min(1, Math.max(0, v))
 
 const STEP_REFUSALS: Record<string, string> = {
   'inside-a-step': 'This place is part of a longer step — click where the step begins, or change it in the code view.',
@@ -62,7 +71,21 @@ const STEP_REFUSALS: Record<string, string> = {
   'loop-shorter-than-the-pattern': "This step also plays in bars the grid doesn't show — change it in the code view.",
   'step-crosses-a-bar': 'This note runs over a bar line — switch it where it starts, or change it in the code view.',
   'step-has-no-text': "This note isn't one plain name in the code, so the grid can't change it — change it in the code view.",
+  'under-a-gain-rest': 'The .gain has a rest (~) here, so a hit here would play nothing — change the .gain in the code view.',
 }
+
+/** why a velocity drag on a hit writes nothing */
+const VELOCITY_REFUSALS: Partial<Record<StepGainRefusal, string>> = {
+  'gain-not-ours': "this pattern's .gain isn't a plain number or string, so the grid leaves it as written",
+  'hit-is-silent': 'the .gain has a rest (~) on this hit, so it plays nothing',
+  'gain-step-not-the-hit': "the .gain's level on this hit also covers other places, so changing it would change them too",
+  'no-gain-for-this-pattern': 'a new .gain could not follow this pattern’s steps (parts side by side, a random choice, or {…})',
+  'step-is-a-random-choice': "the .gain's level on this hit is chosen by chance",
+  'step-under-a-generator': "the .gain's level on this hit sits under an op the grid can't write through",
+  'loop-shorter-than-the-pattern': "the .gain plays past the bars the grid shows",
+}
+const velocityLine = (why: StepGainRefusal): string => `${VELOCITY_REFUSALS[why] ?? "the grid can't find this hit's own level in the .gain"} — change it in the code view.`
+
 
 function refusalLine(why: string, on: boolean): string {
   if (why === 'step-is-a-group') {
@@ -109,8 +132,16 @@ interface Press {
   row: number
   cell: ExactCell
   startX: number
-  mode: 'paint' | 'pending' | 'resize'
+  startY: number
+  mode: 'paint' | 'pending' | 'resize' | 'velocity'
   paintOn: boolean
+  /** a lit cell: its hit, and the level it played at when the press began */
+  hit?: { begin: number; end: number }
+  startLevel?: number
+  /** the last level a velocity drag wrote, so a move that rounds to the same level writes nothing */
+  wroteLevel?: string
+  /** a vertical drag was refused once: said once per press */
+  saidNo?: boolean
   /** the row's sound: a paint drag stays in the row it began in, even if rows move under it */
   sound: string
 }
@@ -136,6 +167,15 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
   const grid = React.useMemo(() => (probed ? exactGridFrom(probed, kept) : null), [probed, kept])
   const ok = grid && grid.ok && !playsNumbers(grid.trees) ? grid : null
   const bars = ok?.bars ?? 1
+
+  // THE CHAIN'S `.gain`: the level each place plays at, null under a gain `~` (#2467, #2468)
+  const gain = React.useMemo(() => (chunk ? readChunkGain(chunk) : null), [chunk])
+  const gainRef = React.useRef(gain)
+  gainRef.current = gain
+  // a vertical drag sets a level only where the user turned velocity on (#2525)
+  const velocityOn = useVelocityDrag()
+  const velocityOnRef = React.useRef(velocityOn)
+  velocityOnRef.current = velocityOn
 
   const gridRef_ = React.useRef(ok)
   gridRef_.current = ok
@@ -202,6 +242,54 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
   // a snap half opens only once it can be aimed at: by a pointer, or on a phone by a finger
   const halfPx = phone.phone ? fingerPx : OPEN_PX
   const drawn = React.useMemo(() => rows.map((r) => drawnCells(r.cells, barPx, halfPx)), [rows, barPx, halfPx])
+  // the level at every place drawn and every hit: one ask of Strudel per text
+  const levelAt = React.useMemo(() => {
+    const times = [...new Set([...drawn.flatMap((cs) => cs.map(cellAt)), ...rows.flatMap((r) => r.hits.map((h) => h.begin))])]
+    const levels = gain ? gainLevelsAt(gain, times) : null
+    const out = new Map<string, number | null>()
+    if (levels) times.forEach((t, i) => out.set(t.toFixed(9), levels[i]))
+    return out
+  }, [drawn, rows, gain])
+  /** the level at `t`: undefined where nothing is known (a `.gain` velocity does not manage) */
+  const levelOf = (t: number): number | null | undefined => levelAt.get(t.toFixed(9))
+
+  // WHERE A VELOCITY DRAG IS OFFERED: where the writer would write it, asked of `stepGainEdit`
+  // itself for every hit (#1839's rule — never predicted beside the writer). `data-gain` says so
+  // on the cell. Asked in slices of a few ms between frames: one ask is about 1-5 ms, and a
+  // pattern can have hundreds of hits (measured 2026-11-08: 416 hits, 1.4 s in all), which in one
+  // go would hold the page. Until a text's answers are in, no cell claims a velocity.
+  const [offered, setOffered] = React.useState<ReadonlySet<string>>(() => new Set())
+  React.useEffect(() => {
+    const out = new Set<string>()
+    setOffered(new Set())
+    if (!velocityOn || mini === null || !gain || gain.foreign) return
+    const todo: Array<{ begin: number; end: number }> = []
+    const seen = new Set<string>()
+    for (const r of rows) {
+      for (const h of r.hits) {
+        const k = h.begin.toFixed(9)
+        if (h.begin < bars && !seen.has(k)) {
+          seen.add(k)
+          todo.push({ begin: h.begin, end: h.end })
+        }
+      }
+    }
+    let i = 0
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const slice = (): void => {
+      const until = performance.now() + 8
+      while (i < todo.length && performance.now() < until) {
+        const h = todo[i++]
+        if (stepGainEdit(mini, gain, bars, h, 0.5).ok) out.add(h.begin.toFixed(9))
+      }
+      if (i < todo.length) timer = setTimeout(slice, 0)
+      else setOffered(out)
+    }
+    slice()
+    return () => {
+      if (timer !== null) clearTimeout(timer)
+    }
+  }, [mini, gain, rows, bars, velocityOn])
   const drawings = React.useMemo(() => rows.map((r) => (r.bars ? drawTreeRow(r.bars, barPx, openPx) : null)), [rows, barPx, openPx])
   const orderOf = (r: ExactRow): string[] => rows.filter((k) => k.part === r.part).map((k) => k.sound)
 
@@ -211,11 +299,11 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
     if (!ok || mini === null) return out
     rows.forEach((r, ri) => {
       const order = rows.filter((k) => k.part === r.part).map((k) => k.sound)
-      for (const c of drawn[ri]) out.set(cellKeyOf(ri, c), cellEdit(mini, ok.trees, r, order, c))
+      for (const c of drawn[ri]) out.set(cellKeyOf(ri, c), cellEdit(mini, ok.trees, r, order, c, levelAt.get(cellAt(c).toFixed(9)) === null))
     })
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ok, mini, drawn])
+  }, [ok, mini, drawn, levelAt])
   const answersRef = React.useRef(answers)
   answersRef.current = answers
 
@@ -303,23 +391,78 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
     [writeEdit],
   )
 
+  /** set the level of the hit at `hit` (cycles) to `level`, from the text as it is now; or why not */
+  const writeLevel = React.useCallback(
+    (hit: { begin: number; end: number }, level: number, dryRun = false): { ok: true } | { ok: false; why: StepGainRefusal } => {
+      const from = miniRef.current
+      const g = gainRef.current
+      if (from === null || !g) return { ok: false, why: 'gain-not-ours' }
+      if (dryRun) {
+        const r = stepGainEdit(from, g, bars, hit, level)
+        return r.ok ? { ok: true } : r
+      }
+      // THE WRITE READS THE TEXT AS IT IS NOW, not as the panel last drew it: a fast drag sends
+      // several moves before a redraw, and each one must edit the `.gain` the last one wrote
+      let out: { ok: true } | { ok: false; why: StepGainRefusal } = { ok: false, why: 'gain-not-ours' }
+      applyEdit((fresh, wb) => {
+        if (fresh.miniString === null) return
+        const now = readChunkGain(fresh)
+        const r = stepGainEdit(fresh.miniString, now, bars, hit, level)
+        if (!r.ok) {
+          out = r
+          return
+        }
+        commit(wb, stepGainWriteEdits(fresh, now.mini, r), 'seq')
+        out = { ok: true }
+      })
+      return out
+    },
+    [applyEdit, bars],
+  )
+
   // ONE POINTER GESTURE. An empty cell paints at once; a note starts pending, so a horizontal
-  // drag paints it off and a release with no drag erases it. A press on a note's handle resizes.
+  // drag paints it off, a vertical drag sets its level, and a release with no drag erases it. A
+  // press on a note's handle resizes.
   const press = React.useRef<Press | null>(null)
+  const writeLevelRef = React.useRef(writeLevel)
+  writeLevelRef.current = writeLevel
   React.useEffect(() => {
     const onMove = (e: PointerEvent): void => {
       const g = press.current
       if (!g) return
-      if (g.mode === 'pending' && Math.abs(e.clientX - g.startX) > DRAG_THRESHOLD) {
-        g.mode = 'paint'
-        paintOneRef.current(g.row, g.cell, g.paintOn)
+      const dx = e.clientX - g.startX
+      const dy = e.clientY - g.startY
+      if (g.mode === 'pending') {
+        if (g.hit && velocityOnRef.current && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
+          // a vertical drag on a lit cell is its velocity, where the `.gain` can take it
+          const can = writeLevelRef.current(g.hit, (g.startLevel ?? 1) === 0 ? 1 : 0, true)
+          if (!can.ok) {
+            if (!g.saidNo) report("Couldn't change that hit's velocity", velocityLine(can.why))
+            g.saidNo = true
+            return
+          }
+          g.mode = 'velocity'
+        } else if (Math.abs(dx) > DRAG_THRESHOLD) {
+          g.mode = 'paint'
+          paintOneRef.current(g.row, g.cell, g.paintOn)
+          return
+        } else return
+      }
+      if (g.mode === 'velocity' && g.hit) {
+        // drag DOWN softens; up to a full 1, down to 0
+        const level = clamp01((g.startLevel ?? 1) - dy / VELOCITY_FULL_PX)
+        const text = fmtLevel(level)
+        if (text === g.wroteLevel) return
+        g.wroteLevel = text
+        writeLevelRef.current(g.hit, level)
       }
     }
     const onUp = (): void => {
       const g = press.current
       if (!g) return
       press.current = null
-      if (g.mode === 'pending') paintOneRef.current(g.row, g.cell, false)
+      // a press refused its velocity drag stays a click only if the pointer barely moved
+      if (g.mode === 'pending' && !g.saidNo) paintOneRef.current(g.row, g.cell, false)
       endGesture()
     }
     window.addEventListener('pointermove', onMove)
@@ -336,7 +479,10 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
     const answer = answers.get(cellKeyOf(ri, cell))
     if (!answer?.ok) return
     beginGesture()
-    press.current = { row: ri, cell, startX: e.clientX, mode: cell.on ? 'pending' : 'paint', paintOn: !cell.on, sound: rows[ri].sound }
+    const at = cellAt(cell)
+    const h = cell.on ? rows[ri].hits.find((x) => Math.abs(x.begin - at) < 1e-9) : undefined
+    const hit = h ? { begin: h.begin, end: h.end } : undefined
+    press.current = { row: ri, cell, startX: e.clientX, startY: e.clientY, mode: cell.on ? 'pending' : 'paint', paintOn: !cell.on, sound: rows[ri].sound, hit, startLevel: hit ? levelOf(hit.begin) ?? 1 : undefined }
     if (!cell.on) paintOne(ri, cell, true)
   }
   const onCellEnter = (ri: number, cell: ExactCell): void => {
@@ -355,7 +501,7 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
     e.preventDefault()
     e.stopPropagation()
     beginGesture()
-    press.current = { row: ri, cell, startX: e.clientX, mode: 'resize', paintOn: false, sound: rows[ri].sound }
+    press.current = { row: ri, cell, startX: e.clientX, startY: e.clientY, mode: 'resize', paintOn: false, sound: rows[ri].sound }
   }
 
   // THE KEYS, through the same command path as the roll's
@@ -572,9 +718,13 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
                     <div key={`l${l.at}`} data-tree-line={l.depth} style={{ position: 'absolute', left: x(l.at) - 1, width: 2, top: 0, bottom: 0, background: lineColor(l.depth), pointerEvents: 'none' }} />
                   ))}
                   {/* what the row plays, at its exact time and length */}
-                  {row.hits.map((h, i) => (
-                    <div key={`h${i}`} data-seq-fill data-tree-hit={h.begin.toFixed(6)} style={{ position: 'absolute', left: x(h.begin) + 2, width: Math.max(2, x(Math.min(h.end, bars)) - x(h.begin) - 3), top: 3, bottom: 3, borderRadius: 2, background: colorMode === 'velocity' ? velocityColor(1) : voice.color, pointerEvents: 'none' }} />
-                  ))}
+                  {row.hits.map((h, i) => {
+                    // HEIGHT is the level the hit plays at, bottom-anchored and full at 1 (#2468)
+                    const level = velocityOn ? clamp01(levelOf(h.begin) ?? 1) : 1
+                    return (
+                      <div key={`h${i}`} data-seq-fill data-tree-hit={h.begin.toFixed(6)} style={{ position: 'absolute', left: x(h.begin) + 2, width: Math.max(2, x(Math.min(h.end, bars)) - x(h.begin) - 3), top: 3 + (1 - level) * (ROW_PX - 6), bottom: 3, borderRadius: 2, background: colorMode === 'velocity' ? velocityColor(level) : voice.color, pointerEvents: 'none' }} />
+                    )
+                  })}
                   {/* the places a click acts on, over the picture */}
                   {drawn[ri].map((cell) => {
                     const key = cellKeyOf(ri, cell)
@@ -604,6 +754,7 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
                         data-seq-splits={splits ? 'true' : undefined}
                         data-seq-sustain={held ? 'true' : undefined}
                         data-seq-step-note={plays ?? undefined}
+                        data-gain={cell.on && offered.has(at.toFixed(9)) && levelOf(at) != null ? fmtLevel(levelOf(at) as number) : undefined}
                         data-playing={playAt !== null && inCell(playAt) ? 'true' : undefined}
                         title={can ? (splits ? `Splits this step: adds ${row.sound} here` : plays ? `${row.sound} plays ${plays}` : undefined) : answer && !answer.ok ? refusalLine(answer.why, cell.on) : undefined}
                         onFocus={() => {

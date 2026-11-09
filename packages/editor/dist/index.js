@@ -5951,7 +5951,7 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
   const leadingWs = chain.length - chain.trimStart().length;
   let remaining = chain.trim();
   let remainingOffset = baseOffset + leadingWs;
-  let current8 = ir;
+  let current9 = ir;
   while (true) {
     const consumedSep = skipWhitespaceAndLineComments(remaining, 0);
     if (consumedSep > 0) {
@@ -5967,11 +5967,11 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
       remainingOffset + consumed
     ];
     const argsAbsoluteOffset = argsOffset >= 0 ? remainingOffset + argsOffset : remainingOffset;
-    current8 = applyMethod(current8, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
+    current9 = applyMethod(current9, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
     remainingOffset += consumed;
     remaining = rest;
   }
-  return current8;
+  return current9;
 }
 __name(applyChain, "applyChain");
 function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], bindings, numbers) {
@@ -6524,14 +6524,14 @@ __name(splitArgs, "splitArgs");
 function splitArgsWithOffsets(argsStr) {
   const args = [];
   let depth = 0;
-  let current8 = "";
+  let current9 = "";
   let currentStart = 0;
   let inString = false;
   let stringChar = "";
   const pushCurrent = /* @__PURE__ */ __name(() => {
-    if (current8.trim().length === 0) return;
-    const consumed = skipWhitespaceAndLineComments(current8, 0);
-    const value = current8.slice(consumed).trimEnd();
+    if (current9.trim().length === 0) return;
+    const consumed = skipWhitespaceAndLineComments(current9, 0);
+    const value = current9.slice(consumed).trimEnd();
     if (value.length === 0) return;
     args.push({
       value,
@@ -6541,47 +6541,47 @@ function splitArgsWithOffsets(argsStr) {
   for (let i = 0; i < argsStr.length; i++) {
     const ch = argsStr[i];
     if (inString) {
-      current8 += ch;
+      current9 += ch;
       if (ch === stringChar && argsStr[i - 1] !== "\\") inString = false;
       continue;
     }
     if (ch === "/" && argsStr[i + 1] === "/") {
-      if (current8.length === 0) currentStart = i;
+      if (current9.length === 0) currentStart = i;
       while (i < argsStr.length && argsStr[i] !== "\n") {
-        current8 += argsStr[i];
+        current9 += argsStr[i];
         i++;
       }
       if (i < argsStr.length) {
-        current8 += argsStr[i];
+        current9 += argsStr[i];
       }
       continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
       continue;
     }
     if (ch === "(" || ch === "[" || ch === "{") {
       depth++;
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
       continue;
     }
     if (ch === ")" || ch === "]" || ch === "}") {
       depth--;
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
       continue;
     }
     if (ch === "," && depth === 0) {
       pushCurrent();
-      current8 = "";
+      current9 = "";
       currentStart = i + 1;
     } else {
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
     }
   }
   pushCurrent();
@@ -8260,9 +8260,9 @@ function locateMiniParseError(message, doc) {
 __name(locateMiniParseError, "locateMiniParseError");
 
 // src/codeView/chainEdit.ts
-function appendCall(fresh, name, argText) {
+function appendCall(fresh, name, argText2) {
   const end = fresh.exprRange[1];
-  return { range: [end, end], text: `.${name}(${argText})` };
+  return { range: [end, end], text: `.${name}(${argText2})` };
 }
 __name(appendCall, "appendCall");
 function numberArgEdit(arg, value) {
@@ -8702,12 +8702,12 @@ __name(miniPieces, "miniPieces");
 function miniValuesAt(mini$1, times) {
   const pat = asked(mini$1, mini(mini$1));
   const byCycle = /* @__PURE__ */ new Map();
-  const EPS2 = 1e-9;
+  const EPS3 = 1e-9;
   return times.map((t) => {
-    const cyc = Math.floor(t + EPS2);
+    const cyc = Math.floor(t + EPS3);
     let pieces = byCycle.get(cyc);
     if (!pieces) byCycle.set(cyc, pieces = pat.pieces(cyc));
-    return pieces.filter((p) => p.begin.valueOf() <= t + EPS2 && t + EPS2 < p.end.valueOf()).map((p) => p.value);
+    return pieces.filter((p) => p.begin.valueOf() <= t + EPS3 && t + EPS3 < p.end.valueOf()).map((p) => p.value);
   });
 }
 __name(miniValuesAt, "miniValuesAt");
@@ -8746,6 +8746,25 @@ function soundNoteHits(sound, notes, cyc) {
   return out;
 }
 __name(soundNoteHits, "soundNoteHits");
+function soundGainHits(sound, gain, cyc) {
+  const at = /* @__PURE__ */ __name((str, offset) => patternifyAST(mini2ast(`"${str}"`), `"${str}"`, null, offset), "at");
+  const off = sound.length + 2;
+  const pat = at(sound, 0).s().gain(at(gain, off));
+  const out = [];
+  for (const h of pat.queryArc(cyc, cyc + 1)) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
+    const v = h.value ?? {};
+    const gainAt = [];
+    for (const l of h.context?.locations ?? []) {
+      if (typeof l?.start === "number" && typeof l.end === "number" && l.start > off) {
+        gainAt.push({ start: l.start - off - 1, end: l.end - off - 1 });
+      }
+    }
+    out.push({ begin: h.whole.begin, end: h.whole.end, sound: v.s, gain: v.gain, gainAt });
+  }
+  return out;
+}
+__name(soundGainHits, "soundGainHits");
 var onsetKey = /* @__PURE__ */ __name((t, value) => `${t.toFraction?.() ?? t.valueOf()}\0${JSON.stringify(value)}`, "onsetKey");
 function markedPattern(mini, path, marks) {
   const code = '"' + mini + '"';
@@ -11005,14 +11024,14 @@ function leafViewUsable(model) {
 }
 __name(leafViewUsable, "leafViewUsable");
 function claimLeafSpan(src, span, token, seen, fold2 = false) {
-  const no2 = { ok: false, gate: "no-leaf-anchor" };
-  if (!span) return no2;
+  const no3 = { ok: false, gate: "no-leaf-anchor" };
+  if (!span) return no3;
   const bytes = src.slice(span.start, span.end);
   const isOwn = fold2 ? bytes.toLowerCase() === token.toLowerCase() : bytes === token;
-  if (!isOwn) return no2;
+  if (!isOwn) return no3;
   for (const s of seen) {
     const identical = s.start === span.start && s.end === span.end;
-    if (!identical && s.end > span.start && span.end > s.start) return no2;
+    if (!identical && s.end > span.start && span.end > s.start) return no3;
   }
   seen.push(span);
   return { ok: true, span };
@@ -13251,6 +13270,18 @@ function gainUnchanged(g, cur) {
   return g.quoted ? cur.mini === g.value : cur.numeric !== null && cur.numeric === parseFloat(g.value);
 }
 __name(gainUnchanged, "gainUnchanged");
+function stepGainWriteEdits(fresh, from, result) {
+  const cur = readChunkGain(fresh);
+  if (cur.foreign || cur.mini !== from) return null;
+  if (result.edit && cur.mini !== null) {
+    const arg = managedGainArg(fresh);
+    if (!arg) return null;
+    const start = arg.argRange[0] + 1;
+    return [{ range: [start + result.edit.from, start + result.edit.to], text: result.edit.insert }];
+  }
+  return gainEdits(fresh, { kind: "write", value: result.gain, quoted: true });
+}
+__name(stepGainWriteEdits, "stepGainWriteEdits");
 function gridWriteEdits(fresh, mini, gain) {
   if (!fresh.miniRange) return null;
   const edits = [{ range: fresh.miniRange, text: mini }];
@@ -13258,249 +13289,6 @@ function gridWriteEdits(fresh, mini, gain) {
   return edits;
 }
 __name(gridWriteEdits, "gridWriteEdits");
-
-// src/codeView/sliderEdit.ts
-function sliderEdit(doc, span, value) {
-  if (!Number.isFinite(value)) return null;
-  const [start, end] = span;
-  if (start < 0 || end > doc.length || end <= start) return null;
-  const text = doc.slice(start, end);
-  if (text !== text.trim() || parseTypedNumber(text) === null) return null;
-  return { range: [start, end], text: formatNumber(value) };
-}
-__name(sliderEdit, "sliderEdit");
-
-// src/codeView/notation/gridCodec.ts
-var stepGridCodec = {
-  parse: parseStepGrid,
-  serialize: serializeStepGrid,
-  applyGain: applyStepGain,
-  serializeGain: serializeStepGain,
-  collapseToDocument: collapseStepGridToDocument,
-  slotState: stepSlotState,
-  quantizeTo: quantizeStepGridTo,
-  resolutionEffect: stepResolutionEffect
-};
-var pianoRollCodec = {
-  parse: parsePianoRoll,
-  serialize: serializePianoRoll,
-  applyGain: applyRollGain,
-  serializeGain: serializeRollGain,
-  collapseToDocument: collapsePianoRollToDocument,
-  slotState: rollSlotState,
-  quantizeTo: quantizePianoRollTo,
-  resolutionEffect: rollResolutionEffect
-};
-function gainWritable(codec, model) {
-  return codec.serializeGain ? codec.serializeGain(model).kind !== "skip" : false;
-}
-__name(gainWritable, "gainWritable");
-function slotPress(ops, model, target, canDrawView) {
-  if (ops.slotState(model, target, canDrawView) !== "view") return { kind: "write" };
-  const scale2 = freeZoneScale(documentSteps(model), target);
-  return scale2 === null ? { kind: "none" } : { kind: "view", scale: scale2 };
-}
-__name(slotPress, "slotPress");
-function slotPressCost(ops, model, target, canDrawView) {
-  return ops.slotState(model, target, canDrawView) !== "view" ? ops.resolutionEffect(model, target) : NO_RESOLUTION_EFFECT;
-}
-__name(slotPressCost, "slotPressCost");
-function reconcileGrid(codec, mini, chunkGain, viewScale, prev, prevScale) {
-  const parsed = codec.parse(mini, viewScale);
-  if (!parsed.ok) {
-    return parsed.lookOnly ? { read: parsed.lookOnly, model: parsed.lookOnly } : null;
-  }
-  const fresh = codec.applyGain ? codec.applyGain(parsed.model, chunkGain) : parsed.model;
-  const asWritten = prev == null ? null : codec.collapseToDocument?.(prev) ?? prev;
-  const sameMini = asWritten != null && codec.serialize(asWritten) === mini;
-  const sameGain = asWritten == null || !codec.serializeGain ? true : gainUnchanged(codec.serializeGain(asWritten), chunkGain);
-  const sameScale = prevScale === viewScale;
-  return { read: parsed.model, model: prev && sameMini && sameGain && sameScale ? prev : fresh };
-}
-__name(reconcileGrid, "reconcileGrid");
-function gridWritePlan(codec, next) {
-  const atDocument = codec.collapseToDocument ? codec.collapseToDocument(next) : null;
-  const spellsRefinement = atDocument === null;
-  const toWrite = atDocument ?? next;
-  const mini = codec.serialize(toWrite);
-  if (mini == null) return null;
-  return {
-    mini,
-    gain: codec.serializeGain ? codec.serializeGain(toWrite) : null,
-    written: spellsRefinement ? absorbViewScale(next) : next,
-    spellsRefinement
-  };
-}
-__name(gridWritePlan, "gridWritePlan");
-
-// src/codeView/noteSounds.ts
-var VALUE_ONLY = /* @__PURE__ */ new Set([
-  "gain",
-  "velocity",
-  "pan",
-  "n",
-  "bank",
-  "room",
-  "size",
-  "delay",
-  "delaytime",
-  "delayfeedback",
-  "lpf",
-  "hpf",
-  "cutoff",
-  "resonance",
-  "attack",
-  "decay",
-  "sustain",
-  "release",
-  "clip",
-  "legato",
-  "orbit",
-  "postgain",
-  "shape",
-  "crush",
-  "coarse",
-  "vowel",
-  "color",
-  "analog"
-]);
-function soundInRollTime(chunk, names) {
-  const cur = readChainMethod(chunk, names);
-  if (!cur) return null;
-  const at = chunk.chain.indexOf(playingCall(chunk, names));
-  return chunk.chain.slice(1, at).some((c) => !VALUE_ONLY.has(c.name)) ? null : cur;
-}
-__name(soundInRollTime, "soundInRollTime");
-var SOUND_PASSES = 8;
-function playedName(v) {
-  if (typeof v === "string") return v;
-  if (Array.isArray(v) && typeof v[0] === "string") return v[0];
-  return null;
-}
-__name(playedName, "playedName");
-function noteSounds(chunk, onsets, span, names = ["sound", "s"]) {
-  const cur = soundInRollTime(chunk, names);
-  if (!cur || readSoundArg(cur.value).kind === "one" || !(span > 0)) return null;
-  const times = [];
-  for (const t of onsets) for (let k = 0; k < SOUND_PASSES; k++) times.push(t + k * span);
-  let values2;
-  try {
-    values2 = miniValuesAt(cur.value, times);
-  } catch {
-    return null;
-  }
-  return onsets.map((_, i) => {
-    const heard = [];
-    for (let k = 0; k < SOUND_PASSES; k++) {
-      for (const v of values2[i * SOUND_PASSES + k]) {
-        const n = playedName(v);
-        if (n !== null && !heard.includes(n)) heard.push(n);
-      }
-    }
-    return heard;
-  });
-}
-__name(noteSounds, "noteSounds");
-function soundLane(chunk, span, names = ["sound", "s"]) {
-  const cur = soundInRollTime(chunk, names);
-  const arg = cur ? readSoundArg(cur.value) : null;
-  if (!cur || !arg || arg.kind === "one" || arg.names.length < 2 || !(span > 0)) return null;
-  const body = cur.value;
-  if (isRandom(miniShape(body))) {
-    return { blocks: [], readOnly: "These sounds are chosen at random as it plays, so the lane can\u2019t draw them \u2014 change them in the code." };
-  }
-  let pass;
-  try {
-    const pat = miniPattern(body);
-    pass = [0, 1].map((k) => {
-      const out = [];
-      for (let c = 0; c < span; c++) {
-        for (const h of pat.hits(k * span + c)) {
-          const name = playedName(h.value);
-          if (name === null) continue;
-          const at = h.locations.find((l) => body.slice(l.start, l.end) === name) ?? null;
-          out.push({ begin: h.begin.valueOf() - k * span, end: h.end.valueOf() - k * span, name, at });
-        }
-      }
-      return out;
-    });
-  } catch {
-    return null;
-  }
-  const [blocks, next] = pass;
-  const key3 = /* @__PURE__ */ __name((b) => `${b.begin.toFixed(9)}:${b.end.toFixed(9)}:${b.name}`, "key");
-  if (blocks.map(key3).join() !== next.map(key3).join()) {
-    return { blocks: [], readOnly: "These sounds take longer than these notes to come round, so the lane can\u2019t draw them here \u2014 change them in the code." };
-  }
-  const sorted = [...blocks].sort((a, b) => a.begin - b.begin);
-  if (sorted.some((b, i) => i > 0 && b.begin < sorted[i - 1].end - 1e-9)) {
-    return { blocks: [], readOnly: "These sounds play more than one at a time, so one lane can\u2019t draw them \u2014 change them in the code." };
-  }
-  return { blocks: sorted };
-}
-__name(soundLane, "soundLane");
-function isRandom(g) {
-  if (g.alignment === "rand") return true;
-  return g.children.some(
-    (c) => c.kind === "group" ? isRandom(c) : c.ops.some((o) => o.kind === "degradeBy") || c.content.kind === "group" && isRandom(c.content)
-  );
-}
-__name(isRandom, "isRandom");
-function soundBlockEdit(fresh, block, value, names = ["sound", "s"]) {
-  const cur = readChainMethod(fresh, names);
-  if (!cur || !block.at || cur.value.slice(block.at.start, block.at.end) !== block.name) {
-    return { refused: "The sound pattern changed under the lane, so nothing was written." };
-  }
-  const asAtom = readSoundArg(value);
-  if (asAtom.kind !== "one" || asAtom.name !== value) {
-    return { refused: `"${value}" can't be written inside this sound pattern as it stands, so change it in the code.` };
-  }
-  const lit = cur.range[0] + 1;
-  return { edit: { range: [lit + block.at.start, lit + block.at.end], text: value } };
-}
-__name(soundBlockEdit, "soundBlockEdit");
-var stepNoteKey = /* @__PURE__ */ __name((sound, cycle) => `${sound.split(":")[0]}@${cycle.toFixed(6)}`, "stepNoteKey");
-function stepNotes(chunk, span) {
-  if (!chunk.headFn || !["s", "sound"].includes(chunk.headFn) || chunk.miniVia !== "literal") return null;
-  if (chunk.miniString === null || !(span > 0)) return null;
-  const notes = readChainMethod(chunk, ["note"]);
-  if (!notes) return null;
-  const at = chunk.chain.indexOf(playingCall(chunk, ["note"]));
-  if (chunk.chain.slice(1).some((c) => c.name === "s" || c.name === "sound")) return null;
-  if (chunk.chain.slice(1, at).some((c) => !VALUE_ONLY.has(c.name))) return null;
-  const passes = /* @__PURE__ */ new Map();
-  const heard = [];
-  try {
-    for (let k = 0; k < SOUND_PASSES; k++) {
-      const pass = /* @__PURE__ */ new Map();
-      for (let c = 0; c < span; c++) {
-        for (const h of soundNoteHits(chunk.miniString, notes.value, k * span + c)) {
-          const name = playedName(h.sound);
-          if (name === null || h.note === void 0) continue;
-          const key3 = stepNoteKey(name, h.begin.valueOf() - k * span);
-          pass.set(key3, [...pass.get(key3) ?? [], String(h.note)]);
-          heard.push(...h.noteAt);
-        }
-      }
-      for (const [key3, played] of pass) {
-        const label = played.join(", ");
-        const seen = passes.get(key3) ?? [];
-        if (!seen.includes(label)) passes.set(key3, [...seen, label]);
-      }
-    }
-  } catch {
-    return null;
-  }
-  const atoms = [];
-  try {
-    nameAtoms(miniShape(notes.value), atoms);
-  } catch {
-    return { notes: passes, unheard: [] };
-  }
-  const unheard = atoms.filter((a) => !heard.some((s) => s.start < a.span.end && s.end > a.span.start)).map((a) => a.text);
-  return { notes: passes, unheard };
-}
-__name(stepNotes, "stepNotes");
 
 // src/codeView/strudelMini/divisions.ts
 var gcd3 = /* @__PURE__ */ __name((a, b) => b === 0 ? Math.abs(a) : gcd3(b, a % b), "gcd");
@@ -13685,9 +13473,9 @@ function rowSteps(ctx, group2, path) {
   if (repeated.length > 0) {
     const within2 = /* @__PURE__ */ new Set();
     for (const i of repeated) notesIn2(elements[i], within2);
-    const asked2 = slotsOf(ctx, copyOf(ctx.pat, path, repeated, true), within2);
-    if (isRefusal(asked2)) return asked2;
-    copies = asked2;
+    const asked3 = slotsOf(ctx, copyOf(ctx.pat, path, repeated, true), within2);
+    if (isRefusal(asked3)) return asked3;
+    copies = asked3;
   }
   const steps = [];
   for (const i of all) {
@@ -14028,6 +13816,80 @@ function respellCopies(text, kind) {
   }
 }
 __name(respellCopies, "respellCopies");
+function argText(a) {
+  if (!a || typeof a !== "object") return null;
+  const n = a;
+  if (n.type_ === "atom" && typeof n.source_ === "string") return n.source_;
+  if (n.type_ === "element") return argText(n.source_);
+  return null;
+}
+__name(argText, "argText");
+function mirrorElement(e, level) {
+  const src = e.source_;
+  let body;
+  if (src.type_ === "atom") body = level;
+  else if (src.arguments_.alignment === "stack") body = level;
+  else {
+    const inner = mirrorPattern(src, level);
+    if (inner === null) return null;
+    body = src.arguments_.alignment === "polymeter_slowcat" ? inner : `[${inner}]`;
+  }
+  let text = body;
+  for (const op of e.options_.ops) {
+    const a = op.arguments_ ?? {};
+    if (op.type_ === "tail" || op.type_ === "degradeBy") continue;
+    if (op.type_ === "stretch" && (a.type === "fast" || a.type === "slow")) {
+      const k = argText(a.amount);
+      if (k === null || !/^[0-9]+(\.[0-9]+)?$/.test(k)) return null;
+      text += (a.type === "fast" ? "*" : "/") + k;
+    } else if (op.type_ === "replicate") text += "!" + String(a.amount);
+    else if (op.type_ === "bjorklund") {
+      const n = argText(a.step);
+      if (n === null || !/^[1-9][0-9]*$/.test(n)) return null;
+      text += "*" + n;
+    } else return null;
+  }
+  const reps = e.options_.reps;
+  const held2 = reps > 1 ? e.options_.weight - reps : e.options_.weight;
+  if (reps > 1 && held2 !== 0) return null;
+  return held2 > 1 || reps === 1 && held2 !== 1 ? `${text}@${held2}` : text;
+}
+__name(mirrorElement, "mirrorElement");
+function mirrorPattern(p, level) {
+  const a = p.arguments_.alignment;
+  if (a === "fastcat") return mirrorSeq(p.source_, level);
+  const layers = p.source_;
+  const seqOf = /* @__PURE__ */ __name((l) => l.type_ === "pattern" && l.arguments_.alignment === "fastcat" ? mirrorSeq(l.source_, level) : null, "seqOf");
+  if (a === "feet") {
+    const feet = layers.map(seqOf);
+    return feet.some((f) => f === null) ? null : feet.join(" . ");
+  }
+  if (a === "polymeter_slowcat" && layers.length === 1) {
+    const inner = seqOf(layers[0]);
+    return inner === null ? null : `<${inner}>`;
+  }
+  return null;
+}
+__name(mirrorPattern, "mirrorPattern");
+function mirrorSeq(els, level) {
+  const out = [];
+  for (const e of els) {
+    const t = mirrorElement(e, level);
+    if (t === null) return null;
+    out.push(t);
+  }
+  return out.join(" ");
+}
+__name(mirrorSeq, "mirrorSeq");
+function gainMirror(mini, level) {
+  try {
+    const root = bare(miniTree(mini));
+    return root.arguments_.alignment === "polymeter_slowcat" ? null : mirrorPattern(root, level);
+  } catch {
+    return null;
+  }
+}
+__name(gainMirror, "gainMirror");
 
 // src/codeView/stepEdit.ts
 function laneRowForEdit(tree, row) {
@@ -14116,29 +13978,29 @@ var REPEATS = /* @__PURE__ */ new Set(["replicate", "stretch", "bjorklund"]);
 var refuse = /* @__PURE__ */ __name((why) => ({ ok: false, why }), "refuse");
 var write = /* @__PURE__ */ __name((from, to, insert) => ({ ok: true, edit: { from, to, insert } }), "write");
 function locate(trees, address, row, fromItsStart = false) {
-  const no2 = /* @__PURE__ */ __name((why) => ({ ok: false, why }), "no");
+  const no3 = /* @__PURE__ */ __name((why) => ({ ok: false, why }), "no");
   const tree = trees[address.bar];
-  if (!tree) return no2("no-such-bar");
+  if (!tree) return no3("no-such-bar");
   const lane = laneRowForEdit(tree, row);
-  if (!lane.ok) return no2(lane.why);
-  if (lane.oneOf) return no2("step-is-a-random-choice");
+  if (!lane.ok) return no3(lane.why);
+  if (lane.oneOf) return no3("step-is-a-random-choice");
   const found = findIn(lane.row, `part${tree.ok ? tree.parts.indexOf(lane.row) : 0}`, address.span, [], []);
-  if (!found) return no2("no-step-there");
+  if (!found) return no3("no-step-there");
   const { step, around } = found;
   const slot = step.slots.find((s) => sameFrac(s.begin, address.at));
   if (!slot) {
-    if (step.hits.some((h) => sameFrac(h.begin, address.at))) return no2(step.reps > 1 || step.ops.includes("replicate") ? "step-is-replicated" : "step-is-generated");
-    return no2("no-step-there");
+    if (step.hits.some((h) => sameFrac(h.begin, address.at))) return no3(step.reps > 1 || step.ops.includes("replicate") ? "step-is-replicated" : "step-is-generated");
+    return no3("no-step-there");
   }
-  if (around.some((g) => g.oneOf)) return no2("step-is-a-random-choice");
-  if (around.some((g) => g.ops.some((o) => !REPEATS.has(o)))) return no2("step-under-a-generator");
-  if (step.reps > 1 || step.ops.includes("replicate")) return no2("step-is-replicated");
-  if (step.ops.some((o) => o !== "tail")) return no2("step-is-generated");
-  if (slot.fromBefore || slot.pastEnd && !fromItsStart) return no2("step-crosses-a-bar");
+  if (around.some((g) => g.oneOf)) return no3("step-is-a-random-choice");
+  if (around.some((g) => g.ops.some((o) => !REPEATS.has(o)))) return no3("step-under-a-generator");
+  if (step.reps > 1 || step.ops.includes("replicate")) return no3("step-is-replicated");
+  if (step.ops.some((o) => o !== "tail")) return no3("step-is-generated");
+  if (slot.fromBefore || slot.pastEnd && !fromItsStart) return no3("step-crosses-a-bar");
   const loop = overTheLoop(trees);
-  if (typeof loop === "string") return no2(loop);
+  if (typeof loop === "string") return no3(loop);
   for (const { row: r, key: key3 } of found.rows) {
-    if ((loop.get(key3)?.size ?? 0) < r.written) return no2("loop-shorter-than-the-pattern");
+    if ((loop.get(key3)?.size ?? 0) < r.written) return no3("loop-shorter-than-the-pattern");
   }
   return { ok: true, lane, found, slot };
 }
@@ -14396,6 +14258,20 @@ function viaWrittenOut(mini, trees, address, row, writer) {
   return write(gen2.from, replacedEnd, respellWrittenOut(after.slice(gen2.from, regionEnd), gen2.kind === "bang" ? "bang" : "star"));
 }
 __name(viaWrittenOut, "viaWrittenOut");
+function renameStepHere(mini, trees, address, row, name) {
+  const at = locate(trees, address, row, true);
+  if (!at.ok) return refuse(at.why);
+  const { step } = at.found;
+  if (step.rows !== null) return refuse("step-is-a-group");
+  if (step.head === null || step.name === null) return refuse("step-has-no-text");
+  if (mini.slice(step.head.start, step.head.end) !== step.name) return refuse("tree-is-not-this-text");
+  return write(step.head.start, step.head.end, name);
+}
+__name(renameStepHere, "renameStepHere");
+function renameStep(mini, trees, address, row, name) {
+  return viaWrittenOut(mini, trees, address, row, (m, t, a) => renameStepHere(m, t, a, row, name)) ?? renameStepHere(mini, trees, address, row, name);
+}
+__name(renameStep, "renameStep");
 function toggleStep(mini, trees, address, row) {
   return viaWrittenOut(mini, trees, address, row, (m, t, a) => toggleStepHere(m, t, a, row)) ?? toggleStepHere(mini, trees, address, row);
 }
@@ -14412,6 +14288,375 @@ function resizeStepBy(mini, trees, address, delta, row) {
   return viaWrittenOut(mini, trees, address, row, (m, t, a) => resizeStepByHere(m, t, a, delta, row)) ?? resizeStepByHere(mini, trees, address, delta, row);
 }
 __name(resizeStepBy, "resizeStepBy");
+
+// src/codeView/stepGain.ts
+var EPS2 = 1e-9;
+var no2 = /* @__PURE__ */ __name((why) => ({ ok: false, why }), "no");
+var ASKED = /* @__PURE__ */ new Map();
+var ASKED_MAX = 2048;
+function asked2(key3, ask) {
+  let got = ASKED.get(key3);
+  if (!got) {
+    try {
+      got = { v: ask() };
+    } catch (e) {
+      got = { e };
+    }
+    if (ASKED.size >= ASKED_MAX) ASKED.delete(ASKED.keys().next().value);
+    ASKED.set(key3, got);
+  }
+  if ("e" in got) throw got.e;
+  return got.v;
+}
+__name(asked2, "asked");
+var heardIn = /* @__PURE__ */ __name((mini, gain, cyc) => asked2(`s\0${cyc}\0${mini}\0${gain}`, () => soundGainHits(mini, gain, cyc)), "heardIn");
+var playsIn = /* @__PURE__ */ __name((mini, cyc) => asked2(`p\0${cyc}\0${mini}`, () => miniPattern(mini).hits(cyc)), "playsIn");
+function fmtLevel(v) {
+  if (!Number.isFinite(v)) return "1";
+  const c = Math.min(1, Math.max(0, v));
+  if (Number.isInteger(c)) return String(c);
+  return c.toFixed(2).replace(/\.?0+$/, "");
+}
+__name(fmtLevel, "fmtLevel");
+function gainLevelsAt(gain, times) {
+  if (gain.foreign) return null;
+  if (gain.mini === null) return times.map(() => gain.numeric ?? 1);
+  let values2;
+  try {
+    values2 = miniValuesAt(gain.mini, times);
+  } catch {
+    return null;
+  }
+  return values2.map((v) => {
+    const n = v.find((x) => typeof x === "number" || typeof x === "string" && x.trim() !== "" && Number.isFinite(Number(x)));
+    return n === void 0 ? null : Number(n);
+  });
+}
+__name(gainLevelsAt, "gainLevelsAt");
+var near = /* @__PURE__ */ __name((a, b) => Math.abs(a.valueOf() - b) < EPS2, "near");
+function inBar(t, bar2) {
+  const rel = t.sub ? t.sub(bar2) : null;
+  const m = /^(\d+)(?:\/(\d+))?$/.exec(rel?.toFraction?.() ?? "");
+  return m ? { n: Number(m[1]), d: m[2] === void 0 ? 1 : Number(m[2]) } : null;
+}
+__name(inBar, "inBar");
+function stepNamedAt(parts, start) {
+  let out = null;
+  parts.forEach((row, part) => {
+    const visit = /* @__PURE__ */ __name((r) => {
+      for (const s of r.steps) {
+        if (!out && s.head && s.head.start === start) out = { step: s, part };
+        for (const k of s.rows ?? []) visit(k);
+      }
+    }, "visit");
+    visit(row);
+  });
+  return out;
+}
+__name(stepNamedAt, "stepNamedAt");
+function stepGainEdit(mini, gain, bars, hit, level) {
+  if (gain.foreign) return no2("gain-not-ours");
+  const created = gain.mini === null;
+  const text = gain.mini ?? gainMirror(mini, fmtLevel(gain.numeric ?? 1));
+  if (text === null) return no2("no-gain-for-this-pattern");
+  const cyc = Math.floor(hit.begin + EPS2);
+  const bar2 = (cyc % bars + bars) % bars;
+  let heard;
+  let plain;
+  try {
+    heard = heardIn(mini, text, cyc);
+    plain = playsIn(mini, cyc);
+    if (created) {
+      const lands = asked2(`m\0${bars}\0${mini}\0${text}`, () => {
+        for (let c = 0; c < bars; c++) if (heardIn(mini, text, c).length !== playsIn(mini, c).length) return false;
+        return true;
+      });
+      if (!lands) return no2("no-gain-for-this-pattern");
+    }
+  } catch {
+    return no2("gain-does-not-evaluate");
+  }
+  const target = heard.find((h) => near(h.begin, hit.begin));
+  if (!target) return no2(plain.some((h) => near(h.begin, hit.begin)) ? "hit-is-silent" : "no-hit-there");
+  let levels;
+  try {
+    levels = playsIn(text, cyc);
+  } catch {
+    return no2("gain-does-not-evaluate");
+  }
+  const starts2 = new Set(target.gainAt.map((l) => l.start));
+  const own = levels.find((l) => l.begin.valueOf() <= hit.begin + EPS2 && hit.begin + EPS2 < l.end.valueOf() && l.locations.some((x) => starts2.has(x.start)));
+  if (!own || !near(own.begin, hit.begin) || !near(own.end, hit.end)) return no2("gain-step-not-the-hit");
+  try {
+    for (let c = Math.floor(own.begin.valueOf() + EPS2); c < own.end.valueOf() - EPS2; c++) {
+      const hits = c === cyc ? heard : heardIn(mini, text, c);
+      if (hits.some((h) => h.begin.valueOf() > own.begin.valueOf() + EPS2 && h.begin.valueOf() < own.end.valueOf() - EPS2)) return no2("gain-step-not-the-hit");
+    }
+  } catch {
+    return no2("gain-does-not-evaluate");
+  }
+  const trees = chunkDivisions(text, bars);
+  const tree = trees[bar2];
+  if (!tree || !tree.ok) return no2(tree ? tree.why : "no-such-bar");
+  let found = null;
+  for (const s of starts2) found = found ?? stepNamedAt(tree.parts, s);
+  const at = inBar(own.begin, cyc);
+  if (!found || !found.step.span || found.step.name === null || !at) return no2("step-has-no-text");
+  const r = renameStep(text, trees, { bar: bar2, span: found.step.span, at }, { sound: found.step.name, part: found.part }, fmtLevel(level));
+  if (!r.ok) return no2(r.why);
+  const after = applyStepEdit(text, r.edit);
+  try {
+    const now2 = soundGainHits(mini, after, cyc).find((h) => near(h.begin, hit.begin));
+    if (!now2 || Math.abs(Number(now2.gain) - Number(fmtLevel(level))) > EPS2) return no2("gain-not-heard");
+  } catch {
+    return no2("gain-does-not-evaluate");
+  }
+  return { ok: true, gain: after, created, edit: created ? null : r.edit };
+}
+__name(stepGainEdit, "stepGainEdit");
+
+// src/codeView/sliderEdit.ts
+function sliderEdit(doc, span, value) {
+  if (!Number.isFinite(value)) return null;
+  const [start, end] = span;
+  if (start < 0 || end > doc.length || end <= start) return null;
+  const text = doc.slice(start, end);
+  if (text !== text.trim() || parseTypedNumber(text) === null) return null;
+  return { range: [start, end], text: formatNumber(value) };
+}
+__name(sliderEdit, "sliderEdit");
+
+// src/codeView/notation/gridCodec.ts
+var stepGridCodec = {
+  parse: parseStepGrid,
+  serialize: serializeStepGrid,
+  applyGain: applyStepGain,
+  serializeGain: serializeStepGain,
+  collapseToDocument: collapseStepGridToDocument,
+  slotState: stepSlotState,
+  quantizeTo: quantizeStepGridTo,
+  resolutionEffect: stepResolutionEffect
+};
+var pianoRollCodec = {
+  parse: parsePianoRoll,
+  serialize: serializePianoRoll,
+  applyGain: applyRollGain,
+  serializeGain: serializeRollGain,
+  collapseToDocument: collapsePianoRollToDocument,
+  slotState: rollSlotState,
+  quantizeTo: quantizePianoRollTo,
+  resolutionEffect: rollResolutionEffect
+};
+function gainWritable(codec, model) {
+  return codec.serializeGain ? codec.serializeGain(model).kind !== "skip" : false;
+}
+__name(gainWritable, "gainWritable");
+function slotPress(ops, model, target, canDrawView) {
+  if (ops.slotState(model, target, canDrawView) !== "view") return { kind: "write" };
+  const scale2 = freeZoneScale(documentSteps(model), target);
+  return scale2 === null ? { kind: "none" } : { kind: "view", scale: scale2 };
+}
+__name(slotPress, "slotPress");
+function slotPressCost(ops, model, target, canDrawView) {
+  return ops.slotState(model, target, canDrawView) !== "view" ? ops.resolutionEffect(model, target) : NO_RESOLUTION_EFFECT;
+}
+__name(slotPressCost, "slotPressCost");
+function reconcileGrid(codec, mini, chunkGain, viewScale, prev, prevScale) {
+  const parsed = codec.parse(mini, viewScale);
+  if (!parsed.ok) {
+    return parsed.lookOnly ? { read: parsed.lookOnly, model: parsed.lookOnly } : null;
+  }
+  const fresh = codec.applyGain ? codec.applyGain(parsed.model, chunkGain) : parsed.model;
+  const asWritten = prev == null ? null : codec.collapseToDocument?.(prev) ?? prev;
+  const sameMini = asWritten != null && codec.serialize(asWritten) === mini;
+  const sameGain = asWritten == null || !codec.serializeGain ? true : gainUnchanged(codec.serializeGain(asWritten), chunkGain);
+  const sameScale = prevScale === viewScale;
+  return { read: parsed.model, model: prev && sameMini && sameGain && sameScale ? prev : fresh };
+}
+__name(reconcileGrid, "reconcileGrid");
+function gridWritePlan(codec, next) {
+  const atDocument = codec.collapseToDocument ? codec.collapseToDocument(next) : null;
+  const spellsRefinement = atDocument === null;
+  const toWrite = atDocument ?? next;
+  const mini = codec.serialize(toWrite);
+  if (mini == null) return null;
+  return {
+    mini,
+    gain: codec.serializeGain ? codec.serializeGain(toWrite) : null,
+    written: spellsRefinement ? absorbViewScale(next) : next,
+    spellsRefinement
+  };
+}
+__name(gridWritePlan, "gridWritePlan");
+
+// src/codeView/noteSounds.ts
+var VALUE_ONLY = /* @__PURE__ */ new Set([
+  "gain",
+  "velocity",
+  "pan",
+  "n",
+  "bank",
+  "room",
+  "size",
+  "delay",
+  "delaytime",
+  "delayfeedback",
+  "lpf",
+  "hpf",
+  "cutoff",
+  "resonance",
+  "attack",
+  "decay",
+  "sustain",
+  "release",
+  "clip",
+  "legato",
+  "orbit",
+  "postgain",
+  "shape",
+  "crush",
+  "coarse",
+  "vowel",
+  "color",
+  "analog"
+]);
+function soundInRollTime(chunk, names) {
+  const cur = readChainMethod(chunk, names);
+  if (!cur) return null;
+  const at = chunk.chain.indexOf(playingCall(chunk, names));
+  return chunk.chain.slice(1, at).some((c) => !VALUE_ONLY.has(c.name)) ? null : cur;
+}
+__name(soundInRollTime, "soundInRollTime");
+var SOUND_PASSES = 8;
+function playedName(v) {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v) && typeof v[0] === "string") return v[0];
+  return null;
+}
+__name(playedName, "playedName");
+function noteSounds(chunk, onsets, span, names = ["sound", "s"]) {
+  const cur = soundInRollTime(chunk, names);
+  if (!cur || readSoundArg(cur.value).kind === "one" || !(span > 0)) return null;
+  const times = [];
+  for (const t of onsets) for (let k = 0; k < SOUND_PASSES; k++) times.push(t + k * span);
+  let values2;
+  try {
+    values2 = miniValuesAt(cur.value, times);
+  } catch {
+    return null;
+  }
+  return onsets.map((_, i) => {
+    const heard = [];
+    for (let k = 0; k < SOUND_PASSES; k++) {
+      for (const v of values2[i * SOUND_PASSES + k]) {
+        const n = playedName(v);
+        if (n !== null && !heard.includes(n)) heard.push(n);
+      }
+    }
+    return heard;
+  });
+}
+__name(noteSounds, "noteSounds");
+function soundLane(chunk, span, names = ["sound", "s"]) {
+  const cur = soundInRollTime(chunk, names);
+  const arg = cur ? readSoundArg(cur.value) : null;
+  if (!cur || !arg || arg.kind === "one" || arg.names.length < 2 || !(span > 0)) return null;
+  const body = cur.value;
+  if (isRandom(miniShape(body))) {
+    return { blocks: [], readOnly: "These sounds are chosen at random as it plays, so the lane can\u2019t draw them \u2014 change them in the code." };
+  }
+  let pass;
+  try {
+    const pat = miniPattern(body);
+    pass = [0, 1].map((k) => {
+      const out = [];
+      for (let c = 0; c < span; c++) {
+        for (const h of pat.hits(k * span + c)) {
+          const name = playedName(h.value);
+          if (name === null) continue;
+          const at = h.locations.find((l) => body.slice(l.start, l.end) === name) ?? null;
+          out.push({ begin: h.begin.valueOf() - k * span, end: h.end.valueOf() - k * span, name, at });
+        }
+      }
+      return out;
+    });
+  } catch {
+    return null;
+  }
+  const [blocks, next] = pass;
+  const key3 = /* @__PURE__ */ __name((b) => `${b.begin.toFixed(9)}:${b.end.toFixed(9)}:${b.name}`, "key");
+  if (blocks.map(key3).join() !== next.map(key3).join()) {
+    return { blocks: [], readOnly: "These sounds take longer than these notes to come round, so the lane can\u2019t draw them here \u2014 change them in the code." };
+  }
+  const sorted = [...blocks].sort((a, b) => a.begin - b.begin);
+  if (sorted.some((b, i) => i > 0 && b.begin < sorted[i - 1].end - 1e-9)) {
+    return { blocks: [], readOnly: "These sounds play more than one at a time, so one lane can\u2019t draw them \u2014 change them in the code." };
+  }
+  return { blocks: sorted };
+}
+__name(soundLane, "soundLane");
+function isRandom(g) {
+  if (g.alignment === "rand") return true;
+  return g.children.some(
+    (c) => c.kind === "group" ? isRandom(c) : c.ops.some((o) => o.kind === "degradeBy") || c.content.kind === "group" && isRandom(c.content)
+  );
+}
+__name(isRandom, "isRandom");
+function soundBlockEdit(fresh, block, value, names = ["sound", "s"]) {
+  const cur = readChainMethod(fresh, names);
+  if (!cur || !block.at || cur.value.slice(block.at.start, block.at.end) !== block.name) {
+    return { refused: "The sound pattern changed under the lane, so nothing was written." };
+  }
+  const asAtom = readSoundArg(value);
+  if (asAtom.kind !== "one" || asAtom.name !== value) {
+    return { refused: `"${value}" can't be written inside this sound pattern as it stands, so change it in the code.` };
+  }
+  const lit = cur.range[0] + 1;
+  return { edit: { range: [lit + block.at.start, lit + block.at.end], text: value } };
+}
+__name(soundBlockEdit, "soundBlockEdit");
+var stepNoteKey = /* @__PURE__ */ __name((sound, cycle) => `${sound.split(":")[0]}@${cycle.toFixed(6)}`, "stepNoteKey");
+function stepNotes(chunk, span) {
+  if (!chunk.headFn || !["s", "sound"].includes(chunk.headFn) || chunk.miniVia !== "literal") return null;
+  if (chunk.miniString === null || !(span > 0)) return null;
+  const notes = readChainMethod(chunk, ["note"]);
+  if (!notes) return null;
+  const at = chunk.chain.indexOf(playingCall(chunk, ["note"]));
+  if (chunk.chain.slice(1).some((c) => c.name === "s" || c.name === "sound")) return null;
+  if (chunk.chain.slice(1, at).some((c) => !VALUE_ONLY.has(c.name))) return null;
+  const passes = /* @__PURE__ */ new Map();
+  const heard = [];
+  try {
+    for (let k = 0; k < SOUND_PASSES; k++) {
+      const pass = /* @__PURE__ */ new Map();
+      for (let c = 0; c < span; c++) {
+        for (const h of soundNoteHits(chunk.miniString, notes.value, k * span + c)) {
+          const name = playedName(h.sound);
+          if (name === null || h.note === void 0) continue;
+          const key3 = stepNoteKey(name, h.begin.valueOf() - k * span);
+          pass.set(key3, [...pass.get(key3) ?? [], String(h.note)]);
+          heard.push(...h.noteAt);
+        }
+      }
+      for (const [key3, played] of pass) {
+        const label = played.join(", ");
+        const seen = passes.get(key3) ?? [];
+        if (!seen.includes(label)) passes.set(key3, [...seen, label]);
+      }
+    }
+  } catch {
+    return null;
+  }
+  const atoms = [];
+  try {
+    nameAtoms(miniShape(notes.value), atoms);
+  } catch {
+    return { notes: passes, unheard: [] };
+  }
+  const unheard = atoms.filter((a) => !heard.some((s) => s.start < a.span.end && s.end > a.span.start)).map((a) => a.text);
+  return { notes: passes, unheard };
+}
+__name(stepNotes, "stepNotes");
 
 // src/codeView/rollEdit.ts
 var same2 = /* @__PURE__ */ __name((a, b) => a.n * b.d === b.n * a.d, "same");
@@ -14650,13 +14895,13 @@ function regionTrimEdit(chunk, control, value) {
   if (chunk.headFn !== null && MULTI_VOICE_HEADS.has(chunk.headFn)) {
     return { edit: null, refusal: "not-one-voice", value };
   }
-  const current8 = readRegion(chunk);
-  if (!current8 || !Number.isFinite(value)) {
+  const current9 = readRegion(chunk);
+  if (!current9 || !Number.isFinite(value)) {
     return { edit: null, refusal: "not-a-number", value };
   }
-  const clamped = control === "begin" ? Math.min(Math.max(0, value), current8.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current8.begin + MIN_REGION_SPAN);
+  const clamped = control === "begin" ? Math.min(Math.max(0, value), current9.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current9.begin + MIN_REGION_SPAN);
   if (!Number.isFinite(clamped)) return { edit: null, refusal: "not-a-number", value };
-  const before2 = current8[control];
+  const before2 = current9[control];
   if (formatNumber(clamped) === formatNumber(before2)) {
     return { edit: null, refusal: "no-change", value: clamped };
   }
@@ -14669,15 +14914,15 @@ __name(regionTrimEdit, "regionTrimEdit");
 // src/codeView/notation/place.ts
 function viewPlacesNotes(model) {
   if (model.lookOnly) return false;
-  let asked2 = 0;
+  let asked3 = 0;
   if ("lanes" in model) {
     for (let lane = 0; lane < model.lanes.length; lane++)
       for (let col = 0; col < model.steps; col++) {
         if (isCellOn(model.lanes[lane].cells[col])) continue;
-        asked2++;
+        asked3++;
         if (canToggleCell(model, lane, col, true)) return true;
       }
-    return asked2 === 0;
+    return asked3 === 0;
   }
   const pitches = new Set(model.notes.map((n) => n.pitch));
   if (model.notes.some((n) => pitchToMidi(n.pitch) !== null)) {
@@ -14687,10 +14932,10 @@ function viewPlacesNotes(model) {
   for (const pitch of pitches)
     for (let step = 0; step < model.steps; step++) {
       if (model.notes.some((n) => n.pitch === pitch && n.start === step)) continue;
-      asked2++;
+      asked3++;
       if (canPlaceNote(model, pitch, step, 1)) return true;
     }
-  return asked2 === 0;
+  return asked3 === 0;
 }
 __name(viewPlacesNotes, "viewPlacesNotes");
 var paint = /* @__PURE__ */ __name((value, length = 1) => value ? cellOn(length) : false, "paint");
@@ -16496,7 +16741,7 @@ function createTrackEnvelopeScheduler(deps) {
   let cycles = 0;
   const envelopes = /* @__PURE__ */ new Map();
   const refused2 = /* @__PURE__ */ new Map();
-  const current8 = /* @__PURE__ */ new Map();
+  const current9 = /* @__PURE__ */ new Map();
   let overCap = [];
   let rendering = null;
   let cancelTimer = null;
@@ -16525,8 +16770,8 @@ function createTrackEnvelopeScheduler(deps) {
       } catch {
         fp = null;
       }
-      if (wanted.includes(id) && current8.get(id) !== fp) {
-        current8.set(id, fp);
+      if (wanted.includes(id) && current9.get(id) !== fp) {
+        current9.set(id, fp);
         deps.onChange();
       }
       deps.schedule(step, 0);
@@ -16552,7 +16797,7 @@ function createTrackEnvelopeScheduler(deps) {
     const seconds = cps > 0 ? cycles / cps : Infinity;
     let spent = 0;
     for (const id of wanted) {
-      const fp = current8.get(id);
+      const fp = current9.get(id);
       if (fp == null) continue;
       const kept = envelopes.get(id)?.fingerprint === fp;
       const cost = seconds * (deps.weight?.(id) ?? 1);
@@ -16581,7 +16826,7 @@ function createTrackEnvelopeScheduler(deps) {
       for (const id of over) if (envelopes.delete(id)) deps.onChange();
       for (const id of todo) {
         if (controller.signal.aborted) break;
-        const fp = current8.get(id);
+        const fp = current9.get(id);
         if (fp == null) continue;
         rendering = id;
         deps.onChange();
@@ -16626,7 +16871,7 @@ function createTrackEnvelopeScheduler(deps) {
         kick();
         return;
       }
-      for (const id of [...current8.keys()]) if (!wanted.includes(id)) current8.delete(id);
+      for (const id of [...current9.keys()]) if (!wanted.includes(id)) current9.delete(id);
       deps.onChange();
       refingerprint();
     },
@@ -16679,7 +16924,7 @@ function createTrackEnvelopeScheduler(deps) {
         data: env.data,
         columns: env.columns,
         cycles: env.cycles,
-        stale: current8.get(trackId) !== env.fingerprint
+        stale: current9.get(trackId) !== env.fingerprint
       };
     },
     status: /* @__PURE__ */ __name(() => ({
@@ -28859,9 +29104,9 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners18 = /* @__PURE__ */ new Set();
+  const listeners19 = /* @__PURE__ */ new Set();
   const notify6 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners18) l();
+    for (const l of listeners19) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify6(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify6(), "onStackItemPopped");
@@ -28871,7 +29116,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners18,
+    listeners: listeners19,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -28914,10 +29159,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners18 = active.listeners;
-  listeners18.add(cb);
+  const listeners19 = active.listeners;
+  listeners19.add(cb);
   return () => {
-    listeners18.delete(cb);
+    listeners19.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -29101,10 +29346,10 @@ function subscribe2(id, cb) {
   }
   set2.add(cb);
   return () => {
-    const current8 = subscribersByFile.get(id);
-    if (!current8) return;
-    current8.delete(cb);
-    if (current8.size === 0) {
+    const current9 = subscribersByFile.get(id);
+    if (!current9) return;
+    current9.delete(cb);
+    if (current9.size === 0) {
       subscribersByFile.delete(id);
     }
   };
@@ -29327,12 +29572,12 @@ function pruneZoneOverrides(fileId, currentViz) {
   const stale = [];
   for (const [trackKey, value] of overrides.entries()) {
     const entry = value;
-    const current8 = currentViz.get(trackKey);
-    if (!current8) {
+    const current9 = currentViz.get(trackKey);
+    if (!current9) {
       stale.push(trackKey);
-    } else if (entry.vizId && entry.vizId !== current8.vizId) {
+    } else if (entry.vizId && entry.vizId !== current9.vizId) {
       stale.push(trackKey);
-    } else if (entry.contentHash && current8.contentHash && entry.contentHash !== current8.contentHash) {
+    } else if (entry.contentHash && current9.contentHash && entry.contentHash !== current9.contentHash) {
       stale.push(trackKey);
     }
   }
@@ -29496,12 +29741,12 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe11 = useCallback(
+  const subscribe12 = useCallback(
     (onStoreChange) => subscribe2(id, onStoreChange),
     [id]
   );
   const getSnapshot = useCallback(() => getFile(id), [id]);
-  const file = useSyncExternalStore(subscribe11, getSnapshot, getSnapshot);
+  const file = useSyncExternalStore(subscribe12, getSnapshot, getSnapshot);
   const setContent2 = useCallback(
     (content) => setContent(id, content),
     [id]
@@ -33070,7 +33315,7 @@ function ensureStrudelLintCodeActionProvider(monaco, languageId) {
 __name(ensureStrudelLintCodeActionProvider, "ensureStrudelLintCodeActionProvider");
 var EMPTY_META_MAP = /* @__PURE__ */ new Map();
 function useTrackMetaMap(fileId) {
-  const subscribe11 = useCallback(
+  const subscribe12 = useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -33082,7 +33327,7 @@ function useTrackMetaMap(fileId) {
     if (!fileId) return EMPTY_META_MAP;
     return getTrackMetaMapSnapshot(fileId);
   }, [fileId]);
-  return useSyncExternalStore(subscribe11, getSnapshot, getSnapshot);
+  return useSyncExternalStore(subscribe12, getSnapshot, getSnapshot);
 }
 __name(useTrackMetaMap, "useTrackMetaMap");
 
@@ -33812,10 +34057,10 @@ function subscribe3(ref, cb) {
   return () => {
     if (unsubscribed) return;
     unsubscribed = true;
-    const current8 = pinnedSubscribers.get(fileId);
-    if (!current8) return;
-    current8.delete(cb);
-    if (current8.size === 0) {
+    const current9 = pinnedSubscribers.get(fileId);
+    if (!current9) return;
+    current9.delete(cb);
+    if (current9.size === 0) {
       pinnedSubscribers.delete(fileId);
     }
   };
@@ -36505,10 +36750,10 @@ function readWorkspaceOrder() {
 }
 __name(readWorkspaceOrder, "readWorkspaceOrder");
 function applySnapshot(files, fileMeta, order) {
-  const current8 = listWorkspaceFiles();
-  const currentIds = new Set(current8.map((f) => f.id));
+  const current9 = listWorkspaceFiles();
+  const currentIds = new Set(current9.map((f) => f.id));
   const wantIds = new Set(Object.keys(files));
-  for (const f of current8) {
+  for (const f of current9) {
     if (!wantIds.has(f.id)) deleteWorkspaceFile(f.id);
   }
   const recreatedMissing = [];
@@ -39826,14 +40071,14 @@ function rowBoxes(cells, steps, width, isOn) {
 }
 __name(rowBoxes, "rowBoxes");
 function boxesPlaceNotes(lanes, boxes, isOn, placeable) {
-  let asked2 = 0;
+  let asked3 = 0;
   for (let li = 0; li < lanes.length; li++)
     for (const b of boxes[li] ?? []) {
       if (isOn(lanes[li].cells[b.start])) continue;
-      asked2++;
+      asked3++;
       if (placeable[li]?.[b.start]) return true;
     }
-  return asked2 === 0;
+  return asked3 === 0;
 }
 __name(boxesPlaceNotes, "boxesPlaceNotes");
 function groupBoxesBySteps(boxes, starts2, steps, owners2) {
@@ -40321,9 +40566,9 @@ function zoomRuler(model, drawn) {
   }, "name");
   for (let b = 0; b < bars; b++) {
     const { start, per } = barColumns(model, b);
-    const inBar = drawn.filter((n) => n.from >= start && n.from < start + per);
+    const inBar2 = drawn.filter((n) => n.from >= start && n.from < start + per);
     out.set(start, String(b + 1));
-    inBar.forEach((n, i) => {
+    inBar2.forEach((n, i) => {
       if (i > 0) out.set(n.from, `${b + 1}.${i + 1}`);
       if (n.open && n.children) name(n.children, i === 0 ? `${b + 1}.1` : `${b + 1}.${i + 1}`);
     });
@@ -42345,6 +42590,43 @@ function setGridMode(mode) {
   listeners14.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
+var VELOCITY_DRAG_KEY = "stave:visualEdit.velocityDrag";
+var DEFAULT_ON = false;
+function readStored4() {
+  if (typeof window === "undefined") return DEFAULT_ON;
+  try {
+    const v = window.localStorage.getItem(VELOCITY_DRAG_KEY);
+    return v === "1" ? true : v === "0" ? false : DEFAULT_ON;
+  } catch {
+    return DEFAULT_ON;
+  }
+}
+__name(readStored4, "readStored");
+var current8 = readStored4();
+var listeners15 = /* @__PURE__ */ new Set();
+function subscribe8(listener) {
+  listeners15.add(listener);
+  return () => listeners15.delete(listener);
+}
+__name(subscribe8, "subscribe");
+function useVelocityDrag() {
+  return React33.useSyncExternalStore(subscribe8, () => current8, () => DEFAULT_ON);
+}
+__name(useVelocityDrag, "useVelocityDrag");
+function getVelocityDrag() {
+  return current8;
+}
+__name(getVelocityDrag, "getVelocityDrag");
+function setVelocityDrag(on) {
+  if (on === current8) return;
+  current8 = on;
+  try {
+    window.localStorage.setItem(VELOCITY_DRAG_KEY, on ? "1" : "0");
+  } catch {
+  }
+  listeners15.forEach((l) => l());
+}
+__name(setVelocityDrag, "setVelocityDrag");
 
 // src/visualEdit/panels/exactGrid.ts
 var MAX_DIVISION = 4096;
@@ -42493,17 +42775,19 @@ function playsNumbers(trees) {
   return any && all;
 }
 __name(playsNumbers, "playsNumbers");
-function cellEdit(mini, trees, row, order, cell) {
+function cellEdit(mini, trees, row, order, cell, silent = false) {
   const writerRow = { sound: row.sound, part: row.part, order };
   const at = stepAddressAtPlace(trees, row, cell.bar, cell.begin);
   if (at === "inside-a-step") {
     const inside = splitAddressAtPlace(trees, row, cell.bar, cell.begin);
     if (!inside) return { ok: false, why: at };
-    const r = splitStep(mini, trees, inside.address, inside.at, writerRow);
-    return r.ok ? { ...r, split: true } : r;
+    const r2 = splitStep(mini, trees, inside.address, inside.at, writerRow);
+    if (r2.ok && silent) return { ok: false, why: "under-a-gain-rest" };
+    return r2.ok ? { ...r2, split: true } : r2;
   }
   if (typeof at === "string") return { ok: false, why: at };
-  return toggleStep(mini, trees, at, writerRow);
+  const r = toggleStep(mini, trees, at, writerRow);
+  return r.ok && silent && !cell.on ? { ok: false, why: "under-a-gain-rest" } : r;
 }
 __name(cellEdit, "cellEdit");
 
@@ -42923,6 +43207,8 @@ var NAME_PX2 = 96;
 var ROW_PX3 = 22;
 var RESIZE_ZONE_PX = 8;
 var DRAG_THRESHOLD = 4;
+var VELOCITY_FULL_PX = 80;
+var clamp012 = /* @__PURE__ */ __name((v) => Math.min(1, Math.max(0, v)), "clamp01");
 var STEP_REFUSALS = {
   "inside-a-step": "This place is part of a longer step \u2014 click where the step begins, or change it in the code view.",
   "step-is-generated": "This hit is made by an operator on its step (like *4 or (3,8)) \u2014 change it in the code view.",
@@ -42931,8 +43217,19 @@ var STEP_REFUSALS = {
   "step-under-a-generator": "This step plays by chance (? or |) \u2014 change it in the code view.",
   "loop-shorter-than-the-pattern": "This step also plays in bars the grid doesn't show \u2014 change it in the code view.",
   "step-crosses-a-bar": "This note runs over a bar line \u2014 switch it where it starts, or change it in the code view.",
-  "step-has-no-text": "This note isn't one plain name in the code, so the grid can't change it \u2014 change it in the code view."
+  "step-has-no-text": "This note isn't one plain name in the code, so the grid can't change it \u2014 change it in the code view.",
+  "under-a-gain-rest": "The .gain has a rest (~) here, so a hit here would play nothing \u2014 change the .gain in the code view."
 };
+var VELOCITY_REFUSALS = {
+  "gain-not-ours": "this pattern's .gain isn't a plain number or string, so the grid leaves it as written",
+  "hit-is-silent": "the .gain has a rest (~) on this hit, so it plays nothing",
+  "gain-step-not-the-hit": "the .gain's level on this hit also covers other places, so changing it would change them too",
+  "no-gain-for-this-pattern": "a new .gain could not follow this pattern\u2019s steps (parts side by side, a random choice, or {\u2026})",
+  "step-is-a-random-choice": "the .gain's level on this hit is chosen by chance",
+  "step-under-a-generator": "the .gain's level on this hit sits under an op the grid can't write through",
+  "loop-shorter-than-the-pattern": "the .gain plays past the bars the grid shows"
+};
+var velocityLine = /* @__PURE__ */ __name((why) => `${VELOCITY_REFUSALS[why] ?? "the grid can't find this hit's own level in the .gain"} \u2014 change it in the code view.`, "velocityLine");
 function refusalLine(why, on) {
   if (why === "step-is-a-group") {
     return on ? "This hit sits in a group the grid cannot take it out of \u2014 change it in the code view." : "This step holds a group the grid can't add a sound to \u2014 change it in the code view.";
@@ -42984,6 +43281,12 @@ function ExactStepGrid({ notice = null }) {
   const grid = React33.useMemo(() => probed ? exactGridFrom(probed, kept) : null, [probed, kept]);
   const ok = grid && grid.ok && !playsNumbers(grid.trees) ? grid : null;
   const bars = ok?.bars ?? 1;
+  const gain = React33.useMemo(() => chunk ? readChunkGain(chunk) : null, [chunk]);
+  const gainRef = React33.useRef(gain);
+  gainRef.current = gain;
+  const velocityOn = useVelocityDrag();
+  const velocityOnRef = React33.useRef(velocityOn);
+  velocityOnRef.current = velocityOn;
   const gridRef_ = React33.useRef(ok);
   gridRef_.current = ok;
   const miniRef = React33.useRef(mini);
@@ -43040,6 +43343,46 @@ function ExactStepGrid({ notice = null }) {
   const rows = ok?.rows ?? [];
   const halfPx = phone.phone ? fingerPx : OPEN_PX;
   const drawn = React33.useMemo(() => rows.map((r) => drawnCells(r.cells, barPx, halfPx)), [rows, barPx, halfPx]);
+  const levelAt = React33.useMemo(() => {
+    const times = [.../* @__PURE__ */ new Set([...drawn.flatMap((cs) => cs.map(cellAt)), ...rows.flatMap((r) => r.hits.map((h) => h.begin))])];
+    const levels = gain ? gainLevelsAt(gain, times) : null;
+    const out = /* @__PURE__ */ new Map();
+    if (levels) times.forEach((t, i) => out.set(t.toFixed(9), levels[i]));
+    return out;
+  }, [drawn, rows, gain]);
+  const levelOf = /* @__PURE__ */ __name((t) => levelAt.get(t.toFixed(9)), "levelOf");
+  const [offered2, setOffered] = React33.useState(() => /* @__PURE__ */ new Set());
+  React33.useEffect(() => {
+    const out = /* @__PURE__ */ new Set();
+    setOffered(/* @__PURE__ */ new Set());
+    if (!velocityOn || mini === null || !gain || gain.foreign) return;
+    const todo = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const r of rows) {
+      for (const h of r.hits) {
+        const k = h.begin.toFixed(9);
+        if (h.begin < bars && !seen.has(k)) {
+          seen.add(k);
+          todo.push({ begin: h.begin, end: h.end });
+        }
+      }
+    }
+    let i = 0;
+    let timer = null;
+    const slice = /* @__PURE__ */ __name(() => {
+      const until = performance.now() + 8;
+      while (i < todo.length && performance.now() < until) {
+        const h = todo[i++];
+        if (stepGainEdit(mini, gain, bars, h, 0.5).ok) out.add(h.begin.toFixed(9));
+      }
+      if (i < todo.length) timer = setTimeout(slice, 0);
+      else setOffered(out);
+    }, "slice");
+    slice();
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [mini, gain, rows, bars, velocityOn]);
   const drawings = React33.useMemo(() => rows.map((r) => r.bars ? drawTreeRow(r.bars, barPx, openPx) : null), [rows, barPx, openPx]);
   const orderOf = /* @__PURE__ */ __name((r) => rows.filter((k) => k.part === r.part).map((k) => k.sound), "orderOf");
   const answers = React33.useMemo(() => {
@@ -43047,10 +43390,10 @@ function ExactStepGrid({ notice = null }) {
     if (!ok || mini === null) return out;
     rows.forEach((r, ri) => {
       const order = rows.filter((k) => k.part === r.part).map((k) => k.sound);
-      for (const c of drawn[ri]) out.set(cellKeyOf(ri, c), cellEdit(mini, ok.trees, r, order, c));
+      for (const c of drawn[ri]) out.set(cellKeyOf(ri, c), cellEdit(mini, ok.trees, r, order, c, levelAt.get(cellAt(c).toFixed(9)) === null));
     });
     return out;
-  }, [ok, mini, drawn]);
+  }, [ok, mini, drawn, levelAt]);
   const answersRef = React33.useRef(answers);
   answersRef.current = answers;
   const resizable = React33.useMemo(() => {
@@ -43125,21 +43468,68 @@ function ExactStepGrid({ notice = null }) {
     },
     [writeEdit]
   );
+  const writeLevel = React33.useCallback(
+    (hit, level, dryRun = false) => {
+      const from = miniRef.current;
+      const g = gainRef.current;
+      if (from === null || !g) return { ok: false, why: "gain-not-ours" };
+      if (dryRun) {
+        const r = stepGainEdit(from, g, bars, hit, level);
+        return r.ok ? { ok: true } : r;
+      }
+      let out = { ok: false, why: "gain-not-ours" };
+      applyEdit((fresh, wb) => {
+        if (fresh.miniString === null) return;
+        const now2 = readChunkGain(fresh);
+        const r = stepGainEdit(fresh.miniString, now2, bars, hit, level);
+        if (!r.ok) {
+          out = r;
+          return;
+        }
+        commit(wb, stepGainWriteEdits(fresh, now2.mini, r), "seq");
+        out = { ok: true };
+      });
+      return out;
+    },
+    [applyEdit, bars]
+  );
   const press = React33.useRef(null);
+  const writeLevelRef = React33.useRef(writeLevel);
+  writeLevelRef.current = writeLevel;
   React33.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = press.current;
       if (!g) return;
-      if (g.mode === "pending" && Math.abs(e.clientX - g.startX) > DRAG_THRESHOLD) {
-        g.mode = "paint";
-        paintOneRef.current(g.row, g.cell, g.paintOn);
+      const dx = e.clientX - g.startX;
+      const dy = e.clientY - g.startY;
+      if (g.mode === "pending") {
+        if (g.hit && velocityOnRef.current && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
+          const can = writeLevelRef.current(g.hit, (g.startLevel ?? 1) === 0 ? 1 : 0, true);
+          if (!can.ok) {
+            if (!g.saidNo) report2("Couldn't change that hit's velocity", velocityLine(can.why));
+            g.saidNo = true;
+            return;
+          }
+          g.mode = "velocity";
+        } else if (Math.abs(dx) > DRAG_THRESHOLD) {
+          g.mode = "paint";
+          paintOneRef.current(g.row, g.cell, g.paintOn);
+          return;
+        } else return;
+      }
+      if (g.mode === "velocity" && g.hit) {
+        const level = clamp012((g.startLevel ?? 1) - dy / VELOCITY_FULL_PX);
+        const text = fmtLevel(level);
+        if (text === g.wroteLevel) return;
+        g.wroteLevel = text;
+        writeLevelRef.current(g.hit, level);
       }
     }, "onMove");
     const onUp = /* @__PURE__ */ __name(() => {
       const g = press.current;
       if (!g) return;
       press.current = null;
-      if (g.mode === "pending") paintOneRef.current(g.row, g.cell, false);
+      if (g.mode === "pending" && !g.saidNo) paintOneRef.current(g.row, g.cell, false);
       endGesture();
     }, "onUp");
     window.addEventListener("pointermove", onMove);
@@ -43155,7 +43545,10 @@ function ExactStepGrid({ notice = null }) {
     const answer = answers.get(cellKeyOf(ri, cell));
     if (!answer?.ok) return;
     beginGesture();
-    press.current = { row: ri, cell, startX: e.clientX, mode: cell.on ? "pending" : "paint", paintOn: !cell.on, sound: rows[ri].sound };
+    const at = cellAt(cell);
+    const h = cell.on ? rows[ri].hits.find((x2) => Math.abs(x2.begin - at) < 1e-9) : void 0;
+    const hit = h ? { begin: h.begin, end: h.end } : void 0;
+    press.current = { row: ri, cell, startX: e.clientX, startY: e.clientY, mode: cell.on ? "pending" : "paint", paintOn: !cell.on, sound: rows[ri].sound, hit, startLevel: hit ? levelOf(hit.begin) ?? 1 : void 0 };
     if (!cell.on) paintOne(ri, cell, true);
   }, "onCellDown");
   const onCellEnter = /* @__PURE__ */ __name((ri, cell) => {
@@ -43173,7 +43566,7 @@ function ExactStepGrid({ notice = null }) {
     e.preventDefault();
     e.stopPropagation();
     beginGesture();
-    press.current = { row: ri, cell, startX: e.clientX, mode: "resize", paintOn: false, sound: rows[ri].sound };
+    press.current = { row: ri, cell, startX: e.clientX, startY: e.clientY, mode: "resize", paintOn: false, sound: rows[ri].sound };
   }, "onResizeDown");
   const runGesture = /* @__PURE__ */ __name((action, dryRun, fromKey = false) => {
     if (!ok || rows.length === 0) return false;
@@ -43358,7 +43751,10 @@ function ExactStepGrid({ notice = null }) {
                 d?.steps.map((s) => /* @__PURE__ */ jsx("div", { "data-tree-step": s.depth, style: { position: "absolute", left: x(s.begin) + 1, width: Math.max(1, x(s.end) - x(s.begin) - 2), top: 0, bottom: 0, boxSizing: "border-box", border: outline2(s.depth), borderRadius: 3, background: d.inner.some((k) => k.begin >= s.begin && k.begin < s.end) ? "var(--background, #1e1e24)" : "var(--background-elevated, #26262c)", pointerEvents: "none" } }, `s${s.begin}`)),
                 d?.inner.map((s) => /* @__PURE__ */ jsx("div", { "data-tree-inner": s.depth, style: { position: "absolute", left: x(s.begin) + 2, width: Math.max(1, x(s.end) - x(s.begin) - 3), top: 4, bottom: 4, boxSizing: "border-box", border: "1px solid var(--border, #3a3a42)", borderRadius: 2, background: "var(--background-elevated, #26262c)", pointerEvents: "none" } }, `i${s.begin}`)),
                 d?.lines.map((l) => /* @__PURE__ */ jsx("div", { "data-tree-line": l.depth, style: { position: "absolute", left: x(l.at) - 1, width: 2, top: 0, bottom: 0, background: lineColor3(l.depth), pointerEvents: "none" } }, `l${l.at}`)),
-                row.hits.map((h, i) => /* @__PURE__ */ jsx("div", { "data-seq-fill": true, "data-tree-hit": h.begin.toFixed(6), style: { position: "absolute", left: x(h.begin) + 2, width: Math.max(2, x(Math.min(h.end, bars)) - x(h.begin) - 3), top: 3, bottom: 3, borderRadius: 2, background: colorMode === "velocity" ? velocityColor(1) : voice.color, pointerEvents: "none" } }, `h${i}`)),
+                row.hits.map((h, i) => {
+                  const level = velocityOn ? clamp012(levelOf(h.begin) ?? 1) : 1;
+                  return /* @__PURE__ */ jsx("div", { "data-seq-fill": true, "data-tree-hit": h.begin.toFixed(6), style: { position: "absolute", left: x(h.begin) + 2, width: Math.max(2, x(Math.min(h.end, bars)) - x(h.begin) - 3), top: 3 + (1 - level) * (ROW_PX3 - 6), bottom: 3, borderRadius: 2, background: colorMode === "velocity" ? velocityColor(level) : voice.color, pointerEvents: "none" } }, `h${i}`);
+                }),
                 drawn[ri].map((cell) => {
                   const key3 = cellKeyOf(ri, cell);
                   const answer = answers.get(key3);
@@ -43387,6 +43783,7 @@ function ExactStepGrid({ notice = null }) {
                       "data-seq-splits": splits ? "true" : void 0,
                       "data-seq-sustain": held2 ? "true" : void 0,
                       "data-seq-step-note": plays ?? void 0,
+                      "data-gain": cell.on && offered2.has(at.toFixed(9)) && levelOf(at) != null ? fmtLevel(levelOf(at)) : void 0,
                       "data-playing": playAt !== null && inCell(playAt) ? "true" : void 0,
                       title: can ? splits ? `Splits this step: adds ${row.sound} here` : plays ? `${row.sound} plays ${plays}` : void 0 : answer && !answer.ok ? refusalLine(answer.why, cell.on) : void 0,
                       onFocus: () => {
@@ -43470,10 +43867,10 @@ function ExactStepGrid({ notice = null }) {
 }
 __name(ExactStepGrid, "ExactStepGrid");
 var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
-var VELOCITY_FULL_PX = 80;
+var VELOCITY_FULL_PX2 = 80;
 var DRAG_THRESHOLD2 = 4;
 var RESIZE_ZONE_PX2 = 8;
-var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function reportRefusal(attempted, why) {
   emitLog({
     level: "warn",
@@ -43543,7 +43940,8 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   const playedNotes = React33.useMemo(() => chunk ? stepNotes(chunk, span) : null, [chunk, span]);
   const gestureRef = React33.useRef(null);
   const paintSoundRef = React33.useRef(null);
-  const gainScoped = React33.useMemo(() => model ? gainWritable(stepGridCodec, model) : false, [model]);
+  const velocityOn = useVelocityDrag();
+  const gainScoped = React33.useMemo(() => velocityOn && model ? gainWritable(stepGridCodec, model) : false, [model, velocityOn]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
   const chordHead = chunk?.headFn === "chord";
   const isChordChart = React33.useMemo(
@@ -43762,7 +44160,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
         }
       }
       if (g.mode === "velocity") {
-        const next = clamp012(g.startGain - dy / VELOCITY_FULL_PX);
+        const next = clamp013(g.startGain - dy / VELOCITY_FULL_PX2);
         mutate((prev) => setColumnGain(prev, g.step, next));
       }
     }, "onMove");
@@ -43780,10 +44178,10 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
       window.removeEventListener("pointerup", onUp);
     };
   }, [mutate, paintOne, endGesture, gainScoped]);
-  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current8, e) => {
+  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current9, e) => {
     beginGesture();
     paintSoundRef.current = model?.lanes[laneIndex]?.sound ?? null;
-    if (current8) {
+    if (current9) {
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
@@ -44278,7 +44676,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
                                   setCursor({ row: laneIndex, col: stepIndex });
                                   if (resizeStart !== null) {
                                     const rect = e.currentTarget.getBoundingClientRect();
-                                    const barW = clamp012(extent) * rect.width;
+                                    const barW = clamp013(extent) * rect.width;
                                     const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX2, barW * 0.4));
                                     if (e.clientX - rect.left >= barW - zone) {
                                       onResizeDown(laneIndex, resizeStart);
@@ -44329,9 +44727,9 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
                                         // note whose length rounds to nothing still has to be
                                         // visible, or the grid would silently lose a trigger it
                                         // can spell.
-                                        width: `${clamp012(extent) * 100}%`,
+                                        width: `${clamp013(extent) * 100}%`,
                                         minWidth: held2 ? 0 : 2,
-                                        height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
+                                        height: `${clamp013(gainScoped ? gain : 1) * 100}%`,
                                         background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
                                         // one plain step is one note: its columns are not a second trigger
                                         opacity: held2 && variant !== "plain" ? 0.7 : 1,
@@ -44406,8 +44804,8 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
                                         position: "absolute",
                                         top: 0,
                                         bottom: 0,
-                                        right: `${(1 - clamp012(extent)) * 100}%`,
-                                        width: `min(${RESIZE_ZONE_PX2}px, ${clamp012(extent) * 100}%)`,
+                                        right: `${(1 - clamp013(extent)) * 100}%`,
+                                        width: `min(${RESIZE_ZONE_PX2}px, ${clamp013(extent) * 100}%)`,
                                         cursor: "ew-resize",
                                         background: "var(--foreground, #e6e6ea)",
                                         opacity: 0.45,
@@ -45431,7 +45829,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners18 = /* @__PURE__ */ new Set();
+  const listeners19 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -45446,18 +45844,18 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners18.forEach((l) => l());
+    listeners19.forEach((l) => l());
   }, "setAccessor");
   const notify6 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners18.forEach((l) => l());
+    listeners19.forEach((l) => l());
   }, "notify");
   const read5 = /* @__PURE__ */ __name(() => cached2, "read");
-  const subscribe11 = /* @__PURE__ */ __name((listener) => {
-    listeners18.add(listener);
-    return () => listeners18.delete(listener);
+  const subscribe12 = /* @__PURE__ */ __name((listener) => {
+    listeners19.add(listener);
+    return () => listeners19.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React33.useSyncExternalStore(subscribe11, read5, () => null), "useCatalog");
+  const useCatalog = /* @__PURE__ */ __name(() => React33.useSyncExternalStore(subscribe12, read5, () => null), "useCatalog");
   return { setAccessor, notify: notify6, read: read5, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
@@ -45602,8 +46000,8 @@ var RESIZE_ZONE_PX3 = 8;
 var HOLD_RETRIGGER_MS = AUDITION_DUR_S * 1e3;
 var VELOCITY_READ_ONLY = "Shows this pattern\u2019s velocities \u2014 to change them, use the code view.";
 var LANE_HEIGHT = 48;
-var VELOCITY_FULL_PX2 = 80;
-var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+var VELOCITY_FULL_PX3 = 80;
+var clamp014 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function gainInScope(model) {
   return !model.gainForeign && (model.bars == null || model.bars === model.steps);
 }
@@ -45859,8 +46257,8 @@ function PianoRollGrid({
           );
         }
       } else if (d.mode === "resize" && d.moved && d.askedDur != null) {
-        const asked2 = d.askedDur;
-        const settled = resizeNote(d.base, d.origStart, d.origPitch, asked2, {
+        const asked3 = d.askedDur;
+        const settled = resizeNote(d.base, d.origStart, d.origPitch, asked3, {
           readback: true
         });
         const refused2 = settled === d.base;
@@ -45897,7 +46295,7 @@ function PianoRollGrid({
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
-      const next = clamp013(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX2);
+      const next = clamp014(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX3);
       mutate((prev) => setGroupGain(prev, v.start, next));
     }, "onMove");
     const onUp = /* @__PURE__ */ __name(() => {
@@ -46979,7 +47377,7 @@ function PianoRollGrid({
                                       left: `${grp.offset * 100}%`,
                                       width: `${grp.extent * 100}%`,
                                       bottom: 0,
-                                      height: `${clamp013(gg) * 100}%`,
+                                      height: `${clamp014(gg) * 100}%`,
                                       background: colorMode === "velocity" ? velocityColor(gg) : "var(--accent, #6ea8fe)",
                                       borderRadius: 2,
                                       // VISUAL ONLY, and still deliberately so. Every column
@@ -47009,7 +47407,7 @@ function PianoRollGrid({
                                     left: 1,
                                     right: 1,
                                     bottom: 0,
-                                    height: `${clamp013(g) * 100}%`,
+                                    height: `${clamp014(g) * 100}%`,
                                     background: colorMode === "velocity" ? velocityColor(g) : "var(--accent, #6ea8fe)",
                                     borderRadius: 2,
                                     pointerEvents: "none"
@@ -47035,20 +47433,20 @@ function PianoRollGrid({
 __name(PianoRollGrid, "PianoRollGrid");
 
 // src/visualEdit/panels/knobScale.ts
-function clamp014(pos) {
+function clamp015(pos) {
   return Math.min(1, Math.max(0, pos));
 }
-__name(clamp014, "clamp01");
+__name(clamp015, "clamp01");
 function positionOfValue(value, min, max, scale2) {
   if (!Number.isFinite(value) || !(max > min)) return 0;
   if (scale2 === "log" && min > 0 && value > 0) {
-    return clamp014(Math.log(value / min) / Math.log(max / min));
+    return clamp015(Math.log(value / min) / Math.log(max / min));
   }
-  return clamp014((value - min) / (max - min));
+  return clamp015((value - min) / (max - min));
 }
 __name(positionOfValue, "positionOfValue");
 function valueAtPosition(pos, min, max, scale2) {
-  const t = clamp014(Number.isFinite(pos) ? pos : 0);
+  const t = clamp015(Number.isFinite(pos) ? pos : 0);
   if (scale2 === "log" && min > 0 && max > min) return min * Math.pow(max / min, t);
   return min + t * (max - min);
 }
@@ -48492,13 +48890,13 @@ __name(Mixer, "Mixer");
 var MAX_FADER_GAIN = 10 ** (6 / 20);
 var TAPER = 4;
 function faderPosToGain(pos) {
-  const p = clamp015(pos);
+  const p = clamp016(pos);
   return MAX_FADER_GAIN * p ** TAPER;
 }
 __name(faderPosToGain, "faderPosToGain");
 function gainToFaderPos(gain) {
   if (!(gain > 0)) return 0;
-  return clamp015((gain / MAX_FADER_GAIN) ** (1 / TAPER));
+  return clamp016((gain / MAX_FADER_GAIN) ** (1 / TAPER));
 }
 __name(gainToFaderPos, "gainToFaderPos");
 function gainToDb(gain) {
@@ -48513,10 +48911,10 @@ function formatDb(gain) {
   return (r > 0 ? "+" : "") + r.toFixed(1);
 }
 __name(formatDb, "formatDb");
-function clamp015(v) {
+function clamp016(v) {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
-__name(clamp015, "clamp01");
+__name(clamp016, "clamp01");
 
 // src/visualEdit/mixer/meterMath.ts
 var DEFAULT_BALLISTICS = {
@@ -48701,7 +49099,7 @@ __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners15 = /* @__PURE__ */ new Set();
+var listeners16 = /* @__PURE__ */ new Set();
 function read2(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
@@ -48713,7 +49111,7 @@ function toggleSolo(fileId, id) {
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners15.forEach((l) => l());
+  listeners16.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -48727,13 +49125,13 @@ function setPreSoloMutes(fileId, snapshot) {
   else snapshots.set(fileId, snapshot);
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
-function subscribe8(listener) {
-  listeners15.add(listener);
+function subscribe9(listener) {
+  listeners16.add(listener);
   return () => {
-    listeners15.delete(listener);
+    listeners16.delete(listener);
   };
 }
-__name(subscribe8, "subscribe");
+__name(subscribe9, "subscribe");
 function useActiveFileId() {
   const [id, setId] = React33.useState(() => getActiveFileId());
   React33.useEffect(() => {
@@ -48746,7 +49144,7 @@ __name(useActiveFileId, "useActiveFileId");
 function useSoloedIds() {
   const fileId = useActiveFileId();
   return React33.useSyncExternalStore(
-    subscribe8,
+    subscribe9,
     () => read2(fileId),
     () => EMPTY
   );
@@ -48861,7 +49259,7 @@ function panLabel(pan) {
   return `R${Math.round((pan - 0.5) * 200)}`;
 }
 __name(panLabel, "panLabel");
-var clamp016 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
+var clamp017 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
 function compactBtn(bg3, color, enabled) {
   return {
     flexShrink: 0,
@@ -48945,7 +49343,7 @@ function ChannelStrip({
     const d = faderDrag.current;
     if (!d) return;
     const delta = horizontal ? e.clientX - d.start : d.start - e.clientY;
-    const next = faderPosToGain(clamp016(d.startPos + delta / DRAG_SPAN_PX2));
+    const next = faderPosToGain(clamp017(d.startPos + delta / DRAG_SPAN_PX2));
     onGainChange?.(Math.round(next * 1e3) / 1e3);
   }, "onFaderMove");
   const endFader = /* @__PURE__ */ __name((e) => {
@@ -48967,7 +49365,7 @@ function ChannelStrip({
   const onPanMove = /* @__PURE__ */ __name((e) => {
     const d = panDrag.current;
     if (!d) return;
-    const next = clamp016(d.startPan + (e.clientX - d.startX) / DRAG_SPAN_PX2);
+    const next = clamp017(d.startPan + (e.clientX - d.startX) / DRAG_SPAN_PX2);
     onPanChange?.(Math.round(next * 100) / 100);
   }, "onPanMove");
   const endPan = /* @__PURE__ */ __name((e) => {
@@ -49604,7 +50002,7 @@ function safeLocalStorage5() {
 }
 __name(safeLocalStorage5, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners16 = /* @__PURE__ */ new Set();
+var listeners17 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -49650,16 +50048,16 @@ function toggleExpanded(fileId, id) {
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners16.forEach((l) => l());
+  listeners17.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
-function subscribe9(listener) {
-  listeners16.add(listener);
+function subscribe10(listener) {
+  listeners17.add(listener);
   return () => {
-    listeners16.delete(listener);
+    listeners17.delete(listener);
   };
 }
-__name(subscribe9, "subscribe");
+__name(subscribe10, "subscribe");
 function useActiveFileId2() {
   const [id, setId] = React33.useState(() => getActiveFileId());
   React33.useEffect(() => {
@@ -49672,7 +50070,7 @@ __name(useActiveFileId2, "useActiveFileId");
 function useExpandedStrips() {
   const fileId = useActiveFileId2();
   const expanded = React33.useSyncExternalStore(
-    subscribe9,
+    subscribe10,
     () => read3(fileId),
     () => EMPTY2
   );
@@ -49717,7 +50115,7 @@ function safeLocalStorage6() {
 }
 __name(safeLocalStorage6, "safeLocalStorage");
 var cached = null;
-var listeners17 = /* @__PURE__ */ new Set();
+var listeners18 = /* @__PURE__ */ new Set();
 function read4() {
   if (cached == null) {
     const ls = safeLocalStorage6();
@@ -49740,22 +50138,22 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners17.forEach((l) => l());
+  listeners18.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
   setMixerZoom(read4() + dir * MIXER_ZOOM_STEP);
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
-function subscribe10(listener) {
-  listeners17.add(listener);
+function subscribe11(listener) {
+  listeners18.add(listener);
   return () => {
-    listeners17.delete(listener);
+    listeners18.delete(listener);
   };
 }
-__name(subscribe10, "subscribe");
+__name(subscribe11, "subscribe");
 function useMixerZoom() {
-  const zoom = React33.useSyncExternalStore(subscribe10, read4, () => MIXER_ZOOM_DEFAULT);
+  const zoom = React33.useSyncExternalStore(subscribe11, read4, () => MIXER_ZOOM_DEFAULT);
   return {
     zoom,
     percent: Math.round(zoom * 100),
@@ -49928,7 +50326,7 @@ function useMasterMeter() {
 __name(useMasterMeter, "useMasterMeter");
 var FADER_HEIGHT2 = 80;
 var DRAG_SPAN_PX3 = 160;
-var clamp017 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
+var clamp018 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
 function MasterStrip({
   zoom = 1,
   gain,
@@ -49963,7 +50361,7 @@ function MasterStrip({
   const onMove = /* @__PURE__ */ __name((e) => {
     const d = drag.current;
     if (!d) return;
-    const next = faderPosToGain(clamp017(d.startPos + (d.startY - e.clientY) / DRAG_SPAN_PX3));
+    const next = faderPosToGain(clamp018(d.startPos + (d.startY - e.clientY) / DRAG_SPAN_PX3));
     onGainChange(Math.round(next * 1e3) / 1e3);
   }, "onMove");
   const onUp = /* @__PURE__ */ __name((e) => {
@@ -52230,12 +52628,12 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
-      const current8 = onSaveFileRef.current;
-      if (!current8) return;
+      const current9 = onSaveFileRef.current;
+      if (!current9) return;
       const tab = activeTab;
       if (!tab || tab.kind !== "editor") return;
       e.preventDefault();
-      current8(tab);
+      current9(tab);
     }, "handler");
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -52477,24 +52875,24 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     }
                   }, "onTogglePausePreview"),
                   onChangePreviewSource: /* @__PURE__ */ __name((nextRef) => {
-                    const current8 = shellActionsRef.current.findTabByFileId(
+                    const current9 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (!current8) return;
-                    updateGroup(current8.groupId, (g) => ({
+                    if (!current9) return;
+                    updateGroup(current9.groupId, (g) => ({
                       ...g,
                       tabs: g.tabs.map(
-                        (t) => t.id === current8.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
+                        (t) => t.id === current9.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
                       )
                     }));
                   }, "onChangePreviewSource"),
                   onOpenPreview: /* @__PURE__ */ __name((selectedSourceRef) => {
-                    const current8 = shellActionsRef.current.findTabByFileId(
+                    const current9 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (current8) {
+                    if (current9) {
                       return;
                     }
                     const sourceRef = selectedSourceRef ?? { kind: "default" };
@@ -56596,10 +56994,10 @@ function getAssetsMap() {
 __name(getAssetsMap, "getAssetsMap");
 var wiredAssetsMap = null;
 function ensureAssetsObserver() {
-  const current8 = getAssetsMap();
-  if (wiredAssetsMap === current8) return;
-  current8.observe(() => notify5());
-  wiredAssetsMap = current8;
+  const current9 = getAssetsMap();
+  if (wiredAssetsMap === current9) return;
+  current9.observe(() => notify5());
+  wiredAssetsMap = current9;
 }
 __name(ensureAssetsObserver, "ensureAssetsObserver");
 function subscribeToAssets(cb) {
@@ -59326,6 +59724,6 @@ function isPersistableTab(t) {
 __name(isPersistableTab, "isPersistableTab");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VELOCITY_DRAG_KEY, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getVelocityDrag, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVelocityDrag, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useVelocityDrag, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

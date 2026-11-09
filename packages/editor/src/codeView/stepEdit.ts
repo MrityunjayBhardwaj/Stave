@@ -711,7 +711,28 @@ function viaWrittenOut(mini: string, trees: readonly BarTree[], address: StepAdd
   return write(gen.from, replacedEnd, respellWrittenOut(after.slice(gen.from, regionEnd), gen.kind === 'bang' ? 'bang' : 'star'))
 }
 
+/** `renameStep` on a step that is not a generator: its name replaced, everything after it kept */
+function renameStepHere(mini: string, trees: readonly BarTree[], address: StepAddress, row: StepRow, name: string): StepEditResult {
+  const at = locate(trees, address, row, true)
+  if (!at.ok) return refuse(at.why)
+  const { step } = at.found
+  if (step.rows !== null) return refuse('step-is-a-group')
+  if (step.head === null || step.name === null) return refuse('step-has-no-text')
+  if (mini.slice(step.head.start, step.head.end) !== step.name) return refuse('tree-is-not-this-text')
+  return write(step.head.start, step.head.end, name)
+}
+
 /* ── the gestures ──────────────────────────────────────────────────── */
+
+/**
+ * Give the step at `address` another name, its ops and its length kept (#2468): a `.gain`
+ * string's level `0.5` → `0.8`. The same rules as a toggle find the step and say where it
+ * cannot be written; a text the pattern plays in several places changes in all of them. On
+ * one hit of `x*k` or one copy of `x!k`, that hit alone: `1*4`'s second → `[1 0.8 1 1]`.
+ */
+export function renameStep(mini: string, trees: readonly BarTree[], address: StepAddress, row: StepRow, name: string): StepEditResult {
+  return viaWrittenOut(mini, trees, address, row, (m, t, a) => renameStepHere(m, t, a, row, name)) ?? renameStepHere(mini, trees, address, row, name)
+}
 
 /**
  * Toggle `row`'s sound on the step at `address`: a rest becomes the row's sound (`~` →

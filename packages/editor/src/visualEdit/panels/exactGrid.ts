@@ -237,25 +237,35 @@ export function playsNumbers(trees: readonly BarTree[]): boolean {
   return any && all
 }
 
+/** a click that would add a hit where the chain's `.gain` is a rest: the hit would play nothing (#2467) */
+export type GainRestRefusal = 'under-a-gain-rest'
+
 /**
  * What a click on `cell` of `row` writes: a toggle where a step or a hit begins, a split part-way
  * through a plain step, or the writer's refusal. `order` is the part's rows in the order drawn.
+ *
+ * `silent`: the chain's `.gain` is a rest at the cell's place (`gainLevelsAt` says null there).
+ * A click that would ADD a hit there is refused — Strudel keeps only the hits the gain covers,
+ * so the hit would be written and never heard (#2467). Erasing a hit there is still a click.
  */
 export function cellEdit(
   mini: string,
   trees: readonly BarTree[],
   row: Pick<ExactRow, 'sound' | 'part'>,
   order: readonly string[],
-  cell: Pick<ExactCell, 'bar' | 'begin'>,
-): (StepEditResult & { split?: true }) | { ok: false; why: StepAtRefusal } {
+  cell: Pick<ExactCell, 'bar' | 'begin'> & { on?: boolean },
+  silent = false,
+): (StepEditResult & { split?: true }) | { ok: false; why: StepAtRefusal | GainRestRefusal } {
   const writerRow = { sound: row.sound, part: row.part, order }
   const at = stepAddressAtPlace(trees, row, cell.bar, cell.begin)
   if (at === 'inside-a-step') {
     const inside = splitAddressAtPlace(trees, row, cell.bar, cell.begin)
     if (!inside) return { ok: false, why: at }
     const r = splitStep(mini, trees, inside.address, inside.at, writerRow)
+    if (r.ok && silent) return { ok: false, why: 'under-a-gain-rest' }
     return r.ok ? { ...r, split: true } : r
   }
   if (typeof at === 'string') return { ok: false, why: at }
-  return toggleStep(mini, trees, at, writerRow)
+  const r = toggleStep(mini, trees, at, writerRow)
+  return r.ok && silent && !cell.on ? { ok: false, why: 'under-a-gain-rest' } : r
 }

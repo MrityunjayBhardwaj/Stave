@@ -8,8 +8,11 @@
  *   - a pattern outside the grid subset falls back to standby (code-only).
  */
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import { pinLcmGrid } from './_appBoot'
+import { pinLcmGrid, velocityDragOn } from './_appBoot'
 import { slotsControl, preset } from './_resolutionControl'
+
+// velocity drags are off by default (#2525); this spec is about the gesture, so it turns them on
+velocityDragOn(test)
 
 
 pinLcmGrid(test)
