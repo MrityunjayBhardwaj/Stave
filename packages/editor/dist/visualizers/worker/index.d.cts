@@ -5,13 +5,16 @@ import 'react';
 /**
  * hostVizWorker — the bundler-AGNOSTIC worker host that runs a viz sketch in a
  * `WorkerGlobalScope` and renders it to a transferred `OffscreenCanvas` (Phase B,
- * epic #228). Hosts BOTH renderer kinds, branching on `MountMessage.kind`:
+ * epic #228). Hosts every renderer kind, branching on `MountMessage.kind`:
  *   - `'p5'`    (B-3) — install the 6-part p5 DOM shim, compile via the shared
  *     `compileP5Code`, drive `redraw()` then BLIT p5's worker-local canvas onto the
  *     transferred presenting canvas (p5 makes its OWN canvases — Tier 2).
  *   - `'hydra'` (B-5) — install the 2-part hydra shim, `new Hydra({ canvas })` on
  *     the transferred canvas DIRECTLY (Tier 1: hydra accepts a canvas → no blit),
  *     feed `s.a.fft[]` from the frame's master bytes, drive `hydra.tick()`.
+ *   - `'glsl'`  (#281) — raw WebGL2 on the transferred canvas.
+ *   - `'three'` (#2516) — a plain three.js sketch run by `threeSketch.ts`; its
+ *     renderer is built on the transferred canvas and its loop driven per frame.
  *
  * The app's `viz-worker.ts` (bundled by Next via `new Worker(new URL(...))`) is a
  * two-line shell: `hostVizWorker(self)`. ONE worker hosts ONE kind (B-3/B-5; a
@@ -61,7 +64,7 @@ interface MountMessage {
     /** Renderer kind — `'p5'` (B-3), `'hydra'` (B-5), or `'glsl'` (#281). The host
      *  installs the matching shim (none for glsl — raw WebGL2) + imports the matching
      *  library (none for glsl) + drives the matching draw. */
-    kind: 'p5' | 'hydra' | 'glsl';
+    kind: 'p5' | 'hydra' | 'glsl' | 'three';
     /** The sketch source (a transferable string, compiled in-worker — PLAN §7.3). */
     code: string;
     /** Source label for error attribution (the workspace path). */
