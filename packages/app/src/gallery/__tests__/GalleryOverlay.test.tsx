@@ -18,7 +18,7 @@ vi.mock("../../dialogs/host", () => ({
 
 import { GalleryOverlay } from "../GalleryOverlay";
 import { addLocalShare, addPrivateLink, listLocalShares } from "../localShares";
-import type { GalleryEntry, GalleryEntryResponse } from "../types";
+import { MAX_LISTED_ENTRIES, type GalleryEntry, type GalleryEntryResponse } from "../types";
 
 const E = (over: Partial<GalleryEntry>): GalleryEntry => ({
   id: "AAAAAAAAAAA",
@@ -317,6 +317,28 @@ describe("GalleryOverlay", () => {
       await waitFor(() => expect(document.querySelector('[data-gallery-mine="gone1xxxxxx"]')).toBeNull());
       expect((confirmMock.mock.calls[1] as unknown[])[0]).toMatchObject({ title: "Forget this share?", confirmLabel: "Forget" });
       expect(listLocalShares()).toEqual([]);
+    });
+
+    it("#2519 with the list at the server's cap, an older share missing from it is not called removed", async () => {
+      // 500 entries, published at 1000..1499: as long as a listing gets.
+      const full = Array.from({ length: MAX_LISTED_ENTRIES }, (_, i) =>
+        E({ id: `full${String(i).padStart(7, "0")}`, title: `Entry ${i}`, publishedAt: 1000 + i }),
+      );
+      addLocalShare({ id: "oldd1xxxxxx", title: "Older than the list", kind: "music", publishedAt: 10, manageToken: "t1" });
+      addLocalShare({ id: "newg1xxxxxx", title: "Newer and gone", kind: "music", publishedAt: 1200, manageToken: "t2" });
+      mockGallery({ "GET /api/gallery": () => Response.json({ entries: full }) });
+      renderOverlay();
+      await waitFor(() => expect(cards().length).toBe(MAX_LISTED_ENTRIES));
+      fireEvent.click(document.querySelector('[data-gallery-tab="mine"]')!);
+      const old = document.querySelector('[data-gallery-mine="oldd1xxxxxx"]') as HTMLElement;
+      const gone = document.querySelector('[data-gallery-mine="newg1xxxxxx"]') as HTMLElement;
+      expect(old.getAttribute("data-gallery-status")).toBe("unknown");
+      expect(old.querySelector("[data-gallery-pill]")).toBeNull();
+      expect(within(old).queryByText("Forget")).toBeNull();
+      expect(within(old).queryByText("Copy link")).not.toBeNull();
+      // Control: newer than the list's oldest, so its absence means it is gone.
+      expect(gone.getAttribute("data-gallery-status")).toBe("missing");
+      expect(gone.querySelector("[data-gallery-pill]")!.textContent).toBe("Removed");
     });
 
     it("a cancelled confirm deletes nothing", async () => {

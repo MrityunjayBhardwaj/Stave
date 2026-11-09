@@ -44,6 +44,8 @@ export interface MySharesProps {
   account: AccountState;
   /** The gallery's public list, to tell a browser row that was removed; null while it loads. */
   listed: GalleryEntry[] | null;
+  /** #2519 — `listed` is as long as a listing gets, so it may be cut short. */
+  listFull: boolean;
   /** The signed-in account, when there is one. */
   user: SessionUser | null;
   /** This browser's or the account's author id, for View my profile. */
@@ -67,7 +69,10 @@ export function MyShares(props: MySharesProps) {
   const { store, rows, account, listed, user } = props;
   const { mineFilter, mineSort, mineQuery } = useGalleryStore(store);
   const signedIn = account.status !== "off";
-  const items = useMemo(() => mineItems(rows, listed, signedIn), [rows, listed, signedIn]);
+  const items = useMemo(
+    () => mineItems(rows, listed, signedIn, props.listFull),
+    [rows, listed, signedIn, props.listFull],
+  );
   const counts = useMemo(() => countMine(items, mineQuery), [items, mineQuery]);
   const shown = useMemo(() => shownMine(items, mineFilter, mineQuery, mineSort), [items, mineFilter, mineQuery, mineSort]);
 

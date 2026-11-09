@@ -352,6 +352,7 @@ export function GalleryView({
           rows={rows}
           account={account}
           listed={entries}
+          listFull={list.status === "ready" && list.full}
           user={session.status === "ready" ? (session.session.user ?? null) : null}
           myAuthorId={accountAuthorId ?? myAuthorId}
           searchRef={searchRef}

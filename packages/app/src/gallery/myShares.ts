@@ -130,10 +130,23 @@ export type ShareStatus = "listed" | "missing" | "unknown";
 /**
  * Is a share still in the public list? `unknown` while the list hasn't loaded
  * (or failed), so a load error is never shown as "removed".
+ *
+ * #2519 — a `full` list (the server's cap was reached) holds only the newest
+ * entries: a share older than its oldest one is `unknown`, not missing. Calling
+ * it removed would offer Forget, which deletes it — a live entry.
  */
-export function shareStatus(share: { id: string }, listed: readonly GalleryEntry[] | null): ShareStatus {
+export function shareStatus(
+  share: { id: string; publishedAt: number },
+  listed: readonly GalleryEntry[] | null,
+  full = false,
+): ShareStatus {
   if (!listed) return "unknown";
-  return listed.some((e) => e.id === share.id) ? "listed" : "missing";
+  if (listed.some((e) => e.id === share.id)) return "listed";
+  if (full) {
+    const oldest = listed.reduce((min, e) => Math.min(min, e.publishedAt), Infinity);
+    if (!(share.publishedAt > oldest)) return "unknown";
+  }
+  return "missing";
 }
 
 // ── #2492 one list, each row's status at a glance ──────────────────────────
@@ -166,9 +179,15 @@ export type MineItem =
  * list. "Only in this browser" is said only when signed in — signed out, everything
  * here is this browser's, so saying it would tell you nothing.
  */
-export function mineItems(rows: MyRows, listed: readonly GalleryEntry[] | null, signedIn: boolean): MineItem[] {
+export function mineItems(
+  rows: MyRows,
+  listed: readonly GalleryEntry[] | null,
+  signedIn: boolean,
+  /** #2519 — the list may have been cut short (shareStatus). */
+  listFull = false,
+): MineItem[] {
   const entries = rows.entries.map((row): MineItem => {
-    const status: ShareStatus = row.home === "account" ? "listed" : shareStatus(row, listed);
+    const status: ShareStatus = row.home === "account" ? "listed" : shareStatus(row, listed, listFull);
     const pill: SharePill | null =
       status === "missing"
         ? "removed"

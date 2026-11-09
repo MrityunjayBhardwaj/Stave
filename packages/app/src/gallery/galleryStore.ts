@@ -41,13 +41,22 @@
 import { useSyncExternalStore } from "react";
 import { fetchAccountShares, fetchGalleryEntry, fetchGalleryList, GalleryEntryRemoved } from "./client";
 import { applyListChanges, listLocalShares, listPrivateLinks, loadAuthor, type LocalPrivateLink, type LocalShare } from "./localShares";
-import type { GalleryEntry, GalleryEntryResponse, MySharesResponse } from "./types";
+import { MAX_LISTED_ENTRIES, type GalleryEntry, type GalleryEntryResponse, type MySharesResponse } from "./types";
 import type { GalleryFilter, GalleryLinkTarget, GallerySort, GalleryTab, MineFilter, MineSort } from "./galleryModel";
 
 export type ListState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; entries: GalleryEntry[] };
+  | {
+      status: "ready";
+      entries: GalleryEntry[];
+      /**
+       * #2519 — the server's answer was as long as a listing gets
+       * (MAX_LISTED_ENTRIES), so older entries may simply not be in it. Read
+       * from the answer itself, before this browser's changes are laid over it.
+       */
+      full: boolean;
+    };
 
 /** #2321 — the signed-in account's shares; "off" when signed out. */
 export type AccountState =
@@ -176,7 +185,10 @@ export function createGalleryStore(): GalleryStore {
     set({ list: { status: "loading" } });
     fetchGalleryList()
       // #2433 — the list may be cached from before this browser's latest change.
-      .then((r) => set({ list: { status: "ready", entries: applyListChanges(Array.isArray(r.entries) ? r.entries : []) } }))
+      .then((r) => {
+        const got = Array.isArray(r.entries) ? r.entries : [];
+        set({ list: { status: "ready", entries: applyListChanges(got), full: got.length >= MAX_LISTED_ENTRIES } });
+      })
       .catch((err: Error) => set({ list: { status: "error", message: err.message || "the gallery couldn't be loaded" } }));
   };
 
