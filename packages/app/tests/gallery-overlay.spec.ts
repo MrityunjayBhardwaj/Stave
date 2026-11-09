@@ -265,10 +265,15 @@ test.describe('community gallery overlay', () => {
     await page.locator('[data-gallery-tab="mine"]').click()
     const row = page.locator('[data-gallery-mine="musc1CCCCCC"]')
     await expect(row).toHaveAttribute('data-gallery-status', 'listed')
-    await expect(page.locator('[data-gallery-mine="gone0ZZZZZZ"]')).toContainText('No longer in the gallery')
+    // #2492 — one status pill a row.
+    await expect(row.locator('[data-gallery-pill]')).toHaveText('In the gallery')
+    const gone = page.locator('[data-gallery-mine="gone0ZZZZZZ"]')
+    await expect(gone.locator('[data-gallery-pill]')).toHaveText('Removed')
+    await expect(gone).toContainText('no longer in the gallery')
     if (process.env.GALLERY_SHOTS) await page.screenshot({ path: `${process.env.GALLERY_SHOTS}/my-shares.png` })
 
-    await row.getByRole('button', { name: 'Delete' }).click()
+    await row.locator('[data-gallery-more]').click() // #2492 — Delete is under the row's ⋯ menu
+    await row.getByRole('menuitem', { name: 'Delete' }).click()
     await page.getByRole('button', { name: 'Delete', exact: true }).last().click() // the confirm
     await expect(row).toHaveCount(0)
     expect(deleted).toEqual(['musc1CCCCCC'])
@@ -326,7 +331,8 @@ test.describe('community gallery overlay', () => {
     await page.locator('[data-gallery-tab="mine"]').click()
     const row = page.locator(`[data-gallery-mine="${NEW_ID}"]`)
     await expect(row).toHaveAttribute('data-gallery-status', 'listed')
-    await row.getByRole('button', { name: 'Delete' }).click()
+    await row.locator('[data-gallery-more]').click() // #2492 — Delete is under the row's ⋯ menu
+    await row.getByRole('menuitem', { name: 'Delete' }).click()
     await page.getByRole('button', { name: 'Delete', exact: true }).last().click() // the confirm
     await expect(row).toHaveCount(0)
     await page.locator('[data-gallery-browse]').click()
@@ -412,7 +418,9 @@ test.describe('community gallery overlay', () => {
     await expect(card).toBeVisible() // the control: the list really has it
 
     await page.locator('[data-gallery-tab="mine"]').click()
-    await page.locator('[data-gallery-mine="musc1CCCCCC"]').getByRole('button', { name: 'Delete' }).click()
+    const mine = page.locator('[data-gallery-mine="musc1CCCCCC"]')
+    await mine.locator('[data-gallery-more]').click() // #2492 — Delete is under the row's ⋯ menu
+    await mine.getByRole('menuitem', { name: 'Delete' }).click()
     await page.getByRole('button', { name: 'Delete', exact: true }).last().click() // the confirm
     await expect(page.locator('[data-gallery-mine="musc1CCCCCC"]')).toHaveCount(0)
 

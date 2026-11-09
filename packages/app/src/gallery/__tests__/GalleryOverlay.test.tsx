@@ -17,7 +17,7 @@ vi.mock("../../dialogs/host", () => ({
 }));
 
 import { GalleryOverlay } from "../GalleryOverlay";
-import { addLocalShare, listLocalShares } from "../localShares";
+import { addLocalShare, addPrivateLink, listLocalShares } from "../localShares";
 import type { GalleryEntry, GalleryEntryResponse } from "../types";
 
 const E = (over: Partial<GalleryEntry>): GalleryEntry => ({
@@ -166,21 +166,23 @@ describe("GalleryOverlay", () => {
     elsewhere.remove();
   });
 
-  it("My shares is a header button: it always opens My shares, and Back returns to the grid", async () => {
+  it("My shares is a header button; its page has the crumbs Gallery / My shares, and Gallery returns to the grid", async () => {
     mockGallery();
     renderOverlay();
     await waitFor(() => expect(cards()).toHaveLength(4));
-    const mine = document.querySelector('[data-gallery-tab="mine"]')!;
-    expect(mine.closest(".sg-header")).toBeTruthy();
-    fireEvent.click(mine);
-    expect(mine.getAttribute("aria-current")).toBe("page");
+    const mine = () => document.querySelector('[data-gallery-tab="mine"]');
+    expect(mine()!.closest(".sg-header")).toBeTruthy();
+    fireEvent.click(mine()!);
+    // #2492 — the page's own header: crumbs, its title, its own search bar (not the grid's).
+    expect(document.querySelector(".sg-crumb-here")!.textContent).toBe("My shares");
+    expect(document.querySelector(".sg-title")!.textContent).toBe("My shares");
+    expect(mine()).toBeNull();
     expect(document.querySelector("[data-gallery-browsebar]")).toBeNull();
-    // pressed again it stays (opening the gallery on My shares and pressing it must not leave)
-    fireEvent.click(mine);
+    expect(document.querySelector("[data-gallery-minebar]")).toBeTruthy();
     expect(document.querySelector('[data-gallery-state="mine-empty"]')).toBeTruthy();
-    fireEvent.click(document.querySelector("[data-gallery-browse]")!);
+    fireEvent.click(document.querySelector('[data-gallery-crumb="gallery"]')!);
     expect(cards()).toHaveLength(4);
-    expect(mine.getAttribute("aria-current")).toBeNull();
+    expect(mine()!.getAttribute("aria-current")).toBeNull();
   });
 
   it("an entry's breadcrumb: Gallery goes back to the grid, the kind to the grid filtered to it", async () => {
@@ -294,13 +296,27 @@ describe("GalleryOverlay", () => {
       const missing = document.querySelector('[data-gallery-mine="gone1xxxxxx"]') as HTMLElement;
       expect(listed.getAttribute("data-gallery-status")).toBe("listed");
       expect(missing.getAttribute("data-gallery-status")).toBe("missing");
-      expect(missing.textContent).toContain("No longer in the gallery");
+      // #2492 — one pill each; signed out, "only in this browser" would say nothing, so it isn't said.
+      expect(listed.querySelector("[data-gallery-pill]")!.textContent).toBe("In the gallery");
+      expect(missing.querySelector("[data-gallery-pill]")!.textContent).toBe("Removed");
+      expect(missing.textContent).toContain("no longer in the gallery");
+      // The row's common action: Copy link, or Forget for a removed one; Delete waits under ⋯.
+      expect(within(listed).queryByText("Copy link")).not.toBeNull();
+      expect(within(missing).queryByText("Forget")).not.toBeNull();
+      expect(within(listed).queryByText("Delete")).toBeNull();
 
-      fireEvent.click(within(listed).getByText("Delete"));
+      pickFromMenu(listed, "Delete");
       await waitFor(() => expect(document.querySelector('[data-gallery-mine="musc1xxxxxx"]')).toBeNull());
       expect(confirmMock).toHaveBeenCalledTimes(1);
       expect(fetchMock.mock.calls.some(([u, i]) => u === "/api/gallery/musc1xxxxxx" && i?.method === "DELETE")).toBe(true);
       expect(listLocalShares().map((s) => s.id)).toEqual(["gone1xxxxxx"]);
+      expect((confirmMock.mock.calls[0] as unknown[])[0]).toMatchObject({ title: "Delete from the gallery?", danger: true });
+
+      // Forget asks in its own words: the share is already gone, nothing is taken down.
+      fireEvent.click(within(document.querySelector('[data-gallery-mine="gone1xxxxxx"]') as HTMLElement).getByText("Forget"));
+      await waitFor(() => expect(document.querySelector('[data-gallery-mine="gone1xxxxxx"]')).toBeNull());
+      expect((confirmMock.mock.calls[1] as unknown[])[0]).toMatchObject({ title: "Forget this share?", confirmLabel: "Forget" });
+      expect(listLocalShares()).toEqual([]);
     });
 
     it("a cancelled confirm deletes nothing", async () => {
@@ -309,10 +325,82 @@ describe("GalleryOverlay", () => {
       const fetchMock = mockGallery();
       renderOverlay();
       fireEvent.click(document.querySelector('[data-gallery-tab="mine"]')!);
-      fireEvent.click(screen.getByText("Delete"));
+      pickFromMenu(document.querySelector('[data-gallery-mine="musc1xxxxxx"]') as HTMLElement, "Delete");
       await waitFor(() => expect(confirmMock).toHaveBeenCalled());
       expect(fetchMock.mock.calls.some(([, i]) => i?.method === "DELETE")).toBe(false);
       expect(listLocalShares()).toHaveLength(1);
     });
+
+    it("one list: All / Published / Private links with counts that follow the search, and three orders", async () => {
+      addLocalShare({ id: "musc1xxxxxx", title: "Breakbeat", kind: "music", publishedAt: 3, manageToken: "t1" });
+      addLocalShare({ id: "proj1xxxxxx", title: "Ambient set", kind: "project", publishedAt: 1, manageToken: "t2" });
+      addPrivateLink({ id: "link1xxxxxx", url: "https://x.test/#s=k", projectName: "Cosmic dub", createdAt: 2, manageToken: "t3" });
+      mockGallery();
+      renderOverlay();
+      await waitFor(() => expect(cards().length).toBe(4));
+      fireEvent.click(document.querySelector('[data-gallery-tab="mine"]')!);
+      const order = () =>
+        Array.from(document.querySelectorAll<HTMLElement>("[data-gallery-mine], [data-gallery-link]")).map(
+          (r) => r.getAttribute("data-gallery-mine") ?? r.getAttribute("data-gallery-link"),
+        );
+      const count = (f: string) =>
+        document.querySelector(`[data-gallery-mine-filter="${f}"] [data-gallery-filter-count]`)!.textContent;
+      expect(order()).toEqual(["musc1xxxxxx", "link1xxxxxx", "proj1xxxxxx"]); // newest first
+      expect([count("all"), count("published"), count("links")]).toEqual(["3", "2", "1"]);
+      const link = document.querySelector('[data-gallery-link="link1xxxxxx"]') as HTMLElement;
+      expect(link.querySelector("[data-gallery-pill]")!.textContent).toBe("Private link");
+
+      fireEvent.click(document.querySelector('[data-gallery-mine-filter="links"]')!);
+      expect(order()).toEqual(["link1xxxxxx"]);
+      fireEvent.click(document.querySelector('[data-gallery-mine-filter="published"]')!);
+      expect(order()).toEqual(["musc1xxxxxx", "proj1xxxxxx"]);
+      fireEvent.click(document.querySelector('[data-gallery-mine-filter="all"]')!);
+
+      fireEvent.change(document.querySelector("[data-gallery-mine-sort]")!, { target: { value: "title" } });
+      expect(order()).toEqual(["proj1xxxxxx", "musc1xxxxxx", "link1xxxxxx"]);
+      fireEvent.change(document.querySelector("[data-gallery-mine-sort]")!, { target: { value: "oldest" } });
+      expect(order()).toEqual(["proj1xxxxxx", "link1xxxxxx", "musc1xxxxxx"]);
+
+      fireEvent.change(screen.getByLabelText("Search your shares"), { target: { value: "dub" } });
+      expect(order()).toEqual(["link1xxxxxx"]);
+      expect([count("all"), count("published"), count("links")]).toEqual(["1", "0", "1"]);
+      fireEvent.click(document.querySelector('[data-gallery-mine-filter="published"]')!);
+      expect(document.querySelector('[data-gallery-state="mine-none"]')!.textContent).toBe(
+        'Nothing in your shares matches "dub".',
+      );
+      // The grid's search and filter are its own: My shares' typing didn't touch them.
+      fireEvent.click(document.querySelector('[data-gallery-crumb="gallery"]')!);
+      expect((screen.getByLabelText("Search the gallery") as HTMLInputElement).value).toBe("");
+      expect(cards().length).toBe(4);
+    });
+
+    it("the ⋯ menu: Escape closes the menu, not the gallery, and gives focus back to its button", async () => {
+      addLocalShare({ id: "musc1xxxxxx", title: "Breakbeat", kind: "music", publishedAt: 2, manageToken: "t1" });
+      mockGallery();
+      const { onClose } = renderOverlay();
+      await waitFor(() => expect(cards().length).toBe(4));
+      fireEvent.click(document.querySelector('[data-gallery-tab="mine"]')!);
+      const row = document.querySelector('[data-gallery-mine="musc1xxxxxx"]') as HTMLElement;
+      const more = row.querySelector("[data-gallery-more]") as HTMLElement;
+      fireEvent.click(more);
+      const items = within(row).getAllByRole("menuitem");
+      expect(items.map((i) => i.textContent)).toEqual(["Open", "Delete"]);
+      expect(document.activeElement).toBe(items[0]);
+      fireEvent.keyDown(items[0], { key: "ArrowDown" });
+      expect(document.activeElement).toBe(items[1]);
+      fireEvent.keyDown(items[1], { key: "Escape" });
+      expect(within(row).queryByRole("menu")).toBeNull();
+      expect(document.activeElement).toBe(more);
+      expect(onClose).not.toHaveBeenCalled();
+      // Control: an Escape outside the menu still closes the gallery.
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
   });
 });
+
+/** Open a My shares row's ⋯ menu and pick `label`. */
+function pickFromMenu(row: HTMLElement, label: string): void {
+  fireEvent.click(row.querySelector("[data-gallery-more]")!);
+  fireEvent.click(within(row).getByRole("menuitem", { name: label }));
+}

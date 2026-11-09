@@ -32,7 +32,7 @@ export function Thumb({ entry }: { entry: GalleryEntry }) {
   return <GeneratedThumb id={entry.id} title={entry.title} label={KIND_LABEL[entry.kind]} />;
 }
 
-function GeneratedThumb({ id, title, label }: { id: string; title: string; label: string | null }) {
+export function GeneratedThumb({ id, title, label }: { id: string; title: string; label: string | null }) {
   const { initials, hue } = generatedCard({ id, title });
   return (
     <div

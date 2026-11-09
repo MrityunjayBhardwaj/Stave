@@ -257,9 +257,11 @@ test.describe('Moderation by admin accounts (#2331)', () => {
     // The session has loaded once My shares speaks for the account.
     await user.page.locator('[data-gallery-tab="mine"]').click()
     await expect(user.page.locator('[data-gallery-mine-source="account"]')).toBeVisible({ timeout: 15_000 })
-    await expect(user.page.locator('[data-gallery-tab="moderation"]')).toHaveCount(0)
+    // Back on the grid, where the header's buttons are drawn (#2492: My shares has crumbs instead).
+    await user.page.locator('[data-gallery-crumb="gallery"]').click()
     // Control: the header's buttons really rendered.
     await expect(user.page.locator('[data-gallery-tab="mine"]')).toBeVisible()
+    await expect(user.page.locator('[data-gallery-tab="moderation"]')).toHaveCount(0)
 
     const r = user.context.request
     expect((await r.get('/api/gallery/admin/reports')).status()).toBe(403)

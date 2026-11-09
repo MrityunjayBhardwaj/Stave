@@ -11,7 +11,7 @@
  * when a tab restored after a reload is first drawn (`resume`).
  *
  * The tab also carries a small copy of the place (view, the grid's filter, sort
- * and search, Back stack, and the entry's title once known) as its shell state,
+ * and search, My shares' own, Back stack, and the entry's title once known) as its shell state,
  * so the layout remembers it across reloads. It is written only when that place
  * changes — every write re-fires the shell's onActiveTabChange — and a change of
  * the search alone waits until typing pauses (SEARCH_WRITE_DELAY_MS).
@@ -27,11 +27,15 @@ import {
   isGalleryFilter,
   isGallerySort,
   isGalleryTab,
+  isMineFilter,
+  isMineSort,
   readGalleryLink,
   type GalleryFilter,
   type GalleryLinkTarget,
   type GallerySort,
   type GalleryTab,
+  type MineFilter,
+  type MineSort,
 } from "./galleryModel";
 import type { GalleryEntry, GalleryEntryResponse } from "./types";
 import type { GalleryEntryActions } from "./GalleryHost";
@@ -59,6 +63,10 @@ export interface GalleryPlace {
   filter: GalleryFilter;
   sort: GallerySort;
   query: string;
+  /** #2492 — My shares' filter, order and search. */
+  mineFilter: MineFilter;
+  mineSort: MineSort;
+  mineQuery: string;
   stack: GalleryLinkTarget[];
   /** The open entry's title, once it has loaded — the tab's label. */
   title?: string;
@@ -71,11 +79,30 @@ export function placeOf(s: GalleryState): GalleryPlace {
     top?.kind === "entry" && s.detail?.status === "ready" && s.detail.id === top.id
       ? s.detail.data.entry.title
       : undefined;
-  return { tab: s.tab, filter: s.filter, sort: s.sort, query: s.query, stack: s.stack, ...(title ? { title } : {}) };
+  return {
+    tab: s.tab,
+    filter: s.filter,
+    sort: s.sort,
+    query: s.query,
+    mineFilter: s.mineFilter,
+    mineSort: s.mineSort,
+    mineQuery: s.mineQuery,
+    stack: s.stack,
+    ...(title ? { title } : {}),
+  };
 }
 
 /** Where a fresh gallery starts. */
-export const START_PLACE: GalleryPlace = { tab: "browse", filter: "all", sort: "newest", query: "", stack: [] };
+export const START_PLACE: GalleryPlace = {
+  tab: "browse",
+  filter: "all",
+  sort: "newest",
+  query: "",
+  mineFilter: "all",
+  mineSort: "newest",
+  mineQuery: "",
+  stack: [],
+};
 
 /** A saved search longer than this wasn't typed into the box; drop it. */
 const MAX_QUERY = 200;
@@ -101,7 +128,11 @@ export function readPlace(state: AppTabState | undefined): GalleryPlace | null {
   const tab = isGalleryTab(o.tab) ? o.tab : START_PLACE.tab;
   const filter = isGalleryFilter(o.filter) ? o.filter : START_PLACE.filter;
   const sort = isGallerySort(o.sort) ? o.sort : START_PLACE.sort;
-  const query = typeof o.query === "string" && o.query.length <= MAX_QUERY ? o.query : START_PLACE.query;
+  const query = readQuery(o.query, START_PLACE.query);
+  // #2492 — a place saved before My shares had its own list opens it on All, newest first.
+  const mineFilter = isMineFilter(o.mineFilter) ? o.mineFilter : START_PLACE.mineFilter;
+  const mineSort = isMineSort(o.mineSort) ? o.mineSort : START_PLACE.mineSort;
+  const mineQuery = readQuery(o.mineQuery, START_PLACE.mineQuery);
   const stack: GalleryLinkTarget[] = [];
   if (Array.isArray(o.stack)) {
     for (const v of o.stack.slice(-MAX_STACK)) {
@@ -113,7 +144,12 @@ export function readPlace(state: AppTabState | undefined): GalleryPlace | null {
     }
   }
   const title = typeof o.title === "string" && o.title ? o.title : undefined;
-  return { tab, filter, sort, query, stack, ...(title ? { title } : {}) };
+  return { tab, filter, sort, query, mineFilter, mineSort, mineQuery, stack, ...(title ? { title } : {}) };
+}
+
+/** A saved search, or `fallback` when it isn't one somebody typed. */
+function readQuery(v: AppTabState | undefined, fallback: string): string {
+  return typeof v === "string" && v.length <= MAX_QUERY ? v : fallback;
 }
 
 /** A gallery place as the shell stores it (plain JSON). */
@@ -126,17 +162,26 @@ function samePlace(a: GalleryPlace, b: GalleryPlace): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-/** Do two places differ only in the search text? */
+/** Do two places differ only in a search text (the grid's or My shares')? */
 function onlySearchDiffers(a: GalleryPlace, b: GalleryPlace): boolean {
-  return a.query !== b.query && samePlace({ ...a, query: "" }, { ...b, query: "" });
+  const blank = (p: GalleryPlace): GalleryPlace => ({ ...p, query: "", mineQuery: "" });
+  return (a.query !== b.query || a.mineQuery !== b.mineQuery) && samePlace(blank(a), blank(b));
 }
+
+/** What the tab says for a view with nothing open on top of it. */
+const VIEW_LABEL: Record<GalleryTab, string | null> = { browse: null, mine: "My shares", moderation: "Moderation" };
 
 /** The tab's label: where you are. */
 export function galleryTabLabel(tab: WorkspaceTab & { kind: "app" }): AppTabLabel {
   const place = readPlace(tab.state);
   const top = place?.stack[place.stack.length - 1];
-  const where =
-    !top ? null : top.kind === "entry" ? (place?.title ?? null) : top.kind === "author" ? "Profile" : "Collection";
+  const where = !top
+    ? VIEW_LABEL[place?.tab ?? "browse"]
+    : top.kind === "entry"
+      ? (place?.title ?? null)
+      : top.kind === "author"
+        ? "Profile"
+        : "Collection";
   return { title: where ? `Gallery · ${where}` : "Gallery", icon: GALLERY_ICON };
 }
 
