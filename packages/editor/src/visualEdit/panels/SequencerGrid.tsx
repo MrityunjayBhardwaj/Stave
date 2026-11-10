@@ -39,7 +39,7 @@ import { addLane, removeLane } from '../../codeView'
 import { resizeStep, resizeStepBy, splitStep, toggleStep, type StepEdit, type StepEditResult } from '../../codeView'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice, chordLanes, stepNotes, stepNoteKey, chunkDivisions } from '../../codeView'
-import { OPEN_PX, drawnSteps, endInBar, groupStops, laneSteps, leafStops, openAt, splitAddressAt, stepAddressAt, zoomRuler, type DrawnStep, type StepAtRefusal } from './gridZoom'
+import { endInBar, groupStops, laneSteps, leafStops, splitAddressAt, stepAddressAt, type StepAtRefusal } from './gridZoom'
 import { GridZoomControl, useGridZoom } from './gridZoomControl'
 import { lookOnlyTreeGrid } from './treeGrid'
 import { TreeStepGrid } from './TreeStepGrid'
@@ -57,7 +57,6 @@ import {
   boxesPlaceNotes,
   groupBoxesBySteps,
   linesModel,
-  ownStepWidths,
   rowBoxes,
   rulerLabels,
   type StepGroup,
@@ -208,7 +207,6 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
     model?.barSteps,
   )
   const [colorMode] = useNoteColorMode()
-  const gridMode = useGridMode()
 
   // A SOUND-FIRST LINE (#2226): `sound("piano gm_electric_guitar_muted").note("48 67 63 [62, 58]")`.
   // The sounds set the rhythm, so this grid draws them — and each step plays the note
@@ -269,15 +267,12 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
     [chordHead, laneKey],
   )
 
-  // THE BOXES EACH ROW IS DRAWN AS (#1855). LCM: one per column. Exact: a row whose
-  // `,`-part is stretched onto the shared grid is drawn at the part's own steps, each box
-  // `factor` columns wide, so `~ sd ~ sd, hh*8` shows the snare as 4 boxes and the hats
-  // as 8. The part's own step is read from what the TEXT reads as, like the step lines.
+  // THE BOXES EACH ROW IS DRAWN AS (#1855): one per column. (The Exact grid, which draws a
+  // part at its own steps, is `ExactStepGrid`; this grid is the shared-column view's.)
   const boxes = React.useMemo(() => {
     if (!model) return null
-    const widths = gridMode === 'exact' ? ownStepWidths(linesModel(model, read)) : new Map<number, number>()
-    return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn))
-  }, [model, read, gridMode])
+    return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, undefined, isCellOn))
+  }, [model])
   /** columns one box of this row spans: 1 in LCM and on a row at the shared grid */
   const boxesRef = React.useRef(boxes)
   boxesRef.current = boxes
@@ -302,9 +297,6 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   // than once per render. Asking the lit cells too was TIMED, not estimated ([[P380]]):
   // over the 1,014 corpus grids (best of 3, Node) p50 0.0042 → 0.0111ms, p99 6.23 →
   // 6.52ms, worst 14.5 → 21.1ms, total +15%.
-  //
-  // A box in Exact is asked as the click it is: a hit one whole box long, at its first
-  // column (#1855). The columns inside a box are never drawn, so they are not asked.
   //
   // ⚠ THE CLICK IS THE STEP WRITER'S NOW (#2292). A click edits the clicked step's own text
   // — `~` → `sd`, `sd` → `~`, `bd` → `[bd,sd]` — through `toggleStep`, asked of the tree
@@ -367,10 +359,9 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   // (#1154) some leaf grids take a note and most still do not, so the honest
   // answer is per view and only the view can give it.
   //
-  // Read off the SAME per-box answers the cells use (#1858), so in Exact it speaks
-  // about the boxes on screen, not columns it does not draw. With a box per column
-  // (LCM) those are exactly the asks `viewPlacesNotes` makes; the map is already
-  // paid for, so this costs one pass over it.
+  // Read off the SAME per-box answers the cells use (#1858). With a box per column those are
+  // exactly the asks `viewPlacesNotes` makes; the map is already paid for, so this costs one
+  // pass over it.
   const placesNotes = React.useMemo(
     () => (model && boxes && toggleable ? boxesPlaceNotes(model.lanes, boxes, isCellOn, toggleable) : false),
     [model, boxes, toggleable],
@@ -408,35 +399,23 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
     return out
   }, [model, read])
 
-  // EACH ROW AS ITS WRITTEN STEPS (#1861, Exact). A step spanning several boxes is drawn as
-  // one: `hh*8` one step holding 8 small boxes, `bd` in `bd hh*2 sd cp` one box with faint
-  // halves. Edges from the step lines above; plain-or-not from the part's coverage, never
-  // the text. LCM draws every box on its own, as it always has.
+  // EACH ROW'S BOXES, GROUPED (#1861): this view draws every column as its own box, with the
+  // written steps' lines between them (`stepStarts`). A row drawn at its own written steps,
+  // nested, is the Exact grid's (`ExactStepGrid`).
   const stepGroups = React.useMemo(() => {
     if (!model || !boxes || !coverage) return null
     return model.lanes.map((lane, li) => {
       const part = lane.part ?? 0
-      const starts = gridMode === 'exact' ? stepStarts?.get(part) : undefined
       const owners = model.lanes.flatMap((l, i) =>
         (l.part ?? 0) === part ? [(c: number) => coverage[i]?.[c]?.start] : [],
       )
-      return groupBoxesBySteps(boxes[li], starts ? [...starts].sort((a, b) => a - b) : undefined, model.steps, owners)
+      return groupBoxesBySteps(boxes[li], undefined, model.steps, owners)
     })
-  }, [model, boxes, coverage, stepStarts, gridMode])
+  }, [model, boxes, coverage])
 
-  // EACH ROW AS THE PATTERN'S OWN STEPS, NESTED (#2277, Exact): the bar's tree, asked of
-  // Strudel through codeView, laid on the drawn columns. Built once per text (`chunkDivisions`
-  // keeps it). A row whose tree does not hold exactly — or a model a drag has moved away from
-  // the text — gets null, and draws its step groups as above.
   const miniText = chunk?.miniString ?? null
-  // keyed on what the tree depends on — the text and the bar count — not on every model a
-  // drag makes; `hasModel` because a grid that first drew its standby line has none yet
+  // `hasModel` because a grid that first drew its standby line has none yet
   const hasModel = !!model
-  const barCount = model?.bars ?? 1
-  const trees = React.useMemo(
-    () => (hasModel && miniText !== null && gridMode === 'exact' ? chunkDivisions(miniText, barCount) : null),
-    [hasModel, barCount, miniText, gridMode],
-  )
   // A pattern the columns cannot hold at all is drawn from its tree alone (#1834): asked only
   // while there is no model, and once per text
   const stepEligible = !!chunk && opensStepGrid(chunk)
@@ -446,10 +425,6 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   // tree — the step grid's tree does not stand in for numbers
   const silentHead = !!chunk && !['s', 'sound', 'chord'].includes(chunk.headFn ?? '')
   const lookRoll = useDeferredPerText(!hasModel && stepEligible && silentHead && lookTree === null ? miniText : null, lookOnlyTreeRoll)
-  const laneNodes = React.useMemo(
-    () => (model && trees ? model.lanes.map((_, li) => laneSteps(model, trees, li)) : null),
-    [model, trees],
-  )
   // each row's own steps by the tree the EDITS use (every mode): where the arrow keys stop (#2293)
   const editNodes = React.useMemo(
     () => (model && stepTrees ? model.lanes.map((_, li) => laneSteps(model, stepTrees, li)) : null),
@@ -535,8 +510,7 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   // is no refusal. The caller decides whether to say so: a single press or key does
   // (`paintOne`), a paint drag brushing across inert cells does not.
   //
-  // A hit is painted one box long: one column in LCM, one of the part's own steps in
-  // Exact (#1855) — the step the user sees and clicked.
+  // A hit is painted one box long: one column (#1855), the step the user sees and clicked.
   //
   // The toggle is the step writer's (#2292): the answer `stepToggles` already holds for
   // this box, made in the text it was computed from. A write that finds the text changed
@@ -883,8 +857,8 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   /** a step's narrowest width per unit of weight */
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 16
   // ZOOM (#2277): 1× fits the bar to the panel. A pattern that fits at 16 px a column draws
-  // exactly as it always has; one that did not is squeezed to fit, and the steps too narrow
-  // to open draw their insides as small boxes. Zooming in widens every column. Not on a
+  // exactly as it always has; one that did not is squeezed to fit. Zooming in widens every
+  // column. (Opening a step to show the steps inside it is the Exact grid's.) Not on a
   // phone yet: its grid scrolls under a finger at its own step size (#2006).
   const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model)
   const zoomed = !phoneGrid.phone
@@ -905,8 +879,6 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   // it has at 1×, times the zoom
   const minPer = !zoomed || fitPer === null ? stepMin : zoom.level === 1 ? Math.min(stepMin, fitPer) : Math.min(fitPer, 56) * zoom.level
   const maxPer = zoomed ? 56 * zoom.level : 56
-  /** about how wide one unit of weight is drawn: what decides which steps are open */
-  const perPx = Math.max(minPer, Math.min(fitPer ?? stepMin, maxPer))
   /** what keeps a row's name in place while its steps scroll under it */
   const pinned: React.CSSProperties = phoneGrid.phone
     ? { position: 'sticky', left: 0, zIndex: 2, background: 'var(--background, #0f0f12)' }
@@ -942,36 +914,16 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   // The ruler counts the steps of the row you're on — the first row until a cursor
   // exists — because rows from different `,`-parts can split a bar differently (#1841).
   const rulerPart = model.lanes[liveCursor?.row ?? 0]?.part ?? 0
-  /** about how wide drawn column `c` is on screen */
-  const colPx = (c: number): number => perPx * layout.weight(c)
-  // 1× IS TODAY'S PICTURE: a step that holds smaller steps draws them as small boxes (#1861)
-  // however wide it is. Zooming in is what opens a step, once its inner steps are wide enough.
-  const openPx = zoom.level > 1 ? OPEN_PX : Infinity
-  // what each row draws at this zoom (#2277): its own steps, nested, open where wide enough —
-  // null for a row the tree does not hold for, which draws its step groups as before
-  const drawnRows: (DrawnStep[] | null)[] | null =
-    laneNodes && boxes && coverage
-      ? model.lanes.map((lane, li) => {
-          const nodes = laneNodes[li]
-          if (!nodes) return null
-          const part = lane.part ?? 0
-          const owners = model.lanes.flatMap((l, i) => ((l.part ?? 0) === part ? [(c: number) => coverage[i]?.[c]?.start] : []))
-          return drawnSteps(openAt(nodes, colPx, openPx), boxes[li], model.steps, owners, colPx)
-        })
-      : null
   // where the arrow keys stop in each row (#2293): each of its own steps, at every depth
   // — asked of the tree the edits use, so LCM walks the same steps as Exact
   stopsRef.current = model.lanes.map((_, li) => {
-    const nodes = laneNodes?.[li] ?? editNodes?.[li]
+    const nodes = editNodes?.[li]
     const steps = nodes ? leafStops(nodes) : (stepGroups?.[li] ?? []).flatMap(groupStops)
     // and every hit a click edits on its own (#2326): one hat of `hh*8` is a stop now
     const hits = (stepToggles?.[li] ?? []).flatMap((a, si) => (a && a.ok && !('split' in a && a.split) ? [si] : []))
     return [...new Set([...steps, ...hits])].sort((a, b) => a - b)
   })
-  const rulerNodes = laneNodes?.[liveCursor?.row ?? 0] ?? null
-  const ruler = rulerNodes && drawnRows?.[liveCursor?.row ?? 0]
-    ? zoomRuler(model, openAt(rulerNodes, colPx, openPx))
-    : rulerLabels(model, model.steps, [...(stepStarts?.get(rulerPart) ?? [])])
+  const ruler = rulerLabels(model, model.steps, [...(stepStarts?.get(rulerPart) ?? [])])
 
   return (
     <div
@@ -1137,8 +1089,7 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
               return (
                 <div
                   key={c}
-                  // the ExtendHandle measures the last COLUMN here: in Exact a row's last box
-                  // can start several columns before the end, so no cell names that column
+                  // the ExtendHandle measures the last COLUMN here: the ruler names every column
                   data-seq-col={`ruler:${c}`}
                   style={{
                     flex: `${layout.weight(c)} ${layout.weight(c)} 0`,
@@ -1238,12 +1189,9 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                   variant: 'solo' | 'inner' | 'plain',
                   /** a plain step's first/last column carries the step's rounded corner */
                   ends: { first: boolean; last: boolean } = { first: true, last: true },
-                  /** drawn inside an open step (#2277): its parent owns the bar gap and the step line */
-                  nested = false,
                 ) => {
-                // ONE BOX, `w` columns from `stepIndex` (#1855): a column in LCM, one of
-                // the part's own steps in Exact. Everything below reads the box's first
-                // column — a box only exists where no hit starts inside it (`rowBoxes`).
+                // ONE BOX, `w` columns from `stepIndex` (#1855): one column in this view. Everything
+                // below reads the box's first column (`rowBoxes`).
                 const cell = lane.cells[stepIndex]
                 // A cell is drawn from the note SOUNDING through it, not from the
                 // trigger alone (#1056): `cov.extent` is how much of this column
@@ -1307,9 +1255,7 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                 /** the step number a person reads: the box's, counted in this row */
                 const stepNo = (c: number): number => Math.floor(c / w) + 1
                 // A written step begins here, and it is not a bar line (those keep their gap)
-                // (a row drawn from its own steps: every box at the top is one — #2277)
-                const stepStart =
-                  stepIndex > 0 && !layout.barStart(stepIndex) && (!!drawnRows?.[laneIndex] || !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex))
+                const stepStart = stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex)
                 return (
                   // A gridcell holding one toggle button — `aria-pressed` stays on the
                   // button, which may carry it; the cursor is the cell's `aria-selected`.
@@ -1317,20 +1263,20 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                     key={stepIndex}
                     role="gridcell"
                     aria-selected={isCursor}
-                    data-seq-step-start={variant === 'solo' && !nested && stepStart ? 'true' : undefined}
+                    data-seq-step-start={variant === 'solo' && stepStart ? 'true' : undefined}
                     style={{
                       display: 'flex',
                       flex: `${weight} ${weight} ${gaps}px`,
                       minWidth: minPer * weight + gaps,
                       maxWidth: maxPer * weight + gaps,
                       // subtle gap at each bar boundary
-                      marginLeft: variant === 'solo' && !nested && layout.barStart(stepIndex) ? 8 : 0,
+                      marginLeft: variant === 'solo' && layout.barStart(stepIndex) ? 8 : 0,
                       // THREE LINE WEIGHTS (#1841): a bar is the 8px gap above; a written
                       // step fills the 2px gap before it with a line; a plain column
                       // leaves that gap empty. Drawn as a shadow INTO the gap rather than
                       // as extra width, because rows of different parts start steps at
                       // different columns and a real gap would push their columns apart.
-                      boxShadow: variant === 'solo' && !nested && stepStart ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined,
+                      boxShadow: variant === 'solo' && stepStart ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined,
                     }}
                   >
                   <button
@@ -1570,9 +1516,8 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                   </div>
                 )
                 }
-                // one step's boxes: `depth` 1 is a row's own step, deeper ones sit inside an open step
-                const drawGroup = (g: StepGroup, depth = 1): React.ReactNode => {
-                const nested = depth > 1
+                // one step's boxes
+                const drawGroup = (g: StepGroup): React.ReactNode => {
                 // A step of one box, or one a bar line would cut, is drawn box by box — inside the
                 // SAME keyed wrapper, laid out as nothing (`display: contents`). An edit can turn a
                 // grouped step into single boxes (`[bd ~ sd ~]` → `bd _ sd ~`); with a different
@@ -1581,34 +1526,33 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                 if (!grouped) {
                   return (
                     <div key={`step-${g.from}`} role="none" style={{ display: 'contents' }}>
-                      {g.boxes.map((b) => cellFor(b, 'solo', undefined, nested))}
+                      {g.boxes.map((b) => cellFor(b, 'solo'))}
                     </div>
                   )
                 }
                 let weight = 0
                 for (let c = g.from; c < g.to; c++) weight += layout.weight(c)
                 const gaps = 2 * (g.to - g.from - 1)
-                const stepStart =
-                  !nested && g.from > 0 && !layout.barStart(g.from) && !!(drawnRows?.[laneIndex] || stepStarts?.get(lane.part ?? 0)?.has(g.from))
+                const stepStart = g.from > 0 && !layout.barStart(g.from) && !!stepStarts?.get(lane.part ?? 0)?.has(g.from)
                 return (
                   <div
                     key={`step-${g.from}`}
                     role="none"
                     data-seq-step={g.plain ? 'plain' : 'holds'}
-                    data-seq-depth={depth}
+                    data-seq-depth={1}
                     data-seq-step-start={stepStart ? 'true' : undefined}
                     style={{
                       display: 'flex',
                       gap: 2,
-                      height: nested ? '100%' : 22,
+                      height: 22,
                       // exactly the space its boxes take drawn one by one, so its edges and
                       // its boxes' edges fall on the other rows' columns
                       flex: `${weight} ${weight} ${gaps}px`,
                       minWidth: minPer * weight + gaps,
                       maxWidth: maxPer * weight + gaps,
-                      marginLeft: !nested && layout.barStart(g.from) ? 8 : 0,
+                      marginLeft: layout.barStart(g.from) ? 8 : 0,
                       // an outline takes no space, so it cannot push a column
-                      outline: stepOutline(depth),
+                      outline: STEP_OUTLINE,
                       borderRadius: g.plain ? 3 : 4,
                       // NOT overflow-hidden: the focus ring is drawn just outside a cell, and
                       // clipping it here hid the keyboard cursor on a filled column
@@ -1619,46 +1563,12 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                     }}
                   >
                     {g.boxes.map((b, i) =>
-                      cellFor(b, g.plain ? 'plain' : 'inner', { first: i === 0, last: i === g.boxes.length - 1 }, nested),
+                      cellFor(b, g.plain ? 'plain' : 'inner', { first: i === 0, last: i === g.boxes.length - 1 }),
                     )}
                   </div>
                 )
                 }
-                // AN OPEN STEP (#2277): wide enough that the steps inside it are steps, each
-                // drawn as a row's own step is, inside its outline — lighter the deeper it sits
-                const drawStep = (d: DrawnStep): React.ReactNode => {
-                  if (d.kind === 'boxes') return drawGroup(d.group, d.depth)
-                  let weight = 0
-                  for (let c = d.from; c < d.to; c++) weight += layout.weight(c)
-                  const gaps = 2 * (d.to - d.from - 1)
-                  const top = d.depth === 1
-                  const stepStart = top && d.from > 0 && !layout.barStart(d.from)
-                  return (
-                    <div
-                      key={`step-${d.from}`}
-                      role="none"
-                      data-seq-step="open"
-                      data-seq-depth={d.depth}
-                      data-seq-step-start={stepStart ? 'true' : undefined}
-                      style={{
-                        display: 'flex',
-                        gap: 2,
-                        height: top ? 22 : '100%',
-                        flex: `${weight} ${weight} ${gaps}px`,
-                        minWidth: minPer * weight + gaps,
-                        maxWidth: maxPer * weight + gaps,
-                        marginLeft: top && layout.barStart(d.from) ? 8 : 0,
-                        outline: stepOutline(d.depth),
-                        borderRadius: 4,
-                        boxShadow: stepStart ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined,
-                      }}
-                    >
-                      {d.children.map(drawStep)}
-                    </div>
-                  )
-                }
-                const drawn = drawnRows?.[laneIndex]
-                return drawn ? drawn.map(drawStep) : (stepGroups?.[laneIndex] ?? []).map((g) => drawGroup(g))
+                return (stepGroups?.[laneIndex] ?? []).map((g) => drawGroup(g))
               })()}
             </div>
           </div>
@@ -1707,15 +1617,8 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   )
 }
 
-/**
- * A step's outline by how deep it sits (#2277): a row's own step as it always was, a step
- * inside it lighter, and every level below that dashed.
- */
-function stepOutline(depth: number): string {
-  if (depth <= 1) return '1px solid var(--border, #3a3a42)'
-  if (depth === 2) return '1px solid color-mix(in srgb, var(--border, #3a3a42) 60%, transparent)'
-  return '1px dashed color-mix(in srgb, var(--border, #3a3a42) 50%, transparent)'
-}
+/** a row's own step's outline (steps inside steps open in the Exact grid, `ExactStepGrid`) */
+const STEP_OUTLINE = '1px solid var(--border, #3a3a42)'
 
 /** `a`, `a and b`, `a, b and c` */
 function listOf(items: readonly string[]): string {
