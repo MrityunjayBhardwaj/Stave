@@ -40546,18 +40546,6 @@ function writtenStepStarts(m) {
   return out;
 }
 __name(writtenStepStarts, "writtenStepStarts");
-function ownStepWidths(m) {
-  const out = /* @__PURE__ */ new Map();
-  if (!m.source || m.barSteps) return out;
-  for (const p of m.source.parts) {
-    const last = p.regions[p.regions.length - 1];
-    const repeats = p.bars === void 0 ? 1 : (m.bars ?? 1) / p.bars;
-    if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== m.steps) continue;
-    if (p.factor > 1 && Number.isInteger(p.factor) && m.steps % p.factor === 0) out.set(p.part, p.factor);
-  }
-  return out;
-}
-__name(ownStepWidths, "ownStepWidths");
 function rowBoxes(cells, steps, width, isOn) {
   const w = width !== void 0 && width > 1 && steps % width === 0 && cells.every((c, i) => i % width === 0 || !isOn(c)) ? width : 1;
   return Array.from({ length: steps / w }, (_, k) => ({ start: k * w, width: w }));
@@ -41069,42 +41057,6 @@ function zoomRuler(model, drawn) {
   return out;
 }
 __name(zoomRuler, "zoomRuler");
-function drawnSteps(drawn, boxes, steps, owners2, colPx, openPx = OPEN_PX) {
-  let k = 0;
-  const walk5 = /* @__PURE__ */ __name((n) => {
-    if (n.open && n.children) {
-      const children = [];
-      for (const c of n.children) {
-        const d = walk5(c);
-        if (!d) return null;
-        children.push(d);
-      }
-      return { kind: "open", from: n.from, to: n.to, depth: n.depth, children };
-    }
-    const mine = [];
-    while (k < boxes.length && boxes[k].start < n.to) {
-      if (boxes[k].start < n.from || boxes[k].start + boxes[k].width > n.to) return null;
-      mine.push(boxes[k++]);
-    }
-    if (mine.length === 0 || mine[0].start !== n.from || mine[mine.length - 1].start + mine[mine.length - 1].width !== n.to) return null;
-    const [group2] = groupBoxesBySteps(mine, [n.from, n.to], steps, owners2).filter((g) => g.from === n.from);
-    if (!group2 || group2.to !== n.to) return null;
-    let narrow = false;
-    for (let c = n.from; c < n.to; c++) if (colPx(c) < openPx - 1e-6) narrow = true;
-    if (group2.plain && group2.boxes.length > 1 && narrow) {
-      return { kind: "boxes", depth: n.depth, group: { ...group2, boxes: [{ start: n.from, width: n.to - n.from }] } };
-    }
-    return { kind: "boxes", group: group2, depth: n.depth };
-  }, "walk");
-  const out = [];
-  for (const n of drawn) {
-    const d = walk5(n);
-    if (!d) return null;
-    out.push(d);
-  }
-  return k === boxes.length ? out : null;
-}
-__name(drawnSteps, "drawnSteps");
 var ZOOM_LEVELS = [1, 1.5, 2, 3, 4, 6, 8, 12, 16];
 var CHROME_PX = 16 + 16 + 28 + 104;
 function useGridZoom(scrollRef, enabled, mounted2, trackRef) {
@@ -44474,7 +44426,6 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
-  const gridMode = useGridMode();
   const span = model?.bars ?? 1;
   const playedNotes = React33.useMemo(() => chunk ? stepNotes(chunk, span) : null, [chunk, span]);
   const gestureRef = React33.useRef(null);
@@ -44489,9 +44440,8 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   );
   const boxes = React33.useMemo(() => {
     if (!model) return null;
-    const widths = gridMode === "exact" ? ownStepWidths(linesModel(model, read5)) : /* @__PURE__ */ new Map();
-    return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn));
-  }, [model, read5, gridMode]);
+    return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, void 0, isCellOn));
+  }, [model]);
   const boxesRef = React33.useRef(boxes);
   boxesRef.current = boxes;
   const boxWidth = /* @__PURE__ */ __name((laneIndex) => boxesRef.current?.[laneIndex]?.[0]?.width ?? 1, "boxWidth");
@@ -44552,28 +44502,18 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     if (!model || !boxes || !coverage) return null;
     return model.lanes.map((lane, li) => {
       const part = lane.part ?? 0;
-      const starts2 = gridMode === "exact" ? stepStarts?.get(part) : void 0;
       const owners2 = model.lanes.flatMap(
         (l, i) => (l.part ?? 0) === part ? [(c) => coverage[i]?.[c]?.start] : []
       );
-      return groupBoxesBySteps(boxes[li], starts2 ? [...starts2].sort((a, b) => a - b) : void 0, model.steps, owners2);
+      return groupBoxesBySteps(boxes[li], void 0, model.steps, owners2);
     });
-  }, [model, boxes, coverage, stepStarts, gridMode]);
+  }, [model, boxes, coverage]);
   const miniText2 = chunk?.miniString ?? null;
   const hasModel = !!model;
-  const barCount = model?.bars ?? 1;
-  const trees = React33.useMemo(
-    () => hasModel && miniText2 !== null && gridMode === "exact" ? chunkDivisions(miniText2, barCount) : null,
-    [hasModel, barCount, miniText2, gridMode]
-  );
   const stepEligible = !!chunk && opensStepGrid(chunk);
   const lookTree = useDeferredPerText(!hasModel && stepEligible ? miniText2 : null, lookOnlyTreeGrid);
   const silentHead = !!chunk && !["s", "sound", "chord"].includes(chunk.headFn ?? "");
   const lookRoll = useDeferredPerText(!hasModel && stepEligible && silentHead && lookTree === null ? miniText2 : null, lookOnlyTreeRoll);
-  const laneNodes = React33.useMemo(
-    () => model && trees ? model.lanes.map((_, li) => laneSteps(model, trees, li)) : null,
-    [model, trees]
-  );
   const editNodes = React33.useMemo(
     () => model && stepTrees ? model.lanes.map((_, li) => laneSteps(model, stepTrees, li)) : null,
     [model, stepTrees]
@@ -44594,19 +44534,19 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   }, [model, stepTrees, stepMini]);
   const resizeNote2 = /* @__PURE__ */ __name((li, head, to, dryRun = false) => {
     const m = modelRef.current;
-    const trees2 = stepTreesRef.current;
+    const trees = stepTreesRef.current;
     const mini = stepMiniRef.current;
     const lane = m?.lanes[li];
-    if (!m || !trees2 || mini === null || !lane) return false;
-    const at = stepAddressAt(m, trees2, li, head);
+    if (!m || !trees || mini === null || !lane) return false;
+    const at = stepAddressAt(m, trees, li, head);
     if (typeof at === "string") return false;
     const row = { sound: lane.sound, part: lane.part };
     let r;
-    if ("by" in to) r = resizeStepBy(mini, trees2, at, to.by, row);
+    if ("by" in to) r = resizeStepBy(mini, trees, at, to.by, row);
     else {
       const end = endInBar(m, head, to.end);
       if (!end) return false;
-      r = resizeStep(mini, trees2, at, end, row);
+      r = resizeStep(mini, trees, at, end, row);
     }
     if (!r.ok) return false;
     return dryRun || writeEdit(mini, r.edit);
@@ -44882,7 +44822,6 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   })() : null;
   const minPer = !zoomed || fitPer === null ? stepMin : zoom.level === 1 ? Math.min(stepMin, fitPer) : Math.min(fitPer, 56) * zoom.level;
   const maxPer = zoomed ? 56 * zoom.level : 56;
-  const perPx = Math.max(minPer, Math.min(fitPer ?? stepMin, maxPer));
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
   const playheadRef = React33.useRef(null);
   useExactPlayhead(gridRef, playheadRef, model, (c) => gridRef.current?.querySelector(`[data-seq-col="ruler:${c}"]`) ?? null);
@@ -44899,23 +44838,13 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   const lookOnly = model.lookOnly ?? null;
   const tabCell = liveCursor ?? { row: 0, col: 0 };
   const rulerPart = model.lanes[liveCursor?.row ?? 0]?.part ?? 0;
-  const colPx = /* @__PURE__ */ __name((c) => perPx * layout.weight(c), "colPx");
-  const openPx = zoom.level > 1 ? OPEN_PX : Infinity;
-  const drawnRows = laneNodes && boxes && coverage ? model.lanes.map((lane, li) => {
-    const nodes = laneNodes[li];
-    if (!nodes) return null;
-    const part = lane.part ?? 0;
-    const owners2 = model.lanes.flatMap((l, i) => (l.part ?? 0) === part ? [(c) => coverage[i]?.[c]?.start] : []);
-    return drawnSteps(openAt(nodes, colPx, openPx), boxes[li], model.steps, owners2, colPx);
-  }) : null;
   stopsRef.current = model.lanes.map((_, li) => {
-    const nodes = laneNodes?.[li] ?? editNodes?.[li];
+    const nodes = editNodes?.[li];
     const steps = nodes ? leafStops(nodes) : (stepGroups?.[li] ?? []).flatMap(groupStops);
     const hits = (stepToggles?.[li] ?? []).flatMap((a, si) => a && a.ok && !("split" in a && a.split) ? [si] : []);
     return [.../* @__PURE__ */ new Set([...steps, ...hits])].sort((a, b) => a - b);
   });
-  const rulerNodes = laneNodes?.[liveCursor?.row ?? 0] ?? null;
-  const ruler = rulerNodes && drawnRows?.[liveCursor?.row ?? 0] ? zoomRuler(model, openAt(rulerNodes, colPx, openPx)) : rulerLabels(model, model.steps, [...stepStarts?.get(rulerPart) ?? []]);
+  const ruler = rulerLabels(model, model.steps, [...stepStarts?.get(rulerPart) ?? []]);
   return /* @__PURE__ */ jsx(
     "div",
     {
@@ -45135,7 +45064,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
                     )
                   ] }),
                   /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: (() => {
-                    const cellFor = /* @__PURE__ */ __name(({ start: stepIndex, width: w }, variant, ends = { first: true, last: true }, nested = false) => {
+                    const cellFor = /* @__PURE__ */ __name(({ start: stepIndex, width: w }, variant, ends = { first: true, last: true }) => {
                       const cell = lane.cells[stepIndex];
                       const on = isCellOn(cell);
                       const cov = coverage?.[laneIndex]?.[stepIndex];
@@ -45164,7 +45093,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
                       for (let c = stepIndex; c < stepIndex + w; c++) weight += layout.weight(c);
                       const gaps = 2 * (w - 1);
                       const stepNo = /* @__PURE__ */ __name((c) => Math.floor(c / w) + 1, "stepNo");
-                      const stepStart = stepIndex > 0 && !layout.barStart(stepIndex) && (!!drawnRows?.[laneIndex] || !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex));
+                      const stepStart = stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex);
                       return (
                         // A gridcell holding one toggle button — `aria-pressed` stays on the
                         // button, which may carry it; the cursor is the cell's `aria-selected`.
@@ -45173,20 +45102,20 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
                           {
                             role: "gridcell",
                             "aria-selected": isCursor,
-                            "data-seq-step-start": variant === "solo" && !nested && stepStart ? "true" : void 0,
+                            "data-seq-step-start": variant === "solo" && stepStart ? "true" : void 0,
                             style: {
                               display: "flex",
                               flex: `${weight} ${weight} ${gaps}px`,
                               minWidth: minPer * weight + gaps,
                               maxWidth: maxPer * weight + gaps,
                               // subtle gap at each bar boundary
-                              marginLeft: variant === "solo" && !nested && layout.barStart(stepIndex) ? 8 : 0,
+                              marginLeft: variant === "solo" && layout.barStart(stepIndex) ? 8 : 0,
                               // THREE LINE WEIGHTS (#1841): a bar is the 8px gap above; a written
                               // step fills the 2px gap before it with a line; a plain column
                               // leaves that gap empty. Drawn as a shadow INTO the gap rather than
                               // as extra width, because rows of different parts start steps at
                               // different columns and a real gap would push their columns apart.
-                              boxShadow: variant === "solo" && !nested && stepStart ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
+                              boxShadow: variant === "solo" && stepStart ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
                             },
                             children: /* @__PURE__ */ jsxs(
                               "button",
@@ -45360,35 +45289,34 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
                         )
                       );
                     }, "cellFor");
-                    const drawGroup = /* @__PURE__ */ __name((g, depth = 1) => {
-                      const nested = depth > 1;
+                    const drawGroup = /* @__PURE__ */ __name((g) => {
                       const grouped = g.boxes.length > 1 && !g.boxes.slice(1).some((b) => layout.barStart(b.start));
                       if (!grouped) {
-                        return /* @__PURE__ */ jsx("div", { role: "none", style: { display: "contents" }, children: g.boxes.map((b) => cellFor(b, "solo", void 0, nested)) }, `step-${g.from}`);
+                        return /* @__PURE__ */ jsx("div", { role: "none", style: { display: "contents" }, children: g.boxes.map((b) => cellFor(b, "solo")) }, `step-${g.from}`);
                       }
                       let weight = 0;
                       for (let c = g.from; c < g.to; c++) weight += layout.weight(c);
                       const gaps = 2 * (g.to - g.from - 1);
-                      const stepStart = !nested && g.from > 0 && !layout.barStart(g.from) && !!(drawnRows?.[laneIndex] || stepStarts?.get(lane.part ?? 0)?.has(g.from));
+                      const stepStart = g.from > 0 && !layout.barStart(g.from) && !!stepStarts?.get(lane.part ?? 0)?.has(g.from);
                       return /* @__PURE__ */ jsx(
                         "div",
                         {
                           role: "none",
                           "data-seq-step": g.plain ? "plain" : "holds",
-                          "data-seq-depth": depth,
+                          "data-seq-depth": 1,
                           "data-seq-step-start": stepStart ? "true" : void 0,
                           style: {
                             display: "flex",
                             gap: 2,
-                            height: nested ? "100%" : 22,
+                            height: 22,
                             // exactly the space its boxes take drawn one by one, so its edges and
                             // its boxes' edges fall on the other rows' columns
                             flex: `${weight} ${weight} ${gaps}px`,
                             minWidth: minPer * weight + gaps,
                             maxWidth: maxPer * weight + gaps,
-                            marginLeft: !nested && layout.barStart(g.from) ? 8 : 0,
+                            marginLeft: layout.barStart(g.from) ? 8 : 0,
                             // an outline takes no space, so it cannot push a column
-                            outline: stepOutline(depth),
+                            outline: STEP_OUTLINE,
                             borderRadius: g.plain ? 3 : 4,
                             // NOT overflow-hidden: the focus ring is drawn just outside a cell, and
                             // clipping it here hid the keyboard cursor on a filled column
@@ -45398,45 +45326,13 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
                             boxShadow: stepStart ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
                           },
                           children: g.boxes.map(
-                            (b, i) => cellFor(b, g.plain ? "plain" : "inner", { first: i === 0, last: i === g.boxes.length - 1 }, nested)
+                            (b, i) => cellFor(b, g.plain ? "plain" : "inner", { first: i === 0, last: i === g.boxes.length - 1 })
                           )
                         },
                         `step-${g.from}`
                       );
                     }, "drawGroup");
-                    const drawStep = /* @__PURE__ */ __name((d) => {
-                      if (d.kind === "boxes") return drawGroup(d.group, d.depth);
-                      let weight = 0;
-                      for (let c = d.from; c < d.to; c++) weight += layout.weight(c);
-                      const gaps = 2 * (d.to - d.from - 1);
-                      const top = d.depth === 1;
-                      const stepStart = top && d.from > 0 && !layout.barStart(d.from);
-                      return /* @__PURE__ */ jsx(
-                        "div",
-                        {
-                          role: "none",
-                          "data-seq-step": "open",
-                          "data-seq-depth": d.depth,
-                          "data-seq-step-start": stepStart ? "true" : void 0,
-                          style: {
-                            display: "flex",
-                            gap: 2,
-                            height: top ? 22 : "100%",
-                            flex: `${weight} ${weight} ${gaps}px`,
-                            minWidth: minPer * weight + gaps,
-                            maxWidth: maxPer * weight + gaps,
-                            marginLeft: top && layout.barStart(d.from) ? 8 : 0,
-                            outline: stepOutline(d.depth),
-                            borderRadius: 4,
-                            boxShadow: stepStart ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
-                          },
-                          children: d.children.map(drawStep)
-                        },
-                        `step-${d.from}`
-                      );
-                    }, "drawStep");
-                    const drawn = drawnRows?.[laneIndex];
-                    return drawn ? drawn.map(drawStep) : (stepGroups?.[laneIndex] ?? []).map((g) => drawGroup(g));
+                    return (stepGroups?.[laneIndex] ?? []).map((g) => drawGroup(g));
                   })() })
                 ]
               },
@@ -45477,12 +45373,7 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
   );
 }
 __name(ColumnStepGrid, "ColumnStepGrid");
-function stepOutline(depth) {
-  if (depth <= 1) return "1px solid var(--border, #3a3a42)";
-  if (depth === 2) return "1px solid color-mix(in srgb, var(--border, #3a3a42) 60%, transparent)";
-  return "1px dashed color-mix(in srgb, var(--border, #3a3a42) 50%, transparent)";
-}
-__name(stepOutline, "stepOutline");
+var STEP_OUTLINE = "1px solid var(--border, #3a3a42)";
 function listOf2(items) {
   return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
