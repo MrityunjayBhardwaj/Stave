@@ -7696,6 +7696,65 @@ function resolveVizOptions(code, evaluated) {
 }
 __name(resolveVizOptions, "resolveVizOptions");
 
+// src/codeView/mixer/backdropCall.ts
+function stringLiteral(raw) {
+  const m = /^(['"`])([\s\S]*)\1$/.exec(raw);
+  if (!m) return null;
+  if (m[1] === "`" && m[2].includes("${")) return null;
+  if (m[2].includes(m[1])) return null;
+  return m[2];
+}
+__name(stringLiteral, "stringLiteral");
+function isVizMethod(name) {
+  return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, name);
+}
+__name(isVizMethod, "isVizMethod");
+function readBackdropCall(call, onMaster) {
+  if (call.name === "viz") {
+    const nameArg = call.args[0];
+    const optionsArg2 = call.args[1];
+    const options = optionsArg2 ? readVizOptionsLiteral(optionsArg2.raw) : null;
+    if (!onMaster && !(options?.kind === "literal" && options.values.backdrop === true)) return null;
+    return { name: nameArg ? stringLiteral(nameArg.raw) : null, options, call };
+  }
+  const underscore = call.name.startsWith("_");
+  const method = underscore ? call.name.slice(1) : call.name;
+  if (!isVizMethod(method)) return null;
+  if (underscore && !onMaster) return null;
+  const optionsArg = call.args[0];
+  return {
+    name: STRUDEL_VIZ_METHODS[method],
+    options: optionsArg ? readVizOptionsLiteral(optionsArg.raw) : null,
+    call
+  };
+}
+__name(readBackdropCall, "readBackdropCall");
+function lastTrackBackdropCall(doc, { declaredOnly: declaredOnly2 = false } = {}) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return null;
+  let last = null;
+  for (const node of statements) {
+    const body = node.type === "LabeledStatement" ? node.body : node;
+    if (body?.type !== "ExpressionStatement") continue;
+    const expr = body.expression;
+    if (expr?.type === "CallExpression" && expr.callee?.type === "Identifier" && expr.callee.name === "all") continue;
+    const chain = collectChain(doc, expr, { ref: null });
+    const r = lastBackdropCall(declaredOnly2 ? chain.filter((c) => c.name === "viz") : chain, false);
+    if (r) last = r;
+  }
+  return last;
+}
+__name(lastTrackBackdropCall, "lastTrackBackdropCall");
+function lastBackdropCall(chain, onMaster) {
+  let last = null;
+  for (const c of chain) {
+    const r = readBackdropCall(c, onMaster);
+    if (r) last = r;
+  }
+  return last;
+}
+__name(lastBackdropCall, "lastBackdropCall");
+
 // src/codeView/mixer/masterEdit.ts
 var MASTER_UNITY_GAIN = 1;
 function matchAllArrow(node) {
@@ -7784,14 +7843,19 @@ function findMuteLine(doc) {
   return detectMasterAll(doc).find((m) => arrowBodyText(doc, m) === "silence");
 }
 __name(findMuteLine, "findMuteLine");
-function findVizBackdropCall(m) {
-  return m.chain.find((c) => c.name === "viz");
+function findMasterBackdrop(doc) {
+  let found = null;
+  for (const m of detectMasterAll(doc)) {
+    const bc = lastBackdropCall(m.chain, true);
+    if (bc) found = { m, bc };
+  }
+  return found;
 }
-__name(findVizBackdropCall, "findVizBackdropCall");
-function vizNameArg(c) {
-  return c.args.find((a) => /^['"`]/.test(a.raw));
+__name(findMasterBackdrop, "findMasterBackdrop");
+function masterBackdropCall(doc) {
+  return findMasterBackdrop(doc)?.bc ?? null;
 }
-__name(vizNameArg, "vizNameArg");
+__name(masterBackdropCall, "masterBackdropCall");
 function readMasterGain(doc) {
   const site = findMasterGainSite(doc);
   if (!site) return { value: MASTER_UNITY_GAIN, foreign: false };
@@ -7808,7 +7872,7 @@ __name(readMasterMute, "readMasterMute");
 function detectMasterAudioAll(doc) {
   return detectMasterAll(doc).find((m) => {
     if (arrowBodyText(doc, m) === "silence") return false;
-    if (m.chain.length >= 1 && m.chain.every((c) => c.name === "viz")) return false;
+    if (m.chain.length >= 1 && m.chain.every((c) => readBackdropCall(c, true) !== null)) return false;
     return true;
   });
 }
@@ -7842,18 +7906,9 @@ function adaptMasterChunk(doc, m) {
 }
 __name(adaptMasterChunk, "adaptMasterChunk");
 function readMasterViz(doc) {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m);
-    if (!v) continue;
-    const nameArg = vizNameArg(v);
-    if (!nameArg) continue;
-    const optionsArg = v.args.find((a) => a !== nameArg);
-    return {
-      name: nameArg.raw.slice(1, -1),
-      options: optionsArg ? readVizOptionsLiteral(optionsArg.raw) : null
-    };
-  }
-  return null;
+  const bc = masterBackdropCall(doc);
+  if (!bc || bc.name === null) return null;
+  return { name: bc.name, options: bc.options };
 }
 __name(readMasterViz, "readMasterViz");
 function scaleCall(value) {
@@ -7876,18 +7931,25 @@ function masterMuteEdit(doc, muted3) {
 }
 __name(masterMuteEdit, "masterMuteEdit");
 function masterVizEdit(doc, name) {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m);
-    if (!v) continue;
+  const found = findMasterBackdrop(doc);
+  if (found) {
+    const { m, bc } = found;
     if (name === null) {
       if (m.chain.length === 1) return removeStatement(doc, m.statementRange);
-      return { range: v.range, text: "" };
+      return { range: bc.call.range, text: "" };
     }
-    const nameArg = vizNameArg(v);
-    if (!nameArg) return null;
-    return { range: nameArg.range, text: JSON.stringify(name) };
+    if (bc.call.name === "viz") {
+      const nameArg = bc.call.args[0];
+      if (!nameArg || bc.name === null) return null;
+      return { range: nameArg.range, text: JSON.stringify(name) };
+    }
+    const optionsArg = bc.call.args[0];
+    return { range: bc.call.range, text: `.viz(${JSON.stringify(name)}${optionsArg ? `, ${optionsArg.raw}` : ""})` };
   }
-  if (name === null) return null;
+  if (name === null) {
+    const track = lastTrackBackdropCall(doc);
+    return track ? { range: track.call.range, text: "" } : null;
+  }
   return insertStatement(doc, `all(x => x.viz(${JSON.stringify(name)}, { backdrop: true }))`);
 }
 __name(masterVizEdit, "masterVizEdit");
@@ -13406,6 +13468,18 @@ function gridWritePlan(codec, next) {
 }
 __name(gridWritePlan, "gridWritePlan");
 
+// src/codeView/mixer/codeViz.ts
+function readCodeViz(doc) {
+  const master = masterBackdropCall(doc);
+  if (master) {
+    return master.name === null ? null : { name: master.name, options: master.options, level: "master" };
+  }
+  const track = lastTrackBackdropCall(doc, { declaredOnly: true });
+  if (!track || track.name === null) return null;
+  return { name: track.name, options: track.options, level: "track" };
+}
+__name(readCodeViz, "readCodeViz");
+
 // src/codeView/noteSounds.ts
 var VALUE_ONLY = /* @__PURE__ */ new Set([
   "gain",
@@ -17939,6 +18013,11 @@ var _StrudelEngine = class _StrudelEngine {
             configurable: true,
             writable: true,
             value: /* @__PURE__ */ __name(function(opts) {
+              if (masterTransformDepth > 0) {
+                capturedBackdropViz = renderer;
+                capturedBackdropVizOptions = opts && typeof opts === "object" ? opts : null;
+                return this;
+              }
               this._pendingViz = renderer;
               pendingChainViz = renderer;
               if (opts && typeof opts === "object") {
@@ -57238,6 +57317,6 @@ function isPersistableTab(t) {
 __name(isPersistableTab, "isPersistableTab");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, THREE_ADDONS, THREE_VIZ, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, compileThreeSketch, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retainCodeBackdropOptions, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, THREE_ADDONS, THREE_VIZ, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, compileThreeSketch, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCodeViz, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retainCodeBackdropOptions, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

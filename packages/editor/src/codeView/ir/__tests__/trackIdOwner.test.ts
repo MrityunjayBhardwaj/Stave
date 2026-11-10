@@ -55,6 +55,10 @@ const OTHER_FACTS: Record<string, { count: number; why: string }> = {
     count: 1,
     why: 'the inline-viz method family is spelled `_pianoroll`; not a label',
   },
+  'packages/editor/src/codeView/mixer/backdropCall.ts': {
+    count: 1,
+    why: 'the same viz method family (`._pianoroll` vs `.pianoroll`), read off a chain call name; not a label',
+  },
 }
 
 function countIn(text: string): number {

@@ -7722,6 +7722,65 @@ function resolveVizOptions(code, evaluated) {
 }
 __name(resolveVizOptions, "resolveVizOptions");
 
+// src/codeView/mixer/backdropCall.ts
+function stringLiteral(raw) {
+  const m = /^(['"`])([\s\S]*)\1$/.exec(raw);
+  if (!m) return null;
+  if (m[1] === "`" && m[2].includes("${")) return null;
+  if (m[2].includes(m[1])) return null;
+  return m[2];
+}
+__name(stringLiteral, "stringLiteral");
+function isVizMethod(name) {
+  return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, name);
+}
+__name(isVizMethod, "isVizMethod");
+function readBackdropCall(call, onMaster) {
+  if (call.name === "viz") {
+    const nameArg = call.args[0];
+    const optionsArg2 = call.args[1];
+    const options = optionsArg2 ? readVizOptionsLiteral(optionsArg2.raw) : null;
+    if (!onMaster && !(options?.kind === "literal" && options.values.backdrop === true)) return null;
+    return { name: nameArg ? stringLiteral(nameArg.raw) : null, options, call };
+  }
+  const underscore = call.name.startsWith("_");
+  const method = underscore ? call.name.slice(1) : call.name;
+  if (!isVizMethod(method)) return null;
+  if (underscore && !onMaster) return null;
+  const optionsArg = call.args[0];
+  return {
+    name: STRUDEL_VIZ_METHODS[method],
+    options: optionsArg ? readVizOptionsLiteral(optionsArg.raw) : null,
+    call
+  };
+}
+__name(readBackdropCall, "readBackdropCall");
+function lastTrackBackdropCall(doc, { declaredOnly: declaredOnly2 = false } = {}) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return null;
+  let last = null;
+  for (const node of statements) {
+    const body = node.type === "LabeledStatement" ? node.body : node;
+    if (body?.type !== "ExpressionStatement") continue;
+    const expr = body.expression;
+    if (expr?.type === "CallExpression" && expr.callee?.type === "Identifier" && expr.callee.name === "all") continue;
+    const chain = collectChain(doc, expr, { ref: null });
+    const r = lastBackdropCall(declaredOnly2 ? chain.filter((c) => c.name === "viz") : chain, false);
+    if (r) last = r;
+  }
+  return last;
+}
+__name(lastTrackBackdropCall, "lastTrackBackdropCall");
+function lastBackdropCall(chain, onMaster) {
+  let last = null;
+  for (const c of chain) {
+    const r = readBackdropCall(c, onMaster);
+    if (r) last = r;
+  }
+  return last;
+}
+__name(lastBackdropCall, "lastBackdropCall");
+
 // src/codeView/mixer/masterEdit.ts
 var MASTER_UNITY_GAIN = 1;
 function matchAllArrow(node) {
@@ -7810,14 +7869,19 @@ function findMuteLine(doc) {
   return detectMasterAll(doc).find((m) => arrowBodyText(doc, m) === "silence");
 }
 __name(findMuteLine, "findMuteLine");
-function findVizBackdropCall(m) {
-  return m.chain.find((c) => c.name === "viz");
+function findMasterBackdrop(doc) {
+  let found = null;
+  for (const m of detectMasterAll(doc)) {
+    const bc = lastBackdropCall(m.chain, true);
+    if (bc) found = { m, bc };
+  }
+  return found;
 }
-__name(findVizBackdropCall, "findVizBackdropCall");
-function vizNameArg(c) {
-  return c.args.find((a) => /^['"`]/.test(a.raw));
+__name(findMasterBackdrop, "findMasterBackdrop");
+function masterBackdropCall(doc) {
+  return findMasterBackdrop(doc)?.bc ?? null;
 }
-__name(vizNameArg, "vizNameArg");
+__name(masterBackdropCall, "masterBackdropCall");
 function readMasterGain(doc) {
   const site = findMasterGainSite(doc);
   if (!site) return { value: MASTER_UNITY_GAIN, foreign: false };
@@ -7834,7 +7898,7 @@ __name(readMasterMute, "readMasterMute");
 function detectMasterAudioAll(doc) {
   return detectMasterAll(doc).find((m) => {
     if (arrowBodyText(doc, m) === "silence") return false;
-    if (m.chain.length >= 1 && m.chain.every((c) => c.name === "viz")) return false;
+    if (m.chain.length >= 1 && m.chain.every((c) => readBackdropCall(c, true) !== null)) return false;
     return true;
   });
 }
@@ -7868,18 +7932,9 @@ function adaptMasterChunk(doc, m) {
 }
 __name(adaptMasterChunk, "adaptMasterChunk");
 function readMasterViz(doc) {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m);
-    if (!v) continue;
-    const nameArg = vizNameArg(v);
-    if (!nameArg) continue;
-    const optionsArg = v.args.find((a) => a !== nameArg);
-    return {
-      name: nameArg.raw.slice(1, -1),
-      options: optionsArg ? readVizOptionsLiteral(optionsArg.raw) : null
-    };
-  }
-  return null;
+  const bc = masterBackdropCall(doc);
+  if (!bc || bc.name === null) return null;
+  return { name: bc.name, options: bc.options };
 }
 __name(readMasterViz, "readMasterViz");
 function scaleCall(value) {
@@ -7902,18 +7957,25 @@ function masterMuteEdit(doc, muted3) {
 }
 __name(masterMuteEdit, "masterMuteEdit");
 function masterVizEdit(doc, name) {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m);
-    if (!v) continue;
+  const found = findMasterBackdrop(doc);
+  if (found) {
+    const { m, bc } = found;
     if (name === null) {
       if (m.chain.length === 1) return removeStatement(doc, m.statementRange);
-      return { range: v.range, text: "" };
+      return { range: bc.call.range, text: "" };
     }
-    const nameArg = vizNameArg(v);
-    if (!nameArg) return null;
-    return { range: nameArg.range, text: JSON.stringify(name) };
+    if (bc.call.name === "viz") {
+      const nameArg = bc.call.args[0];
+      if (!nameArg || bc.name === null) return null;
+      return { range: nameArg.range, text: JSON.stringify(name) };
+    }
+    const optionsArg = bc.call.args[0];
+    return { range: bc.call.range, text: `.viz(${JSON.stringify(name)}${optionsArg ? `, ${optionsArg.raw}` : ""})` };
   }
-  if (name === null) return null;
+  if (name === null) {
+    const track = lastTrackBackdropCall(doc);
+    return track ? { range: track.call.range, text: "" } : null;
+  }
   return insertStatement(doc, `all(x => x.viz(${JSON.stringify(name)}, { backdrop: true }))`);
 }
 __name(masterVizEdit, "masterVizEdit");
@@ -13432,6 +13494,18 @@ function gridWritePlan(codec, next) {
 }
 __name(gridWritePlan, "gridWritePlan");
 
+// src/codeView/mixer/codeViz.ts
+function readCodeViz(doc) {
+  const master = masterBackdropCall(doc);
+  if (master) {
+    return master.name === null ? null : { name: master.name, options: master.options, level: "master" };
+  }
+  const track = lastTrackBackdropCall(doc, { declaredOnly: true });
+  if (!track || track.name === null) return null;
+  return { name: track.name, options: track.options, level: "track" };
+}
+__name(readCodeViz, "readCodeViz");
+
 // src/codeView/noteSounds.ts
 var VALUE_ONLY = /* @__PURE__ */ new Set([
   "gain",
@@ -17965,6 +18039,11 @@ var _StrudelEngine = class _StrudelEngine {
             configurable: true,
             writable: true,
             value: /* @__PURE__ */ __name(function(opts) {
+              if (masterTransformDepth > 0) {
+                capturedBackdropViz = renderer;
+                capturedBackdropVizOptions = opts && typeof opts === "object" ? opts : null;
+                return this;
+              }
               this._pendingViz = renderer;
               pendingChainViz = renderer;
               if (opts && typeof opts === "object") {
@@ -57692,6 +57771,7 @@ exports.publishIRSnapshot = publishIRSnapshot;
 exports.purgeLegacyMasterGain = purgeLegacyMasterGain;
 exports.putAsset = putAsset;
 exports.rateEditable = rateEditable;
+exports.readCodeViz = readCodeViz;
 exports.readCurrentCycle = readCurrentCycle;
 exports.readMasterGain = readMasterGain;
 exports.readMasterMute = readMasterMute;
