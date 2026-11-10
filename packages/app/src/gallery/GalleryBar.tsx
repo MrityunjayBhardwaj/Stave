@@ -172,7 +172,7 @@ export function GalleryCrumbs({ backLabel, onBack, onHome, middle = [], here, on
 }
 
 export const BAR_CSS = `
-.sg-crumbs { display: flex; align-items: center; gap: 8px; padding: 12px 24px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; color: var(--text-muted, var(--text-chrome)); position: sticky; top: 0; z-index: 2; background: var(--bg-elevated); }
+.sg-crumbs { display: flex; align-items: center; gap: 8px; padding: 12px 24px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; color: var(--text-muted, var(--text-chrome)); position: sticky; top: 0; z-index: 2; background: var(--bg-app); }
 .sg-crumb { background: none; border: 0; padding: 0; color: var(--text-chrome); cursor: pointer; font: inherit; }
 .sg-crumb:hover { color: var(--text-primary); text-decoration: underline; }
 .sg-crumb-sep { opacity: .6; }
