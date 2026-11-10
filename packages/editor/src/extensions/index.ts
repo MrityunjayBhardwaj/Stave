@@ -3,14 +3,27 @@
  *
  * Nothing in this directory imports the rest of the editor: the engine, the workspace and
  * the package entry depend on it, never the other way round. Strudel's registries are
- * handed to the host (`fromStrudel`), not imported.
+ * handed to the host (`fromStrudel`), not imported; the Console is reached through the
+ * `report` the package entry and the engine hand in.
  */
-export type { ExtensionManifest, ExtensionModule, ExtensionHost, SoundTrigger } from './types'
-export { createRecordingHost, fromStrudel, isNameTaken, RESIDUE } from './host'
-export type { HostRegistries, RecordingHost, NameTakenError } from './host'
+export type {
+  ExtensionLanguage,
+  ExtensionManifest,
+  ExtensionModule,
+  ExtensionProvides,
+  ExtensionHost,
+  StrudelHost,
+  StrudelPart,
+  StrudelProvides,
+  SoundTrigger,
+} from './types'
+export { createCommonHost, createRecordingHost, fromStrudel, isNameTaken, RESIDUE } from './host'
+export type { HostRegistries, PartRecording, RecordingHost, NameTakenError } from './host'
 export { createExtensionManager } from './manager'
-export type { ExtensionManager } from './manager'
+export type { ExtensionManager, PartDriver, PartLanguage } from './manager'
 export { enabledExtensionIds, isExtensionEnabled, setExtensionEnabled, onExtensionsEnabledChange } from './enablement'
 export { BUILTIN_EXTENSIONS } from './builtin'
-export { createExtensionAudio, pageExtensionAudio } from './audio'
-export type { ExtensionAudio, ExtensionAudioDoors } from './audio'
+export { createStrudelDriver, prepareStrudelParts } from './strudel'
+export type { ExtensionReport, ExtensionStrudelDoors } from './strudel'
+export { createExtensionRuntime, pageExtensions } from './runtime'
+export type { ExtensionRuntime } from './runtime'

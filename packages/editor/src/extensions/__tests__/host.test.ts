@@ -1,5 +1,5 @@
 /**
- * #2509 — the recording host, against Strudel's REAL registries (`@strudel/webaudio`'s
+ * #2509 — the recording host (the Strudel part's, #2538), against Strudel's REAL registries (`@strudel/webaudio`'s
  * sound map, `@strudel/core`'s Pattern and controls) and the real `globalThis`.
  *
  * The headline test is "off means exactly as before": snapshot what an extension can
@@ -9,8 +9,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import * as webaudio from '@strudel/webaudio'
 import * as core from '@strudel/core'
-import { createRecordingHost, fromStrudel, isNameTaken, type HostRegistries } from '../host'
-import { testModule, TEST_SOUND, TEST_CONTROL, TEST_GLOBAL } from './testExtension'
+import { createCommonHost, createRecordingHost, fromStrudel, isNameTaken, type HostRegistries } from '../host'
+import { testPart, TEST_SOUND, TEST_CONTROL, TEST_GLOBAL } from './testExtension'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const g = globalThis as any
@@ -39,7 +39,7 @@ describe('createRecordingHost', () => {
   it('switching an extension on and then off leaves the sound map, Pattern and the globals exactly as before', async () => {
     const before = snapshot()
     const rec = createRecordingHost('zzext', reg)
-    await testModule().activate(rec.host)
+    await testPart().activate(rec.host)
 
     // it really did register each kind (otherwise "unchanged" would prove nothing)
     expect(Object.keys((webaudio as any).soundMap.get())).toContain(TEST_SOUND)
@@ -54,7 +54,7 @@ describe('createRecordingHost', () => {
   it('the control it adds works as Strudel controls do, as a method and as a global', async () => {
     const rec = createRecordingHost('zzext', reg)
     try {
-      await testModule().activate(rec.host)
+      await testPart().activate(rec.host)
       const pat = (core as any).note('c4')[TEST_CONTROL]('hi')
       expect(pat.firstCycle()[0].value[TEST_CONTROL]).toBe('hi')
       expect(g[TEST_CONTROL]('hi').firstCycle()[0].value).toEqual({ [TEST_CONTROL]: 'hi' })
@@ -143,5 +143,28 @@ describe('createRecordingHost', () => {
     rec.undo()
     expect(() => rec.host.registerSound('zz_late', () => undefined)).toThrow(/switched off/)
     expect(Object.keys((webaudio as any).soundMap.get())).not.toContain('zz_late')
+  })
+})
+
+describe('createCommonHost (#2538)', () => {
+  it('names no language: it has an id and onDeactivate, and nothing else', () => {
+    const rec = createCommonHost('zzext')
+    expect(Object.keys(rec.host).sort()).toEqual(['id', 'onDeactivate'])
+    rec.undo()
+  })
+
+  it('undo runs its onDeactivate callbacks newest first, every one even if one throws, then refuses more', () => {
+    const order: string[] = []
+    const rec = createCommonHost('zzext')
+    rec.host.onDeactivate(() => order.push('a'))
+    rec.host.onDeactivate(() => {
+      order.push('b')
+      throw new Error('stuck')
+    })
+    rec.host.onDeactivate(() => order.push('c'))
+    expect(rec.undo()).toHaveLength(1)
+    expect(order).toEqual(['c', 'b', 'a'])
+    expect(rec.undo()).toEqual([])
+    expect(() => rec.host.onDeactivate(() => undefined)).toThrow(/switched off/)
   })
 })

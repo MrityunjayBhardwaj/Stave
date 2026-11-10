@@ -1,3 +1,6 @@
+import { pageExtensions } from './extensions'
+import { emitLog } from './engine/engineLog'
+
 // Pattern IR — universal music representation
 export type { IREvent, SourceLocation, IRPattern } from './codeView'
 export { merge, transpose, timestretch, filter, scaleGain } from './codeView'
@@ -320,6 +323,18 @@ export { getStorageStatus, subscribeStorageStatus } from './storageStatus'
 export type { StorageStatus } from './storageStatus'
 export type { ProjectDocInitResult } from './workspace/projectDoc'
 export { warmMonaco } from './workspace/warmMonaco'
+
+/**
+ * The page has loaded: switch on the person's extensions (#2538). Each one's common part
+ * comes on now, with no audio engine involved; its Strudel part follows when a Strudel
+ * engine starts. Failures go to the Console under the extension's name. Safe to call
+ * again; never rejects. The app calls it once, as the editor package loads.
+ */
+export function startPageExtensions(): Promise<void> {
+  return pageExtensions().start({
+    report: (level, message) => emitLog({ level, runtime: 'stave', message }),
+  })
+}
 export {
   undo,
   redo,

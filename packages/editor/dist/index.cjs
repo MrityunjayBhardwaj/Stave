@@ -64,6 +64,606 @@ var init_piano = __esm({
   }
 });
 
+// src/extensions/host.ts
+function fromStrudel(webaudio, core, globals = globalThis) {
+  const key3 = /* @__PURE__ */ __name((name) => name.toLowerCase().replace(/\s+/g, "_"), "key");
+  return {
+    sounds: {
+      has: /* @__PURE__ */ __name((name) => key3(name) in webaudio.soundMap.get(), "has"),
+      add: /* @__PURE__ */ __name((name, onTrigger, data) => webaudio.registerSound(key3(name), onTrigger, data), "add"),
+      remove: /* @__PURE__ */ __name((name) => webaudio.soundMap.setKey(key3(name), void 0), "remove")
+    },
+    controls: {
+      has: /* @__PURE__ */ __name((name) => name in core.Pattern.prototype, "has"),
+      add: /* @__PURE__ */ __name((name) => core.registerControl(name)[name], "add"),
+      remove: /* @__PURE__ */ __name((name) => {
+        delete core.Pattern.prototype[name];
+      }, "remove")
+    },
+    globals
+  };
+}
+__name(fromStrudel, "fromStrudel");
+function nameTaken(extensionId, kind, taken) {
+  const err = new Error(
+    `The ${extensionId} extension wants the ${kind} name "${taken}", but it is already in use, so it was not added.`
+  );
+  err.code = "EXTENSION_NAME_TAKEN";
+  err.extensionId = extensionId;
+  err.kind = kind;
+  err.taken = taken;
+  return err;
+}
+__name(nameTaken, "nameTaken");
+function createCommonHost(id) {
+  const onOff = [];
+  let closed = false;
+  return {
+    host: {
+      id,
+      onDeactivate(fn) {
+        if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`);
+        onOff.push(fn);
+      }
+    },
+    undo() {
+      closed = true;
+      const errors = [];
+      for (const fn of onOff.splice(0).reverse()) {
+        try {
+          fn();
+        } catch (e) {
+          errors.push(e);
+        }
+      }
+      return errors;
+    }
+  };
+}
+__name(createCommonHost, "createCommonHost");
+function createRecordingHost(id, reg, declared2) {
+  const declaredSounds = new Set((declared2?.sounds ?? []).map((n) => n.toLowerCase()));
+  const declaredControls = new Set(declared2?.controls ?? []);
+  const undeclared = /* @__PURE__ */ __name((kind, name) => new Error(`The ${id} extension registered the ${kind} "${name}" without declaring it in its manifest, so it was not added.`), "undeclared");
+  const undos = [];
+  const onOff = [];
+  const prepares = [];
+  let closed = false;
+  const open = /* @__PURE__ */ __name(() => {
+    if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`);
+  }, "open");
+  const host = {
+    id,
+    registerSound(name, onTrigger, data = {}) {
+      open();
+      if (declared2 && !declaredSounds.has(name.toLowerCase())) throw undeclared("sound", name);
+      if (reg.sounds.has(name)) throw nameTaken(id, "sound", name);
+      reg.sounds.add(name, onTrigger, data);
+      undos.push(() => reg.sounds.remove(name));
+    },
+    registerControl(name) {
+      open();
+      if (declared2 && !declaredControls.has(name)) throw undeclared("control", name);
+      if (reg.controls.has(name)) throw nameTaken(id, "control", name);
+      if (name in reg.globals) throw nameTaken(id, "global", name);
+      const fn = reg.controls.add(name);
+      undos.push(() => reg.controls.remove(name));
+      reg.globals[name] = fn;
+      undos.push(() => {
+        delete reg.globals[name];
+      });
+    },
+    setGlobal(name, value) {
+      open();
+      if (name in reg.globals) throw nameTaken(id, "global", name);
+      reg.globals[name] = value;
+      undos.push(() => {
+        delete reg.globals[name];
+      });
+    },
+    onDeactivate(fn) {
+      open();
+      onOff.push(fn);
+    },
+    onPrepare(fn) {
+      open();
+      prepares.push(fn);
+      undos.push(() => {
+        const i = prepares.indexOf(fn);
+        if (i >= 0) prepares.splice(i, 1);
+      });
+    }
+  };
+  return {
+    host,
+    undo() {
+      closed = true;
+      const errors = [];
+      for (const fn of [...onOff.splice(0).reverse(), ...undos.splice(0).reverse()]) {
+        try {
+          fn();
+        } catch (e) {
+          errors.push(e);
+        }
+      }
+      return errors;
+    },
+    preparers: /* @__PURE__ */ __name(() => [...prepares], "preparers")
+  };
+}
+__name(createRecordingHost, "createRecordingHost");
+
+// src/extensions/manager.ts
+var PART_LANGUAGE_SET = { strudel: true };
+var PART_LANGUAGES = Object.keys(PART_LANGUAGE_SET);
+function declares(m, language) {
+  return m.languages !== "*" && m.languages.includes(language);
+}
+__name(declares, "declares");
+function slots() {
+  const active2 = /* @__PURE__ */ new Map();
+  const pending2 = /* @__PURE__ */ new Map();
+  return {
+    active: active2,
+    pending: pending2,
+    on(key3, run) {
+      if (active2.has(key3)) return Promise.resolve();
+      const inFlight2 = pending2.get(key3);
+      if (inFlight2 && !inFlight2.cancelled) return inFlight2.promise;
+      const ticket = { cancelled: false, promise: Promise.resolve() };
+      const after = inFlight2 ? inFlight2.promise.catch(() => void 0) : Promise.resolve();
+      ticket.promise = after.then(async () => {
+        const out = await run(ticket);
+        if (!out) return;
+        if (ticket.cancelled) {
+          out.rec.undo();
+          return;
+        }
+        active2.set(key3, out.rec);
+        out.kept?.();
+      }).finally(() => {
+        if (pending2.get(key3) === ticket) pending2.delete(key3);
+      });
+      pending2.set(key3, ticket);
+      return ticket.promise;
+    },
+    off(key3) {
+      const inFlight2 = pending2.get(key3);
+      if (inFlight2) inFlight2.cancelled = true;
+      const rec = active2.get(key3);
+      if (!rec) return [];
+      active2.delete(key3);
+      return rec.undo();
+    }
+  };
+}
+__name(slots, "slots");
+async function activateThrough(rec, activate) {
+  try {
+    await activate();
+  } catch (e) {
+    const undoErrors = rec.undo();
+    if (undoErrors.length && typeof e === "object" && e !== null) e.undoErrors = undoErrors;
+    throw e;
+  }
+}
+__name(activateThrough, "activateThrough");
+function createExtensionManager(opts) {
+  const byId = /* @__PURE__ */ new Map();
+  for (const m of opts.manifests) {
+    if (byId.has(m.id)) throw new Error(`Two extensions share the id "${m.id}".`);
+    for (const language of Object.keys(m.provides ?? {})) {
+      if (!declares(m, language)) {
+        throw new Error(
+          `The ${m.id} extension says what it provides for ${language}, but ${language} is not one of the languages it lists.`
+        );
+      }
+    }
+    byId.set(m.id, m);
+  }
+  const common = slots();
+  const parts = slots();
+  const modules = /* @__PURE__ */ new Map();
+  const partKey = /* @__PURE__ */ __name((id, language) => `${id}\0${language}`, "partKey");
+  const partsOf = /* @__PURE__ */ __name((id) => [.../* @__PURE__ */ new Set([...parts.active.keys(), ...parts.pending.keys()])].filter((k) => k.startsWith(`${id}\0`)), "partsOf");
+  const manager = {
+    manifest: /* @__PURE__ */ __name((id) => byId.get(id), "manifest"),
+    isActive: /* @__PURE__ */ __name((id) => common.active.has(id), "isActive"),
+    activeIds: /* @__PURE__ */ __name(() => [...common.active.keys()], "activeIds"),
+    isPartActive: /* @__PURE__ */ __name((id, language) => parts.active.has(partKey(id, language)), "isPartActive"),
+    activate(id) {
+      const m = byId.get(id);
+      if (!m) return Promise.reject(new Error(`There is no extension called "${id}".`));
+      return common.on(id, async (ticket) => {
+        const mod = await m.load();
+        if (ticket.cancelled) return null;
+        for (const language of PART_LANGUAGES) {
+          if (mod[language] && !declares(m, language)) {
+            throw new Error(`it has a ${language} part, but ${language} is not one of the languages it lists`);
+          }
+        }
+        const rec = createCommonHost(m.id);
+        await activateThrough(rec, () => mod.activate?.(rec.host));
+        return { rec, kept: /* @__PURE__ */ __name(() => modules.set(id, mod), "kept") };
+      });
+    },
+    activatePart(id, language) {
+      const m = byId.get(id);
+      const mod = modules.get(id);
+      if (!m || !mod) {
+        return Promise.reject(new Error(`The ${id} extension is not switched on, so its ${language} part cannot be.`));
+      }
+      const part = mod[language];
+      const driver = opts.parts?.[language];
+      if (!part || !driver) return Promise.resolve();
+      return parts.on(partKey(id, language), async (ticket) => {
+        await driver.before?.(m, part);
+        if (ticket.cancelled) return null;
+        const rec = driver.record(m);
+        await activateThrough(rec, () => part.activate(rec.host));
+        return { rec };
+      });
+    },
+    deactivate(id) {
+      const errors = [];
+      for (const key3 of partsOf(id).reverse()) errors.push(...parts.off(key3));
+      errors.push(...common.off(id));
+      modules.delete(id);
+      return errors;
+    },
+    async sync(ids) {
+      for (const id of [...common.active.keys(), ...common.pending.keys()]) if (!ids.has(id)) manager.deactivate(id);
+      const failed = [];
+      const unknown = [...ids].filter((id) => !byId.has(id));
+      await Promise.all(
+        [...ids].filter((id) => byId.has(id)).map(
+          (id) => manager.activate(id).catch((error) => {
+            failed.push({ id, error });
+          })
+        )
+      );
+      return { failed, unknown };
+    },
+    preparers() {
+      const out = [];
+      for (const [key3, rec] of parts.active) {
+        const id = key3.slice(0, key3.indexOf("\0"));
+        for (const run of rec.preparers?.() ?? []) out.push({ id, run });
+      }
+      return out;
+    }
+  };
+  return manager;
+}
+__name(createExtensionManager, "createExtensionManager");
+
+// src/extensions/enablement.ts
+var STORAGE = "stave:extensions";
+function storage() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+__name(storage, "storage");
+var unsaved = /* @__PURE__ */ new Map();
+function read() {
+  let ids;
+  try {
+    const raw = storage()?.getItem(STORAGE);
+    const parsed = raw ? JSON.parse(raw) : [];
+    ids = new Set(Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : []);
+  } catch {
+    ids = /* @__PURE__ */ new Set();
+  }
+  for (const [id, on] of unsaved) {
+    if (on) ids.add(id);
+    else ids.delete(id);
+  }
+  return ids;
+}
+__name(read, "read");
+var listeners = /* @__PURE__ */ new Set();
+function enabledExtensionIds() {
+  return read();
+}
+__name(enabledExtensionIds, "enabledExtensionIds");
+function onExtensionsEnabledChange(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+__name(onExtensionsEnabledChange, "onExtensionsEnabledChange");
+
+// src/extensions/builtin.ts
+var BUILTIN_EXTENSIONS = [];
+
+// src/extensions/strudel.ts
+function messageOf(e) {
+  if (typeof e === "object" && e !== null && typeof e.message === "string") {
+    return e.message;
+  }
+  return String(e);
+}
+__name(messageOf, "messageOf");
+function createStrudelDriver(doors) {
+  const handedToStrudel = /* @__PURE__ */ new Set();
+  const attached = /* @__PURE__ */ __name(() => {
+    const d = doors();
+    if (!d) throw new Error("the Strudel engine has not started");
+    return d;
+  }, "attached");
+  return {
+    async before(_m, part) {
+      for (const url of part.worklets ?? []) {
+        const d = attached();
+        const live = await d.liveContext();
+        if (!live?.audioWorklet) throw new Error("this browser cannot run audio worklets, which it needs");
+        try {
+          await live.audioWorklet.addModule(url);
+        } catch (e) {
+          throw new Error(`its audio worklet did not load (${messageOf(e)})`);
+        }
+        if (!handedToStrudel.has(url)) {
+          handedToStrudel.add(url);
+          d.registerWorklet(url);
+        }
+      }
+    },
+    // Always the declared list, empty if the manifest declares none: the host refuses
+    // every sound and control not on it.
+    record: /* @__PURE__ */ __name((m) => createRecordingHost(m.id, attached().registries(), m.provides?.strudel ?? {}), "record")
+  };
+}
+__name(createStrudelDriver, "createStrudelDriver");
+async function prepareStrudelParts(manager, report2, capMs, signal) {
+  if (signal?.aborted) return;
+  const nameOf2 = /* @__PURE__ */ __name((id) => manager.manifest(id)?.name ?? id, "nameOf");
+  const jobs = manager.preparers();
+  if (!jobs.length) return;
+  const pending2 = new Set(jobs);
+  const all = Promise.all(
+    jobs.map(async (job) => {
+      try {
+        await job.run();
+      } catch (e) {
+        report2("error", `${nameOf2(job.id)} extension could not get ready to play: ${messageOf(e)}. The rest of the song plays without it.`);
+      } finally {
+        pending2.delete(job);
+      }
+    })
+  );
+  let timer;
+  let onAbort;
+  const ended = await Promise.race([
+    all.then(() => "done"),
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve("capped"), capMs);
+    }),
+    new Promise((resolve) => {
+      onAbort = /* @__PURE__ */ __name(() => resolve("cancelled"), "onAbort");
+      signal?.addEventListener("abort", onAbort, { once: true });
+    })
+  ]);
+  clearTimeout(timer);
+  if (onAbort) signal?.removeEventListener("abort", onAbort);
+  if (ended === "capped" && pending2.size) {
+    const names = [...new Set([...pending2].map((j) => j.id))].map(nameOf2).join(", ");
+    report2("warn", `${names} extension was still getting ready after ${Math.round(capMs / 100) / 10} s, so its sounds may be missing at the start.`);
+  }
+}
+__name(prepareStrudelParts, "prepareStrudelParts");
+
+// src/extensions/runtime.ts
+function createExtensionRuntime(opts) {
+  let strudel = null;
+  let pageReport = null;
+  const listeners22 = /* @__PURE__ */ new Set();
+  const report2 = /* @__PURE__ */ __name((level, message) => (pageReport ?? strudel?.report)?.(level, message), "report");
+  const manager = createExtensionManager({
+    manifests: opts.manifests,
+    parts: { strudel: createStrudelDriver(() => strudel) }
+  });
+  const nameOf2 = /* @__PURE__ */ __name((id) => manager.manifest(id)?.name ?? id, "nameOf");
+  const state6 = /* @__PURE__ */ __name(() => manager.activeIds().map((id) => `${id}:${manager.isPartActive(id, "strudel")}`).join("\n"), "state");
+  const failedLine = /* @__PURE__ */ __name((error) => {
+    const undoErrors = error?.undoErrors ?? [];
+    return undoErrors.length ? ` Undoing what it had added also failed: ${undoErrors.map(messageOf).join("; ")}.` : "";
+  }, "failedLine");
+  let queue2 = Promise.resolve();
+  function apply(ids) {
+    const run = /* @__PURE__ */ __name(async () => {
+      const before = state6();
+      for (const id of manager.activeIds()) {
+        if (ids.has(id)) continue;
+        for (const e of manager.deactivate(id)) {
+          report2("warn", `${nameOf2(id)} extension: switching it off did not undo everything (${messageOf(e)}).`);
+        }
+      }
+      const { failed } = await manager.sync(ids);
+      for (const { id, error } of failed) {
+        report2("error", `${nameOf2(id)} extension could not be switched on: ${messageOf(error)}.${failedLine(error)}`);
+      }
+      if (strudel) {
+        await Promise.all(
+          manager.activeIds().filter((id) => ids.has(id)).map(
+            (id) => manager.activatePart(id, "strudel").catch((error) => {
+              report2("error", `The ${nameOf2(id)} extension could not be switched on for Strudel: ${messageOf(error)}.${failedLine(error)}`);
+            })
+          )
+        );
+      }
+      if (state6() !== before) for (const fn of [...listeners22]) fn();
+    }, "run");
+    queue2 = queue2.then(run, run);
+    return queue2;
+  }
+  __name(apply, "apply");
+  let following = false;
+  function follow() {
+    if (!following) {
+      following = true;
+      opts.subscribe((ids) => void apply(ids));
+    }
+    return apply(opts.enabled());
+  }
+  __name(follow, "follow");
+  return {
+    manager,
+    start(o) {
+      pageReport = o.report;
+      return following ? queue2 : follow();
+    },
+    attachStrudel(doors) {
+      strudel = doors;
+      return follow();
+    },
+    prepare: /* @__PURE__ */ __name((capMs, signal) => prepareStrudelParts(manager, report2, capMs, signal), "prepare"),
+    onChange(fn) {
+      listeners22.add(fn);
+      return () => {
+        listeners22.delete(fn);
+      };
+    }
+  };
+}
+__name(createExtensionRuntime, "createExtensionRuntime");
+var page = null;
+function pageExtensions() {
+  page ?? (page = createExtensionRuntime({
+    manifests: BUILTIN_EXTENSIONS,
+    enabled: enabledExtensionIds,
+    subscribe: onExtensionsEnabledChange
+  }));
+  return page;
+}
+__name(pageExtensions, "pageExtensions");
+
+// src/engine/engineLog.ts
+var MAX_HISTORY = 500;
+var history = [];
+var dedupeIndex = /* @__PURE__ */ new Map();
+var listeners2 = /* @__PURE__ */ new Set();
+var fixedMarkers = /* @__PURE__ */ new Map();
+var fixedListeners = /* @__PURE__ */ new Set();
+var idSeq = 0;
+function fixedKey(runtime, source) {
+  return `${runtime}:${source ?? "*"}`;
+}
+__name(fixedKey, "fixedKey");
+function makeId() {
+  idSeq += 1;
+  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
+}
+__name(makeId, "makeId");
+function dedupeKey(p) {
+  return [p.level, p.runtime, p.source ?? "", p.line ?? "", p.message].join("\0");
+}
+__name(dedupeKey, "dedupeKey");
+function emitLog(partial) {
+  const key3 = dedupeKey(partial);
+  const existing = dedupeIndex.get(key3);
+  if (existing) {
+    existing.ts = Date.now();
+    existing.count = (existing.count ?? 1) + 1;
+    if (partial.alongside === void 0) delete existing.alongside;
+    else existing.alongside = partial.alongside;
+    queueMicrotask(() => {
+      for (const fn of listeners2) {
+        try {
+          fn(existing, history);
+        } catch {
+        }
+      }
+    });
+    return existing;
+  }
+  const entry = {
+    id: makeId(),
+    ts: Date.now(),
+    count: 1,
+    ...partial
+  };
+  history.push(entry);
+  dedupeIndex.set(key3, entry);
+  while (history.length > MAX_HISTORY) {
+    const info = history.findIndex((e) => e.level === "info");
+    const [r] = history.splice(info === -1 ? 0 : info, 1);
+    const rk = dedupeKey(r);
+    if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
+  }
+  queueMicrotask(() => {
+    for (const fn of listeners2) {
+      try {
+        fn(entry, history);
+      } catch {
+      }
+    }
+  });
+  return entry;
+}
+__name(emitLog, "emitLog");
+function subscribeLog(fn) {
+  listeners2.add(fn);
+  return () => {
+    listeners2.delete(fn);
+  };
+}
+__name(subscribeLog, "subscribeLog");
+function getLogHistory() {
+  return [...history];
+}
+__name(getLogHistory, "getLogHistory");
+function clearLog() {
+  history.length = 0;
+  dedupeIndex.clear();
+  fixedMarkers.clear();
+  for (const fn of listeners2) {
+    try {
+      fn(null, history);
+    } catch {
+    }
+  }
+}
+__name(clearLog, "clearLog");
+function emitFixed(input) {
+  const marker = {
+    runtime: input.runtime,
+    source: input.source,
+    ts: Date.now()
+  };
+  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
+  queueMicrotask(() => {
+    for (const fn of fixedListeners) {
+      try {
+        fn(marker, fixedMarkers);
+      } catch {
+      }
+    }
+  });
+  return marker;
+}
+__name(emitFixed, "emitFixed");
+function subscribeFixed(fn) {
+  fixedListeners.add(fn);
+  return () => {
+    fixedListeners.delete(fn);
+  };
+}
+__name(subscribeFixed, "subscribeFixed");
+function getFixedMarkers() {
+  return new Map(fixedMarkers);
+}
+__name(getFixedMarkers, "getFixedMarkers");
+function makeFixedKey(runtime, source) {
+  return fixedKey(runtime, source);
+}
+__name(makeFixedKey, "makeFixedKey");
+
 // src/codeView/chainMethod.ts
 function playingCall(chunk, names) {
   for (let i = chunk.chain.length - 1; i >= 0; i--) {
@@ -2453,12 +3053,12 @@ var BUILTIN_ALIASES = {
 };
 function resolveAliasesForEngine(custom, engine) {
   const out = {};
-  for (const [name, slots2] of Object.entries(BUILTIN_ALIASES)) {
-    const v = slots2[engine];
+  for (const [name, slots3] of Object.entries(BUILTIN_ALIASES)) {
+    const v = slots3[engine];
     if (v != null) out[name] = v;
   }
-  for (const [name, slots2] of Object.entries(custom)) {
-    const v = slots2[engine];
+  for (const [name, slots3] of Object.entries(custom)) {
+    const v = slots3[engine];
     if (v != null) out[name] = v;
   }
   return out;
@@ -2750,7 +3350,7 @@ var VIZ_FLAG_KEYS = {
   maxFps: "stave.viz.maxFps",
   maxDpr: "stave.viz.maxDpr"
 };
-function read(key3) {
+function read2(key3) {
   try {
     if (typeof localStorage === "undefined") return null;
     return localStorage.getItem(key3);
@@ -2758,22 +3358,22 @@ function read(key3) {
     return null;
   }
 }
-__name(read, "read");
+__name(read2, "read");
 function enabledByDefault(key3) {
-  return read(key3) !== "0";
+  return read2(key3) !== "0";
 }
 __name(enabledByDefault, "enabledByDefault");
 function optIn(key3) {
-  return read(key3) === "1";
+  return read2(key3) === "1";
 }
 __name(optIn, "optIn");
 function triState(key3) {
-  const v = read(key3);
+  const v = read2(key3);
   return v === "1" ? true : v === "0" ? false : null;
 }
 __name(triState, "triState");
 function numFlag(key3) {
-  const n = Number(read(key3));
+  const n = Number(read2(key3));
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 __name(numFlag, "numFlag");
@@ -4670,13 +5270,13 @@ function expandEuclid(play, op, baseOffset, contentStart) {
   let mask = bjorklund(k, n);
   if (rot) mask = rotateEuclid(mask, rot);
   const restSlot = IR.sleep(1);
-  const slots2 = mask.map((on) => on ? play : restSlot);
+  const slots3 = mask.map((on) => on ? play : restSlot);
   const closeParen = (rotArg ?? step).span.end + 1;
-  if (slots2.length === 1) return { node: slots2[0], closeParen };
+  if (slots3.length === 1) return { node: slots3[0], closeParen };
   return {
     node: {
       tag: "Seq",
-      children: slots2,
+      children: slots3,
       loc: [{ start: baseOffset + contentStart, end: baseOffset + closeParen }]
     },
     closeParen
@@ -9520,8 +10120,8 @@ function reemitRegion(cols, div, refined = false) {
 __name(reemitRegion, "reemitRegion");
 function stackedRegion(cols, div) {
   if (div < 2) return null;
-  const slots2 = cols.length / div;
-  if (!Number.isInteger(slots2) || slots2 < 1) return null;
+  const slots3 = cols.length / div;
+  if (!Number.isInteger(slots3) || slots3 < 1) return null;
   const sounds = [];
   for (const col of cols) for (const n of col) if (!sounds.includes(n.token)) sounds.push(n.token);
   if (sounds.length === 0) return null;
@@ -9546,7 +10146,7 @@ function stackedRegion(cols, div) {
     for (let c = 0; c < cols.length; c++) if (covered[c]) seq[c] = "_";
     parts.push(seq.join(" "));
   }
-  return `[${parts.join(", ")}]` + (slots2 > 1 ? `@${slots2}` : "");
+  return `[${parts.join(", ")}]` + (slots3 > 1 ? `@${slots3}` : "");
 }
 __name(stackedRegion, "stackedRegion");
 function sustainTokens(cols, div) {
@@ -9612,14 +10212,14 @@ __name(serializeStepGain, "serializeStepGain");
 function gridBars(model, bounds) {
   const cols = gridColumns(model.lanes, model.steps);
   if (cols === null) return null;
-  const slots2 = [];
+  const slots3 = [];
   for (let b = 0; b + 1 < bounds.length; b++) {
     const bar2 = cols.slice(bounds[b], bounds[b + 1]);
-    if (bar2.every((c) => c === "~")) slots2.push("~");
-    else if (bar2.length === 1) slots2.push(bar2[0]);
-    else slots2.push(`[${bar2.join(" ")}]`);
+    if (bar2.every((c) => c === "~")) slots3.push("~");
+    else if (bar2.length === 1) slots3.push(bar2[0]);
+    else slots3.push(`[${bar2.join(" ")}]`);
   }
-  return `<${slots2.join(" ")}>`;
+  return `<${slots3.join(" ")}>`;
 }
 __name(gridBars, "gridBars");
 function barBounds(model) {
@@ -9842,12 +10442,12 @@ function reemitRollRegionFlat(notes, from, to, div) {
       continue;
     }
     const end = c + div;
-    const slots2 = [];
+    const slots3 = [];
     let k = c;
     while (k < end) {
       const gg = at.get(k);
       if (!gg) {
-        slots2.push("~");
+        slots3.push("~");
         k++;
         continue;
       }
@@ -9855,12 +10455,12 @@ function reemitRollRegionFlat(notes, from, to, div) {
         crossed = true;
         break;
       }
-      slots2.push(groupToken({ pitches: gg.pitches, duration: gg.duration }));
+      slots3.push(groupToken({ pitches: gg.pitches, duration: gg.duration }));
       k += gg.duration;
     }
     if (crossed) break;
     tokens.push(
-      slots2.every((s) => s === "~") ? "~" : slots2.length === 1 ? slots2[0] : `[${slots2.join(" ")}]`
+      slots3.every((s) => s === "~") ? "~" : slots3.length === 1 ? slots3[0] : `[${slots3.join(" ")}]`
     );
     c = end;
   }
@@ -9998,7 +10598,7 @@ function rollBars(groups, bounds) {
   if (!bounds.every((x) => Number.isInteger(x))) return null;
   const bars = bounds.length - 1;
   const starts = [...groups.keys()].sort((a, b2) => a - b2);
-  const slots2 = [];
+  const slots3 = [];
   let b = 0;
   while (b < bars) {
     const barStart = bounds[b];
@@ -10009,12 +10609,12 @@ function rollBars(groups, bounds) {
     if (atStart && k >= 1) {
       const heldEnd = barStart + atStart.duration;
       if (starts.some((s) => s > barStart && s < heldEnd)) return null;
-      slots2.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
+      slots3.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
       b += k;
       continue;
     }
     if (perBar2 === 1) {
-      slots2.push("~");
+      slots3.push("~");
       b++;
       continue;
     }
@@ -10034,10 +10634,10 @@ function rollBars(groups, bounds) {
       consumed++;
     }
     if (consumed !== starts.filter((s) => s >= barStart && s < barEnd).length) return null;
-    slots2.push(tokens.every((t) => t === "~") ? "~" : `[${tokens.join(" ")}]`);
+    slots3.push(tokens.every((t) => t === "~") ? "~" : `[${tokens.join(" ")}]`);
     b++;
   }
-  return `<${slots2.join(" ")}>`;
+  return `<${slots3.join(" ")}>`;
 }
 __name(rollBars, "rollBars");
 function rollBarLanes(model, bounds) {
@@ -10047,7 +10647,7 @@ function rollBarLanes(model, bounds) {
   const notes = [...model.notes].sort((a, b2) => a.start - b2.start || a.duration - b2.duration);
   for (const n of notes)
     if (n.start < 0 || n.duration < 1 || n.start + n.duration > model.steps + E) return null;
-  const slots2 = [];
+  const slots3 = [];
   let b = 0;
   while (b < bars) {
     const barStart = bounds[b];
@@ -10055,7 +10655,7 @@ function rollBarLanes(model, bounds) {
     const perBar2 = barEnd - barStart;
     const over = notes.filter((n) => n.start < barEnd - E && n.start + n.duration > barStart + E);
     if (over.length === 0) {
-      slots2.push("~");
+      slots3.push("~");
       b++;
       continue;
     }
@@ -10073,7 +10673,7 @@ function rollBarLanes(model, bounds) {
         if (str === null) return null;
         strings.push(str);
       }
-      slots2.push(`[${strings.join(", ")}]`);
+      slots3.push(`[${strings.join(", ")}]`);
       b++;
       continue;
     }
@@ -10085,10 +10685,10 @@ function rollBarLanes(model, bounds) {
     if (k < 1) return null;
     if (notes.some((n) => n.start > barStart + E && n.start < barStart + dur - E)) return null;
     const body = groupBody({ pitches: held2.map((n) => n.pitch), duration: dur });
-    slots2.push(k === 1 ? body : `${body}@${k}`);
+    slots3.push(k === 1 ? body : `${body}@${k}`);
     b += k;
   }
-  return `<${slots2.join(" ")}>`;
+  return `<${slots3.join(" ")}>`;
 }
 __name(rollBarLanes, "rollBarLanes");
 function serializeRollGain(model) {
@@ -10271,7 +10871,7 @@ function readOps(ops) {
 }
 __name(readOps, "readOps");
 function groupSlots(pat, allowNumeric) {
-  const slots2 = [];
+  const slots3 = [];
   for (const el of pat.source_) {
     const opts = el.options_ ?? {};
     const ops = opts.ops ?? [];
@@ -10285,7 +10885,7 @@ function groupSlots(pat, allowNumeric) {
     if (isAtom(el.source_)) {
       if (isRestAtom(el.source_)) {
         if (ops.length) return { reason: 'a ":" variant on a rest has nothing to name' };
-        slots2.push({ atoms: [], units });
+        slots3.push({ atoms: [], units });
         continue;
       }
       const token = tokenOf(el.source_, ops);
@@ -10293,15 +10893,15 @@ function groupSlots(pat, allowNumeric) {
         return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
       }
       if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
-      slots2.push({ atoms: [token], units });
+      slots3.push({ atoms: [token], units });
       continue;
     }
     const chord = chordAtoms(el.source_, allowNumeric);
     if (!Array.isArray(chord)) return chord;
-    slots2.push({ atoms: chord, units });
+    slots3.push({ atoms: chord, units });
   }
-  if (slots2.length === 0) return { reason: "empty group" };
-  return slots2;
+  if (slots3.length === 0) return { reason: "empty group" };
+  return slots3;
 }
 __name(groupSlots, "groupSlots");
 function chordAtoms(pat, allowNumeric) {
@@ -10373,19 +10973,19 @@ function elementToSteps(el, allowNumeric) {
     if (mult > 1 && weight > 1) {
       return { reason: "* combined with @ is beyond the editable subset" };
     }
-    const slots2 = groupSlots(el.source_, allowNumeric);
-    if (!Array.isArray(slots2)) return slots2;
+    const slots3 = groupSlots(el.source_, allowNumeric);
+    if (!Array.isArray(slots3)) return slots3;
     if (mult > 1) {
       const sub = [];
       for (let r = 0; r < mult; r++) {
-        for (const s of slots2) sub.push({ atoms: [...s.atoms], units: s.units });
+        for (const s of slots3) sub.push({ atoms: [...s.atoms], units: s.units });
       }
       return [{ atoms: [], elongation: weight, sub }];
     }
-    if (slots2.length === 1 && slots2[0].units === 1) {
-      return [{ atoms: slots2[0].atoms, elongation: weight, sub: null }];
+    if (slots3.length === 1 && slots3[0].units === 1) {
+      return [{ atoms: slots3[0].atoms, elongation: weight, sub: null }];
     }
-    return [{ atoms: [], elongation: weight, sub: slots2 }];
+    return [{ atoms: [], elongation: weight, sub: slots3 }];
   }
   const atom = el.source_;
   const rest = isRestAtom(atom);
@@ -10467,9 +11067,9 @@ var tokensOf = /* @__PURE__ */ __name((cols) => cols.map((c) => c.map((n) => ({ 
 function toCells(steps, div) {
   const cells = [];
   for (const step of steps) {
-    const slots2 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const slots3 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
     const total = stepUnits(step);
-    for (const slot of slots2) {
+    for (const slot of slots3) {
       const span = div / total * slot.units;
       cells.push(slot.atoms.map((token) => ({ token, duration: span })));
       for (let j = 1; j < span; j++) cells.push([]);
@@ -11649,9 +12249,9 @@ function rollFromAltElements(mini, viewScale = UNREFINED) {
   let sawNamed = false;
   for (const barSteps of perBarSteps) {
     for (const step of barSteps) {
-      const slots2 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+      const slots3 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
       const total = stepUnits(step);
-      for (const slot of slots2) {
+      for (const slot of slots3) {
         const span = step.elongation * div * slot.units / total;
         for (const token of slot.atoms) {
           const isNum = /^-?\d+$/.test(token);
@@ -12139,9 +12739,9 @@ function parsePianoRollCore(mini, viewScale = UNREFINED) {
   let sawNumeric = false;
   let sawNamed = false;
   for (const step of tok.steps) {
-    const slots2 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const slots3 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
     const total = stepUnits(step);
-    for (const slot of slots2) {
+    for (const slot of slots3) {
       const span = step.elongation * div * slot.units / total;
       for (const token of slot.atoms) {
         const isNum = /^-?\d+$/.test(token);
@@ -15094,127 +15694,6 @@ function trimToFrames(chunks, frames) {
 }
 __name(trimToFrames, "trimToFrames");
 
-// src/engine/engineLog.ts
-var MAX_HISTORY = 500;
-var history = [];
-var dedupeIndex = /* @__PURE__ */ new Map();
-var listeners = /* @__PURE__ */ new Set();
-var fixedMarkers = /* @__PURE__ */ new Map();
-var fixedListeners = /* @__PURE__ */ new Set();
-var idSeq = 0;
-function fixedKey(runtime, source) {
-  return `${runtime}:${source ?? "*"}`;
-}
-__name(fixedKey, "fixedKey");
-function makeId() {
-  idSeq += 1;
-  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
-}
-__name(makeId, "makeId");
-function dedupeKey(p) {
-  return [p.level, p.runtime, p.source ?? "", p.line ?? "", p.message].join("\0");
-}
-__name(dedupeKey, "dedupeKey");
-function emitLog(partial) {
-  const key3 = dedupeKey(partial);
-  const existing = dedupeIndex.get(key3);
-  if (existing) {
-    existing.ts = Date.now();
-    existing.count = (existing.count ?? 1) + 1;
-    if (partial.alongside === void 0) delete existing.alongside;
-    else existing.alongside = partial.alongside;
-    queueMicrotask(() => {
-      for (const fn of listeners) {
-        try {
-          fn(existing, history);
-        } catch {
-        }
-      }
-    });
-    return existing;
-  }
-  const entry = {
-    id: makeId(),
-    ts: Date.now(),
-    count: 1,
-    ...partial
-  };
-  history.push(entry);
-  dedupeIndex.set(key3, entry);
-  while (history.length > MAX_HISTORY) {
-    const info = history.findIndex((e) => e.level === "info");
-    const [r] = history.splice(info === -1 ? 0 : info, 1);
-    const rk = dedupeKey(r);
-    if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
-  }
-  queueMicrotask(() => {
-    for (const fn of listeners) {
-      try {
-        fn(entry, history);
-      } catch {
-      }
-    }
-  });
-  return entry;
-}
-__name(emitLog, "emitLog");
-function subscribeLog(fn) {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-__name(subscribeLog, "subscribeLog");
-function getLogHistory() {
-  return [...history];
-}
-__name(getLogHistory, "getLogHistory");
-function clearLog() {
-  history.length = 0;
-  dedupeIndex.clear();
-  fixedMarkers.clear();
-  for (const fn of listeners) {
-    try {
-      fn(null, history);
-    } catch {
-    }
-  }
-}
-__name(clearLog, "clearLog");
-function emitFixed(input) {
-  const marker = {
-    runtime: input.runtime,
-    source: input.source,
-    ts: Date.now()
-  };
-  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
-  queueMicrotask(() => {
-    for (const fn of fixedListeners) {
-      try {
-        fn(marker, fixedMarkers);
-      } catch {
-      }
-    }
-  });
-  return marker;
-}
-__name(emitFixed, "emitFixed");
-function subscribeFixed(fn) {
-  fixedListeners.add(fn);
-  return () => {
-    fixedListeners.delete(fn);
-  };
-}
-__name(subscribeFixed, "subscribeFixed");
-function getFixedMarkers() {
-  return new Map(fixedMarkers);
-}
-__name(getFixedMarkers, "getFixedMarkers");
-function makeFixedKey(runtime, source) {
-  return fixedKey(runtime, source);
-}
-__name(makeFixedKey, "makeFixedKey");
-
 // src/engine/renderPatternOffline.ts
 var RENDER_WINDOW_SECONDS = 4;
 var RENDER_WINDOW_LEAD_SECONDS = 0.05;
@@ -15501,358 +15980,6 @@ function createTransportHold(transport) {
   };
 }
 __name(createTransportHold, "createTransportHold");
-
-// src/extensions/host.ts
-function fromStrudel(webaudio, core, globals = globalThis) {
-  const key3 = /* @__PURE__ */ __name((name) => name.toLowerCase().replace(/\s+/g, "_"), "key");
-  return {
-    sounds: {
-      has: /* @__PURE__ */ __name((name) => key3(name) in webaudio.soundMap.get(), "has"),
-      add: /* @__PURE__ */ __name((name, onTrigger, data) => webaudio.registerSound(key3(name), onTrigger, data), "add"),
-      remove: /* @__PURE__ */ __name((name) => webaudio.soundMap.setKey(key3(name), void 0), "remove")
-    },
-    controls: {
-      has: /* @__PURE__ */ __name((name) => name in core.Pattern.prototype, "has"),
-      add: /* @__PURE__ */ __name((name) => core.registerControl(name)[name], "add"),
-      remove: /* @__PURE__ */ __name((name) => {
-        delete core.Pattern.prototype[name];
-      }, "remove")
-    },
-    globals
-  };
-}
-__name(fromStrudel, "fromStrudel");
-function nameTaken(extensionId, kind, taken) {
-  const err = new Error(
-    `The ${extensionId} extension wants the ${kind} name "${taken}", but it is already in use, so it was not added.`
-  );
-  err.code = "EXTENSION_NAME_TAKEN";
-  err.extensionId = extensionId;
-  err.kind = kind;
-  err.taken = taken;
-  return err;
-}
-__name(nameTaken, "nameTaken");
-function createRecordingHost(id, reg, declared2) {
-  const declaredSounds = new Set((declared2?.sounds ?? []).map((n) => n.toLowerCase()));
-  const declaredControls = new Set(declared2?.controls ?? []);
-  const undeclared = /* @__PURE__ */ __name((kind, name) => new Error(`The ${id} extension registered the ${kind} "${name}" without declaring it in its manifest, so it was not added.`), "undeclared");
-  const undos = [];
-  const onOff = [];
-  const prepares = [];
-  let closed = false;
-  const open = /* @__PURE__ */ __name(() => {
-    if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`);
-  }, "open");
-  const host = {
-    id,
-    registerSound(name, onTrigger, data = {}) {
-      open();
-      if (declared2 && !declaredSounds.has(name.toLowerCase())) throw undeclared("sound", name);
-      if (reg.sounds.has(name)) throw nameTaken(id, "sound", name);
-      reg.sounds.add(name, onTrigger, data);
-      undos.push(() => reg.sounds.remove(name));
-    },
-    registerControl(name) {
-      open();
-      if (declared2 && !declaredControls.has(name)) throw undeclared("control", name);
-      if (reg.controls.has(name)) throw nameTaken(id, "control", name);
-      if (name in reg.globals) throw nameTaken(id, "global", name);
-      const fn = reg.controls.add(name);
-      undos.push(() => reg.controls.remove(name));
-      reg.globals[name] = fn;
-      undos.push(() => {
-        delete reg.globals[name];
-      });
-    },
-    setGlobal(name, value) {
-      open();
-      if (name in reg.globals) throw nameTaken(id, "global", name);
-      reg.globals[name] = value;
-      undos.push(() => {
-        delete reg.globals[name];
-      });
-    },
-    onDeactivate(fn) {
-      open();
-      onOff.push(fn);
-    },
-    onPrepare(fn) {
-      open();
-      prepares.push(fn);
-      undos.push(() => {
-        const i = prepares.indexOf(fn);
-        if (i >= 0) prepares.splice(i, 1);
-      });
-    }
-  };
-  return {
-    host,
-    undo() {
-      closed = true;
-      const errors = [];
-      for (const fn of [...onOff.splice(0).reverse(), ...undos.splice(0).reverse()]) {
-        try {
-          fn();
-        } catch (e) {
-          errors.push(e);
-        }
-      }
-      return errors;
-    },
-    preparers: /* @__PURE__ */ __name(() => [...prepares], "preparers")
-  };
-}
-__name(createRecordingHost, "createRecordingHost");
-
-// src/extensions/manager.ts
-function createExtensionManager(opts) {
-  const byId = /* @__PURE__ */ new Map();
-  for (const m of opts.manifests) {
-    if (byId.has(m.id)) throw new Error(`Two extensions share the id "${m.id}".`);
-    byId.set(m.id, m);
-  }
-  const active2 = /* @__PURE__ */ new Map();
-  const pending2 = /* @__PURE__ */ new Map();
-  async function run(m, ticket) {
-    const mod = await m.load();
-    if (ticket.cancelled) return;
-    await opts.beforeActivate?.(m, mod);
-    if (ticket.cancelled) return;
-    const rec = createRecordingHost(m.id, opts.registries(), m.provides);
-    try {
-      await mod.activate(rec.host);
-    } catch (e) {
-      const undoErrors = rec.undo();
-      if (undoErrors.length && typeof e === "object" && e !== null) e.undoErrors = undoErrors;
-      throw e;
-    }
-    if (ticket.cancelled) {
-      rec.undo();
-      return;
-    }
-    active2.set(m.id, rec);
-  }
-  __name(run, "run");
-  const manager = {
-    manifest: /* @__PURE__ */ __name((id) => byId.get(id), "manifest"),
-    isActive: /* @__PURE__ */ __name((id) => active2.has(id), "isActive"),
-    activeIds: /* @__PURE__ */ __name(() => [...active2.keys()], "activeIds"),
-    activate(id) {
-      const m = byId.get(id);
-      if (!m) return Promise.reject(new Error(`There is no extension called "${id}".`));
-      if (active2.has(id)) return Promise.resolve();
-      const inFlight2 = pending2.get(id);
-      if (inFlight2 && !inFlight2.cancelled) return inFlight2.promise;
-      const ticket = { cancelled: false, promise: Promise.resolve() };
-      const after = inFlight2 ? inFlight2.promise.catch(() => void 0) : Promise.resolve();
-      ticket.promise = after.then(() => run(m, ticket)).finally(() => {
-        if (pending2.get(id) === ticket) pending2.delete(id);
-      });
-      pending2.set(id, ticket);
-      return ticket.promise;
-    },
-    deactivate(id) {
-      const inFlight2 = pending2.get(id);
-      if (inFlight2) inFlight2.cancelled = true;
-      const rec = active2.get(id);
-      if (!rec) return [];
-      active2.delete(id);
-      return rec.undo();
-    },
-    async sync(ids) {
-      for (const id of [...active2.keys(), ...pending2.keys()]) if (!ids.has(id)) manager.deactivate(id);
-      const failed = [];
-      const unknown = [...ids].filter((id) => !byId.has(id));
-      await Promise.all(
-        [...ids].filter((id) => byId.has(id)).map(
-          (id) => manager.activate(id).catch((error) => {
-            failed.push({ id, error });
-          })
-        )
-      );
-      return { failed, unknown };
-    },
-    preparers() {
-      const out = [];
-      for (const [id, rec] of active2) for (const run2 of rec.preparers()) out.push({ id, run: run2 });
-      return out;
-    }
-  };
-  return manager;
-}
-__name(createExtensionManager, "createExtensionManager");
-
-// src/extensions/enablement.ts
-var STORAGE = "stave:extensions";
-function storage() {
-  try {
-    if (typeof window === "undefined") return null;
-    if (typeof window.localStorage?.getItem !== "function") return null;
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-__name(storage, "storage");
-var unsaved = /* @__PURE__ */ new Map();
-function read2() {
-  let ids;
-  try {
-    const raw = storage()?.getItem(STORAGE);
-    const parsed = raw ? JSON.parse(raw) : [];
-    ids = new Set(Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : []);
-  } catch {
-    ids = /* @__PURE__ */ new Set();
-  }
-  for (const [id, on] of unsaved) {
-    if (on) ids.add(id);
-    else ids.delete(id);
-  }
-  return ids;
-}
-__name(read2, "read");
-var listeners2 = /* @__PURE__ */ new Set();
-function enabledExtensionIds() {
-  return read2();
-}
-__name(enabledExtensionIds, "enabledExtensionIds");
-function onExtensionsEnabledChange(fn) {
-  listeners2.add(fn);
-  return () => {
-    listeners2.delete(fn);
-  };
-}
-__name(onExtensionsEnabledChange, "onExtensionsEnabledChange");
-
-// src/extensions/builtin.ts
-var BUILTIN_EXTENSIONS = [];
-
-// src/extensions/audio.ts
-function messageOf(e) {
-  if (typeof e === "object" && e !== null && typeof e.message === "string") {
-    return e.message;
-  }
-  return String(e);
-}
-__name(messageOf, "messageOf");
-function createExtensionAudio(opts) {
-  let doors = null;
-  const handedToStrudel = /* @__PURE__ */ new Set();
-  const listeners22 = /* @__PURE__ */ new Set();
-  const nameOf2 = /* @__PURE__ */ __name((id) => manager.manifest(id)?.name ?? id, "nameOf");
-  const report2 = /* @__PURE__ */ __name((level, message) => doors?.report(level, message), "report");
-  const manager = createExtensionManager({
-    manifests: opts.manifests,
-    registries: /* @__PURE__ */ __name(() => {
-      if (!doors) throw new Error("Extensions cannot switch on before the audio engine has started.");
-      return doors.registries();
-    }, "registries"),
-    async beforeActivate(m, mod) {
-      for (const url of mod.worklets ?? []) {
-        const live = await doors?.liveContext();
-        if (!live?.audioWorklet) throw new Error("this browser cannot run audio worklets, which it needs");
-        try {
-          await live.audioWorklet.addModule(url);
-        } catch (e) {
-          throw new Error(`its audio worklet did not load (${messageOf(e)})`);
-        }
-        if (!handedToStrudel.has(url)) {
-          handedToStrudel.add(url);
-          doors?.registerWorklet(url);
-        }
-      }
-    }
-  });
-  let queue2 = Promise.resolve();
-  function apply(ids) {
-    const run = /* @__PURE__ */ __name(async () => {
-      const before = manager.activeIds().join("\n");
-      for (const id of manager.activeIds()) {
-        if (ids.has(id)) continue;
-        for (const e of manager.deactivate(id)) {
-          report2("warn", `${nameOf2(id)} extension: switching it off did not undo everything (${messageOf(e)}).`);
-        }
-      }
-      const { failed } = await manager.sync(ids);
-      for (const { id, error } of failed) {
-        const undoErrors = error?.undoErrors ?? [];
-        const left = undoErrors.length ? ` Undoing what it had added also failed: ${undoErrors.map(messageOf).join("; ")}.` : "";
-        report2("error", `${nameOf2(id)} extension could not be switched on: ${messageOf(error)}.${left}`);
-      }
-      if (manager.activeIds().join("\n") !== before) for (const fn of [...listeners22]) fn();
-    }, "run");
-    queue2 = queue2.then(run, run);
-    return queue2;
-  }
-  __name(apply, "apply");
-  let started2 = null;
-  return {
-    manager,
-    start(d) {
-      doors = d;
-      if (!started2) {
-        opts.subscribe((ids) => void apply(ids));
-        started2 = apply(opts.enabled());
-      } else {
-        started2 = apply(opts.enabled());
-      }
-      return started2;
-    },
-    async prepare(capMs, signal) {
-      if (signal?.aborted) return;
-      const jobs = manager.preparers();
-      if (!jobs.length) return;
-      const pending2 = new Set(jobs);
-      const all = Promise.all(
-        jobs.map(async (job) => {
-          try {
-            await job.run();
-          } catch (e) {
-            report2("error", `${nameOf2(job.id)} extension could not get ready to play: ${messageOf(e)}. The rest of the song plays without it.`);
-          } finally {
-            pending2.delete(job);
-          }
-        })
-      );
-      let timer;
-      let onAbort;
-      const ended = await Promise.race([
-        all.then(() => "done"),
-        new Promise((resolve) => {
-          timer = setTimeout(() => resolve("capped"), capMs);
-        }),
-        new Promise((resolve) => {
-          onAbort = /* @__PURE__ */ __name(() => resolve("cancelled"), "onAbort");
-          signal?.addEventListener("abort", onAbort, { once: true });
-        })
-      ]);
-      clearTimeout(timer);
-      if (onAbort) signal?.removeEventListener("abort", onAbort);
-      if (ended === "capped" && pending2.size) {
-        const names = [...new Set([...pending2].map((j) => j.id))].map(nameOf2).join(", ");
-        report2("warn", `${names} extension was still getting ready after ${Math.round(capMs / 100) / 10} s, so its sounds may be missing at the start.`);
-      }
-    },
-    onChange(fn) {
-      listeners22.add(fn);
-      return () => {
-        listeners22.delete(fn);
-      };
-    }
-  };
-}
-__name(createExtensionAudio, "createExtensionAudio");
-var page = null;
-function pageExtensionAudio() {
-  page ?? (page = createExtensionAudio({
-    manifests: BUILTIN_EXTENSIONS,
-    enabled: enabledExtensionIds,
-    subscribe: onExtensionsEnabledChange
-  }));
-  return page;
-}
-__name(pageExtensionAudio, "pageExtensionAudio");
 
 // src/engine/offlineGraph.ts
 var queue = Promise.resolve();
@@ -18147,8 +18274,8 @@ var _StrudelEngine = class _StrudelEngine {
     );
     const postAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
     console.log(`[StrudelEngine] aliasBank: soundMap keys ${preAliasCount} \u2192 ${postAliasCount} (\u0394 ${postAliasCount - preAliasCount}; expect non-negative)`);
-    const extensions = pageExtensionAudio();
-    const extensionsStarted = extensions.start({
+    const extensions = pageExtensions();
+    const extensionsStarted = extensions.attachStrudel({
       registries: /* @__PURE__ */ __name(() => fromStrudel(webaudioMod, coreMod), "registries"),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       registerWorklet: /* @__PURE__ */ __name((url) => webaudioMod.registerWorklet(url), "registerWorklet"),
@@ -18734,7 +18861,7 @@ var _StrudelEngine = class _StrudelEngine {
       })(),
       // #2510 — extensions get ready in the same wait (never inside a note). It reports
       // its own failures and never rejects.
-      pageExtensionAudio().prepare(capMs)
+      pageExtensions().prepare(capMs)
     ]);
   }
   /**
@@ -19133,7 +19260,7 @@ var _StrudelEngine = class _StrudelEngine {
     if (!this.audioCtx) {
       throw new Error("StrudelEngine not initialized \u2014 call init() first");
     }
-    await pageExtensionAudio().prepare(EXTENSIONS_RENDER_PREPARE_MS, signal);
+    await pageExtensions().prepare(EXTENSIONS_RENDER_PREPARE_MS, signal);
     if (signal?.aborted) throw new RenderCancelledError();
     const wa = await import('@strudel/webaudio');
     const options = {
@@ -56838,7 +56965,7 @@ __name(VizEditorChrome, "VizEditorChrome");
 
 // src/workspace/preview/codeBackdropOptions.ts
 var LEGACY = "";
-var slots = /* @__PURE__ */ new Map();
+var slots2 = /* @__PURE__ */ new Map();
 var listeners21 = /* @__PURE__ */ new Set();
 var version = 0;
 function sameOptions(a, b) {
@@ -56853,9 +56980,9 @@ function sameOptions(a, b) {
 __name(sameOptions, "sameOptions");
 function setCodeBackdropOptions(next, patternFileId) {
   const key3 = patternFileId ?? LEGACY;
-  if (sameOptions(slots.get(key3) ?? null, next)) return;
-  if (next) slots.set(key3, next);
-  else slots.delete(key3);
+  if (sameOptions(slots2.get(key3) ?? null, next)) return;
+  if (next) slots2.set(key3, next);
+  else slots2.delete(key3);
   version++;
   for (const l of [...listeners21]) l();
 }
@@ -56863,9 +56990,9 @@ __name(setCodeBackdropOptions, "setCodeBackdropOptions");
 function retainCodeBackdropOptions(openPatternFileIds) {
   const keep = new Set(openPatternFileIds);
   let dropped = false;
-  for (const key3 of [...slots.keys()]) {
+  for (const key3 of [...slots2.keys()]) {
     if (key3 === LEGACY || keep.has(key3)) continue;
-    slots.delete(key3);
+    slots2.delete(key3);
     dropped = true;
   }
   if (!dropped) return;
@@ -56874,7 +57001,7 @@ function retainCodeBackdropOptions(openPatternFileIds) {
 }
 __name(retainCodeBackdropOptions, "retainCodeBackdropOptions");
 function getCodeBackdropOptions(patternFileId) {
-  return slots.get(patternFileId ?? LEGACY) ?? null;
+  return slots2.get(patternFileId ?? LEGACY) ?? null;
 }
 __name(getCodeBackdropOptions, "getCodeBackdropOptions");
 function getCodeBackdropOptionsVersion() {
@@ -57733,6 +57860,14 @@ function isPersistableTab(t) {
   return t.kind === "editor" || t.kind === "app";
 }
 __name(isPersistableTab, "isPersistableTab");
+
+// src/index.ts
+function startPageExtensions() {
+  return pageExtensions().start({
+    report: /* @__PURE__ */ __name((level, message) => emitLog({ level, runtime: "stave", message }), "report")
+  });
+}
+__name(startPageExtensions, "startPageExtensions");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
 exports.ALIAS_MAP = ALIAS_MAP;
@@ -58297,6 +58432,7 @@ exports.splitArm = splitArm;
 exports.startAudition = startAudition;
 exports.startClipPreview = startClipPreview;
 exports.startHistoryDriver = startHistoryDriver;
+exports.startPageExtensions = startPageExtensions;
 exports.startSampleSound = startSampleSound;
 exports.startVisibleArea = startVisibleArea;
 exports.statementOffsetForSource = statementOffsetForSource;
