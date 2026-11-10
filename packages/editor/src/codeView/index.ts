@@ -131,7 +131,7 @@ export {
   stripContainingOffset,
 } from './mixer/stripModel'
 export { locateMiniParseError } from './miniSource/miniParseError'
-export { syntaxErrorAt } from './astParse'
+export { syntaxErrorAt, parseModule } from './astParse'
 export type { StripModel } from './mixer/stripModel'
 export { isValidTrackLabel } from './mixer/writeStrip'
 export type { StepLane, ResizeMode } from './notation'
@@ -241,6 +241,10 @@ export {
 export { masterGainEdit, masterMuteEdit, masterVizEdit, masterAudioLineEdit } from './mixer/masterEdit'
 export { renameEdit, gainEdit, panEdit, muteEdit, reconcileSoloMutes, soloMuteEdits } from './mixer/writeStrip'
 export type { SoloStripFacts } from './mixer/writeStrip'
+export { readVizOptionsLiteral, resolveVizOptions } from './mixer/vizOptionsLiteral'
+export type { CodeVizOptions } from './mixer/vizOptionsLiteral'
+export { readCodeViz } from './mixer/codeViz'
+export type { CodeViz } from './mixer/codeViz'
 export {
   knobEdit,
   knobRangeEdit,

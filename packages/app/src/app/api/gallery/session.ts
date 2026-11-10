@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 
+import type { GetServerSidePropsContext } from "next";
+
 import { auth, type StaveAccountClaim } from "../../../auth";
 import { signInAvailable } from "../../../authProviders";
 import { getDb, type Db } from "../../../db/client";
-import { databaseUnavailable, isDatabaseUnavailable } from "../../../db/errors";
+import { databaseUnavailable, isDatabaseUnavailable, withoutQueryValues } from "../../../db/errors";
 import {
   ensureAccountAuthor,
   getAccount,
@@ -14,7 +16,9 @@ import {
   type AccountClaimInput,
   type AccountRecord,
 } from "../../../db/repo/accounts";
+import { hasVisibleCharacter, isReservedName } from "../../../gallery/reservedNames";
 import { AUTHOR_KEY_HEADER, MAX_AUTHOR_NAME_CHARS, type GalleryVerified } from "../../../gallery/types";
+import { sessionRenewalDue } from "../../../sessionLifetime";
 import { authorForKey, keyOwnsAuthor } from "./authors";
 
 /*
@@ -48,10 +52,15 @@ import { authorForKey, keyOwnsAuthor } from "./authors";
  *       The signed-in account from the cookie; null when signed out, or when
  *       sign-in isn't set up (auth() failing counts as signed out).
  *
+ *   renewSessionCookie(req, res)
+ *       #2367 — puts a renewed session cookie on `res` when the request's cookie
+ *       is at least a day old. Only GET /api/gallery/me calls it: every page load
+ *       reads that route, and it answers no-store.
+ *
  *   sessionAuthor(req, { create? })      → { authorId, account } | null
  *       The author linked to the session's account. With `create` (default
  *       true) the first call for an account makes its author (named after the
- *       account) — "first gallery use". #2349: race-safe; any number of first
+ *       account, unless that name is reserved, #2368) — "first gallery use". #2349: race-safe; any number of first
  *       requests at once, on any servers, make ONE author and all answer with
  *       it (db/repo/accounts.ts ensureAccountAuthor). With create:false it only
  *       looks (ownership checks use this, so checking never makes one).
@@ -138,6 +147,26 @@ export async function sessionClaim(): Promise<{ claim: StaveAccountClaim; email:
   return { claim, email: session?.user?.email ?? "", name: session?.user?.name ?? "" };
 }
 
+/** Auth.js's session cookie: `__Secure-` over https, `.0`, `.1`… when it's long enough to be split. */
+const SESSION_COOKIE = /^(__Secure-)?authjs\.session-token(\.\d+)?=/;
+
+/**
+ * Keep an active session alive. Auth.js re-issues the cookie on every session
+ * read, but plain `auth()` drops it; this form of `auth()` hands it over, on the
+ * Response it's given. So: read into a spare Response, and copy the cookie across
+ * only when it's due, which keeps most answers free of Set-Cookie. Only the session
+ * cookie: the read also mints Auth.js's sign-in cookies (CSRF, callback URL), which
+ * a session read has no business setting.
+ */
+export async function renewSessionCookie(req: Request, res: Response): Promise<void> {
+  const reissued = new Response();
+  const session = await auth({ req, res: reissued } as unknown as GetServerSidePropsContext);
+  if (!sessionRenewalDue(session?.issuedAt)) return;
+  for (const cookie of reissued.headers.getSetCookie()) {
+    if (SESSION_COOKIE.test(cookie)) res.headers.append("Set-Cookie", cookie);
+  }
+}
+
 const claimInput = (claim: StaveAccountClaim, email: string): AccountClaimInput => ({
   accountHash: accountHashOf(claim.provider, claim.providerAccountId),
   provider: claim.provider,
@@ -161,24 +190,29 @@ export async function attachAuthorToAccount(
   return linked.ok ? { ok: true, account: linked.account } : linked;
 }
 
-/** The name a new author starts with: the account's name, else its login, else a placeholder. */
+/**
+ * The name a new author starts with: the account's name, else its login, else a
+ * placeholder. #2368 — a reserved one is passed over, never a reason to refuse
+ * the sign-in: a GitHub account really named "Stave" gets the next one down.
+ * Checked after the cut, because the cut is what gets stored. #2450 — so is a
+ * name with nothing visible in it, the way an empty one always was.
+ */
 function startingName(name: string, claim: StaveAccountClaim): string {
-  const n = (name || claim.login || "").trim();
-  return (n || "New artist").slice(0, MAX_AUTHOR_NAME_CHARS);
+  for (const candidate of [name, claim.login ?? ""]) {
+    const n = candidate.trim().slice(0, MAX_AUTHOR_NAME_CHARS);
+    if (hasVisibleCharacter(n) && !isReservedName(n)) return n;
+  }
+  return "New artist";
 }
 
 /**
  * The author linked to the session's account, made on first use unless
  * `create: false`. `req` is taken so callers never change if reading the
  * session moves onto the request; Auth.js reads it from the request scope today.
- *
- * `store` is ignored: profiles no longer live in Blob (#2352). It is still
- * accepted so a caller that passes it (DELETE /api/gallery/[id], until its own
- * move) keeps compiling; drop it once no caller does.
  */
 export async function sessionAuthor(
   _req: Request,
-  opts: { create?: boolean; store?: unknown } = {},
+  opts: { create?: boolean } = {},
 ): Promise<SessionAuthor | null> {
   const signedIn = await sessionClaim();
   if (!signedIn) return null;
@@ -226,7 +260,7 @@ export async function requireSessionAuthor(
   } catch (err) {
     // #2351 — the database can't be reached: "try again shortly", never a 500.
     if (!isDatabaseUnavailable(err)) throw err;
-    console.warn("[stave] gallery database unavailable:", err);
+    console.warn("[stave] gallery database unavailable:", withoutQueryValues(err));
     return databaseUnavailable();
   }
   if (!found) return Response.json({ error: "could not set up your gallery profile" }, { status: 500 });

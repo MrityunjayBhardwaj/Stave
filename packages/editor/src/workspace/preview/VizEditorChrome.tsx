@@ -22,11 +22,17 @@ import type { PreviewEditorChromeContext } from '../PreviewProvider'
 import type { AudioSourceRef } from '../types'
 import { findBuiltinExampleSource } from '../builtinExampleSources'
 import {
+  getVizSourceChoice,
+  onVizSourceChoiceChange,
+  setVizSourceChoice,
+} from './vizSourceChoice'
+import {
   getVizLive,
   onVizLiveChange,
   toggleVizLive,
 } from './vizLiveToggle'
 import { rendererForLanguage } from '../vizLanguages'
+import { isWaitingForGesture, onGestureWaitChange } from '../audioGestureGate'
 import { StaveInputsPanel } from './StaveInputsPanel'
 import { VizSettingsPopover, type VizPreviewMode } from './VizSettingsPopover'
 
@@ -96,13 +102,33 @@ export function VizEditorChrome({
     return onVizLiveChange(file.id, setLiveOn)
   }, [file.id])
 
-  // Per-tab source pin. Default is "follow most recent" so users who
+  // Per-file source pin. Default is "follow most recent" so users who
   // don't care still see the latest publisher on the bus. Built-in
   // examples are restored to the dropdown so the viz can be tested
   // without a pattern file currently playing.
-  const [selectedSource, setSelectedSource] = useState<AudioSourceRef>({
-    kind: 'default',
-  })
+  // #2429 — read from the per-file store, so the choice survives a tab switch
+  // (this chrome remounts) and a reload, and the shell's background reads the
+  // same value.
+  const [selectedSource, setSelectedSource] = useState<AudioSourceRef>(() =>
+    getVizSourceChoice(file.id),
+  )
+  useEffect(() => {
+    setSelectedSource(getVizSourceChoice(file.id))
+    return onVizSourceChoiceChange((id, ref) => {
+      if (id === file.id) setSelectedSource(ref)
+    })
+  }, [file.id])
+
+  // #2451 — after a reload this viz's own background may have its example sound
+  // waiting for the page's first click (browsers don't play audio before one).
+  // Say so, rather than leave the background looking silent for no reason.
+  const [soundWaiting, setSoundWaiting] = useState<boolean>(() =>
+    isWaitingForGesture(file.id),
+  )
+  useEffect(() => {
+    setSoundWaiting(isWaitingForGesture(file.id))
+    return onGestureWaitChange(() => setSoundWaiting(isWaitingForGesture(file.id)))
+  }, [file.id])
 
   const handleSourceChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -115,7 +141,16 @@ export function VizEditorChrome({
         next.kind === 'file'
           ? findBuiltinExampleSource(next.fileId)
           : undefined
-      setSelectedSource(next)
+      setVizSourceChoice(file.id, next)
+      // #788 — a live backdrop's teardown record must track the CURRENT
+      // source, so close/clear stops this one rather than the stale one.
+      // #2427 — told BEFORE the swap below starts the new built-in: the record
+      // is what lets a background's own example sound play alongside a pattern,
+      // so it must be in place when the sound starts or the start would stop
+      // the playing pattern.
+      if (isBackground && onBackdropSourceChange) {
+        onBackdropSourceChange(next)
+      }
       // Swap the built-in audio when previewing in EITHER placement (#784) —
       // side OR backdrop. Previously this only fired for a side preview, so
       // changing the source while a backdrop was live never swapped the sound.
@@ -128,20 +163,14 @@ export function VizEditorChrome({
           prevBuiltin.stopIfRunning()
         }
       }
-      // Repointing the preview's subscription only applies to a side tab; the
-      // backdrop follows the bus default (most-recent publisher).
+      // Repointing the side tab's subscription. The background needs no call:
+      // it reads the choice from the store written above (#2426, #2429).
       if (previewOpen && onChangePreviewSource) {
         onChangePreviewSource(next)
       }
-      // #788 — a live backdrop's teardown record must track the CURRENT
-      // source: the swap above already moved the audio, so tell the shell to
-      // re-key its bookkeeping or close/clear will stop the stale source and
-      // leak this one.
-      if (isBackground && onBackdropSourceChange) {
-        onBackdropSourceChange(next)
-      }
     },
     [
+      file.id,
       isBackground,
       previewOpen,
       previewPaused,
@@ -200,10 +229,12 @@ export function VizEditorChrome({
       if (previewMode === 'backdrop') onToggleBackground() // clear (no source)
       if (next === 'side') openSidePreview()
       if (next === 'backdrop') {
-        // Parity with the Play path (#784): start the selected source and hand
-        // its ref to the shell so teardown can stop it.
-        startSelectedBuiltin()
+        // Parity with the Play path (#784): hand the selected source's ref to
+        // the shell so teardown can stop it, then start it. #2427 — in that
+        // order, so the sound starts as this background's own (alongside a
+        // playing pattern, not stopping it).
         onToggleBackground(selectedSource)
+        startSelectedBuiltin()
       }
     },
     [
@@ -234,14 +265,14 @@ export function VizEditorChrome({
             placementPref === 'backdrop' ? 'backdrop' : 'side preview'
           }`
   // Start the preview in the preferred placement. Both placements start the
-  // selected built-in source first (#784) so the sample actually plays; the
-  // backdrop follows the bus default, which resolves to this just-started
-  // source (now the most-recent publisher). onToggleBackground mounts the
-  // backdrop for this group; openSidePreview opens a sibling split tab.
+  // selected built-in source (#784) so the sample actually plays; the viz's own
+  // background listens to the chosen source (#2426, #2429). onToggleBackground
+  // mounts the backdrop for this group; openSidePreview opens a sibling split tab.
   const activatePreferred = useCallback(() => {
     if (placementPref === 'backdrop') {
-      startSelectedBuiltin()
+      // #2427 — record first, then start (see handleSetPreviewMode)
       onToggleBackground(selectedSource)
+      startSelectedBuiltin()
     } else {
       openSidePreview()
     }
@@ -377,6 +408,23 @@ export function VizEditorChrome({
       >
         {'\u2699'}
       </button>
+
+      {soundWaiting && (
+        <span
+          data-testid="viz-chrome-sound-waiting"
+          title="Browsers only play sound after you interact with the page. Its sound starts on your first click or key press."
+          style={{
+            padding: '3px 8px',
+            borderRadius: 3,
+            fontSize: 10,
+            color: 'var(--foreground-muted)',
+            border: '1px dashed var(--border)',
+            userSelect: 'none',
+          }}
+        >
+          {'\u{1F507} sound starts on your first click'}
+        </span>
+      )}
 
       <div style={{ flex: 1 }} />
     </div>

@@ -39,7 +39,7 @@ describe("migrations", () => {
         const cfg = getTableConfig(t);
         expected.set(cfg.name, cfg.columns.map((c) => `${c.name}${c.notNull ? "!" : "?"}`));
       }
-      expect(tables.length).toBe(10);
+      expect(tables.length).toBe(11);
       expect(Object.fromEntries([...actual].sort())).toEqual(Object.fromEntries([...expected].sort()));
 
       // Running them again is a no-op (drizzle records what it applied).

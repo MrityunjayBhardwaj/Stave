@@ -39,6 +39,11 @@ const DURATIONS = [8, 16, 30, 60, 120, 300] as const;
 export type BounceState =
   | { phase: "choosing" }
   /**
+   * #2343 — the file came from the gallery and nobody has agreed to run it: the
+   * trust question is up, and nothing renders until it is answered.
+   */
+  | { phase: "asking" }
+  /**
    * #1356 — between Start and the first captured sample. The graph is allowed
    * to fall silent first, because a take started while the previous one is
    * still ringing records both. Usually imperceptible; up to ~1.3s when the
@@ -379,6 +384,12 @@ export function BounceModal({
 
           {state.phase === "preparing" && (
             <div style={styles.sectionLabel}>Waiting for the audio to settle…</div>
+          )}
+
+          {state.phase === "asking" && (
+            <div style={styles.sectionLabel} data-bounce-asking>
+              Waiting for your answer before running this code…
+            </div>
           )}
 
           {state.phase === "encoding" && (

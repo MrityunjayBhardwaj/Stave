@@ -64,6 +64,10 @@ const KNOWN: Record<string, { calls: Record<string, number>; why: string }> = {
     calls: { newEngine: 1, evaluate: 2 },
     why: "plays Stave's own built-in Library sketches on an engine of its own; never a project file",
   },
+  "gallery/recordAtPublish.ts": {
+    calls: { newEngine: 1, evaluate: 1 },
+    why: "records what the author's own patterns play at publish (#2487), on an engine of its own; a file still held or waiting on the trust step is skipped (mayEvaluateQuietly, asserted below)",
+  },
   "gallery/GalleryPlayer.tsx": {
     calls: { evaluate: 1, compileViz: 1, mountViz: 1 },
     why: "the gallery preview player, which runs inside the sealed sandbox frame (#2328)",
@@ -154,6 +158,13 @@ describe("no evaluate of project code goes around the gate", () => {
     // Play and a seek ask first
     expect(src).toMatch(/askBeforeRunning\(storeProjectId\(\), fileId, askToRun\)/);
     expect(src).toMatch(/function seekAfterAsking[\s\S]*?askBeforeRunning\(/);
+  });
+
+  it("recording at publish evaluates only files the run gate lets run quietly (#2487)", () => {
+    const rec = stripComments(readFileSync(path.join(SRC, "gallery/recordAtPublish.ts"), "utf8"));
+    // the gate is checked, per file, before the one call that evaluates
+    expect(rec).toMatch(/if \(!mayEvaluateQuietly\(projectId, f\.id\)\) continue;\s*try \{\s*const rec = await recordPattern\(/);
+    expect(rec.match(/\brecordPattern\(/g)).toHaveLength(2); // its definition and that one call
   });
 
   it("viz code: preview and backdrop are gated, the pop-out asks, registration skips untrusted files", () => {

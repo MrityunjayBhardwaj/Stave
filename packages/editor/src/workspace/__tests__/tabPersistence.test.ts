@@ -493,3 +493,134 @@ describe('SSR safety (no window)', () => {
     expect(() => clearShellState(PROJECT)).not.toThrow()
   })
 })
+
+// ---------------------------------------------------------------------------
+// #2471 — app tabs (a tab the host app draws, e.g. the Community Gallery)
+// ---------------------------------------------------------------------------
+
+describe('app tabs (#2471)', () => {
+  const GALLERY = new Set(['gallery'])
+  const galleryTab = {
+    kind: 'app' as const,
+    id: 'app-gallery',
+    appKey: 'gallery',
+    state: { view: 'entry', id: 'e-42', back: [{ view: 'browse' }] },
+  }
+
+  it('serializes an app tab with its state, keeping it active', () => {
+    const s = snap(
+      [group('g1', [{ kind: 'editor', id: 't1', fileId: 'f1' }, galleryTab], 'app-gallery')],
+      [['g1']],
+      'g1',
+    )
+    const out = serializeShellState(s)
+    expect(out.groups.g1.tabs).toEqual([
+      { kind: 'editor', id: 't1', fileId: 'f1' },
+      galleryTab,
+    ])
+    expect(out.groups.g1.activeTabId).toBe('app-gallery')
+  })
+
+  it('round-trips through JSON + validate + hydrate with its state intact', () => {
+    const s = snap(
+      [
+        group('g1', [{ kind: 'editor', id: 't1', fileId: 'f1' }]),
+        group('g2', [galleryTab], 'app-gallery'),
+      ],
+      [['g1', 'g2']],
+      'g2',
+    )
+    const wire = JSON.parse(JSON.stringify(serializeShellState(s)))
+    const validated = validatePersistedState(wire, new Set(['f1']), GALLERY)
+    expect(validated).not.toBeNull()
+    const back = hydrateSnapshot(validated!)
+    expect(back.groups.get('g2')!.tabs).toEqual([galleryTab])
+    expect(back.groups.get('g2')!.activeTabId).toBe('app-gallery')
+    expect(back.activeGroupId).toBe('g2')
+  })
+
+  it('round-trips through localStorage (save → load with the key known)', () => {
+    saveShellState(
+      PROJECT,
+      snap([group('g1', [galleryTab], 'app-gallery')], [['g1']], 'g1'),
+    )
+    const loaded = loadShellState(PROJECT, new Set(), GALLERY)
+    expect(loaded?.groups.g1.tabs).toEqual([galleryTab])
+    expect(loaded?.groups.g1.activeTabId).toBe('app-gallery')
+  })
+
+  it('drops an app tab whose key the host does not know, and reassigns the active tab', () => {
+    const wire = serializeShellState(
+      snap(
+        [group('g1', [{ kind: 'editor', id: 't1', fileId: 'f1' }, galleryTab], 'app-gallery')],
+        [['g1']],
+        'g1',
+      ),
+    )
+    const out = validatePersistedState(wire, new Set(['f1']), new Set(['something-else']))
+    expect(out?.groups.g1.tabs).toEqual([{ kind: 'editor', id: 't1', fileId: 'f1' }])
+    expect(out?.groups.g1.activeTabId).toBe('t1')
+  })
+
+  it('drops app tabs when the caller passes no keys (old callers restore none)', () => {
+    saveShellState(PROJECT, snap([group('g1', [galleryTab])], [['g1']], 'g1'))
+    const loaded = loadShellState(PROJECT, new Set())
+    expect(loaded).not.toBeNull()
+    expect(loaded!.groups.g1.tabs).toEqual([])
+    expect(loaded!.groups.g1.activeTabId).toBeNull()
+  })
+
+  it('keeps one tab per key: a repeated key elsewhere in the layout is dropped', () => {
+    const wire = {
+      version: SHELL_STATE_VERSION,
+      groups: {
+        g1: { id: 'g1', tabs: [galleryTab], activeTabId: 'app-gallery' },
+        g2: { id: 'g2', tabs: [{ ...galleryTab, id: 'app-gallery-2' }], activeTabId: 'app-gallery-2' },
+      },
+      layout: [['g1', 'g2']],
+      activeGroupId: 'g1',
+    }
+    const out = validatePersistedState(wire, new Set(), GALLERY)
+    expect(out?.groups.g1.tabs).toEqual([galleryTab])
+    expect(out?.groups.g2.tabs).toEqual([])
+  })
+
+  it('drops malformed app tabs (no id / no key)', () => {
+    const wire = {
+      version: SHELL_STATE_VERSION,
+      groups: {
+        g1: {
+          id: 'g1',
+          tabs: [{ kind: 'app', id: 'x' }, { kind: 'app', appKey: 'gallery' }, { kind: 'app', id: 7, appKey: 'gallery' }],
+          activeTabId: null,
+        },
+      },
+      layout: [['g1']],
+      activeGroupId: 'g1',
+    }
+    expect(validatePersistedState(wire, new Set(), GALLERY)?.groups.g1.tabs).toEqual([])
+  })
+
+  it('an app tab without state stays without state (no `state: undefined` key)', () => {
+    const bare = { kind: 'app' as const, id: 'app-gallery', appKey: 'gallery' }
+    const wire = JSON.parse(JSON.stringify(serializeShellState(snap([group('g1', [bare])], [['g1']], 'g1'))))
+    const out = validatePersistedState(wire, new Set(), GALLERY)
+    expect(out?.groups.g1.tabs).toEqual([bare])
+    expect('state' in (out!.groups.g1.tabs[0] as object)).toBe(false)
+  })
+
+  it('a layout saved before app tabs existed (editor tabs only, v1) still loads unchanged', () => {
+    const legacy = {
+      version: 1,
+      groups: {
+        g1: { id: 'g1', tabs: [{ kind: 'editor', id: 't1', fileId: 'f1', preview: true }], activeTabId: 't1', backgroundFileId: 'f1' },
+      },
+      layout: [['g1']],
+      activeGroupId: 'g1',
+    }
+    window.localStorage.setItem(shellStateKeyFor(PROJECT), JSON.stringify(legacy))
+    expect(loadShellState(PROJECT, new Set(['f1']), GALLERY)).toEqual(legacy)
+    // …and with no keys at all, exactly as before.
+    expect(loadShellState(PROJECT, new Set(['f1']))).toEqual(legacy)
+  })
+})

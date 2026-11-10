@@ -83,4 +83,13 @@ describe("shareStatus", () => {
   it("unknown while the list hasn't loaded, so a load error never reads as removed", () => {
     expect(shareStatus(SHARE, null)).toBe("unknown");
   });
+  it("#2519 a full list (the server's cap) can't vouch for a share older than its oldest entry", () => {
+    // The list holds entries published at 10..19; SHARE (5) is older than all of them.
+    const full = Array.from({ length: 10 }, (_, i) => ({ id: `e${i}`, publishedAt: 10 + i }) as GalleryEntry);
+    expect(shareStatus(SHARE, full, true)).toBe("unknown");
+    expect(shareStatus({ ...SHARE, publishedAt: 10 }, full, true)).toBe("unknown"); // same moment as the oldest: may be cut too
+    expect(shareStatus({ ...SHARE, publishedAt: 15 }, full, true)).toBe("missing"); // newer: it would be in the list
+    // Control: the same list, known complete, says missing for the old one.
+    expect(shareStatus(SHARE, full, false)).toBe("missing");
+  });
 });

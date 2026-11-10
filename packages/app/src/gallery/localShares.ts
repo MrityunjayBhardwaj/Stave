@@ -7,7 +7,7 @@
  * Clearing site data loses the tokens, and with them control of the uploads;
  * the publish dialog says so.
  */
-import { MAX_CLAIM_ITEMS, type ClaimRefusal, type ClaimRequest, type GalleryKind } from "./types";
+import { MAX_CLAIM_ITEMS, type ClaimRefusal, type ClaimRequest, type GalleryEntry, type GalleryKind } from "./types";
 
 export interface GalleryAuthor {
   name: string;
@@ -34,12 +34,12 @@ export interface LocalShare {
   claimRefusedBy?: string;
 }
 
-/** #2311 — a private short link this browser made (Copy Share Link). */
+/** #2311 — a private short link this browser made (Copy Private Link). */
 export interface LocalPrivateLink {
   id: string;
   /**
    * The whole link, key included, so it can be copied again. #2329 — kept only
-   * here, in this browser: the account's list never has it, so Copy again works
+   * here, in this browser: the account's list never has it, so Copy link works
    * only on the device that made the link.
    */
   url: string;
@@ -55,6 +55,7 @@ export interface LocalPrivateLink {
 const LINKS_KEY = "stave.share.links";
 const AUTHOR_KEY = "stave.gallery.author";
 const SHARES_KEY = "stave.gallery.shares";
+const LIST_CHANGES_KEY = "stave.gallery.listChanges";
 /** Fired on window when the local share list changes, so an open My shares tab refreshes. */
 export const LOCAL_SHARES_CHANGED = "stave:gallery-shares-changed";
 
@@ -113,6 +114,55 @@ export function addPrivateLink(link: LocalPrivateLink): void {
 export function removePrivateLink(id: string): void {
   write(LINKS_KEY, listPrivateLinks().filter((l) => l.id !== id));
   window.dispatchEvent(new Event(LOCAL_SHARES_CHANGED));
+}
+
+// ── #2433 what this browser just changed in the public list ──────────────────
+
+/**
+ * How long this browser's own change outranks a fetched list. The list is cached
+ * for at most 330 s (`LIST_CACHE` in api/gallery/route.ts: s-maxage + stale-while-
+ * revalidate), so any list read after this window was made after the change.
+ */
+export const LIST_CHANGE_WINDOW_MS = 6 * 60_000;
+
+/** `entry` is what to show for `id`; null means it has gone. */
+interface ListChange {
+  id: string;
+  entry: GalleryEntry | null;
+  at: number;
+}
+
+function recentListChanges(now: number): ListChange[] {
+  const list = read<ListChange[]>(LIST_CHANGES_KEY, []);
+  return Array.isArray(list) ? list.filter((c) => now - c.at < LIST_CHANGE_WINDOW_MS) : [];
+}
+
+/**
+ * Remember that this browser published, restored (`entry`) or removed (null) an
+ * entry, after the server agreed. The latest change to an id wins. If storage
+ * refuses, the server's answer still stands: the list only catches up later.
+ */
+export function recordListChange(id: string, entry: GalleryEntry | null, now = Date.now()): void {
+  try {
+    write(LIST_CHANGES_KEY, [...recentListChanges(now).filter((c) => c.id !== id), { id, entry, at: now }]);
+  } catch {
+    return;
+  }
+  window.dispatchEvent(new Event(LOCAL_SHARES_CHANGED));
+}
+
+/**
+ * The list with this browser's recent changes on top. The CDN keeps protecting
+ * the database; only this browser's view changes. An entry the list already has
+ * stays as the list has it.
+ */
+export function applyListChanges(entries: readonly GalleryEntry[], now = Date.now()): GalleryEntry[] {
+  const changes = recentListChanges(now);
+  const gone = new Set(changes.filter((c) => !c.entry).map((c) => c.id));
+  const kept = entries.filter((e) => !gone.has(e.id));
+  const have = new Set(kept.map((e) => e.id));
+  const added = changes.flatMap((c) => (c.entry && !have.has(c.id) ? [c.entry] : []));
+  return [...added, ...kept];
 }
 
 // ── #2320 claiming what this browser holds into the signed-in account ────────

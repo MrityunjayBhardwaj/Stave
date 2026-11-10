@@ -31,6 +31,7 @@ const KIND_LABEL: Record<VizRendererKind, string> = {
   p5: 'p5',
   hydra: 'hydra',
   glsl: 'glsl',
+  three: 'three.js',
 }
 
 /** Paint throttle — ~12fps is plenty for reading a value, and keeps the

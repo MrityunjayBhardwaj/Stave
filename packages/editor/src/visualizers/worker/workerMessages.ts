@@ -16,7 +16,7 @@ export interface MountMessage {
   /** Renderer kind — `'p5'` (B-3), `'hydra'` (B-5), or `'glsl'` (#281). The host
    *  installs the matching shim (none for glsl — raw WebGL2) + imports the matching
    *  library (none for glsl) + drives the matching draw. */
-  kind: 'p5' | 'hydra' | 'glsl'
+  kind: 'p5' | 'hydra' | 'glsl' | 'three'
   /** The sketch source (a transferable string, compiled in-worker — PLAN §7.3). */
   code: string
   /** Source label for error attribution (the workspace path). */

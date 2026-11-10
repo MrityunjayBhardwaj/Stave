@@ -3,7 +3,7 @@
  * `/api/gallery*` routes, so no store is needed. Every fixture's code bumps
  * `window.__galleryRuns` as a top-level statement — the signal that it RAN.
  */
-import type { Page, Route } from '@playwright/test'
+import { expect, type Page, type Route } from '@playwright/test'
 
 export const COUNTER_LINE = 'window.__galleryRuns = (window.__galleryRuns || 0) + 1'
 export const MUSIC_CODE = `${COUNTER_LINE}\ns("bd*4, hh*8")`
@@ -101,3 +101,24 @@ export async function routeGallery(page: Page, opts: { removed?: string[] } = {}
   return deleted
 }
 
+
+/**
+ * #2473 — on a desktop the gallery is a workspace tab: its tab in the tab bar,
+ * and its body (drawn only while the tab is in front). Phones keep the
+ * full-screen overlay (`[data-gallery="overlay"]`).
+ */
+export const GALLERY_TAB = '[data-workspace-tab="app-gallery"]'
+export const GALLERY_BODY = '[data-gallery="tab"]'
+
+/** Open the gallery from the View menu, as a person does; on a desktop it opens as a tab. */
+export async function openGalleryFromMenu(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'View', exact: true }).click()
+  await page.getByText('Community Gallery...', { exact: true }).click()
+  await expect(page.locator(GALLERY_BODY)).toBeVisible()
+}
+
+/** Close the gallery tab with its × (the tab ignores Esc). */
+export async function closeGalleryTab(page: Page): Promise<void> {
+  await page.locator('[data-testid="tab-close-app-gallery"]').click()
+  await expect(page.locator(GALLERY_TAB)).toHaveCount(0)
+}

@@ -1,6 +1,7 @@
 import NextAuth, { type Profile, type User } from "next-auth";
 
 import { authProviders, TEST_LOGIN_PROVIDER, type TestLoginUser } from "./authProviders";
+import { SESSION_MAX_AGE_SECONDS } from "./sessionLifetime";
 
 // #2319 — Auth.js (next-auth v5) for the community gallery.
 //
@@ -12,6 +13,11 @@ import { authProviders, TEST_LOGIN_PROVIDER, type TestLoginUser } from "./authPr
 // - Providers come from env (authProviders.ts); a provider with no env vars is
 //   not offered.
 // - The route handlers live at app/api/auth/[...nextauth]/route.ts.
+// - #2367: a session lasts 7 days and is renewed while you're active. Auth.js
+//   won't do the renewing for us: it re-issues the cookie only from its own
+//   /api/auth/session route, which this app never calls, and `auth()` throws that
+//   cookie away. `session.updateAge` only applies to database sessions, so it
+//   isn't set. app/api/gallery/session.ts renewSessionCookie does the renewing.
 //
 // The gallery reads the session through app/api/gallery/session.ts, which turns
 // `session.account` into the gallery author it is linked to.
@@ -32,6 +38,8 @@ export interface StaveAccountClaim {
 declare module "next-auth" {
   interface Session {
     account?: StaveAccountClaim;
+    /** #2367 — when the cookie was issued (the JWT's `iat`, in seconds), to tell whether it's due for renewal. */
+    issuedAt?: number;
   }
 }
 
@@ -56,7 +64,7 @@ export function claimFromSignIn(
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: authProviders(process.env),
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: SESSION_MAX_AGE_SECONDS },
   callbacks: {
     jwt({ token, account, profile, user }) {
       // `account` is present only on the sign-in itself; later calls keep the claim.
@@ -67,6 +75,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     session({ session, token }) {
       const claim = (token as { account?: StaveAccountClaim }).account;
       if (claim) session.account = claim;
+      if (typeof token.iat === "number") session.issuedAt = token.iat;
       return session;
     },
   },

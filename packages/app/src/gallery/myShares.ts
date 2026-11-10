@@ -10,7 +10,8 @@
  * no manage token is managed through the session.
  */
 import { deleteFromGallery, revokeShareLink } from "./client";
-import { removeLocalShare, removePrivateLink, type LocalPrivateLink, type LocalShare } from "./localShares";
+import { recordListChange, removeLocalShare, removePrivateLink, type LocalPrivateLink, type LocalShare } from "./localShares";
+import { collator, textMatches, type MineFilter, type MineSort } from "./galleryModel";
 import type { AccountLink, ClaimResponse, GalleryCollection, GalleryEntry, GalleryKind, MySharesResponse } from "./types";
 
 /** Where a row lives: on the signed-in account, or only in this browser's storage. */
@@ -74,7 +75,7 @@ export function myRows(account: MySharesResponse | null, local: LocalShare[], lo
     })),
     ...local.filter((s) => !onAccount.has(s.id) && notTaken(s)).map(fromLocalShare),
   ].sort((a, b) => b.publishedAt - a.publishedAt);
-  // #2329 — the account's list has no keys; Copy again comes from this browser's copy, when it has one.
+  // #2329 — the account's list has no keys; Copy link comes from this browser's copy, when it has one.
   const localUrl = new Map(localLinks.map((l) => [l.id, l.url]));
   const links: LinkRow[] = [
     ...account.links.map(
@@ -101,7 +102,10 @@ export interface DeleteDeps {
 export const defaultDeleteDeps = (confirm: DeleteDeps["confirm"]): DeleteDeps => ({
   confirm,
   remove: deleteFromGallery,
-  forget: removeLocalShare,
+  forget: (id) => {
+    recordListChange(id, null);
+    removeLocalShare(id);
+  },
 });
 
 /**
@@ -126,10 +130,110 @@ export type ShareStatus = "listed" | "missing" | "unknown";
 /**
  * Is a share still in the public list? `unknown` while the list hasn't loaded
  * (or failed), so a load error is never shown as "removed".
+ *
+ * #2519 — a `full` list (the server's cap was reached) holds only the newest
+ * entries: a share older than its oldest one is `unknown`, not missing. Calling
+ * it removed would offer Forget, which deletes it — a live entry.
  */
-export function shareStatus(share: { id: string }, listed: readonly GalleryEntry[] | null): ShareStatus {
+export function shareStatus(
+  share: { id: string; publishedAt: number },
+  listed: readonly GalleryEntry[] | null,
+  full = false,
+): ShareStatus {
   if (!listed) return "unknown";
-  return listed.some((e) => e.id === share.id) ? "listed" : "missing";
+  if (listed.some((e) => e.id === share.id)) return "listed";
+  if (full) {
+    const oldest = listed.reduce((min, e) => Math.min(min, e.publishedAt), Infinity);
+    if (!(share.publishedAt > oldest)) return "unknown";
+  }
+  return "missing";
+}
+
+// ── #2492 one list, each row's status at a glance ──────────────────────────
+
+/**
+ * The one status a row shows, in the order that matters most:
+ *   - `removed`: published from this browser, no longer in the gallery's list;
+ *   - `browser`: signed in, and this browser holds it but the account doesn't;
+ *   - `gallery`: in the public list;
+ *   - `private`: a private link.
+ * Null while the list hasn't loaded (or failed): a load error is never shown as
+ * "removed", and nothing is claimed that hasn't been read.
+ */
+export type SharePill = "gallery" | "private" | "browser" | "removed";
+
+export const PILL_LABEL: Record<SharePill, string> = {
+  gallery: "In the gallery",
+  private: "Private link",
+  browser: "Only in this browser",
+  removed: "Removed",
+};
+
+export type MineItem =
+  | { type: "entry"; row: ShareRow; status: ShareStatus; pill: SharePill | null; title: string; at: number }
+  | { type: "link"; row: LinkRow; pill: SharePill; title: string; at: number };
+
+/**
+ * My shares' rows as one list. An account row is live by definition (the account's
+ * list leaves taken-down entries out); a browser row is checked against the public
+ * list. "Only in this browser" is said only when signed in — signed out, everything
+ * here is this browser's, so saying it would tell you nothing.
+ */
+export function mineItems(
+  rows: MyRows,
+  listed: readonly GalleryEntry[] | null,
+  signedIn: boolean,
+  /** #2519 — the list may have been cut short (shareStatus). */
+  listFull = false,
+): MineItem[] {
+  const entries = rows.entries.map((row): MineItem => {
+    const status: ShareStatus = row.home === "account" ? "listed" : shareStatus(row, listed, listFull);
+    const pill: SharePill | null =
+      status === "missing"
+        ? "removed"
+        : signedIn && row.home === "browser"
+          ? "browser"
+          : status === "listed"
+            ? "gallery"
+            : null;
+    return { type: "entry", row, status, pill, title: row.title, at: row.publishedAt };
+  });
+  const links = rows.links.map(
+    (row): MineItem => ({
+      type: "link",
+      row,
+      pill: signedIn && row.home === "browser" ? "browser" : "private",
+      title: row.projectName,
+      at: row.createdAt,
+    }),
+  );
+  return [...entries, ...links];
+}
+
+const inMineFilter = (item: MineItem, filter: MineFilter) =>
+  filter === "all" || (filter === "published" ? item.type === "entry" : item.type === "link");
+
+const newestMine = (a: MineItem, b: MineItem) => b.at - a.at || collator.compare(a.row.id, b.row.id);
+const MINE_ORDER: Record<MineSort, (a: MineItem, b: MineItem) => number> = {
+  newest: newestMine,
+  oldest: (a, b) => -newestMine(a, b),
+  title: (a, b) => collator.compare(a.title.trim(), b.title.trim()) || newestMine(a, b),
+};
+
+/** The rows the filter and the search let through, in the chosen order. The search reads titles. */
+export function shownMine(items: readonly MineItem[], filter: MineFilter, query: string, sort: MineSort): MineItem[] {
+  return items.filter((i) => inMineFilter(i, filter) && textMatches([i.title], query)).sort(MINE_ORDER[sort]);
+}
+
+/** How many rows each filter would show for this search — the filter's counts. */
+export function countMine(items: readonly MineItem[], query: string): Record<MineFilter, number> {
+  const out: Record<MineFilter, number> = { all: 0, published: 0, links: 0 };
+  for (const i of items) {
+    if (!textMatches([i.title], query)) continue;
+    out.all += 1;
+    out[i.type === "entry" ? "published" : "links"] += 1;
+  }
+  return out;
 }
 
 /** #2311 — the same flow for a private short link: ask, revoke on the server, then forget. */

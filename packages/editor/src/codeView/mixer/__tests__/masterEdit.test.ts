@@ -264,7 +264,10 @@ describe('adaptMasterChunk', () => {
 
 describe('readMasterViz', () => {
   it('reads the backdrop viz name', () => {
-    expect(readMasterViz('all(x => x.viz("Prism", { backdrop: true }))')).toEqual({ name: 'Prism' })
+    expect(readMasterViz('all(x => x.viz("Prism", { backdrop: true }))')).toEqual({
+      name: 'Prism',
+      options: { kind: 'literal', values: { backdrop: true }, dynamic: [] },
+    })
   })
 
   it('is null when no master backdrop is declared', () => {
@@ -273,6 +276,32 @@ describe('readMasterViz', () => {
 
   it('ignores a channel-scoped inline viz (no backdrop flag)', () => {
     expect(readMasterViz('$: s("bd").viz("pianoroll")')).toBeNull()
+  })
+
+  // #2382 — a viz on the master line belongs to no track, so it IS the backdrop:
+  // the flag is implied there, options or not.
+  it('reads a master all() viz with NO backdrop flag as the backdrop', () => {
+    expect(
+      readMasterViz(`all(x => x.viz("Fold", { delay: 0.8, theme: 'transparent', emit: true }))`),
+    ).toMatchObject({ name: 'Fold' })
+    expect(readMasterViz('all(x => x.viz("Fold"))')).toEqual({ name: 'Fold', options: null })
+  })
+
+  // #2385 — the background follows the options the CODE writes, so the reader
+  // hands them over: literal values, and the keys only an evaluation can fill.
+  it('reads the options the code writes for the master viz', () => {
+    expect(
+      readMasterViz(`all(x => x.viz("Fold", { delay: 0.8, theme: 'transparent', emit: true, followers: [2, 3], levels: slider(0.3) }))`)
+        ?.options,
+    ).toEqual({
+      kind: 'literal',
+      values: { delay: 0.8, theme: 'transparent', emit: true, followers: [2, 3] },
+      dynamic: ['levels'],
+    })
+  })
+
+  it('still ignores a track viz when a master line without a viz is present', () => {
+    expect(readMasterViz('$: s("bd").viz("pianoroll")\nall(x => x.gain(0.8))')).toBeNull()
   })
 })
 
@@ -289,6 +318,21 @@ describe('masterVizEdit', () => {
     expect(applied(src, masterVizEdit(src, 'fscope'))).toBe(
       'all(x => x.viz("fscope", { backdrop: true }))',
     )
+  })
+
+  // #2382 — set bg on a document whose master viz carries options and no flag
+  // renames THAT call; it used to append a second, option-less line, so the
+  // sketch saw `{ backdrop: true }` and nothing else.
+  it('renames an unflagged master viz in place, keeping its options', () => {
+    const src = `$: s("bd")\nall(x => x.viz("Fold", { theme: 'transparent', emit: true }))`
+    expect(applied(src, masterVizEdit(src, 'spiral'))).toBe(
+      `$: s("bd")\nall(x => x.viz("spiral", { theme: 'transparent', emit: true }))`,
+    )
+  })
+
+  it('clears an unflagged master viz line', () => {
+    const src = '$: s("bd")\nall(x => x.viz("Fold", { emit: true }))'
+    expect(applied(src, masterVizEdit(src, null))).toBe('$: s("bd")')
   })
 
   it('clears by removing the whole all() line when the viz is all it carries', () => {
@@ -308,6 +352,6 @@ describe('masterVizEdit', () => {
   it('round-trips: set then re-read yields the written name', () => {
     const src = '$: s("bd")'
     const next = applied(src, masterVizEdit(src, 'spectrum'))
-    expect(readMasterViz(next)).toEqual({ name: 'spectrum' })
+    expect(readMasterViz(next)?.name).toBe('spectrum')
   })
 })

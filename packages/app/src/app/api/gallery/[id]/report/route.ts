@@ -4,6 +4,7 @@ import { withDatabase } from "../../../../../db/errors";
 import { getEntryRecord } from "../../../../../db/repo/entries";
 import { addReport } from "../../../../../db/repo/reports";
 import { limitRequest } from "../../rateLimit";
+import { suspendedRefusal } from "../../suspension";
 import { galleryStore } from "../../store";
 import { requireTurnstile } from "../../turnstile";
 import { checkReport, MAX_REPORT_BODY_BYTES, readJsonBody } from "../../validate";
@@ -24,8 +25,10 @@ async function handlePOST(
   const store = galleryStore();
   const db = store && (await getDb());
   if (!store || !db) return Response.json({ error: "the gallery is not set up here" }, { status: 503 });
+  const suspended = await suspendedRefusal();
+  if (suspended) return suspended;
   // #2330 — per account (or per address signed out), then Turnstile when set up.
-  const limited = (await limitRequest("report", req)) ?? (await requireTurnstile(req));
+  const limited = (await limitRequest("report", req)) ?? (await requireTurnstile(req, "report"));
   if (limited) return limited;
 
   const body = await readJsonBody(req, MAX_REPORT_BODY_BYTES);

@@ -45,7 +45,7 @@ export type VizRendererKind = VizPreset['renderer']
  * `satisfies` (not `as`) keeps each entry checked against
  * `WorkspaceLanguage` while preserving the literal tuple type.
  */
-export const VIZ_LANGUAGES = ['p5js', 'hydra', 'glsl'] as const satisfies readonly WorkspaceLanguage[]
+export const VIZ_LANGUAGES = ['p5js', 'hydra', 'glsl', 'three'] as const satisfies readonly WorkspaceLanguage[]
 
 /** Narrowing of `WorkspaceLanguage` to the viz languages. */
 export type VizLanguage = (typeof VIZ_LANGUAGES)[number]
@@ -58,6 +58,7 @@ const LANGUAGE_TO_RENDERER = {
   p5js: 'p5',
   hydra: 'hydra',
   glsl: 'glsl',
+  three: 'three',
 } as const satisfies Record<VizLanguage, VizRendererKind>
 
 /**
@@ -68,6 +69,7 @@ const RENDERER_TO_LANGUAGE = {
   p5: 'p5js',
   hydra: 'hydra',
   glsl: 'glsl',
+  three: 'three',
 } as const satisfies Record<VizRendererKind, WorkspaceLanguage>
 
 /** True when `lang` is a viz language (compiles to a renderer). */

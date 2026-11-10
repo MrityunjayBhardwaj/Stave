@@ -1,3 +1,4 @@
+import type { GalleryRecording } from "./recording";
 /**
  * Community gallery (#2306) — the contract shared by the server routes
  * (`app/api/gallery/`), the publish dialog, and the browse overlay.
@@ -39,6 +40,8 @@ export interface GalleryEntry {
   publishedAt: number;
   fileCount: number;
   hasThumbnail: boolean;
+  /** #2487 — a record of what it plays was stored at publish (GET /api/gallery/<id>/recording). Absent: none. */
+  hasRecording?: boolean;
 }
 
 /** The project payload — the same manifest short share links carry (shareProject.ts). */
@@ -65,6 +68,8 @@ export interface PublishRequest {
   manifest: GalleryManifest;
   /** Optional `data:image/webp;base64,…` or `data:image/png;base64,…`, at most MAX_THUMBNAIL_BYTES decoded. */
   thumbnail?: string;
+  /** #2487 — what the entry plays, recorded at publish on the author's machine (recording.ts). */
+  recording?: GalleryRecording;
 }
 
 export interface PublishResponse {
@@ -73,6 +78,11 @@ export interface PublishResponse {
   manageToken: string;
   /** #2314 — the author this entry landed on. */
   authorId: string;
+  /**
+   * #2433 — the entry as the public list shows it, so the author sees it at once
+   * while a cached list catches up. Absent from a deployment older than this field.
+   */
+  entry?: GalleryEntry;
   /**
    * #2314 — present only when a publish CREATED a key-held author. Since #2319 a
    * publish always lands on the signed-in account's author, which has no key, so
@@ -120,7 +130,70 @@ export interface AdminReasonRequest {
   reason: string;
 }
 
-export type AdminAction = "take-down-entry" | "take-down-collection" | "dismiss-report";
+export type AdminAction =
+  | "take-down-entry"
+  | "take-down-collection"
+  | "dismiss-report"
+  | "restore-entry"
+  | "purge-entry"
+  | "suspend-account"
+  | "lift-suspension";
+
+/** #2400 — how long an admin can suspend an account for, in days. Null is permanent. */
+export const SUSPENSION_DAYS = [7, 30, null] as const;
+export type SuspensionDays = (typeof SUSPENSION_DAYS)[number];
+
+export interface SuspendRequest {
+  authorId: string;
+  /** Why: kept in the action log. Required, at most MAX_REPORT_REASON_CHARS. */
+  reason: string;
+  days: SuspensionDays;
+  /** Also take down everything the account has published, and hide its profile. */
+  takeDownAll: boolean;
+}
+
+/** #2400 — a suspension in force, for admins. Never the email or the account hash. */
+export interface ActiveSuspension {
+  authorId: string;
+  name: string;
+  /** ms since epoch */
+  at: number;
+  /** ms since epoch; null is permanent. */
+  until: number | null;
+  reason: string;
+  hideProfile: boolean;
+}
+
+export interface SuspensionsResponse {
+  /** Newest first. */
+  suspensions: ActiveSuspension[];
+}
+
+/**
+ * The most entries one listing of the gallery returns, newest first. Shared with
+ * the client (#2519): a list this long may have been cut short, so an entry older
+ * than its last one can't be called removed just for not being in it.
+ */
+export const MAX_LISTED_ENTRIES = 500;
+
+/** #2401 — how long an admin take-down can be undone. The clean-up deletes the files within a day after. */
+export const TAKEDOWN_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** #2401 — an entry an admin took down that can still be restored. Never the email. */
+export interface TakenDownEntry {
+  entry: GalleryEntry;
+  /** ms since epoch */
+  removedAt: number;
+  /** ms since epoch: Restore works until then. */
+  restoreBy: number;
+  /** Why it was taken down, from the action log. */
+  reason: string;
+}
+
+export interface TakenDownResponse {
+  /** Newest first. */
+  entries: TakenDownEntry[];
+}
 
 /** Who did it. Never the email. */
 export interface GalleryAdmin {
@@ -307,7 +380,8 @@ export interface GallerySessionResponse {
 //   POST   /api/share  with SHARE_LINK_NAME_HEADER, signed in: also lists the link on
 //       the account as an AccountLink (id, name, date; never the key or the full
 //       link, #2329). Signed out, the header is ignored and nothing about the link
-//       is kept beyond its sealed bytes and its manage-token hash.
+//       is kept beyond its sealed bytes and its manage-token hash. #2364 — signed out,
+//       TURNSTILE_HEADER too when this site has the check: 403 without a good token.
 //   DELETE /api/share/<id>        MANAGE_TOKEN_HEADER, or the session when the link is on the account.
 
 export interface ClaimItem {
@@ -394,11 +468,17 @@ export const SHARE_LINK_NAME_HEADER = "x-stave-share-name";
 export const AUTHOR_KEY_HEADER = "x-stave-author-key";
 
 /**
- * #2330 — the Cloudflare Turnstile token on publish and report (the name
- * Cloudflare gives the widget's form field). Checked by api/gallery/turnstile.ts
+ * #2330 — the Cloudflare Turnstile token on publish, report and (#2364) a private
+ * link made signed out (the name Cloudflare gives the widget's form field). Checked by api/gallery/turnstile.ts
  * only when TURNSTILE_SECRET_KEY is set.
  */
 export const TURNSTILE_HEADER = "cf-turnstile-response";
+/**
+ * #2347 — what each Turnstile widget says it is for (its `action`). The server
+ * checks the token was made for the same action, so a token solved in the
+ * report dialog can't be spent on a publish.
+ */
+export type TurnstileAction = "publish" | "report" | "share-link";
 export const MAX_BIO_CHARS = 10_000;
 export const MAX_COLLECTION_TITLE_CHARS = 80;
 export const MAX_COLLECTION_DESCRIPTION_CHARS = 1_000;

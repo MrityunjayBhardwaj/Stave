@@ -27,6 +27,9 @@ import { PUT as editProfile } from "../app/api/gallery/authors/[authorId]/route"
 import { POST as createShare } from "../app/api/share/route";
 import { DELETE as revokeShare } from "../app/api/share/[id]/route";
 import { POST as dismissReports } from "../app/api/gallery/admin/reports/[id]/dismiss/route";
+import { POST as restoreEntry } from "../app/api/gallery/admin/removed/[id]/restore/route";
+import { POST as suspendAccount } from "../app/api/gallery/admin/suspensions/route";
+import { DELETE as liftSuspension } from "../app/api/gallery/admin/suspensions/[authorId]/route";
 import { getDb } from "../db/client";
 
 // #2352 — the gallery's records are in an in-memory Postgres (PGlite) per test
@@ -68,13 +71,29 @@ describe("assertSameOrigin", () => {
     expect(assertSameOrigin(req("POST", undefined))).toBeNull();
   });
 
-  it("names this site by x-forwarded-host behind a proxy, then host, then the URL", () => {
-    const proxied = req("POST", "https://stave.example", { host: "internal:3000", "x-forwarded-host": "stave.example" });
-    expect(isSameOriginRequest(proxied)).toBe(true);
-    const proxiedOther = req("POST", "https://internal:3000", { host: "internal:3000", "x-forwarded-host": "stave.example" });
-    expect(isSameOriginRequest(proxiedOther)).toBe(false);
+  // #2347 — any client can send X-Forwarded-Host, and Next.js passes it through.
+  it("ignores X-Forwarded-Host: a forged one naming the other site doesn't let it in", () => {
+    const forged = req("POST", "https://evil.example", { "x-forwarded-host": "evil.example" });
+    expect(assertSameOrigin(forged, {})?.status).toBe(403);
+    // …and a proxied request still passes on its Host
+    const viaProxy = req("POST", SITE, { "x-forwarded-host": "something-else.example" });
+    expect(isSameOriginRequest(viaProxy, {})).toBe(true);
+  });
+
+  it("names this site by Host, else the URL, plus AUTH_URL when it is set", () => {
+    // behind a proxy that rewrites Host, the configured site is what counts
+    const proxied = req("POST", "https://stave.example", { host: "internal:3000" });
+    expect(isSameOriginRequest(proxied, {})).toBe(false);
+    expect(isSameOriginRequest(proxied, { AUTH_URL: "https://stave.example" })).toBe(true);
+    expect(isSameOriginRequest(proxied, { NEXTAUTH_URL: "https://stave.example/api/auth" })).toBe(true);
+    // AUTH_URL adds a host; it doesn't stop Host counting (Vercel previews keep working)
+    const preview = req("POST", "https://stave-git-x.vercel.app", { host: "stave-git-x.vercel.app" });
+    expect(isSameOriginRequest(preview, { AUTH_URL: "https://stave.example" })).toBe(true);
+    // a malformed AUTH_URL adds nothing and breaks nothing
+    expect(isSameOriginRequest(req("POST", SITE), { AUTH_URL: "not a url" })).toBe(true);
+    expect(isSameOriginRequest(req("POST", "https://evil.example"), { AUTH_URL: "not a url" })).toBe(false);
     const noHost = new Request("http://localhost:3351/api/share", { method: "POST", headers: { origin: "http://localhost:3351" }, body: "{}" });
-    expect(isSameOriginRequest(noHost)).toBe(true);
+    expect(isSameOriginRequest(noHost, {})).toBe(true);
   });
 });
 
@@ -92,6 +111,9 @@ const WRITE_ROUTES: Array<[string, string, Handler, Record<string, string>]> = [
   ["POST /api/share", "POST", createShare as Handler, {}],
   ["DELETE /api/share/:id", "DELETE", revokeShare as Handler, { id: ID }],
   ["POST /api/gallery/admin/reports/:id/dismiss", "POST", dismissReports as Handler, { id: ID }],
+  ["POST /api/gallery/admin/removed/:id/restore", "POST", restoreEntry as Handler, { id: ID }],
+  ["POST /api/gallery/admin/suspensions", "POST", suspendAccount as Handler, {}],
+  ["DELETE /api/gallery/admin/suspensions/:authorId", "DELETE", liftSuspension as Handler, { authorId: ID }],
 ];
 
 // Where each listed route lives, so the scan below can tell a route nobody listed.
@@ -107,6 +129,9 @@ const LISTED_FILES: Record<string, string> = {
   "POST /api/share": "share/route.ts",
   "DELETE /api/share/:id": "share/[id]/route.ts",
   "POST /api/gallery/admin/reports/:id/dismiss": "gallery/admin/reports/[id]/dismiss/route.ts",
+  "POST /api/gallery/admin/removed/:id/restore": "gallery/admin/removed/[id]/restore/route.ts",
+  "POST /api/gallery/admin/suspensions": "gallery/admin/suspensions/route.ts",
+  "DELETE /api/gallery/admin/suspensions/:authorId": "gallery/admin/suspensions/[authorId]/route.ts",
 };
 
 /** Every exported POST / PUT / PATCH / DELETE handler under app/api/{gallery,share}, as "METHOD file". */
@@ -155,7 +180,14 @@ describe("every gallery / share write route", () => {
     expect(await res.json()).toEqual({ error: CROSS_ORIGIN_REFUSED });
   });
 
-  it.each(WRITE_ROUTES)("%s carries on past the check for this site", async (_name, method, handler, params) => {
+  it.each(WRITE_ROUTES)("%s refuses another site that forges X-Forwarded-Host (#2347)", async (_name, method, handler, params) => {
+    const forged = req(method, "https://evil.example", { "x-forwarded-host": "evil.example" });
+    const res = await handler(forged, { params: Promise.resolve(params) });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: CROSS_ORIGIN_REFUSED });
+  });
+
+  it.each(WRITE_ROUTES)("%s carries on past the check for this site",async (_name, method, handler, params) => {
     const res = await handler(req(method, SITE), { params: Promise.resolve(params) });
     // whatever it answers next (no store here, signed out, bad body), it isn't the origin refusal
     const body = await res.clone().text();

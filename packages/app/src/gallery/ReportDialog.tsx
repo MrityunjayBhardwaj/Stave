@@ -87,7 +87,7 @@ export function ReportDialog({
           data-testid="gallery-report-reason"
         />
         {siteKey && (
-          <TurnstileWidget key={round} siteKey={siteKey} onToken={setToken} testId="gallery-report-turnstile" />
+          <TurnstileWidget key={round} siteKey={siteKey} action="report" onToken={setToken} testId="gallery-report-turnstile" />
         )}
         {error && (
           <div className="sg-report-error" role="alert">

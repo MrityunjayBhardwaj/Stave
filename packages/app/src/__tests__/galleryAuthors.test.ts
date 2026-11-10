@@ -52,6 +52,7 @@ import { DELETE as entryDeleteRoute, GET as entryGetRoute } from "../app/api/gal
 import { createAuthor } from "../app/api/gallery/authors";
 import { hashToken, newManageToken } from "../app/api/gallery/auth";
 import { galleryPaths, galleryStore, putJson } from "../app/api/gallery/store";
+import { blobKeys, recordKeys } from "./galleryBlobKeys";
 import { accountForAuthor, accountHashOf, readAccount } from "../app/api/gallery/session";
 import type { GalleryEntry, GallerySessionResponse } from "../gallery/types";
 import { getDb, useDbForTests, type Db } from "../db/client";
@@ -174,9 +175,9 @@ async function publish(who?: string, over: { title?: string } = {}): Promise<Pub
   return { ...made, authorId, who: user };
 }
 
-/** Take an entry down, the way DELETE /api/gallery/[id] does (repo removeEntry). */
-async function takeDown(id: string, by: "author" | "admin" = "author") {
-  expect(await removeEntry(await db(), id, by)).toBe(true);
+/** Take an entry down, the way DELETE /api/gallery/[id] does for an admin (repo removeEntry). */
+async function takeDown(id: string) {
+  expect(await removeEntry(await db(), id)).toBe(true);
 }
 
 /**
@@ -256,9 +257,8 @@ describe("authors made on an account's first gallery use", () => {
     });
     expect((await getEntryRecord(await db(), res.id))?.entry.authorId).toBe(res.authorId);
     expect(await authorKeyHash(await db(), res.authorId)).toBeNull();
-    // #2352 — no Blob copy of the profile any more (phase 1 wrote one).
-    expect(await galleryStore()!.get(galleryPaths.author(res.authorId))).toBeNull();
-    expect(await galleryStore()!.get(galleryPaths.authorPrivate(res.authorId))).toBeNull();
+    // #2352 / #2363 — no Blob copy of the profile (phase 1 wrote one), nor of any other record.
+    expect(recordKeys(await blobKeys(dir))).toEqual([]);
   });
 
   it("lands every publish from one account on the same author", async () => {
@@ -529,7 +529,7 @@ describe("collections", () => {
     const [e0, e1, e2] = entries;
     const c = await made({ title: "Album", description: "", entryIds: [e0.id, e1.id, e2.id] }, key);
 
-    await takeDown(e1.id, "admin");
+    await takeDown(e1.id);
 
     const page = (await (await getCollection(c.id)).json()) as CollectionPageResponse;
     expect(page.collection.entryIds).toEqual([e0.id, e2.id]);
@@ -653,6 +653,6 @@ describe("publish and entry delete go by the signed-in account", () => {
     const mine = await authorWith(1);
     const id = mine.entries[0].id;
     expect((await deleteEntry(id, mine.key)).status).toBe(204);
-    expect(await entryStatus(id)).toBe(410);
+    expect(await entryStatus(id)).toBe(404);
   });
 });

@@ -6,8 +6,9 @@
  * The limits are the server's (types.ts); the dialog checks them first so a
  * person is told before anything is uploaded.
  */
+import { VIZ_LANGUAGES as EDITOR_VIZ_LANGUAGES } from "@stave/editor";
 import { publishToGallery, galleryEntryLink } from "./client";
-import { addLocalShare } from "./localShares";
+import { addLocalShare, recordListChange } from "./localShares";
 import {
   MAX_MANIFEST_BYTES,
   MAX_TAGS,
@@ -21,8 +22,9 @@ import {
 
 /** File languages a music entry can be. */
 export const MUSIC_LANGUAGES: readonly string[] = ["strudel", "sonicpi"];
-/** File languages a viz entry can be. */
-export const VIZ_LANGUAGES: readonly string[] = ["hydra", "p5js", "glsl"];
+/** File languages a viz entry can be: the editor's own list, so a new viz
+ *  kind can be published the day it can be written (#2516). */
+export const VIZ_LANGUAGES: readonly string[] = EDITOR_VIZ_LANGUAGES;
 
 type ManifestFile = GalleryManifest["files"][number];
 
@@ -176,7 +178,8 @@ export async function publishAndRemember(
   request: PublishRequest,
   turnstileToken?: string | null,
 ): Promise<{ id: string; link: string }> {
-  const { id, manageToken } = await publishToGallery(request, turnstileToken);
+  const { id, manageToken, entry } = await publishToGallery(request, turnstileToken);
+  if (entry) recordListChange(id, entry);
   addLocalShare({ id, title: request.title, kind: request.kind, publishedAt: Date.now(), manageToken });
   return { id, link: galleryEntryLink(id) };
 }
