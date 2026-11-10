@@ -90,7 +90,10 @@ export interface ExtensionManager {
 }
 
 /** Every part language the module contract knows, for the "declared?" check at load. */
-const PART_LANGUAGES: readonly PartLanguage[] = ['strudel']
+// A record, not a list, so the compiler holds it to `PartLanguage`: a part added to
+// `ExtensionModule` without an entry here is a type error, never a silently skipped check.
+const PART_LANGUAGE_SET: Record<PartLanguage, true> = { strudel: true }
+const PART_LANGUAGES = Object.keys(PART_LANGUAGE_SET) as PartLanguage[]
 
 /**
  * Is `language` one the manifest lists by name? `'*'` means the editor as a whole and

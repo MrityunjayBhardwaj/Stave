@@ -15632,7 +15632,8 @@ function createRecordingHost(id, reg, declared2) {
 __name(createRecordingHost, "createRecordingHost");
 
 // src/extensions/manager.ts
-var PART_LANGUAGES = ["strudel"];
+var PART_LANGUAGE_SET = { strudel: true };
+var PART_LANGUAGES = Object.keys(PART_LANGUAGE_SET);
 function declares(m, language) {
   return m.languages !== "*" && m.languages.includes(language);
 }
