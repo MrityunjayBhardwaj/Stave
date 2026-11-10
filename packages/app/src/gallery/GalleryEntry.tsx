@@ -433,7 +433,7 @@ export const ENTRY_CSS = `
   .sg-note { order: 7; }
   .sg-more { order: 8; padding-bottom: 8px; }
   .sg-side-title { display: none; }
-  .sg-side-actions { order: 99; margin-top: auto !important; position: sticky; bottom: 0; z-index: 2; width: calc(100% + 32px) !important; margin-left: -16px; margin-right: -16px; margin-bottom: 0; padding: 12px 16px 16px; background: var(--bg-elevated); border-top: 1px solid var(--border-subtle); }
+  .sg-side-actions { order: 99; margin-top: auto !important; position: sticky; bottom: 0; z-index: 2; width: calc(100% + 32px) !important; margin-left: -16px; margin-right: -16px; margin-bottom: 0; padding: 12px 16px 16px; background: var(--bg-app); border-top: 1px solid var(--border-subtle); }
   .sg-side-actions .sg-btn { height: 46px; }
   .sg-crumbs { padding: 12px 16px; }
   .sg-frow { grid-template-columns: 32px minmax(0, 1fr) auto; }

@@ -116,7 +116,7 @@ export function GalleryOverlay({
 
 const CSS = `
 .sg-backdrop { position: fixed; inset: 0; background: var(--bg-overlay, rgba(0,0,0,.55)); display: flex; align-items: center; justify-content: center; z-index: 10000; font-family: system-ui, -apple-system, sans-serif; }
-.sg-modal { width: min(1040px, 94vw); height: min(760px, 88vh); background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: 10px; display: flex; flex-direction: column; color: var(--text-chrome); box-shadow: 0 20px 60px rgba(0,0,0,.45); overflow: hidden; }
+.sg-modal { width: min(1040px, 94vw); height: min(760px, 88vh); background: var(--bg-app); border: 1px solid var(--border-strong); border-radius: 10px; display: flex; flex-direction: column; color: var(--text-chrome); box-shadow: 0 20px 60px rgba(0,0,0,.45); overflow: hidden; }
 @media (max-width: 640px) {
   .sg-modal { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; border: none; }
 }

@@ -300,5 +300,5 @@ export function resetGalleryTabForTests(): void {
 }
 
 const CSS = `
-.sg-tabhost { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg-elevated); color: var(--text-chrome); font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+.sg-tabhost { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg-app); color: var(--text-chrome); font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
 `;
