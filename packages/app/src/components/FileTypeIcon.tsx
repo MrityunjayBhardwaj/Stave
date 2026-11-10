@@ -25,6 +25,7 @@ const LOGOS: Partial<Record<Language, string>> = {
   p5js: "/file-icons/p5.svg",
   hydra: "/file-icons/hydra.svg",
   glsl: "/file-icons/glsl.svg",
+  three: "/file-icons/three.svg",
   sonicpi: "/file-icons/sonicpi.svg",
 };
 

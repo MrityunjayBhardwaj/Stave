@@ -552,6 +552,114 @@ describe('WorkspaceShell', () => {
       expect(builtinSampleStopSpy).toHaveBeenCalledTimes(2)
     })
 
+    // #2451 — after a reload the panes are seeded with their backgrounds already in
+    // place, so the restore above never ran and the chosen example sound never
+    // came back. Before the page's first click it waits for that click, and the
+    // viz's chrome says so.
+    describe('a reload brings back a viz’s own example sound (#2451)', () => {
+      async function renderReloaded() {
+        const { HYDRA_VIZ } = await import('../preview/hydraViz')
+        const { __resetVizSourceChoiceForTests, setVizSourceChoice } = await import('../preview/vizSourceChoice')
+        __resetVizSourceChoiceForTests()
+        setVizSourceChoice('f-hydra', { kind: 'file', fileId: '__example_sample__' })
+        const groups = new Map<string, import('../types').WorkspaceGroupState>([
+          ['g1', { id: 'g1', tabs: [editorTab('t-hydra', 'f-hydra')], activeTabId: 't-hydra', backgroundFileId: 'f-hydra' }],
+        ])
+        builtinSampleStartSpy.mockClear()
+        builtinSampleStopSpy.mockClear()
+        return render(
+          <WorkspaceShell
+            initialGroups={groups}
+            initialLayout={[['g1']]}
+            initialActiveGroupId="g1"
+            previewProviderFor={() => HYDRA_VIZ}
+          />,
+        )
+      }
+      function setActivation(hasBeenActive: boolean) {
+        Object.defineProperty(navigator, 'userActivation', {
+          configurable: true,
+          value: { hasBeenActive, isActive: hasBeenActive },
+        })
+      }
+
+      it('starts it at once when the page may already play audio', async () => {
+        setActivation(true)
+        const { queryByTestId } = await renderReloaded()
+        expect(builtinSampleStartSpy).toHaveBeenCalledTimes(1)
+        expect(queryByTestId('viz-chrome-sound-waiting')).toBeNull()
+      })
+
+      it('before the first click: waits, says so, and starts on that click — once', async () => {
+        setActivation(false)
+        const { getByTestId, queryByTestId, unmount } = await renderReloaded()
+        try {
+          expect(builtinSampleStartSpy).not.toHaveBeenCalled()
+          expect(getByTestId('viz-chrome-sound-waiting')).toBeTruthy()
+          setActivation(true)
+          await act(async () => {
+            fireEvent.pointerDown(document.body)
+          })
+          expect(builtinSampleStartSpy).toHaveBeenCalledTimes(1)
+          expect(queryByTestId('viz-chrome-sound-waiting')).toBeNull()
+          await act(async () => {
+            fireEvent.pointerDown(document.body)
+            fireEvent.keyDown(document.body, { key: 'a' })
+          })
+          expect(builtinSampleStartSpy).toHaveBeenCalledTimes(1)
+        } finally {
+          unmount()
+          setActivation(true)
+        }
+      })
+
+      it('a source changed while it waits: the first click plays the current choice, not the old one', async () => {
+        setActivation(false)
+        const { setVizSourceChoice } = await import('../preview/vizSourceChoice')
+        const { unmount } = await renderReloaded()
+        try {
+          await act(async () => {
+            setVizSourceChoice('f-hydra', { kind: 'none' })
+          })
+          setActivation(true)
+          await act(async () => {
+            fireEvent.pointerDown(document.body)
+          })
+          expect(builtinSampleStartSpy).not.toHaveBeenCalled()
+        } finally {
+          unmount()
+          setActivation(true)
+        }
+      })
+
+      it('a shell that has gone leaves no sound waiting', async () => {
+        setActivation(false)
+        const { unmount } = await renderReloaded()
+        unmount()
+        setActivation(true)
+        fireEvent.pointerDown(document.body)
+        expect(builtinSampleStartSpy).not.toHaveBeenCalled()
+      })
+
+      it('a background closed before the first click never starts its sound', async () => {
+        setActivation(false)
+        const { getByTestId, unmount } = await renderReloaded()
+        try {
+          await act(async () => {
+            fireEvent.click(getByTestId('tab-close-t-hydra'))
+          })
+          setActivation(true)
+          await act(async () => {
+            fireEvent.pointerDown(document.body)
+          })
+          expect(builtinSampleStartSpy).not.toHaveBeenCalled()
+        } finally {
+          unmount()
+          setActivation(true)
+        }
+      })
+    })
+
     it('#787 — backdrop follows its tab across a cross-group move; close after the move still stops the audio', async () => {
       const { HYDRA_VIZ } = await import('../preview/hydraViz')
       const tabs = [

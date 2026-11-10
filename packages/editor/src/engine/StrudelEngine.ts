@@ -1564,7 +1564,8 @@ export class StrudelEngine implements LiveCodingEngine {
         // For each official viz name we intercept BOTH chain forms so pasted
         // Strudel code works out of the gate:
         //   - `._name()` (underscore) → inline viz zone  (tags `_pendingViz`,
-        //      read by the `.p()` wrapper below → capturedVizRequests)
+        //      read by the `.p()` wrapper below → capturedVizRequests); inside a
+        //      master `all()` transform, the backdrop (#2387)
         //   - `.name()`  (non-underscore) → Stave backdrop  (sets the
         //      `capturedBackdropViz` closure directly; does not depend on `.p()`)
         // Neither form chains to Strudel's real method: `@strudel/draw` isn't
@@ -1579,6 +1580,14 @@ export class StrudelEngine implements LiveCodingEngine {
             configurable: true,
             writable: true,
             value: function(this: any, opts?: unknown) { // eslint-disable-line @typescript-eslint/no-explicit-any
+              // #2387 — inside a master `all(x => …)` transform there is no track
+              // (no `.p()` runs after it), so an inline zone tagged here would be
+              // dropped silently. Like `.viz()` there, it IS the backdrop.
+              if (masterTransformDepth > 0) {
+                capturedBackdropViz = renderer
+                capturedBackdropVizOptions = opts && typeof opts === 'object' ? (opts as Record<string, unknown>) : null
+                return this
+              }
               this._pendingViz = renderer
               pendingChainViz = renderer // #571 — survive non-terminal chains
               // Carry the `.pianoroll({...})` argument so the `.p()` wrapper

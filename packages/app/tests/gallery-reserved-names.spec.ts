@@ -185,7 +185,7 @@ test.describe('Names with nothing visible in them (#2450)', () => {
     await bootApp(page)
     await page.getByRole('button', { name: 'View', exact: true }).click()
     await page.getByText('Community Gallery...', { exact: true }).click()
-    await page.locator('[data-gallery-tab="music"]').click()
+    await page.locator('[data-gallery-filter="music"]').click()
     const card = page.locator(`[data-gallery-card="${entryId}"]`)
     await expect(card.locator(`[data-gallery-author-link="${authorId}"]`)).toHaveText('Unnamed artist', { timeout: 30_000 })
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/blank-name-card.png` })

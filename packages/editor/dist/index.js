@@ -97,6 +97,20 @@ function docParses(doc) {
   return parseTopLevel(doc) !== null;
 }
 __name(docParses, "docParses");
+function parseModule(code) {
+  try {
+    return { ok: true, program: parse(code, { ecmaVersion: "latest", sourceType: "module", locations: true }) };
+  } catch (e) {
+    const err = e;
+    return {
+      ok: false,
+      message: String(err.message ?? e).replace(/\s*\(\d+:\d+\)$/, ""),
+      line: err.loc?.line,
+      column: err.loc?.column
+    };
+  }
+}
+__name(parseModule, "parseModule");
 
 // src/codeView/tempo.ts
 var SETTERS = {
@@ -1817,7 +1831,7 @@ function rootStackArms(ir) {
   if (node.tag !== "Stack") return null;
   if (node.userMethod !== void 0) return null;
   if (node.tracks.length < 2) return null;
-  return node.tracks.map((arm, i) => ({ arm, laneId: `d${i + 1}` }));
+  return node.tracks.map((arm2, i) => ({ arm: arm2, laneId: `d${i + 1}` }));
 }
 __name(rootStackArms, "rootStackArms");
 function walkLeafItems(ir, nCycles) {
@@ -2031,8 +2045,8 @@ function collect(node, overridden, timeMoved, steps, found, seen, ids) {
   if (node.tag === "Arrange") {
     const windows = sectionWindows(node);
     node.arms.forEach(
-      (arm, i) => visit(
-        arm.pattern,
+      (arm2, i) => visit(
+        arm2.pattern,
         windows ? [...steps, { node, arm: i, step: windows[i] }] : steps,
         timeMoved || windows === null
       )
@@ -2060,7 +2074,7 @@ function routeKey(steps, ids) {
 }
 __name(routeKey, "routeKey");
 function sectionWindows(node) {
-  const weights = node.arms.map((arm) => arm.weight);
+  const weights = node.arms.map((arm2) => arm2.weight);
   if (!weights.every((w) => Number.isInteger(w) && w >= 0)) return null;
   const total = weights.reduce((sum, w) => sum + w, 0);
   if (total === 0) return null;
@@ -5085,10 +5099,10 @@ function collectTopLevelBindings(body, baseOffset, numbers) {
   if (tail.length === 0) return null;
   if (descs.length === 0) return null;
   const bindings = /* @__PURE__ */ new Map();
-  const pending = new Set(descs.map((_, i) => i));
-  for (let iter = 0; iter < descs.length && pending.size > 0; iter++) {
+  const pending2 = new Set(descs.map((_, i) => i));
+  for (let iter = 0; iter < descs.length && pending2.size > 0; iter++) {
     let progress = false;
-    for (const i of [...pending]) {
+    for (const i of [...pending2]) {
       const d = descs[i];
       const parsed = parseExpression(d.rhs, d.rhsOffset, void 0, bindings, void 0, numbers);
       const lit = classifyLiteralRhs(d.rhs);
@@ -5097,7 +5111,7 @@ function collectTopLevelBindings(body, baseOffset, numbers) {
       const bare = ir.tag === "Code" && ir.via === void 0;
       if (!bare) {
         bindings.set(d.name, ir);
-        pending.delete(i);
+        pending2.delete(i);
         progress = true;
       }
     }
@@ -5708,9 +5722,9 @@ function parseTimeSequenceRoot(trimmed, baseOffset, leadingWs, bindings, opts, n
   const arms = [];
   for (const a of args) {
     if (fn === "arrange") {
-      const arm = parseArrangeArm(a.value, innerAbs + a.offset, bindings, opts, numbers);
-      if (!arm) return null;
-      arms.push(arm);
+      const arm2 = parseArrangeArm(a.value, innerAbs + a.offset, bindings, opts, numbers);
+      if (!arm2) return null;
+      arms.push(arm2);
     } else {
       const armStart = innerAbs + a.offset;
       arms.push({
@@ -7502,15 +7516,15 @@ function validateNode(raw, path) {
         if (typeof a !== "object" || a === null) {
           throw new Error(`${path}.arms[${i}]: expected object`);
         }
-        const arm = a;
-        if (typeof arm.weight !== "number") {
+        const arm2 = a;
+        if (typeof arm2.weight !== "number") {
           throw new Error(`${path}.arms[${i}]: field "weight" must be a number`);
         }
         const out2 = {
-          weight: arm.weight,
-          pattern: validateNode(arm.pattern, `${path}.arms[${i}].pattern`)
+          weight: arm2.weight,
+          pattern: validateNode(arm2.pattern, `${path}.arms[${i}].pattern`)
         };
-        if (Array.isArray(arm.loc)) out2.loc = arm.loc;
+        if (Array.isArray(arm2.loc)) out2.loc = arm2.loc;
         return out2;
       });
       const out = {
@@ -7682,6 +7696,65 @@ function resolveVizOptions(code, evaluated) {
 }
 __name(resolveVizOptions, "resolveVizOptions");
 
+// src/codeView/mixer/backdropCall.ts
+function stringLiteral(raw) {
+  const m = /^(['"`])([\s\S]*)\1$/.exec(raw);
+  if (!m) return null;
+  if (m[1] === "`" && m[2].includes("${")) return null;
+  if (m[2].includes(m[1])) return null;
+  return m[2];
+}
+__name(stringLiteral, "stringLiteral");
+function isVizMethod(name) {
+  return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, name);
+}
+__name(isVizMethod, "isVizMethod");
+function readBackdropCall(call, onMaster) {
+  if (call.name === "viz") {
+    const nameArg = call.args[0];
+    const optionsArg2 = call.args[1];
+    const options = optionsArg2 ? readVizOptionsLiteral(optionsArg2.raw) : null;
+    if (!onMaster && !(options?.kind === "literal" && options.values.backdrop === true)) return null;
+    return { name: nameArg ? stringLiteral(nameArg.raw) : null, options, call };
+  }
+  const underscore = call.name.startsWith("_");
+  const method = underscore ? call.name.slice(1) : call.name;
+  if (!isVizMethod(method)) return null;
+  if (underscore && !onMaster) return null;
+  const optionsArg = call.args[0];
+  return {
+    name: STRUDEL_VIZ_METHODS[method],
+    options: optionsArg ? readVizOptionsLiteral(optionsArg.raw) : null,
+    call
+  };
+}
+__name(readBackdropCall, "readBackdropCall");
+function lastTrackBackdropCall(doc, { declaredOnly: declaredOnly2 = false } = {}) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return null;
+  let last = null;
+  for (const node of statements) {
+    const body = node.type === "LabeledStatement" ? node.body : node;
+    if (body?.type !== "ExpressionStatement") continue;
+    const expr = body.expression;
+    if (expr?.type === "CallExpression" && expr.callee?.type === "Identifier" && expr.callee.name === "all") continue;
+    const chain = collectChain(doc, expr, { ref: null });
+    const r = lastBackdropCall(declaredOnly2 ? chain.filter((c) => c.name === "viz") : chain, false);
+    if (r) last = r;
+  }
+  return last;
+}
+__name(lastTrackBackdropCall, "lastTrackBackdropCall");
+function lastBackdropCall(chain, onMaster) {
+  let last = null;
+  for (const c of chain) {
+    const r = readBackdropCall(c, onMaster);
+    if (r) last = r;
+  }
+  return last;
+}
+__name(lastBackdropCall, "lastBackdropCall");
+
 // src/codeView/mixer/masterEdit.ts
 var MASTER_UNITY_GAIN = 1;
 function matchAllArrow(node) {
@@ -7770,14 +7843,19 @@ function findMuteLine(doc) {
   return detectMasterAll(doc).find((m) => arrowBodyText(doc, m) === "silence");
 }
 __name(findMuteLine, "findMuteLine");
-function findVizBackdropCall(m) {
-  return m.chain.find((c) => c.name === "viz");
+function findMasterBackdrop(doc) {
+  let found = null;
+  for (const m of detectMasterAll(doc)) {
+    const bc = lastBackdropCall(m.chain, true);
+    if (bc) found = { m, bc };
+  }
+  return found;
 }
-__name(findVizBackdropCall, "findVizBackdropCall");
-function vizNameArg(c) {
-  return c.args.find((a) => /^['"`]/.test(a.raw));
+__name(findMasterBackdrop, "findMasterBackdrop");
+function masterBackdropCall(doc) {
+  return findMasterBackdrop(doc)?.bc ?? null;
 }
-__name(vizNameArg, "vizNameArg");
+__name(masterBackdropCall, "masterBackdropCall");
 function readMasterGain(doc) {
   const site = findMasterGainSite(doc);
   if (!site) return { value: MASTER_UNITY_GAIN, foreign: false };
@@ -7794,7 +7872,7 @@ __name(readMasterMute, "readMasterMute");
 function detectMasterAudioAll(doc) {
   return detectMasterAll(doc).find((m) => {
     if (arrowBodyText(doc, m) === "silence") return false;
-    if (m.chain.length >= 1 && m.chain.every((c) => c.name === "viz")) return false;
+    if (m.chain.length >= 1 && m.chain.every((c) => readBackdropCall(c, true) !== null)) return false;
     return true;
   });
 }
@@ -7828,18 +7906,9 @@ function adaptMasterChunk(doc, m) {
 }
 __name(adaptMasterChunk, "adaptMasterChunk");
 function readMasterViz(doc) {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m);
-    if (!v) continue;
-    const nameArg = vizNameArg(v);
-    if (!nameArg) continue;
-    const optionsArg = v.args.find((a) => a !== nameArg);
-    return {
-      name: nameArg.raw.slice(1, -1),
-      options: optionsArg ? readVizOptionsLiteral(optionsArg.raw) : null
-    };
-  }
-  return null;
+  const bc = masterBackdropCall(doc);
+  if (!bc || bc.name === null) return null;
+  return { name: bc.name, options: bc.options };
 }
 __name(readMasterViz, "readMasterViz");
 function scaleCall(value) {
@@ -7862,18 +7931,25 @@ function masterMuteEdit(doc, muted3) {
 }
 __name(masterMuteEdit, "masterMuteEdit");
 function masterVizEdit(doc, name) {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m);
-    if (!v) continue;
+  const found = findMasterBackdrop(doc);
+  if (found) {
+    const { m, bc } = found;
     if (name === null) {
       if (m.chain.length === 1) return removeStatement(doc, m.statementRange);
-      return { range: v.range, text: "" };
+      return { range: bc.call.range, text: "" };
     }
-    const nameArg = vizNameArg(v);
-    if (!nameArg) return null;
-    return { range: nameArg.range, text: JSON.stringify(name) };
+    if (bc.call.name === "viz") {
+      const nameArg = bc.call.args[0];
+      if (!nameArg || bc.name === null) return null;
+      return { range: nameArg.range, text: JSON.stringify(name) };
+    }
+    const optionsArg = bc.call.args[0];
+    return { range: bc.call.range, text: `.viz(${JSON.stringify(name)}${optionsArg ? `, ${optionsArg.raw}` : ""})` };
   }
-  if (name === null) return null;
+  if (name === null) {
+    const track = lastTrackBackdropCall(doc);
+    return track ? { range: track.call.range, text: "" } : null;
+  }
   return insertStatement(doc, `all(x => x.viz(${JSON.stringify(name)}, { backdrop: true }))`);
 }
 __name(masterVizEdit, "masterVizEdit");
@@ -12808,9 +12884,9 @@ function buildCall(doc, node) {
   if (node.arguments.length === 0) return null;
   const arms = [];
   for (const arg of node.arguments) {
-    const arm = armFromArg(mode, arg);
-    if (!arm) return null;
-    arms.push(arm);
+    const arm2 = armFromArg(mode, arg);
+    if (!arm2) return null;
+    arms.push(arm2);
   }
   const open = doc.indexOf("(", node.callee.end);
   if (open < 0) return null;
@@ -12885,11 +12961,11 @@ function patternText(doc, call, i) {
 __name(patternText, "patternText");
 function setWeight(doc, call, i, weight) {
   const w = asWeight(weight);
-  const arm = call.arms[i];
-  if (!arm) return [];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
   if (call.mode === "arrange") {
-    if (!arm.weightRange) return [];
-    return [{ range: arm.weightRange, text: String(w) }];
+    if (!arm2.weightRange) return [];
+    return [{ range: arm2.weightRange, text: String(w) }];
   }
   if (w === 1) return [];
   const edits = [{ range: call.calleeRange, text: "arrange" }];
@@ -12924,13 +13000,13 @@ function insertArm(doc, call, at, armSource) {
 }
 __name(insertArm, "insertArm");
 function insertSilenceArm(doc, call, i) {
-  const arm = call.arms[i];
-  if (!arm) return [];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
   if (call.mode !== "arrange") {
     return insertArm(doc, call, i + 1, "silence");
   }
-  if (!arm.weightRange) return [];
-  const weightText = doc.slice(arm.weightRange[0], arm.weightRange[1]);
+  if (!arm2.weightRange) return [];
+  const weightText = doc.slice(arm2.weightRange[0], arm2.weightRange[1]);
   return insertArm(doc, call, i + 1, `[${weightText}, silence]`);
 }
 __name(insertSilenceArm, "insertSilenceArm");
@@ -12944,19 +13020,19 @@ function removeArm(doc, call, i) {
 }
 __name(removeArm, "removeArm");
 function silenceArm(doc, call, i) {
-  const arm = call.arms[i];
-  if (!arm) return [];
-  if (doc.slice(arm.patternRange[0], arm.patternRange[1]) === "silence") return [];
-  return [{ range: arm.patternRange, text: "silence" }];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
+  if (doc.slice(arm2.patternRange[0], arm2.patternRange[1]) === "silence") return [];
+  return [{ range: arm2.patternRange, text: "silence" }];
 }
 __name(silenceArm, "silenceArm");
 function setArmPattern(doc, call, i, source) {
-  const arm = call.arms[i];
-  if (!arm) return [];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
   const next = source.trim();
   if (next === "") return [];
   if (patternText(doc, call, i).trim() === next) return [];
-  return [{ range: arm.patternRange, text: next }];
+  return [{ range: arm2.patternRange, text: next }];
 }
 __name(setArmPattern, "setArmPattern");
 function wrapBare(patternRange, leadingWeight, patternWeight) {
@@ -12991,14 +13067,14 @@ function materializeBareSplit(doc, patternRange, barIndex, span) {
 }
 __name(materializeBareSplit, "materializeBareSplit");
 function splitArm(doc, call, i, firstWeight) {
-  const arm = call.arms[i];
-  if (!arm || !arm.weightRange) return [];
-  const n = parseInt(doc.slice(arm.weightRange[0], arm.weightRange[1]), 10);
+  const arm2 = call.arms[i];
+  if (!arm2 || !arm2.weightRange) return [];
+  const n = parseInt(doc.slice(arm2.weightRange[0], arm2.weightRange[1]), 10);
   if (!Number.isFinite(n) || n < 2) return [];
   const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
   const n2 = n - n1;
-  const pat = doc.slice(arm.patternRange[0], arm.patternRange[1]);
-  return [{ range: arm.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
+  const pat = doc.slice(arm2.patternRange[0], arm2.patternRange[1]);
+  return [{ range: arm2.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
 }
 __name(splitArm, "splitArm");
 var NOT_A_NAME = "__proto__";
@@ -13048,8 +13124,8 @@ function isBindingIntroduction(parent, key3) {
 }
 __name(isBindingIntroduction, "isBindingIntroduction");
 function armIdentifier(doc, call, i) {
-  const arm = call.arms[i];
-  return arm ? sectionNameAt(doc, arm.patternRange) : null;
+  const arm2 = call.arms[i];
+  return arm2 ? sectionNameAt(doc, arm2.patternRange) : null;
 }
 __name(armIdentifier, "armIdentifier");
 function countSectionArms(doc, call, i) {
@@ -13391,6 +13467,18 @@ function gridWritePlan(codec, next) {
   };
 }
 __name(gridWritePlan, "gridWritePlan");
+
+// src/codeView/mixer/codeViz.ts
+function readCodeViz(doc) {
+  const master = masterBackdropCall(doc);
+  if (master) {
+    return master.name === null ? null : { name: master.name, options: master.options, level: "master" };
+  }
+  const track = lastTrackBackdropCall(doc, { declaredOnly: true });
+  if (!track || track.name === null) return null;
+  return { name: track.name, options: track.options, level: "track" };
+}
+__name(readCodeViz, "readCodeViz");
 
 // src/codeView/noteSounds.ts
 var VALUE_ONLY = /* @__PURE__ */ new Set([
@@ -14270,40 +14358,40 @@ function headText(doc, control, i) {
 __name(headText, "headText");
 function setWeight2(doc, control, i, weight) {
   const w = asWeight2(weight);
-  const arm = control.arms[i];
-  if (!arm) return [];
-  if (arm.weightRange) return [{ range: arm.weightRange, text: String(w) }];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
+  if (arm2.weightRange) return [{ range: arm2.weightRange, text: String(w) }];
   if (w === 1) return [];
-  return [{ range: [arm.headRange[1], arm.headRange[1]], text: `@${w}` }];
+  return [{ range: [arm2.headRange[1], arm2.headRange[1]], text: `@${w}` }];
 }
 __name(setWeight2, "setWeight");
 function splitArm2(doc, control, i, firstWeight) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  const n = asWeight2(arm.weight);
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
+  const n = asWeight2(arm2.weight);
   if (n < 2) return [];
   const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
   const n2 = n - n1;
   const head = headText(doc, control, i);
-  return [{ range: arm.armRange, text: `${head}@${n1} ${head}@${n2}` }];
+  return [{ range: arm2.armRange, text: `${head}@${n1} ${head}@${n2}` }];
 }
 __name(splitArm2, "splitArm");
 function silenceArm2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   if (headText(doc, control, i) === "~") return [];
-  return [{ range: arm.headRange, text: "~" }];
+  return [{ range: arm2.headRange, text: "~" }];
 }
 __name(silenceArm2, "silenceArm");
 var SELECTOR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 function setArmHead(doc, control, i, key3) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   const next = key3.trim();
   if (!SELECTOR_NAME.test(next)) return [];
   if (!control.entries.some((e) => e.key === next)) return [];
   if (headText(doc, control, i) === next) return [];
-  return [{ range: arm.headRange, text: next }];
+  return [{ range: arm2.headRange, text: next }];
 }
 __name(setArmHead, "setArmHead");
 function listSectionParts2(control) {
@@ -14316,9 +14404,9 @@ function listSectionParts2(control) {
 }
 __name(listSectionParts2, "listSectionParts");
 function insertSilenceArm2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  const armSource = arm.weightRange ? `~@${doc.slice(arm.weightRange[0], arm.weightRange[1])}` : "~";
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
+  const armSource = arm2.weightRange ? `~@${doc.slice(arm2.weightRange[0], arm2.weightRange[1])}` : "~";
   return insertArm2(doc, control, i + 1, armSource);
 }
 __name(insertSilenceArm2, "insertSilenceArm");
@@ -14353,8 +14441,8 @@ function insertArm2(doc, control, at, armSource) {
 }
 __name(insertArm2, "insertArm");
 function duplicateArm(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   return insertArm2(doc, control, i + 1, armText2(doc, control, i));
 }
 __name(duplicateArm, "duplicateArm");
@@ -14381,8 +14469,8 @@ function everyOccurrenceIsAnArmHead(doc, control, name) {
 }
 __name(everyOccurrenceIsAnArmHead, "everyOccurrenceIsAnArmHead");
 function countSectionArms2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return 0;
+  const arm2 = control.arms[i];
+  if (!arm2) return 0;
   const name = headText(doc, control, i);
   if (control.entries.filter((e) => e.key === name).length !== 1) return 0;
   if (!everyOccurrenceIsAnArmHead(doc, control, name)) return 0;
@@ -14390,8 +14478,8 @@ function countSectionArms2(doc, control, i) {
 }
 __name(countSectionArms2, "countSectionArms");
 function renameSection2(doc, control, i, newName) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   if (!SECTION_NAME.test(newName) || newName === NOT_A_KEY) return [];
   const oldName = headText(doc, control, i);
   if (newName === oldName) return [];
@@ -15499,7 +15587,7 @@ function createExtensionManager(opts) {
     byId.set(m.id, m);
   }
   const active2 = /* @__PURE__ */ new Map();
-  const pending = /* @__PURE__ */ new Map();
+  const pending2 = /* @__PURE__ */ new Map();
   async function run(m, ticket) {
     const mod = await m.load();
     if (ticket.cancelled) return;
@@ -15528,18 +15616,18 @@ function createExtensionManager(opts) {
       const m = byId.get(id);
       if (!m) return Promise.reject(new Error(`There is no extension called "${id}".`));
       if (active2.has(id)) return Promise.resolve();
-      const inFlight2 = pending.get(id);
+      const inFlight2 = pending2.get(id);
       if (inFlight2 && !inFlight2.cancelled) return inFlight2.promise;
       const ticket = { cancelled: false, promise: Promise.resolve() };
       const after = inFlight2 ? inFlight2.promise.catch(() => void 0) : Promise.resolve();
       ticket.promise = after.then(() => run(m, ticket)).finally(() => {
-        if (pending.get(id) === ticket) pending.delete(id);
+        if (pending2.get(id) === ticket) pending2.delete(id);
       });
-      pending.set(id, ticket);
+      pending2.set(id, ticket);
       return ticket.promise;
     },
     deactivate(id) {
-      const inFlight2 = pending.get(id);
+      const inFlight2 = pending2.get(id);
       if (inFlight2) inFlight2.cancelled = true;
       const rec = active2.get(id);
       if (!rec) return [];
@@ -15547,7 +15635,7 @@ function createExtensionManager(opts) {
       return rec.undo();
     },
     async sync(ids) {
-      for (const id of [...active2.keys(), ...pending.keys()]) if (!ids.has(id)) manager.deactivate(id);
+      for (const id of [...active2.keys(), ...pending2.keys()]) if (!ids.has(id)) manager.deactivate(id);
       const failed = [];
       const unknown = [...ids].filter((id) => !byId.has(id));
       await Promise.all(
@@ -15625,7 +15713,7 @@ __name(messageOf, "messageOf");
 function createExtensionAudio(opts) {
   let doors = null;
   const handedToStrudel = /* @__PURE__ */ new Set();
-  const listeners21 = /* @__PURE__ */ new Set();
+  const listeners22 = /* @__PURE__ */ new Set();
   const nameOf2 = /* @__PURE__ */ __name((id) => manager.manifest(id)?.name ?? id, "nameOf");
   const report2 = /* @__PURE__ */ __name((level, message) => doors?.report(level, message), "report");
   const manager = createExtensionManager({
@@ -15666,7 +15754,7 @@ function createExtensionAudio(opts) {
         const left = undoErrors.length ? ` Undoing what it had added also failed: ${undoErrors.map(messageOf).join("; ")}.` : "";
         report2("error", `${nameOf2(id)} extension could not be switched on: ${messageOf(error)}.${left}`);
       }
-      if (manager.activeIds().join("\n") !== before) for (const fn of [...listeners21]) fn();
+      if (manager.activeIds().join("\n") !== before) for (const fn of [...listeners22]) fn();
     }, "run");
     queue2 = queue2.then(run, run);
     return queue2;
@@ -15689,7 +15777,7 @@ function createExtensionAudio(opts) {
       if (signal?.aborted) return;
       const jobs = manager.preparers();
       if (!jobs.length) return;
-      const pending = new Set(jobs);
+      const pending2 = new Set(jobs);
       const all = Promise.all(
         jobs.map(async (job) => {
           try {
@@ -15697,7 +15785,7 @@ function createExtensionAudio(opts) {
           } catch (e) {
             report2("error", `${nameOf2(job.id)} extension could not get ready to play: ${messageOf(e)}. The rest of the song plays without it.`);
           } finally {
-            pending.delete(job);
+            pending2.delete(job);
           }
         })
       );
@@ -15715,15 +15803,15 @@ function createExtensionAudio(opts) {
       ]);
       clearTimeout(timer);
       if (onAbort) signal?.removeEventListener("abort", onAbort);
-      if (ended === "capped" && pending.size) {
-        const names = [...new Set([...pending].map((j) => j.id))].map(nameOf2).join(", ");
+      if (ended === "capped" && pending2.size) {
+        const names = [...new Set([...pending2].map((j) => j.id))].map(nameOf2).join(", ");
         report2("warn", `${names} extension was still getting ready after ${Math.round(capMs / 100) / 10} s, so its sounds may be missing at the start.`);
       }
     },
     onChange(fn) {
-      listeners21.add(fn);
+      listeners22.add(fn);
       return () => {
-        listeners21.delete(fn);
+        listeners22.delete(fn);
       };
     }
   };
@@ -15989,10 +16077,10 @@ function createTrackEnvelopeScheduler(deps) {
       suspended++;
       cancelTimer?.();
       cancelTimer = null;
-      const pending = inFlight2;
-      pending?.controller.abort();
+      const pending2 = inFlight2;
+      pending2?.controller.abort();
       try {
-        if (pending) await pending.done;
+        if (pending2) await pending2.done;
         return await fn();
       } finally {
         suspended--;
@@ -16000,15 +16088,15 @@ function createTrackEnvelopeScheduler(deps) {
       }
     },
     interrupt() {
-      const pending = inFlight2;
-      if (pending == null) {
+      const pending2 = inFlight2;
+      if (pending2 == null) {
         if (cancelTimer != null) kick();
         return null;
       }
       cancelTimer?.();
       cancelTimer = null;
-      pending.controller.abort();
-      return pending.done;
+      pending2.controller.abort();
+      return pending2.done;
     },
     get(trackId) {
       const env = envelopes.get(trackId);
@@ -18299,6 +18387,11 @@ var _StrudelEngine = class _StrudelEngine {
             configurable: true,
             writable: true,
             value: /* @__PURE__ */ __name(function(opts) {
+              if (masterTransformDepth > 0) {
+                capturedBackdropViz = renderer;
+                capturedBackdropVizOptions = opts && typeof opts === "object" ? opts : null;
+                return this;
+              }
               this._pendingViz = renderer;
               pendingChainViz = renderer;
               if (opts && typeof opts === "object") {
@@ -20604,6 +20697,10 @@ var VizFramePump = _VizFramePump;
 var vizFramePump = new VizFramePump();
 
 // src/visualizers/renderers/WorkerVizRenderer.ts
+function currentVizSignalAliases() {
+  return resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE);
+}
+__name(currentVizSignalAliases, "currentVizSignalAliases");
 var workerPerfSeq = 0;
 var optionsKeySeq = 0;
 function stableKey(options) {
@@ -20759,7 +20856,7 @@ ${d.stack}` : "");
       };
       worker.addEventListener("message", this.diagHandler);
       this.bindSampler(components);
-      const aliases = resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE);
+      const aliases = currentVizSignalAliases();
       const mountOptions = this.postOptions(components);
       const mountMsg = {
         type: "mount",
@@ -28280,19 +28377,19 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners21 = /* @__PURE__ */ new Set();
-  const notify6 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners21) l();
+  const listeners22 = /* @__PURE__ */ new Set();
+  const notify7 = /* @__PURE__ */ __name(() => {
+    for (const l of listeners22) l();
   }, "notify");
-  const onStackItemAdded = /* @__PURE__ */ __name(() => notify6(), "onStackItemAdded");
-  const onStackItemPopped = /* @__PURE__ */ __name(() => notify6(), "onStackItemPopped");
-  const onStackCleared = /* @__PURE__ */ __name(() => notify6(), "onStackCleared");
+  const onStackItemAdded = /* @__PURE__ */ __name(() => notify7(), "onStackItemAdded");
+  const onStackItemPopped = /* @__PURE__ */ __name(() => notify7(), "onStackItemPopped");
+  const onStackCleared = /* @__PURE__ */ __name(() => notify7(), "onStackCleared");
   um.on("stack-item-added", onStackItemAdded);
   um.on("stack-item-popped", onStackItemPopped);
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners21,
+    listeners: listeners22,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -28335,10 +28432,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners21 = active.listeners;
-  listeners21.add(cb);
+  const listeners22 = active.listeners;
+  listeners22.add(cb);
   return () => {
-    listeners21.delete(cb);
+    listeners22.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -28434,6 +28531,7 @@ function ensureFilesMapObserver() {
             unwireTextObserver(key3);
             cachedSnapshots.delete(key3);
             notify2(key3);
+            notifyFileDeleted(key3);
             anyStructuralChange = true;
           }
         }
@@ -28544,6 +28642,18 @@ function subscribeToFileList(cb) {
   };
 }
 __name(subscribeToFileList, "subscribeToFileList");
+var fileDeleteSubscribers = /* @__PURE__ */ new Set();
+function subscribeToFileDeletes(cb) {
+  fileDeleteSubscribers.add(cb);
+  return () => {
+    fileDeleteSubscribers.delete(cb);
+  };
+}
+__name(subscribeToFileDeletes, "subscribeToFileDeletes");
+function notifyFileDeleted(fileId) {
+  for (const cb of Array.from(fileDeleteSubscribers)) cb(fileId);
+}
+__name(notifyFileDeleted, "notifyFileDeleted");
 function listWorkspaceFiles() {
   ensureDoc();
   ensureFilesMapObserver();
@@ -28564,6 +28674,7 @@ __name(listWorkspaceFiles, "listWorkspaceFiles");
 function deleteWorkspaceFile(id) {
   const filesMap = getFilesMap();
   if (!filesMap.has(id)) return;
+  ensureFilesMapObserver();
   const doc = ensureDoc();
   doc.transact(() => {
     filesMap.delete(id);
@@ -32954,7 +33065,8 @@ var G_GLSL_TRACK = "signals \xB7 per-track";
 var RULE = {
   p5: "rule: every signal lives on sig \u2014 sig.kick is a number, sig.fft an array, sig('bd') one sound",
   hydra: "rule: every signal lives on stave.sig \u2014 sig.kick() a number, sig.fft an array, sig('bd') one sound",
-  glsl: "rule: scalars are floats \xB7 spectrum/waveform = iChannel0 texture \xB7 per-track via staveTrack(i)"
+  glsl: "rule: scalars are floats \xB7 spectrum/waveform = iChannel0 texture \xB7 per-track via staveTrack(i)",
+  three: "rule: plain three.js; every signal lives on sig \u2014 sig.bass is a number, sig.fft an array, sig('bd') one sound"
 };
 var ENV_LIVE = /* @__PURE__ */ __name((env) => ({ kind: "scalar", read: env }), "ENV_LIVE");
 var GLSL_GLOBALS = [
@@ -33021,6 +33133,11 @@ var P5_GLOBALS = [
   { group: G_STRUCTURED, decl: "string[] sig.tracks, sig.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] },
   { group: G_STRUCTURED, decl: "number   sig.density;", comment: "quality LOD multiplier (1 = full)", tokens: ["density"] }
 ];
+var THREE_GLOBALS = [
+  { group: G_CONTEXT, decl: "object            stave.options;", comment: "the .viz({ ... }) argument", tokens: ["options"] },
+  { group: G_CONTEXT, decl: "number            stave.width, stave.height;", comment: "the viz size (also innerWidth / innerHeight)", tokens: ["width", "height"] },
+  ...P5_GLOBALS.filter((g) => g.group !== G_CONTEXT)
+];
 var HYDRA_GLOBALS = [
   {
     group: G_SCALARS_THUNK,
@@ -33052,6 +33169,7 @@ var HYDRA_GLOBALS = [
 ];
 var CATALOGUE = {
   p5: P5_GLOBALS,
+  three: THREE_GLOBALS,
   hydra: HYDRA_GLOBALS,
   glsl: GLSL_GLOBALS
 };
@@ -33390,7 +33508,8 @@ var vizSignalProbe = new VizSignalProbe();
 var FENCE_LANG = {
   p5: "javascript",
   hydra: "javascript",
-  glsl: "glsl"
+  glsl: "glsl",
+  three: "javascript"
 };
 function bar(v) {
   const cells = 8;
@@ -33922,6 +34041,8 @@ function toMonacoLanguage(lang) {
       return "p5js";
     case "glsl":
       return "glsl";
+    case "three":
+      return "javascript";
     case "markdown":
       return "markdown";
   }
@@ -37257,6 +37378,8 @@ function extensionToLanguage(ext) {
       return "p5js";
     case ".glsl":
       return "glsl";
+    case ".three":
+      return "three";
     case ".md":
       return "markdown";
     default:
@@ -37579,16 +37702,18 @@ function isOwnBackdropPaused(bgFileId, paneFileId, pausedFiles) {
 __name(isOwnBackdropPaused, "isOwnBackdropPaused");
 
 // src/workspace/vizLanguages.ts
-var VIZ_LANGUAGES = ["p5js", "hydra", "glsl"];
+var VIZ_LANGUAGES = ["p5js", "hydra", "glsl", "three"];
 var LANGUAGE_TO_RENDERER = {
   p5js: "p5",
   hydra: "hydra",
-  glsl: "glsl"
+  glsl: "glsl",
+  three: "three"
 };
 var RENDERER_TO_LANGUAGE = {
   p5: "p5js",
   hydra: "hydra",
-  glsl: "glsl"
+  glsl: "glsl",
+  three: "three"
 };
 function isVizLanguage(lang) {
   return VIZ_LANGUAGES.includes(lang);
@@ -37901,6 +38026,7 @@ __name(_DrumPatternScheduler, "DrumPatternScheduler");
 var DrumPatternScheduler = _DrumPatternScheduler;
 var state3 = null;
 var starting = false;
+var stopRequested = false;
 async function renderDrumLoopBuffer() {
   const sampleRate = 44100;
   const durationSeconds = 2;
@@ -38007,11 +38133,20 @@ async function renderDrumLoopBuffer() {
 }
 __name(renderDrumLoopBuffer, "renderDrumLoopBuffer");
 async function startDrumPattern() {
-  if (state3 || starting) return;
+  if (state3) return;
+  if (starting) {
+    stopRequested = false;
+    return;
+  }
   starting = true;
+  stopRequested = false;
   try {
     const ctx = new AudioContext();
     const buffer = await renderDrumLoopBuffer();
+    if (stopRequested) {
+      void ctx.close();
+      return;
+    }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -38041,7 +38176,10 @@ async function startDrumPattern() {
 }
 __name(startDrumPattern, "startDrumPattern");
 function stopDrumPattern() {
-  if (!state3) return;
+  if (!state3) {
+    if (starting) stopRequested = true;
+    return;
+  }
   try {
     state3.source.stop();
   } catch {
@@ -38126,6 +38264,7 @@ __name(_ChordProgressionScheduler, "ChordProgressionScheduler");
 var ChordProgressionScheduler = _ChordProgressionScheduler;
 var state4 = null;
 var starting2 = false;
+var stopRequested2 = false;
 async function renderChordLoopBuffer() {
   const sampleRate = 44100;
   const durationSeconds = 8;
@@ -38161,11 +38300,20 @@ async function renderChordLoopBuffer() {
 }
 __name(renderChordLoopBuffer, "renderChordLoopBuffer");
 async function startChordProgression() {
-  if (state4 || starting2) return;
+  if (state4) return;
+  if (starting2) {
+    stopRequested2 = false;
+    return;
+  }
   starting2 = true;
+  stopRequested2 = false;
   try {
     const ctx = new AudioContext();
     const buffer = await renderChordLoopBuffer();
+    if (stopRequested2) {
+      void ctx.close();
+      return;
+    }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -38195,7 +38343,10 @@ async function startChordProgression() {
 }
 __name(startChordProgression, "startChordProgression");
 function stopChordProgression() {
-  if (!state4) return;
+  if (!state4) {
+    if (starting2) stopRequested2 = true;
+    return;
+  }
   try {
     state4.source.stop();
   } catch {
@@ -38241,8 +38392,10 @@ var BUILTIN_EXAMPLE_SOURCES = [
   {
     sourceId: DRUM_PATTERN_SOURCE_ID,
     label: DRUM_PATTERN_LABEL,
+    // Not guarded on "playing", which includes "starting": a start must reach a
+    // render already under way, to take back a stop that came meanwhile.
     startIfIdle: /* @__PURE__ */ __name(() => {
-      if (!isDrumPatternPlaying()) startDrumPattern();
+      void startDrumPattern();
     }, "startIfIdle"),
     stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isDrumPatternPlaying()) stopDrumPattern();
@@ -38252,7 +38405,7 @@ var BUILTIN_EXAMPLE_SOURCES = [
     sourceId: CHORD_PROGRESSION_SOURCE_ID,
     label: CHORD_PROGRESSION_LABEL,
     startIfIdle: /* @__PURE__ */ __name(() => {
-      if (!isChordProgressionPlaying()) startChordProgression();
+      void startChordProgression();
     }, "startIfIdle"),
     stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isChordProgressionPlaying()) stopChordProgression();
@@ -38266,6 +38419,71 @@ function findBuiltinExampleSource(sourceId) {
   return BUILTIN_EXAMPLE_SOURCES.find((s) => s.sourceId === sourceId);
 }
 __name(findBuiltinExampleSource, "findBuiltinExampleSource");
+
+// src/workspace/audioGestureGate.ts
+var pending = /* @__PURE__ */ new Map();
+var listeners11 = /* @__PURE__ */ new Set();
+var armed = false;
+var GESTURES2 = ["pointerdown", "pointerup", "touchend", "click", "keydown"];
+function audioMayStart() {
+  if (typeof navigator === "undefined") return true;
+  const ua = navigator.userActivation;
+  return ua ? ua.hasBeenActive : true;
+}
+__name(audioMayStart, "audioMayStart");
+function notify4() {
+  for (const cb of Array.from(listeners11)) cb();
+}
+__name(notify4, "notify");
+function onGesture() {
+  if (!audioMayStart()) return;
+  disarm();
+  const starts = Array.from(pending.values());
+  pending.clear();
+  notify4();
+  for (const start of starts) start();
+}
+__name(onGesture, "onGesture");
+function arm() {
+  if (armed || typeof window === "undefined") return;
+  armed = true;
+  for (const type of GESTURES2) window.addEventListener(type, onGesture, true);
+}
+__name(arm, "arm");
+function disarm() {
+  if (!armed) return;
+  armed = false;
+  for (const type of GESTURES2) window.removeEventListener(type, onGesture, true);
+}
+__name(disarm, "disarm");
+function startWhenAudioAllowed(key3, start) {
+  if (audioMayStart()) {
+    cancelAudioStart(key3);
+    start();
+    return;
+  }
+  pending.set(key3, start);
+  arm();
+  notify4();
+}
+__name(startWhenAudioAllowed, "startWhenAudioAllowed");
+function cancelAudioStart(key3) {
+  if (!pending.delete(key3)) return;
+  if (pending.size === 0) disarm();
+  notify4();
+}
+__name(cancelAudioStart, "cancelAudioStart");
+function isWaitingForGesture(key3) {
+  return pending.has(key3);
+}
+__name(isWaitingForGesture, "isWaitingForGesture");
+function onGestureWaitChange(cb) {
+  listeners11.add(cb);
+  return () => {
+    listeners11.delete(cb);
+  };
+}
+__name(onGestureWaitChange, "onGestureWaitChange");
 
 // src/workspace/preview/vizSourceChoice.ts
 var STORAGE_PREFIX3 = "stave:vizSource:";
@@ -38281,7 +38499,7 @@ function safeLocalStorage4() {
 }
 __name(safeLocalStorage4, "safeLocalStorage");
 var values2 = /* @__PURE__ */ new Map();
-var listeners11 = /* @__PURE__ */ new Set();
+var listeners12 = /* @__PURE__ */ new Set();
 function keyFor2(fileId) {
   return `${STORAGE_PREFIX3}${fileId}`;
 }
@@ -38318,43 +38536,65 @@ function setVizSourceChoice(fileId, ref) {
   const ls = safeLocalStorage4();
   if (ref.kind === "default") ls?.removeItem(keyFor2(fileId));
   else ls?.setItem(keyFor2(fileId), JSON.stringify(ref));
-  for (const cb of Array.from(listeners11)) cb(fileId, ref);
+  for (const cb of Array.from(listeners12)) cb(fileId, ref);
 }
 __name(setVizSourceChoice, "setVizSourceChoice");
+function forgetVizSourceChoicesFor(deletedFileId) {
+  const ls = safeLocalStorage4();
+  const vizIds = new Set(values2.keys());
+  if (ls && typeof ls.key === "function") {
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i);
+      if (k?.startsWith(STORAGE_PREFIX3)) vizIds.add(k.slice(STORAGE_PREFIX3.length));
+    }
+  }
+  for (const vizId of vizIds) {
+    if (vizId === deletedFileId) {
+      values2.delete(vizId);
+      ls?.removeItem(keyFor2(vizId));
+      continue;
+    }
+    const ref = getVizSourceChoice(vizId);
+    if (ref.kind === "file" && ref.fileId === deletedFileId) {
+      setVizSourceChoice(vizId, DEFAULT);
+    }
+  }
+}
+__name(forgetVizSourceChoicesFor, "forgetVizSourceChoicesFor");
 function onVizSourceChoiceChange(cb) {
-  listeners11.add(cb);
+  listeners12.add(cb);
   return () => {
-    listeners11.delete(cb);
+    listeners12.delete(cb);
   };
 }
 __name(onVizSourceChoiceChange, "onVizSourceChoiceChange");
 
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
-var listeners12 = /* @__PURE__ */ new Set();
-function notify4() {
-  for (const l of listeners12) {
+var listeners13 = /* @__PURE__ */ new Set();
+function notify5() {
+  for (const l of listeners13) {
     try {
       l();
     } catch {
     }
   }
 }
-__name(notify4, "notify");
+__name(notify5, "notify");
 function registerBottomPanelTab(tab) {
   tabs.set(tab.id, tab);
-  notify4();
+  notify5();
   return () => {
     if (tabs.get(tab.id) === tab) {
       tabs.delete(tab.id);
-      notify4();
+      notify5();
     }
   };
 }
 __name(registerBottomPanelTab, "registerBottomPanelTab");
 function unregisterBottomPanelTab(id) {
   if (tabs.delete(id)) {
-    notify4();
+    notify5();
   }
 }
 __name(unregisterBottomPanelTab, "unregisterBottomPanelTab");
@@ -38367,9 +38607,9 @@ function getBottomPanelTab(id) {
 }
 __name(getBottomPanelTab, "getBottomPanelTab");
 function subscribeToBottomPanelTabs(cb) {
-  listeners12.add(cb);
+  listeners13.add(cb);
   return () => {
-    listeners12.delete(cb);
+    listeners13.delete(cb);
   };
 }
 __name(subscribeToBottomPanelTabs, "subscribeToBottomPanelTabs");
@@ -38464,7 +38704,7 @@ function writePersistedActiveTabId(value) {
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 var SERVER_STATE = { open: false, activeTabId: null };
 var state5 = null;
-var listeners13 = /* @__PURE__ */ new Set();
+var listeners14 = /* @__PURE__ */ new Set();
 function current4() {
   if (state5 === null) state5 = { open: readPersistedOpen(), activeTabId: readPersistedActiveTabId() };
   return state5;
@@ -38472,7 +38712,7 @@ function current4() {
 __name(current4, "current");
 function commit2(next) {
   state5 = next;
-  for (const l of listeners13) {
+  for (const l of listeners14) {
     try {
       l();
     } catch {
@@ -38507,9 +38747,9 @@ function showBottomPanelTab(activeTabId) {
 }
 __name(showBottomPanelTab, "showBottomPanelTab");
 function subscribeToBottomPanelState(cb) {
-  listeners13.add(cb);
+  listeners14.add(cb);
   return () => {
-    listeners13.delete(cb);
+    listeners14.delete(cb);
   };
 }
 __name(subscribeToBottomPanelState, "subscribeToBottomPanelState");
@@ -38665,10 +38905,10 @@ function readStored() {
 }
 __name(readStored, "readStored");
 var current5 = readStored();
-var listeners14 = /* @__PURE__ */ new Set();
+var listeners15 = /* @__PURE__ */ new Set();
 function subscribe5(listener) {
-  listeners14.add(listener);
-  return () => listeners14.delete(listener);
+  listeners15.add(listener);
+  return () => listeners15.delete(listener);
 }
 __name(subscribe5, "subscribe");
 function usePatternSideShown() {
@@ -38682,7 +38922,7 @@ function setPatternSideShown(shown) {
     window.localStorage.setItem(PATTERN_SIDE_KEY, shown ? "shown" : "hidden");
   } catch {
   }
-  listeners14.forEach((l) => l());
+  listeners15.forEach((l) => l());
 }
 __name(setPatternSideShown, "setPatternSideShown");
 function PatternSideToggle() {
@@ -39276,7 +39516,7 @@ function readStored2() {
 }
 __name(readStored2, "readStored");
 var current6 = readStored2();
-var listeners15 = /* @__PURE__ */ new Set();
+var listeners16 = /* @__PURE__ */ new Set();
 function setMode(mode) {
   if (mode === current6) return;
   current6 = mode;
@@ -39284,12 +39524,12 @@ function setMode(mode) {
     window.localStorage.setItem(NOTE_COLOR_MODE_KEY, mode);
   } catch {
   }
-  listeners15.forEach((l) => l());
+  listeners16.forEach((l) => l());
 }
 __name(setMode, "setMode");
 function subscribe6(listener) {
-  listeners15.add(listener);
-  return () => listeners15.delete(listener);
+  listeners16.add(listener);
+  return () => listeners16.delete(listener);
 }
 __name(subscribe6, "subscribe");
 function useNoteColorMode() {
@@ -40518,10 +40758,10 @@ function readStored3() {
 }
 __name(readStored3, "readStored");
 var current7 = readStored3();
-var listeners16 = /* @__PURE__ */ new Set();
+var listeners17 = /* @__PURE__ */ new Set();
 function subscribe7(listener) {
-  listeners16.add(listener);
-  return () => listeners16.delete(listener);
+  listeners17.add(listener);
+  return () => listeners17.delete(listener);
 }
 __name(subscribe7, "subscribe");
 function useGridMode() {
@@ -40539,7 +40779,7 @@ function setGridMode(mode) {
     window.localStorage.setItem(GRID_MODE_KEY, mode);
   } catch {
   }
-  listeners16.forEach((l) => l());
+  listeners17.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
 function usePatternLength(chunk, model, parse8, writeMini) {
@@ -42783,7 +43023,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners21 = /* @__PURE__ */ new Set();
+  const listeners22 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -42798,19 +43038,19 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners21.forEach((l) => l());
+    listeners22.forEach((l) => l());
   }, "setAccessor");
-  const notify6 = /* @__PURE__ */ __name(() => {
+  const notify7 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners21.forEach((l) => l());
+    listeners22.forEach((l) => l());
   }, "notify");
   const read6 = /* @__PURE__ */ __name(() => cached2, "read");
   const subscribe11 = /* @__PURE__ */ __name((listener) => {
-    listeners21.add(listener);
-    return () => listeners21.delete(listener);
+    listeners22.add(listener);
+    return () => listeners22.delete(listener);
   }, "subscribe");
   const useCatalog = /* @__PURE__ */ __name(() => React48.useSyncExternalStore(subscribe11, read6, () => null), "useCatalog");
-  return { setAccessor, notify: notify6, read: read6, useCatalog };
+  return { setAccessor, notify: notify7, read: read6, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
 var instrumentStore = createCatalogStore();
@@ -45826,7 +46066,7 @@ __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners17 = /* @__PURE__ */ new Set();
+var listeners18 = /* @__PURE__ */ new Set();
 function read3(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
@@ -45838,7 +46078,7 @@ function toggleSolo(fileId, id) {
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners17.forEach((l) => l());
+  listeners18.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -45853,9 +46093,9 @@ function setPreSoloMutes(fileId, snapshot) {
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
 function subscribe8(listener) {
-  listeners17.add(listener);
+  listeners18.add(listener);
   return () => {
-    listeners17.delete(listener);
+    listeners18.delete(listener);
   };
 }
 __name(subscribe8, "subscribe");
@@ -46729,7 +46969,7 @@ function safeLocalStorage6() {
 }
 __name(safeLocalStorage6, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners18 = /* @__PURE__ */ new Set();
+var listeners19 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -46775,13 +47015,13 @@ function toggleExpanded(fileId, id) {
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners18.forEach((l) => l());
+  listeners19.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
 function subscribe9(listener) {
-  listeners18.add(listener);
+  listeners19.add(listener);
   return () => {
-    listeners18.delete(listener);
+    listeners19.delete(listener);
   };
 }
 __name(subscribe9, "subscribe");
@@ -46842,7 +47082,7 @@ function safeLocalStorage7() {
 }
 __name(safeLocalStorage7, "safeLocalStorage");
 var cached = null;
-var listeners19 = /* @__PURE__ */ new Set();
+var listeners20 = /* @__PURE__ */ new Set();
 function read5() {
   if (cached == null) {
     const ls = safeLocalStorage7();
@@ -46865,7 +47105,7 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners19.forEach((l) => l());
+  listeners20.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
@@ -46873,9 +47113,9 @@ function nudgeMixerZoom(dir) {
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
 function subscribe10(listener) {
-  listeners19.add(listener);
+  listeners20.add(listener);
   return () => {
-    listeners19.delete(listener);
+    listeners20.delete(listener);
   };
 }
 __name(subscribe10, "subscribe");
@@ -48953,6 +49193,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     () => onVizSourceChoiceChange(() => setSourceChoiceVersion((n) => n + 1)),
     []
   );
+  useEffect(() => subscribeToFileDeletes(forgetVizSourceChoicesFor), []);
   const sourceForBackdrop = useCallback(
     (owner, bgFileId) => backdropSourceFor(
       owner,
@@ -48971,8 +49212,25 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     if (ref?.kind === "file") {
       findBuiltinExampleSource(ref.fileId)?.stopIfRunning();
     }
+    cancelAudioStart(fileId);
     recordBackdropSource(fileId, null);
   }, [recordBackdropSource]);
+  const restoreOwnBackdropSound = useCallback(
+    (g, bgFileId) => {
+      const shown = paneShownFileId(g?.tabs.find((t) => t.id === g.activeTabId));
+      const ref = getVizSourceChoice(bgFileId);
+      if (ref.kind !== "file" || !findBuiltinExampleSource(ref.fileId)) return;
+      if (shown !== bgFileId || pausedPreviews.has(bgFileId)) return;
+      recordBackdropSource(bgFileId, ref);
+      startWhenAudioAllowed(bgFileId, () => {
+        const now2 = getVizSourceChoice(bgFileId);
+        const builtin = now2.kind === "file" ? findBuiltinExampleSource(now2.fileId) : void 0;
+        recordBackdropSource(bgFileId, builtin ? now2 : null);
+        builtin?.startIfIdle();
+      });
+    },
+    [recordBackdropSource, pausedPreviews]
+  );
   const stopDisplacedBackdrop = useCallback(
     (sourceGroupId, tabId, targetGroupId) => {
       if (sourceGroupId === targetGroupId) return;
@@ -49211,24 +49469,24 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
       if (prev) stopBackdropSource(prev);
-      if (backgroundFileId) {
-        const g = groups.get(groupId);
-        const shown = paneShownFileId(g?.tabs.find((t) => t.id === g.activeTabId));
-        const ref = getVizSourceChoice(backgroundFileId);
-        const builtin = ref.kind === "file" ? findBuiltinExampleSource(ref.fileId) : void 0;
-        if (builtin && shown === backgroundFileId && !pausedPreviews.has(backgroundFileId)) {
-          recordBackdropSource(backgroundFileId, ref);
-          builtin.startIfIdle();
-        }
-      }
+      if (backgroundFileId) restoreOwnBackdropSound(groups.get(groupId), backgroundFileId);
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? void 0
       }));
       onBackgroundFileChange?.(groupId, backgroundFileId);
     },
-    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource, recordBackdropSource, pausedPreviews]
+    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource, restoreOwnBackdropSound]
   );
+  useEffect(() => {
+    for (const g of groups.values()) {
+      if (g.backgroundFileId) restoreOwnBackdropSound(g, g.backgroundFileId);
+    }
+    const waiting = backdropSourceByFile.current;
+    return () => {
+      for (const id of waiting.keys()) cancelAudioStart(id);
+    };
+  }, []);
   const updateGroupOverride = useCallback(
     (groupId, overrideFileId) => {
       setBgOverrides((prev) => {
@@ -51593,12 +51851,12 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
   isPlayPending() {
     return this.playPendingState;
   }
-  setPlayPending(pending) {
-    if (this.playPendingState === pending) return;
-    this.playPendingState = pending;
+  setPlayPending(pending2) {
+    if (this.playPendingState === pending2) return;
+    this.playPendingState = pending2;
     for (const cb of Array.from(this.playPendingListeners)) {
       try {
-        cb(pending);
+        cb(pending2);
       } catch {
       }
     }
@@ -53259,6 +53517,661 @@ function VizEditor({
 }
 __name(VizEditor, "VizEditor");
 
+// src/visualizers/renderers/threeSketch.ts
+var ADDONS = {
+  "environments/RoomEnvironment.js": /* @__PURE__ */ __name(() => import('three/addons/environments/RoomEnvironment.js'), "environments/RoomEnvironment.js"),
+  "postprocessing/EffectComposer.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/EffectComposer.js'), "postprocessing/EffectComposer.js"),
+  "postprocessing/RenderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/RenderPass.js'), "postprocessing/RenderPass.js"),
+  "postprocessing/ShaderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/ShaderPass.js'), "postprocessing/ShaderPass.js"),
+  "postprocessing/OutputPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/OutputPass.js'), "postprocessing/OutputPass.js"),
+  "postprocessing/UnrealBloomPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/UnrealBloomPass.js'), "postprocessing/UnrealBloomPass.js"),
+  "postprocessing/BokehPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/BokehPass.js'), "postprocessing/BokehPass.js"),
+  "postprocessing/AfterimagePass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/AfterimagePass.js'), "postprocessing/AfterimagePass.js"),
+  "postprocessing/FilmPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/FilmPass.js'), "postprocessing/FilmPass.js"),
+  "postprocessing/GlitchPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/GlitchPass.js'), "postprocessing/GlitchPass.js"),
+  "postprocessing/SMAAPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/SMAAPass.js'), "postprocessing/SMAAPass.js"),
+  "postprocessing/FXAAPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/FXAAPass.js'), "postprocessing/FXAAPass.js"),
+  "shaders/CopyShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/CopyShader.js'), "shaders/CopyShader.js"),
+  "shaders/FXAAShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/FXAAShader.js'), "shaders/FXAAShader.js"),
+  "shaders/RGBShiftShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/RGBShiftShader.js'), "shaders/RGBShiftShader.js"),
+  "shaders/VignetteShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/VignetteShader.js'), "shaders/VignetteShader.js"),
+  "loaders/GLTFLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/GLTFLoader.js'), "loaders/GLTFLoader.js"),
+  "loaders/RGBELoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/RGBELoader.js'), "loaders/RGBELoader.js"),
+  "loaders/HDRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/HDRLoader.js'), "loaders/HDRLoader.js"),
+  "loaders/EXRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/EXRLoader.js'), "loaders/EXRLoader.js"),
+  "geometries/RoundedBoxGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/RoundedBoxGeometry.js'), "geometries/RoundedBoxGeometry.js"),
+  "utils/BufferGeometryUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/BufferGeometryUtils.js'), "utils/BufferGeometryUtils.js"),
+  "math/SimplexNoise.js": /* @__PURE__ */ __name(() => import('three/addons/math/SimplexNoise.js'), "math/SimplexNoise.js"),
+  "math/ImprovedNoise.js": /* @__PURE__ */ __name(() => import('three/addons/math/ImprovedNoise.js'), "math/ImprovedNoise.js")
+};
+var THREE_ADDONS = Object.keys(ADDONS);
+var NEEDS_INPUT = /(^|\/)(OrbitControls|TrackballControls|FlyControls|FirstPersonControls|PointerLockControls|DragControls|TransformControls|MapControls|ArcballControls)\.js$/;
+function resolveSpecifier(spec) {
+  if (spec === "three") return { kind: "three" };
+  const m = /^three\/(?:addons|examples\/jsm)\/(.+)$/.exec(spec);
+  if (!m) return null;
+  const path = m[1].endsWith(".js") ? m[1] : `${m[1]}.js`;
+  return { kind: "addon", path };
+}
+__name(resolveSpecifier, "resolveSpecifier");
+function unsupportedImportMessage(spec) {
+  const resolved = resolveSpecifier(spec);
+  if (resolved?.kind === "addon" && NEEDS_INPUT.test(resolved.path)) {
+    return `'${spec}' needs pointer input, which a Stave viz doesn't receive. Move the camera in code instead (for example from \`sig\` or the time).`;
+  }
+  return `'${spec}' isn't available in Stave. A three.js sketch can import 'three' and these addons: ${THREE_ADDONS.map((p) => `three/addons/${p}`).join(", ")}.`;
+}
+__name(unsupportedImportMessage, "unsupportedImportMessage");
+var _ThreeImportError = class _ThreeImportError extends Error {
+  constructor(message, line) {
+    super(message);
+    this.line = line;
+    this.name = "ThreeImportError";
+  }
+};
+__name(_ThreeImportError, "ThreeImportError");
+var ThreeImportError = _ThreeImportError;
+var THREE_LINE_OFFSET = 3;
+var PARAMS = ["__env", "__mod", "__import"];
+function isIdent(s) {
+  return /^[A-Za-z_$][\w$]*$/.test(s);
+}
+__name(isIdent, "isIdent");
+function compileThreeSketch(code) {
+  const parsed = parseModule(code);
+  if (!parsed.ok) {
+    return {
+      imports: [],
+      source: "",
+      syntaxError: new VizSyntaxError(parsed.message, parsed.line, parsed.column !== void 0 ? parsed.column + 1 : void 0)
+    };
+  }
+  const ast = parsed.program;
+  const chars = code.split("");
+  const blank = /* @__PURE__ */ __name((start, end) => {
+    for (let i = start; i < end; i++) if (chars[i] !== "\n") chars[i] = " ";
+  }, "blank");
+  const imports = [];
+  const bindings = [];
+  for (const node of ast.body) {
+    if (node.type === "ImportDeclaration") {
+      const index = imports.length;
+      imports.push({ spec: String(node.source.value), line: node.loc.start.line });
+      for (const s of node.specifiers) {
+        if (s.type === "ImportDefaultSpecifier") bindings.push({ module: index, imported: "default", local: s.local.name });
+        else if (s.type === "ImportNamespaceSpecifier") bindings.push({ module: index, imported: "*", local: s.local.name });
+        else {
+          const imported = s.imported.type === "Identifier" ? s.imported.name : String(s.imported.value);
+          bindings.push({ module: index, imported, local: s.local.name });
+        }
+      }
+      blank(node.start, node.end);
+    } else if (node.type === "ExportNamedDeclaration" || node.type === "ExportDefaultDeclaration") {
+      if (node.declaration) blank(node.start, node.declaration.start);
+      else blank(node.start, node.end);
+    } else if (node.type === "ExportAllDeclaration") {
+      blank(node.start, node.end);
+    }
+  }
+  const dynamic = [];
+  const walk5 = /* @__PURE__ */ __name((n) => {
+    if (!n || typeof n.type !== "string") return;
+    if (n.type === "ImportExpression") dynamic.push(n.start);
+    for (const key3 of Object.keys(n)) {
+      const v = n[key3];
+      if (Array.isArray(v)) v.forEach(walk5);
+      else if (v && typeof v === "object" && typeof v.type === "string") walk5(v);
+    }
+  }, "walk");
+  walk5(ast);
+  for (const at of dynamic) {
+    chars[at] = "__import";
+    for (let i = at + 1; i < at + 6; i++) chars[i] = "";
+  }
+  const decls = bindings.map((b) => {
+    const from = `__mod[${b.module}]`;
+    if (b.imported === "*") return `const ${b.local} = ${from};`;
+    const key3 = isIdent(b.imported) ? `.${b.imported}` : `[${JSON.stringify(b.imported)}]`;
+    return `const ${b.local} = ${from}${key3};`;
+  });
+  const head = `with (__env) { return (async () => { 'use strict'; ${decls.join(" ")}`;
+  const source = `${head}
+${chars.join("")}
+})() }`;
+  return { imports, source, syntaxError: null };
+}
+__name(compileThreeSketch, "compileThreeSketch");
+var threePromise = null;
+function loadThree() {
+  threePromise ?? (threePromise = import('three'));
+  return threePromise;
+}
+__name(loadThree, "loadThree");
+async function loadThreeModules(compiled) {
+  for (const imp of compiled.imports) {
+    const r = resolveSpecifier(imp.spec);
+    if (!r || r.kind === "addon" && !ADDONS[r.path]) {
+      throw new ThreeImportError(unsupportedImportMessage(imp.spec), imp.line);
+    }
+  }
+  const THREE = await loadThree();
+  const modules = await Promise.all(
+    compiled.imports.map((imp) => {
+      const r = resolveSpecifier(imp.spec);
+      return r.kind === "three" ? null : ADDONS[r.path]();
+    })
+  );
+  return { THREE, modules };
+}
+__name(loadThreeModules, "loadThreeModules");
+var INPUT_EVENTS = /* @__PURE__ */ new Set([
+  "pointerdown",
+  "pointerup",
+  "pointermove",
+  "pointerenter",
+  "pointerleave",
+  "pointerover",
+  "pointerout",
+  "pointercancel",
+  "mousedown",
+  "mouseup",
+  "mousemove",
+  "mouseenter",
+  "mouseleave",
+  "mouseover",
+  "mouseout",
+  "click",
+  "dblclick",
+  "contextmenu",
+  "wheel",
+  "touchstart",
+  "touchmove",
+  "touchend",
+  "touchcancel",
+  "keydown",
+  "keyup",
+  "keypress"
+]);
+function threeUserLine(err) {
+  const loc = parseStackLocation(err);
+  if (!loc) return void 0;
+  const line = loc.line - THREE_LINE_OFFSET;
+  return line >= 1 ? { line, column: loc.column } : void 0;
+}
+__name(threeUserLine, "threeUserLine");
+function errorOf(e) {
+  return e instanceof Error ? e : new Error(String(e));
+}
+__name(errorOf, "errorOf");
+function runThreeSketch(compiled, loaded, host) {
+  var _a;
+  const BaseRenderer = loaded.THREE.WebGLRenderer;
+  let disposed = false;
+  let topLevelDone = false;
+  let renderedThisFrame = false;
+  const renderers2 = [];
+  const loops = /* @__PURE__ */ new Map();
+  let rafQueue = /* @__PURE__ */ new Map();
+  let rafSeq = 0;
+  const resizeListeners = /* @__PURE__ */ new Set();
+  const seen = /* @__PURE__ */ new Set();
+  const reportOnce = /* @__PURE__ */ __name((level, e, prefix = "") => {
+    const err = errorOf(e);
+    const at = threeUserLine(err);
+    const key3 = `${level}|${err.message}|${at?.line ?? ""}`;
+    if (seen.has(key3)) return;
+    if (seen.size > 64) seen.clear();
+    seen.add(key3);
+    host.report({
+      level,
+      message: prefix + err.message,
+      line: at?.line,
+      column: at?.column,
+      stack: String(err.stack ?? "").split("\n").slice(0, 6).join("\n")
+    });
+  }, "reportOnce");
+  const warnHere = /* @__PURE__ */ __name((message) => reportOnce("warn", new Error(message)), "warnHere");
+  const warnInput = /* @__PURE__ */ __name((type) => warnHere(`'${type}' events don't reach a three.js sketch in Stave (a viz receives no pointer or keyboard input). Move things in code instead.`), "warnInput");
+  const warnDom = /* @__PURE__ */ __name(() => warnHere(`HTML overlays (panels, stats meters, text) aren't shown in Stave: a three.js sketch draws only on its canvas.`), "warnDom");
+  const addListener = /* @__PURE__ */ __name((type, fn) => {
+    if (type === "resize" && typeof fn === "function") resizeListeners.add(fn);
+    else if (INPUT_EVENTS.has(type)) warnInput(type);
+  }, "addListener");
+  const removeListener = /* @__PURE__ */ __name((type, fn) => {
+    if (type === "resize") resizeListeners.delete(fn);
+  }, "removeListener");
+  const canvas = host.canvas;
+  if (!("style" in canvas)) canvas.style = {};
+  const canvasAddListener = canvas.addEventListener;
+  let canvasPatched = false;
+  const _StaveWebGLRenderer = class _StaveWebGLRenderer extends BaseRenderer {
+    constructor(params = {}) {
+      if (disposed) throw new Error("this sketch was stopped");
+      super({ ...params, canvas: host.canvas });
+      const self = this;
+      renderers2.push(self);
+      const render = self.render;
+      self.render = function(scene, camera) {
+        renderedThisFrame = true;
+        return render.call(self, scene, camera);
+      };
+      const setSize = self.setSize;
+      self.setSize = function(w, h) {
+        return setSize.call(self, w, h, false);
+      };
+      self.setAnimationLoop = (cb) => {
+        if (typeof cb === "function") loops.set(self, cb);
+        else loops.delete(self);
+      };
+      if (!canvasPatched && typeof canvasAddListener === "function") {
+        canvasPatched = true;
+        canvas.addEventListener = function(type, ...rest) {
+          if (INPUT_EVENTS.has(type)) warnInput(type);
+          return canvasAddListener.call(canvas, type, ...rest);
+        };
+      }
+    }
+  };
+  __name(_StaveWebGLRenderer, "StaveWebGLRenderer");
+  let StaveWebGLRenderer = _StaveWebGLRenderer;
+  let TextureLoader = loaded.THREE.TextureLoader;
+  if (typeof document === "undefined" && loaded.THREE.ImageBitmapLoader) {
+    const { Loader, Texture, ImageBitmapLoader } = loaded.THREE;
+    TextureLoader = (_a = class extends Loader {
+      load(url, onLoad, onProgress, onError) {
+        const texture = new Texture();
+        const loader2 = new ImageBitmapLoader(this.manager);
+        loader2.setOptions({ imageOrientation: "flipY" });
+        loader2.setCrossOrigin(this.crossOrigin);
+        loader2.setPath(this.path);
+        loader2.load(
+          url,
+          (bitmap) => {
+            texture.image = bitmap;
+            texture.flipY = false;
+            texture.needsUpdate = true;
+            onLoad?.(texture);
+          },
+          onProgress,
+          onError
+        );
+        return texture;
+      }
+    }, __name(_a, "StaveTextureLoader"), _a);
+  }
+  const THREE = { ...loaded.THREE, WebGLRenderer: StaveWebGLRenderer, TextureLoader };
+  const modules = loaded.modules.map((m) => m === null ? THREE : m);
+  const requestAnimationFrame2 = /* @__PURE__ */ __name((cb) => {
+    const id = ++rafSeq;
+    if (!disposed && typeof cb === "function") rafQueue.set(id, cb);
+    return id;
+  }, "requestAnimationFrame");
+  const cancelAnimationFrame2 = /* @__PURE__ */ __name((id) => {
+    rafQueue.delete(id);
+  }, "cancelAnimationFrame");
+  const stave = {
+    get width() {
+      return host.size().w;
+    },
+    get height() {
+      return host.size().h;
+    },
+    get options() {
+      return host.options();
+    },
+    get sig() {
+      return host.uniforms().sig;
+    }
+  };
+  const stubElement = /* @__PURE__ */ __name(() => {
+    warnDom();
+    const el = {
+      style: {},
+      dataset: {},
+      classList: { add() {
+      }, remove() {
+      }, toggle() {
+      }, contains: /* @__PURE__ */ __name(() => false, "contains") },
+      appendChild: /* @__PURE__ */ __name((c) => c, "appendChild"),
+      removeChild: /* @__PURE__ */ __name((c) => c, "removeChild"),
+      remove() {
+      },
+      setAttribute() {
+      },
+      getAttribute: /* @__PURE__ */ __name(() => null, "getAttribute"),
+      addEventListener: addListener,
+      removeEventListener: removeListener,
+      textContent: "",
+      innerHTML: ""
+    };
+    return el;
+  }, "stubElement");
+  const createElement7 = /* @__PURE__ */ __name((tag) => String(tag).toLowerCase() === "canvas" ? host.createCanvas() : stubElement(), "createElement");
+  const body = {
+    style: {},
+    appendChild: /* @__PURE__ */ __name((c) => c, "appendChild"),
+    removeChild: /* @__PURE__ */ __name((c) => c, "removeChild"),
+    addEventListener: addListener,
+    removeEventListener: removeListener
+  };
+  const documentShim = {
+    body,
+    documentElement: body,
+    createElement: createElement7,
+    createElementNS: /* @__PURE__ */ __name((_ns, tag) => createElement7(tag), "createElementNS"),
+    getElementById: /* @__PURE__ */ __name(() => null, "getElementById"),
+    querySelector: /* @__PURE__ */ __name(() => null, "querySelector"),
+    addEventListener: addListener,
+    removeEventListener: removeListener
+  };
+  const own = {};
+  Object.defineProperties(own, {
+    innerWidth: { get: /* @__PURE__ */ __name(() => host.size().w, "get"), enumerable: true },
+    innerHeight: { get: /* @__PURE__ */ __name(() => host.size().h, "get"), enumerable: true },
+    devicePixelRatio: { get: /* @__PURE__ */ __name(() => host.dpr(), "get"), enumerable: true }
+  });
+  Object.assign(own, {
+    addEventListener: addListener,
+    removeEventListener: removeListener,
+    requestAnimationFrame: requestAnimationFrame2,
+    cancelAnimationFrame: cancelAnimationFrame2,
+    document: documentShim
+  });
+  const boundCache = /* @__PURE__ */ new Map();
+  const windowShim = new Proxy(own, {
+    get(t, key3) {
+      if (key3 in t) return t[key3];
+      if (key3 === "window" || key3 === "self" || key3 === "globalThis") return windowShim;
+      const v = globalThis[key3];
+      if (typeof v !== "function") return v;
+      if (/^[A-Z]/.test(String(key3))) return v;
+      if (!boundCache.has(key3)) boundCache.set(key3, v.bind(globalThis));
+      return boundCache.get(key3);
+    },
+    has(t, key3) {
+      return key3 in t || key3 in globalThis;
+    }
+  });
+  const env = {};
+  Object.defineProperties(env, {
+    innerWidth: { get: /* @__PURE__ */ __name(() => host.size().w, "get") },
+    innerHeight: { get: /* @__PURE__ */ __name(() => host.size().h, "get") },
+    devicePixelRatio: { get: /* @__PURE__ */ __name(() => host.dpr(), "get") },
+    sig: { get: /* @__PURE__ */ __name(() => host.uniforms().sig, "get") }
+  });
+  Object.assign(env, {
+    stave,
+    window: windowShim,
+    self: windowShim,
+    document: documentShim,
+    requestAnimationFrame: requestAnimationFrame2,
+    cancelAnimationFrame: cancelAnimationFrame2,
+    addEventListener: addListener,
+    removeEventListener: removeListener
+  });
+  const importDynamic = /* @__PURE__ */ __name(async (spec) => {
+    const r = resolveSpecifier(String(spec));
+    if (r?.kind === "three") return THREE;
+    if (r?.kind === "addon" && ADDONS[r.path]) return ADDONS[r.path]();
+    throw new ThreeImportError(unsupportedImportMessage(String(spec)));
+  }, "importDynamic");
+  let done;
+  try {
+    const fn = new Function(...PARAMS, compiled.source);
+    done = Promise.resolve(fn(env, modules, importDynamic)).then(
+      () => {
+        topLevelDone = true;
+        return { error: null };
+      },
+      (e) => {
+        topLevelDone = true;
+        if (!disposed) reportOnce("error", e);
+        return { error: errorOf(e) };
+      }
+    );
+  } catch (e) {
+    topLevelDone = true;
+    const err = errorOf(e);
+    host.report({ level: "error", message: err.message });
+    done = Promise.resolve({ error: err });
+  }
+  return {
+    done,
+    ready: /* @__PURE__ */ __name(() => topLevelDone || loops.size > 0 || rafQueue.size > 0, "ready"),
+    rendered: /* @__PURE__ */ __name(() => renderedThisFrame, "rendered"),
+    frame(timeMs) {
+      if (disposed) return;
+      renderedThisFrame = false;
+      const queued = rafQueue;
+      rafQueue = /* @__PURE__ */ new Map();
+      for (const cb of queued.values()) {
+        try {
+          cb(timeMs);
+        } catch (e) {
+          reportOnce("error", e);
+        }
+      }
+      for (const cb of [...loops.values()]) {
+        try {
+          cb(timeMs);
+        } catch (e) {
+          reportOnce("error", e);
+        }
+      }
+    },
+    resize() {
+      if (disposed) return;
+      if (resizeListeners.size > 0) {
+        const ev = { type: "resize", target: windowShim };
+        for (const fn of [...resizeListeners]) {
+          try {
+            fn(ev);
+          } catch (e) {
+            reportOnce("error", e);
+          }
+        }
+        return;
+      }
+      const { w, h } = host.size();
+      for (const r of renderers2) {
+        try {
+          r.setSize(w, h, false);
+        } catch {
+        }
+      }
+    },
+    gl() {
+      try {
+        return renderers2[0]?.getContext?.() ?? null;
+      } catch {
+        return null;
+      }
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      loops.clear();
+      rafQueue.clear();
+      resizeListeners.clear();
+      for (const r of renderers2) {
+        try {
+          r.dispose();
+        } catch {
+        }
+        try {
+          const gl = r.getContext?.();
+          if (gl && !gl.isContextLost?.()) r.forceContextLoss();
+        } catch {
+        }
+      }
+      renderers2.length = 0;
+      if (canvasPatched) {
+        try {
+          delete canvas.addEventListener;
+        } catch {
+        }
+      }
+    }
+  };
+}
+__name(runThreeSketch, "runThreeSketch");
+
+// src/visualizers/renderers/ThreeVizRenderer.ts
+var threePerfSeq = 0;
+var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
+  /** `code` = the sketch; `name` = its workspace path, for error attribution. */
+  constructor(code, name = "") {
+    super();
+    this.code = code;
+    this.name = name;
+    this.canvas = null;
+    this.run = null;
+    this.rafId = null;
+    this.paused = false;
+    this.destroyed = false;
+    this.size = { w: 400, h: 300 };
+    this.perfId = `three#${++threePerfSeq}`;
+    this.bus = new SignalBus();
+    this.hapStream = null;
+    this.busHapHandler = null;
+    this.loop = /* @__PURE__ */ __name((now2) => {
+      if (this.paused || this.destroyed || !this.run) {
+        this.rafId = null;
+        return;
+      }
+      perf.frame(this.perfId);
+      perf.begin("three.draw");
+      try {
+        if (this.bus) {
+          this.bus.tick();
+          this.bus.refreshActive(this.bus.now());
+          this.bus.readAudio();
+        }
+        this.run.frame(now2);
+      } finally {
+        perf.end("three.draw");
+      }
+      this.rafId = requestAnimationFrame(this.loop);
+    }, "loop");
+    this.uniforms = buildStaveUniforms(this.bus);
+  }
+  onMount(container, components, size, onError) {
+    perf.gauge("viz.three", 1);
+    this.size = { w: size.w, h: size.h };
+    this.bus?.bindScheduler(components.queryable?.scheduler, components.queryable?.trackSchedulers);
+    this.bus?.bindAnalysers(components.audio?.analyser, components.audio?.trackAnalysers);
+    this.bus?.setAliases(currentVizSignalAliases());
+    this.hapStream = components.streaming?.hapStream ?? null;
+    if (this.hapStream && this.bus) {
+      this.busHapHandler = (e) => this.bus?.bump(e);
+      this.hapStream.on(this.busHapHandler);
+    }
+    const canvas = document.createElement("canvas");
+    const dpr = effectiveDpr();
+    canvas.width = Math.max(1, Math.round(size.w * dpr));
+    canvas.height = Math.max(1, Math.round(size.h * dpr));
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    canvas.style.display = "block";
+    container.appendChild(canvas);
+    this.canvas = canvas;
+    void this.start(onError);
+  }
+  /** A sketch that can't start: one Console row on its line, then the host's onError. */
+  fail(err, line, onError) {
+    emitLog({ level: "error", runtime: "three", source: this.name || void 0, message: err.message, line });
+    markVizErrorReported(err);
+    onError(err);
+  }
+  async start(onError) {
+    const compiled = compileThreeSketch(this.code);
+    if (compiled.syntaxError) {
+      this.fail(compiled.syntaxError, compiled.syntaxError.line, onError);
+      return;
+    }
+    let loaded;
+    try {
+      loaded = await loadThreeModules(compiled);
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      this.fail(err, e instanceof ThreeImportError ? e.line : void 0, onError);
+      return;
+    }
+    if (this.destroyed || !this.canvas) return;
+    this.run = runThreeSketch(compiled, loaded, {
+      canvas: this.canvas,
+      size: /* @__PURE__ */ __name(() => this.size, "size"),
+      dpr: effectiveDpr,
+      uniforms: /* @__PURE__ */ __name(() => this.uniforms, "uniforms"),
+      options: /* @__PURE__ */ __name(() => this.optionsRef.current ?? {}, "options"),
+      createCanvas: /* @__PURE__ */ __name(() => document.createElement("canvas"), "createCanvas"),
+      // The core places each problem on its line; runtime and file come from here.
+      report: /* @__PURE__ */ __name((entry) => emitLog({ ...entry, runtime: "three", source: this.name || void 0 }), "report")
+    });
+    void this.run.done.then(({ error }) => {
+      if (error && !this.destroyed) {
+        markVizErrorReported(error);
+        onError(error);
+      }
+    });
+    if (!this.paused && !this.destroyed && this.rafId == null) {
+      this.rafId = requestAnimationFrame(this.loop);
+    }
+  }
+  onUpdate(components) {
+    this.bus?.bindScheduler(components.queryable?.scheduler ?? null, components.queryable?.trackSchedulers);
+    this.bus?.bindAnalysers(components.audio?.analyser ?? null, components.audio?.trackAnalysers);
+  }
+  resize(w, h) {
+    this.size = { w, h };
+    this.run?.resize();
+  }
+  pause() {
+    this.paused = true;
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+  resume() {
+    this.paused = false;
+    if (this.rafId == null && !this.destroyed && this.run) {
+      this.rafId = requestAnimationFrame(this.loop);
+    }
+  }
+  destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    perf.gauge("viz.three", -1);
+    perf.dropFrames(this.perfId);
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.run?.dispose();
+    this.run = null;
+    this.canvas?.remove();
+    this.canvas = null;
+    if (this.hapStream && this.busHapHandler) {
+      this.hapStream.off(this.busHapHandler);
+      this.busHapHandler = null;
+    }
+    this.hapStream = null;
+    this.bus = null;
+  }
+};
+__name(_ThreeVizRenderer, "ThreeVizRenderer");
+var ThreeVizRenderer = _ThreeVizRenderer;
+
+// src/visualizers/renderers/makeThreeRenderer.ts
+function makeThreeRenderer(code, name) {
+  return shouldUseWorkerRenderer() ? new FallbackVizRenderer(
+    () => new WorkerVizRenderer("three", code, name),
+    () => new ThreeVizRenderer(code, name)
+  ) : new ThreeVizRenderer(code, name);
+}
+__name(makeThreeRenderer, "makeThreeRenderer");
+
 // src/visualizers/vizCompiler.ts
 function compilePreset(preset) {
   const { id, name, renderer, code, requires } = preset;
@@ -53289,6 +54202,18 @@ function compilePreset(preset) {
       // the main-thread GLSLVizRenderer. A `.glsl` sketch is the wrapped fragment
       // source — a plain transferable string, so it crosses to the worker cleanly.
       factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(code, source), "factory")
+    };
+  }
+  if (renderer === "three") {
+    return {
+      id,
+      label: name,
+      renderer: "three",
+      requires,
+      ...preset.nativeSize ? { nativeSize: preset.nativeSize } : {},
+      // #2516: a plain three.js sketch, worker-offloaded with a main-thread
+      // fallback (makeThreeRenderer), like GLSL.
+      factory: /* @__PURE__ */ __name(() => makeThreeRenderer(code, source), "factory")
     };
   }
   if (renderer === "p5") {
@@ -53829,8 +54754,8 @@ var inFlight = /* @__PURE__ */ new Map();
 async function resolveAsset(blobHash) {
   const cached2 = urlCache.get(blobHash);
   if (cached2) return cached2;
-  const pending = inFlight.get(blobHash);
-  if (pending) return pending;
+  const pending2 = inFlight.get(blobHash);
+  if (pending2) return pending2;
   const work = (async () => {
     const blob = await getAsset(blobHash);
     if (!blob) return null;
@@ -53904,10 +54829,10 @@ __name(importAsset, "importAsset");
 
 // src/workspace/assetDoc.ts
 var subscribers = /* @__PURE__ */ new Set();
-function notify5() {
+function notify6() {
   for (const cb of Array.from(subscribers)) cb();
 }
-__name(notify5, "notify");
+__name(notify6, "notify");
 function getAssetsMap() {
   return ensureDoc().getMap("assets");
 }
@@ -53916,7 +54841,7 @@ var wiredAssetsMap = null;
 function ensureAssetsObserver() {
   const current8 = getAssetsMap();
   if (wiredAssetsMap === current8) return;
-  current8.observe(() => notify5());
+  current8.observe(() => notify6());
   wiredAssetsMap = current8;
 }
 __name(ensureAssetsObserver, "ensureAssetsObserver");
@@ -55114,7 +56039,8 @@ var SONICPI_RUNTIME = {
 var KIND_LABEL2 = {
   p5: "p5",
   hydra: "hydra",
-  glsl: "glsl"
+  glsl: "glsl",
+  three: "three.js"
 };
 var PAINT_INTERVAL_MS = 1e3 / 12;
 var SPARK2 = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588";
@@ -55662,6 +56588,13 @@ function VizEditorChrome({
       if (id === file.id) setSelectedSource(ref);
     });
   }, [file.id]);
+  const [soundWaiting, setSoundWaiting] = useState(
+    () => isWaitingForGesture(file.id)
+  );
+  useEffect(() => {
+    setSoundWaiting(isWaitingForGesture(file.id));
+    return onGestureWaitChange(() => setSoundWaiting(isWaitingForGesture(file.id)));
+  }, [file.id]);
   const handleSourceChange = useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
@@ -55833,6 +56766,22 @@ function VizEditorChrome({
               children: "\u2699"
             }
           ),
+          soundWaiting && /* @__PURE__ */ jsx(
+            "span",
+            {
+              "data-testid": "viz-chrome-sound-waiting",
+              title: "Browsers only play sound after you interact with the page. Its sound starts on your first click or key press.",
+              style: {
+                padding: "3px 8px",
+                borderRadius: 3,
+                fontSize: 10,
+                color: "var(--foreground-muted)",
+                border: "1px dashed var(--border)",
+                userSelect: "none"
+              },
+              children: "\u{1F507} sound starts on your first click"
+            }
+          ),
           /* @__PURE__ */ jsx("div", { style: { flex: 1 } })
         ]
       }
@@ -55864,7 +56813,7 @@ __name(VizEditorChrome, "VizEditorChrome");
 // src/workspace/preview/codeBackdropOptions.ts
 var LEGACY = "";
 var slots = /* @__PURE__ */ new Map();
-var listeners20 = /* @__PURE__ */ new Set();
+var listeners21 = /* @__PURE__ */ new Set();
 var version = 0;
 function sameOptions(a, b) {
   if (a === b) return true;
@@ -55882,9 +56831,22 @@ function setCodeBackdropOptions(next, patternFileId) {
   if (next) slots.set(key3, next);
   else slots.delete(key3);
   version++;
-  for (const l of [...listeners20]) l();
+  for (const l of [...listeners21]) l();
 }
 __name(setCodeBackdropOptions, "setCodeBackdropOptions");
+function retainCodeBackdropOptions(openPatternFileIds) {
+  const keep = new Set(openPatternFileIds);
+  let dropped = false;
+  for (const key3 of [...slots.keys()]) {
+    if (key3 === LEGACY || keep.has(key3)) continue;
+    slots.delete(key3);
+    dropped = true;
+  }
+  if (!dropped) return;
+  version++;
+  for (const l of [...listeners21]) l();
+}
+__name(retainCodeBackdropOptions, "retainCodeBackdropOptions");
 function getCodeBackdropOptions(patternFileId) {
   return slots.get(patternFileId ?? LEGACY) ?? null;
 }
@@ -55894,9 +56856,9 @@ function getCodeBackdropOptionsVersion() {
 }
 __name(getCodeBackdropOptionsVersion, "getCodeBackdropOptionsVersion");
 function subscribeCodeBackdropOptions(listener) {
-  listeners20.add(listener);
+  listeners21.add(listener);
   return () => {
-    listeners20.delete(listener);
+    listeners21.delete(listener);
   };
 }
 __name(subscribeCodeBackdropOptions, "subscribeCodeBackdropOptions");
@@ -56178,6 +57140,13 @@ var GLSL_VIZ = createCompiledVizProvider({
   extensions: ["glsl"],
   label: "GLSL Visualization",
   renderer: "glsl"
+});
+
+// src/workspace/preview/threeViz.tsx
+var THREE_VIZ = createCompiledVizProvider({
+  extensions: ["three"],
+  label: "three.js Visualization",
+  renderer: "three"
 });
 
 // src/workspace/preview/namedVizBridge.ts
@@ -56740,6 +57709,6 @@ function isPersistableTab(t) {
 __name(isPersistableTab, "isPersistableTab");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, THREE_ADDONS, THREE_VIZ, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, compileThreeSketch, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCodeViz, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retainCodeBackdropOptions, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

@@ -210,8 +210,8 @@ for (const [how, removeIt] of CLEARS) {
 
 // ── 3. the button names a background the code set, and clears it (#2414) ─────
 test('a code background with nothing pinned: the button names it and Clear removes it', async ({ page }) => {
-  // a TRACK-level background: the code reader doesn't see it, so nothing is pinned —
-  // it is on screen only through the evaluation
+  // a TRACK-level background: nothing is pinned — it is on screen only because the
+  // code declares it (read from the code since #2394, from the evaluation before)
   const song = `$: note("c3 e3 g3 c4").s("sawtooth").gain(.3).viz("Red", { backdrop: true })`
   await boot(page, song)
   await play(page)

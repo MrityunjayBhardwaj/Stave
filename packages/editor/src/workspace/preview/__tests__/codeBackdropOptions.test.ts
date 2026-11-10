@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { backdropOptionsFor, getCodeBackdropOptions, setCodeBackdropOptions } from '../codeBackdropOptions'
+import {
+  backdropOptionsFor,
+  getCodeBackdropOptions,
+  getCodeBackdropOptionsVersion,
+  retainCodeBackdropOptions,
+  setCodeBackdropOptions,
+  subscribeCodeBackdropOptions,
+} from '../codeBackdropOptions'
 import { backdropOwnerFor } from '../../backdropPrecedence'
 
 // #2423 — a background belongs to a file: a pattern's background takes that
@@ -39,6 +46,46 @@ describe('code background options belong to the pattern that declares them', () 
     setCodeBackdropOptions({ fileId: 'fold', options: { theme: 'black' } })
     expect(backdropOptionsFor(undefined, 'fold')).toEqual({ codeOptions: { theme: 'black' }, busOptions: true })
     expect(getCodeBackdropOptions('song')).toBeNull()
+  })
+})
+
+// #2395 — a pattern's options belong to its open tab: when its last tab closes
+// they go, so nothing keeps them for a background drawn later.
+describe('retainCodeBackdropOptions — only open patterns keep their options', () => {
+  afterEach(() => {
+    setCodeBackdropOptions(null, 'song')
+    setCodeBackdropOptions(null, 'other')
+    setCodeBackdropOptions(null)
+  })
+
+  it("drops a closed pattern's options and keeps the open ones'", () => {
+    setCodeBackdropOptions({ fileId: 'fold', options: { theme: 'black' } }, 'song')
+    setCodeBackdropOptions({ fileId: 'fold', options: { theme: 'white' } }, 'other')
+    retainCodeBackdropOptions(['song'])
+    expect(getCodeBackdropOptions('song')).toEqual({ fileId: 'fold', options: { theme: 'black' } })
+    expect(getCodeBackdropOptions('other')).toBeNull()
+    expect(backdropOptionsFor('other', 'fold').codeOptions).toBeNull()
+  })
+
+  it('leaves the legacy single slot alone', () => {
+    setCodeBackdropOptions({ fileId: 'fold', options: { theme: 'black' } })
+    retainCodeBackdropOptions([])
+    expect(getCodeBackdropOptions()).toEqual({ fileId: 'fold', options: { theme: 'black' } })
+  })
+
+  it('notifies once when something was dropped, and not at all otherwise', () => {
+    setCodeBackdropOptions({ fileId: 'fold', options: { theme: 'black' } }, 'song')
+    setCodeBackdropOptions({ fileId: 'fold', options: { theme: 'white' } }, 'other')
+    let calls = 0
+    const un = subscribeCodeBackdropOptions(() => calls++)
+    const before = getCodeBackdropOptionsVersion()
+    retainCodeBackdropOptions(['song', 'other'])
+    expect(calls).toBe(0)
+    expect(getCodeBackdropOptionsVersion()).toBe(before)
+    retainCodeBackdropOptions([])
+    expect(calls).toBe(1)
+    expect(getCodeBackdropOptionsVersion()).toBe(before + 1)
+    un()
   })
 })
 

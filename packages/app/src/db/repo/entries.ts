@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray, isNotNull, isNull, lte } from "drizzle-orm";
 
-import { TAKEDOWN_KEEP_MS, type GalleryEntry, type GalleryKind } from "../../gallery/types";
+import { MAX_LISTED_ENTRIES, TAKEDOWN_KEEP_MS, type GalleryEntry, type GalleryKind } from "../../gallery/types";
 import type { Db } from "../client";
 import { collectionEntries, entries, reports } from "../schema";
 import { inTransaction, type Q } from "./tx";
@@ -20,8 +20,8 @@ import { inTransaction, type Q } from "./tx";
  *             stays as the record of the removal
  */
 
-/** The most entries one listing returns, newest first. */
-export const MAX_LISTED_ENTRIES = 500;
+/** The most entries one listing returns, newest first (gallery/types.ts, shared with the client, #2519). */
+export { MAX_LISTED_ENTRIES };
 
 type EntryRow = typeof entries.$inferSelect;
 
@@ -39,6 +39,7 @@ export function toGalleryEntry(r: EntryRow): GalleryEntry {
     publishedAt: r.publishedAt,
     fileCount: r.fileCount,
     hasThumbnail: r.hasThumbnail,
+    ...(r.hasRecording ? { hasRecording: true } : {}),
   };
 }
 
@@ -82,6 +83,7 @@ export async function insertEntry(
       publishedAt: e.publishedAt,
       fileCount: e.fileCount,
       hasThumbnail: e.hasThumbnail,
+      hasRecording: e.hasRecording === true,
       authorEmail: input.authorEmail,
       manageTokenHash: input.manageTokenHash,
     })

@@ -81,6 +81,8 @@ function extensionToLanguage(ext: string): string | undefined {
       return 'p5js'
     case '.glsl':
       return 'glsl'
+    case '.three':
+      return 'three'
     case '.md':
       return 'markdown'
     default:

@@ -20,6 +20,7 @@ type EvalBehavior =
   | 'viz-inline-no-flag' // `.viz('name')` no flag → inline zone (#364 control)
   | 'viz-master-all'     // `all(x => x.viz('name', {...}))` no flag → backdrop (#2382)
   | 'viz-master-all-then-track' // master all() viz + a track `.viz()` → both kept apart (#2382)
+  | 'viz-master-all-underscore' // `all(x => x._pianoroll({...}))` → backdrop, not a lost zone (#2387)
   | 'inert-draw'         // `.animate()` twice + `.onPaint()` → one warning each (#2191)
 
 let evalBehavior: EvalBehavior = 'two-anon'
@@ -277,6 +278,17 @@ vi.mock('@strudel/webaudio', () => {
           if (evalBehavior === 'viz-master-all-then-track') (track as any).viz('scope')
           ;(track as any).p('$')
           ;(globalThis as any).all((x: any) => x.viz('Fold', { theme: 'transparent', emit: true }))
+          let stacked: unknown = new MockPattern()
+          for (const t of transforms) stacked = t(stacked)
+        } else if (evalBehavior === 'viz-master-all-underscore') {
+          // #2387 — the same order as above, with an UNDERSCORE viz method on the
+          // master line. No `.p()` runs after an `all()` transform, so a zone
+          // tagged there would never reach any track.
+          const transforms: Array<(pat: unknown) => unknown> = []
+          ;(globalThis as any).all = (fn: (pat: unknown) => unknown) => { transforms.push(fn); return MOCK_SILENCE }
+          const track = new MockPattern()
+          ;(track as any).p('$')
+          ;(globalThis as any).all((x: any) => x._pianoroll({ background: '#cc1133' }))
           let stacked: unknown = new MockPattern()
           for (const t of transforms) stacked = t(stacked)
         } else if (evalBehavior === 'inert-draw') {
@@ -772,6 +784,22 @@ describe('StrudelEngine .viz() backdrop flag (#364)', () => {
     const desc = Object.getOwnPropertyDescriptor(globalThis, 'all')
     expect(desc?.get).toBeUndefined()
     expect(typeof desc?.value).toBe('function')
+  })
+
+  // #2387 — an underscore viz method on the master line is the backdrop too: it
+  // belongs to no track, so there is no line for its inline zone to sit under.
+  it('`all(x => x._pianoroll({...}))` fills the backdrop with its options, and no inline zone', async () => {
+    evalBehavior = 'viz-master-all-underscore'
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('$: note("c")\nall(x => x._pianoroll({ background: "#cc1133" }))')
+
+    const inlineViz = engine.components.inlineViz
+    expect(inlineViz?.backdropRequest).toEqual({
+      vizId: 'pianoroll',
+      options: { background: '#cc1133' },
+    })
+    expect(inlineViz?.vizRequests.size ?? 0).toBe(0)
   })
 })
 

@@ -2208,8 +2208,9 @@ declare function detectMasterAudioAll(doc: string): MasterAll | undefined;
  */
 declare function adaptMasterChunk(doc: string, m: MasterAll): ChunkInfo;
 /** the master backdrop the "set backdrop" UI shows: the `all()` backdrop-viz
- *  name and what the code says about its options, or null when no master
- *  backdrop is declared in code. `options` is null when the call has no
+ *  name the engine keeps (the last one — see `findMasterBackdrop`) and what the
+ *  code says about its options, or null when no master backdrop is declared in
+ *  code, or the kept one's name is not a literal. `options` is null when the call has no
  *  options argument; otherwise it is read statically (see vizOptionsLiteral) so
  *  the background can follow the code before Play and after Stop, not only
  *  while an evaluation's capture is on the bus. */
@@ -2240,15 +2241,20 @@ declare function masterGainEdit(doc: string, value: number): OffsetEdit | null;
 declare function masterMuteEdit(doc: string, muted: boolean): OffsetEdit | null;
 /**
  * The edit the "set backdrop" UI makes (decision 2 = code is the single source):
- *  - set `name`  → replace the name literal in the existing master backdrop viz,
- *                  or insert a fresh `all(x => x.viz("name", { backdrop: true }))`
- *                  line;
- *  - clear (null)→ remove the master backdrop viz: the whole `all()` statement
- *                  when it holds nothing else, else just the `.viz(...)` call
- *                  (so a hand-combined `gain().viz()` keeps its gain).
+ *  - set `name`  → rename the master backdrop the engine keeps (the last one,
+ *                  #2387): the name literal of a `.viz()`, or a viz method
+ *                  (`._pianoroll({…})`) rewritten as `.viz("name", {…})` with its
+ *                  options kept; else insert a fresh
+ *                  `all(x => x.viz("name", { backdrop: true }))` line, which plays
+ *                  over any track-level background (`all()` runs last);
+ *  - clear (null)→ remove that master backdrop call: the whole `all()` statement
+ *                  when it holds nothing else, else just the call (so a
+ *                  hand-combined `gain().viz()` keeps its gain). With no master
+ *                  backdrop, remove the track-level background call the code
+ *                  shows (#2394), since the code is what declares it.
  *
- * Returns null when clearing with no master backdrop present (nothing to do), or
- * when an existing backdrop viz has no string name to rewrite.
+ * Returns null when clearing with no background declared (nothing to do), or
+ * when the master backdrop's name is not a literal we can rewrite.
  */
 declare function masterVizEdit(doc: string, name: string | null): OffsetEdit | null;
 
@@ -3861,6 +3867,16 @@ declare function shapeOptions(a: SignalAutomation): readonly SignalKind[];
  */
 declare function shapeEdit(a: SignalAutomation, next: string, source: string): OffsetEdit | null;
 
+interface CodeViz {
+    /** the viz name as written (`.viz("Fold")`) or the method's renderer id */
+    name: string;
+    /** what the code says about its options; null when the call has none */
+    options: CodeVizOptions | null;
+    /** where it is declared */
+    level: 'master' | 'track';
+}
+declare function readCodeViz(doc: string): CodeViz | null;
+
 /**
  * regionTrim.ts — the WRITE DECISIONS for a sample's played region (#1527).
  *
@@ -4303,7 +4319,7 @@ declare class BreakpointStore {
  * in the same microtask as the runtime error handler.
  */
 type LogLevel = 'info' | 'warn' | 'error';
-type RuntimeId = 'strudel' | 'sonicpi' | 'p5' | 'hydra' | 'glsl'
+type RuntimeId = 'strudel' | 'sonicpi' | 'p5' | 'hydra' | 'glsl' | 'three'
 /** Stave-itself errors (engine init, host-side failures). */
  | 'stave';
 /**
@@ -6842,6 +6858,85 @@ interface PumpDriven {
 }
 
 /**
+ * aliasMap — built-in named-signal aliases for the SignalBus, plus the
+ * engine-keyed model that lets one alias NAME carry per-engine sound lists.
+ *
+ * ## Why engine-keyed
+ * The bus is engine-agnostic at the IR level (it keys on `IREvent.s`), but the
+ * `s` VALUES are the one place engine-specificity leaks through: Strudel writes
+ * `bd`/`sd`/`hh`; Sonic Pi writes sample symbols (`drum_heavy_kick`,
+ * `drum_snare_hard`) and synth names (`prophet`, `beep`) — verified against the
+ * Sonic Pi source (`synthinfo.rb` `@@grouped_samples` :9304+, `@@synth_infos`
+ * :9609; every trigger resolves to a single `scsynth_name` string,
+ * `sound.rb:160-181`). The key fact: in BOTH engines a sound's identity is a
+ * single STRING (or a list) — the alias VALUE type never needs to be richer,
+ * only the values differ per engine. So an alias absorbs the leak: the NAME
+ * (`kick`) stays unified across engines, only the sound list is per-engine.
+ *
+ *   kick → { strudel: ['bd','kick9'], sonicpi: ['drum_heavy_kick'] }
+ *
+ * The active engine is resolved at MOUNT (`resolveAliasesForEngine`) down to the
+ * flat `Record<name, string|string[]>` the bus already consumes — so the bus and
+ * its `setAliases` contract are UNCHANGED; the engine dimension lives entirely in
+ * storage + this resolver (PV12: the bus stays pure, never sees an engine).
+ *
+ * ## Array aliases
+ * An alias may map to a SINGLE sound (`uKick → 'bd'`) or an ARRAY
+ * (`uTom → ['lt','mt','ht']`); for array aliases the bus resolves the envelope
+ * value as the MAX over members (any tom firing lights the alias).
+ *
+ * NOTE: `uKeyVelocity` is NOT a sound alias — it resolves to the active event's
+ * `.velocity` (handled in the per-renderer bare-alias preamble, not here).
+ */
+/** The live-coding engine a viz sketch is currently driven by. Strudel is the
+ *  only engine wired today; `sonicpi` is reserved for Sonic Web (a thesis,
+ *  not yet built — see `project_sonic_pi_web`). The union is open by intent:
+ *  storage/sanitize keep ANY engine key with a valid value, so a future engine
+ *  survives a round-trip through an older build. */
+type VizEngine = 'strudel' | 'sonicpi';
+/** A resolved alias value for one engine: a single sound name, or a list whose
+ *  envelope reads as the MAX over members. */
+type EngineAliasValue = string | string[];
+/** One alias' per-engine sound lists. Partial: an alias may define a value for
+ *  some engines and not others (e.g. a Strudel-only clap with no Sonic Pi
+ *  equivalent → silently inert under Sonic Pi, never a crash). */
+type EngineAliasMap = Partial<Record<VizEngine, EngineAliasValue>>;
+/** The persisted custom-alias shape: alias name → per-engine sound lists. This
+ *  is what lives in localStorage (`editorRegistry`); the flat per-engine view
+ *  the bus consumes is derived from it via `resolveAliasesForEngine`. */
+type StoredSignalAliases = Record<string, EngineAliasMap>;
+/** The active viz engine. Strudel is the only live engine today; this is the
+ *  single wire-point — when Sonic Web lands, source the active engine from
+ *  the running `LiveCodingEngine` at the renderer mount and pass it to
+ *  `resolveAliasesForEngine`. */
+declare const DEFAULT_VIZ_ENGINE: VizEngine;
+/**
+ * Built-in aliases, engine-keyed. Strudel values are the canonical Strudel
+ * sound names; Sonic Pi values are sample symbols from the Sonic Pi source
+ * (`synthinfo.rb` `@@grouped_samples`, the `:drum` group) so the built-in
+ * signals work cross-engine the day Sonic Web ships. Aliases with no
+ * canonical Sonic Pi sample (`uClap`, `uRim`) intentionally omit the `sonicpi`
+ * slot rather than guess — they stay Strudel-only until a user maps them.
+ */
+declare const BUILTIN_ALIASES: Record<string, EngineAliasMap>;
+/**
+ * Resolve built-ins + custom aliases into the flat `Record<name, value>` the bus
+ * consumes for a single engine. Built-ins first, custom LAST so a user override
+ * WINS on collision (mirrors the old `{ ...ALIAS_MAP, ...custom }` merge). An
+ * alias with no value for `engine` is omitted (its bare name stays unbound under
+ * that engine — honest, never a silent zero-as-bug). Pure: takes the stored
+ * custom map as an arg, imports nothing impure (PV12).
+ */
+declare function resolveAliasesForEngine(custom: StoredSignalAliases, engine: VizEngine): Record<string, EngineAliasValue>;
+/**
+ * ALIAS_MAP — the built-in aliases flattened for the DEFAULT engine (Strudel).
+ * Kept as a derived view for back-compat: the bus' default constructor and the
+ * renderers' bare-name injection consume this flat shape. Equivalent to the
+ * pre-engine-keyed constant (`uKick → 'bd'`, `uTom → ['lt','mt','ht']`).
+ */
+declare const ALIAS_MAP: Record<string, EngineAliasValue>;
+
+/**
  * WorkerVizRenderer — a `VizRenderer` that runs the p5 sketch in an
  * OffscreenCanvas Web Worker, off the main thread (Phase B / B-3, epic #228).
  *
@@ -6932,7 +7027,7 @@ declare class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
     private lastOptionsKey;
     /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5 / `'glsl'` #281).
      *  @param code raw sketch source. @param name workspace path (error attribution). */
-    constructor(kind: 'p5' | 'hydra' | 'glsl', code: string, name: string);
+    constructor(kind: 'p5' | 'hydra' | 'glsl' | 'three', code: string, name: string);
     /** Register a callback fired once when the worker reports its first successful
      *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
      *  must be set BEFORE `mount`. */
@@ -7197,85 +7292,6 @@ type LayoutColumn = readonly string[];
  * placeholder.
  */
 type GroupLayout = readonly LayoutColumn[];
-
-/**
- * aliasMap — built-in named-signal aliases for the SignalBus, plus the
- * engine-keyed model that lets one alias NAME carry per-engine sound lists.
- *
- * ## Why engine-keyed
- * The bus is engine-agnostic at the IR level (it keys on `IREvent.s`), but the
- * `s` VALUES are the one place engine-specificity leaks through: Strudel writes
- * `bd`/`sd`/`hh`; Sonic Pi writes sample symbols (`drum_heavy_kick`,
- * `drum_snare_hard`) and synth names (`prophet`, `beep`) — verified against the
- * Sonic Pi source (`synthinfo.rb` `@@grouped_samples` :9304+, `@@synth_infos`
- * :9609; every trigger resolves to a single `scsynth_name` string,
- * `sound.rb:160-181`). The key fact: in BOTH engines a sound's identity is a
- * single STRING (or a list) — the alias VALUE type never needs to be richer,
- * only the values differ per engine. So an alias absorbs the leak: the NAME
- * (`kick`) stays unified across engines, only the sound list is per-engine.
- *
- *   kick → { strudel: ['bd','kick9'], sonicpi: ['drum_heavy_kick'] }
- *
- * The active engine is resolved at MOUNT (`resolveAliasesForEngine`) down to the
- * flat `Record<name, string|string[]>` the bus already consumes — so the bus and
- * its `setAliases` contract are UNCHANGED; the engine dimension lives entirely in
- * storage + this resolver (PV12: the bus stays pure, never sees an engine).
- *
- * ## Array aliases
- * An alias may map to a SINGLE sound (`uKick → 'bd'`) or an ARRAY
- * (`uTom → ['lt','mt','ht']`); for array aliases the bus resolves the envelope
- * value as the MAX over members (any tom firing lights the alias).
- *
- * NOTE: `uKeyVelocity` is NOT a sound alias — it resolves to the active event's
- * `.velocity` (handled in the per-renderer bare-alias preamble, not here).
- */
-/** The live-coding engine a viz sketch is currently driven by. Strudel is the
- *  only engine wired today; `sonicpi` is reserved for Sonic Web (a thesis,
- *  not yet built — see `project_sonic_pi_web`). The union is open by intent:
- *  storage/sanitize keep ANY engine key with a valid value, so a future engine
- *  survives a round-trip through an older build. */
-type VizEngine = 'strudel' | 'sonicpi';
-/** A resolved alias value for one engine: a single sound name, or a list whose
- *  envelope reads as the MAX over members. */
-type EngineAliasValue = string | string[];
-/** One alias' per-engine sound lists. Partial: an alias may define a value for
- *  some engines and not others (e.g. a Strudel-only clap with no Sonic Pi
- *  equivalent → silently inert under Sonic Pi, never a crash). */
-type EngineAliasMap = Partial<Record<VizEngine, EngineAliasValue>>;
-/** The persisted custom-alias shape: alias name → per-engine sound lists. This
- *  is what lives in localStorage (`editorRegistry`); the flat per-engine view
- *  the bus consumes is derived from it via `resolveAliasesForEngine`. */
-type StoredSignalAliases = Record<string, EngineAliasMap>;
-/** The active viz engine. Strudel is the only live engine today; this is the
- *  single wire-point — when Sonic Web lands, source the active engine from
- *  the running `LiveCodingEngine` at the renderer mount and pass it to
- *  `resolveAliasesForEngine`. */
-declare const DEFAULT_VIZ_ENGINE: VizEngine;
-/**
- * Built-in aliases, engine-keyed. Strudel values are the canonical Strudel
- * sound names; Sonic Pi values are sample symbols from the Sonic Pi source
- * (`synthinfo.rb` `@@grouped_samples`, the `:drum` group) so the built-in
- * signals work cross-engine the day Sonic Web ships. Aliases with no
- * canonical Sonic Pi sample (`uClap`, `uRim`) intentionally omit the `sonicpi`
- * slot rather than guess — they stay Strudel-only until a user maps them.
- */
-declare const BUILTIN_ALIASES: Record<string, EngineAliasMap>;
-/**
- * Resolve built-ins + custom aliases into the flat `Record<name, value>` the bus
- * consumes for a single engine. Built-ins first, custom LAST so a user override
- * WINS on collision (mirrors the old `{ ...ALIAS_MAP, ...custom }` merge). An
- * alias with no value for `engine` is omitted (its bare name stays unbound under
- * that engine — honest, never a silent zero-as-bug). Pure: takes the stored
- * custom map as an arg, imports nothing impure (PV12).
- */
-declare function resolveAliasesForEngine(custom: StoredSignalAliases, engine: VizEngine): Record<string, EngineAliasValue>;
-/**
- * ALIAS_MAP — the built-in aliases flattened for the DEFAULT engine (Strudel).
- * Kept as a derived view for back-compat: the bus' default constructor and the
- * renderers' bare-name injection consume this flat shape. Equivalent to the
- * pre-engine-keyed constant (`uKick → 'bd'`, `uTom → ['lt','mt','ht']`).
- */
-declare const ALIAS_MAP: Record<string, EngineAliasValue>;
 
 /**
  * editorRegistry — tiny module-level map so callers outside the
@@ -7791,7 +7807,7 @@ interface PreviewEditorChromeContext {
  * checker inside providers catches unhandled cases. New languages are added
  * here as new provider registries land (e.g., Phase 7+ may add `.tidal`).
  */
-type WorkspaceLanguage = 'strudel' | 'sonicpi' | 'hydra' | 'p5js' | 'glsl' | 'markdown';
+type WorkspaceLanguage = 'strudel' | 'sonicpi' | 'hydra' | 'p5js' | 'glsl' | 'three' | 'markdown';
 /**
  * A single editable file owned by the workspace. Instances are **immutable
  * snapshots**: `setContent` replaces the record in the store instead of
@@ -8884,7 +8900,7 @@ interface CropRegion {
 interface VizPreset {
     id: string;
     name: string;
-    renderer: 'hydra' | 'p5' | 'glsl';
+    renderer: 'hydra' | 'p5' | 'glsl' | 'three';
     code: string;
     requires: (keyof EngineComponents)[];
     createdAt: number;
@@ -8926,7 +8942,7 @@ declare function sanitizePresetName(name: string): string;
  * Bundled IDs never collide with user IDs because user IDs follow the
  * `<name>_<renderer>_v<N>` format and never start with `__`.
  */
-declare function bundledPresetId(name: string, renderer: 'hydra' | 'p5' | 'glsl'): string;
+declare function bundledPresetId(name: string, renderer: 'hydra' | 'p5' | 'glsl' | 'three'): string;
 /** True if this id was generated by `bundledPresetId`. */
 declare function isBundledPresetId(id: string): boolean;
 /**
@@ -8941,7 +8957,7 @@ declare function isBundledPresetId(id: string): boolean;
  * With collisions:
  *   ('Piano Roll',  'p5',    ['piano_roll_p5_v1'])  →  'piano_roll_p5_v2'
  */
-declare function generateUniquePresetId(name: string, renderer: 'hydra' | 'p5' | 'glsl', existingIds: Iterable<string>): string;
+declare function generateUniquePresetId(name: string, renderer: 'hydra' | 'p5' | 'glsl' | 'three', existingIds: Iterable<string>): string;
 declare const VizPresetStore: {
     getAll(): Promise<VizPreset[]>;
     get(id: string): Promise<VizPreset | undefined>;
@@ -8992,7 +9008,7 @@ type VizRendererKind = VizPreset['renderer'];
  * `satisfies` (not `as`) keeps each entry checked against
  * `WorkspaceLanguage` while preserving the literal tuple type.
  */
-declare const VIZ_LANGUAGES: readonly ["p5js", "hydra", "glsl"];
+declare const VIZ_LANGUAGES: readonly ["p5js", "hydra", "glsl", "three"];
 /** Narrowing of `WorkspaceLanguage` to the viz languages. */
 type VizLanguage = (typeof VIZ_LANGUAGES)[number];
 /** True when `lang` is a viz language (compiles to a renderer). */
@@ -9487,6 +9503,91 @@ declare function VizEditor({ components: _components, hapStream: _hapStream, ana
 declare function compilePreset(preset: VizPreset): VizDescriptor;
 
 /**
+ * #2220 — a syntax error in a visual's code, located in the code the user wrote.
+ *
+ * The p5 and Hydra compilers run user code through `new Function(…)`. When it
+ * doesn't parse, V8's SyntaxError has no line (its stack points at Stave's own
+ * frames), and its words can be about the wrapper rather than the user's code:
+ * `s.osc(10).out(` gives "Unexpected token '}'", the `}` being the one that closes
+ * the function the compiler wraps the sketch in. So the user's code is parsed on
+ * its own (codeView's acorn wrapper, `syntaxErrorAt`), which says where it
+ * stops making sense.
+ *
+ * The message stays the browser's, except when acorn reaches the end of the
+ * user's code: then any token the browser names lies in the wrapper, and the
+ * message says the code ended instead, placed after the last thing written. If
+ * acorn parses the code without complaint (it and V8 disagree), the browser's
+ * message is kept with no line.
+ *
+ * A syntax error is recognised by its `name`, never `instanceof SyntaxError`:
+ * on the main thread the global `SyntaxError` is not the browser's. Strudel's
+ * eval scope copies every export of `@strudel/mini` onto `globalThis`, and its
+ * krill parser exports its own `SyntaxError` (peggy's), so after the engine
+ * starts, the error `new Function` throws is not an instance of it. For the
+ * same reason `VizSyntaxError` extends `Error`, not the global.
+ */
+/** A visual's syntax error, with its line and column in the user's file (1-based). */
+declare class VizSyntaxError extends Error {
+    readonly line?: number | undefined;
+    readonly column?: number | undefined;
+    constructor(message: string, line?: number | undefined, column?: number | undefined);
+}
+
+/**
+ * threeSketch — run a plain three.js sketch inside a Stave viz (#2516).
+ *
+ * A `.three` file is an ordinary three.js script, the kind a tutorial or the
+ * official examples hold, pasted unchanged. There is no Stave dialect: Stave adds
+ * only `sig`, `stave.options` and `stave.width` / `stave.height`, the same names
+ * p5 sketches get. Everything else a sketch reaches for in a browser page is
+ * mapped onto the viz underneath:
+ *
+ *   | the sketch does                         | Stave makes it                          |
+ *   |-----------------------------------------|-----------------------------------------|
+ *   | `import … from 'three'` / addons        | the bundled three.js + a fixed addon set |
+ *   | `new THREE.WebGLRenderer(…)`            | a renderer on the viz's own canvas       |
+ *   | `document.body.appendChild(…)`          | a no-op (the canvas is already placed)   |
+ *   | `innerWidth`, `devicePixelRatio`, resize| the viz's size, firing on panel resize   |
+ *   | `requestAnimationFrame`, `setAnimationLoop` | driven by Stave's frame pump          |
+ *   | `new THREE.TextureLoader().load(url)`   | an image-bitmap load in a worker         |
+ *
+ * Prior art, read from source: the three.js editor's player (`editor/js/libs/
+ * app.js`) runs scripts through `new Function` and drives the loop from the host;
+ * Fragment's `THREERenderer.js` wraps `renderer.render` to know the sketch drew,
+ * and on teardown calls `dispose` + `forceContextLoss` whatever the sketch did.
+ * three's `WebGLRenderer` defines its methods per instance in the constructor
+ * (`this.render = function …`, WebGLRenderer.js), so they are wrapped after
+ * `super()`, never overridden on a subclass prototype (an override there would be
+ * shadowed by the instance property).
+ *
+ * This module is shared by the worker host (`hostVizWorker`, kind `'three'`) and
+ * the main-thread `ThreeVizRenderer`; it never touches the DOM itself, the host
+ * hands it the canvas and a way to make more.
+ */
+
+/** The addon paths a sketch may import, for messages and tests. */
+declare const THREE_ADDONS: readonly string[];
+interface CompiledThreeSketch {
+    /** Each module specifier the sketch imports, in order, with its line. */
+    readonly imports: readonly {
+        spec: string;
+        line: number;
+    }[];
+    /** The sketch body handed to `new Function`. */
+    readonly source: string;
+    /** Set when the code doesn't parse; nothing runs. */
+    readonly syntaxError: VizSyntaxError | null;
+}
+/**
+ * Parse a sketch as an ES module and turn it into a function body. Static
+ * imports are blanked in place (newlines kept, so line numbers don't move) and
+ * their bindings declared up front on the wrapper's one line, which also keeps
+ * module semantics: imports are bound before any statement runs. `export`
+ * keywords are dropped; a dynamic `import(…)` goes through Stave's resolver.
+ */
+declare function compileThreeSketch(code: string): CompiledThreeSketch;
+
+/**
  * Shared imperative utility for the PICKER (`useVizRenderer`/`VizPanel`), BACKDROP
  * (`compiledVizProvider`) and CROP preview (`CropPopup`) seams: resolves a
  * VizRenderer, runs the shared per-mount lifecycle (mount + visibility pausing) via
@@ -9536,7 +9637,7 @@ declare function mountVizRenderer(container: HTMLDivElement, source: VizRenderer
  */
 /** The renderer kind + raw source a library card knows about its viz. */
 interface VizPreviewSpec {
-    readonly renderer: 'p5' | 'hydra' | 'glsl';
+    readonly renderer: 'p5' | 'hydra' | 'glsl' | 'three';
     readonly code: string;
     /** Display/attribution name (used for worker error messages). */
     readonly name: string;
@@ -13050,6 +13151,15 @@ declare const P5_VIZ: PreviewProvider;
 declare const GLSL_VIZ: PreviewProvider;
 
 /**
+ * THREE_VIZ — preview provider for `.three` files (#2516).
+ *
+ * The mirror image of `glslViz.tsx`: all the machinery lives in
+ * `createCompiledVizProvider`. A `.three` file is a plain three.js sketch, fed to
+ * `compilePreset` → `makeThreeRenderer`.
+ */
+declare const THREE_VIZ: PreviewProvider;
+
+/**
  * vizPresetBridge — Phase 10.2 Task 06.
  *
  * Two small functions that bridge between the persisted `VizPresetStore`
@@ -14215,6 +14325,15 @@ interface CodeBackdropOptions {
  *  given, else the legacy single slot. Unchanged values notify nobody, so
  *  writing on every keystroke costs nothing downstream. */
 declare function setCodeBackdropOptions(next: CodeBackdropOptions | null, patternFileId?: string): void;
+/**
+ * #2395 — keep only the slots of the pattern files in `openPatternFileIds` (the
+ * patterns open as a tab in some pane); every other pattern's slot is dropped.
+ * A background belongs to a pattern's tab, so when the last tab of a pattern
+ * closes its options go with it, and reopening re-reads them from its code. The
+ * legacy single slot is not a pattern's and is left alone. One notification at
+ * most, and none when nothing was dropped.
+ */
+declare function retainCodeBackdropOptions(openPatternFileIds: Iterable<string>): void;
 /** The options `patternFileId`'s code gives its background (legacy slot when omitted). */
 declare function getCodeBackdropOptions(patternFileId?: string): CodeBackdropOptions | null;
 
@@ -14903,4 +15022,4 @@ declare function codeEditorForFocus(el: Element | null | undefined): MonacoEdito
  */
 declare function codeUndoForFocus(el: Element | null | undefined, which: 'undo' | 'redo'): boolean;
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type AnalyzeWindowOptions, type AppTabLabel, type AppTabState, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AssetDigest, type AssetImportInput, type AssetImportPlan, type AssetOrigin, type AssetRecord, type AudioFrame, type AudioPayload, type AudioReading, type AudioSourceRef, type AuditionHandle, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, type BackdropVizSpan, type BootStepFailure, BottomPanel, type BottomPanelState, type BottomPanelTab, type BouncedStem, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, CODE_UNDO_ATTR, type CapabilityEnv, type CaptionFieldKind, type ChainArg, type ChainCall, type ChordOptions, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type ClipPreviewHandle, type CodeBackdropOptions, type CodeVizOptions, type CollectResult, type Commit, type CommitKind, type CouldNotCheckReason, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DisplaySpan, type DocKind, type DocsIndex, type DrumMachineManifest, EPHEMERAL_ID_PREFIX, type EditorTheme, EditorView, type EncodeOptions, type EngineAliasMap, type EngineAliasValue, EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, type FixedMarker, type FixedParameter, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, type GmFamily, type GridGestureDef, type GridGestureId, type GridKeyMatcher, type GridMode, type GridScope, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IREvent, IRPattern, type IRSnapshot, type ImportAssetDeps, type ImportAssetResult, type InjectedGlobal, Knob, type KnobScaleKind, LIGHT_THEME_TOKENS, type LaneActivity, type LaneItem, type LanePeriod, type LaneSkeleton, LiveCodingEditor, type LiveCodingEditorProps, LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, type MasterAll, type MasterArray, type MasterGainState, type MasterScalar, Mixer, type NamedPass, type NamedStage, type NormalizedHap, type NoteColorMode, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, PatternIR, type PatternKind, PatternPanel, PatternScheduler, type PerfSnapshot, type PersistedAppTab, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PersistedTab, type PhoneLayout, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PickSectionEntry, type PreviewContext, type PreviewProvider, PreviewView, type ProjectDocInitResult, type ProjectHistory, type ProjectMeta, type PutAssetResult, type RegionControl, type RegionTrimRefusal, type RegionTrimResult, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplePeaks, type SampleRef, type SamplerInputs, type SectionStats, type SectionWindow, SequencerGrid, type ShapeSwap, type ShellSnapshot, type SignalAliasMap, type SignalAutomation, SignalBus, type SignalDimensions, type SignalFrame, type SignalKind, type SignalReading, type SignalSpans, type SignalTransportReader, type SignalTransportWriter, SilentCaptureError, type SkippedSounds, type SnapshotMeta, type SongAnalysis, type SongExtent, type SongSection, SonicPiEngine, type SoundMapDict, SourceLocation, SplitPane, type StemOutcome, type StepCountEdit, type StepGridModel, type StepLane, type SteppedAutomation, type SteppedStep, StorageFullError, type StorageStatus, type StoredAsset, type StoredAssetMeta, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, type StrudelTheme, type Surface, TAKE_NAME_PREFIX, TRACK_PALETTE_32, type TierFlags, type TierName, type TimeStep, type TimeWarp, type TimelineCaptureEntry, type TrackDisplay, type TrackEnvelopeAccess, type TrackEnvelopeStatus, type TrackEnvelopeView, type TrackMeta, UI_ICON_SIZE_VAR, type UnboundedSignalKind, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, type VisibleArea, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizPreviewSpec, VizQualityLevel, VizRenderer, type VizRendererKind, VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, type WalkWindow, WavEncoder, type WindowAnalysis, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteOutcome, type WriteRefusal, type WriteSource, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms$1 as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, insertSilenceArm$1 as insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts$1 as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, insertSilenceArm as pickInsertSilenceArm, listSectionParts as pickListSectionParts, removeArm as pickRemoveArm, renameSection as pickRenameSection, reorderArm as pickReorderArm, setArmHead as pickSetArmHead, setWeight as pickSetWeight, silenceArm as pickSilenceArm, splitArm as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm$1 as removeArm, removeAssetRecord, renameSection$1 as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm$1 as silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm$1 as splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type AnalyzeWindowOptions, type AppTabLabel, type AppTabState, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AssetDigest, type AssetImportInput, type AssetImportPlan, type AssetOrigin, type AssetRecord, type AudioFrame, type AudioPayload, type AudioReading, type AudioSourceRef, type AuditionHandle, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, type BackdropVizSpan, type BootStepFailure, BottomPanel, type BottomPanelState, type BottomPanelTab, type BouncedStem, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, CODE_UNDO_ATTR, type CapabilityEnv, type CaptionFieldKind, type ChainArg, type ChainCall, type ChordOptions, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type ClipPreviewHandle, type CodeBackdropOptions, type CodeViz, type CodeVizOptions, type CollectResult, type Commit, type CommitKind, type CouldNotCheckReason, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DisplaySpan, type DocKind, type DocsIndex, type DrumMachineManifest, EPHEMERAL_ID_PREFIX, type EditorTheme, EditorView, type EncodeOptions, type EngineAliasMap, type EngineAliasValue, EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, type FixedMarker, type FixedParameter, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, type GmFamily, type GridGestureDef, type GridGestureId, type GridKeyMatcher, type GridMode, type GridScope, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IREvent, IRPattern, type IRSnapshot, type ImportAssetDeps, type ImportAssetResult, type InjectedGlobal, Knob, type KnobScaleKind, LIGHT_THEME_TOKENS, type LaneActivity, type LaneItem, type LanePeriod, type LaneSkeleton, LiveCodingEditor, type LiveCodingEditorProps, LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, type MasterAll, type MasterArray, type MasterGainState, type MasterScalar, Mixer, type NamedPass, type NamedStage, type NormalizedHap, type NoteColorMode, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, PatternIR, type PatternKind, PatternPanel, PatternScheduler, type PerfSnapshot, type PersistedAppTab, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PersistedTab, type PhoneLayout, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PickSectionEntry, type PreviewContext, type PreviewProvider, PreviewView, type ProjectDocInitResult, type ProjectHistory, type ProjectMeta, type PutAssetResult, type RegionControl, type RegionTrimRefusal, type RegionTrimResult, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplePeaks, type SampleRef, type SamplerInputs, type SectionStats, type SectionWindow, SequencerGrid, type ShapeSwap, type ShellSnapshot, type SignalAliasMap, type SignalAutomation, SignalBus, type SignalDimensions, type SignalFrame, type SignalKind, type SignalReading, type SignalSpans, type SignalTransportReader, type SignalTransportWriter, SilentCaptureError, type SkippedSounds, type SnapshotMeta, type SongAnalysis, type SongExtent, type SongSection, SonicPiEngine, type SoundMapDict, SourceLocation, SplitPane, type StemOutcome, type StepCountEdit, type StepGridModel, type StepLane, type SteppedAutomation, type SteppedStep, StorageFullError, type StorageStatus, type StoredAsset, type StoredAssetMeta, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, type StrudelTheme, type Surface, TAKE_NAME_PREFIX, THREE_ADDONS, THREE_VIZ, TRACK_PALETTE_32, type TierFlags, type TierName, type TimeStep, type TimeWarp, type TimelineCaptureEntry, type TrackDisplay, type TrackEnvelopeAccess, type TrackEnvelopeStatus, type TrackEnvelopeView, type TrackMeta, UI_ICON_SIZE_VAR, type UnboundedSignalKind, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, type VisibleArea, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizPreviewSpec, VizQualityLevel, VizRenderer, type VizRendererKind, VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, type WalkWindow, WavEncoder, type WindowAnalysis, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteOutcome, type WriteRefusal, type WriteSource, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, compileThreeSketch, computeSections, computeSectionsInWindow, countSectionArms$1 as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, insertSilenceArm$1 as insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts$1 as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, insertSilenceArm as pickInsertSilenceArm, listSectionParts as pickListSectionParts, removeArm as pickRemoveArm, renameSection as pickRenameSection, reorderArm as pickReorderArm, setArmHead as pickSetArmHead, setWeight as pickSetWeight, silenceArm as pickSilenceArm, splitArm as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCodeViz, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm$1 as removeArm, removeAssetRecord, renameSection$1 as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retainCodeBackdropOptions, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm$1 as silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm$1 as splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };

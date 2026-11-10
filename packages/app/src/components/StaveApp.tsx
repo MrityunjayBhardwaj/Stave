@@ -1063,7 +1063,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     (window as any).__staveSeedAndPinBackdrop = (
       id: string,
       name: string,
-      renderer: "p5" | "hydra" | "glsl",
+      renderer: "p5" | "hydra" | "glsl" | "three",
       code: string,
     ): boolean => {
       const lang = languageForRenderer(renderer);

@@ -129,6 +129,8 @@ interface ChordProgressionState {
 let state: ChordProgressionState | null = null
 /** Race-guard for parallel starts during the offline render window. */
 let starting = false
+/** A stop that arrived while `starting`: honoured once the render finishes. */
+let stopRequested = false
 
 /**
  * Render the 8-second chord progression loop into an `AudioBuffer`
@@ -188,11 +190,22 @@ async function renderChordLoopBuffer(): Promise<AudioBuffer> {
  * in-flight and already-running cases.
  */
 export async function startChordProgression(): Promise<void> {
-  if (state || starting) return
+  if (state) return
+  if (starting) {
+    stopRequested = false // asked for again: the render under way is wanted after all
+    return
+  }
   starting = true
+  stopRequested = false
   try {
     const ctx = new AudioContext()
     const buffer = await renderChordLoopBuffer()
+    // Stopped while the loop rendered: nothing is playing yet, so nothing else
+    // would ever stop this one (a first click that switches tab, #2451).
+    if (stopRequested) {
+      void ctx.close()
+      return
+    }
     const source = ctx.createBufferSource()
     source.buffer = buffer
     source.loop = true
@@ -229,7 +242,10 @@ export async function startChordProgression(): Promise<void> {
  * No-op if not running.
  */
 export function stopChordProgression(): void {
-  if (!state) return
+  if (!state) {
+    if (starting) stopRequested = true
+    return
+  }
   try {
     state.source.stop()
   } catch {

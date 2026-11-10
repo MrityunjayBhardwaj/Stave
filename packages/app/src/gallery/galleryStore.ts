@@ -8,7 +8,8 @@
  * useSyncExternalStore, and survives the view being unmounted and drawn again.
  *
  * In the store (it is your place, or it is what that place shows):
- *   - the chosen list tab and the search text;
+ *   - the view (browse, My shares, Moderation), and the browse grid's filter,
+ *     sort and search text (#2486), and My shares' own (#2492);
  *   - the loaded list, the entry being shown, and the Back stack of what is
  *     open on top of the list (entries, profiles, collections);
  *   - My shares' inputs: this browser's shares and private links, its author
@@ -40,13 +41,30 @@
 import { useSyncExternalStore } from "react";
 import { fetchAccountShares, fetchGalleryEntry, fetchGalleryList, GalleryEntryRemoved } from "./client";
 import { applyListChanges, listLocalShares, listPrivateLinks, loadAuthor, type LocalPrivateLink, type LocalShare } from "./localShares";
-import type { GalleryEntry, GalleryEntryResponse, MySharesResponse } from "./types";
-import { isKindTab, type GalleryLinkTarget, type GalleryTab } from "./galleryModel";
+import { MAX_LISTED_ENTRIES, type GalleryEntry, type GalleryEntryResponse, type MySharesResponse } from "./types";
+import type {
+  GalleryFilter,
+  GalleryLinkTarget,
+  GallerySort,
+  GalleryTab,
+  MineFilter,
+  MineSort,
+  ProfileSort,
+} from "./galleryModel";
 
 export type ListState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; entries: GalleryEntry[] };
+  | {
+      status: "ready";
+      entries: GalleryEntry[];
+      /**
+       * #2519 — the server's answer was as long as a listing gets
+       * (MAX_LISTED_ENTRIES), so older entries may simply not be in it. Read
+       * from the answer itself, before this browser's changes are laid over it.
+       */
+      full: boolean;
+    };
 
 /** #2321 — the signed-in account's shares; "off" when signed out. */
 export type AccountState =
@@ -67,14 +85,46 @@ export interface SavedScroll {
   top: number;
 }
 
-export interface GalleryState {
-  /** The list tab chosen (the view shows Projects instead when Moderation is chosen but you're not an admin). */
-  tab: GalleryTab;
+/**
+ * #2493 — a profile's search, filter and order, for the profile at one place in
+ * the Back stack (`key`, profileListKey). Kept here so it survives opening one of
+ * their entries and coming Back; another profile, the same one opened again
+ * further up the stack, or any fresh open or change of view starts fresh. Not
+ * saved with the tab across reloads.
+ */
+export interface ProfileList {
+  key: string;
+  filter: GalleryFilter;
+  sort: ProfileSort;
   query: string;
+}
+
+export const PROFILE_LIST_START: Omit<ProfileList, "key"> = { filter: "all", sort: "newest", query: "" };
+
+/** Which profile view a ProfileList belongs to: its depth in the Back stack, and the author. */
+export function profileListKey(depth: number, authorId: string): string {
+  return `${depth}:${authorId}`;
+}
+
+export interface GalleryState {
+  /** The view chosen (browse is shown instead when Moderation is chosen but you're not an admin). */
+  tab: GalleryTab;
+  /** #2486 — the browse grid's filter, order and search. */
+  filter: GalleryFilter;
+  sort: GallerySort;
+  query: string;
+  /** #2492 — My shares' filter, order and search: a list of its own, kept apart from the grid's. */
+  mineFilter: MineFilter;
+  mineSort: MineSort;
+  mineQuery: string;
   list: ListState;
   detail: DetailState | null;
   /** What is open on top of the browse grid, innermost last; Back pops one. */
   stack: GalleryLinkTarget[];
+  /** #2493 — the open profile's search, filter and order (ProfileList). */
+  profileList: ProfileList | null;
+  /** #2493 — the open profile's name once it has loaded, for the tab's label. */
+  profileName: { id: string; name: string } | null;
   myAuthorId: string | null;
   mine: LocalShare[];
   links: LocalPrivateLink[];
@@ -89,13 +139,24 @@ export interface GalleryStore {
   /**
    * #2473 — come back to a place saved earlier (a gallery tab restored after a
    * reload): fetch the list, re-read this browser's shares, and put back the
-   * list tab and the whole Back stack. Like `open`, a fresh start for the data.
+   * view, the grid's filter, sort and search, and the whole Back stack. Like
+   * `open`, a fresh start for the data.
    */
-  resume(place: { tab: GalleryTab; stack: readonly GalleryLinkTarget[] }): void;
+  resume(place: GalleryResumePlace): void;
+  /** Show browse, My shares or Moderation; closes whatever was open on top (the Back stack empties). */
   setTab(tab: GalleryTab): void;
+  setFilter(filter: GalleryFilter): void;
+  setSort(sort: GallerySort): void;
   setQuery(query: string): void;
+  setMineFilter(filter: MineFilter): void;
+  setMineSort(sort: MineSort): void;
+  setMineQuery(query: string): void;
+  /** #2493 — change the search, filter or order of the profile at `key`. */
+  setProfileList(key: string, patch: Partial<Omit<ProfileList, "key">>): void;
+  /** #2493 — the profile `id` loaded, and is called `name`. */
+  setProfileName(id: string, name: string): void;
   loadList(): void;
-  /** (Re)load the entry `id` into the detail; switches the kind tab to the entry's kind. */
+  /** (Re)load the entry `id` into the detail. */
   openEntry(id: string): void;
   /** Open a view on top of what is showing. */
   push(view: GalleryLinkTarget): void;
@@ -111,6 +172,18 @@ export interface GalleryStore {
   savedScroll(): SavedScroll | null;
 }
 
+/** What `resume` puts back. */
+export interface GalleryResumePlace {
+  tab: GalleryTab;
+  filter: GalleryFilter;
+  sort: GallerySort;
+  query: string;
+  mineFilter: MineFilter;
+  mineSort: MineSort;
+  mineQuery: string;
+  stack: readonly GalleryLinkTarget[];
+}
+
 /** Which view a scroll offset belongs to: the top of the Back stack, at its depth. */
 export function scrollKey(stack: readonly GalleryLinkTarget[]): string {
   const top = stack[stack.length - 1];
@@ -118,11 +191,18 @@ export function scrollKey(stack: readonly GalleryLinkTarget[]): string {
 }
 
 const initialState = (): GalleryState => ({
-  tab: "project",
+  tab: "browse",
+  filter: "all",
+  sort: "newest",
   query: "",
+  mineFilter: "all",
+  mineSort: "newest",
+  mineQuery: "",
   list: { status: "loading" },
   detail: null,
   stack: [],
+  profileList: null,
+  profileName: null,
   myAuthorId: null,
   mine: [],
   links: [],
@@ -144,7 +224,10 @@ export function createGalleryStore(): GalleryStore {
     set({ list: { status: "loading" } });
     fetchGalleryList()
       // #2433 — the list may be cached from before this browser's latest change.
-      .then((r) => set({ list: { status: "ready", entries: applyListChanges(Array.isArray(r.entries) ? r.entries : []) } }))
+      .then((r) => {
+        const got = Array.isArray(r.entries) ? r.entries : [];
+        set({ list: { status: "ready", entries: applyListChanges(got), full: got.length >= MAX_LISTED_ENTRIES } });
+      })
       .catch((err: Error) => set({ list: { status: "error", message: err.message || "the gallery couldn't be loaded" } }));
   };
 
@@ -152,10 +235,7 @@ export function createGalleryStore(): GalleryStore {
     set({ detail: { status: "loading", id } });
     fetchGalleryEntry(id)
       .then((data) => {
-        set((s) => ({
-          detail: s.detail?.id === id ? { status: "ready", id, data } : s.detail,
-          tab: isKindTab(s.tab) ? data.entry.kind : s.tab,
-        }));
+        set((s) => ({ detail: s.detail?.id === id ? { status: "ready", id, data } : s.detail }));
       })
       .catch((err: Error) => {
         set((s) => ({
@@ -190,7 +270,7 @@ export function createGalleryStore(): GalleryStore {
       loadList();
       refreshLocal();
       scroll = null;
-      set({ stack: first ? [first] : [] });
+      set({ stack: first ? [first] : [], profileList: null });
       if (first?.kind === "entry") openEntry(first.id);
       else set({ detail: null });
     },
@@ -198,13 +278,29 @@ export function createGalleryStore(): GalleryStore {
       loadList();
       refreshLocal();
       scroll = null;
-      set({ tab: place.tab, stack: [...place.stack] });
+      const { tab, filter, sort, query, mineFilter, mineSort, mineQuery } = place;
+      set({ tab, filter, sort, query, mineFilter, mineSort, mineQuery, stack: [...place.stack], profileList: null });
       const top = place.stack[place.stack.length - 1];
       if (top?.kind === "entry") openEntry(top.id);
       else set({ detail: null });
     },
-    setTab: (tab) => set({ tab }),
+    setTab(tab) {
+      // A view of its own: whatever was open on top of the grid closes.
+      scroll = null;
+      set({ tab, stack: [], detail: null, profileList: null });
+    },
+    setFilter: (filter) => set({ filter }),
+    setSort: (sort) => set({ sort }),
     setQuery: (query) => set({ query }),
+    setMineFilter: (mineFilter) => set({ mineFilter }),
+    setMineSort: (mineSort) => set({ mineSort }),
+    setMineQuery: (mineQuery) => set({ mineQuery }),
+    setProfileList: (key, patch) =>
+      set((s) => ({
+        profileList: { ...(s.profileList?.key === key ? s.profileList : { key, ...PROFILE_LIST_START }), ...patch },
+      })),
+    setProfileName: (id, name) =>
+      set((s) => (s.profileName?.id === id && s.profileName.name === name ? {} : { profileName: { id, name } })),
     loadList,
     openEntry,
     push(view) {

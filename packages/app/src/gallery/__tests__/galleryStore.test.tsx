@@ -70,7 +70,8 @@ function mockGallery() {
 const calls = (f: ReturnType<typeof mockGallery>, url: string) => f.mock.calls.filter(([u]) => u === url).length;
 const cards = () =>
   Array.from(document.querySelectorAll("[data-gallery-card]")).map((el) => el.getAttribute("data-gallery-card"));
-const selectedTab = () => document.querySelector('[data-gallery-tab][aria-selected="true"]')?.getAttribute("data-gallery-tab");
+const selectedFilter = () =>
+  document.querySelector('[data-gallery-filter][aria-checked="true"]')?.getAttribute("data-gallery-filter");
 const noop = vi.fn(async () => true);
 
 afterEach(() => {
@@ -80,15 +81,15 @@ afterEach(() => {
 });
 
 describe("gallery store", () => {
-  it("keeps the chosen tab, the view and the Back stack across an unmount and remount", async () => {
+  it("keeps the chosen filter, the view and the Back stack across an unmount and remount", async () => {
     const fetchMock = mockGallery();
     const store = createGalleryStore();
     store.open(null);
     const view = () => <GalleryView store={store} onOpenAsProject={noop} onAddToProject={noop} />;
 
     const first = render(view());
-    await waitFor(() => expect(cards()).toEqual(["proj1xxxxxx"]));
-    fireEvent.click(document.querySelector('[data-gallery-tab="music"]')!);
+    await waitFor(() => expect(cards()).toContain("proj1xxxxxx"));
+    fireEvent.click(document.querySelector('[data-gallery-filter="music"]')!);
     fireEvent.click(document.querySelector('[data-gallery-card="musc1xxxxxx"]')!);
     await waitFor(() => expect(document.querySelector('[data-gallery-detail="musc1xxxxxx"]')).toBeTruthy());
     fireEvent.click(document.querySelector('[data-gallery-detail] [data-gallery-author-link="alice"]')!);
@@ -105,8 +106,8 @@ describe("gallery store", () => {
 
     fireEvent.click(screen.getByText("← Back"));
     await waitFor(() => expect(document.querySelector('[data-gallery-detail="musc1xxxxxx"]')).toBeTruthy());
-    fireEvent.click(screen.getByText("← Back to the gallery"));
-    expect(selectedTab()).toBe("music");
+    fireEvent.click(document.querySelector('[data-gallery-crumb="gallery"]')!);
+    expect(selectedFilter()).toBe("music");
     expect(cards()).toEqual(["musc1xxxxxx", "musc2xxxxxx"]);
     expect(calls(fetchMock, "/api/gallery")).toBe(1);
   });
@@ -117,7 +118,7 @@ describe("gallery store", () => {
     store.open(null);
     const view = () => <GalleryView store={store} onOpenAsProject={noop} onAddToProject={noop} />;
     const first = render(view());
-    await waitFor(() => expect(cards().length).toBe(1));
+    await waitFor(() => expect(cards().length).toBeGreaterThan(0));
     const body = document.querySelector(".sg-body") as HTMLElement;
     body.scrollTop = 240;
     fireEvent.scroll(body);
@@ -142,7 +143,7 @@ describe("gallery store", () => {
     const store = createGalleryStore();
     const props = { initialEntryId: null, onClose: vi.fn(), onOpenAsProject: noop, onAddToProject: noop, store };
     const r = render(<GalleryOverlay open {...props} />);
-    await waitFor(() => expect(cards().length).toBe(1));
+    await waitFor(() => expect(cards().length).toBeGreaterThan(0));
     const body = document.querySelector(".sg-body") as HTMLElement;
     body.scrollTop = 240;
     fireEvent.scroll(body);
@@ -163,8 +164,8 @@ describe("gallery store", () => {
     const store = createGalleryStore();
     const props = { initialEntryId: null, onClose: vi.fn(), onOpenAsProject: noop, onAddToProject: noop, store };
     const r = render(<GalleryOverlay open {...props} />);
-    await waitFor(() => expect(cards()).toEqual(["proj1xxxxxx"]));
-    fireEvent.click(document.querySelector('[data-gallery-tab="music"]')!);
+    await waitFor(() => expect(cards()).toContain("proj1xxxxxx"));
+    fireEvent.click(document.querySelector('[data-gallery-filter="music"]')!);
     fireEvent.click(document.querySelector('[data-gallery-card="musc1xxxxxx"]')!);
     await waitFor(() => expect(document.querySelector('[data-gallery-detail="musc1xxxxxx"]')).toBeTruthy());
     expect(calls(fetchMock, "/api/gallery")).toBe(1);
@@ -174,11 +175,11 @@ describe("gallery store", () => {
     r.rerender(<GalleryOverlay open {...props} />);
 
     // As the overlay always did: the list is fetched again and shown loading, the
-    // Back stack starts empty, the chosen tab carries over.
+    // Back stack starts empty, the chosen filter carries over.
     expect(screen.getByText("Loading the gallery…")).toBeTruthy();
     expect(calls(fetchMock, "/api/gallery")).toBe(2);
     expect(store.getState().stack).toEqual([]);
-    expect(selectedTab()).toBe("music");
+    expect(selectedFilter()).toBe("music");
     await waitFor(() => expect(cards()).toEqual(["musc1xxxxxx", "musc2xxxxxx"]));
     fireEvent.click(document.querySelector('[data-gallery-tab="mine"]')!);
     expect(document.querySelector('[data-gallery-mine="musc2xxxxxx"]')).toBeTruthy();

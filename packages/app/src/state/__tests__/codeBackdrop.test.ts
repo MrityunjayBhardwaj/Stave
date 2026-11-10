@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
   codeBackdropName,
   fileShownIn,
-  isTrackLevel,
+  isEvaluationOnly,
+  openPatternFiles,
   paneCodeBackdrops,
   panesShowing,
   pickSpanningBackdrop,
@@ -31,7 +32,7 @@ describe("codeBackdropName — what a pattern file's code asks for now", () => {
 
   it("deleting the line also clears when the evaluation spelled the name differently", () => {
     const played = recordEvaluatedBackdrop("red", null, "Red");
-    expect(isTrackLevel(played)).toBe(false);
+    expect(isEvaluationOnly(played)).toBe(false);
     expect(codeBackdropName(null, played)).toBeNull();
   });
 
@@ -40,18 +41,26 @@ describe("codeBackdropName — what a pattern file's code asks for now", () => {
     expect(codeBackdropName("Green", played)).toEqual({ name: "Green", source: "code" });
   });
 
-  it("keeps a track-level background from the last evaluation — the code reader can't see it", () => {
+  // #2394 — the reader sees a track's background too, so it follows the code
+  it("reads a track-level declaration like a master one: deleting its call takes it away", () => {
+    expect(codeBackdropName("scope", null)).toEqual({ name: "scope", source: "code" });
+    const played = recordEvaluatedBackdrop("scope", { fill: 1 }, "scope");
+    expect(codeBackdropName("scope", played)).toEqual({ name: "scope", source: "code" });
+    expect(codeBackdropName(null, played)).toBeNull();
+  });
+
+  it("keeps a background only the last evaluation found — the code reader can't see it", () => {
     const played = recordEvaluatedBackdrop("scope", { fill: 1 }, null);
-    expect(isTrackLevel(played)).toBe(true);
+    expect(isEvaluationOnly(played)).toBe(true);
     expect(codeBackdropName(null, played)).toEqual({ name: "scope", source: "evaluation" });
   });
 
-  it("a track-level background that won over an unchanged master line stays what played", () => {
+  it("an evaluation that disagreed with an unchanged code reader stays what played", () => {
     const played = recordEvaluatedBackdrop("scope", null, "Red");
     expect(codeBackdropName("Red", played)).toEqual({ name: "scope", source: "evaluation" });
-    // …until the master line changes: the user's new choice shows
+    // …until what the code declares changes: the user's new choice shows
     expect(codeBackdropName("Green", played)).toEqual({ name: "Green", source: "code" });
-    // …and with the master line deleted the track's still shows
+    // …and with the declaration deleted, what only the evaluation found still shows
     expect(codeBackdropName(null, played)).toEqual({ name: "scope", source: "evaluation" });
   });
 
@@ -105,6 +114,23 @@ describe("panes in File mode (#2421) — a pattern's background stays in its own
     expect(fileShownIn({ id: "x", tabs: [{ id: "a", kind: "editor", fileId: "song" }, { id: "b", kind: "editor", fileId: "green" }], activeTabId: "b" })).toBe("green");
     expect(fileShownIn({ id: "x", tabs: [{ id: "h", kind: "history" }], activeTabId: "h" })).toBeNull();
     expect(fileShownIn(undefined)).toBeNull();
+  });
+});
+
+describe("openPatternFiles (#2395) — the patterns whose backgrounds may hold options", () => {
+  const isPattern = (id: string) => id.startsWith("song") || id === "other";
+  it("every pattern open as an editor tab, active or not, in pane order, once", () => {
+    const panes = [
+      { id: "l", tabs: [{ id: "a", kind: "editor", fileId: "song" }, { id: "b", kind: "editor", fileId: "fold" }], activeTabId: "b" },
+      { id: "r", tabs: [{ id: "c", kind: "editor", fileId: "other" }, { id: "d", kind: "editor", fileId: "song" }], activeTabId: "c" },
+    ];
+    expect(openPatternFiles(panes, isPattern)).toEqual(["song", "other"]);
+  });
+  it("a closed pattern is not open; a preview or history tab does not count", () => {
+    const panes = [
+      { id: "l", tabs: [{ id: "p", kind: "preview", fileId: "song2" }, { id: "h", kind: "history" }], activeTabId: "p" },
+    ];
+    expect(openPatternFiles(panes, isPattern)).toEqual([]);
   });
 });
 

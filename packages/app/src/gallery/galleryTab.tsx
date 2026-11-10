@@ -10,10 +10,11 @@
  * only on a real open (the menu, a link, My Profile…, `GalleryHost.show`) or
  * when a tab restored after a reload is first drawn (`resume`).
  *
- * The tab also carries a small copy of the place (list tab, Back stack, and the
- * entry's title once known) as its shell state, so the layout remembers it
- * across reloads. It is written only when that place changes — every write
- * re-fires the shell's onActiveTabChange.
+ * The tab also carries a small copy of the place (view, the grid's filter, sort
+ * and search, My shares' own, Back stack, and the entry's title once known) as its shell state,
+ * so the layout remembers it across reloads. It is written only when that place
+ * changes — every write re-fires the shell's onActiveTabChange — and a change of
+ * the search alone waits until typing pauses (SEARCH_WRITE_DELAY_MS).
  */
 import React, { useEffect, useRef } from "react";
 import type { AppTabLabel, AppTabState, WorkspaceTab } from "@stave/editor";
@@ -23,11 +24,18 @@ import {
   GALLERY_AUTHOR_HASH_PREFIX,
   GALLERY_COLLECTION_HASH_PREFIX,
   GALLERY_HASH_PREFIX,
-  GALLERY_TABS,
-  MODERATION_TAB,
+  isGalleryFilter,
+  isGallerySort,
+  isGalleryTab,
+  isMineFilter,
+  isMineSort,
   readGalleryLink,
+  type GalleryFilter,
   type GalleryLinkTarget,
+  type GallerySort,
   type GalleryTab,
+  type MineFilter,
+  type MineSort,
 } from "./galleryModel";
 import type { GalleryEntry, GalleryEntryResponse } from "./types";
 import type { GalleryEntryActions } from "./GalleryHost";
@@ -51,8 +59,16 @@ export function openGalleryStore(store: GalleryStore, first: GalleryLinkTarget |
 /** The place a gallery tab carries in the shell's layout (persisted). */
 export interface GalleryPlace {
   tab: GalleryTab;
+  /** #2486 — the browse grid's filter, order and search. */
+  filter: GalleryFilter;
+  sort: GallerySort;
+  query: string;
+  /** #2492 — My shares' filter, order and search. */
+  mineFilter: MineFilter;
+  mineSort: MineSort;
+  mineQuery: string;
   stack: GalleryLinkTarget[];
-  /** The open entry's title, once it has loaded — the tab's label. */
+  /** The open entry's title or profile's name, once it has loaded — the tab's label. */
   title?: string;
 }
 
@@ -62,11 +78,38 @@ export function placeOf(s: GalleryState): GalleryPlace {
   const title =
     top?.kind === "entry" && s.detail?.status === "ready" && s.detail.id === top.id
       ? s.detail.data.entry.title
-      : undefined;
-  return { tab: s.tab, stack: s.stack, ...(title ? { title } : {}) };
+      : top?.kind === "author" && s.profileName?.id === top.id
+        ? s.profileName.name
+        : undefined;
+  return {
+    tab: s.tab,
+    filter: s.filter,
+    sort: s.sort,
+    query: s.query,
+    mineFilter: s.mineFilter,
+    mineSort: s.mineSort,
+    mineQuery: s.mineQuery,
+    stack: s.stack,
+    ...(title ? { title } : {}),
+  };
 }
 
-const LIST_TABS: ReadonlySet<string> = new Set([...GALLERY_TABS.map((t) => t.id), MODERATION_TAB.id]);
+/** Where a fresh gallery starts. */
+export const START_PLACE: GalleryPlace = {
+  tab: "browse",
+  filter: "all",
+  sort: "newest",
+  query: "",
+  mineFilter: "all",
+  mineSort: "newest",
+  mineQuery: "",
+  stack: [],
+};
+
+/** A saved search longer than this wasn't typed into the box; drop it. */
+const MAX_QUERY = 200;
+/** How long the search must sit still before the tab's saved copy is written. */
+export const SEARCH_WRITE_DELAY_MS = 400;
 const LINK_PREFIX = {
   entry: GALLERY_HASH_PREFIX,
   author: GALLERY_AUTHOR_HASH_PREFIX,
@@ -83,7 +126,15 @@ const MAX_STACK = 32;
 export function readPlace(state: AppTabState | undefined): GalleryPlace | null {
   if (!state || typeof state !== "object" || Array.isArray(state)) return null;
   const o = state as { [key: string]: AppTabState };
-  const tab = typeof o.tab === "string" && LIST_TABS.has(o.tab) ? (o.tab as GalleryTab) : "project";
+  // A place saved before #2486 names a kind as its tab ("project", "music", "viz"): it opens on All.
+  const tab = isGalleryTab(o.tab) ? o.tab : START_PLACE.tab;
+  const filter = isGalleryFilter(o.filter) ? o.filter : START_PLACE.filter;
+  const sort = isGallerySort(o.sort) ? o.sort : START_PLACE.sort;
+  const query = readQuery(o.query, START_PLACE.query);
+  // #2492 — a place saved before My shares had its own list opens it on All, newest first.
+  const mineFilter = isMineFilter(o.mineFilter) ? o.mineFilter : START_PLACE.mineFilter;
+  const mineSort = isMineSort(o.mineSort) ? o.mineSort : START_PLACE.mineSort;
+  const mineQuery = readQuery(o.mineQuery, START_PLACE.mineQuery);
   const stack: GalleryLinkTarget[] = [];
   if (Array.isArray(o.stack)) {
     for (const v of o.stack.slice(-MAX_STACK)) {
@@ -95,7 +146,12 @@ export function readPlace(state: AppTabState | undefined): GalleryPlace | null {
     }
   }
   const title = typeof o.title === "string" && o.title ? o.title : undefined;
-  return { tab, stack, ...(title ? { title } : {}) };
+  return { tab, filter, sort, query, mineFilter, mineSort, mineQuery, stack, ...(title ? { title } : {}) };
+}
+
+/** A saved search, or `fallback` when it isn't one somebody typed. */
+function readQuery(v: AppTabState | undefined, fallback: string): string {
+  return typeof v === "string" && v.length <= MAX_QUERY ? v : fallback;
 }
 
 /** A gallery place as the shell stores it (plain JSON). */
@@ -108,12 +164,26 @@ function samePlace(a: GalleryPlace, b: GalleryPlace): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/** Do two places differ only in a search text (the grid's or My shares')? */
+function onlySearchDiffers(a: GalleryPlace, b: GalleryPlace): boolean {
+  const blank = (p: GalleryPlace): GalleryPlace => ({ ...p, query: "", mineQuery: "" });
+  return (a.query !== b.query || a.mineQuery !== b.mineQuery) && samePlace(blank(a), blank(b));
+}
+
+/** What the tab says for a view with nothing open on top of it. */
+const VIEW_LABEL: Record<GalleryTab, string | null> = { browse: null, mine: "My shares", moderation: "Moderation" };
+
 /** The tab's label: where you are. */
 export function galleryTabLabel(tab: WorkspaceTab & { kind: "app" }): AppTabLabel {
   const place = readPlace(tab.state);
   const top = place?.stack[place.stack.length - 1];
-  const where =
-    !top ? null : top.kind === "entry" ? (place?.title ?? null) : top.kind === "author" ? "Profile" : "Collection";
+  const where = !top
+    ? VIEW_LABEL[place?.tab ?? "browse"]
+    : top.kind === "entry"
+      ? (place?.title ?? null)
+      : top.kind === "author"
+        ? (place?.title ?? "Profile")
+        : "Collection";
   return { title: where ? `Gallery · ${where}` : "Gallery", icon: GALLERY_ICON };
 }
 
@@ -154,7 +224,7 @@ export function GalleryTabBody({
     resumedRef.current = true;
     started = true;
     const place = readPlace(tab.state);
-    store.resume(place ?? { tab: "project", stack: [] });
+    store.resume(place ?? START_PLACE);
   }
 
   // Keep the shell's copy of the place up to date — only when the place itself changes.
@@ -162,14 +232,41 @@ export function GalleryTabBody({
   placeChange.current = onPlaceChange;
   const savedRef = useRef<GalleryPlace | null>(readPlace(tab.state));
   useEffect(() => {
-    const sync = () => {
-      const place = placeOf(store.getState());
-      if (savedRef.current && samePlace(savedRef.current, place)) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pending: GalleryPlace | null = null;
+    const write = (place: GalleryPlace) => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      pending = null;
       savedRef.current = place;
       placeChange.current(place);
     };
+    const sync = () => {
+      const place = placeOf(store.getState());
+      const saved = savedRef.current;
+      if (saved && samePlace(saved, place)) {
+        // Typed and then deleted back to what is saved: nothing left to write.
+        if (timer) clearTimeout(timer);
+        timer = null;
+        pending = null;
+        return;
+      }
+      // #2486 — each keystroke in the search would rewrite the layout; wait for a pause.
+      if (saved && onlySearchDiffers(saved, place)) {
+        pending = place;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => pending && write(pending), SEARCH_WRITE_DELAY_MS);
+        return;
+      }
+      write(place);
+    };
     sync();
-    return store.subscribe(sync);
+    const unsubscribe = store.subscribe(sync);
+    return () => {
+      unsubscribe();
+      // Leaving the tab mid-typing still keeps what was typed.
+      if (pending) write(pending);
+    };
   }, [store]);
 
   return (

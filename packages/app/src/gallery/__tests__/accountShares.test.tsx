@@ -32,7 +32,7 @@ import {
   type LocalPrivateLink,
   type LocalShare,
 } from "../localShares";
-import { claimToasts, movedPhrase, myRows } from "../myShares";
+import { claimToasts, countMine, mineItems, movedPhrase, myRows, shownMine, type MyRows } from "../myShares";
 import { resetGallerySessionForTests } from "../session";
 import { MANAGE_TOKEN_HEADER, MAX_CLAIM_ITEMS, type ClaimResponse, type GalleryEntry, type MySharesResponse } from "../types";
 
@@ -203,6 +203,73 @@ describe("My shares rows", () => {
   });
 });
 
+describe("#2492 My shares as one list", () => {
+  const row = (id: string, home: "account" | "browser", publishedAt = 1, title = id) => ({
+    id, title, kind: "music" as const, publishedAt, manageToken: home === "browser" ? "t" : null, home,
+  });
+  const link = (id: string, home: "account" | "browser", createdAt = 1, projectName = id) => ({
+    id, url: null, projectName, createdAt, manageToken: null, home,
+  });
+  const rows = (entries: MyRows["entries"], links: MyRows["links"] = []): MyRows => ({ entries, links, collections: [] });
+  const pills = (r: MyRows, listed: GalleryEntry[] | null, signedIn: boolean) =>
+    mineItems(r, listed, signedIn).map((i) => [i.row.id, i.pill]);
+
+  it("gives each row one pill: Removed, then Only in this browser, then In the gallery / Private link", () => {
+    const r = rows(
+      [row("acct0000000", "account"), row("here0000000", "browser"), row("gone0000000", "browser")],
+      [link("lacct000000", "account"), link("lhere000000", "browser")],
+    );
+    const listed = [ENTRY("acct0000000", 1), ENTRY("here0000000", 1)];
+    expect(pills(r, listed, true)).toEqual([
+      ["acct0000000", "gallery"],
+      ["here0000000", "browser"],
+      ["gone0000000", "removed"],
+      ["lacct000000", "private"],
+      ["lhere000000", "browser"],
+    ]);
+    // Signed out everything is this browser's, so that isn't said.
+    expect(pills(r, listed, false)).toEqual([
+      ["acct0000000", "gallery"],
+      ["here0000000", "gallery"],
+      ["gone0000000", "removed"],
+      ["lacct000000", "private"],
+      ["lhere000000", "private"],
+    ]);
+  });
+
+  it("claims nothing about a browser row while the list hasn't loaded (a load error is never 'Removed')", () => {
+    const r = rows([row("acct0000000", "account"), row("here0000000", "browser")]);
+    expect(pills(r, null, false)).toEqual([
+      ["acct0000000", "gallery"],
+      ["here0000000", null],
+    ]);
+    // Signed in, a browser row is still only in this browser, loaded or not.
+    expect(pills(r, null, true)).toEqual([
+      ["acct0000000", "gallery"],
+      ["here0000000", "browser"],
+    ]);
+  });
+
+  it("filters, searches titles, counts per filter for the search, and orders", () => {
+    const items = mineItems(
+      rows([row("e1", "browser", 3, "Dub one"), row("e2", "browser", 1, "ambient")], [link("l1", "browser", 2, "Dub link")]),
+      [],
+      false,
+    );
+    const ids = (f: "all" | "published" | "links", q: string, s: "newest" | "oldest" | "title") =>
+      shownMine(items, f, q, s).map((i) => i.row.id);
+    expect(ids("all", "", "newest")).toEqual(["e1", "l1", "e2"]);
+    expect(ids("all", "", "oldest")).toEqual(["e2", "l1", "e1"]);
+    expect(ids("all", "", "title")).toEqual(["e2", "l1", "e1"]); // case-blind: ambient, Dub link, Dub one
+    expect(ids("published", "", "newest")).toEqual(["e1", "e2"]);
+    expect(ids("links", "", "newest")).toEqual(["l1"]);
+    expect(ids("all", "dub", "newest")).toEqual(["e1", "l1"]);
+    expect(countMine(items, "")).toEqual({ all: 3, published: 2, links: 1 });
+    expect(countMine(items, "dub")).toEqual({ all: 2, published: 1, links: 1 });
+    expect(countMine(items, "nothing")).toEqual({ all: 0, published: 0, links: 0 });
+  });
+});
+
 describe("an old profile link", () => {
   it("follows { movedTo } to the profile it was merged into", async () => {
     const page = { author: { authorId: "newAuthor01", name: "Ada", bio: "", createdAt: 1, updatedAt: 1 }, entries: [], collections: [] };
@@ -222,6 +289,7 @@ describe("the overlay signed in", () => {
       session: { signInAvailable: true, providers: [], user: { name: "Ada", authorId: ME, verified: { provider: "github", login: "ada" } } },
     });
     addLocalShare(SHARE("local000000", 1));
+    addLocalShare(SHARE("lgone000000", 0));
     let account: MySharesResponse = {
       authorId: ME,
       entries: [ENTRY("acct0000000", 3)],
@@ -230,7 +298,8 @@ describe("the overlay signed in", () => {
     };
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       const key = `${init?.method ?? "GET"} ${url}`;
-      if (key === "GET /api/gallery") return Response.json({ entries: [ENTRY("acct0000000", 3)] });
+      // local000000 is still in the gallery; lgone000000 was taken down.
+      if (key === "GET /api/gallery") return Response.json({ entries: [ENTRY("acct0000000", 3), ENTRY("local000000", 1)] });
       if (key === "GET /api/gallery/me/shares") return Response.json(account);
       if (key === "DELETE /api/gallery/acct0000000") {
         account = { ...account, entries: [] };
@@ -250,28 +319,37 @@ describe("the overlay signed in", () => {
     expect(document.querySelector('[data-gallery-mine-source="account"]')).not.toBeNull();
     const acct = document.querySelector('[data-gallery-mine="acct0000000"]') as HTMLElement;
     const local = document.querySelector('[data-gallery-mine="local000000"]') as HTMLElement;
-    expect(acct.textContent).not.toContain("only in this browser");
-    expect(local.textContent).toContain("only in this browser");
-    expect(document.querySelector('[data-gallery-my-collection="coll0000000"]')).not.toBeNull();
+    await waitFor(() => expect(local.querySelector("[data-gallery-pill]")?.textContent).toBe("Only in this browser"));
+    // #2492 — one pill a row: the account's is in the gallery; removed outranks "only in this browser".
+    expect(acct.querySelector("[data-gallery-pill]")!.textContent).toBe("In the gallery");
+    const gone = document.querySelector('[data-gallery-mine="lgone000000"]') as HTMLElement;
+    expect(gone.querySelector("[data-gallery-pill]")!.textContent).toBe("Removed");
+    expect(document.querySelector('[data-gallery-link="lacct000000"] [data-gallery-pill]')!.textContent).toBe("Private link");
+    expect(document.querySelector("[data-gallery-mine-who]")!.textContent).toBe(
+      "Signed in as Ada with GitHub. Everything you've shared, from any device.",
+    );
+    // #2494 — the account has a collection (coll0000000 above), and My shares doesn't list it for now.
+    expect(document.querySelector('[data-gallery-my-collection="coll0000000"]')).toBeNull();
+    expect(document.querySelector('[data-gallery-section="collections"]')).toBeNull();
     expect(document.querySelector('[data-gallery-links-note]')!.textContent).toContain("only you can see this list");
     expect(document.querySelector('[data-gallery-links-note]')!.textContent).toContain(
       "A link's key is kept only in the browser that made it",
     );
     expect(document.querySelector('[data-gallery-my-profile]')!.getAttribute("data-gallery-my-profile")).toBe(ME);
 
-    fireEvent.click(within(acct).getByText("Delete"));
+    pickFromMenu(acct, "Delete");
     await waitFor(() => expect(document.querySelector('[data-gallery-mine="acct0000000"]')).toBeNull());
     const del = fetchMock.mock.calls.find(([u, i]) => u === "/api/gallery/acct0000000" && i?.method === "DELETE")!;
     expect((del[1]!.headers as Record<string, string>)[MANAGE_TOKEN_HEADER]).toBeUndefined();
 
     const link = document.querySelector('[data-gallery-link="lacct000000"]') as HTMLElement;
-    fireEvent.click(within(link).getByText("Revoke"));
+    pickFromMenu(link, "Revoke");
     await waitFor(() => expect(document.querySelector('[data-gallery-link="lacct000000"]')).toBeNull());
     const rev = fetchMock.mock.calls.find(([u, i]) => u === "/api/share/lacct000000" && i?.method === "DELETE")!;
     expect((rev[1]!.headers as Record<string, string>)[MANAGE_TOKEN_HEADER]).toBeUndefined();
   });
 
-  it("#2329 offers Copy again only for a link this browser made; one made elsewhere can only be revoked", async () => {
+  it("#2329 offers Copy link only for a link this browser made; one made elsewhere can only be revoked", async () => {
     resetGallerySessionForTests({
       status: "ready",
       session: { signInAvailable: true, providers: [], user: { name: "Ada", authorId: ME, verified: { provider: "github", login: "ada" } } },
@@ -301,17 +379,27 @@ describe("the overlay signed in", () => {
     const here = document.querySelector('[data-gallery-link="lhere000000"]') as HTMLElement;
     const elsewhere = document.querySelector('[data-gallery-link="lelse000000"]') as HTMLElement;
 
-    expect(within(here).queryByText("Copy again")).not.toBeNull();
-    expect(within(here).queryByText("Revoke")).not.toBeNull();
+    expect(within(here).queryByText("Copy link")).not.toBeNull();
     expect(here.querySelector("[data-gallery-link-elsewhere]")).toBeNull();
 
-    expect(within(elsewhere).queryByText("Copy again")).toBeNull();
-    expect(within(elsewhere).queryByText("Revoke")).not.toBeNull();
+    expect(within(elsewhere).queryByText("Copy link")).toBeNull();
+    // Revoke is under ⋯ on both.
+    for (const row of [here, elsewhere]) {
+      fireEvent.click(row.querySelector("[data-gallery-more]")!);
+      expect(within(row).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Revoke"]);
+      fireEvent.click(row.querySelector("[data-gallery-more]")!);
+    }
     expect(elsewhere.querySelector("[data-gallery-link-elsewhere]")!.textContent).toBe(
       "Made on another device. The link's key is only kept there.",
     );
 
-    fireEvent.click(within(here).getByText("Copy again"));
+    fireEvent.click(within(here).getByText("Copy link"));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(LINK("lhere000000", 5).url));
   });
 });
+
+/** Open a My shares row's ⋯ menu and pick `label`. */
+function pickFromMenu(row: HTMLElement, label: string): void {
+  fireEvent.click(row.querySelector("[data-gallery-more]")!);
+  fireEvent.click(within(row).getByRole("menuitem", { name: label }));
+}
