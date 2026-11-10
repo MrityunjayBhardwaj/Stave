@@ -64,6 +64,606 @@ var init_piano = __esm({
   }
 });
 
+// src/extensions/host.ts
+function fromStrudel(webaudio, core, globals = globalThis) {
+  const key3 = /* @__PURE__ */ __name((name) => name.toLowerCase().replace(/\s+/g, "_"), "key");
+  return {
+    sounds: {
+      has: /* @__PURE__ */ __name((name) => key3(name) in webaudio.soundMap.get(), "has"),
+      add: /* @__PURE__ */ __name((name, onTrigger, data) => webaudio.registerSound(key3(name), onTrigger, data), "add"),
+      remove: /* @__PURE__ */ __name((name) => webaudio.soundMap.setKey(key3(name), void 0), "remove")
+    },
+    controls: {
+      has: /* @__PURE__ */ __name((name) => name in core.Pattern.prototype, "has"),
+      add: /* @__PURE__ */ __name((name) => core.registerControl(name)[name], "add"),
+      remove: /* @__PURE__ */ __name((name) => {
+        delete core.Pattern.prototype[name];
+      }, "remove")
+    },
+    globals
+  };
+}
+__name(fromStrudel, "fromStrudel");
+function nameTaken(extensionId, kind, taken) {
+  const err = new Error(
+    `The ${extensionId} extension wants the ${kind} name "${taken}", but it is already in use, so it was not added.`
+  );
+  err.code = "EXTENSION_NAME_TAKEN";
+  err.extensionId = extensionId;
+  err.kind = kind;
+  err.taken = taken;
+  return err;
+}
+__name(nameTaken, "nameTaken");
+function createCommonHost(id) {
+  const onOff = [];
+  let closed = false;
+  return {
+    host: {
+      id,
+      onDeactivate(fn) {
+        if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`);
+        onOff.push(fn);
+      }
+    },
+    undo() {
+      closed = true;
+      const errors = [];
+      for (const fn of onOff.splice(0).reverse()) {
+        try {
+          fn();
+        } catch (e) {
+          errors.push(e);
+        }
+      }
+      return errors;
+    }
+  };
+}
+__name(createCommonHost, "createCommonHost");
+function createRecordingHost(id, reg, declared2) {
+  const declaredSounds = new Set((declared2?.sounds ?? []).map((n) => n.toLowerCase()));
+  const declaredControls = new Set(declared2?.controls ?? []);
+  const undeclared = /* @__PURE__ */ __name((kind, name) => new Error(`The ${id} extension registered the ${kind} "${name}" without declaring it in its manifest, so it was not added.`), "undeclared");
+  const undos = [];
+  const onOff = [];
+  const prepares = [];
+  let closed = false;
+  const open = /* @__PURE__ */ __name(() => {
+    if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`);
+  }, "open");
+  const host = {
+    id,
+    registerSound(name, onTrigger, data = {}) {
+      open();
+      if (declared2 && !declaredSounds.has(name.toLowerCase())) throw undeclared("sound", name);
+      if (reg.sounds.has(name)) throw nameTaken(id, "sound", name);
+      reg.sounds.add(name, onTrigger, data);
+      undos.push(() => reg.sounds.remove(name));
+    },
+    registerControl(name) {
+      open();
+      if (declared2 && !declaredControls.has(name)) throw undeclared("control", name);
+      if (reg.controls.has(name)) throw nameTaken(id, "control", name);
+      if (name in reg.globals) throw nameTaken(id, "global", name);
+      const fn = reg.controls.add(name);
+      undos.push(() => reg.controls.remove(name));
+      reg.globals[name] = fn;
+      undos.push(() => {
+        delete reg.globals[name];
+      });
+    },
+    setGlobal(name, value) {
+      open();
+      if (name in reg.globals) throw nameTaken(id, "global", name);
+      reg.globals[name] = value;
+      undos.push(() => {
+        delete reg.globals[name];
+      });
+    },
+    onDeactivate(fn) {
+      open();
+      onOff.push(fn);
+    },
+    onPrepare(fn) {
+      open();
+      prepares.push(fn);
+      undos.push(() => {
+        const i = prepares.indexOf(fn);
+        if (i >= 0) prepares.splice(i, 1);
+      });
+    }
+  };
+  return {
+    host,
+    undo() {
+      closed = true;
+      const errors = [];
+      for (const fn of [...onOff.splice(0).reverse(), ...undos.splice(0).reverse()]) {
+        try {
+          fn();
+        } catch (e) {
+          errors.push(e);
+        }
+      }
+      return errors;
+    },
+    preparers: /* @__PURE__ */ __name(() => [...prepares], "preparers")
+  };
+}
+__name(createRecordingHost, "createRecordingHost");
+
+// src/extensions/manager.ts
+var PART_LANGUAGE_SET = { strudel: true };
+var PART_LANGUAGES = Object.keys(PART_LANGUAGE_SET);
+function declares(m, language) {
+  return m.languages !== "*" && m.languages.includes(language);
+}
+__name(declares, "declares");
+function slots() {
+  const active2 = /* @__PURE__ */ new Map();
+  const pending2 = /* @__PURE__ */ new Map();
+  return {
+    active: active2,
+    pending: pending2,
+    on(key3, run) {
+      if (active2.has(key3)) return Promise.resolve();
+      const inFlight2 = pending2.get(key3);
+      if (inFlight2 && !inFlight2.cancelled) return inFlight2.promise;
+      const ticket = { cancelled: false, promise: Promise.resolve() };
+      const after = inFlight2 ? inFlight2.promise.catch(() => void 0) : Promise.resolve();
+      ticket.promise = after.then(async () => {
+        const out = await run(ticket);
+        if (!out) return;
+        if (ticket.cancelled) {
+          out.rec.undo();
+          return;
+        }
+        active2.set(key3, out.rec);
+        out.kept?.();
+      }).finally(() => {
+        if (pending2.get(key3) === ticket) pending2.delete(key3);
+      });
+      pending2.set(key3, ticket);
+      return ticket.promise;
+    },
+    off(key3) {
+      const inFlight2 = pending2.get(key3);
+      if (inFlight2) inFlight2.cancelled = true;
+      const rec = active2.get(key3);
+      if (!rec) return [];
+      active2.delete(key3);
+      return rec.undo();
+    }
+  };
+}
+__name(slots, "slots");
+async function activateThrough(rec, activate) {
+  try {
+    await activate();
+  } catch (e) {
+    const undoErrors = rec.undo();
+    if (undoErrors.length && typeof e === "object" && e !== null) e.undoErrors = undoErrors;
+    throw e;
+  }
+}
+__name(activateThrough, "activateThrough");
+function createExtensionManager(opts) {
+  const byId = /* @__PURE__ */ new Map();
+  for (const m of opts.manifests) {
+    if (byId.has(m.id)) throw new Error(`Two extensions share the id "${m.id}".`);
+    for (const language of Object.keys(m.provides ?? {})) {
+      if (!declares(m, language)) {
+        throw new Error(
+          `The ${m.id} extension says what it provides for ${language}, but ${language} is not one of the languages it lists.`
+        );
+      }
+    }
+    byId.set(m.id, m);
+  }
+  const common = slots();
+  const parts = slots();
+  const modules = /* @__PURE__ */ new Map();
+  const partKey = /* @__PURE__ */ __name((id, language) => `${id}\0${language}`, "partKey");
+  const partsOf = /* @__PURE__ */ __name((id) => [.../* @__PURE__ */ new Set([...parts.active.keys(), ...parts.pending.keys()])].filter((k) => k.startsWith(`${id}\0`)), "partsOf");
+  const manager = {
+    manifest: /* @__PURE__ */ __name((id) => byId.get(id), "manifest"),
+    isActive: /* @__PURE__ */ __name((id) => common.active.has(id), "isActive"),
+    activeIds: /* @__PURE__ */ __name(() => [...common.active.keys()], "activeIds"),
+    isPartActive: /* @__PURE__ */ __name((id, language) => parts.active.has(partKey(id, language)), "isPartActive"),
+    activate(id) {
+      const m = byId.get(id);
+      if (!m) return Promise.reject(new Error(`There is no extension called "${id}".`));
+      return common.on(id, async (ticket) => {
+        const mod = await m.load();
+        if (ticket.cancelled) return null;
+        for (const language of PART_LANGUAGES) {
+          if (mod[language] && !declares(m, language)) {
+            throw new Error(`it has a ${language} part, but ${language} is not one of the languages it lists`);
+          }
+        }
+        const rec = createCommonHost(m.id);
+        await activateThrough(rec, () => mod.activate?.(rec.host));
+        return { rec, kept: /* @__PURE__ */ __name(() => modules.set(id, mod), "kept") };
+      });
+    },
+    activatePart(id, language) {
+      const m = byId.get(id);
+      const mod = modules.get(id);
+      if (!m || !mod) {
+        return Promise.reject(new Error(`The ${id} extension is not switched on, so its ${language} part cannot be.`));
+      }
+      const part = mod[language];
+      const driver = opts.parts?.[language];
+      if (!part || !driver) return Promise.resolve();
+      return parts.on(partKey(id, language), async (ticket) => {
+        await driver.before?.(m, part);
+        if (ticket.cancelled) return null;
+        const rec = driver.record(m);
+        await activateThrough(rec, () => part.activate(rec.host));
+        return { rec };
+      });
+    },
+    deactivate(id) {
+      const errors = [];
+      for (const key3 of partsOf(id).reverse()) errors.push(...parts.off(key3));
+      errors.push(...common.off(id));
+      modules.delete(id);
+      return errors;
+    },
+    async sync(ids) {
+      for (const id of [...common.active.keys(), ...common.pending.keys()]) if (!ids.has(id)) manager.deactivate(id);
+      const failed = [];
+      const unknown = [...ids].filter((id) => !byId.has(id));
+      await Promise.all(
+        [...ids].filter((id) => byId.has(id)).map(
+          (id) => manager.activate(id).catch((error) => {
+            failed.push({ id, error });
+          })
+        )
+      );
+      return { failed, unknown };
+    },
+    preparers() {
+      const out = [];
+      for (const [key3, rec] of parts.active) {
+        const id = key3.slice(0, key3.indexOf("\0"));
+        for (const run of rec.preparers?.() ?? []) out.push({ id, run });
+      }
+      return out;
+    }
+  };
+  return manager;
+}
+__name(createExtensionManager, "createExtensionManager");
+
+// src/extensions/enablement.ts
+var STORAGE = "stave:extensions";
+function storage() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+__name(storage, "storage");
+var unsaved = /* @__PURE__ */ new Map();
+function read() {
+  let ids;
+  try {
+    const raw = storage()?.getItem(STORAGE);
+    const parsed = raw ? JSON.parse(raw) : [];
+    ids = new Set(Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : []);
+  } catch {
+    ids = /* @__PURE__ */ new Set();
+  }
+  for (const [id, on] of unsaved) {
+    if (on) ids.add(id);
+    else ids.delete(id);
+  }
+  return ids;
+}
+__name(read, "read");
+var listeners = /* @__PURE__ */ new Set();
+function enabledExtensionIds() {
+  return read();
+}
+__name(enabledExtensionIds, "enabledExtensionIds");
+function onExtensionsEnabledChange(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+__name(onExtensionsEnabledChange, "onExtensionsEnabledChange");
+
+// src/extensions/builtin.ts
+var BUILTIN_EXTENSIONS = [];
+
+// src/extensions/strudel.ts
+function messageOf(e) {
+  if (typeof e === "object" && e !== null && typeof e.message === "string") {
+    return e.message;
+  }
+  return String(e);
+}
+__name(messageOf, "messageOf");
+function createStrudelDriver(doors) {
+  const handedToStrudel = /* @__PURE__ */ new Set();
+  const attached = /* @__PURE__ */ __name(() => {
+    const d = doors();
+    if (!d) throw new Error("the Strudel engine has not started");
+    return d;
+  }, "attached");
+  return {
+    async before(_m, part) {
+      for (const url of part.worklets ?? []) {
+        const d = attached();
+        const live = await d.liveContext();
+        if (!live?.audioWorklet) throw new Error("this browser cannot run audio worklets, which it needs");
+        try {
+          await live.audioWorklet.addModule(url);
+        } catch (e) {
+          throw new Error(`its audio worklet did not load (${messageOf(e)})`);
+        }
+        if (!handedToStrudel.has(url)) {
+          handedToStrudel.add(url);
+          d.registerWorklet(url);
+        }
+      }
+    },
+    // Always the declared list, empty if the manifest declares none: the host refuses
+    // every sound and control not on it.
+    record: /* @__PURE__ */ __name((m) => createRecordingHost(m.id, attached().registries(), m.provides?.strudel ?? {}), "record")
+  };
+}
+__name(createStrudelDriver, "createStrudelDriver");
+async function prepareStrudelParts(manager, report2, capMs, signal) {
+  if (signal?.aborted) return;
+  const nameOf2 = /* @__PURE__ */ __name((id) => manager.manifest(id)?.name ?? id, "nameOf");
+  const jobs = manager.preparers();
+  if (!jobs.length) return;
+  const pending2 = new Set(jobs);
+  const all = Promise.all(
+    jobs.map(async (job) => {
+      try {
+        await job.run();
+      } catch (e) {
+        report2("error", `${nameOf2(job.id)} extension could not get ready to play: ${messageOf(e)}. The rest of the song plays without it.`);
+      } finally {
+        pending2.delete(job);
+      }
+    })
+  );
+  let timer;
+  let onAbort;
+  const ended = await Promise.race([
+    all.then(() => "done"),
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve("capped"), capMs);
+    }),
+    new Promise((resolve) => {
+      onAbort = /* @__PURE__ */ __name(() => resolve("cancelled"), "onAbort");
+      signal?.addEventListener("abort", onAbort, { once: true });
+    })
+  ]);
+  clearTimeout(timer);
+  if (onAbort) signal?.removeEventListener("abort", onAbort);
+  if (ended === "capped" && pending2.size) {
+    const names = [...new Set([...pending2].map((j) => j.id))].map(nameOf2).join(", ");
+    report2("warn", `${names} extension was still getting ready after ${Math.round(capMs / 100) / 10} s, so its sounds may be missing at the start.`);
+  }
+}
+__name(prepareStrudelParts, "prepareStrudelParts");
+
+// src/extensions/runtime.ts
+function createExtensionRuntime(opts) {
+  let strudel = null;
+  let pageReport = null;
+  const listeners22 = /* @__PURE__ */ new Set();
+  const report2 = /* @__PURE__ */ __name((level, message) => (pageReport ?? strudel?.report)?.(level, message), "report");
+  const manager = createExtensionManager({
+    manifests: opts.manifests,
+    parts: { strudel: createStrudelDriver(() => strudel) }
+  });
+  const nameOf2 = /* @__PURE__ */ __name((id) => manager.manifest(id)?.name ?? id, "nameOf");
+  const state6 = /* @__PURE__ */ __name(() => manager.activeIds().map((id) => `${id}:${manager.isPartActive(id, "strudel")}`).join("\n"), "state");
+  const failedLine = /* @__PURE__ */ __name((error) => {
+    const undoErrors = error?.undoErrors ?? [];
+    return undoErrors.length ? ` Undoing what it had added also failed: ${undoErrors.map(messageOf).join("; ")}.` : "";
+  }, "failedLine");
+  let queue2 = Promise.resolve();
+  function apply(ids) {
+    const run = /* @__PURE__ */ __name(async () => {
+      const before = state6();
+      for (const id of manager.activeIds()) {
+        if (ids.has(id)) continue;
+        for (const e of manager.deactivate(id)) {
+          report2("warn", `${nameOf2(id)} extension: switching it off did not undo everything (${messageOf(e)}).`);
+        }
+      }
+      const { failed } = await manager.sync(ids);
+      for (const { id, error } of failed) {
+        report2("error", `${nameOf2(id)} extension could not be switched on: ${messageOf(error)}.${failedLine(error)}`);
+      }
+      if (strudel) {
+        await Promise.all(
+          manager.activeIds().filter((id) => ids.has(id)).map(
+            (id) => manager.activatePart(id, "strudel").catch((error) => {
+              report2("error", `The ${nameOf2(id)} extension could not be switched on for Strudel: ${messageOf(error)}.${failedLine(error)}`);
+            })
+          )
+        );
+      }
+      if (state6() !== before) for (const fn of [...listeners22]) fn();
+    }, "run");
+    queue2 = queue2.then(run, run);
+    return queue2;
+  }
+  __name(apply, "apply");
+  let following = false;
+  function follow() {
+    if (!following) {
+      following = true;
+      opts.subscribe((ids) => void apply(ids));
+    }
+    return apply(opts.enabled());
+  }
+  __name(follow, "follow");
+  return {
+    manager,
+    start(o) {
+      pageReport = o.report;
+      return following ? queue2 : follow();
+    },
+    attachStrudel(doors) {
+      strudel = doors;
+      return follow();
+    },
+    prepare: /* @__PURE__ */ __name((capMs, signal) => prepareStrudelParts(manager, report2, capMs, signal), "prepare"),
+    onChange(fn) {
+      listeners22.add(fn);
+      return () => {
+        listeners22.delete(fn);
+      };
+    }
+  };
+}
+__name(createExtensionRuntime, "createExtensionRuntime");
+var page = null;
+function pageExtensions() {
+  page ?? (page = createExtensionRuntime({
+    manifests: BUILTIN_EXTENSIONS,
+    enabled: enabledExtensionIds,
+    subscribe: onExtensionsEnabledChange
+  }));
+  return page;
+}
+__name(pageExtensions, "pageExtensions");
+
+// src/engine/engineLog.ts
+var MAX_HISTORY = 500;
+var history = [];
+var dedupeIndex = /* @__PURE__ */ new Map();
+var listeners2 = /* @__PURE__ */ new Set();
+var fixedMarkers = /* @__PURE__ */ new Map();
+var fixedListeners = /* @__PURE__ */ new Set();
+var idSeq = 0;
+function fixedKey(runtime, source) {
+  return `${runtime}:${source ?? "*"}`;
+}
+__name(fixedKey, "fixedKey");
+function makeId() {
+  idSeq += 1;
+  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
+}
+__name(makeId, "makeId");
+function dedupeKey(p) {
+  return [p.level, p.runtime, p.source ?? "", p.line ?? "", p.message].join("\0");
+}
+__name(dedupeKey, "dedupeKey");
+function emitLog(partial) {
+  const key3 = dedupeKey(partial);
+  const existing = dedupeIndex.get(key3);
+  if (existing) {
+    existing.ts = Date.now();
+    existing.count = (existing.count ?? 1) + 1;
+    if (partial.alongside === void 0) delete existing.alongside;
+    else existing.alongside = partial.alongside;
+    queueMicrotask(() => {
+      for (const fn of listeners2) {
+        try {
+          fn(existing, history);
+        } catch {
+        }
+      }
+    });
+    return existing;
+  }
+  const entry = {
+    id: makeId(),
+    ts: Date.now(),
+    count: 1,
+    ...partial
+  };
+  history.push(entry);
+  dedupeIndex.set(key3, entry);
+  while (history.length > MAX_HISTORY) {
+    const info = history.findIndex((e) => e.level === "info");
+    const [r] = history.splice(info === -1 ? 0 : info, 1);
+    const rk = dedupeKey(r);
+    if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
+  }
+  queueMicrotask(() => {
+    for (const fn of listeners2) {
+      try {
+        fn(entry, history);
+      } catch {
+      }
+    }
+  });
+  return entry;
+}
+__name(emitLog, "emitLog");
+function subscribeLog(fn) {
+  listeners2.add(fn);
+  return () => {
+    listeners2.delete(fn);
+  };
+}
+__name(subscribeLog, "subscribeLog");
+function getLogHistory() {
+  return [...history];
+}
+__name(getLogHistory, "getLogHistory");
+function clearLog() {
+  history.length = 0;
+  dedupeIndex.clear();
+  fixedMarkers.clear();
+  for (const fn of listeners2) {
+    try {
+      fn(null, history);
+    } catch {
+    }
+  }
+}
+__name(clearLog, "clearLog");
+function emitFixed(input) {
+  const marker = {
+    runtime: input.runtime,
+    source: input.source,
+    ts: Date.now()
+  };
+  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
+  queueMicrotask(() => {
+    for (const fn of fixedListeners) {
+      try {
+        fn(marker, fixedMarkers);
+      } catch {
+      }
+    }
+  });
+  return marker;
+}
+__name(emitFixed, "emitFixed");
+function subscribeFixed(fn) {
+  fixedListeners.add(fn);
+  return () => {
+    fixedListeners.delete(fn);
+  };
+}
+__name(subscribeFixed, "subscribeFixed");
+function getFixedMarkers() {
+  return new Map(fixedMarkers);
+}
+__name(getFixedMarkers, "getFixedMarkers");
+function makeFixedKey(runtime, source) {
+  return fixedKey(runtime, source);
+}
+__name(makeFixedKey, "makeFixedKey");
+
 // src/codeView/chainMethod.ts
 function playingCall(chunk, names) {
   for (let i = chunk.chain.length - 1; i >= 0; i--) {
@@ -2750,7 +3350,7 @@ var VIZ_FLAG_KEYS = {
   maxFps: "stave.viz.maxFps",
   maxDpr: "stave.viz.maxDpr"
 };
-function read(key3) {
+function read2(key3) {
   try {
     if (typeof localStorage === "undefined") return null;
     return localStorage.getItem(key3);
@@ -2758,22 +3358,22 @@ function read(key3) {
     return null;
   }
 }
-__name(read, "read");
+__name(read2, "read");
 function enabledByDefault(key3) {
-  return read(key3) !== "0";
+  return read2(key3) !== "0";
 }
 __name(enabledByDefault, "enabledByDefault");
 function optIn(key3) {
-  return read(key3) === "1";
+  return read2(key3) === "1";
 }
 __name(optIn, "optIn");
 function triState(key3) {
-  const v = read(key3);
+  const v = read2(key3);
   return v === "1" ? true : v === "0" ? false : null;
 }
 __name(triState, "triState");
 function numFlag(key3) {
-  const n = Number(read(key3));
+  const n = Number(read2(key3));
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 __name(numFlag, "numFlag");
@@ -15094,127 +15694,6 @@ function trimToFrames(chunks, frames) {
 }
 __name(trimToFrames, "trimToFrames");
 
-// src/engine/engineLog.ts
-var MAX_HISTORY = 500;
-var history = [];
-var dedupeIndex = /* @__PURE__ */ new Map();
-var listeners = /* @__PURE__ */ new Set();
-var fixedMarkers = /* @__PURE__ */ new Map();
-var fixedListeners = /* @__PURE__ */ new Set();
-var idSeq = 0;
-function fixedKey(runtime, source) {
-  return `${runtime}:${source ?? "*"}`;
-}
-__name(fixedKey, "fixedKey");
-function makeId() {
-  idSeq += 1;
-  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
-}
-__name(makeId, "makeId");
-function dedupeKey(p) {
-  return [p.level, p.runtime, p.source ?? "", p.line ?? "", p.message].join("\0");
-}
-__name(dedupeKey, "dedupeKey");
-function emitLog(partial) {
-  const key3 = dedupeKey(partial);
-  const existing = dedupeIndex.get(key3);
-  if (existing) {
-    existing.ts = Date.now();
-    existing.count = (existing.count ?? 1) + 1;
-    if (partial.alongside === void 0) delete existing.alongside;
-    else existing.alongside = partial.alongside;
-    queueMicrotask(() => {
-      for (const fn of listeners) {
-        try {
-          fn(existing, history);
-        } catch {
-        }
-      }
-    });
-    return existing;
-  }
-  const entry = {
-    id: makeId(),
-    ts: Date.now(),
-    count: 1,
-    ...partial
-  };
-  history.push(entry);
-  dedupeIndex.set(key3, entry);
-  while (history.length > MAX_HISTORY) {
-    const info = history.findIndex((e) => e.level === "info");
-    const [r] = history.splice(info === -1 ? 0 : info, 1);
-    const rk = dedupeKey(r);
-    if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
-  }
-  queueMicrotask(() => {
-    for (const fn of listeners) {
-      try {
-        fn(entry, history);
-      } catch {
-      }
-    }
-  });
-  return entry;
-}
-__name(emitLog, "emitLog");
-function subscribeLog(fn) {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-__name(subscribeLog, "subscribeLog");
-function getLogHistory() {
-  return [...history];
-}
-__name(getLogHistory, "getLogHistory");
-function clearLog() {
-  history.length = 0;
-  dedupeIndex.clear();
-  fixedMarkers.clear();
-  for (const fn of listeners) {
-    try {
-      fn(null, history);
-    } catch {
-    }
-  }
-}
-__name(clearLog, "clearLog");
-function emitFixed(input) {
-  const marker = {
-    runtime: input.runtime,
-    source: input.source,
-    ts: Date.now()
-  };
-  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
-  queueMicrotask(() => {
-    for (const fn of fixedListeners) {
-      try {
-        fn(marker, fixedMarkers);
-      } catch {
-      }
-    }
-  });
-  return marker;
-}
-__name(emitFixed, "emitFixed");
-function subscribeFixed(fn) {
-  fixedListeners.add(fn);
-  return () => {
-    fixedListeners.delete(fn);
-  };
-}
-__name(subscribeFixed, "subscribeFixed");
-function getFixedMarkers() {
-  return new Map(fixedMarkers);
-}
-__name(getFixedMarkers, "getFixedMarkers");
-function makeFixedKey(runtime, source) {
-  return fixedKey(runtime, source);
-}
-__name(makeFixedKey, "makeFixedKey");
-
 // src/engine/renderPatternOffline.ts
 var RENDER_WINDOW_SECONDS = 4;
 var RENDER_WINDOW_LEAD_SECONDS = 0.05;
@@ -15501,485 +15980,6 @@ function createTransportHold(transport) {
   };
 }
 __name(createTransportHold, "createTransportHold");
-
-// src/extensions/host.ts
-function fromStrudel(webaudio, core, globals = globalThis) {
-  const key3 = /* @__PURE__ */ __name((name) => name.toLowerCase().replace(/\s+/g, "_"), "key");
-  return {
-    sounds: {
-      has: /* @__PURE__ */ __name((name) => key3(name) in webaudio.soundMap.get(), "has"),
-      add: /* @__PURE__ */ __name((name, onTrigger, data) => webaudio.registerSound(key3(name), onTrigger, data), "add"),
-      remove: /* @__PURE__ */ __name((name) => webaudio.soundMap.setKey(key3(name), void 0), "remove")
-    },
-    controls: {
-      has: /* @__PURE__ */ __name((name) => name in core.Pattern.prototype, "has"),
-      add: /* @__PURE__ */ __name((name) => core.registerControl(name)[name], "add"),
-      remove: /* @__PURE__ */ __name((name) => {
-        delete core.Pattern.prototype[name];
-      }, "remove")
-    },
-    globals
-  };
-}
-__name(fromStrudel, "fromStrudel");
-function nameTaken(extensionId, kind, taken) {
-  const err = new Error(
-    `The ${extensionId} extension wants the ${kind} name "${taken}", but it is already in use, so it was not added.`
-  );
-  err.code = "EXTENSION_NAME_TAKEN";
-  err.extensionId = extensionId;
-  err.kind = kind;
-  err.taken = taken;
-  return err;
-}
-__name(nameTaken, "nameTaken");
-function createCommonHost(id) {
-  const onOff = [];
-  let closed = false;
-  return {
-    host: {
-      id,
-      onDeactivate(fn) {
-        if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`);
-        onOff.push(fn);
-      }
-    },
-    undo() {
-      closed = true;
-      const errors = [];
-      for (const fn of onOff.splice(0).reverse()) {
-        try {
-          fn();
-        } catch (e) {
-          errors.push(e);
-        }
-      }
-      return errors;
-    }
-  };
-}
-__name(createCommonHost, "createCommonHost");
-function createRecordingHost(id, reg, declared2) {
-  const declaredSounds = new Set((declared2?.sounds ?? []).map((n) => n.toLowerCase()));
-  const declaredControls = new Set(declared2?.controls ?? []);
-  const undeclared = /* @__PURE__ */ __name((kind, name) => new Error(`The ${id} extension registered the ${kind} "${name}" without declaring it in its manifest, so it was not added.`), "undeclared");
-  const undos = [];
-  const onOff = [];
-  const prepares = [];
-  let closed = false;
-  const open = /* @__PURE__ */ __name(() => {
-    if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`);
-  }, "open");
-  const host = {
-    id,
-    registerSound(name, onTrigger, data = {}) {
-      open();
-      if (declared2 && !declaredSounds.has(name.toLowerCase())) throw undeclared("sound", name);
-      if (reg.sounds.has(name)) throw nameTaken(id, "sound", name);
-      reg.sounds.add(name, onTrigger, data);
-      undos.push(() => reg.sounds.remove(name));
-    },
-    registerControl(name) {
-      open();
-      if (declared2 && !declaredControls.has(name)) throw undeclared("control", name);
-      if (reg.controls.has(name)) throw nameTaken(id, "control", name);
-      if (name in reg.globals) throw nameTaken(id, "global", name);
-      const fn = reg.controls.add(name);
-      undos.push(() => reg.controls.remove(name));
-      reg.globals[name] = fn;
-      undos.push(() => {
-        delete reg.globals[name];
-      });
-    },
-    setGlobal(name, value) {
-      open();
-      if (name in reg.globals) throw nameTaken(id, "global", name);
-      reg.globals[name] = value;
-      undos.push(() => {
-        delete reg.globals[name];
-      });
-    },
-    onDeactivate(fn) {
-      open();
-      onOff.push(fn);
-    },
-    onPrepare(fn) {
-      open();
-      prepares.push(fn);
-      undos.push(() => {
-        const i = prepares.indexOf(fn);
-        if (i >= 0) prepares.splice(i, 1);
-      });
-    }
-  };
-  return {
-    host,
-    undo() {
-      closed = true;
-      const errors = [];
-      for (const fn of [...onOff.splice(0).reverse(), ...undos.splice(0).reverse()]) {
-        try {
-          fn();
-        } catch (e) {
-          errors.push(e);
-        }
-      }
-      return errors;
-    },
-    preparers: /* @__PURE__ */ __name(() => [...prepares], "preparers")
-  };
-}
-__name(createRecordingHost, "createRecordingHost");
-
-// src/extensions/manager.ts
-var PART_LANGUAGE_SET = { strudel: true };
-var PART_LANGUAGES = Object.keys(PART_LANGUAGE_SET);
-function declares(m, language) {
-  return m.languages !== "*" && m.languages.includes(language);
-}
-__name(declares, "declares");
-function slots() {
-  const active2 = /* @__PURE__ */ new Map();
-  const pending2 = /* @__PURE__ */ new Map();
-  return {
-    active: active2,
-    pending: pending2,
-    on(key3, run) {
-      if (active2.has(key3)) return Promise.resolve();
-      const inFlight2 = pending2.get(key3);
-      if (inFlight2 && !inFlight2.cancelled) return inFlight2.promise;
-      const ticket = { cancelled: false, promise: Promise.resolve() };
-      const after = inFlight2 ? inFlight2.promise.catch(() => void 0) : Promise.resolve();
-      ticket.promise = after.then(async () => {
-        const out = await run(ticket);
-        if (!out) return;
-        if (ticket.cancelled) {
-          out.rec.undo();
-          return;
-        }
-        active2.set(key3, out.rec);
-        out.kept?.();
-      }).finally(() => {
-        if (pending2.get(key3) === ticket) pending2.delete(key3);
-      });
-      pending2.set(key3, ticket);
-      return ticket.promise;
-    },
-    off(key3) {
-      const inFlight2 = pending2.get(key3);
-      if (inFlight2) inFlight2.cancelled = true;
-      const rec = active2.get(key3);
-      if (!rec) return [];
-      active2.delete(key3);
-      return rec.undo();
-    }
-  };
-}
-__name(slots, "slots");
-async function activateThrough(rec, activate) {
-  try {
-    await activate();
-  } catch (e) {
-    const undoErrors = rec.undo();
-    if (undoErrors.length && typeof e === "object" && e !== null) e.undoErrors = undoErrors;
-    throw e;
-  }
-}
-__name(activateThrough, "activateThrough");
-function createExtensionManager(opts) {
-  const byId = /* @__PURE__ */ new Map();
-  for (const m of opts.manifests) {
-    if (byId.has(m.id)) throw new Error(`Two extensions share the id "${m.id}".`);
-    for (const language of Object.keys(m.provides ?? {})) {
-      if (!declares(m, language)) {
-        throw new Error(
-          `The ${m.id} extension says what it provides for ${language}, but ${language} is not one of the languages it lists.`
-        );
-      }
-    }
-    byId.set(m.id, m);
-  }
-  const common = slots();
-  const parts = slots();
-  const modules = /* @__PURE__ */ new Map();
-  const partKey = /* @__PURE__ */ __name((id, language) => `${id}\0${language}`, "partKey");
-  const partsOf = /* @__PURE__ */ __name((id) => [.../* @__PURE__ */ new Set([...parts.active.keys(), ...parts.pending.keys()])].filter((k) => k.startsWith(`${id}\0`)), "partsOf");
-  const manager = {
-    manifest: /* @__PURE__ */ __name((id) => byId.get(id), "manifest"),
-    isActive: /* @__PURE__ */ __name((id) => common.active.has(id), "isActive"),
-    activeIds: /* @__PURE__ */ __name(() => [...common.active.keys()], "activeIds"),
-    isPartActive: /* @__PURE__ */ __name((id, language) => parts.active.has(partKey(id, language)), "isPartActive"),
-    activate(id) {
-      const m = byId.get(id);
-      if (!m) return Promise.reject(new Error(`There is no extension called "${id}".`));
-      return common.on(id, async (ticket) => {
-        const mod = await m.load();
-        if (ticket.cancelled) return null;
-        for (const language of PART_LANGUAGES) {
-          if (mod[language] && !declares(m, language)) {
-            throw new Error(`it has a ${language} part, but ${language} is not one of the languages it lists`);
-          }
-        }
-        const rec = createCommonHost(m.id);
-        await activateThrough(rec, () => mod.activate?.(rec.host));
-        return { rec, kept: /* @__PURE__ */ __name(() => modules.set(id, mod), "kept") };
-      });
-    },
-    activatePart(id, language) {
-      const m = byId.get(id);
-      const mod = modules.get(id);
-      if (!m || !mod) {
-        return Promise.reject(new Error(`The ${id} extension is not switched on, so its ${language} part cannot be.`));
-      }
-      const part = mod[language];
-      const driver = opts.parts?.[language];
-      if (!part || !driver) return Promise.resolve();
-      return parts.on(partKey(id, language), async (ticket) => {
-        await driver.before?.(m, part);
-        if (ticket.cancelled) return null;
-        const rec = driver.record(m);
-        await activateThrough(rec, () => part.activate(rec.host));
-        return { rec };
-      });
-    },
-    deactivate(id) {
-      const errors = [];
-      for (const key3 of partsOf(id).reverse()) errors.push(...parts.off(key3));
-      errors.push(...common.off(id));
-      modules.delete(id);
-      return errors;
-    },
-    async sync(ids) {
-      for (const id of [...common.active.keys(), ...common.pending.keys()]) if (!ids.has(id)) manager.deactivate(id);
-      const failed = [];
-      const unknown = [...ids].filter((id) => !byId.has(id));
-      await Promise.all(
-        [...ids].filter((id) => byId.has(id)).map(
-          (id) => manager.activate(id).catch((error) => {
-            failed.push({ id, error });
-          })
-        )
-      );
-      return { failed, unknown };
-    },
-    preparers() {
-      const out = [];
-      for (const [key3, rec] of parts.active) {
-        const id = key3.slice(0, key3.indexOf("\0"));
-        for (const run of rec.preparers?.() ?? []) out.push({ id, run });
-      }
-      return out;
-    }
-  };
-  return manager;
-}
-__name(createExtensionManager, "createExtensionManager");
-
-// src/extensions/enablement.ts
-var STORAGE = "stave:extensions";
-function storage() {
-  try {
-    if (typeof window === "undefined") return null;
-    if (typeof window.localStorage?.getItem !== "function") return null;
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-__name(storage, "storage");
-var unsaved = /* @__PURE__ */ new Map();
-function read2() {
-  let ids;
-  try {
-    const raw = storage()?.getItem(STORAGE);
-    const parsed = raw ? JSON.parse(raw) : [];
-    ids = new Set(Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : []);
-  } catch {
-    ids = /* @__PURE__ */ new Set();
-  }
-  for (const [id, on] of unsaved) {
-    if (on) ids.add(id);
-    else ids.delete(id);
-  }
-  return ids;
-}
-__name(read2, "read");
-var listeners2 = /* @__PURE__ */ new Set();
-function enabledExtensionIds() {
-  return read2();
-}
-__name(enabledExtensionIds, "enabledExtensionIds");
-function onExtensionsEnabledChange(fn) {
-  listeners2.add(fn);
-  return () => {
-    listeners2.delete(fn);
-  };
-}
-__name(onExtensionsEnabledChange, "onExtensionsEnabledChange");
-
-// src/extensions/builtin.ts
-var BUILTIN_EXTENSIONS = [];
-
-// src/extensions/strudel.ts
-function messageOf(e) {
-  if (typeof e === "object" && e !== null && typeof e.message === "string") {
-    return e.message;
-  }
-  return String(e);
-}
-__name(messageOf, "messageOf");
-function createStrudelDriver(doors) {
-  const handedToStrudel = /* @__PURE__ */ new Set();
-  const attached = /* @__PURE__ */ __name(() => {
-    const d = doors();
-    if (!d) throw new Error("the Strudel engine has not started");
-    return d;
-  }, "attached");
-  return {
-    async before(_m, part) {
-      for (const url of part.worklets ?? []) {
-        const d = attached();
-        const live = await d.liveContext();
-        if (!live?.audioWorklet) throw new Error("this browser cannot run audio worklets, which it needs");
-        try {
-          await live.audioWorklet.addModule(url);
-        } catch (e) {
-          throw new Error(`its audio worklet did not load (${messageOf(e)})`);
-        }
-        if (!handedToStrudel.has(url)) {
-          handedToStrudel.add(url);
-          d.registerWorklet(url);
-        }
-      }
-    },
-    // Always the declared list, empty if the manifest declares none: the host refuses
-    // every sound and control not on it.
-    record: /* @__PURE__ */ __name((m) => createRecordingHost(m.id, attached().registries(), m.provides?.strudel ?? {}), "record")
-  };
-}
-__name(createStrudelDriver, "createStrudelDriver");
-async function prepareStrudelParts(manager, report2, capMs, signal) {
-  if (signal?.aborted) return;
-  const nameOf2 = /* @__PURE__ */ __name((id) => manager.manifest(id)?.name ?? id, "nameOf");
-  const jobs = manager.preparers();
-  if (!jobs.length) return;
-  const pending2 = new Set(jobs);
-  const all = Promise.all(
-    jobs.map(async (job) => {
-      try {
-        await job.run();
-      } catch (e) {
-        report2("error", `${nameOf2(job.id)} extension could not get ready to play: ${messageOf(e)}. The rest of the song plays without it.`);
-      } finally {
-        pending2.delete(job);
-      }
-    })
-  );
-  let timer;
-  let onAbort;
-  const ended = await Promise.race([
-    all.then(() => "done"),
-    new Promise((resolve) => {
-      timer = setTimeout(() => resolve("capped"), capMs);
-    }),
-    new Promise((resolve) => {
-      onAbort = /* @__PURE__ */ __name(() => resolve("cancelled"), "onAbort");
-      signal?.addEventListener("abort", onAbort, { once: true });
-    })
-  ]);
-  clearTimeout(timer);
-  if (onAbort) signal?.removeEventListener("abort", onAbort);
-  if (ended === "capped" && pending2.size) {
-    const names = [...new Set([...pending2].map((j) => j.id))].map(nameOf2).join(", ");
-    report2("warn", `${names} extension was still getting ready after ${Math.round(capMs / 100) / 10} s, so its sounds may be missing at the start.`);
-  }
-}
-__name(prepareStrudelParts, "prepareStrudelParts");
-
-// src/extensions/runtime.ts
-function createExtensionRuntime(opts) {
-  let strudel = null;
-  let pageReport = null;
-  const listeners22 = /* @__PURE__ */ new Set();
-  const report2 = /* @__PURE__ */ __name((level, message) => (pageReport ?? strudel?.report)?.(level, message), "report");
-  const manager = createExtensionManager({
-    manifests: opts.manifests,
-    parts: { strudel: createStrudelDriver(() => strudel) }
-  });
-  const nameOf2 = /* @__PURE__ */ __name((id) => manager.manifest(id)?.name ?? id, "nameOf");
-  const state6 = /* @__PURE__ */ __name(() => manager.activeIds().map((id) => `${id}:${manager.isPartActive(id, "strudel")}`).join("\n"), "state");
-  const failedLine = /* @__PURE__ */ __name((error) => {
-    const undoErrors = error?.undoErrors ?? [];
-    return undoErrors.length ? ` Undoing what it had added also failed: ${undoErrors.map(messageOf).join("; ")}.` : "";
-  }, "failedLine");
-  let queue2 = Promise.resolve();
-  function apply(ids) {
-    const run = /* @__PURE__ */ __name(async () => {
-      const before = state6();
-      for (const id of manager.activeIds()) {
-        if (ids.has(id)) continue;
-        for (const e of manager.deactivate(id)) {
-          report2("warn", `${nameOf2(id)} extension: switching it off did not undo everything (${messageOf(e)}).`);
-        }
-      }
-      const { failed } = await manager.sync(ids);
-      for (const { id, error } of failed) {
-        report2("error", `${nameOf2(id)} extension could not be switched on: ${messageOf(error)}.${failedLine(error)}`);
-      }
-      if (strudel) {
-        await Promise.all(
-          manager.activeIds().filter((id) => ids.has(id)).map(
-            (id) => manager.activatePart(id, "strudel").catch((error) => {
-              report2("error", `The ${nameOf2(id)} extension could not be switched on for Strudel: ${messageOf(error)}.${failedLine(error)}`);
-            })
-          )
-        );
-      }
-      if (state6() !== before) for (const fn of [...listeners22]) fn();
-    }, "run");
-    queue2 = queue2.then(run, run);
-    return queue2;
-  }
-  __name(apply, "apply");
-  let following = false;
-  function follow() {
-    if (!following) {
-      following = true;
-      opts.subscribe((ids) => void apply(ids));
-    }
-    return apply(opts.enabled());
-  }
-  __name(follow, "follow");
-  return {
-    manager,
-    start(o) {
-      pageReport = o.report;
-      return following ? queue2 : follow();
-    },
-    attachStrudel(doors) {
-      strudel = doors;
-      return follow();
-    },
-    prepare: /* @__PURE__ */ __name((capMs, signal) => prepareStrudelParts(manager, report2, capMs, signal), "prepare"),
-    onChange(fn) {
-      listeners22.add(fn);
-      return () => {
-        listeners22.delete(fn);
-      };
-    }
-  };
-}
-__name(createExtensionRuntime, "createExtensionRuntime");
-var page = null;
-function pageExtensions() {
-  page ?? (page = createExtensionRuntime({
-    manifests: BUILTIN_EXTENSIONS,
-    enabled: enabledExtensionIds,
-    subscribe: onExtensionsEnabledChange
-  }));
-  return page;
-}
-__name(pageExtensions, "pageExtensions");
 
 // src/engine/offlineGraph.ts
 var queue = Promise.resolve();
@@ -57860,6 +57860,14 @@ function isPersistableTab(t) {
   return t.kind === "editor" || t.kind === "app";
 }
 __name(isPersistableTab, "isPersistableTab");
+
+// src/index.ts
+function startPageExtensions() {
+  return pageExtensions().start({
+    report: /* @__PURE__ */ __name((level, message) => emitLog({ level, runtime: "stave", message }), "report")
+  });
+}
+__name(startPageExtensions, "startPageExtensions");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
 exports.ALIAS_MAP = ALIAS_MAP;
@@ -58424,6 +58432,7 @@ exports.splitArm = splitArm;
 exports.startAudition = startAudition;
 exports.startClipPreview = startClipPreview;
 exports.startHistoryDriver = startHistoryDriver;
+exports.startPageExtensions = startPageExtensions;
 exports.startSampleSound = startSampleSound;
 exports.startVisibleArea = startVisibleArea;
 exports.statementOffsetForSource = statementOffsetForSource;

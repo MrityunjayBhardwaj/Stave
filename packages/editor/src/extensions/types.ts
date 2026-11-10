@@ -13,9 +13,8 @@
  *    language, and one part per language it declares (`strudel`, later `sonicpi`, …).
  *
  * WHEN EACH PART SWITCHES ON (#2538), the way VS Code activates an extension for a language:
- *  - the common part when the page starts the runtime, from the person's saved choice
- *    (`runtime.ts`: at page load once the app's call is wired, until then when the first
- *    engine starts);
+ *  - the common part at page load, from the person's saved choice (`runtime.ts`;
+ *    the app calls the entry's `startPageExtensions` as the editor package loads);
  *  - a language part when that language's runtime starts (for Strudel: the engine's
  *    start-up), or at once if it is already running.
  * Switching off undoes the language parts first, newest first, then the common part.

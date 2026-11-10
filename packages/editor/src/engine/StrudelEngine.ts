@@ -1079,8 +1079,8 @@ export class StrudelEngine implements LiveCodingEngine {
     // #2510 #2538 — the Strudel parts of the person's extensions: AFTER every built-in
     // sound above (so a name an extension asks for that is already taken is refused, never
     // overwritten) and BEFORE the sound names are read below. This tells the page's one
-    // runtime that Strudel is here; if the page has not started it (`start`), this starts
-    // it, common parts included (the page-load start is still to be wired, #2538). A second
+    // runtime that Strudel is here; if the page has not started it (`start`, a test or a
+    // page without the app's loader), this starts it, common parts included. A second
     // engine or a retried init only re-applies the switches. Bounded by its own wait,
     // never by boot's budget: a budget already spent must not mean the extensions never
     // start; past the wait they finish in the background and `onChange` reads the names again.
