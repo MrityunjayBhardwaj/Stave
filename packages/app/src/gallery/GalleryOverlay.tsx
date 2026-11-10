@@ -30,7 +30,7 @@ export interface GalleryOverlayProps {
   onClose: () => void;
   /** Resolve true when the entry was opened (the overlay then closes). */
   onOpenAsProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"]) => Promise<boolean>;
-  onAddToProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"]) => Promise<boolean>;
+  onAddToProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"], path?: string) => Promise<boolean>;
   /** #2312 — open the Publish dialog from the gallery's header; absent where there's nowhere to publish. */
   onPublish?: () => void;
   /** Where you are in the gallery; by default one store per mount of the overlay. */

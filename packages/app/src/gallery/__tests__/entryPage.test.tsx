@@ -75,8 +75,38 @@ describe("EntryPage", () => {
     fireEvent.click(screen.getByText("Report"));
     expect(p.onReport).toHaveBeenCalledWith(ENTRY);
     expect(document.querySelector("[data-gallery-safe-note]")!.textContent).toContain("Nothing from this entry has run");
-    // a project is opened whole; music and visuals can also be added
-    expect(screen.queryByText("Add to this project")).toBeNull();
+  });
+
+  it("a project adds the one file chosen from its list (#2491)", () => {
+    const p = renderPage();
+    const add = screen.getByRole("button", { name: "Add to this project" });
+    expect(add.getAttribute("aria-expanded")).toBe("false");
+    expect(document.querySelector("[data-gallery-add-file]")).toBeNull();
+    fireEvent.click(add);
+    expect(add.getAttribute("aria-expanded")).toBe("true");
+    // every file, in the page's order, each with its own Add
+    const rows = [...document.querySelectorAll("[data-gallery-add-file]")].map((r) => r.getAttribute("data-gallery-add-file"));
+    expect(rows).toEqual(MANIFEST.files.map((f) => f.path));
+    fireEvent.click(screen.getByRole("button", { name: "Add bass.strudel to this project" }));
+    expect(p.onAddToProject).toHaveBeenCalledTimes(1);
+    expect(p.onAddToProject).toHaveBeenCalledWith(ENTRY, MANIFEST, "bass.strudel");
+    // one Add, then the list shuts
+    expect(document.querySelector("[data-gallery-add-file]")).toBeNull();
+    expect(add.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("the project's list shuts again from its button, and adds nothing", () => {
+    const p = renderPage();
+    const add = screen.getByRole("button", { name: "Add to this project" });
+    fireEvent.click(add);
+    fireEvent.click(add);
+    expect(document.querySelector("[data-gallery-add-file]")).toBeNull();
+    expect(p.onAddToProject).not.toHaveBeenCalled();
+  });
+
+  it("while an action is running, the project's Add buttons are off", () => {
+    renderPage({ busy: true });
+    expect((screen.getByRole("button", { name: "Add to this project" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("music offers Add to this project", () => {
@@ -84,7 +114,9 @@ describe("EntryPage", () => {
       detail: { status: "ready", id: "m", data: { entry: { ...ENTRY, kind: "music" }, manifest: { ...MANIFEST, files: [MANIFEST.files[0]] } } },
     });
     fireEvent.click(screen.getByText("Add to this project"));
-    expect(p.onAddToProject).toHaveBeenCalled();
+    // its one file, straight away: no list, no path
+    expect(p.onAddToProject).toHaveBeenCalledWith({ ...ENTRY, kind: "music" }, { ...MANIFEST, files: [MANIFEST.files[0]] });
+    expect(document.querySelector("[data-gallery-add-file]")).toBeNull();
   });
 
   it("the code is coloured text with a line per line, and nothing in it runs", () => {

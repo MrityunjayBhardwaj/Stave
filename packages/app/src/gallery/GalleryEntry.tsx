@@ -14,10 +14,11 @@
  * sealed preview frame (GalleryPreview.tsx). There is one preview, so one file
  * plays at a time; a row's play button switches the file it holds.
  *
- * Not drawn yet, because the data doesn't exist: a pattern's timeline strip, its
- * length in bars, the tempo and the author-chosen cover come from what is
- * recorded at publish (#2487, #2488); the live piano roll inside the frame is
- * #2489.
+ * A pattern's timeline strip, its length in bars and the author-chosen cover
+ * come from what is recorded at publish (#2487, #2488). "Add to this project"
+ * adds one file: a music or visual entry's only file, or the one chosen from a
+ * project's list. Not drawn yet: the tempo (publishing doesn't record it) and the
+ * live piano roll inside the frame (#2489).
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AuthorName, EntryPicture, avatarColour, useEntryRecording } from "./GalleryCards";
@@ -46,7 +47,8 @@ export interface EntryPageProps {
   onAuthor: (authorId: string) => void;
   onRetry: () => void;
   onOpenAsProject: (e: GalleryEntry, m: Manifest) => void;
-  onAddToProject: (e: GalleryEntry, m: Manifest) => void;
+  /** A project passes the file chosen from its list; music and visuals add their one file. */
+  onAddToProject: (e: GalleryEntry, m: Manifest, path?: string) => void;
   onCopyLink: (id: string) => void;
   onReport: (e: GalleryEntry) => void;
   /** The loaded list, for "More by". */
@@ -101,10 +103,13 @@ export function EntryPage(props: EntryPageProps) {
   const [chosen, setChosen] = useState<string | null>(null);
   const [autoStart, setAutoStart] = useState(false);
   const [playing, setPlaying] = useState(false);
+  // A project's "Add to this project": its file list, open or shut.
+  const [picking, setPicking] = useState(false);
   const preview = useRef<GalleryPreviewHandle>(null);
   useEffect(() => {
     setChosen(null);
     setAutoStart(false);
+    setPicking(false);
   }, [detail.id]);
 
   const ready = detail.status === "ready" ? detail.data : null;
@@ -292,10 +297,51 @@ export function EntryPage(props: EntryPageProps) {
             <button className="sg-btn sg-primary" disabled={busy} onClick={() => props.onOpenAsProject(entry, manifest)}>
               Open as new project
             </button>
-            {entry.kind !== "project" && (
+            {entry.kind !== "project" ? (
               <button className="sg-btn" disabled={busy} onClick={() => props.onAddToProject(entry, manifest)}>
                 Add to this project
               </button>
+            ) : (
+              files.length > 0 && (
+                <>
+                  <button
+                    className="sg-btn"
+                    disabled={busy}
+                    aria-expanded={picking}
+                    aria-controls="sg-addlist"
+                    data-gallery-add-pick
+                    onClick={() => setPicking((v) => !v)}
+                  >
+                    Add to this project
+                    <svg className="sg-add-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                      <path d={picking ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
+                    </svg>
+                  </button>
+                  {picking && (
+                    <ul className="sg-addlist" id="sg-addlist" aria-label="Choose a file to add">
+                      {files.map((f) => (
+                        <li key={f.id} data-gallery-add-file={f.path}>
+                          <span>
+                            <b>{f.path}</b>
+                            <small>{fileRole(f.path)}</small>
+                          </span>
+                          <button
+                            className="sg-btn sg-ghost"
+                            disabled={busy}
+                            aria-label={`Add ${f.path} to this project`}
+                            onClick={() => {
+                              setPicking(false);
+                              props.onAddToProject(entry, manifest, f.path);
+                            }}
+                          >
+                            Add
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )
             )}
           </div>
           <div className="sg-side-row">
@@ -404,6 +450,14 @@ export const ENTRY_CSS = `
 .sg-side-tag::before { content: "#"; opacity: .6; }
 .sg-side-actions { display: grid; gap: 8px; }
 .sg-side-actions .sg-btn { height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+.sg-add-caret { margin-left: 8px; opacity: .7; }
+.sg-addlist { list-style: none; margin: 0; padding: 4px; display: grid; gap: 2px; max-height: 240px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: 8px; }
+.sg-addlist li { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 10px; border-radius: 6px; }
+.sg-addlist li:hover { background: var(--bg-hover); }
+.sg-addlist li > span { flex: 1; min-width: 0; display: grid; }
+.sg-addlist b { font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-addlist small { font-size: 11px; color: var(--text-muted); }
+.sg-side-actions .sg-addlist .sg-btn { height: 30px; padding: 0 12px; }
 .sg-side-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: -10px; }
 .sg-side-row .sg-btn { height: 40px; }
 .sg-ghost { background: none; }

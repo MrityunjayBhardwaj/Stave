@@ -140,6 +140,23 @@ describe("fileToAdd", () => {
   it("returns null for an empty manifest", () => {
     expect(fileToAdd({ ...manifest("a.strudel"), files: [] })).toBeNull();
   });
+  const project: GalleryManifest = {
+    ...manifest("main.strudel"),
+    files: [
+      { id: "f1", path: "main.strudel", language: "strudel", content: "main" },
+      { id: "f2", path: "viz/bloom.hydra", language: "hydra", content: "bloom" },
+    ],
+  };
+  it("a project adds the file chosen by its path, at the root (#2491)", () => {
+    expect(fileToAdd(project, "viz/bloom.hydra")).toEqual({ path: "bloom.hydra", ext: "hydra", content: "bloom", language: "hydra" });
+  });
+  it("a path the project doesn't hold adds nothing, not some other file", () => {
+    expect(fileToAdd(project, "missing.strudel")).toBeNull();
+    expect(fileToAdd(project, "")).toBeNull();
+  });
+  it("CONTROL: with no path, the first file is still the one added", () => {
+    expect(fileToAdd(project)).toMatchObject({ path: "main.strudel", content: "main" });
+  });
 });
 
 describe("generatedCard", () => {

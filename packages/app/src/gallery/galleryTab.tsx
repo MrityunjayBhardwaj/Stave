@@ -200,7 +200,7 @@ export const GALLERY_ICON = (
 export interface GalleryTabBodyProps {
   tab: WorkspaceTab & { kind: "app" };
   onOpenAsProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"]) => Promise<boolean>;
-  onAddToProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"]) => Promise<boolean>;
+  onAddToProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"], path?: string) => Promise<boolean>;
   onPublish?: () => void;
   /** Write the place into the tab's shell state (`setAppTabState`). */
   onPlaceChange: (place: GalleryPlace) => void;

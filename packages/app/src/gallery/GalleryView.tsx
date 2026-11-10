@@ -59,7 +59,7 @@ export interface GalleryViewProps {
   onClose?: () => void;
   /** Resolve true when the entry was opened. */
   onOpenAsProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"]) => Promise<boolean>;
-  onAddToProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"]) => Promise<boolean>;
+  onAddToProject: (entry: GalleryEntry, manifest: GalleryEntryResponse["manifest"], path?: string) => Promise<boolean>;
   /** After Open as new project / Add to this project resolved true (the overlay closes). */
   onOpened?: () => void;
   /** #2312 — the header's Publish yours; absent where there's nowhere to publish. */
@@ -385,7 +385,7 @@ export function GalleryView({
           onAuthor={openAuthor}
           onRetry={() => store.openEntry(detail.id)}
           onOpenAsProject={(e, m) => runAction(() => onOpenAsProject(e, m))}
-          onAddToProject={(e, m) => runAction(() => onAddToProject(e, m))}
+          onAddToProject={(e, m, path) => runAction(() => onAddToProject(e, m, path))}
           onCopyLink={(id) => void copyLink(id)}
           onReport={report}
           listed={entries}
