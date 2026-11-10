@@ -23,7 +23,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AuthorName, EntryPicture, avatarColour, useEntryRecording } from "./GalleryCards";
 import { GalleryPreview, type GalleryPreviewHandle } from "./GalleryPreview";
 import { previewKindOf } from "./previewProtocol";
-import { codeLanguageOf, colourLines, type TokenKind } from "./codeColour";
+import { LIGHT_CODE_BG, codeLanguageOf, colourLines, type TokenKind } from "./codeColour";
 import { RecordingTimeline, lengthLabel } from "./GalleryTimeline";
 import { GALLERY_FILTERS, KIND_LABEL, contentsSummary, fileRole, formatGalleryDate, publishedAgo } from "./galleryModel";
 import { shownName } from "./reservedNames";
@@ -384,10 +384,13 @@ export const ENTRY_CSS = `
 .sg-files-one { padding: 8px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text-muted, var(--text-chrome)); }
 .sg-file { flex: none; border: 0; background: none; height: 28px; padding: 0 10px; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text-muted, var(--text-chrome)); cursor: pointer; }
 .sg-file-on { background: var(--bg-elevated); color: var(--text-primary); }
-.sg-code { margin: 0; padding: 14px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.7; background: var(--bg-editor, rgba(0,0,0,.25)); color: var(--text-primary); overflow-x: auto; counter-reset: sg-ln; white-space: pre; user-select: text; tab-size: 2; }
+.sg-code { margin: 0; padding: 14px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.7; background: rgba(0,0,0,.25); color: var(--text-primary); overflow-x: auto; counter-reset: sg-ln; white-space: pre; user-select: text; tab-size: 2; }
 .sg-code-line { display: block; padding: 0 16px 0 52px; position: relative; min-height: 1.7em; }
 .sg-code-line::before { counter-increment: sg-ln; content: counter(sg-ln); position: absolute; left: 0; width: 36px; text-align: right; color: #55557a; user-select: none; }
 .sg-tk { color: #c8a8ff; } .sg-ts { color: #9ee6b8; } .sg-tn { color: #ffc27a; } .sg-tf { color: #8fc8ff; } .sg-tc { color: #6f6f92; font-style: italic; }
+[data-stave-theme="light"] .sg-code { background: ${LIGHT_CODE_BG}; }
+[data-stave-theme="light"] .sg-code-line::before { color: #a0a0b4; }
+[data-stave-theme="light"] .sg-tk { color: #6d28d9; } [data-stave-theme="light"] .sg-ts { color: #92400e; } [data-stave-theme="light"] .sg-tn { color: #c2410c; } [data-stave-theme="light"] .sg-tf { color: #1d4ed8; } [data-stave-theme="light"] .sg-tc { color: #6b7280; }
 .sg-side { display: grid; gap: 18px; align-content: start; min-width: 0; }
 .sg-side-title { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: var(--text-primary); text-wrap: balance; overflow-wrap: anywhere; }
 .sg-byline { display: flex; align-items: center; gap: 10px; }

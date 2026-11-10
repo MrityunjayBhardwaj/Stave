@@ -21,6 +21,7 @@
  */
 import { micromark } from "micromark";
 import { gfm, gfmHtml } from "micromark-extension-gfm";
+import { LIGHT_CODE_BG } from "./codeColour";
 
 const SAFE_LINK = /^(https?:|mailto:)/i;
 
@@ -152,7 +153,8 @@ export const MARKDOWN_CSS = `
 .sg-md a:hover { text-decoration: underline; }
 .sg-md a:not([href]) { color: inherit; text-decoration: line-through; opacity: .7; }
 .sg-md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 85%; padding: .2em .4em; border-radius: 5px; background: var(--bg-hover, rgba(255,255,255,.08)); }
-.sg-md pre { padding: 12px 14px; overflow: auto; border-radius: 6px; background: var(--bg-editor, rgba(0,0,0,.25)); border: 1px solid var(--border-subtle); line-height: 1.45; }
+.sg-md pre { padding: 12px 14px; overflow: auto; border-radius: 6px; background: rgba(0,0,0,.25); border: 1px solid var(--border-subtle); line-height: 1.45; }
+[data-stave-theme="light"] .sg-md pre { background: ${LIGHT_CODE_BG}; }
 .sg-md pre code { padding: 0; background: none; font-size: 12.5px; white-space: pre; }
 .sg-md blockquote { padding: 0 1em; border-left: 4px solid var(--border-strong); opacity: .85; }
 .sg-md table { display: block; width: max-content; max-width: 100%; overflow: auto; border-collapse: collapse; }
