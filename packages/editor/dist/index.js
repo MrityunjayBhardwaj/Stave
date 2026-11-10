@@ -43750,6 +43750,9 @@ function lineColor3(depth) {
   return "color-mix(in srgb, var(--foreground-muted, #6a6a90) 30%, transparent)";
 }
 __name(lineColor3, "lineColor");
+var NO_ROWS = [];
+var NO_OFFERS = /* @__PURE__ */ new Set();
+var sameSet = /* @__PURE__ */ __name((a, b) => a.size === b.size && [...a].every((x) => b.has(x)), "sameSet");
 var cellKeyOf = /* @__PURE__ */ __name((ri, c) => `${ri}:${c.bar}:${c.begin.n}/${c.begin.d}`, "cellKeyOf");
 var listOf = /* @__PURE__ */ __name((items) => items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`, "listOf");
 function parseForLength(mini, _scale) {
@@ -43833,7 +43836,7 @@ function ExactStepGrid({ notice = null }) {
   const xRef = React33.useRef(x);
   xRef.current = x;
   const trackPx = bars * barPx + (bars - 1) * BAR_GAP3;
-  const rows = ok?.rows ?? [];
+  const rows = ok?.rows ?? NO_ROWS;
   const halfPx = phone.phone ? fingerPx : OPEN_PX;
   const drawn = React33.useMemo(() => rows.map((r) => drawnCells(r.cells, barPx, halfPx)), [rows, barPx, halfPx]);
   const levelAt = React33.useMemo(() => {
@@ -43844,10 +43847,10 @@ function ExactStepGrid({ notice = null }) {
     return out;
   }, [drawn, rows, gain]);
   const levelOf = /* @__PURE__ */ __name((t) => levelAt.get(t.toFixed(9)), "levelOf");
-  const [offered2, setOffered] = React33.useState(() => /* @__PURE__ */ new Set());
+  const [offered2, setOffered] = React33.useState(NO_OFFERS);
   React33.useEffect(() => {
     const out = /* @__PURE__ */ new Set();
-    setOffered(/* @__PURE__ */ new Set());
+    setOffered(NO_OFFERS);
     if (!velocityOn || mini === null || !gain || gain.foreign) return;
     const todo = [];
     const seen = /* @__PURE__ */ new Set();
@@ -43869,7 +43872,7 @@ function ExactStepGrid({ notice = null }) {
         if (stepGainEdit(mini, gain, bars, h, 0.5).ok) out.add(h.begin.toFixed(9));
       }
       if (i < todo.length) timer = setTimeout(slice, 0);
-      else setOffered(out);
+      else setOffered((prev) => sameSet(prev, out) ? prev : out);
     }, "slice");
     slice();
     return () => {

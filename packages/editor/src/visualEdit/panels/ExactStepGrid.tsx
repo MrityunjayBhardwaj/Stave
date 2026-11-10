@@ -119,6 +119,15 @@ function lineColor(depth: number): string {
   return 'color-mix(in srgb, var(--foreground-muted, #6a6a90) 30%, transparent)'
 }
 
+/**
+ * "No rows" and "no velocity offered" as ONE value each (#2527). A fresh `[]` or `new Set()` per
+ * render is a new dependency and a new state: where no grid opens, the `offered` effect re-ran
+ * on every render and set state on every run, and React stopped the page.
+ */
+const NO_ROWS: readonly ExactRow[] = []
+const NO_OFFERS: ReadonlySet<string> = new Set()
+const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean => a.size === b.size && [...a].every((x) => b.has(x))
+
 const cellKeyOf = (ri: number, c: Pick<ExactCell, 'bar' | 'begin'>): string => `${ri}:${c.bar}:${c.begin.n}/${c.begin.d}`
 const listOf = (items: readonly string[]): string => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`)
 
@@ -238,7 +247,7 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
   xRef.current = x
   const trackPx = bars * barPx + (bars - 1) * BAR_GAP
 
-  const rows = ok?.rows ?? []
+  const rows = ok?.rows ?? NO_ROWS
   // a snap half opens only once it can be aimed at: by a pointer, or on a phone by a finger
   const halfPx = phone.phone ? fingerPx : OPEN_PX
   const drawn = React.useMemo(() => rows.map((r) => drawnCells(r.cells, barPx, halfPx)), [rows, barPx, halfPx])
@@ -258,10 +267,10 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
   // on the cell. Asked in slices of a few ms between frames: one ask is about 1-5 ms, and a
   // pattern can have hundreds of hits (measured 2026-11-08: 416 hits, 1.4 s in all), which in one
   // go would hold the page. Until a text's answers are in, no cell claims a velocity.
-  const [offered, setOffered] = React.useState<ReadonlySet<string>>(() => new Set())
+  const [offered, setOffered] = React.useState<ReadonlySet<string>>(NO_OFFERS)
   React.useEffect(() => {
     const out = new Set<string>()
-    setOffered(new Set())
+    setOffered(NO_OFFERS)
     if (!velocityOn || mini === null || !gain || gain.foreign) return
     const todo: Array<{ begin: number; end: number }> = []
     const seen = new Set<string>()
@@ -283,7 +292,7 @@ export function ExactStepGrid({ notice = null }: { notice?: string | null }): Re
         if (stepGainEdit(mini, gain, bars, h, 0.5).ok) out.add(h.begin.toFixed(9))
       }
       if (i < todo.length) timer = setTimeout(slice, 0)
-      else setOffered(out)
+      else setOffered((prev) => (sameSet(prev, out) ? prev : out))
     }
     slice()
     return () => {
