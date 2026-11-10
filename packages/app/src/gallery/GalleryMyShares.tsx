@@ -429,7 +429,7 @@ export const MINE_CSS = `
 .sg-mshare-title, .sg-mshare-name { justify-self: start; max-width: 100%; padding: 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; color: var(--text-primary); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sg-mshare-title { cursor: pointer; }
 .sg-mshare-title:hover { text-decoration: underline; }
-.sg-mshare-gone { color: var(--text-error, #f27878); }
+.sg-mshare-gone { color: var(--danger-fg); }
 .sg-mshare-when { color: var(--text-chrome); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .sg-mshare-act { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
 .sg-mshare-btn { padding: 5px 10px; font-size: 12.5px; }

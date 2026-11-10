@@ -757,14 +757,14 @@ export const PROFILE_CSS = `
 .sg-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; border: none; padding: 0; margin: 0; }
 .sg-label { font-size: 12px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; color: var(--text-primary); }
 .sg-counter { font-weight: 400; opacity: .7; font-variant-numeric: tabular-nums; }
-.sg-over { color: var(--text-error, #f27878); opacity: 1; }
+.sg-over { color: var(--danger-fg); opacity: 1; }
 .sg-input { padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg-input, var(--bg-elevated)); color: var(--text-primary); font: inherit; font-size: 13px; }
 .sg-textarea { min-height: 280px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.5; }
 .sg-textarea-short { min-height: 64px; resize: vertical; }
 .sg-hint { font-size: 11px; opacity: .7; }
 .sg-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .sg-preview { min-height: 280px; max-height: 420px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: 6px; padding: 12px 14px; }
-.sg-errors { margin: 0; padding: 8px 12px 8px 28px; border-radius: 6px; border: 1px solid var(--text-error, #f27878); color: var(--text-error, #f27878); font-size: 13px; }
+.sg-errors { margin: 0; padding: 8px 12px 8px 28px; border-radius: 6px; border: 1px solid var(--danger-fg); color: var(--danger-fg); font-size: 13px; }
 .sg-order { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .sg-order-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--border-subtle); border-radius: 6px; }
 .sg-order-n { width: 2em; opacity: .7; font-variant-numeric: tabular-nums; }

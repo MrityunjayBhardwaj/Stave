@@ -225,7 +225,7 @@ export function GalleryPlayer() {
         minHeight: "100vh",
         background: "var(--bg-app, #111)",
         color: "var(--text-secondary, #bbb)",
-        fontFamily: "var(--font-mono), ui-monospace, monospace",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
         fontSize: 12,
         overflow: "hidden",
       }}

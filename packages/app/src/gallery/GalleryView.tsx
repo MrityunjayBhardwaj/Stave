@@ -486,7 +486,7 @@ const CSS = `
 .sg-btn { background: var(--bg-hover, rgba(255,255,255,.06)); border: 1px solid var(--border-strong); color: var(--text-primary); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; }
 .sg-btn:disabled { opacity: .5; cursor: default; }
 .sg-primary { background: var(--accent, #4a6cf7); border-color: var(--accent, #4a6cf7); color: #fff; }
-.sg-danger { color: var(--text-error, #f27878); }
+.sg-danger { color: var(--danger-fg); }
 .sg-quiet { opacity: .8; }
 .sg-back { align-self: flex-start; margin-bottom: 12px; background: none; border-color: transparent; padding-left: 0; }
 .sg-detail-head { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
