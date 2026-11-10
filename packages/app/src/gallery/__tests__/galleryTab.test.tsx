@@ -77,6 +77,9 @@ afterEach(() => {
   localStorage.clear();
 });
 
+/** #2492 — My shares' own filter, order and search, as a fresh place has them. */
+const MINE0 = { mineFilter: "all", mineSort: "newest", mineQuery: "" } as const;
+
 describe("readPlace — a saved place is read back like a link", () => {
   it("keeps a well-formed place", () => {
     expect(
@@ -93,15 +96,34 @@ describe("readPlace — a saved place is read back like a link", () => {
       filter: "music",
       sort: "artist",
       query: "dub",
+      ...MINE0,
       stack: [{ kind: "entry", id: "musc1xxxxxx" }, { kind: "author", id: "alice" }],
       title: "Breakbeat",
     });
     expect(readPlace({ tab: "mine", stack: [] })).toMatchObject({ tab: "mine" });
+    expect(readPlace({ tab: "mine", mineFilter: "links", mineSort: "title", mineQuery: "set", stack: [] })).toMatchObject({
+      tab: "mine",
+      mineFilter: "links",
+      mineSort: "title",
+      mineQuery: "set",
+    });
+  });
+
+  it("#2492 My shares' filter, order and search fall back on their own; the grid's choices don't leak into them", () => {
+    // "artist" is a grid order, "music" a grid filter: neither is one of My shares'.
+    expect(readPlace({ tab: "mine", mineFilter: "music", mineSort: "artist", mineQuery: "y".repeat(201), stack: [] })).toMatchObject(
+      MINE0,
+    );
+    expect(readPlace({ tab: "mine", mineFilter: "published", mineSort: "oldest", mineQuery: 3, stack: [] })).toMatchObject({
+      mineFilter: "published",
+      mineSort: "oldest",
+      mineQuery: "",
+    });
   });
 
   it("a place saved before #2486 (a kind as its tab, no filter or sort) opens on All, Newest", () => {
     for (const old of ["project", "music", "viz"]) {
-      expect(readPlace({ tab: old, stack: [] })).toEqual({ tab: "browse", filter: "all", sort: "newest", query: "", stack: [] });
+      expect(readPlace({ tab: old, stack: [] })).toEqual({ tab: "browse", filter: "all", sort: "newest", query: "", ...MINE0, stack: [] });
     }
   });
 
@@ -111,6 +133,7 @@ describe("readPlace — a saved place is read back like a link", () => {
       filter: "all",
       sort: "newest",
       query: "",
+      ...MINE0,
       stack: [],
     });
     expect(readPlace({ tab: "browse", filter: "viz", sort: "title", query: 5, stack: [] })).toMatchObject({ filter: "viz", sort: "title", query: "" });
@@ -129,7 +152,14 @@ describe("readPlace — a saved place is read back like a link", () => {
       ],
       title: 42,
     });
-    expect(place).toEqual({ tab: "browse", filter: "all", sort: "newest", query: "", stack: [{ kind: "collection", id: "late-bus_1" }] });
+    expect(place).toEqual({
+      tab: "browse",
+      filter: "all",
+      sort: "newest",
+      query: "",
+      ...MINE0,
+      stack: [{ kind: "collection", id: "late-bus_1" }],
+    });
   });
 
   it("is null for no state or a state that isn't an object", () => {
@@ -157,13 +187,19 @@ describe("galleryTabLabel — the tab says where you are", () => {
     expect(galleryTabLabel(tab({ tab: "music", stack: [{ kind: "entry", id: "musc1xxxxxx" }] })).title).toBe("Gallery");
     expect(galleryTabLabel(tab({ tab: "project", stack: [{ kind: "author", id: "alice" }] })).title).toBe("Gallery · Profile");
   });
+
+  it("#2492 names My shares and Moderation; what is open on top of them wins", () => {
+    expect(galleryTabLabel(tab({ tab: "mine", stack: [] })).title).toBe("Gallery · My shares");
+    expect(galleryTabLabel(tab({ tab: "moderation", stack: [] })).title).toBe("Gallery · Moderation");
+    expect(galleryTabLabel(tab({ tab: "mine", stack: [{ kind: "author", id: "alice" }] })).title).toBe("Gallery · Profile");
+  });
 });
 
 describe("GalleryTabBody", () => {
   it("a tab restored after a reload picks up its place once; coming back fetches nothing again", async () => {
     const fetchMock = mockGallery();
     const store = createGalleryStore();
-    const saved = { tab: "browse", filter: "music", sort: "title", query: "", stack: [{ kind: "entry", id: "musc1xxxxxx" }] };
+    const saved = { tab: "browse", filter: "music", sort: "title", query: "", ...MINE0, stack: [{ kind: "entry", id: "musc1xxxxxx" }] };
     const places: GalleryPlace[] = [];
     // as the shell does: what the body writes is the state the next draw gets
     let state: AppTabState = saved;
@@ -222,6 +258,36 @@ describe("GalleryTabBody", () => {
     fireEvent.change(search, { target: { value: "kal" } });
     view.unmount();
     expect(places.at(-1)).toMatchObject({ query: "kal" });
+  });
+
+  it("#2492 My shares' filter and sort are written at once, its search once typing pauses", async () => {
+    mockGallery();
+    const store = createGalleryStore();
+    openGalleryStore(store, null);
+    const places: GalleryPlace[] = [];
+    const view = render(
+      <GalleryTabBody tab={tab()} store={store} onOpenAsProject={noop} onAddToProject={noop} onPlaceChange={(p) => places.push(p)} />,
+    );
+    await waitFor(() => expect(document.querySelector('[data-gallery-card="proj1xxxxxx"]')).toBeTruthy());
+    fireEvent.click(document.querySelector('[data-gallery-tab="mine"]')!);
+    expect(places.at(-1)).toMatchObject({ tab: "mine" });
+    fireEvent.click(document.querySelector('[data-gallery-mine-filter="links"]')!);
+    expect(places.at(-1)).toMatchObject({ mineFilter: "links", filter: "all" });
+    fireEvent.change(document.querySelector("[data-gallery-mine-sort]")!, { target: { value: "title" } });
+    expect(places.at(-1)).toMatchObject({ mineSort: "title", sort: "newest" });
+
+    const n = places.length;
+    const search = screen.getByLabelText("Search your shares");
+    fireEvent.change(search, { target: { value: "s" } });
+    fireEvent.change(search, { target: { value: "se" } });
+    expect(places.length).toBe(n);
+    await waitFor(() => expect(places.at(-1)).toMatchObject({ mineQuery: "se", query: "" }), {
+      timeout: SEARCH_WRITE_DELAY_MS * 4,
+    });
+    expect(places.length).toBe(n + 1);
+    fireEvent.change(search, { target: { value: "set" } });
+    view.unmount();
+    expect(places.at(-1)).toMatchObject({ mineQuery: "set" });
   });
 
   it("after a real open the body doesn't resume over it", async () => {

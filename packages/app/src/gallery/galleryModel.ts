@@ -45,6 +45,32 @@ export function isGallerySort(v: unknown): v is GallerySort {
   return GALLERY_SORTS.some((s) => s.id === v);
 }
 
+/** #2492 — My shares' filter: everything you shared, what you published, or your private links. */
+export type MineFilter = "all" | "published" | "links";
+
+export const MINE_FILTERS: ReadonlyArray<{ id: MineFilter; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "published", label: "Published" },
+  { id: "links", label: "Private links" },
+];
+
+export function isMineFilter(v: unknown): v is MineFilter {
+  return MINE_FILTERS.some((f) => f.id === v);
+}
+
+/** #2492 — My shares' order (every row is yours, so there is no artist to sort by). */
+export type MineSort = "newest" | "oldest" | "title";
+
+export const MINE_SORTS: ReadonlyArray<{ id: MineSort; label: string }> = [
+  { id: "newest", label: "Newest" },
+  { id: "oldest", label: "Oldest" },
+  { id: "title", label: "Title A–Z" },
+];
+
+export function isMineSort(v: unknown): v is MineSort {
+  return MINE_SORTS.some((s) => s.id === v);
+}
+
 /** One entry's kind, as a card or a detail line names it. */
 export const KIND_LABEL: Record<GalleryKind, string> = {
   project: "Project",
@@ -120,19 +146,24 @@ function terms(query: string): string[] {
     .filter(Boolean);
 }
 
+/** Does every word of the query match somewhere in `fields`? An empty query matches everything. */
+export function textMatches(fields: readonly string[], query: string): boolean {
+  const ts = terms(query);
+  if (ts.length === 0) return true;
+  const hay = fields.map((s) => s.toLowerCase());
+  return ts.every((t) => hay.some((h) => h.includes(t)));
+}
+
 /**
  * Does the entry match every word of the query, each against its title, tags or
  * author name? (All words must match somewhere — "dub alice" finds Alice's dub.)
  */
 export function entryMatches(entry: GalleryEntry, query: string): boolean {
-  const ts = terms(query);
-  if (ts.length === 0) return true;
-  const hay = [entry.title, entry.authorName, ...entry.tags].map((s) => s.toLowerCase());
-  return ts.every((t) => hay.some((h) => h.includes(t)));
+  return textMatches([entry.title, entry.authorName, ...entry.tags], query);
 }
 
 /** Case- and accent-blind, "Track 2" before "Track 10". */
-const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+export const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 
 const newestFirst = (a: GalleryEntry, b: GalleryEntry) => b.publishedAt - a.publishedAt || collator.compare(a.id, b.id);
 const byTitle = (a: GalleryEntry, b: GalleryEntry) => collator.compare(a.title.trim(), b.title.trim());

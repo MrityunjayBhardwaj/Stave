@@ -90,7 +90,7 @@ const NOT_SHOWN: Array<[RegExp, string]> = [
   [/markGalleryFilesUntrusted\(/, "the trust step, whose question has its own words"],
   [/useState\(page\.author\.name\)/, "the profile editor starts from what's really stored"],
   [/buildProfileRequest\(\{ name, bio \}, page\.author\.name\)/, "the stored name, to tell a change from keeping it"],
-  [/const hay = \[/, "search"],
+  [/textMatches\(\[entry\.title, entry\.authorName/, "search"],
 ];
 
 describe("every place that shows a stored name", () => {

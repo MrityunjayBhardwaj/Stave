@@ -9,7 +9,7 @@
  *
  * In the store (it is your place, or it is what that place shows):
  *   - the view (browse, My shares, Moderation), and the browse grid's filter,
- *     sort and search text (#2486);
+ *     sort and search text (#2486), and My shares' own (#2492);
  *   - the loaded list, the entry being shown, and the Back stack of what is
  *     open on top of the list (entries, profiles, collections);
  *   - My shares' inputs: this browser's shares and private links, its author
@@ -41,13 +41,22 @@
 import { useSyncExternalStore } from "react";
 import { fetchAccountShares, fetchGalleryEntry, fetchGalleryList, GalleryEntryRemoved } from "./client";
 import { applyListChanges, listLocalShares, listPrivateLinks, loadAuthor, type LocalPrivateLink, type LocalShare } from "./localShares";
-import type { GalleryEntry, GalleryEntryResponse, MySharesResponse } from "./types";
-import type { GalleryFilter, GalleryLinkTarget, GallerySort, GalleryTab } from "./galleryModel";
+import { MAX_LISTED_ENTRIES, type GalleryEntry, type GalleryEntryResponse, type MySharesResponse } from "./types";
+import type { GalleryFilter, GalleryLinkTarget, GallerySort, GalleryTab, MineFilter, MineSort } from "./galleryModel";
 
 export type ListState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; entries: GalleryEntry[] };
+  | {
+      status: "ready";
+      entries: GalleryEntry[];
+      /**
+       * #2519 — the server's answer was as long as a listing gets
+       * (MAX_LISTED_ENTRIES), so older entries may simply not be in it. Read
+       * from the answer itself, before this browser's changes are laid over it.
+       */
+      full: boolean;
+    };
 
 /** #2321 — the signed-in account's shares; "off" when signed out. */
 export type AccountState =
@@ -75,6 +84,10 @@ export interface GalleryState {
   filter: GalleryFilter;
   sort: GallerySort;
   query: string;
+  /** #2492 — My shares' filter, order and search: a list of its own, kept apart from the grid's. */
+  mineFilter: MineFilter;
+  mineSort: MineSort;
+  mineQuery: string;
   list: ListState;
   detail: DetailState | null;
   /** What is open on top of the browse grid, innermost last; Back pops one. */
@@ -102,6 +115,9 @@ export interface GalleryStore {
   setFilter(filter: GalleryFilter): void;
   setSort(sort: GallerySort): void;
   setQuery(query: string): void;
+  setMineFilter(filter: MineFilter): void;
+  setMineSort(sort: MineSort): void;
+  setMineQuery(query: string): void;
   loadList(): void;
   /** (Re)load the entry `id` into the detail. */
   openEntry(id: string): void;
@@ -125,6 +141,9 @@ export interface GalleryResumePlace {
   filter: GalleryFilter;
   sort: GallerySort;
   query: string;
+  mineFilter: MineFilter;
+  mineSort: MineSort;
+  mineQuery: string;
   stack: readonly GalleryLinkTarget[];
 }
 
@@ -139,6 +158,9 @@ const initialState = (): GalleryState => ({
   filter: "all",
   sort: "newest",
   query: "",
+  mineFilter: "all",
+  mineSort: "newest",
+  mineQuery: "",
   list: { status: "loading" },
   detail: null,
   stack: [],
@@ -163,7 +185,10 @@ export function createGalleryStore(): GalleryStore {
     set({ list: { status: "loading" } });
     fetchGalleryList()
       // #2433 — the list may be cached from before this browser's latest change.
-      .then((r) => set({ list: { status: "ready", entries: applyListChanges(Array.isArray(r.entries) ? r.entries : []) } }))
+      .then((r) => {
+        const got = Array.isArray(r.entries) ? r.entries : [];
+        set({ list: { status: "ready", entries: applyListChanges(got), full: got.length >= MAX_LISTED_ENTRIES } });
+      })
       .catch((err: Error) => set({ list: { status: "error", message: err.message || "the gallery couldn't be loaded" } }));
   };
 
@@ -214,8 +239,8 @@ export function createGalleryStore(): GalleryStore {
       loadList();
       refreshLocal();
       scroll = null;
-      const { tab, filter, sort, query } = place;
-      set({ tab, filter, sort, query, stack: [...place.stack] });
+      const { tab, filter, sort, query, mineFilter, mineSort, mineQuery } = place;
+      set({ tab, filter, sort, query, mineFilter, mineSort, mineQuery, stack: [...place.stack] });
       const top = place.stack[place.stack.length - 1];
       if (top?.kind === "entry") openEntry(top.id);
       else set({ detail: null });
@@ -228,6 +253,9 @@ export function createGalleryStore(): GalleryStore {
     setFilter: (filter) => set({ filter }),
     setSort: (sort) => set({ sort }),
     setQuery: (query) => set({ query }),
+    setMineFilter: (mineFilter) => set({ mineFilter }),
+    setMineSort: (mineSort) => set({ mineSort }),
+    setMineQuery: (mineQuery) => set({ mineQuery }),
     loadList,
     openEntry,
     push(view) {

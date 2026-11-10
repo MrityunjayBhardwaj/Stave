@@ -30,7 +30,7 @@ import { bootApp } from './_appBoot'
  *
  * #2329 — the account lists a private link by id, name and date only, never
  * its key. Browser A, which made the link, can copy it again from its own
- * copy; browser B sees the row and can revoke it, but has no Copy again.
+ * copy; browser B sees the row and can revoke it, but has no Copy link.
  *
  * Screenshots go to $GALLERY_SHOT_DIR when it is set.
  */
@@ -109,7 +109,13 @@ async function openMyShares(page: Page): Promise<void> {
   await page.getByText('Community Gallery...', { exact: true }).click()
   // #2473 — on a desktop the gallery opens as a workspace tab
   await expect(page.locator('[data-gallery="tab"]')).toBeVisible()
-  await page.locator('[data-gallery-tab="mine"]').click()
+  // Opening the gallery keeps your place: it may already be on My shares, where the
+  // header's button isn't drawn (#2492 — that page has crumbs instead).
+  const button = page.locator('[data-gallery-tab="mine"]')
+  const mine = page.locator('[data-gallery-mine-source]')
+  await expect(button.or(mine).first()).toBeVisible()
+  if (await button.isVisible()) await button.click()
+  await expect(mine).toBeVisible()
 }
 
 async function newDevice(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
@@ -180,14 +186,18 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
     await expect(page.locator('[data-gallery-links-note]')).toContainText("A link's key is kept only in the browser that made it")
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/2-my-shares-signed-in.png` })
 
-    // #2329 — A made the link, so it has Copy again (from its own copy) and Revoke.
+    // #2329 — A made the link, so it has Copy link (from its own copy) and Revoke (under ⋯, #2492).
     const linkRow = page.locator(`[data-gallery-link="${linkId}"]`)
-    await expect(linkRow.getByRole('button', { name: 'Copy again' })).toBeVisible()
-    await expect(linkRow.getByRole('button', { name: 'Revoke' })).toBeVisible()
+    await expect(linkRow.locator('[data-gallery-pill]')).toHaveText('Private link')
+    await expect(linkRow.getByRole('button', { name: 'Copy link' })).toBeVisible()
+    await linkRow.locator('[data-gallery-more]').click()
+    await expect(linkRow.getByRole('menuitem', { name: 'Revoke' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(linkRow.getByRole('menu')).toHaveCount(0)
     await expect(linkRow.locator('[data-gallery-link-elsewhere]')).toHaveCount(0)
-    if (SHOTS) await page.locator('[data-gallery-section="private"]').screenshot({ path: `${SHOTS}/a-private-links.png` })
+    if (SHOTS) await linkRow.screenshot({ path: `${SHOTS}/a-private-links.png` })
     await page.evaluate(() => navigator.clipboard.writeText(''))
-    await linkRow.getByRole('button', { name: 'Copy again' }).click()
+    await linkRow.getByRole('button', { name: 'Copy link' }).click()
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(url)
 
     // #2329 — what the real server stored for the account: no key, no `#`, only the
@@ -256,12 +266,15 @@ test.describe('Your shares follow your account (#2320, #2321)', () => {
       await expect(link.locator('[data-gallery-link-elsewhere]')).toHaveText(
         "Made on another device. The link's key is only kept there.",
       )
-      await expect(link.getByRole('button', { name: 'Copy again' })).toHaveCount(0)
-      await expect(link.getByRole('button', { name: 'Revoke' })).toBeVisible()
-      if (SHOTS) await b.page.locator('[data-gallery-section="private"]').screenshot({ path: `${SHOTS}/b-private-links.png` })
+      await expect(link.getByRole('button', { name: 'Copy link' })).toHaveCount(0)
+      await link.locator('[data-gallery-more]').click()
+      await expect(link.getByRole('menuitem', { name: 'Revoke' })).toBeVisible()
+      await b.page.keyboard.press('Escape')
+      if (SHOTS) await link.screenshot({ path: `${SHOTS}/b-private-links.png` })
 
       // Revoke through the session (no key here).
-      await link.getByRole('button', { name: 'Revoke' }).click()
+      await link.locator('[data-gallery-more]').click()
+      await link.getByRole('menuitem', { name: 'Revoke' }).click()
       await b.page.getByRole('button', { name: 'Revoke', exact: true }).last().click() // the confirm
       await expect(link).toHaveCount(0, { timeout: 15_000 })
       expect((await b.context.request.get(`/api/share/${linkId}`)).status()).toBe(404)

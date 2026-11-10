@@ -39,7 +39,7 @@ export interface LocalPrivateLink {
   id: string;
   /**
    * The whole link, key included, so it can be copied again. #2329 — kept only
-   * here, in this browser: the account's list never has it, so Copy again works
+   * here, in this browser: the account's list never has it, so Copy link works
    * only on the device that made the link.
    */
   url: string;

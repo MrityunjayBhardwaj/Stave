@@ -169,6 +169,13 @@ export interface SuspensionsResponse {
   suspensions: ActiveSuspension[];
 }
 
+/**
+ * The most entries one listing of the gallery returns, newest first. Shared with
+ * the client (#2519): a list this long may have been cut short, so an entry older
+ * than its last one can't be called removed just for not being in it.
+ */
+export const MAX_LISTED_ENTRIES = 500;
+
 /** #2401 — how long an admin take-down can be undone. The clean-up deletes the files within a day after. */
 export const TAKEDOWN_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
 

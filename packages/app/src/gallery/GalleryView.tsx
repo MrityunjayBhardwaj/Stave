@@ -33,33 +33,24 @@ import { MODERATION_CSS, ModerationView } from "./GalleryModeration";
 import { MARKDOWN_CSS } from "./markdown";
 import { LOCAL_SHARES_CHANGED } from "./localShares";
 import { type GalleryEntry, type GalleryEntryResponse, type GalleryKind } from "./types";
-import {
-  GALLERY_FILTERS,
-  GALLERY_SORTS,
-  KIND_LABEL,
-  browseEntries,
-  countByFilter,
-  formatGalleryDate,
-  isGallerySort,
-  type GalleryFilter,
-  type GalleryTab,
-} from "./galleryModel";
+import { GALLERY_FILTERS, GALLERY_SORTS, browseEntries, countByFilter, type GalleryFilter, type GalleryTab } from "./galleryModel";
 import {
   defaultDeleteDeps,
   defaultRevokeDeps,
   deleteMyShare,
   myRows,
   revokeMyLink,
-  shareStatus,
   type LinkRow,
   type MyRows,
   type ShareRow,
 } from "./myShares";
+import { BAR_CSS, GalleryBar } from "./GalleryBar";
+import { MINE_CSS, MyShares } from "./GalleryMyShares";
 import { useGallerySession } from "./session";
 import { showConfirm, showToast } from "../dialogs/host";
 import { REPORT_CSS, ReportDialog } from "./ReportDialog";
 import { ENTRY_CSS, EntryPage } from "./GalleryEntry";
-import { scrollKey, useGalleryStore, type AccountState, type DetailState, type GalleryStore } from "./galleryStore";
+import { scrollKey, useGalleryStore, type GalleryStore } from "./galleryStore";
 
 export interface GalleryViewProps {
   /** Where you are; whoever holds the store decides how long that lasts. */
@@ -184,7 +175,8 @@ export function GalleryView({
     [entries, tab, filter, query, sort],
   );
 
-  const browsing = tab === "browse" && stack.length === 0;
+  // #2486, #2492 — the browse grid and My shares each have a search.
+  const browsing = (tab === "browse" || tab === "mine") && stack.length === 0;
   // #2486 — "/" goes to the search, as on most sites, unless you are typing somewhere.
   useEffect(() => {
     if (!browsing) return;
@@ -235,21 +227,30 @@ export function GalleryView({
     showToast("Thanks — the report was sent.", "info");
   };
 
-  const deleteShare = async (share: ShareRow) => {
+  // `removed`: it is already out of the gallery (#2492's Forget) — only this browser's record goes.
+  const deleteShare = async (share: ShareRow, removed = false) => {
     try {
       const outcome = await deleteMyShare(
         share,
         defaultDeleteDeps((s) =>
-          showConfirm({
-            title: "Delete from the gallery?",
-            description: `"${s.title}" will be taken down for everyone. This can't be undone.`,
-            confirmLabel: "Delete",
-            danger: true,
-          }),
+          showConfirm(
+            removed
+              ? {
+                  title: "Forget this share?",
+                  description: `"${s.title}" is no longer in the gallery. Forgetting it takes it off this list.`,
+                  confirmLabel: "Forget",
+                }
+              : {
+                  title: "Delete from the gallery?",
+                  description: `"${s.title}" will be taken down for everyone. This can't be undone.`,
+                  confirmLabel: "Delete",
+                  danger: true,
+                },
+          ),
         ),
       );
       if (outcome === "deleted") {
-        showToast(`Deleted "${share.title}" from the gallery.`, "info");
+        showToast(removed ? `Forgot "${share.title}".` : `Deleted "${share.title}" from the gallery.`, "info");
         loadAccount();
       }
     } catch (err) {
@@ -280,33 +281,13 @@ export function GalleryView({
   };
 
   const myCount = rows.entries.length + rows.links.length;
-
-  // A radio group moves with the arrow keys: one Tab stop, ← → (and Home / End) pick.
-  const moveFilter = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const i = GALLERY_FILTERS.findIndex((f) => f.id === filter);
-    const n = GALLERY_FILTERS.length;
-    const next =
-      e.key === "ArrowRight" || e.key === "ArrowDown"
-        ? (i + 1) % n
-        : e.key === "ArrowLeft" || e.key === "ArrowUp"
-          ? (i - 1 + n) % n
-          : e.key === "Home"
-            ? 0
-            : e.key === "End"
-              ? n - 1
-              : -1;
-    if (next < 0) return;
-    e.preventDefault();
-    const id = GALLERY_FILTERS[next].id;
-    store.setFilter(id);
-    e.currentTarget.querySelector<HTMLElement>(`[data-gallery-filter="${id}"]`)?.focus();
-  };
+  const mineView = tab === "mine" && !top;
 
   return (
     <div className="sg-view" data-gallery-view ref={rootRef}>
-      <style>{CSS + CARD_CSS + PROFILE_CSS + MARKDOWN_CSS + MODERATION_CSS + REPORT_CSS + ENTRY_CSS}</style>
-      {/* #2491 — an entry's page has its breadcrumb bar in place of the header. */}
-      {top?.kind !== "entry" && (
+      <style>{CSS + BAR_CSS + CARD_CSS + PROFILE_CSS + MARKDOWN_CSS + MODERATION_CSS + REPORT_CSS + ENTRY_CSS + MINE_CSS}</style>
+      {/* #2491, #2492 — an entry's page and My shares have a breadcrumb bar in place of the header. */}
+      {top?.kind !== "entry" && !mineView && (
       <div className={tab === "browse" && !top ? "sg-header" : "sg-header sg-header-ruled"}>
         <div className="sg-headline">
           <h2 className="sg-title">Community Gallery</h2>
@@ -365,6 +346,28 @@ export function GalleryView({
           onOpenAuthor={openAuthor}
           onDeleted={back}
         />
+      ) : mineView ? (
+        <MyShares
+          store={store}
+          rows={rows}
+          account={account}
+          listed={entries}
+          listFull={list.status === "ready" && list.full}
+          user={session.status === "ready" ? (session.session.user ?? null) : null}
+          myAuthorId={accountAuthorId ?? myAuthorId}
+          searchRef={searchRef}
+          onBrowse={() => store.setTab("browse")}
+          onClose={onClose}
+          onPublish={onPublish}
+          onMyProfile={openAuthor}
+          onRetryAccount={loadAccount}
+          onOpenCollection={openCollection}
+          onOpen={openOne}
+          onCopy={copyLink}
+          onDelete={deleteShare}
+          onCopyPrivate={copyPrivateLink}
+          onRevoke={revokeLink}
+        />
       ) : top?.kind === "entry" && detail ? (
         <EntryPage
           detail={detail}
@@ -389,84 +392,33 @@ export function GalleryView({
       ) : (
         <>
           {tab === "browse" && (
-            <div className="sg-browsebar" data-gallery-browsebar>
-              <label className="sg-searchbox">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="m20 20-3.5-3.5" />
-                </svg>
-                <input
-                  ref={searchRef}
-                  className="sg-search"
-                  type="search"
-                  placeholder="Search titles, tags and artists"
-                  aria-label="Search the gallery"
-                  aria-keyshortcuts="/"
-                  value={query}
-                  onChange={(e) => store.setQuery(e.target.value)}
-                />
-                <kbd className="sg-search-key" aria-hidden="true">/</kbd>
-              </label>
-              <div className="sg-filterrow">
-                <div className="sg-filters" role="radiogroup" aria-label="Show" onKeyDown={moveFilter}>
-                  {GALLERY_FILTERS.map((f) => (
-                    <button
-                      key={f.id}
-                      role="radio"
-                      aria-checked={filter === f.id}
-                      tabIndex={filter === f.id ? 0 : -1}
-                      data-gallery-filter={f.id}
-                      className={filter === f.id ? "sg-filter sg-filter-on" : "sg-filter"}
-                      onClick={() => store.setFilter(f.id)}
-                    >
-                      {f.label}
-                      {entries ? <span className="sg-count" data-gallery-filter-count>{counts[f.id]}</span> : null}
-                    </button>
-                  ))}
-                </div>
-                <label className="sg-sortlabel">
-                  <span className="sg-sortword">Sort by</span>
-                  <select
-                    className="sg-sort"
-                    data-gallery-sort
-                    aria-label="Sort by"
-                    value={sort}
-                    onChange={(e) => isGallerySort(e.target.value) && store.setSort(e.target.value)}
-                  >
-                    {GALLERY_SORTS.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </div>
+            <GalleryBar
+              barHook="data-gallery-browsebar"
+              filterHook="data-gallery-filter"
+              sortHook="data-gallery-sort"
+              searchRef={searchRef}
+              placeholder="Search titles, tags and artists"
+              searchLabel="Search the gallery"
+              query={query}
+              onQuery={store.setQuery}
+              filters={GALLERY_FILTERS}
+              filter={filter}
+              onFilter={store.setFilter}
+              counts={entries ? counts : null}
+              sorts={GALLERY_SORTS}
+              sort={sort}
+              onSort={store.setSort}
+            />
           )}
 
           <div className="sg-body">
-            {tab !== "browse" && (
+            {tab === "moderation" && (
               <button className="sg-btn sg-back" data-gallery-browse onClick={() => store.setTab("browse")}>
                 ← Back to the gallery
               </button>
             )}
             {tab === "moderation" && isAdmin ? (
               <ModerationView onOpen={openOne} />
-            ) : tab === "mine" ? (
-              <MyShares
-                myAuthorId={accountAuthorId ?? myAuthorId}
-                onMyProfile={openAuthor}
-                rows={rows}
-                account={account}
-                onRetryAccount={loadAccount}
-                onOpenCollection={openCollection}
-                listed={entries}
-                onCopyPrivate={copyPrivateLink}
-                onRevoke={revokeLink}
-                onOpen={openOne}
-                onCopy={copyLink}
-                onDelete={deleteShare}
-              />
             ) : list.status === "loading" ? (
               <div className="sg-state" data-gallery-state="loading">Loading the gallery…</div>
             ) : list.status === "error" ? (
@@ -502,171 +454,6 @@ function emptyMessage(filter: GalleryFilter, query: string, total: number): stri
   return filter === "music" ? "No music has been published yet." : `No ${label.toLowerCase()} have been published yet.`;
 }
 
-function MyShares({
-  myAuthorId,
-  onMyProfile,
-  rows,
-  account,
-  onRetryAccount,
-  onOpenCollection,
-  listed,
-  onOpen,
-  onCopy,
-  onDelete,
-  onCopyPrivate,
-  onRevoke,
-}: {
-  myAuthorId: string | null;
-  onMyProfile: (authorId: string) => void;
-  rows: MyRows;
-  account: AccountState;
-  onRetryAccount: () => void;
-  onOpenCollection: (id: string) => void;
-  listed: GalleryEntry[] | null;
-  onOpen: (id: string) => void;
-  onCopy: (id: string) => void;
-  onDelete: (s: ShareRow) => void;
-  onCopyPrivate: (l: LinkRow) => void;
-  onRevoke: (l: LinkRow) => void;
-}) {
-  const signedIn = account.status !== "off";
-  const browserOnly = (home: "account" | "browser") =>
-    signedIn && home === "browser" ? (
-      <span className="sg-browser-only" data-gallery-browser-only>
-        {" "}
-        · only in this browser
-      </span>
-    ) : null;
-  return (
-    <div className="sg-mine" data-gallery-mine-source={signedIn ? "account" : "browser"}>
-      {myAuthorId && (
-        <button
-          className="sg-btn sg-my-profile"
-          data-gallery-my-profile={myAuthorId}
-          onClick={() => onMyProfile(myAuthorId)}
-        >
-          View my profile →
-        </button>
-      )}
-      {account.status === "loading" && (
-        <div className="sg-section-note" data-gallery-state="account-loading">Loading your account&apos;s shares…</div>
-      )}
-      {account.status === "error" && (
-        <div className="sg-section-note" data-gallery-state="account-error">
-          Couldn&apos;t load your account&apos;s shares: {account.message}. Showing what this browser has.{" "}
-          <button className="sg-btn" onClick={onRetryAccount}>Try again</button>
-        </div>
-      )}
-      <section data-gallery-section="published">
-        <h3 className="sg-section">In the gallery</h3>
-        <p className="sg-section-note">Everyone can see and open these.</p>
-        {rows.entries.length === 0 ? (
-          <div className="sg-state sg-state-small" data-gallery-state="mine-empty">
-            <p>
-              {signedIn
-                ? "You haven't published anything yet."
-                : "You haven't published anything from this browser yet."}
-            </p>
-            <p className="sg-muted">
-              Use File → Share → Publish to Gallery (or the Publish yours button above) to share a project, a pattern or
-              a visual.{signedIn ? "" : " This browser keeps the key that lets you take it down again."}
-            </p>
-          </div>
-        ) : (
-          rows.entries.map((s) => {
-            // An account row is live by definition; a browser row is checked against the list.
-            const status = s.home === "account" ? "listed" : shareStatus(s, listed);
-            return (
-              <div
-                key={s.id}
-                className="sg-mine-row"
-                data-gallery-mine={s.id}
-                data-gallery-status={status}
-                data-gallery-home={s.home}
-              >
-                <div className="sg-mine-text">
-                  <div className="sg-card-title">{s.title}</div>
-                  <div className="sg-card-meta">
-                    {KIND_LABEL[s.kind] ?? s.kind} · published {formatGalleryDate(s.publishedAt)}
-                    {browserOnly(s.home)}
-                    {status === "missing" && (
-                      <span className="sg-missing"> · No longer in the gallery — it was removed.</span>
-                    )}
-                  </div>
-                </div>
-                <div className="sg-actions">
-                  <button className="sg-btn" onClick={() => onOpen(s.id)}>Open</button>
-                  <button className="sg-btn" onClick={() => onCopy(s.id)}>Copy link</button>
-                  <button className="sg-btn sg-danger" onClick={() => onDelete(s)}>
-                    {status === "missing" ? "Forget" : "Delete"}
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </section>
-
-      {signedIn && rows.collections.length > 0 && (
-        <section data-gallery-section="collections">
-          <h3 className="sg-section">Collections</h3>
-          <p className="sg-section-note">Open one to change or delete it.</p>
-          {rows.collections.map((c) => (
-            <div key={c.id} className="sg-mine-row" data-gallery-my-collection={c.id}>
-              <div className="sg-mine-text">
-                <div className="sg-card-title">{c.title}</div>
-                <div className="sg-card-meta">
-                  Collection · {c.entryIds.length} {c.entryIds.length === 1 ? "entry" : "entries"}
-                </div>
-              </div>
-              <div className="sg-actions">
-                <button className="sg-btn" onClick={() => onOpenCollection(c.id)}>Open</button>
-              </div>
-            </div>
-          ))}
-        </section>
-      )}
-
-      <section data-gallery-section="private">
-        <h3 className="sg-section">Private links</h3>
-        <p className="sg-section-note" data-gallery-links-note>
-          {signedIn
-            ? "Only people you send these to can open them. Your account lists each link so you can revoke it from any device, and only you can see this list. A link's key is kept only in the browser that made it, so you can copy a link again only there."
-            : "Only people you send these to can open them. Links made before this list existed aren't here and can't be revoked; the list lives in this browser."}
-        </p>
-        {rows.links.length === 0 ? (
-          <div className="sg-state sg-state-small" data-gallery-state="links-empty">
-            <p className="sg-muted">File → Share → Copy Private Link makes one; it will show up here.</p>
-          </div>
-        ) : (
-          rows.links.map((l) => (
-            <div key={l.id} className="sg-mine-row" data-gallery-link={l.id} data-gallery-home={l.home}>
-              <div className="sg-mine-text">
-                <div className="sg-card-title">{l.projectName}</div>
-                <div className="sg-card-meta">
-                  Private link · made {formatGalleryDate(l.createdAt)}
-                  {browserOnly(l.home)}
-                </div>
-                {l.url ? null : (
-                  <div className="sg-card-meta" data-gallery-link-elsewhere>
-                    Made on another device. The link&apos;s key is only kept there.
-                  </div>
-                )}
-              </div>
-              <div className="sg-actions">
-                {l.url ? (
-                  <button className="sg-btn" onClick={() => onCopyPrivate(l)}>Copy again</button>
-                ) : null}
-                <button className="sg-btn sg-danger" onClick={() => onRevoke(l)}>Revoke</button>
-              </div>
-            </div>
-          ))
-        )}
-      </section>
-    </div>
-  );
-}
-
 const CSS = `
 .sg-view { display: contents; }
 .sg-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px 16px; padding: 16px 20px 12px; }
@@ -678,20 +465,7 @@ const CSS = `
 .sg-close { background: none; border: none; color: var(--text-icon); font-size: 24px; cursor: pointer; padding: 0 6px; line-height: 1; }
 .sg-headbtn { display: inline-flex; align-items: center; gap: 6px; background: none; }
 .sg-headbtn-on { background: var(--bg-hover, rgba(255,255,255,.08)); }
-.sg-browsebar { container-type: inline-size; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 0 20px 12px; border-bottom: 1px solid var(--border-subtle); }
-.sg-searchbox { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--bg-input, var(--bg-elevated)); color: var(--text-muted, var(--text-chrome)); cursor: text; }
-.sg-searchbox:focus-within { border-color: var(--accent, #4a6cf7); }
-.sg-search { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: none; color: var(--text-primary); font-size: 14px; }
-.sg-search-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--border-strong); }
-/* One row at every width (#2486): the filter scrolls sideways before the sort is pushed under it. */
-.sg-filterrow { display: flex; align-items: center; gap: 8px 12px; }
-.sg-filters { display: inline-flex; flex: 0 1 auto; min-width: 0; gap: 2px; padding: 3px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-hover, rgba(255,255,255,.03)); overflow-x: auto; scrollbar-width: none; }
-.sg-filter { height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: none; color: var(--text-chrome); cursor: pointer; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
-.sg-filter:hover { color: var(--text-primary); }
-.sg-filter-on { background: var(--bg-elevated); color: var(--text-primary); font-weight: 600; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
 .sg-count { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 400; opacity: .7; }
-.sg-sortlabel { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted, var(--text-chrome)); }
-.sg-sort { height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--bg-input, var(--bg-elevated)); color: var(--text-primary); font-size: 13px; cursor: pointer; }
 .sg-body { flex: 1; overflow: auto; padding: 16px 18px; min-height: 0; }
 .sg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 22px 18px; }
 .sg-thumb { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; background: #111; }
@@ -714,29 +488,13 @@ const CSS = `
 .sg-back { align-self: flex-start; margin-bottom: 12px; background: none; border-color: transparent; padding-left: 0; }
 .sg-detail-head { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
 .sg-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.sg-mine { display: flex; flex-direction: column; gap: 8px; }
-.sg-mine-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; }
-.sg-mine-text { min-width: 0; flex: 1 1 220px; }
 .sg-section { margin: 4px 0 2px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-primary); }
 .sg-section-note { margin: 0 0 8px; font-size: 12px; opacity: .75; }
-.sg-mine section { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
 .sg-state-small { padding: 14px 12px; }
-.sg-missing { color: var(--text-error, #f27878); }
-.sg-browser-only { font-style: italic; opacity: .85; }
-@media (hover: none) { .sg-search-key { display: none; } }
-/* By the bar's own width, not the screen's: a gallery tab can be narrow on a wide screen. */
-@container (max-width: 520px) {
-  .sg-sortword { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .sg-filter { padding: 0 9px; }
-  /* As the phone mockup: no counts, so all four filters fit beside the sort. */
-  .sg-filter .sg-count { display: none; }
-}
 @media (max-width: 640px) {
   .sg-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .sg-body { padding: 12px; }
   .sg-header { padding: 12px 12px 10px; }
-  .sg-browsebar { padding: 0 12px 10px; gap: 10px; }
-  .sg-filter { padding: 0 10px; }
   .sg-btn { padding: 8px 12px; }
 }
 `;
