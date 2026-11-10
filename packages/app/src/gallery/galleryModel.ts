@@ -249,17 +249,23 @@ export function formatGalleryDate(ms: number): string {
 }
 
 /**
- * Where "Add to this project" puts a music / viz entry's file: its own name at
- * the project's root (the caller suffixes on a collision), so a published path
- * can never point outside the root. `ext` is returned so the caller can take the
+ * Where "Add to this project" puts an entry's file: its own name at the
+ * project's root (the caller suffixes on a collision), so a published path can
+ * never point outside the root. A music / viz entry adds its one file; a project
+ * adds the file chosen from its list (`path`, #2491), and a path the manifest
+ * doesn't hold adds nothing rather than some other file. `ext` is returned so the caller can take the
  * language from the extension (lib/newFile's `extensionToLanguage`) rather than
  * trusting the manifest's label; it is not imported here to keep this module
  * free of the editor package.
  */
 export function fileToAdd(
   manifest: GalleryManifest,
+  path?: string,
 ): { path: string; ext: string; content: string; language: string } | null {
-  const f = manifest.files.find((x) => !x.path.split("/").pop()?.startsWith(".")) ?? manifest.files[0];
+  const f =
+    path !== undefined
+      ? manifest.files.find((x) => x.path === path)
+      : (manifest.files.find((x) => !x.path.split("/").pop()?.startsWith(".")) ?? manifest.files[0]);
   if (!f) return null;
   const base = (f.path.split("/").pop() ?? "").replace(/[^A-Za-z0-9._ -]/g, "_").replace(/^\.+/, "") || "gallery";
   const ext = base.includes(".") ? base.slice(base.lastIndexOf(".") + 1) : "";

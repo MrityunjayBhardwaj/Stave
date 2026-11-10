@@ -59,7 +59,7 @@ export interface GalleryEntryActionsInput {
 /** The two ways an entry lands in Stave; each resolves true when it did. */
 export interface GalleryEntryActions {
   openAsProject: (entry: GalleryEntry, manifest: GalleryManifest) => Promise<boolean>;
-  addToProject: (entry: GalleryEntry, manifest: GalleryManifest) => Promise<boolean>;
+  addToProject: (entry: GalleryEntry, manifest: GalleryManifest, path?: string) => Promise<boolean>;
 }
 
 export interface GalleryHostProps {
@@ -180,10 +180,10 @@ export function useGalleryEntryActions({ unsavedBlocksLeaving, openProject }: Ga
     [unsavedBlocksLeaving, openProject],
   );
 
-  const addToProject = useCallback(async (entry: GalleryEntry, manifest: GalleryManifest): Promise<boolean> => {
-    const f = fileToAdd(manifest);
+  const addToProject = useCallback(async (entry: GalleryEntry, manifest: GalleryManifest, path?: string): Promise<boolean> => {
+    const f = fileToAdd(manifest, path);
     if (!f) {
-      showToast("This entry has no file to add.", "error");
+      showToast(path === undefined ? "This entry has no file to add." : `"${entry.title}" has no file called ${path}.`, "error");
       return false;
     }
     const language = (extensionToLanguage(f.ext) ?? f.language) as WorkspaceFile["language"];
@@ -199,7 +199,8 @@ export function useGalleryEntryActions({ unsavedBlocksLeaving, openProject }: Ga
     } finally {
       endGalleryImport();
     }
-    showToast(`Added "${entry.title}" as ${created.path}. ${RUN_HINT}`, "info", 6000);
+    const what = path === undefined ? `"${entry.title}"` : `${path} from "${entry.title}"`;
+    showToast(`Added ${what} as ${created.path}. ${RUN_HINT}`, "info", 6000);
     return true;
   }, []);
 
