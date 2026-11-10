@@ -13,10 +13,12 @@
  * Forget for a removed entry) and a ⋯ menu with the rest (Open, Delete, Revoke).
  * A private link made on another device can't be copied here — its key lives
  * only in the browser that made it (#2329) — and the row says so.
+ *
+ * #2494 — collections are not listed here for now; a collection link still opens.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { CardPicture, GeneratedThumb, useEntryRecording } from "./GalleryCards";
-import { GalleryBar } from "./GalleryBar";
+import { GalleryBar, GalleryCrumbs } from "./GalleryBar";
 import { KIND_LABEL, MINE_FILTERS, MINE_SORTS, formatGalleryDate, publishedAgo } from "./galleryModel";
 import { contentsLine } from "./recording";
 import { shownName } from "./reservedNames";
@@ -56,7 +58,6 @@ export interface MySharesProps {
   onPublish?: () => void;
   onMyProfile: (authorId: string) => void;
   onRetryAccount: () => void;
-  onOpenCollection: (id: string) => void;
   onOpen: (id: string) => void;
   onCopy: (id: string) => void;
   /** `removed`: Forget a share already out of the gallery, not Delete one that is in it. */
@@ -91,18 +92,7 @@ export function MyShares(props: MySharesProps) {
 
   return (
     <>
-      <nav className="sg-crumbs" aria-label="Where you are">
-        <button className="sg-crumb" data-gallery-crumb="gallery" data-gallery-browse onClick={props.onBrowse}>
-          Gallery
-        </button>
-        <span className="sg-crumb-sep" aria-hidden="true">/</span>
-        <span className="sg-crumb-here" aria-current="page">My shares</span>
-        {props.onClose && (
-          <button className="sg-close sg-crumb-close" aria-label="Close gallery" onClick={props.onClose}>
-            ×
-          </button>
-        )}
-      </nav>
+      <GalleryCrumbs onHome={props.onBrowse} here="My shares" onClose={props.onClose} />
       <div className="sg-header">
         <div className="sg-headline">
           <h2 className="sg-title">My shares</h2>
@@ -204,24 +194,6 @@ export function MyShares(props: MySharesProps) {
                 ),
               )}
             </div>
-          )}
-
-          {signedIn && rows.collections.length > 0 && (
-            <section className="sg-mshare-colls" data-gallery-section="collections">
-              <h3 className="sg-section">Collections</h3>
-              <p className="sg-section-note">Open one to change or delete it.</p>
-              {rows.collections.map((c) => (
-                <div key={c.id} className="sg-mshare-coll" data-gallery-my-collection={c.id}>
-                  <div className="sg-mshare-text">
-                    <b>{c.title}</b>
-                    <span>
-                      Collection · {c.entryIds.length} {c.entryIds.length === 1 ? "entry" : "entries"}
-                    </span>
-                  </div>
-                  <button className="sg-btn" onClick={() => props.onOpenCollection(c.id)}>Open</button>
-                </div>
-              ))}
-            </section>
           )}
 
           <p className="sg-mshare-foot" data-gallery-links-note>
@@ -474,8 +446,6 @@ export const MINE_CSS = `
 .sg-mshare-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; min-width: 140px; padding: 4px; display: grid; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--bg-elevated); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
 .sg-mshare-item { text-align: left; padding: 7px 10px; border: 0; border-radius: 6px; background: none; color: var(--text-primary); font-size: 13px; cursor: pointer; }
 .sg-mshare-item:hover, .sg-mshare-item:focus-visible { background: var(--bg-hover, rgba(255,255,255,.08)); outline: none; }
-.sg-mshare-colls { display: flex; flex-direction: column; gap: 8px; }
-.sg-mshare-coll { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; }
 .sg-mshare-foot { margin: 0; color: var(--text-muted, var(--text-chrome)); font-size: 12.5px; max-width: 80ch; line-height: 1.5; }
 /* By the list's own width (#2492): a narrow tab stacks the status and date under the title. */
 @container (max-width: 760px) {

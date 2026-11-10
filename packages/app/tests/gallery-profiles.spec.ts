@@ -253,9 +253,15 @@ test.describe('gallery profiles and collections (#2314, #2315)', () => {
     await trap.click()
     expect(await bioRan(page), 'code in the bio ran').toBeNull()
 
-    // collections and entries
-    await expect(profile.locator('[data-gallery-collection-card="colSeed0001"]')).toContainText('Late Night Set')
+    // entries; #2494 — Ada has a collection (seeded), and the profile doesn't list it for now
     await expect(profile.locator('[data-gallery-card]')).toHaveCount(3)
+    await expect(profile.locator('[data-gallery-collection-card]')).toHaveCount(0)
+    await expect(profile.locator('[data-gallery-section="collections"]')).toHaveCount(0)
+    // #2493 — the header: name, how many published, Copy profile link
+    const head = profile.locator('[data-gallery-profile-head]')
+    await expect(head.locator('h2')).toHaveText('Ada')
+    await expect(head.locator('[data-gallery-published-count]')).toHaveText('3 published')
+    await expect(head.getByRole('button', { name: 'Copy profile link' })).toBeVisible()
     // a visitor with no key here: no editing
     await expect(profile.locator('[data-gallery-edit-profile]')).toHaveCount(0)
     await expect(profile.locator('[data-gallery-new-collection]')).toHaveCount(0)
@@ -263,8 +269,9 @@ test.describe('gallery profiles and collections (#2314, #2315)', () => {
     await profile.evaluate((el) => el.scrollTo(0, el.scrollHeight))
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/profile-readme-bottom.png` })
 
-    // Back returns to the grid
-    await page.getByRole('button', { name: '← Back to the gallery' }).click()
+    // #2493 — the crumbs' Gallery returns to the grid
+    await expect(page.locator('.sg-crumb-here')).toHaveText('Ada')
+    await page.locator('[data-gallery-crumb="gallery"]').click()
     await expect(page.locator('[data-gallery-card="adaEnt1AAAA"]')).toBeVisible()
     expect(await bioRan(page)).toBeNull()
   })
@@ -366,7 +373,7 @@ test.describe('gallery profiles and collections (#2314, #2315)', () => {
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/profile-edit-preview.png` })
 
     await editor.getByRole('button', { name: 'Save' }).click()
-    await expect(page.locator(`[data-gallery-profile="${ADA}"] h3`).first()).toHaveText('Ada Lovelace')
+    await expect(page.locator(`[data-gallery-profile="${ADA}"] [data-gallery-profile-head] h2`)).toHaveText('Ada Lovelace')
     const put = store.seen.find((s) => s.method === 'PUT' && s.path === `/api/gallery/authors/${ADA}`)
     expect(put, 'no PUT was sent').toBeTruthy()
     expect(put!.key).toBe(KEY)
@@ -428,86 +435,64 @@ test.describe('gallery profiles and collections (#2314, #2315)', () => {
     await expect(profile.locator('[data-gallery-markdown] h1')).toBeVisible()
     await expect(profile.locator('[data-gallery-edit-profile]')).toHaveCount(0)
     await expect(profile.locator('[data-gallery-new-collection]')).toHaveCount(0)
-    await profile.locator('[data-gallery-collection-card="colSeed0001"]').click()
+    // #2494 — a collection is reached by its link; someone else can't edit it
+    await page.goto('/#gallery-collection=colSeed0001')
     await expect(page.locator('[data-gallery-collection="colSeed0001"]')).toBeVisible()
     await expect(page.locator('[data-gallery-edit-collection]')).toHaveCount(0)
   })
 
-  test('the owner makes a collection, reorders it, and deletes it; the entries stay', async ({ page }) => {
+  test('#2494 the owner is offered no new collection, but edits and deletes one reached by its link; the entries stay', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
-    const store = await routeProfiles(page)
+    const store = await routeProfiles(page, { seedCollection: true })
     await rememberAuthor(page, { name: 'Ada', email: 'ada@example.com', authorId: ADA, authorKey: KEY })
     await bootApp(page)
     await page.goto(`/#gallery-author=${ADA}`)
-    await expect(page.locator(`[data-gallery-profile="${ADA}"]`)).toBeVisible({ timeout: 30_000 })
+    const profile = page.locator(`[data-gallery-profile="${ADA}"]`)
+    await expect(profile.locator('[data-gallery-edit-profile]')).toBeVisible({ timeout: 30_000 }) // the owner, so the control is real
+    await expect(profile.locator('[data-gallery-new-collection]')).toHaveCount(0)
+    await expect(profile.locator('[data-gallery-collection-card]')).toHaveCount(0)
 
-    await page.locator('[data-gallery-new-collection]').click()
-    const ed = page.locator('[data-gallery-collection-editor]')
-    await ed.getByLabel('Collection title').fill('Night Drive EP')
-    await ed.getByLabel('Collection description').fill('The visuals and the track, in the order I play them.')
-    // picked in this order: viz first, then the project
-    await ed.locator('[data-gallery-pick="adaEnt3CCCC"] input').check()
-    await ed.locator('[data-gallery-pick="adaEnt1AAAA"] input').check()
-    await expect(ed.locator('[data-gallery-order-row]')).toHaveCount(2)
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/collection-new-picker.png` })
-    await ed.getByRole('button', { name: 'Create collection' }).click()
-
-    const post = store.seen.find((s) => s.method === 'POST' && s.path === '/api/gallery/collections')
-    expect(post, 'no POST was sent').toBeTruthy()
-    expect(post!.key).toBe(KEY)
-    expect(post!.body).toEqual({
-      title: 'Night Drive EP',
-      description: 'The visuals and the track, in the order I play them.',
-      entryIds: ['adaEnt3CCCC', 'adaEnt1AAAA'],
-    })
-
-    // it opens on its page, entries in order
-    const page1 = page.locator('[data-gallery-collection="colNew00001"]')
-    await expect(page1).toBeVisible()
-    await expect(page1.locator('[data-gallery-card]')).toHaveCount(2)
-    expect(await page1.locator('[data-gallery-card]').evaluateAll((els) => els.map((e) => e.getAttribute('data-gallery-card')))).toEqual([
-      'adaEnt3CCCC',
+    // the link someone was sent still opens the collection, entries in order
+    await page.goto('/#gallery-collection=colSeed0001')
+    const col = page.locator('[data-gallery-collection="colSeed0001"]')
+    await expect(col).toBeVisible()
+    expect(await col.locator('[data-gallery-card]').evaluateAll((els) => els.map((e) => e.getAttribute('data-gallery-card')))).toEqual([
+      'adaEnt2BBBB',
       'adaEnt1AAAA',
+      'adaEnt3CCCC',
     ])
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/collection-page.png` })
 
-    // reorder by keyboard: focus the second row's "up" and press Enter; add the music too
+    // reorder by keyboard: focus the second row's "up" and press Enter; take the third out
     await page.locator('[data-gallery-edit-collection]').click()
-    const ed2 = page.locator('[data-gallery-collection-editor]')
-    await ed2.getByRole('button', { name: 'Move Night Drive up' }).focus()
+    const ed = page.locator('[data-gallery-collection-editor]')
+    await ed.getByRole('button', { name: 'Move Night Drive up' }).focus()
     await page.keyboard.press('Enter')
-    await ed2.locator('[data-gallery-pick="adaEnt2BBBB"] input').check()
+    await ed.locator('[data-gallery-pick="adaEnt3CCCC"] input').uncheck()
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/collection-edit.png` })
-    await ed2.getByRole('button', { name: 'Save', exact: true }).click()
+    await ed.getByRole('button', { name: 'Save', exact: true }).click()
 
-    const put = store.seen.find((s) => s.method === 'PUT' && s.path === '/api/gallery/collections/colNew00001')
+    const put = store.seen.find((s) => s.method === 'PUT' && s.path === '/api/gallery/collections/colSeed0001')
     expect(put, 'no PUT was sent').toBeTruthy()
     expect(put!.key).toBe(KEY)
-    expect((put!.body as { entryIds: string[] }).entryIds).toEqual(['adaEnt1AAAA', 'adaEnt3CCCC', 'adaEnt2BBBB'])
+    expect((put!.body as { entryIds: string[] }).entryIds).toEqual(['adaEnt1AAAA', 'adaEnt2BBBB'])
     await expect
-      .poll(() => page1.locator('[data-gallery-card]').evaluateAll((els) => els.map((e) => e.getAttribute('data-gallery-card'))))
-      .toEqual(['adaEnt1AAAA', 'adaEnt3CCCC', 'adaEnt2BBBB'])
-
-    // back on the profile, the collection shows, with the project's picture as cover
-    await page.getByRole('button', { name: '← Back' }).click()
-    const card = page.locator('[data-gallery-collection-card="colNew00001"]')
-    await expect(card).toContainText('Night Drive EP')
-    await expect(card.locator('img')).toHaveAttribute('src', '/api/gallery/adaEnt1AAAA/thumbnail')
+      .poll(() => col.locator('[data-gallery-card]').evaluateAll((els) => els.map((e) => e.getAttribute('data-gallery-card'))))
+      .toEqual(['adaEnt1AAAA', 'adaEnt2BBBB'])
 
     // delete: the confirm says the entries stay
-    await card.click()
     await page.locator('[data-gallery-edit-collection]').click()
     await page.locator('[data-gallery-collection-editor]').getByRole('button', { name: 'Delete collection' }).click()
     await expect(page.getByText('The entries in it stay in the gallery')).toBeVisible()
     await page.getByRole('button', { name: 'Delete collection' }).last().click()
-    const del = store.seen.find((s) => s.method === 'DELETE' && s.path === '/api/gallery/collections/colNew00001')
+    const del = store.seen.find((s) => s.method === 'DELETE' && s.path === '/api/gallery/collections/colSeed0001')
     expect(del, 'no DELETE was sent').toBeTruthy()
     expect(del!.key).toBe(KEY)
-    // landed back on the profile: the collection is gone, every entry is still there
-    await expect(page.locator(`[data-gallery-profile="${ADA}"]`)).toBeVisible()
-    await expect(page.locator('[data-gallery-collection-card="colNew00001"]')).toHaveCount(0)
-    await expect(page.locator(`[data-gallery-profile="${ADA}"] [data-gallery-card]`)).toHaveCount(3)
+    await expect(col).toHaveCount(0)
     expect(store.seen.some((s) => s.method === 'DELETE' && !s.path.includes('/collections/'))).toBe(false)
+    // every entry is still on the profile
+    await page.goto(`/#gallery-author=${ADA}`)
+    await expect(profile.locator('[data-gallery-card]')).toHaveCount(3)
   })
 
   test('a #gallery-collection link opens the collection, then leaves the URL', async ({ page }) => {

@@ -1,10 +1,15 @@
 "use client";
 
 /**
- * #2486, #2492 — the gallery's search, filter and sort, as one bar: the browse
- * grid draws it, My shares draws it with its own filters and orders (and an
- * artist's profile will, #2493). One component, so every list in the gallery is
- * searched, filtered and sorted the same way.
+ * The gallery's shared chrome.
+ *
+ * GalleryBar (#2486, #2492, #2493) — search, filter and sort, as one bar: the
+ * browse grid draws it, My shares draws it with its own filters and orders, and
+ * an artist's profile draws it over their work. One component, so every list in
+ * the gallery is searched, filtered and sorted the same way.
+ *
+ * GalleryCrumbs (#2491, #2492, #2493) — "Gallery / … / here", the bar an entry,
+ * My shares and a profile have in place of the gallery's header.
  *
  * The filter is a radio group: one Tab stop, ← → (and Home / End) pick. Its
  * counts follow the search. Which data attribute each part carries is the
@@ -121,7 +126,59 @@ export function GalleryBar<F extends string, S extends string>(props: GalleryBar
   );
 }
 
+export interface GalleryCrumbsProps {
+  /** "← Back", when there is something under this view to go back to. */
+  backLabel?: string | null;
+  onBack?: () => void;
+  /** The "Gallery" crumb: back to the grid. */
+  onHome: () => void;
+  /** Crumbs between "Gallery" and this page (an entry's kind). */
+  middle?: ReadonlyArray<{ label: string; hook: string; onClick: () => void }>;
+  /** This page's name. */
+  here: string;
+  /** The ×, where the container can close. */
+  onClose?: () => void;
+}
+
+export function GalleryCrumbs({ backLabel, onBack, onHome, middle = [], here, onClose }: GalleryCrumbsProps) {
+  return (
+    <nav className="sg-crumbs" aria-label="Where you are">
+      {backLabel && onBack && (
+        <button className="sg-btn sg-crumb-back" onClick={onBack}>
+          {backLabel}
+        </button>
+      )}
+      {/* data-gallery-browse: the way back to the grid, as the old Back button was. */}
+      <button className="sg-crumb" data-gallery-crumb="gallery" data-gallery-browse onClick={onHome}>
+        Gallery
+      </button>
+      {middle.map((m) => (
+        <React.Fragment key={m.hook}>
+          <span className="sg-crumb-sep" aria-hidden="true">/</span>
+          <button className="sg-crumb" data-gallery-crumb={m.hook} onClick={m.onClick}>
+            {m.label}
+          </button>
+        </React.Fragment>
+      ))}
+      <span className="sg-crumb-sep" aria-hidden="true">/</span>
+      <span className="sg-crumb-here" aria-current="page">{here}</span>
+      {onClose && (
+        <button className="sg-close sg-crumb-close" aria-label="Close gallery" onClick={onClose}>
+          ×
+        </button>
+      )}
+    </nav>
+  );
+}
+
 export const BAR_CSS = `
+.sg-crumbs { display: flex; align-items: center; gap: 8px; padding: 12px 24px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; color: var(--text-muted, var(--text-chrome)); position: sticky; top: 0; z-index: 2; background: var(--bg-elevated); }
+.sg-crumb { background: none; border: 0; padding: 0; color: var(--text-chrome); cursor: pointer; font: inherit; }
+.sg-crumb:hover { color: var(--text-primary); text-decoration: underline; }
+.sg-crumb-sep { opacity: .6; }
+.sg-crumb-here { color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-crumb-back { padding: 3px 8px; font-size: 12px; margin-right: 4px; }
+.sg-crumb-close { margin-left: auto; }
 .sg-browsebar { container-type: inline-size; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 0 20px 12px; border-bottom: 1px solid var(--border-subtle); }
 .sg-searchbox { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--bg-input, var(--bg-elevated)); color: var(--text-muted, var(--text-chrome)); cursor: text; }
 .sg-searchbox:focus-within { border-color: var(--accent, #4a6cf7); }

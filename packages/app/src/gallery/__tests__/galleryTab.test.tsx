@@ -193,6 +193,12 @@ describe("galleryTabLabel — the tab says where you are", () => {
     expect(galleryTabLabel(tab({ tab: "moderation", stack: [] })).title).toBe("Gallery · Moderation");
     expect(galleryTabLabel(tab({ tab: "mine", stack: [{ kind: "author", id: "alice" }] })).title).toBe("Gallery · Profile");
   });
+
+  it("#2493 names a profile by the artist once it has loaded", () => {
+    expect(galleryTabLabel(tab({ tab: "browse", stack: [{ kind: "author", id: "alice" }], title: "Alice" })).title).toBe(
+      "Gallery · Alice",
+    );
+  });
 });
 
 describe("GalleryTabBody", () => {

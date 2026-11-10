@@ -3,7 +3,8 @@
 /**
  * Community gallery cards (#2300, #2314, #2315) — the pieces the browse grid, a
  * profile and a collection page all draw: an entry card, its picture (or a
- * generated one), a collection card, and an author's name as a link.
+ * generated one), and an author's name as a link. (#2494: the collection card
+ * went with the hidden collections UI.)
  *
  * Nothing here evaluates code: pictures are the stored thumbnails or a gradient.
  */
@@ -12,9 +13,8 @@ import { fetchGalleryRecording, galleryThumbnailUrl } from "./client";
 import { KIND_LABEL, formatGalleryDate, generatedCard, publishedAgo } from "./galleryModel";
 import { RecordingTimeline } from "./GalleryTimeline";
 import { contentsLine, coverPattern, type GalleryRecording } from "./recording";
-import { collectionCover } from "./profileModel";
 import { shownName } from "./reservedNames";
-import type { GalleryCollection, GalleryEntry } from "./types";
+import type { GalleryEntry } from "./types";
 
 export function Thumb({ entry }: { entry: GalleryEntry }) {
   const [failed, setFailed] = useState(false);
@@ -198,46 +198,6 @@ export function EntryPicture({ entry }: { entry: GalleryEntry }) {
   return <CardPicture entry={entry} rec={rec} />;
 }
 
-/** #2315 — a collection on a profile. Cover = its first entry with a picture. */
-export function CollectionCard({
-  collection,
-  entries,
-  onOpen,
-}: {
-  collection: GalleryCollection;
-  /** The author's entries, to find the cover. */
-  entries: readonly GalleryEntry[];
-  onOpen: () => void;
-}) {
-  const cover = collectionCover(collection, entries);
-  const n = collection.entryIds.length;
-  return (
-    <div className="sg-card sg-collection-card" data-gallery-collection-card={collection.id} onClick={onOpen}>
-      <div className="sg-cover">
-        {cover ? (
-          <Thumb entry={cover} />
-        ) : (
-          <GeneratedThumb id={collection.id} title={collection.title} label="Collection" />
-        )}
-        <span className="sg-cover-count">{n === 1 ? "1 entry" : `${n} entries`}</span>
-      </div>
-      <div className="sg-card-text">
-        <button
-          type="button"
-          className="sg-card-title sg-card-open"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpen();
-          }}
-        >
-          {collection.title}
-        </button>
-        {collection.description && <div className="sg-card-meta sg-clamp">{collection.description}</div>}
-      </div>
-    </div>
-  );
-}
-
 export const CARD_CSS = `
 .sg-gcard { display: grid; gap: 10px; align-content: start; text-align: left; color: inherit; cursor: pointer; font: inherit; min-width: 0; }
 .sg-gcard-pic { position: relative; aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden; border: 1px solid var(--border-subtle); background: #101022; transition: border-color .15s; }
@@ -262,7 +222,5 @@ export const CARD_CSS = `
 .sg-card-open:focus-visible { outline: 2px solid var(--accent, #7aa2f7); outline-offset: 2px; }
 .sg-author-link { color: var(--accent, #7aa2f7); text-decoration: none; cursor: pointer; }
 .sg-author-link:hover, .sg-author-link:focus-visible { text-decoration: underline; }
-.sg-cover { position: relative; }
-.sg-cover-count { position: absolute; right: 8px; bottom: 6px; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: rgba(0,0,0,.6); color: #fff; }
 .sg-clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 `;
