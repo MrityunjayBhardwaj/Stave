@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { gzipSync } from 'node:zlib'
+import { editorValue, evalCode, waitForEditorLoaded } from './_appBoot'
 
 // #2322 — ✎ (Edit viz file) on an inline `.viz("fold")` opened `fold.strudel`,
 // a PATTERN sharing the visual's name, instead of the `Fold.p5` sketch the zone
@@ -31,17 +32,20 @@ function shareHash(): string {
   return `#share=${b64}`
 }
 
-const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
-
 async function openClashAndPlay(page: Page): Promise<void> {
   page.on('dialog', (d) => d.accept())
   await page.goto(`/${shareHash()}`, { waitUntil: 'domcontentloaded' })
+  // #2356 — the Import offer can show before the editor exists. Driven from that
+  // moment, the play shortcut reached no editor at all (measured: zero editors at
+  // the keypress in the failing runs) and nothing ever played. Boot as every other
+  // spec does, import, then wait for the pattern to be in a MOUNTED editor.
+  await waitForEditorLoaded(page)
   await page.getByRole('button', { name: 'Import', exact: true }).click({ timeout: 60_000 })
   await page.getByText('fold.strudel', { exact: true }).first().click()
   await expect(activeTab(page)).toHaveText(/fold\.strudel/, { timeout: 15_000 })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await page.evaluate(() => (window as any).monaco?.editor?.getEditors?.()?.[0]?.focus())
-  await page.keyboard.press(`${MOD}+Enter`)
+  await expect.poll(() => editorValue(page), { timeout: 20_000 }).toBe(PATTERN)
+  await waitForEditorLoaded(page)
+  await evalCode(page)
   await expect(page.locator('[data-viz-zone-track]').first()).toBeVisible({ timeout: 15_000 })
 }
 
