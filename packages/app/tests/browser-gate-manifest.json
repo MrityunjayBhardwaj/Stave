@@ -923,6 +923,10 @@
     "runs": "gate",
     "why": "The Exact step grid settles when it opens no grid (#2527): with no pattern, a melody, or a song typed character by character behind the Song tab (half-written patterns under the cursor), React reports no render loop, the Song view mounts, and a grid pattern still opens afterwards. The typed case went red on the build that looped."
   },
+  "pattern-exact-slots.spec.ts": {
+    "runs": "gate",
+    "why": "Slots on the Exact step grid is a snap and zoom, never a write (#2526): real presses on the inspector's Slots control read the pattern's own places, ×2 and back write nothing, below the pattern is unavailable; a click on a place the snap made splits that step in its own text and Strudel plays it there; the snap is for one pattern only."
+  },
   "pattern-exact-step-grid.spec.ts": {
     "runs": "gate",
     "why": "The step grid in Exact, drawn and edited from the bar's tree with no equal columns (#2458): real clicks, a paint drag, the length handle, the keys, add and remove a voice, the + handle, zoom and the playhead, each with the code read back and what the page's own Strudel plays."
