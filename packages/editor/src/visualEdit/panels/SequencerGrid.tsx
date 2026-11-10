@@ -298,9 +298,6 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   // over the 1,014 corpus grids (best of 3, Node) p50 0.0042 → 0.0111ms, p99 6.23 →
   // 6.52ms, worst 14.5 → 21.1ms, total +15%.
   //
-  // A box in Exact is asked as the click it is: a hit one whole box long, at its first
-  // column (#1855). The columns inside a box are never drawn, so they are not asked.
-  //
   // ⚠ THE CLICK IS THE STEP WRITER'S NOW (#2292). A click edits the clicked step's own text
   // — `~` → `sd`, `sd` → `~`, `bd` → `[bd,sd]` — through `toggleStep`, asked of the tree
   // Strudel gives the text; where that cannot be written as the step's own text the click is
@@ -362,10 +359,9 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   // (#1154) some leaf grids take a note and most still do not, so the honest
   // answer is per view and only the view can give it.
   //
-  // Read off the SAME per-box answers the cells use (#1858), so in Exact it speaks
-  // about the boxes on screen, not columns it does not draw. With a box per column
-  // (LCM) those are exactly the asks `viewPlacesNotes` makes; the map is already
-  // paid for, so this costs one pass over it.
+  // Read off the SAME per-box answers the cells use (#1858). With a box per column those are
+  // exactly the asks `viewPlacesNotes` makes; the map is already paid for, so this costs one
+  // pass over it.
   const placesNotes = React.useMemo(
     () => (model && boxes && toggleable ? boxesPlaceNotes(model.lanes, boxes, isCellOn, toggleable) : false),
     [model, boxes, toggleable],
@@ -403,10 +399,9 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
     return out
   }, [model, read])
 
-  // EACH ROW AS ITS WRITTEN STEPS (#1861, Exact). A step spanning several boxes is drawn as
-  // one: `hh*8` one step holding 8 small boxes, `bd` in `bd hh*2 sd cp` one box with faint
-  // halves. Edges from the step lines above; plain-or-not from the part's coverage, never
-  // the text. LCM draws every box on its own, as it always has.
+  // EACH ROW'S BOXES, GROUPED (#1861): this view draws every column as its own box, with the
+  // written steps' lines between them (`stepStarts`). A row drawn at its own written steps,
+  // nested, is the Exact grid's (`ExactStepGrid`).
   const stepGroups = React.useMemo(() => {
     if (!model || !boxes || !coverage) return null
     return model.lanes.map((lane, li) => {
@@ -515,8 +510,7 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   // is no refusal. The caller decides whether to say so: a single press or key does
   // (`paintOne`), a paint drag brushing across inert cells does not.
   //
-  // A hit is painted one box long: one column in LCM, one of the part's own steps in
-  // Exact (#1855) — the step the user sees and clicked.
+  // A hit is painted one box long: one column (#1855), the step the user sees and clicked.
   //
   // The toggle is the step writer's (#2292): the answer `stepToggles` already holds for
   // this box, made in the text it was computed from. A write that finds the text changed
@@ -863,8 +857,8 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   /** a step's narrowest width per unit of weight */
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 16
   // ZOOM (#2277): 1× fits the bar to the panel. A pattern that fits at 16 px a column draws
-  // exactly as it always has; one that did not is squeezed to fit, and the steps too narrow
-  // to open draw their insides as small boxes. Zooming in widens every column. Not on a
+  // exactly as it always has; one that did not is squeezed to fit. Zooming in widens every
+  // column. (Opening a step to show the steps inside it is the Exact grid's.) Not on a
   // phone yet: its grid scrolls under a finger at its own step size (#2006).
   const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model)
   const zoomed = !phoneGrid.phone
@@ -1095,8 +1089,7 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
               return (
                 <div
                   key={c}
-                  // the ExtendHandle measures the last COLUMN here: in Exact a row's last box
-                  // can start several columns before the end, so no cell names that column
+                  // the ExtendHandle measures the last COLUMN here: the ruler names every column
                   data-seq-col={`ruler:${c}`}
                   style={{
                     flex: `${layout.weight(c)} ${layout.weight(c)} 0`,
@@ -1197,9 +1190,8 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                   /** a plain step's first/last column carries the step's rounded corner */
                   ends: { first: boolean; last: boolean } = { first: true, last: true },
                 ) => {
-                // ONE BOX, `w` columns from `stepIndex` (#1855): a column in LCM, one of
-                // the part's own steps in Exact. Everything below reads the box's first
-                // column — a box only exists where no hit starts inside it (`rowBoxes`).
+                // ONE BOX, `w` columns from `stepIndex` (#1855): one column in this view. Everything
+                // below reads the box's first column (`rowBoxes`).
                 const cell = lane.cells[stepIndex]
                 // A cell is drawn from the note SOUNDING through it, not from the
                 // trigger alone (#1056): `cov.extent` is how much of this column
