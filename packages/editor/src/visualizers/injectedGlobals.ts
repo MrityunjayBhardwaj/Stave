@@ -90,6 +90,7 @@ const RULE: Record<VizRendererKind, string | null> = {
   p5: 'rule: every signal lives on sig — sig.kick is a number, sig.fft an array, sig(\'bd\') one sound',
   hydra: 'rule: every signal lives on stave.sig — sig.kick() a number, sig.fft an array, sig(\'bd\') one sound',
   glsl: 'rule: scalars are floats · spectrum/waveform = iChannel0 texture · per-track via staveTrack(i)',
+  three: 'rule: plain three.js; every signal lives on sig — sig.bass is a number, sig.fft an array, sig(\'bd\') one sound',
 }
 
 // ── per-kind catalogues ─────────────────────────────────────────────────────
@@ -155,6 +156,15 @@ const P5_GLOBALS: readonly InjectedGlobal[] = [
   { group: G_STRUCTURED, decl: 'number   sig.density;', comment: 'quality LOD multiplier (1 = full)', tokens: ['density'] },
 ]
 
+/** #2516 — a three.js sketch gets the p5 signal surface (the same `sig`, built by
+ *  `buildStaveUniforms`) and, of the `stave` context, only the options and size:
+ *  everything else it needs is plain three.js. */
+const THREE_GLOBALS: readonly InjectedGlobal[] = [
+  { group: G_CONTEXT, decl: 'object            stave.options;', comment: 'the .viz({ ... }) argument', tokens: ['options'] },
+  { group: G_CONTEXT, decl: 'number            stave.width, stave.height;', comment: 'the viz size (also innerWidth / innerHeight)', tokens: ['width', 'height'] },
+  ...P5_GLOBALS.filter((g) => g.group !== G_CONTEXT),
+]
+
 const HYDRA_GLOBALS: readonly InjectedGlobal[] = [
   {
     group: G_SCALARS_THUNK,
@@ -182,6 +192,7 @@ const HYDRA_GLOBALS: readonly InjectedGlobal[] = [
 
 const CATALOGUE: Record<VizRendererKind, readonly InjectedGlobal[]> = {
   p5: P5_GLOBALS,
+  three: THREE_GLOBALS,
   hydra: HYDRA_GLOBALS,
   glsl: GLSL_GLOBALS,
 }

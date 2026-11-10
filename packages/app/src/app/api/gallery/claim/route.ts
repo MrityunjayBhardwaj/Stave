@@ -2,6 +2,7 @@ import { shareStore } from "../../share/store";
 import { checkClaim, claimCost, MAX_CLAIM_BODY_BYTES, runClaim } from "../claim";
 import { limitAccount } from "../rateLimit";
 import { requireSessionAuthor } from "../session";
+import { suspendedRefusal } from "../suspension";
 import { readJsonBody } from "../validate";
 import { assertSameOrigin } from "../origin";
 import { getDb } from "../../../../db/client";
@@ -27,6 +28,8 @@ async function handlePOST(req: Request): Promise<Response> {
   // the limit is answered before the shape error.
   const body = await readJsonBody(req, MAX_CLAIM_BODY_BYTES);
   const checked = body.ok ? checkClaim(body.value) : null;
+  const suspended = await suspendedRefusal();
+  if (suspended) return suspended;
   const limited = await limitAccount("claim", who.account.accountHash, claimCost(checked?.ok ? checked.value : null)); // #2330
   if (limited) return limited;
   if (!body.ok) return Response.json({ error: body.error }, { status: body.status });

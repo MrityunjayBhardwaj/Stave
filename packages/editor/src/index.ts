@@ -206,6 +206,9 @@ export {
   generateUniquePresetId,
 } from './visualizers/vizPreset'
 export { compilePreset } from './visualizers/vizCompiler'
+// #2516 — the three.js sketch parser + its bundled addon list (the app checks its
+// starter against them; editor support for `.three` builds on them next).
+export { compileThreeSketch, THREE_ADDONS } from './visualizers/renderers/threeSketch'
 export { mountVizRenderer } from './visualizers/mountVizRenderer'
 export { mountVizPreview, type VizPreviewSpec } from './visualizers/mountVizPreview'
 // #240 — viz pop-out: the hook drives a window.open() preview; the app host
@@ -607,6 +610,7 @@ export {
   HYDRA_VIZ,
   P5_VIZ,
   GLSL_VIZ,
+  THREE_VIZ,
   seedFromPreset,
   seedFromPresetId,
   flushToPreset,
@@ -628,6 +632,8 @@ export type {
   WorkspaceGroupState,
   WorkspaceShellProps,
   ChromeForTab,
+  AppTabState,
+  AppTabLabel,
 } from './workspace/types'
 
 // Engine log + friendly-error plumbing
@@ -846,6 +852,24 @@ export {
   type MasterAll,
   type MasterGainState,
 } from './codeView'
+// The background viz's options as the CODE writes them (literal values read
+// statically, the rest from the last evaluation), and the slot a background
+// mount reads them from — so the background follows the code before Play and
+// after Stop, not only while an evaluation's capture is on the bus.
+export {
+  readVizOptionsLiteral,
+  resolveVizOptions,
+  type CodeVizOptions,
+  // #2394 — the background the code declares, master line or track
+  readCodeViz,
+  type CodeViz,
+} from './codeView'
+export {
+  setCodeBackdropOptions,
+  getCodeBackdropOptions,
+  retainCodeBackdropOptions,
+  type CodeBackdropOptions,
+} from './workspace/preview/codeBackdropOptions'
 // The display names of the OTHER tracks in a doc (#585) — the set the Song
 // Timeline's rename handler passes to `renameEdit` as `takenNames` so a rename
 // can't silently create a duplicate track name (which would collide on the
@@ -935,6 +959,8 @@ export type {
   PersistedShellState,
   PersistedGroup,
   PersistedEditorTab,
+  PersistedAppTab,
+  PersistedTab,
   ShellSnapshot,
 } from './workspace/tabPersistence'
 

@@ -171,6 +171,7 @@ export function buildMenus(a: MenuActions): Menu[] {
         divider,
         item("Documentation", () => window.open("/docs/", "_blank", "noopener,noreferrer")),
         item("GitHub Repository", () => window.open(GITHUB_REPO_URL, "_blank", "noopener,noreferrer")),
+        item("Privacy Policy", () => window.open("/privacy", "_blank", "noopener,noreferrer")),
       ],
     },
     ...(a.account ? [accountMenu(a.account)] : []),

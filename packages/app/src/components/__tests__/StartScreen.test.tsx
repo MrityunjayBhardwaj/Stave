@@ -92,11 +92,11 @@ describe("StartScreen (#2019)", () => {
     expect(c.onOpenProject.mock.calls).toEqual([["b"]]);
   });
 
-  it("the links are the documentation and the source, and the film is not among them (#2048)", () => {
+  it("the links are the documentation, the source and the privacy policy, and the film is not among them (#2048, #2402)", () => {
     show();
     // the film is the picture at the top, with its own Play: a link to it below was a second way to the same place
     const links = [...document.querySelectorAll('[data-start-screen="root"] a')] as HTMLAnchorElement[];
-    expect(links.map((l) => l.textContent)).toEqual(["Documentation", "Source on GitHub"]);
+    expect(links.map((l) => l.textContent)).toEqual(["Documentation", "Source on GitHub", "Privacy Policy"]);
     expect(links.filter((l) => /youtube/i.test(l.href))).toEqual([]);
     expect(document.querySelector('[data-start-screen="play"]')).not.toBeNull();
   });

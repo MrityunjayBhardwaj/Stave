@@ -42,15 +42,18 @@ import { checkReport, MAX_REPORT_BODY_BYTES, readJsonBody } from "./validate";
  *       400 without a reason in the JSON body. Logs nothing: the caller writes
  *       the log row with logAdminAction inside the action's own transaction.
  *   logAdminAction(q, admin, what, reason)   one admin_log row (q: a transaction)
- *   adminAction(req, store, { action, target }, notAdmin?)
+ *   adminAction(req, { action, target }, notAdmin?)
  *       adminReason, then the log row written on its own, BEFORE the caller
- *       acts. For an action whose records aren't in the database yet
- *       (collections, until they move); `store` is no longer used.
+ *       acts. For an action that doesn't share a transaction with its log
+ *       (a collection take-down).
  *   readAdminLog(limit?)         → AdminLogRecord[], newest first
  *   flaggedEntries()             → FlaggedEntry[] (open reports grouped by entry)
  */
 
 export const ADMIN_LOG_LIMIT = reportsRepo.ADMIN_LOG_LIMIT;
+
+/** #2401 — who the action log names for what the scheduled clean-up does. */
+export const CLEAN_UP: GalleryAdmin = { provider: "system", accountId: "clean-up", name: "Scheduled clean-up" };
 
 /** The ids `STAVE_GALLERY_ADMINS` lists, as "provider:id". Blank entries are dropped. */
 export function parseAdminList(raw: string | undefined | null): Set<string> {
@@ -146,12 +149,10 @@ export async function adminReason(
 /**
  * adminReason, then the log row written on its own, BEFORE the caller acts (so
  * an action that fails halfway is still on the record). For an action that
- * can't share a transaction with its log yet. `_store` is no longer read; it
- * stays so existing callers keep compiling.
+ * can't share a transaction with its log yet.
  */
 export async function adminAction(
   req: Request,
-  _store: unknown,
   what: { action: AdminAction; target: string },
   notAdmin: () => Response = forbidden,
 ): Promise<{ admin: GalleryAdmin; reason: string } | Response> {

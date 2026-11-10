@@ -123,6 +123,20 @@ function docParses(doc) {
   return parseTopLevel(doc) !== null;
 }
 __name(docParses, "docParses");
+function parseModule(code) {
+  try {
+    return { ok: true, program: acorn.parse(code, { ecmaVersion: "latest", sourceType: "module", locations: true }) };
+  } catch (e) {
+    const err = e;
+    return {
+      ok: false,
+      message: String(err.message ?? e).replace(/\s*\(\d+:\d+\)$/, ""),
+      line: err.loc?.line,
+      column: err.loc?.column
+    };
+  }
+}
+__name(parseModule, "parseModule");
 
 // src/codeView/tempo.ts
 var SETTERS = {
@@ -1843,7 +1857,7 @@ function rootStackArms(ir) {
   if (node.tag !== "Stack") return null;
   if (node.userMethod !== void 0) return null;
   if (node.tracks.length < 2) return null;
-  return node.tracks.map((arm, i) => ({ arm, laneId: `d${i + 1}` }));
+  return node.tracks.map((arm2, i) => ({ arm: arm2, laneId: `d${i + 1}` }));
 }
 __name(rootStackArms, "rootStackArms");
 function walkLeafItems(ir, nCycles) {
@@ -2057,8 +2071,8 @@ function collect(node, overridden, timeMoved, steps, found, seen, ids) {
   if (node.tag === "Arrange") {
     const windows = sectionWindows(node);
     node.arms.forEach(
-      (arm, i) => visit(
-        arm.pattern,
+      (arm2, i) => visit(
+        arm2.pattern,
         windows ? [...steps, { node, arm: i, step: windows[i] }] : steps,
         timeMoved || windows === null
       )
@@ -2086,7 +2100,7 @@ function routeKey(steps, ids) {
 }
 __name(routeKey, "routeKey");
 function sectionWindows(node) {
-  const weights = node.arms.map((arm) => arm.weight);
+  const weights = node.arms.map((arm2) => arm2.weight);
   if (!weights.every((w) => Number.isInteger(w) && w >= 0)) return null;
   const total = weights.reduce((sum, w) => sum + w, 0);
   if (total === 0) return null;
@@ -2439,12 +2453,12 @@ var BUILTIN_ALIASES = {
 };
 function resolveAliasesForEngine(custom, engine) {
   const out = {};
-  for (const [name, slots] of Object.entries(BUILTIN_ALIASES)) {
-    const v = slots[engine];
+  for (const [name, slots2] of Object.entries(BUILTIN_ALIASES)) {
+    const v = slots2[engine];
     if (v != null) out[name] = v;
   }
-  for (const [name, slots] of Object.entries(custom)) {
-    const v = slots[engine];
+  for (const [name, slots2] of Object.entries(custom)) {
+    const v = slots2[engine];
     if (v != null) out[name] = v;
   }
   return out;
@@ -4681,13 +4695,13 @@ function expandEuclid(play, op, baseOffset, contentStart) {
   let mask = bjorklund(k, n);
   if (rot) mask = rotateEuclid(mask, rot);
   const restSlot = IR.sleep(1);
-  const slots = mask.map((on) => on ? play : restSlot);
+  const slots2 = mask.map((on) => on ? play : restSlot);
   const closeParen = (rotArg ?? step).span.end + 1;
-  if (slots.length === 1) return { node: slots[0], closeParen };
+  if (slots2.length === 1) return { node: slots2[0], closeParen };
   return {
     node: {
       tag: "Seq",
-      children: slots,
+      children: slots2,
       loc: [{ start: baseOffset + contentStart, end: baseOffset + closeParen }]
     },
     closeParen
@@ -5136,10 +5150,10 @@ function collectTopLevelBindings(body, baseOffset, numbers) {
   if (tail.length === 0) return null;
   if (descs.length === 0) return null;
   const bindings = /* @__PURE__ */ new Map();
-  const pending = new Set(descs.map((_, i) => i));
-  for (let iter = 0; iter < descs.length && pending.size > 0; iter++) {
+  const pending2 = new Set(descs.map((_, i) => i));
+  for (let iter = 0; iter < descs.length && pending2.size > 0; iter++) {
     let progress = false;
-    for (const i of [...pending]) {
+    for (const i of [...pending2]) {
       const d = descs[i];
       const parsed = parseExpression(d.rhs, d.rhsOffset, void 0, bindings, void 0, numbers);
       const lit = classifyLiteralRhs(d.rhs);
@@ -5148,7 +5162,7 @@ function collectTopLevelBindings(body, baseOffset, numbers) {
       const bare2 = ir.tag === "Code" && ir.via === void 0;
       if (!bare2) {
         bindings.set(d.name, ir);
-        pending.delete(i);
+        pending2.delete(i);
         progress = true;
       }
     }
@@ -5759,9 +5773,9 @@ function parseTimeSequenceRoot(trimmed, baseOffset, leadingWs, bindings, opts, n
   const arms = [];
   for (const a of args) {
     if (fn === "arrange") {
-      const arm = parseArrangeArm(a.value, innerAbs + a.offset, bindings, opts, numbers);
-      if (!arm) return null;
-      arms.push(arm);
+      const arm2 = parseArrangeArm(a.value, innerAbs + a.offset, bindings, opts, numbers);
+      if (!arm2) return null;
+      arms.push(arm2);
     } else {
       const armStart = innerAbs + a.offset;
       arms.push({
@@ -6770,8 +6784,8 @@ async function previewShapeSwap(ir, a, next, opts) {
 __name(previewShapeSwap, "previewShapeSwap");
 function sharesItsControl(ir, a) {
   if (!ir) return false;
-  const same3 = /* @__PURE__ */ __name((b) => b.trackId === a.trackId && b.paramKey === a.paramKey, "same");
-  return signalWriters(ir).filter(same3).length > 1 || steppedAutomations(ir).some(same3);
+  const same4 = /* @__PURE__ */ __name((b) => b.trackId === a.trackId && b.paramKey === a.paramKey, "same");
+  return signalWriters(ir).filter(same4).length > 1 || steppedAutomations(ir).some(same4);
 }
 __name(sharesItsControl, "sharesItsControl");
 function standInPeriodOf(a, next) {
@@ -7553,15 +7567,15 @@ function validateNode(raw, path) {
         if (typeof a !== "object" || a === null) {
           throw new Error(`${path}.arms[${i}]: expected object`);
         }
-        const arm = a;
-        if (typeof arm.weight !== "number") {
+        const arm2 = a;
+        if (typeof arm2.weight !== "number") {
           throw new Error(`${path}.arms[${i}]: field "weight" must be a number`);
         }
         const out2 = {
-          weight: arm.weight,
-          pattern: validateNode(arm.pattern, `${path}.arms[${i}].pattern`)
+          weight: arm2.weight,
+          pattern: validateNode(arm2.pattern, `${path}.arms[${i}].pattern`)
         };
-        if (Array.isArray(arm.loc)) out2.loc = arm.loc;
+        if (Array.isArray(arm2.loc)) out2.loc = arm2.loc;
         return out2;
       });
       const out = {
@@ -7648,6 +7662,149 @@ function runPasses(input, passes) {
   return out;
 }
 __name(runPasses, "runPasses");
+var NOT_LITERAL = /* @__PURE__ */ Symbol("not-literal");
+function literalValue(node) {
+  switch (node?.type) {
+    case "Literal":
+      if (node.regex || typeof node.bigint === "string") return NOT_LITERAL;
+      return node.value;
+    case "TemplateLiteral":
+      return node.expressions.length === 0 ? node.quasis.map((q) => q.value.cooked).join("") : NOT_LITERAL;
+    case "UnaryExpression":
+      if ((node.operator === "-" || node.operator === "+") && node.argument?.type === "Literal" && typeof node.argument.value === "number") {
+        return node.operator === "-" ? -node.argument.value : node.argument.value;
+      }
+      return NOT_LITERAL;
+    case "ArrayExpression": {
+      const out = [];
+      for (const el of node.elements) {
+        if (!el || el.type === "SpreadElement") return NOT_LITERAL;
+        const v = literalValue(el);
+        if (v === NOT_LITERAL) return NOT_LITERAL;
+        out.push(v);
+      }
+      return out;
+    }
+    case "ObjectExpression": {
+      const out = {};
+      for (const p of node.properties) {
+        const key3 = propertyKey(p);
+        if (key3 === null) return NOT_LITERAL;
+        const v = literalValue(p.value);
+        if (v === NOT_LITERAL) return NOT_LITERAL;
+        out[key3] = v;
+      }
+      return out;
+    }
+    default:
+      return NOT_LITERAL;
+  }
+}
+__name(literalValue, "literalValue");
+function propertyKey(p) {
+  if (p.type !== "Property" || p.computed || p.kind !== "init" || p.method) return null;
+  if (p.key.type === "Identifier") return p.key.name;
+  if (p.key.type === "Literal" && (typeof p.key.value === "string" || typeof p.key.value === "number")) {
+    return String(p.key.value);
+  }
+  return null;
+}
+__name(propertyKey, "propertyKey");
+function readVizOptionsLiteral(raw) {
+  let node;
+  try {
+    node = acorn.parseExpressionAt(raw, 0, { ecmaVersion: "latest" });
+  } catch {
+    return { kind: "opaque" };
+  }
+  if (node.type !== "ObjectExpression" || raw.slice(node.end).trim() !== "") return { kind: "opaque" };
+  const values3 = {};
+  const dynamic = [];
+  for (const p of node.properties) {
+    const key3 = propertyKey(p);
+    if (key3 === null) return { kind: "opaque" };
+    const v = literalValue(p.value);
+    if (v === NOT_LITERAL) {
+      delete values3[key3];
+      if (!dynamic.includes(key3)) dynamic.push(key3);
+    } else {
+      values3[key3] = v;
+      const i = dynamic.indexOf(key3);
+      if (i >= 0) dynamic.splice(i, 1);
+    }
+  }
+  return { kind: "literal", values: values3, dynamic };
+}
+__name(readVizOptionsLiteral, "readVizOptionsLiteral");
+function resolveVizOptions(code, evaluated) {
+  if (code === null) return {};
+  if (code.kind === "opaque") return { ...evaluated ?? {} };
+  const out = { ...code.values };
+  for (const key3 of code.dynamic) {
+    if (evaluated && Object.prototype.hasOwnProperty.call(evaluated, key3)) out[key3] = evaluated[key3];
+  }
+  return out;
+}
+__name(resolveVizOptions, "resolveVizOptions");
+
+// src/codeView/mixer/backdropCall.ts
+function stringLiteral(raw) {
+  const m = /^(['"`])([\s\S]*)\1$/.exec(raw);
+  if (!m) return null;
+  if (m[1] === "`" && m[2].includes("${")) return null;
+  if (m[2].includes(m[1])) return null;
+  return m[2];
+}
+__name(stringLiteral, "stringLiteral");
+function isVizMethod(name) {
+  return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, name);
+}
+__name(isVizMethod, "isVizMethod");
+function readBackdropCall(call, onMaster) {
+  if (call.name === "viz") {
+    const nameArg = call.args[0];
+    const optionsArg2 = call.args[1];
+    const options = optionsArg2 ? readVizOptionsLiteral(optionsArg2.raw) : null;
+    if (!onMaster && !(options?.kind === "literal" && options.values.backdrop === true)) return null;
+    return { name: nameArg ? stringLiteral(nameArg.raw) : null, options, call };
+  }
+  const underscore = call.name.startsWith("_");
+  const method = underscore ? call.name.slice(1) : call.name;
+  if (!isVizMethod(method)) return null;
+  if (underscore && !onMaster) return null;
+  const optionsArg = call.args[0];
+  return {
+    name: STRUDEL_VIZ_METHODS[method],
+    options: optionsArg ? readVizOptionsLiteral(optionsArg.raw) : null,
+    call
+  };
+}
+__name(readBackdropCall, "readBackdropCall");
+function lastTrackBackdropCall(doc, { declaredOnly: declaredOnly2 = false } = {}) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return null;
+  let last = null;
+  for (const node of statements) {
+    const body = node.type === "LabeledStatement" ? node.body : node;
+    if (body?.type !== "ExpressionStatement") continue;
+    const expr = body.expression;
+    if (expr?.type === "CallExpression" && expr.callee?.type === "Identifier" && expr.callee.name === "all") continue;
+    const chain = collectChain(doc, expr, { ref: null });
+    const r = lastBackdropCall(declaredOnly2 ? chain.filter((c) => c.name === "viz") : chain, false);
+    if (r) last = r;
+  }
+  return last;
+}
+__name(lastTrackBackdropCall, "lastTrackBackdropCall");
+function lastBackdropCall(chain, onMaster) {
+  let last = null;
+  for (const c of chain) {
+    const r = readBackdropCall(c, onMaster);
+    if (r) last = r;
+  }
+  return last;
+}
+__name(lastBackdropCall, "lastBackdropCall");
 
 // src/codeView/mixer/masterEdit.ts
 var MASTER_UNITY_GAIN = 1;
@@ -7737,16 +7894,19 @@ function findMuteLine(doc) {
   return detectMasterAll(doc).find((m) => arrowBodyText(doc, m) === "silence");
 }
 __name(findMuteLine, "findMuteLine");
-function findVizBackdropCall(m) {
-  return m.chain.find(
-    (c) => c.name === "viz" && c.args.some((a) => /\bbackdrop\s*:\s*true\b/.test(a.raw))
-  );
+function findMasterBackdrop(doc) {
+  let found = null;
+  for (const m of detectMasterAll(doc)) {
+    const bc = lastBackdropCall(m.chain, true);
+    if (bc) found = { m, bc };
+  }
+  return found;
 }
-__name(findVizBackdropCall, "findVizBackdropCall");
-function vizNameArg(c) {
-  return c.args.find((a) => /^['"`]/.test(a.raw));
+__name(findMasterBackdrop, "findMasterBackdrop");
+function masterBackdropCall(doc) {
+  return findMasterBackdrop(doc)?.bc ?? null;
 }
-__name(vizNameArg, "vizNameArg");
+__name(masterBackdropCall, "masterBackdropCall");
 function readMasterGain(doc) {
   const site = findMasterGainSite(doc);
   if (!site) return { value: MASTER_UNITY_GAIN, foreign: false };
@@ -7763,7 +7923,7 @@ __name(readMasterMute, "readMasterMute");
 function detectMasterAudioAll(doc) {
   return detectMasterAll(doc).find((m) => {
     if (arrowBodyText(doc, m) === "silence") return false;
-    if (m.chain.length >= 1 && m.chain.every((c) => c.name === "viz")) return false;
+    if (m.chain.length >= 1 && m.chain.every((c) => readBackdropCall(c, true) !== null)) return false;
     return true;
   });
 }
@@ -7797,14 +7957,9 @@ function adaptMasterChunk(doc, m) {
 }
 __name(adaptMasterChunk, "adaptMasterChunk");
 function readMasterViz(doc) {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m);
-    if (!v) continue;
-    const nameArg = vizNameArg(v);
-    if (!nameArg) continue;
-    return { name: nameArg.raw.slice(1, -1) };
-  }
-  return null;
+  const bc = masterBackdropCall(doc);
+  if (!bc || bc.name === null) return null;
+  return { name: bc.name, options: bc.options };
 }
 __name(readMasterViz, "readMasterViz");
 function scaleCall(value) {
@@ -7827,18 +7982,25 @@ function masterMuteEdit(doc, muted3) {
 }
 __name(masterMuteEdit, "masterMuteEdit");
 function masterVizEdit(doc, name) {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m);
-    if (!v) continue;
+  const found = findMasterBackdrop(doc);
+  if (found) {
+    const { m, bc } = found;
     if (name === null) {
       if (m.chain.length === 1) return removeStatement(doc, m.statementRange);
-      return { range: v.range, text: "" };
+      return { range: bc.call.range, text: "" };
     }
-    const nameArg = vizNameArg(v);
-    if (!nameArg) return null;
-    return { range: nameArg.range, text: JSON.stringify(name) };
+    if (bc.call.name === "viz") {
+      const nameArg = bc.call.args[0];
+      if (!nameArg || bc.name === null) return null;
+      return { range: nameArg.range, text: JSON.stringify(name) };
+    }
+    const optionsArg = bc.call.args[0];
+    return { range: bc.call.range, text: `.viz(${JSON.stringify(name)}${optionsArg ? `, ${optionsArg.raw}` : ""})` };
   }
-  if (name === null) return null;
+  if (name === null) {
+    const track = lastTrackBackdropCall(doc);
+    return track ? { range: track.call.range, text: "" } : null;
+  }
   return insertStatement(doc, `all(x => x.viz(${JSON.stringify(name)}, { backdrop: true }))`);
 }
 __name(masterVizEdit, "masterVizEdit");
@@ -8737,8 +8899,8 @@ function miniValuesAt(mini, times) {
   });
 }
 __name(miniValuesAt, "miniValuesAt");
-function structHits(values2, rhythm, cyc, masks = []) {
-  const pat = mini_mjs.mini(values2).struct(mini_mjs.mini(rhythm));
+function structHits(values3, rhythm, cyc, masks = []) {
+  const pat = mini_mjs.mini(values3).struct(mini_mjs.mini(rhythm));
   const masked = masks.reduce((p, m) => p.mask(mini_mjs.mini(m)), pat);
   const sounding = /* @__PURE__ */ new Set();
   for (const h of masked.queryArc(cyc, cyc + 1)) {
@@ -9409,8 +9571,8 @@ function reemitRegion(cols, div, refined = false) {
 __name(reemitRegion, "reemitRegion");
 function stackedRegion(cols, div) {
   if (div < 2) return null;
-  const slots = cols.length / div;
-  if (!Number.isInteger(slots) || slots < 1) return null;
+  const slots2 = cols.length / div;
+  if (!Number.isInteger(slots2) || slots2 < 1) return null;
   const sounds = [];
   for (const col of cols) for (const n of col) if (!sounds.includes(n.token)) sounds.push(n.token);
   if (sounds.length === 0) return null;
@@ -9435,7 +9597,7 @@ function stackedRegion(cols, div) {
     for (let c = 0; c < cols.length; c++) if (covered[c]) seq[c] = "_";
     parts.push(seq.join(" "));
   }
-  return `[${parts.join(", ")}]` + (slots > 1 ? `@${slots}` : "");
+  return `[${parts.join(", ")}]` + (slots2 > 1 ? `@${slots2}` : "");
 }
 __name(stackedRegion, "stackedRegion");
 function sustainTokens(cols, div) {
@@ -9501,14 +9663,14 @@ __name(serializeStepGain, "serializeStepGain");
 function gridBars(model, bounds) {
   const cols = gridColumns(model.lanes, model.steps);
   if (cols === null) return null;
-  const slots = [];
+  const slots2 = [];
   for (let b = 0; b + 1 < bounds.length; b++) {
     const bar2 = cols.slice(bounds[b], bounds[b + 1]);
-    if (bar2.every((c) => c === "~")) slots.push("~");
-    else if (bar2.length === 1) slots.push(bar2[0]);
-    else slots.push(`[${bar2.join(" ")}]`);
+    if (bar2.every((c) => c === "~")) slots2.push("~");
+    else if (bar2.length === 1) slots2.push(bar2[0]);
+    else slots2.push(`[${bar2.join(" ")}]`);
   }
-  return `<${slots.join(" ")}>`;
+  return `<${slots2.join(" ")}>`;
 }
 __name(gridBars, "gridBars");
 function barBounds(model) {
@@ -9731,12 +9893,12 @@ function reemitRollRegionFlat(notes, from, to, div) {
       continue;
     }
     const end = c + div;
-    const slots = [];
+    const slots2 = [];
     let k = c;
     while (k < end) {
       const gg = at.get(k);
       if (!gg) {
-        slots.push("~");
+        slots2.push("~");
         k++;
         continue;
       }
@@ -9744,12 +9906,12 @@ function reemitRollRegionFlat(notes, from, to, div) {
         crossed = true;
         break;
       }
-      slots.push(groupToken({ pitches: gg.pitches, duration: gg.duration }));
+      slots2.push(groupToken({ pitches: gg.pitches, duration: gg.duration }));
       k += gg.duration;
     }
     if (crossed) break;
     tokens.push(
-      slots.every((s) => s === "~") ? "~" : slots.length === 1 ? slots[0] : `[${slots.join(" ")}]`
+      slots2.every((s) => s === "~") ? "~" : slots2.length === 1 ? slots2[0] : `[${slots2.join(" ")}]`
     );
     c = end;
   }
@@ -9887,7 +10049,7 @@ function rollBars(groups, bounds) {
   if (!bounds.every((x) => Number.isInteger(x))) return null;
   const bars = bounds.length - 1;
   const starts2 = [...groups.keys()].sort((a, b2) => a - b2);
-  const slots = [];
+  const slots2 = [];
   let b = 0;
   while (b < bars) {
     const barStart = bounds[b];
@@ -9898,12 +10060,12 @@ function rollBars(groups, bounds) {
     if (atStart && k >= 1) {
       const heldEnd = barStart + atStart.duration;
       if (starts2.some((s) => s > barStart && s < heldEnd)) return null;
-      slots.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
+      slots2.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
       b += k;
       continue;
     }
     if (perBar2 === 1) {
-      slots.push("~");
+      slots2.push("~");
       b++;
       continue;
     }
@@ -9923,10 +10085,10 @@ function rollBars(groups, bounds) {
       consumed++;
     }
     if (consumed !== starts2.filter((s) => s >= barStart && s < barEnd).length) return null;
-    slots.push(tokens.every((t) => t === "~") ? "~" : `[${tokens.join(" ")}]`);
+    slots2.push(tokens.every((t) => t === "~") ? "~" : `[${tokens.join(" ")}]`);
     b++;
   }
-  return `<${slots.join(" ")}>`;
+  return `<${slots2.join(" ")}>`;
 }
 __name(rollBars, "rollBars");
 function rollBarLanes(model, bounds) {
@@ -9936,7 +10098,7 @@ function rollBarLanes(model, bounds) {
   const notes = [...model.notes].sort((a, b2) => a.start - b2.start || a.duration - b2.duration);
   for (const n of notes)
     if (n.start < 0 || n.duration < 1 || n.start + n.duration > model.steps + E) return null;
-  const slots = [];
+  const slots2 = [];
   let b = 0;
   while (b < bars) {
     const barStart = bounds[b];
@@ -9944,7 +10106,7 @@ function rollBarLanes(model, bounds) {
     const perBar2 = barEnd - barStart;
     const over = notes.filter((n) => n.start < barEnd - E && n.start + n.duration > barStart + E);
     if (over.length === 0) {
-      slots.push("~");
+      slots2.push("~");
       b++;
       continue;
     }
@@ -9962,7 +10124,7 @@ function rollBarLanes(model, bounds) {
         if (str === null) return null;
         strings.push(str);
       }
-      slots.push(`[${strings.join(", ")}]`);
+      slots2.push(`[${strings.join(", ")}]`);
       b++;
       continue;
     }
@@ -9974,10 +10136,10 @@ function rollBarLanes(model, bounds) {
     if (k < 1) return null;
     if (notes.some((n) => n.start > barStart + E && n.start < barStart + dur - E)) return null;
     const body = groupBody({ pitches: held2.map((n) => n.pitch), duration: dur });
-    slots.push(k === 1 ? body : `${body}@${k}`);
+    slots2.push(k === 1 ? body : `${body}@${k}`);
     b += k;
   }
-  return `<${slots.join(" ")}>`;
+  return `<${slots2.join(" ")}>`;
 }
 __name(rollBarLanes, "rollBarLanes");
 function serializeRollGain(model) {
@@ -10160,7 +10322,7 @@ function readOps(ops) {
 }
 __name(readOps, "readOps");
 function groupSlots(pat, allowNumeric) {
-  const slots = [];
+  const slots2 = [];
   for (const el of pat.source_) {
     const opts = el.options_ ?? {};
     const ops = opts.ops ?? [];
@@ -10174,7 +10336,7 @@ function groupSlots(pat, allowNumeric) {
     if (isAtom(el.source_)) {
       if (isRestAtom(el.source_)) {
         if (ops.length) return { reason: 'a ":" variant on a rest has nothing to name' };
-        slots.push({ atoms: [], units });
+        slots2.push({ atoms: [], units });
         continue;
       }
       const token = tokenOf(el.source_, ops);
@@ -10182,15 +10344,15 @@ function groupSlots(pat, allowNumeric) {
         return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
       }
       if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
-      slots.push({ atoms: [token], units });
+      slots2.push({ atoms: [token], units });
       continue;
     }
     const chord2 = chordAtoms(el.source_, allowNumeric);
     if (!Array.isArray(chord2)) return chord2;
-    slots.push({ atoms: chord2, units });
+    slots2.push({ atoms: chord2, units });
   }
-  if (slots.length === 0) return { reason: "empty group" };
-  return slots;
+  if (slots2.length === 0) return { reason: "empty group" };
+  return slots2;
 }
 __name(groupSlots, "groupSlots");
 function chordAtoms(pat, allowNumeric) {
@@ -10262,19 +10424,19 @@ function elementToSteps(el, allowNumeric) {
     if (mult > 1 && weight > 1) {
       return { reason: "* combined with @ is beyond the editable subset" };
     }
-    const slots = groupSlots(el.source_, allowNumeric);
-    if (!Array.isArray(slots)) return slots;
+    const slots2 = groupSlots(el.source_, allowNumeric);
+    if (!Array.isArray(slots2)) return slots2;
     if (mult > 1) {
       const sub2 = [];
       for (let r = 0; r < mult; r++) {
-        for (const s of slots) sub2.push({ atoms: [...s.atoms], units: s.units });
+        for (const s of slots2) sub2.push({ atoms: [...s.atoms], units: s.units });
       }
       return [{ atoms: [], elongation: weight, sub: sub2 }];
     }
-    if (slots.length === 1 && slots[0].units === 1) {
-      return [{ atoms: slots[0].atoms, elongation: weight, sub: null }];
+    if (slots2.length === 1 && slots2[0].units === 1) {
+      return [{ atoms: slots2[0].atoms, elongation: weight, sub: null }];
     }
-    return [{ atoms: [], elongation: weight, sub: slots }];
+    return [{ atoms: [], elongation: weight, sub: slots2 }];
   }
   const atom2 = el.source_;
   const rest = isRestAtom(atom2);
@@ -10356,9 +10518,9 @@ var tokensOf = /* @__PURE__ */ __name((cols) => cols.map((c) => c.map((n) => ({ 
 function toCells(steps, div) {
   const cells = [];
   for (const step of steps) {
-    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const slots2 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
     const total = stepUnits(step);
-    for (const slot of slots) {
+    for (const slot of slots2) {
       const span = div / total * slot.units;
       cells.push(slot.atoms.map((token) => ({ token, duration: span })));
       for (let j = 1; j < span; j++) cells.push([]);
@@ -11538,9 +11700,9 @@ function rollFromAltElements(mini, viewScale = UNREFINED) {
   let sawNamed = false;
   for (const barSteps of perBarSteps) {
     for (const step of barSteps) {
-      const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+      const slots2 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
       const total = stepUnits(step);
-      for (const slot of slots) {
+      for (const slot of slots2) {
         const span = step.elongation * div * slot.units / total;
         for (const token of slot.atoms) {
           const isNum = /^-?\d+$/.test(token);
@@ -12023,9 +12185,9 @@ function parsePianoRollCore(mini, viewScale = UNREFINED) {
   let sawNumeric = false;
   let sawNamed = false;
   for (const step of tok.steps) {
-    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const slots2 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
     const total = stepUnits(step);
-    for (const slot of slots) {
+    for (const slot of slots2) {
       const span = step.elongation * div * slot.units / total;
       for (const token of slot.atoms) {
         const isNum = /^-?\d+$/.test(token);
@@ -12182,13 +12344,13 @@ var whole = /* @__PURE__ */ __name((x) => {
   const r = Math.round(x);
   return Math.abs(x - r) < 1e-9 ? r : null;
 }, "whole");
-function rhythmChart(chords, rhythm, model, parse7, masks = []) {
+function rhythmChart(chords, rhythm, model, parse8, masks = []) {
   if (chords === null || model === null) return NONE;
   if (model.barSteps) return NONE;
   const rhythmBars = model.bars ?? 1;
   const colsPerBar = model.steps / rhythmBars;
   if (!Number.isInteger(colsPerBar) || colsPerBar < 1) return NONE;
-  const chordsRead = parse7(chords);
+  const chordsRead = parse8(chords);
   if (!chordsRead.ok) return NONE;
   const chordBars = chordsRead.model.bars ?? 1;
   const readMasks = masks.filter((m) => m !== null);
@@ -12794,9 +12956,9 @@ function buildCall(doc, node) {
   if (node.arguments.length === 0) return null;
   const arms = [];
   for (const arg of node.arguments) {
-    const arm = armFromArg(mode, arg);
-    if (!arm) return null;
-    arms.push(arm);
+    const arm2 = armFromArg(mode, arg);
+    if (!arm2) return null;
+    arms.push(arm2);
   }
   const open = doc.indexOf("(", node.callee.end);
   if (open < 0) return null;
@@ -12871,11 +13033,11 @@ function patternText(doc, call, i) {
 __name(patternText, "patternText");
 function setWeight(doc, call, i, weight) {
   const w = asWeight(weight);
-  const arm = call.arms[i];
-  if (!arm) return [];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
   if (call.mode === "arrange") {
-    if (!arm.weightRange) return [];
-    return [{ range: arm.weightRange, text: String(w) }];
+    if (!arm2.weightRange) return [];
+    return [{ range: arm2.weightRange, text: String(w) }];
   }
   if (w === 1) return [];
   const edits = [{ range: call.calleeRange, text: "arrange" }];
@@ -12910,13 +13072,13 @@ function insertArm(doc, call, at, armSource) {
 }
 __name(insertArm, "insertArm");
 function insertSilenceArm(doc, call, i) {
-  const arm = call.arms[i];
-  if (!arm) return [];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
   if (call.mode !== "arrange") {
     return insertArm(doc, call, i + 1, "silence");
   }
-  if (!arm.weightRange) return [];
-  const weightText = doc.slice(arm.weightRange[0], arm.weightRange[1]);
+  if (!arm2.weightRange) return [];
+  const weightText = doc.slice(arm2.weightRange[0], arm2.weightRange[1]);
   return insertArm(doc, call, i + 1, `[${weightText}, silence]`);
 }
 __name(insertSilenceArm, "insertSilenceArm");
@@ -12930,19 +13092,19 @@ function removeArm(doc, call, i) {
 }
 __name(removeArm, "removeArm");
 function silenceArm(doc, call, i) {
-  const arm = call.arms[i];
-  if (!arm) return [];
-  if (doc.slice(arm.patternRange[0], arm.patternRange[1]) === "silence") return [];
-  return [{ range: arm.patternRange, text: "silence" }];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
+  if (doc.slice(arm2.patternRange[0], arm2.patternRange[1]) === "silence") return [];
+  return [{ range: arm2.patternRange, text: "silence" }];
 }
 __name(silenceArm, "silenceArm");
 function setArmPattern(doc, call, i, source) {
-  const arm = call.arms[i];
-  if (!arm) return [];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
   const next = source.trim();
   if (next === "") return [];
   if (patternText(doc, call, i).trim() === next) return [];
-  return [{ range: arm.patternRange, text: next }];
+  return [{ range: arm2.patternRange, text: next }];
 }
 __name(setArmPattern, "setArmPattern");
 function wrapBare(patternRange, leadingWeight, patternWeight) {
@@ -12977,14 +13139,14 @@ function materializeBareSplit(doc, patternRange, barIndex, span) {
 }
 __name(materializeBareSplit, "materializeBareSplit");
 function splitArm(doc, call, i, firstWeight) {
-  const arm = call.arms[i];
-  if (!arm || !arm.weightRange) return [];
-  const n = parseInt(doc.slice(arm.weightRange[0], arm.weightRange[1]), 10);
+  const arm2 = call.arms[i];
+  if (!arm2 || !arm2.weightRange) return [];
+  const n = parseInt(doc.slice(arm2.weightRange[0], arm2.weightRange[1]), 10);
   if (!Number.isFinite(n) || n < 2) return [];
   const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
   const n2 = n - n1;
-  const pat = doc.slice(arm.patternRange[0], arm.patternRange[1]);
-  return [{ range: arm.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
+  const pat = doc.slice(arm2.patternRange[0], arm2.patternRange[1]);
+  return [{ range: arm2.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
 }
 __name(splitArm, "splitArm");
 var NOT_A_NAME = "__proto__";
@@ -13034,8 +13196,8 @@ function isBindingIntroduction(parent, key3) {
 }
 __name(isBindingIntroduction, "isBindingIntroduction");
 function armIdentifier(doc, call, i) {
-  const arm = call.arms[i];
-  return arm ? sectionNameAt(doc, arm.patternRange) : null;
+  const arm2 = call.arms[i];
+  return arm2 ? sectionNameAt(doc, arm2.patternRange) : null;
 }
 __name(armIdentifier, "armIdentifier");
 function countSectionArms(doc, call, i) {
@@ -13428,8 +13590,8 @@ function rowsOf(group2, path) {
   return { rows, together: group2.alignment === "rand" ? "one" : "all" };
 }
 __name(rowsOf, "rowsOf");
-function tiling(slots, within2) {
-  const mine = slots.filter((s) => fracCompare(s.begin, within2.begin) >= 0 && fracCompare(s.begin, within2.end) < 0);
+function tiling(slots2, within2) {
+  const mine = slots2.filter((s) => fracCompare(s.begin, within2.begin) >= 0 && fracCompare(s.begin, within2.end) < 0);
   if (mine.length === 0) return "none";
   let at = within2.begin;
   for (const s of mine) {
@@ -13439,9 +13601,9 @@ function tiling(slots, within2) {
   return same(at, within2.end) ? "tiles" : "broken";
 }
 __name(tiling, "tiling");
-function stretches(slots) {
+function stretches(slots2) {
   const out = [];
-  for (const s of [...slots].sort((a, b) => fracCompare(a.begin, b.begin))) {
+  for (const s of [...slots2].sort((a, b) => fracCompare(a.begin, b.begin))) {
     const last = out[out.length - 1];
     if (last && same(last.end, s.begin)) out[out.length - 1] = { ...last, end: s.end, pastEnd: s.pastEnd };
     else out.push({ ...s });
@@ -13463,13 +13625,13 @@ function container(ctx, group2, path, cut) {
     rows.push({ group: r.group, steps });
   }
   const perRow = rows.map(rowSlots);
-  for (const slots of perRow) {
-    for (const s of slots) {
+  for (const slots2 of perRow) {
+    for (const s of slots2) {
       if (!cut.some((c) => fracCompare(s.begin, c.begin) >= 0 && fracCompare(s.begin, c.end) < 0)) return "steps-do-not-tile";
     }
   }
   for (const c of laid.together === "all" ? stretches(cut) : cut) {
-    const verdicts = perRow.map((slots) => tiling(slots, c));
+    const verdicts = perRow.map((slots2) => tiling(slots2, c));
     const tiled = verdicts.filter((v) => v === "tiles").length;
     const absent = verdicts.filter((v) => v === "none").length;
     if (laid.together === "all" ? tiled !== rows.length : tiled !== 1 || absent !== rows.length - 1) return "steps-do-not-tile";
@@ -13492,8 +13654,8 @@ function rowSteps(ctx, group2, path) {
   }
   const all = elements.map((_, i) => i);
   const inside = notesIn2(group2, /* @__PURE__ */ new Set());
-  const slots = slotsOf(ctx, copyOf(ctx.pat, path, all, false), inside);
-  if (isRefusal(slots)) return slots;
+  const slots2 = slotsOf(ctx, copyOf(ctx.pat, path, all, false), inside);
+  if (isRefusal(slots2)) return slots2;
   const repeated = all.filter((i) => elements[i].content.kind === "group" && elements[i].ops.length > 0);
   let copies = /* @__PURE__ */ new Map();
   if (repeated.length > 0) {
@@ -13506,7 +13668,7 @@ function rowSteps(ctx, group2, path) {
   const steps = [];
   for (const i of all) {
     const element = elements[i];
-    const mine = slots.get(i) ?? [];
+    const mine = slots2.get(i) ?? [];
     if (element.content.kind === "atom") {
       const hits = ctx.joined.of(element.content);
       for (const j of hits) {
@@ -14347,13 +14509,13 @@ __name(fmtLevel, "fmtLevel");
 function gainLevelsAt(gain, times) {
   if (gain.foreign) return null;
   if (gain.mini === null) return times.map(() => gain.numeric ?? 1);
-  let values2;
+  let values3;
   try {
-    values2 = miniValuesAt(gain.mini, times);
+    values3 = miniValuesAt(gain.mini, times);
   } catch {
     return null;
   }
-  return values2.map((v) => {
+  return values3.map((v) => {
     const n = v.find((x) => typeof x === "number" || typeof x === "string" && x.trim() !== "" && Number.isFinite(Number(x)));
     return n === void 0 ? null : Number(n);
   });
@@ -14515,6 +14677,18 @@ function gridWritePlan(codec, next) {
 }
 __name(gridWritePlan, "gridWritePlan");
 
+// src/codeView/mixer/codeViz.ts
+function readCodeViz(doc) {
+  const master = masterBackdropCall(doc);
+  if (master) {
+    return master.name === null ? null : { name: master.name, options: master.options, level: "master" };
+  }
+  const track = lastTrackBackdropCall(doc, { declaredOnly: true });
+  if (!track || track.name === null) return null;
+  return { name: track.name, options: track.options, level: "track" };
+}
+__name(readCodeViz, "readCodeViz");
+
 // src/codeView/noteSounds.ts
 var VALUE_ONLY = /* @__PURE__ */ new Set([
   "gain",
@@ -14565,16 +14739,16 @@ function noteSounds(chunk, onsets, span, names = ["sound", "s"]) {
   if (!cur || readSoundArg(cur.value).kind === "one" || !(span > 0)) return null;
   const times = [];
   for (const t of onsets) for (let k = 0; k < SOUND_PASSES; k++) times.push(t + k * span);
-  let values2;
+  let values3;
   try {
-    values2 = miniValuesAt(cur.value, times);
+    values3 = miniValuesAt(cur.value, times);
   } catch {
     return null;
   }
   return onsets.map((_, i) => {
     const heard = [];
     for (let k = 0; k < SOUND_PASSES; k++) {
-      for (const v of values2[i * SOUND_PASSES + k]) {
+      for (const v of values3[i * SOUND_PASSES + k]) {
         const n = playedName(v);
         if (n !== null && !heard.includes(n)) heard.push(n);
       }
@@ -15364,27 +15538,27 @@ function appendEmptyBars(mini, bars, add2) {
 __name(appendEmptyBars, "appendEmptyBars");
 var VELOCITY_STRING = "its velocities are written per column, and the velocity lane can't follow a longer pattern yet";
 var GRID_CANT_SHOW = "the grid couldn't show the longer pattern";
-function lengthenOffers(parse7, mini, bars, gain) {
+function lengthenOffers(parse8, mini, bars, gain) {
   return {
-    duplicate: offered(parse7, mini, () => duplicateBar(mini, bars), bars + 1, gain),
-    append: appendBarsOffer(parse7, mini, bars, 1, gain)
+    duplicate: offered(parse8, mini, () => duplicateBar(mini, bars), bars + 1, gain),
+    append: appendBarsOffer(parse8, mini, bars, 1, gain)
   };
 }
 __name(lengthenOffers, "lengthenOffers");
-function appendBarsOffer(parse7, mini, bars, add2, gain) {
-  return offered(parse7, mini, () => appendEmptyBars(mini, bars, add2), bars + add2, gain);
+function appendBarsOffer(parse8, mini, bars, add2, gain) {
+  return offered(parse8, mini, () => appendEmptyBars(mini, bars, add2), bars + add2, gain);
 }
 __name(appendBarsOffer, "appendBarsOffer");
 var NOT_EDITABLE_HERE = "the grid can show this pattern but can't edit it; make it longer in the code";
-function offered(parse7, mini, rewrite, wantBars, gain) {
-  if (!parse7(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
-  return readsBack(parse7, rewrite(), wantBars, gain);
+function offered(parse8, mini, rewrite, wantBars, gain) {
+  if (!parse8(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
+  return readsBack(parse8, rewrite(), wantBars, gain);
 }
 __name(offered, "offered");
-function readsBack(parse7, r, wantBars, gain) {
+function readsBack(parse8, r, wantBars, gain) {
   if (!r.ok) return r;
   if (gain.mini !== null) return { ok: false, reason: VELOCITY_STRING };
-  const read5 = parse7(r.mini, UNREFINED);
+  const read5 = parse8(r.mini, UNREFINED);
   return read5.ok && (read5.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
 }
 __name(readsBack, "readsBack");
@@ -15555,40 +15729,40 @@ function headText(doc, control, i) {
 __name(headText, "headText");
 function setWeight2(doc, control, i, weight) {
   const w = asWeight2(weight);
-  const arm = control.arms[i];
-  if (!arm) return [];
-  if (arm.weightRange) return [{ range: arm.weightRange, text: String(w) }];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
+  if (arm2.weightRange) return [{ range: arm2.weightRange, text: String(w) }];
   if (w === 1) return [];
-  return [{ range: [arm.headRange[1], arm.headRange[1]], text: `@${w}` }];
+  return [{ range: [arm2.headRange[1], arm2.headRange[1]], text: `@${w}` }];
 }
 __name(setWeight2, "setWeight");
 function splitArm2(doc, control, i, firstWeight) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  const n = asWeight2(arm.weight);
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
+  const n = asWeight2(arm2.weight);
   if (n < 2) return [];
   const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
   const n2 = n - n1;
   const head = headText(doc, control, i);
-  return [{ range: arm.armRange, text: `${head}@${n1} ${head}@${n2}` }];
+  return [{ range: arm2.armRange, text: `${head}@${n1} ${head}@${n2}` }];
 }
 __name(splitArm2, "splitArm");
 function silenceArm2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   if (headText(doc, control, i) === "~") return [];
-  return [{ range: arm.headRange, text: "~" }];
+  return [{ range: arm2.headRange, text: "~" }];
 }
 __name(silenceArm2, "silenceArm");
 var SELECTOR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 function setArmHead(doc, control, i, key3) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   const next = key3.trim();
   if (!SELECTOR_NAME.test(next)) return [];
   if (!control.entries.some((e) => e.key === next)) return [];
   if (headText(doc, control, i) === next) return [];
-  return [{ range: arm.headRange, text: next }];
+  return [{ range: arm2.headRange, text: next }];
 }
 __name(setArmHead, "setArmHead");
 function listSectionParts2(control) {
@@ -15601,9 +15775,9 @@ function listSectionParts2(control) {
 }
 __name(listSectionParts2, "listSectionParts");
 function insertSilenceArm2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  const armSource = arm.weightRange ? `~@${doc.slice(arm.weightRange[0], arm.weightRange[1])}` : "~";
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
+  const armSource = arm2.weightRange ? `~@${doc.slice(arm2.weightRange[0], arm2.weightRange[1])}` : "~";
   return insertArm2(doc, control, i + 1, armSource);
 }
 __name(insertSilenceArm2, "insertSilenceArm");
@@ -15638,8 +15812,8 @@ function insertArm2(doc, control, at, armSource) {
 }
 __name(insertArm2, "insertArm");
 function duplicateArm(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   return insertArm2(doc, control, i + 1, armText2(doc, control, i));
 }
 __name(duplicateArm, "duplicateArm");
@@ -15666,8 +15840,8 @@ function everyOccurrenceIsAnArmHead(doc, control, name) {
 }
 __name(everyOccurrenceIsAnArmHead, "everyOccurrenceIsAnArmHead");
 function countSectionArms2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return 0;
+  const arm2 = control.arms[i];
+  if (!arm2) return 0;
   const name = headText(doc, control, i);
   if (control.entries.filter((e) => e.key === name).length !== 1) return 0;
   if (!everyOccurrenceIsAnArmHead(doc, control, name)) return 0;
@@ -15675,8 +15849,8 @@ function countSectionArms2(doc, control, i) {
 }
 __name(countSectionArms2, "countSectionArms");
 function renameSection2(doc, control, i, newName) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   if (!SECTION_NAME.test(newName) || newName === NOT_A_KEY) return [];
   const oldName = headText(doc, control, i);
   if (newName === oldName) return [];
@@ -16755,8 +16929,8 @@ function playsAtDisplayRate(value) {
   return true;
 }
 __name(playsAtDisplayRate, "playsAtDisplayRate");
-function displayRenderRate(values2, liveRate) {
-  for (const value of values2) if (!playsAtDisplayRate(value)) return liveRate;
+function displayRenderRate(values3, liveRate) {
+  for (const value of values3) if (!playsAtDisplayRate(value)) return liveRate;
   return Math.min(liveRate, DISPLAY_RENDER_RATE);
 }
 __name(displayRenderRate, "displayRenderRate");
@@ -16887,8 +17061,8 @@ function createTrackEnvelopeScheduler(deps) {
   return {
     request(trackIds, span) {
       const nextWanted = [...trackIds];
-      const same3 = span === cycles && nextWanted.length === wanted.length && nextWanted.every((id, i) => id === wanted[i]);
-      if (same3) return;
+      const same4 = span === cycles && nextWanted.length === wanted.length && nextWanted.every((id, i) => id === wanted[i]);
+      if (same4) return;
       const reordered = span === cycles && nextWanted.length === wanted.length && nextWanted.every((id) => wanted.includes(id));
       if (span !== cycles) abortInFlight();
       wanted = nextWanted;
@@ -16922,10 +17096,10 @@ function createTrackEnvelopeScheduler(deps) {
       suspended++;
       cancelTimer?.();
       cancelTimer = null;
-      const pending = inFlight2;
-      pending?.controller.abort();
+      const pending2 = inFlight2;
+      pending2?.controller.abort();
       try {
-        if (pending) await pending.done;
+        if (pending2) await pending2.done;
         return await fn();
       } finally {
         suspended--;
@@ -16933,15 +17107,15 @@ function createTrackEnvelopeScheduler(deps) {
       }
     },
     interrupt() {
-      const pending = inFlight2;
-      if (pending == null) {
+      const pending2 = inFlight2;
+      if (pending2 == null) {
         if (cancelTimer != null) kick();
         return null;
       }
       cancelTimer?.();
       cancelTimer = null;
-      pending.controller.abort();
-      return pending.done;
+      pending2.controller.abort();
+      return pending2.done;
     },
     get(trackId) {
       const env = envelopes.get(trackId);
@@ -17324,9 +17498,9 @@ function soundIndex(n, length) {
   return (i % length + length) % length;
 }
 __name(soundIndex, "soundIndex");
-function soundWarmJobs(values2, deps) {
+function soundWarmJobs(values3, deps) {
   const jobs = /* @__PURE__ */ new Map();
-  for (const value of values2) {
+  for (const value of values3) {
     const s = asString(value.s);
     if (!s) continue;
     const bank = asString(value.bank);
@@ -17772,7 +17946,7 @@ ${PROBE}()`);
 __name(measureEvalFrame, "measureEvalFrame");
 var BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 function decodeSegment(segment) {
-  const values2 = [];
+  const values3 = [];
   let value = 0;
   let shift2 = 0;
   for (const ch of segment) {
@@ -17782,12 +17956,12 @@ function decodeSegment(segment) {
     if (digit & 32) {
       shift2 += 5;
     } else {
-      values2.push(value & 1 ? -(value >>> 1) : value >>> 1);
+      values3.push(value & 1 ? -(value >>> 1) : value >>> 1);
       value = 0;
       shift2 = 0;
     }
   }
-  return values2;
+  return values3;
 }
 __name(decodeSegment, "decodeSegment");
 function originalPositionFor(mappings, line, column) {
@@ -17845,9 +18019,9 @@ function locateSoundName(code, locations, sound) {
 }
 __name(locateSoundName, "locateSoundName");
 function locateQuotedValue(code, locations, value, message) {
-  const values2 = typeof value === "string" ? [value] : value && typeof value === "object" ? Object.values(value) : [];
+  const values3 = typeof value === "string" ? [value] : value && typeof value === "object" ? Object.values(value) : [];
   const placed = /* @__PURE__ */ new Map();
-  for (const v of values2) {
+  for (const v of values3) {
     if (typeof v !== "string" || !v || !message.includes(`"${v}"`)) continue;
     const at = locateSoundName(code, locations, v);
     if (at) placed.set(v, at);
@@ -19110,6 +19284,7 @@ var _StrudelEngine = class _StrudelEngine {
     const capturedVizOptions = /* @__PURE__ */ new Map();
     let capturedBackdropViz = null;
     let capturedBackdropVizOptions = null;
+    let masterTransformDepth = 0;
     let pendingChainViz = null;
     let pendingChainVizOptions = null;
     let anonIndex = 0;
@@ -19133,6 +19308,9 @@ var _StrudelEngine = class _StrudelEngine {
     const { Pattern: Pattern2, silence } = await import('@strudel/core');
     const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "p");
     const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "viz");
+    const savedAllDescriptor = Object.getOwnPropertyDescriptor(globalThis, "all");
+    let allTrapInstalled = false;
+    let strudelAll = savedAllDescriptor?.value;
     const savedLegacyDescriptors = /* @__PURE__ */ new Map();
     const noteForApp = /* @__PURE__ */ __name((notice) => {
       this.evalNotices.notices.push(notice);
@@ -19150,6 +19328,31 @@ var _StrudelEngine = class _StrudelEngine {
       configurable: true,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       set(strudelFn) {
+        if (!allTrapInstalled) {
+          allTrapInstalled = true;
+          Object.defineProperty(globalThis, "all", {
+            configurable: true,
+            enumerable: true,
+            get() {
+              if (typeof strudelAll !== "function") return strudelAll;
+              const register = strudelAll;
+              return (transform) => {
+                if (typeof transform !== "function") return register(transform);
+                return register(function(...args) {
+                  masterTransformDepth++;
+                  try {
+                    return transform.apply(this, args);
+                  } finally {
+                    masterTransformDepth--;
+                  }
+                });
+              };
+            },
+            set(v) {
+              strudelAll = v;
+            }
+          });
+        }
         const strudelViz = Pattern2.prototype.viz;
         Object.defineProperty(Pattern2.prototype, "viz", {
           configurable: true,
@@ -19157,7 +19360,7 @@ var _StrudelEngine = class _StrudelEngine {
           value: /* @__PURE__ */ __name(function(vizName, opts) {
             const resolvedName = extractVizName(vizName);
             const optsObj = opts && typeof opts === "object" ? opts : null;
-            if (resolvedName && optsObj && optsObj.backdrop === true) {
+            if (resolvedName && (optsObj && optsObj.backdrop === true || masterTransformDepth > 0)) {
               capturedBackdropViz = resolvedName;
               capturedBackdropVizOptions = optsObj;
               return strudelViz ? strudelViz.call(this, vizName) : this;
@@ -19181,6 +19384,11 @@ var _StrudelEngine = class _StrudelEngine {
             configurable: true,
             writable: true,
             value: /* @__PURE__ */ __name(function(opts) {
+              if (masterTransformDepth > 0) {
+                capturedBackdropViz = renderer;
+                capturedBackdropVizOptions = opts && typeof opts === "object" ? opts : null;
+                return this;
+              }
               this._pendingViz = renderer;
               pendingChainViz = renderer;
               if (opts && typeof opts === "object") {
@@ -19382,6 +19590,20 @@ var _StrudelEngine = class _StrudelEngine {
       } else {
         delete Pattern2.prototype.viz;
       }
+      if (allTrapInstalled) {
+        if (strudelAll !== void 0) {
+          Object.defineProperty(globalThis, "all", {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: strudelAll
+          });
+        } else if (savedAllDescriptor) {
+          Object.defineProperty(globalThis, "all", savedAllDescriptor);
+        } else {
+          delete globalThis.all;
+        }
+      }
       for (const [methodName2, desc] of savedLegacyDescriptors) {
         if (desc) {
           Object.defineProperty(Pattern2.prototype, methodName2, desc);
@@ -19454,12 +19676,12 @@ var _StrudelEngine = class _StrudelEngine {
     if (!pattern || typeof pattern.queryArc !== "function") return [];
     try {
       const haps = pattern.queryArc(from, to, { _cps: scheduler.cps });
-      const values2 = [];
+      const values3 = [];
       for (const hap of haps) {
         if (hap.hasOnset && !hap.hasOnset()) continue;
-        if (hap.value && typeof hap.value === "object") values2.push(hap.value);
+        if (hap.value && typeof hap.value === "object") values3.push(hap.value);
       }
-      return values2;
+      return values3;
     } catch {
       return [];
     }
@@ -19954,19 +20176,19 @@ var _StrudelEngine = class _StrudelEngine {
     const pattern = this.songPatterns.get(trackId);
     if (!pattern) return null;
     let text = `${this.getCps() ?? 0.5}|${cycles}|`;
-    const values2 = [];
+    const values3 = [];
     try {
       for (const hap of pattern.queryArc(0, cycles)) {
         if (hap.whole == null) continue;
         if (typeof hap.hasOnset === "function" && !hap.hasOnset()) continue;
         text += `${Number(hap.whole.begin)},${Number(hap.whole.end)},${JSON.stringify(hap.value)};`;
-        values2.push(hap.value);
+        values3.push(hap.value);
       }
     } catch {
       this.displayRates.delete(trackId);
       return `unreadable:${this.evalEpoch}`;
     }
-    if (this.audioCtx) this.displayRates.set(trackId, displayRenderRate(values2, this.audioCtx.sampleRate));
+    if (this.audioCtx) this.displayRates.set(trackId, displayRenderRate(values3, this.audioCtx.sampleRate));
     return digest(text);
   }
   /**
@@ -21454,6 +21676,10 @@ var VizFramePump = _VizFramePump;
 var vizFramePump = new VizFramePump();
 
 // src/visualizers/renderers/WorkerVizRenderer.ts
+function currentVizSignalAliases() {
+  return resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE);
+}
+__name(currentVizSignalAliases, "currentVizSignalAliases");
 var workerPerfSeq = 0;
 var optionsKeySeq = 0;
 function stableKey(options) {
@@ -21609,7 +21835,7 @@ ${d.stack}` : "");
       };
       worker.addEventListener("message", this.diagHandler);
       this.bindSampler(components);
-      const aliases = resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE);
+      const aliases = currentVizSignalAliases();
       const mountOptions = this.postOptions(components);
       const mountMsg = {
         type: "mount",
@@ -28836,12 +29062,12 @@ var _IdbMissingError = class _IdbMissingError extends Error {
 };
 __name(_IdbMissingError, "IdbMissingError");
 var IdbMissingError = _IdbMissingError;
-function openIdbWithTimeout(name, version, upgrade, opts = {}) {
+function openIdbWithTimeout(name, version2, upgrade, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? IDB_OPEN_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
     let settled = false;
     let missing = false;
-    const req = indexedDB.open(name, version);
+    const req = indexedDB.open(name, version2);
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
@@ -29130,19 +29356,19 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners19 = /* @__PURE__ */ new Set();
-  const notify6 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners19) l();
+  const listeners22 = /* @__PURE__ */ new Set();
+  const notify7 = /* @__PURE__ */ __name(() => {
+    for (const l of listeners22) l();
   }, "notify");
-  const onStackItemAdded = /* @__PURE__ */ __name(() => notify6(), "onStackItemAdded");
-  const onStackItemPopped = /* @__PURE__ */ __name(() => notify6(), "onStackItemPopped");
-  const onStackCleared = /* @__PURE__ */ __name(() => notify6(), "onStackCleared");
+  const onStackItemAdded = /* @__PURE__ */ __name(() => notify7(), "onStackItemAdded");
+  const onStackItemPopped = /* @__PURE__ */ __name(() => notify7(), "onStackItemPopped");
+  const onStackCleared = /* @__PURE__ */ __name(() => notify7(), "onStackCleared");
   um.on("stack-item-added", onStackItemAdded);
   um.on("stack-item-popped", onStackItemPopped);
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners19,
+    listeners: listeners22,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -29185,10 +29411,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners19 = active.listeners;
-  listeners19.add(cb);
+  const listeners22 = active.listeners;
+  listeners22.add(cb);
   return () => {
-    listeners19.delete(cb);
+    listeners22.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -29284,6 +29510,7 @@ function ensureFilesMapObserver() {
             unwireTextObserver(key3);
             cachedSnapshots.delete(key3);
             notify2(key3);
+            notifyFileDeleted(key3);
             anyStructuralChange = true;
           }
         }
@@ -29394,6 +29621,18 @@ function subscribeToFileList(cb) {
   };
 }
 __name(subscribeToFileList, "subscribeToFileList");
+var fileDeleteSubscribers = /* @__PURE__ */ new Set();
+function subscribeToFileDeletes(cb) {
+  fileDeleteSubscribers.add(cb);
+  return () => {
+    fileDeleteSubscribers.delete(cb);
+  };
+}
+__name(subscribeToFileDeletes, "subscribeToFileDeletes");
+function notifyFileDeleted(fileId) {
+  for (const cb of Array.from(fileDeleteSubscribers)) cb(fileId);
+}
+__name(notifyFileDeleted, "notifyFileDeleted");
 function listWorkspaceFiles() {
   ensureDoc();
   ensureFilesMapObserver();
@@ -29414,6 +29653,7 @@ __name(listWorkspaceFiles, "listWorkspaceFiles");
 function deleteWorkspaceFile(id) {
   const filesMap = getFilesMap();
   if (!filesMap.has(id)) return;
+  ensureFilesMapObserver();
   const doc = ensureDoc();
   doc.transact(() => {
     filesMap.delete(id);
@@ -33804,7 +34044,8 @@ var G_GLSL_TRACK = "signals \xB7 per-track";
 var RULE = {
   p5: "rule: every signal lives on sig \u2014 sig.kick is a number, sig.fft an array, sig('bd') one sound",
   hydra: "rule: every signal lives on stave.sig \u2014 sig.kick() a number, sig.fft an array, sig('bd') one sound",
-  glsl: "rule: scalars are floats \xB7 spectrum/waveform = iChannel0 texture \xB7 per-track via staveTrack(i)"
+  glsl: "rule: scalars are floats \xB7 spectrum/waveform = iChannel0 texture \xB7 per-track via staveTrack(i)",
+  three: "rule: plain three.js; every signal lives on sig \u2014 sig.bass is a number, sig.fft an array, sig('bd') one sound"
 };
 var ENV_LIVE = /* @__PURE__ */ __name((env) => ({ kind: "scalar", read: env }), "ENV_LIVE");
 var GLSL_GLOBALS = [
@@ -33871,6 +34112,11 @@ var P5_GLOBALS = [
   { group: G_STRUCTURED, decl: "string[] sig.tracks, sig.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] },
   { group: G_STRUCTURED, decl: "number   sig.density;", comment: "quality LOD multiplier (1 = full)", tokens: ["density"] }
 ];
+var THREE_GLOBALS = [
+  { group: G_CONTEXT, decl: "object            stave.options;", comment: "the .viz({ ... }) argument", tokens: ["options"] },
+  { group: G_CONTEXT, decl: "number            stave.width, stave.height;", comment: "the viz size (also innerWidth / innerHeight)", tokens: ["width", "height"] },
+  ...P5_GLOBALS.filter((g) => g.group !== G_CONTEXT)
+];
 var HYDRA_GLOBALS = [
   {
     group: G_SCALARS_THUNK,
@@ -33902,6 +34148,7 @@ var HYDRA_GLOBALS = [
 ];
 var CATALOGUE = {
   p5: P5_GLOBALS,
+  three: THREE_GLOBALS,
   hydra: HYDRA_GLOBALS,
   glsl: GLSL_GLOBALS
 };
@@ -34240,7 +34487,8 @@ var vizSignalProbe = new VizSignalProbe();
 var FENCE_LANG = {
   p5: "javascript",
   hydra: "javascript",
-  glsl: "glsl"
+  glsl: "glsl",
+  three: "javascript"
 };
 function bar(v) {
   const cells = 8;
@@ -34772,6 +35020,8 @@ function toMonacoLanguage(lang) {
       return "p5js";
     case "glsl":
       return "glsl";
+    case "three":
+      return "javascript";
     case "markdown":
       return "markdown";
   }
@@ -37318,6 +37568,8 @@ function EditorView({
   const viewZoneHandleRef = React33.useRef(null);
   const sliderHandleRef = React33.useRef(null);
   const lastPayloadRef = React33.useRef(null);
+  const vizHandlersRef = React33.useRef({ onEditViz, onCropViz });
+  vizHandlersRef.current = { onEditViz, onCropViz };
   const [hapStream, setHapStream] = React33.useState(null);
   const [breakpointStore, setBreakpointStore] = React33.useState(null);
   const [onResume, setOnResume] = React33.useState(null);
@@ -37331,6 +37583,13 @@ function EditorView({
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
+  const zoneActions = /* @__PURE__ */ __name((forFileId) => {
+    const { onEditViz: edit, onCropViz: crop } = vizHandlersRef.current;
+    return {
+      onEdit: edit ? (vizId, presetId) => vizHandlersRef.current.onEditViz?.(vizId, presetId) : void 0,
+      onCrop: crop ? (vizId, presetId, trackKey) => vizHandlersRef.current.onCropViz?.(vizId, presetId, trackKey, forFileId) : void 0
+    };
+  }, "zoneActions");
   React33.useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
@@ -37346,12 +37605,15 @@ function EditorView({
             editorRef.current,
             payload.engineComponents ?? payload,
             DEFAULT_VIZ_DESCRIPTORS,
-            { onEdit: onEditViz, onCrop: onCropViz },
+            zoneActions(fileId),
             fileId
           );
           viewZoneHandleRef.current?.resume();
         } else if (payload === null) {
           viewZoneHandleRef.current?.pause();
+        } else {
+          viewZoneHandleRef.current?.cleanup();
+          viewZoneHandleRef.current = null;
         }
         if (payload && editorRef.current && monacoRef.current) {
           sliderHandleRef.current?.cleanup();
@@ -37382,7 +37644,7 @@ function EditorView({
         editorRef.current,
         payload.engineComponents ?? payload,
         DEFAULT_VIZ_DESCRIPTORS,
-        { onEdit: onEditViz, onCrop: onCropViz },
+        zoneActions(fileId),
         fileId
       );
       viewZoneHandleRef.current?.resume();
@@ -37763,7 +38025,9 @@ function PreviewView({
   onSourceRefChange,
   theme = "dark",
   hidden = false,
-  paused = false
+  paused = false,
+  backdrop = false,
+  backdropOwner
 }) {
   const { file } = useWorkspaceFile(fileId);
   const containerRef = React33.useRef(null);
@@ -37847,10 +38111,12 @@ function PreviewView({
       file,
       audioSource: audioPayload,
       hidden: effectivelyHidden,
-      paused
+      paused,
+      backdrop,
+      backdropOwner
     });
-  }, [file, provider, audioPayload, effectivelyHidden, paused, reloadTick]);
-  const providerKey = `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
+  }, [file, provider, audioPayload, effectivelyHidden, paused, backdrop, backdropOwner, reloadTick]);
+  const providerKey = backdrop ? `bg:${reloadTick}` : `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
     {
@@ -37922,6 +38188,7 @@ function generateTabId(prefix) {
 }
 __name(generateTabId, "generateTabId");
 function getLanguageFromTab(tab) {
+  if (tab.kind === "app") return void 0;
   const file = getFile(tab.fileId);
   if (file) return file.language;
   const dot = tab.fileId.lastIndexOf(".");
@@ -37952,6 +38219,7 @@ function registerBuiltinCommands() {
       const { activeTab, activeGroupId, shell, getPreviewProvider } = ctx;
       if (!activeTab || !activeGroupId) return;
       if (activeTab.kind === "preview") return;
+      if (activeTab.kind === "app") return;
       const language = getLanguageFromTab(activeTab);
       if (!language) return;
       const provider = getPreviewProvider(language);
@@ -38089,6 +38357,8 @@ function extensionToLanguage(ext) {
       return "p5js";
     case ".glsl":
       return "glsl";
+    case ".three":
+      return "three";
     case ".md":
       return "markdown";
     default:
@@ -38396,6 +38666,46 @@ function resolveBackdropFileId(stickyFileId, overrideFileId) {
   return overrideFileId ?? stickyFileId;
 }
 __name(resolveBackdropFileId, "resolveBackdropFileId");
+function backdropOwnerFor(bgFileId, paneFileId) {
+  return paneFileId && paneFileId !== bgFileId ? paneFileId : null;
+}
+__name(backdropOwnerFor, "backdropOwnerFor");
+function backdropSourceFor(owner, bgFileId, isPattern, chosen) {
+  if (owner && isPattern(owner)) return { kind: "file", fileId: owner };
+  return chosen(bgFileId) ?? { kind: "default" };
+}
+__name(backdropSourceFor, "backdropSourceFor");
+function isOwnBackdropPaused(bgFileId, paneFileId, pausedFiles) {
+  return paneFileId === bgFileId && pausedFiles.has(bgFileId);
+}
+__name(isOwnBackdropPaused, "isOwnBackdropPaused");
+
+// src/workspace/vizLanguages.ts
+var VIZ_LANGUAGES = ["p5js", "hydra", "glsl", "three"];
+var LANGUAGE_TO_RENDERER = {
+  p5js: "p5",
+  hydra: "hydra",
+  glsl: "glsl",
+  three: "three"
+};
+var RENDERER_TO_LANGUAGE = {
+  p5: "p5js",
+  hydra: "hydra",
+  glsl: "glsl",
+  three: "three"
+};
+function isVizLanguage(lang) {
+  return VIZ_LANGUAGES.includes(lang);
+}
+__name(isVizLanguage, "isVizLanguage");
+function rendererForLanguage(lang) {
+  return isVizLanguage(lang) ? LANGUAGE_TO_RENDERER[lang] : null;
+}
+__name(rendererForLanguage, "rendererForLanguage");
+function languageForRenderer(renderer) {
+  return RENDERER_TO_LANGUAGE[renderer];
+}
+__name(languageForRenderer, "languageForRenderer");
 
 // src/workspace/groupLayout.ts
 function findGroupCoords(layout, groupId) {
@@ -38460,6 +38770,11 @@ __name(removeGroup, "removeGroup");
 var registry2 = /* @__PURE__ */ new Map();
 var changeListeners = /* @__PURE__ */ new Set();
 var currentlyPlaying = null;
+var alongside = /* @__PURE__ */ new Set();
+function setAlongsideSources(sourceIds) {
+  alongside = new Set(sourceIds);
+}
+__name(setAlongsideSources, "setAlongsideSources");
 function registerPlaybackSource(sourceId, stop, label) {
   registry2.set(sourceId, { stop, label });
   return () => {
@@ -38476,8 +38791,9 @@ function registerPlaybackSource(sourceId, stop, label) {
 __name(registerPlaybackSource, "registerPlaybackSource");
 function notifyPlaybackStarted(sourceId) {
   if (currentlyPlaying === sourceId) return;
+  if (alongside.has(sourceId)) return;
   for (const [id, src] of registry2) {
-    if (id === sourceId) continue;
+    if (id === sourceId || alongside.has(id)) continue;
     try {
       src.stop();
     } catch (err) {
@@ -38689,6 +39005,7 @@ __name(_DrumPatternScheduler, "DrumPatternScheduler");
 var DrumPatternScheduler = _DrumPatternScheduler;
 var state3 = null;
 var starting = false;
+var stopRequested = false;
 async function renderDrumLoopBuffer() {
   const sampleRate = 44100;
   const durationSeconds = 2;
@@ -38795,11 +39112,20 @@ async function renderDrumLoopBuffer() {
 }
 __name(renderDrumLoopBuffer, "renderDrumLoopBuffer");
 async function startDrumPattern() {
-  if (state3 || starting) return;
+  if (state3) return;
+  if (starting) {
+    stopRequested = false;
+    return;
+  }
   starting = true;
+  stopRequested = false;
   try {
     const ctx = new AudioContext();
     const buffer = await renderDrumLoopBuffer();
+    if (stopRequested) {
+      void ctx.close();
+      return;
+    }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -38829,7 +39155,10 @@ async function startDrumPattern() {
 }
 __name(startDrumPattern, "startDrumPattern");
 function stopDrumPattern() {
-  if (!state3) return;
+  if (!state3) {
+    if (starting) stopRequested = true;
+    return;
+  }
   try {
     state3.source.stop();
   } catch {
@@ -38914,6 +39243,7 @@ __name(_ChordProgressionScheduler, "ChordProgressionScheduler");
 var ChordProgressionScheduler = _ChordProgressionScheduler;
 var state4 = null;
 var starting2 = false;
+var stopRequested2 = false;
 async function renderChordLoopBuffer() {
   const sampleRate = 44100;
   const durationSeconds = 8;
@@ -38949,11 +39279,20 @@ async function renderChordLoopBuffer() {
 }
 __name(renderChordLoopBuffer, "renderChordLoopBuffer");
 async function startChordProgression() {
-  if (state4 || starting2) return;
+  if (state4) return;
+  if (starting2) {
+    stopRequested2 = false;
+    return;
+  }
   starting2 = true;
+  stopRequested2 = false;
   try {
     const ctx = new AudioContext();
     const buffer = await renderChordLoopBuffer();
+    if (stopRequested2) {
+      void ctx.close();
+      return;
+    }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -38983,7 +39322,10 @@ async function startChordProgression() {
 }
 __name(startChordProgression, "startChordProgression");
 function stopChordProgression() {
-  if (!state4) return;
+  if (!state4) {
+    if (starting2) stopRequested2 = true;
+    return;
+  }
   try {
     state4.source.stop();
   } catch {
@@ -39029,8 +39371,10 @@ var BUILTIN_EXAMPLE_SOURCES = [
   {
     sourceId: DRUM_PATTERN_SOURCE_ID,
     label: DRUM_PATTERN_LABEL,
+    // Not guarded on "playing", which includes "starting": a start must reach a
+    // render already under way, to take back a stop that came meanwhile.
     startIfIdle: /* @__PURE__ */ __name(() => {
-      if (!isDrumPatternPlaying()) startDrumPattern();
+      void startDrumPattern();
     }, "startIfIdle"),
     stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isDrumPatternPlaying()) stopDrumPattern();
@@ -39040,7 +39384,7 @@ var BUILTIN_EXAMPLE_SOURCES = [
     sourceId: CHORD_PROGRESSION_SOURCE_ID,
     label: CHORD_PROGRESSION_LABEL,
     startIfIdle: /* @__PURE__ */ __name(() => {
-      if (!isChordProgressionPlaying()) startChordProgression();
+      void startChordProgression();
     }, "startIfIdle"),
     stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isChordProgressionPlaying()) stopChordProgression();
@@ -39055,32 +39399,181 @@ function findBuiltinExampleSource(sourceId) {
 }
 __name(findBuiltinExampleSource, "findBuiltinExampleSource");
 
+// src/workspace/audioGestureGate.ts
+var pending = /* @__PURE__ */ new Map();
+var listeners10 = /* @__PURE__ */ new Set();
+var armed = false;
+var GESTURES2 = ["pointerdown", "pointerup", "touchend", "click", "keydown"];
+function audioMayStart() {
+  if (typeof navigator === "undefined") return true;
+  const ua = navigator.userActivation;
+  return ua ? ua.hasBeenActive : true;
+}
+__name(audioMayStart, "audioMayStart");
+function notify4() {
+  for (const cb of Array.from(listeners10)) cb();
+}
+__name(notify4, "notify");
+function onGesture() {
+  if (!audioMayStart()) return;
+  disarm();
+  const starts2 = Array.from(pending.values());
+  pending.clear();
+  notify4();
+  for (const start of starts2) start();
+}
+__name(onGesture, "onGesture");
+function arm() {
+  if (armed || typeof window === "undefined") return;
+  armed = true;
+  for (const type of GESTURES2) window.addEventListener(type, onGesture, true);
+}
+__name(arm, "arm");
+function disarm() {
+  if (!armed) return;
+  armed = false;
+  for (const type of GESTURES2) window.removeEventListener(type, onGesture, true);
+}
+__name(disarm, "disarm");
+function startWhenAudioAllowed(key3, start) {
+  if (audioMayStart()) {
+    cancelAudioStart(key3);
+    start();
+    return;
+  }
+  pending.set(key3, start);
+  arm();
+  notify4();
+}
+__name(startWhenAudioAllowed, "startWhenAudioAllowed");
+function cancelAudioStart(key3) {
+  if (!pending.delete(key3)) return;
+  if (pending.size === 0) disarm();
+  notify4();
+}
+__name(cancelAudioStart, "cancelAudioStart");
+function isWaitingForGesture(key3) {
+  return pending.has(key3);
+}
+__name(isWaitingForGesture, "isWaitingForGesture");
+function onGestureWaitChange(cb) {
+  listeners10.add(cb);
+  return () => {
+    listeners10.delete(cb);
+  };
+}
+__name(onGestureWaitChange, "onGestureWaitChange");
+
+// src/workspace/preview/vizSourceChoice.ts
+var STORAGE_PREFIX3 = "stave:vizSource:";
+var DEFAULT = { kind: "default" };
+function safeLocalStorage4() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+__name(safeLocalStorage4, "safeLocalStorage");
+var values2 = /* @__PURE__ */ new Map();
+var listeners11 = /* @__PURE__ */ new Set();
+function keyFor2(fileId) {
+  return `${STORAGE_PREFIX3}${fileId}`;
+}
+__name(keyFor2, "keyFor");
+function parse7(raw) {
+  if (!raw) return DEFAULT;
+  try {
+    const v = JSON.parse(raw);
+    if (v.kind === "none") return { kind: "none" };
+    if (v.kind === "file" && typeof v.fileId === "string" && v.fileId) {
+      return { kind: "file", fileId: v.fileId };
+    }
+  } catch {
+  }
+  return DEFAULT;
+}
+__name(parse7, "parse");
+function same3(a, b) {
+  if (a.kind !== b.kind) return false;
+  return a.kind !== "file" || b.kind === "file" && a.fileId === b.fileId;
+}
+__name(same3, "same");
+function getVizSourceChoice(fileId) {
+  const cached2 = values2.get(fileId);
+  if (cached2) return cached2;
+  const ref = parse7(safeLocalStorage4()?.getItem(keyFor2(fileId)));
+  values2.set(fileId, ref);
+  return ref;
+}
+__name(getVizSourceChoice, "getVizSourceChoice");
+function setVizSourceChoice(fileId, ref) {
+  if (same3(getVizSourceChoice(fileId), ref)) return;
+  values2.set(fileId, ref);
+  const ls = safeLocalStorage4();
+  if (ref.kind === "default") ls?.removeItem(keyFor2(fileId));
+  else ls?.setItem(keyFor2(fileId), JSON.stringify(ref));
+  for (const cb of Array.from(listeners11)) cb(fileId, ref);
+}
+__name(setVizSourceChoice, "setVizSourceChoice");
+function forgetVizSourceChoicesFor(deletedFileId) {
+  const ls = safeLocalStorage4();
+  const vizIds = new Set(values2.keys());
+  if (ls && typeof ls.key === "function") {
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i);
+      if (k?.startsWith(STORAGE_PREFIX3)) vizIds.add(k.slice(STORAGE_PREFIX3.length));
+    }
+  }
+  for (const vizId of vizIds) {
+    if (vizId === deletedFileId) {
+      values2.delete(vizId);
+      ls?.removeItem(keyFor2(vizId));
+      continue;
+    }
+    const ref = getVizSourceChoice(vizId);
+    if (ref.kind === "file" && ref.fileId === deletedFileId) {
+      setVizSourceChoice(vizId, DEFAULT);
+    }
+  }
+}
+__name(forgetVizSourceChoicesFor, "forgetVizSourceChoicesFor");
+function onVizSourceChoiceChange(cb) {
+  listeners11.add(cb);
+  return () => {
+    listeners11.delete(cb);
+  };
+}
+__name(onVizSourceChoiceChange, "onVizSourceChoiceChange");
+
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
-var listeners10 = /* @__PURE__ */ new Set();
-function notify4() {
-  for (const l of listeners10) {
+var listeners12 = /* @__PURE__ */ new Set();
+function notify5() {
+  for (const l of listeners12) {
     try {
       l();
     } catch {
     }
   }
 }
-__name(notify4, "notify");
+__name(notify5, "notify");
 function registerBottomPanelTab(tab) {
   tabs.set(tab.id, tab);
-  notify4();
+  notify5();
   return () => {
     if (tabs.get(tab.id) === tab) {
       tabs.delete(tab.id);
-      notify4();
+      notify5();
     }
   };
 }
 __name(registerBottomPanelTab, "registerBottomPanelTab");
 function unregisterBottomPanelTab(id) {
   if (tabs.delete(id)) {
-    notify4();
+    notify5();
   }
 }
 __name(unregisterBottomPanelTab, "unregisterBottomPanelTab");
@@ -39093,9 +39586,9 @@ function getBottomPanelTab(id) {
 }
 __name(getBottomPanelTab, "getBottomPanelTab");
 function subscribeToBottomPanelTabs(cb) {
-  listeners10.add(cb);
+  listeners12.add(cb);
   return () => {
-    listeners10.delete(cb);
+    listeners12.delete(cb);
   };
 }
 __name(subscribeToBottomPanelTabs, "subscribeToBottomPanelTabs");
@@ -39116,7 +39609,7 @@ function clampHeight(value) {
   return value;
 }
 __name(clampHeight, "clampHeight");
-function safeLocalStorage4() {
+function safeLocalStorage5() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -39125,9 +39618,9 @@ function safeLocalStorage4() {
     return null;
   }
 }
-__name(safeLocalStorage4, "safeLocalStorage");
+__name(safeLocalStorage5, "safeLocalStorage");
 function safeGetItem(key3) {
-  const ls = safeLocalStorage4();
+  const ls = safeLocalStorage5();
   if (!ls) return null;
   try {
     return ls.getItem(key3);
@@ -39137,7 +39630,7 @@ function safeGetItem(key3) {
 }
 __name(safeGetItem, "safeGetItem");
 function safeSetItem(key3, value) {
-  const ls = safeLocalStorage4();
+  const ls = safeLocalStorage5();
   if (!ls) return;
   try {
     ls.setItem(key3, value);
@@ -39146,7 +39639,7 @@ function safeSetItem(key3, value) {
 }
 __name(safeSetItem, "safeSetItem");
 function safeRemoveItem(key3) {
-  const ls = safeLocalStorage4();
+  const ls = safeLocalStorage5();
   if (!ls) return;
   try {
     ls.removeItem(key3);
@@ -39190,7 +39683,7 @@ function writePersistedActiveTabId(value) {
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 var SERVER_STATE = { open: false, activeTabId: null };
 var state5 = null;
-var listeners11 = /* @__PURE__ */ new Set();
+var listeners13 = /* @__PURE__ */ new Set();
 function current4() {
   if (state5 === null) state5 = { open: readPersistedOpen(), activeTabId: readPersistedActiveTabId() };
   return state5;
@@ -39198,7 +39691,7 @@ function current4() {
 __name(current4, "current");
 function commit2(next) {
   state5 = next;
-  for (const l of listeners11) {
+  for (const l of listeners13) {
     try {
       l();
     } catch {
@@ -39233,9 +39726,9 @@ function showBottomPanelTab(activeTabId) {
 }
 __name(showBottomPanelTab, "showBottomPanelTab");
 function subscribeToBottomPanelState(cb) {
-  listeners11.add(cb);
+  listeners13.add(cb);
   return () => {
-    listeners11.delete(cb);
+    listeners13.delete(cb);
   };
 }
 __name(subscribeToBottomPanelState, "subscribeToBottomPanelState");
@@ -39391,10 +39884,10 @@ function readStored() {
 }
 __name(readStored, "readStored");
 var current5 = readStored();
-var listeners12 = /* @__PURE__ */ new Set();
+var listeners14 = /* @__PURE__ */ new Set();
 function subscribe5(listener) {
-  listeners12.add(listener);
-  return () => listeners12.delete(listener);
+  listeners14.add(listener);
+  return () => listeners14.delete(listener);
 }
 __name(subscribe5, "subscribe");
 function usePatternSideShown() {
@@ -39408,7 +39901,7 @@ function setPatternSideShown(shown) {
     window.localStorage.setItem(PATTERN_SIDE_KEY, shown ? "shown" : "hidden");
   } catch {
   }
-  listeners12.forEach((l) => l());
+  listeners14.forEach((l) => l());
 }
 __name(setPatternSideShown, "setPatternSideShown");
 function PatternSideToggle() {
@@ -39733,9 +40226,9 @@ function useGridModel(opts) {
     }
     setRead(held2.read);
     modelScaleRef.current = viewScale;
-    const pending = keepRef.current;
+    const pending2 = keepRef.current;
     keepRef.current = null;
-    const kept = pending && pending.mini === chunk.miniString && held2.model !== modelRef.current ? pending.keep(held2.model) : held2.model;
+    const kept = pending2 && pending2.mini === chunk.miniString && held2.model !== modelRef.current ? pending2.keep(held2.model) : held2.model;
     modelRef.current = kept;
     setModel(kept);
   }, [chunk, viewScale]);
@@ -42079,7 +42572,7 @@ function readStored2() {
 }
 __name(readStored2, "readStored");
 var current6 = readStored2();
-var listeners13 = /* @__PURE__ */ new Set();
+var listeners15 = /* @__PURE__ */ new Set();
 function setMode(mode) {
   if (mode === current6) return;
   current6 = mode;
@@ -42087,12 +42580,12 @@ function setMode(mode) {
     window.localStorage.setItem(NOTE_COLOR_MODE_KEY, mode);
   } catch {
   }
-  listeners13.forEach((l) => l());
+  listeners15.forEach((l) => l());
 }
 __name(setMode, "setMode");
 function subscribe6(listener) {
-  listeners13.add(listener);
-  return () => listeners13.delete(listener);
+  listeners15.add(listener);
+  return () => listeners15.delete(listener);
 }
 __name(subscribe6, "subscribe");
 function useNoteColorMode() {
@@ -42142,13 +42635,13 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
-function useViewProver(mini, parse7) {
+function useViewProver(mini, parse8) {
   const cacheRef = React33__namespace.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React33__namespace.useRef(parse7);
-  parseRef.current = parse7;
+  const parseRef = React33__namespace.useRef(parse8);
+  parseRef.current = parse8;
   const key3 = mini ?? null;
   return React33__namespace.useCallback(
     (scale2) => {
@@ -42592,10 +43085,10 @@ function readStored3() {
 }
 __name(readStored3, "readStored");
 var current7 = readStored3();
-var listeners14 = /* @__PURE__ */ new Set();
+var listeners16 = /* @__PURE__ */ new Set();
 function subscribe7(listener) {
-  listeners14.add(listener);
-  return () => listeners14.delete(listener);
+  listeners16.add(listener);
+  return () => listeners16.delete(listener);
 }
 __name(subscribe7, "subscribe");
 function useGridMode() {
@@ -42613,7 +43106,7 @@ function setGridMode(mode) {
     window.localStorage.setItem(GRID_MODE_KEY, mode);
   } catch {
   }
-  listeners14.forEach((l) => l());
+  listeners16.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
 var VELOCITY_DRAG_KEY = "stave:visualEdit.velocityDrag";
@@ -42629,10 +43122,10 @@ function readStored4() {
 }
 __name(readStored4, "readStored");
 var current8 = readStored4();
-var listeners15 = /* @__PURE__ */ new Set();
+var listeners17 = /* @__PURE__ */ new Set();
 function subscribe8(listener) {
-  listeners15.add(listener);
-  return () => listeners15.delete(listener);
+  listeners17.add(listener);
+  return () => listeners17.delete(listener);
 }
 __name(subscribe8, "subscribe");
 function useVelocityDrag() {
@@ -42650,7 +43143,7 @@ function setVelocityDrag(on) {
     window.localStorage.setItem(VELOCITY_DRAG_KEY, on ? "1" : "0");
   } catch {
   }
-  listeners15.forEach((l) => l());
+  listeners17.forEach((l) => l());
 }
 __name(setVelocityDrag, "setVelocityDrag");
 
@@ -43188,13 +43681,13 @@ function runGridGesture(scope2, id, dryRun) {
   return mounted.get(scope2)?.(action, dryRun) ?? false;
 }
 __name(runGridGesture, "runGridGesture");
-function usePatternLength(chunk, model, parse7, writeMini) {
+function usePatternLength(chunk, model, parse8, writeMini) {
   const mini = model ? chunk?.miniString ?? null : null;
   const bars = model?.bars ?? 1;
   const gain = chunk ? readChunkGain(chunk) : null;
   const velocity = gain?.mini != null;
-  const parseRef = React33__namespace.useRef(parse7);
-  parseRef.current = parse7;
+  const parseRef = React33__namespace.useRef(parse8);
+  parseRef.current = parse8;
   const cache3 = React33__namespace.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null || gain === null) return null;
@@ -44105,11 +44598,11 @@ function ColumnStepGrid({ onResolution, notice = null } = {}) {
     (mini, edit) => {
       const shown = modelRef.current?.lanes ?? [];
       const keep = /* @__PURE__ */ __name((read6) => {
-        const same3 = /* @__PURE__ */ __name((a, b) => a.sound === b.sound && (a.part ?? 0) === (b.part ?? 0), "same");
+        const same4 = /* @__PURE__ */ __name((a, b) => a.sound === b.sound && (a.part ?? 0) === (b.part ?? 0), "same");
         const lanes = shown.map(
-          (l) => read6.lanes.find((r) => same3(r, l)) ?? { sound: l.sound, part: l.part, cells: Array(read6.steps).fill(false) }
+          (l) => read6.lanes.find((r) => same4(r, l)) ?? { sound: l.sound, part: l.part, cells: Array(read6.steps).fill(false) }
         );
-        for (const r of read6.lanes) if (!shown.some((l) => same3(r, l))) lanes.push(r);
+        for (const r of read6.lanes) if (!shown.some((l) => same4(r, l))) lanes.push(r);
         return lanes.every((l, i) => l === read6.lanes[i]) && lanes.length === read6.lanes.length ? read6 : { ...read6, lanes };
       }, "keep");
       return writeStep(mini, edit, keep);
@@ -45858,7 +46351,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners19 = /* @__PURE__ */ new Set();
+  const listeners22 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -45873,19 +46366,19 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners19.forEach((l) => l());
+    listeners22.forEach((l) => l());
   }, "setAccessor");
-  const notify6 = /* @__PURE__ */ __name(() => {
+  const notify7 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners19.forEach((l) => l());
+    listeners22.forEach((l) => l());
   }, "notify");
   const read5 = /* @__PURE__ */ __name(() => cached2, "read");
   const subscribe12 = /* @__PURE__ */ __name((listener) => {
-    listeners19.add(listener);
-    return () => listeners19.delete(listener);
+    listeners22.add(listener);
+    return () => listeners22.delete(listener);
   }, "subscribe");
   const useCatalog = /* @__PURE__ */ __name(() => React33__namespace.useSyncExternalStore(subscribe12, read5, () => null), "useCatalog");
-  return { setAccessor, notify: notify6, read: read5, useCatalog };
+  return { setAccessor, notify: notify7, read: read5, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
 var instrumentStore = createCatalogStore();
@@ -49128,7 +49621,7 @@ __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners16 = /* @__PURE__ */ new Set();
+var listeners18 = /* @__PURE__ */ new Set();
 function read2(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
@@ -49140,7 +49633,7 @@ function toggleSolo(fileId, id) {
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners16.forEach((l) => l());
+  listeners18.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -49155,9 +49648,9 @@ function setPreSoloMutes(fileId, snapshot) {
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
 function subscribe9(listener) {
-  listeners16.add(listener);
+  listeners18.add(listener);
   return () => {
-    listeners16.delete(listener);
+    listeners18.delete(listener);
   };
 }
 __name(subscribe9, "subscribe");
@@ -50020,7 +50513,7 @@ function key2(fileId) {
   return KEY_PREFIX + fileId;
 }
 __name(key2, "key");
-function safeLocalStorage5() {
+function safeLocalStorage6() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -50029,9 +50522,9 @@ function safeLocalStorage5() {
     return null;
   }
 }
-__name(safeLocalStorage5, "safeLocalStorage");
+__name(safeLocalStorage6, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners17 = /* @__PURE__ */ new Set();
+var listeners19 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -50043,7 +50536,7 @@ function parseExpanded(raw) {
 }
 __name(parseExpanded, "parseExpanded");
 function load(fileId) {
-  const ls = safeLocalStorage5();
+  const ls = safeLocalStorage6();
   if (!ls) return /* @__PURE__ */ new Set();
   try {
     return parseExpanded(ls.getItem(key2(fileId)));
@@ -50063,7 +50556,7 @@ function read3(fileId) {
 }
 __name(read3, "read");
 function persist(fileId, set2) {
-  const ls = safeLocalStorage5();
+  const ls = safeLocalStorage6();
   if (!ls) return;
   try {
     ls.setItem(key2(fileId), JSON.stringify([...set2]));
@@ -50077,13 +50570,13 @@ function toggleExpanded(fileId, id) {
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners17.forEach((l) => l());
+  listeners19.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
 function subscribe10(listener) {
-  listeners17.add(listener);
+  listeners19.add(listener);
   return () => {
-    listeners17.delete(listener);
+    listeners19.delete(listener);
   };
 }
 __name(subscribe10, "subscribe");
@@ -50133,7 +50626,7 @@ function parseMixerZoom(raw) {
   }
 }
 __name(parseMixerZoom, "parseMixerZoom");
-function safeLocalStorage6() {
+function safeLocalStorage7() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -50142,19 +50635,19 @@ function safeLocalStorage6() {
     return null;
   }
 }
-__name(safeLocalStorage6, "safeLocalStorage");
+__name(safeLocalStorage7, "safeLocalStorage");
 var cached = null;
-var listeners18 = /* @__PURE__ */ new Set();
+var listeners20 = /* @__PURE__ */ new Set();
 function read4() {
   if (cached == null) {
-    const ls = safeLocalStorage6();
+    const ls = safeLocalStorage7();
     cached = ls ? parseMixerZoom(ls.getItem(KEY)) : MIXER_ZOOM_DEFAULT;
   }
   return cached;
 }
 __name(read4, "read");
 function persist2(v) {
-  const ls = safeLocalStorage6();
+  const ls = safeLocalStorage7();
   if (!ls) return;
   try {
     ls.setItem(KEY, JSON.stringify(v));
@@ -50167,7 +50660,7 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners18.forEach((l) => l());
+  listeners20.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
@@ -50175,9 +50668,9 @@ function nudgeMixerZoom(dir) {
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
 function subscribe11(listener) {
-  listeners18.add(listener);
+  listeners20.add(listener);
   return () => {
-    listeners18.delete(listener);
+    listeners20.delete(listener);
   };
 }
 __name(subscribe11, "subscribe");
@@ -51621,38 +52114,18 @@ function SymbolRow() {
 }
 __name(SymbolRow, "SymbolRow");
 
-// src/workspace/vizLanguages.ts
-var VIZ_LANGUAGES = ["p5js", "hydra", "glsl"];
-var LANGUAGE_TO_RENDERER = {
-  p5js: "p5",
-  hydra: "hydra",
-  glsl: "glsl"
-};
-var RENDERER_TO_LANGUAGE = {
-  p5: "p5js",
-  hydra: "hydra",
-  glsl: "glsl"
-};
-function isVizLanguage(lang) {
-  return VIZ_LANGUAGES.includes(lang);
-}
-__name(isVizLanguage, "isVizLanguage");
-function rendererForLanguage(lang) {
-  return isVizLanguage(lang) ? LANGUAGE_TO_RENDERER[lang] : null;
-}
-__name(rendererForLanguage, "rendererForLanguage");
-function languageForRenderer(renderer) {
-  return RENDERER_TO_LANGUAGE[renderer];
-}
-__name(languageForRenderer, "languageForRenderer");
-
 // src/workspace/bottomPanel/hiddenForTab.ts
 function bottomPanelHiddenForTab(tab) {
   if (!tab) return false;
+  if (tab.kind === "app") return false;
   const language = getFile(tab.fileId)?.language;
   return language != null && isVizLanguage(language);
 }
 __name(bottomPanelHiddenForTab, "bottomPanelHiddenForTab");
+function paneShownFileId(tab) {
+  return tab && (tab.kind === "editor" || tab.kind === "preview") ? tab.fileId : null;
+}
+__name(paneShownFileId, "paneShownFileId");
 var tabbarScrollStyleInjected = false;
 function ensureTabbarScrollStyle() {
   if (tabbarScrollStyleInjected) return;
@@ -51702,13 +52175,30 @@ function createInitialGroupState(initialTabs) {
   return { groups, layout: [[id]], activeGroupId: id };
 }
 __name(createInitialGroupState, "createInitialGroupState");
-function tabFileName(tab) {
+function tabFileName(tab, appTabLabel) {
+  if (tab.kind === "app") return appTabLabel?.(tab)?.title ?? tab.appKey;
   const file = getFile(tab.fileId);
   if (!file) return tab.fileId;
   const parts = file.path.split("/");
   return parts[parts.length - 1];
 }
 __name(tabFileName, "tabFileName");
+function AppTabIcon({
+  tab,
+  appTabLabel
+}) {
+  const icon = appTabLabel?.(tab)?.icon;
+  if (icon === void 0 || icon === null) return null;
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "span",
+    {
+      "data-app-tab-icon": tab.appKey,
+      style: { display: "inline-flex", alignItems: "center", marginRight: 4, fontStyle: "normal" },
+      children: icon
+    }
+  );
+}
+__name(AppTabIcon, "AppTabIcon");
 function GroupTabBar({
   group: group2,
   canClose,
@@ -51719,6 +52209,7 @@ function GroupTabBar({
   onTabDragStart,
   onTabContextMenu,
   onTabPromote,
+  appTabLabel,
   onNewFile,
   onSplitRight,
   onSplitDown,
@@ -51872,8 +52363,8 @@ function GroupTabBar({
                                   },
                                   children: tab.mode === "view" ? "VIEW" : "DIFF"
                                 }
-                              ) : tab.kind === "preview" ? "\u{1F3A5} " : null,
-                              tabFileName(tab)
+                              ) : tab.kind === "preview" ? "\u{1F3A5} " : tab.kind === "app" ? /* @__PURE__ */ jsxRuntime.jsx(AppTabIcon, { tab, appTabLabel }) : null,
+                              tabFileName(tab, appTabLabel)
                             ] }),
                             /* @__PURE__ */ jsxRuntime.jsx(
                               "button",
@@ -52064,7 +52555,8 @@ function GroupTabBar({
                               },
                               children: [
                                 tab.kind === "preview" ? "\u{1F3A5} " : "",
-                                tabFileName(tab)
+                                tab.kind === "app" ? /* @__PURE__ */ jsxRuntime.jsx(AppTabIcon, { tab, appTabLabel }) : null,
+                                tabFileName(tab, appTabLabel)
                               ]
                             }
                           ),
@@ -52107,10 +52599,13 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
   onNewFile,
   onBackgroundFileChange,
   onActiveBackdropChange,
+  spanningBackdrop,
   onOpenPopoutPreview,
   backgroundCrop,
   onTabClose,
   previewProviderFor,
+  renderAppTab,
+  appTabLabel,
   chromeForTab,
   editorExtrasForTab,
   onSaveFile,
@@ -52233,13 +52728,64 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
     [updateGroup]
   );
   const backdropSourceByFile = React33.useRef(/* @__PURE__ */ new Map());
+  const syncAlongsideSources = React33.useCallback(() => {
+    const ids = [];
+    for (const ref of backdropSourceByFile.current.values()) {
+      if (ref.kind === "file" && findBuiltinExampleSource(ref.fileId)) ids.push(ref.fileId);
+    }
+    setAlongsideSources(ids);
+  }, []);
+  const recordBackdropSource = React33.useCallback(
+    (fileId, ref) => {
+      if (ref?.kind === "file") backdropSourceByFile.current.set(fileId, ref);
+      else backdropSourceByFile.current.delete(fileId);
+      syncAlongsideSources();
+    },
+    [syncAlongsideSources]
+  );
+  const [sourceChoiceVersion, setSourceChoiceVersion] = React33.useState(0);
+  React33.useEffect(
+    () => onVizSourceChoiceChange(() => setSourceChoiceVersion((n) => n + 1)),
+    []
+  );
+  React33.useEffect(() => subscribeToFileDeletes(forgetVizSourceChoicesFor), []);
+  const sourceForBackdrop = React33.useCallback(
+    (owner, bgFileId) => backdropSourceFor(
+      owner,
+      bgFileId,
+      (id) => {
+        const f = getFile(id);
+        return !!f && !isVizLanguage(f.language);
+      },
+      (id) => getVizSourceChoice(id)
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sourceChoiceVersion]
+  );
   const stopBackdropSource = React33.useCallback((fileId) => {
     const ref = backdropSourceByFile.current.get(fileId);
     if (ref?.kind === "file") {
       findBuiltinExampleSource(ref.fileId)?.stopIfRunning();
     }
-    backdropSourceByFile.current.delete(fileId);
-  }, []);
+    cancelAudioStart(fileId);
+    recordBackdropSource(fileId, null);
+  }, [recordBackdropSource]);
+  const restoreOwnBackdropSound = React33.useCallback(
+    (g, bgFileId) => {
+      const shown = paneShownFileId(g?.tabs.find((t) => t.id === g.activeTabId));
+      const ref = getVizSourceChoice(bgFileId);
+      if (ref.kind !== "file" || !findBuiltinExampleSource(ref.fileId)) return;
+      if (shown !== bgFileId || pausedPreviews.has(bgFileId)) return;
+      recordBackdropSource(bgFileId, ref);
+      startWhenAudioAllowed(bgFileId, () => {
+        const now2 = getVizSourceChoice(bgFileId);
+        const builtin = now2.kind === "file" ? findBuiltinExampleSource(now2.fileId) : void 0;
+        recordBackdropSource(bgFileId, builtin ? now2 : null);
+        builtin?.startIfIdle();
+      });
+    },
+    [recordBackdropSource, pausedPreviews]
+  );
   const stopDisplacedBackdrop = React33.useCallback(
     (sourceGroupId, tabId, targetGroupId) => {
       if (sourceGroupId === targetGroupId) return;
@@ -52256,16 +52802,15 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
   );
   const handleTabClose = React33.useCallback(
     (groupId, tabId) => {
-      let closedTab = null;
       const existing = groups.get(groupId);
       const wasLastTab = existing !== void 0 && existing.tabs.length === 1;
       const canCollapseGroup = wasLastTab && groups.size > 1;
+      const closedTab = existing?.tabs.find((t) => t.id === tabId) ?? null;
       setGroups((prev) => {
         const cur = prev.get(groupId);
         if (!cur) return prev;
         const idx = cur.tabs.findIndex((t) => t.id === tabId);
         if (idx === -1) return prev;
-        closedTab = cur.tabs[idx];
         const nextTabs = cur.tabs.filter((t) => t.id !== tabId);
         let nextActive = cur.activeTabId;
         if (cur.activeTabId === tabId) {
@@ -52479,14 +53024,24 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
       if (prev) stopBackdropSource(prev);
+      if (backgroundFileId) restoreOwnBackdropSound(groups.get(groupId), backgroundFileId);
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? void 0
       }));
       onBackgroundFileChange?.(groupId, backgroundFileId);
     },
-    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource]
+    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource, restoreOwnBackdropSound]
   );
+  React33.useEffect(() => {
+    for (const g of groups.values()) {
+      if (g.backgroundFileId) restoreOwnBackdropSound(g, g.backgroundFileId);
+    }
+    const waiting = backdropSourceByFile.current;
+    return () => {
+      for (const id of waiting.keys()) cancelAudioStart(id);
+    };
+  }, []);
   const updateGroupOverride = React33.useCallback(
     (groupId, overrideFileId) => {
       setBgOverrides((prev) => {
@@ -52603,7 +53158,7 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
       if (fromRegistry) return fromRegistry;
       if (previewProviderFor) {
         const currentTab = activeTab;
-        const fileId = currentTab?.fileId ?? "";
+        const fileId = currentTab && currentTab.kind !== "app" ? currentTab.fileId : "";
         return previewProviderFor({
           kind: "preview",
           id: "__cmd-lookup__",
@@ -52964,7 +53519,7 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
                       }, "getPreviewProvider")
                     });
                     if (willActivate && sourceRef?.kind === "file") {
-                      backdropSourceByFile.current.set(tab.fileId, sourceRef);
+                      recordBackdropSource(tab.fileId, sourceRef);
                     }
                   }, "onToggleBackground"),
                   // #788 — the popover's source dropdown changed while this
@@ -52978,11 +53533,7 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
                     if (groups.get(groupId)?.backgroundFileId !== tab.fileId) {
                       return;
                     }
-                    if (ref.kind === "file") {
-                      backdropSourceByFile.current.set(tab.fileId, ref);
-                    } else {
-                      backdropSourceByFile.current.delete(tab.fileId);
-                    }
+                    recordBackdropSource(tab.fileId, ref);
                   }, "onBackdropSourceChange"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
                   // #773 — close THIS file's side preview when the viz-settings
@@ -53003,7 +53554,8 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
                   // the host (app popups).
                   backdropOpacity: groups.get(groupId)?.backdropOpacity ?? backdropOpacity,
                   backdropQuality: groups.get(groupId)?.backdropQuality ?? backdropQuality,
-                  backdropVizSpan,
+                  // #2423 — a host-owned span is a pattern's setting: no control here
+                  backdropVizSpan: spanningBackdrop === void 0 ? backdropVizSpan : void 0,
                   onSetBackdropOpacity: /* @__PURE__ */ __name((v) => updateGroupBackdropOpacity(groupId, v), "onSetBackdropOpacity"),
                   onSetBackdropQuality: /* @__PURE__ */ __name((q) => updateGroupBackdropQuality(groupId, q), "onSetBackdropQuality"),
                   onSetBackdropVizSpan: /* @__PURE__ */ __name((s) => setBackdropVizSpan(s), "onSetBackdropVizSpan"),
@@ -53117,6 +53669,40 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
             `${tab.id}:diff`
           ) });
         }
+        case "app": {
+          const body = renderAppTab?.(tab);
+          return /* @__PURE__ */ jsxRuntime.jsx(
+            "div",
+            {
+              "data-workspace-view": "app",
+              "data-app-tab": tab.appKey,
+              style: {
+                position: "relative",
+                zIndex: 1,
+                height: "100%",
+                width: "100%",
+                overflow: "auto",
+                background: "var(--background)"
+              },
+              children: body ?? /* @__PURE__ */ jsxRuntime.jsx(
+                "div",
+                {
+                  "data-testid": `app-tab-unavailable-${tab.id}`,
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    height: "100%",
+                    color: "var(--foreground-muted)",
+                    fontSize: 12
+                  },
+                  children: "This tab is not available."
+                }
+              )
+            },
+            tab.id
+          );
+        }
         default:
           return assertNever(tab);
       }
@@ -53149,12 +53735,15 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
       findGroupWithAnyPreview,
       editorExtrasForTab,
       closeTabById,
+      // #2471 — the app tab's body comes from this host hook
+      renderAppTab,
       // P239 guard — the viz-settings ctx (#773) reads these; without them
       // in the deps the callback closes over stale backdrop settings /
       // handlers and the popover controls act on outdated values.
       backdropOpacity,
       backdropQuality,
       backdropVizSpan,
+      spanningBackdrop,
       updateGroupBackdropOpacity,
       updateGroupBackdropQuality,
       onCropBackdrop,
@@ -53162,6 +53751,16 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
     ]
   );
   const workspaceSpanBackdrop = React33.useMemo(() => {
+    if (spanningBackdrop !== void 0) {
+      if (!spanningBackdrop) return null;
+      const showing = allGroupIds(layout).map((gid) => groups.get(gid)).find((g) => g && paneShownFileId(g.tabs.find((t) => t.id === g.activeTabId)) === spanningBackdrop.ownerFileId);
+      return {
+        fileId: spanningBackdrop.fileId,
+        ownerFileId: spanningBackdrop.ownerFileId,
+        quality: showing?.backdropQuality ?? backdropQuality,
+        opacity: showing?.backdropOpacity ?? backdropOpacity
+      };
+    }
     if (backdropVizSpan !== "workspace") return null;
     for (const gid of allGroupIds(layout)) {
       const g = groups.get(gid);
@@ -53170,18 +53769,19 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
       if (fileId) {
         return {
           fileId,
-          groupId: gid,
+          // legacy: the driving pane's file — the viz itself when it is that viz's own pin
+          ownerFileId: paneShownFileId(g.tabs.find((t) => t.id === g.activeTabId)),
           quality: g.backdropQuality ?? backdropQuality,
           opacity: g.backdropOpacity ?? backdropOpacity
         };
       }
     }
     return null;
-  }, [backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity]);
+  }, [spanningBackdrop, backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity]);
   const workspaceSpanActive = workspaceSpanBackdrop != null;
   const renderBackdropLayer = React33.useCallback(
     (params) => {
-      const { bgFileId, dataGroupId, quality, opacity, crop, paused } = params;
+      const { bgFileId, dataGroupId, quality, opacity, crop, paused, owner, sourceRef } = params;
       const bgProvider = previewProviderFor?.({
         kind: "preview",
         id: `bg-${bgFileId}`,
@@ -53206,6 +53806,8 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
           "data-background-file-id": bgFileId,
           "data-backdrop-quality": quality,
           "data-backdrop-live": paused ? "false" : "true",
+          "data-backdrop-owner": owner ?? "own",
+          "data-backdrop-source": sourceRef.kind === "file" ? sourceRef.fileId : sourceRef.kind,
           style: {
             position: "absolute",
             inset: 0,
@@ -53228,10 +53830,12 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
                 {
                   fileId: bgFileId,
                   provider: bgProvider,
-                  sourceRef: { kind: "default" },
+                  sourceRef,
                   theme,
                   hidden: false,
                   paused,
+                  backdrop: true,
+                  backdropOwner: owner,
                   onSourceRefChange: () => {
                   }
                 }
@@ -53319,6 +53923,7 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
                     return nx;
                   });
                 },
+                appTabLabel,
                 onNewFile,
                 onSplitRight: () => handleSplit(group2.id, "east"),
                 onSplitDown: () => handleSplit(group2.id, "south"),
@@ -53332,7 +53937,8 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
                 style: { flex: 1, minHeight: 0, position: "relative" },
                 children: [
                   (() => {
-                    if (backdropVizSpan === "workspace") return null;
+                    if (workspaceSpanBackdrop) return null;
+                    if (activeTabObj?.kind === "app") return null;
                     const bgFileId = resolveBackdropFileId(
                       group2.backgroundFileId,
                       bgOverrides.get(group2.id)
@@ -53349,9 +53955,17 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
                       crop: backgroundCrop ?? null,
                       // #781 — the viz chrome's play/pause button pauses the backdrop
                       // through the same per-file `pausedPreviews` set it uses for
-                      // side previews (a viz's placement is exclusive, so one flag
-                      // covers both). OR it with the hover-gate policy above.
-                      paused: backdropPaused || pausedPreviews.has(bgFileId)
+                      // side previews. #2422 — but only the viz's OWN background: this
+                      // pane's, while the viz file is its active tab. The same file can
+                      // also be a pattern's code background or another tab's pin (a
+                      // viz's placement is no longer exclusive); those keep running.
+                      // OR it with the hover-gate policy above.
+                      paused: backdropPaused || isOwnBackdropPaused(bgFileId, paneShownFileId(activeTabObj), pausedPreviews),
+                      // #2423 — the viz file's own background (its tab is this pane's
+                      // active tab) takes its own settings; any other is the
+                      // background of the file the pane shows (a pattern: its code options)
+                      owner: backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj)),
+                      sourceRef: sourceForBackdrop(backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj)), bgFileId)
                     });
                   })(),
                   activeTabObj ? /* @__PURE__ */ jsxRuntime.jsx(
@@ -53359,13 +53973,14 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
                     {
                       "data-stave-code-panel": "true",
                       "data-stave-backdrop": (
-                        // #770: in workspace-span mode EVERY pane goes transparent so the
+                        // #2471 — never for an app tab: its page is opaque.
+                        activeTabObj.kind !== "app" && // #770: in workspace-span mode EVERY pane goes transparent so the
                         // single shared backdrop shows behind all of them — not just panes
                         // that have their own backdrop (the file-mode condition).
-                        workspaceSpanActive || resolveBackdropFileId(
+                        (workspaceSpanActive || resolveBackdropFileId(
                           group2.backgroundFileId,
                           bgOverrides.get(group2.id)
-                        ) ? "on" : "off"
+                        )) ? "on" : "off"
                       ),
                       style: {
                         position: "relative",
@@ -53431,7 +54046,11 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
       // #781: the backdrop `paused` now also reads `pausedPreviews` (the chrome
       // play/pause button). Omit it and toggling pause never reaches the
       // backdrop — the same P239 stale-closure trap.
-      pausedPreviews
+      pausedPreviews,
+      // #2426 — each background's audio source reads the chosen sources
+      sourceForBackdrop,
+      // #2471 — app tab chips read the host's label hook
+      appTabLabel
     ]
   );
   const totalGroupCount = React33.useMemo(
@@ -53594,6 +54213,68 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
         });
         setActiveGroupId(activeGroupId);
       }, "openHistoryTab"),
+      openAppTab: /* @__PURE__ */ __name((appKey, opts) => {
+        const hasState = opts?.state !== void 0;
+        let foundGroupId = null;
+        for (const [gid, g] of groups) {
+          if (g.tabs.some((t) => t.kind === "app" && t.appKey === appKey)) {
+            foundGroupId = gid;
+            break;
+          }
+        }
+        const targetGid = foundGroupId ?? activeGroupId;
+        setGroups((prev) => {
+          for (const [gid, g2] of prev) {
+            const hit = g2.tabs.find((t) => t.kind === "app" && t.appKey === appKey);
+            if (!hit) continue;
+            if (g2.activeTabId === hit.id && !hasState) return prev;
+            const next2 = new Map(prev);
+            next2.set(gid, {
+              ...g2,
+              tabs: hasState ? g2.tabs.map((t) => t.id === hit.id ? { ...t, state: opts.state } : t) : g2.tabs,
+              activeTabId: hit.id
+            });
+            return next2;
+          }
+          const g = prev.get(targetGid);
+          if (!g) return prev;
+          const newTab = {
+            kind: "app",
+            id: `app-${appKey}`,
+            appKey,
+            ...hasState ? { state: opts.state } : {}
+          };
+          const next = new Map(prev);
+          next.set(targetGid, { ...g, tabs: [...g.tabs, newTab], activeTabId: newTab.id });
+          return next;
+        });
+        setActiveGroupId(targetGid);
+      }, "openAppTab"),
+      setAppTabState: /* @__PURE__ */ __name((appKey, state6) => {
+        setGroups((prev) => {
+          for (const [gid, g] of prev) {
+            const hit = g.tabs.find(
+              (t) => t.kind === "app" && t.appKey === appKey
+            );
+            if (!hit) continue;
+            if (JSON.stringify(hit.state) === JSON.stringify(state6)) return prev;
+            const next = new Map(prev);
+            next.set(gid, {
+              ...g,
+              tabs: g.tabs.map((t) => {
+                if (t.id !== hit.id || t.kind !== "app") return t;
+                if (state6 === void 0) {
+                  const { state: _dropped, ...rest } = t;
+                  return rest;
+                }
+                return { ...t, state: state6 };
+              })
+            });
+            return next;
+          }
+          return prev;
+        });
+      }, "setAppTabState"),
       promoteTab: /* @__PURE__ */ __name((tabId) => {
         setGroups((prev) => {
           let changed = false;
@@ -53611,6 +54292,7 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
           return changed ? next : prev;
         });
       }, "promoteTab"),
+      closeTab: /* @__PURE__ */ __name((tabId) => closeTabById(tabId), "closeTab"),
       closeTabsForFile: /* @__PURE__ */ __name((fileId) => {
         const targets = [];
         for (const g of groups.values()) {
@@ -53800,7 +54482,20 @@ var WorkspaceShell = React33.forwardRef(/* @__PURE__ */ __name(function Workspac
                 crop: backgroundCrop ?? null,
                 // #781 — pause the shared span backdrop when its source viz is
                 // paused via the chrome play/pause button (same per-file set).
-                paused: pausedPreviews.has(workspaceSpanBackdrop.fileId)
+                // #2422 — "own" here is the pane DRIVING the span: the pause applies
+                // when that pane's active tab is the viz file itself, not when the
+                // span is a pattern's code background drawn from the same file.
+                paused: isOwnBackdropPaused(
+                  workspaceSpanBackdrop.fileId,
+                  workspaceSpanBackdrop.ownerFileId,
+                  pausedPreviews
+                ),
+                owner: backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId),
+                // #2426 — the spanning background is the pattern's: the pattern's audio
+                sourceRef: sourceForBackdrop(
+                  backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId),
+                  workspaceSpanBackdrop.fileId
+                )
               }),
               /* @__PURE__ */ jsxRuntime.jsx(
                 "div",
@@ -54711,12 +55406,12 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
   isPlayPending() {
     return this.playPendingState;
   }
-  setPlayPending(pending) {
-    if (this.playPendingState === pending) return;
-    this.playPendingState = pending;
+  setPlayPending(pending2) {
+    if (this.playPendingState === pending2) return;
+    this.playPendingState = pending2;
     for (const cb of Array.from(this.playPendingListeners)) {
       try {
-        cb(pending);
+        cb(pending2);
       } catch {
       }
     }
@@ -54941,6 +55636,15 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    */
   getBackdropVizRequest() {
     return this.engine.components.inlineViz?.backdropRequest?.vizId ?? null;
+  }
+  /**
+   * The options the last evaluation captured for its backdrop viz, or null. The
+   * app keeps them beside the code so a background viz option the code computes
+   * (not a literal) still reaches the sketch after Stop, when the bus payload
+   * that carried it is gone.
+   */
+  getBackdropVizOptions() {
+    return this.engine.components.inlineViz?.backdropRequest?.options ?? null;
   }
   // -------------------------------------------------------------------------
   // Phase 20-07 — debugger pause/resume + BreakpointStore accessor.
@@ -56368,6 +57072,661 @@ function VizEditor({
 }
 __name(VizEditor, "VizEditor");
 
+// src/visualizers/renderers/threeSketch.ts
+var ADDONS = {
+  "environments/RoomEnvironment.js": /* @__PURE__ */ __name(() => import('three/addons/environments/RoomEnvironment.js'), "environments/RoomEnvironment.js"),
+  "postprocessing/EffectComposer.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/EffectComposer.js'), "postprocessing/EffectComposer.js"),
+  "postprocessing/RenderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/RenderPass.js'), "postprocessing/RenderPass.js"),
+  "postprocessing/ShaderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/ShaderPass.js'), "postprocessing/ShaderPass.js"),
+  "postprocessing/OutputPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/OutputPass.js'), "postprocessing/OutputPass.js"),
+  "postprocessing/UnrealBloomPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/UnrealBloomPass.js'), "postprocessing/UnrealBloomPass.js"),
+  "postprocessing/BokehPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/BokehPass.js'), "postprocessing/BokehPass.js"),
+  "postprocessing/AfterimagePass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/AfterimagePass.js'), "postprocessing/AfterimagePass.js"),
+  "postprocessing/FilmPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/FilmPass.js'), "postprocessing/FilmPass.js"),
+  "postprocessing/GlitchPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/GlitchPass.js'), "postprocessing/GlitchPass.js"),
+  "postprocessing/SMAAPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/SMAAPass.js'), "postprocessing/SMAAPass.js"),
+  "postprocessing/FXAAPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/FXAAPass.js'), "postprocessing/FXAAPass.js"),
+  "shaders/CopyShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/CopyShader.js'), "shaders/CopyShader.js"),
+  "shaders/FXAAShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/FXAAShader.js'), "shaders/FXAAShader.js"),
+  "shaders/RGBShiftShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/RGBShiftShader.js'), "shaders/RGBShiftShader.js"),
+  "shaders/VignetteShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/VignetteShader.js'), "shaders/VignetteShader.js"),
+  "loaders/GLTFLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/GLTFLoader.js'), "loaders/GLTFLoader.js"),
+  "loaders/RGBELoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/RGBELoader.js'), "loaders/RGBELoader.js"),
+  "loaders/HDRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/HDRLoader.js'), "loaders/HDRLoader.js"),
+  "loaders/EXRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/EXRLoader.js'), "loaders/EXRLoader.js"),
+  "geometries/RoundedBoxGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/RoundedBoxGeometry.js'), "geometries/RoundedBoxGeometry.js"),
+  "utils/BufferGeometryUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/BufferGeometryUtils.js'), "utils/BufferGeometryUtils.js"),
+  "math/SimplexNoise.js": /* @__PURE__ */ __name(() => import('three/addons/math/SimplexNoise.js'), "math/SimplexNoise.js"),
+  "math/ImprovedNoise.js": /* @__PURE__ */ __name(() => import('three/addons/math/ImprovedNoise.js'), "math/ImprovedNoise.js")
+};
+var THREE_ADDONS = Object.keys(ADDONS);
+var NEEDS_INPUT = /(^|\/)(OrbitControls|TrackballControls|FlyControls|FirstPersonControls|PointerLockControls|DragControls|TransformControls|MapControls|ArcballControls)\.js$/;
+function resolveSpecifier(spec) {
+  if (spec === "three") return { kind: "three" };
+  const m = /^three\/(?:addons|examples\/jsm)\/(.+)$/.exec(spec);
+  if (!m) return null;
+  const path = m[1].endsWith(".js") ? m[1] : `${m[1]}.js`;
+  return { kind: "addon", path };
+}
+__name(resolveSpecifier, "resolveSpecifier");
+function unsupportedImportMessage(spec) {
+  const resolved = resolveSpecifier(spec);
+  if (resolved?.kind === "addon" && NEEDS_INPUT.test(resolved.path)) {
+    return `'${spec}' needs pointer input, which a Stave viz doesn't receive. Move the camera in code instead (for example from \`sig\` or the time).`;
+  }
+  return `'${spec}' isn't available in Stave. A three.js sketch can import 'three' and these addons: ${THREE_ADDONS.map((p) => `three/addons/${p}`).join(", ")}.`;
+}
+__name(unsupportedImportMessage, "unsupportedImportMessage");
+var _ThreeImportError = class _ThreeImportError extends Error {
+  constructor(message, line) {
+    super(message);
+    this.line = line;
+    this.name = "ThreeImportError";
+  }
+};
+__name(_ThreeImportError, "ThreeImportError");
+var ThreeImportError = _ThreeImportError;
+var THREE_LINE_OFFSET = 3;
+var PARAMS = ["__env", "__mod", "__import"];
+function isIdent(s) {
+  return /^[A-Za-z_$][\w$]*$/.test(s);
+}
+__name(isIdent, "isIdent");
+function compileThreeSketch(code) {
+  const parsed = parseModule(code);
+  if (!parsed.ok) {
+    return {
+      imports: [],
+      source: "",
+      syntaxError: new VizSyntaxError(parsed.message, parsed.line, parsed.column !== void 0 ? parsed.column + 1 : void 0)
+    };
+  }
+  const ast = parsed.program;
+  const chars = code.split("");
+  const blank = /* @__PURE__ */ __name((start, end) => {
+    for (let i = start; i < end; i++) if (chars[i] !== "\n") chars[i] = " ";
+  }, "blank");
+  const imports = [];
+  const bindings = [];
+  for (const node of ast.body) {
+    if (node.type === "ImportDeclaration") {
+      const index = imports.length;
+      imports.push({ spec: String(node.source.value), line: node.loc.start.line });
+      for (const s of node.specifiers) {
+        if (s.type === "ImportDefaultSpecifier") bindings.push({ module: index, imported: "default", local: s.local.name });
+        else if (s.type === "ImportNamespaceSpecifier") bindings.push({ module: index, imported: "*", local: s.local.name });
+        else {
+          const imported = s.imported.type === "Identifier" ? s.imported.name : String(s.imported.value);
+          bindings.push({ module: index, imported, local: s.local.name });
+        }
+      }
+      blank(node.start, node.end);
+    } else if (node.type === "ExportNamedDeclaration" || node.type === "ExportDefaultDeclaration") {
+      if (node.declaration) blank(node.start, node.declaration.start);
+      else blank(node.start, node.end);
+    } else if (node.type === "ExportAllDeclaration") {
+      blank(node.start, node.end);
+    }
+  }
+  const dynamic = [];
+  const walk5 = /* @__PURE__ */ __name((n) => {
+    if (!n || typeof n.type !== "string") return;
+    if (n.type === "ImportExpression") dynamic.push(n.start);
+    for (const key3 of Object.keys(n)) {
+      const v = n[key3];
+      if (Array.isArray(v)) v.forEach(walk5);
+      else if (v && typeof v === "object" && typeof v.type === "string") walk5(v);
+    }
+  }, "walk");
+  walk5(ast);
+  for (const at of dynamic) {
+    chars[at] = "__import";
+    for (let i = at + 1; i < at + 6; i++) chars[i] = "";
+  }
+  const decls = bindings.map((b) => {
+    const from = `__mod[${b.module}]`;
+    if (b.imported === "*") return `const ${b.local} = ${from};`;
+    const key3 = isIdent(b.imported) ? `.${b.imported}` : `[${JSON.stringify(b.imported)}]`;
+    return `const ${b.local} = ${from}${key3};`;
+  });
+  const head = `with (__env) { return (async () => { 'use strict'; ${decls.join(" ")}`;
+  const source = `${head}
+${chars.join("")}
+})() }`;
+  return { imports, source, syntaxError: null };
+}
+__name(compileThreeSketch, "compileThreeSketch");
+var threePromise = null;
+function loadThree() {
+  threePromise ?? (threePromise = import('three'));
+  return threePromise;
+}
+__name(loadThree, "loadThree");
+async function loadThreeModules(compiled) {
+  for (const imp of compiled.imports) {
+    const r = resolveSpecifier(imp.spec);
+    if (!r || r.kind === "addon" && !ADDONS[r.path]) {
+      throw new ThreeImportError(unsupportedImportMessage(imp.spec), imp.line);
+    }
+  }
+  const THREE = await loadThree();
+  const modules = await Promise.all(
+    compiled.imports.map((imp) => {
+      const r = resolveSpecifier(imp.spec);
+      return r.kind === "three" ? null : ADDONS[r.path]();
+    })
+  );
+  return { THREE, modules };
+}
+__name(loadThreeModules, "loadThreeModules");
+var INPUT_EVENTS = /* @__PURE__ */ new Set([
+  "pointerdown",
+  "pointerup",
+  "pointermove",
+  "pointerenter",
+  "pointerleave",
+  "pointerover",
+  "pointerout",
+  "pointercancel",
+  "mousedown",
+  "mouseup",
+  "mousemove",
+  "mouseenter",
+  "mouseleave",
+  "mouseover",
+  "mouseout",
+  "click",
+  "dblclick",
+  "contextmenu",
+  "wheel",
+  "touchstart",
+  "touchmove",
+  "touchend",
+  "touchcancel",
+  "keydown",
+  "keyup",
+  "keypress"
+]);
+function threeUserLine(err) {
+  const loc = parseStackLocation(err);
+  if (!loc) return void 0;
+  const line = loc.line - THREE_LINE_OFFSET;
+  return line >= 1 ? { line, column: loc.column } : void 0;
+}
+__name(threeUserLine, "threeUserLine");
+function errorOf(e) {
+  return e instanceof Error ? e : new Error(String(e));
+}
+__name(errorOf, "errorOf");
+function runThreeSketch(compiled, loaded, host) {
+  var _a;
+  const BaseRenderer = loaded.THREE.WebGLRenderer;
+  let disposed = false;
+  let topLevelDone = false;
+  let renderedThisFrame = false;
+  const renderers2 = [];
+  const loops = /* @__PURE__ */ new Map();
+  let rafQueue = /* @__PURE__ */ new Map();
+  let rafSeq = 0;
+  const resizeListeners = /* @__PURE__ */ new Set();
+  const seen = /* @__PURE__ */ new Set();
+  const reportOnce = /* @__PURE__ */ __name((level, e, prefix = "") => {
+    const err = errorOf(e);
+    const at = threeUserLine(err);
+    const key3 = `${level}|${err.message}|${at?.line ?? ""}`;
+    if (seen.has(key3)) return;
+    if (seen.size > 64) seen.clear();
+    seen.add(key3);
+    host.report({
+      level,
+      message: prefix + err.message,
+      line: at?.line,
+      column: at?.column,
+      stack: String(err.stack ?? "").split("\n").slice(0, 6).join("\n")
+    });
+  }, "reportOnce");
+  const warnHere = /* @__PURE__ */ __name((message) => reportOnce("warn", new Error(message)), "warnHere");
+  const warnInput = /* @__PURE__ */ __name((type) => warnHere(`'${type}' events don't reach a three.js sketch in Stave (a viz receives no pointer or keyboard input). Move things in code instead.`), "warnInput");
+  const warnDom = /* @__PURE__ */ __name(() => warnHere(`HTML overlays (panels, stats meters, text) aren't shown in Stave: a three.js sketch draws only on its canvas.`), "warnDom");
+  const addListener = /* @__PURE__ */ __name((type, fn) => {
+    if (type === "resize" && typeof fn === "function") resizeListeners.add(fn);
+    else if (INPUT_EVENTS.has(type)) warnInput(type);
+  }, "addListener");
+  const removeListener = /* @__PURE__ */ __name((type, fn) => {
+    if (type === "resize") resizeListeners.delete(fn);
+  }, "removeListener");
+  const canvas = host.canvas;
+  if (!("style" in canvas)) canvas.style = {};
+  const canvasAddListener = canvas.addEventListener;
+  let canvasPatched = false;
+  const _StaveWebGLRenderer = class _StaveWebGLRenderer extends BaseRenderer {
+    constructor(params = {}) {
+      if (disposed) throw new Error("this sketch was stopped");
+      super({ ...params, canvas: host.canvas });
+      const self = this;
+      renderers2.push(self);
+      const render = self.render;
+      self.render = function(scene, camera) {
+        renderedThisFrame = true;
+        return render.call(self, scene, camera);
+      };
+      const setSize = self.setSize;
+      self.setSize = function(w, h) {
+        return setSize.call(self, w, h, false);
+      };
+      self.setAnimationLoop = (cb) => {
+        if (typeof cb === "function") loops.set(self, cb);
+        else loops.delete(self);
+      };
+      if (!canvasPatched && typeof canvasAddListener === "function") {
+        canvasPatched = true;
+        canvas.addEventListener = function(type, ...rest) {
+          if (INPUT_EVENTS.has(type)) warnInput(type);
+          return canvasAddListener.call(canvas, type, ...rest);
+        };
+      }
+    }
+  };
+  __name(_StaveWebGLRenderer, "StaveWebGLRenderer");
+  let StaveWebGLRenderer = _StaveWebGLRenderer;
+  let TextureLoader = loaded.THREE.TextureLoader;
+  if (typeof document === "undefined" && loaded.THREE.ImageBitmapLoader) {
+    const { Loader, Texture, ImageBitmapLoader } = loaded.THREE;
+    TextureLoader = (_a = class extends Loader {
+      load(url, onLoad, onProgress, onError) {
+        const texture = new Texture();
+        const loader2 = new ImageBitmapLoader(this.manager);
+        loader2.setOptions({ imageOrientation: "flipY" });
+        loader2.setCrossOrigin(this.crossOrigin);
+        loader2.setPath(this.path);
+        loader2.load(
+          url,
+          (bitmap) => {
+            texture.image = bitmap;
+            texture.flipY = false;
+            texture.needsUpdate = true;
+            onLoad?.(texture);
+          },
+          onProgress,
+          onError
+        );
+        return texture;
+      }
+    }, __name(_a, "StaveTextureLoader"), _a);
+  }
+  const THREE = { ...loaded.THREE, WebGLRenderer: StaveWebGLRenderer, TextureLoader };
+  const modules = loaded.modules.map((m) => m === null ? THREE : m);
+  const requestAnimationFrame2 = /* @__PURE__ */ __name((cb) => {
+    const id = ++rafSeq;
+    if (!disposed && typeof cb === "function") rafQueue.set(id, cb);
+    return id;
+  }, "requestAnimationFrame");
+  const cancelAnimationFrame2 = /* @__PURE__ */ __name((id) => {
+    rafQueue.delete(id);
+  }, "cancelAnimationFrame");
+  const stave = {
+    get width() {
+      return host.size().w;
+    },
+    get height() {
+      return host.size().h;
+    },
+    get options() {
+      return host.options();
+    },
+    get sig() {
+      return host.uniforms().sig;
+    }
+  };
+  const stubElement = /* @__PURE__ */ __name(() => {
+    warnDom();
+    const el = {
+      style: {},
+      dataset: {},
+      classList: { add() {
+      }, remove() {
+      }, toggle() {
+      }, contains: /* @__PURE__ */ __name(() => false, "contains") },
+      appendChild: /* @__PURE__ */ __name((c) => c, "appendChild"),
+      removeChild: /* @__PURE__ */ __name((c) => c, "removeChild"),
+      remove() {
+      },
+      setAttribute() {
+      },
+      getAttribute: /* @__PURE__ */ __name(() => null, "getAttribute"),
+      addEventListener: addListener,
+      removeEventListener: removeListener,
+      textContent: "",
+      innerHTML: ""
+    };
+    return el;
+  }, "stubElement");
+  const createElement8 = /* @__PURE__ */ __name((tag) => String(tag).toLowerCase() === "canvas" ? host.createCanvas() : stubElement(), "createElement");
+  const body = {
+    style: {},
+    appendChild: /* @__PURE__ */ __name((c) => c, "appendChild"),
+    removeChild: /* @__PURE__ */ __name((c) => c, "removeChild"),
+    addEventListener: addListener,
+    removeEventListener: removeListener
+  };
+  const documentShim = {
+    body,
+    documentElement: body,
+    createElement: createElement8,
+    createElementNS: /* @__PURE__ */ __name((_ns, tag) => createElement8(tag), "createElementNS"),
+    getElementById: /* @__PURE__ */ __name(() => null, "getElementById"),
+    querySelector: /* @__PURE__ */ __name(() => null, "querySelector"),
+    addEventListener: addListener,
+    removeEventListener: removeListener
+  };
+  const own = {};
+  Object.defineProperties(own, {
+    innerWidth: { get: /* @__PURE__ */ __name(() => host.size().w, "get"), enumerable: true },
+    innerHeight: { get: /* @__PURE__ */ __name(() => host.size().h, "get"), enumerable: true },
+    devicePixelRatio: { get: /* @__PURE__ */ __name(() => host.dpr(), "get"), enumerable: true }
+  });
+  Object.assign(own, {
+    addEventListener: addListener,
+    removeEventListener: removeListener,
+    requestAnimationFrame: requestAnimationFrame2,
+    cancelAnimationFrame: cancelAnimationFrame2,
+    document: documentShim
+  });
+  const boundCache = /* @__PURE__ */ new Map();
+  const windowShim = new Proxy(own, {
+    get(t, key3) {
+      if (key3 in t) return t[key3];
+      if (key3 === "window" || key3 === "self" || key3 === "globalThis") return windowShim;
+      const v = globalThis[key3];
+      if (typeof v !== "function") return v;
+      if (/^[A-Z]/.test(String(key3))) return v;
+      if (!boundCache.has(key3)) boundCache.set(key3, v.bind(globalThis));
+      return boundCache.get(key3);
+    },
+    has(t, key3) {
+      return key3 in t || key3 in globalThis;
+    }
+  });
+  const env = {};
+  Object.defineProperties(env, {
+    innerWidth: { get: /* @__PURE__ */ __name(() => host.size().w, "get") },
+    innerHeight: { get: /* @__PURE__ */ __name(() => host.size().h, "get") },
+    devicePixelRatio: { get: /* @__PURE__ */ __name(() => host.dpr(), "get") },
+    sig: { get: /* @__PURE__ */ __name(() => host.uniforms().sig, "get") }
+  });
+  Object.assign(env, {
+    stave,
+    window: windowShim,
+    self: windowShim,
+    document: documentShim,
+    requestAnimationFrame: requestAnimationFrame2,
+    cancelAnimationFrame: cancelAnimationFrame2,
+    addEventListener: addListener,
+    removeEventListener: removeListener
+  });
+  const importDynamic = /* @__PURE__ */ __name(async (spec) => {
+    const r = resolveSpecifier(String(spec));
+    if (r?.kind === "three") return THREE;
+    if (r?.kind === "addon" && ADDONS[r.path]) return ADDONS[r.path]();
+    throw new ThreeImportError(unsupportedImportMessage(String(spec)));
+  }, "importDynamic");
+  let done;
+  try {
+    const fn = new Function(...PARAMS, compiled.source);
+    done = Promise.resolve(fn(env, modules, importDynamic)).then(
+      () => {
+        topLevelDone = true;
+        return { error: null };
+      },
+      (e) => {
+        topLevelDone = true;
+        if (!disposed) reportOnce("error", e);
+        return { error: errorOf(e) };
+      }
+    );
+  } catch (e) {
+    topLevelDone = true;
+    const err = errorOf(e);
+    host.report({ level: "error", message: err.message });
+    done = Promise.resolve({ error: err });
+  }
+  return {
+    done,
+    ready: /* @__PURE__ */ __name(() => topLevelDone || loops.size > 0 || rafQueue.size > 0, "ready"),
+    rendered: /* @__PURE__ */ __name(() => renderedThisFrame, "rendered"),
+    frame(timeMs) {
+      if (disposed) return;
+      renderedThisFrame = false;
+      const queued = rafQueue;
+      rafQueue = /* @__PURE__ */ new Map();
+      for (const cb of queued.values()) {
+        try {
+          cb(timeMs);
+        } catch (e) {
+          reportOnce("error", e);
+        }
+      }
+      for (const cb of [...loops.values()]) {
+        try {
+          cb(timeMs);
+        } catch (e) {
+          reportOnce("error", e);
+        }
+      }
+    },
+    resize() {
+      if (disposed) return;
+      if (resizeListeners.size > 0) {
+        const ev = { type: "resize", target: windowShim };
+        for (const fn of [...resizeListeners]) {
+          try {
+            fn(ev);
+          } catch (e) {
+            reportOnce("error", e);
+          }
+        }
+        return;
+      }
+      const { w, h } = host.size();
+      for (const r of renderers2) {
+        try {
+          r.setSize(w, h, false);
+        } catch {
+        }
+      }
+    },
+    gl() {
+      try {
+        return renderers2[0]?.getContext?.() ?? null;
+      } catch {
+        return null;
+      }
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      loops.clear();
+      rafQueue.clear();
+      resizeListeners.clear();
+      for (const r of renderers2) {
+        try {
+          r.dispose();
+        } catch {
+        }
+        try {
+          const gl = r.getContext?.();
+          if (gl && !gl.isContextLost?.()) r.forceContextLoss();
+        } catch {
+        }
+      }
+      renderers2.length = 0;
+      if (canvasPatched) {
+        try {
+          delete canvas.addEventListener;
+        } catch {
+        }
+      }
+    }
+  };
+}
+__name(runThreeSketch, "runThreeSketch");
+
+// src/visualizers/renderers/ThreeVizRenderer.ts
+var threePerfSeq = 0;
+var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
+  /** `code` = the sketch; `name` = its workspace path, for error attribution. */
+  constructor(code, name = "") {
+    super();
+    this.code = code;
+    this.name = name;
+    this.canvas = null;
+    this.run = null;
+    this.rafId = null;
+    this.paused = false;
+    this.destroyed = false;
+    this.size = { w: 400, h: 300 };
+    this.perfId = `three#${++threePerfSeq}`;
+    this.bus = new SignalBus();
+    this.hapStream = null;
+    this.busHapHandler = null;
+    this.loop = /* @__PURE__ */ __name((now2) => {
+      if (this.paused || this.destroyed || !this.run) {
+        this.rafId = null;
+        return;
+      }
+      perf.frame(this.perfId);
+      perf.begin("three.draw");
+      try {
+        if (this.bus) {
+          this.bus.tick();
+          this.bus.refreshActive(this.bus.now());
+          this.bus.readAudio();
+        }
+        this.run.frame(now2);
+      } finally {
+        perf.end("three.draw");
+      }
+      this.rafId = requestAnimationFrame(this.loop);
+    }, "loop");
+    this.uniforms = buildStaveUniforms(this.bus);
+  }
+  onMount(container2, components, size, onError) {
+    perf.gauge("viz.three", 1);
+    this.size = { w: size.w, h: size.h };
+    this.bus?.bindScheduler(components.queryable?.scheduler, components.queryable?.trackSchedulers);
+    this.bus?.bindAnalysers(components.audio?.analyser, components.audio?.trackAnalysers);
+    this.bus?.setAliases(currentVizSignalAliases());
+    this.hapStream = components.streaming?.hapStream ?? null;
+    if (this.hapStream && this.bus) {
+      this.busHapHandler = (e) => this.bus?.bump(e);
+      this.hapStream.on(this.busHapHandler);
+    }
+    const canvas = document.createElement("canvas");
+    const dpr = effectiveDpr();
+    canvas.width = Math.max(1, Math.round(size.w * dpr));
+    canvas.height = Math.max(1, Math.round(size.h * dpr));
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    canvas.style.display = "block";
+    container2.appendChild(canvas);
+    this.canvas = canvas;
+    void this.start(onError);
+  }
+  /** A sketch that can't start: one Console row on its line, then the host's onError. */
+  fail(err, line, onError) {
+    emitLog({ level: "error", runtime: "three", source: this.name || void 0, message: err.message, line });
+    markVizErrorReported(err);
+    onError(err);
+  }
+  async start(onError) {
+    const compiled = compileThreeSketch(this.code);
+    if (compiled.syntaxError) {
+      this.fail(compiled.syntaxError, compiled.syntaxError.line, onError);
+      return;
+    }
+    let loaded;
+    try {
+      loaded = await loadThreeModules(compiled);
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      this.fail(err, e instanceof ThreeImportError ? e.line : void 0, onError);
+      return;
+    }
+    if (this.destroyed || !this.canvas) return;
+    this.run = runThreeSketch(compiled, loaded, {
+      canvas: this.canvas,
+      size: /* @__PURE__ */ __name(() => this.size, "size"),
+      dpr: effectiveDpr,
+      uniforms: /* @__PURE__ */ __name(() => this.uniforms, "uniforms"),
+      options: /* @__PURE__ */ __name(() => this.optionsRef.current ?? {}, "options"),
+      createCanvas: /* @__PURE__ */ __name(() => document.createElement("canvas"), "createCanvas"),
+      // The core places each problem on its line; runtime and file come from here.
+      report: /* @__PURE__ */ __name((entry) => emitLog({ ...entry, runtime: "three", source: this.name || void 0 }), "report")
+    });
+    void this.run.done.then(({ error }) => {
+      if (error && !this.destroyed) {
+        markVizErrorReported(error);
+        onError(error);
+      }
+    });
+    if (!this.paused && !this.destroyed && this.rafId == null) {
+      this.rafId = requestAnimationFrame(this.loop);
+    }
+  }
+  onUpdate(components) {
+    this.bus?.bindScheduler(components.queryable?.scheduler ?? null, components.queryable?.trackSchedulers);
+    this.bus?.bindAnalysers(components.audio?.analyser ?? null, components.audio?.trackAnalysers);
+  }
+  resize(w, h) {
+    this.size = { w, h };
+    this.run?.resize();
+  }
+  pause() {
+    this.paused = true;
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+  resume() {
+    this.paused = false;
+    if (this.rafId == null && !this.destroyed && this.run) {
+      this.rafId = requestAnimationFrame(this.loop);
+    }
+  }
+  destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    perf.gauge("viz.three", -1);
+    perf.dropFrames(this.perfId);
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.run?.dispose();
+    this.run = null;
+    this.canvas?.remove();
+    this.canvas = null;
+    if (this.hapStream && this.busHapHandler) {
+      this.hapStream.off(this.busHapHandler);
+      this.busHapHandler = null;
+    }
+    this.hapStream = null;
+    this.bus = null;
+  }
+};
+__name(_ThreeVizRenderer, "ThreeVizRenderer");
+var ThreeVizRenderer = _ThreeVizRenderer;
+
+// src/visualizers/renderers/makeThreeRenderer.ts
+function makeThreeRenderer(code, name) {
+  return shouldUseWorkerRenderer() ? new FallbackVizRenderer(
+    () => new WorkerVizRenderer("three", code, name),
+    () => new ThreeVizRenderer(code, name)
+  ) : new ThreeVizRenderer(code, name);
+}
+__name(makeThreeRenderer, "makeThreeRenderer");
+
 // src/visualizers/vizCompiler.ts
 function compilePreset(preset) {
   const { id, name, renderer, code, requires } = preset;
@@ -56398,6 +57757,18 @@ function compilePreset(preset) {
       // the main-thread GLSLVizRenderer. A `.glsl` sketch is the wrapped fragment
       // source — a plain transferable string, so it crosses to the worker cleanly.
       factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(code, source), "factory")
+    };
+  }
+  if (renderer === "three") {
+    return {
+      id,
+      label: name,
+      renderer: "three",
+      requires,
+      ...preset.nativeSize ? { nativeSize: preset.nativeSize } : {},
+      // #2516: a plain three.js sketch, worker-offloaded with a main-thread
+      // fallback (makeThreeRenderer), like GLSL.
+      factory: /* @__PURE__ */ __name(() => makeThreeRenderer(code, source), "factory")
     };
   }
   if (renderer === "p5") {
@@ -56648,7 +58019,7 @@ __name(warmMonaco, "warmMonaco");
 
 // src/visualEdit/mixer/purgeLegacyMasterGain.ts
 var KEY_PREFIX2 = "stave:mixer.master:";
-function safeLocalStorage7() {
+function safeLocalStorage8() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -56657,8 +58028,8 @@ function safeLocalStorage7() {
     return null;
   }
 }
-__name(safeLocalStorage7, "safeLocalStorage");
-function purgeLegacyMasterGain(storage = safeLocalStorage7()) {
+__name(safeLocalStorage8, "safeLocalStorage");
+function purgeLegacyMasterGain(storage = safeLocalStorage8()) {
   if (!storage) return 0;
   try {
     const stale = [];
@@ -56938,8 +58309,8 @@ var inFlight = /* @__PURE__ */ new Map();
 async function resolveAsset(blobHash) {
   const cached2 = urlCache.get(blobHash);
   if (cached2) return cached2;
-  const pending = inFlight.get(blobHash);
-  if (pending) return pending;
+  const pending2 = inFlight.get(blobHash);
+  if (pending2) return pending2;
   const work = (async () => {
     const blob = await getAsset(blobHash);
     if (!blob) return null;
@@ -57013,10 +58384,10 @@ __name(importAsset, "importAsset");
 
 // src/workspace/assetDoc.ts
 var subscribers = /* @__PURE__ */ new Set();
-function notify5() {
+function notify6() {
   for (const cb of Array.from(subscribers)) cb();
 }
-__name(notify5, "notify");
+__name(notify6, "notify");
 function getAssetsMap() {
   return ensureDoc().getMap("assets");
 }
@@ -57025,7 +58396,7 @@ var wiredAssetsMap = null;
 function ensureAssetsObserver() {
   const current9 = getAssetsMap();
   if (wiredAssetsMap === current9) return;
-  current9.observe(() => notify5());
+  current9.observe(() => notify6());
   wiredAssetsMap = current9;
 }
 __name(ensureAssetsObserver, "ensureAssetsObserver");
@@ -58223,7 +59594,8 @@ var SONICPI_RUNTIME = {
 var KIND_LABEL2 = {
   p5: "p5",
   hydra: "hydra",
-  glsl: "glsl"
+  glsl: "glsl",
+  three: "three.js"
 };
 var PAINT_INTERVAL_MS = 1e3 / 12;
 var SPARK2 = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588";
@@ -58762,15 +60134,31 @@ function VizEditorChrome({
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = React33.useState({
-    kind: "default"
-  });
+  const [selectedSource, setSelectedSource] = React33.useState(
+    () => getVizSourceChoice(file.id)
+  );
+  React33.useEffect(() => {
+    setSelectedSource(getVizSourceChoice(file.id));
+    return onVizSourceChoiceChange((id, ref) => {
+      if (id === file.id) setSelectedSource(ref);
+    });
+  }, [file.id]);
+  const [soundWaiting, setSoundWaiting] = React33.useState(
+    () => isWaitingForGesture(file.id)
+  );
+  React33.useEffect(() => {
+    setSoundWaiting(isWaitingForGesture(file.id));
+    return onGestureWaitChange(() => setSoundWaiting(isWaitingForGesture(file.id)));
+  }, [file.id]);
   const handleSourceChange = React33.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
       const nextBuiltin = next.kind === "file" ? findBuiltinExampleSource(next.fileId) : void 0;
-      setSelectedSource(next);
+      setVizSourceChoice(file.id, next);
+      if (isBackground && onBackdropSourceChange) {
+        onBackdropSourceChange(next);
+      }
       const previewingAnywhere = isBackground || previewOpen;
       if (previewingAnywhere) {
         if (nextBuiltin && !previewPaused) {
@@ -58783,11 +60171,9 @@ function VizEditorChrome({
       if (previewOpen && onChangePreviewSource) {
         onChangePreviewSource(next);
       }
-      if (isBackground && onBackdropSourceChange) {
-        onBackdropSourceChange(next);
-      }
     },
     [
+      file.id,
       isBackground,
       previewOpen,
       previewPaused,
@@ -58818,8 +60204,8 @@ function VizEditorChrome({
       if (previewMode === "backdrop") onToggleBackground();
       if (next === "side") openSidePreview();
       if (next === "backdrop") {
-        startSelectedBuiltin();
         onToggleBackground(selectedSource);
+        startSelectedBuiltin();
       }
     },
     [
@@ -58836,8 +60222,8 @@ function VizEditorChrome({
   const buttonTitle = buttonState === "running" ? "Pause this viz (side tab or backdrop)" : buttonState === "paused" ? "Resume this viz" : `Play this viz as ${placementPref === "backdrop" ? "backdrop" : "side preview"}`;
   const activatePreferred = React33.useCallback(() => {
     if (placementPref === "backdrop") {
-      startSelectedBuiltin();
       onToggleBackground(selectedSource);
+      startSelectedBuiltin();
     } else {
       openSidePreview();
     }
@@ -58935,6 +60321,22 @@ function VizEditorChrome({
               children: "\u2699"
             }
           ),
+          soundWaiting && /* @__PURE__ */ jsxRuntime.jsx(
+            "span",
+            {
+              "data-testid": "viz-chrome-sound-waiting",
+              title: "Browsers only play sound after you interact with the page. Its sound starts on your first click or key press.",
+              style: {
+                padding: "3px 8px",
+                borderRadius: 3,
+                fontSize: 10,
+                color: "var(--foreground-muted)",
+                border: "1px dashed var(--border)",
+                userSelect: "none"
+              },
+              children: "\u{1F507} sound starts on your first click"
+            }
+          ),
           /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1 } })
         ]
       }
@@ -58962,6 +60364,66 @@ function VizEditorChrome({
   ] });
 }
 __name(VizEditorChrome, "VizEditorChrome");
+
+// src/workspace/preview/codeBackdropOptions.ts
+var LEGACY = "";
+var slots = /* @__PURE__ */ new Map();
+var listeners21 = /* @__PURE__ */ new Set();
+var version = 0;
+function sameOptions(a, b) {
+  if (a === b) return true;
+  if (!a || !b || a.fileId !== b.fileId) return false;
+  try {
+    return JSON.stringify(a.options) === JSON.stringify(b.options);
+  } catch {
+    return false;
+  }
+}
+__name(sameOptions, "sameOptions");
+function setCodeBackdropOptions(next, patternFileId) {
+  const key3 = patternFileId ?? LEGACY;
+  if (sameOptions(slots.get(key3) ?? null, next)) return;
+  if (next) slots.set(key3, next);
+  else slots.delete(key3);
+  version++;
+  for (const l of [...listeners21]) l();
+}
+__name(setCodeBackdropOptions, "setCodeBackdropOptions");
+function retainCodeBackdropOptions(openPatternFileIds) {
+  const keep = new Set(openPatternFileIds);
+  let dropped = false;
+  for (const key3 of [...slots.keys()]) {
+    if (key3 === LEGACY || keep.has(key3)) continue;
+    slots.delete(key3);
+    dropped = true;
+  }
+  if (!dropped) return;
+  version++;
+  for (const l of [...listeners21]) l();
+}
+__name(retainCodeBackdropOptions, "retainCodeBackdropOptions");
+function getCodeBackdropOptions(patternFileId) {
+  return slots.get(patternFileId ?? LEGACY) ?? null;
+}
+__name(getCodeBackdropOptions, "getCodeBackdropOptions");
+function getCodeBackdropOptionsVersion() {
+  return version;
+}
+__name(getCodeBackdropOptionsVersion, "getCodeBackdropOptionsVersion");
+function subscribeCodeBackdropOptions(listener) {
+  listeners21.add(listener);
+  return () => {
+    listeners21.delete(listener);
+  };
+}
+__name(subscribeCodeBackdropOptions, "subscribeCodeBackdropOptions");
+function backdropOptionsFor(owner, vizFileId) {
+  if (owner === null) return { codeOptions: null, busOptions: false };
+  const slot = getCodeBackdropOptions(owner ?? void 0);
+  const codeOptions = slot && slot.fileId === vizFileId ? slot.options : null;
+  return { codeOptions, busOptions: owner === void 0 };
+}
+__name(backdropOptionsFor, "backdropOptionsFor");
 function createCompiledVizProvider(opts) {
   return {
     extensions: opts.extensions,
@@ -58981,7 +60443,9 @@ function createCompiledVizProvider(opts) {
           audioSource: ctx.audioSource,
           hidden: ctx.hidden,
           paused: ctx.paused ?? false,
-          fileId: ctx.file.id
+          fileId: ctx.file.id,
+          backdrop: ctx.backdrop ?? false,
+          backdropOwner: ctx.backdropOwner
         }
       );
     }, "render"),
@@ -58992,7 +60456,13 @@ function createCompiledVizProvider(opts) {
 }
 __name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
-  const { file, rendererType, audioSource, hidden, paused, fileId } = props;
+  const { file, rendererType, audioSource, hidden, paused, fileId, backdrop, backdropOwner } = props;
+  const optionsVersion = React33.useSyncExternalStore(subscribeCodeBackdropOptions, getCodeBackdropOptionsVersion);
+  const { codeOptions, busOptions } = React33.useMemo(
+    () => backdrop ? backdropOptionsFor(backdropOwner, fileId) : { codeOptions: null, busOptions: true },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [backdrop, backdropOwner, fileId, optionsVersion]
+  );
   const { descriptor, compileError } = React33.useMemo(() => {
     try {
       const preset = {
@@ -59058,11 +60528,14 @@ function CompiledVizMount(props) {
     if (audioSource?.inlineViz) {
       bag.inlineViz = audioSource.inlineViz;
     }
-    if (audioSource?.inlineViz?.backdropRequest?.options) {
+    if (busOptions && audioSource?.inlineViz?.backdropRequest?.options) {
       bag.options = audioSource.inlineViz.backdropRequest.options;
     }
+    if (codeOptions) {
+      bag.options = codeOptions;
+    }
     return bag;
-  }, [audioSource]);
+  }, [audioSource, codeOptions, busOptions]);
   React33.useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;
@@ -59222,6 +60695,13 @@ var GLSL_VIZ = createCompiledVizProvider({
   extensions: ["glsl"],
   label: "GLSL Visualization",
   renderer: "glsl"
+});
+
+// src/workspace/preview/threeViz.tsx
+var THREE_VIZ = createCompiledVizProvider({
+  extensions: ["three"],
+  label: "three.js Visualization",
+  renderer: "three"
 });
 
 // src/workspace/preview/namedVizBridge.ts
@@ -59573,7 +61053,8 @@ function shellStateKeyFor(projectId) {
   return `${SHELL_STATE_KEY_PREFIX}${projectId}:state`;
 }
 __name(shellStateKeyFor, "shellStateKeyFor");
-function loadShellState(projectId, validFileIds) {
+var NO_APP_KEYS = /* @__PURE__ */ new Set();
+function loadShellState(projectId, validFileIds, validAppKeys = NO_APP_KEYS) {
   if (typeof window === "undefined") return null;
   let raw = null;
   try {
@@ -59588,10 +61069,10 @@ function loadShellState(projectId, validFileIds) {
   } catch {
     return null;
   }
-  return validatePersistedState(parsed, validFileIds);
+  return validatePersistedState(parsed, validFileIds, validAppKeys);
 }
 __name(loadShellState, "loadShellState");
-function validatePersistedState(input, validFileIds) {
+function validatePersistedState(input, validFileIds, validAppKeys = NO_APP_KEYS) {
   if (!input || typeof input !== "object") return null;
   const s = input;
   if (s.version !== SHELL_STATE_VERSION) return null;
@@ -59599,6 +61080,7 @@ function validatePersistedState(input, validFileIds) {
   if (!Array.isArray(s.layout)) return null;
   if (typeof s.activeGroupId !== "string") return null;
   const cleanedGroups = {};
+  const seenAppKeys = /* @__PURE__ */ new Set();
   for (const [gid, rawGroup] of Object.entries(s.groups)) {
     const g = rawGroup;
     if (!g || typeof g !== "object" || g.id !== gid) continue;
@@ -59606,6 +61088,19 @@ function validatePersistedState(input, validFileIds) {
     const cleanedTabs = [];
     for (const t of inTabs) {
       if (!t || typeof t !== "object") continue;
+      if (t.kind === "app") {
+        const at = t;
+        if (typeof at.id !== "string" || typeof at.appKey !== "string") continue;
+        if (!validAppKeys.has(at.appKey) || seenAppKeys.has(at.appKey)) continue;
+        seenAppKeys.add(at.appKey);
+        cleanedTabs.push({
+          kind: "app",
+          id: at.id,
+          appKey: at.appKey,
+          ...at.state !== void 0 ? { state: at.state } : {}
+        });
+        continue;
+      }
       if (t.kind !== "editor") continue;
       const tt = t;
       if (typeof tt.id !== "string" || typeof tt.fileId !== "string") continue;
@@ -59659,10 +61154,19 @@ __name(validatePersistedState, "validatePersistedState");
 function serializeShellState(snapshot) {
   const groups = {};
   for (const [gid, g] of snapshot.groups.entries()) {
-    const editorTabs = [];
+    const keptTabs = [];
     for (const t of g.tabs) {
       if (!isPersistableTab(t)) continue;
-      editorTabs.push({
+      if (t.kind === "app") {
+        keptTabs.push({
+          kind: "app",
+          id: t.id,
+          appKey: t.appKey,
+          ...t.state !== void 0 ? { state: t.state } : {}
+        });
+        continue;
+      }
+      keptTabs.push({
         kind: "editor",
         id: t.id,
         fileId: t.fileId,
@@ -59670,12 +61174,12 @@ function serializeShellState(snapshot) {
       });
     }
     let activeTabId = g.activeTabId;
-    if (activeTabId !== null && !editorTabs.some((t) => t.id === activeTabId)) {
-      activeTabId = editorTabs.length > 0 ? editorTabs[0].id : null;
+    if (activeTabId !== null && !keptTabs.some((t) => t.id === activeTabId)) {
+      activeTabId = keptTabs.length > 0 ? keptTabs[0].id : null;
     }
     groups[gid] = {
       id: gid,
-      tabs: editorTabs,
+      tabs: keptTabs,
       activeTabId,
       ...g.backgroundFileId !== void 0 ? { backgroundFileId: g.backgroundFileId } : {},
       ...g.backdropOpacity !== void 0 ? { backdropOpacity: g.backdropOpacity } : {},
@@ -59728,12 +61232,19 @@ function hydrateSnapshot(persisted) {
   for (const [gid, pg] of Object.entries(persisted.groups)) {
     groups.set(gid, {
       id: pg.id,
-      tabs: pg.tabs.map((t) => ({
-        kind: "editor",
-        id: t.id,
-        fileId: t.fileId,
-        ...t.preview === true ? { preview: true } : {}
-      })),
+      tabs: pg.tabs.map(
+        (t) => t.kind === "app" ? {
+          kind: "app",
+          id: t.id,
+          appKey: t.appKey,
+          ...t.state !== void 0 ? { state: t.state } : {}
+        } : {
+          kind: "editor",
+          id: t.id,
+          fileId: t.fileId,
+          ...t.preview === true ? { preview: true } : {}
+        }
+      ),
       activeTabId: pg.activeTabId,
       ...pg.backgroundFileId !== void 0 ? { backgroundFileId: pg.backgroundFileId } : {},
       ...pg.backdropOpacity !== void 0 ? { backdropOpacity: pg.backdropOpacity } : {},
@@ -59748,7 +61259,7 @@ function hydrateSnapshot(persisted) {
 }
 __name(hydrateSnapshot, "hydrateSnapshot");
 function isPersistableTab(t) {
-  return t.kind === "editor";
+  return t.kind === "editor" || t.kind === "app";
 }
 __name(isPersistableTab, "isPersistableTab");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
@@ -59850,6 +61361,8 @@ exports.StorageFullError = StorageFullError;
 exports.StrudelEditor = StrudelEditor;
 exports.StrudelEngine = StrudelEngine;
 exports.TAKE_NAME_PREFIX = TAKE_NAME_PREFIX;
+exports.THREE_ADDONS = THREE_ADDONS;
+exports.THREE_VIZ = THREE_VIZ;
 exports.TRACK_PALETTE_32 = TRACK_PALETTE_32;
 exports.UI_ICON_SIZE_VAR = UI_ICON_SIZE_VAR;
 exports.VELOCITY_DRAG_KEY = VELOCITY_DRAG_KEY;
@@ -59916,6 +61429,7 @@ exports.collectUnusedSounds = collectUnusedSounds;
 exports.commitToFile = commitToFile;
 exports.commitWorkspace = commitWorkspace;
 exports.compilePreset = compilePreset;
+exports.compileThreeSketch = compileThreeSketch;
 exports.computeSections = computeSections;
 exports.computeSectionsInWindow = computeSectionsInWindow;
 exports.countArrangeSectionArms = countSectionArms;
@@ -59981,6 +61495,7 @@ exports.getBottomPanelTab = getBottomPanelTab;
 exports.getCaptureBuffer = getCaptureBuffer;
 exports.getCaptureCapacity = getCaptureCapacity;
 exports.getChildOrder = getChildOrder;
+exports.getCodeBackdropOptions = getCodeBackdropOptions;
 exports.getCommit = getCommit;
 exports.getCurrentBranch = getCurrentBranch;
 exports.getCurrentHistory = getCurrentHistory;
@@ -60179,6 +61694,7 @@ exports.publishIRSnapshot = publishIRSnapshot;
 exports.purgeLegacyMasterGain = purgeLegacyMasterGain;
 exports.putAsset = putAsset;
 exports.rateEditable = rateEditable;
+exports.readCodeViz = readCodeViz;
 exports.readCurrentCycle = readCurrentCycle;
 exports.readMasterGain = readMasterGain;
 exports.readMasterMute = readMasterMute;
@@ -60187,6 +61703,7 @@ exports.readPersistedActiveTabId = readPersistedActiveTabId;
 exports.readPersistedOpen = readPersistedOpen;
 exports.readRegion = readRegion;
 exports.readRegionControl = readRegionControl;
+exports.readVizOptionsLiteral = readVizOptionsLiteral;
 exports.redo = redo;
 exports.regionTrimEdit = regionTrimEdit;
 exports.registerAsset = registerAsset;
@@ -60220,9 +61737,11 @@ exports.resolveAliasesForEngine = resolveAliasesForEngine;
 exports.resolveAsset = resolveAsset;
 exports.resolveDescriptor = resolveDescriptor;
 exports.resolveSampleUrl = resolveSampleUrl;
+exports.resolveVizOptions = resolveVizOptions;
 exports.restoreFileToCommit = restoreFileToCommit;
 exports.restoreProject = restoreProject;
 exports.restoreSnapshot = restoreSnapshot;
+exports.retainCodeBackdropOptions = retainCodeBackdropOptions;
 exports.retryDocSave = retryDocSave;
 exports.revealLineInFile = revealLineInFile;
 exports.revealOffsetInFile = revealOffsetInFile;
@@ -60253,6 +61772,7 @@ exports.setBottomPanelActiveTab = setBottomPanelActiveTab;
 exports.setBottomPanelOpen = setBottomPanelOpen;
 exports.setCaptureCapacity = setCaptureCapacity;
 exports.setChildOrder = setChildOrder;
+exports.setCodeBackdropOptions = setCodeBackdropOptions;
 exports.setContent = setContent;
 exports.setCurrentCycleAccessor = setCurrentCycleAccessor;
 exports.setDrumKitAccessor = setDrumKitAccessor;

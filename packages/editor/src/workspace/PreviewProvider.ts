@@ -128,6 +128,10 @@ export interface PreviewContext {
    * `PreviewContext` sits behind a pause-able chrome.
    */
   readonly paused?: boolean
+  /** The mount is a pane background (see `PreviewViewProps.backdrop`). */
+  readonly backdrop?: boolean
+  /** #2423 — whose background this is (see `PreviewViewProps.backdropOwner`). */
+  readonly backdropOwner?: string | null
 }
 
 /**

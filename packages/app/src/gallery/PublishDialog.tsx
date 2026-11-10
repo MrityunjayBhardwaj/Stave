@@ -5,7 +5,7 @@ import type { ProjectMeta } from "@stave/editor";
 
 import { showToast } from "../dialogs/host";
 import { collectManifest } from "../shareProject";
-import { gallerySignIn, useGallerySession, type GallerySessionState } from "./session";
+import { gallerySignIn, loadGallerySession, useGallerySession, type GallerySessionState } from "./session";
 import {
   buildPublishRequest,
   filesForKind,
@@ -13,7 +13,10 @@ import {
   publishAndRemember,
   type PublishForm,
 } from "./publish";
+import { shownName } from "./reservedNames";
 import { captureLiveVizThumbnail, type CaptureResult } from "./thumbnail";
+import { recordEntry } from "./recordAtPublish";
+import { fileRole } from "./galleryModel";
 import { TurnstileWidget, turnstileSiteKey } from "./TurnstileWidget";
 import {
   GALLERY_KINDS,
@@ -75,7 +78,11 @@ function SignInGate({ state }: { state: GallerySessionState }) {
       <p style={styles.gateText}>Sign in to publish to the gallery.</p>
       <p style={styles.note}>
         Your work is shown under your profile, with the account you sign in with. We keep your email private and use
-        it only to contact you about what you publish. You&apos;ll come straight back here afterwards.
+        it only to contact you about what you publish.{" "}
+        <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }} data-testid="gallery-publish-privacy">
+          Privacy policy
+        </a>
+        . You&apos;ll come straight back here afterwards.
       </p>
       <div style={styles.providers}>
         {s.providers.map((p) => (
@@ -94,12 +101,15 @@ function SignInGate({ state }: { state: GallerySessionState }) {
   );
 }
 
-const KIND_LABEL: Record<GalleryKind, string> = { project: "Project", music: "Music", viz: "Viz" };
+const KIND_LABEL: Record<GalleryKind, string> = { project: "Project", music: "Music", viz: "Visual" };
 const KIND_NOTE: Record<GalleryKind, string> = {
   project: "Every file in this project.",
   music: "One pattern file.",
   viz: "One visual (Hydra, p5 or GLSL) file.",
 };
+
+/** How long recording may take before publishing goes ahead without it. */
+const RECORD_TIMEOUT_MS = 10_000;
 
 interface PublishDialogProps {
   open: boolean;
@@ -122,6 +132,13 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
     tags: "",
   });
   const [thumb, setThumb] = useState<Thumb>({ state: "capturing" });
+  // #2488 — a project's cover: a pattern (its recorded timeline) or a visual (its picture).
+  const [coverId, setCoverId] = useState<string | null>(null);
+  // #2487 — while the patterns are asked what they play, before the send.
+  const [recording, setRecording] = useState(false);
+  // read at opening only: the cover starts on the file in front then, not on every later switch
+  const activeFileRef = useRef(activeFileId);
+  activeFileRef.current = activeFileId;
   const [includeThumb, setIncludeThumb] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
@@ -142,6 +159,10 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
     if (!open) return;
     const m = collectManifest(project) as GalleryManifest;
     setManifest(m);
+    // the file in front, when it can be a cover; else the first pattern, else the first visual
+    const covers = m.files.filter((f) => fileRole(f.path) !== "file");
+    const front = covers.find((f) => f.id === activeFileRef.current);
+    setCoverId((front ?? covers.find((f) => fileRole(f.path) === "pattern") ?? covers[0])?.id ?? null);
     setForm({
       title: project.name.slice(0, MAX_TITLE_CHARS),
       kind: "project",
@@ -197,7 +218,19 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
     setErrors([]);
     setSending(true);
     try {
-      const { link } = await publishAndRemember(built.request, siteKey ? turnstileToken : null);
+      // #2487 — ask each pattern what it plays, here on the author's machine, so the
+      // gallery can draw the card without running anything. Best effort: a slow or
+      // failed recording publishes without one rather than holding the publish up.
+      const coverPath =
+        form.kind === "project" ? (manifest.files.find((f) => f.id === coverId)?.path ?? null) : (built.request.manifest.files[0]?.path ?? null);
+      setRecording(true);
+      const rec = await Promise.race([
+        recordEntry(project.id, built.request.manifest, coverPath).catch(() => null),
+        new Promise<null>((r) => setTimeout(() => r(null), RECORD_TIMEOUT_MS)),
+      ]);
+      setRecording(false);
+      const request = rec ? { ...built.request, recording: rec } : built.request;
+      const { link } = await publishAndRemember(request, siteKey ? turnstileToken : null);
       let copied = true;
       try {
         await navigator.clipboard.writeText(link);
@@ -215,9 +248,11 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
     } catch (err) {
       setErrors([(err as Error)?.message || "Publishing failed."]);
       setSending(false);
+      // #2367 — if that was the session ending, this swaps the form for the sign-in offer.
+      void loadGallerySession();
       if (siteKey) setTurnstileRound((r) => r + 1); // the token was spent; get a fresh one
     }
-  }, [manifest, sending, siteKey, turnstileToken, form, thumbnail, onClose]);
+  }, [manifest, sending, siteKey, turnstileToken, form, thumbnail, onClose, coverId, project.id]);
 
   if (!open) return null;
 
@@ -261,7 +296,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
           noValidate
         >
           <p style={styles.as} data-testid="gallery-publish-as">
-            Publishing as <strong>{user.name}</strong> ({accountLabel(user.verified)}). To change the name shown, edit
+            Publishing as <strong>{shownName(user.name)}</strong> ({accountLabel(user.verified)}). To change the name shown, edit
             your profile.
           </p>
 
@@ -319,6 +354,27 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
             </label>
           )}
 
+          {form.kind === "project" && manifest && manifest.files.some((f) => fileRole(f.path) !== "file") && (
+            <label style={styles.field}>
+              <span style={styles.label}>Cover</span>
+              <select
+                style={styles.input}
+                value={coverId ?? ""}
+                onChange={(e) => setCoverId(e.target.value || null)}
+                data-testid="gallery-publish-cover"
+              >
+                {manifest.files
+                  .filter((f) => fileRole(f.path) !== "file")
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.path}
+                    </option>
+                  ))}
+              </select>
+              <span style={styles.hint}>What the project&apos;s card shows: a pattern&apos;s timeline, or a visual&apos;s picture.</span>
+            </label>
+          )}
+
           <label style={styles.field}>
             <span style={styles.label}>Tags</span>
             <input
@@ -336,7 +392,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
           <div style={styles.field} data-testid="gallery-publish-thumbnail">
             <span style={styles.label}>Picture</span>
             {form.kind === "music" ? (
-              <span style={styles.hint}>Music entries get a card with the title instead of a picture.</span>
+              <span style={styles.hint}>Its card draws what it plays, recorded here when you publish: its sounds over time, and its sections. Nothing runs on anyone else's machine to draw it.</span>
             ) : thumb.state === "capturing" ? (
               <span style={styles.hint}>Taking a frame of the running viz…</span>
             ) : thumb.result.ok ? (
@@ -382,6 +438,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
             <TurnstileWidget
               key={turnstileRound}
               siteKey={siteKey}
+              action="publish"
               onToken={setTurnstileToken}
               testId="gallery-publish-turnstile"
             />
@@ -405,7 +462,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
               disabled={sending || !manifest || (!!siteKey && !turnstileToken)}
               data-testid="gallery-publish-submit"
             >
-              {sending ? "Publishing…" : "Publish"}
+              {recording ? "Recording what it plays…" : sending ? "Publishing…" : "Publish"}
             </button>
           </div>
         </form>

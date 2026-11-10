@@ -20,7 +20,7 @@ import { vizThumbnailPlaceholder } from "./vizThumbnail";
  *  attribution. Structural (no `@stave/editor` import) so this module's tests
  *  stay hermetic — `StaveApp` injects the real `mountVizPreview`. */
 export interface VizPreviewSpec {
-  renderer: "glsl" | "p5" | "hydra";
+  renderer: VizLibItem["renderer"];
   code: string;
   name: string;
 }
@@ -54,6 +54,7 @@ const RENDERER_LABELS: Record<VizLibItem["renderer"], string> = {
   hydra: "Hydra",
   p5: "P5",
   glsl: "GLSL",
+  three: "three.js",
 };
 
 /**

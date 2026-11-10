@@ -1,36 +1,88 @@
 /**
- * Community gallery (#2300) — the overlay's pure logic: which tab an entry is
- * in, what a search matches, how a `#gallery=<id>` link is read, and where an
- * added file lands. No React, no fetch — so every rule here is unit-tested.
+ * Community gallery (#2300) — the gallery's pure logic: which filter an entry
+ * is in, how the grid is ordered, what a search matches, how a `#gallery=<id>`
+ * link is read, and where an added file lands. No React, no fetch — so every rule here is unit-tested.
  */
 import { GALLERY_ID_PATTERN, type GalleryEntry, type GalleryKind, type GalleryManifest } from "./types";
+import { shownName } from "./reservedNames";
 
-export type GalleryTab = "project" | "music" | "viz" | "mine" | "moderation";
+/**
+ * #2486 — what the gallery shows: the browse grid, My shares, or (admins only)
+ * Moderation. My shares and Moderation are header buttons, not list tabs.
+ */
+export type GalleryTab = "browse" | "mine" | "moderation";
 
-export const GALLERY_TABS: ReadonlyArray<{ id: GalleryTab; label: string }> = [
+/** Is this one of the gallery's views? (A saved place is checked against it.) */
+export function isGalleryTab(v: unknown): v is GalleryTab {
+  return v === "browse" || v === "mine" || v === "moderation";
+}
+
+/** #2486 — the browse grid's filter: everything, or one kind. */
+export type GalleryFilter = "all" | GalleryKind;
+
+export const GALLERY_FILTERS: ReadonlyArray<{ id: GalleryFilter; label: string }> = [
+  { id: "all", label: "All" },
   { id: "project", label: "Projects" },
   { id: "music", label: "Music" },
-  { id: "viz", label: "Viz" },
-  { id: "mine", label: "My shares" },
+  { id: "viz", label: "Visuals" },
 ];
 
-/** #2331 — the admins' tab, added after My shares only when /api/gallery/me says isAdmin. */
-export const MODERATION_TAB: { id: GalleryTab; label: string } = { id: "moderation", label: "Moderation" };
-
-/** The tabs to show: the kinds and My shares, plus Moderation for an admin. */
-export function galleryTabs(isAdmin: boolean): ReadonlyArray<{ id: GalleryTab; label: string }> {
-  return isAdmin ? [...GALLERY_TABS, MODERATION_TAB] : GALLERY_TABS;
+export function isGalleryFilter(v: unknown): v is GalleryFilter {
+  return GALLERY_FILTERS.some((f) => f.id === v);
 }
 
-/** Is this tab one of the entry kinds (Projects / Music / Viz), with a count and a search? */
-export function isKindTab(tab: GalleryTab): tab is GalleryKind {
-  return tab !== "mine" && tab !== "moderation";
+/** #2486 — the browse grid's order. */
+export type GallerySort = "newest" | "oldest" | "title" | "artist";
+
+export const GALLERY_SORTS: ReadonlyArray<{ id: GallerySort; label: string }> = [
+  { id: "newest", label: "Newest" },
+  { id: "oldest", label: "Oldest" },
+  { id: "title", label: "Title A–Z" },
+  { id: "artist", label: "Artist A–Z" },
+];
+
+export function isGallerySort(v: unknown): v is GallerySort {
+  return GALLERY_SORTS.some((s) => s.id === v);
 }
 
+/** #2493 — a profile's order: the grid's, less Artist (every entry there is the same artist's). */
+export type ProfileSort = Exclude<GallerySort, "artist">;
+
+export const PROFILE_SORTS: ReadonlyArray<{ id: ProfileSort; label: string }> = GALLERY_SORTS.filter(
+  (s): s is { id: ProfileSort; label: string } => s.id !== "artist",
+);
+
+/** #2492 — My shares' filter: everything you shared, what you published, or your private links. */
+export type MineFilter = "all" | "published" | "links";
+
+export const MINE_FILTERS: ReadonlyArray<{ id: MineFilter; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "published", label: "Published" },
+  { id: "links", label: "Private links" },
+];
+
+export function isMineFilter(v: unknown): v is MineFilter {
+  return MINE_FILTERS.some((f) => f.id === v);
+}
+
+/** #2492 — My shares' order (every row is yours, so there is no artist to sort by). */
+export type MineSort = "newest" | "oldest" | "title";
+
+export const MINE_SORTS: ReadonlyArray<{ id: MineSort; label: string }> = [
+  { id: "newest", label: "Newest" },
+  { id: "oldest", label: "Oldest" },
+  { id: "title", label: "Title A–Z" },
+];
+
+export function isMineSort(v: unknown): v is MineSort {
+  return MINE_SORTS.some((s) => s.id === v);
+}
+
+/** One entry's kind, as a card or a detail line names it. */
 export const KIND_LABEL: Record<GalleryKind, string> = {
   project: "Project",
   music: "Music",
-  viz: "Viz",
+  viz: "Visual",
 };
 
 export const GALLERY_HASH_PREFIX = "#gallery=";
@@ -101,29 +153,94 @@ function terms(query: string): string[] {
     .filter(Boolean);
 }
 
+/** Does every word of the query match somewhere in `fields`? An empty query matches everything. */
+export function textMatches(fields: readonly string[], query: string): boolean {
+  const ts = terms(query);
+  if (ts.length === 0) return true;
+  const hay = fields.map((s) => s.toLowerCase());
+  return ts.every((t) => hay.some((h) => h.includes(t)));
+}
+
 /**
  * Does the entry match every word of the query, each against its title, tags or
  * author name? (All words must match somewhere — "dub alice" finds Alice's dub.)
  */
 export function entryMatches(entry: GalleryEntry, query: string): boolean {
-  const ts = terms(query);
-  if (ts.length === 0) return true;
-  const hay = [entry.title, entry.authorName, ...entry.tags].map((s) => s.toLowerCase());
-  return ts.every((t) => hay.some((h) => h.includes(t)));
+  return textMatches([entry.title, entry.authorName, ...entry.tags], query);
 }
 
-/** The entries one kind-tab shows, newest first, filtered by the search. */
-export function entriesForTab(entries: readonly GalleryEntry[], kind: GalleryKind, query: string): GalleryEntry[] {
-  return entries
-    .filter((e) => e.kind === kind && entryMatches(e, query))
-    .sort((a, b) => b.publishedAt - a.publishedAt);
+/** Case- and accent-blind, "Track 2" before "Track 10". */
+export const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+
+const newestFirst = (a: GalleryEntry, b: GalleryEntry) => b.publishedAt - a.publishedAt || collator.compare(a.id, b.id);
+const byTitle = (a: GalleryEntry, b: GalleryEntry) => collator.compare(a.title.trim(), b.title.trim());
+// By the name the card shows (shownName, #2465), so the order matches what you read.
+const byArtist = (a: GalleryEntry, b: GalleryEntry) => collator.compare(shownName(a.authorName), shownName(b.authorName));
+
+const ORDER: Record<GallerySort, (a: GalleryEntry, b: GalleryEntry) => number> = {
+  newest: newestFirst,
+  oldest: (a, b) => -newestFirst(a, b),
+  title: (a, b) => byTitle(a, b) || byArtist(a, b) || newestFirst(a, b),
+  artist: (a, b) => byArtist(a, b) || byTitle(a, b) || newestFirst(a, b),
+};
+
+/** Does the entry pass the filter? `all` lets every entry through, whatever its kind. */
+export function inFilter(entry: GalleryEntry, filter: GalleryFilter): boolean {
+  return filter === "all" || entry.kind === filter;
 }
 
-/** How many entries each kind holds — the tab badges. */
-export function countByKind(entries: readonly GalleryEntry[]): Record<GalleryKind, number> {
-  const out: Record<GalleryKind, number> = { project: 0, music: 0, viz: 0 };
-  for (const e of entries) if (e.kind in out) out[e.kind] += 1;
+/** #2486 — the browse grid: the entries the filter and the search let through, in the chosen order. */
+export function browseEntries(
+  entries: readonly GalleryEntry[],
+  filter: GalleryFilter,
+  query: string,
+  sort: GallerySort,
+): GalleryEntry[] {
+  return entries.filter((e) => inFilter(e, filter) && entryMatches(e, query)).sort(ORDER[sort]);
+}
+
+/** How many entries each filter would show for this search — the filter's counts. */
+export function countByFilter(entries: readonly GalleryEntry[], query: string): Record<GalleryFilter, number> {
+  const out: Record<GalleryFilter, number> = { all: 0, project: 0, music: 0, viz: 0 };
+  for (const e of entries) {
+    if (!entryMatches(e, query)) continue;
+    out.all += 1;
+    if (e.kind === "project" || e.kind === "music" || e.kind === "viz") out[e.kind] += 1;
+  }
   return out;
+}
+
+/** #2491 — what a file in an entry is: a pattern plays, a visual draws, anything else is a file. */
+export type FileRole = "pattern" | "visual" | "file";
+
+export function fileRole(path: string): FileRole {
+  const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+  if (ext === "strudel") return "pattern";
+  if (["hydra", "hy", "p5", "p5js", "js", "glsl", "frag", "shader", "three"].includes(ext)) return "visual";
+  return "file";
+}
+
+/** "3 patterns · 2 visuals" — what an entry holds, counted from its files' names. */
+export function contentsSummary(files: ReadonlyArray<{ path: string }>, sep = " · "): string {
+  const n: Record<FileRole, number> = { pattern: 0, visual: 0, file: 0 };
+  for (const f of files) n[fileRole(f.path)] += 1;
+  const part = (count: number, one: string) => (count ? `${count} ${one}${count === 1 ? "" : "s"}` : null);
+  return [part(n.pattern, "pattern"), part(n.visual, "visual"), part(n.file, "other file")].filter(Boolean).join(sep);
+}
+
+/** "2 days ago" — how long ago, in the reader's language; the full date past a year. */
+export function publishedAgo(ms: number, now: number = Date.now()): string {
+  if (!Number.isFinite(ms)) return "";
+  const s = Math.round((ms - now) / 1000);
+  const abs = Math.abs(s);
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  if (abs < 60) return rtf.format(0, "second");
+  if (abs < 3600) return rtf.format(Math.round(s / 60), "minute");
+  if (abs < 86400) return rtf.format(Math.round(s / 3600), "hour");
+  if (abs < 86400 * 7) return rtf.format(Math.round(s / 86400), "day");
+  if (abs < 86400 * 35) return rtf.format(Math.round(s / (86400 * 7)), "week");
+  if (abs < 86400 * 365) return rtf.format(Math.round(s / (86400 * 30)), "month");
+  return formatGalleryDate(ms);
 }
 
 export function formatGalleryDate(ms: number): string {

@@ -27,7 +27,14 @@
  *     replaces). Persisting them would resurrect "stale ghosts" the user
  *     never explicitly pinned. They're filtered out at serialize-time;
  *     editor tabs go through verbatim.
+ *   - **History tabs.** A commit can be pruned between sessions.
  *   - **Drag/hover/scroll UI state.** Per-frame state isn't a preference.
+ *
+ * **App tabs ARE persisted (#2471)** — `kind: 'app'` with its `appKey` and
+ * the small JSON `state` the host keeps on it (the gallery remembers where
+ * you were across reloads). On read, an app tab whose `appKey` the host does
+ * not list in `validAppKeys` is dropped (a key the app no longer has would be
+ * a ghost), as is a second tab with an already-seen key (one tab per key).
  *
  * ## Validation on read
  *
@@ -47,6 +54,13 @@
  * Mismatched versions return `null` — the user loses tab state once, the
  * shell rebuilds the default, and forward writes use the new version.
  *
+ * App tabs (#2471) were added WITHOUT a version bump, on purpose: the change
+ * is additive in both directions. An older blob (editor tabs only) reads
+ * unchanged. A newer blob read by an older build loses only its app tabs —
+ * the v1 reader has always skipped any tab whose kind is not `editor` and
+ * reassigned an active id that pointed at one. A bump would instead have
+ * wiped every user's saved layout once, for no gain.
+ *
  * ## Key shape
  *
  *     stave:workspace:${projectId}:state
@@ -57,7 +71,7 @@
  */
 
 import type { GroupLayout } from './groupLayout'
-import type { WorkspaceTab, WorkspaceGroupState } from './types'
+import type { AppTabState, WorkspaceTab, WorkspaceGroupState } from './types'
 import type { BackdropQuality } from './editorRegistry'
 
 /** Validate a persisted per-pane backdrop opacity — a finite number in [0, 1]. */
@@ -100,8 +114,8 @@ export interface PersistedShellState {
 
 export interface PersistedGroup {
   readonly id: string
-  /** Editor tabs only. Preview tabs are dropped at write-time. */
-  readonly tabs: readonly PersistedEditorTab[]
+  /** Editor and app tabs. Preview / history tabs are dropped at write-time. */
+  readonly tabs: readonly PersistedTab[]
   readonly activeTabId: string | null
   readonly backgroundFileId?: string
   /** Per-pane backdrop opacity override (#350c). Absent → global default. */
@@ -119,6 +133,17 @@ export interface PersistedEditorTab {
   readonly preview?: boolean
 }
 
+/** #2471 — an app-drawn tab, with the small JSON state its host keeps on it. */
+export interface PersistedAppTab {
+  readonly kind: 'app'
+  readonly id: string
+  readonly appKey: string
+  readonly state?: AppTabState
+}
+
+/** A tab as stored in the persisted layout. */
+export type PersistedTab = PersistedEditorTab | PersistedAppTab
+
 /**
  * Snapshot the shell hands to `saveShellState` — same shape the shell's
  * internal state holds. Slimmer than `PersistedShellState` because it
@@ -135,6 +160,9 @@ export interface ShellSnapshot {
 // Read path
 // ---------------------------------------------------------------------------
 
+/** #2471 — default for callers that name no app keys: no app tab survives a read. */
+const NO_APP_KEYS: ReadonlySet<string> = new Set()
+
 /**
  * Read the persisted shell state for this project, validate it against
  * the live workspace file list, and return the cleaned snapshot — or
@@ -142,13 +170,15 @@ export interface ShellSnapshot {
  * mismatch, or no live tabs remained after validation).
  *
  * `validFileIds` is consulted at validation time to prune tabs whose
- * underlying file no longer exists.
+ * underlying file no longer exists; `validAppKeys` (#2471) to prune app
+ * tabs whose key the host no longer draws (omitted → no app tab survives).
  *
  * Safe to call from a `useState` initializer (no DOM, no throws).
  */
 export function loadShellState(
   projectId: string,
   validFileIds: ReadonlySet<string>,
+  validAppKeys: ReadonlySet<string> = NO_APP_KEYS,
 ): PersistedShellState | null {
   if (typeof window === 'undefined') return null
   let raw: string | null = null
@@ -166,7 +196,7 @@ export function loadShellState(
   } catch {
     return null
   }
-  return validatePersistedState(parsed, validFileIds)
+  return validatePersistedState(parsed, validFileIds, validAppKeys)
 }
 
 /**
@@ -176,6 +206,8 @@ export function loadShellState(
  * Validation rules:
  *   - Schema version must match.
  *   - Tabs whose `fileId` is not in `validFileIds` are dropped.
+ *   - App tabs (#2471) whose `appKey` is not in `validAppKeys` are dropped,
+ *     and so is any later app tab repeating a key already kept.
  *   - A group's `activeTabId` is reassigned to the first remaining tab
  *     (or null) if the persisted active was pruned.
  *   - A group's `backgroundFileId` is dropped if no longer valid.
@@ -192,6 +224,7 @@ export function loadShellState(
 export function validatePersistedState(
   input: unknown,
   validFileIds: ReadonlySet<string>,
+  validAppKeys: ReadonlySet<string> = NO_APP_KEYS,
 ): PersistedShellState | null {
   if (!input || typeof input !== 'object') return null
   const s = input as Partial<PersistedShellState>
@@ -202,13 +235,28 @@ export function validatePersistedState(
 
   // Clean every group.
   const cleanedGroups: Record<string, PersistedGroup> = {}
+  // #2471 — one app tab per key across the whole layout.
+  const seenAppKeys = new Set<string>()
   for (const [gid, rawGroup] of Object.entries(s.groups)) {
     const g = rawGroup as Partial<PersistedGroup>
     if (!g || typeof g !== 'object' || g.id !== gid) continue
     const inTabs = Array.isArray(g.tabs) ? g.tabs : []
-    const cleanedTabs: PersistedEditorTab[] = []
+    const cleanedTabs: PersistedTab[] = []
     for (const t of inTabs) {
       if (!t || typeof t !== 'object') continue
+      if ((t as PersistedTab).kind === 'app') {
+        const at = t as PersistedAppTab
+        if (typeof at.id !== 'string' || typeof at.appKey !== 'string') continue
+        if (!validAppKeys.has(at.appKey) || seenAppKeys.has(at.appKey)) continue
+        seenAppKeys.add(at.appKey)
+        cleanedTabs.push({
+          kind: 'app',
+          id: at.id,
+          appKey: at.appKey,
+          ...(at.state !== undefined ? { state: at.state } : {}),
+        })
+        continue
+      }
       if ((t as PersistedEditorTab).kind !== 'editor') continue
       const tt = t as PersistedEditorTab
       if (typeof tt.id !== 'string' || typeof tt.fileId !== 'string') continue
@@ -279,8 +327,9 @@ export function validatePersistedState(
 // ---------------------------------------------------------------------------
 
 /**
- * Serialize the shell's live state into the persisted form, dropping
- * preview tabs (they're transient by design — see header).
+ * Serialize the shell's live state into the persisted form, keeping editor
+ * and app tabs and dropping preview / history tabs (transient by design —
+ * see header).
  *
  * Pure — exported so tests can exercise the round-trip without
  * localStorage.
@@ -288,10 +337,19 @@ export function validatePersistedState(
 export function serializeShellState(snapshot: ShellSnapshot): PersistedShellState {
   const groups: Record<string, PersistedGroup> = {}
   for (const [gid, g] of snapshot.groups.entries()) {
-    const editorTabs: PersistedEditorTab[] = []
+    const keptTabs: PersistedTab[] = []
     for (const t of g.tabs) {
       if (!isPersistableTab(t)) continue
-      editorTabs.push({
+      if (t.kind === 'app') {
+        keptTabs.push({
+          kind: 'app',
+          id: t.id,
+          appKey: t.appKey,
+          ...(t.state !== undefined ? { state: t.state } : {}),
+        })
+        continue
+      }
+      keptTabs.push({
         kind: 'editor',
         id: t.id,
         fileId: t.fileId,
@@ -299,15 +357,15 @@ export function serializeShellState(snapshot: ShellSnapshot): PersistedShellStat
       })
     }
     // If the persisted active was a preview tab we dropped, fall back to
-    // the first remaining editor tab (or null) — same policy as the
+    // the first remaining kept tab (or null) — same policy as the
     // validator on read.
     let activeTabId = g.activeTabId
-    if (activeTabId !== null && !editorTabs.some((t) => t.id === activeTabId)) {
-      activeTabId = editorTabs.length > 0 ? editorTabs[0].id : null
+    if (activeTabId !== null && !keptTabs.some((t) => t.id === activeTabId)) {
+      activeTabId = keptTabs.length > 0 ? keptTabs[0].id : null
     }
     groups[gid] = {
       id: gid,
-      tabs: editorTabs,
+      tabs: keptTabs,
       activeTabId,
       ...(g.backgroundFileId !== undefined
         ? { backgroundFileId: g.backgroundFileId }
@@ -406,12 +464,21 @@ export function hydrateSnapshot(
   for (const [gid, pg] of Object.entries(persisted.groups)) {
     groups.set(gid, {
       id: pg.id,
-      tabs: pg.tabs.map((t) => ({
-        kind: 'editor' as const,
-        id: t.id,
-        fileId: t.fileId,
-        ...(t.preview === true ? { preview: true } : {}),
-      })),
+      tabs: pg.tabs.map((t): WorkspaceTab =>
+        t.kind === 'app'
+          ? {
+              kind: 'app',
+              id: t.id,
+              appKey: t.appKey,
+              ...(t.state !== undefined ? { state: t.state } : {}),
+            }
+          : {
+              kind: 'editor',
+              id: t.id,
+              fileId: t.fileId,
+              ...(t.preview === true ? { preview: true } : {}),
+            },
+      ),
       activeTabId: pg.activeTabId,
       ...(pg.backgroundFileId !== undefined
         ? { backgroundFileId: pg.backgroundFileId }
@@ -437,6 +504,6 @@ export function hydrateSnapshot(
 
 function isPersistableTab(
   t: WorkspaceTab,
-): t is Extract<WorkspaceTab, { kind: 'editor' }> {
-  return t.kind === 'editor'
+): t is Extract<WorkspaceTab, { kind: 'editor' | 'app' }> {
+  return t.kind === 'editor' || t.kind === 'app'
 }

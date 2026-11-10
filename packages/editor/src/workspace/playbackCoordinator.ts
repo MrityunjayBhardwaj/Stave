@@ -39,6 +39,15 @@
  * source can't prevent others from stopping. A throw is logged
  * (console) but the iteration continues.
  *
+ * ## Sources that play alongside (#2427)
+ *
+ * A built-in example sound that a viz file's OWN background listens to is part
+ * of that background, not a competing player: each file owns its background, so
+ * playing a pattern must not silence another file's. The shell names those
+ * sources with `setAlongsideSources`. Such a source is never stopped by another
+ * start, and its own start stops nothing. Everything else keeps the
+ * one-at-a-time rule.
+ *
  * ## Not a React hook
  *
  * The coordinator is plain module functions — no React involved.
@@ -61,6 +70,16 @@ interface RegisteredSource {
 const registry = new Map<string, RegisteredSource>()
 const changeListeners = new Set<(currentlyPlaying: string | null) => void>()
 let currentlyPlaying: string | null = null
+let alongside: ReadonlySet<string> = new Set()
+
+/**
+ * #2427 — the sources that play alongside everything else (see the module doc).
+ * Replaces the whole set; the shell passes the built-ins its viz backgrounds
+ * currently use, every time that record changes.
+ */
+export function setAlongsideSources(sourceIds: Iterable<string>): void {
+  alongside = new Set(sourceIds)
+}
 
 /**
  * Register a playback source with the coordinator. The caller
@@ -107,8 +126,10 @@ export function registerPlaybackSource(
  */
 export function notifyPlaybackStarted(sourceId: string): void {
   if (currentlyPlaying === sourceId) return
+  // #2427 — a background's own source starts without stopping anything
+  if (alongside.has(sourceId)) return
   for (const [id, src] of registry) {
-    if (id === sourceId) continue
+    if (id === sourceId || alongside.has(id)) continue
     try {
       src.stop()
     } catch (err) {
@@ -185,4 +206,5 @@ export function __resetPlaybackCoordinatorForTests(): void {
   registry.clear()
   changeListeners.clear()
   currentlyPlaying = null
+  alongside = new Set()
 }

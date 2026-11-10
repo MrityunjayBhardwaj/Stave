@@ -1,3 +1,5 @@
+import { suspensionOfAuthor } from "../../../../../db/repo/suspensions";
+import { suspendedRefusal } from "../../suspension";
 import {
   GALLERY_ID_PATTERN,
   type CollectionPageResponse,
@@ -9,7 +11,6 @@ import { adminAction } from "../../admin";
 import { foreignEntry, servedCollection } from "../../authors";
 import { limitAuthor } from "../../rateLimit";
 import { mayManageAuthor } from "../../session";
-import { galleryStore } from "../../store";
 import { checkCollectionWrite, MAX_COLLECTION_BODY_BYTES, readJsonBody } from "../../validate";
 import { assertSameOrigin } from "../../origin";
 import { withDatabase } from "../../../../../db/errors";
@@ -42,6 +43,8 @@ async function handleGET(_req: Request, { params }: Ctx): Promise<Response> {
   if (!stored) return notFound();
   const author = await getAuthor(db, stored.authorId);
   if (!author) return notFound();
+  // #2400 — suspended with everything taken down: hidden while it lasts.
+  if ((await suspensionOfAuthor(db, stored.authorId))?.hideProfile) return notFound();
 
   const { collection, entries } = await servedCollection(db, stored);
   const body: CollectionPageResponse = {
@@ -62,6 +65,8 @@ async function handlePUT(req: Request, { params }: Ctx): Promise<Response> {
   const stored = await getCollection(db, id);
   if (!stored) return notFound();
   if (!(await mayManageAuthor(req, stored.authorId))) return forbidden();
+  const suspended = await suspendedRefusal(stored.authorId); // #2400
+  if (suspended) return suspended;
   const limited = await limitAuthor("edit", stored.authorId); // #2330
   if (limited) return limited;
 
@@ -87,10 +92,7 @@ async function handleDELETE(req: Request, { params }: Ctx): Promise<Response> {
   const stored = await getCollection(db, id);
   if (!stored) return notFound();
   if (!(await mayManageAuthor(req, stored.authorId))) {
-    // The admin log is still written to the gallery store (admin.ts).
-    const store = galleryStore();
-    if (!store) return forbidden();
-    const admin = await adminAction(req, store, { action: "take-down-collection", target: id }, forbidden);
+    const admin = await adminAction(req, { action: "take-down-collection", target: id }, forbidden);
     if (admin instanceof Response) return admin;
   } else {
     const limited = await limitAuthor("edit", stored.authorId); // #2330 — the owner's own edits only

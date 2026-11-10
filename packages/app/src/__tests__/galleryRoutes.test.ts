@@ -24,6 +24,7 @@ import {
   MAX_TAGS,
   MAX_THUMBNAIL_BYTES,
   MAX_TITLE_CHARS,
+  type GalleryEntry,
   type GalleryEntryResponse,
   type GalleryListResponse,
   type GalleryManifest,
@@ -33,9 +34,11 @@ import {
 import { GET as listRoute, POST as publishRoute } from "../app/api/gallery/route";
 import { DELETE as deleteRoute, GET as entryRoute } from "../app/api/gallery/[id]/route";
 import { GET as thumbnailRoute } from "../app/api/gallery/[id]/thumbnail/route";
+import { GET as recordingRoute } from "../app/api/gallery/[id]/recording/route";
+import { RECORDING_LIMITS, type GalleryRecording } from "../gallery/recording";
 import { POST as reportRoute } from "../app/api/gallery/[id]/report/route";
 import { GET as reportsRoute } from "../app/api/gallery/reports/route";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 
 import { LIST_CACHE, LIST_REDIRECT_CACHE } from "../app/api/gallery/route";
 import { freshTestDb, getDb, useDbForTests } from "../db/client";
@@ -157,6 +160,81 @@ async function published(over: Record<string, unknown> = {}): Promise<PublishRes
   expect(res.status).toBe(201);
   return (await res.json()) as PublishResponse;
 }
+
+// #2487 — what an entry plays, recorded at publish on the author's machine.
+const recordingOf = (id: string) => recordingRoute(new Request(`http://x/api/gallery/${id}/recording`), ctx(id));
+const RECORD: GalleryRecording = {
+  v: 1,
+  cover: "song0.strudel",
+  contents: { patterns: 1, visuals: 0, other: 0 },
+  files: [
+    {
+      path: "song0.strudel",
+      span: "arranged",
+      cycles: 8,
+      lanes: [{ name: "drums" }, { name: "bass" }],
+      events: [
+        [0, 0, 0.25, null],
+        [1, 0.5, 0.5, 36],
+      ],
+      sections: [
+        [0, 4, "intro"],
+        [4, 8, "drop"],
+      ],
+    },
+  ],
+};
+
+describe("recordings (#2487)", () => {
+  it("stores a valid record beside the entry, says so in the list, and serves it back", async () => {
+    const { id } = await published({ recording: RECORD });
+    const listed = (await list()).entries.find((e) => e.id === id)!;
+    expect(listed.hasRecording).toBe(true);
+    const res = await recordingOf(id);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await res.json()).toEqual(RECORD);
+  });
+
+  it("an entry published without one has none, and the list doesn't mention it", async () => {
+    const { id } = await published();
+    const listed = (await list()).entries.find((e) => e.id === id)!;
+    expect("hasRecording" in listed).toBe(false);
+    expect((await recordingOf(id)).status).toBe(404);
+  });
+
+  it.each([
+    ["the wrong version", { ...RECORD, v: 2 }],
+    ["a cover the entry doesn't have", { ...RECORD, cover: "other.strudel" }],
+    ["a file the entry doesn't have", { ...RECORD, files: [{ ...RECORD.files[0], path: "nope.strudel" }] }],
+    ["an event on a lane that doesn't exist", { ...RECORD, files: [{ ...RECORD.files[0], events: [[5, 0, 1, null]] }] }],
+    ["an event past the end", { ...RECORD, files: [{ ...RECORD.files[0], events: [[0, 9, 1, null]] }] }],
+    ["a section that ends before it starts", { ...RECORD, files: [{ ...RECORD.files[0], sections: [[4, 2, "x"]] }] }],
+    ["a pitch out of range", { ...RECORD, files: [{ ...RECORD.files[0], events: [[0, 0, 1, 300]] }] }],
+    ["text where a number goes", { ...RECORD, files: [{ ...RECORD.files[0], cycles: "8" }] }],
+    ["too many events", { ...RECORD, files: [{ ...RECORD.files[0], events: Array.from({ length: RECORDING_LIMITS.eventsPerFile + 1 }, () => [0, 0, 0.1, null]) }] }],
+  ])("refuses %s with 400 and stores nothing", async (_why, recording) => {
+    const before = (await list()).entries.length;
+    const res = await publish(request({ recording }));
+    expect(res.status).toBe(400);
+    expect((await list()).entries.length).toBe(before);
+  });
+
+  it("keeps only the fields the record has", async () => {
+    const smuggled = { ...RECORD, extra: "smuggled", files: [{ ...RECORD.files[0], secret: "smuggled" }] };
+    const { id } = await published({ recording: smuggled });
+    expect(JSON.stringify(await (await recordingOf(id)).json())).not.toContain("smuggled");
+  });
+
+  it("a taken-down entry's record isn't served; the author's delete removes it", async () => {
+    const { id, manageToken } = await published({ recording: RECORD });
+    const file = path.join(dir, "gallery", "recordings", `${id}.json`);
+    expect((await stat(file)).isFile()).toBe(true);
+    expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBeLessThan(300);
+    expect((await recordingOf(id)).status).toBe(404);
+    await expect(stat(file)).rejects.toThrow();
+  });
+});
 
 describe("publishing", () => {
   it("stores an entry and hands back its id and a manage token", async () => {
@@ -293,6 +371,76 @@ describe("publish writes the files before the row (#2352)", () => {
   });
 });
 
+describe("#2359 a bug inside a transaction is a 500; a database that can't be reached is a 503", () => {
+  type Db = Awaited<ReturnType<typeof freshTestDb>>;
+  /** `db`, except its transactions run on `txDb` (queries outside one still work). */
+  const transactionsOn = (db: Db, txDb: { transaction: Db["transaction"] }): Db =>
+    new Proxy(db, {
+      get: (t, p) => (p === "transaction" ? txDb.transaction.bind(txDb) : Reflect.get(t, p)),
+    });
+  /** `db`, except every insert inside a transaction throws: a bug in our own code. */
+  const buggyInserts = (db: Db, bug: Error): Db =>
+    transactionsOn(db, {
+      transaction: ((fn: (tx: unknown) => Promise<unknown>) =>
+        db.transaction((tx) =>
+          fn(new Proxy(tx, { get: (t, p) => (p === "insert" ? () => { throw bug; } : Reflect.get(t, p)) })),
+        )) as Db["transaction"],
+    });
+
+  /** A fresh database where Ada's account already exists (so publishing reaches its own transaction). */
+  async function withAccount(): Promise<Db> {
+    const db = await freshTestDb();
+    useDbForTests(db);
+    await published({ title: "first" });
+    return db;
+  }
+
+  it("a plain Error inside publish's transaction is that error (Next answers 500), and nothing is listed", async () => {
+    const db = await withAccount();
+    try {
+      const bug = new Error("a bug in our code");
+      useDbForTests(buggyInserts(db, bug));
+      await expect(publish(request({ title: "buggy" }))).rejects.toBe(bug);
+      useDbForTests(db);
+      expect((await list()).entries.map((e) => e.title)).toEqual(["first"]);
+    } finally {
+      useDbForTests(undefined);
+    }
+  });
+
+  it("a closed PGlite at the transaction answers 503 with the plain message", async () => {
+    const db = await withAccount();
+    const { PGlite } = await import("@electric-sql/pglite");
+    const { dbOverPglite } = await import("../db/client");
+    const client = await PGlite.create();
+    await client.close();
+    try {
+      useDbForTests(transactionsOn(db, await dbOverPglite(client)));
+      const res = await publish(request({ title: "down" }));
+      expect(res.status).toBe(503);
+      expect(res.headers.get("retry-after")).toBe("60");
+      expect(await res.json()).toEqual({ error: "the gallery is having trouble right now; try again in a minute" });
+    } finally {
+      useDbForTests(undefined);
+    }
+  }, 60_000);
+
+  it("Neon on a refused port at the transaction answers 503", async () => {
+    const db = await withAccount();
+    const { Pool } = await import("@neondatabase/serverless");
+    const { drizzle } = await import("drizzle-orm/neon-serverless");
+    const pool = new Pool({ connectionString: "postgres://u:p@127.0.0.1:1/db", connectionTimeoutMillis: 5_000 });
+    pool.on("error", () => {});
+    try {
+      useDbForTests(transactionsOn(db, drizzle({ client: pool }) as unknown as Db));
+      expect((await publish(request({ title: "down" }))).status).toBe(503);
+    } finally {
+      useDbForTests(undefined);
+      await pool.end().catch(() => {});
+    }
+  }, 30_000);
+});
+
 describe("#2346 the listing's cache key ignores the query string", () => {
   it("answers any query string with a redirect to the bare path, and runs no query for it", async () => {
     const db = await freshTestDb();
@@ -357,6 +505,16 @@ describe("listing and opening", () => {
   });
 });
 
+describe("#2433 the publish answer", () => {
+  it("carries the entry exactly as the public list shows it", async () => {
+    const { id, entry: answered } = await published();
+    const { entries } = (await (await listRoute()).json()) as { entries: GalleryEntry[] };
+    const listed = entries.find((e) => e.id === id);
+    expect(listed).toBeDefined();
+    expect(answered).toEqual(listed);
+  });
+});
+
 describe("the author's email stays on the server", () => {
   it("appears in no public response", async () => {
     // The account's email (EMAIL), and one an old client put in the body.
@@ -368,6 +526,7 @@ describe("the author's email stays on the server", () => {
     const ack = await report(id, { reason: "testing the ack" });
     expect(ack.status).toBe(202);
     bodies.push(await ack.text());
+    bodies.push(JSON.stringify(await published({ authorEmail: EMAIL })));
 
     // The control: the entry really is in the list and the entry route really answered,
     // so an empty body can't pass this vacuously.
@@ -380,7 +539,7 @@ describe("the author's email stays on the server", () => {
   });
 
   it("#2352 stays out of the admin views, and leaves the row when the entry is taken down", async () => {
-    const { id, manageToken } = await published();
+    const { id } = await published();
     await report(id, { reason: "checking privacy" });
     const flagged = await (await reports()).text();
     // Control: the admin view really carries the entry.
@@ -390,11 +549,11 @@ describe("the author's email stays on the server", () => {
 
     const db = (await getDb())!;
     expect((await getEntryRecord(db, id))?.authorEmail).toBe(EMAIL);
-    expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(204);
+    expect((await remove(id, {}, ADMIN, { reason: "checking privacy" })).status).toBe(204);
     const gone = await getEntryRecord(db, id);
-    expect(gone?.removed).not.toBeNull();
-    expect(gone?.authorEmail).toBe("");
-    expect(gone?.manageTokenHash).toBeNull();
+    expect(gone?.removed).toMatchObject({ by: "admin" });
+    expect(gone?.authorEmail).toBe(EMAIL); // #2401 — kept until the purge, and still in no response.
+    expect(gone?.manageTokenHash).not.toBeNull();
   });
 });
 
@@ -439,11 +598,49 @@ describe("deleting", () => {
 
     expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(204);
     expect((await list()).entries.map((e) => e.id)).not.toContain(id);
-    expect((await entry(id)).status).toBe(410);
+    expect((await entry(id)).status).toBe(404);
     expect((await thumbnail(id)).status).toBe(404);
-    expect((await report(id, { reason: "late" })).status).toBe(410);
+    expect((await report(id, { reason: "late" })).status).toBe(404);
     // Already gone.
     expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(404);
+  });
+
+  it("an author's delete leaves no row, no report and no file (#2403)", async () => {
+    const db = await freshTestDb();
+    useDbForTests(db);
+    try {
+      const { id, manageToken } = await published();
+      await stat(path.join(dir, "gallery", "thumbnails", id)); // The control: it had one.
+      await report(id, { reason: "spam" });
+      expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(204);
+
+      const count = async (table: string, column: string) =>
+        (await db.$client.query<{ n: number }>(`select count(*)::int as n from ${table} where ${column} = $1`, [id])).rows[0].n;
+      expect(await count("entries", "id")).toBe(0);
+      expect(await count("reports", "entry_id")).toBe(0);
+      await expect(stat(path.join(dir, "gallery", "manifests", `${id}.json`))).rejects.toThrow();
+      await expect(stat(path.join(dir, "gallery", "thumbnails", id))).rejects.toThrow();
+    } finally {
+      useDbForTests(undefined);
+    }
+  });
+
+  it("a failed file delete leaves the entry up, and the author's retry finishes the job (#2403)", async () => {
+    const { id, manageToken } = await published();
+    // A folder where the manifest file was makes the store's delete throw.
+    const manifest = path.join(dir, "gallery", "manifests", `${id}.json`);
+    const bytes = await readFile(manifest);
+    await rm(manifest);
+    await mkdir(manifest);
+
+    await expect(remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).rejects.toThrow();
+    expect((await list()).entries.map((e) => e.id)).toContain(id);
+
+    await rm(manifest, { recursive: true });
+    await writeFile(manifest, bytes);
+    expect((await entry(id)).status).toBe(200);
+    expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBe(204);
+    expect((await entry(id)).status).toBe(404);
   });
 
   it("lets an admin take an entry down with a reason, clearing its reports", async () => {

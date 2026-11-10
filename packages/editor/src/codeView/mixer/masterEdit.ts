@@ -53,6 +53,8 @@
 import { parseTopLevel, collectChain, toArg, type ChainArg, type ChainCall, type ChunkInfo } from '../chunkDetect'
 import { formatNumber } from '../writeback'
 import type { OffsetEdit } from '../writeback'
+import type { CodeVizOptions } from './vizOptionsLiteral'
+import { readBackdropCall, lastBackdropCall, lastTrackBackdropCall, type BackdropCall } from './backdropCall'
 
 /** unity gain — an untouched master reads unity from the ABSENCE of a line. */
 export const MASTER_UNITY_GAIN = 1
@@ -214,20 +216,29 @@ function findMuteLine(doc: string): MasterAll | undefined {
   return detectMasterAll(doc).find((m) => arrowBodyText(doc, m) === 'silence')
 }
 
-/** A backdrop-viz call: `.viz(<name>, { backdrop: true })`. The flag is what
- *  distinguishes a MASTER backdrop from a channel-scoped inline `.viz("name")`
- *  (design §4). Matched on the arg source (spacing-tolerant) — the object arg is
- *  raw text at this layer, and WE always emit the canonical `{ backdrop: true }`. */
-function findVizBackdropCall(m: MasterAll): ChainCall | undefined {
-  return m.chain.find(
-    (c) => c.name === 'viz' && c.args.some((a) => /\bbackdrop\s*:\s*true\b/.test(a.raw)),
-  )
+/** The master background call the engine keeps: the LAST backdrop call on the
+ *  LAST master `all(x => …)` line that has one (#2387). `all()` transforms run
+ *  in source order and each one overwrites the background, so an earlier line
+ *  never plays. A viz on the master line belongs to no single track, so it IS
+ *  the backdrop — `.viz()` with or without `{ backdrop: true }`, and any viz
+ *  method in either spelling (`.pianoroll()`, `._pianoroll()`); see
+ *  `readBackdropCall` for the engine rules this mirrors. So
+ *  `all(x => x.viz("Fold", { theme: 'transparent' }))` is found here with its
+ *  options intact, and the set-bg control renames THAT call instead of adding a
+ *  second, option-less line. */
+function findMasterBackdrop(doc: string): { m: MasterAll; bc: BackdropCall } | null {
+  let found: { m: MasterAll; bc: BackdropCall } | null = null
+  for (const m of detectMasterAll(doc)) {
+    const bc = lastBackdropCall(m.chain, true)
+    if (bc) found = { m, bc }
+  }
+  return found
 }
 
-/** The first string-literal arg of a call (the viz name), or undefined. Its
- *  `range` spans the quotes, so replacing it swaps the whole literal. */
-function vizNameArg(c: ChainCall): ChainArg | undefined {
-  return c.args.find((a) => /^['"`]/.test(a.raw))
+/** The master background the code declares — `findMasterBackdrop` for callers
+ *  outside this module (the whole-document reader in `codeViz.ts`). */
+export function masterBackdropCall(doc: string): BackdropCall | null {
+  return findMasterBackdrop(doc)?.bc ?? null
 }
 
 /** the master gain the fader shows: the `all()` gain scalar, or unity when
@@ -265,7 +276,7 @@ export function detectMasterAudioAll(doc: string): MasterAll | undefined {
   return detectMasterAll(doc).find((m) => {
     if (arrowBodyText(doc, m) === 'silence') return false // the mute sentinel line
     // a line carrying ONLY backdrop-viz calls is presentation, not an audio chain
-    if (m.chain.length >= 1 && m.chain.every((c) => c.name === 'viz')) return false
+    if (m.chain.length >= 1 && m.chain.every((c) => readBackdropCall(c, true) !== null)) return false
     return true
   })
 }
@@ -317,16 +328,17 @@ export function adaptMasterChunk(doc: string, m: MasterAll): ChunkInfo {
 }
 
 /** the master backdrop the "set backdrop" UI shows: the `all()` backdrop-viz
- *  name, or null when no master backdrop is declared in code. */
-export function readMasterViz(doc: string): { name: string } | null {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m)
-    if (!v) continue
-    const nameArg = vizNameArg(v)
-    if (!nameArg) continue
-    return { name: nameArg.raw.slice(1, -1) }
-  }
-  return null
+ *  name the engine keeps (the last one — see `findMasterBackdrop`) and what the
+ *  code says about its options, or null when no master backdrop is declared in
+ *  code, or the kept one's name is not a literal. `options` is null when the call has no
+ *  options argument; otherwise it is read statically (see vizOptionsLiteral) so
+ *  the background can follow the code before Play and after Stop, not only
+ *  while an evaluation's capture is on the bus. */
+export function readMasterViz(doc: string): { name: string; options: CodeVizOptions | null } | null {
+  const bc = masterBackdropCall(doc)
+  // a name only an evaluation knows: an earlier, readable line is NOT what plays
+  if (!bc || bc.name === null) return null
+  return { name: bc.name, options: bc.options }
 }
 
 /** The scaling call the fader writes, e.g. `.mul(postgain(0.8))`. */
@@ -371,30 +383,42 @@ export function masterMuteEdit(doc: string, muted: boolean): OffsetEdit | null {
 
 /**
  * The edit the "set backdrop" UI makes (decision 2 = code is the single source):
- *  - set `name`  → replace the name literal in the existing master backdrop viz,
- *                  or insert a fresh `all(x => x.viz("name", { backdrop: true }))`
- *                  line;
- *  - clear (null)→ remove the master backdrop viz: the whole `all()` statement
- *                  when it holds nothing else, else just the `.viz(...)` call
- *                  (so a hand-combined `gain().viz()` keeps its gain).
+ *  - set `name`  → rename the master backdrop the engine keeps (the last one,
+ *                  #2387): the name literal of a `.viz()`, or a viz method
+ *                  (`._pianoroll({…})`) rewritten as `.viz("name", {…})` with its
+ *                  options kept; else insert a fresh
+ *                  `all(x => x.viz("name", { backdrop: true }))` line, which plays
+ *                  over any track-level background (`all()` runs last);
+ *  - clear (null)→ remove that master backdrop call: the whole `all()` statement
+ *                  when it holds nothing else, else just the call (so a
+ *                  hand-combined `gain().viz()` keeps its gain). With no master
+ *                  backdrop, remove the track-level background call the code
+ *                  shows (#2394), since the code is what declares it.
  *
- * Returns null when clearing with no master backdrop present (nothing to do), or
- * when an existing backdrop viz has no string name to rewrite.
+ * Returns null when clearing with no background declared (nothing to do), or
+ * when the master backdrop's name is not a literal we can rewrite.
  */
 export function masterVizEdit(doc: string, name: string | null): OffsetEdit | null {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m)
-    if (!v) continue
+  const found = findMasterBackdrop(doc)
+  if (found) {
+    const { m, bc } = found
     if (name === null) {
       // clear — drop the whole line if the viz is all it carries, else surgical
       if (m.chain.length === 1) return removeStatement(doc, m.statementRange)
-      return { range: v.range, text: '' }
+      return { range: bc.call.range, text: '' }
     }
-    const nameArg = vizNameArg(v)
-    if (!nameArg) return null // backdrop viz with no string name — nothing safe to patch
-    return { range: nameArg.range, text: JSON.stringify(name) }
+    if (bc.call.name === 'viz') {
+      const nameArg = bc.call.args[0]
+      if (!nameArg || bc.name === null) return null // no literal name — nothing safe to patch
+      return { range: nameArg.range, text: JSON.stringify(name) }
+    }
+    const optionsArg = bc.call.args[0]
+    return { range: bc.call.range, text: `.viz(${JSON.stringify(name)}${optionsArg ? `, ${optionsArg.raw}` : ''})` }
   }
-  if (name === null) return null // nothing to clear
+  if (name === null) {
+    const track = lastTrackBackdropCall(doc)
+    return track ? { range: track.call.range, text: '' } : null // else nothing to clear
+  }
   return insertStatement(doc, `all(x => x.viz(${JSON.stringify(name)}, { backdrop: true }))`)
 }
 

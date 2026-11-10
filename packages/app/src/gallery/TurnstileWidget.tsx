@@ -2,8 +2,11 @@
 
 import React, { useEffect, useRef, useState } from "react";
 
+import type { TurnstileAction } from "./types";
+
 /**
- * #2330 — Cloudflare Turnstile in the publish dialog and the report dialog.
+ * #2330 — Cloudflare Turnstile in the publish dialog, the report dialog and (#2364)
+ * the check before a private link made signed out (ShareCheckDialog.tsx).
  *
  * Shown only when NEXT_PUBLIC_TURNSTILE_SITE_KEY is set (it is inlined at build
  * time). The widget hands back a token through `onToken`; the caller sends it
@@ -32,6 +35,7 @@ interface TurnstileApi {
     el: HTMLElement,
     opts: {
       sitekey: string;
+      action?: string;
       callback: (token: string) => void;
       "expired-callback"?: () => void;
       "error-callback"?: () => void;
@@ -88,10 +92,13 @@ function themeOf(el: HTMLElement): "light" | "dark" {
 
 export function TurnstileWidget({
   siteKey,
+  action,
   onToken,
   testId,
 }: {
   siteKey: string;
+  /** #2347 — what the token is for; the server refuses a token made for another action. */
+  action: TurnstileAction;
   onToken: (token: string | null) => void;
   testId?: string;
 }) {
@@ -110,6 +117,7 @@ export function TurnstileWidget({
         if (gone || !box.current) return;
         widgetId = api.render(box.current, {
           sitekey: siteKey,
+          action,
           theme: themeOf(box.current),
           size: "flexible",
           callback: (token) => report.current(token),
@@ -136,7 +144,7 @@ export function TurnstileWidget({
         }
       }
     };
-  }, [siteKey]);
+  }, [siteKey, action]);
 
   return (
     <div data-testid={testId} data-turnstile-status={status}>

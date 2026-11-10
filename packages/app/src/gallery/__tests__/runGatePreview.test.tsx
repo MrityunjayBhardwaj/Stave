@@ -124,4 +124,46 @@ describe("the gated preview provider", () => {
     expect(ask).toHaveBeenCalledTimes(2);
     expect(rendered).toEqual(["g1"]);
   });
+
+  // #2343 — the backdrop is placed, but the visual hasn't started: the control
+  // says Play (not Pause) while the question is open and after Cancel, and its
+  // press asks again rather than pausing; once the answer is yes it says Pause.
+  it("the viz control reads Play, not Pause, until the file may run", async () => {
+    holdGalleryFiles("p", ["g1"]);
+    markGalleryFilesUntrusted("p", ["g1"], "Mallory");
+    const { provider } = fakeProvider();
+    const toggles: string[] = [];
+    (provider as { renderEditorChrome?: unknown }).renderEditorChrome = (ctx: { previewPaused?: boolean; onTogglePausePreview?: () => void }) => (
+      <button type="button" data-testid="vizctl" onClick={() => ctx.onTogglePausePreview?.()}>
+        {ctx.previewPaused ? "Play" : "Pause"}
+      </button>
+    );
+    const answer = deferred();
+    const ask = vi.fn(() => answer.promise);
+    const gated = gatePreviewProvider(provider, () => "p", ask);
+    const ctx = { ...ctxFor("g1"), previewPaused: false, onTogglePausePreview: () => toggles.push("g1") };
+    render(
+      <>
+        {gated.render(ctxFor("g1"))}
+        {gated.renderEditorChrome?.(ctx as never)}
+      </>,
+    );
+    await act(async () => {});
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("vizctl").textContent, "asking: nothing runs yet").toBe("Play");
+
+    await act(async () => answer.resolve(false));
+    expect(screen.getByTestId("vizctl").textContent, "cancelled: still not running").toBe("Play");
+    ask.mockImplementation(async () => true);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("vizctl"));
+    });
+    expect(toggles, "the press asked again; it did not pause a visual that never ran").toEqual([]);
+    expect(ask).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("vizctl").textContent, "yes: it runs, so the control offers Pause").toBe("Pause");
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("vizctl"));
+    });
+    expect(toggles).toEqual(["g1"]);
+  });
 });
