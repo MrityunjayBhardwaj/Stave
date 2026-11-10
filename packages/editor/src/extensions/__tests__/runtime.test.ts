@@ -292,7 +292,7 @@ describe('createExtensionRuntime: in parts, from page load (#2538)', () => {
   /** a '*' extension whose common part sets a global (it has no Strudel part) */
   function editorWide(log: string[] = []): ExtensionManifest {
     return testManifest({
-      id: 'zzwide',
+      id: 'zzeditorwide',
       name: 'Wide',
       languages: '*',
       provides: undefined,
@@ -311,17 +311,17 @@ describe('createExtensionRuntime: in parts, from page load (#2538)', () => {
 
   it("a '*' extension's common part is on after start, with no Strudel engine attached", async () => {
     const log: string[] = []
-    const h = harness({ manifests: [editorWide(log)], on: ['zzwide'] })
-    cleanup = () => h.audio.manager.deactivate('zzwide')
+    const h = harness({ manifests: [editorWide(log)], on: ['zzeditorwide'] })
+    cleanup = () => h.audio.manager.deactivate('zzeditorwide')
     await h.audio.start({ report: (level, message) => h.rows.push({ level, message }) })
-    expect(h.audio.manager.isActive('zzwide')).toBe(true)
+    expect(h.audio.manager.isActive('zzeditorwide')).toBe(true)
     expect(g.zzWideOn).toBe(true)
     expect(log).toEqual(['wide on'])
     // and it follows the switches from page load, still with no engine
     await h.flip([])
     expect(g.zzWideOn).toBeUndefined()
     expect(log).toEqual(['wide on', 'wide off'])
-    await h.flip(['zzwide'])
+    await h.flip(['zzeditorwide'])
     expect(g.zzWideOn).toBe(true)
     expect(h.rows).toEqual([])
   })
