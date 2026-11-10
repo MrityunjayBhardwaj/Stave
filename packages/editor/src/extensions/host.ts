@@ -1,12 +1,14 @@
 /**
- * The recording host (#2509): the only way an extension changes Stave, and the reason
- * switching one off can leave Stave exactly as it was.
+ * The recording hosts (#2509, #2538): the only way an extension changes Stave, and the
+ * reason switching one off can leave Stave exactly as it was.
  *
- * Every registration goes through here and is recorded with its own undo. Switching the
- * extension off runs its `onDeactivate` callbacks, then the undos, newest first. A host
- * only ever undoes what it did itself (the same rule as `setGridKeyMatcher`'s release),
- * and it never overwrites: a name that already exists is refused, because undoing an
- * overwrite would delete the thing that was there before.
+ * Each part of an extension gets its own host: the common part a `createCommonHost`, the
+ * Strudel part a `createRecordingHost` over Strudel's registries. Every registration goes
+ * through a host and is recorded with its own undo. Switching a part off runs its
+ * `onDeactivate` callbacks, then the undos, newest first. A host only ever undoes what it
+ * did itself (the same rule as `setGridKeyMatcher`'s release), and it never overwrites: a
+ * name that already exists is refused, because undoing an overwrite would delete the
+ * thing that was there before.
  *
  * The registries are handed in, not imported. In the app they are Strudel's own
  * (`fromStrudel`); offline renders build audio nodes in another realm, so nothing here
@@ -19,7 +21,7 @@
  * files `.name(…)` as a parameter. The method itself is gone, so running such code reports
  * a missing method. This is listed in `RESIDUE`, so it is stated, not hidden.
  */
-import type { ExtensionHost, SoundTrigger } from './types'
+import type { ExtensionHost, SoundTrigger, StrudelHost, StrudelProvides } from './types'
 
 /** Things a switched-off extension leaves behind, by registration kind. */
 export const RESIDUE = {
@@ -29,7 +31,7 @@ export const RESIDUE = {
     "an audio worklet module stays loaded in the live context and on Strudel's worklet list (superdough's `registerWorklet` has no remove), so later renders load it too; nothing uses it",
 } as const
 
-/** The registries an extension writes to. In the app: `fromStrudel(webaudio, core)`. */
+/** The registries a Strudel part writes to. In the app: `fromStrudel(webaudio, core)`. */
 export interface HostRegistries {
   sounds: {
     has(name: string): boolean
@@ -95,27 +97,61 @@ export function isNameTaken(e: unknown): e is NameTakenError {
   return typeof e === 'object' && e !== null && (e as { code?: unknown }).code === 'EXTENSION_NAME_TAKEN'
 }
 
-export interface RecordingHost {
-  host: ExtensionHost
+/** A part's host and the record of what it did. */
+export interface PartRecording<H> {
+  host: H
   /**
    * Undo everything, newest first. Each undo runs even if an earlier one throws;
    * the errors are returned rather than thrown so one bad step cannot strand the rest.
    */
   undo(): unknown[]
+}
+
+/**
+ * The common part's host (#2538): `id` and `onDeactivate`, nothing that names a language.
+ * Its undo runs the `onDeactivate` callbacks, newest first.
+ */
+export function createCommonHost(id: string): PartRecording<ExtensionHost> {
+  const onOff: (() => void)[] = []
+  let closed = false
+  return {
+    host: {
+      id,
+      onDeactivate(fn) {
+        if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`)
+        onOff.push(fn)
+      },
+    },
+    undo() {
+      closed = true
+      const errors: unknown[] = []
+      for (const fn of onOff.splice(0).reverse()) {
+        try {
+          fn()
+        } catch (e) {
+          errors.push(e)
+        }
+      }
+      return errors
+    },
+  }
+}
+
+/** The Strudel part's host and its record. */
+export interface RecordingHost extends PartRecording<StrudelHost> {
+  host: StrudelHost
   /** the `onPrepare` callbacks registered so far; empty once undone */
   preparers(): readonly (() => unknown)[]
 }
 
 /**
- * `declared`: the names the extension's manifest says it provides. When given, the host
- * refuses any sound or control not on it, so the manifest can never claim less than the
- * extension does: Stave names a switched-off extension from its manifest alone (#2512).
+ * The Strudel part's host. `declared`: the Strudel names the extension's manifest says it
+ * provides (`provides.strudel`). When given, the host refuses any sound or control not on
+ * it, so the manifest can never claim less than the extension does: Stave names a
+ * switched-off extension from its manifest alone (#2512). The runtime always gives it
+ * (an empty list when the manifest declares none).
  */
-export function createRecordingHost(
-  id: string,
-  reg: HostRegistries,
-  declared?: { readonly sounds?: readonly string[]; readonly controls?: readonly string[] },
-): RecordingHost {
+export function createRecordingHost(id: string, reg: HostRegistries, declared?: StrudelProvides): RecordingHost {
   const declaredSounds = new Set((declared?.sounds ?? []).map((n) => n.toLowerCase()))
   const declaredControls = new Set(declared?.controls ?? [])
   const undeclared = (kind: 'sound' | 'control', name: string) =>
@@ -128,7 +164,7 @@ export function createRecordingHost(
     if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`)
   }
 
-  const host: ExtensionHost = {
+  const host: StrudelHost = {
     id,
     registerSound(name, onTrigger, data = {}) {
       open()

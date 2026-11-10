@@ -10,7 +10,7 @@ import { canPauseOfflineRender, piecesOf, renderInPieces } from './pieceRender'
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { planStems, tagTrack } from './stemSplit'
 import { createTransportHold } from './transportHold'
-import { fromStrudel, pageExtensionAudio } from '../extensions'
+import { fromStrudel, pageExtensions } from '../extensions'
 import { onLiveGraph, registerBackgroundRender, whenGraphFree, withOfflineGraph, withUserRender } from './offlineGraph'
 import { displayRenderRate } from './displayRate'
 import {
@@ -1076,15 +1076,15 @@ export class StrudelEngine implements LiveCodingEngine {
     // observation visible until structural parity ships.
     console.log(`[StrudelEngine] aliasBank: soundMap keys ${preAliasCount} → ${postAliasCount} (Δ ${postAliasCount - preAliasCount}; expect non-negative)`)
 
-    // #2510 — the person's extensions: AFTER every built-in sound above (so a name an
-    // extension asks for that is already taken is refused, never overwritten) and BEFORE
-    // the sound names are read below. The runtime is one per page and joins a start
-    // already running, so a second engine or a retried init only re-applies the
-    // switches. Bounded by its own wait, never by boot's budget: a budget already spent
-    // must not mean the extensions never start; past the wait they finish in the
-    // background and `onChange` reads the names again.
-    const extensions = pageExtensionAudio()
-    const extensionsStarted = extensions.start({
+    // #2510 #2538 — the Strudel parts of the person's extensions: AFTER every built-in
+    // sound above (so a name an extension asks for that is already taken is refused, never
+    // overwritten) and BEFORE the sound names are read below. Their common parts switched
+    // on at page load; this tells the page's one runtime that Strudel is here. A second
+    // engine or a retried init only re-applies the switches. Bounded by its own wait,
+    // never by boot's budget: a budget already spent must not mean the extensions never
+    // start; past the wait they finish in the background and `onChange` reads the names again.
+    const extensions = pageExtensions()
+    const extensionsStarted = extensions.attachStrudel({
       registries: () => fromStrudel(webaudioMod, coreMod),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       registerWorklet: (url) => (webaudioMod as any).registerWorklet(url),
@@ -2183,7 +2183,7 @@ export class StrudelEngine implements LiveCodingEngine {
       })(),
       // #2510 — extensions get ready in the same wait (never inside a note). It reports
       // its own failures and never rejects.
-      pageExtensionAudio().prepare(capMs),
+      pageExtensions().prepare(capMs),
     ])
   }
 
@@ -2690,7 +2690,7 @@ export class StrudelEngine implements LiveCodingEngine {
     // extensions get ready here: bounce, stems and the waveform all come through this
     // door. Before the graph is borrowed, so a slow preparation holds no render lock.
     // A cancel stops the wait at once (the preparation itself goes on for next time).
-    await pageExtensionAudio().prepare(EXTENSIONS_RENDER_PREPARE_MS, signal)
+    await pageExtensions().prepare(EXTENSIONS_RENDER_PREPARE_MS, signal)
     if (signal?.aborted) throw new RenderCancelledError()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const wa: any = await import('@strudel/webaudio')
