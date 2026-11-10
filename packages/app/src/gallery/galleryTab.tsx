@@ -16,7 +16,7 @@
  * changes — every write re-fires the shell's onActiveTabChange — and a change of
  * the search alone waits until typing pauses (SEARCH_WRITE_DELAY_MS).
  */
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 import type { AppTabLabel, AppTabState, WorkspaceTab } from "@stave/editor";
 import { createGalleryStore, type GalleryState, type GalleryStore } from "./galleryStore";
 import { GalleryView } from "./GalleryView";
@@ -46,15 +46,6 @@ export const GALLERY_APP_KEY = "gallery";
 
 /** Where you are in the gallery, for the whole page: the tab and the phone overlay share it. */
 export const galleryTabStore: GalleryStore = createGalleryStore();
-
-/** Has the store been opened (or resumed) since the page loaded? */
-let started = false;
-
-/** A real open: fetch again and start from `first`. */
-export function openGalleryStore(store: GalleryStore, first: GalleryLinkTarget | null): void {
-  started = true;
-  store.open(first);
-}
 
 /** The place a gallery tab carries in the shell's layout (persisted). */
 export interface GalleryPlace {
@@ -217,15 +208,18 @@ export function GalleryTabBody({
   onPlaceChange,
   store = galleryTabStore,
 }: GalleryTabBodyProps) {
-  // A tab restored after a reload: nothing has opened the store on this page yet.
-  // Before the view's own mount effects, so it never draws the empty start.
-  const resumedRef = useRef(false);
-  if (!started && !resumedRef.current) {
-    resumedRef.current = true;
-    started = true;
-    const place = readPlace(tab.state);
-    store.resume(place ?? START_PLACE);
-  }
+  // #2497 — a tab restored after a reload: nothing has opened the store on this
+  // page yet, so put it back at the tab's saved place. In a layout effect, not
+  // while drawing: it still runs before the first paint (the empty start is never
+  // shown) and before the view's own mount effects, and a draw React throws away
+  // leaves nothing behind. `store.started()` makes it once per page, however many
+  // times React mounts the body (strict mode mounts it twice). The saved place is
+  // read at mount only: after that the store is where the place lives.
+  const mountState = useRef(tab.state);
+  useLayoutEffect(() => {
+    if (store.started()) return;
+    store.resume(readPlace(mountState.current) ?? START_PLACE);
+  }, [store]);
 
   // Keep the shell's copy of the place up to date — only when the place itself changes.
   const placeChange = useRef(onPlaceChange);
@@ -292,11 +286,6 @@ export function galleryAppTab({ actions, onPublish }: { actions: GalleryEntryAct
       />
     ),
   };
-}
-
-/** Test seam: forget that the page's store was opened. */
-export function resetGalleryTabForTests(): void {
-  started = false;
 }
 
 const CSS = `
