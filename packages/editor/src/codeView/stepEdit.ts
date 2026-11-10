@@ -46,7 +46,7 @@ import { chunkDivisions, laneDivisions, type BarTree, type BarTreeRefusal, type 
 import type { MiniSpan } from './strudelMini/shape'
 import { miniPattern } from './strudelMini/pattern'
 // every step this file writes is spelled there, so no gesture keeps a spelling of its own (#2326)
-import { REST, chord, group, note, printElement, printSeq, respellWrittenOut, rests } from './strudelMini/spell'
+import { REST, chord, group, note, printElement, printSeq, respellWrittenOut, rests, type SElement } from './strudelMini/spell'
 
 /** one step of one bar, by where it is written */
 export interface StepAddress {
@@ -492,7 +492,8 @@ function lengthOf(mini: string, step: DivisionStep): Length | null {
 /**
  * MAKE THE ROW'S NOTE END AT `end` (#2293): a resize that stays inside the note's group.
  * The length is counted in the note's own units — the share of its group one step takes —
- * and spelled by `./strudelMini/spell.ts` (#2326): a length is `@n`, room given back is rests.
+ * and spelled by `./strudelMini/spell.ts` (#2326): a length is `@n`, room given back is rests,
+ * and what is left of a rest written `~@n` that it grows into keeps its `@` (#2541).
  *
  *   `bd ~ sd ~`, longer by one   →  `bd@2 sd ~`   (the rest after it is taken in)
  *   `bd@2 ~ sd`, longer by one   →  `bd@3 sd`
@@ -563,13 +564,28 @@ function resizeStepHere(mini: string, trees: readonly BarTree[], address: StepAd
   }
   if (need.n > 0) return refuse('no-room-to-grow')
   const last = taken[taken.length - 1]
+  // the whole units the note now covers; only the last rest taken can have any left over
+  const used = Math.ceil(want.n / want.d)
+  const left = leftOfRest(mini, last, room - used)
   // a whole number of units: the note, then what is left of the last rest, side by side
-  // (`c4 ~` → `c4@2`; `bd ~@2` held for two → `bd@2 ~`)
-  if (want.d === 1) return write(from, textEnd(mini, last), printSeq([note(name, want.n), ...rests(room - want.n)]))
-  // part of a unit: one step of the weight they had, the note for its share and rests after
-  // it (`c4 ~` longer by half a step → `[c4@3 ~]@2`)
-  const share = fdiv(want, { n: room, d: 1 })
-  return write(from, textEnd(mini, last), printElement(group([note(name, share.n), ...rests(share.d - share.n)], room)))
+  // (`c4 ~` → `c4@2`; `bd ~@2` held for two → `bd@2 ~`; `bd ~@3` → `bd@2 ~@2`)
+  if (want.d === 1) return write(from, textEnd(mini, last), printSeq([note(name, want.n), ...left]))
+  // part of a unit: one step of the units it reaches into, the note for its share and rests
+  // after it, then what is left of the last rest (`c4 ~` longer by half a step → `[c4@3 ~]@2`;
+  // `c4 ~@3` → `[c4@3 ~]@2 ~@2`)
+  const share = fdiv(want, { n: used, d: 1 })
+  return write(from, textEnd(mini, last), printSeq([group([note(name, share.n), ...rests(share.d - share.n)], used), ...left]))
+}
+
+/**
+ * What is left of a rest a held note grew into, `k` units of it (#2541). A rest written with a
+ * weight keeps it and its own sign: `~@3` with one unit taken is `~@2`, `-@2` is `-`. The
+ * #2444 ruling: shortened, never respelled. Any other rest is written out, one per unit.
+ */
+function leftOfRest(mini: string, rest: DivisionStep, k: number): SElement[] {
+  if (k <= 0) return []
+  const m = /^([~-])@[1-9][0-9]*$/.exec(mini.slice(rest.span!.start, textEnd(mini, rest)))
+  return m ? [note(m[1], k)] : rests(k)
 }
 
 /* ── a hit of `x*k`, a copy of `x!k` (#2326) ─────────────────────── */

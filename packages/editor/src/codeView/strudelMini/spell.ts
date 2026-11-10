@@ -22,7 +22,8 @@
  *  - `COPIES_FROM_THREE_ARE_BANG` — k ≥ 3 copies of the same step side by side, made by the
  *    edit inside the edited step's own text, are `x!k`; two stay written out. Never folds a
  *    neighbour the edit did not write.
- *  - `RESTS_WRITTEN_OUT` — rests are one `~` per slot (`~@k`: rare in the study).
+ *  - `RESTS_WRITTEN_OUT` — rests the edit makes are one `~` per slot (`~@k`: rare in the study).
+ *    What is left of a rest someone wrote as `~@k` keeps its `@` (#2541, ruled on #2444).
  *  - `GROUP_IS_SPACED` — an uneven group is `[a b …]`.
  *  - `CHORD_IS_COMMAS` — notes sounding together are `[a,b]`, tight when new; a member joining
  *    a chord uses the separator that chord already uses (the caller passes it).

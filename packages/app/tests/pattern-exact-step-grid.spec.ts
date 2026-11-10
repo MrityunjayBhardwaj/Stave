@@ -141,6 +141,16 @@ test.describe('the step grid in Exact (#2458)', () => {
     await expect.poll(() => editorValue(page)).toBe('$: s("bd@2 ~ ~")')
   })
 
+  test('a note held into a `~@n` rest shortens the rest and keeps its `@` (#2541)', async ({ page }) => {
+    const grid = await open(page, '$: s("bd ~@3 sd")')
+    const bd = await rowOf(grid, 'bd')
+    await cell(grid, bd, 0, '0/1').focus()
+    await page.keyboard.press('Alt+Shift+ArrowRight')
+    await expect.poll(() => editorValue(page)).toBe('$: s("bd@2 ~@2 sd")')
+    await page.keyboard.press('Alt+Shift+ArrowRight')
+    await expect.poll(() => editorValue(page)).toBe('$: s("bd@3 ~ sd")')
+  })
+
   test('the arrow keys walk steps across rows, and Enter edits the step under the cursor', async ({ page }) => {
     const grid = await open(page, '$: s("bd [~ sd]")')
     const bd = await rowOf(grid, 'bd')

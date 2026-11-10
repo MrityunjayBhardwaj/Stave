@@ -14318,11 +14318,19 @@ function resizeStepHere(mini, trees, address, end, row) {
   }
   if (need.n > 0) return refuse("no-room-to-grow");
   const last = taken[taken.length - 1];
-  if (want.d === 1) return write(from, textEnd(mini, last), printSeq([note(name, want.n), ...rests(room - want.n)]));
-  const share = fdiv(want, { n: room, d: 1 });
-  return write(from, textEnd(mini, last), printElement(group([note(name, share.n), ...rests(share.d - share.n)], room)));
+  const used = Math.ceil(want.n / want.d);
+  const left = leftOfRest(mini, last, room - used);
+  if (want.d === 1) return write(from, textEnd(mini, last), printSeq([note(name, want.n), ...left]));
+  const share = fdiv(want, { n: used, d: 1 });
+  return write(from, textEnd(mini, last), printSeq([group([note(name, share.n), ...rests(share.d - share.n)], used), ...left]));
 }
 __name(resizeStepHere, "resizeStepHere");
+function leftOfRest(mini, rest, k) {
+  if (k <= 0) return [];
+  const m = /^([~-])@[1-9][0-9]*$/.exec(mini.slice(rest.span.start, textEnd(mini, rest)));
+  return m ? [note(m[1], k)] : rests(k);
+}
+__name(leftOfRest, "leftOfRest");
 function plainGenerator(mini, step) {
   if (step.rows !== null || step.rest || step.name === null || step.head === null || step.span === null) return null;
   const from = step.head.start;
