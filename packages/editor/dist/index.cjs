@@ -15651,8 +15651,14 @@ function slots() {
       const ticket = { cancelled: false, promise: Promise.resolve() };
       const after = inFlight2 ? inFlight2.promise.catch(() => void 0) : Promise.resolve();
       ticket.promise = after.then(async () => {
-        const rec = await run(ticket);
-        if (rec) active2.set(key3, rec);
+        const out = await run(ticket);
+        if (!out) return;
+        if (ticket.cancelled) {
+          out.rec.undo();
+          return;
+        }
+        active2.set(key3, out.rec);
+        out.kept?.();
       }).finally(() => {
         if (pending2.get(key3) === ticket) pending2.delete(key3);
       });
@@ -15670,7 +15676,7 @@ function slots() {
   };
 }
 __name(slots, "slots");
-async function activateThrough(rec, activate, ticket) {
+async function activateThrough(rec, activate) {
   try {
     await activate();
   } catch (e) {
@@ -15678,11 +15684,6 @@ async function activateThrough(rec, activate, ticket) {
     if (undoErrors.length && typeof e === "object" && e !== null) e.undoErrors = undoErrors;
     throw e;
   }
-  if (ticket.cancelled) {
-    rec.undo();
-    return null;
-  }
-  return rec;
 }
 __name(activateThrough, "activateThrough");
 function createExtensionManager(opts) {
@@ -15720,9 +15721,8 @@ function createExtensionManager(opts) {
           }
         }
         const rec = createCommonHost(m.id);
-        const kept = await activateThrough(rec, () => mod.activate?.(rec.host), ticket);
-        if (kept) modules.set(id, mod);
-        return kept;
+        await activateThrough(rec, () => mod.activate?.(rec.host));
+        return { rec, kept: /* @__PURE__ */ __name(() => modules.set(id, mod), "kept") };
       });
     },
     activatePart(id, language) {
@@ -15738,7 +15738,8 @@ function createExtensionManager(opts) {
         await driver.before?.(m, part);
         if (ticket.cancelled) return null;
         const rec = driver.record(m);
-        return activateThrough(rec, () => part.activate(rec.host), ticket);
+        await activateThrough(rec, () => part.activate(rec.host));
+        return { rec };
       });
     },
     deactivate(id) {

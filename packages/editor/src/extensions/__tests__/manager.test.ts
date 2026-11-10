@@ -366,4 +366,29 @@ describe('createExtensionManager', () => {
     m.deactivate('zzext')
     expect(TEST_CONTROL in (core as any).Pattern.prototype).toBe(false)
   })
+
+  // Switching off must win at EVERY moment, not only at the awaits a test happens to hit:
+  // a switch-off that lands between the last cancel check and the "it is on now" step
+  // would leave the extension on, with nothing left to undo it.
+  for (const level of ['common', 'strudel'] as const) {
+    it(`switching off ${level === 'common' ? 'the extension' : 'during its Strudel part'} at any microtask after it starts wins`, async () => {
+      const leaks: number[] = []
+      for (let n = 0; n < 16; n++) {
+        const log: string[] = []
+        const m = managerOf([testManifest({}, log)])
+        if (level === 'strudel') await m.activate('zzext')
+        const pending = level === 'common' ? m.activate('zzext') : m.activatePart('zzext', 'strudel')
+        for (let i = 0; i < n; i++) await Promise.resolve()
+        m.deactivate('zzext')
+        await pending.catch(() => undefined)
+        const on = m.isActive('zzext') || m.isPartActive('zzext', 'strudel') || sounds().includes(TEST_SOUND)
+        if (on) {
+          leaks.push(n)
+          m.deactivate('zzext')
+        }
+        // whatever it managed to register before the switch-off was undone
+      }
+      expect(leaks).toEqual([])
+    })
+  }
 })

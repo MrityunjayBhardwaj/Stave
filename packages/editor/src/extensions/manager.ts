@@ -105,7 +105,12 @@ function declares(m: ExtensionManifest, language: string): boolean {
 
 /**
  * One set of switch-on/off rules, for any key (an extension's common part, or one of its
- * language parts). `run` returns the record to keep, or null when it was cancelled.
+ * language parts). `run` returns the record to keep (and `kept`, to run once it is on), or
+ * null when it was cancelled.
+ *
+ * The LAST cancel check and "it is on now" (`active.set`, then `kept`) happen in one
+ * synchronous step, after `run`'s last await. With an await between them, a switch-off
+ * landing in the gap found nothing to undo, and the part stayed on.
  */
 function slots() {
   const active = new Map<string, Recording>()
@@ -113,7 +118,7 @@ function slots() {
   return {
     active,
     pending,
-    on(key: string, run: (ticket: { cancelled: boolean }) => Promise<Recording | null>): Promise<void> {
+    on(key: string, run: (ticket: { cancelled: boolean }) => Promise<{ rec: Recording; kept?: () => void } | null>): Promise<void> {
       if (active.has(key)) return Promise.resolve()
       const inFlight = pending.get(key)
       if (inFlight && !inFlight.cancelled) return inFlight.promise
@@ -123,8 +128,15 @@ function slots() {
       const after = inFlight ? inFlight.promise.catch(() => undefined) : Promise.resolve()
       ticket.promise = after
         .then(async () => {
-          const rec = await run(ticket)
-          if (rec) active.set(key, rec)
+          const out = await run(ticket)
+          if (!out) return
+          // no await from here on: see above
+          if (ticket.cancelled) {
+            out.rec.undo()
+            return
+          }
+          active.set(key, out.rec)
+          out.kept?.()
         })
         .finally(() => {
           if (pending.get(key) === ticket) pending.delete(key)
@@ -145,10 +157,11 @@ function slots() {
 
 /**
  * Activate through `rec`. A throw undoes what it registered and rethrows (the cleanup's own
- * failures ride on the error as `undoErrors`, so whoever reports it can say so). Cancelled
- * meanwhile: undone, and null.
+ * failures ride on the error as `undoErrors`, so whoever reports it can say so). Whether it
+ * was cancelled meanwhile is decided by the caller (`slots().on`), in the same step that
+ * marks it on.
  */
-async function activateThrough<R extends Recording>(rec: R, activate: () => unknown, ticket: { cancelled: boolean }): Promise<R | null> {
+async function activateThrough(rec: Recording, activate: () => unknown): Promise<void> {
   try {
     await activate()
   } catch (e) {
@@ -156,11 +169,6 @@ async function activateThrough<R extends Recording>(rec: R, activate: () => unkn
     if (undoErrors.length && typeof e === 'object' && e !== null) (e as { undoErrors?: unknown[] }).undoErrors = undoErrors
     throw e
   }
-  if (ticket.cancelled) {
-    rec.undo()
-    return null
-  }
-  return rec
 }
 
 export function createExtensionManager(opts: {
@@ -206,9 +214,8 @@ export function createExtensionManager(opts: {
           }
         }
         const rec = createCommonHost(m.id)
-        const kept = await activateThrough(rec, () => mod.activate?.(rec.host), ticket)
-        if (kept) modules.set(id, mod)
-        return kept
+        await activateThrough(rec, () => mod.activate?.(rec.host))
+        return { rec, kept: () => modules.set(id, mod) }
       })
     },
 
@@ -226,7 +233,8 @@ export function createExtensionManager(opts: {
         await driver.before?.(m, part)
         if (ticket.cancelled) return null
         const rec = driver.record(m)
-        return activateThrough(rec, () => part.activate(rec.host), ticket)
+        await activateThrough(rec, () => part.activate(rec.host))
+        return { rec }
       })
     },
 

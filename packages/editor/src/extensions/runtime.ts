@@ -7,10 +7,12 @@
  * engines (React's strict mode mounts two). So neither the app nor the engines own
  * extensions; they tell this runtime what has happened:
  *
- *  - `start({ report })`: the page has loaded (the app calls it once, through the package
- *    entry's `startPageExtensions`). From now on the runtime follows the person's
- *    switches, and each switched-on extension's COMMON part is on, with no audio engine
- *    involved. Safe to call again: it joins what is running.
+ *  - `start({ report })`: the page has loaded. From now on the runtime follows the
+ *    person's switches, and each switched-on extension's COMMON part is on, with no audio
+ *    engine involved. Safe to call again: it joins what is running. Nothing in the app
+ *    calls it yet: that call comes through the package entry, which may not reach this
+ *    folder until the structure map allows it (#2538). Until then the first engine to
+ *    attach starts the runtime (below), so common parts come on at engine start.
  *  - `attachStrudel(doors)`: a Strudel engine has started (`initInternal`, after Stave's
  *    own sounds and before it reads the sound names). Each active extension's Strudel
  *    part switches on, and from now on a switch-on while attached switches its Strudel
