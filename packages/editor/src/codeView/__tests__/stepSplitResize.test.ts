@@ -238,6 +238,19 @@ describe('resizeStep — part of a step, and part of a rest (#2443)', () => {
     // a whole unit into a longer rest: what is left of the rest stays beside the note
     resizes('bd ~@2 sd', 'bd', 'bd', 2, 'bd@2 ~ sd')
   })
+  it('what is left of a rest written `~@n` keeps its `@`, and its own rest sign (#2541)', () => {
+    resizes('bd ~@3 sd', 'bd', 'bd', 2, 'bd@2 ~@2 sd')
+    resizes('bd ~@4 sd', 'bd', 'bd', 2, 'bd@2 ~@3 sd')
+    resizes('bd ~@4 sd', 'bd', 'bd', 3, 'bd@3 ~@2 sd')
+    resizes('bd -@4 sd', 'bd', 'bd', 3, 'bd@3 -@2 sd')
+    resizes('bd -@3 sd', 'bd', 'bd', 3, 'bd@3 - sd')
+    resizes('bd ~ ~@3 sd', 'bd', 'bd', 3, 'bd@3 ~@2 sd')
+    // part of a step: only the unit the note needs goes into its group
+    resizes('c4 ~@3', 'c4', 'c4', F(3, 2), '[c4@3 ~]@2 ~@2')
+    // rests written out are taken one by one, never respelled; rests the writer makes are written out
+    resizes('bd ~ ~ ~ sd', 'bd', 'bd', 2, 'bd@2 ~ ~ sd')
+    resizes('bd@3 sd', 'bd', 'bd@3', 1, 'bd ~ ~ sd')
+  })
   it('never over the next note, and never on a chord member', () => {
     expect(resizeRefused('c4 e4', 'c4', 'c4', 2)).toEqual({ ok: false, why: 'no-room-to-grow' })
     expect(resizeRefused('[c4,e4] g4', 'c4', '[c4,e4]', 2)).toMatchObject({ ok: false })
