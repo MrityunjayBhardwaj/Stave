@@ -335,6 +335,26 @@ export function startPageExtensions(): Promise<void> {
     report: (level, message) => emitLog({ level, runtime: 'stave', message }),
   })
 }
+// #2513 — the keys switched-on extensions take in the code (the app's key dispatcher and
+// Keyboard Shortcuts read them), the person's "handed back" choices, and the manifest
+// types an extension's page and the Shortcuts panel show.
+export {
+  extensionKeysInCode,
+  hasActiveExtensions,
+  extensionKeys,
+  isExtensionKeyGivenBack,
+  setExtensionKeyGivenBack,
+  onExtensionKeysChange,
+} from './extensions'
+export type {
+  ExtensionKey,
+  ExtensionKeyInCode,
+  ExtensionKeyState,
+  ExtensionManifest,
+  ExtensionHost,
+  CodeEditor,
+  EditorCleanup,
+} from './extensions'
 export {
   undo,
   redo,

@@ -21,7 +21,9 @@
  * files `.name(…)` as a parameter. The method itself is gone, so running such code reports
  * a missing method. This is listed in `RESIDUE`, so it is stated, not hidden.
  */
-import type { ExtensionHost, SoundTrigger, StrudelHost, StrudelProvides } from './types'
+import { pageCodeEditors, type CodeEditorList } from './editors'
+import { isExtensionKeyGivenBack } from './keys'
+import type { CodeEditor, EditorCleanup, ExtensionHost, ExtensionManifest, SoundTrigger, StrudelHost, StrudelProvides } from './types'
 
 /** Things a switched-off extension leaves behind, by registration kind. */
 export const RESIDUE = {
@@ -107,19 +109,95 @@ export interface PartRecording<H> {
   undo(): unknown[]
 }
 
+/** Run what an `onEditor` callback returned. */
+function runCleanup(out: EditorCleanup): void {
+  if (typeof out === 'function') out()
+  else if (out && typeof (out as { dispose?: unknown }).dispose === 'function') (out as { dispose(): void }).dispose()
+}
+
 /**
- * The common part's host (#2538): `id` and `onDeactivate`, nothing that names a language.
- * Its undo runs the `onDeactivate` callbacks, newest first.
+ * The common part's host (#2538): nothing here names a language. Its undo runs the
+ * `onDeactivate` callbacks and stops following editors, newest first.
+ *
+ * `onEditor` (#2513) follows the page's live code editors (`editors.ts`; tests hand in
+ * their own list). For each editor the extension's callback gets the editor and its own
+ * strip in the bar under it; when the editor closes or the extension is switched off, the
+ * callback's cleanup runs and the strip is removed, so a switched-off extension leaves no
+ * listener and no bar behind. `takesKey` reads the manifest's keys and the person's
+ * choices (`keys.ts`) when it is asked.
  */
-export function createCommonHost(id: string): PartRecording<ExtensionHost> {
+export function createCommonHost(
+  id: string,
+  opts: { manifest?: ExtensionManifest; editors?: CodeEditorList } = {},
+): PartRecording<ExtensionHost> {
   const onOff: (() => void)[] = []
   let closed = false
+  const open = () => {
+    if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`)
+  }
+  const label = opts.manifest?.name ?? id
   return {
     host: {
       id,
       onDeactivate(fn) {
-        if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`)
+        open()
         onOff.push(fn)
+      },
+      onEditor(fn) {
+        open()
+        const stop = (opts.editors ?? pageCodeEditors()).watch((site) => {
+          let strip: HTMLElement | null = null
+          let done = false
+          const removeStrip = () => {
+            done = true
+            strip?.remove()
+            strip = null
+          }
+          const handle: CodeEditor = {
+            editor: site.editor,
+            monaco: site.monaco,
+            readOnly: site.readOnly,
+            get language() {
+              return site.language()
+            },
+            get bar() {
+              // after the cleanup, a late read gets an element that is not in the bar
+              if (done) return site.bar.ownerDocument.createElement('div')
+              if (!strip) {
+                strip = site.bar.ownerDocument.createElement('div')
+                strip.setAttribute('data-extension-bar', id)
+                site.bar.appendChild(strip)
+              }
+              return strip
+            },
+          }
+          const named = (what: string, e: unknown) => {
+            const message = typeof (e as { message?: unknown } | null)?.message === 'string' ? (e as Error).message : String(e)
+            const err = new Error(`The ${label} extension could not ${what} a code editor: ${message}`) as Error & { cause?: unknown }
+            err.cause = e
+            return err
+          }
+          let out: EditorCleanup
+          try {
+            out = fn(handle)
+          } catch (e) {
+            removeStrip()
+            throw named('set up', e)
+          }
+          return () => {
+            try {
+              runCleanup(out)
+            } catch (e) {
+              throw named('let go of', e)
+            } finally {
+              removeStrip()
+            }
+          }
+        })
+        onOff.push(stop)
+      },
+      takesKey(key) {
+        return !closed && !!opts.manifest && !isExtensionKeyGivenBack(opts.manifest, key)
       },
     },
     undo() {

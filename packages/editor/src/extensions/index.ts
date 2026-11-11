@@ -7,6 +7,9 @@
  * `report` the package entry and the engine hand in.
  */
 export type {
+  CodeEditor,
+  EditorCleanup,
+  ExtensionKey,
   ExtensionLanguage,
   ExtensionManifest,
   ExtensionModule,
@@ -25,5 +28,17 @@ export { enabledExtensionIds, isExtensionEnabled, setExtensionEnabled, onExtensi
 export { BUILTIN_EXTENSIONS } from './builtin'
 export { createStrudelDriver, prepareStrudelParts } from './strudel'
 export type { ExtensionReport, ExtensionStrudelDoors } from './strudel'
-export { createExtensionRuntime, pageExtensions } from './runtime'
+export { createExtensionRuntime, pageExtensions, extensionKeysInCode, hasActiveExtensions } from './runtime'
+export { createCodeEditorList, offerCodeEditor, pageCodeEditors } from './editors'
+export type { CodeEditorList, CodeEditorSite, EditorWatcher } from './editors'
+export {
+  checkExtensionKeys,
+  keyId,
+  isExtensionKeyGivenBack,
+  setExtensionKeyGivenBack,
+  onExtensionKeysChange,
+  extensionKeys,
+  keysTakenBy,
+} from './keys'
+export type { ExtensionKeyState, ExtensionKeyInCode } from './keys'
 export type { ExtensionRuntime } from './runtime'
