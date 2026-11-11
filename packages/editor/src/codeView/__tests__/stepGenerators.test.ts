@@ -215,6 +215,26 @@ describe('one hit of `x*k` or copy of `x!k` is edited on its own (#2326)', () =>
     }
   })
 
+  it('the euclid put back is spaced as the euclids beside it are written (#2437, ruled on #2554)', () => {
+    // round trips: the step's own spacing is gone once it is written out; another euclid of the string keeps it
+    for (const [mini, sound, text] of [
+      ['bd(3, 8) sd(5, 8)', 'bd', 'bd(3, 8)'],
+      ['bd(3,8,0) sd(5,8,0)', 'bd', 'bd(3,8,0)'],
+      ['bd( 3 , 8 ) sd( 5 , 8 )', 'bd', 'bd( 3 , 8 )'],
+    ]) {
+      const hits = stepOf(chunkDivisions(mini, 1), sound, text, mini).hits.length
+      for (let j = 0; j < hits; j++) expect(offAndOn(mini, sound, text, j), `${mini} hit ${j}`).toBe(mini)
+    }
+    // the nearest euclid is the evidence
+    expect(placeAt('sd(3, 8) [bd ~ ~ ~ ~ ~ bd ~] cp cp cp hh(5,8)', 'bd', F(11, 48)).text).toBe('sd(3, 8) bd(3, 8) cp cp cp hh(5,8)')
+    // a rotation is spaced as the commas are
+    expect(placeAt('[bd ~ ~ ~ ~ bd ~ ~] sd(3, 8)', 'bd', F(1, 8)).text).toBe('bd(3, 8, 2) sd(3, 8)')
+    // `,0` is written where a euclid beside it writes it
+    expect(placeAt('hh(5,8,0) [bd ~ ~ ~ ~ ~ bd ~]', 'bd', F(11, 16)).text).toBe('hh(5,8,0) bd(3,8,0)')
+    // no euclid beside it: tight, nothing invented
+    expect(placeAt('hh*4 [bd ~ ~ ~ ~ ~ bd ~]', 'bd', F(11, 16)).text).toBe('hh*4 bd(3,8)')
+  })
+
   it('a written-out step that is a euclid rhythm is spelled `x(k,n,r)`, and plays as written out (#2437)', () => {
     // the smallest rotation that plays those hits; none written when it is 0
     expect(placeAt('[bd ~ ~ ~ ~ ~ bd ~]', 'bd', F(3, 8))).toEqual({ text: 'bd(3,8)', asWrittenOut: '[bd ~ ~ bd ~ ~ bd ~]', same: true })
@@ -327,7 +347,7 @@ describe('one hit of `x*k` / `x!k`, over the corpus (#2326)', () => {
   }, 900_000)
 
   it('every euclid hit erased and put back plays as before, and is the euclid again where the rules spell one (#2437)', () => {
-    const r = { trips: 0, identical: 0, tight: 0, writtenOut: 0, other: [] as string[], heardBad: [] as string[] }
+    const r = { trips: 0, identical: 0, spacing: 0, writtenOut: 0, other: [] as string[], heardBad: [] as string[] }
     for (const mini of minis) {
       const g = parseStepGrid(mini)
       if (!g.ok || (g.model.bars ?? 1) !== 1) continue
@@ -349,10 +369,10 @@ describe('one hit of `x*k` / `x!k`, over the corpus (#2326)', () => {
               const tail = mini.slice(s.span.start + own.length)
               const now = got.back.slice(s.span.start, got.back.length - tail.length)
               const kept = got.back.startsWith(mini.slice(0, s.span.start)) && got.back.endsWith(tail)
-              // the parens as written, spaces and a written-out `,0` aside: what the second click cannot know
+              // the parens with their spaces and a written-out `,0` taken out: the same euclid, spaced otherwise
               const tight = (x: string): string => x.replace(/\(([^()]*)\)/, (_, a: string) => `(${a.replace(/\s+/g, '').replace(/,0$/, '')})`)
               if (got.back === mini) r.identical++
-              else if (kept && now === tight(own)) r.tight++
+              else if (kept && tight(now) === tight(own)) r.spacing++
               else if (kept && now.startsWith('[') && !now.includes('(')) r.writtenOut++
               else r.other.push(`${JSON.stringify(mini)} → ${JSON.stringify(got.between)} → ${JSON.stringify(got.back)}`)
             }
@@ -365,8 +385,9 @@ describe('one hit of `x*k` / `x!k`, over the corpus (#2326)', () => {
     expect(r.trips).toBeGreaterThan(100)
     expect(r.heardBad).toEqual([])
     expect(r.other).toEqual([])
-    // measured 2026-11-11 over this corpus: 57 of 116 byte for byte, 36 the same euclid spelled tight
-    expect(r.identical).toBeGreaterThanOrEqual(57)
+    // measured 2026-11-11 over this corpus: 60 of 116 byte for byte (57 before the spacing was
+    // taken from the euclids beside the step, #2554), 33 the same euclid spaced otherwise
+    expect(r.identical).toBeGreaterThanOrEqual(60)
   }, 900_000)
 
   it('can go red: an edit that rests the whole step, not the one hit, is heard', () => {

@@ -28,9 +28,10 @@
  *  - `CHORD_IS_COMMAS` — notes sounding together are `[a,b]`, tight when new; a member joining
  *    a chord uses the separator that chord already uses (the caller passes it).
  *  - `EUCLID_FOR_A_EUCLID_RHYTHM` — a written-out step of one sound and rests whose hits are
- *    Strudel's own Bjorklund is `x(k,n)` / `x(k,n,r)`, tight (40 of 53 euclids in the corpus
- *    have no spaces in the brackets). When it is one is the writer's to decide, asking Strudel
- *    (`../stepEdit.ts`, `respellEuclid`, #2437).
+ *    Strudel's own Bjorklund is `x(k,n)` / `x(k,n,r)`, tight here (40 of 53 euclids in the
+ *    corpus have no spaces in the brackets). When it is one, and how its brackets are spaced
+ *    after the euclids written beside it, is the writer's to decide (`../stepEdit.ts`,
+ *    `respellEuclid`, #2437, #2554).
  *
  * The user's ruling (2026-11-05): the compact forms are written wherever the shape is even;
  * the writer edits what this file writes (a click on one hit of `hh*4` writes it out).

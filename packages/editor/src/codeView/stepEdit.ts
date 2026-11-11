@@ -709,6 +709,9 @@ function euclidPlaces(name: string, args: string, n: number): Set<number> | null
  *  - `from`, when the step was a euclid before this edit: its own text comes back as written
  *    where its `(k,n[,r])` still plays the hits; else its rotation is tried first.
  *  - Otherwise the smallest rotation `r ≥ 0` that plays them, none written when it is 0.
+ *  - Spaced as the nearest euclid written (`styles`, nearest first, ruled on #2554): the
+ *    spaces inside its brackets and after its commas, and a rotation of 0 written as `,0`
+ *    where the nearest euclid that shows a choice writes one. No euclid to go by: tight.
  *  - Never one hit (`[bd ~]` is a note and a rest, not `bd(1,2)`), never every place (that is
  *    `x*k`), never a shape that repeats a shorter one (`[bd ~ bd ~]` is `[bd ~]` twice, not
  *    `bd(2,4)`), and never a step of fewer than five places (`[ht ht lt]` stays, not
@@ -718,7 +721,7 @@ function euclidPlaces(name: string, args: string, n: number): Set<number> | null
  *
  * Null where none plays the hits: the caller's spelling stands.
  */
-function respellEuclid(text: string, from?: EuclidWritten): string | null {
+function respellEuclid(text: string, from?: EuclidWritten, styles: readonly EuclidStyle[] = []): string | null {
   const r = writtenOutRhythm(text)
   if (!r) return null
   const n = r.hits.length
@@ -733,9 +736,55 @@ function respellEuclid(text: string, from?: EuclidWritten): string | null {
   const rot = from ? /^\([^,]*,[^,]*,\s*([0-9]+)\s*\)$/.exec(from.args)?.[1] : undefined
   const tries = [...(rot !== undefined && Number(rot) > 0 && Number(rot) < n ? [Number(rot)] : []), ...Array.from({ length: n }, (_, i) => i)]
   for (const x of tries) {
-    if (plays(x === 0 ? `(${k},${n})` : `(${k},${n},${x})`)) return printElement(euclidStep(r.name, k, n, x, r.weight))
+    const tight = x === 0 ? `(${k},${n})` : `(${k},${n},${x})`
+    if (!plays(tight)) continue
+    const printed = printElement(euclidStep(r.name, k, n, x, r.weight))
+    const spaced = styled(k, n, x, styles)
+    // the spacing changes no hit; Strudel is asked again all the same, and tight is kept if it disagrees
+    return spaced !== tight && plays(spaced) ? printed.replace(tight, spaced) : printed
   }
   return null
+}
+
+/** how a euclid's brackets are written: after `(`, the commas, before `)`, and its rotation as written */
+interface EuclidStyle {
+  open: string
+  sep: string
+  /** the second comma, where the euclid writes a rotation */
+  sep2: string | null
+  rot: string | null
+  close: string
+}
+
+/** every plain `(k,n[,r])` written in `text`, with where it starts */
+const EUCLID_ARGS = /\((\s*)-?[0-9]+(\s*,\s*)[0-9]+(?:(\s*,\s*)([0-9]+))?(\s*)\)/g
+
+function stylesIn(text: string): Array<{ at: number; end: number; style: EuclidStyle }> {
+  return [...text.matchAll(EUCLID_ARGS)].map((m) => ({ at: m.index!, end: m.index! + m[0].length, style: { open: m[1], sep: m[2], sep2: m[3] ?? null, rot: m[4] ?? null, close: m[5] } }))
+}
+
+/**
+ * The euclids written in `mini` outside `[from, to)`, nearest first: the evidence for how a
+ * euclid written there is spaced (ruled on #2554). Only this string is read; the file around
+ * it is not something the writer is given.
+ */
+function stylesNear(mini: string, from: number, to: number): EuclidStyle[] {
+  const dist = (s: { at: number; end: number }): number => (s.end <= from ? from - s.end : s.at - to)
+  return stylesIn(mini)
+    .filter((s) => s.end <= from || s.at >= to)
+    .sort((a, b) => dist(a) - dist(b))
+    .map((s) => s.style)
+}
+
+/** `(k,n[,r])` spaced as the nearest evidence: its spaces from the nearest, `,0` from the nearest that shows whether it writes one */
+function styled(k: number, n: number, r: number, styles: readonly EuclidStyle[]): string {
+  const near = styles[0]
+  if (!near) return r === 0 ? `(${k},${n})` : `(${k},${n},${r})`
+  const sep2 = near.sep2 ?? near.sep
+  // a euclid with a rotation other than 0 says nothing about how 0 is written
+  const zero = styles.find((s) => s.rot === null || Number(s.rot) === 0)
+  const tail = r !== 0 ? `${sep2}${r}` : zero && zero.rot !== null ? `${sep2}0` : ''
+  return `(${near.open}${k}${near.sep}${n}${tail}${near.close})`
 }
 
 /** the places are a shorter run of them played again and again (`[bd ~ bd ~]` is `[bd ~]` twice) */
@@ -790,7 +839,9 @@ function viaWrittenOut(mini: string, trees: readonly BarTree[], address: StepAdd
   const after = applyStepEdit(written, edit)
   const region = after.slice(gen.from, regionEnd)
   // a euclid whose hits are still a euclid's is spelled so (#2437); else by the rules for `x*k`
-  return write(gen.from, replacedEnd, (gen.euclid && respellEuclid(region, gen.euclid)) || respellWrittenOut(region, gen.kind === 'bang' ? 'bang' : 'star'))
+  // spaced as the step itself was written, else as the euclids beside it are (#2554)
+  const styles = gen.euclid ? [...stylesIn(gen.euclid.args).map((s) => s.style), ...stylesNear(mini, gen.from, gen.to)] : []
+  return write(gen.from, replacedEnd, (gen.euclid && respellEuclid(region, gen.euclid, styles)) || respellWrittenOut(region, gen.kind === 'bang' ? 'bang' : 'star'))
 }
 
 /** `renameStep` on a step that is not a generator: its name replaced, everything after it kept */
@@ -841,11 +892,13 @@ function asEuclid(mini: string, trees: readonly BarTree[], address: StepAddress,
   const found = findIn(lane.row, `part${tree.ok ? tree.parts.indexOf(lane.row) : 0}`, address.span, [], [])
   const g = found?.around[found.around.length - 1]
   if (!g || !g.span) return done
-  const from = g.span.start
+  // a step's span can begin at the space before it (after a `)`, `bd(3,8) [bd ~]`): its text starts after
+  let from = g.span.start
+  while (from < g.span.end && /\s/.test(mini[from])) from++
   const to = textEnd(mini, g)
   const { edit } = done
   if (edit.from < from || edit.to > to) return done
-  const spelled = respellEuclid(applyStepEdit(mini.slice(from, to), { from: edit.from - from, to: edit.to - from, insert: edit.insert }))
+  const spelled = respellEuclid(applyStepEdit(mini.slice(from, to), { from: edit.from - from, to: edit.to - from, insert: edit.insert }), undefined, stylesNear(mini, from, to))
   return spelled === null ? done : write(from, to, spelled)
 }
 

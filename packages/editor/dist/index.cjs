@@ -14461,7 +14461,7 @@ function euclidPlaces2(name, args, n) {
   return at;
 }
 __name(euclidPlaces2, "euclidPlaces");
-function respellEuclid(text, from) {
+function respellEuclid(text, from, styles2 = []) {
   const r = writtenOutRhythm(text);
   if (!r) return null;
   const n = r.hits.length;
@@ -14476,11 +14476,34 @@ function respellEuclid(text, from) {
   const rot = from ? /^\([^,]*,[^,]*,\s*([0-9]+)\s*\)$/.exec(from.args)?.[1] : void 0;
   const tries = [...rot !== void 0 && Number(rot) > 0 && Number(rot) < n ? [Number(rot)] : [], ...Array.from({ length: n }, (_, i) => i)];
   for (const x of tries) {
-    if (plays(x === 0 ? `(${k},${n})` : `(${k},${n},${x})`)) return printElement(euclid(r.name, k, n, x, r.weight));
+    const tight2 = x === 0 ? `(${k},${n})` : `(${k},${n},${x})`;
+    if (!plays(tight2)) continue;
+    const printed = printElement(euclid(r.name, k, n, x, r.weight));
+    const spaced = styled(k, n, x, styles2);
+    return spaced !== tight2 && plays(spaced) ? printed.replace(tight2, spaced) : printed;
   }
   return null;
 }
 __name(respellEuclid, "respellEuclid");
+var EUCLID_ARGS = /\((\s*)-?[0-9]+(\s*,\s*)[0-9]+(?:(\s*,\s*)([0-9]+))?(\s*)\)/g;
+function stylesIn(text) {
+  return [...text.matchAll(EUCLID_ARGS)].map((m) => ({ at: m.index, end: m.index + m[0].length, style: { open: m[1], sep: m[2], sep2: m[3] ?? null, rot: m[4] ?? null, close: m[5] } }));
+}
+__name(stylesIn, "stylesIn");
+function stylesNear(mini, from, to) {
+  const dist = /* @__PURE__ */ __name((s) => s.end <= from ? from - s.end : s.at - to, "dist");
+  return stylesIn(mini).filter((s) => s.end <= from || s.at >= to).sort((a, b) => dist(a) - dist(b)).map((s) => s.style);
+}
+__name(stylesNear, "stylesNear");
+function styled(k, n, r, styles2) {
+  const near2 = styles2[0];
+  if (!near2) return r === 0 ? `(${k},${n})` : `(${k},${n},${r})`;
+  const sep2 = near2.sep2 ?? near2.sep;
+  const zero = styles2.find((s) => s.rot === null || Number(s.rot) === 0);
+  const tail = r !== 0 ? `${sep2}${r}` : zero && zero.rot !== null ? `${sep2}0` : "";
+  return `(${near2.open}${k}${near2.sep}${n}${tail}${near2.close})`;
+}
+__name(styled, "styled");
 function repeatsShorter(hits) {
   const n = hits.length;
   for (let p = 1; p < n; p++) if (n % p === 0 && hits.every((h, i) => h === hits[i % p])) return true;
@@ -14519,7 +14542,8 @@ function viaWrittenOut(mini, trees, address, row, writer) {
   if (edit.from < gen2.from) return refuse("tree-is-not-this-text");
   const after = applyStepEdit(written, edit);
   const region = after.slice(gen2.from, regionEnd);
-  return write(gen2.from, replacedEnd, gen2.euclid && respellEuclid(region, gen2.euclid) || respellWrittenOut(region, gen2.kind === "bang" ? "bang" : "star"));
+  const styles2 = gen2.euclid ? [...stylesIn(gen2.euclid.args).map((s) => s.style), ...stylesNear(mini, gen2.from, gen2.to)] : [];
+  return write(gen2.from, replacedEnd, gen2.euclid && respellEuclid(region, gen2.euclid, styles2) || respellWrittenOut(region, gen2.kind === "bang" ? "bang" : "star"));
 }
 __name(viaWrittenOut, "viaWrittenOut");
 function renameStepHere(mini, trees, address, row, name) {
@@ -14548,11 +14572,12 @@ function asEuclid(mini, trees, address, row, done) {
   const found = findIn(lane.row, `part${tree.ok ? tree.parts.indexOf(lane.row) : 0}`, address.span, [], []);
   const g = found?.around[found.around.length - 1];
   if (!g || !g.span) return done;
-  const from = g.span.start;
+  let from = g.span.start;
+  while (from < g.span.end && /\s/.test(mini[from])) from++;
   const to = textEnd(mini, g);
   const { edit } = done;
   if (edit.from < from || edit.to > to) return done;
-  const spelled = respellEuclid(applyStepEdit(mini.slice(from, to), { from: edit.from - from, to: edit.to - from, insert: edit.insert }));
+  const spelled = respellEuclid(applyStepEdit(mini.slice(from, to), { from: edit.from - from, to: edit.to - from, insert: edit.insert }), void 0, stylesNear(mini, from, to));
   return spelled === null ? done : write(from, to, spelled);
 }
 __name(asEuclid, "asEuclid");
