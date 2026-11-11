@@ -348,6 +348,9 @@ export {
   RESIDUE,
   E2E_TONE_ID,
   E2E_TONE_SOUND,
+  // #2552 — why switching one on failed, and hearing when that changes
+  extensionFailure,
+  onPageExtensionsChange,
 } from './extensions'
 export type { ExtensionAbout, ExtensionLanguage } from './extensions'
 // #2513 — the keys switched-on extensions take in the code (the app's key dispatcher and

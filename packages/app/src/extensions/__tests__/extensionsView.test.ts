@@ -8,7 +8,9 @@ import {
   codeNamesOf,
   extensionRow,
   extensionTabKey,
+  failedToStart,
   groupExtensions,
+  LEFTOVER_TEXT,
   languagesLabel,
   leftoversOf,
   matchesQuery,
@@ -42,7 +44,7 @@ const hydraThing: ExtensionManifest = {
   load,
 };
 const ALL = [voice, vim, hydraThing];
-const RESIDUE = { control: "the control stays `listed`", worklet: "the worklet stays loaded" };
+const WORDS = { control: "the control stays `listed`", worklet: "the worklet stays loaded" };
 
 describe("the panel shows only once an extension is listed", () => {
   it("hidden for an empty list, shown for one", () => {
@@ -121,6 +123,14 @@ describe("the row and the page read one switch", () => {
     expect(switchStateLine(true)).toBe("On — takes effect at once, no reload");
     expect(switchStateLine(false)).toBe("Off — its code has not been loaded");
   });
+  it("switched on but failed to start: the line says so, and points to the Console (#2552)", () => {
+    expect(switchStateLine(true, "chunk 404.")).toBe("Couldn't switch on: chunk 404. The Console has the details.");
+    // a failure left over from before it was switched off is not shown
+    expect(switchStateLine(false, "chunk 404.")).toBe("Off — its code has not been loaded");
+    expect(failedToStart(true, "chunk 404.")).toBe(true);
+    expect(failedToStart(true, undefined)).toBe(false);
+    expect(failedToStart(false, "chunk 404.")).toBe(false);
+  });
 });
 
 describe("what it adds, from the manifest alone", () => {
@@ -136,14 +146,21 @@ describe("what it adds, from the manifest alone", () => {
 });
 
 describe("when switched off", () => {
-  it("lists the host's leftovers for its controls and worklets", () => {
-    expect(leftoversOf(voice, RESIDUE)).toEqual([
-      { names: [".lyric(…)"], text: RESIDUE.control },
-      { names: [], text: RESIDUE.worklet },
+  it("lists a leftover for its controls and one for its worklets", () => {
+    expect(leftoversOf(voice, WORDS)).toEqual([
+      { names: [".lyric(…)"], text: WORDS.control },
+      { names: [], text: WORDS.worklet },
     ]);
   });
   it("nothing for an extension with neither", () => {
-    expect(leftoversOf(vim, RESIDUE)).toEqual([]);
+    expect(leftoversOf(vim)).toEqual([]);
+  });
+  it("in plain words: no library, function or parser names (#2552)", () => {
+    const shown = leftoversOf(voice).map((n) => n.text);
+    expect(shown).toEqual([LEFTOVER_TEXT.control, LEFTOVER_TEXT.worklet]);
+    for (const text of shown) {
+      expect(text).not.toMatch(/superdough|registerWorklet|controlAlias|parser|Strudel's control list|worklet|`/i);
+    }
   });
 });
 

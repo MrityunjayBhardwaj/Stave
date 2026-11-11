@@ -35,8 +35,19 @@ export function ExtensionTile({ manifest, size }: { manifest: ExtensionManifest;
   );
 }
 
-/** "experimental" and "on", as the row and the page show them. */
-export function ExtensionBadges({ experimental, on }: { experimental: boolean; on: boolean }) {
+/**
+ * "experimental" and "on", as the row and the page show them. An extension switched on that
+ * failed to start shows "couldn't switch on" instead of "on" (#2552).
+ */
+export function ExtensionBadges({
+  experimental,
+  on,
+  failed = false,
+}: {
+  experimental: boolean;
+  on: boolean;
+  failed?: boolean;
+}) {
   return (
     <>
       {experimental && (
@@ -44,7 +55,12 @@ export function ExtensionBadges({ experimental, on }: { experimental: boolean; o
           experimental
         </span>
       )}
-      {on && (
+      {on && failed && (
+        <span style={{ ...badge, ...badgeFailed }} data-extension-badge="failed" title="See the Console for why">
+          couldn't switch on
+        </span>
+      )}
+      {on && !failed && (
         <span style={{ ...badge, ...badgeOn }} data-extension-badge="on">
           on
         </span>
@@ -102,6 +118,7 @@ const badge: React.CSSProperties = {
 };
 const badgeExperimental: React.CSSProperties = { color: "var(--highlight-fg)", borderColor: "var(--highlight-fg)" };
 const badgeOn: React.CSSProperties = { color: "var(--success-fg)", borderColor: "var(--success-fg)" };
+const badgeFailed: React.CSSProperties = { color: "var(--danger-fg)", borderColor: "var(--danger-fg)" };
 
 const switchBase: React.CSSProperties = {
   whiteSpace: "nowrap",

@@ -15,11 +15,12 @@ import type { ExtensionManifest } from "@stave/editor";
 import {
   EXTENSION_FILTERS,
   FILTER_LABELS,
+  failedToStart,
   groupExtensions,
   type ExtensionFilter,
   type ExtensionRow,
 } from "./extensionsView";
-import { useEnabledExtensions } from "./useExtensionSwitches";
+import { useEnabledExtensions, useExtensionFailure } from "./useExtensionSwitches";
 import { ExtensionBadges, ExtensionTile, SwitchButton } from "./ExtensionParts";
 
 const NO_NEEDS: ReadonlySet<string> = new Set();
@@ -140,6 +141,7 @@ function Group({
 }
 
 function Row({ row, selected, onOpen }: { row: ExtensionRow; selected: boolean; onOpen: (id: string) => void }) {
+  const failed = failedToStart(row.on, useExtensionFailure(row.id));
   return (
     <div
       role="button"
@@ -147,6 +149,7 @@ function Row({ row, selected, onOpen }: { row: ExtensionRow; selected: boolean; 
       style={{ ...styles.row, ...(selected ? styles.rowSelected : null) }}
       data-extension-row={row.id}
       data-on={row.on ? "true" : "false"}
+      data-failed={failed ? "true" : undefined}
       onClick={() => onOpen(row.id)}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
@@ -155,13 +158,13 @@ function Row({ row, selected, onOpen }: { row: ExtensionRow; selected: boolean; 
           onOpen(row.id);
         }
       }}
-      aria-label={`${row.name}, ${row.on ? "on" : "off"}. Open its page`}
+      aria-label={`${row.name}, ${failed ? "couldn't switch on" : row.on ? "on" : "off"}. Open its page`}
     >
       <ExtensionTile manifest={row.manifest} size={36} />
       <div style={styles.rowBody}>
         <div style={styles.rowName}>
           <span>{row.name}</span>
-          <ExtensionBadges experimental={row.experimental} on={row.on} />
+          <ExtensionBadges experimental={row.experimental} on={row.on} failed={failed} />
         </div>
         <div style={{ ...styles.rowDesc, ...styles.ellipsis }} title={row.description}>
           {row.description}

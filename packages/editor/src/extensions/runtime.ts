@@ -27,6 +27,12 @@
  * fails leaves the whole extension off: its language parts are not tried, since they may
  * rely on what the common part sets up.
  *
+ * FAILURES ARE REMEMBERED (#2552). Besides the Console row, the runtime keeps, per
+ * extension, why switching it on failed in the latest pass (`failure(id)`), so the
+ * Extensions view can say "couldn't switch on" instead of showing the switch alone. Each
+ * pass over the switches replaces the set: a later success clears it, and so does
+ * switching the extension off. `onChange` fires when it changes.
+ *
  * What is Strudel's (worklets, its registries, getting ready before sound) lives in
  * `strudel.ts`. Nothing here imports the engine.
  */
@@ -55,8 +61,16 @@ export interface ExtensionRuntime {
    * `prepareStrudelParts`). Never rejects.
    */
   prepare(capMs: number, signal?: AbortSignal): Promise<void>
-  /** Hear when the set of active extensions or parts has changed (sound names to read again). */
+  /**
+   * Hear when the set of active extensions or parts, or of failures, has changed (sound
+   * names to read again, the Extensions view to redraw).
+   */
   onChange(fn: () => void): () => void
+  /**
+   * Why switching this extension on failed in the latest pass, in a sentence, or `undefined`
+   * if it did not fail (it is on, off, or still loading). The full reason is on the Console.
+   */
+  failure(id: string): string | undefined
   /** Say something under an extension's name: to the page's Console once started, else the engine's. */
   report: ExtensionReport
   readonly manager: ExtensionManager
@@ -72,6 +86,8 @@ export function createExtensionRuntime(opts: {
   let strudel: ExtensionStrudelDoors | null = null
   let pageReport: ExtensionReport | null = null
   const listeners = new Set<() => void>()
+  /** id → why it could not be switched on, in the latest pass (#2552) */
+  let failures = new Map<string, string>()
   const report: ExtensionReport = (level, message) => (pageReport ?? strudel?.report)?.(level, message)
 
   const manager = createExtensionManager({
@@ -79,7 +95,11 @@ export function createExtensionRuntime(opts: {
     parts: { strudel: createStrudelDriver(() => strudel) },
   })
   const nameOf = (id: string) => manager.manifest(id)?.name ?? id
-  const state = () => manager.activeIds().map((id) => `${id}:${manager.isPartActive(id, 'strudel')}`).join('\n')
+  const state = () =>
+    [
+      ...manager.activeIds().map((id) => `${id}:${manager.isPartActive(id, 'strudel')}`),
+      ...[...failures].map(([id, why]) => `failed ${id}:${why}`),
+    ].join('\n')
 
   const failedLine = (error: unknown) => {
     const undoErrors = (error as { undoErrors?: unknown[] } | null)?.undoErrors ?? []
@@ -98,19 +118,23 @@ export function createExtensionRuntime(opts: {
           report('warn', `${nameOf(id)} extension: switching it off did not undo everything (${messageOf(e)}).`)
         }
       }
+      const failedNow = new Map<string, string>()
       const { failed } = await manager.sync(ids)
       for (const { id, error } of failed) {
+        failedNow.set(id, `${messageOf(error)}.`)
         report('error', `${nameOf(id)} extension could not be switched on: ${messageOf(error)}.${failedLine(error)}`)
       }
       if (strudel) {
         await Promise.all(
           manager.activeIds().filter((id) => ids.has(id)).map((id) =>
             manager.activatePart(id, 'strudel').catch((error: unknown) => {
+              failedNow.set(id, `Its Strudel part failed: ${messageOf(error)}.`)
               report('error', `The ${nameOf(id)} extension could not be switched on for Strudel: ${messageOf(error)}.${failedLine(error)}`)
             }),
           ),
         )
       }
+      failures = failedNow
       if (state() !== before) for (const fn of [...listeners]) fn()
     }
     queue = queue.then(run, run)
@@ -146,6 +170,7 @@ export function createExtensionRuntime(opts: {
         listeners.delete(fn)
       }
     },
+    failure: (id) => failures.get(id),
   }
 }
 
@@ -174,6 +199,19 @@ export function pageExtensions(): ExtensionRuntime {
 export function extensionKeysInCode(runtime: ExtensionRuntime = pageExtensions()): ExtensionKeyInCode[] {
   const m = runtime.manager
   return keysTakenBy(m.activeIds().flatMap((id) => m.manifest(id) ?? []))
+}
+
+/**
+ * Why switching this extension on failed in this page, or `undefined` (#2552). The
+ * Extensions view shows it on the row and the page.
+ */
+export function extensionFailure(id: string, runtime: ExtensionRuntime = pageExtensions()): string | undefined {
+  return runtime.failure(id)
+}
+
+/** Hear when the page's extensions, or their failures, change. Returns the unsubscribe. */
+export function onPageExtensionsChange(fn: () => void, runtime: ExtensionRuntime = pageExtensions()): () => void {
+  return runtime.onChange(fn)
 }
 
 /** Is any extension switched on in this page right now? */

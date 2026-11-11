@@ -7,17 +7,19 @@
  * Header: tile, name, badges, "Stave · Built into Stave · version · languages", what it
  * is, and the Switch button with its state. Tabs: Details (its readme), What it adds (read
  * from the manifest, so the same while it is off) and Changes. "What it adds" ends with a
- * "When switched off" note built from the host's list of what cannot be undone (`RESIDUE`).
+ * "When switched off" note: the host's list of what cannot be undone, in plain words
+ * (`LEFTOVER_TEXT`). Switched on but failed to start, the badge and the state line say so
+ * (#2552).
  *
  * The page's tab (Details / What it adds / Changes) is kept in the tab's state, so it
  * comes back after a reload.
  */
 import React from "react";
-import { RESIDUE, type AppTabLabel, type AppTabState, type ExtensionManifest } from "@stave/editor";
+import type { AppTabLabel, AppTabState, ExtensionManifest } from "@stave/editor";
 import type { AppTab, AppTabDefinition } from "../components/appTabs";
 import { Icon } from "../components/Icon";
-import { addsOf, extensionTabKey, languagesLabel, leftoversOf, switchStateLine } from "./extensionsView";
-import { useEnabledExtensions } from "./useExtensionSwitches";
+import { addsOf, extensionTabKey, failedToStart, languagesLabel, leftoversOf, switchStateLine } from "./extensionsView";
+import { useEnabledExtensions, useExtensionFailure } from "./useExtensionSwitches";
 import { ExtensionBadges, ExtensionTile, SwitchButton } from "./ExtensionParts";
 
 export type PageSection = "details" | "adds" | "changes";
@@ -33,7 +35,7 @@ export function sectionOf(state: AppTabState | undefined): PageSection {
   return s === "adds" || s === "changes" ? s : "details";
 }
 
-/** Text with `backticked` parts drawn as code (the host's leftovers list is written so), first letter capitalised. */
+/** Text with `backticked` parts drawn as code, first letter capitalised. */
 function withCode(text: string): React.ReactNode[] {
   const sentence = text.charAt(0).toUpperCase() + text.slice(1);
   return sentence.split("`").map((part, i) => (i % 2 ? <code key={i} style={styles.inlineCode}>{part}</code> : part));
@@ -49,16 +51,23 @@ export function ExtensionPage({
   onSection: (s: PageSection) => void;
 }) {
   const on = useEnabledExtensions().has(manifest.id);
+  const failure = useExtensionFailure(manifest.id);
+  const failed = failedToStart(on, failure);
   const about = manifest.about;
   const languages = languagesLabel(manifest.languages);
   return (
-    <div style={styles.root} data-extension-page={manifest.id} data-on={on ? "true" : "false"}>
+    <div
+      style={styles.root}
+      data-extension-page={manifest.id}
+      data-on={on ? "true" : "false"}
+      data-failed={failed ? "true" : undefined}
+    >
       <div style={styles.hero}>
         <ExtensionTile manifest={manifest} size={88} />
         <div style={{ minWidth: 0 }}>
           <h1 style={styles.h1}>
             {manifest.name}
-            <ExtensionBadges experimental={about?.experimental === true} on={on} />
+            <ExtensionBadges experimental={about?.experimental === true} on={on} failed={failed} />
           </h1>
           <div style={styles.meta}>
             <span>Stave</span>
@@ -76,8 +85,12 @@ export function ExtensionPage({
           <p style={styles.summary}>{about?.summary ?? manifest.description}</p>
           <div style={styles.actions}>
             <SwitchButton id={manifest.id} name={manifest.name} on={on} large where="page" />
-            <span style={styles.state} data-extension-state={manifest.id}>
-              {switchStateLine(on)}
+            <span
+              style={{ ...styles.state, ...(failed ? styles.stateFailed : null) }}
+              data-extension-state={manifest.id}
+              role={failed ? "alert" : undefined}
+            >
+              {switchStateLine(on, failure)}
             </span>
           </div>
           {/* #2512: "This project needs it", quoting what the run reported, goes here. */}
@@ -120,7 +133,9 @@ export function ExtensionPage({
             <dt style={styles.dt}>Languages</dt>
             <dd style={styles.dd}>{languages}</dd>
             <dt style={styles.dt}>Status</dt>
-            <dd style={styles.dd}>{on ? "On" : "Off"}</dd>
+            <dd style={{ ...styles.dd, ...(failed ? styles.stateFailed : null) }} data-extension-status={manifest.id}>
+              {failed ? "Couldn't switch on" : on ? "On" : "Off"}
+            </dd>
             <dt style={styles.dt}>Switched</dt>
             <dd style={styles.dd}>for you, in this browser</dd>
           </dl>
@@ -152,7 +167,7 @@ function Details({ manifest }: { manifest: ExtensionManifest }) {
 
 function Adds({ manifest }: { manifest: ExtensionManifest }) {
   const lines = addsOf(manifest);
-  const leftovers = leftoversOf(manifest, RESIDUE);
+  const leftovers = leftoversOf(manifest);
   return (
     <div data-extension-adds>
       <table style={styles.table}>
@@ -266,6 +281,7 @@ const styles: Record<string, React.CSSProperties> = {
   summary: { margin: "0 0 14px", color: "var(--text-secondary)", fontSize: 14, maxWidth: 640 },
   actions: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
   state: { fontSize: 12, color: "var(--text-muted)" },
+  stateFailed: { color: "var(--danger-fg)" },
   tabs: { display: "flex", gap: 22, borderBottom: "1px solid var(--border-subtle)", margin: "6px 0 20px" },
   tab: {
     background: "none",

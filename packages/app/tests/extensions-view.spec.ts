@@ -161,3 +161,49 @@ test('switch the test extension on from the view: sound with no reload, kept aft
   await row(page).locator(`[data-extension-switch="${ID}"]`).click()
   await expect(pageView).toHaveAttribute('data-on', 'true')
 })
+
+test('an extension that fails to switch on says so on its row and page, until it is switched off (#2552)', async ({ page }) => {
+  test.setTimeout(180_000)
+  // The test tone's Strudel part loads its audio worklet from a blob: URL. Refuse those,
+  // so switching it on fails the way a broken download would; Stave's own worklets load
+  // as usual.
+  await page.addInitScript(() => {
+    const add = AudioWorklet.prototype.addModule
+    AudioWorklet.prototype.addModule = function (url: string | URL, options?: WorkletOptions) {
+      if (String(url).startsWith('blob:')) return Promise.reject(new Error('worklet download refused by the test'))
+      return add.call(this, url, options)
+    }
+  })
+  await bootApp(page, { e2eHooks: true })
+  await probeReady(page)
+  await openExtensionsView(page)
+
+  await row(page).locator(`[data-extension-switch="${ID}"]`).click()
+  await expect(row(page)).toHaveAttribute('data-on', 'true')
+  await expect(row(page)).toHaveAttribute('data-failed', 'true', { timeout: 30_000 })
+  await expect(row(page).locator('[data-extension-badge="failed"]')).toHaveText("couldn't switch on")
+  await expect(row(page).locator('[data-extension-badge="on"]')).toHaveCount(0)
+
+  await row(page).click()
+  const pageView = page.locator(`[data-extension-page="${ID}"]`)
+  await expect(pageView).toHaveAttribute('data-failed', 'true')
+  await expect(page.locator(`[data-extension-state="${ID}"]`)).toHaveText(
+    /^Couldn't switch on: Its Strudel part failed: .*worklet download refused by the test.* The Console has the details\.$/,
+  )
+  await expect(page.locator(`[data-extension-status="${ID}"]`)).toHaveText("Couldn't switch on")
+  await page.screenshot({ path: test.info().outputPath('failed-page.png') })
+  // the sound is not there
+  expect(await notFoundCount(page)).toBeGreaterThan(0)
+
+  // Switched off, the failure is no longer shown.
+  await pageView.locator(`[data-extension-switch="${ID}"]`).click()
+  await expect(pageView).toHaveAttribute('data-on', 'false')
+  await expect(pageView).not.toHaveAttribute('data-failed', 'true')
+  await expect(row(page)).not.toHaveAttribute('data-failed', 'true')
+  await expect(page.locator(`[data-extension-state="${ID}"]`)).toHaveText('Off — its code has not been loaded')
+
+  // What it adds: the leftovers in plain words.
+  await pageView.locator('[data-extension-section="adds"]').click()
+  await expect(page.locator('[data-extension-leftovers]')).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('adds-page.png') })
+})

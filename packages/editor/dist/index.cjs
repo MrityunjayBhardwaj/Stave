@@ -910,13 +910,17 @@ function createExtensionRuntime(opts) {
   let strudel = null;
   let pageReport2 = null;
   const listeners23 = /* @__PURE__ */ new Set();
+  let failures = /* @__PURE__ */ new Map();
   const report2 = /* @__PURE__ */ __name((level, message) => (pageReport2 ?? strudel?.report)?.(level, message), "report");
   const manager = createExtensionManager({
     manifests: opts.manifests,
     parts: { strudel: createStrudelDriver(() => strudel) }
   });
   const nameOf2 = /* @__PURE__ */ __name((id) => manager.manifest(id)?.name ?? id, "nameOf");
-  const state6 = /* @__PURE__ */ __name(() => manager.activeIds().map((id) => `${id}:${manager.isPartActive(id, "strudel")}`).join("\n"), "state");
+  const state6 = /* @__PURE__ */ __name(() => [
+    ...manager.activeIds().map((id) => `${id}:${manager.isPartActive(id, "strudel")}`),
+    ...[...failures].map(([id, why]) => `failed ${id}:${why}`)
+  ].join("\n"), "state");
   const failedLine = /* @__PURE__ */ __name((error) => {
     const undoErrors = error?.undoErrors ?? [];
     return undoErrors.length ? ` Undoing what it had added also failed: ${undoErrors.map(messageOf).join("; ")}.` : "";
@@ -931,19 +935,23 @@ function createExtensionRuntime(opts) {
           report2("warn", `${nameOf2(id)} extension: switching it off did not undo everything (${messageOf(e)}).`);
         }
       }
+      const failedNow = /* @__PURE__ */ new Map();
       const { failed } = await manager.sync(ids);
       for (const { id, error } of failed) {
+        failedNow.set(id, `${messageOf(error)}.`);
         report2("error", `${nameOf2(id)} extension could not be switched on: ${messageOf(error)}.${failedLine(error)}`);
       }
       if (strudel) {
         await Promise.all(
           manager.activeIds().filter((id) => ids.has(id)).map(
             (id) => manager.activatePart(id, "strudel").catch((error) => {
+              failedNow.set(id, `Its Strudel part failed: ${messageOf(error)}.`);
               report2("error", `The ${nameOf2(id)} extension could not be switched on for Strudel: ${messageOf(error)}.${failedLine(error)}`);
             })
           )
         );
       }
+      failures = failedNow;
       if (state6() !== before) for (const fn of [...listeners23]) fn();
     }, "run");
     queue2 = queue2.then(run, run);
@@ -976,7 +984,8 @@ function createExtensionRuntime(opts) {
       return () => {
         listeners23.delete(fn);
       };
-    }
+    },
+    failure: /* @__PURE__ */ __name((id) => failures.get(id), "failure")
   };
 }
 __name(createExtensionRuntime, "createExtensionRuntime");
@@ -999,6 +1008,14 @@ function extensionKeysInCode(runtime = pageExtensions()) {
   return keysTakenBy(m.activeIds().flatMap((id) => m.manifest(id) ?? []));
 }
 __name(extensionKeysInCode, "extensionKeysInCode");
+function extensionFailure(id, runtime = pageExtensions()) {
+  return runtime.failure(id);
+}
+__name(extensionFailure, "extensionFailure");
+function onPageExtensionsChange(fn, runtime = pageExtensions()) {
+  return runtime.onChange(fn);
+}
+__name(onPageExtensionsChange, "onPageExtensionsChange");
 function hasActiveExtensions(runtime = pageExtensions()) {
   return runtime.manager.activeIds().length > 0;
 }
@@ -58570,6 +58587,7 @@ exports.enabledExtensionIds = enabledExtensionIds;
 exports.enterRuntimeView = enterRuntimeView;
 exports.errorPositionNow = errorPositionNow;
 exports.exitRuntimeView = exitRuntimeView;
+exports.extensionFailure = extensionFailure;
 exports.extensionKeys = extensionKeys;
 exports.extensionKeysInCode = extensionKeysInCode;
 exports.extractReferenceIdentifier = extractReferenceIdentifier;
@@ -58749,6 +58767,7 @@ exports.onInlineVizResolutionChange = onInlineVizResolutionChange;
 exports.onInlineVizTeardownChange = onInlineVizTeardownChange;
 exports.onMusicalTimelineSubRowHeightChange = onMusicalTimelineSubRowHeightChange;
 exports.onNamedVizChanged = onNamedVizChanged;
+exports.onPageExtensionsChange = onPageExtensionsChange;
 exports.onPerfEnabledChange = onPerfEnabledChange;
 exports.onPlayVizOnHoverChange = onPlayVizOnHoverChange;
 exports.onSignalAliasesChange = onSignalAliasesChange;

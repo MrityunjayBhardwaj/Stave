@@ -7,6 +7,25 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { enabledExtensionIds, setExtensionEnabled, type ExtensionManifest } from "@stave/editor";
 import { ExtensionsPanel } from "../ExtensionsPanel";
 import { ExtensionPage, extensionAppTabs, sectionOf } from "../ExtensionPage";
+import { ExtensionFailureSource, type FailureSource } from "../useExtensionSwitches";
+
+/** A stand-in for the page runtime's failures, settable from the test. */
+function failures(): FailureSource & { fail(id: string, why: string | undefined): void } {
+  const why = new Map<string, string>();
+  const subs = new Set<() => void>();
+  return {
+    subscribe(fn) {
+      subs.add(fn);
+      return () => subs.delete(fn);
+    },
+    read: (id) => why.get(id),
+    fail(id, text) {
+      if (text === undefined) why.delete(id);
+      else why.set(id, text);
+      for (const fn of subs) fn();
+    },
+  };
+}
 
 const load = async () => ({});
 const tone: ExtensionManifest = {
@@ -105,6 +124,56 @@ describe("the row and the page agree", () => {
     });
     expect(row().dataset.on).toBe("false");
     expect(page().dataset.on).toBe("false");
+  });
+});
+
+describe("an extension that couldn't switch on (#2552)", () => {
+  it("the row and the page say so instead of On, and stop when it works", () => {
+    const source = failures();
+    const view = (
+      <ExtensionFailureSource.Provider value={source}>
+        <ExtensionsPanel manifests={[tone]} onOpen={() => {}} />
+        <ExtensionPage manifest={tone} section="details" onSection={() => {}} />
+      </ExtensionFailureSource.Provider>
+    );
+    const { container } = render(view);
+    act(() => setExtensionEnabled("zz-tone", true));
+    const row = () => q(container, '[data-extension-row="zz-tone"]')!;
+    const page = () => q(container, '[data-extension-page="zz-tone"]')!;
+    expect(row().querySelector('[data-extension-badge="on"]')).not.toBeNull();
+
+    act(() => source.fail("zz-tone", "chunk 404."));
+    for (const el of [row(), page()]) {
+      expect(el.dataset.failed).toBe("true");
+      expect(el.querySelector('[data-extension-badge="on"]')).toBeNull();
+      expect(el.querySelector('[data-extension-badge="failed"]')!.textContent).toBe("couldn't switch on");
+    }
+    expect(row().getAttribute("aria-label")).toBe("Tone, couldn't switch on. Open its page");
+    expect(q(container, '[data-extension-state="zz-tone"]')!.textContent).toBe(
+      "Couldn't switch on: chunk 404. The Console has the details.",
+    );
+    expect(q(container, '[data-extension-status="zz-tone"]')!.textContent).toBe("Couldn't switch on");
+    // the switch still shows what was asked for, so switching off is one click
+    expect(q(container, '[data-extension-switch-in="page"]')!.dataset.on).toBe("true");
+
+    act(() => source.fail("zz-tone", undefined));
+    expect(row().dataset.failed).toBeUndefined();
+    expect(row().querySelector('[data-extension-badge="on"]')).not.toBeNull();
+    expect(q(container, '[data-extension-state="zz-tone"]')!.textContent).toBe("On — takes effect at once, no reload");
+    expect(q(container, '[data-extension-status="zz-tone"]')!.textContent).toBe("On");
+  });
+
+  it("a failure is not shown once it is switched off", () => {
+    const source = failures();
+    source.fail("zz-tone", "chunk 404.");
+    const { container } = render(
+      <ExtensionFailureSource.Provider value={source}>
+        <ExtensionsPanel manifests={[tone]} onOpen={() => {}} />
+      </ExtensionFailureSource.Provider>,
+    );
+    const row = q(container, '[data-extension-row="zz-tone"]')!;
+    expect(row.dataset.failed).toBeUndefined();
+    expect(row.querySelector('[data-extension-badge="failed"]')).toBeNull();
   });
 });
 

@@ -6,7 +6,7 @@
  * kept here: a manifest is plain data, so an extension that is off (its code never
  * loaded) shows the same names, languages and "what it adds" as one that is on.
  */
-import type { ExtensionLanguage, ExtensionManifest } from "@stave/editor";
+import type { ExtensionLanguage, ExtensionManifest, RESIDUE } from "@stave/editor";
 
 /** The All / On / Off filter. */
 export type ExtensionFilter = "all" | "on" | "off";
@@ -117,9 +117,18 @@ export function groupExtensions(
   };
 }
 
-/** The line beside the page's switch. */
-export function switchStateLine(on: boolean): string {
+/**
+ * The line beside the page's switch. `failure` is why switching it on failed in this page
+ * (#2552): the switch stays on, but the line says what happened, not what was asked for.
+ */
+export function switchStateLine(on: boolean, failure?: string): string {
+  if (on && failure) return `Couldn't switch on: ${failure} The Console has the details.`;
   return on ? "On — takes effect at once, no reload" : "Off — its code has not been loaded";
+}
+
+/** Is it switched on but failed to start? Only then is a failure shown (#2552). */
+export function failedToStart(on: boolean, failure: string | undefined): boolean {
+  return on && failure !== undefined;
 }
 
 /** One line of the page's "What it adds" table. */
@@ -159,22 +168,28 @@ export interface LeftoverNote {
   readonly text: string;
 }
 
-/** The host's list of what cannot be undone, applied to what this extension adds. */
-export interface Leftovers {
-  readonly control: string;
-  readonly worklet: string;
-}
+/**
+ * What switching off cannot undo, in words for the person using it (#2552). One line per
+ * kind of leftover the host lists (`RESIDUE`, whose own text is written for developers):
+ * keyed by the host's kinds, so a new kind is a type error here until it has words.
+ */
+export type Leftovers = Record<keyof typeof RESIDUE, string>;
+
+export const LEFTOVER_TEXT: Leftovers = {
+  control: "code that still uses it stops with an error, but Stave's views keep treating it as a setting",
+  worklet: "the code it uses to make sound stays loaded in this page, unused",
+};
 
 /**
- * What stays behind when it is switched off, from the host's list (`RESIDUE`), so nothing
- * is hidden. Empty when everything it adds is undone.
+ * What stays behind when it is switched off, so nothing is hidden. Empty when everything
+ * it adds is undone.
  */
-export function leftoversOf(m: ExtensionManifest, residue: Leftovers): LeftoverNote[] {
+export function leftoversOf(m: ExtensionManifest, text: Leftovers = LEFTOVER_TEXT): LeftoverNote[] {
   const notes: LeftoverNote[] = [];
   const controls = m.provides?.strudel?.controls ?? [];
-  if (controls.length) notes.push({ names: controls.map((c) => `.${c}(…)`), text: residue.control });
+  if (controls.length) notes.push({ names: controls.map((c) => `.${c}(…)`), text: text.control });
   const worklets = m.about?.worklets ?? [];
-  if (worklets.length) notes.push({ names: [], text: residue.worklet });
+  if (worklets.length) notes.push({ names: [], text: text.worklet });
   return notes;
 }
 
