@@ -12,7 +12,7 @@ import React, { useEffect, useState } from "react";
 import { fetchGalleryRecording, galleryThumbnailUrl } from "./client";
 import { KIND_LABEL, formatGalleryDate, generatedCard, publishedAgo } from "./galleryModel";
 import { RecordingTimeline } from "./GalleryTimeline";
-import { contentsLine, coverPattern, type GalleryRecording } from "./recording";
+import { contentsLine, coverPattern, mayHavePreview, type GalleryRecording } from "./recording";
 import { shownName } from "./reservedNames";
 import type { GalleryEntry } from "./types";
 
@@ -148,6 +148,9 @@ export function CardPicture({ entry, rec }: { entry: GalleryEntry; rec: GalleryR
  * frame, which the preview then has focused), so the button calls `onPlay`
  * straight from its own click handler, nothing deferred. It passes the recorded
  * cover file, so the entry starts on the file the card shows.
+ *
+ * #2548 — only when there is something to preview: a card whose record counts no
+ * pattern and no visual has no play button (see `mayHavePreview`).
  */
 export function Card({
   entry,
@@ -172,7 +175,7 @@ export function Card({
         <CardPicture entry={entry} rec={rec} />
         <span className="sg-gcard-kind">{KIND_LABEL[entry.kind] ?? entry.kind}</span>
         {count && <span className="sg-gcard-count" data-gallery-card-count>{count}</span>}
-        {onPlay && (
+        {onPlay && mayHavePreview(rec) && (
           <button
             type="button"
             className="sg-gcard-play"
