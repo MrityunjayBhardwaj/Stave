@@ -30,7 +30,7 @@
  * What is Strudel's (worklets, its registries, getting ready before sound) lives in
  * `strudel.ts`. Nothing here imports the engine.
  */
-import { BUILTIN_EXTENSIONS } from './builtin'
+import { listedExtensions } from './builtin'
 import { enabledExtensionIds, onExtensionsEnabledChange } from './enablement'
 import { createExtensionManager, type ExtensionManager } from './manager'
 import { createStrudelDriver, messageOf, prepareStrudelParts, type ExtensionReport, type ExtensionStrudelDoors } from './strudel'
@@ -146,10 +146,10 @@ export function createExtensionRuntime(opts: {
 
 let page: ExtensionRuntime | null = null
 
-/** The page's one runtime, over Stave's own extensions and the person's switches. */
+/** The page's one runtime, over the listed extensions (`listedExtensions`) and the person's switches. */
 export function pageExtensions(): ExtensionRuntime {
   page ??= createExtensionRuntime({
-    manifests: BUILTIN_EXTENSIONS,
+    manifests: listedExtensions(),
     enabled: enabledExtensionIds,
     subscribe: onExtensionsEnabledChange,
   })

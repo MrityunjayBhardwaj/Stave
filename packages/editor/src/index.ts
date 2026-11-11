@@ -335,6 +335,21 @@ export function startPageExtensions(): Promise<void> {
     report: (level, message) => emitLog({ level, runtime: 'stave', message }),
   })
 }
+// #2511 — what the app's Extensions view reads and switches: the listed extensions (the
+// same list the page runtime switches on), the person's switches, and the host's list of
+// what switching off cannot undo.
+export {
+  BUILTIN_EXTENSIONS,
+  listedExtensions,
+  enabledExtensionIds,
+  isExtensionEnabled,
+  setExtensionEnabled,
+  onExtensionsEnabledChange,
+  RESIDUE,
+  E2E_TONE_ID,
+  E2E_TONE_SOUND,
+} from './extensions'
+export type { ExtensionAbout, ExtensionLanguage, ExtensionManifest } from './extensions'
 export {
   undo,
   redo,

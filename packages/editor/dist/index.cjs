@@ -65,6 +65,10 @@ var init_piano = __esm({
 });
 
 // src/extensions/host.ts
+var RESIDUE = {
+  control: "the control's name stays known to Strudel's control list, so Stave's parser still reads `.name(\u2026)` as a parameter",
+  worklet: "an audio worklet module stays loaded in the live context and on Strudel's worklet list (superdough's `registerWorklet` has no remove), so later renders load it too; nothing uses it"
+};
 function fromStrudel(webaudio, core, globals = globalThis) {
   const key3 = /* @__PURE__ */ __name((name) => name.toLowerCase().replace(/\s+/g, "_"), "key");
   return {
@@ -371,6 +375,26 @@ function enabledExtensionIds() {
   return read();
 }
 __name(enabledExtensionIds, "enabledExtensionIds");
+function isExtensionEnabled(id) {
+  return read().has(id);
+}
+__name(isExtensionEnabled, "isExtensionEnabled");
+function setExtensionEnabled(id, on) {
+  const ids = read();
+  if (ids.has(id) === on) return;
+  if (on) ids.add(id);
+  else ids.delete(id);
+  const ls = storage();
+  try {
+    if (!ls) throw new Error("no storage");
+    ls.setItem(STORAGE, JSON.stringify([...ids].sort()));
+    unsaved.clear();
+  } catch {
+    unsaved.set(id, on);
+  }
+  for (const fn of [...listeners]) fn(ids);
+}
+__name(setExtensionEnabled, "setExtensionEnabled");
 function onExtensionsEnabledChange(fn) {
   listeners.add(fn);
   return () => {
@@ -379,8 +403,109 @@ function onExtensionsEnabledChange(fn) {
 }
 __name(onExtensionsEnabledChange, "onExtensionsEnabledChange");
 
+// src/extensions/e2eTone.ts
+var E2E_TONE_ID = "e2e-tone";
+var E2E_TONE_SOUND = "e2etone";
+var PROCESSOR = "stave-e2e-tone";
+var PROCESSOR_SOURCE = `
+class StaveE2ETone extends AudioWorkletProcessor {
+  constructor(options) {
+    super()
+    const o = (options && options.processorOptions) || {}
+    this.begin = o.begin || 0
+    this.end = o.end || 0
+    this.step = (2 * Math.PI * (o.freq || 440)) / sampleRate
+    this.phase = 0
+  }
+  process(_inputs, outputs) {
+    const out = outputs[0]
+    const t0 = currentTime
+    for (let i = 0; i < out[0].length; i++) {
+      const t = t0 + i / sampleRate
+      const v = t >= this.begin && t < this.end ? 0.4 * Math.sin(this.phase) : 0
+      this.phase += this.step
+      for (const ch of out) ch[i] = v
+    }
+    if (t0 >= this.end) {
+      this.port.postMessage('ended')
+      return false
+    }
+    return true
+  }
+}
+registerProcessor('${PROCESSOR}', StaveE2ETone)
+`;
+function freqOf(value) {
+  if (typeof value.freq === "number") return value.freq;
+  if (typeof value.note === "number") return 440 * 2 ** ((value.note - 69) / 12);
+  return 440;
+}
+__name(freqOf, "freqOf");
+var workletUrl = null;
+async function load() {
+  workletUrl ?? (workletUrl = URL.createObjectURL(new Blob([PROCESSOR_SOURCE], { type: "text/javascript" })));
+  const url = workletUrl;
+  const trigger = /* @__PURE__ */ __name((t, value, onEnded) => {
+    const ac = globalThis.getAudioContext?.();
+    if (!ac) return void 0;
+    const duration = typeof value.duration === "number" ? value.duration : 0.25;
+    const node = new AudioWorkletNode(ac, PROCESSOR, {
+      numberOfInputs: 0,
+      outputChannelCount: [2],
+      processorOptions: { begin: t, end: t + duration, freq: freqOf(value) }
+    });
+    node.port.onmessage = () => {
+      node.disconnect();
+      onEnded();
+    };
+    return { node, stop: /* @__PURE__ */ __name(() => void 0, "stop") };
+  }, "trigger");
+  return {
+    strudel: {
+      worklets: [url],
+      activate(host) {
+        host.registerSound(E2E_TONE_SOUND, trigger, { type: "synth" });
+      }
+    }
+  };
+}
+__name(load, "load");
+var E2E_TONE = {
+  id: E2E_TONE_ID,
+  name: "Test tone",
+  description: "A sine tone for end-to-end tests",
+  languages: ["strudel"],
+  provides: { strudel: { sounds: [E2E_TONE_SOUND] } },
+  load,
+  about: {
+    version: "0.0.1",
+    experimental: true,
+    icon: "\u223F",
+    tint: "linear-gradient(135deg, #0f766e, #4f46e5)",
+    summary: "A plain sine tone, made by an audio worklet. It exists only in end-to-end test runs, to check that switching an extension on and off works.",
+    readme: [
+      {
+        heading: "Play it like any sound",
+        text: "Switch it on, then use it as a sound name. It plays live and in bounces.",
+        code: 'note("c4 e4 g4").s("e2etone")'
+      }
+    ],
+    changes: [{ version: "0.0.1", note: "First version." }],
+    worklets: ["the tone itself, in live playback, bounces and stems"]
+  }
+};
+
 // src/extensions/builtin.ts
 var BUILTIN_EXTENSIONS = [];
+var WITH_E2E = [...BUILTIN_EXTENSIONS, E2E_TONE];
+function isEndToEndRun() {
+  return globalThis.__STAVE_E2E__ === true;
+}
+__name(isEndToEndRun, "isEndToEndRun");
+function listedExtensions() {
+  return isEndToEndRun() ? WITH_E2E : BUILTIN_EXTENSIONS;
+}
+__name(listedExtensions, "listedExtensions");
 
 // src/extensions/strudel.ts
 function messageOf(e) {
@@ -535,7 +660,7 @@ __name(createExtensionRuntime, "createExtensionRuntime");
 var page = null;
 function pageExtensions() {
   page ?? (page = createExtensionRuntime({
-    manifests: BUILTIN_EXTENSIONS,
+    manifests: listedExtensions(),
     enabled: enabledExtensionIds,
     subscribe: onExtensionsEnabledChange
   }));
@@ -16660,8 +16785,8 @@ function soundWarmJobs(values3, deps) {
     else if (note != null) pitch.note = note;
     const key3 = `font:${font}:${freq ?? note ?? "c3"}`;
     if (jobs.has(key3)) continue;
-    const load2 = deps.getFontBufferSource;
-    jobs.set(key3, { key: key3, run: /* @__PURE__ */ __name(() => load2(font, pitch, deps.audioContext()), "run") });
+    const load3 = deps.getFontBufferSource;
+    jobs.set(key3, { key: key3, run: /* @__PURE__ */ __name(() => load3(font, pitch, deps.audioContext()), "run") });
   }
   return [...jobs.values()];
 }
@@ -47133,7 +47258,7 @@ function parseExpanded(raw) {
   }
 }
 __name(parseExpanded, "parseExpanded");
-function load(fileId) {
+function load2(fileId) {
   const ls = safeLocalStorage6();
   if (!ls) return /* @__PURE__ */ new Set();
   try {
@@ -47142,12 +47267,12 @@ function load(fileId) {
     return /* @__PURE__ */ new Set();
   }
 }
-__name(load, "load");
+__name(load2, "load");
 function read4(fileId) {
   if (!fileId) return EMPTY2;
   let set2 = cache2.get(fileId);
   if (!set2) {
-    set2 = load(fileId);
+    set2 = load2(fileId);
     cache2.set(fileId, set2);
   }
   return set2;
@@ -52821,14 +52946,14 @@ var DemoEngine = _DemoEngine;
 // src/engine/sonicpi/adapter.ts
 var SONICPI_ENGINE_MODULE = "../../../../../../sonicPiWeb/src/engine/SonicPiEngine";
 async function loadRawSonicPiEngine() {
-  const load2 = new Function("m", "return import(m)");
-  return (await load2(SONICPI_ENGINE_MODULE)).SonicPiEngine;
+  const load3 = new Function("m", "return import(m)");
+  return (await load3(SONICPI_ENGINE_MODULE)).SonicPiEngine;
 }
 __name(loadRawSonicPiEngine, "loadRawSonicPiEngine");
 var SUPERSONIC_CDN = "https://unpkg.com/supersonic-scsynth@latest";
 async function importFromCDN(url) {
-  const load2 = new Function("url", "return import(url)");
-  return load2(url);
+  const load3 = new Function("url", "return import(url)");
+  return load3(url);
 }
 __name(importFromCDN, "importFromCDN");
 function parseVizRequests(code) {
@@ -57883,6 +58008,7 @@ exports.BOTTOM_PANEL_HEIGHT_MAX = BOTTOM_PANEL_HEIGHT_MAX;
 exports.BOTTOM_PANEL_HEIGHT_MIN = BOTTOM_PANEL_HEIGHT_MIN;
 exports.BOTTOM_PANEL_OPEN_KEY = BOTTOM_PANEL_OPEN_KEY;
 exports.BUILTIN_ALIASES = BUILTIN_ALIASES;
+exports.BUILTIN_EXTENSIONS = BUILTIN_EXTENSIONS;
 exports.BUNDLED_PREFIX = BUNDLED_PREFIX;
 exports.BottomPanel = BottomPanel;
 exports.BreakpointStore = BreakpointStore;
@@ -57894,6 +58020,8 @@ exports.DEFAULT_VIZ_DESCRIPTORS = DEFAULT_VIZ_DESCRIPTORS;
 exports.DEFAULT_VIZ_ENGINE = DEFAULT_VIZ_ENGINE;
 exports.DEFAULT_VIZ_QUALITY = DEFAULT_VIZ_QUALITY;
 exports.DemoEngine = DemoEngine;
+exports.E2E_TONE_ID = E2E_TONE_ID;
+exports.E2E_TONE_SOUND = E2E_TONE_SOUND;
 exports.EPHEMERAL_ID_PREFIX = EPHEMERAL_ID_PREFIX;
 exports.EditorView = EditorView;
 exports.ErrorBoundary = ErrorBoundary;
@@ -57940,6 +58068,7 @@ exports.PITCHWHEEL_P5_CODE = PITCHWHEEL_P5_CODE;
 exports.PatternPanel = PatternPanel;
 exports.PianoRollGrid = PianoRollGrid;
 exports.PreviewView = PreviewView;
+exports.RESIDUE = RESIDUE;
 exports.SAMPLE_SOUND_LABEL = SAMPLE_SOUND_LABEL;
 exports.SAMPLE_SOUND_SOURCE_ID = SAMPLE_SOUND_SOURCE_ID;
 exports.SCOPE_P5_CODE = SCOPE_P5_CODE;
@@ -58071,6 +58200,7 @@ exports.duplicateProject = duplicateProject;
 exports.emitFixed = emitFixed;
 exports.emitLog = emitLog;
 exports.emptyFrame = emptyFrame;
+exports.enabledExtensionIds = enabledExtensionIds;
 exports.enterRuntimeView = enterRuntimeView;
 exports.errorPositionNow = errorPositionNow;
 exports.exitRuntimeView = exitRuntimeView;
@@ -58181,6 +58311,7 @@ exports.isBundledPresetId = isBundledPresetId;
 exports.isChunkFresh = isChunkFresh;
 exports.isDocReady = isDocReady;
 exports.isEphemeralProjectId = isEphemeralProjectId;
+exports.isExtensionEnabled = isExtensionEnabled;
 exports.isFileModifiedSinceHead = isFileModifiedSinceHead;
 exports.isMacPlatform = isMacPlatform;
 exports.isModifierOnlyKey = isModifierOnlyKey;
@@ -58213,6 +58344,7 @@ exports.listProjects = listProjects;
 exports.listSnapshots = listSnapshots;
 exports.listTiers = listTiers;
 exports.listWorkspaceFiles = listWorkspaceFiles;
+exports.listedExtensions = listedExtensions;
 exports.liveCodingRuntimeRegistry = liveCodingRuntimeRegistry;
 exports.loadShellState = loadShellState;
 exports.locateMiniParseError = locateMiniParseError;
@@ -58240,6 +58372,7 @@ exports.onAdaptivePerfChange = onAdaptivePerfChange;
 exports.onBackdropOpacityChange = onBackdropOpacityChange;
 exports.onBackdropQualityChange = onBackdropQualityChange;
 exports.onBackdropVizSpanChange = onBackdropVizSpanChange;
+exports.onExtensionsEnabledChange = onExtensionsEnabledChange;
 exports.onInlineVizActionSizeChange = onInlineVizActionSizeChange;
 exports.onInlineVizResolutionChange = onInlineVizResolutionChange;
 exports.onInlineVizTeardownChange = onInlineVizTeardownChange;
@@ -58384,6 +58517,7 @@ exports.setEditorBackdropBlur = setEditorBackdropBlur;
 exports.setEditorFontSize = setEditorFontSize;
 exports.setEditorTheme = setEditorTheme;
 exports.setEditorUiIconSize = setEditorUiIconSize;
+exports.setExtensionEnabled = setExtensionEnabled;
 exports.setFileHistoryTarget = setFileHistoryTarget;
 exports.setFolderOrder = setFolderOrder;
 exports.setGridKeyMatcher = setGridKeyMatcher;
