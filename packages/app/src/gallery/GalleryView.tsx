@@ -102,6 +102,9 @@ export function GalleryView({
 }: GalleryViewProps) {
   const { tab: chosenTab, filter, sort, query, list, detail, stack, myAuthorId, mine, links, account } = useGalleryStore(store);
   const [busy, setBusy] = useState(false);
+  // #2495 — "open this entry playing", for the one opening a card's play asked for:
+  // held here, not in the store or the link, and cleared once the entry takes it.
+  const [playOnOpen, setPlayOnOpen] = useState<{ id: string; cover: string | null } | null>(null);
   const [reporting, setReporting] = useState<GalleryEntry | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -203,7 +206,17 @@ export function GalleryView({
   const backLabel = stack.length > 1 ? "← Back" : "← Back to the gallery";
   const back = () => store.back();
   const openAuthor = (id: string) => store.push({ kind: "author", id });
-  const openOne = (id: string) => store.push({ kind: "entry", id });
+  const openOne = (id: string) => {
+    setPlayOnOpen(null);
+    store.push({ kind: "entry", id });
+  };
+  // #2495 — a card's play: the same opening, with the preview starting. Called
+  // from the card button's own click, so that click is what the preview's frame
+  // may start sound on.
+  const playOne = (id: string, cover: string | null) => {
+    setPlayOnOpen({ id, cover });
+    store.push({ kind: "entry", id });
+  };
   const loadAccount = () => store.loadAccount(accountAuthorId);
 
   const runAction = async (fn: () => Promise<boolean>) => {
@@ -338,6 +351,7 @@ export function GalleryView({
           onHome={() => store.setTab("browse")}
           onClose={onClose}
           onOpenEntry={openOne}
+          onPlayEntry={playOne}
           searchRef={searchRef}
         />
       ) : top?.kind === "collection" ? (
@@ -347,6 +361,7 @@ export function GalleryView({
           backLabel={backLabel}
           onBack={back}
           onOpenEntry={openOne}
+          onPlayEntry={playOne}
           onOpenAuthor={openAuthor}
           onDeleted={back}
         />
@@ -391,6 +406,8 @@ export function GalleryView({
           listed={entries}
           onOpenEntry={openOne}
           onClose={onClose}
+          playOnOpen={playOnOpen}
+          onPlayTaken={() => setPlayOnOpen(null)}
         />
       ) : (
         <>
@@ -436,7 +453,7 @@ export function GalleryView({
             ) : (
               <div className="sg-grid">
                 {shown.map((e) => (
-                  <Card key={e.id} entry={e} onOpen={() => openOne(e.id)} onAuthor={openAuthor} />
+                  <Card key={e.id} entry={e} onOpen={() => openOne(e.id)} onPlay={(cover) => playOne(e.id, cover)} onAuthor={openAuthor} />
                 ))}
               </div>
             )}

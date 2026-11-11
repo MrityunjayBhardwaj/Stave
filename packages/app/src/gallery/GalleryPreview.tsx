@@ -24,7 +24,7 @@
  * stays up. Code can still draw whatever it likes inside its own page.
  */
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { parseFromFrame, type FromFrame, type PreviewKind } from "./previewProtocol";
+import { NEEDS_CLICK, parseFromFrame, type FromFrame, type PreviewKind } from "./previewProtocol";
 
 export const PLAYER_PATH = "/gallery-player";
 const LOAD_SLOW_MS = 15_000;
@@ -67,6 +67,8 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
   const frameLoaded = useRef(false);
   const frameReady = useRef(false);
   const codeSent = useRef(false);
+  // #2495 — focus has gone into this frame for its own Play (once per frame).
+  const focusedForClick = useRef(false);
 
   const send = useCallback((msg: unknown) => {
     // The frame's origin is opaque, so no origin can name it: "*" is the only
@@ -106,6 +108,7 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
     frameLoaded.current = false;
     frameReady.current = false;
     codeSent.current = false;
+    focusedForClick.current = false;
   }, [open]);
 
   const onFrameLoad = () => {
@@ -132,6 +135,14 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
         frameReady.current = true;
         playWhenLoaded();
         return;
+      }
+      // #2495 — the frame needs a press of its own (WebKit doesn't take this
+      // page's click): put focus on the frame, where Enter or Space is that press
+      // (GalleryPlayer listens for it) and its Play is the obvious click. Once per
+      // frame, so code in it can't keep pulling focus back.
+      if (msg.state === "stopped" && msg.message === NEEDS_CLICK && !focusedForClick.current) {
+        focusedForClick.current = true;
+        frame.focus();
       }
       setStatus(msg);
     };

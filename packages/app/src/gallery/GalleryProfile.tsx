@@ -162,6 +162,7 @@ export function ProfileView({
   onHome,
   onClose,
   onOpenEntry,
+  onPlayEntry,
   searchRef,
 }: {
   authorId: string;
@@ -174,6 +175,8 @@ export function ProfileView({
   onHome: () => void;
   onClose?: () => void;
   onOpenEntry: (id: string) => void;
+  /** #2495 — a card's play: open the entry with its preview starting. */
+  onPlayEntry?: (id: string, cover: string | null) => void;
   searchRef?: React.Ref<HTMLInputElement>;
 }) {
   const [page, setPage] = useState<Load<AuthorPageResponse>>({ status: "loading" });
@@ -320,7 +323,12 @@ export function ProfileView({
                   ) : (
                     <div className="sg-grid">
                       {shown.map((e) => (
-                        <Card key={e.id} entry={e} onOpen={() => onOpenEntry(e.id)} />
+                        <Card
+                          key={e.id}
+                          entry={e}
+                          onOpen={() => onOpenEntry(e.id)}
+                          onPlay={onPlayEntry && ((cover) => onPlayEntry(e.id, cover))}
+                        />
                       ))}
                     </div>
                   )}
@@ -570,6 +578,7 @@ export function CollectionView({
   backLabel,
   onBack,
   onOpenEntry,
+  onPlayEntry,
   onOpenAuthor,
   onDeleted,
 }: {
@@ -577,6 +586,8 @@ export function CollectionView({
   backLabel: string;
   onBack: () => void;
   onOpenEntry: (id: string) => void;
+  /** #2495 — a card's play: open the entry with its preview starting. */
+  onPlayEntry?: (id: string, cover: string | null) => void;
   onOpenAuthor: (authorId: string) => void;
   /** After a delete: leave this page. */
   onDeleted: () => void;
@@ -720,7 +731,12 @@ export function CollectionView({
         <ol className="sg-grid sg-collection-list">
           {entries.map((e) => (
             <li key={e.id} className="sg-collection-item">
-              <Card entry={e} onOpen={() => onOpenEntry(e.id)} onAuthor={onOpenAuthor} />
+              <Card
+                entry={e}
+                onOpen={() => onOpenEntry(e.id)}
+                onPlay={onPlayEntry && ((cover) => onPlayEntry(e.id, cover))}
+                onAuthor={onOpenAuthor}
+              />
             </li>
           ))}
         </ol>

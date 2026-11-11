@@ -31,6 +31,15 @@ const STATES: readonly PreviewState[] = ["ready", "playing", "stopped", "error"]
 export const MAX_PREVIEW_CODE = 512 * 1024;
 const MAX_MESSAGE = 500;
 
+/**
+ * #2495 — the "stopped" message the frame sends when its sound won't start
+ * until someone presses Play inside it (WebKit asks for a click in the frame
+ * itself; Chromium and Firefox take the gallery page's click). The gallery then
+ * moves focus to that Play. Code in the frame can send it too: all it gets is
+ * focus moved onto its own frame, once per preview.
+ */
+export const NEEDS_CLICK = "Press Play in the preview to hear it.";
+
 export type ToFrame = { play: true; code: string; kind: PreviewKind } | { stop: true };
 export type FromFrame = { state: PreviewState; message?: string };
 
