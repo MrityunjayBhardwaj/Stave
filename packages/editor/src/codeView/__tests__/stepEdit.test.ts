@@ -518,6 +518,11 @@ function spelling(mini: string, today: string, mine: string, span: { start: numb
   // several steps of the group at the group's own resolution (`~ ~ bd`)
   if (!/[[\]]/.test(theirs) && /^\[[^[\]]*\]$/.test(written.trim())) return 'same music — the written-out step stays one step; today writes it as several steps of its group (#2326)'
   if ((/[!*][0-9]/.test(written) || kept) && !/[!*][0-9]/.test(theirs)) return 'by design — today writes the copies out; the new edit spells them `x!k` / `x*k` (#2326)'
+  // #2437: a written-out step of one sound and rests left a euclid rhythm is spelled `x(k,n,r)`;
+  // today keeps it written out
+  if (/^[^\s[\]()]+\([0-9]+,[0-9]+(,[0-9]+)?\)(@[0-9]+)?$/.test(written.trim()) && !/\(/.test(theirs) && !/\(/.test(mini.slice(span.start, span.end))) {
+    return 'by design — a written-out step left a euclid rhythm is spelled `x(k,n,r)`; today keeps it written out (#2437)'
+  }
   return 'same music — unexplained'
 }
 

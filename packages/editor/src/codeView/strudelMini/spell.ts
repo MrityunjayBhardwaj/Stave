@@ -27,6 +27,10 @@
  *  - `GROUP_IS_SPACED` — an uneven group is `[a b …]`.
  *  - `CHORD_IS_COMMAS` — notes sounding together are `[a,b]`, tight when new; a member joining
  *    a chord uses the separator that chord already uses (the caller passes it).
+ *  - `EUCLID_FOR_A_EUCLID_RHYTHM` — a written-out step of one sound and rests whose hits are
+ *    Strudel's own Bjorklund is `x(k,n)` / `x(k,n,r)`, tight (40 of 53 euclids in the corpus
+ *    have no spaces in the brackets). When it is one is the writer's to decide, asking Strudel
+ *    (`../stepEdit.ts`, `respellEuclid`, #2437).
  *
  * The user's ruling (2026-11-05): the compact forms are written wherever the shape is even;
  * the writer edits what this file writes (a click on one hit of `hh*4` writes it out).
@@ -67,7 +71,11 @@ function printOps(ops: readonly SOp[], head: string): string {
     else if (op.type_ === 'stretch' && a.type === 'fast') out += '*' + String((a.amount as SAtom).source_)
     else if (op.type_ === 'stretch' && a.type === 'slow') out += '/' + String((a.amount as SAtom).source_)
     else if (op.type_ === 'replicate') out += '!' + String(a.amount)
-    else throw new Error(`stepSpell: no spelling for op ${op.type_}`)
+    else if (op.type_ === 'bjorklund') {
+      const [k, n, r] = [argText(a.pulse), argText(a.step), a.rotation ? argText(a.rotation) : '']
+      if (k === null || n === null || r === null) throw new Error('stepSpell: a euclid whose amounts are not plain')
+      out += `(${k},${n}${r === '' ? '' : ',' + r})`
+    } else throw new Error(`stepSpell: no spelling for op ${op.type_}`)
   }
   return out
 }
@@ -173,6 +181,17 @@ export function rests(k: number): SElement[] {
   return Array.from({ length: k }, () => note(REST))
 }
 
+/**
+ * `EUCLID_FOR_A_EUCLID_RHYTHM` (#2437): `name(k,n)` — `name(k,n,r)` when the rotation is not
+ * 0 — `weight` slots long. Which `k`, `n`, `r` is the caller's: Strudel is asked there.
+ */
+export function euclid(name: string, k: number, n: number, r: number, weight = 1): SElement {
+  const amount = (x: number): SElement => ({ type_: 'element', source_: atom(String(x)), options_: { weight: 1, reps: 1, ops: [] } })
+  const e = note(name, weight)
+  e.options_.ops = [...e.options_.ops, { type_: 'bjorklund', arguments_: { pulse: amount(k), step: amount(n), rotation: r === 0 ? null : amount(r) } }]
+  return e
+}
+
 /* ── a written-out generator, spelled again ───────────────────────── */
 
 /** krill's node with its locations taken off: what the printer takes */
@@ -228,6 +247,42 @@ export function respellCopies(text: string, kind: 'star' | 'bang'): string {
   } catch {
     return text
   }
+}
+
+/** a written-out step of one sound and rests: the sound, the step's weight, and which of its places are hits */
+export interface WrittenOutRhythm {
+  name: string
+  weight: number
+  hits: boolean[]
+}
+
+/**
+ * `text` as ONE step `[x ~ ~ x …]` (its `@k` allowed, no other op): every part one plain
+ * slot, all of one sound or a rest (`~`, `-`), at least one hit — or null. Krill reads it.
+ */
+export function writtenOutRhythm(text: string): WrittenOutRhythm | null {
+  let els: SElement[]
+  try {
+    els = (miniTree(text).source_ as KElement[]).map((e) => bare(e) as unknown as SElement)
+  } catch {
+    return null
+  }
+  if (els.length !== 1) return null
+  const e = els[0]
+  const src = e.source_
+  if (e.type_ !== 'element' || src.type_ !== 'pattern' || src.arguments_.alignment !== 'fastcat' || e.options_.ops.length > 0 || e.options_.reps !== 1) return null
+  let name: string | null = null
+  const hits: boolean[] = []
+  for (const p of src.source_) {
+    const n = p.type_ === 'element' ? plainName(p) : null
+    if (n === null) return null
+    if (n === REST || n === '-') hits.push(false)
+    else if (name === null || n === name) {
+      name = n
+      hits.push(true)
+    } else return null
+  }
+  return name === null || hits.length < 2 ? null : { name, weight: e.options_.weight, hits }
 }
 
 /* ── a `.gain` that mirrors the steps ─────────────────────────────── */

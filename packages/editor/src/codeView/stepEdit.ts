@@ -46,7 +46,7 @@ import { chunkDivisions, laneDivisions, type BarTree, type BarTreeRefusal, type 
 import type { MiniSpan } from './strudelMini/shape'
 import { miniPattern } from './strudelMini/pattern'
 // every step this file writes is spelled there, so no gesture keeps a spelling of its own (#2326)
-import { REST, chord, group, note, printElement, printSeq, respellWrittenOut, rests, type SElement } from './strudelMini/spell'
+import { REST, chord, euclid as euclidStep, group, note, printElement, printSeq, respellWrittenOut, rests, writtenOutRhythm, type SElement } from './strudelMini/spell'
 
 /** one step of one bar, by where it is written */
 export interface StepAddress {
@@ -609,6 +609,16 @@ interface PlainGenerator {
   out: string
   /** where each written-out copy's name begins, in the string the step is written out in */
   heads: number[]
+  /** a euclid: the step as it was written, given back where its hits are played again (#2437) */
+  euclid?: EuclidWritten
+}
+
+/** a euclid step as written: all its text (`bd(3,8,2)@2`), its name, its `(k,n[,r])`, its weight */
+interface EuclidWritten {
+  own: string
+  name: string
+  args: string
+  weight: number
 }
 
 function plainGenerator(mini: string, step: DivisionStep): PlainGenerator | null {
@@ -656,6 +666,26 @@ function plainGenerator(mini: string, step: DivisionStep): PlainGenerator | null
  */
 function euclidWrittenOut(name: string, args: string, n: number, after: string, from: number, to: number): PlainGenerator | null {
   if (n < 2) return null
+  const at = euclidPlaces(name, args, n)
+  if (at === null || at.size === 0) return null
+  const heads: number[] = []
+  let out = '['
+  for (let i = 0; i < n; i++) {
+    if (i > 0) out += ' '
+    // every place is a cell the grid draws: a hit to erase, or an empty place to fill
+    heads.push(from + out.length)
+    out += at.has(i) ? name : REST
+  }
+  out += `]${after}`
+  return { kind: 'euclid', k: n, from, to, out, heads, euclid: { own: `${name}${args}${after}`, name, args, weight: after === '' ? 1 : Number(after.slice(1)) } }
+}
+
+/**
+ * Which of `n` places `name${args}` plays a hit on in its first cycle, asked of Strudel by
+ * playing that text alone — so rotation and a negative `k` mean what they mean there. Null
+ * where a hit is not on a place, or Strudel cannot play it.
+ */
+function euclidPlaces(name: string, args: string, n: number): Set<number> | null {
   let onsets: number[]
   try {
     onsets = miniPattern(`${name}${args}`).hits(0).map((h) => h.begin.valueOf() * n)
@@ -668,17 +698,51 @@ function euclidWrittenOut(name: string, args: string, n: number, after: string, 
     if (Math.abs(x - i) > 1e-9 || i < 0 || i >= n || at.has(i)) return null
     at.add(i)
   }
-  if (at.size === 0) return null
-  const heads: number[] = []
-  let out = '['
-  for (let i = 0; i < n; i++) {
-    if (i > 0) out += ' '
-    // every place is a cell the grid draws: a hit to erase, or an empty place to fill
-    heads.push(from + out.length)
-    out += at.has(i) ? name : REST
+  return at
+}
+
+/**
+ * A written-out step of one sound and rests, SPELLED AS A EUCLID where Strudel's own Bjorklund
+ * plays exactly its hits (#2437): `[bd ~ ~ bd ~ ~ bd ~]` → `bd(3,8)`, `[bd ~ bd ~ ~ bd ~ ~]` →
+ * `bd(3,8,2)`, its `@w` kept. So a euclid hit clicked off and on again is the euclid it was.
+ *
+ *  - `from`, when the step was a euclid before this edit: its own text comes back as written
+ *    where its `(k,n[,r])` still plays the hits; else its rotation is tried first.
+ *  - Otherwise the smallest rotation `r ≥ 0` that plays them, none written when it is 0.
+ *  - Never one hit (`[bd ~]` is a note and a rest, not `bd(1,2)`), never every place (that is
+ *    `x*k`), never a shape that repeats a shorter one (`[bd ~ bd ~]` is `[bd ~]` twice, not
+ *    `bd(2,4)`), and never a step of fewer than five places (`[ht ht lt]` stays, not
+ *    `ht(2,3)`) — unless it is the step's own euclid, given back. Measured over the corpus
+ *    (1,625 patterns, every toggle): without the last two, 296 toggles of steps that were
+ *    never a euclid were respelled as one, `[cp cp cp]` → `cp(2,3,1)` among them; with them, 2.
+ *
+ * Null where none plays the hits: the caller's spelling stands.
+ */
+function respellEuclid(text: string, from?: EuclidWritten): string | null {
+  const r = writtenOutRhythm(text)
+  if (!r) return null
+  const n = r.hits.length
+  const want = r.hits.flatMap((h, i) => (h ? [i] : []))
+  const k = want.length
+  const plays = (args: string): boolean => {
+    const got = euclidPlaces(r.name, args, n)
+    return got !== null && got.size === k && want.every((i) => got.has(i))
   }
-  out += `]${after}`
-  return { kind: 'euclid', k: n, from, to, out, heads }
+  if (from && from.name === r.name && from.weight === r.weight && plays(from.args)) return from.own
+  if (k < 2 || k >= n || n < 5 || repeatsShorter(r.hits)) return null
+  const rot = from ? /^\([^,]*,[^,]*,\s*([0-9]+)\s*\)$/.exec(from.args)?.[1] : undefined
+  const tries = [...(rot !== undefined && Number(rot) > 0 && Number(rot) < n ? [Number(rot)] : []), ...Array.from({ length: n }, (_, i) => i)]
+  for (const x of tries) {
+    if (plays(x === 0 ? `(${k},${n})` : `(${k},${n},${x})`)) return printElement(euclidStep(r.name, k, n, x, r.weight))
+  }
+  return null
+}
+
+/** the places are a shorter run of them played again and again (`[bd ~ bd ~]` is `[bd ~]` twice) */
+function repeatsShorter(hits: readonly boolean[]): boolean {
+  const n = hits.length
+  for (let p = 1; p < n; p++) if (n % p === 0 && hits.every((h, i) => h === hits[i % p])) return true
+  return false
 }
 
 type Writer = (mini: string, trees: readonly BarTree[], address: StepAddress) => StepEditResult
@@ -724,7 +788,9 @@ function viaWrittenOut(mini: string, trees: readonly BarTree[], address: StepAdd
   const replacedEnd = edit.to > end ? gen.to + (edit.to - end) : gen.to
   if (edit.from < gen.from) return refuse('tree-is-not-this-text')
   const after = applyStepEdit(written, edit)
-  return write(gen.from, replacedEnd, respellWrittenOut(after.slice(gen.from, regionEnd), gen.kind === 'bang' ? 'bang' : 'star'))
+  const region = after.slice(gen.from, regionEnd)
+  // a euclid whose hits are still a euclid's is spelled so (#2437); else by the rules for `x*k`
+  return write(gen.from, replacedEnd, (gen.euclid && respellEuclid(region, gen.euclid)) || respellWrittenOut(region, gen.kind === 'bang' ? 'bang' : 'star'))
 }
 
 /** `renameStep` on a step that is not a generator: its name replaced, everything after it kept */
@@ -758,7 +824,29 @@ export function renameStep(mini: string, trees: readonly BarTree[], address: Ste
  * cannot be written that way.
  */
 export function toggleStep(mini: string, trees: readonly BarTree[], address: StepAddress, row: StepRow): StepEditResult {
-  return viaWrittenOut(mini, trees, address, row, (m, t, a) => toggleStepHere(m, t, a, row)) ?? toggleStepHere(mini, trees, address, row)
+  return viaWrittenOut(mini, trees, address, row, (m, t, a) => toggleStepHere(m, t, a, row)) ?? asEuclid(mini, trees, address, row, toggleStepHere(mini, trees, address, row))
+}
+
+/**
+ * A toggle inside a written-out step (`[bd ~ ~ ~ ~ ~ bd ~]`, a euclid with a hit clicked off,
+ * #2434) that leaves it a euclid rhythm is spelled as one (#2437): the hit clicked back on
+ * gives back `bd(3,8)`. Only the step the toggled one sits in is read and rewritten, and only
+ * as `respellEuclid` allows; anything else keeps the toggle as it was written.
+ */
+function asEuclid(mini: string, trees: readonly BarTree[], address: StepAddress, row: StepRow, done: StepEditResult): StepEditResult {
+  if (!done.ok) return done
+  const tree = trees[address.bar]
+  const lane = tree ? laneRowForEdit(tree, row) : null
+  if (!tree || !lane || !lane.ok) return done
+  const found = findIn(lane.row, `part${tree.ok ? tree.parts.indexOf(lane.row) : 0}`, address.span, [], [])
+  const g = found?.around[found.around.length - 1]
+  if (!g || !g.span) return done
+  const from = g.span.start
+  const to = textEnd(mini, g)
+  const { edit } = done
+  if (edit.from < from || edit.to > to) return done
+  const spelled = respellEuclid(applyStepEdit(mini.slice(from, to), { from: edit.from - from, to: edit.to - from, insert: edit.insert }))
+  return spelled === null ? done : write(from, to, spelled)
 }
 
 /** `splitStepHere`, on one hit of `x*k` or copy of `x!k` too (#2326) */

@@ -74,6 +74,14 @@ test.describe('the step grid in Exact (#2458)', () => {
     await writes(page, cell(grid, hh, 0, '1/8'), '$: s("[hh ~ hh hh] sd")', ['hh@0', 'hh@1/4', 'hh@3/8', 'sd@1/2'])
   })
 
+  test('a euclid hit clicked off and on again is the euclid it was (#2437)', async ({ page }) => {
+    const code = '$: s("bd(3,8) sd")'
+    const grid = await open(page, code)
+    const bd = await rowOf(grid, 'bd')
+    await writes(page, cell(grid, bd, 0, '3/16'), '$: s("[bd ~ ~ ~ ~ ~ bd ~] sd")', ['bd@0', 'bd@3/8', 'sd@1/2'])
+    await writes(page, cell(grid, bd, 0, '3/16'), code, ['bd@0', 'bd@3/16', 'bd@3/8', 'sd@1/2'])
+  })
+
   test('a pattern too fine for columns opens and edits', async ({ page }) => {
     const code = '$: s("hh hh [hh hh] hh [hh hh hh] hh hh [hh hh hh hh]")'
     const grid = await open(page, code)

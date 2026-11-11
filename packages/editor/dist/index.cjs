@@ -4644,9 +4644,9 @@ function buildElement(el, isSample, baseOffset, input) {
     contentStart = group2.openPos;
     afterContent = group2.closePos + 1;
   }
-  const euclid = ops.find((o) => o.kind === "bjorklund");
-  if (euclid && src.kind === "atom" && !isRest(src)) {
-    const expanded = expandEuclid(node, euclid, baseOffset, contentStart);
+  const euclid2 = ops.find((o) => o.kind === "bjorklund");
+  if (euclid2 && src.kind === "atom" && !isRest(src)) {
+    const expanded = expandEuclid(node, euclid2, baseOffset, contentStart);
     if (expanded) {
       node = expanded.node;
       afterContent = expanded.closeParen;
@@ -10283,7 +10283,7 @@ var numArg = /* @__PURE__ */ __name((node) => {
 }, "numArg");
 function readOps(ops) {
   let mult = 1;
-  let euclid = null;
+  let euclid2 = null;
   for (const op of ops) {
     switch (op.type_) {
       case "tail":
@@ -10309,7 +10309,7 @@ function readOps(ops) {
           return { reason: "invalid euclid (k,n) arguments" };
         }
         if (n < 1) return { reason: "invalid euclid step count" };
-        euclid = { k, n, rot };
+        euclid2 = { k, n, rot };
         break;
       }
       case "degradeBy":
@@ -10318,7 +10318,7 @@ function readOps(ops) {
         return { reason: `"${op.type_}" is beyond the editable subset` };
     }
   }
-  return { mult, euclid };
+  return { mult, euclid: euclid2 };
 }
 __name(readOps, "readOps");
 function groupSlots(pat, allowNumeric) {
@@ -10390,7 +10390,7 @@ function elementToSteps(el, allowNumeric) {
   const rawWeight = opts.weight ?? 1;
   const read5 = readOps(ops);
   if (!("mult" in read5)) return read5;
-  const { mult, euclid } = read5;
+  const { mult, euclid: euclid2 } = read5;
   if (reps > 1 && rawWeight !== reps) {
     return { reason: "! combined with * or @ is beyond the editable subset" };
   }
@@ -10402,7 +10402,7 @@ function elementToSteps(el, allowNumeric) {
     if (alignment === "stack") {
       const chord2 = chordAtoms(el.source_, allowNumeric);
       if (!Array.isArray(chord2)) return chord2;
-      if (euclid) return { reason: "euclid on a chord is beyond the editable subset" };
+      if (euclid2) return { reason: "euclid on a chord is beyond the editable subset" };
       if (reps > 1) return { reason: "! on a chord is beyond the editable subset" };
       if (mult > 1) {
         if (weight > 1) return { reason: "* combined with @ is beyond the editable subset" };
@@ -10419,7 +10419,7 @@ function elementToSteps(el, allowNumeric) {
     if (alignment !== "fastcat") {
       return { reason: `"${String(alignment)}" is beyond the editable subset` };
     }
-    if (euclid) return { reason: "euclid on a group is beyond the editable subset" };
+    if (euclid2) return { reason: "euclid on a group is beyond the editable subset" };
     if (reps > 1) return { reason: "! on a group is beyond the editable subset" };
     if (mult > 1 && weight > 1) {
       return { reason: "* combined with @ is beyond the editable subset" };
@@ -10451,11 +10451,11 @@ function elementToSteps(el, allowNumeric) {
     return { reason: `unsupported token "${token}"` };
   }
   const atoms = rest ? [] : [token];
-  if (euclid) {
+  if (euclid2) {
     if (mult > 1 || reps > 1 || weight > 1) {
       return { reason: "euclid combined with * / ! / @ is beyond the editable subset" };
     }
-    const hits = rotateEuclid(bjorklund(euclid.k, euclid.n), euclid.rot);
+    const hits = rotateEuclid(bjorklund(euclid2.k, euclid2.n), euclid2.rot);
     return [{ atoms: [], elongation: 1, sub: hits.map((on) => ({ atoms: on ? [...atoms] : [], units: 1 })) }];
   }
   if (reps > 1) {
@@ -13886,7 +13886,11 @@ function printOps(ops, head) {
     else if (op.type_ === "stretch" && a.type === "fast") out += "*" + String(a.amount.source_);
     else if (op.type_ === "stretch" && a.type === "slow") out += "/" + String(a.amount.source_);
     else if (op.type_ === "replicate") out += "!" + String(a.amount);
-    else throw new Error(`stepSpell: no spelling for op ${op.type_}`);
+    else if (op.type_ === "bjorklund") {
+      const [k, n, r] = [argText(a.pulse), argText(a.step), a.rotation ? argText(a.rotation) : ""];
+      if (k === null || n === null || r === null) throw new Error("stepSpell: a euclid whose amounts are not plain");
+      out += `(${k},${n}${r === "" ? "" : "," + r})`;
+    } else throw new Error(`stepSpell: no spelling for op ${op.type_}`);
   }
   return out;
 }
@@ -13966,6 +13970,13 @@ function rests(k) {
   return Array.from({ length: k }, () => note(REST));
 }
 __name(rests, "rests");
+function euclid(name, k, n, r, weight = 1) {
+  const amount = /* @__PURE__ */ __name((x) => ({ type_: "element", source_: atom(String(x)), options_: { weight: 1, reps: 1, ops: [] } }), "amount");
+  const e = note(name, weight);
+  e.options_.ops = [...e.options_.ops, { type_: "bjorklund", arguments_: { pulse: amount(k), step: amount(n), rotation: r === 0 ? null : amount(r) } }];
+  return e;
+}
+__name(euclid, "euclid");
 var bare = /* @__PURE__ */ __name((n) => JSON.parse(JSON.stringify(n, (key3, v) => key3 === "location_" ? void 0 : v)), "bare");
 function respellWrittenOutHere(text, kind) {
   const els = miniTree(text).source_.map((e2) => bare(e2));
@@ -14004,6 +14015,31 @@ function respellCopies(text, kind) {
   }
 }
 __name(respellCopies, "respellCopies");
+function writtenOutRhythm(text) {
+  let els;
+  try {
+    els = miniTree(text).source_.map((e2) => bare(e2));
+  } catch {
+    return null;
+  }
+  if (els.length !== 1) return null;
+  const e = els[0];
+  const src = e.source_;
+  if (e.type_ !== "element" || src.type_ !== "pattern" || src.arguments_.alignment !== "fastcat" || e.options_.ops.length > 0 || e.options_.reps !== 1) return null;
+  let name = null;
+  const hits = [];
+  for (const p of src.source_) {
+    const n = p.type_ === "element" ? plainName(p) : null;
+    if (n === null) return null;
+    if (n === REST || n === "-") hits.push(false);
+    else if (name === null || n === name) {
+      name = n;
+      hits.push(true);
+    } else return null;
+  }
+  return name === null || hits.length < 2 ? null : { name, weight: e.options_.weight, hits };
+}
+__name(writtenOutRhythm, "writtenOutRhythm");
 function argText(a) {
   if (!a || typeof a !== "object") return null;
   const n = a;
@@ -14371,8 +14407,8 @@ function plainGenerator(mini, step) {
   let after = "";
   const star = /^\*([1-9][0-9]*)(@[1-9][0-9]*)?$/.exec(rest);
   const bang = /^!([1-9][0-9]*)?$/.exec(rest);
-  const euclid = /^(\(\s*-?[0-9]+\s*,\s*([1-9][0-9]*)\s*(?:,\s*[0-9]+\s*)?\))(@[1-9][0-9]*)?$/.exec(rest);
-  if (euclid && ops.length === 1 && ops[0] === "bjorklund" && step.reps === 1) return euclidWrittenOut(name, euclid[1], Number(euclid[2]), euclid[3] ?? "", from, to);
+  const euclid2 = /^(\(\s*-?[0-9]+\s*,\s*([1-9][0-9]*)\s*(?:,\s*[0-9]+\s*)?\))(@[1-9][0-9]*)?$/.exec(rest);
+  if (euclid2 && ops.length === 1 && ops[0] === "bjorklund" && step.reps === 1) return euclidWrittenOut(name, euclid2[1], Number(euclid2[2]), euclid2[3] ?? "", from, to);
   if (star && ops.length === 1 && ops[0] === "stretch" && step.reps === 1) {
     kind = "star";
     k = Number(star[1]);
@@ -14396,6 +14432,20 @@ function plainGenerator(mini, step) {
 __name(plainGenerator, "plainGenerator");
 function euclidWrittenOut(name, args, n, after, from, to) {
   if (n < 2) return null;
+  const at = euclidPlaces2(name, args, n);
+  if (at === null || at.size === 0) return null;
+  const heads = [];
+  let out = "[";
+  for (let i = 0; i < n; i++) {
+    if (i > 0) out += " ";
+    heads.push(from + out.length);
+    out += at.has(i) ? name : REST;
+  }
+  out += `]${after}`;
+  return { kind: "euclid", k: n, from, to, out, heads, euclid: { own: `${name}${args}${after}`, name, args, weight: after === "" ? 1 : Number(after.slice(1)) } };
+}
+__name(euclidWrittenOut, "euclidWrittenOut");
+function euclidPlaces2(name, args, n) {
   let onsets;
   try {
     onsets = miniPattern(`${name}${args}`).hits(0).map((h) => h.begin.valueOf() * n);
@@ -14408,18 +14458,35 @@ function euclidWrittenOut(name, args, n, after, from, to) {
     if (Math.abs(x - i) > 1e-9 || i < 0 || i >= n || at.has(i)) return null;
     at.add(i);
   }
-  if (at.size === 0) return null;
-  const heads = [];
-  let out = "[";
-  for (let i = 0; i < n; i++) {
-    if (i > 0) out += " ";
-    heads.push(from + out.length);
-    out += at.has(i) ? name : REST;
-  }
-  out += `]${after}`;
-  return { kind: "euclid", k: n, from, to, out, heads };
+  return at;
 }
-__name(euclidWrittenOut, "euclidWrittenOut");
+__name(euclidPlaces2, "euclidPlaces");
+function respellEuclid(text, from) {
+  const r = writtenOutRhythm(text);
+  if (!r) return null;
+  const n = r.hits.length;
+  const want = r.hits.flatMap((h, i) => h ? [i] : []);
+  const k = want.length;
+  const plays = /* @__PURE__ */ __name((args) => {
+    const got = euclidPlaces2(r.name, args, n);
+    return got !== null && got.size === k && want.every((i) => got.has(i));
+  }, "plays");
+  if (from && from.name === r.name && from.weight === r.weight && plays(from.args)) return from.own;
+  if (k < 2 || k >= n || n < 5 || repeatsShorter(r.hits)) return null;
+  const rot = from ? /^\([^,]*,[^,]*,\s*([0-9]+)\s*\)$/.exec(from.args)?.[1] : void 0;
+  const tries = [...rot !== void 0 && Number(rot) > 0 && Number(rot) < n ? [Number(rot)] : [], ...Array.from({ length: n }, (_, i) => i)];
+  for (const x of tries) {
+    if (plays(x === 0 ? `(${k},${n})` : `(${k},${n},${x})`)) return printElement(euclid(r.name, k, n, x, r.weight));
+  }
+  return null;
+}
+__name(respellEuclid, "respellEuclid");
+function repeatsShorter(hits) {
+  const n = hits.length;
+  for (let p = 1; p < n; p++) if (n % p === 0 && hits.every((h, i) => h === hits[i % p])) return true;
+  return false;
+}
+__name(repeatsShorter, "repeatsShorter");
 function viaWrittenOut(mini, trees, address, row, writer) {
   const tree = trees[address.bar];
   if (!tree) return null;
@@ -14451,7 +14518,8 @@ function viaWrittenOut(mini, trees, address, row, writer) {
   const replacedEnd = edit.to > end ? gen2.to + (edit.to - end) : gen2.to;
   if (edit.from < gen2.from) return refuse("tree-is-not-this-text");
   const after = applyStepEdit(written, edit);
-  return write(gen2.from, replacedEnd, respellWrittenOut(after.slice(gen2.from, regionEnd), gen2.kind === "bang" ? "bang" : "star"));
+  const region = after.slice(gen2.from, regionEnd);
+  return write(gen2.from, replacedEnd, gen2.euclid && respellEuclid(region, gen2.euclid) || respellWrittenOut(region, gen2.kind === "bang" ? "bang" : "star"));
 }
 __name(viaWrittenOut, "viaWrittenOut");
 function renameStepHere(mini, trees, address, row, name) {
@@ -14469,9 +14537,25 @@ function renameStep(mini, trees, address, row, name) {
 }
 __name(renameStep, "renameStep");
 function toggleStep(mini, trees, address, row) {
-  return viaWrittenOut(mini, trees, address, row, (m, t, a) => toggleStepHere(m, t, a, row)) ?? toggleStepHere(mini, trees, address, row);
+  return viaWrittenOut(mini, trees, address, row, (m, t, a) => toggleStepHere(m, t, a, row)) ?? asEuclid(mini, trees, address, row, toggleStepHere(mini, trees, address, row));
 }
 __name(toggleStep, "toggleStep");
+function asEuclid(mini, trees, address, row, done) {
+  if (!done.ok) return done;
+  const tree = trees[address.bar];
+  const lane = tree ? laneRowForEdit(tree, row) : null;
+  if (!tree || !lane || !lane.ok) return done;
+  const found = findIn(lane.row, `part${tree.ok ? tree.parts.indexOf(lane.row) : 0}`, address.span, [], []);
+  const g = found?.around[found.around.length - 1];
+  if (!g || !g.span) return done;
+  const from = g.span.start;
+  const to = textEnd(mini, g);
+  const { edit } = done;
+  if (edit.from < from || edit.to > to) return done;
+  const spelled = respellEuclid(applyStepEdit(mini.slice(from, to), { from: edit.from - from, to: edit.to - from, insert: edit.insert }));
+  return spelled === null ? done : write(from, to, spelled);
+}
+__name(asEuclid, "asEuclid");
 function splitStep(mini, trees, address, at, row, unit) {
   return viaWrittenOut(mini, trees, address, row, (m, t, a) => splitStepHere(m, t, a, at, row, unit)) ?? splitStepHere(mini, trees, address, at, row, unit);
 }
