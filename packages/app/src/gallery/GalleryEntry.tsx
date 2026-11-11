@@ -56,6 +56,13 @@ export interface EntryPageProps {
   onOpenEntry: (id: string) => void;
   /** The overlay's ×, drawn at the end of the breadcrumb bar. */
   onClose?: () => void;
+  /**
+   * #2495 — a card's play button opened this entry: start its preview (on the
+   * card's cover file, when known). Read once, as the entry opens; `onPlayTaken`
+   * then clears it, so coming Back to this entry later doesn't play by itself.
+   */
+  playOnOpen?: { id: string; cover: string | null } | null;
+  onPlayTaken?: () => void;
 }
 
 const TOKEN_CLASS: Record<TokenKind, string | undefined> = {
@@ -100,15 +107,31 @@ const STOP_ICON = (
 export function EntryPage(props: EntryPageProps) {
   const { detail, busy, backLabel, onBack, onHome, onKind, onAuthor, onRetry, onClose } = props;
   // The file chosen, by path: the list is re-ordered (cover first) once the record arrives.
-  const [chosen, setChosen] = useState<string | null>(null);
-  const [autoStart, setAutoStart] = useState(false);
+  // #2495 — a card's play applies from the first render, so the preview mounts
+  // already starting even when the entry is on hand at once (its effects run
+  // before this page's).
+  const playsNow = props.playOnOpen?.id === detail.id ? props.playOnOpen : null;
+  const [chosen, setChosen] = useState<string | null>(playsNow?.cover ?? null);
+  const [autoStart, setAutoStart] = useState(playsNow !== null);
   const [playing, setPlaying] = useState(false);
   // A project's "Add to this project": its file list, open or shut.
   const [picking, setPicking] = useState(false);
   const preview = useRef<GalleryPreviewHandle>(null);
+  const playOnOpen = useRef(props.playOnOpen);
+  playOnOpen.current = props.playOnOpen;
+  const onPlayTaken = useRef(props.onPlayTaken);
+  onPlayTaken.current = props.onPlayTaken;
   useEffect(() => {
-    setChosen(null);
-    setAutoStart(false);
+    const play = playOnOpen.current;
+    if (play && play.id === detail.id) {
+      // chosen by path, so the file stays put when this page's record arrives and reorders
+      setChosen(play.cover);
+      setAutoStart(true);
+      onPlayTaken.current?.();
+    } else {
+      setChosen(null);
+      setAutoStart(false);
+    }
     setPicking(false);
   }, [detail.id]);
 

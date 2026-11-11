@@ -209,4 +209,23 @@ describe("EntryPage", () => {
     expect(document.querySelector('[data-gallery-code="bass.strudel"]')).not.toBeNull();
     expect(document.querySelector(".sg-facts")!.textContent).toContain("Coverbass.strudel, 8-bar loop");
   });
+
+  it("#2495 a card's play: the preview starts on the cover file, even with the entry on hand at once", async () => {
+    const taken = vi.fn();
+    renderPage({ playOnOpen: { id: ENTRY.id, cover: "bass.strudel" }, onPlayTaken: taken });
+    await nextFrame();
+    await nextFrame();
+    expect(frames()).toHaveLength(1);
+    expect(document.querySelector("[data-gallery-preview]")?.getAttribute("data-gallery-preview")).toBe(`${ENTRY.id}/f2`);
+    expect(taken).toHaveBeenCalledTimes(1);
+  });
+
+  it("#2495 CONTROL: a start meant for another entry starts nothing here", async () => {
+    const taken = vi.fn();
+    renderPage({ playOnOpen: { id: "othr1xxxxxx", cover: null }, onPlayTaken: taken });
+    await nextFrame();
+    await nextFrame();
+    expect(frames()).toHaveLength(0);
+    expect(taken).not.toHaveBeenCalled();
+  });
 });

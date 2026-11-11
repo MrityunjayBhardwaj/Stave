@@ -141,14 +141,24 @@ export function CardPicture({ entry, rec }: { entry: GalleryEntry; rec: GalleryR
  * initial, how long ago, and the tags. The whole card opens the entry on a click
  * or tap; the title is the button a keyboard reaches. The artist's name is its
  * own link (not nested in a button), so it can open the profile instead.
+ *
+ * #2495 — and a play button on the picture: the entry opens with its preview
+ * already starting. It is this click that lets the preview's sealed frame start
+ * sound in Chromium and Firefox (measured; WebKit still wants a press in the
+ * frame, which the preview then has focused), so the button calls `onPlay`
+ * straight from its own click handler, nothing deferred. It passes the recorded
+ * cover file, so the entry starts on the file the card shows.
  */
 export function Card({
   entry,
   onOpen,
+  onPlay,
   onAuthor,
 }: {
   entry: GalleryEntry;
   onOpen: () => void;
+  /** Open the entry with its preview starting (the cover file when it is known). */
+  onPlay?: (cover: string | null) => void;
   onAuthor?: (authorId: string) => void;
 }) {
   const rec = useEntryRecording(entry);
@@ -162,6 +172,21 @@ export function Card({
         <CardPicture entry={entry} rec={rec} />
         <span className="sg-gcard-kind">{KIND_LABEL[entry.kind] ?? entry.kind}</span>
         {count && <span className="sg-gcard-count" data-gallery-card-count>{count}</span>}
+        {onPlay && (
+          <button
+            type="button"
+            className="sg-gcard-play"
+            data-gallery-card-play={entry.id}
+            aria-label={`Play ${entry.title}`}
+            title={`Play ${entry.title}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPlay(rec?.cover ?? null);
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z" /></svg>
+          </button>
+        )}
       </div>
       <div className="sg-gcard-text">
         <button
@@ -206,6 +231,10 @@ export const CARD_CSS = `
 .sg-gcard-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .sg-gcard-kind { position: absolute; left: 8px; top: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; padding: 3px 7px; border-radius: 6px; background: rgba(8,8,15,.72); color: rgba(235,235,250,.85); backdrop-filter: blur(6px); }
 .sg-gcard-count { position: absolute; left: 8px; bottom: 8px; font-size: 11px; padding: 3px 7px; border-radius: 6px; background: rgba(8,8,15,.78); color: #ececf4; backdrop-filter: blur(6px); }
+.sg-gcard-play { position: absolute; right: 8px; bottom: 8px; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.18); border-radius: 50%; background: rgba(8,8,15,.78); color: #ececf4; cursor: pointer; backdrop-filter: blur(6px); transition: background .15s, transform .15s; }
+.sg-gcard-play svg { margin-left: 2px; }
+.sg-gcard-play:hover { background: var(--accent, #7aa2f7); color: #0b0b16; transform: scale(1.06); }
+.sg-gcard-play:focus-visible { outline: 2px solid var(--accent, #7aa2f7); outline-offset: 2px; }
 .sg-gcard-text { display: grid; gap: 3px; min-width: 0; }
 .sg-gcard-title { font-size: 14px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sg-gcard-meta { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; color: var(--text-muted, var(--text-chrome)); white-space: nowrap; overflow: hidden; }

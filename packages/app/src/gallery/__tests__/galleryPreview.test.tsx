@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, act, fireEvent, cleanup } from "@testing-library/react";
 import { GalleryPreview, NAVIGATED_AWAY } from "../GalleryPreview";
+import { NEEDS_CLICK } from "../previewProtocol";
 
 beforeEach(() => cleanup());
 
@@ -70,5 +71,40 @@ describe("GalleryPreview — what goes into the frame, and when", () => {
     fireEvent.load(f);
     expect(frame()).not.toBeNull();
     expect(document.querySelector("[data-gallery-preview-state]")?.textContent).not.toBe(NAVIGATED_AWAY);
+  });
+});
+
+describe("GalleryPreview — a frame that needs its own press (#2495)", () => {
+  it("moves focus onto the frame when it says it needs a press there", () => {
+    const { f } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    expect(document.activeElement).not.toBe(f);
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement, "focus is on the frame, whose own Play has focus").toBe(f);
+    expect(document.querySelector("[data-gallery-preview-state]")?.textContent).toBe(NEEDS_CLICK);
+  });
+
+  it("CONTROL: any other stopped message leaves focus where it was", () => {
+    const { f } = openPreview();
+    const button = screen.getByRole("button", { name: "Preview" });
+    button.focus();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "stopped" });
+    fromFrame({ state: "stopped", message: "Stopped by the code." });
+    expect(document.activeElement).toBe(button);
+  });
+
+  it("only once per frame, so code in it can't keep pulling focus back", () => {
+    const { f } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement).toBe(f);
+    const button = screen.getByRole("button", { name: "Preview" });
+    button.focus();
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement).toBe(button);
   });
 });

@@ -9,10 +9,16 @@
  * the gallery only through `postMessage` (see previewProtocol.ts): it takes
  * code in and reports playing / stopped / error out.
  *
- * Sound: a Strudel file plays on its own engine. A browser lets a frame start
- * audio only after a click IN that frame (the click on the gallery's Preview
- * button activates the gallery, not the frame), so when the audio context
- * won't start, the frame shows its own Play button and says so.
+ * Sound: a Strudel file plays on its own engine. Whether the gallery page's
+ * click lets this frame start audio depends on the browser (#2495, measured
+ * with real clicks and a no-click control in each): Chromium and Chrome take a
+ * click anywhere above the frame, because the frame carries allow="autoplay"
+ * (the autoplay check walks up to the parents for a click); Firefox takes a click
+ * on the top page whatever the frame says; WebKit wants a click in this frame
+ * itself. With no click anywhere it starts in none of them. So when the audio
+ * context won't start, the frame shows its own Play button and says so
+ * (NEEDS_CLICK); the gallery then moves focus into this frame, where Enter or
+ * Space is that press.
  *
  * Visuals: a Hydra / p5 / GLSL file renders on the main thread inside the
  * frame, fed by nothing (no music is playing in a visual preview). The worker
@@ -20,7 +26,7 @@
  * opaque-origin frame may not do.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { parseToFrame, type FromFrame, type PreviewKind } from "./previewProtocol";
+import { NEEDS_CLICK, parseToFrame, type FromFrame, type PreviewKind } from "./previewProtocol";
 
 type Engine = import("@stave/editor").StrudelEngine;
 type Mounted = { renderer: { destroy(): void; resume?(): void }; disconnect(): void };
@@ -39,6 +45,7 @@ export function GalleryPlayer() {
   const run = useRef<{ phase: "idle" | "starting" | "playing"; error?: string }>({ phase: "idle" });
   const [status, setStatus] = useState<FromFrame>({ state: "ready" });
   const [needsClick, setNeedsClick] = useState(false);
+  const startRef = useRef<HTMLButtonElement>(null);
   const [showViz, setShowViz] = useState(false);
 
   const post = useCallback((msg: FromFrame) => {
@@ -102,8 +109,9 @@ export function GalleryPlayer() {
     const ctx = e.getAudioContext();
     try {
       e.unlockAudio();
-      // Without a click in this frame Chrome leaves resume() PENDING, not
-      // rejected (observed: "The AudioContext was not allowed to start"), so
+      // Without a click it may take (see the top of this file) a browser leaves
+      // resume() PENDING, not rejected (observed: "The AudioContext was not
+      // allowed to start"), so
       // give it a moment and then go by the context's state.
       await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 400))]);
     } catch {
@@ -113,13 +121,36 @@ export function GalleryPlayer() {
     if (ctx.state !== "running") {
       setNeedsClick(true);
       run.current = { phase: "starting", error: run.current.error };
-      post({ state: "stopped", message: "Press Play in the preview to hear it." });
+      post({ state: "stopped", message: NEEDS_CLICK });
       return;
     }
     setNeedsClick(false);
     e.play();
     nowPlaying();
   }, [post, nowPlaying]);
+
+  // #2495 — while this frame asks for its press, the gallery moves focus into it,
+  // and Enter or Space there is the press: a key press is a user activation IN
+  // this frame. Its Play takes focus too where the browser lets it, but WebKit
+  // refuses focus() to a cross-origin frame nobody has pressed yet (observed: it
+  // stays on <body>), so the key is listened for on the whole frame.
+  useEffect(() => {
+    if (!needsClick) return;
+    const focusPlay = () => startRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      if (e.target === startRef.current) return; // the button presses itself
+      e.preventDefault();
+      void startSound(generation.current);
+    };
+    focusPlay();
+    window.addEventListener("focus", focusPlay);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("focus", focusPlay);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [needsClick, startSound]);
 
   const play = useCallback(
     async (code: string, kind: PreviewKind) => {
@@ -243,6 +274,7 @@ export function GalleryPlayer() {
       />
       {needsClick && (
         <button
+          ref={startRef}
           data-gallery-player-start
           onClick={() => void startSound(generation.current)}
           style={{
