@@ -21,7 +21,7 @@ import {
   type WorkspaceShellHandle,
 } from "@stave/editor";
 import { GalleryOverlay } from "./GalleryOverlay";
-import { GALLERY_APP_KEY, galleryTabStore, openGalleryStore, placeOf, placeTabState } from "./galleryTab";
+import { GALLERY_APP_KEY, galleryTabStore, placeOf, placeTabState } from "./galleryTab";
 import { claimIntoAccount } from "./client";
 import { runClaimOnce } from "./claimRun";
 import { useGallerySession } from "./session";
@@ -86,7 +86,7 @@ export function GalleryHost({ actions, shellRef, onPublish }: GalleryHostProps) 
         return;
       }
       // A real open: fetch again, start from the view asked for, then show the tab there.
-      openGalleryStore(galleryTabStore, target);
+      galleryTabStore.open(target);
       shell.openAppTab(GALLERY_APP_KEY, { state: placeTabState(placeOf(galleryTabStore.getState())) });
     },
     [shellRef],
