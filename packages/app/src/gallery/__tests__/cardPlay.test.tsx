@@ -16,6 +16,7 @@ vi.mock("../../dialogs/host", () => ({
 }));
 
 import { GalleryOverlay } from "../GalleryOverlay";
+import { Card } from "../GalleryCards";
 import { forgetGalleryRecordingsForTests } from "../client";
 import type { GalleryEntry, GalleryEntryResponse } from "../types";
 
@@ -85,7 +86,7 @@ afterEach(() => {
 });
 
 describe("a gallery card's play button (#2495)", () => {
-  it("is a focusable button named for the entry, on every card", async () => {
+  it("is a focusable button named for the entry, on every card with something to preview", async () => {
     renderGallery();
     const play = await screen.findByRole("button", { name: "Play Breakbeat" });
     expect(play.tagName).toBe("BUTTON");
@@ -164,3 +165,99 @@ describe("a gallery card's play button (#2495)", () => {
     expect(held).toEqual([`${PROJ.id}/p2`]);
   });
 });
+
+/**
+ * #2548 — the play button only where there is something to preview, judged from
+ * the entry's publish record (what it holds) since the card has no files. With no
+ * record the card can't tell, and keeps it.
+ */
+describe("a gallery card's play button shows only when there's something to preview (#2548)", () => {
+  const rec = (contents: { patterns: number; visuals: number; other: number }, cover: string | null = null) => ({ v: 1, cover, contents, files: [] });
+  const CASES = {
+    notes: { entry: E({ id: "note1xxxxxx", title: "Liner Notes", kind: "project", fileCount: 2, hasRecording: true }), rec: rec({ patterns: 0, visuals: 0, other: 2 }) },
+    sonic: { entry: E({ id: "soni1xxxxxx", title: "Ruby Loop", kind: "music", hasRecording: true }), rec: rec({ patterns: 0, visuals: 0, other: 1 }, "loop.rb") },
+    patterns: { entry: E({ id: "patt1xxxxxx", title: "Two Grooves", kind: "project", fileCount: 3, hasRecording: true }), rec: rec({ patterns: 2, visuals: 0, other: 1 }) },
+    visualProject: { entry: E({ id: "visp1xxxxxx", title: "Light Show", kind: "project", fileCount: 2, hasRecording: true }), rec: rec({ patterns: 0, visuals: 1, other: 1 }) },
+    music: { entry: E({ id: "musr1xxxxxx", title: "House", kind: "music", hasRecording: true }), rec: rec({ patterns: 1, visuals: 0, other: 0 }, "house.strudel") },
+    viz: { entry: E({ id: "vizr1xxxxxx", title: "Bloom", kind: "viz", hasRecording: true }), rec: rec({ patterns: 0, visuals: 1, other: 0 }, "bloom.hydra") },
+  } as const;
+
+  /** Render one card; resolves once its record (when it has one) has been read and drawn. */
+  async function renderCard(entry: GalleryEntry, record: unknown | null) {
+    const served = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === `/api/gallery/${entry.id}/recording` && record) {
+          served();
+          return Response.json(record);
+        }
+        return new Response(null, { status: 404 });
+      }),
+    );
+    render(<Card entry={entry} onOpen={vi.fn()} onPlay={vi.fn()} />);
+    if (entry.hasRecording) await waitFor(() => expect(served).toHaveBeenCalled());
+    // the record's json() and the card's re-render
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  const play = (id: string) => document.querySelector(`[data-gallery-card-play="${id}"]`);
+
+  it("a project whose record counts no pattern and no visual has no play button", async () => {
+    const { entry, rec: r } = CASES.notes;
+    await renderCard(entry, r);
+    expect(document.querySelector("[data-gallery-card-count]")?.textContent, "the record arrived").toBe("2 other files");
+    expect(play(entry.id)).toBeNull();
+  });
+
+  it("a music entry that is a Sonic Pi file (counted as other: the preview can't play it) has none either", async () => {
+    const { entry, rec: r } = CASES.sonic;
+    await renderCard(entry, r);
+    expect(play(entry.id)).toBeNull();
+  });
+
+  it("a project with a pattern keeps it", async () => {
+    const { entry, rec: r } = CASES.patterns;
+    await renderCard(entry, r);
+    expect(document.querySelector("[data-gallery-card-count]")?.textContent).toBe("2 patterns · 1 other file");
+    expect(play(entry.id)).not.toBeNull();
+  });
+
+  it("a project with only a visual keeps it", async () => {
+    const { entry, rec: r } = CASES.visualProject;
+    await renderCard(entry, r);
+    expect(document.querySelector("[data-gallery-card-count]")?.textContent).toBe("1 visual · 1 other file");
+    expect(play(entry.id)).not.toBeNull();
+  });
+
+  it("a music card and a visual card, with their records, keep it", async () => {
+    await renderCard(CASES.music.entry, CASES.music.rec);
+    expect(play(CASES.music.entry.id)).not.toBeNull();
+    cleanup();
+    forgetGalleryRecordingsForTests();
+    await renderCard(CASES.viz.entry, CASES.viz.rec);
+    expect(play(CASES.viz.entry.id)).not.toBeNull();
+  });
+
+  it("an entry with no record (published before recording) keeps it", async () => {
+    const entry = E({ id: "old01xxxxxx", title: "Old Song", kind: "project", fileCount: 2 });
+    await renderCard(entry, null);
+    expect(play(entry.id)).not.toBeNull();
+  });
+
+  it("an entry whose record can't be fetched keeps it: the card can't tell", async () => {
+    const entry = E({ id: "lost1xxxxxx", title: "Lost Record", kind: "project", fileCount: 2, hasRecording: true });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 500 })));
+    render(<Card entry={entry} onOpen={vi.fn()} onPlay={vi.fn()} />);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(play(entry.id)).not.toBeNull();
+  });
+
+  it("CONTROL: a card with no onPlay still has none, whatever it holds", async () => {
+    const { entry, rec: r } = CASES.patterns;
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(r)));
+    render(<Card entry={entry} onOpen={vi.fn()} />);
+    await new Promise((r2) => setTimeout(r2, 30));
+    expect(play(entry.id)).toBeNull();
+  });
+});
+

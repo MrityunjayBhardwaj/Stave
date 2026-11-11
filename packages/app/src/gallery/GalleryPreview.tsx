@@ -67,8 +67,10 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
   const frameLoaded = useRef(false);
   const frameReady = useRef(false);
   const codeSent = useRef(false);
-  // #2495 — focus has gone into this frame for its own Play (once per frame).
-  const focusedForClick = useRef(false);
+  // #2547 — this page has just asked the frame to play and is waiting for its
+  // answer. Only that answer may move focus into the frame: the frame runs the
+  // entry's own code, which can post any message it likes at any time.
+  const awaitingStart = useRef(false);
 
   const send = useCallback((msg: unknown) => {
     // The frame's origin is opaque, so no origin can name it: "*" is the only
@@ -76,13 +78,19 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
     frameRef.current?.contentWindow?.postMessage(msg, "*");
   }, []);
 
+  /** Ask the frame to play this code; its next answer is the one focus may follow. */
+  const askToPlay = useCallback(() => {
+    codeSent.current = true;
+    awaitingStart.current = true;
+    send({ play: true, code, kind });
+  }, [send, code, kind]);
+
   /** Play, once the player has both loaded and said it is listening. */
   const playWhenLoaded = useCallback(() => {
     if (!wantPlay.current || !frameLoaded.current || !frameReady.current) return;
     wantPlay.current = false;
-    codeSent.current = true;
-    send({ play: true, code, kind });
-  }, [send, code, kind]);
+    askToPlay();
+  }, [askToPlay]);
 
   // A different file (or entry) closes the preview rather than playing the old code —
   // and, when a file row asked for it, opens a fresh one for the new file.
@@ -108,7 +116,7 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
     frameLoaded.current = false;
     frameReady.current = false;
     codeSent.current = false;
-    focusedForClick.current = false;
+    awaitingStart.current = false;
   }, [open]);
 
   const onFrameLoad = () => {
@@ -138,12 +146,14 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
       }
       // #2495 — the frame needs a press of its own (WebKit doesn't take this
       // page's click): put focus on the frame, where Enter or Space is that press
-      // (GalleryPlayer listens for it) and its Play is the obvious click. Once per
-      // frame, so code in it can't keep pulling focus back.
-      if (msg.state === "stopped" && msg.message === NEEDS_CLICK && !focusedForClick.current) {
-        focusedForClick.current = true;
-        frame.focus();
-      }
+      // (GalleryPlayer listens for it) and its Play is the obvious click.
+      // #2547 — but only as the answer to this page's own request to play: the
+      // first message after it, whatever it says, ends the wait. A NEEDS_CLICK
+      // the code posts by itself (unasked, or after it already answered) moves
+      // nothing, so it can't pull your keys out of the search box.
+      const answer = awaitingStart.current;
+      awaitingStart.current = false;
+      if (answer && msg.state === "stopped" && msg.message === NEEDS_CLICK) frame.focus();
       setStatus(msg);
     };
     window.addEventListener("message", onMessage);
@@ -179,10 +189,7 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
       return;
     }
     if (playing) send({ stop: true });
-    else {
-      codeSent.current = true;
-      send({ play: true, code, kind });
-    }
+    else askToPlay();
   };
 
   useImperativeHandle(ref, () => ({ toggle: onPreview }));

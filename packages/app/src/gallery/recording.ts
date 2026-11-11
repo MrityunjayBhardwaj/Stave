@@ -151,6 +151,22 @@ export function coverPattern(rec: GalleryRecording | null): RecordedPattern | nu
   return rec.files.find((f) => f.path === rec.cover) ?? null;
 }
 
+/**
+ * #2548 — may the entry's preview have something to play, as far as its record
+ * says? The record counts files by `fileRole` (galleryModel.ts), whose pattern
+ * and visual extensions are exactly the ones `previewKindOf` plays, so a record
+ * with no pattern and no visual is an entry whose every file the preview shows
+ * as "This file can't be previewed." The entry's kind needs no rule of its own:
+ * a music or visual entry is its one file, counted like any other (a Sonic Pi
+ * music file counts as "other", and the preview can't play it either). With no
+ * record (an entry from before recording, or one not fetched yet) the card can't
+ * tell, so it says yes.
+ */
+export function mayHavePreview(rec: GalleryRecording | null): boolean {
+  if (!rec) return true;
+  return rec.contents.patterns + rec.contents.visuals > 0;
+}
+
 /** "3 patterns · 2 visuals" — what the record says the entry holds. */
 export function contentsLine(rec: GalleryRecording | null): string | null {
   if (!rec) return null;

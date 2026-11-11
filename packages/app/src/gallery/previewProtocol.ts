@@ -35,8 +35,9 @@ const MAX_MESSAGE = 500;
  * #2495 — the "stopped" message the frame sends when its sound won't start
  * until someone presses Play inside it (WebKit asks for a click in the frame
  * itself; Chromium and Firefox take the gallery page's click). The gallery then
- * moves focus to that Play. Code in the frame can send it too: all it gets is
- * focus moved onto its own frame, once per preview.
+ * moves focus to that Play. Code in the frame can send it too, so the gallery
+ * acts on it only as the first answer to its own request to play (#2547): sent
+ * at any other time, it moves nothing.
  */
 export const NEEDS_CLICK = "Press Play in the preview to hear it.";
 
