@@ -24,6 +24,8 @@
  * exactly what it did and nothing else (see `host.ts`).
  */
 
+import type * as Monaco from 'monaco-editor'
+
 /**
  * The languages an extension can be for: Stave's own language ids, the ones a workspace
  * file declares (`WorkspaceLanguage` in `workspace/types.ts`; a test keeps the two equal,
@@ -38,12 +40,41 @@ export interface StrudelProvides {
 }
 
 /**
- * What an extension provides, keyed by language. A key must be one of the manifest's
- * `languages`, listed by name (`'*'` does not count): a manifest that breaks this is
- * refused when the list of extensions is read. Later languages add their own key.
+ * A key an extension uses (#2513), declared up front the way a VS Code extension lists
+ * `contributes.keybindings`: data, read without loading the extension, so Stave can show
+ * it and the person can hand it back. An extension never writes the person's own
+ * shortcuts (`stave:keybindings`).
+ *
+ * While the extension is on and the cursor is in a code editor, a declared key that is
+ * not handed back runs no Stave command: the extension answers it inside the editor.
+ * Who wins a key: the person's own rebind, then the extension's key, then Stave's
+ * default. Outside the code, and for a key handed back, Stave behaves exactly as before.
+ */
+export interface ExtensionKey {
+  /**
+   * One chord in Stave's vocabulary (`ctrl+r`, `mod+shift+p`): modifiers (`mod`, `ctrl`,
+   * `shift`, `alt`, and their aliases `cmd`, `meta`, `control`, `option`) then one key.
+   * `mod` is Cmd on a Mac and Ctrl elsewhere; on a Mac `ctrl` is the Control key.
+   */
+  readonly key: string
+  /** what it does, in the person's words (`Redo`) */
+  readonly name: string
+  /** where the key is the extension's: `'code'` is "while the cursor is in a code editor", the only place for now */
+  readonly where: 'code'
+  /** true: the key goes to Stave unless the person gives it to the extension (VSCodeVim does this with Ctrl+Z) */
+  readonly givenBack?: boolean
+}
+
+/**
+ * What an extension provides. Each language key (`strudel`, …) must be one of the
+ * manifest's `languages`, listed by name (`'*'` does not count): a manifest that breaks
+ * this is refused when the list of extensions is read. Later languages add their own key.
+ * `keys` belongs to no language; it is checked when the list is read too (`keys.ts`).
  */
 export interface ExtensionProvides {
   readonly strudel?: StrudelProvides
+  /** the keys it uses in the code editor (#2513) */
+  readonly keys?: readonly ExtensionKey[]
 }
 
 /** The data half: read freely, loads nothing. */
@@ -100,14 +131,58 @@ export interface ExtensionModule {
 export type SoundTrigger = (...args: any[]) => any
 
 /**
- * What every extension's common part may do, whatever the language. Nothing here names a
- * language. (The editor hook, #2513, joins it.)
+ * One live code editor, as an extension's `onEditor` callback gets it (#2513): the code
+ * editor (`EditorView`) or the read-only history view. The side-by-side diff is not one.
  */
+export interface CodeEditor {
+  /** the Monaco editor */
+  readonly editor: Monaco.editor.IStandaloneCodeEditor
+  /** the Monaco namespace it was made with (`KeyCode`, `Range`, …) */
+  readonly monaco: typeof Monaco
+  /**
+   * The Stave language of the file it shows now, read when asked (the history view can
+   * switch files in the same editor); null when it cannot be told.
+   */
+  readonly language: ExtensionLanguage | null
+  /** true for the history view, and for a commit being viewed in the code editor */
+  readonly readOnly: boolean
+  /**
+   * This extension's own strip in the bar under the editor, made the first time it is
+   * read. The bar takes no space until an extension puts something in it. The strip is
+   * removed when this editor closes or the extension is switched off, so put everything
+   * the extension shows for this editor inside it.
+   */
+  readonly bar: HTMLElement
+}
+
+/**
+ * What an `onEditor` callback may return: how to undo what it set up on that editor. It
+ * runs once, when that editor's own dispose event fires or the extension is switched
+ * off, whichever comes first.
+ */
+export type EditorCleanup = void | (() => void) | { dispose(): void }
+
+/** What every extension's common part may do, whatever the language. Nothing here names a language. */
 export interface ExtensionHost {
   /** the extension this host belongs to */
   readonly id: string
   /** Run `fn` when the extension is switched off, after its language parts are undone. */
   onDeactivate(fn: () => void): void
+  /**
+   * Call `fn` for every live code editor (#2513): each one open now, at once, and each one
+   * opened while the extension is on. What `fn` returns is run when that editor closes or
+   * the extension is switched off. A throw is reported under the extension's name and
+   * leaves that editor as it was; the other editors still get `fn`.
+   */
+  onEditor(fn: (editor: CodeEditor) => EditorCleanup): void
+  /**
+   * Is `key`, one of the keys this extension declares (`provides.keys`), its own right
+   * now, that is, not handed back to Stave? Ask when the key is pressed: the person can
+   * hand a key back, or give it again, at any time. An undeclared key is never the
+   * extension's. A handed-back key must be left alone, so Stave and the editor answer it
+   * as they would without the extension.
+   */
+  takesKey(key: string): boolean
 }
 
 /**

@@ -8,6 +8,9 @@
  */
 export type {
   ExtensionAbout,
+  CodeEditor,
+  EditorCleanup,
+  ExtensionKey,
   ExtensionLanguage,
   ExtensionManifest,
   ExtensionModule,
@@ -27,5 +30,17 @@ export { BUILTIN_EXTENSIONS, listedExtensions } from './builtin'
 export { E2E_TONE, E2E_TONE_ID, E2E_TONE_SOUND } from './e2eTone'
 export { createStrudelDriver, prepareStrudelParts } from './strudel'
 export type { ExtensionReport, ExtensionStrudelDoors } from './strudel'
-export { createExtensionRuntime, pageExtensions } from './runtime'
+export { createExtensionRuntime, pageExtensions, extensionKeysInCode, hasActiveExtensions } from './runtime'
+export { createCodeEditorList, offerCodeEditor, pageCodeEditors } from './editors'
+export type { CodeEditorList, CodeEditorSite, EditorWatcher } from './editors'
+export {
+  checkExtensionKeys,
+  keyId,
+  isExtensionKeyGivenBack,
+  setExtensionKeyGivenBack,
+  onExtensionKeysChange,
+  extensionKeys,
+  keysTakenBy,
+} from './keys'
+export type { ExtensionKeyState, ExtensionKeyInCode } from './keys'
 export type { ExtensionRuntime } from './runtime'

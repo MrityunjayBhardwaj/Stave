@@ -60,6 +60,7 @@ import {
 } from './history/historyViewing'
 import { forkToEditFromCommit } from './history/historyService'
 import { DEFAULT_VIZ_DESCRIPTORS } from '../visualizers/defaultDescriptors'
+import { offerCodeEditor } from '../extensions'
 import type { EditorViewProps } from './types'
 import type { AudioPayload } from './types'
 import type { InlineZoneHandle, VizZoneActions } from '../visualizers/viewZones'
@@ -126,6 +127,12 @@ export function EditorView({
 }: EditorViewProps): React.ReactElement {
   const { file, setContent } = useWorkspaceFile(fileId)
   const containerRef = useRef<HTMLDivElement>(null)
+  // #2513 — the bar under the editor, where extensions show a status (Vim's mode, its
+  // `:` line). Empty, it takes no space. Each extension gets its own strip inside it.
+  const barRef = useRef<HTMLDivElement>(null)
+  // the file this view shows now, for an extension asking the editor's language later
+  const fileIdRef = useRef(fileId)
+  fileIdRef.current = fileId
 
   // #204 time-travel: when a commit is checked out, this editor shows that
   // commit's content for the current file (read-only) instead of live Y.Text.
@@ -495,6 +502,20 @@ export function EditorView({
     })
     editor.onDidDispose?.(stopWatchingKeyboard)
 
+    // #2513 — offer this editor to the extensions that follow code editors. It is
+    // withdrawn on the editor's own dispose event (a tab switch, a closed split, entering
+    // or leaving a viewed commit, which remounts the editor), never by file: two
+    // editors of one file are two editors here.
+    if (barRef.current) {
+      offerCodeEditor({
+        editor,
+        monaco,
+        readOnly: viewing,
+        bar: barRef.current,
+        language: () => getFile(fileIdRef.current)?.language ?? null,
+      })
+    }
+
     onMount?.(editor, monaco)
   }
 
@@ -509,6 +530,8 @@ export function EditorView({
     <div
       ref={containerRef}
       data-workspace-view="editor"
+      // #2513 — a code editor extensions follow; the key dispatcher reads this to tell it from the diff
+      data-code-editor=""
       data-file-id={fileId}
       style={{
         display: 'flex',
@@ -607,6 +630,7 @@ export function EditorView({
           </div>
         )}
       </div>
+      <div ref={barRef} data-editor-bar="" style={{ flexShrink: 0, display: 'flex', flexDirection: 'column' }} />
     </div>
   )
 }

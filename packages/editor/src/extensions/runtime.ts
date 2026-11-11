@@ -31,6 +31,8 @@
  * `strudel.ts`. Nothing here imports the engine.
  */
 import { listedExtensions } from './builtin'
+import { setCodeEditorErrorReport } from './editors'
+import { keysTakenBy, type ExtensionKeyInCode } from './keys'
 import { enabledExtensionIds, onExtensionsEnabledChange } from './enablement'
 import { createExtensionManager, type ExtensionManager } from './manager'
 import { createStrudelDriver, messageOf, prepareStrudelParts, type ExtensionReport, type ExtensionStrudelDoors } from './strudel'
@@ -55,6 +57,8 @@ export interface ExtensionRuntime {
   prepare(capMs: number, signal?: AbortSignal): Promise<void>
   /** Hear when the set of active extensions or parts has changed (sound names to read again). */
   onChange(fn: () => void): () => void
+  /** Say something under an extension's name: to the page's Console once started, else the engine's. */
+  report: ExtensionReport
   readonly manager: ExtensionManager
 }
 
@@ -125,6 +129,7 @@ export function createExtensionRuntime(opts: {
 
   return {
     manager,
+    report,
     start(o) {
       pageReport = o.report
       // Already following (an earlier start, or an engine attached first): join what is running.
@@ -148,10 +153,30 @@ let page: ExtensionRuntime | null = null
 
 /** The page's one runtime, over the listed extensions (`listedExtensions`) and the person's switches. */
 export function pageExtensions(): ExtensionRuntime {
-  page ??= createExtensionRuntime({
-    manifests: listedExtensions(),
-    enabled: enabledExtensionIds,
-    subscribe: onExtensionsEnabledChange,
-  })
+  if (!page) {
+    const runtime = createExtensionRuntime({
+      manifests: listedExtensions(),
+      enabled: enabledExtensionIds,
+      subscribe: onExtensionsEnabledChange,
+    })
+    page = runtime
+    // an extension that fails on one code editor is a Console row under its name (#2513)
+    setCodeEditorErrorReport((e) => runtime.report('error', `${messageOf(e)}.`))
+  }
   return page
+}
+
+/**
+ * The keys switched-on extensions take in the code right now (#2513): declared in their
+ * manifests and not handed back. The app's key dispatcher reads this on each keystroke in
+ * a code editor; Keyboard Shortcuts (#2545) shows it. An extension still loading takes none.
+ */
+export function extensionKeysInCode(runtime: ExtensionRuntime = pageExtensions()): ExtensionKeyInCode[] {
+  const m = runtime.manager
+  return keysTakenBy(m.activeIds().flatMap((id) => m.manifest(id) ?? []))
+}
+
+/** Is any extension switched on in this page right now? */
+export function hasActiveExtensions(runtime: ExtensionRuntime = pageExtensions()): boolean {
+  return runtime.manager.activeIds().length > 0
 }
