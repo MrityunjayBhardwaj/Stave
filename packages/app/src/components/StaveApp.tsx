@@ -1118,6 +1118,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__staveBackgroundFileId = (): string | null =>
       backgroundFileId;
+    // #2148 — open a read-only history tab. The Version History panel opens
+    // only the diff now (its View became Check out, #212), but the view tab
+    // (HistoryViewOverlay) is still a code editor extensions follow, so the
+    // Vim spec opens it here.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveOpenHistoryTab = (req: { mode: "diff" | "view"; commitId: string; fileId: string }): void =>
+      shellRef.current?.openHistoryTab(req);
   });
 
   // Restore this project's backdrop CROPS when the active project changes. The

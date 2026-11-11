@@ -5,8 +5,8 @@ import { bootApp, waitForEditorLoaded } from './_appBoot'
  * #2511 — the Extensions view, through the real gestures, with a test-only extension.
  *
  * The extension (`e2e-tone`, a Strudel sound made by an audio worklet) is listed only when
- * the page is an end-to-end run (`__STAVE_E2E__`). Without the flag the shipped list is
- * empty, so the Extensions icon is absent: the first test checks that.
+ * the page is an end-to-end run (`__STAVE_E2E__`). Without the flag the list is Stave's own
+ * extensions (Vim, #2148) and never the test one: the first test checks that.
  *
  * With the flag: click the Extensions icon, click Switch on, and with no reload a bounce
  * has the tone and live playback has it; the switch survives a reload; a row opens the
@@ -90,12 +90,13 @@ async function openExtensionsView(page: Page): Promise<void> {
 
 const row = (page: Page) => page.locator(`[data-extension-row="${ID}"]`)
 
-test('without the end-to-end flag nothing is listed, so there is no Extensions icon', async ({ page }) => {
+test('without the end-to-end flag only Stave’s own extensions are listed, never the test one', async ({ page }) => {
   await bootApp(page)
-  // the rail is up (its other panels are there) …
-  await expect(page.locator('[data-activity-bar] [data-panel-id="library"]')).toBeVisible()
-  // … and the Extensions icon is not
-  await expect(page.locator('[data-activity-bar] [data-panel-id="extensions"]')).toHaveCount(0)
+  // Vim (#2148) is Stave's own, so the Extensions icon is there for everyone …
+  await openExtensionsView(page)
+  await expect(page.locator('[data-extension-group="builtin"] [data-extension-row="vim"]')).toBeVisible()
+  // … and the test tone is not
+  await expect(row(page)).toHaveCount(0)
 })
 
 test('switch the test extension on from the view: sound with no reload, kept after a reload, gone once off', async ({ page }) => {
