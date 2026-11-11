@@ -26,9 +26,12 @@
  *  - switching off undoes the language parts first, newest first, then the common part.
  *
  * Read when the list is given (construction), refused there: two manifests with one id,
- * and a `provides` key that is not one of the manifest's languages listed by name.
+ * a `provides` key that is not one of the manifest's languages listed by name (`keys`
+ * belongs to no language), and declared keys that are not well formed (#2513, `keys.ts`).
  */
+import type { CodeEditorList } from './editors'
 import { createCommonHost, type PartRecording } from './host'
+import { checkExtensionKeys } from './keys'
 import type { ExtensionLanguage, ExtensionManifest, ExtensionModule, StrudelHost, StrudelPart } from './types'
 
 /** The language parts the module contract has (`ExtensionModule`'s keys besides `activate`). */
@@ -175,17 +178,21 @@ export function createExtensionManager(opts: {
   manifests: readonly ExtensionManifest[]
   /** How each language's parts switch on. A language with no driver never switches on a part. */
   parts?: { [L in PartLanguage]?: PartDriver<L> }
+  /** The code editors a common part's `onEditor` follows (#2513). Default: the page's. */
+  editors?: CodeEditorList
 }): ExtensionManager {
   const byId = new Map<string, ExtensionManifest>()
   for (const m of opts.manifests) {
     if (byId.has(m.id)) throw new Error(`Two extensions share the id "${m.id}".`)
     for (const language of Object.keys(m.provides ?? {})) {
+      if (language === 'keys') continue
       if (!declares(m, language)) {
         throw new Error(
           `The ${m.id} extension says what it provides for ${language}, but ${language} is not one of the languages it lists.`,
         )
       }
     }
+    checkExtensionKeys(m)
     byId.set(m.id, m)
   }
 
@@ -213,7 +220,7 @@ export function createExtensionManager(opts: {
             throw new Error(`it has a ${language} part, but ${language} is not one of the languages it lists`)
           }
         }
-        const rec = createCommonHost(m.id)
+        const rec = createCommonHost(m.id, { manifest: m, editors: opts.editors })
         await activateThrough(rec, () => mod.activate?.(rec.host))
         return { rec, kept: () => modules.set(id, mod) }
       })

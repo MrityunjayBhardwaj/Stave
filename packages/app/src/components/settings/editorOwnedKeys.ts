@@ -15,11 +15,18 @@
 export interface EditorOwnedKey {
   readonly name: string;
   readonly chord: string;
+  /**
+   * The code editor's Monaco action for this key (EditorView's `addAction`).
+   * With an extension on, the key dispatcher runs it before any extension sees
+   * the key, unless the extension declares that key and it is not handed back
+   * (#2513), so an extension cannot silently break Play or Stop.
+   */
+  readonly actionId?: string;
 }
 
 export const EDITOR_OWNED_KEYS: readonly EditorOwnedKey[] = [
-  { name: "Run / Evaluate", chord: "mod+enter" },
-  { name: "Stop", chord: "mod+." },
+  { name: "Run / Evaluate", chord: "mod+enter", actionId: "stave.play" },
+  { name: "Stop", chord: "mod+.", actionId: "stave.stop" },
   { name: "Toggle Line Comment", chord: "mod+/" },
   { name: "Format Document", chord: "shift+alt+f" },
 ];

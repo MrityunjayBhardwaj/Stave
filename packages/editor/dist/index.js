@@ -38,6 +38,249 @@ var init_piano = __esm({
   }
 });
 
+// src/extensions/editors.ts
+function createCodeEditorList(opts = {}) {
+  const live = /* @__PURE__ */ new Map();
+  const watchers = /* @__PURE__ */ new Set();
+  const withdraws = /* @__PURE__ */ new Map();
+  const report2 = /* @__PURE__ */ __name((e) => {
+    try {
+      opts.onError?.(e);
+    } catch {
+    }
+  }, "report");
+  function start(fn, site) {
+    const undos = live.get(site);
+    if (!undos || undos.has(fn)) return;
+    let undo2;
+    try {
+      undo2 = fn(site);
+    } catch (e) {
+      report2(e);
+      return;
+    }
+    undos.set(fn, typeof undo2 === "function" ? undo2 : () => void 0);
+  }
+  __name(start, "start");
+  function stop(fn, site) {
+    const undos = live.get(site);
+    const undo2 = undos?.get(fn);
+    if (!undo2) return;
+    undos.delete(fn);
+    try {
+      undo2();
+    } catch (e) {
+      report2(e);
+    }
+  }
+  __name(stop, "stop");
+  return {
+    offer(site) {
+      const already = withdraws.get(site);
+      if (already) return already;
+      live.set(site, /* @__PURE__ */ new Map());
+      let sub;
+      const withdraw = /* @__PURE__ */ __name(() => {
+        if (!withdraws.delete(site)) return;
+        for (const fn of [...live.get(site)?.keys() ?? []].reverse()) stop(fn, site);
+        live.delete(site);
+        sub?.dispose?.();
+      }, "withdraw");
+      withdraws.set(site, withdraw);
+      sub = site.editor.onDidDispose?.(withdraw);
+      for (const fn of [...watchers]) start(fn, site);
+      return withdraw;
+    },
+    watch(fn) {
+      const own = /* @__PURE__ */ __name((site) => fn(site), "own");
+      watchers.add(own);
+      for (const site of [...live.keys()]) start(own, site);
+      return () => {
+        if (!watchers.delete(own)) return;
+        for (const site of [...live.keys()]) stop(own, site);
+      };
+    },
+    size: /* @__PURE__ */ __name(() => live.size, "size")
+  };
+}
+__name(createCodeEditorList, "createCodeEditorList");
+var page = null;
+var pageReport = null;
+function setCodeEditorErrorReport(fn) {
+  pageReport = fn;
+}
+__name(setCodeEditorErrorReport, "setCodeEditorErrorReport");
+function pageCodeEditors() {
+  page ?? (page = createCodeEditorList({
+    onError: /* @__PURE__ */ __name((e) => {
+      if (pageReport) pageReport(e);
+      else console.error(e);
+    }, "onError")
+  }));
+  return page;
+}
+__name(pageCodeEditors, "pageCodeEditors");
+function offerCodeEditor(site) {
+  return pageCodeEditors().offer(site);
+}
+__name(offerCodeEditor, "offerCodeEditor");
+
+// src/extensions/keys.ts
+var STORAGE = "stave:extension-keys";
+var MODIFIERS = {
+  mod: "mod",
+  cmd: "mod",
+  command: "mod",
+  meta: "mod",
+  ctrl: "ctrl",
+  control: "ctrl",
+  shift: "shift",
+  alt: "alt",
+  option: "alt",
+  opt: "alt"
+};
+var ORDER = ["mod", "ctrl", "shift", "alt"];
+function keyId(key3) {
+  if (typeof key3 !== "string") return null;
+  const text = key3.trim().toLowerCase();
+  if (!text || /\s/.test(text)) return null;
+  const mods = /* @__PURE__ */ new Set();
+  let main = null;
+  for (const part of text.split("+")) {
+    if (!part) return null;
+    const mod = MODIFIERS[part];
+    if (mod) {
+      if (mods.has(mod)) return null;
+      mods.add(mod);
+    } else {
+      if (main !== null) return null;
+      main = part;
+    }
+  }
+  if (main === null) return null;
+  return [...ORDER.filter((m) => mods.has(m)), main].join("+");
+}
+__name(keyId, "keyId");
+function checkExtensionKeys(m) {
+  const keys = m.provides?.keys;
+  if (keys === void 0) return;
+  if (!Array.isArray(keys)) throw new Error(`The ${m.id} extension lists its keys, but not as a list.`);
+  const seen = /* @__PURE__ */ new Set();
+  for (const k of keys) {
+    const id = keyId(k?.key);
+    if (!id) {
+      throw new Error(
+        `The ${m.id} extension declares the key "${String(k?.key)}", which is not one key with its modifiers (like "ctrl+r").`
+      );
+    }
+    if (seen.has(id)) throw new Error(`The ${m.id} extension declares the key "${k.key}" twice.`);
+    seen.add(id);
+    if (typeof k.name !== "string" || !k.name.trim()) {
+      throw new Error(`The ${m.id} extension declares the key "${k.key}" without saying what it does.`);
+    }
+    if (k.where !== "code") {
+      throw new Error(
+        `The ${m.id} extension declares the key "${k.key}" for "${String(k.where)}", but a key can only be declared for the code ("code").`
+      );
+    }
+    if (k.givenBack !== void 0 && typeof k.givenBack !== "boolean") {
+      throw new Error(`The ${m.id} extension says "${k.key}" is given back with something other than true or false.`);
+    }
+  }
+}
+__name(checkExtensionKeys, "checkExtensionKeys");
+function storage() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+__name(storage, "storage");
+var unsaved = null;
+function read() {
+  if (unsaved) return unsaved;
+  try {
+    const raw = storage()?.getItem(STORAGE);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const out = {};
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      for (const [ext, keys] of Object.entries(parsed)) {
+        if (!keys || typeof keys !== "object" || Array.isArray(keys)) continue;
+        const own = {};
+        for (const [key3, back] of Object.entries(keys)) {
+          if (typeof back === "boolean") own[key3] = back;
+        }
+        out[ext] = own;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+__name(read, "read");
+var listeners = /* @__PURE__ */ new Set();
+function isExtensionKeyGivenBack(manifest, key3) {
+  const id = keyId(key3);
+  const declared2 = id ? manifest.provides?.keys?.find((k) => keyId(k.key) === id) : void 0;
+  if (!declared2 || !id) return true;
+  return read()[manifest.id]?.[id] ?? declared2.givenBack === true;
+}
+__name(isExtensionKeyGivenBack, "isExtensionKeyGivenBack");
+function setExtensionKeyGivenBack(extensionId, key3, givenBack) {
+  const id = keyId(key3);
+  if (!id) return;
+  const all = read();
+  const own = { ...all[extensionId] ?? {} };
+  if ((own[id] ?? null) === givenBack) return;
+  if (givenBack === null) delete own[id];
+  else own[id] = givenBack;
+  const next = { ...all };
+  if (Object.keys(own).length) next[extensionId] = own;
+  else delete next[extensionId];
+  try {
+    const ls = storage();
+    if (!ls) throw new Error("no storage");
+    ls.setItem(STORAGE, JSON.stringify(next));
+    unsaved = null;
+  } catch {
+    unsaved = next;
+  }
+  for (const fn of [...listeners]) fn();
+}
+__name(setExtensionKeyGivenBack, "setExtensionKeyGivenBack");
+function onExtensionKeysChange(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+__name(onExtensionKeysChange, "onExtensionKeysChange");
+function extensionKeys(manifest) {
+  return (manifest.provides?.keys ?? []).map((k) => ({
+    key: k.key,
+    name: k.name,
+    where: k.where,
+    givenBack: isExtensionKeyGivenBack(manifest, k.key),
+    givenBackByDefault: k.givenBack === true
+  }));
+}
+__name(extensionKeys, "extensionKeys");
+function keysTakenBy(manifests) {
+  const out = [];
+  for (const m of manifests) {
+    for (const k of m.provides?.keys ?? []) {
+      if (k.where !== "code" || isExtensionKeyGivenBack(m, k.key)) continue;
+      out.push({ extensionId: m.id, extensionName: m.name, key: k.key, name: k.name });
+    }
+  }
+  return out;
+}
+__name(keysTakenBy, "keysTakenBy");
+
 // src/extensions/host.ts
 function fromStrudel(webaudio, core, globals = globalThis) {
   const key3 = /* @__PURE__ */ __name((name) => name.toLowerCase().replace(/\s+/g, "_"), "key");
@@ -69,15 +312,79 @@ function nameTaken(extensionId, kind, taken) {
   return err;
 }
 __name(nameTaken, "nameTaken");
-function createCommonHost(id) {
+function runCleanup(out) {
+  if (typeof out === "function") out();
+  else if (out && typeof out.dispose === "function") out.dispose();
+}
+__name(runCleanup, "runCleanup");
+function createCommonHost(id, opts = {}) {
   const onOff = [];
   let closed = false;
+  const open = /* @__PURE__ */ __name(() => {
+    if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`);
+  }, "open");
+  const label = opts.manifest?.name ?? id;
   return {
     host: {
       id,
       onDeactivate(fn) {
-        if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`);
+        open();
         onOff.push(fn);
+      },
+      onEditor(fn) {
+        open();
+        const stop = (opts.editors ?? pageCodeEditors()).watch((site) => {
+          let strip = null;
+          let done = false;
+          const removeStrip = /* @__PURE__ */ __name(() => {
+            done = true;
+            strip?.remove();
+            strip = null;
+          }, "removeStrip");
+          const handle = {
+            editor: site.editor,
+            monaco: site.monaco,
+            readOnly: site.readOnly,
+            get language() {
+              return site.language();
+            },
+            get bar() {
+              if (done) return site.bar.ownerDocument.createElement("div");
+              if (!strip) {
+                strip = site.bar.ownerDocument.createElement("div");
+                strip.setAttribute("data-extension-bar", id);
+                site.bar.appendChild(strip);
+              }
+              return strip;
+            }
+          };
+          const named2 = /* @__PURE__ */ __name((what, e) => {
+            const message = typeof e?.message === "string" ? e.message : String(e);
+            const err = new Error(`The ${label} extension could not ${what} a code editor: ${message}`);
+            err.cause = e;
+            return err;
+          }, "named");
+          let out;
+          try {
+            out = fn(handle);
+          } catch (e) {
+            removeStrip();
+            throw named2("set up", e);
+          }
+          return () => {
+            try {
+              runCleanup(out);
+            } catch (e) {
+              throw named2("let go of", e);
+            } finally {
+              removeStrip();
+            }
+          };
+        });
+        onOff.push(stop);
+      },
+      takesKey(key3) {
+        return !closed && !!opts.manifest && !isExtensionKeyGivenBack(opts.manifest, key3);
       }
     },
     undo() {
@@ -227,12 +534,14 @@ function createExtensionManager(opts) {
   for (const m of opts.manifests) {
     if (byId.has(m.id)) throw new Error(`Two extensions share the id "${m.id}".`);
     for (const language of Object.keys(m.provides ?? {})) {
+      if (language === "keys") continue;
       if (!declares(m, language)) {
         throw new Error(
           `The ${m.id} extension says what it provides for ${language}, but ${language} is not one of the languages it lists.`
         );
       }
     }
+    checkExtensionKeys(m);
     byId.set(m.id, m);
   }
   const common = slots();
@@ -256,7 +565,7 @@ function createExtensionManager(opts) {
             throw new Error(`it has a ${language} part, but ${language} is not one of the languages it lists`);
           }
         }
-        const rec = createCommonHost(m.id);
+        const rec = createCommonHost(m.id, { manifest: m, editors: opts.editors });
         await activateThrough(rec, () => mod.activate?.(rec.host));
         return { rec, kept: /* @__PURE__ */ __name(() => modules.set(id, mod), "kept") };
       });
@@ -312,8 +621,8 @@ function createExtensionManager(opts) {
 __name(createExtensionManager, "createExtensionManager");
 
 // src/extensions/enablement.ts
-var STORAGE = "stave:extensions";
-function storage() {
+var STORAGE2 = "stave:extensions";
+function storage2() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -322,33 +631,33 @@ function storage() {
     return null;
   }
 }
-__name(storage, "storage");
-var unsaved = /* @__PURE__ */ new Map();
-function read() {
+__name(storage2, "storage");
+var unsaved2 = /* @__PURE__ */ new Map();
+function read2() {
   let ids;
   try {
-    const raw = storage()?.getItem(STORAGE);
+    const raw = storage2()?.getItem(STORAGE2);
     const parsed = raw ? JSON.parse(raw) : [];
     ids = new Set(Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : []);
   } catch {
     ids = /* @__PURE__ */ new Set();
   }
-  for (const [id, on] of unsaved) {
+  for (const [id, on] of unsaved2) {
     if (on) ids.add(id);
     else ids.delete(id);
   }
   return ids;
 }
-__name(read, "read");
-var listeners = /* @__PURE__ */ new Set();
+__name(read2, "read");
+var listeners2 = /* @__PURE__ */ new Set();
 function enabledExtensionIds() {
-  return read();
+  return read2();
 }
 __name(enabledExtensionIds, "enabledExtensionIds");
 function onExtensionsEnabledChange(fn) {
-  listeners.add(fn);
+  listeners2.add(fn);
   return () => {
-    listeners.delete(fn);
+    listeners2.delete(fn);
   };
 }
 __name(onExtensionsEnabledChange, "onExtensionsEnabledChange");
@@ -435,9 +744,9 @@ __name(prepareStrudelParts, "prepareStrudelParts");
 // src/extensions/runtime.ts
 function createExtensionRuntime(opts) {
   let strudel = null;
-  let pageReport = null;
-  const listeners22 = /* @__PURE__ */ new Set();
-  const report2 = /* @__PURE__ */ __name((level, message) => (pageReport ?? strudel?.report)?.(level, message), "report");
+  let pageReport2 = null;
+  const listeners23 = /* @__PURE__ */ new Set();
+  const report2 = /* @__PURE__ */ __name((level, message) => (pageReport2 ?? strudel?.report)?.(level, message), "report");
   const manager = createExtensionManager({
     manifests: opts.manifests,
     parts: { strudel: createStrudelDriver(() => strudel) }
@@ -471,7 +780,7 @@ function createExtensionRuntime(opts) {
           )
         );
       }
-      if (state6() !== before) for (const fn of [...listeners22]) fn();
+      if (state6() !== before) for (const fn of [...listeners23]) fn();
     }, "run");
     queue2 = queue2.then(run, run);
     return queue2;
@@ -488,8 +797,9 @@ function createExtensionRuntime(opts) {
   __name(follow, "follow");
   return {
     manager,
+    report: report2,
     start(o) {
-      pageReport = o.report;
+      pageReport2 = o.report;
       return following ? queue2 : follow();
     },
     attachStrudel(doors) {
@@ -498,30 +808,43 @@ function createExtensionRuntime(opts) {
     },
     prepare: /* @__PURE__ */ __name((capMs, signal) => prepareStrudelParts(manager, report2, capMs, signal), "prepare"),
     onChange(fn) {
-      listeners22.add(fn);
+      listeners23.add(fn);
       return () => {
-        listeners22.delete(fn);
+        listeners23.delete(fn);
       };
     }
   };
 }
 __name(createExtensionRuntime, "createExtensionRuntime");
-var page = null;
+var page2 = null;
 function pageExtensions() {
-  page ?? (page = createExtensionRuntime({
-    manifests: BUILTIN_EXTENSIONS,
-    enabled: enabledExtensionIds,
-    subscribe: onExtensionsEnabledChange
-  }));
-  return page;
+  if (!page2) {
+    const runtime = createExtensionRuntime({
+      manifests: BUILTIN_EXTENSIONS,
+      enabled: enabledExtensionIds,
+      subscribe: onExtensionsEnabledChange
+    });
+    page2 = runtime;
+    setCodeEditorErrorReport((e) => runtime.report("error", `${messageOf(e)}.`));
+  }
+  return page2;
 }
 __name(pageExtensions, "pageExtensions");
+function extensionKeysInCode(runtime = pageExtensions()) {
+  const m = runtime.manager;
+  return keysTakenBy(m.activeIds().flatMap((id) => m.manifest(id) ?? []));
+}
+__name(extensionKeysInCode, "extensionKeysInCode");
+function hasActiveExtensions(runtime = pageExtensions()) {
+  return runtime.manager.activeIds().length > 0;
+}
+__name(hasActiveExtensions, "hasActiveExtensions");
 
 // src/engine/engineLog.ts
 var MAX_HISTORY = 500;
 var history = [];
 var dedupeIndex = /* @__PURE__ */ new Map();
-var listeners2 = /* @__PURE__ */ new Set();
+var listeners3 = /* @__PURE__ */ new Set();
 var fixedMarkers = /* @__PURE__ */ new Map();
 var fixedListeners = /* @__PURE__ */ new Set();
 var idSeq = 0;
@@ -547,7 +870,7 @@ function emitLog(partial) {
     if (partial.alongside === void 0) delete existing.alongside;
     else existing.alongside = partial.alongside;
     queueMicrotask(() => {
-      for (const fn of listeners2) {
+      for (const fn of listeners3) {
         try {
           fn(existing, history);
         } catch {
@@ -571,7 +894,7 @@ function emitLog(partial) {
     if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
   }
   queueMicrotask(() => {
-    for (const fn of listeners2) {
+    for (const fn of listeners3) {
       try {
         fn(entry, history);
       } catch {
@@ -582,9 +905,9 @@ function emitLog(partial) {
 }
 __name(emitLog, "emitLog");
 function subscribeLog(fn) {
-  listeners2.add(fn);
+  listeners3.add(fn);
   return () => {
-    listeners2.delete(fn);
+    listeners3.delete(fn);
   };
 }
 __name(subscribeLog, "subscribeLog");
@@ -596,7 +919,7 @@ function clearLog() {
   history.length = 0;
   dedupeIndex.clear();
   fixedMarkers.clear();
-  for (const fn of listeners2) {
+  for (const fn of listeners3) {
     try {
       fn(null, history);
     } catch {
@@ -2891,32 +3214,32 @@ function readCurves(ir) {
     if (placements.some((p) => p.some((step) => !isSectionWindow(step) && step.shift < 0))) continue;
     const value = param.value;
     if (!value || typeof value !== "object" || typeof value.tag !== "string") continue;
-    const read6 = readChain(value);
-    if (!read6) continue;
-    out.push({ trackId, param, placements, read: read6, polarity: polarityOf(read6.signal.kind) });
+    const read7 = readChain(value);
+    if (!read7) continue;
+    out.push({ trackId, param, placements, read: read7, polarity: polarityOf(read7.signal.kind) });
   }
   return out;
 }
 __name(readCurves, "readCurves");
 function signalAutomations(ir) {
   const out = [];
-  for (const { trackId, param, placements, read: read6, polarity } of readCurves(ir)) {
+  for (const { trackId, param, placements, read: read7, polarity } of readCurves(ir)) {
     if (polarity === "unbounded") continue;
-    const ranged = read6.ranges.length > 0;
-    const { lo, hi, boundsAsWritten } = boundsOf(polarity, read6.ranges);
+    const ranged = read7.ranges.length > 0;
+    const { lo, hi, boundsAsWritten } = boundsOf(polarity, read7.ranges);
     const start = param.loc?.[0]?.start;
     out.push({
       trackId,
       paramKey: param.key,
-      kind: read6.signal.kind,
-      periodCycles: read6.periodCycles,
-      lanePeriodCycles: lanePeriodOf(read6.periodCycles, placements),
+      kind: read7.signal.kind,
+      periodCycles: read7.periodCycles,
+      lanePeriodCycles: lanePeriodOf(read7.periodCycles, placements),
       lo,
       hi,
       ranged,
       boundsAsWritten,
       offset: typeof start === "number" && Number.isFinite(start) ? start : null,
-      spans: read6.spans,
+      spans: read7.spans,
       placements
     });
   }
@@ -2924,7 +3247,7 @@ function signalAutomations(ir) {
 }
 __name(signalAutomations, "signalAutomations");
 function signalWriters(ir) {
-  return readCurves(ir).map(({ trackId, param, read: read6 }) => ({ trackId, paramKey: param.key, kind: read6.signal.kind }));
+  return readCurves(ir).map(({ trackId, param, read: read7 }) => ({ trackId, paramKey: param.key, kind: read7.signal.kind }));
 }
 __name(signalWriters, "signalWriters");
 function signalTimeAt(a, time) {
@@ -3324,7 +3647,7 @@ var VIZ_FLAG_KEYS = {
   maxFps: "stave.viz.maxFps",
   maxDpr: "stave.viz.maxDpr"
 };
-function read2(key3) {
+function read3(key3) {
   try {
     if (typeof localStorage === "undefined") return null;
     return localStorage.getItem(key3);
@@ -3332,22 +3655,22 @@ function read2(key3) {
     return null;
   }
 }
-__name(read2, "read");
+__name(read3, "read");
 function enabledByDefault(key3) {
-  return read2(key3) !== "0";
+  return read3(key3) !== "0";
 }
 __name(enabledByDefault, "enabledByDefault");
 function optIn(key3) {
-  return read2(key3) === "1";
+  return read3(key3) === "1";
 }
 __name(optIn, "optIn");
 function triState(key3) {
-  const v = read2(key3);
+  const v = read3(key3);
   return v === "1" ? true : v === "0" ? false : null;
 }
 __name(triState, "triState");
 function numFlag(key3) {
-  const n = Number(read2(key3));
+  const n = Number(read3(key3));
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 __name(numFlag, "numFlag");
@@ -10911,9 +11234,9 @@ function elementToSteps(el, allowNumeric) {
   const ops = opts.ops ?? [];
   const reps = opts.reps ?? 1;
   const rawWeight = opts.weight ?? 1;
-  const read6 = readOps(ops);
-  if (!("mult" in read6)) return read6;
-  const { mult, euclid } = read6;
+  const read7 = readOps(ops);
+  if (!("mult" in read7)) return read7;
+  const { mult, euclid } = read7;
   if (reps > 1 && rawWeight !== reps) {
     return { reason: "! combined with * or @ is beyond the editable subset" };
   }
@@ -11328,10 +11651,10 @@ function gridLookOnly(gate, perCycle, perBar2, bars) {
   };
 }
 __name(gridLookOnly, "gridLookOnly");
-function playedBars(pat, read6, key3, cap) {
+function playedBars(pat, read7, key3, cap) {
   const cycles = [];
   for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = read6(pat, c);
+    const cc = read7(pat, c);
     if (!cc.ok) return cc;
     cycles.push(cc.onsets);
   }
@@ -11657,9 +11980,9 @@ function restSpansByColumn(src, perBar2, bars) {
   const claims = Array.from({ length: size }, () => /* @__PURE__ */ new Set());
   const located = /* @__PURE__ */ new Set();
   for (let b = 0; b < bars; b++) {
-    const read6 = readGridOnsets(probePat, b);
-    if (!read6.ok) return null;
-    for (const o of read6.onsets) {
+    const read7 = readGridOnsets(probePat, b);
+    if (!read7.ok) return null;
+    for (const o of read7.onsets) {
       const c = b * perBar2 + Math.round(o.pos * perBar2);
       if (c < 0 || c >= size) continue;
       for (const atom of o.atoms) {
@@ -12023,8 +12346,8 @@ function gridFromStack(parts, viewScale = UNREFINED) {
   };
 }
 __name(gridFromStack, "gridFromStack");
-function gridFromBarStack(parts, viewScale, read6) {
-  const { partCells, partBars, divs, elements, given, wraps } = read6;
+function gridFromBarStack(parts, viewScale, read7) {
+  const { partCells, partBars, divs, elements, given, wraps } = read7;
   const bars = partBars.reduce((l, b) => lcm(l, b), 1);
   if (bars > MAX_PROJECT_BARS) {
     return { ok: false, reason: `the stack does not repeat within ${MAX_PROJECT_BARS} bars` };
@@ -14787,8 +15110,8 @@ __name(offered, "offered");
 function readsBack(parse8, r, wantBars, gain) {
   if (!r.ok) return r;
   if (gain.mini !== null) return { ok: false, reason: VELOCITY_STRING };
-  const read6 = parse8(r.mini, UNREFINED);
-  return read6.ok && (read6.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
+  const read7 = parse8(r.mini, UNREFINED);
+  return read7.ok && (read7.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
 }
 __name(readsBack, "readsBack");
 var PICK_METHODS2 = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
@@ -16478,10 +16801,10 @@ function canOpenAudioFrame(doc = globalThis.document) {
   return doc != null && doc.body != null && typeof globalThis.OfflineAudioContext === "function";
 }
 __name(canOpenAudioFrame, "canOpenAudioFrame");
-function bridgeAudioExtensions(page2, frame) {
+function bridgeAudioExtensions(page3, frame) {
   let copied = 0;
   for (const name of EXTENDED_AUDIO_CLASSES) {
-    const mine = page2[name]?.prototype;
+    const mine = page3[name]?.prototype;
     const theirs = frame[name]?.prototype;
     if (mine == null || theirs == null || mine === theirs) continue;
     for (const key3 of Object.getOwnPropertyNames(mine)) {
@@ -20722,12 +21045,12 @@ var _FrameSampleCache = class _FrameSampleCache {
    * callers (a shared master, or the same node read under both `'master'` and its
    * track key) get a fresh-buffer slice of the cached bytes — no second FFT.
    */
-  readAnalyser(key3, an, read6) {
+  readAnalyser(key3, an, read7) {
     let raw;
     if (this.analyserReads.has(an)) {
       raw = this.analyserReads.get(an) ?? null;
     } else {
-      raw = read6(an);
+      raw = read7(an);
       this.analyserReads.set(an, raw);
     }
     if (raw === null) return null;
@@ -28165,11 +28488,11 @@ __name(defineStrudelMonacoTheme, "defineStrudelMonacoTheme");
 // src/storageStatus.ts
 var CLEAR = { fullSince: null, documentUnsaved: false };
 var status = CLEAR;
-var listeners3 = /* @__PURE__ */ new Set();
+var listeners4 = /* @__PURE__ */ new Set();
 function set(next) {
   if (next.fullSince === status.fullSince && next.documentUnsaved === status.documentUnsaved) return;
   status = next;
-  for (const fn of listeners3) fn();
+  for (const fn of listeners4) fn();
 }
 __name(set, "set");
 function getStorageStatus() {
@@ -28177,9 +28500,9 @@ function getStorageStatus() {
 }
 __name(getStorageStatus, "getStorageStatus");
 function subscribeStorageStatus(fn) {
-  listeners3.add(fn);
+  listeners4.add(fn);
   return () => {
-    listeners3.delete(fn);
+    listeners4.delete(fn);
   };
 }
 __name(subscribeStorageStatus, "subscribeStorageStatus");
@@ -28504,9 +28827,9 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners22 = /* @__PURE__ */ new Set();
+  const listeners23 = /* @__PURE__ */ new Set();
   const notify7 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners22) l();
+    for (const l of listeners23) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify7(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify7(), "onStackItemPopped");
@@ -28516,7 +28839,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners22,
+    listeners: listeners23,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -28559,10 +28882,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners22 = active.listeners;
-  listeners22.add(cb);
+  const listeners23 = active.listeners;
+  listeners23.add(cb);
   return () => {
-    listeners22.delete(cb);
+    listeners23.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -34472,9 +34795,9 @@ __name(addInlineSliders, "addInlineSliders");
 var DEFAULT_CAPACITY = 30;
 var entries = [];
 var capacity = DEFAULT_CAPACITY;
-var listeners4 = /* @__PURE__ */ new Set();
+var listeners5 = /* @__PURE__ */ new Set();
 function fanOut() {
-  for (const l of listeners4) {
+  for (const l of listeners5) {
     try {
       l();
     } catch {
@@ -34505,9 +34828,9 @@ function getCaptureBuffer() {
 }
 __name(getCaptureBuffer, "getCaptureBuffer");
 function subscribeCapture(l) {
-  listeners4.add(l);
+  listeners5.add(l);
   return () => {
-    listeners4.delete(l);
+    listeners5.delete(l);
   };
 }
 __name(subscribeCapture, "subscribeCapture");
@@ -34532,7 +34855,7 @@ __name(setCaptureCapacity, "setCaptureCapacity");
 
 // src/engine/irInspector.ts
 var current = null;
-var listeners5 = /* @__PURE__ */ new Set();
+var listeners6 = /* @__PURE__ */ new Set();
 function enrichWithLookups(snap) {
   const idLookup = /* @__PURE__ */ new Map();
   const locLookup = /* @__PURE__ */ new Map();
@@ -34578,7 +34901,7 @@ function publishIRSnapshot(snap, meta) {
     ts: enriched.ts,
     cycleCount: meta?.cycleCount ?? null
   });
-  for (const l of listeners5) {
+  for (const l of listeners6) {
     try {
       l(enriched);
     } catch {
@@ -34588,7 +34911,7 @@ function publishIRSnapshot(snap, meta) {
 __name(publishIRSnapshot, "publishIRSnapshot");
 function clearIRSnapshot() {
   current = null;
-  for (const l of listeners5) {
+  for (const l of listeners6) {
     try {
       l(null);
     } catch {
@@ -34601,8 +34924,8 @@ function getIRSnapshot() {
 }
 __name(getIRSnapshot, "getIRSnapshot");
 function subscribeIRSnapshot(fn) {
-  listeners5.add(fn);
-  return () => listeners5.delete(fn);
+  listeners6.add(fn);
+  return () => listeners6.delete(fn);
 }
 __name(subscribeIRSnapshot, "subscribeIRSnapshot");
 
@@ -34762,7 +35085,7 @@ function readVisibleArea() {
 }
 __name(readVisibleArea, "readVisibleArea");
 var current2 = ALL;
-var listeners6 = /* @__PURE__ */ new Set();
+var listeners7 = /* @__PURE__ */ new Set();
 var started = false;
 function write(area) {
   const root = document.documentElement;
@@ -34782,7 +35105,7 @@ function update() {
   if (next.keyboardUp === current2.keyboardUp && next.height === current2.height && next.top === current2.top) return;
   current2 = next;
   write(next);
-  listeners6.forEach((l) => l());
+  listeners7.forEach((l) => l());
 }
 __name(update, "update");
 function startVisibleArea() {
@@ -34797,8 +35120,8 @@ function startVisibleArea() {
 __name(startVisibleArea, "startVisibleArea");
 function subscribe4(listener) {
   startVisibleArea();
-  listeners6.add(listener);
-  return () => listeners6.delete(listener);
+  listeners7.add(listener);
+  return () => listeners7.delete(listener);
 }
 __name(subscribe4, "subscribe");
 function useKeyboardUp() {
@@ -34817,7 +35140,7 @@ __name(subscribeToVisibleArea, "subscribeToVisibleArea");
 // src/visualizers/namedVizRegistry.ts
 var registry = /* @__PURE__ */ new Map();
 var normIndex = /* @__PURE__ */ new Map();
-var listeners7 = /* @__PURE__ */ new Set();
+var listeners8 = /* @__PURE__ */ new Set();
 function normalizeVizName(name) {
   return name.toLowerCase().replace(/[\s\-_]/g, "");
 }
@@ -34856,18 +35179,18 @@ function listNamedVizEntries() {
 }
 __name(listNamedVizEntries, "listNamedVizEntries");
 function onNamedVizChanged(cb) {
-  listeners7.add(cb);
+  listeners8.add(cb);
   let unsubscribed = false;
   return () => {
     if (unsubscribed) return;
     unsubscribed = true;
-    listeners7.delete(cb);
+    listeners8.delete(cb);
   };
 }
 __name(onNamedVizChanged, "onNamedVizChanged");
 function notifyListeners() {
-  if (listeners7.size === 0) return;
-  const snapshot = Array.from(listeners7);
+  if (listeners8.size === 0) return;
+  const snapshot = Array.from(listeners8);
   for (const cb of snapshot) {
     try {
       cb();
@@ -35788,9 +36111,9 @@ __name(addInlineViewZones, "addInlineViewZones");
 
 // src/workspace/history/historyViewing.ts
 var state = null;
-var listeners8 = /* @__PURE__ */ new Set();
+var listeners9 = /* @__PURE__ */ new Set();
 function notify3() {
-  for (const l of listeners8) {
+  for (const l of listeners9) {
     try {
       l();
     } catch {
@@ -35827,8 +36150,8 @@ function getViewedFileIds() {
 }
 __name(getViewedFileIds, "getViewedFileIds");
 function subscribeToRuntimeView(cb) {
-  listeners8.add(cb);
-  return () => listeners8.delete(cb);
+  listeners9.add(cb);
+  return () => listeners9.delete(cb);
 }
 __name(subscribeToRuntimeView, "subscribeToRuntimeView");
 
@@ -36422,12 +36745,12 @@ function withLock(fn) {
   return run;
 }
 __name(withLock, "withLock");
-var listeners9 = /* @__PURE__ */ new Set();
+var listeners10 = /* @__PURE__ */ new Set();
 var lastNotified = null;
 function notifyIfChanged() {
   if (current3 === lastNotified) return;
   lastNotified = current3;
-  for (const l of listeners9) {
+  for (const l of listeners10) {
     try {
       l();
     } catch {
@@ -36436,12 +36759,12 @@ function notifyIfChanged() {
 }
 __name(notifyIfChanged, "notifyIfChanged");
 function subscribeToHistory(cb) {
-  listeners9.add(cb);
-  return () => listeners9.delete(cb);
+  listeners10.add(cb);
+  return () => listeners10.delete(cb);
 }
 __name(subscribeToHistory, "subscribeToHistory");
 function notifyAll() {
-  for (const l of listeners9) {
+  for (const l of listeners10) {
     try {
       l();
     } catch {
@@ -36706,6 +37029,9 @@ function EditorView({
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
   const containerRef = useRef(null);
+  const barRef = useRef(null);
+  const fileIdRef = useRef(fileId);
+  fileIdRef.current = fileId;
   const [, forceViewTick] = useState(0);
   useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
   const viewedContent = getViewedContent(fileId);
@@ -36894,6 +37220,15 @@ function EditorView({
       });
     });
     editor.onDidDispose?.(stopWatchingKeyboard);
+    if (barRef.current) {
+      offerCodeEditor({
+        editor,
+        monaco,
+        readOnly: viewing,
+        bar: barRef.current,
+        language: /* @__PURE__ */ __name(() => getFile(fileIdRef.current)?.language ?? null, "language")
+      });
+    }
     onMount?.(editor, monaco);
   }, "handleMonacoMount");
   const handleChange = /* @__PURE__ */ __name((value) => {
@@ -36906,6 +37241,7 @@ function EditorView({
     {
       ref: containerRef,
       "data-workspace-view": "editor",
+      "data-code-editor": "",
       "data-file-id": fileId,
       style: {
         display: "flex",
@@ -37023,7 +37359,8 @@ function EditorView({
               children: "Loading\u2026"
             }
           )
-        ] })
+        ] }),
+        /* @__PURE__ */ jsx("div", { ref: barRef, "data-editor-bar": "", style: { flexShrink: 0, display: "flex", flexDirection: "column" } })
       ]
     }
   );
@@ -37108,7 +37445,7 @@ function safeLocalStorage3() {
 }
 __name(safeLocalStorage3, "safeLocalStorage");
 var values = /* @__PURE__ */ new Map();
-var listeners10 = /* @__PURE__ */ new Map();
+var listeners11 = /* @__PURE__ */ new Map();
 function keyFor(fileId) {
   return `${STORAGE_PREFIX2}${fileId}`;
 }
@@ -37128,7 +37465,7 @@ function setVizLive(fileId, on) {
   if (prev === on) return;
   values.set(fileId, on);
   safeLocalStorage3()?.setItem(keyFor(fileId), on ? "1" : "0");
-  const set2 = listeners10.get(fileId);
+  const set2 = listeners11.get(fileId);
   if (set2) for (const cb of Array.from(set2)) cb(on);
 }
 __name(setVizLive, "setVizLive");
@@ -37137,15 +37474,15 @@ function toggleVizLive(fileId) {
 }
 __name(toggleVizLive, "toggleVizLive");
 function onVizLiveChange(fileId, cb) {
-  let set2 = listeners10.get(fileId);
+  let set2 = listeners11.get(fileId);
   if (!set2) {
     set2 = /* @__PURE__ */ new Set();
-    listeners10.set(fileId, set2);
+    listeners11.set(fileId, set2);
   }
   set2.add(cb);
   return () => {
     set2.delete(cb);
-    if (set2.size === 0) listeners10.delete(fileId);
+    if (set2.size === 0) listeners11.delete(fileId);
   };
 }
 __name(onVizLiveChange, "onVizLiveChange");
@@ -37716,12 +38053,27 @@ function HistoryViewOverlay({
   React48.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
+  const barRef = React48.useRef(null);
+  const shownRef = React48.useRef({ history: history2, fileId });
+  shownRef.current = { history: history2, fileId };
   const handleMount = React48.useCallback(
-    (_editor, monaco) => {
+    (editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
       ensureWorkspaceLanguages(monaco);
       monaco.editor.setTheme("stave-dark");
+      if (barRef.current) {
+        offerCodeEditor({
+          editor,
+          monaco,
+          readOnly: true,
+          bar: barRef.current,
+          language: /* @__PURE__ */ __name(() => {
+            const { history: h, fileId: f } = shownRef.current;
+            return h.fileMeta[f]?.language ?? null;
+          }, "language")
+        });
+      }
     },
     []
   );
@@ -37752,7 +38104,7 @@ function HistoryViewOverlay({
     fontSize: 11,
     cursor: "pointer"
   };
-  return /* @__PURE__ */ jsxs("div", { style: wrap, "data-history-view-overlay": commit3.id, children: [
+  return /* @__PURE__ */ jsxs("div", { style: wrap, "data-history-view-overlay": commit3.id, "data-code-editor": "", children: [
     /* @__PURE__ */ jsxs("div", { style: headerRow, children: [
       /* @__PURE__ */ jsxs(
         "span",
@@ -37804,7 +38156,8 @@ function HistoryViewOverlay({
           renderLineHighlight: "none"
         }
       }
-    ) : /* @__PURE__ */ jsx("div", { style: { padding: 16, color: muted, fontSize: 12 }, children: "This commit has no files to view." }) })
+    ) : /* @__PURE__ */ jsx("div", { style: { padding: 16, color: muted, fontSize: 12 }, children: "This commit has no files to view." }) }),
+    /* @__PURE__ */ jsx("div", { ref: barRef, "data-editor-bar": "", style: { flexShrink: 0, display: "flex", flexDirection: "column" } })
   ] });
 }
 __name(HistoryViewOverlay, "HistoryViewOverlay");
@@ -38549,7 +38902,7 @@ __name(findBuiltinExampleSource, "findBuiltinExampleSource");
 
 // src/workspace/audioGestureGate.ts
 var pending = /* @__PURE__ */ new Map();
-var listeners11 = /* @__PURE__ */ new Set();
+var listeners12 = /* @__PURE__ */ new Set();
 var armed = false;
 var GESTURES2 = ["pointerdown", "pointerup", "touchend", "click", "keydown"];
 function audioMayStart() {
@@ -38559,7 +38912,7 @@ function audioMayStart() {
 }
 __name(audioMayStart, "audioMayStart");
 function notify4() {
-  for (const cb of Array.from(listeners11)) cb();
+  for (const cb of Array.from(listeners12)) cb();
 }
 __name(notify4, "notify");
 function onGesture() {
@@ -38605,9 +38958,9 @@ function isWaitingForGesture(key3) {
 }
 __name(isWaitingForGesture, "isWaitingForGesture");
 function onGestureWaitChange(cb) {
-  listeners11.add(cb);
+  listeners12.add(cb);
   return () => {
-    listeners11.delete(cb);
+    listeners12.delete(cb);
   };
 }
 __name(onGestureWaitChange, "onGestureWaitChange");
@@ -38626,7 +38979,7 @@ function safeLocalStorage4() {
 }
 __name(safeLocalStorage4, "safeLocalStorage");
 var values2 = /* @__PURE__ */ new Map();
-var listeners12 = /* @__PURE__ */ new Set();
+var listeners13 = /* @__PURE__ */ new Set();
 function keyFor2(fileId) {
   return `${STORAGE_PREFIX3}${fileId}`;
 }
@@ -38663,7 +39016,7 @@ function setVizSourceChoice(fileId, ref) {
   const ls = safeLocalStorage4();
   if (ref.kind === "default") ls?.removeItem(keyFor2(fileId));
   else ls?.setItem(keyFor2(fileId), JSON.stringify(ref));
-  for (const cb of Array.from(listeners12)) cb(fileId, ref);
+  for (const cb of Array.from(listeners13)) cb(fileId, ref);
 }
 __name(setVizSourceChoice, "setVizSourceChoice");
 function forgetVizSourceChoicesFor(deletedFileId) {
@@ -38689,18 +39042,18 @@ function forgetVizSourceChoicesFor(deletedFileId) {
 }
 __name(forgetVizSourceChoicesFor, "forgetVizSourceChoicesFor");
 function onVizSourceChoiceChange(cb) {
-  listeners12.add(cb);
+  listeners13.add(cb);
   return () => {
-    listeners12.delete(cb);
+    listeners13.delete(cb);
   };
 }
 __name(onVizSourceChoiceChange, "onVizSourceChoiceChange");
 
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
-var listeners13 = /* @__PURE__ */ new Set();
+var listeners14 = /* @__PURE__ */ new Set();
 function notify5() {
-  for (const l of listeners13) {
+  for (const l of listeners14) {
     try {
       l();
     } catch {
@@ -38734,9 +39087,9 @@ function getBottomPanelTab(id) {
 }
 __name(getBottomPanelTab, "getBottomPanelTab");
 function subscribeToBottomPanelTabs(cb) {
-  listeners13.add(cb);
+  listeners14.add(cb);
   return () => {
-    listeners13.delete(cb);
+    listeners14.delete(cb);
   };
 }
 __name(subscribeToBottomPanelTabs, "subscribeToBottomPanelTabs");
@@ -38831,7 +39184,7 @@ function writePersistedActiveTabId(value) {
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 var SERVER_STATE = { open: false, activeTabId: null };
 var state5 = null;
-var listeners14 = /* @__PURE__ */ new Set();
+var listeners15 = /* @__PURE__ */ new Set();
 function current4() {
   if (state5 === null) state5 = { open: readPersistedOpen(), activeTabId: readPersistedActiveTabId() };
   return state5;
@@ -38839,7 +39192,7 @@ function current4() {
 __name(current4, "current");
 function commit2(next) {
   state5 = next;
-  for (const l of listeners14) {
+  for (const l of listeners15) {
     try {
       l();
     } catch {
@@ -38874,9 +39227,9 @@ function showBottomPanelTab(activeTabId) {
 }
 __name(showBottomPanelTab, "showBottomPanelTab");
 function subscribeToBottomPanelState(cb) {
-  listeners14.add(cb);
+  listeners15.add(cb);
   return () => {
-    listeners14.delete(cb);
+    listeners15.delete(cb);
   };
 }
 __name(subscribeToBottomPanelState, "subscribeToBottomPanelState");
@@ -39032,10 +39385,10 @@ function readStored() {
 }
 __name(readStored, "readStored");
 var current5 = readStored();
-var listeners15 = /* @__PURE__ */ new Set();
+var listeners16 = /* @__PURE__ */ new Set();
 function subscribe5(listener) {
-  listeners15.add(listener);
-  return () => listeners15.delete(listener);
+  listeners16.add(listener);
+  return () => listeners16.delete(listener);
 }
 __name(subscribe5, "subscribe");
 function usePatternSideShown() {
@@ -39049,7 +39402,7 @@ function setPatternSideShown(shown) {
     window.localStorage.setItem(PATTERN_SIDE_KEY, shown ? "shown" : "hidden");
   } catch {
   }
-  listeners15.forEach((l) => l());
+  listeners16.forEach((l) => l());
 }
 __name(setPatternSideShown, "setPatternSideShown");
 function PatternSideToggle() {
@@ -39327,7 +39680,7 @@ var keyOf = /* @__PURE__ */ __name((at, mini) => `${at}:${mini ?? ""}`, "keyOf")
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const [model, setModel] = React48.useState(null);
-  const [read6, setRead] = React48.useState(null);
+  const [read7, setRead] = React48.useState(null);
   const modelRef = React48.useRef(null);
   React48.useEffect(() => {
     modelRef.current = model;
@@ -39408,7 +39761,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  return { model, read: read6, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit };
+  return { model, read: read7, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit };
 }
 __name(useGridModel, "useGridModel");
 
@@ -39643,7 +39996,7 @@ function readStored2() {
 }
 __name(readStored2, "readStored");
 var current6 = readStored2();
-var listeners16 = /* @__PURE__ */ new Set();
+var listeners17 = /* @__PURE__ */ new Set();
 function setMode(mode) {
   if (mode === current6) return;
   current6 = mode;
@@ -39651,12 +40004,12 @@ function setMode(mode) {
     window.localStorage.setItem(NOTE_COLOR_MODE_KEY, mode);
   } catch {
   }
-  listeners16.forEach((l) => l());
+  listeners17.forEach((l) => l());
 }
 __name(setMode, "setMode");
 function subscribe6(listener) {
-  listeners16.add(listener);
-  return () => listeners16.delete(listener);
+  listeners17.add(listener);
+  return () => listeners17.delete(listener);
 }
 __name(subscribe6, "subscribe");
 function useNoteColorMode() {
@@ -40776,9 +41129,9 @@ function boxLengths(duration, w) {
   return { longer: (Math.floor(d / w) + 1) * w, shorter: down >= 1 ? down * w : null };
 }
 __name(boxLengths, "boxLengths");
-function linesModel(shown, read6) {
-  if (!read6 || read6.steps !== shown.steps || (read6.bars ?? 1) !== (shown.bars ?? 1)) return shown;
-  return (read6.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read6 : shown;
+function linesModel(shown, read7) {
+  if (!read7 || read7.steps !== shown.steps || (read7.bars ?? 1) !== (shown.bars ?? 1)) return shown;
+  return (read7.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read7 : shown;
 }
 __name(linesModel, "linesModel");
 function drawnBarStarts(m, cols) {
@@ -40885,10 +41238,10 @@ function readStored3() {
 }
 __name(readStored3, "readStored");
 var current7 = readStored3();
-var listeners17 = /* @__PURE__ */ new Set();
+var listeners18 = /* @__PURE__ */ new Set();
 function subscribe7(listener) {
-  listeners17.add(listener);
-  return () => listeners17.delete(listener);
+  listeners18.add(listener);
+  return () => listeners18.delete(listener);
 }
 __name(subscribe7, "subscribe");
 function useGridMode() {
@@ -40906,7 +41259,7 @@ function setGridMode(mode) {
     window.localStorage.setItem(GRID_MODE_KEY, mode);
   } catch {
   }
-  listeners17.forEach((l) => l());
+  listeners18.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
 function usePatternLength(chunk, model, parse8, writeMini) {
@@ -40963,7 +41316,7 @@ function useRulerPan(scrollRef, enabled) {
   const [inView, setInView] = React48.useState(ALL_IN_VIEW);
   const [viewWidth, setViewWidth] = React48.useState(0);
   const [scroller, setScroller] = React48.useState(null);
-  const read6 = React48.useCallback(() => {
+  const read7 = React48.useCallback(() => {
     const sc = scrollRef.current;
     const next = enabled && sc ? gridInView(sc.scrollLeft, sc.clientWidth, sc.scrollWidth) : ALL_IN_VIEW;
     setInView((prev) => prev.start === next.start && prev.end === next.end && prev.more === next.more ? prev : next);
@@ -40971,20 +41324,20 @@ function useRulerPan(scrollRef, enabled) {
   }, [scrollRef, enabled]);
   React48.useLayoutEffect(() => {
     if (scrollRef.current !== scroller) setScroller(scrollRef.current);
-    read6();
+    read7();
   });
   React48.useEffect(() => {
     if (!enabled || !scroller) return;
-    scroller.addEventListener("scroll", read6, { passive: true });
-    window.addEventListener("resize", read6);
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(read6) : null;
+    scroller.addEventListener("scroll", read7, { passive: true });
+    window.addEventListener("resize", read7);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(read7) : null;
     observer?.observe(scroller);
     return () => {
-      scroller.removeEventListener("scroll", read6);
-      window.removeEventListener("resize", read6);
+      scroller.removeEventListener("scroll", read7);
+      window.removeEventListener("resize", read7);
       observer?.disconnect();
     };
-  }, [enabled, scroller, read6]);
+  }, [enabled, scroller, read7]);
   const onPointerDown = React48.useCallback(
     (e) => {
       const sc = scrollRef.current;
@@ -41420,7 +41773,7 @@ function opensRhythmLine(call) {
 __name(opensRhythmLine, "opensRhythmLine");
 function SequencerGrid({ onResolution, notice = null } = {}) {
   const [viewScale, setViewScale] = React48.useState(UNREFINED);
-  const { chunk, model, read: read6, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
+  const { chunk, model, read: read7, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
     ...stepGridCodec,
     source: "seq",
     eligible: opensStepGrid,
@@ -41451,9 +41804,9 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
   );
   const boxes = React48.useMemo(() => {
     if (!model) return null;
-    const widths = gridMode === "exact" ? ownStepWidths(linesModel(model, read6)) : /* @__PURE__ */ new Map();
+    const widths = gridMode === "exact" ? ownStepWidths(linesModel(model, read7)) : /* @__PURE__ */ new Map();
     return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn));
-  }, [model, read6, gridMode]);
+  }, [model, read7, gridMode]);
   const boxesRef = React48.useRef(boxes);
   boxesRef.current = boxes;
   const boxWidth = /* @__PURE__ */ __name((laneIndex) => boxesRef.current?.[laneIndex]?.[0]?.width ?? 1, "boxWidth");
@@ -41475,9 +41828,9 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
   const stepStarts = React48.useMemo(() => {
     if (!model) return null;
     const out = /* @__PURE__ */ new Map();
-    for (const [part, cols] of writtenStepStarts(linesModel(model, read6))) out.set(part, new Set(cols));
+    for (const [part, cols] of writtenStepStarts(linesModel(model, read7))) out.set(part, new Set(cols));
     return out;
-  }, [model, read6]);
+  }, [model, read7]);
   const stepGroups = React48.useMemo(() => {
     if (!model || !boxes || !coverage) return null;
     return model.lanes.map((lane, li) => {
@@ -43150,7 +43503,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners22 = /* @__PURE__ */ new Set();
+  const listeners23 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -43165,19 +43518,19 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners22.forEach((l) => l());
+    listeners23.forEach((l) => l());
   }, "setAccessor");
   const notify7 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners22.forEach((l) => l());
+    listeners23.forEach((l) => l());
   }, "notify");
-  const read6 = /* @__PURE__ */ __name(() => cached2, "read");
+  const read7 = /* @__PURE__ */ __name(() => cached2, "read");
   const subscribe11 = /* @__PURE__ */ __name((listener) => {
-    listeners22.add(listener);
-    return () => listeners22.delete(listener);
+    listeners23.add(listener);
+    return () => listeners23.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React48.useSyncExternalStore(subscribe11, read6, () => null), "useCatalog");
-  return { setAccessor, notify: notify7, read: read6, useCatalog };
+  const useCatalog = /* @__PURE__ */ __name(() => React48.useSyncExternalStore(subscribe11, read7, () => null), "useCatalog");
+  return { setAccessor, notify: notify7, read: read7, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
 var instrumentStore = createCatalogStore();
@@ -43357,7 +43710,7 @@ function PianoRollGrid({
 } = {}) {
   const [viewScale, setViewScale] = React48.useState(UNREFINED);
   const [declinedCell, setDeclinedCell] = React48.useState(null);
-  const { chunk, model, read: read6, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit } = useGridModel({
+  const { chunk, model, read: read7, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit } = useGridModel({
     ...pianoRollCodec,
     source: "roll",
     eligible: opensPianoRoll,
@@ -43871,7 +44224,7 @@ function PianoRollGrid({
   }
   const tabCell = cursorCell() ?? defaultCell();
   const layout = drawnLayout(model, cols);
-  const { stepStarts, ruler } = rollSteps(linesModel(model, read6), cols);
+  const { stepStarts, ruler } = rollSteps(linesModel(model, read7), cols);
   const barLine = /* @__PURE__ */ __name((c) => layout.barStart(c) ? "-2px 0 0 0 var(--foreground, #e6e6ea)" : c > 0 && stepStarts.has(c) ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0, "barLine");
   const cellBox = /* @__PURE__ */ __name((c) => {
     const w = layout.weight(c);
@@ -46193,19 +46546,19 @@ __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners18 = /* @__PURE__ */ new Set();
-function read3(fileId) {
+var listeners19 = /* @__PURE__ */ new Set();
+function read4(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
 }
-__name(read3, "read");
+__name(read4, "read");
 function toggleSolo(fileId, id) {
-  const next = new Set(read3(fileId));
+  const next = new Set(read4(fileId));
   if (next.has(id)) next.delete(id);
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners18.forEach((l) => l());
+  listeners19.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -46220,9 +46573,9 @@ function setPreSoloMutes(fileId, snapshot) {
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
 function subscribe8(listener) {
-  listeners18.add(listener);
+  listeners19.add(listener);
   return () => {
-    listeners18.delete(listener);
+    listeners19.delete(listener);
   };
 }
 __name(subscribe8, "subscribe");
@@ -46239,7 +46592,7 @@ function useSoloedIds() {
   const fileId = useActiveFileId();
   return React48.useSyncExternalStore(
     subscribe8,
-    () => read3(fileId),
+    () => read4(fileId),
     () => EMPTY
   );
 }
@@ -47096,7 +47449,7 @@ function safeLocalStorage6() {
 }
 __name(safeLocalStorage6, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners19 = /* @__PURE__ */ new Set();
+var listeners20 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -47117,7 +47470,7 @@ function load(fileId) {
   }
 }
 __name(load, "load");
-function read4(fileId) {
+function read5(fileId) {
   if (!fileId) return EMPTY2;
   let set2 = cache2.get(fileId);
   if (!set2) {
@@ -47126,7 +47479,7 @@ function read4(fileId) {
   }
   return set2;
 }
-__name(read4, "read");
+__name(read5, "read");
 function persist(fileId, set2) {
   const ls = safeLocalStorage6();
   if (!ls) return;
@@ -47137,18 +47490,18 @@ function persist(fileId, set2) {
 }
 __name(persist, "persist");
 function toggleExpanded(fileId, id) {
-  const next = new Set(read4(fileId));
+  const next = new Set(read5(fileId));
   if (next.has(id)) next.delete(id);
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners19.forEach((l) => l());
+  listeners20.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
 function subscribe9(listener) {
-  listeners19.add(listener);
+  listeners20.add(listener);
   return () => {
-    listeners19.delete(listener);
+    listeners20.delete(listener);
   };
 }
 __name(subscribe9, "subscribe");
@@ -47165,7 +47518,7 @@ function useExpandedStrips() {
   const fileId = useActiveFileId2();
   const expanded = React48.useSyncExternalStore(
     subscribe9,
-    () => read4(fileId),
+    () => read5(fileId),
     () => EMPTY2
   );
   const toggle = React48.useCallback(
@@ -47209,15 +47562,15 @@ function safeLocalStorage7() {
 }
 __name(safeLocalStorage7, "safeLocalStorage");
 var cached = null;
-var listeners20 = /* @__PURE__ */ new Set();
-function read5() {
+var listeners21 = /* @__PURE__ */ new Set();
+function read6() {
   if (cached == null) {
     const ls = safeLocalStorage7();
     cached = ls ? parseMixerZoom(ls.getItem(KEY)) : MIXER_ZOOM_DEFAULT;
   }
   return cached;
 }
-__name(read5, "read");
+__name(read6, "read");
 function persist2(v) {
   const ls = safeLocalStorage7();
   if (!ls) return;
@@ -47232,22 +47585,22 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners20.forEach((l) => l());
+  listeners21.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
-  setMixerZoom(read5() + dir * MIXER_ZOOM_STEP);
+  setMixerZoom(read6() + dir * MIXER_ZOOM_STEP);
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
 function subscribe10(listener) {
-  listeners20.add(listener);
+  listeners21.add(listener);
   return () => {
-    listeners20.delete(listener);
+    listeners21.delete(listener);
   };
 }
 __name(subscribe10, "subscribe");
 function useMixerZoom() {
-  const zoom = React48.useSyncExternalStore(subscribe10, read5, () => MIXER_ZOOM_DEFAULT);
+  const zoom = React48.useSyncExternalStore(subscribe10, read6, () => MIXER_ZOOM_DEFAULT);
   return {
     zoom,
     percent: Math.round(zoom * 100),
@@ -54601,17 +54954,17 @@ function safeLocalStorage8() {
   }
 }
 __name(safeLocalStorage8, "safeLocalStorage");
-function purgeLegacyMasterGain(storage2 = safeLocalStorage8()) {
-  if (!storage2) return 0;
+function purgeLegacyMasterGain(storage3 = safeLocalStorage8()) {
+  if (!storage3) return 0;
   try {
     const stale = [];
-    for (let i = 0; i < storage2.length; i++) {
-      const k = storage2.key(i);
+    for (let i = 0; i < storage3.length; i++) {
+      const k = storage3.key(i);
       if (k && k.startsWith(KEY_PREFIX2)) stale.push(k);
     }
     for (const k of stale) {
       try {
-        storage2.removeItem(k);
+        storage3.removeItem(k);
       } catch {
       }
     }
@@ -56940,7 +57293,7 @@ __name(VizEditorChrome, "VizEditorChrome");
 // src/workspace/preview/codeBackdropOptions.ts
 var LEGACY = "";
 var slots2 = /* @__PURE__ */ new Map();
-var listeners21 = /* @__PURE__ */ new Set();
+var listeners22 = /* @__PURE__ */ new Set();
 var version = 0;
 function sameOptions(a, b) {
   if (a === b) return true;
@@ -56958,7 +57311,7 @@ function setCodeBackdropOptions(next, patternFileId) {
   if (next) slots2.set(key3, next);
   else slots2.delete(key3);
   version++;
-  for (const l of [...listeners21]) l();
+  for (const l of [...listeners22]) l();
 }
 __name(setCodeBackdropOptions, "setCodeBackdropOptions");
 function retainCodeBackdropOptions(openPatternFileIds) {
@@ -56971,7 +57324,7 @@ function retainCodeBackdropOptions(openPatternFileIds) {
   }
   if (!dropped) return;
   version++;
-  for (const l of [...listeners21]) l();
+  for (const l of [...listeners22]) l();
 }
 __name(retainCodeBackdropOptions, "retainCodeBackdropOptions");
 function getCodeBackdropOptions(patternFileId) {
@@ -56983,9 +57336,9 @@ function getCodeBackdropOptionsVersion() {
 }
 __name(getCodeBackdropOptionsVersion, "getCodeBackdropOptionsVersion");
 function subscribeCodeBackdropOptions(listener) {
-  listeners21.add(listener);
+  listeners22.add(listener);
   return () => {
-    listeners21.delete(listener);
+    listeners22.delete(listener);
   };
 }
 __name(subscribeCodeBackdropOptions, "subscribeCodeBackdropOptions");
@@ -57844,6 +58197,6 @@ function startPageExtensions() {
 __name(startPageExtensions, "startPageExtensions");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, THREE_ADDONS, THREE_VIZ, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, compileThreeSketch, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCodeViz, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retainCodeBackdropOptions, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startPageExtensions, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, THREE_ADDONS, THREE_VIZ, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, compileThreeSketch, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extensionKeys, extensionKeysInCode, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasActiveExtensions, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isExtensionKeyGivenBack, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onExtensionKeysChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCodeViz, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retainCodeBackdropOptions, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setExtensionKeyGivenBack, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startPageExtensions, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map
