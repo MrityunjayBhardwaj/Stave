@@ -96,7 +96,7 @@ describe("GalleryPreview — a frame that needs its own press (#2495)", () => {
     expect(document.activeElement).toBe(button);
   });
 
-  it("only once per frame, so code in it can't keep pulling focus back", () => {
+  it("only the first answer to a request, so code in it can't keep pulling focus back (#2547)", () => {
     const { f } = openPreview();
     fireEvent.load(f);
     fromFrame({ state: "ready" });
@@ -106,5 +106,102 @@ describe("GalleryPreview — a frame that needs its own press (#2495)", () => {
     button.focus();
     fromFrame({ state: "stopped", message: NEEDS_CLICK });
     expect(document.activeElement).toBe(button);
+  });
+});
+
+/**
+ * #2547 — the frame runs the entry's own code, which can post NEEDS_CLICK itself.
+ * Focus follows it only as the first answer to this page's own request to play.
+ */
+describe("GalleryPreview — focus moves only when this page asked the frame to play (#2547)", () => {
+  /** Something on the page that has focus, as the search box would. */
+  function focusElsewhere(): HTMLInputElement {
+    const input = document.createElement("input");
+    input.setAttribute("aria-label", "Search");
+    document.body.appendChild(input);
+    input.focus();
+    return input;
+  }
+
+  it("unasked: a NEEDS_CLICK before the page has sent the frame anything moves nothing", () => {
+    const { f, posted } = openPreview();
+    const search = focusElsewhere();
+    fireEvent.load(f);
+    // the code was not sent yet (no "ready"), so nothing has been asked of the frame
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(plays(posted)).toBe(0);
+    expect(document.activeElement, "focus stays in the search box").toBe(search);
+    search.remove();
+  });
+
+  it("after the answer: the code posting NEEDS_CLICK once it already plays moves nothing", () => {
+    const { f } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "playing" });
+    const search = focusElsewhere();
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement, "focus stays in the search box").toBe(search);
+    search.remove();
+  });
+
+  it("after the answer: an error answer ends the wait too", () => {
+    const { f } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "error", message: "boom" });
+    const search = focusElsewhere();
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement).toBe(search);
+    search.remove();
+  });
+
+  it("a fresh frame is not waiting: a request the old frame never answered doesn't carry over", () => {
+    const { f } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" }); // the page asks; no answer comes
+    fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
+    expect(frame()).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const g = frame()!;
+    expect(g).not.toBe(f);
+    const search = focusElsewhere();
+    fireEvent.load(g);
+    // the new frame posts it before the page has asked it anything
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement).toBe(search);
+    search.remove();
+  });
+
+  it("asked by a card's or a row's play (autoStart): its NEEDS_CLICK answer moves focus into the frame", async () => {
+    render(<GalleryPreview code={'s("bd")'} kind="strudel" fileKey="e1/f0" autoStart />);
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+    const f = frame();
+    expect(f, "autoStart opened the frame by itself").not.toBeNull();
+    const posted = vi.spyOn(f!.contentWindow!, "postMessage");
+    const search = focusElsewhere();
+    fireEvent.load(f!);
+    fromFrame({ state: "ready" });
+    expect(plays(posted), "the page asked the frame to play").toBe(1);
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement, "focus went into the frame, where Enter is the press").toBe(f);
+    search.remove();
+  });
+
+  it("asked again (Preview pressed after a stop): that answer may move focus again", () => {
+    const { f, posted } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "playing" });
+    fireEvent.click(screen.getByRole("button", { name: "Stop preview" }));
+    fromFrame({ state: "stopped" });
+    const search = focusElsewhere();
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(plays(posted)).toBe(2);
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement).toBe(f);
+    search.remove();
   });
 });

@@ -619,6 +619,19 @@ function frameReports(page: Page): { seen: string[]; until: (pred: (m: { state: 
   }
 }
 
+/** An artist page holding one music card (musc1CCCCCC, from routeGallery). */
+async function routeCarol(page: Page): Promise<void> {
+  await page.route('**/api/gallery/authors/carol0000001', (route) =>
+    route.fulfill({
+      json: {
+        author: { authorId: 'carol0000001', name: 'Carol', bio: '', createdAt: 1, updatedAt: 1 },
+        entries: [{ id: 'musc1CCCCCC', title: 'Four On The Floor', kind: 'music', tags: ['house'], authorName: 'Carol', authorId: 'carol0000001', publishedAt: Date.UTC(2026, 10, 1), fileCount: 1, hasThumbnail: false }],
+        collections: [],
+      },
+    }),
+  )
+}
+
 test.describe('one click and the preview\'s sound (#2495)', () => {
   test('Chromium: with no click anywhere the frame never starts; one real click on the page above it does', async ({ page, baseURL }) => {
     test.setTimeout(120_000)
@@ -652,15 +665,7 @@ test.describe('one click and the preview\'s sound (#2495)', () => {
     test.skip(await isDevServer(page), DEV_SKIP)
     await routeGallery(page)
     // an artist page: a page of cards reached by link, so no click comes before the one under test
-    await page.route('**/api/gallery/authors/carol0000001', (route) =>
-      route.fulfill({
-        json: {
-          author: { authorId: 'carol0000001', name: 'Carol', bio: '', createdAt: 1, updatedAt: 1 },
-          entries: [{ id: 'musc1CCCCCC', title: 'Four On The Floor', kind: 'music', tags: ['house'], authorName: 'Carol', authorId: 'carol0000001', publishedAt: Date.UTC(2026, 10, 1), fileCount: 1, hasThumbnail: false }],
-          collections: [],
-        },
-      }),
-    )
+    await routeCarol(page)
     const errors = consoleErrors(page)
     await page.goto(`${baseURL}/#gallery-author=carol0000001`, { waitUntil: 'domcontentloaded' })
     const play = await centreOf(page, '[data-gallery-card-play="musc1CCCCCC"]')
@@ -700,6 +705,59 @@ test.describe('one click and the preview\'s sound (#2495)', () => {
     } finally {
       await browser.close()
     }
+  })
+
+  // #2547 — the same, from one click on a card's play: the page asked this frame
+  // to start, so its answer (it needs a press) moves focus into it.
+  test("WebKit: one click on a card's play, then the frame has focus and Enter plays", async ({ page: probe, baseURL }) => {
+    test.setTimeout(120_000)
+    test.skip(await isDevServer(probe), DEV_SKIP)
+    test.skip(!existsSync(webkit.executablePath()), "WebKit isn't installed here (CI installs Chromium only): npx playwright install webkit")
+    const browser = await webkit.launch()
+    try {
+      const page = await (await browser.newContext({ baseURL })).newPage()
+      await routeGallery(page)
+      await routeCarol(page)
+      await page.goto('/#gallery-author=carol0000001', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-gallery-card-play="musc1CCCCCC"]').click({ timeout: 60_000 })
+      await expect(page.locator('[data-gallery-detail="musc1CCCCCC"]')).toBeVisible({ timeout: 30_000 })
+      await expect(page.locator('[data-gallery-preview-state="stopped"]')).toHaveText('Press Play in the preview to hear it.', { timeout: 60_000 })
+      await expect(page.locator('[data-gallery-preview-frame]')).toBeFocused()
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/webkit-card-play-needs-a-press.png` })
+      await new Promise((r) => setTimeout(r, 1500))
+      expect(await previewState(page), 'still waiting for the press').toBe('stopped')
+      await page.keyboard.press('Enter')
+      await expect.poll(() => previewState(page), { timeout: 20_000 }).toBe('playing')
+    } finally {
+      await browser.close()
+    }
+  })
+
+  // #2547 — the frame runs the entry's code, which can post the frame's "needs a
+  // press" message itself. Unasked (here: long after it answered that it plays),
+  // that moves nothing: focus stays where you left it on the page.
+  test("an entry's code that posts the frame's needs-a-press message itself can't pull focus into its frame", async ({ page }) => {
+    test.setTimeout(120_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    await routeGallery(page)
+    const THIEF = `${MUSIC_CODE.split('\n')[0]}
+setTimeout(() => parent.postMessage({ state: 'stopped', message: 'Press Play in the preview to hear it.' }, '*'), 2500)
+s('bd*4')`
+    const { id } = await routeEntry(page, 'Focus Thief', 'thief.strudel', THIEF)
+    await page.goto(`/#gallery=${id}`, { waitUntil: 'domcontentloaded' })
+    const button = page.locator('[data-gallery-preview-button]')
+    await button.click({ timeout: 60_000 })
+    await expect.poll(() => previewState(page), { timeout: 60_000 }).toBe('playing')
+    // where you are on the page: the gallery's own button, with focus
+    await button.focus()
+    await expect(button).toBeFocused()
+    // the code's own message arrives (the page shows it) ...
+    await expect(page.locator('[data-gallery-preview-state="stopped"]')).toHaveText('Press Play in the preview to hear it.', { timeout: 20_000 })
+    // ... and focus has not moved
+    await new Promise((r) => setTimeout(r, 300))
+    await expect(page.locator('[data-gallery-preview-frame]')).not.toBeFocused()
+    await expect(button).toBeFocused()
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/unasked-needs-click-keeps-focus.png` })
   })
 })
 
