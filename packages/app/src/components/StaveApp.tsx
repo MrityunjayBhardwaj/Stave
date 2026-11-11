@@ -66,6 +66,10 @@ import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
 // #2300 — the community gallery overlay, its command and its `#gallery=` links.
 import { GalleryHost, openGallery, useGalleryEntryActions } from "../gallery/GalleryHost";
 import { galleryAppTab } from "../gallery/galleryTab";
+import { listedExtensions } from "@stave/editor";
+import { ExtensionsPanel } from "../extensions/ExtensionsPanel";
+import { extensionAppTabs } from "../extensions/ExtensionPage";
+import { extensionTabKey, showsExtensionsPanel } from "../extensions/extensionsView";
 import { appTabShellProps } from "./appTabs";
 import {
   bumpEditorFontSize,
@@ -739,8 +743,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const galleryActions = useGalleryEntryActions({ unsavedBlocksLeaving, openProject: openGalleryProject });
   const openPublish = useCallback(() => setPublishOpen(true), []);
   // #2473 — the workspace tabs that show no file, from one table (appTabs.ts).
+  // #2511 — and one page per listed extension (`extension:<id>`).
   const appTabs = useMemo(
-    () => appTabShellProps([galleryAppTab({ actions: galleryActions, onPublish: openPublish })], shellRef),
+    () =>
+      appTabShellProps(
+        [galleryAppTab({ actions: galleryActions, onPublish: openPublish }), ...extensionAppTabs(listedExtensions())],
+        shellRef,
+      ),
     [galleryActions, openPublish],
   );
   // #1346 — the File menu's "Bounce to WAV" needs the LIVE audio graph, which
@@ -1972,6 +1981,17 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     // Asset Library providers register alongside the live-catalog lifecycle
     // they depend on: the Sounds provider is wired in the soundMap poll effect
     // (it reuses the same warm-up/poll), not here.
+    // #2511 — the Extensions view, between Library and Console. Only once at least one
+    // extension is listed: until then there is nothing to show, so no icon.
+    if (showsExtensionsPanel(listedExtensions())) {
+      unregs.push(registerPanel({
+        id: "extensions",
+        title: "Extensions",
+        icon: "extensions",
+        order: 45,
+        render: () => null,
+      }));
+    }
     unregs.push(registerPanel({
       id: "console",
       title: "Console",
@@ -2098,6 +2118,16 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             key={libraryOpenedFor}
             initialType={libraryOpenedFor > 0 ? "sound" : undefined}
             initialSource={libraryOpenedFor > 0 ? "user" : undefined}
+          />
+        )}
+        {id === "extensions" && (
+          <ExtensionsPanel
+            manifests={listedExtensions()}
+            onOpen={(extensionId) => {
+              shellRef.current?.openAppTab(extensionTabKey(extensionId));
+              // as with a file: the page it opened is under the drawer
+              if (phone) closePhoneDrawer();
+            }}
           />
         )}
         {id === "console" && <ConsolePanel onReveal={revealLogEntry} />}

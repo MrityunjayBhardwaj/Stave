@@ -96,6 +96,8 @@ export interface ExtensionManifest {
   readonly provides?: ExtensionProvides
   /** the code half, loaded when switched on */
   load(): Promise<ExtensionModule>
+  /** what the Extensions view shows about it (#2511): plain data, read while it is off */
+  readonly about?: ExtensionAbout
 }
 
 /** The Strudel part of an extension's code. */
@@ -211,4 +213,33 @@ export interface StrudelHost {
    * first notes would be lost, and an offline render would hold its memory for good.
    */
   onPrepare(fn: () => unknown): void
+}
+
+/**
+ * What the Extensions view (#2511) shows about an extension, beyond its names: its page's
+ * header, readme and changes. Plain data, like the rest of the manifest, so an extension
+ * that is off (its code never loaded) still has a full page.
+ */
+export interface ExtensionAbout {
+  /** its version (`0.1.0`) */
+  readonly version: string
+  /** still settling: shown with an "experimental" badge */
+  readonly experimental?: boolean
+  /** a glyph for its tile: one emoji or a letter or two */
+  readonly icon?: string
+  /** its tile's colour, any CSS colour or gradient */
+  readonly tint?: string
+  /** a sentence or two on what it is, for the top of its page */
+  readonly summary?: string
+  /** the page's Details tab: short sections, each with optional example code */
+  readonly readme?: readonly { readonly heading: string; readonly text: string; readonly code?: string }[]
+  /** the Changes tab, newest first */
+  readonly changes?: readonly { readonly version: string; readonly note: string }[]
+  /**
+   * What each of its audio worklets is for, one line each. The worklets themselves are
+   * in its code (`StrudelPart.worklets`); a test holds the two to the same count.
+   */
+  readonly worklets?: readonly string[]
+  /** what it gets ready before sound starts (its `onPrepare`), in one line */
+  readonly prepares?: string
 }

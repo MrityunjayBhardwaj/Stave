@@ -7,6 +7,7 @@
  * `report` the package entry and the engine hand in.
  */
 export type {
+  ExtensionAbout,
   CodeEditor,
   EditorCleanup,
   ExtensionKey,
@@ -25,10 +26,18 @@ export type { HostRegistries, PartRecording, RecordingHost, NameTakenError } fro
 export { createExtensionManager } from './manager'
 export type { ExtensionManager, PartDriver, PartLanguage } from './manager'
 export { enabledExtensionIds, isExtensionEnabled, setExtensionEnabled, onExtensionsEnabledChange } from './enablement'
-export { BUILTIN_EXTENSIONS } from './builtin'
+export { BUILTIN_EXTENSIONS, listedExtensions } from './builtin'
+export { E2E_TONE, E2E_TONE_ID, E2E_TONE_SOUND } from './e2eTone'
 export { createStrudelDriver, prepareStrudelParts } from './strudel'
 export type { ExtensionReport, ExtensionStrudelDoors } from './strudel'
-export { createExtensionRuntime, pageExtensions, extensionKeysInCode, hasActiveExtensions } from './runtime'
+export {
+  createExtensionRuntime,
+  pageExtensions,
+  extensionKeysInCode,
+  hasActiveExtensions,
+  extensionFailure,
+  onPageExtensionsChange,
+} from './runtime'
 export { createCodeEditorList, offerCodeEditor, pageCodeEditors } from './editors'
 export type { CodeEditorList, CodeEditorSite, EditorWatcher } from './editors'
 export {

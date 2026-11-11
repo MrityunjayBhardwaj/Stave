@@ -286,6 +286,41 @@ describe('createExtensionRuntime: an engine attaching (#2510)', () => {
     // the one that worked is on in full
     expect(h.audio.manager.isPartActive('zzext', 'strudel')).toBe(true)
   })
+
+  it('remembers which extension failed to switch on, until it works or is switched off (#2552)', async () => {
+    let fail = true
+    const flaky = testManifest({
+      id: 'zzflaky',
+      name: 'Flaky',
+      provides: {},
+      load: async () => {
+        if (fail) throw new Error('chunk 404')
+        return {}
+      },
+    })
+    const h = harness({ manifests: [testManifest(), flaky], on: ['zzext', 'zzflaky'] })
+    cleanup = () => h.audio.manager.deactivate('zzext')
+    await h.audio.attachStrudel(h.doors)
+    expect(h.audio.failure('zzflaky')).toBe('chunk 404.')
+    expect(h.audio.failure('zzext')).toBeUndefined()
+    const changesAfterFailing = h.changes()
+
+    // switched off: nothing to report any more, and the view hears it
+    await h.flip(['zzext'])
+    expect(h.audio.failure('zzflaky')).toBeUndefined()
+    expect(h.changes()).toBeGreaterThan(changesAfterFailing)
+
+    // failing again, then working on a later pass: the failure goes
+    await h.flip(['zzext', 'zzflaky'])
+    expect(h.audio.failure('zzflaky')).toBe('chunk 404.')
+    fail = false
+    const before = h.changes()
+    await h.flip(['zzext', 'zzflaky'])
+    expect(h.audio.manager.isActive('zzflaky')).toBe(true)
+    expect(h.audio.failure('zzflaky')).toBeUndefined()
+    expect(h.changes()).toBeGreaterThan(before)
+    h.audio.manager.deactivate('zzflaky')
+  })
 })
 
 describe('createExtensionRuntime: in parts, from page load (#2538)', () => {
@@ -442,6 +477,8 @@ describe('createExtensionRuntime: in parts, from page load (#2538)', () => {
     ])
     expect(h.audio.manager.isActive('zzext')).toBe(true)
     expect(h.audio.manager.isPartActive('zzext', 'strudel')).toBe(false)
+    // the view hears that its Strudel part failed, though the common part is on (#2552)
+    expect(h.audio.failure('zzext')).toBe('Its Strudel part failed: no voice model.')
     expect(g.zzCommonOn).toBe(true)
     expect(soundNames()).not.toContain(TEST_SOUND)
     // switched off, the common part is undone as usual
