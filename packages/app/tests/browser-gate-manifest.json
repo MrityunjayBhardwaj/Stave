@@ -1290,5 +1290,9 @@
   "privacy-page.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate — it runs the whole chromium project"
+  },
+  "extensions-view.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project"
   }
 }
