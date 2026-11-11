@@ -113,10 +113,29 @@ type Choices = Record<string, Record<string, boolean>>
 /** Choices that could not be saved (storage full or blocked): they hold for this page only. */
 let unsaved: Choices | null = null
 
+/**
+ * The last stored text and what it parsed to. The key dispatcher asks on every keystroke
+ * in the code, once per declared key, so the parse is kept until the stored text changes;
+ * the text itself is read each time, so a change from another tab is still seen.
+ */
+let parsedFrom: { raw: string | null; choices: Choices } | null = null
+
 function read(): Choices {
   if (unsaved) return unsaved
+  let raw: string | null = null
   try {
-    const raw = storage()?.getItem(STORAGE)
+    raw = storage()?.getItem(STORAGE) ?? null
+  } catch {
+    return {}
+  }
+  if (parsedFrom && parsedFrom.raw === raw) return parsedFrom.choices
+  const choices = parse(raw)
+  parsedFrom = { raw, choices }
+  return choices
+}
+
+function parse(raw: string | null): Choices {
+  try {
     const parsed: unknown = raw ? JSON.parse(raw) : {}
     const out: Choices = {}
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {

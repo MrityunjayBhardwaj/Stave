@@ -1,8 +1,8 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
-import { parse, parseExpressionAt } from 'acorn';
+import { parse as parse$1, parseExpressionAt } from 'acorn';
 import * as React48 from 'react';
 import React48__default, { forwardRef, useState, useEffect, useCallback, useSyncExternalStore, useMemo, useRef, useImperativeHandle } from 'react';
-import { parse as parse$1 } from '@strudel/mini/krill-parser.js';
+import { parse as parse$2 } from '@strudel/mini/krill-parser.js';
 import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
 import { isControlName, getControlName } from '@strudel/core/controls.mjs';
 import { mini, patternifyAST, mini2ast } from '@strudel/mini/mini.mjs';
@@ -200,10 +200,23 @@ function storage() {
 }
 __name(storage, "storage");
 var unsaved = null;
+var parsedFrom = null;
 function read() {
   if (unsaved) return unsaved;
+  let raw = null;
   try {
-    const raw = storage()?.getItem(STORAGE);
+    raw = storage()?.getItem(STORAGE) ?? null;
+  } catch {
+    return {};
+  }
+  if (parsedFrom && parsedFrom.raw === raw) return parsedFrom.choices;
+  const choices = parse(raw);
+  parsedFrom = { raw, choices };
+  return choices;
+}
+__name(read, "read");
+function parse(raw) {
+  try {
     const parsed = raw ? JSON.parse(raw) : {};
     const out = {};
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -221,7 +234,7 @@ function read() {
     return {};
   }
 }
-__name(read, "read");
+__name(parse, "parse");
 var listeners = /* @__PURE__ */ new Set();
 function isExtensionKeyGivenBack(manifest, key3) {
   const id = keyId(key3);
@@ -991,7 +1004,7 @@ function readChainMethod(chunk, names) {
 __name(readChainMethod, "readChainMethod");
 function parseTopLevel(doc) {
   try {
-    const program = parse(doc, {
+    const program = parse$1(doc, {
       ecmaVersion: "latest",
       allowAwaitOutsideFunction: true
     });
@@ -1003,7 +1016,7 @@ function parseTopLevel(doc) {
 __name(parseTopLevel, "parseTopLevel");
 function syntaxErrorAt(code) {
   try {
-    parse(code, {
+    parse$1(code, {
       ecmaVersion: "latest",
       sourceType: "script",
       allowReturnOutsideFunction: true,
@@ -1022,7 +1035,7 @@ function docParses(doc) {
 __name(docParses, "docParses");
 function parseModule(code) {
   try {
-    return { ok: true, program: parse(code, { ecmaVersion: "latest", sourceType: "module", locations: true }) };
+    return { ok: true, program: parse$1(code, { ecmaVersion: "latest", sourceType: "module", locations: true }) };
   } catch (e) {
     const err = e;
     return {
@@ -5129,14 +5142,14 @@ function unquoteOffsets(node) {
 }
 __name(unquoteOffsets, "unquoteOffsets");
 function miniTree(mini) {
-  const ast = parse$1('"' + mini + '"');
+  const ast = parse$2('"' + mini + '"');
   unquoteOffsets(ast);
   return ast;
 }
 __name(miniTree, "miniTree");
 function miniParseFailure(mini) {
   try {
-    parse$1('"' + mini + '"');
+    parse$2('"' + mini + '"');
     return null;
   } catch (e) {
     const offset = e.location?.start?.offset;
@@ -6393,7 +6406,7 @@ function readsAsOneExpression(src) {
   const t = src.trim();
   if (!t) return false;
   try {
-    parse("(" + t + "\n)", { ecmaVersion: "latest" });
+    parse$1("(" + t + "\n)", { ecmaVersion: "latest" });
     return true;
   } catch {
     return false;
@@ -6579,7 +6592,7 @@ function evalWeightExpression(text, numbers) {
   const fast = Number(text);
   if (Number.isFinite(fast) && text.trim() !== "") return fast;
   try {
-    const program = parse(text, { ecmaVersion: "latest" });
+    const program = parse$1(text, { ecmaVersion: "latest" });
     const body = program.body;
     if (body.length !== 1) return null;
     const stmt = body[0];
@@ -6593,7 +6606,7 @@ __name(evalWeightExpression, "evalWeightExpression");
 function collectNumericBindings(code) {
   let program;
   try {
-    program = parse(code, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
+    program = parse$1(code, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
   } catch {
     return void 0;
   }
@@ -6667,7 +6680,7 @@ function extractPatternSourceCall(trimmed) {
   if (!PATTERN_SOURCE_CALL_RE.test(trimmed)) return null;
   let program;
   try {
-    program = parse(trimmed, { ecmaVersion: "latest" });
+    program = parse$1(trimmed, { ecmaVersion: "latest" });
   } catch {
     return null;
   }
@@ -13195,13 +13208,13 @@ var whole = /* @__PURE__ */ __name((x) => {
   const r = Math.round(x);
   return Math.abs(x - r) < 1e-9 ? r : null;
 }, "whole");
-function rhythmChart(chords, rhythm, model, parse8, masks = []) {
+function rhythmChart(chords, rhythm, model, parse9, masks = []) {
   if (chords === null || model === null) return NONE;
   if (model.barSteps) return NONE;
   const rhythmBars = model.bars ?? 1;
   const colsPerBar = model.steps / rhythmBars;
   if (!Number.isInteger(colsPerBar) || colsPerBar < 1) return NONE;
-  const chordsRead = parse8(chords);
+  const chordsRead = parse9(chords);
   if (!chordsRead.ok) return NONE;
   const chordBars = chordsRead.model.bars ?? 1;
   const readMasks = masks.filter((m) => m !== null);
@@ -13759,7 +13772,7 @@ __name(rollShape, "rollShape");
 var COMBINATORS = /* @__PURE__ */ new Set(["arrange", "cat", "slowcat"]);
 function parseProgram(doc) {
   try {
-    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
+    return parse$1(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
   } catch {
     return null;
   }
@@ -14017,7 +14030,7 @@ function walk3(node, parent, key3, visit) {
 __name(walk3, "walk");
 function parseProgram2(doc) {
   try {
-    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
+    return parse$1(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
   } catch {
     return null;
   }
@@ -14106,7 +14119,7 @@ function analyze(doc, oldName, newName) {
 __name(analyze, "analyze");
 function parseProgram3(doc) {
   try {
-    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
+    return parse$1(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
   } catch {
     return null;
   }
@@ -15090,34 +15103,34 @@ function appendEmptyBars(mini, bars, add) {
 __name(appendEmptyBars, "appendEmptyBars");
 var VELOCITY_STRING = "its velocities are written per column, and the velocity lane can't follow a longer pattern yet";
 var GRID_CANT_SHOW = "the grid couldn't show the longer pattern";
-function lengthenOffers(parse8, mini, bars, gain) {
+function lengthenOffers(parse9, mini, bars, gain) {
   return {
-    duplicate: offered(parse8, mini, () => duplicateBar(mini, bars), bars + 1, gain),
-    append: appendBarsOffer(parse8, mini, bars, 1, gain)
+    duplicate: offered(parse9, mini, () => duplicateBar(mini, bars), bars + 1, gain),
+    append: appendBarsOffer(parse9, mini, bars, 1, gain)
   };
 }
 __name(lengthenOffers, "lengthenOffers");
-function appendBarsOffer(parse8, mini, bars, add, gain) {
-  return offered(parse8, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
+function appendBarsOffer(parse9, mini, bars, add, gain) {
+  return offered(parse9, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
 }
 __name(appendBarsOffer, "appendBarsOffer");
 var NOT_EDITABLE_HERE = "the grid can show this pattern but can't edit it; make it longer in the code";
-function offered(parse8, mini, rewrite, wantBars, gain) {
-  if (!parse8(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
-  return readsBack(parse8, rewrite(), wantBars, gain);
+function offered(parse9, mini, rewrite, wantBars, gain) {
+  if (!parse9(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
+  return readsBack(parse9, rewrite(), wantBars, gain);
 }
 __name(offered, "offered");
-function readsBack(parse8, r, wantBars, gain) {
+function readsBack(parse9, r, wantBars, gain) {
   if (!r.ok) return r;
   if (gain.mini !== null) return { ok: false, reason: VELOCITY_STRING };
-  const read7 = parse8(r.mini, UNREFINED);
+  const read7 = parse9(r.mini, UNREFINED);
   return read7.ok && (read7.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
 }
 __name(readsBack, "readsBack");
 var PICK_METHODS2 = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
 function parseProgram4(doc) {
   try {
-    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
+    return parse$1(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
   } catch {
     return null;
   }
@@ -17509,7 +17522,7 @@ var methodName = /* @__PURE__ */ __name((callee) => callee?.type === "MemberExpr
 function findMissingPatternMethods(code, runtime) {
   let program;
   try {
-    program = parse(code, { ecmaVersion: "latest", allowAwaitOutsideFunction: true, locations: true });
+    program = parse$1(code, { ecmaVersion: "latest", allowAwaitOutsideFunction: true, locations: true });
   } catch {
     return [];
   }
@@ -38984,7 +38997,7 @@ function keyFor2(fileId) {
   return `${STORAGE_PREFIX3}${fileId}`;
 }
 __name(keyFor2, "keyFor");
-function parse7(raw) {
+function parse8(raw) {
   if (!raw) return DEFAULT;
   try {
     const v = JSON.parse(raw);
@@ -38996,7 +39009,7 @@ function parse7(raw) {
   }
   return DEFAULT;
 }
-__name(parse7, "parse");
+__name(parse8, "parse");
 function same(a, b) {
   if (a.kind !== b.kind) return false;
   return a.kind !== "file" || b.kind === "file" && a.fileId === b.fileId;
@@ -39005,7 +39018,7 @@ __name(same, "same");
 function getVizSourceChoice(fileId) {
   const cached2 = values2.get(fileId);
   if (cached2) return cached2;
-  const ref = parse7(safeLocalStorage4()?.getItem(keyFor2(fileId)));
+  const ref = parse8(safeLocalStorage4()?.getItem(keyFor2(fileId)));
   values2.set(fileId, ref);
   return ref;
 }
@@ -40059,13 +40072,13 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
-function useViewProver(mini, parse8) {
+function useViewProver(mini, parse9) {
   const cacheRef = React48.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React48.useRef(parse8);
-  parseRef.current = parse8;
+  const parseRef = React48.useRef(parse9);
+  parseRef.current = parse9;
   const key3 = mini ?? null;
   return React48.useCallback(
     (scale) => {
@@ -41262,13 +41275,13 @@ function setGridMode(mode) {
   listeners18.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
-function usePatternLength(chunk, model, parse8, writeMini) {
+function usePatternLength(chunk, model, parse9, writeMini) {
   const mini = model ? chunk?.miniString ?? null : null;
   const bars = model?.bars ?? 1;
   const gain = chunk ? readChunkGain(chunk) : null;
   const velocity = gain?.mini != null;
-  const parseRef = React48.useRef(parse8);
-  parseRef.current = parse8;
+  const parseRef = React48.useRef(parse9);
+  parseRef.current = parse9;
   const cache3 = React48.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null || gain === null) return null;

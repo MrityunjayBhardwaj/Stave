@@ -132,6 +132,19 @@ describe('handing keys back', () => {
     expect(isExtensionKeyGivenBack(vimLike(), 'ctrl+z')).toBe(true)
   })
 
+  it('parses the stored text once while it is unchanged, and again when it changes (another tab)', () => {
+    store.set('stave:extension-keys', '{"zzvim":{"ctrl+r":true}}')
+    const parse = vi.spyOn(JSON, 'parse')
+    try {
+      for (let i = 0; i < 20; i++) expect(isExtensionKeyGivenBack(vimLike(), 'ctrl+r')).toBe(true)
+      expect(parse.mock.calls.length).toBeLessThanOrEqual(1)
+      store.set('stave:extension-keys', '{"zzvim":{"ctrl+r":false}}')
+      expect(isExtensionKeyGivenBack(vimLike(), 'ctrl+r')).toBe(false)
+    } finally {
+      parse.mockRestore()
+    }
+  })
+
   it('extensionKeys lists each key with where it goes now and its default', () => {
     setExtensionKeyGivenBack('zzvim', 'ctrl+z', false)
     expect(extensionKeys(vimLike())).toEqual([

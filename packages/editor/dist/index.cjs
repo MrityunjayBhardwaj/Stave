@@ -226,10 +226,23 @@ function storage() {
 }
 __name(storage, "storage");
 var unsaved = null;
+var parsedFrom = null;
 function read() {
   if (unsaved) return unsaved;
+  let raw = null;
   try {
-    const raw = storage()?.getItem(STORAGE);
+    raw = storage()?.getItem(STORAGE) ?? null;
+  } catch {
+    return {};
+  }
+  if (parsedFrom && parsedFrom.raw === raw) return parsedFrom.choices;
+  const choices = parse(raw);
+  parsedFrom = { raw, choices };
+  return choices;
+}
+__name(read, "read");
+function parse(raw) {
+  try {
     const parsed = raw ? JSON.parse(raw) : {};
     const out = {};
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -247,7 +260,7 @@ function read() {
     return {};
   }
 }
-__name(read, "read");
+__name(parse, "parse");
 var listeners = /* @__PURE__ */ new Set();
 function isExtensionKeyGivenBack(manifest, key3) {
   const id = keyId(key3);
@@ -13221,13 +13234,13 @@ var whole = /* @__PURE__ */ __name((x) => {
   const r = Math.round(x);
   return Math.abs(x - r) < 1e-9 ? r : null;
 }, "whole");
-function rhythmChart(chords, rhythm, model, parse8, masks = []) {
+function rhythmChart(chords, rhythm, model, parse9, masks = []) {
   if (chords === null || model === null) return NONE;
   if (model.barSteps) return NONE;
   const rhythmBars = model.bars ?? 1;
   const colsPerBar = model.steps / rhythmBars;
   if (!Number.isInteger(colsPerBar) || colsPerBar < 1) return NONE;
-  const chordsRead = parse8(chords);
+  const chordsRead = parse9(chords);
   if (!chordsRead.ok) return NONE;
   const chordBars = chordsRead.model.bars ?? 1;
   const readMasks = masks.filter((m) => m !== null);
@@ -15116,27 +15129,27 @@ function appendEmptyBars(mini, bars, add) {
 __name(appendEmptyBars, "appendEmptyBars");
 var VELOCITY_STRING = "its velocities are written per column, and the velocity lane can't follow a longer pattern yet";
 var GRID_CANT_SHOW = "the grid couldn't show the longer pattern";
-function lengthenOffers(parse8, mini, bars, gain) {
+function lengthenOffers(parse9, mini, bars, gain) {
   return {
-    duplicate: offered(parse8, mini, () => duplicateBar(mini, bars), bars + 1, gain),
-    append: appendBarsOffer(parse8, mini, bars, 1, gain)
+    duplicate: offered(parse9, mini, () => duplicateBar(mini, bars), bars + 1, gain),
+    append: appendBarsOffer(parse9, mini, bars, 1, gain)
   };
 }
 __name(lengthenOffers, "lengthenOffers");
-function appendBarsOffer(parse8, mini, bars, add, gain) {
-  return offered(parse8, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
+function appendBarsOffer(parse9, mini, bars, add, gain) {
+  return offered(parse9, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
 }
 __name(appendBarsOffer, "appendBarsOffer");
 var NOT_EDITABLE_HERE = "the grid can show this pattern but can't edit it; make it longer in the code";
-function offered(parse8, mini, rewrite, wantBars, gain) {
-  if (!parse8(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
-  return readsBack(parse8, rewrite(), wantBars, gain);
+function offered(parse9, mini, rewrite, wantBars, gain) {
+  if (!parse9(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
+  return readsBack(parse9, rewrite(), wantBars, gain);
 }
 __name(offered, "offered");
-function readsBack(parse8, r, wantBars, gain) {
+function readsBack(parse9, r, wantBars, gain) {
   if (!r.ok) return r;
   if (gain.mini !== null) return { ok: false, reason: VELOCITY_STRING };
-  const read7 = parse8(r.mini, UNREFINED);
+  const read7 = parse9(r.mini, UNREFINED);
   return read7.ok && (read7.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
 }
 __name(readsBack, "readsBack");
@@ -39010,7 +39023,7 @@ function keyFor2(fileId) {
   return `${STORAGE_PREFIX3}${fileId}`;
 }
 __name(keyFor2, "keyFor");
-function parse7(raw) {
+function parse8(raw) {
   if (!raw) return DEFAULT;
   try {
     const v = JSON.parse(raw);
@@ -39022,7 +39035,7 @@ function parse7(raw) {
   }
   return DEFAULT;
 }
-__name(parse7, "parse");
+__name(parse8, "parse");
 function same(a, b) {
   if (a.kind !== b.kind) return false;
   return a.kind !== "file" || b.kind === "file" && a.fileId === b.fileId;
@@ -39031,7 +39044,7 @@ __name(same, "same");
 function getVizSourceChoice(fileId) {
   const cached2 = values2.get(fileId);
   if (cached2) return cached2;
-  const ref = parse7(safeLocalStorage4()?.getItem(keyFor2(fileId)));
+  const ref = parse8(safeLocalStorage4()?.getItem(keyFor2(fileId)));
   values2.set(fileId, ref);
   return ref;
 }
@@ -40085,13 +40098,13 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
-function useViewProver(mini, parse8) {
+function useViewProver(mini, parse9) {
   const cacheRef = React48__namespace.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React48__namespace.useRef(parse8);
-  parseRef.current = parse8;
+  const parseRef = React48__namespace.useRef(parse9);
+  parseRef.current = parse9;
   const key3 = mini ?? null;
   return React48__namespace.useCallback(
     (scale) => {
@@ -41288,13 +41301,13 @@ function setGridMode(mode) {
   listeners18.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
-function usePatternLength(chunk, model, parse8, writeMini) {
+function usePatternLength(chunk, model, parse9, writeMini) {
   const mini = model ? chunk?.miniString ?? null : null;
   const bars = model?.bars ?? 1;
   const gain = chunk ? readChunkGain(chunk) : null;
   const velocity = gain?.mini != null;
-  const parseRef = React48__namespace.useRef(parse8);
-  parseRef.current = parse8;
+  const parseRef = React48__namespace.useRef(parse9);
+  parseRef.current = parse9;
   const cache3 = React48__namespace.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null || gain === null) return null;
