@@ -282,6 +282,23 @@ function extensionKeys(manifest) {
   }));
 }
 __name(extensionKeys, "extensionKeys");
+var matcher = null;
+function setKeyEventMatcher(fn) {
+  matcher = fn;
+}
+__name(setKeyEventMatcher, "setKeyEventMatcher");
+function declaredKeyOf(manifest, event) {
+  if (!matcher) return null;
+  for (const k of manifest.provides?.keys ?? []) {
+    try {
+      if (matcher(event, k.key)) return k.key;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+__name(declaredKeyOf, "declaredKeyOf");
 function keysTakenBy(manifests) {
   const out = [];
   for (const m of manifests) {
@@ -402,6 +419,9 @@ function createCommonHost(id, opts = {}) {
       },
       takesKey(key3) {
         return !closed && !!opts.manifest && !isExtensionKeyGivenBack(opts.manifest, key3);
+      },
+      keyOf(event) {
+        return opts.manifest ? declaredKeyOf(opts.manifest, event) : null;
       }
     },
     undo() {
@@ -791,8 +811,75 @@ var E2E_TONE = {
   }
 };
 
+// src/extensions/vim/manifest.ts
+var VIM_ID = "vim";
+var KEYS = [
+  // handed back to Stave unless the person gives them to Vim
+  { key: "ctrl+enter", name: "Play (Stave)", where: "code", givenBack: true },
+  { key: "ctrl+.", name: "Stop (Stave)", where: "code", givenBack: true },
+  { key: "ctrl+shift+p", name: "Command palette (Stave)", where: "code", givenBack: true },
+  { key: "ctrl+p", name: "Quick open (Stave); in Vim, up a line", where: "code", givenBack: true },
+  { key: "ctrl+z", name: "Undo (Stave)", where: "code", givenBack: true },
+  // Vim's own
+  { key: "ctrl+r", name: "Redo", where: "code" },
+  { key: "ctrl+c", name: "Back to normal mode", where: "code" },
+  { key: "ctrl+[", name: "Back to normal mode", where: "code" },
+  { key: "ctrl+v", name: "Visual block mode", where: "code" },
+  { key: "ctrl+q", name: "Visual block mode", where: "code" },
+  { key: "ctrl+d", name: "Half a page down", where: "code" },
+  { key: "ctrl+u", name: "Half a page up", where: "code" },
+  { key: "ctrl+f", name: "A page down", where: "code" },
+  { key: "ctrl+b", name: "A page up", where: "code" },
+  { key: "ctrl+e", name: "Scroll down a line", where: "code" },
+  { key: "ctrl+y", name: "Scroll up a line", where: "code" },
+  { key: "ctrl+n", name: "Down a line", where: "code" },
+  { key: "ctrl+o", name: "Jump back", where: "code" },
+  { key: "ctrl+i", name: "Jump forward", where: "code" },
+  { key: "ctrl+a", name: "Add to the number", where: "code" },
+  { key: "ctrl+x", name: "Subtract from the number", where: "code" },
+  { key: "ctrl+w", name: "Delete the word before the cursor (insert mode)", where: "code" },
+  { key: "ctrl+t", name: "Indent the line (insert mode)", where: "code" },
+  { key: "ctrl+space", name: "Next WORD", where: "code" },
+  { key: "ctrl+backspace", name: "Previous WORD", where: "code" }
+];
+var VIM = {
+  id: VIM_ID,
+  name: "Vim",
+  description: "Vim keybindings in the code editor",
+  languages: "*",
+  provides: { keys: KEYS },
+  // the build turns this into `import('./vim.js')`, a file of its own (tsup.config.ts)
+  load: /* @__PURE__ */ __name(() => import('./vim.js').then((m) => m.vimModule), "load"),
+  about: {
+    version: "0.1.0",
+    experimental: true,
+    icon: "V",
+    tint: "linear-gradient(135deg, #019733, #0b5d2a)",
+    summary: "Vim keybindings for the code editor: normal, insert and visual modes, motions, search, registers and : commands. Each editor gets a bar underneath that shows the mode and the keys you have typed.",
+    readme: [
+      {
+        heading: "Modes and the bar",
+        text: "Each code editor gets a bar underneath it. The mode is on the left and the keys you have typed so far are on the right. Press : to type a command in that editor\u2019s bar. Enter runs it and Esc closes it. With two editors side by side, each has its own bar."
+      },
+      {
+        heading: "Saving",
+        text: "Stave saves as you type, so :w, :q and the like show \u201CStave saves as you type\u201D and do nothing else."
+      },
+      {
+        heading: "Keys",
+        text: "Inside the code, Vim\u2019s Ctrl keys go to Vim, as in Vim. Play, Stop, the command palette, quick open and Ctrl+Z still go to Stave. On a Mac, Stave\u2019s shortcuts use Cmd, so they never meet Vim\u2019s Ctrl keys."
+      },
+      {
+        heading: "Past versions",
+        text: "In the history view you can move around, search and yank, but a past version cannot be edited. The side-by-side diff has no Vim."
+      }
+    ],
+    changes: [{ version: "0.1.0", note: "First version, built on monaco-vim 0.4.4 (MIT)." }]
+  }
+};
+
 // src/extensions/builtin.ts
-var BUILTIN_EXTENSIONS = [];
+var BUILTIN_EXTENSIONS = [VIM];
 var WITH_E2E = [...BUILTIN_EXTENSIONS, E2E_TONE];
 function isEndToEndRun() {
   return globalThis.__STAVE_E2E__ === true;
@@ -1115,6 +1202,114 @@ function makeFixedKey(runtime, source) {
   return fixedKey(runtime, source);
 }
 __name(makeFixedKey, "makeFixedKey");
+
+// src/keys/chord.ts
+function isMacPlatform() {
+  return typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+}
+__name(isMacPlatform, "isMacPlatform");
+var PUNCTUATION_BY_CODE = {
+  Minus: "-",
+  Equal: "=",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Backslash: "\\",
+  Semicolon: ";",
+  Quote: "'",
+  Comma: ",",
+  Period: ".",
+  Slash: "/",
+  Backquote: "`"
+};
+var BASE_OF_SHIFTED = {
+  "!": "1",
+  "@": "2",
+  "#": "3",
+  "$": "4",
+  "%": "5",
+  "^": "6",
+  "&": "7",
+  "*": "8",
+  "(": "9",
+  ")": "0",
+  _: "-",
+  "{": "[",
+  "}": "]",
+  "|": "\\",
+  ":": ";",
+  '"': "'",
+  "<": ",",
+  ">": ".",
+  "?": "/",
+  "~": "`"
+};
+function tokenForCode(code) {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (code in PUNCTUATION_BY_CODE) return PUNCTUATION_BY_CODE[code];
+  return code.toLowerCase();
+}
+__name(tokenForCode, "tokenForCode");
+var PLAIN_LABEL = /^[\x21-\x7e]$/;
+function isModifierOnlyKey(e) {
+  return ["Control", "Meta", "Shift", "Alt", "AltGraph", "CapsLock", "Fn"].includes(e.key);
+}
+__name(isModifierOnlyKey, "isModifierOnlyKey");
+function keyToken(e, byPosition) {
+  const fromCode = e.code ? tokenForCode(e.code) : "";
+  if (byPosition && fromCode) return fromCode;
+  const key3 = e.key;
+  if (key3 === " ") return "space";
+  if (key3.length === 1) {
+    const codeIsSymbolKey = /^Digit[0-9]$/.test(e.code) || e.code in PUNCTUATION_BY_CODE;
+    if (e.shiftKey && codeIsSymbolKey) return fromCode;
+    if (PLAIN_LABEL.test(key3)) return key3 === "+" ? "plus" : key3.toLowerCase();
+    return fromCode || key3.toLowerCase();
+  }
+  if (key3 === "Dead" || key3 === "Unidentified" || key3 === "") return fromCode || "unidentified";
+  return key3.toLowerCase();
+}
+__name(keyToken, "keyToken");
+function chordFromEvent(e, opts = {}) {
+  const isMac = opts.isMac ?? isMacPlatform();
+  const parts = [];
+  if (isMac) {
+    if (e.metaKey) parts.push("mod");
+    if (e.ctrlKey) parts.push("ctrl");
+  } else if (e.metaKey || e.ctrlKey) {
+    parts.push("mod");
+  }
+  if (e.shiftKey) parts.push("shift");
+  if (e.altKey) parts.push("alt");
+  parts.push(keyToken(e, opts.byPosition ?? false));
+  return parts.join("+");
+}
+__name(chordFromEvent, "chordFromEvent");
+var MODIFIER_ORDER = ["mod", "ctrl", "shift", "alt"];
+function normalizeChord(chord, opts = {}) {
+  const isMac = opts.isMac ?? isMacPlatform();
+  const mods = /* @__PURE__ */ new Set();
+  let key3 = "";
+  for (const raw of chord.toLowerCase().split("+")) {
+    let t = raw;
+    if (t === "cmd" || t === "command" || t === "meta") t = "mod";
+    else if (t === "control") t = isMac ? "ctrl" : "mod";
+    else if (t === "ctrl" && !isMac) t = "mod";
+    else if (t === "option" || t === "opt") t = "alt";
+    if (MODIFIER_ORDER.includes(t)) mods.add(t);
+    else if (t === " " || t === "spacebar") key3 = "space";
+    else if (t === "esc") key3 = "escape";
+    else if (t === "return") key3 = "enter";
+    else key3 = t;
+  }
+  if (mods.has("shift") && key3 in BASE_OF_SHIFTED) key3 = BASE_OF_SHIFTED[key3];
+  return [...MODIFIER_ORDER.filter((m) => mods.has(m)), key3].join("+");
+}
+__name(normalizeChord, "normalizeChord");
+function chordMatches(eventChord, declared2, opts = {}) {
+  return normalizeChord(eventChord, opts) === normalizeChord(declared2, opts);
+}
+__name(chordMatches, "chordMatches");
 
 // src/codeView/chainMethod.ts
 function playingCall(chunk, names) {
@@ -41565,114 +41760,6 @@ function TurnHint({ show }) {
 }
 __name(TurnHint, "TurnHint");
 
-// src/keys/chord.ts
-function isMacPlatform() {
-  return typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
-}
-__name(isMacPlatform, "isMacPlatform");
-var PUNCTUATION_BY_CODE = {
-  Minus: "-",
-  Equal: "=",
-  BracketLeft: "[",
-  BracketRight: "]",
-  Backslash: "\\",
-  Semicolon: ";",
-  Quote: "'",
-  Comma: ",",
-  Period: ".",
-  Slash: "/",
-  Backquote: "`"
-};
-var BASE_OF_SHIFTED = {
-  "!": "1",
-  "@": "2",
-  "#": "3",
-  "$": "4",
-  "%": "5",
-  "^": "6",
-  "&": "7",
-  "*": "8",
-  "(": "9",
-  ")": "0",
-  _: "-",
-  "{": "[",
-  "}": "]",
-  "|": "\\",
-  ":": ";",
-  '"': "'",
-  "<": ",",
-  ">": ".",
-  "?": "/",
-  "~": "`"
-};
-function tokenForCode(code) {
-  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
-  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
-  if (code in PUNCTUATION_BY_CODE) return PUNCTUATION_BY_CODE[code];
-  return code.toLowerCase();
-}
-__name(tokenForCode, "tokenForCode");
-var PLAIN_LABEL = /^[\x21-\x7e]$/;
-function isModifierOnlyKey(e) {
-  return ["Control", "Meta", "Shift", "Alt", "AltGraph", "CapsLock", "Fn"].includes(e.key);
-}
-__name(isModifierOnlyKey, "isModifierOnlyKey");
-function keyToken(e, byPosition) {
-  const fromCode = e.code ? tokenForCode(e.code) : "";
-  if (byPosition && fromCode) return fromCode;
-  const key3 = e.key;
-  if (key3 === " ") return "space";
-  if (key3.length === 1) {
-    const codeIsSymbolKey = /^Digit[0-9]$/.test(e.code) || e.code in PUNCTUATION_BY_CODE;
-    if (e.shiftKey && codeIsSymbolKey) return fromCode;
-    if (PLAIN_LABEL.test(key3)) return key3 === "+" ? "plus" : key3.toLowerCase();
-    return fromCode || key3.toLowerCase();
-  }
-  if (key3 === "Dead" || key3 === "Unidentified" || key3 === "") return fromCode || "unidentified";
-  return key3.toLowerCase();
-}
-__name(keyToken, "keyToken");
-function chordFromEvent(e, opts = {}) {
-  const isMac = opts.isMac ?? isMacPlatform();
-  const parts = [];
-  if (isMac) {
-    if (e.metaKey) parts.push("mod");
-    if (e.ctrlKey) parts.push("ctrl");
-  } else if (e.metaKey || e.ctrlKey) {
-    parts.push("mod");
-  }
-  if (e.shiftKey) parts.push("shift");
-  if (e.altKey) parts.push("alt");
-  parts.push(keyToken(e, opts.byPosition ?? false));
-  return parts.join("+");
-}
-__name(chordFromEvent, "chordFromEvent");
-var MODIFIER_ORDER = ["mod", "ctrl", "shift", "alt"];
-function normalizeChord(chord, opts = {}) {
-  const isMac = opts.isMac ?? isMacPlatform();
-  const mods = /* @__PURE__ */ new Set();
-  let key3 = "";
-  for (const raw of chord.toLowerCase().split("+")) {
-    let t = raw;
-    if (t === "cmd" || t === "command" || t === "meta") t = "mod";
-    else if (t === "control") t = isMac ? "ctrl" : "mod";
-    else if (t === "ctrl" && !isMac) t = "mod";
-    else if (t === "option" || t === "opt") t = "alt";
-    if (MODIFIER_ORDER.includes(t)) mods.add(t);
-    else if (t === " " || t === "spacebar") key3 = "space";
-    else if (t === "esc") key3 = "escape";
-    else if (t === "return") key3 = "enter";
-    else key3 = t;
-  }
-  if (mods.has("shift") && key3 in BASE_OF_SHIFTED) key3 = BASE_OF_SHIFTED[key3];
-  return [...MODIFIER_ORDER.filter((m) => mods.has(m)), key3].join("+");
-}
-__name(normalizeChord, "normalizeChord");
-function chordMatches(eventChord, declared2, opts = {}) {
-  return normalizeChord(eventChord, opts) === normalizeChord(declared2, opts);
-}
-__name(chordMatches, "chordMatches");
-
 // src/visualEdit/panels/gridGestures.ts
 var GRID_SCOPE = {
   pianoRoll: "pianoRoll",
@@ -41881,16 +41968,16 @@ function matchDefaults(scope2, e) {
   return void 0;
 }
 __name(matchDefaults, "matchDefaults");
-var matcher = matchDefaults;
+var matcher2 = matchDefaults;
 function setGridKeyMatcher(fn) {
-  matcher = fn;
+  matcher2 = fn;
   return () => {
-    if (matcher === fn) matcher = matchDefaults;
+    if (matcher2 === fn) matcher2 = matchDefaults;
   };
 }
 __name(setGridKeyMatcher, "setGridKeyMatcher");
 function matchGridKey(scope2, e) {
-  const id = matcher(scope2, e);
+  const id = matcher2(scope2, e);
   return id ? gridGestureAction(scope2, id) : void 0;
 }
 __name(matchGridKey, "matchGridKey");
@@ -58344,6 +58431,7 @@ function isPersistableTab(t) {
 __name(isPersistableTab, "isPersistableTab");
 
 // src/index.ts
+setKeyEventMatcher((event, key3) => chordMatches(chordFromEvent(event), key3));
 function startPageExtensions() {
   return pageExtensions().start({
     report: /* @__PURE__ */ __name((level, message) => emitLog({ level, runtime: "stave", message }), "report")

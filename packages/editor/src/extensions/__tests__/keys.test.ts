@@ -199,6 +199,32 @@ describe('the keys taken in the code', () => {
     expect(rec.host.takesKey('ctrl+r')).toBe(false)
   })
 
+  it('host.keyOf (#2148): the declared key a keystroke is, through the matcher the entry hands in', async () => {
+    const { setKeyEventMatcher } = await import('../keys')
+    const { chordFromEvent, chordMatches } = await import('../../keys/chord')
+    const rec = createCommonHost('zzvim', { manifest: vimLike(), editors: createCodeEditorList() })
+    const press = (init: KeyboardEventInit) => new KeyboardEvent('keydown', init)
+    // no matcher handed in yet: no keystroke is any declared key
+    setKeyEventMatcher(null)
+    expect(rec.host.keyOf(press({ key: 'r', code: 'KeyR', ctrlKey: true }))).toBeNull()
+    // off a Mac, Ctrl+R is the declared `ctrl+r`; on a Mac it is Control+R, and ⌘R is not it
+    setKeyEventMatcher((e, k) => chordMatches(chordFromEvent(e, { isMac: false }), k, { isMac: false }))
+    expect(rec.host.keyOf(press({ key: 'r', code: 'KeyR', ctrlKey: true }))).toBe('ctrl+r')
+    expect(rec.host.keyOf(press({ key: 'z', code: 'KeyZ', ctrlKey: true }))).toBe('ctrl+z')
+    expect(rec.host.keyOf(press({ key: 'r', code: 'KeyR' }))).toBeNull()
+    expect(rec.host.keyOf(press({ key: 'x', code: 'KeyX', ctrlKey: true }))).toBeNull()
+    setKeyEventMatcher((e, k) => chordMatches(chordFromEvent(e, { isMac: true }), k, { isMac: true }))
+    expect(rec.host.keyOf(press({ key: 'r', code: 'KeyR', ctrlKey: true }))).toBe('ctrl+r')
+    expect(rec.host.keyOf(press({ key: 'r', code: 'KeyR', metaKey: true }))).toBeNull()
+    // a matcher that throws is no key, never a throw into the extension
+    setKeyEventMatcher(() => {
+      throw new Error('broken')
+    })
+    expect(rec.host.keyOf(press({ key: 'r', code: 'KeyR', ctrlKey: true }))).toBeNull()
+    setKeyEventMatcher(null)
+    rec.undo()
+  })
+
   // last: a refused save leaves its choice held in this page only
   it('a choice that cannot be saved holds for this page', () => {
     refuse = true

@@ -227,6 +227,40 @@ export function extensionKeys(manifest: ExtensionManifest): ExtensionKeyState[] 
   }))
 }
 
+// ── which declared key a keystroke is ─────────────────────────────────────────────────
+
+/**
+ * Does a keystroke press `key`? Stave's one chord builder (`keys/chord.ts`) answers this,
+ * on the platform the page runs on (`ctrl` is Ctrl off a Mac, Control on one). This
+ * directory does not import it, so the package entry hands it in when it loads
+ * (`setKeyEventMatcher`); until then no keystroke is any declared key.
+ */
+export type KeyEventMatcher = (event: KeyboardEvent, key: string) => boolean
+
+let matcher: KeyEventMatcher | null = null
+
+/** Hand in the chord matcher (the package entry does, as it loads). Null takes it away. */
+export function setKeyEventMatcher(fn: KeyEventMatcher | null): void {
+  matcher = fn
+}
+
+/**
+ * Which of the keys `manifest` declares this keystroke is, spelled as the manifest spells
+ * it, or null when it is none of them (#2148). An extension that answers keys inside the
+ * editor asks this, then `takesKey`, so it can leave a handed-back key alone.
+ */
+export function declaredKeyOf(manifest: ExtensionManifest, event: KeyboardEvent): string | null {
+  if (!matcher) return null
+  for (const k of manifest.provides?.keys ?? []) {
+    try {
+      if (matcher(event, k.key)) return k.key
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 /** A key an active extension takes in the code right now. */
 export interface ExtensionKeyInCode {
   readonly extensionId: string

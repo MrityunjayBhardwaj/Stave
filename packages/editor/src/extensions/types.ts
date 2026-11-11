@@ -183,6 +183,14 @@ export interface ExtensionHost {
    * as they would without the extension.
    */
   takesKey(key: string): boolean
+  /**
+   * Which of this extension's declared keys (`provides.keys`) a keystroke is, spelled as
+   * the manifest spells it, or null when it is none of them (#2148). With `takesKey`,
+   * this is how an extension that answers keys inside the editor leaves a handed-back key
+   * alone: `const k = host.keyOf(e); if (k && !host.takesKey(k)) return`. Matched by
+   * Stave's own chord builder, on the page's platform.
+   */
+  keyOf(event: KeyboardEvent): string | null
 }
 
 /**

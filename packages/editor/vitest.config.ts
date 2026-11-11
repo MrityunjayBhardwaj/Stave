@@ -14,6 +14,14 @@ export default defineConfig({
       '@kabelsalat/web': fileURLToPath(
         new URL('./test/stubs/kabelsalat-web.mjs', import.meta.url),
       ),
+      // #2148 — monaco-vim imports Monaco's ESM build by path; the build points those
+      // imports at the page's Monaco (tsup.config.ts), and so do the tests.
+      'monaco-editor/esm/vs/editor/editor.api': fileURLToPath(
+        new URL('./src/extensions/vim/monacoApi.ts', import.meta.url),
+      ),
+      'monaco-editor/esm/vs/editor/common/commands/shiftCommand': fileURLToPath(
+        new URL('./src/extensions/vim/shiftCommand.ts', import.meta.url),
+      ),
     },
   },
   test: {
@@ -43,7 +51,8 @@ export default defineConfig({
       // them through Node's resolver — Node ignores Vite aliases for
       // transitive imports inside externalised node_modules.
       deps: {
-        inline: [/@strudel\//],
+        // monaco-vim (#2148) too, so its Monaco imports take the aliases above
+        inline: [/@strudel\//, /monaco-vim/],
       },
     },
   },

@@ -22,7 +22,7 @@
  * a missing method. This is listed in `RESIDUE`, so it is stated, not hidden.
  */
 import { pageCodeEditors, type CodeEditorList } from './editors'
-import { isExtensionKeyGivenBack } from './keys'
+import { declaredKeyOf, isExtensionKeyGivenBack } from './keys'
 import type { CodeEditor, EditorCleanup, ExtensionHost, ExtensionManifest, SoundTrigger, StrudelHost, StrudelProvides } from './types'
 
 /** Things a switched-off extension leaves behind, by registration kind. */
@@ -198,6 +198,9 @@ export function createCommonHost(
       },
       takesKey(key) {
         return !closed && !!opts.manifest && !isExtensionKeyGivenBack(opts.manifest, key)
+      },
+      keyOf(event) {
+        return opts.manifest ? declaredKeyOf(opts.manifest, event) : null
       },
     },
     undo() {

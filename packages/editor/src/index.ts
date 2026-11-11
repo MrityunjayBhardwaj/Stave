@@ -1,5 +1,10 @@
-import { pageExtensions } from './extensions'
+import { pageExtensions, setKeyEventMatcher } from './extensions'
 import { emitLog } from './engine/engineLog'
+import { chordFromEvent as chordOfKeystroke, chordMatches as chordIsKey } from './keys/chord'
+
+// #2148 — extensions match a keystroke against the keys they declare with Stave's one chord
+// builder; the extensions directory does not import it, so it is handed in here.
+setKeyEventMatcher((event, key) => chordIsKey(chordOfKeystroke(event), key))
 
 // Pattern IR — universal music representation
 export type { IREvent, SourceLocation, IRPattern } from './codeView'
