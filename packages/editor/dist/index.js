@@ -20474,7 +20474,7 @@ function minFrameMs() {
 }
 __name(minFrameMs, "minFrameMs");
 function kindReadsRawScheduler(kind) {
-  return kind === "p5" || kind === "hydra";
+  return kind === "p5" || kind === "hydra" || kind === "three";
 }
 __name(kindReadsRawScheduler, "kindReadsRawScheduler");
 var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
@@ -32888,6 +32888,7 @@ var P5_GLOBALS = [
 var THREE_GLOBALS = [
   { group: G_CONTEXT, decl: "object            stave.options;", comment: "the .viz({ ... }) argument", tokens: ["options"] },
   { group: G_CONTEXT, decl: "number            stave.width, stave.height;", comment: "the viz size (also innerWidth / innerHeight)", tokens: ["width", "height"] },
+  { group: G_CONTEXT, decl: "PatternScheduler  stave.scheduler;", comment: ".now(), .query(begin, end) \u2014 the notes around now (#2570)", tokens: ["scheduler"] },
   ...P5_GLOBALS.filter((g) => g.group !== G_CONTEXT)
 ];
 var HYDRA_GLOBALS = [
@@ -53571,6 +53572,9 @@ function runThreeSketch(compiled, loaded, host) {
     get options() {
       return host.options();
     },
+    get scheduler() {
+      return host.scheduler();
+    },
     get sig() {
       return host.uniforms().sig;
     }
@@ -53782,6 +53786,8 @@ var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
     this.paused = false;
     this.destroyed = false;
     this.size = { w: 400, h: 300 };
+    /** The live scheduler, for the sketch's `stave.scheduler` (#2570). */
+    this.scheduler = null;
     this.perfId = `three#${++threePerfSeq}`;
     this.bus = new SignalBus();
     this.hapStream = null;
@@ -53810,6 +53816,7 @@ var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
   onMount(container, components, size, onError) {
     perf.gauge("viz.three", 1);
     this.size = { w: size.w, h: size.h };
+    this.scheduler = components.queryable?.scheduler ?? null;
     this.bus?.bindScheduler(components.queryable?.scheduler, components.queryable?.trackSchedulers);
     this.bus?.bindAnalysers(components.audio?.analyser, components.audio?.trackAnalysers);
     this.bus?.setAliases(currentVizSignalAliases());
@@ -53856,6 +53863,9 @@ var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
       dpr: effectiveDpr,
       uniforms: /* @__PURE__ */ __name(() => this.uniforms, "uniforms"),
       options: /* @__PURE__ */ __name(() => this.optionsRef.current ?? {}, "options"),
+      // #2570 — on the main thread the sketch queries the live scheduler itself,
+      // over only the window it asks for (as P5VizRenderer's sketches do).
+      scheduler: /* @__PURE__ */ __name(() => this.scheduler, "scheduler"),
       createCanvas: /* @__PURE__ */ __name(() => document.createElement("canvas"), "createCanvas"),
       // The core places each problem on its line; runtime and file come from here.
       report: /* @__PURE__ */ __name((entry) => emitLog({ ...entry, runtime: "three", source: this.name || void 0 }), "report")
@@ -53871,6 +53881,7 @@ var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
     }
   }
   onUpdate(components) {
+    this.scheduler = components.queryable?.scheduler ?? null;
     this.bus?.bindScheduler(components.queryable?.scheduler ?? null, components.queryable?.trackSchedulers);
     this.bus?.bindAnalysers(components.audio?.analyser ?? null, components.audio?.trackAnalysers);
   }

@@ -325,7 +325,7 @@ export function hostVizWorker(scope: WorkerScope): void {
         : msg.kind === 'glsl'
           ? mountGLSL(msg, rawAnalyser, feed)
           : msg.kind === 'three'
-            ? await mountThree(msg, feed, containerSizeRef, dpr)
+            ? await mountThree(msg, feed, rawScheduler, containerSizeRef, dpr)
             : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr)
 
     const reader = createPostMessageReader(scope as any)
@@ -718,6 +718,7 @@ export function hostVizWorker(scope: WorkerScope): void {
   async function mountThree(
     msg: MountMessage,
     feed: WorkerBusFeed,
+    rawScheduler: RawSchedulerShim,
     containerSizeRef: { current: { w: number; h: number } },
     dpr: number,
   ): Promise<RendererStrategy> {
@@ -746,6 +747,9 @@ export function hostVizWorker(scope: WorkerScope): void {
       dpr: () => currentDpr,
       uniforms: () => uniforms,
       options: () => optionsRef.current,
+      // #2570 — the same pre-queried window p5's `stave.scheduler` reads,
+      // refreshed from each frame's `rawScheduler` before the draw.
+      scheduler: () => rawScheduler,
       createCanvas: () => new OffscreenCanvas(1, 1),
       report: (entry) => {
         if (entry.level === 'error' && !drawn) return

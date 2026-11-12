@@ -70,6 +70,7 @@ function makeHost(over: Partial<ThreeSketchHost> = {}) {
     dpr: () => 2,
     uniforms: () => uniforms,
     options: () => ({ hue: 0.3 }),
+    scheduler: () => null,
     createCanvas: () => document.createElement('canvas'),
     report: (e) => reports.push(e),
     ...over,
@@ -185,6 +186,31 @@ describe('runThreeSketch', () => {
       }
     `)
     expect((globalThis as Record<string, any>).__out).toEqual({ bass: 0.5, hue: 0.3, w: 320, h: 200, iw: 320, ih: 200, dpr: 2 })
+  })
+
+  it('exposes stave.scheduler: now() and query() over the notes around now (#2570)', async () => {
+    const notes = [
+      { begin: 10, end: 10.5, note: 'c4' },
+      { begin: 11, end: 11.25, note: 'e4' },
+      { begin: 13, end: 13.5, note: 'g4' },
+    ]
+    const scheduler = {
+      now: () => 10.2,
+      query: (a: number, b: number) => notes.filter((n) => n.begin < b && n.end > a),
+    }
+    await start(
+      `
+      const now = stave.scheduler.now()
+      globalThis.__out = { now, ahead: stave.scheduler.query(now, now + 2).map((h) => h.note) }
+    `,
+      { scheduler: () => scheduler as never },
+    )
+    expect((globalThis as Record<string, any>).__out).toEqual({ now: 10.2, ahead: ['c4', 'e4'] })
+  })
+
+  it('stave.scheduler is null until there is a scheduler (#2570)', async () => {
+    await start(`globalThis.__out = { s: stave.scheduler }`)
+    expect((globalThis as Record<string, any>).__out).toEqual({ s: null })
   })
 
   it('fires resize listeners with the new size', async () => {

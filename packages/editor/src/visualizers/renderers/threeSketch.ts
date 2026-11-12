@@ -3,8 +3,9 @@
  *
  * A `.three` file is an ordinary three.js script, the kind a tutorial or the
  * official examples hold, pasted unchanged. There is no Stave dialect: Stave adds
- * only `sig`, `stave.options` and `stave.width` / `stave.height`, the same names
- * p5 sketches get. Everything else a sketch reaches for in a browser page is
+ * only `sig`, `stave.options`, `stave.width` / `stave.height` and
+ * `stave.scheduler` (#2570: `.now()` and `.query(begin, end)` over the notes
+ * around now, the same as p5's), the same names p5 sketches get. Everything else a sketch reaches for in a browser page is
  * mapped onto the viz underneath:
  *
  *   | the sketch does                         | Stave makes it                          |
@@ -36,6 +37,7 @@ import { parseModule } from '../../codeView'
 import { VizSyntaxError } from '../vizSyntaxError'
 import { parseStackLocation } from '../../engine/friendlyErrors'
 import type { StaveUniforms } from '../p5Compiler'
+import type { IRPattern } from '../../codeView'
 
 // ── the bundled modules ──────────────────────────────────────────────────────
 
@@ -257,6 +259,10 @@ export interface ThreeSketchHost {
   dpr(): number
   uniforms(): StaveUniforms
   options(): Record<string, unknown>
+  /** `stave.scheduler` (#2570): the worker's pre-queried window (now−4 … now+2
+   *  cycles) or, on the main-thread fallback, the live scheduler. Null before
+   *  the first evaluate. */
+  scheduler(): IRPattern | null
   /** A fresh canvas for `document.createElement('canvas')` (canvas textures). */
   createCanvas(): HTMLCanvasElement | OffscreenCanvas
   /** A problem in the sketch, located in the user's file when the stack allows. */
@@ -445,6 +451,9 @@ export function runThreeSketch(
     },
     get options() {
       return host.options()
+    },
+    get scheduler() {
+      return host.scheduler()
     },
     get sig() {
       return host.uniforms().sig

@@ -9557,8 +9557,9 @@ declare class VizSyntaxError extends Error {
  *
  * A `.three` file is an ordinary three.js script, the kind a tutorial or the
  * official examples hold, pasted unchanged. There is no Stave dialect: Stave adds
- * only `sig`, `stave.options` and `stave.width` / `stave.height`, the same names
- * p5 sketches get. Everything else a sketch reaches for in a browser page is
+ * only `sig`, `stave.options`, `stave.width` / `stave.height` and
+ * `stave.scheduler` (#2570: `.now()` and `.query(begin, end)` over the notes
+ * around now, the same as p5's), the same names p5 sketches get. Everything else a sketch reaches for in a browser page is
  * mapped onto the viz underneath:
  *
  *   | the sketch does                         | Stave makes it                          |

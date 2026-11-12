@@ -56,10 +56,10 @@ describe('MainSignalSampler raw-scheduler query (#2561)', () => {
     expect(wide(windows)).toHaveLength(1)
   })
 
-  it('only p5 and hydra are handed stave.scheduler', () => {
+  it('p5, hydra and three.js (#2570) are handed stave.scheduler; GLSL is not', () => {
     expect(kindReadsRawScheduler('p5')).toBe(true)
     expect(kindReadsRawScheduler('hydra')).toBe(true)
-    expect(kindReadsRawScheduler('three')).toBe(false)
+    expect(kindReadsRawScheduler('three')).toBe(true)
     expect(kindReadsRawScheduler('glsl')).toBe(false)
   })
 })
