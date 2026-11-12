@@ -49,7 +49,9 @@ import {
   refreshStrudelLintMarkers,
   clearStrudelLintMarkers,
 } from '../monaco/diagnostics'
-import { addInlineViewZones } from '../visualizers/viewZones'
+import { addInlineViewZones, inlineRenderSizeFor } from '../visualizers/viewZones'
+import { warmInlineViz, releaseWarmInlineViz } from '../visualizers/inlineVizWarmup'
+import { readInlineVizNames } from '../codeView/mixer/inlineVizCalls'
 import { onNamedVizChanged } from '../visualizers/namedVizRegistry'
 import { getFile, subscribeToZoneOverrides } from './WorkspaceFile'
 import {
@@ -114,6 +116,9 @@ const MONACO_OPTIONS = {
   cursorSmoothCaretAnimation: 'on' as const,
 }
 
+/** #2560 — how long the code must settle before its inline sketches warm up. */
+const INLINE_WARM_DEBOUNCE_MS = 400
+
 export function EditorView({
   fileId,
   theme = 'dark',
@@ -174,6 +179,11 @@ export function EditorView({
 
   // HapStream from the bus payload — drives useHighlighting.
   const [hapStream, setHapStream] = useState<HapStream | null>(null)
+  // #2560 — whether this file's runtime is publishing (playing). Inline sketches
+  // warm up only while it is not; while it plays, the zones hold the real ones.
+  const [busLive, setBusLive] = useState(false)
+  // #2560 — bumped when a named viz is (re)registered, so the warm set follows.
+  const [vizRegistryTick, setVizRegistryTick] = useState(0)
 
   // Phase 20-07 — BreakpointStore + onResume from the bus payload —
   // drives useBreakpoints. Both null when no engine is publishing.
@@ -244,6 +254,7 @@ export function EditorView({
       (payload: AudioPayload | null) => {
         // Drive highlighting via hapStream state.
         setHapStream(payload?.hapStream ?? null)
+        setBusLive(payload !== null)
         // Phase 20-07 — drive breakpoint UI via the same bus subscription.
         setBreakpointStore(payload?.breakpointStore ?? null)
         // useState's functional setter would invoke the callback; wrap to
@@ -268,6 +279,9 @@ export function EditorView({
             fileId,
           )
           viewZoneHandleRef.current?.resume()
+          // #2560 — the zones adopted the warm sketches they needed; any left
+          // over were warmed for code that is not what played.
+          releaseWarmInlineViz(fileId)
         } else if (payload === null) {
           // Runtime stopped — PK3: pause, NOT cleanup. Zones stay visible
           // but frozen so the user sees the last frame.
@@ -280,6 +294,7 @@ export function EditorView({
           // with nothing in the code asking for them.)
           viewZoneHandleRef.current?.cleanup()
           viewZoneHandleRef.current = null
+          releaseWarmInlineViz(fileId) // #2560 — nothing played needs them
         }
 
         // #345 — each evaluation's sliders replace the last; a stop (null) keeps
@@ -329,7 +344,10 @@ export function EditorView({
       )
       viewZoneHandleRef.current?.resume()
     }
-    const unsubViz = onNamedVizChanged(remount)
+    const unsubViz = onNamedVizChanged(() => {
+      remount()
+      setVizRegistryTick((n) => n + 1) // #2560 — re-resolve the warm set
+    })
     // Per-zone crop overrides live on the file's Y.Map — remount when any
     // override for this file changes so the zone picks up the new crop.
     const unsubOverrides = subscribeToZoneOverrides(fileId, remount)
@@ -337,6 +355,29 @@ export function EditorView({
       unsubViz()
       unsubOverrides()
     }
+  }, [fileId])
+
+  // ----------------------------------------------------------------
+  // #2560 — warm up the inline sketches the code asks for, hidden, before Play.
+  // While stopped, a moment after the code settles (and when a named viz is
+  // registered), read the inline `.viz()` names statically and make the warm set
+  // match; Play's zones then adopt them instead of building from scratch. Only a
+  // Strudel file, only while not playing; the warm set is let go on unmount.
+  // ----------------------------------------------------------------
+  const warmCode = viewedContent ?? file?.content ?? null
+  const warmLanguage = file?.language
+  useEffect(() => {
+    if (!fileId || busLive || warmLanguage !== 'strudel' || warmCode === null) return
+    const timer = setTimeout(() => {
+      const names = readInlineVizNames(warmCode)
+      if (names === null) return // mid-keystroke: keep what is warm
+      warmInlineViz(fileId, names, DEFAULT_VIZ_DESCRIPTORS, inlineRenderSizeFor)
+    }, INLINE_WARM_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [fileId, busLive, warmLanguage, warmCode, vizRegistryTick])
+  useEffect(() => {
+    if (!fileId) return
+    return () => releaseWarmInlineViz(fileId)
   }, [fileId])
 
   // Active highlighting (S5) — driven by hapStream from bus subscription.

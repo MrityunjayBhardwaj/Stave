@@ -278,6 +278,13 @@ export interface ThreeSketchRun {
   frame(timeMs: number): void
   /** True once the sketch has a loop, a queued frame, or has finished its top level. */
   ready(): boolean
+  /** #2560 — settles once the sketch has LOADED: its top level finished and no
+   *  three.js loader item is still in flight (`DefaultLoadingManager`). A model
+   *  or HDRI loaded with a callback (`new GLTFLoader().load(url, cb)`) keeps it
+   *  open until the callback has run, so the work the callback does (building
+   *  meshes from the model) is part of the load. Never rejects; settles at once
+   *  after `dispose`. */
+  whenLoaded(): Promise<void>
   /** Did the last `frame` render (a `renderer.render`, directly or via a composer)? */
   rendered(): boolean
   /** The host changed size: fire the sketch's `resize` listeners, or resize its
@@ -307,6 +314,39 @@ function errorOf(e: unknown): Error {
   return e instanceof Error ? e : new Error(String(e))
 }
 
+/** Loader items in flight per `LoadingManager` (#2560). Counted by wrapping the
+ *  manager's own `itemStart` / `itemEnd` (instance properties, LoadingManager.js:86,
+ *  :110), once per manager; three calls `itemEnd` after `itemError` too, so the
+ *  pair always balances. A worker hosts one sketch, so there the count is that
+ *  sketch's; sketches sharing the main thread share it, and one then waits for
+ *  the other's loads too (the main thread is the fallback path). */
+interface LoadTracker {
+  pending: number
+  readonly idle: Set<() => void>
+}
+const loadTrackers = new WeakMap<object, LoadTracker>()
+
+function trackLoads(manager: any): LoadTracker | null {
+  if (!manager || typeof manager.itemStart !== 'function' || typeof manager.itemEnd !== 'function') return null
+  const known = loadTrackers.get(manager)
+  if (known) return known
+  const t: LoadTracker = { pending: 0, idle: new Set() }
+  const start = manager.itemStart
+  const end = manager.itemEnd
+  manager.itemStart = function (this: unknown, url: string) {
+    t.pending++
+    return start.call(this, url)
+  }
+  manager.itemEnd = function (this: unknown, url: string) {
+    if (t.pending > 0) t.pending--
+    const r = end.call(this, url)
+    if (t.pending === 0) for (const fn of [...t.idle]) fn()
+    return r
+  }
+  loadTrackers.set(manager, t)
+  return t
+}
+
 /**
  * Start a compiled sketch against `host`. The sketch's top level runs now (it is
  * async, so it may `await` loaders); frames run when the host calls `frame`.
@@ -317,6 +357,8 @@ export function runThreeSketch(
   host: ThreeSketchHost,
 ): ThreeSketchRun {
   const BaseRenderer = loaded.THREE.WebGLRenderer
+  // Before the top level runs, so the loads it starts are counted (#2560).
+  const loads = trackLoads(loaded.THREE.DefaultLoadingManager)
   let disposed = false
   let topLevelDone = false
   let renderedThisFrame = false
@@ -575,8 +617,41 @@ export function runThreeSketch(
     done = Promise.resolve({ error: err })
   }
 
+  // #2560 — loaded = the top level finished AND no loader item is in flight.
+  // When the count reaches zero it is read again a task later: a load callback
+  // that starts the next load from a timer or a promise is not yet done.
+  let loadedPromise: Promise<void> | null = null
+  const whenLoadedOnce = (): Promise<void> => {
+    if (loadedPromise) return loadedPromise
+    loadedPromise = done.then(
+      () =>
+        new Promise<void>((resolve) => {
+          const idle = (): boolean => disposed || !loads || loads.pending === 0
+          const check = (): void => {
+            if (!idle()) return
+            setTimeout(() => {
+              if (!idle()) return
+              loads?.idle.delete(check)
+              resolve()
+            }, 0)
+          }
+          loads?.idle.add(check)
+          check()
+        }),
+    )
+    return loadedPromise
+  }
+  const settleOnDispose: Array<() => void> = []
+
   return {
     done,
+    whenLoaded: () =>
+      disposed
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            settleOnDispose.push(resolve)
+            void whenLoadedOnce().then(resolve)
+          }),
     ready: () => topLevelDone || loops.size > 0 || rafQueue.size > 0,
     rendered: () => renderedThisFrame,
     frame(timeMs: number) {
@@ -631,6 +706,7 @@ export function runThreeSketch(
     dispose() {
       if (disposed) return
       disposed = true
+      for (const fn of settleOnDispose.splice(0)) fn()
       loops.clear()
       rafQueue.clear()
       resizeListeners.clear()

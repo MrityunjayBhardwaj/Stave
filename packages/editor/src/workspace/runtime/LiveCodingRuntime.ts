@@ -115,6 +115,7 @@ import {
   type LoopRange,
 } from '../../engine/transportFrame'
 import { workspaceAudioBus } from '../WorkspaceAudioBus'
+import { waitForPatternViz, PLAY_VIZ_WAIT_CAP_MS } from '../../visualizers/vizLoadGate'
 import { countStemTracks, stemFileNames } from '../../visualEdit/mixer/stemNames'
 import type {
   AudioPayload,
@@ -251,6 +252,8 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   /** #2259 — a Play was asked for and the clock hasn't started yet (see `play`). */
   private playPendingState = false
   private readonly playPendingListeners = new Set<(pending: boolean) => void>()
+  /** #2560 — ends a Play's wait for the pattern's sketches early (Stop). */
+  private cancelVizWait: (() => void) | null = null
   private readonly evaluateSuccessListeners = new Set<(code: string) => void>()
 
   /**
@@ -510,6 +513,10 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     // that asked for Play, which is the only moment some browsers let audio start.
     this.engine.unlockAudio?.()
 
+    // #2560 — a Play that starts the transport (not a re-evaluate of a running
+    // one) waits for the pattern's sketches at step 7a.
+    const fromStop = !this.isPlayingState
+
     // Supersede any earlier in-flight play() and record our generation. After
     // each await below we compare against this — if a stop() or a newer play()
     // bumped the counter in the meantime, we abort before starting the
@@ -617,6 +624,25 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
 
     // Step 7 — publish to the bus BEFORE play. Subscribers fire SYNC.
     workspaceAudioBus.publish(this.fileId, payload)
+
+    // Step 7a — #2560: the publish above built the inline zones (adopting the
+    // sketches warmed up before Play) and the background is already mounted. If
+    // one of them is still loading, hold the music until it is ready — at most
+    // PLAY_VIZ_WAIT_CAP_MS, so a sketch that never loads cannot hold it longer —
+    // so the song does not start under a frozen picture. Play is pending all the
+    // while (the transport says "Loading visuals…"). Only from a stopped
+    // transport: a re-evaluate of a running song never waits. A Stop ends the
+    // wait; stop() has already unpublished, so the supersession gate returns.
+    if (fromStop) {
+      const cancelled = new Promise<void>((resolve) => {
+        this.cancelVizWait = resolve
+      })
+      await waitForPatternViz(PLAY_VIZ_WAIT_CAP_MS, cancelled)
+      this.cancelVizWait = null
+      if (superseded()) {
+        return { error: null }
+      }
+    }
 
     // Step 8 — start the engine.
     try {
@@ -953,6 +979,9 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     // restarting the scheduler we're about to stop (#811). Bump first, before
     // any early-return, so the guard can't be skipped.
     this.playGeneration++
+    // #2560 — a Play waiting for its sketches stops waiting now.
+    this.cancelVizWait?.()
+    this.cancelVizWait = null
     if (this.isDisposed) return
     // #2259 — a Stop while Play is pending cancels that Play; the wait is over too.
     this.setPlayPending(false)

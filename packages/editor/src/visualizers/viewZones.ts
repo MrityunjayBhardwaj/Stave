@@ -9,6 +9,8 @@ import { VizPresetStore, type CropRegion, type VizPreset } from './vizPreset'
 import { getZoneCropOverride, getZoneHeightOverride, setZoneHeightOverride, pruneZoneOverrides } from '../workspace/WorkspaceFile'
 import { getInlineVizResolution, getInlineVizTeardownMs } from '../workspace/editorRegistry'
 import { TeardownOnPauseRenderer } from './renderers/TeardownOnPauseRenderer'
+import { takeWarmInlineViz } from './inlineVizWarmup'
+import { trackPatternVizLoad } from './vizLoadGate'
 
 export interface InlineZoneHandle {
   cleanup(): void
@@ -67,6 +69,13 @@ const MAX_RENDER_WIDTH = 4096
  * is what guarantees "all current behaviours just work": render aspect == display
  * aspect → uniform stretch, no distortion.
  */
+/** #2560 — the size an inline zone mounts this descriptor's renderer at, for
+ *  the pre-Play warm-up (`inlineVizWarmup`), which must build it exactly as the
+ *  zone would. */
+export function inlineRenderSizeFor(descriptor: VizDescriptor): { w: number; h: number } {
+  return renderSizeFor(descriptor.nativeSize ?? DEFAULT_NATIVE)
+}
+
 function renderSizeFor(native: { w: number; h: number }): { w: number; h: number } {
   const n = getInlineVizResolution()
   const aspect = native.h > 0 ? native.w / native.h : 1
@@ -494,7 +503,11 @@ export function addInlineViewZones(
       const layout = layoutForIntent(contentW, native, crop, initHOverride)
       const initH = layout.zoneH
 
-      const container = document.createElement('div')
+      // #2560 — a sketch warmed up before Play: its container (and the renderer
+      // mounted in it) becomes this zone's node. Otherwise build it now, as before.
+      const warm = fileId ? takeWarmInlineViz(fileId, descriptor) : null
+      const container = warm?.container ?? document.createElement('div')
+      container.removeAttribute('data-viz-warm')
       container.setAttribute('data-viz-zone', '')
       container.setAttribute('data-viz-zone-track', trackKey)
       container.setAttribute('data-viz-zone-id', vizId)
@@ -526,24 +539,37 @@ export function addInlineViewZones(
       // after `entry` exists (it reads the zone's current native/crop/height).
       let relayout: () => void = () => {}
       const teardownMs = getInlineVizTeardownMs()
-      const renderer: VizRenderer = teardownMs > 0
-        ? new TeardownOnPauseRenderer(makeInner, {
-            // Drop the now-empty crop wrapper so reinit re-wraps the fresh canvas
-            // (applyLayout only creates+fills the wrapper when none exists).
-            onAfterTeardown: () => container.querySelector('[data-viz-canvas-wrap]')?.remove(),
-            onAfterReinit: () => relayout(),
-          })
-        : makeInner()
+      let renderer: VizRenderer
+      if (teardownMs > 0) {
+        const wrapper = new TeardownOnPauseRenderer(makeInner, {
+          // Drop the now-empty crop wrapper so reinit re-wraps the fresh canvas
+          // (applyLayout only creates+fills the wrapper when none exists).
+          onAfterTeardown: () => container.querySelector('[data-viz-canvas-wrap]')?.remove(),
+          onAfterReinit: () => relayout(),
+        })
+        if (warm) wrapper.adoptMounted(warm.renderer, container, zoneComponents, renderSize, console.error)
+        renderer = wrapper
+      } else {
+        renderer = warm?.renderer ?? makeInner()
+      }
       renderers.push(renderer)
       // Shared per-mount lifecycle (#260): mount + visibility pausing via the one
       // choke point. `onMountError` keeps the prior inline behaviour — log + carry
       // on (one bad zone must not abort the others) and still wire visibility.
+      // A warm renderer is already mounted: it gets the live components instead.
       visibilityCleanups.push(
         attachVizLifecycle(renderer, container, zoneComponents, renderSize, console.error, {
           teardownMs,
           onMountError: (e) => console.error('[stave] viz mount failed:', e),
+          adopted: warm !== null,
         }),
       )
+      if (warm && (warm.renderSize.w !== renderSize.w || warm.renderSize.h !== renderSize.h)) {
+        // the resolution setting moved since the warm-up
+        renderer.resize(renderSize.w, renderSize.h)
+      }
+      // #2560 — Play waits (capped) for this sketch to finish loading.
+      trackPatternVizLoad(renderer)
 
       // The renderer may create the canvas asynchronously (p5 defers
       // to rAF). Apply layout now if the canvas is already present,

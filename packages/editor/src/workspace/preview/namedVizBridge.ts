@@ -25,6 +25,7 @@ import {
   unregisterNamedViz,
 } from '../../visualizers/namedVizRegistry'
 import type { VizPreset } from '../../visualizers/vizPreset'
+import { setVizDescriptorSource } from '../../visualizers/inlineVizWarmup'
 
 /**
  * Compile a preset into a `VizDescriptor` and register it in the
@@ -58,6 +59,12 @@ export function registerPresetAsNamedViz(
 ): boolean {
   try {
     const descriptor = compilePreset(preset)
+    // #2560 — what it was built from, so a re-registration of the SAME code
+    // (a re-run of the registration sweep) keeps its warm inline renderer.
+    setVizDescriptorSource(
+      descriptor,
+      JSON.stringify([preset.renderer, preset.code, preset.filePath ?? null, preset.nativeSize ?? null]),
+    )
     registerNamedViz(name, descriptor)
     return true
   } catch {

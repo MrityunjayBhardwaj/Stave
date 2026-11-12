@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
-import { perf } from "@stave/editor";
+import React, { useEffect, useRef, useSyncExternalStore } from "react";
+import { perf, isWaitingForVisuals, onWaitingForVisualsChanged } from "@stave/editor";
 import { useRulerUnits, toggleRulerUnits } from "../state/rulerUnits";
 import { useDisplayMeter } from "../state/displayMeter";
 import { healthClass, healthBars, audioHealthReading, type AudioHealthSample } from "./transportLcdHealth";
@@ -150,6 +150,10 @@ export function TransportLCD({
 }: TransportLCDProps): React.ReactElement {
   const loading = !isPlaying && isPlayPending;
   const state = isPlaying ? "PLAY" : loading ? "LOAD" : "STOP";
+  // #2560 — Play is holding the music (capped) while the pattern's sketches load:
+  // say so in words, so the wait is never a silent stall.
+  const waitingForVisuals = useSyncExternalStore(onWaitingForVisualsChanged, isWaitingForVisuals, () => false);
+  const loadingVisuals = loading && waitingForVisuals;
   const units = useRulerUnits();
   const cycleMode = units === "cycles";
   const meter = useDisplayMeter();
@@ -341,6 +345,11 @@ export function TransportLCD({
           {state}
         </span>
       </div>
+      {loadingVisuals && (
+        <div className="stave-lcd-seg" data-stave-loading-visuals role="status" title="The music starts as soon as the visuals are ready (at most 20 s)">
+          <span className="stave-lcd-label">Loading visuals…</span>
+        </div>
+      )}
       <div className="stave-lcd-seg">
         <span className="stave-lcd-label">{cycleMode ? "CYC" : "BAR"}</span>
         <span className="stave-lcd-readout">

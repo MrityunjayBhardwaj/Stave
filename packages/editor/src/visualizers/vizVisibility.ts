@@ -18,7 +18,8 @@
  * the pre-Phase-C behaviour.
  *
  * REF: #258 (Phase C), VizRenderer.pause/resume, WorkerVizRenderer.pause (stops
- *      main rAF + worker), FallbackVizRenderer (pause suspends probation), PK24.
+ *      main rAF + worker), FallbackVizRenderer (its probation waits for `alive`,
+ *      which needs no frame, so pausing does not affect it — #2560), PK24.
  */
 import type { VizRenderer } from './types'
 

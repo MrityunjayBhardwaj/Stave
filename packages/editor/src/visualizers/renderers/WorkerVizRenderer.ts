@@ -54,6 +54,8 @@ import type {
   MountMessage,
   WorkerDiagMessage,
   WorkerReadyMessage,
+  WorkerAliveMessage,
+  WorkerLoadedMessage,
   WorkerFrameAckMessage,
   WorkerVizLogMessage,
 } from '../worker/workerMessages'
@@ -164,6 +166,17 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
   /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
    *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
   private onReady: (() => void) | null = null
+  /** #2560 — fired once when the worker took the mount (`alive`). The
+   *  `FallbackVizRenderer` ends its startup probation here: alive, not loaded. */
+  private onAlive: (() => void) | null = null
+  /** #2560 — this mount is a hidden warm-up (see `markWarmUp`). */
+  private warm = false
+  /** #2560 — settles on the worker's `loaded`, on destroy, or when the mount
+   *  failed (nothing will ever load). */
+  private settleLoaded: () => void = () => {}
+  private readonly loaded = new Promise<void>((resolve) => {
+    this.settleLoaded = resolve
+  })
   /** Unsubscribe from vizConfig changes — re-marshals the worker subset on a
    *  quality/LOD change (#269). Cleared in destroy() so a torn-down renderer
    *  doesn't post to a terminated worker. */
@@ -197,10 +210,27 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
   }
 
   /** Register a callback fired once when the worker reports its first successful
-   *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
-   *  must be set BEFORE `mount`. */
+   *  frame (`ready`). Used by `FallbackVizRenderer` to mark the worker healthy (a
+   *  later error is then the sketch's, not a reason to fall back); must be set
+   *  BEFORE `mount`. */
   whenReady(cb: () => void): void {
     this.onReady = cb
+  }
+
+  /** #2560 — register a callback fired once when the worker reports it took the
+   *  mount (`alive`). Must be set BEFORE `mount`. */
+  whenAlive(cb: () => void): void {
+    this.onAlive = cb
+  }
+
+  /** #2560 — see `VizRenderer.whenLoaded`. */
+  whenLoaded(): Promise<void> {
+    return this.loaded
+  }
+
+  /** #2560 — see `VizRenderer.markWarmUp`. Rides on the mount message. */
+  markWarmUp(): void {
+    this.warm = true
   }
 
   /** Drive this renderer from a muted DEMO signal feed instead of the live
@@ -222,6 +252,7 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
 
     const make = getVizWorkerFactory()
     if (!make) {
+      this.settleLoaded() // nothing will ever load here
       onError(new Error('WorkerVizRenderer: no viz-worker factory registered'))
       return
     }
@@ -254,10 +285,22 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
         const d = ev.data as
           | WorkerDiagMessage
           | WorkerReadyMessage
+          | WorkerAliveMessage
+          | WorkerLoadedMessage
           | WorkerFrameAckMessage
           | WorkerVizLogMessage
           | undefined
         if (!d) return
+        if (d.type === 'alive') {
+          // #2560 — the thread took the mount; the probation ends here.
+          this.onAlive?.()
+          return
+        }
+        if (d.type === 'loaded') {
+          // #2560 — the sketch finished setting up; Play may stop waiting for it.
+          this.settleLoaded()
+          return
+        }
         if (d.type === 'frameAck') {
           // The worker consumed a frame — free a slot in the bounded pipeline (#261).
           if (this.inFlight > 0) this.inFlight--
@@ -278,8 +321,8 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
           return
         }
         if (d.type === 'ready') {
-          // First successful worker frame — end the fallback probation (#247) and
-          // mark the worker HEALTHY so destroy() may pool it (#263 A). A worker
+          // First successful worker frame — the worker is HEALTHY (#247: errors
+          // from here on are the sketch's) and destroy() may pool it (#263 A). A worker
           // that never reaches ready (broken/fallback path) is NEVER pooled — else
           // the next acquire would reuse a broken worker and fail again.
           this.ready = true
@@ -326,6 +369,8 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
         // #875 — the sketch's `stave.options`. The main-thread renderer hands the
         // bag straight to the compiler; the worker can only get it by value.
         options: mountOptions,
+        // #2560 — a hidden pre-Play warm-up: draw one frame once loaded.
+        ...(this.warm ? { warm: true } : {}),
       }
       this.lastOptionsKey = stableKey(mountOptions)
       worker.postMessage(mountMsg, [offscreen])
@@ -338,6 +383,7 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
 
       this.start()
     } catch (e) {
+      this.settleLoaded() // the mount failed: nothing will load
       onError(e as Error)
     }
   }
@@ -413,6 +459,7 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
   }
 
   destroy(): void {
+    this.settleLoaded() // a destroyed sketch is not worth waiting for
     perf.gauge('viz.worker', -1)
     if (this.glAccounted) {
       perf.gauge('viz.glctx', -1) // #266 — releases the WebGL-context slot count
