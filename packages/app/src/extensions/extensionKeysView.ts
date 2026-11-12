@@ -13,6 +13,8 @@
  */
 import {
   chordMatches,
+  isMacPlatform,
+  normalizeChord,
   extensionKeys,
   setExtensionKeyGivenBack,
   type ExtensionKeyInCode,
@@ -98,14 +100,23 @@ export interface ExtensionKeyRow extends ExtensionKeyState {
   readonly staveCommands: readonly string[];
 }
 
+/** Which platform to read chords for; the page's own by default (tests pass one). */
+export interface PlatformOpts {
+  readonly isMac?: boolean;
+}
+
 /** Every key the extension declares, handed back or not, with the Stave commands that share it. */
-export function extensionKeyRows(m: ExtensionManifest, commands: readonly CommandKeys[]): ExtensionKeyRow[] {
+export function extensionKeyRows(
+  m: ExtensionManifest,
+  commands: readonly CommandKeys[],
+  opts: PlatformOpts = {},
+): ExtensionKeyRow[] {
   return extensionKeys(m).map((k) => ({
     ...k,
     extensionId: m.id,
     extensionName: m.name,
     source: extensionSource(m.id),
-    staveCommands: commands.filter((c) => reachesCode(c) && c.chords.some((ch) => chordMatches(ch, k.key))).map((c) => c.title),
+    staveCommands: commands.filter((c) => sharesKeyInCode(c, k.key, opts)).map((c) => c.title),
   }));
 }
 
@@ -119,12 +130,29 @@ export function extensionRowMatches(row: ExtensionKeyRow, query: string): boolea
 // ── clashes ───────────────────────────────────────────────────────────────────────────
 
 /**
- * Can this command clash with an extension's key in the code? A scoped command belongs to
- * its panel and never runs from the code, and the person's own key wins over an
- * extension's there (the key dispatcher, `installKeybindingDispatcher`), so neither does.
+ * Does the person's own key `chord` for this command win over an extension's key inside
+ * the code? The key dispatcher (`installKeybindingDispatcher`, its capture listener) runs
+ * the person's rebind there only when the keystroke cannot type text (⌘ held on a Mac,
+ * Ctrl without Alt elsewhere) or the command is the palette or quick open; otherwise the
+ * extension still gets the key. Stave's defaults never win.
  */
-function reachesCode(c: CommandKeys): boolean {
-  return !c.scope && !c.overridden;
+function ownKeyWinsInCode(c: CommandKeys, chord: string, opts: PlatformOpts): boolean {
+  if (!c.overridden) return false;
+  if (c.id.startsWith("stave.palette.") || c.id === "stave.quickOpen") return true;
+  const isMac = opts.isMac ?? isMacPlatform();
+  const parts = normalizeChord(chord, { isMac }).split("+");
+  return parts.includes("mod") && (isMac || !parts.includes("alt"));
+}
+
+/**
+ * Does this command share `key` with an extension inside the code: is it on that key, and
+ * would the extension take it from the command there? A scoped command belongs to its
+ * panel and never runs from the code, so it never does.
+ */
+function sharesKeyInCode(c: CommandKeys, key: string, opts: PlatformOpts): boolean {
+  if (c.scope) return false;
+  const isMac = opts.isMac ?? isMacPlatform();
+  return c.chords.some((ch) => chordMatches(ch, key, { isMac }) && !ownKeyWinsInCode(c, ch, opts));
 }
 
 /** One extension taking a command's key inside the code. */
@@ -138,12 +166,15 @@ export interface ExtensionClash {
  * Which switched-on extensions take this command's key inside the code now (`taken` is
  * `extensionKeysInCode()`: declared and not handed back). One entry per extension.
  */
-export function extensionClashes(c: CommandKeys, taken: readonly ExtensionKeyInCode[]): ExtensionClash[] {
-  if (!reachesCode(c)) return [];
+export function extensionClashes(
+  c: CommandKeys,
+  taken: readonly ExtensionKeyInCode[],
+  opts: PlatformOpts = {},
+): ExtensionClash[] {
   const out: ExtensionClash[] = [];
   for (const k of taken) {
     if (out.some((o) => o.extensionId === k.extensionId)) continue;
-    if (c.chords.some((ch) => chordMatches(ch, k.key))) {
+    if (sharesKeyInCode(c, k.key, opts)) {
       out.push({ extensionId: k.extensionId, extensionName: k.extensionName, key: k.key });
     }
   }

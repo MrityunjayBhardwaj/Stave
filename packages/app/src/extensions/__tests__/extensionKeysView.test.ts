@@ -131,6 +131,21 @@ describe("the conflict badge", () => {
     expect(extensionClashes({ ...sidebar, overridden: true }, keysTakenBy([ext]))).toEqual([]);
   });
 
+  it("the person's own key wins only where the key dispatcher lets it: a keystroke that cannot type text, or the palette and quick open", () => {
+    const ctrl: ExtensionManifest = { ...ext, id: "zz-ctrl", name: "Ctrl", provides: { keys: [{ key: "ctrl+r", name: "Redo", where: "code" }] } };
+    const taken = keysTakenBy([ctrl]);
+    const mine = (id: string, chord: string): CommandKeys => ({ id, title: id, chords: [chord], overridden: true });
+    // on a Mac, Control+R can type text as far as the dispatcher goes: the extension keeps it
+    expect(extensionClashes(mine("zz.mine", "ctrl+r"), taken, { isMac: true }).length).toBe(1)
+    // … unless it is quick open or the palette
+    expect(extensionClashes(mine("stave.quickOpen", "ctrl+r"), taken, { isMac: true })).toEqual([]);
+    // off a Mac, Ctrl+R cannot type text: the person's own key wins
+    expect(extensionClashes(mine("zz.mine", "ctrl+r"), taken, { isMac: false })).toEqual([]);
+    // and the extension's row agrees with the badge
+    expect(extensionKeyRows(ctrl, [mine("zz.mine", "ctrl+r")], { isMac: true })[0].staveCommands).toEqual(["zz.mine"]);
+    expect(extensionKeyRows(ctrl, [mine("zz.mine", "ctrl+r")], { isMac: false })[0].staveCommands).toEqual([]);
+  });
+
   it("names every extension that takes it, once each", () => {
     const clashes = extensionClashes(sidebar, keysTakenBy([ext, other]));
     expect(clashes.map((c) => c.extensionName)).toEqual(["Keyed", "Other"]);
