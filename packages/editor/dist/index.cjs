@@ -328,7 +328,7 @@ function declaredKeyOf(manifest, event) {
     try {
       if (matcher(event, k.key)) return k.key;
     } catch {
-      return null;
+      continue;
     }
   }
   return null;
@@ -855,12 +855,9 @@ var E2E_TONE = {
 // src/extensions/vim/manifest.ts
 var VIM_ID = "vim";
 var KEYS = [
-  // handed back to Stave unless the person gives them to Vim
-  { key: "ctrl+enter", name: "Play (Stave)", where: "code", givenBack: true },
-  { key: "ctrl+.", name: "Stop (Stave)", where: "code", givenBack: true },
-  { key: "ctrl+shift+p", name: "Command palette (Stave)", where: "code", givenBack: true },
-  { key: "ctrl+p", name: "Quick open (Stave); in Vim, up a line", where: "code", givenBack: true },
-  { key: "ctrl+z", name: "Undo (Stave)", where: "code", givenBack: true },
+  // Vim's "up a line", and Stave's quick open off a Mac: handed back to Stave unless the
+  // person gives it to Vim
+  { key: "ctrl+p", name: "Up a line (handed back: quick open)", where: "code", givenBack: true },
   // Vim's own
   { key: "ctrl+r", name: "Redo", where: "code" },
   { key: "ctrl+c", name: "Back to normal mode", where: "code" },
@@ -890,7 +887,7 @@ var VIM = {
   languages: "*",
   provides: { keys: KEYS },
   // the build turns this into `import('./vim.js')`, a file of its own (tsup.config.ts)
-  load: /* @__PURE__ */ __name(() => import('./vim.js').then((m) => m.vimModule), "load"),
+  load: /* @__PURE__ */ __name(() => import('./vim.cjs').then((m) => m.vimModule), "load"),
   about: {
     version: "0.1.0",
     experimental: true,

@@ -12,21 +12,22 @@
  * to Vim (as in Vim and VSCodeVim) except the ones handed back by default below. On a Mac
  * `ctrl` is the Control key and Stave's shortcuts use Cmd, so the two never meet.
  *
- * Handed back by default, as decided on #2148: Play, Stop, the command palette, quick open,
- * and Ctrl+Z (VSCodeVim hands back Ctrl+Z as well). Vim leaves a handed-back key alone
- * (`module.ts` asks `host.keyOf` and `host.takesKey` on every keystroke).
+ * Only the keys monaco-vim's keymap really uses are declared (a test reads its keymap and
+ * holds the two equal): a key Vim does not use is never Vim's, so it needs no
+ * declaration and cannot be given to Vim by mistake. That keeps Play, Stop, the command
+ * palette and Ctrl+Z with Stave always, as decided on #2148: Vim maps none of them.
+ * Quick open's Ctrl+P is also Vim's "up a line", so it is declared and handed back by
+ * default. Vim leaves a handed-back key alone (`module.ts` asks `host.keyOf` and
+ * `host.takesKey` on every keystroke).
  */
 import type { ExtensionKey, ExtensionManifest, ExtensionModule } from '../types'
 
 export const VIM_ID = 'vim'
 
 const KEYS: readonly ExtensionKey[] = [
-  // handed back to Stave unless the person gives them to Vim
-  { key: 'ctrl+enter', name: 'Play (Stave)', where: 'code', givenBack: true },
-  { key: 'ctrl+.', name: 'Stop (Stave)', where: 'code', givenBack: true },
-  { key: 'ctrl+shift+p', name: 'Command palette (Stave)', where: 'code', givenBack: true },
-  { key: 'ctrl+p', name: 'Quick open (Stave); in Vim, up a line', where: 'code', givenBack: true },
-  { key: 'ctrl+z', name: 'Undo (Stave)', where: 'code', givenBack: true },
+  // Vim's "up a line", and Stave's quick open off a Mac: handed back to Stave unless the
+  // person gives it to Vim
+  { key: 'ctrl+p', name: 'Up a line (handed back: quick open)', where: 'code', givenBack: true },
   // Vim's own
   { key: 'ctrl+r', name: 'Redo', where: 'code' },
   { key: 'ctrl+c', name: 'Back to normal mode', where: 'code' },

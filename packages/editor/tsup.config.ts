@@ -1,30 +1,31 @@
-import { defineConfig } from 'tsup'
+import { defineConfig, type Options } from 'tsup'
 import path from 'node:path'
 
 /**
  * #2148 — Vim's code is a file of its own, fetched only when someone switches Vim on.
  *
  *  - Its manifest's `load` is `import('./module')`. Here that import is kept out of the
- *    main bundle and pointed at the built file beside it (`./vim.js`, ESM, which the CommonJS
- *    build reaches by the same dynamic import), so the app's bundler makes it a chunk of
- *    its own instead of the main bundle carrying it.
+ *    main bundle and pointed at the built file beside it, in the same format: the ESM
+ *    build's `index.js` loads `vim.js`, the CommonJS build's `index.cjs` loads `vim.cjs`.
+ *    So the app's bundler makes it a chunk of its own instead of the main bundle carrying
+ *    it.
  *  - monaco-vim imports Monaco's ESM build by path. Stave's Monaco is loaded at run time,
  *    not bundled, so those imports are pointed at the page's Monaco
  *    (`src/extensions/vim/monacoApi.ts`) and at a public-API `ShiftCommand`
  *    (`src/extensions/vim/shiftCommand.ts`). `vitest.config.ts` points them the same way.
  */
+type EsbuildPlugin = NonNullable<Options['esbuildPlugins']>[number]
+
 const VIM_DIR = path.resolve('src/extensions/vim')
-const vimPlugin = {
+const vimPlugin: EsbuildPlugin = {
   name: 'stave-vim',
-  setup(build: {
-    onResolve(
-      opts: { filter: RegExp },
-      fn: (args: { path: string; importer: string; kind: string }) => { path: string; external?: boolean } | undefined,
-    ): void
-  }) {
+  setup(build) {
+    // tsup runs esbuild as ESM for both builds and names the CommonJS files by their
+    // extension, so the extension is what tells the two apart here
+    const built = build.initialOptions.outExtension?.['.js'] === '.cjs' ? './vim.cjs' : './vim.js'
     build.onResolve({ filter: /^\.\/module$/ }, (args) =>
       args.kind === 'dynamic-import' && path.resolve(path.dirname(args.importer)) === VIM_DIR
-        ? { path: './vim.js', external: true }
+        ? { path: built, external: true }
         : undefined,
     )
     build.onResolve({ filter: /^monaco-editor\/esm\/vs\/editor\/editor\.api$/ }, () => ({
@@ -47,7 +48,8 @@ export default defineConfig({
   // existed only because the app's TESTS could not load the main entry; #1938 fixed
   // that, and #1943 retired them. Their names are on the main entry.
   // A third entry (#2148): `vim`, the Vim extension's code with monaco-vim inside it,
-  // which the main bundle reaches only through `import('./vim.js')` (see above).
+  // which the main bundle reaches only through `import('./vim.js')` (`./vim.cjs` from the
+  // CommonJS build; see above).
   entry: {
     index: 'src/index.ts',
     'visualizers/worker/index': 'src/visualizers/worker/index.ts',
@@ -61,7 +63,7 @@ export default defineConfig({
   // #2148 — monaco-vim's two Monaco imports are pointed at our own files (vimPlugin), never
   // left as imports of the monaco-editor package, which is only ever loaded at run time.
   noExternal: [/^monaco-editor\/esm\//],
-  esbuildPlugins: [vimPlugin as never],
+  esbuildPlugins: [vimPlugin],
   treeshake: true,
   splitting: false,
   // 20-17 A-1 (#141 / D-01 / P68): keep function + parameter names through

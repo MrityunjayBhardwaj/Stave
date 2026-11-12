@@ -216,6 +216,13 @@ describe('the keys taken in the code', () => {
     setKeyEventMatcher((e, k) => chordMatches(chordFromEvent(e, { isMac: true }), k, { isMac: true }))
     expect(rec.host.keyOf(press({ key: 'r', code: 'KeyR', ctrlKey: true }))).toBe('ctrl+r')
     expect(rec.host.keyOf(press({ key: 'r', code: 'KeyR', metaKey: true }))).toBeNull()
+    // a matcher that throws for one key skips that key only: the keys after it still match
+    setKeyEventMatcher((e, k) => {
+      if (k === 'ctrl+r') throw new Error('cannot read this one')
+      return chordMatches(chordFromEvent(e, { isMac: false }), k, { isMac: false })
+    })
+    expect(rec.host.keyOf(press({ key: 'z', code: 'KeyZ', ctrlKey: true }))).toBe('ctrl+z')
+    expect(rec.host.keyOf(press({ key: 'r', code: 'KeyR', ctrlKey: true }))).toBeNull()
     // a matcher that throws is no key, never a throw into the extension
     setKeyEventMatcher(() => {
       throw new Error('broken')

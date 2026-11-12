@@ -4,10 +4,13 @@
  * handed-back key alone. Vim on a real editor is the browser spec's (`vim-extension.spec.ts`).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync, existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import path from 'node:path'
 import { VIM, VIM_ID } from '../vim/manifest'
 import { VimBar, modeLabel, VIM_MESSAGE_MS } from '../vim/bar'
 import { shiftEdit } from '../vim/shiftCommand'
-import { bindEditorActions, EX_COMMANDS, keyFilteredEditor, runExAction, SAVES_AS_YOU_TYPE, vimModule, type ExAction } from '../vim/module'
+import { bindEditorActions, EX_COMMANDS, keyFilteredEditor, leaveAloneFor, runExAction, SAVES_AS_YOU_TYPE, vimModule, type ExAction } from '../vim/module'
 import { checkExtensionKeys, keyId } from '../keys'
 import { BUILTIN_EXTENSIONS } from '../builtin'
 
@@ -23,10 +26,25 @@ describe('the Vim manifest', () => {
     expect(mod.strudel).toBeUndefined()
   })
 
-  it('declares well-formed keys, Play, Stop, the palette, quick open and Ctrl+Z handed back by default', () => {
+  it('declares exactly the Ctrl keys monaco-vim’s keymap uses, read from the package itself', () => {
+    // monaco-vim's own keymap, from the installed package: every `<C-…>` it maps
+    const file = createRequire(import.meta.url).resolve('monaco-vim')
+    const mapped = new Set(
+      [...readFileSync(file, 'utf8').matchAll(/keys: "<C-([^>]+)>"/g)].map(([, k]) =>
+        `ctrl+${{ BS: 'backspace', Space: 'space' }[k] ?? k.toLowerCase()}`,
+      ),
+    )
+    expect(mapped.size).toBeGreaterThan(15)
+    const declared = new Set((VIM.provides?.keys ?? []).map((k) => keyId(k.key)))
+    expect([...declared].sort()).toEqual([...mapped].sort())
+  })
+
+  it('so Stave’s Play, Stop, palette and Ctrl+Z are never Vim’s; Ctrl+P (quick open) is handed back', () => {
     expect(() => checkExtensionKeys(VIM)).not.toThrow()
+    const declared = (VIM.provides?.keys ?? []).map((k) => keyId(k.key))
+    for (const k of ['ctrl+enter', 'ctrl+.', 'ctrl+shift+p', 'ctrl+z']) expect(declared).not.toContain(k)
     const back = (VIM.provides?.keys ?? []).filter((k) => k.givenBack).map((k) => keyId(k.key))
-    expect(back.sort()).toEqual(['ctrl+.', 'ctrl+enter', 'ctrl+p', 'ctrl+shift+p', 'ctrl+z'].sort())
+    expect(back).toEqual(['ctrl+p'])
     // everything else Vim uses goes to Vim, Ctrl+C, Ctrl+V, Ctrl+R, Ctrl+D and Ctrl+U included
     const vims = (VIM.provides?.keys ?? []).filter((k) => !k.givenBack).map((k) => keyId(k.key))
     for (const k of ['ctrl+c', 'ctrl+v', 'ctrl+r', 'ctrl+d', 'ctrl+u']) expect(vims).toContain(k)
@@ -45,8 +63,9 @@ describe('the bar', () => {
     const node = document.createElement('div')
     document.body.appendChild(node)
     const focus = vi.fn()
-    const b = new VimBar(node, { focus } as never)
-    return { node, b, focus, q: (sel: string) => node.querySelector(sel) as HTMLElement }
+    const editor = { focus, model: {} as object | null, getModel() { return this.model } }
+    const b = new VimBar(node, editor as never)
+    return { node, b, focus, editor, q: (sel: string) => node.querySelector(sel) as HTMLElement }
   }
 
   it('says the mode the way Vim does', () => {
@@ -100,6 +119,25 @@ describe('the bar', () => {
     expect(q('[data-vim-input]')).toBeNull()
   })
 
+  it('closing with no : line open (Vim switching off) leaves the keyboard where it is', () => {
+    const { b, focus, editor } = bar()
+    b.closeInput()
+    expect(focus).not.toHaveBeenCalled()
+    // with a : line open it goes back to the editor, but not to one that has gone
+    const prompt = () => {
+      const span = document.createElement('span')
+      span.append(':', document.createElement('input'))
+      return span
+    }
+    b.setSec(prompt())
+    b.closeInput()
+    expect(focus).toHaveBeenCalledTimes(1)
+    b.setSec(prompt())
+    editor.model = null
+    b.closeInput()
+    expect(focus).toHaveBeenCalledTimes(1)
+  })
+
   it('a message shows for a few seconds; a newer one keeps its own time', () => {
     vi.useFakeTimers()
     const { b, q } = bar()
@@ -142,6 +180,21 @@ describe('>> and <<', () => {
 })
 
 describe('a handed-back key never reaches Vim', () => {
+  it('leaves alone a declared key that is handed back, and only that', () => {
+    const back = new Set(['ctrl+p'])
+    const host = {
+      keyOf: (e: KeyboardEvent) => (e.ctrlKey ? `ctrl+${e.key}` : null),
+      takesKey: (k: string) => !back.has(k),
+    }
+    const leave = leaveAloneFor(host)
+    const press = (key: string, ctrlKey = true) => new KeyboardEvent('keydown', { key, ctrlKey })
+    expect(leave(press('p'))).toBe(true) // handed back: Stave's
+    expect(leave(press('r'))).toBe(false) // Vim's
+    expect(leave(press('j', false))).toBe(false) // not a declared key: Vim's to read
+    back.delete('ctrl+p') // given to Vim, at once
+    expect(leave(press('p'))).toBe(false)
+  })
+
   function fakeEditor() {
     const listeners: ((e: { browserEvent: KeyboardEvent }) => void)[] = []
     return {
@@ -189,6 +242,21 @@ function actionOf(typed: string): ExAction | null {
   }
   return null
 }
+
+describe('the build (#2148): Vim is its own file, in each format', () => {
+  it('the ESM build loads vim.js and the CommonJS build loads vim.cjs, and both are there', () => {
+    const dist = path.resolve(__dirname, '../../../dist')
+    const esm = readFileSync(path.join(dist, 'index.js'), 'utf8')
+    const cjs = readFileSync(path.join(dist, 'index.cjs'), 'utf8')
+    expect(esm).toMatch(/load: .*import\('\.\/vim\.js'\)/)
+    expect(cjs).toMatch(/load: .*import\('\.\/vim\.cjs'\)/)
+    // and neither main file carries monaco-vim itself
+    expect(esm).not.toMatch(/defaultKeymap/)
+    expect(cjs).not.toMatch(/defaultKeymap/)
+    expect(existsSync(path.join(dist, 'vim.js'))).toBe(true)
+    expect(existsSync(path.join(dist, 'vim.cjs'))).toBe(true)
+  })
+})
 
 describe(':w, :q and friends, as VS Code’s Vim does them', () => {
   it('writing says Stave saves as you type; quitting closes this tab; quitting all closes every tab', () => {

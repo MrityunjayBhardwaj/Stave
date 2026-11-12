@@ -123,12 +123,18 @@ export class VimBar {
     if (this.messageTimer) clearTimeout(this.messageTimer)
   }
 
+  /**
+   * Close the `:` line. Focus goes back to the editor only when a `:` line was open and
+   * the editor is still there: monaco-vim also calls this as Vim is switched off, and
+   * that must not pull the keyboard into a code editor from wherever the person is.
+   */
   closeInput = (): void => {
+    const wasOpen = this.input !== null
     this.listen(false)
     this.input = null
     this.mode.style.display = ''
     this.fill(this.command, '')
-    this.editor?.focus()
+    if (wasOpen && this.editor?.getModel()) this.editor.focus()
   }
 
   clear = (): void => {

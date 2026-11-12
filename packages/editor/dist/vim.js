@@ -6469,12 +6469,18 @@ var _VimBar = class _VimBar {
     this.editor = editor2;
     this.sanitizer = sanitizer;
     this.input = null;
+    /**
+     * Close the `:` line. Focus goes back to the editor only when a `:` line was open and
+     * the editor is still there: monaco-vim also calls this as Vim is switched off, and
+     * that must not pull the keyboard into a code editor from wherever the person is.
+     */
     this.closeInput = /* @__PURE__ */ __name(() => {
+      const wasOpen = this.input !== null;
       this.listen(false);
       this.input = null;
       this.mode.style.display = "";
       this.fill(this.command, "");
-      this.editor?.focus();
+      if (wasOpen && this.editor?.getModel()) this.editor.focus();
     }, "closeInput");
     this.clear = /* @__PURE__ */ __name(() => {
       if (this.messageTimer) clearTimeout(this.messageTimer);
@@ -6656,7 +6662,7 @@ function keyFilteredEditor(editor2, leaveAlone) {
 __name(keyFilteredEditor, "keyFilteredEditor");
 var CURSOR_DEFAULTS = { cursorWidth: 0, cursorBlinking: "blink", cursorStyle: "line" };
 function cursorOptions(editor2) {
-  const raw = editor2.getRawOptions?.() ?? {};
+  const raw = editor2.getRawOptions();
   return {
     cursorWidth: raw.cursorWidth ?? CURSOR_DEFAULTS.cursorWidth,
     cursorBlinking: raw.cursorBlinking ?? CURSOR_DEFAULTS.cursorBlinking,
@@ -6676,6 +6682,13 @@ var BAR_STYLE = [
   "background: var(--background, #16161a)",
   "border-top: 1px solid var(--border, rgba(255,255,255,0.12))"
 ].join("; ");
+function leaveAloneFor(host) {
+  return (event) => {
+    const key = host.keyOf(event);
+    return key !== null && !host.takesKey(key);
+  };
+}
+__name(leaveAloneFor, "leaveAloneFor");
 function attachVim(ed, host) {
   useMonaco(ed.monaco);
   defineExCommands();
@@ -6686,11 +6699,7 @@ function attachVim(ed, host) {
   if (ed.readOnly) node.setAttribute("data-vim-readonly", "");
   ed.bar.appendChild(node);
   const before = cursorOptions(ed.editor);
-  const leaveAlone = /* @__PURE__ */ __name((event) => {
-    const key = host.keyOf(event);
-    return key !== null && !host.takesKey(key);
-  }, "leaveAlone");
-  const view = keyFilteredEditor(ed.editor, leaveAlone);
+  const view = keyFilteredEditor(ed.editor, leaveAloneFor(host));
   const vim = initVimMode(view, node, VimBar);
   bindEditorActions(vim, {
     message: /* @__PURE__ */ __name((text) => vim.openNotification(text), "message"),
@@ -6724,6 +6733,6 @@ var vimModule = {
   }
 };
 
-export { EX_COMMANDS, SAVES_AS_YOU_TYPE, attachVim, bindEditorActions, keyFilteredEditor, runExAction, vimModule };
+export { EX_COMMANDS, SAVES_AS_YOU_TYPE, attachVim, bindEditorActions, keyFilteredEditor, leaveAloneFor, runExAction, vimModule };
 //# sourceMappingURL=vim.js.map
 //# sourceMappingURL=vim.js.map

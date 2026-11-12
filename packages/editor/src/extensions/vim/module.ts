@@ -24,7 +24,7 @@
  * `:qa`, `:wqa`, `:xa` close every code editor's tab. Each close goes through the
  * workspace's own tab close (`CodeEditor.close`, `host.closeAllEditors`).
  */
-import { initVimMode, VimMode } from 'monaco-vim'
+import { initVimMode, StatusBar, VimMode } from 'monaco-vim'
 import type * as Monaco from 'monaco-editor'
 import type { CodeEditor, ExtensionHost, ExtensionModule } from '../types'
 import { VimBar } from './bar'
@@ -137,7 +137,7 @@ type CursorOptions = Pick<Monaco.editor.IEditorOptions, 'cursorWidth' | 'cursorB
 const CURSOR_DEFAULTS: Required<CursorOptions> = { cursorWidth: 0, cursorBlinking: 'blink', cursorStyle: 'line' }
 
 function cursorOptions(editor: Editor): CursorOptions {
-  const raw = (editor as Editor & { getRawOptions?: () => Monaco.editor.IEditorOptions }).getRawOptions?.() ?? {}
+  const raw = editor.getRawOptions()
   return {
     cursorWidth: raw.cursorWidth ?? CURSOR_DEFAULTS.cursorWidth,
     cursorBlinking: raw.cursorBlinking ?? CURSOR_DEFAULTS.cursorBlinking,
@@ -158,6 +158,18 @@ const BAR_STYLE = [
   'border-top: 1px solid var(--border, rgba(255,255,255,0.12))',
 ].join('; ')
 
+/**
+ * Which keystrokes Vim must leave alone: one of Vim's declared keys that is handed back
+ * to Stave right now. Asked on every keystroke, so a key handed back (or given again)
+ * takes effect at once.
+ */
+export function leaveAloneFor(host: Pick<ExtensionHost, 'keyOf' | 'takesKey'>): (event: KeyboardEvent) => boolean {
+  return (event) => {
+    const key = host.keyOf(event)
+    return key !== null && !host.takesKey(key)
+  }
+}
+
 /** Put Vim on one editor; returns how to take it off. */
 export function attachVim(ed: CodeEditor, host: Pick<ExtensionHost, 'keyOf' | 'takesKey' | 'closeAllEditors'>): () => void {
   useMonaco(ed.monaco)
@@ -170,14 +182,14 @@ export function attachVim(ed: CodeEditor, host: Pick<ExtensionHost, 'keyOf' | 't
   ed.bar.appendChild(node)
 
   const before = cursorOptions(ed.editor)
-  const leaveAlone = (event: KeyboardEvent) => {
-    const key = host.keyOf(event)
-    return key !== null && !host.takesKey(key)
-  }
-  const view = keyFilteredEditor(ed.editor, leaveAlone)
-  const vim = initVimMode(view, node, VimBar as never)
+  const view = keyFilteredEditor(ed.editor, leaveAloneFor(host))
+  // monaco-vim types its status-bar argument as its own StatusBar class, whose private
+  // fields make it nominal: no other class can match it structurally. VimBar has every
+  // method monaco-vim calls on it (the unit tests drive them), so it goes in through
+  // `unknown` with that type.
+  const vim = initVimMode(view, node, VimBar as unknown as typeof StatusBar)
   bindEditorActions(vim, {
-    message: (text) => (vim as unknown as { openNotification(t: string): void }).openNotification(text),
+    message: (text) => vim.openNotification(text),
     close: () => ed.close(),
     closeAll: () => host.closeAllEditors(),
   })

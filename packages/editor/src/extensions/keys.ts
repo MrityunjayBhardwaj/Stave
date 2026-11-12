@@ -255,7 +255,8 @@ export function declaredKeyOf(manifest: ExtensionManifest, event: KeyboardEvent)
     try {
       if (matcher(event, k.key)) return k.key
     } catch {
-      return null
+      // a key the matcher cannot read is not this keystroke; the others still can be
+      continue
     }
   }
   return null

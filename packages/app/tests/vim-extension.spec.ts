@@ -503,6 +503,20 @@ test.describe('off a Mac, where Vim’s Ctrl keys are Stave’s Ctrl keys', () =
     expect((await focused(page))?.line).toBe(line - 1)
     await handBack(page, 'ctrl+p', null)
 
+    // Stave's other keys are never Vim's: the command palette …
+    await page.keyboard.press('Control+Shift+p')
+    const palette = page.locator('input[placeholder="Type a command..."]')
+    await expect(palette).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(palette).toHaveCount(0)
+    await clickCode(page)
+    await seed(page)
+    // … and Ctrl+Z undoes an edit Vim made
+    await page.keyboard.type('x')
+    expect((await focused(page))?.text).toBe(TEXT.slice(1))
+    await page.keyboard.press('Control+z')
+    await expect.poll(async () => (await focused(page))?.text).toBe(TEXT)
+
     // Play is Ctrl+Enter here, handed back: it plays from normal and insert mode
     await page.keyboard.press('Control+Enter')
     await expect.poll(() => isPlaying(page), { timeout: 15_000 }).toBe(true)
@@ -559,6 +573,14 @@ test('switched off: no bar, the editor exactly as before, and the person’s sho
   await flipVimInView(page, false)
   await expect(bars(page)).toHaveCount(0)
   expect(await state()).toEqual(before)
+  // switching Vim off from the view leaves the keyboard in the view: nothing pulls it into
+  // a code editor (nothing here clicked into the code first, which would hide that)
+  await page.waitForTimeout(300)
+  const focusIn = await page.evaluate(() => ({
+    inCode: !!document.activeElement?.closest('.monaco-editor'),
+    inView: !!document.activeElement?.closest('[data-extensions-panel]'),
+  }))
+  expect(focusIn.inCode).toBe(false)
 
   // typing types again
   await clickCode(page)

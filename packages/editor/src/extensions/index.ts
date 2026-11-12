@@ -38,7 +38,7 @@ export {
   extensionFailure,
   onPageExtensionsChange,
 } from './runtime'
-export { createCodeEditorList, offerCodeEditor, pageCodeEditors, setCloseAllCodeEditors, closeAllCodeEditors } from './editors'
+export { createCodeEditorList, offerCodeEditor, pageCodeEditors, setCloseAllCodeEditors } from './editors'
 export type { CodeEditorList, CodeEditorSite, EditorWatcher } from './editors'
 export {
   checkExtensionKeys,

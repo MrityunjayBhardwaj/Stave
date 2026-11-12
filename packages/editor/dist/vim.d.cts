@@ -36,8 +36,14 @@ type Editor = Monaco.editor.IStandaloneCodeEditor;
  * methods bound to it.
  */
 declare function keyFilteredEditor(editor: Editor, leaveAlone: (event: KeyboardEvent) => boolean): Editor;
+/**
+ * Which keystrokes Vim must leave alone: one of Vim's declared keys that is handed back
+ * to Stave right now. Asked on every keystroke, so a key handed back (or given again)
+ * takes effect at once.
+ */
+declare function leaveAloneFor(host: Pick<ExtensionHost, 'keyOf' | 'takesKey'>): (event: KeyboardEvent) => boolean;
 /** Put Vim on one editor; returns how to take it off. */
 declare function attachVim(ed: CodeEditor, host: Pick<ExtensionHost, 'keyOf' | 'takesKey' | 'closeAllEditors'>): () => void;
 declare const vimModule: ExtensionModule;
 
-export { EX_COMMANDS, type EditorActions, type ExAction, SAVES_AS_YOU_TYPE, attachVim, bindEditorActions, keyFilteredEditor, runExAction, vimModule };
+export { EX_COMMANDS, type EditorActions, type ExAction, SAVES_AS_YOU_TYPE, attachVim, bindEditorActions, keyFilteredEditor, leaveAloneFor, runExAction, vimModule };
