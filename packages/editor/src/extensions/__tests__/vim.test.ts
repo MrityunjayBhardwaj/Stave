@@ -11,6 +11,8 @@ import { VIM, VIM_ID } from '../vim/manifest'
 import { VimBar, modeLabel, VIM_MESSAGE_MS } from '../vim/bar'
 import { shiftEdit } from '../vim/shiftCommand'
 import { bindEditorActions, EX_COMMANDS, keyFilteredEditor, leaveAloneFor, runExAction, SAVES_AS_YOU_TYPE, vimModule, type ExAction } from '../vim/module'
+import { hasPendingInput, InsertUndo, isVimEsc, removeContextKeys, suggestListOpen, VIM_CONTEXT_KEYS } from '../vim/edges'
+import { FakeUndoModel } from './fakeUndoModel'
 import { checkExtensionKeys, keyId } from '../keys'
 import { BUILTIN_EXTENSIONS } from '../builtin'
 
@@ -297,5 +299,186 @@ describe(':w, :q and friends, as VS Code’s Vim does them', () => {
     vi.runAllTimers()
     expect(log).toHaveLength(3)
     vi.useRealTimers()
+  })
+})
+
+describe('Vim’s edges with Monaco (#2557)', () => {
+  /** A model and the insert undo on it; `focus` says whether the editor has the keyboard. */
+  function setup() {
+    const model = new FakeUndoModel()
+    const undo = new InsertUndo(() => model)
+    const state = { focus: true }
+    model.listeners.push((e) => undo.changed(e, state.focus))
+    return { model, undo, state }
+  }
+
+  it('one u undoes one whole insert, and Ctrl+R puts it all back; Monaco’s own steps are kept', () => {
+    const { model, undo } = setup()
+    model.bracketed('x') // an earlier edit
+    undo.enter()
+    model.type('one two three')
+    undo.exit()
+    expect(model.steps).toBe(4) // Monaco's own steps are all still there
+    undo.undo()
+    expect(model.text).toBe('x')
+    undo.redo()
+    expect(model.text).toBe('xone two three')
+    undo.undo()
+    undo.undo() // no insert ends here: one step, the earlier edit
+    expect(model.text).toBe('')
+  })
+
+  it('an insert begun by a command that edited (cw, o) undoes with that edit', () => {
+    const { model, undo } = setup()
+    model.bracketed('kick')
+    const atKey = model.alt
+    model.bracketed('-') // the `c` of `cw`, in the same key as the insert begins
+    undo.enter(atKey)
+    model.type('snare drum')
+    undo.exit()
+    undo.undo()
+    expect(model.text).toBe('kick')
+  })
+
+  it('an edit from somewhere else in the middle of an insert stays a step of its own', () => {
+    const { model, undo, state } = setup()
+    undo.enter()
+    model.type('typed')
+    state.focus = false // a grid step clicked: the editor has lost the keyboard, insert mode stays
+    model.bracketed('GRID')
+    state.focus = true
+    model.type(' typed2')
+    undo.exit()
+    undo.undo()
+    expect(model.text).toBe('typedGRID') // the typing after the grid edit
+    undo.undo()
+    expect(model.text).toBe('typed') // the grid edit alone
+    undo.undo()
+    expect(model.text).toBe('') // the typing before it
+    undo.redo()
+    expect(model.text).toBe('typed')
+    undo.redo()
+    expect(model.text).toBe('typedGRID')
+    undo.redo()
+    expect(model.text).toBe('typedGRID typed2')
+  })
+
+  it('the grid’s own undo (Monaco’s) still takes back just the grid edit', () => {
+    const { model, undo, state } = setup()
+    undo.enter()
+    model.type('typed')
+    state.focus = false
+    model.bracketed('GRID')
+    model.undo() // Ctrl+Z from the grid: Monaco's undo, one step
+    expect(model.text).toBe('typed')
+  })
+
+  it('redo after a new edit, or u where no insert ended, is one step', () => {
+    const { model, undo } = setup()
+    undo.enter()
+    model.type('ab cd')
+    undo.exit()
+    undo.undo()
+    expect(model.text).toBe('')
+    model.bracketed('z') // a new edit: nothing to redo any more
+    undo.redo()
+    expect(model.text).toBe('z')
+  })
+
+  it('switching models forgets every insert', () => {
+    const { model, undo } = setup()
+    undo.enter()
+    model.type('ab cd')
+    undo.exit()
+    undo.forget()
+    undo.undo()
+    expect(model.text).toBe('ab') // one of Monaco's steps, not the whole insert
+  })
+
+  it('a half-typed command is pending; nothing typed is not', () => {
+    expect(hasPendingInput(undefined)).toBe(false)
+    expect(hasPendingInput({ keyBuffer: [], prefixRepeat: [], motionRepeat: [], operator: null, registerName: null })).toBe(false)
+    expect(hasPendingInput({ keyBuffer: '', operator: 'delete' })).toBe(true) // d
+    expect(hasPendingInput({ keyBuffer: '2' })).toBe(true) // 2
+    expect(hasPendingInput({ keyBuffer: 'g' })).toBe(true) // g
+    expect(hasPendingInput({ prefixRepeat: ['3'] })).toBe(true) // 3 then an operator's count
+    expect(hasPendingInput({ registerName: 'a' })).toBe(true) // "a
+  })
+
+  it('Esc, Ctrl+[ and Ctrl+C are Esc to Vim; nothing else is', () => {
+    const k = (key: string, o: Partial<KeyboardEvent> = {}) => new KeyboardEvent('keydown', { key, ...o })
+    expect(isVimEsc(k('Escape'))).toBe(true)
+    expect(isVimEsc(k('[', { ctrlKey: true, code: 'BracketLeft' } as never))).toBe(true)
+    expect(isVimEsc(k('c', { ctrlKey: true }))).toBe(true)
+    expect(isVimEsc(k('c'))).toBe(false)
+    expect(isVimEsc(k('[', { metaKey: true }))).toBe(false)
+    expect(isVimEsc(k('c', { ctrlKey: true, metaKey: true }))).toBe(false)
+    expect(isVimEsc(k('r', { ctrlKey: true }))).toBe(false)
+  })
+
+  it('the suggestion list is open only while Monaco shows it', () => {
+    const root = document.createElement('div')
+    const editor = { getDomNode: () => root }
+    expect(suggestListOpen(editor as never)).toBe(false)
+    const widget = document.createElement('div')
+    widget.className = 'editor-widget suggest-widget'
+    widget.style.display = 'none'
+    widget.style.visibility = 'hidden'
+    root.appendChild(widget)
+    expect(suggestListOpen(editor as never)).toBe(false) // made, never shown
+    widget.style.display = 'block'
+    widget.style.visibility = 'inherit'
+    expect(suggestListOpen(editor as never)).toBe(true)
+    widget.style.visibility = 'hidden'
+    expect(suggestListOpen(editor as never)).toBe(false) // shown, then hidden
+    expect(suggestListOpen({ getDomNode: () => null } as never)).toBe(false)
+  })
+
+  it('switched off, each context key monaco-vim made is made again with no default, which removes it', () => {
+    const made: [string, unknown][] = []
+    removeContextKeys({ createContextKey: (k: string, v: unknown) => made.push([k, v]) } as never)
+    expect(made).toEqual([['insertMode', undefined]])
+    // the list is every key monaco-vim makes, read from the package itself
+    const file = createRequire(import.meta.url).resolve('monaco-vim')
+    const keys = [...readFileSync(file, 'utf8').matchAll(/createContextKey\(\s*"([^"]+)"/g)].map(([, k]) => k)
+    expect(keys.length).toBeGreaterThan(0)
+    expect([...VIM_CONTEXT_KEYS].sort()).toEqual([...new Set(keys)].sort())
+  })
+
+  it('the editor Vim is given: edits in a read-only editor say so first, and the model’s undo and redo are Vim’s', () => {
+    const calls: string[] = []
+    const model = { undo: () => calls.push('model.undo'), redo: () => calls.push('model.redo'), getValue: () => 'text' }
+    const editor = {
+      onKeyDown: () => ({ dispose: () => undefined }),
+      executeEdits: () => (calls.push('executeEdits'), false),
+      executeCommand: () => calls.push('executeCommand'),
+      executeCommands: () => calls.push('executeCommands'),
+      getModel: () => model,
+    }
+    type V = typeof editor
+    const view = keyFilteredEditor(editor as never, () => false, { onEdit: () => calls.push('said') }) as unknown as V
+    expect(view.executeEdits()).toBe(false) // the editor still answers (and refuses)
+    view.executeCommand()
+    view.executeCommands()
+    expect(calls).toEqual(['said', 'executeEdits', 'said', 'executeCommand', 'said', 'executeCommands'])
+    // undo and redo through the model Vim is given; everything else on it is the model's own
+    calls.length = 0
+    const hooked = keyFilteredEditor(editor as never, () => false, {
+      undo: () => calls.push('vim.undo'),
+      redo: () => calls.push('vim.redo'),
+    }) as unknown as V
+    const m = hooked.getModel()
+    m.undo()
+    m.redo()
+    expect(m.getValue()).toBe('text')
+    expect(hooked.getModel()).toBe(m) // the same model each time
+    expect(calls).toEqual(['vim.undo', 'vim.redo'])
+    // the real model, and an editor with no hooks, are untouched
+    calls.length = 0
+    model.undo()
+    const plain = keyFilteredEditor(editor as never, () => false) as unknown as V
+    plain.executeEdits()
+    plain.getModel().undo()
+    expect(calls).toEqual(['model.undo', 'executeEdits', 'model.undo'])
   })
 })

@@ -67,12 +67,20 @@ Your own shortcuts in **Settings → Keyboard Shortcuts** are never changed by V
 
 ## Esc
 
-Inside the code, Vim gets **Esc** first. When Esc takes you out of insert or visual mode, or closes the `:` line, that is all it does. It won't also close a menu or drawer that happens to be open, and it won't leave zen mode. In normal mode, when Vim has nothing to cancel, Esc does what it always did in Stave, such as leaving zen mode.
+Inside the code, Vim gets **Esc** first. When Esc takes you out of insert or visual mode, closes the `:` line, or cancels a command you've only half typed (such as `d` or `2`), that is all it does. It won't also close a menu or drawer that happens to be open, and it won't leave zen mode. In normal mode, when Vim has nothing to cancel, Esc does what it always did in Stave, such as leaving zen mode.
+
+In insert mode with the suggestion list open, the first Esc closes the list and you stay in insert mode, as in VS Code's Vim. The next Esc takes you back to normal mode. Ctrl+[ and Ctrl+C, which are Esc to Vim, do the same.
+
+## Undo
+
+As in Vim, everything you type between entering insert mode and pressing Esc is one change, so one `u` undoes it all and Ctrl+R brings it all back. A command that changes text and then lets you type, such as `cw` or `o`, is one change together with what you typed.
+
+If something else changes the code while you're in insert mode, for example a step you click in the Pattern tab, that change stays a step of its own. `u` undoes your typing after it, then the change, then your typing before it. Stave's own undo (Ctrl+Z, or ⌘Z on a Mac) still goes back one small step at a time.
 
 ## Past versions
 
-When you look at a past version, from **Version History**, you can move around, search and yank with Vim, but you can't edit it: the bar says **read-only**, insert mode does not start, and every edit is refused. The side-by-side diff has no Vim.
+When you look at a past version, from **Version History**, you can move around, search and yank with Vim, but you can't edit it: the bar says **read-only**, insert mode does not start, and every edit is refused. When you try one, or press `u` or Ctrl+R, the bar tells you why: **This is a past version, so it can’t be changed here**. The side-by-side diff has no Vim.
 
 ## What it's built on
 
-Stave's Vim is built on [monaco-vim](https://github.com/brijeshb42/monaco-vim) (MIT), which brings CodeMirror's Vim mode to the Monaco editor. Most of Vim's normal, insert and visual mode commands, motions, text objects, registers, marks, search, and `:s`, `:g` and `:sort` work. A few things work differently from Vim itself; for example, `u` can take more than one step to undo what you typed in insert mode.
+Stave's Vim is built on [monaco-vim](https://github.com/brijeshb42/monaco-vim) (MIT), which brings CodeMirror's Vim mode to the Monaco editor. Most of Vim's normal, insert and visual mode commands, motions, text objects, registers, marks, search, and `:s`, `:g` and `:sort` work. A few less common things work differently from Vim itself.

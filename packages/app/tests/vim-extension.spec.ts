@@ -1,5 +1,5 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test'
-import { bootApp } from './_appBoot'
+import { bootApp, editorValue, seedCode } from './_appBoot'
 
 /**
  * #2148 — Vim keybindings in the code editor, as an extension, through the real gestures.
@@ -337,9 +337,214 @@ test('Esc in the code is Vim’s first: leaving insert or visual mode, or the : 
   await page.waitForTimeout(300)
   expect(await inZen(), 'Esc closing the : line must not also leave zen mode').toBe(true)
 
+  // An Esc that cancels a half-typed command (an operator, a count, a register) is Vim's
+  // alone too (#2557): it cancels, and zen mode stays.
+  // Ctrl+[ and Ctrl+C are Esc to Vim, so the same goes for them.
+  for (const esc of ['Escape', 'Control+BracketLeft', 'Control+c']) {
+    for (const half of ['d', '2', '"a', 'c2']) {
+      await page.keyboard.type(half)
+      await page.keyboard.press(esc)
+      await page.waitForTimeout(200)
+      expect(await inZen(), `${esc} cancelling "${half}" must not also leave zen mode`).toBe(true)
+    }
+  }
+  // … and it did cancel: the next keys are a fresh command (`w` moves, nothing is deleted)
+  const text = (await focused(page))?.text
+  await page.keyboard.type('d')
+  await page.keyboard.press('Escape')
+  await page.keyboard.type('w')
+  expect((await focused(page))?.text).toBe(text)
+
   // In normal mode with nothing to cancel, Esc is Stave's as before: zen mode ends.
   await page.keyboard.press('Escape')
   await expect.poll(inZen).toBe(false)
+})
+
+test('one insert is one undo step, as in Vim; two inserts are two', async ({ page }) => {
+  // #2557: Monaco closes an undo step between a word and a space, before Enter and before
+  // Backspace. In Vim, everything typed between entering insert mode and Esc is one change.
+  test.setTimeout(120_000)
+  await vimAtLoad(page, true)
+  await bootApp(page)
+  await clickCode(page)
+  await seed(page)
+  await expect(modeOf(page)).toHaveText('-- NORMAL --')
+  const text = async () => (await focused(page))?.text
+
+  // i … Esc, with words, spaces, Enter and Backspace in it: one u undoes all of it
+  await page.keyboard.type('i')
+  await expect(modeOf(page)).toHaveText('-- INSERT --')
+  await page.keyboard.type('one two  three')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('four')
+  await page.keyboard.press('Backspace')
+  await page.keyboard.type('r five // six')
+  await page.keyboard.press('Escape')
+  await expect(modeOf(page)).toHaveText('-- NORMAL --')
+  const typed = await text()
+  expect(typed).toBe(`one two  three\nfour five // six${TEXT}`)
+  await page.keyboard.type('u')
+  expect(await text()).toBe(TEXT)
+  // and Ctrl+R puts all of it back, in one step
+  await page.keyboard.press('Control+r')
+  expect(await text()).toBe(typed)
+  await page.keyboard.type('u')
+  expect(await text()).toBe(TEXT)
+
+  // a command that edits and then inserts (cw, o) is one change with what is typed after it
+  await seed(page)
+  await page.keyboard.type('cw')
+  await expect(modeOf(page)).toHaveText('-- INSERT --')
+  await page.keyboard.type('snare drum')
+  await page.keyboard.press('Escape')
+  expect((await text())?.split('\n')[0]).toBe('snare drum: s("bd*4")')
+  await page.keyboard.type('u')
+  expect(await text()).toBe(TEXT)
+  await page.keyboard.type('o')
+  await page.keyboard.type('lead: note("e4 g4")')
+  await page.keyboard.press('Escape')
+  expect((await text())?.split('\n')).toHaveLength(4)
+  await page.keyboard.type('u')
+  expect(await text()).toBe(TEXT)
+
+  // two inserts are two changes: u undoes only the second
+  await page.keyboard.type('gg0ifirst ')
+  await page.keyboard.press('Escape')
+  const afterFirst = await text()
+  await page.keyboard.type('Asecond one')
+  await page.keyboard.press('Escape')
+  await page.keyboard.type('u')
+  expect(await text()).toBe(afterFirst)
+  await page.keyboard.type('u')
+  expect(await text()).toBe(TEXT)
+})
+
+test('Esc with the suggestion list open closes the list first and stays in insert mode', async ({ page }) => {
+  // #2557: as in VS Code's Vim, and as Esc does with Vim off.
+  test.setTimeout(120_000)
+  await vimAtLoad(page, true)
+  await bootApp(page)
+  await clickCode(page)
+  await seed(page)
+  await page.keyboard.type('o')
+  await expect(modeOf(page)).toHaveText('-- INSERT --')
+  await page.keyboard.type('n')
+  await page.keyboard.press('Control+Space')
+  const list = page.locator('[data-workspace-view="editor"] .monaco-editor .suggest-widget.visible')
+  await expect(list).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('suggest-open.png') })
+
+  await page.keyboard.press('Escape')
+  await expect(list).toHaveCount(0)
+  await expect(modeOf(page)).toHaveText('-- INSERT --')
+  // nothing was typed or taken by that Esc
+  expect((await focused(page))?.text.split('\n')[1]).toBe('n')
+  await page.screenshot({ path: test.info().outputPath('suggest-closed-still-insert.png') })
+
+  // Ctrl+[ is Esc to Vim: with the list open it closes the list too, and insert mode stays
+  await page.keyboard.press('Control+Space')
+  await expect(list).toBeVisible()
+  await page.keyboard.press('Control+BracketLeft')
+  await expect(list).toHaveCount(0)
+  await expect(modeOf(page)).toHaveText('-- INSERT --')
+  expect((await focused(page))?.text.split('\n')[1]).toBe('n')
+
+  // with the list shut, Esc leaves insert mode as always
+  await page.keyboard.press('Escape')
+  await expect(modeOf(page)).toHaveText('-- NORMAL --')
+})
+
+test('an edit from the grid in the middle of an insert stays its own undo step', async ({ page }) => {
+  // #2557 review: insert mode lasts while you click away. A step clicked in the piano roll
+  // is its own undo step (the write-back brackets it), whether it is undone with Vim's u
+  // or with the grid's own undo; the typing on each side of it is a step of its own.
+  test.setTimeout(120_000)
+  // the pattern tab shows the pattern under the cursor, so the typing is in the pattern's
+  // own line: the number in .gain()
+  const code = (bar2: string, gain: string) => `$: note("<[c3 e3 g3] [c3 e3 g3 ${bar2}]>").gain(${gain})`
+  await vimAtLoad(page, true)
+  await bootApp(page, { drawer: { tabId: 'pattern', height: 520 } })
+  await seedCode(page, code('b3', '0.5'))
+  const value = () => editorValue(page)
+  const roll = page.locator('[data-bottom-panel-tab="piano-roll"]')
+  /** Click into the code, then back to just before `.gain`'s closing bracket (still in insert mode). */
+  const backToGain = async () => {
+    await clickCode(page)
+    await page.keyboard.press('End')
+    await page.keyboard.press('ArrowLeft')
+  }
+  await clickCode(page)
+  await page.keyboard.type('$')
+  await expect(roll.locator('[data-roll-cell="59:6"]')).toBeVisible({ timeout: 10_000 })
+
+  // with Vim's u
+  await page.keyboard.type('i')
+  await expect(modeOf(page)).toHaveText('-- INSERT --')
+  await page.keyboard.type('5')
+  await roll.locator('[data-roll-cell="59:6"]').click() // b3 off, written into the code
+  await expect.poll(value).toBe(code('~', '0.55'))
+  await expect(modeOf(page)).toHaveText('-- INSERT --') // insert mode lasted
+  await page.screenshot({ path: test.info().outputPath('grid-mid-insert.png') })
+  await backToGain()
+  await page.keyboard.type('5')
+  await page.keyboard.press('Escape')
+  await expect(modeOf(page)).toHaveText('-- NORMAL --')
+  expect(await value()).toBe(code('~', '0.555'))
+  await page.keyboard.type('u')
+  await expect.poll(value).toBe(code('~', '0.55')) // the typing after the grid edit
+  await page.keyboard.type('u')
+  await expect.poll(value).toBe(code('b3', '0.55')) // the grid edit alone
+  await page.keyboard.type('u')
+  await expect.poll(value).toBe(code('b3', '0.5')) // the typing before it
+
+  // with the grid's own undo
+  await page.keyboard.type('$i')
+  await expect(modeOf(page)).toHaveText('-- INSERT --')
+  await page.keyboard.type('7')
+  await roll.locator('[data-roll-cell="59:6"]').click()
+  await expect.poll(value).toBe(code('~', '0.57'))
+  await roll.locator('[data-roll-cell="48:0"]').focus()
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect.poll(value).toBe(code('b3', '0.57'))
+})
+
+test('switching Vim off, or closing the tab, in the middle of an insert leaves nothing behind', async ({ page }) => {
+  test.setTimeout(120_000)
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  await vimAtLoad(page, true)
+  await bootApp(page)
+  await clickCode(page)
+  await seed(page)
+  await page.keyboard.type('i')
+  await page.keyboard.type('ab cd ')
+  await expect(modeOf(page)).toHaveText('-- INSERT --')
+  await flipVimInView(page, false)
+  await expect(bars(page)).toHaveCount(0)
+  // the editor types and undoes as it does with Vim off: Monaco's own steps, one at a time
+  await clickCode(page)
+  const ed = await focused(page)
+  expect(ed?.text.startsWith('ab cd ')).toBe(true)
+  await page.keyboard.press(`${MOD}+z`)
+  // Monaco's last step was the space typed last
+  await expect.poll(async () => (await focused(page))?.text).toBe(`ab cd${TEXT}`)
+
+  // on again, and the tab closed while in insert mode
+  await flipVimInView(page, true)
+  await clickCode(page)
+  await seed(page)
+  await page.keyboard.type('i')
+  await page.keyboard.type('xy ')
+  await expect(modeOf(page)).toHaveText('-- INSERT --')
+  await page.locator('[data-workspace-tab="tab-pattern.strudel"] [data-testid^="tab-close-"]').click()
+  await expect(page.locator('[data-workspace-tab="tab-pattern.strudel"]')).toHaveCount(0)
+  // opened again: its Vim starts in normal mode, and u undoes as before
+  await page.locator('[data-activity-bar] [data-panel-id="explorer"]').click()
+  await page.locator('[data-side-panel]').getByText('pattern.strudel', { exact: true }).first().click()
+  await expect(modeOf(page)).toHaveText('-- NORMAL --')
+  await clickCode(page)
+  await page.keyboard.type('x')
+  expect(errors).toEqual([])
 })
 
 test('history: motions, search and yank work, edits are refused; the diff has no Vim', async ({ page }) => {
@@ -359,8 +564,14 @@ test('history: motions, search and yank work, edits are refused; the diff has no
   const commitId = (await commit.getAttribute('data-history-commit'))!
   const fileId = (await page.locator('[data-workspace-view="editor"]').first().getAttribute('data-file-id'))!
 
-  /** In a read-only editor with Vim: moving, search and yank work; nothing changes the text. */
-  async function readOnlyChecks(root: ReturnType<Page['locator']>, shot: string): Promise<void> {
+  const PAST_VERSION = 'This is a past version, so it can’t be changed here'
+
+  /**
+   * In a read-only editor with Vim: moving, search and yank work; nothing changes the text.
+   * Each of `tries` (an edit, an undo, a redo, an insert), pressed with no message showing,
+   * says why nothing happened (#2557).
+   */
+  async function readOnlyChecks(root: ReturnType<Page['locator']>, shot: string, tries: string[]): Promise<void> {
     await expect(root.locator('[data-vim-bar]')).toHaveCount(1)
     await expect(root.locator('[data-vim-readonly-note]')).toHaveText('read-only')
     await root.locator('.monaco-editor .view-lines').click()
@@ -374,11 +585,21 @@ test('history: motions, search and yank work, edits are refused; the diff has no
     await page.keyboard.type('/sawtooth')
     await page.keyboard.press('Enter')
     expect((await focused(page))?.line).toBe(3)
-    // yank: no error, and a put is refused like every edit
+    // yank: no error, no message, and a put is refused like every edit
     await page.keyboard.type('yy')
     await expect(root.locator('[data-vim-message][data-vim-error]')).toHaveCount(0)
-    // edits: x, dd, p, >>, insert mode, :s — the text stays as it was
-    await page.keyboard.type('xddp>>')
+    await expect(root.locator('[data-vim-message]')).toHaveText('')
+    // each try says why nothing happens
+    for (const t of tries) {
+      await expect(root.locator('[data-vim-message]')).toHaveText('', { timeout: 8_000 })
+      if (t.startsWith('Control+')) await page.keyboard.press(t)
+      else await page.keyboard.type(t)
+      await expect(root.locator('[data-vim-message]'), `${t} in a past version`).toHaveText(PAST_VERSION)
+      await expect(root.locator('[data-vim-mode]')).toHaveText('-- NORMAL --')
+      await page.screenshot({ path: test.info().outputPath(`readonly-message-${t}.png`) })
+    }
+    // edits: x, dd, p, >>, undo, insert mode, :s — the text stays as it was
+    await page.keyboard.type('xddp>>uu')
     await page.keyboard.type('i')
     await expect(root.locator('[data-vim-mode]')).toHaveText('-- NORMAL --')
     await page.keyboard.type('zz')
@@ -391,7 +612,7 @@ test('history: motions, search and yank work, edits are refused; the diff has no
   // 1. a commit checked out: the code editor shows it read-only
   await page.locator(`[data-history-checkout-btn="${commitId}"]`).click()
   await expect(page.locator('[data-editor-timetravel-banner]')).toBeVisible()
-  await readOnlyChecks(page.locator('[data-workspace-view="editor"]').first(), 'history-checkout.png')
+  await readOnlyChecks(page.locator('[data-workspace-view="editor"]').first(), 'history-checkout.png', ['u', 'x'])
   await page.locator('[data-editor-timetravel-exit]').click()
   await expect(page.locator('[data-editor-timetravel-banner]')).toHaveCount(0)
 
@@ -402,7 +623,7 @@ test('history: motions, search and yank work, edits are refused; the diff has no
   )
   const view = page.locator(`[data-history-view-overlay="${commitId}"]`)
   await expect(view).toBeVisible()
-  await readOnlyChecks(view, 'history-view.png')
+  await readOnlyChecks(view, 'history-view.png', ['Control+r', 'i'])
   // :q in the history view closes that history tab, and nothing else
   await view.locator('.monaco-editor .view-lines').click()
   await page.keyboard.type(':q')
@@ -450,6 +671,53 @@ test.describe('off a Mac, where Vim’s Ctrl keys are Stave’s Ctrl keys', () =
       [key, back] as const,
     )
   }
+
+  test('Ctrl+[ and Ctrl+C leave insert mode; u and Ctrl+R undo and redo one whole insert; Esc after d stays with Vim', async ({ page }) => {
+    // #2557, the emulated part of the Windows/Linux check: the Ctrl keys that are Stave's
+    // or the browser's off a Mac (Ctrl+R reloads, Ctrl+C copies) are Vim's in the code.
+    test.setTimeout(120_000)
+    await vimAtLoad(page, true)
+    await bootApp(page)
+    await page.evaluate(() => ((window as unknown as { __stayed: boolean }).__stayed = true))
+    await clickCode(page)
+    await seed(page)
+    await expect(modeOf(page)).toHaveText('-- NORMAL --')
+    for (const out of ['Control+BracketLeft', 'Control+c']) {
+      await page.keyboard.type('i')
+      await expect(modeOf(page)).toHaveText('-- INSERT --')
+      await page.keyboard.press(out)
+      await expect(modeOf(page), `${out} leaves insert mode`).toHaveText('-- NORMAL --')
+    }
+    await page.keyboard.type('Ahello there')
+    await page.keyboard.press('Enter')
+    await page.keyboard.type('more')
+    await page.keyboard.press('Control+c')
+    await expect(modeOf(page)).toHaveText('-- NORMAL --')
+    const typed = (await focused(page))?.text
+    expect(typed).toBe(TEXT.replace('\n', 'hello there\nmore\n'))
+    await page.keyboard.type('u')
+    expect((await focused(page))?.text).toBe(TEXT)
+    await page.keyboard.press('Control+r')
+    expect((await focused(page))?.text).toBe(typed)
+    // d then Esc (or Ctrl+[, or Ctrl+C, which are Esc to Vim): cancelled, and the key is
+    // Vim's (nothing else on the page hears it)
+    const heard: string[] = []
+    await page.exposeFunction('__heardEsc', (k: string) => heard.push(k))
+    await page.evaluate(() =>
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || (e.ctrlKey && (e.key === '[' || e.key === 'c'))) {
+          ;(window as unknown as { __heardEsc: (k: string) => void }).__heardEsc(e.key)
+        }
+      }),
+    )
+    for (const esc of ['Escape', 'Control+BracketLeft', 'Control+c']) {
+      await page.keyboard.type('d')
+      await page.keyboard.press(esc)
+    }
+    await page.keyboard.press('Escape')
+    await expect.poll(() => heard).toEqual(['Escape']) // only the last, with nothing to cancel
+    expect(await page.evaluate(() => (window as unknown as { __stayed?: boolean }).__stayed)).toBe(true)
+  })
 
   test('handing a key back makes it run the Stave command again; switched off, every key is as before', async ({ page }) => {
     test.setTimeout(150_000)
@@ -549,7 +817,11 @@ test('switched off: no bar, the editor exactly as before, and the person’s sho
       const opt = (window as unknown as { monaco: { editor: { EditorOption: Record<string, number> } } }).monaco.editor.EditorOption
       const get = (k: string) => (ed as unknown as { getOption(o: number): unknown }).getOption(opt[k])
       const bar = document.querySelector('[data-workspace-view="editor"] [data-editor-bar]')
+      // the editor's own context keys (Monaco's scoped context for this editor), #2557
+      const svc = (ed as unknown as { _contextKeyService: { _myContextId: number; getContextValuesContainer(id: number): { _value: Record<string, unknown> } } })._contextKeyService
+      const own = svc.getContextValuesContainer(svc._myContextId)._value
       return {
+        contextKeys: Object.fromEntries(Object.keys(own).sort().map((k) => [k, own[k]])),
         cursorStyle: get('cursorStyle'),
         cursorBlinking: get('cursorBlinking'),
         cursorWidth: get('cursorWidth'),
@@ -558,7 +830,18 @@ test('switched off: no bar, the editor exactly as before, and the person’s sho
         shortcuts: window.localStorage.getItem('stave:keybindings'),
       }
     })
-  const before = await state()
+  // Monaco makes some of an editor's context keys lazily, when the page is first idle (the
+  // suggestion list's, for one), so "before" is read once the editor's keys have settled.
+  let before = await state()
+  await expect
+    .poll(async () => {
+      await page.waitForTimeout(750)
+      const now = await state()
+      const same = JSON.stringify(now) === JSON.stringify(before)
+      before = now
+      return same
+    }, { timeout: 20_000 })
+    .toBe(true)
   expect(before.barChildren).toBe(0)
   expect(before.barHeight).toBe(0)
 
@@ -569,6 +852,9 @@ test('switched off: no bar, the editor exactly as before, and the person’s sho
   expect(on.cursorStyle).not.toBe(before.cursorStyle)
   expect(on.cursorBlinking).not.toBe(before.cursorBlinking)
   expect(on.shortcuts).toBe(before.shortcuts)
+  // monaco-vim's own context key is on the editor while Vim is
+  expect(on.contextKeys).toHaveProperty('insertMode')
+  expect(before.contextKeys).not.toHaveProperty('insertMode')
 
   await flipVimInView(page, false)
   await expect(bars(page)).toHaveCount(0)

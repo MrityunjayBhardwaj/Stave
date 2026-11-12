@@ -907,7 +907,7 @@ var VIM = {
   // the build turns this into `import('./vim.js')`, a file of its own (tsup.config.ts)
   load: /* @__PURE__ */ __name(() => import('./vim.cjs').then((m) => m.vimModule), "load"),
   about: {
-    version: "0.1.0",
+    version: "0.1.1",
     experimental: true,
     icon: "V",
     tint: "linear-gradient(135deg, #019733, #0b5d2a)",
@@ -927,10 +927,16 @@ var VIM = {
       },
       {
         heading: "Past versions",
-        text: "In the history view you can move around, search and yank, but a past version cannot be edited. The side-by-side diff has no Vim."
+        text: "In the history view you can move around, search and yank, but a past version cannot be edited; if you try, the bar says so. The side-by-side diff has no Vim."
       }
     ],
-    changes: [{ version: "0.1.0", note: "First version, built on monaco-vim 0.4.4 (MIT)." }]
+    changes: [
+      {
+        version: "0.1.1",
+        note: "One u undoes a whole insert. Esc that cancels a half-typed command stays with Vim. Esc closes the suggestion list first. Edits in a past version say why nothing happens. Switching off leaves nothing behind."
+      },
+      { version: "0.1.0", note: "First version, built on monaco-vim 0.4.4 (MIT)." }
+    ]
   }
 };
 
