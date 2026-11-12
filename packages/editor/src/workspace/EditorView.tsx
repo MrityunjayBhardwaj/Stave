@@ -51,7 +51,7 @@ import {
 } from '../monaco/diagnostics'
 import { addInlineViewZones, inlineRenderSizeFor } from '../visualizers/viewZones'
 import { warmInlineViz, releaseWarmInlineViz } from '../visualizers/inlineVizWarmup'
-import { readInlineVizNames } from '../codeView/mixer/inlineVizCalls'
+import { readInlineVizNames } from '../codeView'
 import { onNamedVizChanged } from '../visualizers/namedVizRegistry'
 import { getFile, subscribeToZoneOverrides } from './WorkspaceFile'
 import {

@@ -19,6 +19,7 @@
 import { parseTopLevel, collectChain, type ChainCall } from '../chunkDetect'
 import { STRUDEL_VIZ_METHODS } from '../../engine/strudelVizMethods'
 import { readVizOptionsLiteral } from './vizOptionsLiteral'
+import { splitMuteMarker } from '../ir/trackId'
 
 function stringLiteral(raw: string): string | null {
   const m = /^(['"`])([\s\S]*)\1$/.exec(raw)
@@ -50,8 +51,8 @@ export function readInlineVizNames(doc: string): string[] | null {
   const names: string[] = []
   for (const node of statements) {
     if (node?.type !== 'LabeledStatement') continue
-    const label: string = node.label?.name ?? ''
-    if (label.startsWith('_') || label.endsWith('_')) continue // muted: never captured
+    const mute = splitMuteMarker(node.label?.name ?? '')
+    if (mute.prefix || mute.suffix) continue // muted: never captured
     const body = node.body
     if (body?.type !== 'ExpressionStatement') continue
     let last: string | null = null
