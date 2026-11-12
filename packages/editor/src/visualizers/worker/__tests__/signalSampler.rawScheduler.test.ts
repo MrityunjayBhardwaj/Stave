@@ -31,7 +31,7 @@ describe('MainSignalSampler raw-scheduler query (#2561)', () => {
     const s = new MainSignalSampler(true)
     s.bind({ scheduler: sched })
     const f = s.sample()
-    expect(wide(windows)).toEqual([[6, 12]])
+    expect(wide(windows)).toEqual([[6, 12.5]]) // the window plus half a cycle prefetched (#2563)
     expect(f.rawScheduler?.events).toHaveLength(1)
   })
 

@@ -18,6 +18,7 @@ import type { BusAnalyser } from '../signals/SignalBus'
 import type { IRPattern } from '../../codeView'
 import type { HapEvent } from '../../engine/HapStream'
 import type { FrameSampleCache } from './frameSampleCache'
+import { RollingHapWindow } from './rollingHapWindow'
 import { perf } from '../../perf/profiler'
 import {
   MASTER_KEY,
@@ -157,6 +158,9 @@ export class MainSignalSampler {
 
   private inputs: SamplerInputs = {}
   private seq = 0
+  /** The wide window, advanced by querying only the new sliver each frame
+   *  (#2563) instead of the whole window. Reset on every rebind. */
+  private readonly rawWindow = new RollingHapWindow(RAW_QUERY_BACK, RAW_QUERY_FWD)
   /** Haps accumulated since the last `sample()` (the envelope feed). */
   private pendingBumps: BumpSummary[] = []
   private boundStream: HapSubscribable | null = null
@@ -173,6 +177,9 @@ export class MainSignalSampler {
    *  re-evaluate). Pass `null`/absent for demo / IR-only mode. */
   bind(inputs: SamplerInputs): void {
     this.inputs = inputs
+    // A rebind is a re-evaluate: the pattern may have changed under the same
+    // window, so the next frame re-queries it whole.
+    this.rawWindow.reset()
   }
 
   /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
@@ -253,7 +260,7 @@ export class MainSignalSampler {
     const rawScheduler: RawSchedulerFrame = {
       now,
       events: scheduler && this.wantsRawScheduler
-        ? queryAt(scheduler, now - RAW_QUERY_BACK, now + RAW_QUERY_FWD).map(summariseRawHap)
+        ? this.rawWindow.at(scheduler, now, (a, b) => queryAt(scheduler, a, b)).map(summariseRawHap)
         : [],
     }
 
@@ -268,6 +275,7 @@ export class MainSignalSampler {
     this.boundStream = null
     this.pendingBumps = []
     this.inputs = {}
+    this.rawWindow.reset()
   }
 
   /** The next seq an `emptyFrame` should carry (test/demo helper). */

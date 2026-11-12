@@ -6951,7 +6951,8 @@ declare const ALIAS_MAP: Record<string, EngineAliasValue>;
  *
  * The ONLY per-frame main-thread cost is `sample()` (read analyser bytes + the
  * narrow active-at-now queries + now, and — for kinds whose sketches get
- * `stave.scheduler`, see `kindReadsRawScheduler` — ONE wide scheduler query)
+ * `stave.scheduler`, see `kindReadsRawScheduler` — the wide window, kept by
+ * `RollingHapWindow` so most frames run no wide query at all)
  * + a transferable `postMessage` — the heavy `draw()` is gone from main. That
  * residual is what the matrix measures (PLAN §8). The wide query is the costly
  * part with a dense song (#2561), which is why it is skipped where unused.
@@ -9329,6 +9330,9 @@ declare class MainSignalSampler {
     constructor(wantsRawScheduler?: boolean);
     private inputs;
     private seq;
+    /** The wide window, advanced by querying only the new sliver each frame
+     *  (#2563) instead of the whole window. Reset on every rebind. */
+    private readonly rawWindow;
     /** Haps accumulated since the last `sample()` (the envelope feed). */
     private pendingBumps;
     private boundStream;
