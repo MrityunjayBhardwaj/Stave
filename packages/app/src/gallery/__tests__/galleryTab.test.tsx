@@ -6,7 +6,7 @@
  * never fetches the list again.
  */
 import React from "react";
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 
 vi.mock("../../dialogs/host", () => ({
@@ -17,15 +17,13 @@ vi.mock("../../dialogs/host", () => ({
 }));
 
 import type { AppTabState } from "@stave/editor";
-import { createGalleryStore } from "../galleryStore";
+import { createGalleryStore, useGalleryStore, type GalleryStore } from "../galleryStore";
 import {
   GALLERY_APP_KEY,
   GalleryTabBody,
   galleryTabLabel,
-  openGalleryStore,
   readPlace,
   SEARCH_WRITE_DELAY_MS,
-  resetGalleryTabForTests,
   type GalleryPlace,
 } from "../galleryTab";
 import type { GalleryEntry, GalleryEntryResponse } from "../types";
@@ -70,7 +68,6 @@ const listFetches = (f: ReturnType<typeof mockGallery>) => f.mock.calls.filter((
 const tab = (state?: AppTabState) => ({ kind: "app" as const, id: `app-${GALLERY_APP_KEY}`, appKey: GALLERY_APP_KEY, ...(state !== undefined ? { state } : {}) });
 const noop = vi.fn(async () => true);
 
-beforeEach(() => resetGalleryTabForTests());
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -241,7 +238,7 @@ describe("GalleryTabBody", () => {
   it("filter and sort are written at once; the search only once typing pauses, and on leaving the tab", async () => {
     mockGallery();
     const store = createGalleryStore();
-    openGalleryStore(store, null);
+    store.open(null);
     const places: GalleryPlace[] = [];
     const view = render(
       <GalleryTabBody tab={tab()} store={store} onOpenAsProject={noop} onAddToProject={noop} onPlaceChange={(p) => places.push(p)} />,
@@ -269,7 +266,7 @@ describe("GalleryTabBody", () => {
   it("#2492 My shares' filter and sort are written at once, its search once typing pauses", async () => {
     mockGallery();
     const store = createGalleryStore();
-    openGalleryStore(store, null);
+    store.open(null);
     const places: GalleryPlace[] = [];
     const view = render(
       <GalleryTabBody tab={tab()} store={store} onOpenAsProject={noop} onAddToProject={noop} onPlaceChange={(p) => places.push(p)} />,
@@ -299,7 +296,7 @@ describe("GalleryTabBody", () => {
   it("after a real open the body doesn't resume over it", async () => {
     const fetchMock = mockGallery();
     const store = createGalleryStore();
-    openGalleryStore(store, { kind: "entry", id: "musc1xxxxxx" });
+    store.open({ kind: "entry", id: "musc1xxxxxx" });
     render(
       <GalleryTabBody
         tab={tab({ tab: "browse", stack: [] })}
@@ -311,6 +308,74 @@ describe("GalleryTabBody", () => {
     );
     await waitFor(() => expect(document.querySelector('[data-gallery-detail="musc1xxxxxx"]')).toBeTruthy());
     expect(listFetches(fetchMock)).toBe(1);
+  });
+
+  it("#2497 drawn twice in strict mode, a restored tab still picks up its place once", async () => {
+    const fetchMock = mockGallery();
+    const store = createGalleryStore();
+    const saved = { tab: "browse", filter: "music", sort: "title", query: "", ...MINE0, stack: [{ kind: "entry", id: "musc1xxxxxx" }] };
+    render(
+      <React.StrictMode>
+        <GalleryTabBody tab={tab(saved)} store={store} onOpenAsProject={noop} onAddToProject={noop} onPlaceChange={() => {}} />
+      </React.StrictMode>,
+    );
+    await waitFor(() => expect(document.querySelector('[data-gallery-detail="musc1xxxxxx"]')).toBeTruthy());
+    expect(listFetches(fetchMock)).toBe(1);
+    expect(fetchMock.mock.calls.filter(([u]) => u === "/api/gallery/musc1xxxxxx").length).toBe(1);
+    expect(store.getState()).toMatchObject({ filter: "music", sort: "title", stack: saved.stack });
+  });
+
+  it("#2497 the place is picked up after drawing but before the first paint; another reader of the store isn't updated mid-draw", async () => {
+    mockGallery();
+    const store = createGalleryStore();
+    // Something else on the page already reads the store (as the phone overlay's host does).
+    function Reader({ store }: { store: GalleryStore }) {
+      return <span data-reader>{useGalleryStore(store).filter}</span>;
+    }
+    // Layout effects all run before the browser paints; this one runs after the body's.
+    let beforePaint: string | null = null;
+    function PaintProbe({ store }: { store: GalleryStore }) {
+      React.useLayoutEffect(() => {
+        beforePaint = store.getState().filter;
+      }, [store]);
+      return null;
+    }
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const view = render(<Reader store={store} />);
+      view.rerender(
+        <>
+          <Reader store={store} />
+          <GalleryTabBody
+            tab={tab({ tab: "browse", filter: "music", stack: [] })}
+            store={store}
+            onOpenAsProject={noop}
+            onAddToProject={noop}
+            onPlaceChange={() => {}}
+          />
+          <PaintProbe store={store} />
+        </>,
+      );
+      // The saved place is in the store before the first paint, so the empty start is never shown.
+      expect(beforePaint).toBe("music");
+      expect(document.querySelector("[data-reader]")!.textContent).toBe("music");
+      await waitFor(() => expect(document.querySelector('[data-gallery-card="musc1xxxxxx"]')).toBeTruthy());
+      const whileRendering = errors.mock.calls.filter((c) => c.some((a) => String(a).includes("while rendering a different component")));
+      expect(whileRendering).toEqual([]);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it("#2497 a store knows whether it has been opened or resumed", () => {
+    mockGallery();
+    const a = createGalleryStore();
+    expect(a.started()).toBe(false);
+    a.open(null);
+    expect(a.started()).toBe(true);
+    const b = createGalleryStore();
+    b.resume({ tab: "browse", filter: "all", sort: "newest", query: "", ...MINE0, stack: [] });
+    expect(b.started()).toBe(true);
   });
 
   it("has no close button and ignores Esc", async () => {

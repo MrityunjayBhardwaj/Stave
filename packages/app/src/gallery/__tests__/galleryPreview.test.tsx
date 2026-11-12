@@ -6,6 +6,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, act, fireEvent, cleanup } from "@testing-library/react";
 import { GalleryPreview, NAVIGATED_AWAY } from "../GalleryPreview";
+import { NEEDS_CLICK, type PreviewFile } from "../previewProtocol";
+
+/** A one-file entry, as GalleryEntry hands it over (previewPlayFor). */
+const ONE: PreviewFile[] = [{ path: "a.strudel", kind: "strudel", code: 's("bd")' }];
 
 beforeEach(() => cleanup());
 
@@ -22,7 +26,7 @@ function fromFrame(data: unknown) {
 }
 
 function openPreview() {
-  render(<GalleryPreview code={'s("bd")'} kind="strudel" fileKey="e1/f0" />);
+  render(<GalleryPreview path="a.strudel" files={ONE} fileKey="e1/f0" />);
   fireEvent.click(screen.getByRole("button", { name: "Preview" }));
   const f = frame();
   expect(f, "the preview opened its frame").not.toBeNull();
@@ -40,7 +44,7 @@ describe("GalleryPreview — what goes into the frame, and when", () => {
     expect(plays(posted), "ready alone: the player has not finished loading").toBe(0);
     fireEvent.load(f);
     expect(plays(posted)).toBe(1);
-    expect(posted.mock.calls[0][0]).toEqual({ play: true, code: 's("bd")', kind: "strudel" });
+    expect(posted.mock.calls[0][0]).toEqual({ play: true, path: "a.strudel", files: ONE });
   });
 
   it("load first, then ready, also plays once", () => {
@@ -70,5 +74,157 @@ describe("GalleryPreview — what goes into the frame, and when", () => {
     fireEvent.load(f);
     expect(frame()).not.toBeNull();
     expect(document.querySelector("[data-gallery-preview-state]")?.textContent).not.toBe(NAVIGATED_AWAY);
+  });
+});
+
+describe("GalleryPreview — a frame that needs its own press (#2495)", () => {
+  it("moves focus onto the frame when it says it needs a press there", () => {
+    const { f } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    expect(document.activeElement).not.toBe(f);
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement, "focus is on the frame, whose own Play has focus").toBe(f);
+    expect(document.querySelector("[data-gallery-preview-state]")?.textContent).toBe(NEEDS_CLICK);
+  });
+
+  it("CONTROL: any other stopped message leaves focus where it was", () => {
+    const { f } = openPreview();
+    const button = screen.getByRole("button", { name: "Preview" });
+    button.focus();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "stopped" });
+    fromFrame({ state: "stopped", message: "Stopped by the code." });
+    expect(document.activeElement).toBe(button);
+  });
+
+  it("only the first answer to a request, so code in it can't keep pulling focus back (#2547)", () => {
+    const { f } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement).toBe(f);
+    const button = screen.getByRole("button", { name: "Preview" });
+    button.focus();
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement).toBe(button);
+  });
+});
+
+/**
+ * #2547 — the frame runs the entry's own code, which can post NEEDS_CLICK itself.
+ * Focus follows it only as the first answer to this page's own request to play.
+ */
+describe("GalleryPreview — focus moves only when this page asked the frame to play (#2547)", () => {
+  /** Something on the page that has focus, as the search box would. */
+  function focusElsewhere(): HTMLInputElement {
+    const input = document.createElement("input");
+    input.setAttribute("aria-label", "Search");
+    document.body.appendChild(input);
+    input.focus();
+    return input;
+  }
+
+  it("unasked: a NEEDS_CLICK before the page has sent the frame anything moves nothing", () => {
+    const { f, posted } = openPreview();
+    const search = focusElsewhere();
+    fireEvent.load(f);
+    // the code was not sent yet (no "ready"), so nothing has been asked of the frame
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(plays(posted)).toBe(0);
+    expect(document.activeElement, "focus stays in the search box").toBe(search);
+    search.remove();
+  });
+
+  it("after the answer: the code posting NEEDS_CLICK once it already plays moves nothing", () => {
+    const { f } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "playing" });
+    const search = focusElsewhere();
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement, "focus stays in the search box").toBe(search);
+    search.remove();
+  });
+
+  it("after the answer: an error answer ends the wait too", () => {
+    const { f } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "error", message: "boom" });
+    const search = focusElsewhere();
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement).toBe(search);
+    search.remove();
+  });
+
+  it("a fresh frame is not waiting: a request the old frame never answered doesn't carry over", () => {
+    const { f } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" }); // the page asks; no answer comes
+    fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
+    expect(frame()).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const g = frame()!;
+    expect(g).not.toBe(f);
+    const search = focusElsewhere();
+    fireEvent.load(g);
+    // the new frame posts it before the page has asked it anything
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement).toBe(search);
+    search.remove();
+  });
+
+  it("asked by a card's or a row's play (autoStart): its NEEDS_CLICK answer moves focus into the frame", async () => {
+    render(<GalleryPreview path="a.strudel" files={ONE} fileKey="e1/f0" autoStart />);
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+    const f = frame();
+    expect(f, "autoStart opened the frame by itself").not.toBeNull();
+    const posted = vi.spyOn(f!.contentWindow!, "postMessage");
+    const search = focusElsewhere();
+    fireEvent.load(f!);
+    fromFrame({ state: "ready" });
+    expect(plays(posted), "the page asked the frame to play").toBe(1);
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement, "focus went into the frame, where Enter is the press").toBe(f);
+    search.remove();
+  });
+
+  it("asked again (Preview pressed after a stop): that answer may move focus again", () => {
+    const { f, posted } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "playing" });
+    fireEvent.click(screen.getByRole("button", { name: "Stop preview" }));
+    fromFrame({ state: "stopped" });
+    const search = focusElsewhere();
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(plays(posted)).toBe(2);
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(document.activeElement).toBe(f);
+    search.remove();
+  });
+});
+
+describe("GalleryPreview — a project's files go in together (#2490)", () => {
+  it("sends the played file AND the entry's other files, in one message the frame accepts", async () => {
+    const { parseToFrame } = await import("../previewProtocol");
+    const files: PreviewFile[] = [
+      { path: "main.strudel", kind: "strudel", code: 's("bd").viz("bloom")' },
+      { path: "viz/bloom.hydra", kind: "hydra", code: "osc(10).out()" },
+    ];
+    render(<GalleryPreview path="main.strudel" files={files} fileKey="p1/f1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const f = frame()!;
+    const posted = vi.spyOn(f.contentWindow!, "postMessage");
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    expect(plays(posted)).toBe(1);
+    const sent = posted.mock.calls[0][0];
+    expect(sent).toEqual({ play: true, path: "main.strudel", files });
+    expect(parseToFrame(sent)).toEqual(sent);
   });
 });

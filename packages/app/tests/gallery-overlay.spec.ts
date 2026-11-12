@@ -28,6 +28,7 @@ import {
   COUNTER_LINE,
   GALLERY_BODY,
   GALLERY_TAB,
+  HYDRA_CODE,
   MUSIC_CODE,
   closeGalleryTab,
   openGalleryFromMenu,
@@ -239,6 +240,29 @@ test.describe('community gallery overlay', () => {
     await expect(page.locator(GALLERY_BODY)).toHaveCount(0)
 
     expect(await peak(page, runs, 6_000), 'added gallery code ran without Play').toBe(0)
+  })
+
+  test('#2491 a project adds the one file you choose from its list, and it runs nothing', async ({ page }) => {
+    await enablePerf(page)
+    await routeGallery(page)
+    await bootApp(page, { drawer: SONG_VIEW })
+    await expect(page.locator('[data-full-song="root"]')).toBeVisible({ timeout: 15_000 })
+    await openGalleryFromMenu(page)
+    await page.locator('[data-gallery-card="proj1AAAAAA"]').click()
+
+    const add = page.getByRole('button', { name: 'Add to this project' })
+    await expect(add).toHaveAttribute('aria-expanded', 'false')
+    await add.click()
+    await expect(add).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.locator('[data-gallery-add-file]')).toHaveText([/main\.strudel/, /viz\/bloom\.hydra/])
+    // the second file, so falling back to the entry's first would show the wrong code
+    await page.getByRole('button', { name: 'Add viz/bloom.hydra to this project' }).click()
+    await expect(page.locator(GALLERY_BODY)).toHaveCount(0)
+    await expect.poll(() => editorValue(page), { timeout: 15_000 }).toBe(HYDRA_CODE)
+    await expect(page.getByText('bloom.hydra', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('main.strudel', { exact: true })).toHaveCount(0)
+
+    expect(await peak(page, runs, 6_000), 'an added project file ran without Play').toBe(0)
   })
 
   test('a removed entry says so', async ({ page }) => {

@@ -143,6 +143,13 @@ export interface GalleryStore {
    * `open`, a fresh start for the data.
    */
   resume(place: GalleryResumePlace): void;
+  /**
+   * #2497 — has `open` or `resume` run on this store yet? For the store a page
+   * keeps (`galleryTabStore`), that is "opened since the page loaded": a gallery
+   * tab restored after a reload resumes its saved place only while this is false,
+   * so it never draws over a real open (the menu, a link, the phone overlay).
+   */
+  started(): boolean;
   /** Show browse, My shares or Moderation; closes whatever was open on top (the Back stack empties). */
   setTab(tab: GalleryTab): void;
   setFilter(filter: GalleryFilter): void;
@@ -212,6 +219,7 @@ const initialState = (): GalleryState => ({
 export function createGalleryStore(): GalleryStore {
   let state = initialState();
   let scroll: SavedScroll | null = null;
+  let started = false;
   const listeners = new Set<() => void>();
 
   const set = (patch: Partial<GalleryState> | ((s: GalleryState) => Partial<GalleryState>)) => {
@@ -267,6 +275,7 @@ export function createGalleryStore(): GalleryStore {
       };
     },
     open(first) {
+      started = true;
       loadList();
       refreshLocal();
       scroll = null;
@@ -275,6 +284,7 @@ export function createGalleryStore(): GalleryStore {
       else set({ detail: null });
     },
     resume(place) {
+      started = true;
       loadList();
       refreshLocal();
       scroll = null;
@@ -284,6 +294,7 @@ export function createGalleryStore(): GalleryStore {
       if (top?.kind === "entry") openEntry(top.id);
       else set({ detail: null });
     },
+    started: () => started,
     setTab(tab) {
       // A view of its own: whatever was open on top of the grid closes.
       scroll = null;

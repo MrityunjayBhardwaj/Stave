@@ -18,6 +18,8 @@ import type { BusAnalyser } from '../signals/SignalBus'
 import type { IRPattern } from '../../codeView'
 import type { HapEvent } from '../../engine/HapStream'
 import type { FrameSampleCache } from './frameSampleCache'
+import { RollingHapWindow } from './rollingHapWindow'
+import { ActiveNowCache } from './activeNowCache'
 import { perf } from '../../perf/profiler'
 import {
   MASTER_KEY,
@@ -145,8 +147,25 @@ function readAnalyserBytes(key: string, an: BusAnalyser): AnalyserBytes | null {
 }
 
 export class MainSignalSampler {
+  /**
+   * Whether `sample()` runs the WIDE raw-scheduler query (`stave.scheduler`, B-3).
+   * Only p5 and hydra sketches are handed `stave.scheduler`; a three.js or GLSL
+   * sketch never sees it, so for them the query is pure main-thread cost — and it
+   * is the expensive one: it walks the whole song over `RAW_QUERY_BACK +
+   * RAW_QUERY_FWD` cycles every frame (#2561 measured it as most of the main
+   * thread during Play with a dense song). Off → `rawScheduler.events` is empty.
+   */
+  constructor(private readonly wantsRawScheduler = true) {}
+
   private inputs: SamplerInputs = {}
   private seq = 0
+  /** The wide window, advanced by querying only the new sliver each frame
+   *  (#2563) instead of the whole window. Reset on every rebind. */
+  private readonly rawWindow = new RollingHapWindow(RAW_QUERY_BACK, RAW_QUERY_FWD)
+  /** "What's playing now" for the combined pattern and per track, re-queried
+   *  only when a note starts or ends (#2567). Reset on every rebind. */
+  private readonly activeNow = new ActiveNowCache(EPSILON)
+  private activeNowByTrack = new Map<string, ActiveNowCache>()
   /** Haps accumulated since the last `sample()` (the envelope feed). */
   private pendingBumps: BumpSummary[] = []
   private boundStream: HapSubscribable | null = null
@@ -163,6 +182,11 @@ export class MainSignalSampler {
    *  re-evaluate). Pass `null`/absent for demo / IR-only mode. */
   bind(inputs: SamplerInputs): void {
     this.inputs = inputs
+    // A rebind is a re-evaluate: the pattern may have changed under the same
+    // window, so the next frame re-queries it whole.
+    this.rawWindow.reset()
+    this.activeNow.reset()
+    this.activeNowByTrack = new Map()
   }
 
   /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
@@ -197,22 +221,24 @@ export class MainSignalSampler {
       this.inputs
     const seq = ++this.seq
     const now = scheduler ? scheduler.now() : 0
-    const begin = now
-    const end = now + EPSILON
 
     // Query helper — routes through the per-tick cache when present (one query per
     // shared (scheduler, window); shared by reference, summarised per-viz below).
     const queryAt = (sched: IRPattern, a: number, b: number) =>
       cache ? cache.query(sched, a, b, () => sched.query(a, b)) : sched.query(a, b)
 
+    // `[now, now + ε)`: what ActiveNowCache answers, from a real
+    // query taken when the answer last could have changed.
     const activeEvents: ActiveEventSummary[] = scheduler
-      ? queryAt(scheduler, begin, end).map(summariseEvent)
+      ? this.activeNow.at(scheduler, now, (a, b) => queryAt(scheduler, a, b)).map(summariseEvent)
       : []
 
     const activeByTrack: Array<[string, ActiveEventSummary[]]> = []
     if (trackSchedulers) {
       for (const [key, sched] of trackSchedulers) {
-        activeByTrack.push([key, queryAt(sched, begin, end).map(summariseEvent)])
+        let cache = this.activeNowByTrack.get(key)
+        if (!cache) this.activeNowByTrack.set(key, (cache = new ActiveNowCache(EPSILON)))
+        activeByTrack.push([key, cache.at(sched, now, (a, b) => queryAt(sched, a, b)).map(summariseEvent)])
       }
     }
 
@@ -242,8 +268,8 @@ export class MainSignalSampler {
     // feeds the bus; this feeds raw sketches that scroll a window of haps). ──
     const rawScheduler: RawSchedulerFrame = {
       now,
-      events: scheduler
-        ? queryAt(scheduler, now - RAW_QUERY_BACK, now + RAW_QUERY_FWD).map(summariseRawHap)
+      events: scheduler && this.wantsRawScheduler
+        ? this.rawWindow.at(scheduler, now, (a, b) => queryAt(scheduler, a, b)).map(summariseRawHap)
         : [],
     }
 
@@ -258,6 +284,9 @@ export class MainSignalSampler {
     this.boundStream = null
     this.pendingBumps = []
     this.inputs = {}
+    this.rawWindow.reset()
+    this.activeNow.reset()
+    this.activeNowByTrack = new Map()
   }
 
   /** The next seq an `emptyFrame` should carry (test/demo helper). */

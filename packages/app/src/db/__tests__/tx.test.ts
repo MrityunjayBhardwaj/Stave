@@ -179,7 +179,11 @@ describe("when our callback throws and the rollback that follows fails too (#238
   // drizzle's Neon session, the client's query for `rollback` fails with the
   // error pg raises for a dropped connection.
 
-  /** A fresh PGlite whose connection "drops" when `drop()` is called. */
+  /** A fresh PGlite whose connection "drops" when `drop()` is called. Each one
+   *  is a cold PGlite start (drop() breaks the client, so it can't be shared):
+   *  ~1.5 s with the machine busy, 3.9–4.9 s under heavy load (measured
+   *  2026-11-11), past vitest's 5 s default on a loaded full run (#2521). The
+   *  tests that call it take the 60 s every other cold PGlite start here gets. */
   async function droppable() {
     const { PGlite } = await import("@electric-sql/pglite");
     const client = await PGlite.create();
@@ -248,7 +252,7 @@ describe("when our callback throws and the rollback that follows fails too (#238
     } finally {
       await close();
     }
-  });
+  }, 60_000);
 
   it("Neon: our plain Error comes out (a 500), and the rollback's DrizzleQueryError is logged, not chained", async () => {
     const { db, sent } = await neonWhoseRollbackFails();
@@ -291,7 +295,7 @@ describe("when our callback throws and the rollback that follows fails too (#238
     } finally {
       await close();
     }
-  });
+  }, 60_000);
 
   it("a rollback that succeeds logs nothing", async () => {
     const bug = new Error("a bug in our code");

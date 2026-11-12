@@ -6955,9 +6955,13 @@ declare const ALIAS_MAP: Record<string, EngineAliasValue>;
  *   - `pause`/`resume` — stop/start the sampling loop + tell the worker.
  *   - `destroy` — stop the loop, tell the worker to tear down, terminate it.
  *
- * The ONLY per-frame main-thread cost is `sample()` (read analyser bytes + ONE
- * wide scheduler query + now) + a transferable `postMessage` — the heavy
- * `draw()` is gone from main. That residual is what the matrix measures (PLAN §8).
+ * The ONLY per-frame main-thread cost is `sample()` (read analyser bytes + the
+ * narrow active-at-now queries + now, and — for kinds whose sketches get
+ * `stave.scheduler`, see `kindReadsRawScheduler` — the wide window, kept by
+ * `RollingHapWindow` so most frames run no wide query at all)
+ * + a transferable `postMessage` — the heavy `draw()` is gone from main. That
+ * residual is what the matrix measures (PLAN §8). The wide query is the costly
+ * part with a dense song (#2561), which is why it is skipped where unused.
  *
  * Falls back is NOT handled here: `makeRenderer` only constructs a
  * WorkerVizRenderer when a worker factory is registered AND the transport is
@@ -6974,6 +6978,8 @@ declare class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
     private readonly name;
     private worker;
     private writer;
+    /** Assigned in the constructor: whether it pre-queries `stave.scheduler`
+     *  depends on the kind (see `kindReadsRawScheduler`). */
     private readonly sampler;
     /** When set (viz PREVIEWS, #838), supersedes the live sampler in the pump: the
      *  frame comes from this muted demo feed instead of the analyser/scheduler, so a
@@ -9323,8 +9329,25 @@ interface HapSubscribable {
     off(handler: (e: HapEvent) => void): void;
 }
 declare class MainSignalSampler {
+    private readonly wantsRawScheduler;
+    /**
+     * Whether `sample()` runs the WIDE raw-scheduler query (`stave.scheduler`, B-3).
+     * Only p5 and hydra sketches are handed `stave.scheduler`; a three.js or GLSL
+     * sketch never sees it, so for them the query is pure main-thread cost — and it
+     * is the expensive one: it walks the whole song over `RAW_QUERY_BACK +
+     * RAW_QUERY_FWD` cycles every frame (#2561 measured it as most of the main
+     * thread during Play with a dense song). Off → `rawScheduler.events` is empty.
+     */
+    constructor(wantsRawScheduler?: boolean);
     private inputs;
     private seq;
+    /** The wide window, advanced by querying only the new sliver each frame
+     *  (#2563) instead of the whole window. Reset on every rebind. */
+    private readonly rawWindow;
+    /** "What's playing now" for the combined pattern and per track, re-queried
+     *  only when a note starts or ends (#2567). Reset on every rebind. */
+    private readonly activeNow;
+    private activeNowByTrack;
     /** Haps accumulated since the last `sample()` (the envelope feed). */
     private pendingBumps;
     private boundStream;
@@ -9545,8 +9568,9 @@ declare class VizSyntaxError extends Error {
  *
  * A `.three` file is an ordinary three.js script, the kind a tutorial or the
  * official examples hold, pasted unchanged. There is no Stave dialect: Stave adds
- * only `sig`, `stave.options` and `stave.width` / `stave.height`, the same names
- * p5 sketches get. Everything else a sketch reaches for in a browser page is
+ * only `sig`, `stave.options`, `stave.width` / `stave.height` and
+ * `stave.scheduler` (#2570: `.now()` and `.query(begin, end)` over the notes
+ * around now, the same as p5's), the same names p5 sketches get. Everything else a sketch reaches for in a browser page is
  * mapped onto the viz underneath:
  *
  *   | the sketch does                         | Stave makes it                          |

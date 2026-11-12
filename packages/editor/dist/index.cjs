@@ -21196,6 +21196,124 @@ var _P5VizRenderer = class _P5VizRenderer extends VizRendererBase {
 __name(_P5VizRenderer, "P5VizRenderer");
 var P5VizRenderer = _P5VizRenderer;
 
+// src/visualizers/worker/rollingHapWindow.ts
+var EDGE = 1e-6;
+var PREFETCH = 0.5;
+var _RollingHapWindow = class _RollingHapWindow {
+  constructor(back, fwd) {
+    this.back = back;
+    this.fwd = fwd;
+    this.sched = null;
+    this.events = [];
+    /** End of the span already queried (cycles); NaN = nothing queried yet. */
+    this.lastEnd = NaN;
+    this.lastNow = NaN;
+  }
+  /** Forget everything; the next `at()` runs one full query. */
+  reset() {
+    this.sched = null;
+    this.events = [];
+    this.lastEnd = NaN;
+    this.lastNow = NaN;
+  }
+  /**
+   * The haps intersecting `[now−back, now+fwd)` for `sched`. `query` runs the
+   * actual scheduler query (the sampler routes it through the per-tick cache).
+   */
+  at(sched, now2, query) {
+    return this.inWindow(this.advance(sched, now2, query));
+  }
+  /**
+   * Bring the held haps up to `now` (query the new slice if the front edge has
+   * passed the prefetched span; drop what ended behind the window) without
+   * building the window's answer. Returns the window's front edge.
+   */
+  advance(sched, now2, query) {
+    const lo = now2 - this.back;
+    const hi = now2 + this.fwd;
+    const stale = sched !== this.sched || !Number.isFinite(this.lastEnd) || now2 < this.lastNow || lo >= this.lastEnd;
+    if (stale) {
+      this.sched = sched;
+      this.events = query(lo, hi + PREFETCH).filter((e) => e.end > lo + EDGE);
+      this.lastEnd = hi + PREFETCH;
+      this.lastNow = now2;
+      return hi;
+    }
+    if (hi > this.lastEnd) {
+      const from = this.lastEnd;
+      const to = hi + PREFETCH;
+      for (const e of query(from, to)) {
+        if (e.begin >= from - EDGE) this.events.push(e);
+      }
+      this.lastEnd = to;
+    }
+    this.lastNow = now2;
+    let w = 0;
+    for (let r = 0; r < this.events.length; r++) {
+      const e = this.events[r];
+      if (e.end > lo + EDGE) this.events[w++] = e;
+    }
+    this.events.length = w;
+    return hi;
+  }
+  /**
+   * The first time after `now` at which a query of `[t, t+span)` could answer
+   * differently: a held note's `begin − span` (it starts to intersect) or its
+   * `end` (it stops), capped at `lastEnd − span`, beyond which nothing has been
+   * fetched yet. Call after `advance(…, now, …)`.
+   */
+  nextChange(now2, span) {
+    let next = this.lastEnd - span;
+    for (const e of this.events) {
+      const on = e.begin - span;
+      if (on > now2 && on < next) next = on;
+      if (e.end > now2 && e.end < next) next = e.end;
+    }
+    return next;
+  }
+  /** The held haps that have started before the window's front edge (the rest
+   *  were prefetched and wait for the window to reach them). */
+  inWindow(hi) {
+    return this.events.filter((e) => e.begin < hi - EDGE);
+  }
+};
+__name(_RollingHapWindow, "RollingHapWindow");
+var RollingHapWindow = _RollingHapWindow;
+
+// src/visualizers/worker/activeNowCache.ts
+var _ActiveNowCache = class _ActiveNowCache {
+  constructor(span) {
+    this.span = span;
+    this.window = new RollingHapWindow(0, 0);
+    this.sched = null;
+    this.answer = [];
+    this.validUntil = -Infinity;
+    this.lastNow = NaN;
+  }
+  reset() {
+    this.window.reset();
+    this.sched = null;
+    this.answer = [];
+    this.validUntil = -Infinity;
+    this.lastNow = NaN;
+  }
+  /** The haps a `query(now, now + span)` returns, re-queried only on a change. */
+  at(sched, now2, query) {
+    this.window.advance(sched, now2, query);
+    const stale = sched !== this.sched || !(now2 >= this.lastNow) || // first call (NaN) or time went backwards
+    now2 >= this.validUntil - EDGE;
+    this.lastNow = now2;
+    if (stale) {
+      this.sched = sched;
+      this.answer = query(now2, now2 + this.span);
+      this.validUntil = this.window.nextChange(now2, this.span);
+    }
+    return this.answer;
+  }
+};
+__name(_ActiveNowCache, "ActiveNowCache");
+var ActiveNowCache = _ActiveNowCache;
+
 // src/visualizers/worker/signalFrame.ts
 var MASTER_KEY = "master";
 function frameTransferables(frame) {
@@ -21273,9 +21391,25 @@ function readAnalyserBytes(key3, an) {
 }
 __name(readAnalyserBytes, "readAnalyserBytes");
 var _MainSignalSampler = class _MainSignalSampler {
-  constructor() {
+  /**
+   * Whether `sample()` runs the WIDE raw-scheduler query (`stave.scheduler`, B-3).
+   * Only p5 and hydra sketches are handed `stave.scheduler`; a three.js or GLSL
+   * sketch never sees it, so for them the query is pure main-thread cost — and it
+   * is the expensive one: it walks the whole song over `RAW_QUERY_BACK +
+   * RAW_QUERY_FWD` cycles every frame (#2561 measured it as most of the main
+   * thread during Play with a dense song). Off → `rawScheduler.events` is empty.
+   */
+  constructor(wantsRawScheduler = true) {
+    this.wantsRawScheduler = wantsRawScheduler;
     this.inputs = {};
     this.seq = 0;
+    /** The wide window, advanced by querying only the new sliver each frame
+     *  (#2563) instead of the whole window. Reset on every rebind. */
+    this.rawWindow = new RollingHapWindow(RAW_QUERY_BACK, RAW_QUERY_FWD);
+    /** "What's playing now" for the combined pattern and per track, re-queried
+     *  only when a note starts or ends (#2567). Reset on every rebind. */
+    this.activeNow = new ActiveNowCache(EPSILON2);
+    this.activeNowByTrack = /* @__PURE__ */ new Map();
     /** Haps accumulated since the last `sample()` (the envelope feed). */
     this.pendingBumps = [];
     this.boundStream = null;
@@ -21291,6 +21425,9 @@ var _MainSignalSampler = class _MainSignalSampler {
    *  re-evaluate). Pass `null`/absent for demo / IR-only mode. */
   bind(inputs) {
     this.inputs = inputs;
+    this.rawWindow.reset();
+    this.activeNow.reset();
+    this.activeNowByTrack = /* @__PURE__ */ new Map();
   }
   /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
    *  — so the bump feed survives a re-evaluate that swaps the stream (mirror
@@ -21322,14 +21459,14 @@ var _MainSignalSampler = class _MainSignalSampler {
     const { scheduler, trackSchedulers, masterAnalyser, trackAnalysers } = this.inputs;
     const seq = ++this.seq;
     const now2 = scheduler ? scheduler.now() : 0;
-    const begin = now2;
-    const end = now2 + EPSILON2;
     const queryAt = /* @__PURE__ */ __name((sched, a, b) => cache3 ? cache3.query(sched, a, b, () => sched.query(a, b)) : sched.query(a, b), "queryAt");
-    const activeEvents = scheduler ? queryAt(scheduler, begin, end).map(summariseEvent) : [];
+    const activeEvents = scheduler ? this.activeNow.at(scheduler, now2, (a, b) => queryAt(scheduler, a, b)).map(summariseEvent) : [];
     const activeByTrack = [];
     if (trackSchedulers) {
       for (const [key3, sched] of trackSchedulers) {
-        activeByTrack.push([key3, queryAt(sched, begin, end).map(summariseEvent)]);
+        let cache4 = this.activeNowByTrack.get(key3);
+        if (!cache4) this.activeNowByTrack.set(key3, cache4 = new ActiveNowCache(EPSILON2));
+        activeByTrack.push([key3, cache4.at(sched, now2, (a, b) => queryAt(sched, a, b)).map(summariseEvent)]);
       }
     }
     const readBytes = /* @__PURE__ */ __name((key3, an) => cache3 ? cache3.readAnalyser(key3, an, (a) => readAnalyserBytes(key3, a)) : readAnalyserBytes(key3, an), "readBytes");
@@ -21348,7 +21485,7 @@ var _MainSignalSampler = class _MainSignalSampler {
     this.pendingBumps = [];
     const rawScheduler = {
       now: now2,
-      events: scheduler ? queryAt(scheduler, now2 - RAW_QUERY_BACK, now2 + RAW_QUERY_FWD).map(summariseRawHap) : []
+      events: scheduler && this.wantsRawScheduler ? this.rawWindow.at(scheduler, now2, (a, b) => queryAt(scheduler, a, b)).map(summariseRawHap) : []
     };
     return { seq, now: now2, analysers, activeEvents, activeByTrack, bumps, rawScheduler };
   }
@@ -21360,6 +21497,9 @@ var _MainSignalSampler = class _MainSignalSampler {
     this.boundStream = null;
     this.pendingBumps = [];
     this.inputs = {};
+    this.rawWindow.reset();
+    this.activeNow.reset();
+    this.activeNowByTrack = /* @__PURE__ */ new Map();
   }
   /** The next seq an `emptyFrame` should carry (test/demo helper). */
   emptyFrame() {
@@ -21591,6 +21731,10 @@ function minFrameMs() {
   return fps > 0 ? 1e3 / fps : 0;
 }
 __name(minFrameMs, "minFrameMs");
+function kindReadsRawScheduler(kind) {
+  return kind === "p5" || kind === "hydra" || kind === "three";
+}
+__name(kindReadsRawScheduler, "kindReadsRawScheduler");
 var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5 / `'glsl'` #281).
    *  @param code raw sketch source. @param name workspace path (error attribution). */
@@ -21601,7 +21745,6 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
     this.name = name;
     this.worker = null;
     this.writer = null;
-    this.sampler = new MainSignalSampler();
     /** When set (viz PREVIEWS, #838), supersedes the live sampler in the pump: the
      *  frame comes from this muted demo feed instead of the analyser/scheduler, so a
      *  card can render its viz audio-reactively while nothing is playing. Null =
@@ -21654,6 +21797,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
      *  when the bag actually changed, so a re-publish with identical options costs
      *  nothing. `null` until mount. */
     this.lastOptionsKey = null;
+    this.sampler = new MainSignalSampler(kindReadsRawScheduler(kind));
   }
   /** Register a callback fired once when the worker reports its first successful
    *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
@@ -34002,6 +34146,7 @@ var P5_GLOBALS = [
 var THREE_GLOBALS = [
   { group: G_CONTEXT, decl: "object            stave.options;", comment: "the .viz({ ... }) argument", tokens: ["options"] },
   { group: G_CONTEXT, decl: "number            stave.width, stave.height;", comment: "the viz size (also innerWidth / innerHeight)", tokens: ["width", "height"] },
+  { group: G_CONTEXT, decl: "PatternScheduler  stave.scheduler;", comment: ".now(), .query(begin, end) \u2014 the notes around now (#2570)", tokens: ["scheduler"] },
   ...P5_GLOBALS.filter((g) => g.group !== G_CONTEXT)
 ];
 var HYDRA_GLOBALS = [
@@ -54645,6 +54790,9 @@ function runThreeSketch(compiled, loaded, host) {
     get options() {
       return host.options();
     },
+    get scheduler() {
+      return host.scheduler();
+    },
     get sig() {
       return host.uniforms().sig;
     }
@@ -54856,6 +55004,8 @@ var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
     this.paused = false;
     this.destroyed = false;
     this.size = { w: 400, h: 300 };
+    /** The live scheduler, for the sketch's `stave.scheduler` (#2570). */
+    this.scheduler = null;
     this.perfId = `three#${++threePerfSeq}`;
     this.bus = new SignalBus();
     this.hapStream = null;
@@ -54884,6 +55034,7 @@ var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
   onMount(container, components, size, onError) {
     perf.gauge("viz.three", 1);
     this.size = { w: size.w, h: size.h };
+    this.scheduler = components.queryable?.scheduler ?? null;
     this.bus?.bindScheduler(components.queryable?.scheduler, components.queryable?.trackSchedulers);
     this.bus?.bindAnalysers(components.audio?.analyser, components.audio?.trackAnalysers);
     this.bus?.setAliases(currentVizSignalAliases());
@@ -54930,6 +55081,9 @@ var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
       dpr: effectiveDpr,
       uniforms: /* @__PURE__ */ __name(() => this.uniforms, "uniforms"),
       options: /* @__PURE__ */ __name(() => this.optionsRef.current ?? {}, "options"),
+      // #2570 — on the main thread the sketch queries the live scheduler itself,
+      // over only the window it asks for (as P5VizRenderer's sketches do).
+      scheduler: /* @__PURE__ */ __name(() => this.scheduler, "scheduler"),
       createCanvas: /* @__PURE__ */ __name(() => document.createElement("canvas"), "createCanvas"),
       // The core places each problem on its line; runtime and file come from here.
       report: /* @__PURE__ */ __name((entry) => emitLog({ ...entry, runtime: "three", source: this.name || void 0 }), "report")
@@ -54945,6 +55099,7 @@ var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
     }
   }
   onUpdate(components) {
+    this.scheduler = components.queryable?.scheduler ?? null;
     this.bus?.bindScheduler(components.queryable?.scheduler ?? null, components.queryable?.trackSchedulers);
     this.bus?.bindAnalysers(components.audio?.analyser ?? null, components.audio?.trackAnalysers);
   }

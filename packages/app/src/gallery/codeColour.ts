@@ -36,6 +36,14 @@ const GLSL_KEYWORDS = [
   "vec4", "void", "while",
 ];
 
+/**
+ * The code background in the light theme: the editor's own light background
+ * (`editor.background` of the light Monaco theme in
+ * packages/editor/src/theme/monacoTheme.ts), so code in the gallery reads like
+ * code in the editor. The dark theme keeps a dark wash over the page (#2531).
+ */
+export const LIGHT_CODE_BG = "#f0f0f6";
+
 export type CodeLanguage = "js" | "glsl";
 
 const KEYWORDS: Record<CodeLanguage, ReadonlySet<string>> = {

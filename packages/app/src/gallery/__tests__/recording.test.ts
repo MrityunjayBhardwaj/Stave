@@ -8,10 +8,13 @@ import {
   contentsLine,
   coverPattern,
   encodeRecording,
+  mayHavePreview,
   readRecording,
   type GalleryRecording,
 } from "../recording";
 import { drawnCycles, lengthLabel } from "../GalleryTimeline";
+import { fileRole } from "../galleryModel";
+import { previewKindOf } from "../previewProtocol";
 
 const REC: GalleryRecording = {
   v: 1,
@@ -107,3 +110,33 @@ describe("what a card reads from it", () => {
     expect(lengthLabel({ span: "arranged", cycles: 1 })).toBe("1 bar");
   });
 });
+
+describe("mayHavePreview (#2548)", () => {
+  const withContents = (patterns: number, visuals: number, other: number): GalleryRecording => ({ ...REC, contents: { patterns, visuals, other } });
+
+  it("no pattern and no visual: nothing to preview", () => {
+    expect(mayHavePreview(withContents(0, 0, 3))).toBe(false);
+    expect(mayHavePreview(withContents(0, 0, 0))).toBe(false);
+  });
+
+  it("a pattern, or a visual, is something to preview", () => {
+    expect(mayHavePreview(withContents(1, 0, 0))).toBe(true);
+    expect(mayHavePreview(withContents(0, 1, 5))).toBe(true);
+  });
+
+  it("no record: the card can't tell, so yes", () => {
+    expect(mayHavePreview(null)).toBe(true);
+  });
+
+  // The record counts by fileRole; the preview plays by previewKindOf. The card's
+  // rule is only as true as these two agree on what a file's name says it is.
+  it("fileRole counts a file as a pattern or a visual exactly when previewKindOf plays it by its name", () => {
+    const exts = ["strudel", "hydra", "hy", "p5", "p5js", "js", "glsl", "frag", "shader", "three", "rb", "sonicpi", "md", "txt", "json", "ts", "wav", "STRUDEL", "Hydra"];
+    for (const ext of exts) {
+      const path = `dir/file.${ext}`;
+      expect(fileRole(path) !== "file", path).toBe(previewKindOf({ path }) !== null);
+      expect(fileRole(path) === "pattern", path).toBe(previewKindOf({ path }) === "strudel");
+    }
+  });
+});
+

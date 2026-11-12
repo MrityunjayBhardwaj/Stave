@@ -6949,6 +6949,9 @@ function runThreeSketch(compiled, loaded, host) {
     get options() {
       return host.options();
     },
+    get scheduler() {
+      return host.scheduler();
+    },
     get sig() {
       return host.uniforms().sig;
     }
@@ -7287,7 +7290,7 @@ function hostVizWorker(scope) {
     const rawAnalyser = new RawAnalyserShim();
     const rawScheduler = new RawSchedulerShim();
     const containerSizeRef = { current: { w: msg.size.w, h: msg.size.h } };
-    const strategy = msg.kind === "hydra" ? await mountHydra(msg, feed, rawAnalyser, rawScheduler) : msg.kind === "glsl" ? mountGLSL(msg, rawAnalyser, feed) : msg.kind === "three" ? await mountThree(msg, feed, containerSizeRef, dpr) : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr);
+    const strategy = msg.kind === "hydra" ? await mountHydra(msg, feed, rawAnalyser, rawScheduler) : msg.kind === "glsl" ? mountGLSL(msg, rawAnalyser, feed) : msg.kind === "three" ? await mountThree(msg, feed, rawScheduler, containerSizeRef, dpr) : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr);
     const reader = createPostMessageReader(scope);
     state = {
       feed,
@@ -7549,7 +7552,7 @@ function hostVizWorker(scope) {
     };
   }
   __name(mountGLSL, "mountGLSL");
-  async function mountThree(msg, feed, containerSizeRef, dpr) {
+  async function mountThree(msg, feed, rawScheduler, containerSizeRef, dpr) {
     const compiled = compileThreeSketch(msg.code);
     if (compiled.syntaxError) throw compiled.syntaxError;
     const loaded = await loadThreeModules(compiled);
@@ -7566,6 +7569,9 @@ function hostVizWorker(scope) {
       dpr: /* @__PURE__ */ __name(() => currentDpr, "dpr"),
       uniforms: /* @__PURE__ */ __name(() => uniforms, "uniforms"),
       options: /* @__PURE__ */ __name(() => optionsRef.current, "options"),
+      // #2570 — the same pre-queried window p5's `stave.scheduler` reads,
+      // refreshed from each frame's `rawScheduler` before the draw.
+      scheduler: /* @__PURE__ */ __name(() => rawScheduler, "scheduler"),
       createCanvas: /* @__PURE__ */ __name(() => new OffscreenCanvas(1, 1), "createCanvas"),
       report: /* @__PURE__ */ __name((entry) => {
         if (entry.level === "error" && !drawn) return;

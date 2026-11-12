@@ -113,6 +113,6 @@ export const REPORT_CSS = `
 .sg-report-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--text-primary); }
 .sg-report-note { margin: 0; font-size: 13px; line-height: 1.5; }
 .sg-report-field { min-height: 80px; resize: vertical; padding: 7px 9px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg-input, var(--bg-elevated)); color: var(--text-primary); font: inherit; font-size: 13px; }
-.sg-report-error { font-size: 12px; line-height: 1.5; color: var(--text-error, #f27878); }
+.sg-report-error { font-size: 12px; line-height: 1.5; color: var(--danger-fg); }
 .sg-report-actions { display: flex; justify-content: flex-end; gap: 8px; }
 `;

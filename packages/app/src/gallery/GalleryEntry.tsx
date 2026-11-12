@@ -14,16 +14,17 @@
  * sealed preview frame (GalleryPreview.tsx). There is one preview, so one file
  * plays at a time; a row's play button switches the file it holds.
  *
- * Not drawn yet, because the data doesn't exist: a pattern's timeline strip, its
- * length in bars, the tempo and the author-chosen cover come from what is
- * recorded at publish (#2487, #2488); the live piano roll inside the frame is
- * #2489.
+ * A pattern's timeline strip, its length in bars and the author-chosen cover
+ * come from what is recorded at publish (#2487, #2488). "Add to this project"
+ * adds one file: a music or visual entry's only file, or the one chosen from a
+ * project's list. Not drawn yet: the tempo (publishing doesn't record it) and the
+ * live piano roll inside the frame (#2489).
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AuthorName, EntryPicture, avatarColour, useEntryRecording } from "./GalleryCards";
 import { GalleryPreview, type GalleryPreviewHandle } from "./GalleryPreview";
-import { previewKindOf } from "./previewProtocol";
-import { codeLanguageOf, colourLines, type TokenKind } from "./codeColour";
+import { previewKindOf, previewPlayFor } from "./previewProtocol";
+import { LIGHT_CODE_BG, codeLanguageOf, colourLines, type TokenKind } from "./codeColour";
 import { RecordingTimeline, lengthLabel } from "./GalleryTimeline";
 import { GALLERY_FILTERS, KIND_LABEL, contentsSummary, fileRole, formatGalleryDate, publishedAgo } from "./galleryModel";
 import { shownName } from "./reservedNames";
@@ -46,7 +47,8 @@ export interface EntryPageProps {
   onAuthor: (authorId: string) => void;
   onRetry: () => void;
   onOpenAsProject: (e: GalleryEntry, m: Manifest) => void;
-  onAddToProject: (e: GalleryEntry, m: Manifest) => void;
+  /** A project passes the file chosen from its list; music and visuals add their one file. */
+  onAddToProject: (e: GalleryEntry, m: Manifest, path?: string) => void;
   onCopyLink: (id: string) => void;
   onReport: (e: GalleryEntry) => void;
   /** The loaded list, for "More by". */
@@ -54,6 +56,13 @@ export interface EntryPageProps {
   onOpenEntry: (id: string) => void;
   /** The overlay's ×, drawn at the end of the breadcrumb bar. */
   onClose?: () => void;
+  /**
+   * #2495 — a card's play button opened this entry: start its preview (on the
+   * card's cover file, when known). Read once, as the entry opens; `onPlayTaken`
+   * then clears it, so coming Back to this entry later doesn't play by itself.
+   */
+  playOnOpen?: { id: string; cover: string | null } | null;
+  onPlayTaken?: () => void;
 }
 
 const TOKEN_CLASS: Record<TokenKind, string | undefined> = {
@@ -98,13 +107,32 @@ const STOP_ICON = (
 export function EntryPage(props: EntryPageProps) {
   const { detail, busy, backLabel, onBack, onHome, onKind, onAuthor, onRetry, onClose } = props;
   // The file chosen, by path: the list is re-ordered (cover first) once the record arrives.
-  const [chosen, setChosen] = useState<string | null>(null);
-  const [autoStart, setAutoStart] = useState(false);
+  // #2495 — a card's play applies from the first render, so the preview mounts
+  // already starting even when the entry is on hand at once (its effects run
+  // before this page's).
+  const playsNow = props.playOnOpen?.id === detail.id ? props.playOnOpen : null;
+  const [chosen, setChosen] = useState<string | null>(playsNow?.cover ?? null);
+  const [autoStart, setAutoStart] = useState(playsNow !== null);
   const [playing, setPlaying] = useState(false);
+  // A project's "Add to this project": its file list, open or shut.
+  const [picking, setPicking] = useState(false);
   const preview = useRef<GalleryPreviewHandle>(null);
+  const playOnOpen = useRef(props.playOnOpen);
+  playOnOpen.current = props.playOnOpen;
+  const onPlayTaken = useRef(props.onPlayTaken);
+  onPlayTaken.current = props.onPlayTaken;
   useEffect(() => {
-    setChosen(null);
-    setAutoStart(false);
+    const play = playOnOpen.current;
+    if (play && play.id === detail.id) {
+      // chosen by path, so the file stays put when this page's record arrives and reorders
+      setChosen(play.cover);
+      setAutoStart(true);
+      onPlayTaken.current?.();
+    } else {
+      setChosen(null);
+      setAutoStart(false);
+    }
+    setPicking(false);
   }, [detail.id]);
 
   const ready = detail.status === "ready" ? detail.data : null;
@@ -151,7 +179,8 @@ export function EntryPage(props: EntryPageProps) {
   const found = chosen === null ? -1 : files.findIndex((f) => f.path === chosen);
   const idx = found >= 0 ? found : 0;
   const file = files[idx];
-  const kind = file ? previewKindOf(file) : null;
+  // #2490 — the file with the entry's other runnable files beside it, from this manifest only
+  const toPlay = file ? previewPlayFor(files, file.path) : null;
 
   // A row's play: its file into the one preview, playing; on the file already there, play / stop.
   const playRow = (i: number) => {
@@ -180,12 +209,12 @@ export function EntryPage(props: EntryPageProps) {
       {crumbs}
       <div className="sg-entry">
         <div className="sg-entry-main">
-          {file && kind ? (
+          {file && toPlay ? (
             <GalleryPreview
               idle={recordedFor(file.path) ? <RecordingTimeline rec={recordedFor(file.path)!} className="sg-stage-canvas" /> : undefined}
               ref={preview}
-              code={file.content}
-              kind={kind}
+              path={toPlay.path}
+              files={toPlay.files}
               fileKey={`${entry.id}/${file.id}`}
               autoStart={autoStart}
               onPlayingChange={setPlaying}
@@ -292,10 +321,51 @@ export function EntryPage(props: EntryPageProps) {
             <button className="sg-btn sg-primary" disabled={busy} onClick={() => props.onOpenAsProject(entry, manifest)}>
               Open as new project
             </button>
-            {entry.kind !== "project" && (
+            {entry.kind !== "project" ? (
               <button className="sg-btn" disabled={busy} onClick={() => props.onAddToProject(entry, manifest)}>
                 Add to this project
               </button>
+            ) : (
+              files.length > 0 && (
+                <>
+                  <button
+                    className="sg-btn"
+                    disabled={busy}
+                    aria-expanded={picking}
+                    aria-controls="sg-addlist"
+                    data-gallery-add-pick
+                    onClick={() => setPicking((v) => !v)}
+                  >
+                    Add to this project
+                    <svg className="sg-add-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                      <path d={picking ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
+                    </svg>
+                  </button>
+                  {picking && (
+                    <ul className="sg-addlist" id="sg-addlist" aria-label="Choose a file to add">
+                      {files.map((f) => (
+                        <li key={f.id} data-gallery-add-file={f.path}>
+                          <span>
+                            <b>{f.path}</b>
+                            <small>{fileRole(f.path)}</small>
+                          </span>
+                          <button
+                            className="sg-btn sg-ghost"
+                            disabled={busy}
+                            aria-label={`Add ${f.path} to this project`}
+                            onClick={() => {
+                              setPicking(false);
+                              props.onAddToProject(entry, manifest, f.path);
+                            }}
+                          >
+                            Add
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )
             )}
           </div>
           <div className="sg-side-row">
@@ -384,10 +454,13 @@ export const ENTRY_CSS = `
 .sg-files-one { padding: 8px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text-muted, var(--text-chrome)); }
 .sg-file { flex: none; border: 0; background: none; height: 28px; padding: 0 10px; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text-muted, var(--text-chrome)); cursor: pointer; }
 .sg-file-on { background: var(--bg-elevated); color: var(--text-primary); }
-.sg-code { margin: 0; padding: 14px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.7; background: var(--bg-editor, rgba(0,0,0,.25)); color: var(--text-primary); overflow-x: auto; counter-reset: sg-ln; white-space: pre; user-select: text; tab-size: 2; }
+.sg-code { margin: 0; padding: 14px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.7; background: rgba(0,0,0,.25); color: var(--text-primary); overflow-x: auto; counter-reset: sg-ln; white-space: pre; user-select: text; tab-size: 2; }
 .sg-code-line { display: block; padding: 0 16px 0 52px; position: relative; min-height: 1.7em; }
 .sg-code-line::before { counter-increment: sg-ln; content: counter(sg-ln); position: absolute; left: 0; width: 36px; text-align: right; color: #55557a; user-select: none; }
 .sg-tk { color: #c8a8ff; } .sg-ts { color: #9ee6b8; } .sg-tn { color: #ffc27a; } .sg-tf { color: #8fc8ff; } .sg-tc { color: #6f6f92; font-style: italic; }
+[data-stave-theme="light"] .sg-code { background: ${LIGHT_CODE_BG}; }
+[data-stave-theme="light"] .sg-code-line::before { color: #a0a0b4; }
+[data-stave-theme="light"] .sg-tk { color: #6d28d9; } [data-stave-theme="light"] .sg-ts { color: #92400e; } [data-stave-theme="light"] .sg-tn { color: #c2410c; } [data-stave-theme="light"] .sg-tf { color: #1d4ed8; } [data-stave-theme="light"] .sg-tc { color: #6b7280; }
 .sg-side { display: grid; gap: 18px; align-content: start; min-width: 0; }
 .sg-side-title { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: var(--text-primary); text-wrap: balance; overflow-wrap: anywhere; }
 .sg-byline { display: flex; align-items: center; gap: 10px; }
@@ -401,6 +474,14 @@ export const ENTRY_CSS = `
 .sg-side-tag::before { content: "#"; opacity: .6; }
 .sg-side-actions { display: grid; gap: 8px; }
 .sg-side-actions .sg-btn { height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+.sg-add-caret { margin-left: 8px; opacity: .7; }
+.sg-addlist { list-style: none; margin: 0; padding: 4px; display: grid; gap: 2px; max-height: 240px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: 8px; }
+.sg-addlist li { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 10px; border-radius: 6px; }
+.sg-addlist li:hover { background: var(--bg-hover); }
+.sg-addlist li > span { flex: 1; min-width: 0; display: grid; }
+.sg-addlist b { font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-addlist small { font-size: 11px; color: var(--text-muted); }
+.sg-side-actions .sg-addlist .sg-btn { height: 30px; padding: 0 12px; }
 .sg-side-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: -10px; }
 .sg-side-row .sg-btn { height: 40px; }
 .sg-ghost { background: none; }
@@ -433,7 +514,7 @@ export const ENTRY_CSS = `
   .sg-note { order: 7; }
   .sg-more { order: 8; padding-bottom: 8px; }
   .sg-side-title { display: none; }
-  .sg-side-actions { order: 99; margin-top: auto !important; position: sticky; bottom: 0; z-index: 2; width: calc(100% + 32px) !important; margin-left: -16px; margin-right: -16px; margin-bottom: 0; padding: 12px 16px 16px; background: var(--bg-elevated); border-top: 1px solid var(--border-subtle); }
+  .sg-side-actions { order: 99; margin-top: auto !important; position: sticky; bottom: 0; z-index: 2; width: calc(100% + 32px) !important; margin-left: -16px; margin-right: -16px; margin-bottom: 0; padding: 12px 16px 16px; background: var(--bg-app); border-top: 1px solid var(--border-subtle); }
   .sg-side-actions .sg-btn { height: 46px; }
   .sg-crumbs { padding: 12px 16px; }
   .sg-frow { grid-template-columns: 32px minmax(0, 1fr) auto; }

@@ -157,11 +157,13 @@ const P5_GLOBALS: readonly InjectedGlobal[] = [
 ]
 
 /** #2516 — a three.js sketch gets the p5 signal surface (the same `sig`, built by
- *  `buildStaveUniforms`) and, of the `stave` context, only the options and size:
+ *  `buildStaveUniforms`) and, of the `stave` context, the options, the size and
+ *  (#2570) the scheduler:
  *  everything else it needs is plain three.js. */
 const THREE_GLOBALS: readonly InjectedGlobal[] = [
   { group: G_CONTEXT, decl: 'object            stave.options;', comment: 'the .viz({ ... }) argument', tokens: ['options'] },
   { group: G_CONTEXT, decl: 'number            stave.width, stave.height;', comment: 'the viz size (also innerWidth / innerHeight)', tokens: ['width', 'height'] },
+  { group: G_CONTEXT, decl: 'PatternScheduler  stave.scheduler;', comment: '.now(), .query(begin, end) — the notes around now (#2570)', tokens: ['scheduler'] },
   ...P5_GLOBALS.filter((g) => g.group !== G_CONTEXT),
 ]
 

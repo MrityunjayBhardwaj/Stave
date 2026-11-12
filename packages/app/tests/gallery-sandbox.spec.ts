@@ -26,6 +26,11 @@
  * 4. FRAME POLICY (#2374). Code in the preview can't bring another site into the
  *    frame or nest one inside it, even a page that never finishes loading; the
  *    frames the app shows on purpose still load.
+ * 5. A PROJECT PREVIEWS AS ITSELF (#2490). A project's pattern that calls
+ *    `.viz("bloom")` draws the project's own `viz/bloom.hydra` inside the frame
+ *    (read from the frame's pixels, not its DOM), in Chromium and in WebKit; the
+ *    same pattern with the visual left out of the project draws nothing and the
+ *    frame says which name it couldn't find.
  *
  * Screenshots go to $GALLERY_SHOT_DIR.
  *
@@ -51,7 +56,9 @@ import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:http'
 import type { AddressInfo, Socket } from 'node:net'
 
-import { chromium, test, expect, type Page } from '@playwright/test'
+import { existsSync } from 'node:fs'
+
+import { test, expect, webkit, type Page } from '@playwright/test'
 import { bootApp, editorValue, evalCode, seedCode, stopCode } from './_appBoot'
 import { MUSIC_CODE, routeGallery } from './_gallery'
 import { NAVIGATED_AWAY } from '../src/gallery/GalleryPreview'
@@ -537,32 +544,227 @@ test.describe('gallery preview sandbox (#2328)', () => {
   })
 })
 
-// Headless Chromium starts audio without a gesture; a real browser doesn't, and
-// the click on the gallery's Preview button activates the gallery page, not the
-// frame. Under the real rule (a browser of its own, launched with it) the frame
-// says so and offers its own Play button.
-test('under the browser autoplay rule, the frame asks for a click of its own, then plays', async ({ page: probe, baseURL }) => {
-  test.setTimeout(120_000)
-  test.skip(await isDevServer(probe), DEV_SKIP)
-  const browser = await chromium.launch({ args: ['--autoplay-policy=user-gesture-required'] })
-  try {
-    const page = await (await browser.newContext({ baseURL })).newPage()
-    await routeGallery(page)
-    await bootApp(page)
-    await page.goto('/#gallery=musc1CCCCCC')
-    await expect(page.locator('[data-gallery-detail="musc1CCCCCC"]')).toBeVisible({ timeout: 30_000 })
-    await page.locator('[data-gallery-preview-button]').click()
-    await expect(page.locator('[data-gallery-preview-state="stopped"]')).toHaveText('Press Play in the preview to hear it.', { timeout: 60_000 })
-    const frame = playerFrame(page)!
-    const start = frame.locator('[data-gallery-player-start]')
-    await expect(start).toBeVisible()
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/sandbox-needs-a-click.png` })
-    await start.click()
-    await expect.poll(() => previewState(page), { timeout: 20_000 }).toBe('playing')
-    expect(await frame.evaluate(() => (window as unknown as { __galleryRuns?: number }).__galleryRuns ?? 0)).toBeGreaterThan(0)
-  } finally {
-    await browser.close()
+/*
+ * #2495 — what one click does for the preview's sound, under each browser's own
+ * autoplay rule (measured first with a standalone page; nothing here relaxes the
+ * rule). Chromium takes a click anywhere above the frame, because the frame
+ * carries allow="autoplay"; with no click anywhere it never starts. WebKit wants
+ * a press in the frame itself, so the frame asks for it, with focus already on its
+ * Play.
+ *
+ * THE TRAP these tests avoid: any Playwright call that runs script in a page
+ * (evaluate, waitForFunction, and every locator) gives that page user activation,
+ * so a "no click" state read that way has already been clicked. Before the one
+ * click under test, these tests touch the page only through the network, the
+ * console, and Chromium's DevTools DOM reads (no script); the click is a real
+ * mouse event.
+ */
+
+/** Chromium only: an element's box centre, read over DevTools (runs no script in the page). */
+async function centreOf(page: Page, selector: string, timeout = 60_000): Promise<{ x: number; y: number }> {
+  const cdp = await page.context().newCDPSession(page)
+  const end = Date.now() + timeout
+  while (Date.now() < end) {
+    const { root } = await cdp.send('DOM.getDocument', { depth: 0 })
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector })
+    if (nodeId) {
+      try {
+        const { model } = await cdp.send('DOM.getBoxModel', { nodeId })
+        const [x1, y1, , , x3, y3] = model.content
+        if (x3 > x1 && y3 > y1) return { x: (x1 + x3) / 2, y: (y1 + y3) / 2 }
+      } catch {
+        /* not laid out yet */
+      }
+    }
+    await new Promise((r) => setTimeout(r, 250))
   }
+  throw new Error(`${selector} never appeared`)
+}
+
+/**
+ * A page of the app's own origin, served by the test, holding the preview's frame
+ * exactly as the gallery mounts it (sandbox="allow-scripts", allow="autoplay"). On
+ * load it hands the frame a pattern WITH NO CLICK; its button sends it again. It
+ * logs every state the frame reports, which is how the test reads it.
+ */
+const CONTROL_PAGE = `<!doctype html><meta charset="utf-8">
+<button id="again" style="position:fixed;left:20px;top:20px;width:200px;height:60px">Play from this page</button>
+<iframe id="f" sandbox="allow-scripts" allow="autoplay" src="/gallery-player" style="position:fixed;left:20px;top:120px;width:500px;height:240px"></iframe>
+<script>
+const f = document.getElementById('f')
+const code = ${JSON.stringify(MUSIC_CODE)}
+const msg = { play: true, path: 'floor.strudel', files: [{ path: 'floor.strudel', kind: 'strudel', code }] }
+addEventListener('message', (e) => {
+  if (e.source !== f.contentWindow) return
+  console.log('FRAME ' + JSON.stringify(e.data))
+  if (e.data && e.data.state === 'ready') f.contentWindow.postMessage(msg, '*')
+})
+document.getElementById('again').addEventListener('click', () => f.contentWindow.postMessage(msg, '*'))
+</script>`
+
+/** The frame's reports, as the control page logs them. */
+function frameReports(page: Page): { seen: string[]; until: (pred: (m: { state: string; message?: string }) => boolean, ms?: number) => Promise<void> } {
+  const seen: string[] = []
+  const waiters: Array<{ pred: (m: { state: string; message?: string }) => boolean; done: () => void }> = []
+  page.on('console', (m) => {
+    const t = m.text()
+    if (!t.startsWith('FRAME ')) return
+    seen.push(t.slice(6))
+    const msg = JSON.parse(t.slice(6))
+    for (const w of waiters) if (w.pred(msg)) w.done()
+  })
+  return {
+    seen,
+    until: (pred, ms = 60_000) =>
+      seen.some((x) => pred(JSON.parse(x)))
+        ? Promise.resolve()
+        : new Promise((resolve, reject) => {
+            waiters.push({ pred, done: resolve })
+            setTimeout(() => reject(new Error(`frame never reported it; saw ${seen.join(' | ')}`)), ms)
+          }),
+  }
+}
+
+/** An artist page holding one music card (musc1CCCCCC, from routeGallery). */
+async function routeCarol(page: Page): Promise<void> {
+  await page.route('**/api/gallery/authors/carol0000001', (route) =>
+    route.fulfill({
+      json: {
+        author: { authorId: 'carol0000001', name: 'Carol', bio: '', createdAt: 1, updatedAt: 1 },
+        entries: [{ id: 'musc1CCCCCC', title: 'Four On The Floor', kind: 'music', tags: ['house'], authorName: 'Carol', authorId: 'carol0000001', publishedAt: Date.UTC(2026, 10, 1), fileCount: 1, hasThumbnail: false }],
+        collections: [],
+      },
+    }),
+  )
+}
+
+test.describe('one click and the preview\'s sound (#2495)', () => {
+  test('Chromium: with no click anywhere the frame never starts; one real click on the page above it does', async ({ page, baseURL }) => {
+    test.setTimeout(120_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    await page.route('**/__one_click_control', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        // as the app's own pages: the frame is let in under the same policy
+        headers: { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'credentialless' },
+        body: CONTROL_PAGE,
+      }),
+    )
+    const reports = frameReports(page)
+    await page.goto(`${baseURL}/__one_click_control`)
+
+    // NO CLICK: the pattern went in on load; the frame can't start it and asks.
+    await reports.until((m) => m.state === 'stopped' && m.message === 'Press Play in the preview to hear it.')
+    await new Promise((r) => setTimeout(r, 2000))
+    expect(reports.seen.filter((x) => JSON.parse(x).state === 'playing'), 'nothing played without a click').toEqual([])
+
+    // ONE real click on the page above the frame (not in it): now it plays.
+    await page.mouse.click(120, 50)
+    await reports.until((m) => m.state === 'playing', 20_000)
+    // the pattern ran in the frame (read after the fact)
+    expect(await playerFrame(page)!.evaluate(() => (window as unknown as { __galleryRuns?: number }).__galleryRuns ?? 0)).toBeGreaterThan(0)
+  })
+
+  test("Chromium: one click on a card's play opens the entry with its preview playing", async ({ page, baseURL }) => {
+    test.setTimeout(120_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    await routeGallery(page)
+    // an artist page: a page of cards reached by link, so no click comes before the one under test
+    await routeCarol(page)
+    const errors = consoleErrors(page)
+    await page.goto(`${baseURL}/#gallery-author=carol0000001`, { waitUntil: 'domcontentloaded' })
+    const play = await centreOf(page, '[data-gallery-card-play="musc1CCCCCC"]')
+    await page.mouse.click(play.x, play.y)
+
+    // the entry opened, and its preview plays: no second click anywhere
+    await expect(page.locator('[data-gallery-detail="musc1CCCCCC"]')).toBeVisible({ timeout: 30_000 })
+    await expect.poll(() => previewState(page), { timeout: 60_000 }).toBe('playing')
+    await expect(page.locator('[data-gallery-preview-state]')).toHaveText('Playing in a sealed preview.')
+    expect(await playerFrame(page)!.evaluate(() => (window as unknown as { __galleryRuns?: number }).__galleryRuns ?? 0)).toBeGreaterThan(0)
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/card-play-entry-playing.png` })
+    console.log('console errors:', errors)
+  })
+
+  test('WebKit: the frame asks for its own press, with focus moved into it, and Enter plays', async ({ page: probe, baseURL }) => {
+    test.setTimeout(120_000)
+    test.skip(await isDevServer(probe), DEV_SKIP)
+    test.skip(!existsSync(webkit.executablePath()), "WebKit isn't installed here (CI installs Chromium only): npx playwright install webkit")
+    const browser = await webkit.launch()
+    try {
+      const page = await (await browser.newContext({ baseURL })).newPage()
+      await routeGallery(page)
+      await page.goto('/#gallery=musc1CCCCCC', { waitUntil: 'domcontentloaded' })
+      // In WebKit the gallery page's own activation doesn't reach the frame (that is
+      // what is measured), so reading this page with locators can't help it start.
+      await page.locator('[data-gallery-preview-button]').click({ timeout: 60_000 })
+      await expect(page.locator('[data-gallery-preview-state="stopped"]')).toHaveText('Press Play in the preview to hear it.', { timeout: 60_000 })
+      // focus moved into the frame, so a key press is the press it needs. (Not onto
+      // its Play: WebKit refuses focus() to a frame nobody has pressed. Reading the
+      // frame here would press it, so it isn't read until after.)
+      await expect(page.locator('[data-gallery-preview-frame]')).toBeFocused()
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/webkit-needs-a-press.png` })
+      await new Promise((r) => setTimeout(r, 1500))
+      expect(await previewState(page), 'still waiting for the press').toBe('stopped')
+      await page.keyboard.press('Enter')
+      await expect.poll(() => previewState(page), { timeout: 20_000 }).toBe('playing')
+    } finally {
+      await browser.close()
+    }
+  })
+
+  // #2547 — the same, from one click on a card's play: the page asked this frame
+  // to start, so its answer (it needs a press) moves focus into it.
+  test("WebKit: one click on a card's play, then the frame has focus and Enter plays", async ({ page: probe, baseURL }) => {
+    test.setTimeout(120_000)
+    test.skip(await isDevServer(probe), DEV_SKIP)
+    test.skip(!existsSync(webkit.executablePath()), "WebKit isn't installed here (CI installs Chromium only): npx playwright install webkit")
+    const browser = await webkit.launch()
+    try {
+      const page = await (await browser.newContext({ baseURL })).newPage()
+      await routeGallery(page)
+      await routeCarol(page)
+      await page.goto('/#gallery-author=carol0000001', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-gallery-card-play="musc1CCCCCC"]').click({ timeout: 60_000 })
+      await expect(page.locator('[data-gallery-detail="musc1CCCCCC"]')).toBeVisible({ timeout: 30_000 })
+      await expect(page.locator('[data-gallery-preview-state="stopped"]')).toHaveText('Press Play in the preview to hear it.', { timeout: 60_000 })
+      await expect(page.locator('[data-gallery-preview-frame]')).toBeFocused()
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/webkit-card-play-needs-a-press.png` })
+      await new Promise((r) => setTimeout(r, 1500))
+      expect(await previewState(page), 'still waiting for the press').toBe('stopped')
+      await page.keyboard.press('Enter')
+      await expect.poll(() => previewState(page), { timeout: 20_000 }).toBe('playing')
+    } finally {
+      await browser.close()
+    }
+  })
+
+  // #2547 — the frame runs the entry's code, which can post the frame's "needs a
+  // press" message itself. Unasked (here: long after it answered that it plays),
+  // that moves nothing: focus stays where you left it on the page.
+  test("an entry's code that posts the frame's needs-a-press message itself can't pull focus into its frame", async ({ page }) => {
+    test.setTimeout(120_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    await routeGallery(page)
+    const THIEF = `${MUSIC_CODE.split('\n')[0]}
+setTimeout(() => parent.postMessage({ state: 'stopped', message: 'Press Play in the preview to hear it.' }, '*'), 2500)
+s('bd*4')`
+    const { id } = await routeEntry(page, 'Focus Thief', 'thief.strudel', THIEF)
+    await page.goto(`/#gallery=${id}`, { waitUntil: 'domcontentloaded' })
+    const button = page.locator('[data-gallery-preview-button]')
+    await button.click({ timeout: 60_000 })
+    await expect.poll(() => previewState(page), { timeout: 60_000 }).toBe('playing')
+    // where you are on the page: the gallery's own button, with focus
+    await button.focus()
+    await expect(button).toBeFocused()
+    // the code's own message arrives (the page shows it) ...
+    await expect(page.locator('[data-gallery-preview-state="stopped"]')).toHaveText('Press Play in the preview to hear it.', { timeout: 20_000 })
+    // ... and focus has not moved
+    await new Promise((r) => setTimeout(r, 300))
+    await expect(page.locator('[data-gallery-preview-frame]')).not.toBeFocused()
+    await expect(button).toBeFocused()
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/unasked-needs-click-keeps-focus.png` })
+  })
 })
 
 /*
@@ -723,4 +925,130 @@ test.describe('every path that runs imported code asks first (#2342, #2344)', ()
     })
   }
 
+})
+
+// ─── #2490 a project previews as itself ─────────────────────────────────────
+
+/** The project's visual: a flat magenta, a colour nothing else in the preview uses. */
+const BLOOM = 's.solid(1, 0, 1).out()'
+const BLOOM_PATTERN = `${MUSIC_CODE.split('\n')[0]}\n$: s("bd*4, hh*8").viz("bloom")`
+
+/** Serve a project entry (GET only), as the gallery serves one. */
+async function routeProject(page: Page, title: string, files: Array<{ path: string; language: string; content: string }>): Promise<{ id: string }> {
+  const id = newId()
+  const now = Date.now()
+  const withIds = files.map((f, i) => ({ id: `p${i}`, ...f }))
+  const body = {
+    entry: { id, title, kind: 'project', tags: ['sandbox-test'], authorName: 'Peg', publishedAt: now, fileCount: files.length, hasThumbnail: false },
+    manifest: { schemaVersion: 1, project: { name: title, sharedAt: now }, files: withIds, fileOrder: { '': withIds.map((f) => f.id) }, subfolderOrder: {} },
+  }
+  await page.route(`**/api/gallery/${id}`, (route) => (route.request().method() === 'GET' ? route.fulfill({ json: body }) : route.fallback()))
+  return { id }
+}
+
+/**
+ * The share of a screenshot's pixels near magenta, counted on the gallery page
+ * (a decoded PNG is plain data there, whatever the frame's origin).
+ */
+async function magentaShare(page: Page, png: Buffer): Promise<{ share: number; pixels: number }> {
+  return page.evaluate(async (b64) => {
+    const blob = await (await fetch(`data:image/png;base64,${b64}`)).blob()
+    const bmp = await createImageBitmap(blob)
+    const c = document.createElement('canvas')
+    c.width = bmp.width
+    c.height = bmp.height
+    const g = c.getContext('2d')!
+    g.drawImage(bmp, 0, 0)
+    const d = g.getImageData(0, 0, c.width, c.height).data
+    let hit = 0
+    for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] < 60 && d[i + 2] > 200) hit++
+    const pixels = d.length / 4
+    return { share: hit / pixels, pixels }
+  }, png.toString('base64'))
+}
+
+const frameLoc = (page: Page) => page.frameLocator('[data-gallery-preview-frame]')
+
+/**
+ * Open the entry, press its Preview, and get it playing: in Chromium the page's
+ * click starts it; in WebKit the frame asks for its own press, given by Enter.
+ */
+async function previewToPlaying(page: Page, id: string, engine: 'chromium' | 'webkit'): Promise<void> {
+  await page.goto(`/#gallery=${id}`, { waitUntil: 'domcontentloaded' })
+  await expect(page.locator(`[data-gallery-detail="${id}"]`)).toBeVisible({ timeout: 60_000 })
+  await page.locator('[data-gallery-preview-button]').click({ timeout: 60_000 })
+  if (engine === 'webkit') {
+    await expect(page.locator('[data-gallery-preview-state="stopped"]')).toHaveText('Press Play in the preview to hear it.', { timeout: 60_000 })
+    await expect(page.locator('[data-gallery-preview-frame]')).toBeFocused()
+    await page.keyboard.press('Enter')
+  }
+  await expect.poll(() => previewState(page), { timeout: 150_000 }).toBe('playing')
+}
+
+/** The project's pattern draws the project's own visual; without the visual, nothing is drawn and the frame says why. */
+async function projectPreviewsAsItself(page: Page, engine: 'chromium' | 'webkit'): Promise<void> {
+  const withViz = await routeProject(page, 'Bloom Project', [
+    { path: 'main.strudel', language: 'strudel', content: BLOOM_PATTERN },
+    { path: 'viz/bloom.hydra', language: 'hydra', content: BLOOM },
+    { path: 'README.md', language: 'markdown', content: '# bloom' },
+  ])
+  const without = await routeProject(page, 'Bloomless Project', [
+    { path: 'main.strudel', language: 'strudel', content: BLOOM_PATTERN },
+    { path: 'README.md', language: 'markdown', content: '# no visual here' },
+  ])
+
+  // WITH the visual: it is mounted in the frame and its colour is on screen
+  await previewToPlaying(page, withViz.id, engine)
+  const visual = frameLoc(page).locator('[data-gallery-player-visual="viz/bloom.hydra"]')
+  await expect(visual).toHaveCount(1, { timeout: 30_000 })
+  await expect(visual.locator('canvas')).not.toHaveCount(0, { timeout: 30_000 })
+  await expect(frameLoc(page).locator('[data-gallery-player-missing]')).toHaveCount(0)
+  let drawn = { share: 0, pixels: 0 }
+  await expect
+    .poll(async () => (drawn = await magentaShare(page, await page.locator('[data-gallery-preview-frame]').screenshot())).share, { timeout: 30_000 })
+    .toBeGreaterThan(0.3)
+  console.log(`${engine} with the visual: magenta ${(drawn.share * 100).toFixed(1)}% of ${drawn.pixels} frame pixels`)
+  expect(await playerFrame(page)!.evaluate(() => self.origin)).toBe('null')
+  expect(await previewState(page), 'the visual errored after starting').toBe('playing')
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-project-own-visual.png` })
+
+  // WITHOUT it (the control): the same pattern plays, draws nothing, and says which name it looked for
+  await previewToPlaying(page, without.id, engine)
+  await expect(frameLoc(page).locator('[data-gallery-player-missing]')).toHaveText(
+    'This pattern calls .viz("bloom"), and this entry has no visual by that name.',
+    { timeout: 30_000 },
+  )
+  await expect(frameLoc(page).locator('[data-gallery-player-visual]')).toHaveCount(0)
+  await page.waitForTimeout(1500)
+  const none = await magentaShare(page, await page.locator('[data-gallery-preview-frame]').screenshot())
+  console.log(`${engine} without the visual: magenta ${(none.share * 100).toFixed(2)}% of ${none.pixels} frame pixels`)
+  expect(none.pixels).toBeGreaterThan(1000)
+  expect(none.share).toBeLessThan(0.001)
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-project-visual-missing.png` })
+}
+
+test.describe("a project previews as itself, its pattern's visual from its own files (#2490)", () => {
+  test('Chromium', async ({ page }) => {
+    test.setTimeout(300_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    const errors = consoleErrors(page)
+    await routeGallery(page)
+    await projectPreviewsAsItself(page, 'chromium')
+    console.log('CONSOLE ERRORS\n' + errors.join('\n'))
+    expect(errors.filter((e) => e.startsWith('pageerror:'))).toEqual([])
+  })
+
+  test('WebKit', async ({ page: probe, baseURL }) => {
+    test.setTimeout(300_000)
+    test.skip(await isDevServer(probe), DEV_SKIP)
+    test.skip(!existsSync(webkit.executablePath()), "WebKit isn't installed here (CI installs Chromium only): npx playwright install webkit")
+    const browser = await webkit.launch()
+    try {
+      const page = await (await browser.newContext({ baseURL })).newPage()
+      await routeGallery(page)
+      await projectPreviewsAsItself(page, 'webkit')
+    } finally {
+      await browser.close()
+    }
+  })
 })

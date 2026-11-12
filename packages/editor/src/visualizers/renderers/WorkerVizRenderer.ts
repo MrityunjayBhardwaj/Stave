@@ -15,9 +15,13 @@
  *   - `pause`/`resume` — stop/start the sampling loop + tell the worker.
  *   - `destroy` — stop the loop, tell the worker to tear down, terminate it.
  *
- * The ONLY per-frame main-thread cost is `sample()` (read analyser bytes + ONE
- * wide scheduler query + now) + a transferable `postMessage` — the heavy
- * `draw()` is gone from main. That residual is what the matrix measures (PLAN §8).
+ * The ONLY per-frame main-thread cost is `sample()` (read analyser bytes + the
+ * narrow active-at-now queries + now, and — for kinds whose sketches get
+ * `stave.scheduler`, see `kindReadsRawScheduler` — the wide window, kept by
+ * `RollingHapWindow` so most frames run no wide query at all)
+ * + a transferable `postMessage` — the heavy `draw()` is gone from main. That
+ * residual is what the matrix measures (PLAN §8). The wide query is the costly
+ * part with a dense song (#2561), which is why it is skipped where unused.
  *
  * Falls back is NOT handled here: `makeRenderer` only constructs a
  * WorkerVizRenderer when a worker factory is registered AND the transport is
@@ -111,10 +115,23 @@ function minFrameMs(): number {
   return fps > 0 ? 1000 / fps : 0
 }
 
+/** Whether a worker sketch of this kind is handed `stave.scheduler` (the raw,
+ *  wide-window hap feed). p5 (`stave.scheduler` via the compiler's refs), hydra
+ *  (`bag.scheduler`) and three.js (`stave.scheduler`, #2570) are; GLSL shaders
+ *  are not (they have no per-frame JavaScript to call it — #2571), so their
+ *  sampler skips the wide window (#2561). Their `u*` signals come from the
+ *  active-at-now queries, which still run. The window itself is cheap since
+ *  #2566 (it rolls forward instead of re-querying the song each frame). */
+export function kindReadsRawScheduler(kind: 'p5' | 'hydra' | 'glsl' | 'three'): boolean {
+  return kind === 'p5' || kind === 'hydra' || kind === 'three'
+}
+
 export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
   private worker: Worker | null = null
   private writer: SignalTransportWriter | null = null
-  private readonly sampler = new MainSignalSampler()
+  /** Assigned in the constructor: whether it pre-queries `stave.scheduler`
+   *  depends on the kind (see `kindReadsRawScheduler`). */
+  private readonly sampler: MainSignalSampler
   /** When set (viz PREVIEWS, #838), supersedes the live sampler in the pump: the
    *  frame comes from this muted demo feed instead of the analyser/scheduler, so a
    *  card can render its viz audio-reactively while nothing is playing. Null =
@@ -176,6 +193,7 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
     private readonly name: string,
   ) {
     super()
+    this.sampler = new MainSignalSampler(kindReadsRawScheduler(kind))
   }
 
   /** Register a callback fired once when the worker reports its first successful
