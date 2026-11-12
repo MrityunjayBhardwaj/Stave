@@ -23,6 +23,7 @@ import { buildStaveUniforms } from '../signals/staveUniforms'
 import { markVizErrorReported } from '../reportedVizErrors'
 import { emitLog } from '../../engine/engineLog'
 import type { StaveUniforms } from '../p5Compiler'
+import type { IRPattern } from '../../codeView'
 import { VizRendererBase } from './VizRendererBase'
 import { currentVizSignalAliases, effectiveDpr } from './WorkerVizRenderer'
 import {
@@ -42,6 +43,8 @@ export class ThreeVizRenderer extends VizRendererBase {
   private paused = false
   private destroyed = false
   private size = { w: 400, h: 300 }
+  /** The live scheduler, for the sketch's `stave.scheduler` (#2570). */
+  private scheduler: IRPattern | null = null
   private readonly perfId = `three#${++threePerfSeq}`
   private bus: SignalBus | null = new SignalBus()
   private readonly uniforms: StaveUniforms
@@ -66,6 +69,7 @@ export class ThreeVizRenderer extends VizRendererBase {
   ): void {
     perf.gauge('viz.three', 1) // live instance gauge; -1 in destroy()
     this.size = { w: size.w, h: size.h }
+    this.scheduler = (components.queryable?.scheduler ?? null) as IRPattern | null
     this.bus?.bindScheduler(components.queryable?.scheduler, components.queryable?.trackSchedulers)
     this.bus?.bindAnalysers(components.audio?.analyser, components.audio?.trackAnalysers)
     this.bus?.setAliases(currentVizSignalAliases())
@@ -117,6 +121,9 @@ export class ThreeVizRenderer extends VizRendererBase {
       dpr: effectiveDpr,
       uniforms: () => this.uniforms,
       options: () => this.optionsRef.current ?? {},
+      // #2570 — on the main thread the sketch queries the live scheduler itself,
+      // over only the window it asks for (as P5VizRenderer's sketches do).
+      scheduler: () => this.scheduler,
       createCanvas: () => document.createElement('canvas'),
       // The core places each problem on its line; runtime and file come from here.
       report: (entry) => emitLog({ ...entry, runtime: 'three', source: this.name || undefined }),
@@ -157,6 +164,7 @@ export class ThreeVizRenderer extends VizRendererBase {
   }
 
   protected onUpdate(components: Partial<EngineComponents>): void {
+    this.scheduler = (components.queryable?.scheduler ?? null) as IRPattern | null
     this.bus?.bindScheduler(components.queryable?.scheduler ?? null, components.queryable?.trackSchedulers)
     this.bus?.bindAnalysers(components.audio?.analyser ?? null, components.audio?.trackAnalysers)
   }

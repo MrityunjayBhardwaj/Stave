@@ -116,12 +116,14 @@ function minFrameMs(): number {
 }
 
 /** Whether a worker sketch of this kind is handed `stave.scheduler` (the raw,
- *  wide-window hap feed). p5 (`stave.scheduler` via the compiler's refs) and
- *  hydra (`bag.scheduler`) are; three.js and GLSL sketches are not, so their
- *  sampler skips the wide per-frame song query (#2561). Their `sig`/uniform
- *  signals come from the narrow active-at-now queries, which still run. */
+ *  wide-window hap feed). p5 (`stave.scheduler` via the compiler's refs), hydra
+ *  (`bag.scheduler`) and three.js (`stave.scheduler`, #2570) are; GLSL shaders
+ *  are not (they have no per-frame JavaScript to call it — #2571), so their
+ *  sampler skips the wide window (#2561). Their `u*` signals come from the
+ *  active-at-now queries, which still run. The window itself is cheap since
+ *  #2566 (it rolls forward instead of re-querying the song each frame). */
 export function kindReadsRawScheduler(kind: 'p5' | 'hydra' | 'glsl' | 'three'): boolean {
-  return kind === 'p5' || kind === 'hydra'
+  return kind === 'p5' || kind === 'hydra' || kind === 'three'
 }
 
 export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
