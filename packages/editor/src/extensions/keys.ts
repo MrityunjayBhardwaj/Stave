@@ -197,11 +197,21 @@ export function setExtensionKeyGivenBack(extensionId: string, key: string, given
   for (const fn of [...listeners]) fn()
 }
 
-/** Hear about every change to which keys are handed back, made in this page. Returns the unsubscribe. */
+/**
+ * Hear about every change to which keys are handed back: made in this page, or in another
+ * tab of this browser (its `storage` event, for this setting's key or a cleared storage).
+ * Returns the unsubscribe.
+ */
 export function onExtensionKeysChange(fn: () => void): () => void {
   listeners.add(fn)
+  const fromAnotherTab = (e: StorageEvent) => {
+    if (e.key === STORAGE || e.key === null) fn()
+  }
+  const win = typeof window !== 'undefined' && typeof window.addEventListener === 'function' ? window : null
+  win?.addEventListener('storage', fromAnotherTab)
   return () => {
     listeners.delete(fn)
+    win?.removeEventListener('storage', fromAnotherTab)
   }
 }
 
