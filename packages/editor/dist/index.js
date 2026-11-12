@@ -20015,7 +20015,16 @@ function readAnalyserBytes(key3, an) {
 }
 __name(readAnalyserBytes, "readAnalyserBytes");
 var _MainSignalSampler = class _MainSignalSampler {
-  constructor() {
+  /**
+   * Whether `sample()` runs the WIDE raw-scheduler query (`stave.scheduler`, B-3).
+   * Only p5 and hydra sketches are handed `stave.scheduler`; a three.js or GLSL
+   * sketch never sees it, so for them the query is pure main-thread cost — and it
+   * is the expensive one: it walks the whole song over `RAW_QUERY_BACK +
+   * RAW_QUERY_FWD` cycles every frame (#2561 measured it as most of the main
+   * thread during Play with a dense song). Off → `rawScheduler.events` is empty.
+   */
+  constructor(wantsRawScheduler = true) {
+    this.wantsRawScheduler = wantsRawScheduler;
     this.inputs = {};
     this.seq = 0;
     /** Haps accumulated since the last `sample()` (the envelope feed). */
@@ -20090,7 +20099,7 @@ var _MainSignalSampler = class _MainSignalSampler {
     this.pendingBumps = [];
     const rawScheduler = {
       now: now2,
-      events: scheduler ? queryAt(scheduler, now2 - RAW_QUERY_BACK, now2 + RAW_QUERY_FWD).map(summariseRawHap) : []
+      events: scheduler && this.wantsRawScheduler ? queryAt(scheduler, now2 - RAW_QUERY_BACK, now2 + RAW_QUERY_FWD).map(summariseRawHap) : []
     };
     return { seq, now: now2, analysers, activeEvents, activeByTrack, bumps, rawScheduler };
   }
@@ -20333,6 +20342,10 @@ function minFrameMs() {
   return fps > 0 ? 1e3 / fps : 0;
 }
 __name(minFrameMs, "minFrameMs");
+function kindReadsRawScheduler(kind) {
+  return kind === "p5" || kind === "hydra";
+}
+__name(kindReadsRawScheduler, "kindReadsRawScheduler");
 var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5 / `'glsl'` #281).
    *  @param code raw sketch source. @param name workspace path (error attribution). */
@@ -20343,7 +20356,6 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
     this.name = name;
     this.worker = null;
     this.writer = null;
-    this.sampler = new MainSignalSampler();
     /** When set (viz PREVIEWS, #838), supersedes the live sampler in the pump: the
      *  frame comes from this muted demo feed instead of the analyser/scheduler, so a
      *  card can render its viz audio-reactively while nothing is playing. Null =
@@ -20396,6 +20408,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
      *  when the bag actually changed, so a re-publish with identical options costs
      *  nothing. `null` until mount. */
     this.lastOptionsKey = null;
+    this.sampler = new MainSignalSampler(kindReadsRawScheduler(kind));
   }
   /** Register a callback fired once when the worker reports its first successful
    *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;

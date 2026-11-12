@@ -111,10 +111,21 @@ function minFrameMs(): number {
   return fps > 0 ? 1000 / fps : 0
 }
 
+/** Whether a worker sketch of this kind is handed `stave.scheduler` (the raw,
+ *  wide-window hap feed). p5 (`stave.scheduler` via the compiler's refs) and
+ *  hydra (`bag.scheduler`) are; three.js and GLSL sketches are not, so their
+ *  sampler skips the wide per-frame song query (#2561). Their `sig`/uniform
+ *  signals come from the narrow active-at-now queries, which still run. */
+export function kindReadsRawScheduler(kind: 'p5' | 'hydra' | 'glsl' | 'three'): boolean {
+  return kind === 'p5' || kind === 'hydra'
+}
+
 export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
   private worker: Worker | null = null
   private writer: SignalTransportWriter | null = null
-  private readonly sampler = new MainSignalSampler()
+  /** Assigned in the constructor: whether it pre-queries `stave.scheduler`
+   *  depends on the kind (see `kindReadsRawScheduler`). */
+  private readonly sampler: MainSignalSampler
   /** When set (viz PREVIEWS, #838), supersedes the live sampler in the pump: the
    *  frame comes from this muted demo feed instead of the analyser/scheduler, so a
    *  card can render its viz audio-reactively while nothing is playing. Null =
@@ -176,6 +187,7 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
     private readonly name: string,
   ) {
     super()
+    this.sampler = new MainSignalSampler(kindReadsRawScheduler(kind))
   }
 
   /** Register a callback fired once when the worker reports its first successful

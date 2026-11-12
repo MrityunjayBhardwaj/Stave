@@ -145,6 +145,16 @@ function readAnalyserBytes(key: string, an: BusAnalyser): AnalyserBytes | null {
 }
 
 export class MainSignalSampler {
+  /**
+   * Whether `sample()` runs the WIDE raw-scheduler query (`stave.scheduler`, B-3).
+   * Only p5 and hydra sketches are handed `stave.scheduler`; a three.js or GLSL
+   * sketch never sees it, so for them the query is pure main-thread cost — and it
+   * is the expensive one: it walks the whole song over `RAW_QUERY_BACK +
+   * RAW_QUERY_FWD` cycles every frame (#2561 measured it as most of the main
+   * thread during Play with a dense song). Off → `rawScheduler.events` is empty.
+   */
+  constructor(private readonly wantsRawScheduler = true) {}
+
   private inputs: SamplerInputs = {}
   private seq = 0
   /** Haps accumulated since the last `sample()` (the envelope feed). */
@@ -242,7 +252,7 @@ export class MainSignalSampler {
     // feeds the bus; this feeds raw sketches that scroll a window of haps). ──
     const rawScheduler: RawSchedulerFrame = {
       now,
-      events: scheduler
+      events: scheduler && this.wantsRawScheduler
         ? queryAt(scheduler, now - RAW_QUERY_BACK, now + RAW_QUERY_FWD).map(summariseRawHap)
         : [],
     }
