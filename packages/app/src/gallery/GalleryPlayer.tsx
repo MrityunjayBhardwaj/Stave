@@ -24,19 +24,46 @@
  * frame, fed by nothing (no music is playing in a visual preview). The worker
  * renderer isn't used: it would load its script from Stave's origin, which an
  * opaque-origin frame may not do.
+ *
+ * #2490 — the frame gets all of the entry's files it can run, not just the one
+ * it plays, so a pattern's `.viz("bloom")` draws the entry's own `bloom` visual
+ * here, under the music, fed by that pattern's track. Names resolve by the
+ * studio's rule (previewRegistry.ts); a name nothing in the entry answers to
+ * falls back to Stave's built-in visuals, and one that resolves nowhere is said
+ * so in the frame rather than drawing nothing silently.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { NEEDS_CLICK, parseToFrame, type FromFrame, type PreviewKind } from "./previewProtocol";
+import { NEEDS_CLICK, parseToFrame, type FromFrame, type PreviewFile } from "./previewProtocol";
 
 type Engine = import("@stave/editor").StrudelEngine;
+type Editor = typeof import("@stave/editor");
+type Components = Partial<import("@stave/editor").EngineComponents>;
 type Mounted = { renderer: { destroy(): void; resume?(): void }; disconnect(): void };
+type VizSource = import("@stave/editor").VizDescriptor["factory"];
+/** The kinds that compile to a visual: every preview kind but a pattern. */
+type VizKind = Exclude<PreviewFile["kind"], "strudel">;
 
 const VIZ_SIZE = { w: 640, h: 360 };
+/** One of the entry's visual files, compiled the way the app compiles a viz file. */
+function compileVisual(editor: Editor, file: PreviewFile, name: string): VizSource {
+  return editor.compilePreset({
+    id: `gallery-preview:${file.path}`,
+    name,
+    renderer: file.kind as VizKind,
+    code: file.code,
+    requires: [],
+    createdAt: 0,
+    updatedAt: 0,
+  }).factory;
+}
+
+/** #2490 — visuals one pattern may draw at once in the preview. */
+export const MAX_PREVIEW_VISUALS = 4;
 
 export function GalleryPlayer() {
   const vizRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Engine | null>(null);
-  const vizMountRef = useRef<Mounted | null>(null);
+  const vizMountsRef = useRef<Mounted[]>([]);
   const generation = useRef(0);
   // What the current run is doing, so an error the code raises is reported
   // truthfully: before anything plays it IS the outcome ("error"); once it
@@ -47,6 +74,8 @@ export function GalleryPlayer() {
   const [needsClick, setNeedsClick] = useState(false);
   const startRef = useRef<HTMLButtonElement>(null);
   const [showViz, setShowViz] = useState(false);
+  // #2490 — `.viz` names the playing pattern calls that resolve to no visual.
+  const [missing, setMissing] = useState<string[]>([]);
 
   const post = useCallback((msg: FromFrame) => {
     setStatus(msg);
@@ -95,12 +124,14 @@ export function GalleryPlayer() {
     } catch {
       /* already stopped */
     }
-    if (vizMountRef.current) {
-      vizMountRef.current.renderer.destroy();
-      vizMountRef.current.disconnect();
-      vizMountRef.current = null;
+    for (const m of vizMountsRef.current) {
+      m.renderer.destroy();
+      m.disconnect();
     }
+    vizMountsRef.current = [];
+    vizRef.current?.replaceChildren();
     setShowViz(false);
+    setMissing([]);
   }, []);
 
   const startSound = useCallback(async (mine: number) => {
@@ -152,15 +183,96 @@ export function GalleryPlayer() {
     };
   }, [needsClick, startSound]);
 
+  /**
+   * Mount one visual in a box of its own inside the visual area. A sketch's
+   * error goes to `onError`. False when this run was replaced meanwhile.
+   */
+  const mountVisual = useCallback(
+    (editor: Editor, mine: number, label: string, factory: VizSource, components: Components, onError: (err: Error) => void) => {
+      const area = vizRef.current;
+      if (!area || mine !== generation.current) return false;
+      const box = document.createElement("div");
+      box.setAttribute("data-gallery-player-visual", label);
+      box.style.cssText = "position:relative;flex:1 1 0;min-height:0;width:100%;overflow:hidden;";
+      area.appendChild(box);
+      const mounted = editor.mountVizRenderer(box, factory, components, VIZ_SIZE, onError);
+      vizMountsRef.current.push(mounted);
+      mounted.renderer.resume?.();
+      return true;
+    },
+    [],
+  );
+
+  /**
+   * #2490 — the visuals the pattern just evaluated calls with `.viz(name)`:
+   * each from the entry's own files by the studio's name rule, else one of
+   * Stave's built-in visuals, mounted fed by its own track (its scheduler and,
+   * when the engine has one, its analyser), as the studio's inline zones are.
+   * Names that resolve to nothing are listed in the frame.
+   */
+  const showPatternVisuals = useCallback(
+    async (editor: Editor, e: Engine, mine: number, files: PreviewFile[]) => {
+      const requests = [...e.getVizRequests()];
+      if (requests.length === 0) return;
+      const { previewRegistry, visualName } = await import("./previewRegistry");
+      if (mine !== generation.current) return;
+      const registry = previewRegistry(files);
+      const found: Array<{ trackKey: string; label: string; factory: VizSource }> = [];
+      const unresolved: string[] = [];
+      for (const [trackKey, vizId] of requests) {
+        const file = registry.visualFor(vizId);
+        if (file) {
+          // A visual that doesn't compile is the code's error, said alongside
+          // "playing" as the studio's inline zone would skip it; the music goes on.
+          try {
+            found.push({ trackKey, label: file.path, factory: compileVisual(editor, file, visualName(file.path)) });
+          } catch (err) {
+            reportError(err instanceof Error ? err.message : String(err));
+          }
+          continue;
+        }
+        const builtIn = editor.resolveDescriptor(vizId, editor.DEFAULT_VIZ_DESCRIPTORS);
+        if (builtIn) found.push({ trackKey, label: vizId, factory: builtIn.factory });
+        else if (!unresolved.includes(vizId.slice(0, 60))) unresolved.push(vizId.slice(0, 60));
+      }
+      setMissing(unresolved);
+      if (found.length === 0) return;
+      setShowViz(true);
+      await new Promise((r) => requestAnimationFrame(r));
+      const comps = e.components;
+      for (const { trackKey, label, factory } of found.slice(0, MAX_PREVIEW_VISUALS)) {
+        const trackAnalyser = comps.audio?.trackAnalysers?.get(trackKey);
+        const components: Components = {
+          ...comps,
+          audio: trackAnalyser && comps.audio ? { ...comps.audio, analyser: trackAnalyser } : comps.audio,
+          queryable: {
+            scheduler: comps.queryable?.trackSchedulers.get(trackKey) ?? comps.queryable?.scheduler ?? null,
+            trackSchedulers: comps.queryable?.trackSchedulers ?? new Map(),
+          },
+          options: {},
+        };
+        // A visual that throws while the music plays is the code's error, said
+        // alongside "playing"; the sound goes on.
+        const onError = (err: Error) => {
+          if (mine === generation.current) reportError(err.message);
+        };
+        if (!mountVisual(editor, mine, label, factory, components, onError)) return;
+      }
+    },
+    [mountVisual, reportError],
+  );
+
   const play = useCallback(
-    async (code: string, kind: PreviewKind) => {
+    async (path: string, files: PreviewFile[]) => {
       stopAll();
       const mine = generation.current;
       run.current = { phase: "starting" };
+      const file = files.find((f) => f.path === path);
+      if (!file) return; // parseToFrame guarantees it
       try {
         const editor = await import("@stave/editor");
         if (mine !== generation.current) return;
-        if (kind === "strudel") {
+        if (file.kind === "strudel") {
           if (!engineRef.current) {
             const e = new editor.StrudelEngine({ sliderScope: "gallery-preview:" });
             e.setRuntimeErrorHandler((err) => reportError(err.message));
@@ -169,42 +281,32 @@ export function GalleryPlayer() {
           const e = engineRef.current;
           await e.init();
           if (mine !== generation.current) return;
-          const { error } = await e.evaluate(code);
+          const { error } = await e.evaluate(file.code);
           if (mine !== generation.current) return;
           if (error) {
             failRun(error.message);
             return;
           }
+          await showPatternVisuals(editor, e, mine, files);
+          if (mine !== generation.current) return;
           await startSound(mine);
           return;
         }
         // A visual: compile it the way the app does and mount it here.
         setShowViz(true);
         await new Promise((r) => requestAnimationFrame(r));
-        const container = vizRef.current;
-        if (!container || mine !== generation.current) return;
-        const descriptor = editor.compilePreset({
-          id: "gallery-preview",
-          name: `preview.${kind}`,
-          renderer: kind,
-          code,
-          requires: [],
-          createdAt: 0,
-          updatedAt: 0,
-        });
+        if (mine !== generation.current) return;
         // A sketch that throws while drawing keeps no picture: that is the outcome.
-        const mounted = editor.mountVizRenderer(container, descriptor.factory, {}, VIZ_SIZE, (err) => {
+        const ok = mountVisual(editor, mine, file.path, compileVisual(editor, file, `preview.${file.kind}`), {}, (err) => {
           if (mine === generation.current) failRun(err.message);
         });
-        vizMountRef.current = mounted;
-        mounted.renderer.resume?.();
-        if (run.current.phase === "starting") nowPlaying();
+        if (ok && run.current.phase === "starting") nowPlaying();
       } catch (err) {
         if (mine !== generation.current) return;
         failRun(err instanceof Error ? err.message : String(err));
       }
     },
-    [failRun, nowPlaying, startSound, stopAll],
+    [failRun, mountVisual, nowPlaying, reportError, showPatternVisuals, startSound, stopAll],
   );
 
   useEffect(() => {
@@ -220,7 +322,7 @@ export function GalleryPlayer() {
         stopAll();
         post({ state: "stopped" });
       } else {
-        void play(msg.code, msg.kind);
+        void play(msg.path, msg.files);
       }
     };
     window.addEventListener("message", onMessage);
@@ -253,7 +355,7 @@ export function GalleryPlayer() {
         alignItems: "center",
         justifyContent: "center",
         gap: 10,
-        minHeight: "100vh",
+        height: "100vh",
         background: "var(--bg-app, #111)",
         color: "var(--text-secondary, #bbb)",
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
@@ -265,13 +367,22 @@ export function GalleryPlayer() {
         ref={vizRef}
         data-gallery-player-viz
         style={{
-          display: showViz ? "block" : "none",
+          display: showViz ? "flex" : "none",
+          flexDirection: "column",
+          flex: "1 1 0",
+          minHeight: 0,
           width: "100%",
-          height: "calc(100vh - 34px)",
           position: "relative",
           overflow: "hidden",
         }}
       />
+      {missing.length > 0 && (
+        <div data-gallery-player-missing style={{ padding: "0 12px", textAlign: "center" }}>
+          {missing.length === 1
+            ? `This pattern calls .viz("${missing[0]}"), and this entry has no visual by that name.`
+            : `This pattern calls ${missing.map((m) => `.viz("${m}")`).join(", ")}, and this entry has no visuals by those names.`}
+        </div>
+      )}
       {needsClick && (
         <button
           ref={startRef}

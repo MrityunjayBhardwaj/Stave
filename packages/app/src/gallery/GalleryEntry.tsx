@@ -23,7 +23,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AuthorName, EntryPicture, avatarColour, useEntryRecording } from "./GalleryCards";
 import { GalleryPreview, type GalleryPreviewHandle } from "./GalleryPreview";
-import { previewKindOf } from "./previewProtocol";
+import { previewKindOf, previewPlayFor } from "./previewProtocol";
 import { LIGHT_CODE_BG, codeLanguageOf, colourLines, type TokenKind } from "./codeColour";
 import { RecordingTimeline, lengthLabel } from "./GalleryTimeline";
 import { GALLERY_FILTERS, KIND_LABEL, contentsSummary, fileRole, formatGalleryDate, publishedAgo } from "./galleryModel";
@@ -179,7 +179,8 @@ export function EntryPage(props: EntryPageProps) {
   const found = chosen === null ? -1 : files.findIndex((f) => f.path === chosen);
   const idx = found >= 0 ? found : 0;
   const file = files[idx];
-  const kind = file ? previewKindOf(file) : null;
+  // #2490 — the file with the entry's other runnable files beside it, from this manifest only
+  const toPlay = file ? previewPlayFor(files, file.path) : null;
 
   // A row's play: its file into the one preview, playing; on the file already there, play / stop.
   const playRow = (i: number) => {
@@ -208,12 +209,12 @@ export function EntryPage(props: EntryPageProps) {
       {crumbs}
       <div className="sg-entry">
         <div className="sg-entry-main">
-          {file && kind ? (
+          {file && toPlay ? (
             <GalleryPreview
               idle={recordedFor(file.path) ? <RecordingTimeline rec={recordedFor(file.path)!} className="sg-stage-canvas" /> : undefined}
               ref={preview}
-              code={file.content}
-              kind={kind}
+              path={toPlay.path}
+              files={toPlay.files}
               fileKey={`${entry.id}/${file.id}`}
               autoStart={autoStart}
               onPlayingChange={setPlaying}

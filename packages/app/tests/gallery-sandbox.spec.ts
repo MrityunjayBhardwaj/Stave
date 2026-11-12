@@ -26,6 +26,11 @@
  * 4. FRAME POLICY (#2374). Code in the preview can't bring another site into the
  *    frame or nest one inside it, even a page that never finishes loading; the
  *    frames the app shows on purpose still load.
+ * 5. A PROJECT PREVIEWS AS ITSELF (#2490). A project's pattern that calls
+ *    `.viz("bloom")` draws the project's own `viz/bloom.hydra` inside the frame
+ *    (read from the frame's pixels, not its DOM), in Chromium and in WebKit; the
+ *    same pattern with the visual left out of the project draws nothing and the
+ *    frame says which name it couldn't find.
  *
  * Screenshots go to $GALLERY_SHOT_DIR.
  *
@@ -588,12 +593,13 @@ const CONTROL_PAGE = `<!doctype html><meta charset="utf-8">
 <script>
 const f = document.getElementById('f')
 const code = ${JSON.stringify(MUSIC_CODE)}
+const msg = { play: true, path: 'floor.strudel', files: [{ path: 'floor.strudel', kind: 'strudel', code }] }
 addEventListener('message', (e) => {
   if (e.source !== f.contentWindow) return
   console.log('FRAME ' + JSON.stringify(e.data))
-  if (e.data && e.data.state === 'ready') f.contentWindow.postMessage({ play: true, code, kind: 'strudel' }, '*')
+  if (e.data && e.data.state === 'ready') f.contentWindow.postMessage(msg, '*')
 })
-document.getElementById('again').addEventListener('click', () => f.contentWindow.postMessage({ play: true, code, kind: 'strudel' }, '*'))
+document.getElementById('again').addEventListener('click', () => f.contentWindow.postMessage(msg, '*'))
 </script>`
 
 /** The frame's reports, as the control page logs them. */
@@ -919,4 +925,130 @@ test.describe('every path that runs imported code asks first (#2342, #2344)', ()
     })
   }
 
+})
+
+// ─── #2490 a project previews as itself ─────────────────────────────────────
+
+/** The project's visual: a flat magenta, a colour nothing else in the preview uses. */
+const BLOOM = 's.solid(1, 0, 1).out()'
+const BLOOM_PATTERN = `${MUSIC_CODE.split('\n')[0]}\n$: s("bd*4, hh*8").viz("bloom")`
+
+/** Serve a project entry (GET only), as the gallery serves one. */
+async function routeProject(page: Page, title: string, files: Array<{ path: string; language: string; content: string }>): Promise<{ id: string }> {
+  const id = newId()
+  const now = Date.now()
+  const withIds = files.map((f, i) => ({ id: `p${i}`, ...f }))
+  const body = {
+    entry: { id, title, kind: 'project', tags: ['sandbox-test'], authorName: 'Peg', publishedAt: now, fileCount: files.length, hasThumbnail: false },
+    manifest: { schemaVersion: 1, project: { name: title, sharedAt: now }, files: withIds, fileOrder: { '': withIds.map((f) => f.id) }, subfolderOrder: {} },
+  }
+  await page.route(`**/api/gallery/${id}`, (route) => (route.request().method() === 'GET' ? route.fulfill({ json: body }) : route.fallback()))
+  return { id }
+}
+
+/**
+ * The share of a screenshot's pixels near magenta, counted on the gallery page
+ * (a decoded PNG is plain data there, whatever the frame's origin).
+ */
+async function magentaShare(page: Page, png: Buffer): Promise<{ share: number; pixels: number }> {
+  return page.evaluate(async (b64) => {
+    const blob = await (await fetch(`data:image/png;base64,${b64}`)).blob()
+    const bmp = await createImageBitmap(blob)
+    const c = document.createElement('canvas')
+    c.width = bmp.width
+    c.height = bmp.height
+    const g = c.getContext('2d')!
+    g.drawImage(bmp, 0, 0)
+    const d = g.getImageData(0, 0, c.width, c.height).data
+    let hit = 0
+    for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] < 60 && d[i + 2] > 200) hit++
+    const pixels = d.length / 4
+    return { share: hit / pixels, pixels }
+  }, png.toString('base64'))
+}
+
+const frameLoc = (page: Page) => page.frameLocator('[data-gallery-preview-frame]')
+
+/**
+ * Open the entry, press its Preview, and get it playing: in Chromium the page's
+ * click starts it; in WebKit the frame asks for its own press, given by Enter.
+ */
+async function previewToPlaying(page: Page, id: string, engine: 'chromium' | 'webkit'): Promise<void> {
+  await page.goto(`/#gallery=${id}`, { waitUntil: 'domcontentloaded' })
+  await expect(page.locator(`[data-gallery-detail="${id}"]`)).toBeVisible({ timeout: 60_000 })
+  await page.locator('[data-gallery-preview-button]').click({ timeout: 60_000 })
+  if (engine === 'webkit') {
+    await expect(page.locator('[data-gallery-preview-state="stopped"]')).toHaveText('Press Play in the preview to hear it.', { timeout: 60_000 })
+    await expect(page.locator('[data-gallery-preview-frame]')).toBeFocused()
+    await page.keyboard.press('Enter')
+  }
+  await expect.poll(() => previewState(page), { timeout: 150_000 }).toBe('playing')
+}
+
+/** The project's pattern draws the project's own visual; without the visual, nothing is drawn and the frame says why. */
+async function projectPreviewsAsItself(page: Page, engine: 'chromium' | 'webkit'): Promise<void> {
+  const withViz = await routeProject(page, 'Bloom Project', [
+    { path: 'main.strudel', language: 'strudel', content: BLOOM_PATTERN },
+    { path: 'viz/bloom.hydra', language: 'hydra', content: BLOOM },
+    { path: 'README.md', language: 'markdown', content: '# bloom' },
+  ])
+  const without = await routeProject(page, 'Bloomless Project', [
+    { path: 'main.strudel', language: 'strudel', content: BLOOM_PATTERN },
+    { path: 'README.md', language: 'markdown', content: '# no visual here' },
+  ])
+
+  // WITH the visual: it is mounted in the frame and its colour is on screen
+  await previewToPlaying(page, withViz.id, engine)
+  const visual = frameLoc(page).locator('[data-gallery-player-visual="viz/bloom.hydra"]')
+  await expect(visual).toHaveCount(1, { timeout: 30_000 })
+  await expect(visual.locator('canvas')).not.toHaveCount(0, { timeout: 30_000 })
+  await expect(frameLoc(page).locator('[data-gallery-player-missing]')).toHaveCount(0)
+  let drawn = { share: 0, pixels: 0 }
+  await expect
+    .poll(async () => (drawn = await magentaShare(page, await page.locator('[data-gallery-preview-frame]').screenshot())).share, { timeout: 30_000 })
+    .toBeGreaterThan(0.3)
+  console.log(`${engine} with the visual: magenta ${(drawn.share * 100).toFixed(1)}% of ${drawn.pixels} frame pixels`)
+  expect(await playerFrame(page)!.evaluate(() => self.origin)).toBe('null')
+  expect(await previewState(page), 'the visual errored after starting').toBe('playing')
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-project-own-visual.png` })
+
+  // WITHOUT it (the control): the same pattern plays, draws nothing, and says which name it looked for
+  await previewToPlaying(page, without.id, engine)
+  await expect(frameLoc(page).locator('[data-gallery-player-missing]')).toHaveText(
+    'This pattern calls .viz("bloom"), and this entry has no visual by that name.',
+    { timeout: 30_000 },
+  )
+  await expect(frameLoc(page).locator('[data-gallery-player-visual]')).toHaveCount(0)
+  await page.waitForTimeout(1500)
+  const none = await magentaShare(page, await page.locator('[data-gallery-preview-frame]').screenshot())
+  console.log(`${engine} without the visual: magenta ${(none.share * 100).toFixed(2)}% of ${none.pixels} frame pixels`)
+  expect(none.pixels).toBeGreaterThan(1000)
+  expect(none.share).toBeLessThan(0.001)
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-project-visual-missing.png` })
+}
+
+test.describe("a project previews as itself, its pattern's visual from its own files (#2490)", () => {
+  test('Chromium', async ({ page }) => {
+    test.setTimeout(300_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    const errors = consoleErrors(page)
+    await routeGallery(page)
+    await projectPreviewsAsItself(page, 'chromium')
+    console.log('CONSOLE ERRORS\n' + errors.join('\n'))
+    expect(errors.filter((e) => e.startsWith('pageerror:'))).toEqual([])
+  })
+
+  test('WebKit', async ({ page: probe, baseURL }) => {
+    test.setTimeout(300_000)
+    test.skip(await isDevServer(probe), DEV_SKIP)
+    test.skip(!existsSync(webkit.executablePath()), "WebKit isn't installed here (CI installs Chromium only): npx playwright install webkit")
+    const browser = await webkit.launch()
+    try {
+      const page = await (await browser.newContext({ baseURL })).newPage()
+      await routeGallery(page)
+      await projectPreviewsAsItself(page, 'webkit')
+    } finally {
+      await browser.close()
+    }
+  })
 })

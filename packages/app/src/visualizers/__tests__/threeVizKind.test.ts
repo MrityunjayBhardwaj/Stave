@@ -51,7 +51,8 @@ describe("a .three file is a visual everywhere the app keeps its own list", () =
   it("gallery: a .three file gets a preview, by extension and by language", () => {
     expect(previewKindOf({ path: "a/Knot.three" })).toBe("three");
     expect(previewKindOf({ path: "a/Knot", language: "three" })).toBe("three");
-    expect(parseToFrame({ play: true, code: "x", kind: "three" })).toEqual({ play: true, code: "x", kind: "three" });
+    const msg = { play: true, path: "a/Knot.three", files: [{ path: "a/Knot.three", kind: "three", code: "x" }] };
+    expect(parseToFrame(msg)).toEqual(msg);
   });
 
   it("gallery: a .three file in an entry counts as a visual", () => {
