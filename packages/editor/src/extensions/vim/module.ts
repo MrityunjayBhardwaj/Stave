@@ -14,10 +14,12 @@
  *    would with Vim off;
  *  - in a read-only editor (the history view, a commit being viewed) the bar says so, Vim
  *    refuses insert mode, and Monaco refuses every edit; moving, search and yank work. An
- *    edit tried there says why nothing happened (`PAST_VERSION`, #2557);
- *  - Vim's edges with Monaco and Stave behave as in Vim (#2557, `edges.ts`): one insert is
- *    one undo step; an Esc that cancels a half-typed command is Vim's alone; Esc with the
- *    suggestion list open closes the list and stays in insert mode;
+ *    edit tried there, `u` and Ctrl+R included, says why nothing happened (`PAST_VERSION`,
+ *    #2557);
+ *  - Vim's edges with Monaco and Stave behave as in Vim (#2557, `edges.ts`): Vim's `u` and
+ *    Ctrl+R undo and redo one whole insert (Monaco's own undo steps are left as they are);
+ *    an Esc (or Ctrl+[, Ctrl+C) that cancels a half-typed command is Vim's alone; Esc with
+ *    the suggestion list open closes the list and stays in insert mode;
  *  - switched off, or the editor closing, undoes all of it: the Vim is disposed, the bar
  *    strip goes (the host removes it), the cursor options Vim changed are put back as
  *    they were before Vim came (monaco-vim would otherwise leave them at its own defaults),
@@ -33,7 +35,7 @@ import { initVimMode, StatusBar, VimMode } from 'monaco-vim'
 import type * as Monaco from 'monaco-editor'
 import type { CodeEditor, ExtensionHost, ExtensionModule } from '../types'
 import { VimBar } from './bar'
-import { hasPendingInput, oneUndoPerInsert, PAST_VERSION, removeContextKeys, suggestListOpen, type VimInputState } from './edges'
+import { hasPendingInput, InsertUndo, isVimEsc, PAST_VERSION, removeContextKeys, suggestListOpen, type UndoModel, type VimInputState } from './edges'
 import { useMonaco } from './monacoApi'
 
 /** What `:w` and friends say. */
@@ -128,13 +130,41 @@ interface VimState {
 /** The editor methods monaco-vim edits the text through. */
 const EDIT_METHODS: ReadonlySet<PropertyKey> = new Set(['executeEdits', 'executeCommand', 'executeCommands'])
 
+/** What `keyFilteredEditor` may change about the editor Vim is given (#2557). */
+export interface EditorHooks {
+  /** A read-only editor: called before each edit Vim sends it (the editor still refuses it). */
+  onEdit?: () => void
+  /** Vim's `u` and Ctrl+R (monaco-vim calls the model's `undo` and `redo`). */
+  undo?: () => void
+  redo?: () => void
+}
+
 /**
  * The editor as monaco-vim sees it: the same editor, except that its key events skip any
  * keystroke `leaveAlone` says is not Vim's. Everything else is the editor itself, its
- * methods bound to it. Given `onEdit` (a read-only editor), each edit Vim sends the editor
- * calls it first; the editor then refuses the edit as before (#2557).
+ * methods bound to it, apart from what `hooks` changes: each edit Vim sends a read-only
+ * editor calls `onEdit` first, and the model Vim is given has its `undo` and `redo`
+ * answered by `hooks.undo` and `hooks.redo` (only Vim's own `u` and Ctrl+R; Monaco's undo
+ * stack and every other caller are untouched).
  */
-export function keyFilteredEditor(editor: Editor, leaveAlone: (event: KeyboardEvent) => boolean, onEdit?: () => void): Editor {
+export function keyFilteredEditor(editor: Editor, leaveAlone: (event: KeyboardEvent) => boolean, hooks: EditorHooks = {}): Editor {
+  const models = new WeakMap<object, Monaco.editor.ITextModel>()
+  const vimModel = (model: Monaco.editor.ITextModel | null) => {
+    if (!model || (!hooks.undo && !hooks.redo)) return model
+    let seen = models.get(model)
+    if (!seen) {
+      seen = new Proxy(model, {
+        get(target, prop) {
+          if (prop === 'undo' && hooks.undo) return hooks.undo
+          if (prop === 'redo' && hooks.redo) return hooks.redo
+          const value = Reflect.get(target, prop, target) as unknown
+          return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(target) : value
+        },
+      })
+      models.set(model, seen)
+    }
+    return seen
+  }
   return new Proxy(editor, {
     get(target, prop) {
       if (prop === 'onKeyDown') {
@@ -144,9 +174,11 @@ export function keyFilteredEditor(editor: Editor, leaveAlone: (event: KeyboardEv
             listener(e)
           })
       }
+      if (prop === 'getModel') return () => vimModel(target.getModel())
       const value = Reflect.get(target, prop, target) as unknown
       if (typeof value !== 'function') return value
       const bound = (value as (...a: unknown[]) => unknown).bind(target)
+      const onEdit = hooks.onEdit
       if (onEdit && EDIT_METHODS.has(prop)) {
         return (...args: unknown[]) => {
           onEdit()
@@ -212,28 +244,59 @@ export function attachVim(ed: CodeEditor, host: Pick<ExtensionHost, 'keyOf' | 't
   const before = cursorOptions(ed.editor)
   const handedBack = leaveAloneFor(host)
   let inInsert = false
-  // Esc with the suggestion list open is Monaco's: it closes the list, and insert mode stays
-  const leaveAlone = (event: KeyboardEvent) =>
-    handedBack(event) || (event.key === 'Escape' && inInsert && suggestListOpen(ed.editor))
-  const sayPastVersion = () => vim.openNotification(PAST_VERSION)
-  const view = keyFilteredEditor(ed.editor, leaveAlone, ed.readOnly ? sayPastVersion : undefined)
+  // Keystrokes this editor answers before Vim could (Esc closing the suggestion list).
+  const notVims = new WeakSet<KeyboardEvent>()
+  const leaveAlone = (event: KeyboardEvent) => handedBack(event) || notVims.has(event)
 
-  // Before Vim reads a key: what the text was (so the insert it may begin can join the
-  // edit the same key made), and whether an Esc cancels a half-typed command (Vim's alone).
-  // What Vim did with the key is read once it is done with it, in a microtask: an editor
-  // listener registered after Vim's is no "after", because an edit Vim makes delivers the
-  // rest of the key event to the later listeners first (Monaco's shared delivery queue).
+  // In a read-only editor, an edit tried says why nothing happened, once per keystroke.
+  let saidForKey = false
+  const sayPastVersion = () => {
+    if (saidForKey) return
+    saidForKey = true
+    vim.openNotification(PAST_VERSION)
+  }
+  // the model has `undo` and `redo` (monaco-vim calls them); Monaco's typings leave them out
+  const undo = new InsertUndo(() => ed.editor.getModel() as unknown as UndoModel | null)
+  const view = keyFilteredEditor(ed.editor, leaveAlone, {
+    onEdit: ed.readOnly ? sayPastVersion : undefined,
+    undo: ed.readOnly ? sayPastVersion : () => undo.undo(),
+    redo: ed.readOnly ? sayPastVersion : () => undo.redo(),
+  })
+
+  // Before Vim reads a key: where the text was (so an insert the key begins includes the
+  // key's own edit, for `cw` and `o`), whether an Esc cancels a half-typed command (Vim's
+  // alone), and whether it closes the suggestion list instead. What Vim did with the key is
+  // read once it is done with it, in a microtask: an editor listener registered after
+  // Vim's is no "after", because an edit Vim makes delivers the rest of the key event to
+  // the later listeners first (Monaco's shared delivery queue).
   const vimState = () => (vim as unknown as { state?: { vim?: VimState } }).state?.vim
-  let versionAtKey: number | null = null
+  let textAtKey: number | null = null
   const beforeVim = ed.editor.onKeyDown((e) => {
-    versionAtKey = ed.editor.getModel()?.getVersionId() ?? null
+    saidForKey = false
+    const model = ed.editor.getModel()
     const state = vimState()
-    const editBefore = state?.lastEditInputState
-    if (e.browserEvent?.key === 'Escape' && !inInsert && !state?.visualMode && hasPendingInput(state?.inputState)) {
+    const browser = e.browserEvent
+    const esc = !!browser && isVimEsc(browser) && !handedBack(browser)
+    if (!inInsert && model && !ed.readOnly) {
+      // each normal-mode command starts a step of its own, so an insert it begins starts on one
+      model.pushStackElement()
+      textAtKey = model.getAlternativeVersionId()
+    }
+    if (esc && inInsert && suggestListOpen(ed.editor)) {
+      // the suggestion list closes, and insert mode stays (VS Code's Vim does the same)
+      notVims.add(browser)
+      ed.editor.trigger('vim', 'hideSuggestWidget', null)
+      e.preventDefault()
+      e.stopPropagation()
+    } else if (browser?.key === 'Escape' && !inInsert && !state?.visualMode && hasPendingInput(state?.inputState)) {
+      // Vim cancels the half-typed command; nothing else hears this Esc. (Only Esc itself
+      // needs this: Ctrl+[ and Ctrl+C reach Vim as its own key mapping, which monaco-vim
+      // answers and stops. Observed, with a listener on the page, #2557.)
       e.stopPropagation()
     }
+    const editBefore = state?.lastEditInputState
     queueMicrotask(() => {
-      versionAtKey = null
+      textAtKey = null
       // In a read-only editor, a command that would begin an insert or edit (Vim records
       // it as its last edit, then refuses it) says why nothing happened. Edits that reach
       // the editor say it through `keyFilteredEditor`.
@@ -253,22 +316,16 @@ export function attachVim(ed: CodeEditor, host: Pick<ExtensionHost, 'keyOf' | 't
     closeAll: () => host.closeAllEditors(),
   })
 
-  const undo = oneUndoPerInsert(ed.editor)
   vim.on('vim-mode-change', (ev: { mode: string }) => {
     const insertNow = ev.mode === 'insert' || ev.mode === 'replace'
-    if (insertNow && !inInsert) {
-      const version = ed.editor.getModel()?.getVersionId() ?? null
-      undo.enter(versionAtKey !== null && version !== versionAtKey)
-    } else if (!insertNow && inInsert) {
-      undo.exit()
-    }
+    if (insertNow && !inInsert) undo.enter(textAtKey ?? undefined)
+    else if (!insertNow && inInsert) undo.exit()
     inInsert = insertNow
   })
-  const modelSwap = ed.editor.onDidChangeModel(() => {
-    if (!inInsert) return
-    undo.exit()
-    undo.enter(false)
-  })
+  // this editor's own typing has the keyboard; anything else (the grid, another editor on
+  // the same file) is not part of the insert
+  const contentChange = ed.editor.onDidChangeModelContent((e) => undo.changed(e, ed.editor.hasTextFocus()))
+  const modelSwap = ed.editor.onDidChangeModel(() => undo.forget())
 
   if (ed.readOnly) {
     // the mode label is Vim's; say "read-only" after it, where it stays
@@ -286,8 +343,8 @@ export function attachVim(ed: CodeEditor, host: Pick<ExtensionHost, 'keyOf' | 't
     const goingAway = !ed.editor.getModel?.()
     bindEditorActions(vim, null)
     try {
-      undo.exit()
       beforeVim.dispose()
+      contentChange.dispose()
       modelSwap.dispose()
       vim.dispose()
       if (!goingAway) {

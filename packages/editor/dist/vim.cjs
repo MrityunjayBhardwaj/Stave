@@ -6612,35 +6612,134 @@ var VimBar = _VimBar;
 // src/extensions/vim/edges.ts
 var VIM_CONTEXT_KEYS = ["insertMode"];
 var PAST_VERSION = "This is a past version, so it can\u2019t be changed here";
-function oneUndoPerInsert(editor2) {
-  let held = null;
-  const release = /* @__PURE__ */ __name(() => {
-    if (!held) return;
-    const { model, own } = held;
-    held = null;
-    if (own) Object.defineProperty(model, "pushStackElement", own);
-    else delete model.pushStackElement;
-    model.pushStackElement();
-  }, "release");
-  return {
-    enter(joinLast) {
-      release();
-      const model = editor2.getModel();
-      if (!model) return;
-      if (joinLast) model.popStackElement();
-      else model.pushStackElement();
-      held = { model, own: Object.getOwnPropertyDescriptor(model, "pushStackElement") };
-      Object.defineProperty(model, "pushStackElement", { value: /* @__PURE__ */ __name(() => void 0, "value"), configurable: true, writable: true });
-    },
-    exit: release
-  };
-}
-__name(oneUndoPerInsert, "oneUndoPerInsert");
+var MOST_STEPS = 1e4;
+var _InsertUndo = class _InsertUndo {
+  constructor(model) {
+    this.model = model;
+    /** Each finished span, by the state it ended at. */
+    this.spans = /* @__PURE__ */ new Map();
+    /** Spans undone, newest last, so Ctrl+R can put each back whole. */
+    this.undone = [];
+    /** The span being typed, while in insert mode. */
+    this.open = null;
+    this.last = 0;
+  }
+  /** Insert mode began; the insert's span begins at `start` (before the key's own edit, for `cw` and `o`). */
+  enter(start) {
+    const m = this.model();
+    if (!m) return;
+    m.pushStackElement();
+    const now = m.getAlternativeVersionId();
+    const from = start ?? now;
+    this.open = { start: from, seen: /* @__PURE__ */ new Set([from, now]) };
+    this.last = now;
+  }
+  /** Insert mode ended: the span ends at the current state. */
+  exit() {
+    const m = this.model();
+    if (!this.open || !m) {
+      this.open = null;
+      return;
+    }
+    m.pushStackElement();
+    this.close(m.getAlternativeVersionId());
+    this.open = null;
+  }
+  /** A content change; `own` when it is this editor's typing (the editor has the keyboard). */
+  changed(e, own) {
+    if (e.isUndoing || e.isRedoing) {
+      if (this.open) this.restartAfter();
+      return;
+    }
+    this.undone.length = 0;
+    if (e.isFlush) {
+      this.spans.clear();
+      if (this.open) this.restartAfter();
+      return;
+    }
+    if (!this.open) return;
+    if (own) {
+      this.last = this.model()?.getAlternativeVersionId() ?? this.last;
+      this.open.seen.add(this.last);
+    } else {
+      this.restartAfter();
+    }
+  }
+  /** The editor shows another model: nothing remembered applies to it. */
+  forget() {
+    this.spans.clear();
+    this.undone.length = 0;
+    if (this.open) this.restartAfter();
+  }
+  /** Vim's `u`: a whole insert when the text is where an insert ended, else one step. */
+  undo() {
+    const m = this.model();
+    if (!m) return;
+    const end = m.getAlternativeVersionId();
+    const span = this.spans.get(end);
+    if (!span) {
+      m.undo();
+      return;
+    }
+    let at = end;
+    let steps = 0;
+    while (at !== span.start && steps < MOST_STEPS) {
+      m.undo();
+      steps++;
+      const next = m.getAlternativeVersionId();
+      if (next === at || !span.seen.has(next)) break;
+      at = next;
+    }
+    if (m.getAlternativeVersionId() === span.start) this.undone.push({ from: span.start, to: end, steps });
+  }
+  /** Vim's Ctrl+R: the whole insert the last `u` undid, else one step. */
+  redo() {
+    const m = this.model();
+    if (!m) return;
+    const at = m.getAlternativeVersionId();
+    const plan = this.undone[this.undone.length - 1];
+    if (!plan || plan.from !== at) {
+      m.redo();
+      return;
+    }
+    this.undone.pop();
+    let now = at;
+    for (let i = 0; i < plan.steps && now !== plan.to; i++) {
+      m.redo();
+      const next = m.getAlternativeVersionId();
+      if (next === now) break;
+      now = next;
+    }
+  }
+  close(end) {
+    if (this.open && end !== this.open.start) {
+      this.open.seen.add(end);
+      this.spans.set(end, this.open);
+    }
+  }
+  /** End the open span where this insert's typing last left it, and begin a new one now. */
+  restartAfter() {
+    const m = this.model();
+    if (!this.open || !m) return;
+    this.close(this.last);
+    const now = m.getAlternativeVersionId();
+    this.open = { start: now, seen: /* @__PURE__ */ new Set([now]) };
+    this.last = now;
+  }
+};
+__name(_InsertUndo, "InsertUndo");
+var InsertUndo = _InsertUndo;
 function hasPendingInput(s) {
   if (!s) return false;
   return String(s.keyBuffer ?? "").length > 0 || !!s.operator || (s.prefixRepeat?.length ?? 0) > 0 || (s.motionRepeat?.length ?? 0) > 0 || !!s.registerName;
 }
 __name(hasPendingInput, "hasPendingInput");
+function isVimEsc(event) {
+  if (event.key === "Escape") return true;
+  if (!event.ctrlKey || event.metaKey || event.altKey) return false;
+  return event.key === "[" || event.code === "BracketLeft" || event.key.toLowerCase() === "c";
+}
+__name(isVimEsc, "isVimEsc");
 function suggestListOpen(editor2) {
   const el = editor2.getDomNode()?.querySelector(".suggest-widget");
   if (!el) return false;
@@ -6693,7 +6792,24 @@ function defineExCommands() {
 }
 __name(defineExCommands, "defineExCommands");
 var EDIT_METHODS = /* @__PURE__ */ new Set(["executeEdits", "executeCommand", "executeCommands"]);
-function keyFilteredEditor(editor2, leaveAlone, onEdit) {
+function keyFilteredEditor(editor2, leaveAlone, hooks = {}) {
+  const models = /* @__PURE__ */ new WeakMap();
+  const vimModel = /* @__PURE__ */ __name((model) => {
+    if (!model || !hooks.undo && !hooks.redo) return model;
+    let seen = models.get(model);
+    if (!seen) {
+      seen = new Proxy(model, {
+        get(target, prop) {
+          if (prop === "undo" && hooks.undo) return hooks.undo;
+          if (prop === "redo" && hooks.redo) return hooks.redo;
+          const value = Reflect.get(target, prop, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        }
+      });
+      models.set(model, seen);
+    }
+    return seen;
+  }, "vimModel");
   return new Proxy(editor2, {
     get(target, prop) {
       if (prop === "onKeyDown") {
@@ -6702,9 +6818,11 @@ function keyFilteredEditor(editor2, leaveAlone, onEdit) {
           listener(e);
         });
       }
+      if (prop === "getModel") return () => vimModel(target.getModel());
       const value = Reflect.get(target, prop, target);
       if (typeof value !== "function") return value;
       const bound = value.bind(target);
+      const onEdit = hooks.onEdit;
       if (onEdit && EDIT_METHODS.has(prop)) {
         return (...args) => {
           onEdit();
@@ -6757,20 +6875,43 @@ function attachVim(ed, host) {
   const before = cursorOptions(ed.editor);
   const handedBack = leaveAloneFor(host);
   let inInsert = false;
-  const leaveAlone = /* @__PURE__ */ __name((event) => handedBack(event) || event.key === "Escape" && inInsert && suggestListOpen(ed.editor), "leaveAlone");
-  const sayPastVersion = /* @__PURE__ */ __name(() => vim.openNotification(PAST_VERSION), "sayPastVersion");
-  const view = keyFilteredEditor(ed.editor, leaveAlone, ed.readOnly ? sayPastVersion : void 0);
+  const notVims = /* @__PURE__ */ new WeakSet();
+  const leaveAlone = /* @__PURE__ */ __name((event) => handedBack(event) || notVims.has(event), "leaveAlone");
+  let saidForKey = false;
+  const sayPastVersion = /* @__PURE__ */ __name(() => {
+    if (saidForKey) return;
+    saidForKey = true;
+    vim.openNotification(PAST_VERSION);
+  }, "sayPastVersion");
+  const undo = new InsertUndo(() => ed.editor.getModel());
+  const view = keyFilteredEditor(ed.editor, leaveAlone, {
+    onEdit: ed.readOnly ? sayPastVersion : void 0,
+    undo: ed.readOnly ? sayPastVersion : () => undo.undo(),
+    redo: ed.readOnly ? sayPastVersion : () => undo.redo()
+  });
   const vimState = /* @__PURE__ */ __name(() => vim.state?.vim, "vimState");
-  let versionAtKey = null;
+  let textAtKey = null;
   const beforeVim = ed.editor.onKeyDown((e) => {
-    versionAtKey = ed.editor.getModel()?.getVersionId() ?? null;
+    saidForKey = false;
+    const model = ed.editor.getModel();
     const state = vimState();
-    const editBefore = state?.lastEditInputState;
-    if (e.browserEvent?.key === "Escape" && !inInsert && !state?.visualMode && hasPendingInput(state?.inputState)) {
+    const browser = e.browserEvent;
+    const esc = !!browser && isVimEsc(browser) && !handedBack(browser);
+    if (!inInsert && model && !ed.readOnly) {
+      model.pushStackElement();
+      textAtKey = model.getAlternativeVersionId();
+    }
+    if (esc && inInsert && suggestListOpen(ed.editor)) {
+      notVims.add(browser);
+      ed.editor.trigger("vim", "hideSuggestWidget", null);
+      e.preventDefault();
+      e.stopPropagation();
+    } else if (browser?.key === "Escape" && !inInsert && !state?.visualMode && hasPendingInput(state?.inputState)) {
       e.stopPropagation();
     }
+    const editBefore = state?.lastEditInputState;
     queueMicrotask(() => {
-      versionAtKey = null;
+      textAtKey = null;
       const after = vimState();
       if (ed.readOnly && after?.lastEditInputState !== editBefore && after?.lastEditActionCommand) sayPastVersion();
     });
@@ -6781,22 +6922,14 @@ function attachVim(ed, host) {
     close: /* @__PURE__ */ __name(() => ed.close(), "close"),
     closeAll: /* @__PURE__ */ __name(() => host.closeAllEditors(), "closeAll")
   });
-  const undo = oneUndoPerInsert(ed.editor);
   vim.on("vim-mode-change", (ev) => {
     const insertNow = ev.mode === "insert" || ev.mode === "replace";
-    if (insertNow && !inInsert) {
-      const version = ed.editor.getModel()?.getVersionId() ?? null;
-      undo.enter(versionAtKey !== null && version !== versionAtKey);
-    } else if (!insertNow && inInsert) {
-      undo.exit();
-    }
+    if (insertNow && !inInsert) undo.enter(textAtKey ?? void 0);
+    else if (!insertNow && inInsert) undo.exit();
     inInsert = insertNow;
   });
-  const modelSwap = ed.editor.onDidChangeModel(() => {
-    if (!inInsert) return;
-    undo.exit();
-    undo.enter(false);
-  });
+  const contentChange = ed.editor.onDidChangeModelContent((e) => undo.changed(e, ed.editor.hasTextFocus()));
+  const modelSwap = ed.editor.onDidChangeModel(() => undo.forget());
   if (ed.readOnly) {
     const note = doc.createElement("span");
     note.setAttribute("data-vim-readonly-note", "");
@@ -6808,8 +6941,8 @@ function attachVim(ed, host) {
     const goingAway = !ed.editor.getModel?.();
     bindEditorActions(vim, null);
     try {
-      undo.exit();
       beforeVim.dispose();
+      contentChange.dispose();
       modelSwap.dispose();
       vim.dispose();
       if (!goingAway) {
