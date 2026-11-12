@@ -103,6 +103,74 @@ function click(mini: string, sound: string, text: string, j: number): { text: st
   return { text: edited, heard: oneHitChanged(mini, edited, s, hits[j], kOf(mini, s), sound) }
 }
 
+/** the innermost step of `sound`'s row that has a slot beginning at `at`, in bar 0 */
+function leafAt(trees: readonly BarTree[], sound: string, at: Frac, part?: number): DivisionStep {
+  const d = laneRowForEdit(trees[0], { sound, part })
+  if (!d.ok) throw new Error(d.why)
+  let got: DivisionStep | null = null
+  const walk = (r: DivisionRow): void => {
+    for (const s of r.steps) {
+      if (s.rows) s.rows.forEach(walk)
+      else if (s.span && s.slots.some((x) => x.begin.n * at.d === at.n * x.begin.d)) got = got ?? s
+    }
+  }
+  walk(d.row)
+  // a place inside a step that plays no hit there (an empty place of a euclid)
+  const cover = (r: DivisionRow): void => {
+    for (const s of r.steps) {
+      if (s.rows) s.rows.forEach(cover)
+      else if (s.span && s.slots.some((x) => x.begin.n * at.d <= at.n * x.begin.d && at.n * x.end.d < x.end.n * at.d)) got = got ?? s
+    }
+  }
+  if (!got) cover(d.row)
+  if (!got) throw new Error(`no step at ${str(at)}`)
+  return got
+}
+
+/**
+ * A click on the place at `at` (#2437): what it writes, the text a plain toggle would have
+ * written there (the step left written out), and whether Strudel plays the two the same.
+ */
+function placeAt(mini: string, sound: string, at: Frac): { text: string | null; asWrittenOut: string | null; same: boolean } {
+  const trees = chunkDivisions(mini, 1)
+  const s = leafAt(trees, sound, at)
+  const r = toggleStep(mini, trees, { bar: 0, span: s.span!, at }, { sound })
+  if (!r.ok) return { text: null, asWrittenOut: null, same: false }
+  const text = applyStepEdit(mini, r.edit)
+  // the plain toggle: the one place's name changed, nothing respelled
+  const asWrittenOut = s.rest ? mini.slice(0, s.head!.start) + sound + mini.slice(s.head!.end) : mini.slice(0, s.head!.start) + '~' + mini.slice(s.head!.end)
+  miniTree(text)
+  return { text, asWrittenOut, same: JSON.stringify(plays(text, 2)) === JSON.stringify(plays(asWrittenOut, 2)) }
+}
+
+/**
+ * The hit at `at` of step `s` clicked off, then the same place clicked again: the text in
+ * between, the text it ends as, and whether Strudel plays that as it played before both clicks.
+ */
+function offAndOnAt(mini: string, trees: readonly BarTree[], s: DivisionStep, at: Frac, row: { sound: string; part?: number }): { between: string; back: string; same: boolean } | null {
+  const off = toggleStep(mini, trees, { bar: 0, span: s.span!, at }, row)
+  if (!off.ok) return null
+  const between = applyStepEdit(mini, off.edit)
+  // the first click took the hit away: a writer that wrote nothing would pass the round trip
+  if (JSON.stringify(plays(between, 2)) === JSON.stringify(plays(mini, 2))) return { between, back: between, same: false }
+  const again = chunkDivisions(between, 1)
+  const on = toggleStep(between, again, { bar: 0, span: leafAt(again, row.sound, at, row.part).span!, at }, row)
+  if (!on.ok) return null
+  const back = applyStepEdit(between, on.edit)
+  return { between, back, same: JSON.stringify(plays(back, 2)) === JSON.stringify(plays(mini, 2)) }
+}
+
+/** hit `j` of the step clicked off, then the same place clicked again: the text it ends as */
+function offAndOn(mini: string, sound: string, text: string, j: number): string | null {
+  const trees = chunkDivisions(mini, 1)
+  const s = stepOf(trees, sound, text, mini)
+  const hits = [...s.hits].sort((x, y) => x.begin.n * y.begin.d - y.begin.n * x.begin.d)
+  const got = offAndOnAt(mini, trees, s, hits[j].begin, { sound })
+  // whatever it ends as, Strudel plays it as it played before both clicks
+  expect(got?.same).toBe(true)
+  return got?.back ?? null
+}
+
 describe('one hit of `x*k` or copy of `x!k` is edited on its own (#2326)', () => {
   it('a hit of `x*k` is written out with the change, and spelled again', () => {
     expect(click('bd hh*4', 'hh', 'hh*4', 2)).toEqual({ text: 'bd [hh hh ~ hh]', heard: true })
@@ -128,6 +196,63 @@ describe('one hit of `x*k` or copy of `x!k` is edited on its own (#2326)', () =>
     expect(click('bd(3,8)@2 sd', 'bd', 'bd(3,8)@2', 2)).toEqual({ text: '[bd ~ ~ bd ~ ~ ~ ~]@2 sd', heard: true })
     // another row's sound joins the hit it lands on, as on any step
     expect(click('bd(3,8) sd', 'sd', 'bd(3,8)', 1)).toEqual({ text: '[bd ~ ~ [bd,sd] ~ ~ bd ~] sd', heard: true })
+  })
+
+  it('a euclid hit taken off and put back gives back the euclid, byte for byte (#2437)', () => {
+    for (const [mini, sound, text] of [
+      ['bd(3,8)', 'bd', 'bd(3,8)'],
+      ['bd(3,8,2) sd', 'bd', 'bd(3,8,2)'],
+      ['bd(5,8)', 'bd', 'bd(5,8)'],
+      ['bd(3,8)@2 sd', 'bd', 'bd(3,8)@2'],
+      ['bd:2(3,8)', 'bd:2', 'bd:2(3,8)'],
+      ['sd [bd(3,8) ~]', 'bd', 'bd(3,8)'],
+      ['bd(7,16,14)', 'bd', 'bd(7,16,14)'],
+    ]) {
+      const hits = stepOf(chunkDivisions(mini, 1), sound, text, mini).hits.length
+      expect(hits).toBeGreaterThan(1)
+      // every hit, off and on again
+      for (let j = 0; j < hits; j++) expect(offAndOn(mini, sound, text, j), `${mini} hit ${j}`).toBe(mini)
+    }
+  })
+
+  it('the euclid put back is spaced as the euclids beside it are written (#2437, ruled on #2554)', () => {
+    // round trips: the step's own spacing is gone once it is written out; another euclid of the string keeps it
+    for (const [mini, sound, text] of [
+      ['bd(3, 8) sd(5, 8)', 'bd', 'bd(3, 8)'],
+      ['bd(3,8,0) sd(5,8,0)', 'bd', 'bd(3,8,0)'],
+      ['bd( 3 , 8 ) sd( 5 , 8 )', 'bd', 'bd( 3 , 8 )'],
+    ]) {
+      const hits = stepOf(chunkDivisions(mini, 1), sound, text, mini).hits.length
+      for (let j = 0; j < hits; j++) expect(offAndOn(mini, sound, text, j), `${mini} hit ${j}`).toBe(mini)
+    }
+    // the nearest euclid is the evidence
+    expect(placeAt('sd(3, 8) [bd ~ ~ ~ ~ ~ bd ~] cp cp cp hh(5,8)', 'bd', F(11, 48)).text).toBe('sd(3, 8) bd(3, 8) cp cp cp hh(5,8)')
+    // a rotation is spaced as the commas are
+    expect(placeAt('[bd ~ ~ ~ ~ bd ~ ~] sd(3, 8)', 'bd', F(1, 8)).text).toBe('bd(3, 8, 2) sd(3, 8)')
+    // `,0` is written where a euclid beside it writes it
+    expect(placeAt('hh(5,8,0) [bd ~ ~ ~ ~ ~ bd ~]', 'bd', F(11, 16)).text).toBe('hh(5,8,0) bd(3,8,0)')
+    // no euclid beside it: tight, nothing invented
+    expect(placeAt('hh*4 [bd ~ ~ ~ ~ ~ bd ~]', 'bd', F(11, 16)).text).toBe('hh*4 bd(3,8)')
+  })
+
+  it('a written-out step that is a euclid rhythm is spelled `x(k,n,r)`, and plays as written out (#2437)', () => {
+    // the smallest rotation that plays those hits; none written when it is 0
+    expect(placeAt('[bd ~ ~ ~ ~ ~ bd ~]', 'bd', F(3, 8))).toEqual({ text: 'bd(3,8)', asWrittenOut: '[bd ~ ~ bd ~ ~ bd ~]', same: true })
+    expect(placeAt('[bd ~ ~ ~ ~ bd ~ ~] sd', 'bd', F(1, 8))).toEqual({ text: 'bd(3,8,2) sd', asWrittenOut: '[bd ~ bd ~ ~ bd ~ ~] sd', same: true })
+    // its weight goes with it
+    expect(placeAt('hh [bd ~ ~ ~ ~ ~ bd ~]@3', 'bd', F(17, 32))).toEqual({ text: 'hh bd(3,8)@3', asWrittenOut: 'hh [bd ~ ~ bd ~ ~ bd ~]@3', same: true })
+  })
+
+  it('a shape that is no euclid, or repeats a shorter one, stays written out (#2437)', () => {
+    // two hits that are no Bjorklund rhythm
+    expect(placeAt('[bd ~ ~ ~ ~ ~ bd ~]', 'bd', F(1, 8)).text).toBe('[bd bd ~ ~ ~ ~ bd ~]')
+    // `[bd ~ bd ~]` is `bd(2,4)` too, but it repeats `[bd ~]`: it stays as the rules spell it
+    expect(placeAt('[bd ~ ~ ~]', 'bd', F(1, 2)).text).toBe('[bd ~ bd ~]')
+    expect(placeAt('[bd ~ ~ ~ ~ ~ ~ ~]', 'bd', F(1, 2)).text).toBe('[bd ~ ~ ~ bd ~ ~ ~]')
+    // one hit is a note and its rests, never `bd(1,n)`
+    expect(placeAt('[~ ~ ~ ~]', 'bd', F(1, 4)).text).toBe('[~ bd ~ ~]')
+    // another sound in the step: no one sound to make a euclid of
+    expect(placeAt('[bd ~ ~ sd ~ ~ ~ ~]', 'bd', F(6, 8)).text).toBe('[bd ~ ~ sd ~ ~ bd ~]')
   })
 
   it('every other op keeps its refusal: chance, a pattern amount, a decimal', () => {
@@ -219,6 +344,50 @@ describe('one hit of `x*k` / `x!k`, over the corpus (#2326)', () => {
     expect(r.heardBad).toEqual([])
     expect(r.parseBad).toEqual([])
     expect(r.heard).toBe(r.written)
+  }, 900_000)
+
+  it('every euclid hit erased and put back plays as before, and is the euclid again where the rules spell one (#2437)', () => {
+    const r = { trips: 0, identical: 0, spacing: 0, writtenOut: 0, other: [] as string[], heardBad: [] as string[] }
+    for (const mini of minis) {
+      const g = parseStepGrid(mini)
+      if (!g.ok || (g.model.bars ?? 1) !== 1) continue
+      const trees = chunkDivisions(mini, 1)
+      for (const lane of g.model.lanes) {
+        const d = laneRowForEdit(trees[0], lane)
+        if (!d.ok) continue
+        const walk = (row: DivisionRow): void => {
+          for (const s of row.steps) {
+            for (const k of s.rows ?? []) walk(k)
+            if (s.rows || !s.span || s.name !== lane.sound || !s.ops.includes('bjorklund')) continue
+            const own = mini.slice(s.span.start, s.span.end).trimEnd()
+            for (const h of s.hits) {
+              const got = offAndOnAt(mini, trees, s, h.begin, { sound: lane.sound, part: lane.part })
+              if (!got) continue
+              r.trips++
+              if (!got.same) r.heardBad.push(`${JSON.stringify(mini)} → ${JSON.stringify(got.back)}`)
+              // what the step's own text became; nothing else may change
+              const tail = mini.slice(s.span.start + own.length)
+              const now = got.back.slice(s.span.start, got.back.length - tail.length)
+              const kept = got.back.startsWith(mini.slice(0, s.span.start)) && got.back.endsWith(tail)
+              // the parens with their spaces and a written-out `,0` taken out: the same euclid, spaced otherwise
+              const tight = (x: string): string => x.replace(/\(([^()]*)\)/, (_, a: string) => `(${a.replace(/\s+/g, '').replace(/,0$/, '')})`)
+              if (got.back === mini) r.identical++
+              else if (kept && tight(now) === tight(own)) r.spacing++
+              else if (kept && now.startsWith('[') && !now.includes('(')) r.writtenOut++
+              else r.other.push(`${JSON.stringify(mini)} → ${JSON.stringify(got.between)} → ${JSON.stringify(got.back)}`)
+            }
+          }
+        }
+        walk(d.row)
+      }
+    }
+    if (process.env.GENERATOR_REPORT) writeFileSync(`${process.env.GENERATOR_REPORT}.euclid-round-trip.json`, JSON.stringify(r, null, 1))
+    expect(r.trips).toBeGreaterThan(100)
+    expect(r.heardBad).toEqual([])
+    expect(r.other).toEqual([])
+    // measured 2026-11-11 over this corpus: 60 of 116 byte for byte (57 before the spacing was
+    // taken from the euclids beside the step, #2554), 33 the same euclid spaced otherwise
+    expect(r.identical).toBeGreaterThanOrEqual(60)
   }, 900_000)
 
   it('can go red: an edit that rests the whole step, not the one hit, is heard', () => {
