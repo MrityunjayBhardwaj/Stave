@@ -15,9 +15,12 @@
  *   - `pause`/`resume` — stop/start the sampling loop + tell the worker.
  *   - `destroy` — stop the loop, tell the worker to tear down, terminate it.
  *
- * The ONLY per-frame main-thread cost is `sample()` (read analyser bytes + ONE
- * wide scheduler query + now) + a transferable `postMessage` — the heavy
- * `draw()` is gone from main. That residual is what the matrix measures (PLAN §8).
+ * The ONLY per-frame main-thread cost is `sample()` (read analyser bytes + the
+ * narrow active-at-now queries + now, and — for kinds whose sketches get
+ * `stave.scheduler`, see `kindReadsRawScheduler` — ONE wide scheduler query)
+ * + a transferable `postMessage` — the heavy `draw()` is gone from main. That
+ * residual is what the matrix measures (PLAN §8). The wide query is the costly
+ * part with a dense song (#2561), which is why it is skipped where unused.
  *
  * Falls back is NOT handled here: `makeRenderer` only constructs a
  * WorkerVizRenderer when a worker factory is registered AND the transport is

@@ -1,6 +1,6 @@
 # Viz renderer architecture
 
-This is the contributor reference for Stave's visualizer system in `packages/editor/src/visualizers`. It describes the engine-agnostic contract every renderer (p5, hydra, GLSL) satisfies, plus the per-renderer specifics. Read it before adding a renderer, changing the worker boundary, or debugging a viz that mounts but doesn't paint.
+This is the contributor reference for Stave's visualizer system in `packages/editor/src/visualizers`. It describes the engine-agnostic contract every renderer (p5, hydra, GLSL, three.js) satisfies, plus the per-renderer specifics. (three.js, added in #2516, has no per-renderer section here yet; its sketch runtime is described at the top of `renderers/threeSketch.ts`.) Read it before adding a renderer, changing the worker boundary, or debugging a viz that mounts but doesn't paint.
 
 This is an interim seed for the detailed contributor docs tracked in **issue #362**. The `file:line` citations below may drift as the code moves — when the code and this doc disagree, trust the code.
 
@@ -17,7 +17,7 @@ There are two interfaces. Keep them distinct.
 | Interface | Side | File | Who implements it |
 | --- | --- | --- | --- |
 | `VizRenderer` | **main thread** | `types.ts:25` | `P5VizRenderer`, `HydraVizRenderer`, `WorkerVizRenderer`, and the decorators (`FallbackVizRenderer`, `TeardownOnPauseRenderer`) |
-| `RendererStrategy` | **inside the worker** | `worker/hostP5Worker.ts:70` | the per-kind half of a worker mount — `mountP5`, `mountHydra`, `mountGLSL` |
+| `RendererStrategy` | **inside the worker** | `worker/hostP5Worker.ts:70` | the per-kind half of a worker mount — `mountP5`, `mountHydra`, `mountGLSL`, `mountThree` (`hostP5Worker.ts:718`) |
 
 `VizRenderer` is the lifecycle the rest of the app drives:
 
@@ -135,6 +135,8 @@ The per-renderer seams run *inside* one viz. Two **main-thread singletons** coor
 
 > **Why a per-tick cache, not a fanned-out frame** — The obvious design (sample once, send one `SignalFrame` to all N workers) is **impossible**: `frameTransferables` *detaches* the byte buffers on transfer, so only the first `writeFrame` would get real bytes; and inline zones bind **per-track** (`viewZones.ts:341`), so each viz's scheduler / bumps / seq are genuinely its own. So the shared unit is the *read*, not the *frame*: each renderer still builds its own frame (byte-identical reactivity), and only the expensive shared read is deduped. The win is **regime-scoped** — it fires only when viz sample on the *same* tick, which heavy (backpressure-paced) viz rarely do, so the cache mostly helps the **many-light-viz** case (measured: reads/frame 11→5, scheduler trig/s 5.0→8.5 at N=8). A/B with `localStorage['stave.viz.pump']='0'`.
 
+> **Dedupe is not the whole cost — the wide query only runs for kinds that read it** — The cache makes N viz pay for *one* wide `scheduler.query` (now−4 to now+2 cycles) per tick, but that one query walks the whole song, so its cost grows with the song, not the viz count. With a dense song (a 24-layer track at 120 bpm) and one three.js background it was **16.2 s of 20.6 s** on the main thread during Play (#2561). The query only exists to feed `stave.scheduler`, which only **p5** and **hydra** sketches are handed. So each `WorkerVizRenderer` builds its sampler with `kindReadsRawScheduler(kind)` (`renderers/WorkerVizRenderer.ts`): p5/hydra → on, three/glsl → off (`rawScheduler.events` ships empty). The narrow active-at-now queries that `sig` and the `u*` uniforms read still run for every kind. p5/hydra sketches that never read `stave.scheduler` still pay — #2563.
+
 ### The GPU-budget governor — degrade under jank
 
 Per-viz backpressure bounds each viz to its *own* worker's draw rate, but N viz each pacing independently still **sum** to total GPU saturation — 5 heavy GLSL viz drove the compositor to ~95% dropped frames, janking the whole editor while the main thread sat *idle* (GPU-bound, not main-bound). `vizGovernor` (`vizGovernor.ts`) is the global frame-budget coordinator. Every `pumpTick` feeds it the rAF cadence (`observeFrame`, `vizGovernor.ts:168`), from which it derives a `stress` 0..1, and gates each viz's produce (`mayProduce`, `vizGovernor.ts:188`) with three levers that scale with stress:
@@ -250,6 +252,7 @@ To add a renderer kind to the worker host, provide a `RendererStrategy` (`hostP5
 3. **`resizeKind(w, h, dpr)`** — apply a new size to the renderer and the presenting canvas. Tier-1 sizes the transferred canvas directly; Tier-2 sizes its blit target.
 4. **`teardown()`** — neutralize the instance so a destroy mid-flight can't paint.
 5. **`gl?()`** — return the live WebGL context (or null) so the host can account and lose it.
+6. **Which raw feeds the kind hands its sketches** — this is not a strategy member, but it decides what the main thread pays every frame for your kind. The shared sampler runs on the **main thread** (the one that schedules the music), so every feed it prepares is per-frame main-thread work whether or not your sketches can read it. If your kind does **not** expose `stave.scheduler`, add it as `false` to `kindReadsRawScheduler` (`renderers/WorkerVizRenderer.ts`) — otherwise every frame walks the whole song for nothing (#2561). Then measure: long tasks and main rAF p90 during Play with a dense song, with and without your viz; the two should match.
 
 Provide a `mountX` that builds the strategy, add `kind: 'x'` to `MountMessage`, and a `makeXRenderer` mirroring `makeHydraRenderer` (`makeHydraRenderer.ts:31`). Everything in [The kind-agnostic seams](#the-kind-agnostic-seams) then applies automatically.
 
