@@ -19938,6 +19938,67 @@ var _P5VizRenderer = class _P5VizRenderer extends VizRendererBase {
 __name(_P5VizRenderer, "P5VizRenderer");
 var P5VizRenderer = _P5VizRenderer;
 
+// src/visualizers/worker/rollingHapWindow.ts
+var EDGE = 1e-6;
+var PREFETCH = 0.5;
+var _RollingHapWindow = class _RollingHapWindow {
+  constructor(back, fwd) {
+    this.back = back;
+    this.fwd = fwd;
+    this.sched = null;
+    this.events = [];
+    /** End of the span already queried (cycles); NaN = nothing queried yet. */
+    this.lastEnd = NaN;
+    this.lastNow = NaN;
+  }
+  /** Forget everything; the next `at()` runs one full query. */
+  reset() {
+    this.sched = null;
+    this.events = [];
+    this.lastEnd = NaN;
+    this.lastNow = NaN;
+  }
+  /**
+   * The haps intersecting `[now−back, now+fwd)` for `sched`. `query` runs the
+   * actual scheduler query (the sampler routes it through the per-tick cache).
+   */
+  at(sched, now2, query) {
+    const lo = now2 - this.back;
+    const hi = now2 + this.fwd;
+    const stale = sched !== this.sched || !Number.isFinite(this.lastEnd) || now2 < this.lastNow || lo >= this.lastEnd;
+    if (stale) {
+      this.sched = sched;
+      this.events = query(lo, hi + PREFETCH).filter((e) => e.end > lo + EDGE);
+      this.lastEnd = hi + PREFETCH;
+      this.lastNow = now2;
+      return this.inWindow(hi);
+    }
+    if (hi > this.lastEnd) {
+      const from = this.lastEnd;
+      const to = hi + PREFETCH;
+      for (const e of query(from, to)) {
+        if (e.begin >= from - EDGE) this.events.push(e);
+      }
+      this.lastEnd = to;
+    }
+    this.lastNow = now2;
+    let w = 0;
+    for (let r = 0; r < this.events.length; r++) {
+      const e = this.events[r];
+      if (e.end > lo + EDGE) this.events[w++] = e;
+    }
+    this.events.length = w;
+    return this.inWindow(hi);
+  }
+  /** The held haps that have started before the window's front edge (the rest
+   *  were prefetched and wait for the window to reach them). */
+  inWindow(hi) {
+    return this.events.filter((e) => e.begin < hi - EDGE);
+  }
+};
+__name(_RollingHapWindow, "RollingHapWindow");
+var RollingHapWindow = _RollingHapWindow;
+
 // src/visualizers/worker/signalFrame.ts
 var MASTER_KEY = "master";
 function frameTransferables(frame) {
@@ -20027,6 +20088,9 @@ var _MainSignalSampler = class _MainSignalSampler {
     this.wantsRawScheduler = wantsRawScheduler;
     this.inputs = {};
     this.seq = 0;
+    /** The wide window, advanced by querying only the new sliver each frame
+     *  (#2563) instead of the whole window. Reset on every rebind. */
+    this.rawWindow = new RollingHapWindow(RAW_QUERY_BACK, RAW_QUERY_FWD);
     /** Haps accumulated since the last `sample()` (the envelope feed). */
     this.pendingBumps = [];
     this.boundStream = null;
@@ -20042,6 +20106,7 @@ var _MainSignalSampler = class _MainSignalSampler {
    *  re-evaluate). Pass `null`/absent for demo / IR-only mode. */
   bind(inputs) {
     this.inputs = inputs;
+    this.rawWindow.reset();
   }
   /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
    *  — so the bump feed survives a re-evaluate that swaps the stream (mirror
@@ -20099,7 +20164,7 @@ var _MainSignalSampler = class _MainSignalSampler {
     this.pendingBumps = [];
     const rawScheduler = {
       now: now2,
-      events: scheduler && this.wantsRawScheduler ? queryAt(scheduler, now2 - RAW_QUERY_BACK, now2 + RAW_QUERY_FWD).map(summariseRawHap) : []
+      events: scheduler && this.wantsRawScheduler ? this.rawWindow.at(scheduler, now2, (a, b) => queryAt(scheduler, a, b)).map(summariseRawHap) : []
     };
     return { seq, now: now2, analysers, activeEvents, activeByTrack, bumps, rawScheduler };
   }
@@ -20111,6 +20176,7 @@ var _MainSignalSampler = class _MainSignalSampler {
     this.boundStream = null;
     this.pendingBumps = [];
     this.inputs = {};
+    this.rawWindow.reset();
   }
   /** The next seq an `emptyFrame` should carry (test/demo helper). */
   emptyFrame() {
