@@ -38,7 +38,7 @@ export {
   extensionFailure,
   onPageExtensionsChange,
 } from './runtime'
-export { createCodeEditorList, offerCodeEditor, pageCodeEditors } from './editors'
+export { createCodeEditorList, offerCodeEditor, pageCodeEditors, setCloseAllCodeEditors } from './editors'
 export type { CodeEditorList, CodeEditorSite, EditorWatcher } from './editors'
 export {
   checkExtensionKeys,
@@ -48,6 +48,9 @@ export {
   onExtensionKeysChange,
   extensionKeys,
   keysTakenBy,
+  setKeyEventMatcher,
+  declaredKeyOf,
 } from './keys'
-export type { ExtensionKeyState, ExtensionKeyInCode } from './keys'
+export type { ExtensionKeyState, ExtensionKeyInCode, KeyEventMatcher } from './keys'
+export { VIM, VIM_ID } from './vim/manifest'
 export type { ExtensionRuntime } from './runtime'

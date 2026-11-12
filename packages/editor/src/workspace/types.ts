@@ -373,6 +373,11 @@ export interface EditorViewProps {
     trackKey: string,
     fileId: string,
   ) => void
+  /**
+   * Close this editor's tab, through the workspace's own tab-close path (#2148: Vim's
+   * `:q`). The shell passes it; an editor without one cannot be closed by an extension.
+   */
+  readonly onCloseTab?: () => void
 }
 
 /**

@@ -153,6 +153,12 @@ export interface CodeEditor {
    * the extension shows for this editor inside it.
    */
   readonly bar: HTMLElement
+  /**
+   * Close this editor's tab the way the person would (#2148: Vim's `:q`): the code
+   * editor's tab, or the history view's. Stave saves as you type, so nothing is lost.
+   * Does nothing for an editor the workspace cannot close.
+   */
+  close(): void
 }
 
 /**
@@ -183,6 +189,19 @@ export interface ExtensionHost {
    * as they would without the extension.
    */
   takesKey(key: string): boolean
+  /**
+   * Which of this extension's declared keys (`provides.keys`) a keystroke is, spelled as
+   * the manifest spells it, or null when it is none of them (#2148). With `takesKey`,
+   * this is how an extension that answers keys inside the editor leaves a handed-back key
+   * alone: `const k = host.keyOf(e); if (k && !host.takesKey(k)) return`. Matched by
+   * Stave's own chord builder, on the page's platform.
+   */
+  keyOf(event: KeyboardEvent): string | null
+  /**
+   * Close every code editor's tab, the way the person would (#2148: Vim's `:qa`): each
+   * through the workspace's own tab-close path. Does nothing while no workspace is open.
+   */
+  closeAllEditors(): void
 }
 
 /**

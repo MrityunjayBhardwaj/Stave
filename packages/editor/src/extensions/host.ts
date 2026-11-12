@@ -21,8 +21,8 @@
  * files `.name(…)` as a parameter. The method itself is gone, so running such code reports
  * a missing method. This is listed in `RESIDUE`, so it is stated, not hidden.
  */
-import { pageCodeEditors, type CodeEditorList } from './editors'
-import { isExtensionKeyGivenBack } from './keys'
+import { closeAllCodeEditors, pageCodeEditors, type CodeEditorList } from './editors'
+import { declaredKeyOf, isExtensionKeyGivenBack } from './keys'
 import type { CodeEditor, EditorCleanup, ExtensionHost, ExtensionManifest, SoundTrigger, StrudelHost, StrudelProvides } from './types'
 
 /** Things a switched-off extension leaves behind, by registration kind. */
@@ -160,6 +160,9 @@ export function createCommonHost(
             get language() {
               return site.language()
             },
+            close() {
+              if (!done) site.close?.()
+            },
             get bar() {
               // after the cleanup, a late read gets an element that is not in the bar
               if (done) return site.bar.ownerDocument.createElement('div')
@@ -198,6 +201,12 @@ export function createCommonHost(
       },
       takesKey(key) {
         return !closed && !!opts.manifest && !isExtensionKeyGivenBack(opts.manifest, key)
+      },
+      closeAllEditors() {
+        if (!closed) closeAllCodeEditors()
+      },
+      keyOf(event) {
+        return opts.manifest ? declaredKeyOf(opts.manifest, event) : null
       },
     },
     undo() {

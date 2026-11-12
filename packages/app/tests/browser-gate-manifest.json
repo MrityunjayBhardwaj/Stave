@@ -1294,5 +1294,9 @@
   "extensions-view.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate — it runs the whole chromium project"
+  },
+  "vim-extension.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project"
   }
 }

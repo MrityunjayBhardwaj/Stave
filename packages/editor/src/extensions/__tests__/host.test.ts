@@ -149,8 +149,33 @@ describe('createRecordingHost', () => {
 describe('createCommonHost (#2538)', () => {
   it('names no language: an id, onDeactivate, and the editor hook and keys (#2513), nothing else', () => {
     const rec = createCommonHost('zzext')
-    expect(Object.keys(rec.host).sort()).toEqual(['id', 'onDeactivate', 'onEditor', 'takesKey'])
+    expect(Object.keys(rec.host).sort()).toEqual(['closeAllEditors', 'id', 'keyOf', 'onDeactivate', 'onEditor', 'takesKey'])
     rec.undo()
+  })
+
+  it('closes editors only through the doors it is handed (#2148), and not once switched off', async () => {
+    const { createCodeEditorList, setCloseAllCodeEditors } = await import('../editors')
+    const list = createCodeEditorList()
+    const closed: string[] = []
+    const editor = { onDidDispose: () => ({ dispose: () => undefined }) }
+    const bar = document.createElement('div')
+    list.offer({ editor: editor as never, monaco: {} as never, readOnly: false, bar, language: () => null, close: () => closed.push('this tab') })
+    const rec = createCommonHost('zzext', { editors: list })
+    let handle: { close(): void } | null = null
+    rec.host.onEditor((ed) => {
+      handle = ed
+    })
+    // no workspace has handed in its close-all yet: nothing happens
+    rec.host.closeAllEditors()
+    setCloseAllCodeEditors(() => closed.push('every tab'))
+    handle!.close()
+    rec.host.closeAllEditors()
+    expect(closed).toEqual(['this tab', 'every tab'])
+    rec.undo()
+    handle!.close()
+    rec.host.closeAllEditors()
+    expect(closed).toEqual(['this tab', 'every tab'])
+    setCloseAllCodeEditors(null)
   })
 
   it('undo runs its onDeactivate callbacks newest first, every one even if one throws, then refuses more', () => {
