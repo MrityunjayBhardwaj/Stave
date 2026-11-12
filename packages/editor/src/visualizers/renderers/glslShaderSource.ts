@@ -46,6 +46,11 @@ const PRECISION = 'precision highp float;\nprecision highp int;'
  *  glslCore→glslShaderSource→glslCore import cycle. */
 export const MAX_GLSL_TRACKS = 16
 
+/** Width of the `uNotes` texture (#2571) — how many notes a shader can read.
+ *  Re-exported by `glslNotes.ts` (the packer); lives here so the preamble's
+ *  `#define STAVE_MAX_NOTES` can't drift from the texture the packer fills. */
+export const STAVE_MAX_NOTES = 256
+
 /** The v1 uniforms, declared for BOTH modes. A user shader must NOT redeclare
  *  these (same rule as ShaderToy, where the user never declares uniforms).
  *  The `u*` block (#284) carries PATTERN EVENTS — per-drum envelope levels +
@@ -64,7 +69,11 @@ uniform float uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom, uVelocity;
 uniform float uRms, uBass, uMid, uTreble;
 uniform int uTrackCount;
 uniform vec3 uTrackA[${MAX_GLSL_TRACKS}];
-uniform vec3 uTrackB[${MAX_GLSL_TRACKS}];`
+uniform vec3 uTrackB[${MAX_GLSL_TRACKS}];
+uniform highp sampler2D uNotes;
+uniform int uNoteCount;
+uniform float uNow;
+uniform float uCps;`
 
 /** Per-track accessor (#297) injected for BOTH modes, after the uniforms. The
  *  struct + `staveTrack(i)` are the author-facing API (reserved names — a user
@@ -83,6 +92,30 @@ StaveTrack staveTrack(int i) {
   vec3 b = uTrackB[i];
   return StaveTrack(a.x, a.y, a.z, b.x, b.y, b.z);
 }`
+
+/** Upcoming-notes accessor (#2571) — the GLSL analog of `stave.scheduler.query()`.
+ *  `uNotes` is an RGBA32F texture, STAVE_MAX_NOTES wide × 2 tall, packed by
+ *  `glslNotes.ts`: row 0 = (begin, end, midi, gain), row 1 = (velocity, track).
+ *  Field names match the JS haps. Read with `texelFetch` (no filtering). Notes
+ *  `0 <= i < uNoteCount` are sorted by begin; times are absolute cycles (compare
+ *  with `uNow`). Reserved names, like the rest of the preamble. */
+const STAVE_NOTE_API = `#define STAVE_MAX_NOTES ${STAVE_MAX_NOTES}
+struct StaveNote {
+  float begin;
+  float end;
+  float midi;
+  float gain;
+  float velocity;
+  int track;
+};
+StaveNote staveNote(int i) {
+  vec4 a = texelFetch(uNotes, ivec2(i, 0), 0);
+  vec4 b = texelFetch(uNotes, ivec2(i, 1), 0);
+  return StaveNote(a.x, a.y, a.z, a.w, b.x, int(b.y));
+}`
+
+/** Everything Stave declares ahead of the user's source (both modes). */
+const PREAMBLE = `${UNIFORMS}\n${STAVE_TRACK_API}\n${STAVE_NOTE_API}`
 
 /** ShaderToy-mode output + entry: we own `main()`, it calls the user's mainImage. */
 const SHADERTOY_OUT = 'out vec4 stave_FragColor;'
@@ -126,12 +159,12 @@ export function buildGLSLFragmentSource(userSource: string): string {
   }
   if (hasMainImage) {
     // ShaderToy mode — Stave owns the entry point + the fragment output.
-    return `${VERSION}\n${PRECISION}\n${UNIFORMS}\n${STAVE_TRACK_API}\n${SHADERTOY_OUT}\n${userSource}\n${SHADERTOY_ENTRY}`
+    return `${VERSION}\n${PRECISION}\n${PREAMBLE}\n${SHADERTOY_OUT}\n${userSource}\n${SHADERTOY_ENTRY}`
   }
   if (hasMain) {
     // Raw GLSL mode — the user owns `out` + `main()`; Stave provides only the
     // version, precision, and uniforms. Strip a user `#version` (ours is first).
-    return `${VERSION}\n${PRECISION}\n${UNIFORMS}\n${STAVE_TRACK_API}\n${stripVersion(userSource)}\n`
+    return `${VERSION}\n${PRECISION}\n${PREAMBLE}\n${stripVersion(userSource)}\n`
   }
   throw new Error(
     'GLSL: no entry point. Define `void mainImage(out vec4 fragColor, in vec2 fragCoord)` for a ShaderToy shader, or `void main()` for a raw GLSL shader.',
@@ -148,8 +181,8 @@ export function glslPreambleLineCount(userSource: string): number {
   const probe = stripComments(userSource)
   const hasMainImage = /\bmainImage\s*\(/.test(probe)
   const prefix = hasMainImage
-    ? `${VERSION}\n${PRECISION}\n${UNIFORMS}\n${STAVE_TRACK_API}\n${SHADERTOY_OUT}\n`
-    : `${VERSION}\n${PRECISION}\n${UNIFORMS}\n${STAVE_TRACK_API}\n`
+    ? `${VERSION}\n${PRECISION}\n${PREAMBLE}\n${SHADERTOY_OUT}\n`
+    : `${VERSION}\n${PRECISION}\n${PREAMBLE}\n`
   return (prefix.match(/\n/g) ?? []).length
 }
 

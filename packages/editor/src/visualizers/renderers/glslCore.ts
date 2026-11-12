@@ -24,7 +24,7 @@
  *      (the main-thread analyser source — same getByte* surface).
  */
 
-import { GLSL_FULLSCREEN_VERT, buildGLSLFragmentSource, MAX_GLSL_TRACKS } from './glslShaderSource'
+import { GLSL_FULLSCREEN_VERT, buildGLSLFragmentSource, MAX_GLSL_TRACKS, STAVE_MAX_NOTES } from './glslShaderSource'
 
 export { MAX_GLSL_TRACKS }
 
@@ -91,6 +91,22 @@ export const ZERO_GLSL_TRACKS: GLSLTracks = {
   b: new Float32Array(MAX_GLSL_TRACKS * 3),
 }
 
+/** The upcoming-notes block (#2571) — `GLSLNoteFeed` (glslNotes.ts) is one.
+ *  `data` is the RGBA32F texels (STAVE_MAX_NOTES × 2); `version` moves only when
+ *  they changed, so the texture is re-uploaded only then. */
+export interface GLSLNotes {
+  readonly data: Float32Array
+  readonly count: number
+  readonly version: number
+  /** Scheduler now, in cycles (`uNow`). */
+  readonly now: number
+  /** Cycles per second (`uCps`). */
+  readonly cps: number
+}
+
+/** Texture unit for `uNotes` (unit 0 is `iChannel0`). */
+const NOTES_UNIT = 1
+
 /** Width (texels) of each row of the `iChannel0` audio texture. */
 const AUDIO_TEX_W = 512
 const AUDIO_TEX_H = 2
@@ -152,6 +168,15 @@ export class GLSLProgram {
   private readonly uTrackCount: WebGLUniformLocation | null
   private readonly uTrackA: WebGLUniformLocation | null
   private readonly uTrackB: WebGLUniformLocation | null
+  /** Upcoming-notes uniforms (#2571) — null when the shader reads no notes. */
+  private readonly uNotes: WebGLUniformLocation | null
+  private readonly uNoteCount: WebGLUniformLocation | null
+  private readonly uNow: WebGLUniformLocation | null
+  private readonly uCps: WebGLUniformLocation | null
+  /** The RGBA32F notes texture; created only when the shader samples `uNotes`. */
+  private notesTex: WebGLTexture | null = null
+  /** `GLSLNotes.version` last uploaded (−1 = never). */
+  private notesUploaded = -1
   /** Scratch buffers, allocated once (no per-frame alloc). */
   private readonly freqScratch = new Uint8Array(AUDIO_TEX_W * 4)
   private readonly waveScratch = new Uint8Array(AUDIO_TEX_W * 4)
@@ -197,6 +222,11 @@ export class GLSLProgram {
     this.uTrackCount = gl.getUniformLocation(program, 'uTrackCount')
     this.uTrackA = gl.getUniformLocation(program, 'uTrackA')
     this.uTrackB = gl.getUniformLocation(program, 'uTrackB')
+    // Upcoming notes (#2571) — null when unused (GLSL strips them).
+    this.uNotes = gl.getUniformLocation(program, 'uNotes')
+    this.uNoteCount = gl.getUniformLocation(program, 'uNoteCount')
+    this.uNow = gl.getUniformLocation(program, 'uNow')
+    this.uCps = gl.getUniformLocation(program, 'uCps')
 
     // WebGL2 core requires a bound VAO for drawArrays, even with no attributes.
     const vao = gl.createVertexArray()
@@ -217,17 +247,45 @@ export class GLSLProgram {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
     gl.bindTexture(gl.TEXTURE_2D, null)
+
+    // The notes texture (#2571) — RGBA32F, STAVE_MAX_NOTES×2, NEAREST (read with
+    // texelFetch; float textures need no extension for that in WebGL2).
+    if (this.uNotes) {
+      const nt = gl.createTexture()
+      if (!nt) throw new Error('glsl: could not create notes texture')
+      this.notesTex = nt
+      gl.bindTexture(gl.TEXTURE_2D, nt)
+      gl.texImage2D(
+        gl.TEXTURE_2D, 0, gl.RGBA32F, STAVE_MAX_NOTES, 2, 0, gl.RGBA, gl.FLOAT, null,
+      )
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+      gl.bindTexture(gl.TEXTURE_2D, null)
+    }
   }
+
+  /** Whether the shader reads any upcoming-notes uniform (#2571) — a host can
+   *  skip gathering notes for one that doesn't. */
+  get readsNotes(): boolean {
+    return !!(this.uNotes || this.uNoteCount || this.uNow || this.uCps)
+  }
+
+  /** How many times the notes texture has been uploaded (for tests/diagnostics). */
+  notesUploads = 0
 
   /** Render one frame. `audio` may be null (no analyser yet) → the texture stays
    *  at its current contents (or zero) and the shader still animates off iTime.
    *  `events` carries the per-frame pattern-event uniforms (#284); omit → all 0.
-   *  `tracks` carries the per-track signal uniforms (#297); omit → no tracks. */
+   *  `tracks` carries the per-track signal uniforms (#297); omit → no tracks.
+   *  `notes` carries the upcoming notes (#2571); omit → no notes. */
   draw(
     audio: AudioByteSource | null,
     state: GLSLDrawState,
     events?: GLSLEvents,
     tracks?: GLSLTracks,
+    notes?: GLSLNotes,
   ): void {
     if (this.disposed) return
     const gl = this.gl
@@ -278,6 +336,23 @@ export class GLSLProgram {
     if (this.uTrackCount) gl.uniform1i(this.uTrackCount, tr.count)
     if (this.uTrackA) gl.uniform3fv(this.uTrackA, tr.a)
     if (this.uTrackB) gl.uniform3fv(this.uTrackB, tr.b)
+    // Upcoming notes (#2571). The texture is re-uploaded only when the notes
+    // changed (`version` moved), not every frame; now/cps are per-frame uniforms.
+    if (this.uNotes && this.notesTex) {
+      gl.activeTexture(gl.TEXTURE0 + NOTES_UNIT)
+      gl.bindTexture(gl.TEXTURE_2D, this.notesTex)
+      if (notes && notes.version !== this.notesUploaded) {
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4)
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, STAVE_MAX_NOTES, 2, gl.RGBA, gl.FLOAT, notes.data)
+        this.notesUploaded = notes.version
+        this.notesUploads++
+      }
+      gl.uniform1i(this.uNotes, NOTES_UNIT)
+      gl.activeTexture(gl.TEXTURE0)
+    }
+    if (this.uNoteCount) gl.uniform1i(this.uNoteCount, notes?.count ?? 0)
+    if (this.uNow) gl.uniform1f(this.uNow, notes?.now ?? 0)
+    if (this.uCps) gl.uniform1f(this.uCps, notes?.cps ?? 0)
 
     gl.drawArrays(gl.TRIANGLES, 0, 3)
     gl.bindVertexArray(null)
@@ -291,6 +366,7 @@ export class GLSLProgram {
       gl.deleteProgram(this.program)
       gl.deleteVertexArray(this.vao)
       gl.deleteTexture(this.audioTex)
+      if (this.notesTex) gl.deleteTexture(this.notesTex)
     } catch {
       /* context may already be lost — ignore */
     }

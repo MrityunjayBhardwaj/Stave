@@ -8,7 +8,7 @@ import { emitLog, type LogLevel, type LogSuggestion } from './engineLog'
 import { renderPatternOffline, describeSkipped, RenderCancelledError, type OfflineGraphDeps, type SkippedSounds } from './renderPatternOffline'
 import { canPauseOfflineRender, piecesOf, renderInPieces } from './pieceRender'
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
-import { planStems, tagTrack } from './stemSplit'
+import { planStems, tagTrack, trackTagsOf } from './stemSplit'
 import { createTransportHold } from './transportHold'
 import { onLiveGraph, registerBackgroundRender, whenGraphFree, withOfflineGraph, withUserRender } from './offlineGraph'
 import { displayRenderRate } from './displayRate'
@@ -2948,6 +2948,8 @@ export class StrudelEngine implements LiveCodingEngine {
     if (!sched || !pattern) return null
     return {
       now: () => sched.now(),
+      // #2571 — the tempo, for the GLSL `uCps` uniform.
+      cps: () => this.getCps() ?? 0.5,
       query: (begin: number, end: number) => {
         // Side-fix (closes #101): the previous bare normalizeStrudelHap reference
         // passed directly to Array#map received the `index` arg as trackId
@@ -2956,7 +2958,14 @@ export class StrudelEngine implements LiveCodingEngine {
         try {
           return pattern
             .queryArc(begin, end)
-            .map((hap: unknown) => normalizeStrudelHap(hap, undefined, this.lastIRNodeLocLookup ?? undefined, this.lastDeclaredLocations ?? undefined))
+            .map((hap: unknown) => {
+              const ev = normalizeStrudelHap(hap, undefined, this.lastIRNodeLocLookup ?? undefined, this.lastDeclaredLocations ?? undefined)
+              // #2571 — which track played it, in the scheduler key space, from
+              // the tag the `.p` hook put on the track (survives stacking).
+              const key = trackTagsOf(hap)[0]
+              if (key !== undefined) ev.trackKey = key
+              return ev
+            })
         } catch { return [] }
       },
     }

@@ -27,6 +27,9 @@ import { createGLSLProgram, type GLSLProgram, type AudioByteSource, type GL2 } f
 import { glslFragmentErrorUserLine } from './glslShaderSource'
 import { markVizErrorReported } from '../reportedVizErrors'
 import { readGLSLEvents, readGLSLTracks } from './glslEvents'
+import { GLSLNoteFeed, droppedNotesMessage } from './glslNotes'
+import { RollingHapWindow } from '../worker/rollingHapWindow'
+import type { PatternScheduler } from '../types'
 import { emitLog } from '../../engine/engineLog'
 import { VizRendererBase } from './VizRendererBase'
 
@@ -49,6 +52,12 @@ export class GLSLVizRenderer extends VizRendererBase {
   private bus: SignalBus | null = new SignalBus()
   private hapStream: HapStream | null = null
   private busHapHandler: ((e: HapEvent) => void) | null = null
+  /** Upcoming notes (#2571): the live combined scheduler, read over the same
+   *  window the worker gets (now−4 … now+2), rolled forward instead of
+   *  re-queried whole, packed into `uNotes`. */
+  private scheduler: PatternScheduler | null = null
+  private readonly noteWindow = new RollingHapWindow(4, 2)
+  private readonly notes = new GLSLNoteFeed()
 
   /** `code` = the user's GLSL source; `name` = the workspace path, used to
    *  attribute a compile error to its file in the Console (#331). */
@@ -75,6 +84,7 @@ export class GLSLVizRenderer extends VizRendererBase {
       // absent feeds, so never gate the bind).
       this.bus?.bindScheduler(components.queryable?.scheduler, components.queryable?.trackSchedulers)
       this.bus?.bindAnalysers(components.audio?.analyser, components.audio?.trackAnalysers)
+      this.scheduler = components.queryable?.scheduler ?? null
       this.bus?.setAliases(resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE))
       this.hapStream = components.streaming?.hapStream ?? null
       if (this.hapStream && this.bus) {
@@ -141,11 +151,21 @@ export class GLSLVizRenderer extends VizRendererBase {
         events = readGLSLEvents(this.bus)
         tracks = readGLSLTracks(this.bus) // #297 per-track signals (same tick)
       }
+      // #2571 — upcoming notes, only for a shader that reads them.
+      const sched = this.scheduler
+      if (sched && this.program.readsNotes) {
+        const t = sched.now()
+        const window = this.noteWindow.at(sched, t, (a, b) => sched.query(a, b))
+        this.notes.update(window, this.noteWindow.version, t, sched.cps?.() ?? 0, this.bus?.tracks ?? [], (d, total) =>
+          emitLog({ level: 'warn', runtime: 'glsl', source: this.name || undefined, message: droppedNotesMessage(d, total) }),
+        )
+      }
       this.program.draw(
         this.analyser as AudioByteSource | null,
         { width: this.size.w, height: this.size.h, timeMs: now - this.startMs },
         events,
         tracks,
+        this.notes,
       )
     } finally {
       perf.end('glsl.draw')
@@ -160,6 +180,9 @@ export class GLSLVizRenderer extends VizRendererBase {
     this.analyser = (components.audio?.analyser as AnalyserNode | undefined) ?? null
     this.bus?.bindScheduler(components.queryable?.scheduler ?? null, components.queryable?.trackSchedulers)
     this.bus?.bindAnalysers(components.audio?.analyser ?? null, components.audio?.trackAnalysers)
+    // A re-evaluate may change the pattern under the same window: re-query whole.
+    this.scheduler = components.queryable?.scheduler ?? null
+    this.noteWindow.reset()
   }
 
   resize(w: number, h: number): void {
@@ -215,5 +238,7 @@ export class GLSLVizRenderer extends VizRendererBase {
     }
     this.hapStream = null
     this.bus = null
+    this.scheduler = null
+    this.noteWindow.reset()
   }
 }

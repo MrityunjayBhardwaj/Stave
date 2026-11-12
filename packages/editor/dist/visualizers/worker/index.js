@@ -1503,10 +1503,26 @@ var _RawSchedulerShim = class _RawSchedulerShim {
   constructor() {
     this._now = 0;
     this.events = [];
+    this._version = void 0;
+    this._cps = 0;
   }
   set(raw) {
     this._now = raw?.now ?? 0;
     this.events = raw?.events ?? [];
+    this._version = raw?.version;
+    this._cps = raw?.cps ?? 0;
+  }
+  /** The whole shipped window (the GLSL note texture packs it, #2571). */
+  all() {
+    return this.events;
+  }
+  /** The window's change counter (`RawSchedulerFrame.version`). */
+  version() {
+    return this._version;
+  }
+  /** Cycles per second, 0 when the frame carried none. */
+  cps() {
+    return this._cps;
   }
   now() {
     return this._now;
@@ -6337,6 +6353,7 @@ void main() {
 var VERSION = "#version 300 es";
 var PRECISION = "precision highp float;\nprecision highp int;";
 var MAX_GLSL_TRACKS = 16;
+var STAVE_MAX_NOTES = 256;
 var UNIFORMS = `uniform vec3 iResolution;
 uniform float iTime;
 uniform vec4 iMouse;
@@ -6345,7 +6362,11 @@ uniform float uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom, uVelocity;
 uniform float uRms, uBass, uMid, uTreble;
 uniform int uTrackCount;
 uniform vec3 uTrackA[${MAX_GLSL_TRACKS}];
-uniform vec3 uTrackB[${MAX_GLSL_TRACKS}];`;
+uniform vec3 uTrackB[${MAX_GLSL_TRACKS}];
+uniform highp sampler2D uNotes;
+uniform int uNoteCount;
+uniform float uNow;
+uniform float uCps;`;
 var STAVE_TRACK_API = `struct StaveTrack {
   float env;
   float velocity;
@@ -6359,6 +6380,23 @@ StaveTrack staveTrack(int i) {
   vec3 b = uTrackB[i];
   return StaveTrack(a.x, a.y, a.z, b.x, b.y, b.z);
 }`;
+var STAVE_NOTE_API = `#define STAVE_MAX_NOTES ${STAVE_MAX_NOTES}
+struct StaveNote {
+  float begin;
+  float end;
+  float midi;
+  float gain;
+  float velocity;
+  int track;
+};
+StaveNote staveNote(int i) {
+  vec4 a = texelFetch(uNotes, ivec2(i, 0), 0);
+  vec4 b = texelFetch(uNotes, ivec2(i, 1), 0);
+  return StaveNote(a.x, a.y, a.z, a.w, b.x, int(b.y));
+}`;
+var PREAMBLE = `${UNIFORMS}
+${STAVE_TRACK_API}
+${STAVE_NOTE_API}`;
 var SHADERTOY_OUT = "out vec4 stave_FragColor;";
 var SHADERTOY_ENTRY = `
 void main() {
@@ -6387,8 +6425,7 @@ function buildGLSLFragmentSource(userSource) {
   if (hasMainImage) {
     return `${VERSION}
 ${PRECISION}
-${UNIFORMS}
-${STAVE_TRACK_API}
+${PREAMBLE}
 ${SHADERTOY_OUT}
 ${userSource}
 ${SHADERTOY_ENTRY}`;
@@ -6396,8 +6433,7 @@ ${SHADERTOY_ENTRY}`;
   if (hasMain) {
     return `${VERSION}
 ${PRECISION}
-${UNIFORMS}
-${STAVE_TRACK_API}
+${PREAMBLE}
 ${stripVersion(userSource)}
 `;
   }
@@ -6431,6 +6467,7 @@ var ZERO_GLSL_TRACKS = {
   a: new Float32Array(MAX_GLSL_TRACKS * 3),
   b: new Float32Array(MAX_GLSL_TRACKS * 3)
 };
+var NOTES_UNIT = 1;
 var AUDIO_TEX_W = 512;
 var AUDIO_TEX_H = 2;
 function compileShader(gl, type, src, label) {
@@ -6469,12 +6506,18 @@ __name(resampleByteRow, "resampleByteRow");
 var _GLSLProgram = class _GLSLProgram {
   constructor(gl, userSource) {
     this.gl = gl;
+    /** The RGBA32F notes texture; created only when the shader samples `uNotes`. */
+    this.notesTex = null;
+    /** `GLSLNotes.version` last uploaded (−1 = never). */
+    this.notesUploaded = -1;
     /** Scratch buffers, allocated once (no per-frame alloc). */
     this.freqScratch = new Uint8Array(AUDIO_TEX_W * 4);
     this.waveScratch = new Uint8Array(AUDIO_TEX_W * 4);
     /** The 2-row texel buffer uploaded each frame (row 0 FFT, row 1 wave). */
     this.texRows = new Uint8Array(AUDIO_TEX_W * AUDIO_TEX_H);
     this.disposed = false;
+    /** How many times the notes texture has been uploaded (for tests/diagnostics). */
+    this.notesUploads = 0;
     const vert = compileShader(gl, gl.VERTEX_SHADER, GLSL_FULLSCREEN_VERT, "vertex");
     const frag = compileShader(
       gl,
@@ -6506,6 +6549,10 @@ ${log.trim()}`);
     this.uTrackCount = gl.getUniformLocation(program, "uTrackCount");
     this.uTrackA = gl.getUniformLocation(program, "uTrackA");
     this.uTrackB = gl.getUniformLocation(program, "uTrackB");
+    this.uNotes = gl.getUniformLocation(program, "uNotes");
+    this.uNoteCount = gl.getUniformLocation(program, "uNoteCount");
+    this.uNow = gl.getUniformLocation(program, "uNow");
+    this.uCps = gl.getUniformLocation(program, "uCps");
     const vao = gl.createVertexArray();
     if (!vao) throw new Error("glsl: could not create VAO");
     this.vao = vao;
@@ -6530,12 +6577,40 @@ ${log.trim()}`);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D, null);
+    if (this.uNotes) {
+      const nt = gl.createTexture();
+      if (!nt) throw new Error("glsl: could not create notes texture");
+      this.notesTex = nt;
+      gl.bindTexture(gl.TEXTURE_2D, nt);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA32F,
+        STAVE_MAX_NOTES,
+        2,
+        0,
+        gl.RGBA,
+        gl.FLOAT,
+        null
+      );
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+  }
+  /** Whether the shader reads any upcoming-notes uniform (#2571) — a host can
+   *  skip gathering notes for one that doesn't. */
+  get readsNotes() {
+    return !!(this.uNotes || this.uNoteCount || this.uNow || this.uCps);
   }
   /** Render one frame. `audio` may be null (no analyser yet) → the texture stays
    *  at its current contents (or zero) and the shader still animates off iTime.
    *  `events` carries the per-frame pattern-event uniforms (#284); omit → all 0.
-   *  `tracks` carries the per-track signal uniforms (#297); omit → no tracks. */
-  draw(audio, state, events, tracks) {
+   *  `tracks` carries the per-track signal uniforms (#297); omit → no tracks.
+   *  `notes` carries the upcoming notes (#2571); omit → no notes. */
+  draw(audio, state, events, tracks, notes) {
     if (this.disposed) return;
     const gl = this.gl;
     const w = Math.max(1, Math.round(state.width));
@@ -6584,6 +6659,21 @@ ${log.trim()}`);
     if (this.uTrackCount) gl.uniform1i(this.uTrackCount, tr.count);
     if (this.uTrackA) gl.uniform3fv(this.uTrackA, tr.a);
     if (this.uTrackB) gl.uniform3fv(this.uTrackB, tr.b);
+    if (this.uNotes && this.notesTex) {
+      gl.activeTexture(gl.TEXTURE0 + NOTES_UNIT);
+      gl.bindTexture(gl.TEXTURE_2D, this.notesTex);
+      if (notes && notes.version !== this.notesUploaded) {
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, STAVE_MAX_NOTES, 2, gl.RGBA, gl.FLOAT, notes.data);
+        this.notesUploaded = notes.version;
+        this.notesUploads++;
+      }
+      gl.uniform1i(this.uNotes, NOTES_UNIT);
+      gl.activeTexture(gl.TEXTURE0);
+    }
+    if (this.uNoteCount) gl.uniform1i(this.uNoteCount, notes?.count ?? 0);
+    if (this.uNow) gl.uniform1f(this.uNow, notes?.now ?? 0);
+    if (this.uCps) gl.uniform1f(this.uCps, notes?.cps ?? 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
   }
@@ -6595,6 +6685,7 @@ ${log.trim()}`);
       gl.deleteProgram(this.program);
       gl.deleteVertexArray(this.vao);
       gl.deleteTexture(this.audioTex);
+      if (this.notesTex) gl.deleteTexture(this.notesTex);
     } catch {
     }
   }
@@ -6646,6 +6737,98 @@ function readGLSLTracks(bus) {
   return { count, a, b };
 }
 __name(readGLSLTracks, "readGLSLTracks");
+
+// src/visualizers/renderers/glslNotes.ts
+var RGBA = 4;
+function distanceToNow(n, now) {
+  if (n.begin > now) return n.begin - now;
+  if (n.end < now) return now - n.end;
+  return 0;
+}
+__name(distanceToNow, "distanceToNow");
+function noteTrackIndex(key, trackKeys) {
+  if (key == null) return trackKeys.length === 1 ? 0 : -1;
+  return trackKeys.indexOf(key);
+}
+__name(noteTrackIndex, "noteTrackIndex");
+function selectNotes(events, now) {
+  let notes;
+  if (events.length > STAVE_MAX_NOTES) {
+    notes = [...events].sort((a, b) => distanceToNow(a, now) - distanceToNow(b, now) || a.begin - b.begin).slice(0, STAVE_MAX_NOTES);
+  } else {
+    notes = [...events];
+  }
+  notes.sort((a, b) => a.begin - b.begin);
+  return { notes, dropped: events.length - notes.length };
+}
+__name(selectNotes, "selectNotes");
+function writeNoteTexels(notes, trackKeys, out) {
+  out.fill(0);
+  const row1 = STAVE_MAX_NOTES * RGBA;
+  const n = Math.min(notes.length, STAVE_MAX_NOTES);
+  for (let i = 0; i < n; i++) {
+    const e = notes[i];
+    const o = i * RGBA;
+    out[o] = e.begin;
+    out[o + 1] = e.end;
+    out[o + 2] = typeof e.midi === "number" && Number.isFinite(e.midi) ? e.midi : -1;
+    out[o + 3] = e.gain ?? 1;
+    out[row1 + o] = e.velocity ?? 1;
+    out[row1 + o + 1] = noteTrackIndex(e.trackKey, trackKeys);
+  }
+}
+__name(writeNoteTexels, "writeNoteTexels");
+var _GLSLNoteFeed = class _GLSLNoteFeed {
+  constructor() {
+    /** RGBA32F texels, row 0 then row 1. */
+    this.data = new Float32Array(STAVE_MAX_NOTES * 2 * RGBA);
+    /** Notes in `data` (`uNoteCount`). */
+    this.count = 0;
+    /** Notes the last pack dropped over the cap. */
+    this.dropped = 0;
+    /** Bumps on every repack; the GL side uploads when it differs from its own. */
+    this.version = 0;
+    /** Scheduler now (`uNow`) and cycles per second (`uCps`), set every frame. */
+    this.now = 0;
+    this.cps = 0;
+    this.windowVersion = null;
+    this.trackSig = "";
+    this.warned = false;
+  }
+  /**
+   * Feed one frame. `windowVersion` is the window's own change counter
+   * (`RollingHapWindow.version`); when it and the track list are unchanged the
+   * texels are left alone. Absent → always repack. Returns true when the texels
+   * were rewritten. `onDrop` runs once per feed, the first time notes are
+   * dropped over the cap.
+   */
+  update(events, windowVersion, now, cps, trackKeys, onDrop) {
+    this.now = now;
+    this.cps = cps;
+    const sig = trackKeys.join("\0");
+    if (windowVersion !== void 0 && windowVersion === this.windowVersion && sig === this.trackSig) {
+      return false;
+    }
+    this.windowVersion = windowVersion ?? null;
+    this.trackSig = sig;
+    const { notes, dropped } = selectNotes(events, now);
+    writeNoteTexels(notes, trackKeys, this.data);
+    this.count = notes.length;
+    this.dropped = dropped;
+    this.version++;
+    if (dropped > 0 && !this.warned) {
+      this.warned = true;
+      onDrop?.(dropped, events.length);
+    }
+    return true;
+  }
+};
+__name(_GLSLNoteFeed, "GLSLNoteFeed");
+var GLSLNoteFeed = _GLSLNoteFeed;
+function droppedNotesMessage(dropped, total) {
+  return `GLSL: ${total} notes in the window (now\u22124 \u2026 now+2 cycles), but uNotes holds ${STAVE_MAX_NOTES}. Kept the ${STAVE_MAX_NOTES} nearest to now and dropped ${dropped}; uNoteCount says how many came through.`;
+}
+__name(droppedNotesMessage, "droppedNotesMessage");
 
 // src/visualizers/renderers/threeSketch.ts
 var ADDONS = {
@@ -7290,7 +7473,7 @@ function hostVizWorker(scope) {
     const rawAnalyser = new RawAnalyserShim();
     const rawScheduler = new RawSchedulerShim();
     const containerSizeRef = { current: { w: msg.size.w, h: msg.size.h } };
-    const strategy = msg.kind === "hydra" ? await mountHydra(msg, feed, rawAnalyser, rawScheduler) : msg.kind === "glsl" ? mountGLSL(msg, rawAnalyser, feed) : msg.kind === "three" ? await mountThree(msg, feed, rawScheduler, containerSizeRef, dpr) : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr);
+    const strategy = msg.kind === "hydra" ? await mountHydra(msg, feed, rawAnalyser, rawScheduler) : msg.kind === "glsl" ? mountGLSL(msg, rawAnalyser, rawScheduler, feed) : msg.kind === "three" ? await mountThree(msg, feed, rawScheduler, containerSizeRef, dpr) : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr);
     const reader = createPostMessageReader(scope);
     state = {
       feed,
@@ -7516,13 +7699,15 @@ function hostVizWorker(scope) {
     };
   }
   __name(mountHydra, "mountHydra");
-  function mountGLSL(msg, rawAnalyser, feed) {
+  function mountGLSL(msg, rawAnalyser, rawScheduler, feed) {
     msg.canvas.width = Math.max(1, Math.round(msg.size.w));
     msg.canvas.height = Math.max(1, Math.round(msg.size.h));
     const gl = msg.canvas.getContext("webgl2");
     if (!gl) throw new Error("glsl: WebGL2 unavailable in worker");
     const program = createGLSLProgram(gl, msg.code);
     const startMs = globalThis.performance?.now?.() ?? 0;
+    const notes = new GLSLNoteFeed();
+    const warnDropped = /* @__PURE__ */ __name((dropped, total) => postVizLog({ level: "warn", runtime: "glsl", source: msg.name || void 0, message: droppedNotesMessage(dropped, total) }), "warnDropped");
     return {
       setupDone: /* @__PURE__ */ __name(() => true, "setupDone"),
       // program built synchronously above; draw on first frame
@@ -7531,12 +7716,24 @@ function hostVizWorker(scope) {
       gl: /* @__PURE__ */ __name(() => msg.canvas.getContext("webgl2"), "gl"),
       draw: /* @__PURE__ */ __name(() => {
         const timeMs = (globalThis.performance?.now?.() ?? 0) - startMs;
+        if (program.readsNotes) {
+          notes.update(
+            rawScheduler.all(),
+            rawScheduler.version(),
+            rawScheduler.now(),
+            rawScheduler.cps(),
+            feed.bus.tracks,
+            warnDropped
+          );
+        }
         program.draw(
           rawAnalyser,
           { width: msg.canvas.width, height: msg.canvas.height, timeMs },
           readGLSLEvents(feed.bus),
-          readGLSLTracks(feed.bus)
+          readGLSLTracks(feed.bus),
           // #297 per-track signals (same already-ticked bus)
+          notes
+          // #2571 upcoming notes → uNotes / uNoteCount / uNow / uCps
         );
       }, "draw"),
       resizeKind: /* @__PURE__ */ __name((w, h) => {

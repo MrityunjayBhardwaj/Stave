@@ -1,5 +1,5 @@
-import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-CtFCK18o.js';
-export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-CtFCK18o.js';
+import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-B8SU4sBG.js';
+export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-B8SU4sBG.js';
 import * as Monaco from 'monaco-editor';
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
@@ -6455,6 +6455,9 @@ interface RawHapSummary {
     gain: number;
     velocity: number;
     color: string | null;
+    /** `IREvent.trackKey` — the track's SCHEDULER key, from the hap's track tag
+     *  (#2571, the GLSL note texture's `track`); null when untagged. */
+    trackKey: string | null;
 }
 /**
  * The raw COMBINED-scheduler feed for `stave.scheduler` (B-3). The main sampler
@@ -6468,6 +6471,12 @@ interface RawSchedulerFrame {
     now: number;
     /** Events in the shipped wide window, in query order. */
     events: RawHapSummary[];
+    /** The window's change counter (`RollingHapWindow.version`): equal across two
+     *  frames → the same `events` (#2571 — the GLSL note texture re-uploads only
+     *  when it moves). Absent → unknown; treat every frame as changed. */
+    version?: number;
+    /** Cycles per second (`IRPattern.cps`), when the scheduler reports one. */
+    cps?: number;
 }
 /** The master analyser key — the combined-mix analyser (`SignalBus.master()`). */
 declare const MASTER_KEY = "master";
@@ -9321,11 +9330,10 @@ declare class MainSignalSampler {
     private readonly wantsRawScheduler;
     /**
      * Whether `sample()` runs the WIDE raw-scheduler query (`stave.scheduler`, B-3).
-     * Only p5 and hydra sketches are handed `stave.scheduler`; a three.js or GLSL
-     * sketch never sees it, so for them the query is pure main-thread cost — and it
-     * is the expensive one: it walks the whole song over `RAW_QUERY_BACK +
-     * RAW_QUERY_FWD` cycles every frame (#2561 measured it as most of the main
-     * thread during Play with a dense song). Off → `rawScheduler.events` is empty.
+     * Every kind reads it now (p5/hydra/three.js as `stave.scheduler`, GLSL as the
+     * `uNotes` texture, #2571); the flag stays so a consumer that doesn't can skip
+     * it (#2561 measured the old whole-window query as most of the main thread
+     * during Play with a dense song). Off → `rawScheduler.events` is empty.
      */
     constructor(wantsRawScheduler?: boolean);
     private inputs;

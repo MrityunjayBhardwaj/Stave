@@ -115,15 +115,15 @@ function minFrameMs(): number {
   return fps > 0 ? 1000 / fps : 0
 }
 
-/** Whether a worker sketch of this kind is handed `stave.scheduler` (the raw,
- *  wide-window hap feed). p5 (`stave.scheduler` via the compiler's refs), hydra
- *  (`bag.scheduler`) and three.js (`stave.scheduler`, #2570) are; GLSL shaders
- *  are not (they have no per-frame JavaScript to call it — #2571), so their
- *  sampler skips the wide window (#2561). Their `u*` signals come from the
- *  active-at-now queries, which still run. The window itself is cheap since
- *  #2566 (it rolls forward instead of re-querying the song each frame). */
+/** Whether a worker sketch of this kind reads the raw, wide-window hap feed.
+ *  p5 (`stave.scheduler` via the compiler's refs), hydra (`bag.scheduler`) and
+ *  three.js (`stave.scheduler`, #2570) query it; a GLSL shader has no per-frame
+ *  JavaScript, so the worker packs the same window into its `uNotes` texture
+ *  (#2571). Every kind reads it now; the switch stays so a kind that doesn't can
+ *  skip the window (#2561). The window itself is cheap since #2566 (it rolls
+ *  forward instead of re-querying the song each frame). */
 export function kindReadsRawScheduler(kind: 'p5' | 'hydra' | 'glsl' | 'three'): boolean {
-  return kind === 'p5' || kind === 'hydra' || kind === 'three'
+  return kind === 'p5' || kind === 'hydra' || kind === 'three' || kind === 'glsl'
 }
 
 export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {

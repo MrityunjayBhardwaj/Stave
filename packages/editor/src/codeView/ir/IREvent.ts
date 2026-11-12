@@ -79,6 +79,12 @@ export interface IREvent {
    *  STABLE slot identity that doesn't change when the user renames
    *  via `.p()`. */
   trackId?: string
+  /** The track's SCHEDULER key (`$0`, `d1`, … — the keys of
+   *  `queryable.trackSchedulers` and the signal bus's `tracks`), read from the
+   *  hap's track tag. Set only by the combined scheduler, whose haps carry the
+   *  tag through stacking; differs from `trackId` for anonymous blocks (#2571 —
+   *  the GLSL note texture's `track`). */
+  trackKey?: string
   /** Source-character offset of the OUTERMOST `$:`-wrapped Track that
    *  encloses this event. Anchored at the Track's `loc[0].start` per
    *  parseStrudel. Used as the timeline slot identity so `.p("name")`

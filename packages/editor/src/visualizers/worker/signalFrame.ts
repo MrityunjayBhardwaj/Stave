@@ -96,6 +96,9 @@ export interface RawHapSummary {
   gain: number
   velocity: number
   color: string | null
+  /** `IREvent.trackKey` — the track's SCHEDULER key, from the hap's track tag
+   *  (#2571, the GLSL note texture's `track`); null when untagged. */
+  trackKey: string | null
 }
 
 /**
@@ -110,6 +113,12 @@ export interface RawSchedulerFrame {
   now: number
   /** Events in the shipped wide window, in query order. */
   events: RawHapSummary[]
+  /** The window's change counter (`RollingHapWindow.version`): equal across two
+   *  frames → the same `events` (#2571 — the GLSL note texture re-uploads only
+   *  when it moves). Absent → unknown; treat every frame as changed. */
+  version?: number
+  /** Cycles per second (`IRPattern.cps`), when the scheduler reports one. */
+  cps?: number
 }
 
 /** The master analyser key — the combined-mix analyser (`SignalBus.master()`). */

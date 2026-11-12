@@ -56,10 +56,35 @@ describe('MainSignalSampler raw-scheduler query (#2561)', () => {
     expect(wide(windows)).toHaveLength(1)
   })
 
-  it('p5, hydra and three.js (#2570) are handed stave.scheduler; GLSL is not', () => {
+  it('every kind reads the window: p5, hydra, three.js (#2570) as stave.scheduler, GLSL as uNotes (#2571)', () => {
     expect(kindReadsRawScheduler('p5')).toBe(true)
     expect(kindReadsRawScheduler('hydra')).toBe(true)
     expect(kindReadsRawScheduler('three')).toBe(true)
-    expect(kindReadsRawScheduler('glsl')).toBe(false)
+    expect(kindReadsRawScheduler('glsl')).toBe(true)
+  })
+
+  it('ships the window version, cps and each hap\'s track key (#2571)', () => {
+    let now = 10
+    const ev = { begin: 10, end: 10.5, s: 'tok', note: 3, velocity: 1, color: null, trackKey: '$1' } as unknown as IREvent
+    const sched = {
+      now: () => now,
+      cps: () => 0.75,
+      query: (a: number, b: number) => (ev.begin < b && ev.end > a ? [ev] : []),
+    } as unknown as IRPattern
+    const s = new MainSignalSampler(true)
+    s.bind({ scheduler: sched })
+    const f1 = s.sample()
+    expect(f1.rawScheduler?.cps).toBe(0.75)
+    expect(f1.rawScheduler?.events[0].trackKey).toBe('$1')
+    const v1 = f1.rawScheduler?.version
+    expect(typeof v1).toBe('number')
+    // a frame later, same notes in the window → same version
+    now = 10.01
+    expect(s.sample().rawScheduler?.version).toBe(v1)
+    // the note ends behind the window → the answer changes → the version moves
+    now = 15
+    const f3 = s.sample()
+    expect(f3.rawScheduler?.events).toEqual([])
+    expect(f3.rawScheduler?.version).not.toBe(v1)
   })
 })

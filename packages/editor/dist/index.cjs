@@ -18988,9 +18988,16 @@ var _StrudelEngine = class _StrudelEngine {
     if (!sched || !pattern) return null;
     return {
       now: /* @__PURE__ */ __name(() => sched.now(), "now"),
+      // #2571 — the tempo, for the GLSL `uCps` uniform.
+      cps: /* @__PURE__ */ __name(() => this.getCps() ?? 0.5, "cps"),
       query: /* @__PURE__ */ __name((begin, end) => {
         try {
-          return pattern.queryArc(begin, end).map((hap) => normalizeStrudelHap(hap, void 0, this.lastIRNodeLocLookup ?? void 0, this.lastDeclaredLocations ?? void 0));
+          return pattern.queryArc(begin, end).map((hap) => {
+            const ev = normalizeStrudelHap(hap, void 0, this.lastIRNodeLocLookup ?? void 0, this.lastDeclaredLocations ?? void 0);
+            const key3 = trackTagsOf(hap)[0];
+            if (key3 !== void 0) ev.trackKey = key3;
+            return ev;
+          });
         } catch {
           return [];
         }
@@ -19976,6 +19983,20 @@ var _RollingHapWindow = class _RollingHapWindow {
     /** End of the span already queried (cycles); NaN = nothing queried yet. */
     this.lastEnd = NaN;
     this.lastNow = NaN;
+    /** Whether the held haps changed (reset, added or dropped) since the last
+     *  `at()` answer. */
+    this.changed = true;
+    /** Length of the last `at()` answer. */
+    this.lastAnswerLength = -1;
+    /**
+     * Moves whenever `at()` may answer with a different set of notes than last
+     * time; equal → the same notes. Never goes back, across resets too, so a
+     * consumer (the GLSL note texture, #2571) can skip repacking on an equal value.
+     * Held haps only grow into the answer as `now` moves forward (the front edge
+     * passes their onset), so an unchanged hold with an unchanged answer length is
+     * an unchanged answer.
+     */
+    this.version = 0;
   }
   /** Forget everything; the next `at()` runs one full query. */
   reset() {
@@ -19983,13 +20004,20 @@ var _RollingHapWindow = class _RollingHapWindow {
     this.events = [];
     this.lastEnd = NaN;
     this.lastNow = NaN;
+    this.changed = true;
   }
   /**
    * The haps intersecting `[now−back, now+fwd)` for `sched`. `query` runs the
    * actual scheduler query (the sampler routes it through the per-tick cache).
    */
   at(sched, now2, query) {
-    return this.inWindow(this.advance(sched, now2, query));
+    const answer = this.inWindow(this.advance(sched, now2, query));
+    if (this.changed || answer.length !== this.lastAnswerLength) {
+      this.version++;
+      this.changed = false;
+      this.lastAnswerLength = answer.length;
+    }
+    return answer;
   }
   /**
    * Bring the held haps up to `now` (query the new slice if the front edge has
@@ -20005,13 +20033,17 @@ var _RollingHapWindow = class _RollingHapWindow {
       this.events = query(lo, hi + PREFETCH).filter((e) => e.end > lo + EDGE);
       this.lastEnd = hi + PREFETCH;
       this.lastNow = now2;
+      this.changed = true;
       return hi;
     }
     if (hi > this.lastEnd) {
       const from = this.lastEnd;
       const to = hi + PREFETCH;
       for (const e of query(from, to)) {
-        if (e.begin >= from - EDGE) this.events.push(e);
+        if (e.begin >= from - EDGE) {
+          this.events.push(e);
+          this.changed = true;
+        }
       }
       this.lastEnd = to;
     }
@@ -20021,6 +20053,7 @@ var _RollingHapWindow = class _RollingHapWindow {
       const e = this.events[r];
       if (e.end > lo + EDGE) this.events[w++] = e;
     }
+    if (w !== this.events.length) this.changed = true;
     this.events.length = w;
     return hi;
   }
@@ -20129,7 +20162,8 @@ function summariseRawHap(e) {
     s: e.s ?? null,
     gain: e.gain ?? 1,
     velocity: e.velocity ?? 1,
-    color: e.color ?? null
+    color: e.color ?? null,
+    trackKey: e.trackKey ?? null
   };
 }
 __name(summariseRawHap, "summariseRawHap");
@@ -20161,11 +20195,10 @@ __name(readAnalyserBytes, "readAnalyserBytes");
 var _MainSignalSampler = class _MainSignalSampler {
   /**
    * Whether `sample()` runs the WIDE raw-scheduler query (`stave.scheduler`, B-3).
-   * Only p5 and hydra sketches are handed `stave.scheduler`; a three.js or GLSL
-   * sketch never sees it, so for them the query is pure main-thread cost — and it
-   * is the expensive one: it walks the whole song over `RAW_QUERY_BACK +
-   * RAW_QUERY_FWD` cycles every frame (#2561 measured it as most of the main
-   * thread during Play with a dense song). Off → `rawScheduler.events` is empty.
+   * Every kind reads it now (p5/hydra/three.js as `stave.scheduler`, GLSL as the
+   * `uNotes` texture, #2571); the flag stays so a consumer that doesn't can skip
+   * it (#2561 measured the old whole-window query as most of the main thread
+   * during Play with a dense song). Off → `rawScheduler.events` is empty.
    */
   constructor(wantsRawScheduler = true) {
     this.wantsRawScheduler = wantsRawScheduler;
@@ -20253,8 +20286,11 @@ var _MainSignalSampler = class _MainSignalSampler {
     this.pendingBumps = [];
     const rawScheduler = {
       now: now2,
-      events: scheduler && this.wantsRawScheduler ? this.rawWindow.at(scheduler, now2, (a, b) => queryAt(scheduler, a, b)).map(summariseRawHap) : []
+      events: scheduler && this.wantsRawScheduler ? this.rawWindow.at(scheduler, now2, (a, b) => queryAt(scheduler, a, b)).map(summariseRawHap) : [],
+      version: this.rawWindow.version
     };
+    const cps = scheduler?.cps?.();
+    if (typeof cps === "number" && Number.isFinite(cps)) rawScheduler.cps = cps;
     return { seq, now: now2, analysers, activeEvents, activeByTrack, bumps, rawScheduler };
   }
   /** Unsubscribe + reset (renderer destroy). */
@@ -20500,7 +20536,7 @@ function minFrameMs() {
 }
 __name(minFrameMs, "minFrameMs");
 function kindReadsRawScheduler(kind) {
-  return kind === "p5" || kind === "hydra" || kind === "three";
+  return kind === "p5" || kind === "hydra" || kind === "three" || kind === "glsl";
 }
 __name(kindReadsRawScheduler, "kindReadsRawScheduler");
 var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
@@ -26962,6 +26998,7 @@ void main() {
 var VERSION = "#version 300 es";
 var PRECISION = "precision highp float;\nprecision highp int;";
 var MAX_GLSL_TRACKS = 16;
+var STAVE_MAX_NOTES = 256;
 var UNIFORMS = `uniform vec3 iResolution;
 uniform float iTime;
 uniform vec4 iMouse;
@@ -26970,7 +27007,11 @@ uniform float uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom, uVelocity;
 uniform float uRms, uBass, uMid, uTreble;
 uniform int uTrackCount;
 uniform vec3 uTrackA[${MAX_GLSL_TRACKS}];
-uniform vec3 uTrackB[${MAX_GLSL_TRACKS}];`;
+uniform vec3 uTrackB[${MAX_GLSL_TRACKS}];
+uniform highp sampler2D uNotes;
+uniform int uNoteCount;
+uniform float uNow;
+uniform float uCps;`;
 var STAVE_TRACK_API = `struct StaveTrack {
   float env;
   float velocity;
@@ -26984,6 +27025,23 @@ StaveTrack staveTrack(int i) {
   vec3 b = uTrackB[i];
   return StaveTrack(a.x, a.y, a.z, b.x, b.y, b.z);
 }`;
+var STAVE_NOTE_API = `#define STAVE_MAX_NOTES ${STAVE_MAX_NOTES}
+struct StaveNote {
+  float begin;
+  float end;
+  float midi;
+  float gain;
+  float velocity;
+  int track;
+};
+StaveNote staveNote(int i) {
+  vec4 a = texelFetch(uNotes, ivec2(i, 0), 0);
+  vec4 b = texelFetch(uNotes, ivec2(i, 1), 0);
+  return StaveNote(a.x, a.y, a.z, a.w, b.x, int(b.y));
+}`;
+var PREAMBLE = `${UNIFORMS}
+${STAVE_TRACK_API}
+${STAVE_NOTE_API}`;
 var SHADERTOY_OUT = "out vec4 stave_FragColor;";
 var SHADERTOY_ENTRY = `
 void main() {
@@ -27012,8 +27070,7 @@ function buildGLSLFragmentSource(userSource) {
   if (hasMainImage) {
     return `${VERSION}
 ${PRECISION}
-${UNIFORMS}
-${STAVE_TRACK_API}
+${PREAMBLE}
 ${SHADERTOY_OUT}
 ${userSource}
 ${SHADERTOY_ENTRY}`;
@@ -27021,8 +27078,7 @@ ${SHADERTOY_ENTRY}`;
   if (hasMain) {
     return `${VERSION}
 ${PRECISION}
-${UNIFORMS}
-${STAVE_TRACK_API}
+${PREAMBLE}
 ${stripVersion(userSource)}
 `;
   }
@@ -27036,13 +27092,11 @@ function glslPreambleLineCount(userSource) {
   const hasMainImage = /\bmainImage\s*\(/.test(probe);
   const prefix = hasMainImage ? `${VERSION}
 ${PRECISION}
-${UNIFORMS}
-${STAVE_TRACK_API}
+${PREAMBLE}
 ${SHADERTOY_OUT}
 ` : `${VERSION}
 ${PRECISION}
-${UNIFORMS}
-${STAVE_TRACK_API}
+${PREAMBLE}
 `;
   return (prefix.match(/\n/g) ?? []).length;
 }
@@ -27079,6 +27133,7 @@ var ZERO_GLSL_TRACKS = {
   a: new Float32Array(MAX_GLSL_TRACKS * 3),
   b: new Float32Array(MAX_GLSL_TRACKS * 3)
 };
+var NOTES_UNIT = 1;
 var AUDIO_TEX_W = 512;
 var AUDIO_TEX_H = 2;
 function compileShader(gl, type, src, label) {
@@ -27117,12 +27172,18 @@ __name(resampleByteRow, "resampleByteRow");
 var _GLSLProgram = class _GLSLProgram {
   constructor(gl, userSource) {
     this.gl = gl;
+    /** The RGBA32F notes texture; created only when the shader samples `uNotes`. */
+    this.notesTex = null;
+    /** `GLSLNotes.version` last uploaded (−1 = never). */
+    this.notesUploaded = -1;
     /** Scratch buffers, allocated once (no per-frame alloc). */
     this.freqScratch = new Uint8Array(AUDIO_TEX_W * 4);
     this.waveScratch = new Uint8Array(AUDIO_TEX_W * 4);
     /** The 2-row texel buffer uploaded each frame (row 0 FFT, row 1 wave). */
     this.texRows = new Uint8Array(AUDIO_TEX_W * AUDIO_TEX_H);
     this.disposed = false;
+    /** How many times the notes texture has been uploaded (for tests/diagnostics). */
+    this.notesUploads = 0;
     const vert = compileShader(gl, gl.VERTEX_SHADER, GLSL_FULLSCREEN_VERT, "vertex");
     const frag = compileShader(
       gl,
@@ -27154,6 +27215,10 @@ ${log2.trim()}`);
     this.uTrackCount = gl.getUniformLocation(program, "uTrackCount");
     this.uTrackA = gl.getUniformLocation(program, "uTrackA");
     this.uTrackB = gl.getUniformLocation(program, "uTrackB");
+    this.uNotes = gl.getUniformLocation(program, "uNotes");
+    this.uNoteCount = gl.getUniformLocation(program, "uNoteCount");
+    this.uNow = gl.getUniformLocation(program, "uNow");
+    this.uCps = gl.getUniformLocation(program, "uCps");
     const vao = gl.createVertexArray();
     if (!vao) throw new Error("glsl: could not create VAO");
     this.vao = vao;
@@ -27178,12 +27243,40 @@ ${log2.trim()}`);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D, null);
+    if (this.uNotes) {
+      const nt = gl.createTexture();
+      if (!nt) throw new Error("glsl: could not create notes texture");
+      this.notesTex = nt;
+      gl.bindTexture(gl.TEXTURE_2D, nt);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA32F,
+        STAVE_MAX_NOTES,
+        2,
+        0,
+        gl.RGBA,
+        gl.FLOAT,
+        null
+      );
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+  }
+  /** Whether the shader reads any upcoming-notes uniform (#2571) — a host can
+   *  skip gathering notes for one that doesn't. */
+  get readsNotes() {
+    return !!(this.uNotes || this.uNoteCount || this.uNow || this.uCps);
   }
   /** Render one frame. `audio` may be null (no analyser yet) → the texture stays
    *  at its current contents (or zero) and the shader still animates off iTime.
    *  `events` carries the per-frame pattern-event uniforms (#284); omit → all 0.
-   *  `tracks` carries the per-track signal uniforms (#297); omit → no tracks. */
-  draw(audio, state6, events, tracks2) {
+   *  `tracks` carries the per-track signal uniforms (#297); omit → no tracks.
+   *  `notes` carries the upcoming notes (#2571); omit → no notes. */
+  draw(audio, state6, events, tracks2, notes) {
     if (this.disposed) return;
     const gl = this.gl;
     const w = Math.max(1, Math.round(state6.width));
@@ -27232,6 +27325,21 @@ ${log2.trim()}`);
     if (this.uTrackCount) gl.uniform1i(this.uTrackCount, tr.count);
     if (this.uTrackA) gl.uniform3fv(this.uTrackA, tr.a);
     if (this.uTrackB) gl.uniform3fv(this.uTrackB, tr.b);
+    if (this.uNotes && this.notesTex) {
+      gl.activeTexture(gl.TEXTURE0 + NOTES_UNIT);
+      gl.bindTexture(gl.TEXTURE_2D, this.notesTex);
+      if (notes && notes.version !== this.notesUploaded) {
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, STAVE_MAX_NOTES, 2, gl.RGBA, gl.FLOAT, notes.data);
+        this.notesUploaded = notes.version;
+        this.notesUploads++;
+      }
+      gl.uniform1i(this.uNotes, NOTES_UNIT);
+      gl.activeTexture(gl.TEXTURE0);
+    }
+    if (this.uNoteCount) gl.uniform1i(this.uNoteCount, notes?.count ?? 0);
+    if (this.uNow) gl.uniform1f(this.uNow, notes?.now ?? 0);
+    if (this.uCps) gl.uniform1f(this.uCps, notes?.cps ?? 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
   }
@@ -27243,6 +27351,7 @@ ${log2.trim()}`);
       gl.deleteProgram(this.program);
       gl.deleteVertexArray(this.vao);
       gl.deleteTexture(this.audioTex);
+      if (this.notesTex) gl.deleteTexture(this.notesTex);
     } catch {
     }
   }
@@ -27295,6 +27404,98 @@ function readGLSLTracks(bus) {
 }
 __name(readGLSLTracks, "readGLSLTracks");
 
+// src/visualizers/renderers/glslNotes.ts
+var RGBA = 4;
+function distanceToNow(n, now2) {
+  if (n.begin > now2) return n.begin - now2;
+  if (n.end < now2) return now2 - n.end;
+  return 0;
+}
+__name(distanceToNow, "distanceToNow");
+function noteTrackIndex(key3, trackKeys) {
+  if (key3 == null) return trackKeys.length === 1 ? 0 : -1;
+  return trackKeys.indexOf(key3);
+}
+__name(noteTrackIndex, "noteTrackIndex");
+function selectNotes(events, now2) {
+  let notes;
+  if (events.length > STAVE_MAX_NOTES) {
+    notes = [...events].sort((a, b) => distanceToNow(a, now2) - distanceToNow(b, now2) || a.begin - b.begin).slice(0, STAVE_MAX_NOTES);
+  } else {
+    notes = [...events];
+  }
+  notes.sort((a, b) => a.begin - b.begin);
+  return { notes, dropped: events.length - notes.length };
+}
+__name(selectNotes, "selectNotes");
+function writeNoteTexels(notes, trackKeys, out) {
+  out.fill(0);
+  const row1 = STAVE_MAX_NOTES * RGBA;
+  const n = Math.min(notes.length, STAVE_MAX_NOTES);
+  for (let i = 0; i < n; i++) {
+    const e = notes[i];
+    const o = i * RGBA;
+    out[o] = e.begin;
+    out[o + 1] = e.end;
+    out[o + 2] = typeof e.midi === "number" && Number.isFinite(e.midi) ? e.midi : -1;
+    out[o + 3] = e.gain ?? 1;
+    out[row1 + o] = e.velocity ?? 1;
+    out[row1 + o + 1] = noteTrackIndex(e.trackKey, trackKeys);
+  }
+}
+__name(writeNoteTexels, "writeNoteTexels");
+var _GLSLNoteFeed = class _GLSLNoteFeed {
+  constructor() {
+    /** RGBA32F texels, row 0 then row 1. */
+    this.data = new Float32Array(STAVE_MAX_NOTES * 2 * RGBA);
+    /** Notes in `data` (`uNoteCount`). */
+    this.count = 0;
+    /** Notes the last pack dropped over the cap. */
+    this.dropped = 0;
+    /** Bumps on every repack; the GL side uploads when it differs from its own. */
+    this.version = 0;
+    /** Scheduler now (`uNow`) and cycles per second (`uCps`), set every frame. */
+    this.now = 0;
+    this.cps = 0;
+    this.windowVersion = null;
+    this.trackSig = "";
+    this.warned = false;
+  }
+  /**
+   * Feed one frame. `windowVersion` is the window's own change counter
+   * (`RollingHapWindow.version`); when it and the track list are unchanged the
+   * texels are left alone. Absent → always repack. Returns true when the texels
+   * were rewritten. `onDrop` runs once per feed, the first time notes are
+   * dropped over the cap.
+   */
+  update(events, windowVersion, now2, cps, trackKeys, onDrop) {
+    this.now = now2;
+    this.cps = cps;
+    const sig = trackKeys.join("\0");
+    if (windowVersion !== void 0 && windowVersion === this.windowVersion && sig === this.trackSig) {
+      return false;
+    }
+    this.windowVersion = windowVersion ?? null;
+    this.trackSig = sig;
+    const { notes, dropped } = selectNotes(events, now2);
+    writeNoteTexels(notes, trackKeys, this.data);
+    this.count = notes.length;
+    this.dropped = dropped;
+    this.version++;
+    if (dropped > 0 && !this.warned) {
+      this.warned = true;
+      onDrop?.(dropped, events.length);
+    }
+    return true;
+  }
+};
+__name(_GLSLNoteFeed, "GLSLNoteFeed");
+var GLSLNoteFeed = _GLSLNoteFeed;
+function droppedNotesMessage(dropped, total) {
+  return `GLSL: ${total} notes in the window (now\u22124 \u2026 now+2 cycles), but uNotes holds ${STAVE_MAX_NOTES}. Kept the ${STAVE_MAX_NOTES} nearest to now and dropped ${dropped}; uNoteCount says how many came through.`;
+}
+__name(droppedNotesMessage, "droppedNotesMessage");
+
 // src/visualizers/renderers/GLSLVizRenderer.ts
 var glslPerfSeq = 0;
 var _GLSLVizRenderer = class _GLSLVizRenderer extends VizRendererBase {
@@ -27319,6 +27520,12 @@ var _GLSLVizRenderer = class _GLSLVizRenderer extends VizRendererBase {
     this.bus = new SignalBus();
     this.hapStream = null;
     this.busHapHandler = null;
+    /** Upcoming notes (#2571): the live combined scheduler, read over the same
+     *  window the worker gets (now−4 … now+2), rolled forward instead of
+     *  re-queried whole, packed into `uNotes`. */
+    this.scheduler = null;
+    this.noteWindow = new RollingHapWindow(4, 2);
+    this.notes = new GLSLNoteFeed();
     this.loop = /* @__PURE__ */ __name((now2) => {
       if (this.paused || this.destroyed || !this.program) {
         this.rafId = null;
@@ -27336,11 +27543,25 @@ var _GLSLVizRenderer = class _GLSLVizRenderer extends VizRendererBase {
           events = readGLSLEvents(this.bus);
           tracks2 = readGLSLTracks(this.bus);
         }
+        const sched = this.scheduler;
+        if (sched && this.program.readsNotes) {
+          const t = sched.now();
+          const window2 = this.noteWindow.at(sched, t, (a, b) => sched.query(a, b));
+          this.notes.update(
+            window2,
+            this.noteWindow.version,
+            t,
+            sched.cps?.() ?? 0,
+            this.bus?.tracks ?? [],
+            (d, total) => emitLog({ level: "warn", runtime: "glsl", source: this.name || void 0, message: droppedNotesMessage(d, total) })
+          );
+        }
         this.program.draw(
           this.analyser,
           { width: this.size.w, height: this.size.h, timeMs: now2 - this.startMs },
           events,
-          tracks2
+          tracks2,
+          this.notes
         );
       } finally {
         perf.end("glsl.draw");
@@ -27355,6 +27576,7 @@ var _GLSLVizRenderer = class _GLSLVizRenderer extends VizRendererBase {
       this.analyser = components.audio?.analyser ?? null;
       this.bus?.bindScheduler(components.queryable?.scheduler, components.queryable?.trackSchedulers);
       this.bus?.bindAnalysers(components.audio?.analyser, components.audio?.trackAnalysers);
+      this.scheduler = components.queryable?.scheduler ?? null;
       this.bus?.setAliases(resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE));
       this.hapStream = components.streaming?.hapStream ?? null;
       if (this.hapStream && this.bus) {
@@ -27394,6 +27616,8 @@ var _GLSLVizRenderer = class _GLSLVizRenderer extends VizRendererBase {
     this.analyser = components.audio?.analyser ?? null;
     this.bus?.bindScheduler(components.queryable?.scheduler ?? null, components.queryable?.trackSchedulers);
     this.bus?.bindAnalysers(components.audio?.analyser ?? null, components.audio?.trackAnalysers);
+    this.scheduler = components.queryable?.scheduler ?? null;
+    this.noteWindow.reset();
   }
   resize(w, h) {
     this.size = { w, h };
@@ -27439,6 +27663,8 @@ var _GLSLVizRenderer = class _GLSLVizRenderer extends VizRendererBase {
     }
     this.hapStream = null;
     this.bus = null;
+    this.scheduler = null;
+    this.noteWindow.reset();
   }
 };
 __name(_GLSLVizRenderer, "GLSLVizRenderer");
@@ -32840,10 +33066,11 @@ var G_STRUCTURED = "signals \xB7 structured (on sig)";
 var G_CORE = "core";
 var G_GLSL_SCALARS = "signals \xB7 scalars (0..1)";
 var G_GLSL_TRACK = "signals \xB7 per-track";
+var G_GLSL_NOTES = "upcoming notes";
 var RULE = {
   p5: "rule: every signal lives on sig \u2014 sig.kick is a number, sig.fft an array, sig('bd') one sound",
   hydra: "rule: every signal lives on stave.sig \u2014 sig.kick() a number, sig.fft an array, sig('bd') one sound",
-  glsl: "rule: scalars are floats \xB7 spectrum/waveform = iChannel0 texture \xB7 per-track via staveTrack(i)",
+  glsl: "rule: scalars are floats \xB7 spectrum/waveform = iChannel0 texture \xB7 per-track via staveTrack(i) \xB7 notes via staveNote(i)",
   three: "rule: plain three.js; every signal lives on sig \u2014 sig.bass is a number, sig.fft an array, sig('bd') one sound"
 };
 var ENV_LIVE = /* @__PURE__ */ __name((env) => ({ kind: "scalar", read: env }), "ENV_LIVE");
@@ -32876,7 +33103,11 @@ var GLSL_GLOBALS = [
     live: { uRms: { kind: "scalar", read: "rms" }, uBass: { kind: "scalar", read: "bass" }, uMid: { kind: "scalar", read: "mid" }, uTreble: { kind: "scalar", read: "treble" } }
   },
   { group: G_GLSL_TRACK, decl: "uniform int       uTrackCount;", comment: "live track count", tokens: ["uTrackCount"] },
-  { group: G_GLSL_TRACK, decl: "StaveTrack        staveTrack(int i);", comment: "{ env, velocity, rms, bass, mid, treble } \u2014 per track i", tokens: ["staveTrack", "StaveTrack"] }
+  { group: G_GLSL_TRACK, decl: "StaveTrack        staveTrack(int i);", comment: "{ env, velocity, rms, bass, mid, treble } \u2014 per track i", tokens: ["staveTrack", "StaveTrack"] },
+  { group: G_GLSL_NOTES, decl: "uniform int       uNoteCount;", comment: "notes in uNotes (\u2264 STAVE_MAX_NOTES), now\u22124 \u2026 now+2 cycles", tokens: ["uNoteCount", "STAVE_MAX_NOTES"] },
+  { group: G_GLSL_NOTES, decl: "StaveNote         staveNote(int i);", comment: "{ begin, end, midi (\u22121 = drum), gain, velocity, track } \u2014 sorted by begin", tokens: ["staveNote", "StaveNote"] },
+  { group: G_GLSL_NOTES, decl: "uniform float     uNow, uCps;", comment: "scheduler now (cycles) \xB7 cycles per second", tokens: ["uNow", "uCps"] },
+  { group: G_GLSL_NOTES, decl: "uniform sampler2D uNotes;", comment: "the raw texture staveNote(i) reads (texelFetch)", tokens: ["uNotes"] }
 ];
 var P5_GLOBALS = [
   { group: G_CONTEXT, decl: "PatternScheduler  stave.scheduler;", comment: ".now(), .query(begin, end)", tokens: ["scheduler"] },

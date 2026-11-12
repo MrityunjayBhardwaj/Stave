@@ -56,6 +56,20 @@ export class RollingHapWindow {
   /** End of the span already queried (cycles); NaN = nothing queried yet. */
   private lastEnd = NaN
   private lastNow = NaN
+  /** Whether the held haps changed (reset, added or dropped) since the last
+   *  `at()` answer. */
+  private changed = true
+  /** Length of the last `at()` answer. */
+  private lastAnswerLength = -1
+  /**
+   * Moves whenever `at()` may answer with a different set of notes than last
+   * time; equal → the same notes. Never goes back, across resets too, so a
+   * consumer (the GLSL note texture, #2571) can skip repacking on an equal value.
+   * Held haps only grow into the answer as `now` moves forward (the front edge
+   * passes their onset), so an unchanged hold with an unchanged answer length is
+   * an unchanged answer.
+   */
+  version = 0
 
   constructor(
     private readonly back: number,
@@ -68,6 +82,7 @@ export class RollingHapWindow {
     this.events = []
     this.lastEnd = NaN
     this.lastNow = NaN
+    this.changed = true
   }
 
   /**
@@ -75,7 +90,13 @@ export class RollingHapWindow {
    * actual scheduler query (the sampler routes it through the per-tick cache).
    */
   at(sched: IRPattern, now: number, query: (a: number, b: number) => IREvent[]): IREvent[] {
-    return this.inWindow(this.advance(sched, now, query))
+    const answer = this.inWindow(this.advance(sched, now, query))
+    if (this.changed || answer.length !== this.lastAnswerLength) {
+      this.version++
+      this.changed = false
+      this.lastAnswerLength = answer.length
+    }
+    return answer
   }
 
   /**
@@ -96,13 +117,17 @@ export class RollingHapWindow {
       this.events = query(lo, hi + PREFETCH).filter((e) => e.end > lo + EDGE)
       this.lastEnd = hi + PREFETCH
       this.lastNow = now
+      this.changed = true
       return hi
     }
     if (hi > this.lastEnd) {
       const from = this.lastEnd
       const to = hi + PREFETCH
       for (const e of query(from, to)) {
-        if (e.begin >= from - EDGE) this.events.push(e)
+        if (e.begin >= from - EDGE) {
+          this.events.push(e)
+          this.changed = true
+        }
       }
       this.lastEnd = to
     }
@@ -113,6 +138,7 @@ export class RollingHapWindow {
       const e = this.events[r]
       if (e.end > lo + EDGE) this.events[w++] = e
     }
+    if (w !== this.events.length) this.changed = true
     this.events.length = w
     return hi
   }

@@ -104,6 +104,50 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 `uTrackCount` is capped at 16 tracks. `staveTrack`/`uTrackCount` are reserved —
 don't redeclare them (same rule as the other built-in uniforms).
 
+### Upcoming notes — `staveNote(i)`
+
+p5.js, Hydra and three.js sketches look ahead with `stave.scheduler.query()`. A
+shader can't run JavaScript each frame, so it gets the same notes — from 4 cycles
+ago to 2 cycles ahead — through `staveNote(i)`:
+
+```glsl
+struct StaveNote {
+  float begin;     // cycles, absolute — compare with uNow
+  float end;
+  float midi;      // MIDI number; -1.0 for a note with no pitch (a drum sample)
+  float gain;
+  float velocity;
+  int   track;     // the same index staveTrack(i) uses; -1 if none
+};
+uniform int   uNoteCount;       // how many notes there are (≤ STAVE_MAX_NOTES, 256)
+uniform float uNow;             // the current time, in cycles
+uniform float uCps;             // cycles per second, to turn cycles into seconds
+StaveNote staveNote(int i);     // i in [0, uNoteCount), sorted by begin
+```
+
+The field names are the ones `stave.scheduler.query()` gives a p5.js sketch.
+A piano roll, half a cycle behind and two ahead:
+
+```glsl
+void mainImage(out vec4 c, in vec2 p) {
+  vec2 uv = p / iResolution.xy;
+  float t = uNow - 0.5 + uv.x * 2.5;
+  c = vec4(0.0, 0.0, 0.0, 1.0);
+  for (int i = 0; i < uNoteCount; i++) {
+    StaveNote n = staveNote(i);
+    if (n.midi < 0.0 || t < n.begin || t >= n.end) continue;
+    float y = (n.midi - 24.0) / 72.0;
+    if (abs(uv.y - y) < 0.006) c = vec4(1.0, 0.6, 0.2, 1.0);
+  }
+  if (abs(t - uNow) < 0.003) c = vec4(1.0);
+}
+```
+
+If more than 256 notes fall in that window, the 256 nearest to now come through
+and the Console shows a warning once. `staveNote`, `StaveNote`, `uNotes` (the
+texture `staveNote` reads), `uNoteCount`, `uNow`, `uCps` and `STAVE_MAX_NOTES`
+are reserved too.
+
 ### The standard uniforms
 
 `iResolution` (viewport size), `iTime` (seconds since the viz started), and
