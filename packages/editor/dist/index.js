@@ -19963,6 +19963,14 @@ var _RollingHapWindow = class _RollingHapWindow {
    * actual scheduler query (the sampler routes it through the per-tick cache).
    */
   at(sched, now2, query) {
+    return this.inWindow(this.advance(sched, now2, query));
+  }
+  /**
+   * Bring the held haps up to `now` (query the new slice if the front edge has
+   * passed the prefetched span; drop what ended behind the window) without
+   * building the window's answer. Returns the window's front edge.
+   */
+  advance(sched, now2, query) {
     const lo = now2 - this.back;
     const hi = now2 + this.fwd;
     const stale = sched !== this.sched || !Number.isFinite(this.lastEnd) || now2 < this.lastNow || lo >= this.lastEnd;
@@ -19971,7 +19979,7 @@ var _RollingHapWindow = class _RollingHapWindow {
       this.events = query(lo, hi + PREFETCH).filter((e) => e.end > lo + EDGE);
       this.lastEnd = hi + PREFETCH;
       this.lastNow = now2;
-      return this.inWindow(hi);
+      return hi;
     }
     if (hi > this.lastEnd) {
       const from = this.lastEnd;
@@ -19988,7 +19996,22 @@ var _RollingHapWindow = class _RollingHapWindow {
       if (e.end > lo + EDGE) this.events[w++] = e;
     }
     this.events.length = w;
-    return this.inWindow(hi);
+    return hi;
+  }
+  /**
+   * The first time after `now` at which a query of `[t, t+span)` could answer
+   * differently: a held note's `begin − span` (it starts to intersect) or its
+   * `end` (it stops), capped at `lastEnd − span`, beyond which nothing has been
+   * fetched yet. Call after `advance(…, now, …)`.
+   */
+  nextChange(now2, span) {
+    let next = this.lastEnd - span;
+    for (const e of this.events) {
+      const on = e.begin - span;
+      if (on > now2 && on < next) next = on;
+      if (e.end > now2 && e.end < next) next = e.end;
+    }
+    return next;
   }
   /** The held haps that have started before the window's front edge (the rest
    *  were prefetched and wait for the window to reach them). */
@@ -19998,6 +20021,40 @@ var _RollingHapWindow = class _RollingHapWindow {
 };
 __name(_RollingHapWindow, "RollingHapWindow");
 var RollingHapWindow = _RollingHapWindow;
+
+// src/visualizers/worker/activeNowCache.ts
+var _ActiveNowCache = class _ActiveNowCache {
+  constructor(span) {
+    this.span = span;
+    this.window = new RollingHapWindow(0, 0);
+    this.sched = null;
+    this.answer = [];
+    this.validUntil = -Infinity;
+    this.lastNow = NaN;
+  }
+  reset() {
+    this.window.reset();
+    this.sched = null;
+    this.answer = [];
+    this.validUntil = -Infinity;
+    this.lastNow = NaN;
+  }
+  /** The haps a `query(now, now + span)` returns, re-queried only on a change. */
+  at(sched, now2, query) {
+    this.window.advance(sched, now2, query);
+    const stale = sched !== this.sched || !(now2 >= this.lastNow) || // first call (NaN) or time went backwards
+    now2 >= this.validUntil - EDGE;
+    this.lastNow = now2;
+    if (stale) {
+      this.sched = sched;
+      this.answer = query(now2, now2 + this.span);
+      this.validUntil = this.window.nextChange(now2, this.span);
+    }
+    return this.answer;
+  }
+};
+__name(_ActiveNowCache, "ActiveNowCache");
+var ActiveNowCache = _ActiveNowCache;
 
 // src/visualizers/worker/signalFrame.ts
 var MASTER_KEY = "master";
@@ -20091,6 +20148,10 @@ var _MainSignalSampler = class _MainSignalSampler {
     /** The wide window, advanced by querying only the new sliver each frame
      *  (#2563) instead of the whole window. Reset on every rebind. */
     this.rawWindow = new RollingHapWindow(RAW_QUERY_BACK, RAW_QUERY_FWD);
+    /** "What's playing now" for the combined pattern and per track, re-queried
+     *  only when a note starts or ends (#2567). Reset on every rebind. */
+    this.activeNow = new ActiveNowCache(EPSILON2);
+    this.activeNowByTrack = /* @__PURE__ */ new Map();
     /** Haps accumulated since the last `sample()` (the envelope feed). */
     this.pendingBumps = [];
     this.boundStream = null;
@@ -20107,6 +20168,8 @@ var _MainSignalSampler = class _MainSignalSampler {
   bind(inputs) {
     this.inputs = inputs;
     this.rawWindow.reset();
+    this.activeNow.reset();
+    this.activeNowByTrack = /* @__PURE__ */ new Map();
   }
   /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
    *  — so the bump feed survives a re-evaluate that swaps the stream (mirror
@@ -20138,14 +20201,14 @@ var _MainSignalSampler = class _MainSignalSampler {
     const { scheduler, trackSchedulers, masterAnalyser, trackAnalysers } = this.inputs;
     const seq = ++this.seq;
     const now2 = scheduler ? scheduler.now() : 0;
-    const begin = now2;
-    const end = now2 + EPSILON2;
     const queryAt = /* @__PURE__ */ __name((sched, a, b) => cache3 ? cache3.query(sched, a, b, () => sched.query(a, b)) : sched.query(a, b), "queryAt");
-    const activeEvents = scheduler ? queryAt(scheduler, begin, end).map(summariseEvent) : [];
+    const activeEvents = scheduler ? this.activeNow.at(scheduler, now2, (a, b) => queryAt(scheduler, a, b)).map(summariseEvent) : [];
     const activeByTrack = [];
     if (trackSchedulers) {
       for (const [key3, sched] of trackSchedulers) {
-        activeByTrack.push([key3, queryAt(sched, begin, end).map(summariseEvent)]);
+        let cache4 = this.activeNowByTrack.get(key3);
+        if (!cache4) this.activeNowByTrack.set(key3, cache4 = new ActiveNowCache(EPSILON2));
+        activeByTrack.push([key3, cache4.at(sched, now2, (a, b) => queryAt(sched, a, b)).map(summariseEvent)]);
       }
     }
     const readBytes = /* @__PURE__ */ __name((key3, an) => cache3 ? cache3.readAnalyser(key3, an, (a) => readAnalyserBytes(key3, a)) : readAnalyserBytes(key3, an), "readBytes");
@@ -20177,6 +20240,8 @@ var _MainSignalSampler = class _MainSignalSampler {
     this.pendingBumps = [];
     this.inputs = {};
     this.rawWindow.reset();
+    this.activeNow.reset();
+    this.activeNowByTrack = /* @__PURE__ */ new Map();
   }
   /** The next seq an `emptyFrame` should carry (test/demo helper). */
   emptyFrame() {

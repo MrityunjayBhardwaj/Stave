@@ -39,7 +39,7 @@ import type { IRPattern, IREvent } from '../../codeView'
  * (a full query drops it). Note times are small-denominator rationals, so no
  * real onset or end lies within 1e-6 of an edge without being ON it.
  */
-const EDGE = 1e-6
+export const EDGE = 1e-6
 
 /**
  * How far past the window's front edge each new query reaches (cycles). Every
@@ -75,6 +75,15 @@ export class RollingHapWindow {
    * actual scheduler query (the sampler routes it through the per-tick cache).
    */
   at(sched: IRPattern, now: number, query: (a: number, b: number) => IREvent[]): IREvent[] {
+    return this.inWindow(this.advance(sched, now, query))
+  }
+
+  /**
+   * Bring the held haps up to `now` (query the new slice if the front edge has
+   * passed the prefetched span; drop what ended behind the window) without
+   * building the window's answer. Returns the window's front edge.
+   */
+  advance(sched: IRPattern, now: number, query: (a: number, b: number) => IREvent[]): number {
     const lo = now - this.back
     const hi = now + this.fwd
     const stale =
@@ -87,7 +96,7 @@ export class RollingHapWindow {
       this.events = query(lo, hi + PREFETCH).filter((e) => e.end > lo + EDGE)
       this.lastEnd = hi + PREFETCH
       this.lastNow = now
-      return this.inWindow(hi)
+      return hi
     }
     if (hi > this.lastEnd) {
       const from = this.lastEnd
@@ -105,7 +114,23 @@ export class RollingHapWindow {
       if (e.end > lo + EDGE) this.events[w++] = e
     }
     this.events.length = w
-    return this.inWindow(hi)
+    return hi
+  }
+
+  /**
+   * The first time after `now` at which a query of `[t, t+span)` could answer
+   * differently: a held note's `begin − span` (it starts to intersect) or its
+   * `end` (it stops), capped at `lastEnd − span`, beyond which nothing has been
+   * fetched yet. Call after `advance(…, now, …)`.
+   */
+  nextChange(now: number, span: number): number {
+    let next = this.lastEnd - span
+    for (const e of this.events) {
+      const on = e.begin - span
+      if (on > now && on < next) next = on
+      if (e.end > now && e.end < next) next = e.end
+    }
+    return next
   }
 
   /** The held haps that have started before the window's front edge (the rest
