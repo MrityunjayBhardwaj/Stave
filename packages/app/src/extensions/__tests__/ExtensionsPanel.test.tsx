@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { enabledExtensionIds, setExtensionEnabled, type ExtensionManifest } from "@stave/editor";
 import { ExtensionsPanel } from "../ExtensionsPanel";
-import { ExtensionPage, extensionAppTabs, sectionOf } from "../ExtensionPage";
+import { ExtensionPage, extensionAppTabs, sectionOf, sectionsOf } from "../ExtensionPage";
 import { ExtensionFailureSource, type FailureSource } from "../useExtensionSwitches";
 
 /** A stand-in for the page runtime's failures, settable from the test. */
@@ -38,6 +38,19 @@ const tone: ExtensionManifest = {
   about: { version: "1.2.3", worklets: ["the tone"] },
 };
 const keys: ExtensionManifest = { id: "zz-keys", name: "Keys", description: "Keys", languages: "*", load };
+const withKeys: ExtensionManifest = {
+  id: "zz-keyed",
+  name: "Keyed",
+  description: "Takes keys",
+  languages: "*",
+  provides: {
+    keys: [
+      { key: "ctrl+r", name: "Redo", where: "code" },
+      { key: "ctrl+p", name: "Up a line", where: "code", givenBack: true },
+    ],
+  },
+  load,
+};
 
 afterEach(() => {
   cleanup();
@@ -197,6 +210,39 @@ describe("the page", () => {
     expect(sectionOf({ section: "nope" })).toBe("details");
     expect(sectionOf(["adds"])).toBe("details");
     expect(sectionOf(undefined)).toBe("details");
+    // #2545 — Keys only for an extension that declares keys
+    expect(sectionOf({ section: "keys" }, withKeys)).toBe("keys");
+    expect(sectionOf({ section: "keys" }, tone)).toBe("details");
+    expect(sectionOf({ section: "keys" })).toBe("details");
+  });
+
+  it("an extension that declares keys has a Keys tab listing each key with its toggle; one without has none", () => {
+    expect(sectionsOf(tone).map((s) => s.id)).toEqual(["details", "adds", "changes"]);
+    expect(sectionsOf(withKeys).map((s) => s.id)).toEqual(["details", "adds", "keys", "changes"]);
+    const { container } = render(<ExtensionPage manifest={withKeys} section="keys" onSection={() => {}} />);
+    expect(q(container, '[data-extension-section="keys"]')).not.toBeNull();
+    const rows = container.querySelectorAll("[data-extension-key]");
+    expect([...rows].map((r) => r.getAttribute("data-extension-key"))).toEqual(["ctrl+r", "ctrl+p"]);
+    // handed back by default shows that way until changed
+    expect(q(container, '[data-extension-key="ctrl+p"]')!.getAttribute("data-given-back")).toBe("true");
+    expect(q(container, '[data-extension-key-toggle="ctrl+p"]')!.textContent).toBe("Use in Keyed");
+    expect(q(container, '[data-extension-key-toggle="ctrl+r"]')!.textContent).toBe("Give back to Stave");
+
+    act(() => fireEvent.click(q(container, '[data-extension-key-toggle="ctrl+r"]')!));
+    expect(q(container, '[data-extension-key="ctrl+r"]')!.getAttribute("data-given-back")).toBe("true");
+    expect(q(container, '[data-extension-key-where="ctrl+r"]')!.textContent).toContain("(your choice)");
+    act(() => fireEvent.click(q(container, '[data-extension-key-toggle="ctrl+r"]')!));
+    expect(localStorage.getItem("stave:extension-keys")).toBe("{}");
+    expect(localStorage.getItem("stave:keybindings")).toBeNull();
+  });
+
+  it("What it adds counts its keys; the page without keys has no Keys tab", () => {
+    const { container } = render(<ExtensionPage manifest={withKeys} section="adds" onSection={() => {}} />);
+    expect(q(container, '[data-adds-kind="Keys"]')!.textContent).toContain("2 keys inside the code");
+    cleanup();
+    const plain = render(<ExtensionPage manifest={tone} section="adds" onSection={() => {}} />);
+    expect(q(plain.container, '[data-extension-section="keys"]')).toBeNull();
+    expect(q(plain.container, '[data-adds-kind="Keys"]')).toBeNull();
   });
 
   it("one app tab per listed extension, keyed by id and labelled by name", () => {

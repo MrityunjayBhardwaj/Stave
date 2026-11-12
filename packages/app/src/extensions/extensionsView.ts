@@ -157,8 +157,9 @@ export function addsOf(m: ExtensionManifest): AddsLine[] {
     lines.push({ kind: worklets.length === 1 ? "Audio worklet" : `Audio worklets (${worklets.length})`, text: worklets.join("; ") });
   }
   if (m.about?.prepares) lines.push({ kind: "Before playing", text: m.about.prepares });
-  // #2513 adds the keys an extension declares (`provides.keys`) here and in their own
-  // section of the page.
+  // #2545 — the keys it declares, counted here; each one, with its toggle, is on the Keys tab
+  const keys = m.provides?.keys?.length ?? 0;
+  if (keys) lines.push({ kind: "Keys", text: `${keys === 1 ? "one key" : `${keys} keys`} inside the code — see Keys` });
   return lines;
 }
 

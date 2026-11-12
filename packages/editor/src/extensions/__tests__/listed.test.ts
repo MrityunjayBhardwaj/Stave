@@ -7,7 +7,8 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { BUILTIN_EXTENSIONS, listedExtensions } from '../builtin'
-import { E2E_TONE, E2E_TONE_ID, E2E_TONE_SOUND } from '../e2eTone'
+import { E2E_TONE, E2E_TONE_ID, E2E_TONE_KEY, E2E_TONE_SOUND } from '../e2eTone'
+import { checkExtensionKeys, keysTakenBy } from '../keys'
 import { createExtensionManager } from '../manager'
 
 const g = globalThis as { __STAVE_E2E__?: unknown }
@@ -52,6 +53,13 @@ describe('what a manifest says it adds matches its code', () => {
 })
 
 describe('the test tone', () => {
+  it('declares one key, on Toggle Sidebar\'s chord, taken inside the code (#2545)', () => {
+    expect(E2E_TONE.provides?.keys).toEqual([E2E_TONE_KEY])
+    expect(E2E_TONE_KEY).toMatchObject({ key: 'mod+b', where: 'code' })
+    expect(() => checkExtensionKeys(E2E_TONE)).not.toThrow()
+    expect(keysTakenBy([E2E_TONE]).map((k) => k.key)).toEqual(['mod+b'])
+  })
+
   it('declares the one sound it registers, for Strudel only', async () => {
     expect(E2E_TONE.languages).toEqual(['strudel'])
     expect(E2E_TONE.provides?.strudel?.sounds).toEqual([E2E_TONE_SOUND])

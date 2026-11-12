@@ -16,6 +16,29 @@ import {
 } from "../../commands/keybindings";
 import { EDITOR_OWNED_KEYS, EDITOR_OWNED_CATEGORY } from "./editorOwnedKeys";
 import { IconWarn } from "./icons";
+import {
+  clashLine,
+  commandSource,
+  extensionClashes,
+  extensionKeyRows,
+  extensionRowMatches,
+  extensionSource,
+  liveFilter,
+  sharedKeyLines,
+  toggleAriaLabel,
+  sourceLabel,
+  sourceOptions,
+  sourceShows,
+  toggleExtensionKey,
+  toggleLabel,
+  whereLine,
+  withKeys,
+  type CommandKeys,
+  type ExtensionKeyRow,
+  type KeySource,
+  type SourceFilter,
+} from "../../extensions/extensionKeysView";
+import { useExtensionKeysSource, useExtensionKeysVersion } from "../../extensions/useExtensionKeys";
 
 interface KeyboardShortcutsPanelProps {
   query: string;
@@ -34,14 +57,25 @@ interface Row {
  * - B2: inline conflict badge when a chord collides with another command;
  *   per-binding reset (only shown when overridden) + a global
  *   "Reset all keybindings".
- * - B3: editor-owned Monaco keys render as read-only "System" rows in an
- *   "Editor" category — searchable, but not rebindable (dispatcher-skipped).
+ * - B3: editor-owned Monaco keys render as read-only rows in an "Editor"
+ *   category — searchable, but not rebindable (dispatcher-skipped).
+ * - #2545, as VS Code's Keyboard Shortcuts: every row says where it comes from
+ *   (Source: Stave, You, or an extension) and the list can be narrowed to one
+ *   source. While an extension that declares keys is on, its keys are read-only
+ *   rows in a group of their own, each with "Give back to Stave" / "Use in …"
+ *   (the extension's own setting, the same one its page shows), and a Stave
+ *   command whose key it takes inside the code carries a conflict badge. Switched
+ *   off, its rows and badges go. Nothing here writes the person's shortcuts
+ *   except their own rebinds and resets.
  */
 export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
   const [ver, force] = useState(0);
   const tick = () => force((t) => t + 1);
-  const [activeCat, setActiveCat] = useState("all");
+  const [chosenCat, setActiveCat] = useState("all");
   const [capturingId, setCapturingId] = useState<string | null>(null);
+  const [chosenSource, setSource] = useState<SourceFilter>("all");
+  const extensionKeys = useExtensionKeysSource();
+  const extVer = useExtensionKeysVersion();
 
   useEffect(() => subscribeToCommands(tick), []);
   useEffect(() => subscribeKeybindings(tick), []);
@@ -84,17 +118,86 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, ver]);
 
-  const rowMatches = (r: Row): boolean =>
-    !q || `${r.cmd.category ?? ""} ${r.cmd.title}`.toLowerCase().includes(q);
-  const editorKeyMatches = (name: string): boolean => !q || name.toLowerCase().includes(q);
+  // #2545 — the switched-on extensions that declare keys, their rows, and the keys they
+  // take in the code now. Read fresh whenever an extension switches or a key is handed
+  // back (`extVer`), or a rebind changes which Stave commands share a key (`ver`).
+  const { extensions, extensionGroups, taken, commandKeys } = useMemo(() => {
+    const keysOf = (c: Command): CommandKeys => ({
+      id: c.id,
+      title: c.title,
+      scope: c.scope,
+      chords: getKeybindingFor(c) ? getKeybindingsFor(c) : [],
+      overridden: isKeybindingOverridden(c.id),
+    });
+    const all = listCommands().map(keysOf);
+    const exts = withKeys(extensionKeys.active());
+    return {
+      extensions: exts,
+      extensionGroups: exts.map((m) => ({ manifest: m, rows: extensionKeyRows(m, all) })),
+      taken: extensionKeys.taken(),
+      commandKeys: keysOf,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extensionKeys, extVer, ver]);
+  const source = liveFilter(chosenSource, extensions);
+  // An extension's nav item goes when it is switched off; showing nothing under it would look broken.
+  const activeCat =
+    chosenCat.startsWith("extension:") && !extensionGroups.some((g) => extensionSource(g.manifest.id) === chosenCat)
+      ? "all"
+      : chosenCat;
+  // … and once it is gone, so is the choice: switching it on again starts from All, not
+  // from a filter or category the person can no longer see was chosen.
+  useEffect(() => {
+    if (source !== chosenSource) setSource(source);
+    if (activeCat !== chosenCat) setActiveCat(activeCat);
+  }, [source, chosenSource, activeCat, chosenCat]);
 
-  const totalCount = listCommands().length + EDITOR_OWNED_KEYS.length;
-  const editorMatchCount = EDITOR_OWNED_KEYS.filter((k) => editorKeyMatches(k.name)).length;
-
-  // Which categories to render (command cats + the synthetic Editor group).
-  const showCat = (cat: string): boolean => {
+  // Which categories to render (command cats + the synthetic Editor group + one per extension).
+  function showCatNow(cat: string): boolean {
     if (searching) return true;
     return activeCat === "all" || activeCat === cat;
+  }
+  const showCat = showCatNow;
+
+  const rowSource = (r: Row): KeySource => commandSource(isKeybindingOverridden(r.cmd.id));
+  const rowMatches = (r: Row): boolean =>
+    (!q || `${r.cmd.category ?? ""} ${r.cmd.title}`.toLowerCase().includes(q)) && sourceShows(source, rowSource(r));
+  const editorKeyMatches = (name: string): boolean =>
+    (!q || name.toLowerCase().includes(q)) && sourceShows(source, "stave");
+  const extensionRowShows = (r: ExtensionKeyRow): boolean => extensionRowMatches(r, q) && sourceShows(source, r.source);
+
+  const extensionRowCount = extensionGroups.reduce((n, g) => n + g.rows.length, 0);
+  const totalCount = listCommands().length + EDITOR_OWNED_KEYS.length + extensionRowCount;
+  const editorMatchCount = EDITOR_OWNED_KEYS.filter((k) => editorKeyMatches(k.name)).length;
+  // What the pane shows now, in the chosen category: none of it is the empty message.
+  const visibleCount =
+    commandCats.filter(showCatNow).reduce((n, cat) => n + (byCat.get(cat) ?? []).filter(rowMatches).length, 0) +
+    (showCatNow(EDITOR_OWNED_CATEGORY) ? editorMatchCount : 0) +
+    extensionGroups
+      .filter((g) => showCatNow(extensionSource(g.manifest.id)))
+      .reduce((n, g) => n + g.rows.filter(extensionRowShows).length, 0);
+
+
+  const sourceTag = (s: KeySource, testId: string): React.ReactNode => (
+    <span
+      className={`tag kb-src${s.startsWith("extension:") ? " ext" : ""}`}
+      data-testid={testId}
+      data-source={s}
+      title="Source"
+    >
+      {sourceLabel(s, extensions)}
+    </span>
+  );
+
+  /** "Inside the code, Vim uses this key", under a Stave command or editor key an extension takes. */
+  const clashBadge = (c: CommandKeys, testId: string): React.ReactNode => {
+    const clashes = extensionClashes(c, taken);
+    if (!clashes.length) return null;
+    return (
+      <div className="conflict" data-testid={testId}>
+        <IconWarn /> {clashLine(clashes)}
+      </div>
+    );
   };
 
   const renderChord = (r: Row): React.ReactNode => {
@@ -143,8 +246,10 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
               <strong style={{ margin: "0 3px" }}>{conflicts.map((c) => c.title).join(", ")}</strong> — one will win.
             </div>
           ) : null}
+          {clashBadge(commandKeys(r.cmd), `ext-conflict-${r.cmd.id}`)}
         </div>
         <div className="kb-right">
+          {sourceTag(rowSource(r), `source-${r.cmd.id}`)}
           {overridden ? (
             <button
               className="kb-reset"
@@ -156,6 +261,46 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
             </button>
           ) : null}
           {renderChord(r)}
+        </div>
+      </div>
+    );
+  };
+
+  /** One of an extension's keys: read-only, with the toggle between the extension and Stave. */
+  const renderExtensionRow = (r: ExtensionKeyRow): React.ReactNode => {
+    const id = `${r.extensionId}-${r.key}`;
+    return (
+      <div
+        className={`kb-row${r.givenBack ? " given" : ""}`}
+        key={id}
+        data-testid={`ext-key-${id}`}
+        data-given-back={r.givenBack ? "true" : "false"}
+      >
+        <div className="kb-cmd">
+          <div className="kb-name">{r.name}</div>
+          <div className="kb-when" data-testid={`ext-where-${id}`}>
+            inside the code · {whereLine(r.givenBack, r.extensionName)}
+          </div>
+          {sharedKeyLines(r).map((line) => (
+            <div className="kb-when" key={line} data-testid={`ext-shared-${id}`}>
+              {line}
+            </div>
+          ))}
+        </div>
+        <div className="kb-right">
+          <button
+            type="button"
+            className="kb-give"
+            data-testid={`ext-toggle-${id}`}
+            aria-label={toggleAriaLabel(r.givenBack, r.key, r.extensionName)}
+            onClick={() => toggleExtensionKey(r, r.extensionId)}
+          >
+            {toggleLabel(r.givenBack, r.extensionName)}
+          </button>
+          {sourceTag(r.source, `source-${id}`)}
+          <span className="chord system" title="Declared by the extension; not rebindable here">
+            {keybindingTokens(r.key).map((t, i) => <kbd key={i}>{t}</kbd>)}
+          </span>
         </div>
       </div>
     );
@@ -183,9 +328,39 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
           <span>{EDITOR_OWNED_CATEGORY}</span>
           <span className="nav-count">{EDITOR_OWNED_KEYS.length}</span>
         </button>
+        {extensionGroups.length ? <div className="nav-eyebrow">Extensions</div> : null}
+        {extensionGroups.map((g) => {
+          const cat = extensionSource(g.manifest.id);
+          return (
+            <button
+              key={cat}
+              className="nav-item"
+              data-testid={`keys-nav-${cat}`}
+              aria-current={!searching && activeCat === cat}
+              onClick={() => setActiveCat(cat)}
+            >
+              <span>{g.manifest.name}</span>
+              <span className="nav-count">{g.rows.length}</span>
+            </button>
+          );
+        })}
       </nav>
 
       <div className="content" tabIndex={-1} data-testid="keys-content">
+        <div className="src-filter" role="group" aria-label="Source" data-testid="source-filter">
+          <span>Source</span>
+          {sourceOptions(extensions).map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              aria-pressed={source === o.id}
+              data-testid={`source-filter-${o.id}`}
+              onClick={() => setSource(o.id)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
         {hasAnyKeybindingOverride() ? (
           <div className="grp-head" style={{ paddingTop: 10 }}>
             <button className="reset" data-testid="reset-all-keybindings" onClick={() => resetAllKeybindings()}>
@@ -218,9 +393,15 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
             </div>
             {EDITOR_OWNED_KEYS.filter((k) => editorKeyMatches(k.name)).map((k) => (
               <div className="kb-row" key={k.name}>
-                <div className="kb-cmd"><div className="kb-name">{k.name}</div></div>
+                <div className="kb-cmd">
+                  <div className="kb-name">{k.name}</div>
+                  {clashBadge(
+                    { id: k.name, title: k.name, chords: [k.chord], overridden: false },
+                    `ext-conflict-${k.name}`,
+                  )}
+                </div>
                 <div className="kb-right">
-                  <span className="tag">System</span>
+                  {sourceTag("stave", `source-${k.name}`)}
                   <span className="chord system" data-testid={`system-${k.name}`}>
                     {keybindingTokens(k.chord).map((t, i) => <kbd key={i}>{t}</kbd>)}
                   </span>
@@ -230,10 +411,31 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
           </section>
         ) : null}
 
-        {searching &&
-        commandCats.every((cat) => (byCat.get(cat) ?? []).filter(rowMatches).length === 0) &&
-        editorMatchCount === 0 ? (
-          <div className="empty">No shortcuts match “{query}”.</div>
+        {/* #2545 — each switched-on extension's keys: read-only, inside the code. */}
+        {extensionGroups.map((g) => {
+          const cat = extensionSource(g.manifest.id);
+          const rows = g.rows.filter(extensionRowShows);
+          if (!showCat(cat) || rows.length === 0) return null;
+          return (
+            <section className="grp" key={cat} data-testid={`keys-section-${cat}`}>
+              <div className="grp-head">
+                <div className="grp-title">{g.manifest.name}</div>
+                <span className="badge">From the {g.manifest.name} extension</span>
+              </div>
+              <div className="grp-note">
+                Keys {g.manifest.name} uses inside the code while it is on. They are not your shortcuts and can’t
+                be rebound here; give one back and Stave’s own command runs there instead. The same choice is on
+                the extension’s page.
+              </div>
+              {rows.map(renderExtensionRow)}
+            </section>
+          );
+        })}
+
+        {visibleCount === 0 ? (
+          <div className="empty" data-testid="keys-empty">
+            {searching ? <>No shortcuts match “{query}”.</> : source === "you" ? <>You haven’t changed any shortcuts yet.</> : <>No shortcuts here.</>}
+          </div>
         ) : null}
       </div>
     </>

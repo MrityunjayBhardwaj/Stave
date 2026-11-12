@@ -197,8 +197,18 @@ export function pageExtensions(): ExtensionRuntime {
  * a code editor; Keyboard Shortcuts (#2545) shows it. An extension still loading takes none.
  */
 export function extensionKeysInCode(runtime: ExtensionRuntime = pageExtensions()): ExtensionKeyInCode[] {
+  return keysTakenBy(activeExtensionManifests(runtime))
+}
+
+/**
+ * The manifests of the extensions switched on in this page right now, in the order they
+ * came on (#2545). Keyboard Shortcuts lists the keys of these, handed back or not; an
+ * extension still loading, or one that failed to switch on, is not among them, so the
+ * panel shows exactly the extensions whose keys the dispatcher reads.
+ */
+export function activeExtensionManifests(runtime: ExtensionRuntime = pageExtensions()): ExtensionManifest[] {
   const m = runtime.manager
-  return keysTakenBy(m.activeIds().flatMap((id) => m.manifest(id) ?? []))
+  return m.activeIds().flatMap((id) => m.manifest(id) ?? [])
 }
 
 /**

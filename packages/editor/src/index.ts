@@ -353,6 +353,7 @@ export {
   RESIDUE,
   E2E_TONE_ID,
   E2E_TONE_SOUND,
+  E2E_TONE_KEY,
   // #2552 — why switching one on failed, and hearing when that changes
   extensionFailure,
   onPageExtensionsChange,
@@ -363,6 +364,8 @@ export type { ExtensionAbout, ExtensionLanguage } from './extensions'
 // types an extension's page and the Shortcuts panel show.
 export {
   extensionKeysInCode,
+  // #2545 — the switched-on extensions, so Keyboard Shortcuts lists their keys
+  activeExtensionManifests,
   hasActiveExtensions,
   extensionKeys,
   isExtensionKeyGivenBack,

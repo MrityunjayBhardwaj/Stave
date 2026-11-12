@@ -16,6 +16,9 @@ export const E2E_TONE_ID = 'e2e-tone'
 export const E2E_TONE_SOUND = 'e2etone'
 const PROCESSOR = 'stave-e2e-tone'
 
+/** The key it declares (#2545): Toggle Sidebar's chord, taken inside the code. */
+export const E2E_TONE_KEY = { key: 'mod+b', name: 'A test key that does nothing', where: 'code' } as const
+
 /** The worklet: a sine between `begin` and `end` (audio-clock seconds), then it ends itself. */
 const PROCESSOR_SOURCE = `
 class StaveE2ETone extends AudioWorkletProcessor {
@@ -93,7 +96,14 @@ export const E2E_TONE: ExtensionManifest = {
   name: 'Test tone',
   description: 'A sine tone for end-to-end tests',
   languages: ['strudel'],
-  provides: { strudel: { sounds: [E2E_TONE_SOUND] } },
+  provides: {
+    strudel: { sounds: [E2E_TONE_SOUND] },
+    // #2545 — one key on a Stave command's chord (Toggle Sidebar, on every platform), so a
+    // browser test can see Keyboard Shortcuts mark the clash and hand the key back. The
+    // extension does nothing with it: while it is taken, the key simply runs no Stave
+    // command inside the code.
+    keys: [E2E_TONE_KEY],
+  },
   load,
   about: {
     version: '0.0.1',
@@ -106,6 +116,10 @@ export const E2E_TONE: ExtensionManifest = {
         heading: 'Play it like any sound',
         text: 'Switch it on, then use it as a sound name. It plays live and in bounces.',
         code: 'note("c4 e4 g4").s("e2etone")',
+      },
+      {
+        heading: 'Keys',
+        text: 'It takes one key inside the code, the one Stave uses to toggle the sidebar, and does nothing with it. It is there to test how Keyboard Shortcuts shows an extension’s keys.',
       },
     ],
     changes: [{ version: '0.0.1', note: 'First version.' }],
