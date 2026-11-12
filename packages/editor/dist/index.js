@@ -120,6 +120,15 @@ function pageCodeEditors() {
   return page;
 }
 __name(pageCodeEditors, "pageCodeEditors");
+var closeAll = null;
+function setCloseAllCodeEditors(fn) {
+  closeAll = fn;
+}
+__name(setCloseAllCodeEditors, "setCloseAllCodeEditors");
+function closeAllCodeEditors() {
+  closeAll?.();
+}
+__name(closeAllCodeEditors, "closeAllCodeEditors");
 function offerCodeEditor(site) {
   return pageCodeEditors().offer(site);
 }
@@ -382,6 +391,9 @@ function createCommonHost(id, opts = {}) {
             get language() {
               return site.language();
             },
+            close() {
+              if (!done) site.close?.();
+            },
             get bar() {
               if (done) return site.bar.ownerDocument.createElement("div");
               if (!strip) {
@@ -419,6 +431,9 @@ function createCommonHost(id, opts = {}) {
       },
       takesKey(key3) {
         return !closed && !!opts.manifest && !isExtensionKeyGivenBack(opts.manifest, key3);
+      },
+      closeAllEditors() {
+        if (!closed) closeAllCodeEditors();
       },
       keyOf(event) {
         return opts.manifest ? declaredKeyOf(opts.manifest, event) : null;
@@ -862,8 +877,8 @@ var VIM = {
         text: "Each code editor gets a bar underneath it. The mode is on the left and the keys you have typed so far are on the right. Press : to type a command in that editor\u2019s bar. Enter runs it and Esc closes it. With two editors side by side, each has its own bar."
       },
       {
-        heading: "Saving",
-        text: "Stave saves as you type, so :w, :q and the like show \u201CStave saves as you type\u201D and do nothing else."
+        heading: "Saving and closing",
+        text: "Stave saves as you type, so :w and :wa just say \u201CStave saves as you type\u201D. :q, :wq and :x close the tab you typed them in, and :qa, :wqa and :xa close every code tab, as VS Code\u2019s Vim does. Nothing is ever lost."
       },
       {
         heading: "Keys",
@@ -37375,13 +37390,16 @@ function EditorView({
   onPlay,
   onStop,
   onEditViz,
-  onCropViz
+  onCropViz,
+  onCloseTab
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
   const containerRef = useRef(null);
   const barRef = useRef(null);
   const fileIdRef = useRef(fileId);
   fileIdRef.current = fileId;
+  const onCloseTabRef = useRef(onCloseTab);
+  onCloseTabRef.current = onCloseTab;
   const [, forceViewTick] = useState(0);
   useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
   const viewedContent = getViewedContent(fileId);
@@ -37576,7 +37594,8 @@ function EditorView({
         monaco,
         readOnly: viewing,
         bar: barRef.current,
-        language: /* @__PURE__ */ __name(() => getFile(fileIdRef.current)?.language ?? null, "language")
+        language: /* @__PURE__ */ __name(() => getFile(fileIdRef.current)?.language ?? null, "language"),
+        close: /* @__PURE__ */ __name(() => onCloseTabRef.current?.(), "close")
       });
     }
     onMount?.(editor, monaco);
@@ -38406,6 +38425,8 @@ function HistoryViewOverlay({
   const barRef = React48.useRef(null);
   const shownRef = React48.useRef({ history: history2, fileId });
   shownRef.current = { history: history2, fileId };
+  const onCloseRef = React48.useRef(onClose);
+  onCloseRef.current = onClose;
   const handleMount = React48.useCallback(
     (editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
@@ -38421,7 +38442,8 @@ function HistoryViewOverlay({
           language: /* @__PURE__ */ __name(() => {
             const { history: h, fileId: f } = shownRef.current;
             return h.fileMeta[f]?.language ?? null;
-          }, "language")
+          }, "language"),
+          close: /* @__PURE__ */ __name(() => onCloseRef.current(), "close")
         });
       }
     },
@@ -50273,6 +50295,36 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     },
     [groups, layout, handleTabClose]
   );
+  const pendingCloseRef = useRef([]);
+  const closeNextPending = useCallback(() => {
+    const open = /* @__PURE__ */ new Set();
+    for (const g of groups.values()) for (const t of g.tabs) open.add(t.id);
+    const queue2 = pendingCloseRef.current;
+    while (queue2.length && !open.has(queue2[0])) queue2.shift();
+    const next = queue2.shift();
+    if (next) closeTabById(next);
+  }, [groups, closeTabById]);
+  useEffect(() => {
+    if (pendingCloseRef.current.length) closeNextPending();
+  }, [groups, closeNextPending]);
+  const closeNextRef = useRef(closeNextPending);
+  closeNextRef.current = closeNextPending;
+  const groupsRef = useRef(groups);
+  groupsRef.current = groups;
+  useEffect(() => {
+    const closeAll2 = /* @__PURE__ */ __name(() => {
+      const ids = [];
+      for (const g of groupsRef.current.values()) {
+        for (const t of g.tabs) {
+          if (t.kind === "editor" || t.kind === "history" && t.mode === "view") ids.push(t.id);
+        }
+      }
+      pendingCloseRef.current = ids;
+      closeNextRef.current();
+    }, "closeAll");
+    setCloseAllCodeEditors(closeAll2);
+    return () => setCloseAllCodeEditors(null);
+  }, []);
   const findTabByFileId = useCallback(
     (fileId, kind) => {
       for (const [gid, g] of groups.entries()) {
@@ -50750,7 +50802,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
               onStop: extras?.onStop,
               error: extras?.error,
               onEditViz,
-              onCropViz
+              onCropViz,
+              onCloseTab: () => closeTabById(tab.id)
             }
           ) }, tab.id);
         }

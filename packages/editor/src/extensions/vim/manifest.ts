@@ -71,8 +71,8 @@ export const VIM: ExtensionManifest = {
         text: 'Each code editor gets a bar underneath it. The mode is on the left and the keys you have typed so far are on the right. Press : to type a command in that editor’s bar. Enter runs it and Esc closes it. With two editors side by side, each has its own bar.',
       },
       {
-        heading: 'Saving',
-        text: 'Stave saves as you type, so :w, :q and the like show “Stave saves as you type” and do nothing else.',
+        heading: 'Saving and closing',
+        text: 'Stave saves as you type, so :w and :wa just say “Stave saves as you type”. :q, :wq and :x close the tab you typed them in, and :qa, :wqa and :xa close every code tab, as VS Code’s Vim does. Nothing is ever lost.',
       },
       {
         heading: 'Keys',

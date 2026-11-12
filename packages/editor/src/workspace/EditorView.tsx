@@ -124,6 +124,7 @@ export function EditorView({
   onStop,
   onEditViz,
   onCropViz,
+  onCloseTab,
 }: EditorViewProps): React.ReactElement {
   const { file, setContent } = useWorkspaceFile(fileId)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -133,6 +134,9 @@ export function EditorView({
   // the file this view shows now, for an extension asking the editor's language later
   const fileIdRef = useRef(fileId)
   fileIdRef.current = fileId
+  // #2148 — how an extension closes this editor's tab (Vim's `:q`); the latest one
+  const onCloseTabRef = useRef(onCloseTab)
+  onCloseTabRef.current = onCloseTab
 
   // #204 time-travel: when a commit is checked out, this editor shows that
   // commit's content for the current file (read-only) instead of live Y.Text.
@@ -513,6 +517,7 @@ export function EditorView({
         readOnly: viewing,
         bar: barRef.current,
         language: () => getFile(fileIdRef.current)?.language ?? null,
+        close: () => onCloseTabRef.current?.(),
       })
     }
 

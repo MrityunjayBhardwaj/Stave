@@ -4,8 +4,8 @@ import * as Monaco from 'monaco-editor';
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
 import React__default, { ReactNode } from 'react';
-import { S as SoundTrigger, E as ExtensionManifest, a as ExtensionModule, b as ExtensionLanguage } from './types-CBQx0xzY.cjs';
-export { C as CodeEditor, c as EditorCleanup, d as ExtensionAbout, e as ExtensionHost, f as ExtensionKey } from './types-CBQx0xzY.cjs';
+import { S as SoundTrigger, E as ExtensionManifest, a as ExtensionModule, b as ExtensionLanguage } from './types-2qbwQyap.cjs';
+export { C as CodeEditor, c as EditorCleanup, d as ExtensionAbout, e as ExtensionHost, f as ExtensionKey } from './types-2qbwQyap.cjs';
 import { getSound, getSampleInfo, getCachedBuffer, loadBuffer, getAudioContext } from '@strudel/webaudio';
 import 'p5';
 
@@ -8096,6 +8096,11 @@ interface EditorViewProps {
      *  file this editor shows — the one the strip belongs to — so the host
      *  crops that file, not whichever tab it thinks is active (#2412). */
     readonly onCropViz?: (vizId: string, presetId: string | null, trackKey: string, fileId: string) => void;
+    /**
+     * Close this editor's tab, through the workspace's own tab-close path (#2148: Vim's
+     * `:q`). The shell passes it; an editor without one cannot be closed by an extension.
+     */
+    readonly onCloseTab?: () => void;
 }
 /**
  * Props accepted by `PreviewView` — the host for a `PreviewProvider`'s
@@ -10143,7 +10148,7 @@ declare const WorkspaceShell: React__default.ForwardRefExoticComponent<Workspace
  *    shim or shell integration) manages the runtime's `onError` subscription.
  */
 
-declare function EditorView({ fileId, theme, chromeSlot, onMount, error, onPlay, onStop, onEditViz, onCropViz, }: EditorViewProps): React__default.ReactElement;
+declare function EditorView({ fileId, theme, chromeSlot, onMount, error, onPlay, onStop, onEditViz, onCropViz, onCloseTab, }: EditorViewProps): React__default.ReactElement;
 
 interface ErrorBoundaryProps {
     children: React__default.ReactNode;

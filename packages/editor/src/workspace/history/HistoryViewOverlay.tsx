@@ -76,6 +76,9 @@ export function HistoryViewOverlay({
   const barRef = React.useRef<HTMLDivElement>(null)
   const shownRef = React.useRef({ history, fileId })
   shownRef.current = { history, fileId }
+  // #2148 — an extension closing this editor (Vim's `:q`) closes this history tab
+  const onCloseRef = React.useRef(onClose)
+  onCloseRef.current = onClose
 
   const handleMount = React.useCallback(
     (editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco): void => {
@@ -95,6 +98,7 @@ export function HistoryViewOverlay({
             const { history: h, fileId: f } = shownRef.current
             return h.fileMeta[f]?.language ?? null
           },
+          close: () => onCloseRef.current(),
         })
       }
     },

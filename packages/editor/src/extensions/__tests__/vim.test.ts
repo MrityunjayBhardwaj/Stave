@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { VIM, VIM_ID } from '../vim/manifest'
 import { VimBar, modeLabel, VIM_MESSAGE_MS } from '../vim/bar'
 import { shiftEdit } from '../vim/shiftCommand'
-import { keyFilteredEditor, SAVE_COMMANDS, SAVES_AS_YOU_TYPE, vimModule } from '../vim/module'
+import { bindEditorActions, EX_COMMANDS, keyFilteredEditor, runExAction, SAVES_AS_YOU_TYPE, vimModule, type ExAction } from '../vim/module'
 import { checkExtensionKeys, keyId } from '../keys'
 import { BUILTIN_EXTENSIONS } from '../builtin'
 
@@ -176,12 +176,58 @@ describe('a handed-back key never reaches Vim', () => {
   })
 })
 
-describe(':w and friends', () => {
-  it('say that Stave saves as you type', () => {
-    const names = SAVE_COMMANDS.map(([n]) => n)
-    for (const n of ['write', 'quit', 'wq', 'xit', 'wall', 'qall']) expect(names).toContain(n)
+/**
+ * Which command a name runs, the way Vim's command table finds it: the longest prefix of
+ * what was typed that is a command's short name, whose full name starts with what was
+ * typed. (Vim's own `matchCommand_`, over Stave's commands only.)
+ */
+function actionOf(typed: string): ExAction | null {
+  const byPrefix = new Map(EX_COMMANDS.map(([name, prefix, action]) => [prefix, { name, action }]))
+  for (let i = typed.length; i > 0; i--) {
+    const hit = byPrefix.get(typed.slice(0, i))
+    if (hit && hit.name.startsWith(typed)) return hit.action
+  }
+  return null
+}
+
+describe(':w, :q and friends, as VS Code’s Vim does them', () => {
+  it('writing says Stave saves as you type; quitting closes this tab; quitting all closes every tab', () => {
+    const expected: Record<string, ExAction> = {
+      w: 'message', write: 'message', wa: 'message', wall: 'message', up: 'message', update: 'message',
+      q: 'close', qu: 'close', quit: 'close', wq: 'close', x: 'close', xit: 'close', exi: 'close', exit: 'close',
+      qa: 'closeAll', qall: 'closeAll', quita: 'closeAll', quitall: 'closeAll',
+      wqa: 'closeAll', wqall: 'closeAll', xa: 'closeAll', xall: 'closeAll',
+    }
+    for (const [typed, action] of Object.entries(expected)) expect([typed, actionOf(typed)]).toEqual([typed, action])
     // each short name is a prefix of its name, as Vim's command table needs
-    for (const [name, prefix] of SAVE_COMMANDS) expect(name.startsWith(prefix)).toBe(true)
+    for (const [name, prefix] of EX_COMMANDS) expect(name.startsWith(prefix)).toBe(true)
     expect(SAVES_AS_YOU_TYPE).toBe('Stave saves as you type')
+  })
+
+  it('runs the action on the editor whose Vim ran it, and on no other', () => {
+    vi.useFakeTimers()
+    const log: string[] = []
+    const actions = (id: string) => ({
+      message: (t: string) => log.push(`${id} message ${t}`),
+      close: () => log.push(`${id} close`),
+      closeAll: () => log.push(`${id} closeAll`),
+    })
+    const a = {}
+    const b = {}
+    bindEditorActions(a, actions('a'))
+    bindEditorActions(b, actions('b'))
+    runExAction('message', a)
+    runExAction('close', b)
+    runExAction('closeAll', a)
+    // the closes wait until Vim has finished handling the command
+    expect(log).toEqual([`a message ${SAVES_AS_YOU_TYPE}`])
+    vi.runAllTimers()
+    expect(log).toEqual([`a message ${SAVES_AS_YOU_TYPE}`, 'b close', 'a closeAll'])
+    // an untied Vim (its editor gone, or Vim switched off) does nothing
+    bindEditorActions(b, null)
+    runExAction('close', b)
+    vi.runAllTimers()
+    expect(log).toHaveLength(3)
+    vi.useRealTimers()
   })
 })

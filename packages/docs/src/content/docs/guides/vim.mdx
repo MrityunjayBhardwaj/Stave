@@ -29,9 +29,17 @@ With Vim on, each code editor gets a bar underneath it:
 
 With two editors side by side, each has its own bar.
 
-## Saving
+## Saving and closing
 
-Stave saves as you type, so there is nothing to save. `:w`, `:q`, `:wq`, `:x` and the like show **Stave saves as you type** and do nothing else.
+Stave saves as you type, so there is never anything to save or lose. The saving and quitting commands do what VS Code's Vim does:
+
+| Command | What it does |
+| --- | --- |
+| `:w`, `:wa` | Shows **Stave saves as you type**, nothing else |
+| `:q`, `:q!`, `:wq`, `:x` | Closes the tab you typed it in |
+| `:qa`, `:wqa`, `:xa` | Closes every code tab |
+
+In a past version from Version History, `:q` closes that history tab.
 
 ## Keys
 

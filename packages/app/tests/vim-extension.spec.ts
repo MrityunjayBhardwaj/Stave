@@ -189,8 +189,8 @@ test('switched on from the view: modes, the bar, the : line and the :w message; 
   await expect(input).toHaveCount(0)
   expect((await focused(page))?.text).toBe(TEXT.replace('hh', 'oh'))
 
-  // :w (and :q, :wq) say Stave saves as you type, and change nothing
-  for (const cmd of ['w', 'q', 'wq', 'q!']) {
+  // :w and :wa say Stave saves as you type, and change nothing (the tab stays open)
+  for (const cmd of ['w', 'wa', 'wall']) {
     await page.keyboard.type(`:${cmd}`)
     await page.keyboard.press('Enter')
     await expect(bars(page).first().locator('[data-vim-message]')).toHaveText('Stave saves as you type')
@@ -254,6 +254,56 @@ test('two panes side by side each have their own bar, and : opens in the one typ
   await page.keyboard.type('noh')
   await page.screenshot({ path: test.info().outputPath('two-panes.png') })
   await page.keyboard.press('Escape')
+})
+
+test(':q closes only the tab of the pane it was typed in; :wq too; :qa closes every code tab', async ({ page }) => {
+  test.setTimeout(150_000)
+  await vimAtLoad(page, true)
+  await bootApp(page)
+  const editors = page.locator('[data-workspace-view="editor"]')
+  // two panes: the song on the left, a sketch on the right
+  await page.locator('[data-testid^="group-split-"]:not([data-testid^="group-split-down-"])').first().click()
+  await expect(page.locator('[data-workspace-group]')).toHaveCount(2)
+  await page.locator('[data-workspace-group]').nth(1).click({ position: { x: 40, y: 200 } })
+  await page.locator('[data-sidebar]').getByText('spiral.p5', { exact: true }).click()
+  await expect(editors).toHaveCount(2)
+  const fileOf = (i: number) => editors.nth(i).getAttribute('data-file-id')
+  const left = await fileOf(0)
+  const right = await fileOf(1)
+
+  // :q in the right pane closes the sketch's tab, and the song stays
+  await clickCode(page, 1)
+  await page.keyboard.type(':q')
+  await page.keyboard.press('Enter')
+  await expect(page.locator(`[data-workspace-view="editor"][data-file-id="${right}"]`)).toHaveCount(0)
+  await expect(page.locator(`[data-workspace-view="editor"][data-file-id="${left}"]`)).toHaveCount(1)
+  // no message: closing is all it does
+  await expect(page.locator('[data-vim-message]').filter({ hasText: 'Stave saves as you type' })).toHaveCount(0)
+
+  // :wq closes this tab too (opened in the one pane left; closing it shows the tab
+  // beside it, as closing it with its × does)
+  await page.locator('[data-sidebar]').getByText('spiral.p5', { exact: true }).click()
+  await expect(page.locator(`[data-workspace-view="editor"][data-file-id="${right}"]`)).toHaveCount(1)
+  await page.locator(`[data-workspace-view="editor"][data-file-id="${right}"] .monaco-editor .view-lines`).click()
+  await page.keyboard.type(':wq')
+  await page.keyboard.press('Enter')
+  await expect(page.locator(`[data-workspace-view="editor"][data-file-id="${right}"]`)).toHaveCount(0)
+  await expect(editors).toHaveCount(1)
+  await page.locator('[data-sidebar]').getByText('pattern.strudel', { exact: true }).click()
+  await expect(page.locator(`[data-workspace-view="editor"][data-file-id="${left}"]`)).toHaveCount(1)
+
+  // two panes again, then :qa closes every code tab in both
+  await page.locator('[data-testid^="group-split-"]:not([data-testid^="group-split-down-"])').first().click()
+  await page.locator('[data-workspace-group]').last().click({ position: { x: 40, y: 200 } })
+  await page.locator('[data-sidebar]').getByText('spiral.p5', { exact: true }).click()
+  await expect(editors).toHaveCount(2)
+  await clickCode(page, 0)
+  await page.keyboard.type(':qa')
+  await page.keyboard.press('Enter')
+  await expect(editors).toHaveCount(0)
+  // the workspace is still there to open a file in again
+  await expect(page.locator('[data-workspace-group]').first()).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('after-qa.png') })
 })
 
 test('Esc in the code is Vim’s first: leaving insert or visual mode, or the : line, does nothing else', async ({ page }) => {
@@ -353,6 +403,14 @@ test('history: motions, search and yank work, edits are refused; the diff has no
   const view = page.locator(`[data-history-view-overlay="${commitId}"]`)
   await expect(view).toBeVisible()
   await readOnlyChecks(view, 'history-view.png')
+  // :q in the history view closes that history tab, and nothing else
+  await view.locator('.monaco-editor .view-lines').click()
+  await page.keyboard.type(':q')
+  await page.keyboard.press('Enter')
+  await expect(view).toHaveCount(0)
+  // only that tab: a code editor tab shows in its place, and the song's tab is still open
+  await expect(page.locator('[data-workspace-view="editor"]')).toHaveCount(1)
+  await expect(page.locator('[data-workspace-group]').getByText('pattern.strudel', { exact: true })).toBeVisible()
 
   // 3. the diff: no Vim
   await commit.locator('[data-history-commit-toggle]').click()

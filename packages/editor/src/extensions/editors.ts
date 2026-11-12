@@ -30,6 +30,8 @@ export interface CodeEditorSite {
   readonly readOnly: boolean
   /** the bar under the editor; each extension gets its own strip inside it */
   readonly bar: HTMLElement
+  /** close this editor's tab through the workspace's tab-close path (#2148), if it can be */
+  close?(): void
 }
 
 /** What a watcher gets for each editor; returns how to undo it, or nothing. */
@@ -140,6 +142,23 @@ export function pageCodeEditors(): CodeEditorList {
     },
   })
   return page
+}
+
+/**
+ * The workspace's door for closing every code editor's tab (#2148: Vim's `:qa`). The
+ * workspace shell hands it in while it is mounted (this directory imports nothing from
+ * the workspace), and takes it away when it goes.
+ */
+let closeAll: (() => void) | null = null
+
+/** Hand in (or, with null, take away) how to close every code editor's tab. */
+export function setCloseAllCodeEditors(fn: (() => void) | null): void {
+  closeAll = fn
+}
+
+/** Close every code editor's tab, if a workspace has handed in how. */
+export function closeAllCodeEditors(): void {
+  closeAll?.()
 }
 
 /**

@@ -144,6 +144,12 @@ interface CodeEditor {
      * the extension shows for this editor inside it.
      */
     readonly bar: HTMLElement;
+    /**
+     * Close this editor's tab the way the person would (#2148: Vim's `:q`): the code
+     * editor's tab, or the history view's. Stave saves as you type, so nothing is lost.
+     * Does nothing for an editor the workspace cannot close.
+     */
+    close(): void;
 }
 /**
  * What an `onEditor` callback may return: how to undo what it set up on that editor. It
@@ -182,6 +188,11 @@ interface ExtensionHost {
      * Stave's own chord builder, on the page's platform.
      */
     keyOf(event: KeyboardEvent): string | null;
+    /**
+     * Close every code editor's tab, the way the person would (#2148: Vim's `:qa`): each
+     * through the workspace's own tab-close path. Does nothing while no workspace is open.
+     */
+    closeAllEditors(): void;
 }
 /**
  * What an extension's Strudel part may do. Everything here is undone when it is switched

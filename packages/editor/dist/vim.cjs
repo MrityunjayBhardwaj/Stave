@@ -6605,28 +6605,42 @@ var VimBar = _VimBar;
 
 // src/extensions/vim/module.ts
 var SAVES_AS_YOU_TYPE = "Stave saves as you type";
-var SAVE_COMMANDS = [
-  ["write", "w"],
-  ["wq", "wq"],
-  ["wall", "wa"],
-  ["wqall", "wqa"],
-  ["xit", "x"],
-  ["xall", "xa"],
-  ["update", "up"],
-  ["quit", "q"],
-  ["qall", "qa"],
-  ["quitall", "quita"]
+var EX_COMMANDS = [
+  ["write", "w", "message"],
+  ["wall", "wa", "message"],
+  ["update", "up", "message"],
+  ["quit", "q", "close"],
+  ["wq", "wq", "close"],
+  ["xit", "x", "close"],
+  ["exit", "exi", "close"],
+  ["qall", "qa", "closeAll"],
+  ["quitall", "quita", "closeAll"],
+  ["wqall", "wqa", "closeAll"],
+  ["xall", "xa", "closeAll"]
 ];
+var actionsByVim = /* @__PURE__ */ new WeakMap();
+function bindEditorActions(vim, actions) {
+  if (actions) actionsByVim.set(vim, actions);
+  else actionsByVim.delete(vim);
+}
+__name(bindEditorActions, "bindEditorActions");
+function runExAction(action, vim) {
+  const actions = actionsByVim.get(vim);
+  if (!actions) return;
+  if (action === "message") actions.message(SAVES_AS_YOU_TYPE);
+  else setTimeout(action === "close" ? actions.close : actions.closeAll, 0);
+}
+__name(runExAction, "runExAction");
 var exDefined = false;
-function defineSaveCommands() {
+function defineExCommands() {
   if (exDefined) return;
   const vim = keymap_vim_default.Vim;
-  for (const [name, prefix] of SAVE_COMMANDS) {
-    vim.defineEx(name, prefix, (cm) => cm.openNotification(SAVES_AS_YOU_TYPE));
+  for (const [name, prefix, action] of EX_COMMANDS) {
+    vim.defineEx(name, prefix, (cm) => runExAction(action, cm));
   }
   exDefined = true;
 }
-__name(defineSaveCommands, "defineSaveCommands");
+__name(defineExCommands, "defineExCommands");
 function keyFilteredEditor(editor2, leaveAlone) {
   return new Proxy(editor2, {
     get(target, prop) {
@@ -6666,7 +6680,7 @@ var BAR_STYLE = [
 ].join("; ");
 function attachVim(ed, host) {
   useMonaco(ed.monaco);
-  defineSaveCommands();
+  defineExCommands();
   const doc = ed.bar.ownerDocument;
   const node = doc.createElement("div");
   node.setAttribute("data-vim-bar", "");
@@ -6680,6 +6694,11 @@ function attachVim(ed, host) {
   }, "leaveAlone");
   const view = keyFilteredEditor(ed.editor, leaveAlone);
   const vim = initVimMode(view, node, VimBar);
+  bindEditorActions(vim, {
+    message: /* @__PURE__ */ __name((text) => vim.openNotification(text), "message"),
+    close: /* @__PURE__ */ __name(() => ed.close(), "close"),
+    closeAll: /* @__PURE__ */ __name(() => host.closeAllEditors(), "closeAll")
+  });
   if (ed.readOnly) {
     const note = doc.createElement("span");
     note.setAttribute("data-vim-readonly-note", "");
@@ -6689,6 +6708,7 @@ function attachVim(ed, host) {
   }
   return () => {
     const goingAway = !ed.editor.getModel?.();
+    bindEditorActions(vim, null);
     try {
       vim.dispose();
       if (!goingAway) ed.editor.updateOptions(before);
@@ -6706,10 +6726,12 @@ var vimModule = {
   }
 };
 
+exports.EX_COMMANDS = EX_COMMANDS;
 exports.SAVES_AS_YOU_TYPE = SAVES_AS_YOU_TYPE;
-exports.SAVE_COMMANDS = SAVE_COMMANDS;
 exports.attachVim = attachVim;
+exports.bindEditorActions = bindEditorActions;
 exports.keyFilteredEditor = keyFilteredEditor;
+exports.runExAction = runExAction;
 exports.vimModule = vimModule;
 //# sourceMappingURL=vim.cjs.map
 //# sourceMappingURL=vim.cjs.map
