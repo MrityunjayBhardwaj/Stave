@@ -19,6 +19,7 @@ import type { IRPattern } from '../../codeView'
 import type { HapEvent } from '../../engine/HapStream'
 import type { FrameSampleCache } from './frameSampleCache'
 import { RollingHapWindow } from './rollingHapWindow'
+import { ActiveNowCache } from './activeNowCache'
 import { perf } from '../../perf/profiler'
 import {
   MASTER_KEY,
@@ -161,6 +162,10 @@ export class MainSignalSampler {
   /** The wide window, advanced by querying only the new sliver each frame
    *  (#2563) instead of the whole window. Reset on every rebind. */
   private readonly rawWindow = new RollingHapWindow(RAW_QUERY_BACK, RAW_QUERY_FWD)
+  /** "What's playing now" for the combined pattern and per track, re-queried
+   *  only when a note starts or ends (#2567). Reset on every rebind. */
+  private readonly activeNow = new ActiveNowCache(EPSILON)
+  private activeNowByTrack = new Map<string, ActiveNowCache>()
   /** Haps accumulated since the last `sample()` (the envelope feed). */
   private pendingBumps: BumpSummary[] = []
   private boundStream: HapSubscribable | null = null
@@ -180,6 +185,8 @@ export class MainSignalSampler {
     // A rebind is a re-evaluate: the pattern may have changed under the same
     // window, so the next frame re-queries it whole.
     this.rawWindow.reset()
+    this.activeNow.reset()
+    this.activeNowByTrack = new Map()
   }
 
   /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
@@ -214,22 +221,24 @@ export class MainSignalSampler {
       this.inputs
     const seq = ++this.seq
     const now = scheduler ? scheduler.now() : 0
-    const begin = now
-    const end = now + EPSILON
 
     // Query helper — routes through the per-tick cache when present (one query per
     // shared (scheduler, window); shared by reference, summarised per-viz below).
     const queryAt = (sched: IRPattern, a: number, b: number) =>
       cache ? cache.query(sched, a, b, () => sched.query(a, b)) : sched.query(a, b)
 
+    // `[now, now + ε)`: what ActiveNowCache answers, from a real
+    // query taken when the answer last could have changed.
     const activeEvents: ActiveEventSummary[] = scheduler
-      ? queryAt(scheduler, begin, end).map(summariseEvent)
+      ? this.activeNow.at(scheduler, now, (a, b) => queryAt(scheduler, a, b)).map(summariseEvent)
       : []
 
     const activeByTrack: Array<[string, ActiveEventSummary[]]> = []
     if (trackSchedulers) {
       for (const [key, sched] of trackSchedulers) {
-        activeByTrack.push([key, queryAt(sched, begin, end).map(summariseEvent)])
+        let cache = this.activeNowByTrack.get(key)
+        if (!cache) this.activeNowByTrack.set(key, (cache = new ActiveNowCache(EPSILON)))
+        activeByTrack.push([key, cache.at(sched, now, (a, b) => queryAt(sched, a, b)).map(summariseEvent)])
       }
     }
 
@@ -276,6 +285,8 @@ export class MainSignalSampler {
     this.pendingBumps = []
     this.inputs = {}
     this.rawWindow.reset()
+    this.activeNow.reset()
+    this.activeNowByTrack = new Map()
   }
 
   /** The next seq an `emptyFrame` should carry (test/demo helper). */

@@ -43,7 +43,7 @@ describe('MainSignalSampler raw-scheduler query (#2561)', () => {
     expect(wide(windows)).toEqual([])
     expect(f.rawScheduler?.events).toEqual([])
     // the narrow active-at-now query (what `sig` reads) still runs and still reports
-    expect(windows).toHaveLength(1)
+    expect(windows).toContainEqual([10, 10.001])
     expect(f.activeEvents).toHaveLength(1)
     expect(f.rawScheduler?.now).toBe(10)
   })

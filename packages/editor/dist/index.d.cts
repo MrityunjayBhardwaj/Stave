@@ -9333,6 +9333,10 @@ declare class MainSignalSampler {
     /** The wide window, advanced by querying only the new sliver each frame
      *  (#2563) instead of the whole window. Reset on every rebind. */
     private readonly rawWindow;
+    /** "What's playing now" for the combined pattern and per track, re-queried
+     *  only when a note starts or ends (#2567). Reset on every rebind. */
+    private readonly activeNow;
+    private activeNowByTrack;
     /** Haps accumulated since the last `sample()` (the envelope feed). */
     private pendingBumps;
     private boundStream;
