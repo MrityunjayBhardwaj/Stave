@@ -260,6 +260,22 @@ export const SETTINGS_SHELL_CSS = `
   border-radius:4px; padding:3px 8px; margin-top:6px;
 }
 .stave-settings .conflict svg{ width:12px; height:12px; }
+/* #2545 — the Source column, the Source filter, and an extension's read-only rows */
+.stave-settings .kb-src{ min-width:52px; text-align:center; }
+.stave-settings .kb-src.ext{ color:var(--s-accent-2); border-color:color-mix(in srgb, var(--s-accent) 40%, var(--s-border)); background:var(--s-accent-ghost); }
+.stave-settings .src-filter{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:12px 0 2px; font-size:11.5px; color:var(--s-text-3); }
+.stave-settings .src-filter button{
+  appearance:none; cursor:pointer; font:inherit; font-size:11.5px; color:var(--s-text-2);
+  background:none; border:1px solid var(--s-border); border-radius:20px; padding:2px 10px;
+}
+.stave-settings .src-filter button:hover{ border-color:var(--s-accent); color:var(--s-text); }
+.stave-settings .src-filter button[aria-pressed="true"]{ background:var(--s-accent-ghost); border-color:var(--s-accent); color:var(--s-text); }
+.stave-settings .kb-give{
+  appearance:none; cursor:pointer; font:inherit; font-size:11px; color:var(--s-accent-2); white-space:nowrap;
+  background:none; border:1px solid var(--s-border); border-radius:var(--s-radius-s); padding:3px 8px;
+}
+.stave-settings .kb-give:hover{ border-color:var(--s-accent); }
+.stave-settings .kb-row.given .kb-name, .stave-settings .kb-row.given .chord kbd{ opacity:.6; }
 
 .stave-settings .empty{ padding:40px 0; text-align:center; color:var(--s-text-3); font-size:12.5px; }
 

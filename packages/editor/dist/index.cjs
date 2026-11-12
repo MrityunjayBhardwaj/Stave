@@ -764,6 +764,7 @@ __name(onExtensionsEnabledChange, "onExtensionsEnabledChange");
 var E2E_TONE_ID = "e2e-tone";
 var E2E_TONE_SOUND = "e2etone";
 var PROCESSOR = "stave-e2e-tone";
+var E2E_TONE_KEY = { key: "mod+b", name: "A test key that does nothing", where: "code" };
 var PROCESSOR_SOURCE = `
 class StaveE2ETone extends AudioWorkletProcessor {
   constructor(options) {
@@ -832,7 +833,14 @@ var E2E_TONE = {
   name: "Test tone",
   description: "A sine tone for end-to-end tests",
   languages: ["strudel"],
-  provides: { strudel: { sounds: [E2E_TONE_SOUND] } },
+  provides: {
+    strudel: { sounds: [E2E_TONE_SOUND] },
+    // #2545 — one key on a Stave command's chord (Toggle Sidebar, on every platform), so a
+    // browser test can see Keyboard Shortcuts mark the clash and hand the key back. The
+    // extension does nothing with it: while it is taken, the key simply runs no Stave
+    // command inside the code.
+    keys: [E2E_TONE_KEY]
+  },
   load,
   about: {
     version: "0.0.1",
@@ -845,6 +853,10 @@ var E2E_TONE = {
         heading: "Play it like any sound",
         text: "Switch it on, then use it as a sound name. It plays live and in bounces.",
         code: 'note("c4 e4 g4").s("e2etone")'
+      },
+      {
+        heading: "Keys",
+        text: "It takes one key inside the code, the one Stave uses to toggle the sidebar, and does nothing with it. It is there to test how Keyboard Shortcuts shows an extension\u2019s keys."
       }
     ],
     changes: [{ version: "0.0.1", note: "First version." }],
@@ -857,7 +869,7 @@ var VIM_ID = "vim";
 var KEYS = [
   // Vim's "up a line", and Stave's quick open off a Mac: handed back to Stave unless the
   // person gives it to Vim
-  { key: "ctrl+p", name: "Up a line (handed back: quick open)", where: "code", givenBack: true },
+  { key: "ctrl+p", name: "Up a line", where: "code", givenBack: true },
   // Vim's own
   { key: "ctrl+r", name: "Redo", where: "code" },
   { key: "ctrl+c", name: "Back to normal mode", where: "code" },
@@ -1103,10 +1115,14 @@ function pageExtensions() {
 }
 __name(pageExtensions, "pageExtensions");
 function extensionKeysInCode(runtime = pageExtensions()) {
-  const m = runtime.manager;
-  return keysTakenBy(m.activeIds().flatMap((id) => m.manifest(id) ?? []));
+  return keysTakenBy(activeExtensionManifests(runtime));
 }
 __name(extensionKeysInCode, "extensionKeysInCode");
+function activeExtensionManifests(runtime = pageExtensions()) {
+  const m = runtime.manager;
+  return m.activeIds().flatMap((id) => m.manifest(id) ?? []);
+}
+__name(activeExtensionManifests, "activeExtensionManifests");
 function extensionFailure(id, runtime = pageExtensions()) {
   return runtime.failure(id);
 }
@@ -58542,6 +58558,7 @@ exports.DEFAULT_VIZ_ENGINE = DEFAULT_VIZ_ENGINE;
 exports.DEFAULT_VIZ_QUALITY = DEFAULT_VIZ_QUALITY;
 exports.DemoEngine = DemoEngine;
 exports.E2E_TONE_ID = E2E_TONE_ID;
+exports.E2E_TONE_KEY = E2E_TONE_KEY;
 exports.E2E_TONE_SOUND = E2E_TONE_SOUND;
 exports.EPHEMERAL_ID_PREFIX = EPHEMERAL_ID_PREFIX;
 exports.EditorView = EditorView;
@@ -58637,6 +58654,7 @@ exports.WorkerVizRenderer = WorkerVizRenderer;
 exports.WorkspaceShell = WorkspaceShell;
 exports.accumulateLanes = accumulateLanes;
 exports.accumulateLanesInWindow = accumulateLanesInWindow;
+exports.activeExtensionManifests = activeExtensionManifests;
 exports.adaptMasterChunk = adaptMasterChunk;
 exports.addAssetRecord = addAssetRecord;
 exports.aggregateLaneItems = aggregateLaneItems;

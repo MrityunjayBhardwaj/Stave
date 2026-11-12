@@ -11,27 +11,51 @@
  * (`LEFTOVER_TEXT`). Switched on but failed to start, the badge and the state line say so
  * (#2552).
  *
- * The page's tab (Details / What it adds / Changes) is kept in the tab's state, so it
- * comes back after a reload.
+ * #2545 — an extension that declares keys has a Keys tab too: each key, what it does in
+ * the extension, and a toggle "Give back to Stave" / "Use in <extension>". It is the same
+ * setting Keyboard Shortcuts shows on the extension's rows (`toggleExtensionKey`), so the
+ * two always agree, with no reload. It works while the extension is off too: the choice is
+ * kept and applies when it is switched on.
+ *
+ * The page's tab (Details / What it adds / Keys / Changes) is kept in the tab's state, so
+ * it comes back after a reload.
  */
 import React from "react";
-import type { AppTabLabel, AppTabState, ExtensionManifest } from "@stave/editor";
+import { extensionKeys, type AppTabLabel, type AppTabState, type ExtensionManifest } from "@stave/editor";
 import type { AppTab, AppTabDefinition } from "../components/appTabs";
 import { Icon } from "../components/Icon";
 import { addsOf, extensionTabKey, failedToStart, languagesLabel, leftoversOf, switchStateLine } from "./extensionsView";
 import { useEnabledExtensions, useExtensionFailure } from "./useExtensionSwitches";
 import { ExtensionBadges, ExtensionTile, SwitchButton } from "./ExtensionParts";
+import { toggleExtensionKey, toggleLabel, whereLine } from "./extensionKeysView";
+import { useGivenBackVersion } from "./useExtensionKeys";
+import { keybindingTokens } from "../commands/keybindings";
 
-export type PageSection = "details" | "adds" | "changes";
+export type PageSection = "details" | "adds" | "keys" | "changes";
 const SECTIONS: readonly { id: PageSection; label: string }[] = [
   { id: "details", label: "Details" },
   { id: "adds", label: "What it adds" },
+  { id: "keys", label: "Keys" },
   { id: "changes", label: "Changes" },
 ];
 
-/** The section a tab's saved state names; anything else (it is untrusted) is Details. */
-export function sectionOf(state: AppTabState | undefined): PageSection {
+/** Does it declare keys? Only then does its page have a Keys tab. */
+function hasKeys(m: ExtensionManifest): boolean {
+  return (m.provides?.keys?.length ?? 0) > 0;
+}
+
+/** The tabs this extension's page shows: Keys only when it declares keys. */
+export function sectionsOf(m: ExtensionManifest): readonly { id: PageSection; label: string }[] {
+  return SECTIONS.filter((s) => s.id !== "keys" || hasKeys(m));
+}
+
+/**
+ * The section a tab's saved state names; anything else (it is untrusted) is Details.
+ * Keys counts only for an extension that has a Keys tab.
+ */
+export function sectionOf(state: AppTabState | undefined, m?: ExtensionManifest): PageSection {
   const s = state && typeof state === "object" && !Array.isArray(state) ? (state as { section?: unknown }).section : null;
+  if (s === "keys") return m && hasKeys(m) ? "keys" : "details";
   return s === "adds" || s === "changes" ? s : "details";
 }
 
@@ -98,7 +122,7 @@ export function ExtensionPage({
       </div>
 
       <div style={styles.tabs} role="tablist">
-        {SECTIONS.map((s) => (
+        {sectionsOf(manifest).map((s) => (
           <button
             key={s.id}
             type="button"
@@ -117,6 +141,7 @@ export function ExtensionPage({
         <div style={{ minWidth: 0 }} role="tabpanel">
           {section === "details" && <Details manifest={manifest} />}
           {section === "adds" && <Adds manifest={manifest} />}
+          {section === "keys" && hasKeys(manifest) && <Keys manifest={manifest} />}
           {section === "changes" && <Changes manifest={manifest} />}
         </div>
         <aside style={styles.aside}>
@@ -189,9 +214,6 @@ function Adds({ manifest }: { manifest: ExtensionManifest }) {
           ))}
         </tbody>
       </table>
-      {/* #2513: the "Keyboard shortcuts" section goes here, once the given-back key
-          setting exists: each declared key, what it does, "inside the code", and a toggle
-          between the extension and Stave. */}
       <h2 style={styles.h2}>When switched off</h2>
       {leftovers.length ? (
         <div data-extension-leftovers>
@@ -225,6 +247,58 @@ function Adds({ manifest }: { manifest: ExtensionManifest }) {
   );
 }
 
+/**
+ * #2545 — the keys it declares, each with the toggle between it and Stave. Reads the
+ * setting fresh on every change to it, from here or from Keyboard Shortcuts.
+ */
+function Keys({ manifest }: { manifest: ExtensionManifest }) {
+  useGivenBackVersion();
+  const keys = extensionKeys(manifest);
+  const name = manifest.name;
+  return (
+    <div data-extension-keys={manifest.id}>
+      <p style={styles.p}>
+        The keys {name} uses inside the code while it is on. Give one back and Stave’s own command for that key runs
+        there instead. Settings › Keyboard Shortcuts shows the same keys, under {name}, with the same choice. Your own
+        shortcuts are never changed.
+      </p>
+      <table style={styles.table}>
+        <tbody>
+          {keys.map((k) => (
+            <tr key={k.key} data-extension-key={k.key} data-given-back={k.givenBack ? "true" : "false"}>
+              <td style={{ ...styles.td, width: 130 }}>
+                {keybindingTokens(k.key).map((t, i) => (
+                  <kbd key={i} style={styles.kbd}>
+                    {t}
+                  </kbd>
+                ))}
+              </td>
+              <td style={styles.td}>
+                <div style={k.givenBack ? styles.given : undefined}>{k.name}</div>
+                <div style={styles.where} data-extension-key-where={k.key}>
+                  inside the code · {whereLine(k.givenBack, name)}
+                  {k.givenBack === k.givenBackByDefault ? "" : " (your choice)"}
+                </div>
+              </td>
+              <td style={{ ...styles.td, textAlign: "right", width: 150 }}>
+                <button
+                  type="button"
+                  style={styles.keyToggle}
+                  aria-pressed={k.givenBack}
+                  data-extension-key-toggle={k.key}
+                  onClick={() => toggleExtensionKey(k, manifest.id)}
+                >
+                  {toggleLabel(k.givenBack, name)}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function Changes({ manifest }: { manifest: ExtensionManifest }) {
   const changes = manifest.about?.changes ?? [];
   if (!changes.length) return <p style={styles.p}>No changes listed yet.</p>;
@@ -247,7 +321,7 @@ export function extensionAppTabs(manifests: readonly ExtensionManifest[]): AppTa
     render: (tab: AppTab, ctx) => (
       <ExtensionPage
         manifest={m}
-        section={sectionOf(tab.state)}
+        section={sectionOf(tab.state, m)}
         onSection={(section) => ctx.setState({ section })}
       />
     ),
@@ -322,6 +396,34 @@ const styles: Record<string, React.CSSProperties> = {
   ul: { margin: "0 0 14px", paddingLeft: 20, maxWidth: 640, color: "var(--text-secondary)" },
   li: { marginBottom: 6 },
   aside: { minWidth: 0 },
+  kbd: {
+    fontFamily: mono,
+    fontSize: 11,
+    lineHeight: 1,
+    color: "var(--text-primary)",
+    background: "var(--bg-chrome)",
+    border: "1px solid var(--border-subtle)",
+    borderBottomWidth: 2,
+    borderRadius: 5,
+    padding: "4px 7px",
+    marginRight: 4,
+    display: "inline-block",
+    minWidth: 22,
+    textAlign: "center",
+  },
+  where: { fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 },
+  given: { color: "var(--text-secondary)" },
+  keyToggle: {
+    background: "none",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: 5,
+    padding: "4px 10px",
+    color: "var(--accent-strong)",
+    cursor: "pointer",
+    fontSize: 12,
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+  },
   dl: { margin: "0 0 20px", display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 12px", fontSize: 12.5 },
   dt: { color: "var(--text-muted)" },
   dd: { margin: 0, color: "var(--text-secondary)" },
