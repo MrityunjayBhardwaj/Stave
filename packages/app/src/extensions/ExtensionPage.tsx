@@ -27,7 +27,7 @@ import { Icon } from "../components/Icon";
 import { addsOf, extensionTabKey, failedToStart, languagesLabel, leftoversOf, switchStateLine } from "./extensionsView";
 import { useEnabledExtensions, useExtensionFailure } from "./useExtensionSwitches";
 import { ExtensionBadges, ExtensionTile, SwitchButton } from "./ExtensionParts";
-import { toggleExtensionKey, toggleLabel, whereLine } from "./extensionKeysView";
+import { toggleAriaLabel, toggleExtensionKey, toggleLabel, whereLine } from "./extensionKeysView";
 import { useGivenBackVersion } from "./useExtensionKeys";
 import { keybindingTokens } from "../commands/keybindings";
 
@@ -284,7 +284,7 @@ function Keys({ manifest }: { manifest: ExtensionManifest }) {
                 <button
                   type="button"
                   style={styles.keyToggle}
-                  aria-pressed={k.givenBack}
+                  aria-label={toggleAriaLabel(k.givenBack, k.key, name)}
                   data-extension-key-toggle={k.key}
                   onClick={() => toggleExtensionKey(k, manifest.id)}
                 >

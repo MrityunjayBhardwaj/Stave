@@ -17,7 +17,11 @@ import {
   extensionKeyRows,
   extensionRowMatches,
   extensionSource,
+  keyWords,
   liveFilter,
+  runsFromCodeOn,
+  sharedKeyLines,
+  toggleAriaLabel,
   sourceLabel,
   sourceOptions,
   sourceShows,
@@ -146,6 +150,17 @@ describe("the conflict badge", () => {
     expect(extensionKeyRows(ctrl, [mine("zz.mine", "ctrl+r")], { isMac: false })[0].staveCommands).toEqual([]);
   });
 
+  it("off a Mac, a key spelled with the Windows key (meta) does not win: the dispatcher needs Ctrl", () => {
+    const ctrl: ExtensionManifest = { ...ext, id: "zz-ctrl", name: "Ctrl", provides: { keys: [{ key: "ctrl+r", name: "Redo", where: "code" }] } };
+    const taken = keysTakenBy([ctrl]);
+    const mine = (chord: string): CommandKeys => ({ id: "zz.mine", title: "Mine", chords: [chord], overridden: true });
+    expect(extensionClashes(mine("meta+r"), taken, { isMac: false }).length).toBe(1);
+    expect(extensionClashes(mine("mod+r"), taken, { isMac: false })).toEqual([]);
+    expect(runsFromCodeOn({ id: "x" }, "ctrl+alt+r", { isMac: false })).toBe(false);
+    expect(runsFromCodeOn({ id: "x" }, "mod+r", { isMac: true })).toBe(true);
+    expect(runsFromCodeOn({ id: "x" }, "ctrl+r", { isMac: true })).toBe(false);
+  });
+
   it("names every extension that takes it, once each", () => {
     const clashes = extensionClashes(sidebar, keysTakenBy([ext, other]));
     expect(clashes.map((c) => c.extensionName)).toEqual(["Keyed", "Other"]);
@@ -158,7 +173,39 @@ describe("the conflict badge", () => {
   });
 });
 
+describe("the lines about Stave's commands on an extension's key", () => {
+  const ctrl: ExtensionManifest = {
+    ...ext,
+    id: "zz-ctrl",
+    name: "Ctrl",
+    provides: { keys: [{ key: "ctrl+r", name: "Redo", where: "code", givenBack: true }] },
+  };
+  const mine: CommandKeys = { id: "zz.mine", title: "Mine", chords: ["ctrl+r"], overridden: true };
+
+  it("on a Mac, a command you put on Control+R does not run in the code even with the key given back", () => {
+    const [row] = extensionKeyRows(ctrl, [mine], { isMac: true });
+    expect(row.givenBack).toBe(true);
+    expect(row.staveCommandsInCode).toEqual([]);
+    expect(sharedKeyLines(row)).toEqual(["Outside the code, runs Stave’s Mine"]);
+  });
+
+  it("off a Mac, Ctrl+R cannot type text, so given back it runs in the code", () => {
+    // own key wins there, so it is not "shared" with the extension at all while taken;
+    // a Stave default on the key is, and runs in the code once given back
+    const stave: CommandKeys = { id: "zz.redo", title: "Redo here", chords: ["mod+r"], overridden: false };
+    const [row] = extensionKeyRows(ctrl, [stave], { isMac: false });
+    expect(sharedKeyLines(row)).toEqual(["Runs Stave’s Redo here"]);
+    expect(sharedKeyLines({ ...row, givenBack: false })).toEqual(["Outside the code, runs Stave’s Redo here"]);
+  });
+});
+
 describe("the toggle", () => {
+  it("its accessible name says the action and the key", () => {
+    expect(toggleAriaLabel(false, "ctrl+r", "Vim", { isMac: false })).toBe("Give Ctrl+R back to Stave");
+    expect(toggleAriaLabel(true, "ctrl+r", "Vim", { isMac: true })).toBe("Use Control+R in Vim");
+    expect(keyWords("mod+shift+backspace", { isMac: false })).toBe("Ctrl+Shift+Backspace");
+  });
+
   it("says what pressing it does, and where the key goes now", () => {
     expect(toggleLabel(false, "Vim")).toBe("Give back to Stave");
     expect(toggleLabel(true, "Vim")).toBe("Use in Vim");

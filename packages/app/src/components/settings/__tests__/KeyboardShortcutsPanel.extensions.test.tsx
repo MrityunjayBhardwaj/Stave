@@ -4,7 +4,7 @@
  * the toggle (the same setting as the extension's page, live in both), and everything gone
  * once it is switched off, with the person's shortcuts never written.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import {
   extensionKeys,
@@ -166,9 +166,46 @@ describe("Keyboard Shortcuts with an extension's keys", () => {
     expect(byId(container, "source-zz.quick")).toBeNull();
   });
 
-  it("switched off: its rows, badges, nav item and filter choice go; the saved shortcuts are byte-for-byte the same", () => {
+  it("the toggle's accessible name says the action and the key, and it carries no pressed state", () => {
+    const { container } = panel(stand(), true);
+    const t = byId(container, "ext-toggle-zz-keys-mod+b")!;
+    expect(t.getAttribute("aria-label")).toBe("Give Ctrl+B back to Stave");
+    expect(t.hasAttribute("aria-pressed")).toBe(false);
+    expect(byId(container, "ext-toggle-zz-keys-mod+p")!.getAttribute("aria-label")).toBe("Use Ctrl+P in Keyed");
+    const onPage = container.querySelector('[data-extension-key-toggle="mod+b"]')!;
+    expect(onPage.getAttribute("aria-label")).toBe("Give Ctrl+B back to Stave");
+    expect(onPage.hasAttribute("aria-pressed")).toBe(false);
+  });
+
+  it("an empty pane says so, also when the chosen category has nothing under the chosen source", () => {
+    const { container } = panel(stand());
+    act(() => fireEvent.click(byId(container, "keys-nav-extension:zz-keys")!));
+    expect(byId(container, "ext-key-zz-keys-mod+b")).not.toBeNull();
+    expect(byId(container, "keys-empty")).toBeNull();
+    act(() => fireEvent.click(byId(container, "source-filter-stave")!));
+    expect(byId(container, "ext-key-zz-keys-mod+b")).toBeNull();
+    expect(byId(container, "keys-empty")!.textContent).toBe("No shortcuts here.");
+  });
+
+  it("switched off then on again: the filter and category it had are not chosen any more", () => {
+    const source = stand();
+    const { container } = panel(source);
+    act(() => fireEvent.click(byId(container, "keys-nav-extension:zz-keys")!));
+    act(() => fireEvent.click(byId(container, "source-filter-extension:zz-keys")!));
+    act(() => source.switchOn(false));
+    act(() => source.switchOn(true));
+    expect(byId(container, "source-filter-all")!.getAttribute("aria-pressed")).toBe("true");
+    expect(byId(container, "source-filter-extension:zz-keys")!.getAttribute("aria-pressed")).toBe("false");
+    expect(byId(container, "keys-nav-extension:zz-keys")!.getAttribute("aria-current")).toBe("false");
+    // All: Stave's rows show beside the extension's
+    expect(byId(container, "source-zz.sidebar")).not.toBeNull();
+  });
+
+  it("switched off: its rows, badges, nav item and filter choice go; the saved shortcuts are never written", () => {
     setKeybindingOverride("zz.quick", "mod+j");
     const saved = localStorage.getItem("stave:keybindings");
+    const setItem = vi.spyOn(window.localStorage, "setItem");
+    const writes = () => setItem.mock.calls.filter(([k]) => k === "stave:keybindings").length;
     const source = stand();
     const { container } = panel(source);
     act(() => fireEvent.click(byId(container, "source-filter-extension:zz-keys")!));
@@ -183,5 +220,11 @@ describe("Keyboard Shortcuts with an extension's keys", () => {
     // the filter fell back to All, so the list is not empty
     expect(byId(container, "source-zz.sidebar")).not.toBeNull();
     expect(localStorage.getItem("stave:keybindings")).toBe(saved);
+    // not even the same text written back
+    expect(writes()).toBe(0);
+    // and the spy does see such a write (the control)
+    setKeybindingOverride("zz.quick", "mod+j");
+    expect(writes()).toBe(1);
+    setItem.mockRestore();
   });
 });

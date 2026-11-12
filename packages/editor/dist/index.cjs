@@ -302,8 +302,14 @@ function setExtensionKeyGivenBack(extensionId, key3, givenBack) {
 __name(setExtensionKeyGivenBack, "setExtensionKeyGivenBack");
 function onExtensionKeysChange(fn) {
   listeners.add(fn);
+  const fromAnotherTab = /* @__PURE__ */ __name((e) => {
+    if (e.key === STORAGE || e.key === null) fn();
+  }, "fromAnotherTab");
+  const win = typeof window !== "undefined" && typeof window.addEventListener === "function" ? window : null;
+  win?.addEventListener("storage", fromAnotherTab);
   return () => {
     listeners.delete(fn);
+    win?.removeEventListener("storage", fromAnotherTab);
   };
 }
 __name(onExtensionKeysChange, "onExtensionKeysChange");
@@ -869,7 +875,7 @@ var VIM_ID = "vim";
 var KEYS = [
   // Vim's "up a line", and Stave's quick open off a Mac: handed back to Stave unless the
   // person gives it to Vim
-  { key: "ctrl+p", name: "Up a line", where: "code", givenBack: true },
+  { key: "ctrl+p", name: "Up a line (normal and visual mode)", where: "code", givenBack: true },
   // Vim's own
   { key: "ctrl+r", name: "Redo", where: "code" },
   { key: "ctrl+c", name: "Back to normal mode", where: "code" },

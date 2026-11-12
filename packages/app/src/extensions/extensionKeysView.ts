@@ -96,8 +96,15 @@ export interface ExtensionKeyRow extends ExtensionKeyState {
   readonly extensionId: string;
   readonly extensionName: string;
   readonly source: KeySource;
-  /** the Stave commands on the same key, which run from inside the code only while it is given back */
+  /** the Stave commands on the same key (each runs outside the code) */
   readonly staveCommands: readonly string[];
+  /**
+   * Of those, the ones that run from inside the code while the key is given back: the key
+   * dispatcher runs a command from the code only on a keystroke that cannot type text, or
+   * for the palette and quick open (`runsFromCodeOn`). On a Mac, a command you put on a
+   * Control key does not.
+   */
+  readonly staveCommandsInCode: readonly string[];
 }
 
 /** Which platform to read chords for; the page's own by default (tests pass one). */
@@ -111,13 +118,31 @@ export function extensionKeyRows(
   commands: readonly CommandKeys[],
   opts: PlatformOpts = {},
 ): ExtensionKeyRow[] {
-  return extensionKeys(m).map((k) => ({
-    ...k,
-    extensionId: m.id,
-    extensionName: m.name,
-    source: extensionSource(m.id),
-    staveCommands: commands.filter((c) => sharesKeyInCode(c, k.key, opts)).map((c) => c.title),
-  }));
+  return extensionKeys(m).map((k) => {
+    const sharing = commands.filter((c) => sharesKeyInCode(c, k.key, opts));
+    return {
+      ...k,
+      extensionId: m.id,
+      extensionName: m.name,
+      source: extensionSource(m.id),
+      staveCommands: sharing.map((c) => c.title),
+      staveCommandsInCode: sharing.filter((c) => c.chords.some((ch) => onKey(ch, k.key, opts) && runsFromCodeOn(c, ch, opts))).map((c) => c.title),
+    };
+  });
+}
+
+/**
+ * The lines under an extension's row about the Stave commands on its key: which run in the
+ * code (only while the key is given back, and only those the dispatcher runs from there),
+ * and which run outside it alone.
+ */
+export function sharedKeyLines(row: Pick<ExtensionKeyRow, "givenBack" | "staveCommands" | "staveCommandsInCode">): string[] {
+  const inCode = row.givenBack ? row.staveCommandsInCode : [];
+  const outsideOnly = row.staveCommands.filter((t) => !inCode.includes(t));
+  const lines: string[] = [];
+  if (inCode.length) lines.push(`Runs Stave’s ${inCode.join(", ")}`);
+  if (outsideOnly.length) lines.push(`Outside the code, runs Stave’s ${outsideOnly.join(", ")}`);
+  return lines;
 }
 
 /** Does a search match this row? Its name, its key, and the extension's name. */
@@ -130,18 +155,36 @@ export function extensionRowMatches(row: ExtensionKeyRow, query: string): boolea
 // ── clashes ───────────────────────────────────────────────────────────────────────────
 
 /**
- * Does the person's own key `chord` for this command win over an extension's key inside
- * the code? The key dispatcher (`installKeybindingDispatcher`, its capture listener) runs
- * the person's rebind there only when the keystroke cannot type text (⌘ held on a Mac,
- * Ctrl without Alt elsewhere) or the command is the palette or quick open; otherwise the
- * extension still gets the key. Stave's defaults never win.
+ * Does the key dispatcher run this command from inside the code on `chord`? Only on a
+ * keystroke that cannot type text (`cannotTypeText` in `keybindings.ts`: ⌘ held on a Mac;
+ * Ctrl without Alt elsewhere, where the Windows key is not Ctrl), or when the command is
+ * the palette or quick open (`runsFromCode`). The chord is read as spelled: off a Mac a
+ * `meta` / `cmd` key is pressed with the Windows key, which does not count, though the
+ * chord builder files both under `mod`.
  */
-function ownKeyWinsInCode(c: CommandKeys, chord: string, opts: PlatformOpts): boolean {
-  if (!c.overridden) return false;
+export function runsFromCodeOn(c: Pick<CommandKeys, "id">, chord: string, opts: PlatformOpts = {}): boolean {
   if (c.id.startsWith("stave.palette.") || c.id === "stave.quickOpen") return true;
   const isMac = opts.isMac ?? isMacPlatform();
+  const raw = chord.toLowerCase().split("+");
   const parts = normalizeChord(chord, { isMac }).split("+");
-  return parts.includes("mod") && (isMac || !parts.includes("alt"));
+  if (isMac) return parts.includes("mod");
+  const ctrl = raw.some((t) => t === "ctrl" || t === "control" || t === "mod");
+  return ctrl && !parts.includes("alt");
+}
+
+/** Is `chord` the extension's `key`, on this platform? */
+function onKey(chord: string, key: string, opts: PlatformOpts): boolean {
+  return chordMatches(chord, key, { isMac: opts.isMac ?? isMacPlatform() });
+}
+
+/**
+ * Does the person's own key `chord` for this command win over an extension's key inside
+ * the code? The key dispatcher (`installKeybindingDispatcher`, its capture listener) runs
+ * the person's rebind there only where it runs any command from the code
+ * (`runsFromCodeOn`); otherwise the extension still gets the key. Stave's defaults never win.
+ */
+function ownKeyWinsInCode(c: CommandKeys, chord: string, opts: PlatformOpts): boolean {
+  return c.overridden && runsFromCodeOn(c, chord, opts);
 }
 
 /**
@@ -151,8 +194,7 @@ function ownKeyWinsInCode(c: CommandKeys, chord: string, opts: PlatformOpts): bo
  */
 function sharesKeyInCode(c: CommandKeys, key: string, opts: PlatformOpts): boolean {
   if (c.scope) return false;
-  const isMac = opts.isMac ?? isMacPlatform();
-  return c.chords.some((ch) => chordMatches(ch, key, { isMac }) && !ownKeyWinsInCode(c, ch, opts));
+  return c.chords.some((ch) => onKey(ch, key, opts) && !ownKeyWinsInCode(c, ch, opts));
 }
 
 /** One extension taking a command's key inside the code. */
@@ -193,6 +235,38 @@ export function clashLine(clashes: readonly ExtensionClash[]): string {
 /** The toggle's words: what pressing it does. */
 export function toggleLabel(givenBack: boolean, extensionName: string): string {
   return givenBack ? `Use in ${extensionName}` : "Give back to Stave";
+}
+
+/** A key in words, for a screen reader: `ctrl+r` is "Ctrl+R" off a Mac and "Control+R" on one. */
+export function keyWords(key: string, opts: PlatformOpts = {}): string {
+  const isMac = opts.isMac ?? isMacPlatform();
+  const names: Record<string, string> = {
+    mod: isMac ? "Cmd" : "Ctrl",
+    cmd: "Cmd",
+    command: "Cmd",
+    meta: isMac ? "Cmd" : "Windows",
+    ctrl: isMac ? "Control" : "Ctrl",
+    control: isMac ? "Control" : "Ctrl",
+    shift: "Shift",
+    alt: isMac ? "Option" : "Alt",
+    option: "Option",
+    opt: "Option",
+  };
+  return key
+    .toLowerCase()
+    .split("+")
+    .map((p) => names[p] ?? (p.length === 1 ? p.toUpperCase() : p.charAt(0).toUpperCase() + p.slice(1)))
+    .join("+");
+}
+
+/**
+ * The toggle's accessible name: the action and the key, as its visible label changes with
+ * the state ("Give Ctrl+R back to Stave", "Use Ctrl+R in Vim"). The button carries no
+ * pressed state: its name already says what pressing it does.
+ */
+export function toggleAriaLabel(givenBack: boolean, key: string, extensionName: string, opts: PlatformOpts = {}): string {
+  const k = keyWords(key, opts);
+  return givenBack ? `Use ${k} in ${extensionName}` : `Give ${k} back to Stave`;
 }
 
 /** Where the key goes now, in words. */

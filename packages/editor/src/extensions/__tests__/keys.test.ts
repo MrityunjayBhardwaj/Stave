@@ -87,6 +87,25 @@ describe('declared keys are checked when the list is read', () => {
 })
 
 describe('handing keys back', () => {
+  it('a choice made in another tab is heard (its storage event), other keys are not, and unsubscribing stops it (#2545)', () => {
+    const m = vimLike()
+    const heard = vi.fn()
+    const off = onExtensionKeysChange(heard)
+    // another tab hands Ctrl+R back: this tab's storage changes, then the event arrives
+    store.set('stave:extension-keys', JSON.stringify({ zzvim: { 'ctrl+r': true } }))
+    window.dispatchEvent(new StorageEvent('storage', { key: 'stave:extension-keys' }))
+    expect(heard).toHaveBeenCalledTimes(1)
+    expect(isExtensionKeyGivenBack(m, 'ctrl+r')).toBe(true)
+    window.dispatchEvent(new StorageEvent('storage', { key: 'stave:keybindings' }))
+    expect(heard).toHaveBeenCalledTimes(1)
+    // storage cleared in another tab
+    window.dispatchEvent(new StorageEvent('storage', { key: null }))
+    expect(heard).toHaveBeenCalledTimes(2)
+    off()
+    window.dispatchEvent(new StorageEvent('storage', { key: 'stave:extension-keys' }))
+    expect(heard).toHaveBeenCalledTimes(2)
+  })
+
   it('defaults to the manifest, and the person\'s choice wins; null goes back to the default', () => {
     const m = vimLike()
     expect(isExtensionKeyGivenBack(m, 'ctrl+r')).toBe(false)

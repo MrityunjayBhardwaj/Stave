@@ -10925,7 +10925,11 @@ declare function isExtensionKeyGivenBack(manifest: ExtensionManifest, key: strin
  * it only if the stored choice changed. A key that is not one chord is ignored.
  */
 declare function setExtensionKeyGivenBack(extensionId: string, key: string, givenBack: boolean | null): void;
-/** Hear about every change to which keys are handed back, made in this page. Returns the unsubscribe. */
+/**
+ * Hear about every change to which keys are handed back: made in this page, or in another
+ * tab of this browser (its `storage` event, for this setting's key or a cleared storage).
+ * Returns the unsubscribe.
+ */
 declare function onExtensionKeysChange(fn: () => void): () => void;
 /** One declared key with where it goes now: what the Extensions view and Keyboard Shortcuts show. */
 interface ExtensionKeyState {

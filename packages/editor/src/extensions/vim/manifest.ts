@@ -27,7 +27,7 @@ export const VIM_ID = 'vim'
 const KEYS: readonly ExtensionKey[] = [
   // Vim's "up a line", and Stave's quick open off a Mac: handed back to Stave unless the
   // person gives it to Vim
-  { key: 'ctrl+p', name: 'Up a line', where: 'code', givenBack: true },
+  { key: 'ctrl+p', name: 'Up a line (normal and visual mode)', where: 'code', givenBack: true },
   // Vim's own
   { key: 'ctrl+r', name: 'Redo', where: 'code' },
   { key: 'ctrl+c', name: 'Back to normal mode', where: 'code' },

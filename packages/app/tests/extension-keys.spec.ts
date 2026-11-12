@@ -29,16 +29,28 @@ const SHORTCUTS = JSON.stringify({ 'stave.view.splitRight': 'mod+alt+\\' })
 async function atLoad(page: Page | BrowserContext, ids: string[]): Promise<void> {
   await page.addInitScript(
     ([v, shortcuts]) => {
-      if (sessionStorage.getItem('seeded')) return
-      window.localStorage.setItem('stave:extensions', JSON.stringify(v))
-      window.localStorage.setItem('stave:keybindings', shortcuts)
-      sessionStorage.setItem('seeded', '1')
+      if (!sessionStorage.getItem('seeded')) {
+        window.localStorage.setItem('stave:extensions', JSON.stringify(v))
+        window.localStorage.setItem('stave:keybindings', shortcuts)
+        sessionStorage.setItem('seeded', '1')
+      }
+      // Count every write to the person's shortcuts from here on, so the same text written
+      // back would show too, not just a change in what is stored.
+      const w = window as unknown as { __shortcutWrites?: number }
+      w.__shortcutWrites = 0
+      const setItem = Storage.prototype.setItem
+      Storage.prototype.setItem = function (key: string, value: string) {
+        if (this === window.localStorage && key === 'stave:keybindings') w.__shortcutWrites! += 1
+        return setItem.call(this, key, value)
+      }
     },
     [ids, SHORTCUTS] as const,
   )
 }
 
 const shortcuts = (page: Page) => page.evaluate(() => window.localStorage.getItem('stave:keybindings'))
+const shortcutWrites = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __shortcutWrites?: number }).__shortcutWrites)
 const sidePanel = (page: Page) => page.locator('[data-side-panel]')
 const settings = (page: Page) => page.getByTestId('settings-shell')
 const byTest = (page: Page, id: string) => page.locator(`[data-testid="${id}"]`)
@@ -158,6 +170,11 @@ test('a test extension’s key: its row and Source, the badge, the filter; given
   await expect(sidePanel(page)).toHaveCount(0)
 
   expect(await shortcuts(page)).toBe(SHORTCUTS)
+  expect(await shortcutWrites(page)).toBe(0)
+  // the control: a real rebind is counted
+  await openKeys(page)
+  await byTest(page, 'reset-stave.view.splitRight').click()
+  await expect.poll(() => shortcutWrites(page)).toBe(1)
 })
 
 test.describe('Vim’s real keys, off a Mac, where its Ctrl keys are Stave’s Ctrl keys', () => {
@@ -240,5 +257,6 @@ test.describe('Vim’s real keys, off a Mac, where its Ctrl keys are Stave’s C
 
     expect(await page.evaluate(() => (window as unknown as { __noReload?: number }).__noReload)).toBe(1)
     expect(await shortcuts(page)).toBe(SHORTCUTS)
+    expect(await shortcutWrites(page)).toBe(0)
   })
 })

@@ -24,6 +24,8 @@ import {
   extensionRowMatches,
   extensionSource,
   liveFilter,
+  sharedKeyLines,
+  toggleAriaLabel,
   sourceLabel,
   sourceOptions,
   sourceShows,
@@ -143,6 +145,19 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
     chosenCat.startsWith("extension:") && !extensionGroups.some((g) => extensionSource(g.manifest.id) === chosenCat)
       ? "all"
       : chosenCat;
+  // … and once it is gone, so is the choice: switching it on again starts from All, not
+  // from a filter or category the person can no longer see was chosen.
+  useEffect(() => {
+    if (source !== chosenSource) setSource(source);
+    if (activeCat !== chosenCat) setActiveCat(activeCat);
+  }, [source, chosenSource, activeCat, chosenCat]);
+
+  // Which categories to render (command cats + the synthetic Editor group + one per extension).
+  function showCatNow(cat: string): boolean {
+    if (searching) return true;
+    return activeCat === "all" || activeCat === cat;
+  }
+  const showCat = showCatNow;
 
   const rowSource = (r: Row): KeySource => commandSource(isKeybindingOverridden(r.cmd.id));
   const rowMatches = (r: Row): boolean =>
@@ -154,13 +169,14 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
   const extensionRowCount = extensionGroups.reduce((n, g) => n + g.rows.length, 0);
   const totalCount = listCommands().length + EDITOR_OWNED_KEYS.length + extensionRowCount;
   const editorMatchCount = EDITOR_OWNED_KEYS.filter((k) => editorKeyMatches(k.name)).length;
-  const extensionMatchCount = extensionGroups.reduce((n, g) => n + g.rows.filter(extensionRowShows).length, 0);
+  // What the pane shows now, in the chosen category: none of it is the empty message.
+  const visibleCount =
+    commandCats.filter(showCatNow).reduce((n, cat) => n + (byCat.get(cat) ?? []).filter(rowMatches).length, 0) +
+    (showCatNow(EDITOR_OWNED_CATEGORY) ? editorMatchCount : 0) +
+    extensionGroups
+      .filter((g) => showCatNow(extensionSource(g.manifest.id)))
+      .reduce((n, g) => n + g.rows.filter(extensionRowShows).length, 0);
 
-  // Which categories to render (command cats + the synthetic Editor group + one per extension).
-  const showCat = (cat: string): boolean => {
-    if (searching) return true;
-    return activeCat === "all" || activeCat === cat;
-  };
 
   const sourceTag = (s: KeySource, testId: string): React.ReactNode => (
     <span
@@ -265,18 +281,18 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
           <div className="kb-when" data-testid={`ext-where-${id}`}>
             inside the code · {whereLine(r.givenBack, r.extensionName)}
           </div>
-          {r.staveCommands.length ? (
-            <div className="kb-when">
-              {r.givenBack ? "Runs" : "Outside the code, runs"} Stave’s {r.staveCommands.join(", ")}
+          {sharedKeyLines(r).map((line) => (
+            <div className="kb-when" key={line} data-testid={`ext-shared-${id}`}>
+              {line}
             </div>
-          ) : null}
+          ))}
         </div>
         <div className="kb-right">
           <button
             type="button"
             className="kb-give"
             data-testid={`ext-toggle-${id}`}
-            aria-pressed={r.givenBack}
+            aria-label={toggleAriaLabel(r.givenBack, r.key, r.extensionName)}
             onClick={() => toggleExtensionKey(r, r.extensionId)}
           >
             {toggleLabel(r.givenBack, r.extensionName)}
@@ -416,9 +432,7 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
           );
         })}
 
-        {commandCats.every((cat) => (byCat.get(cat) ?? []).filter(rowMatches).length === 0) &&
-        editorMatchCount === 0 &&
-        extensionMatchCount === 0 ? (
+        {visibleCount === 0 ? (
           <div className="empty" data-testid="keys-empty">
             {searching ? <>No shortcuts match “{query}”.</> : source === "you" ? <>You haven’t changed any shortcuts yet.</> : <>No shortcuts here.</>}
           </div>
