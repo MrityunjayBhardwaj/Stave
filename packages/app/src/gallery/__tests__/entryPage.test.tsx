@@ -229,3 +229,35 @@ describe("EntryPage", () => {
     expect(taken).not.toHaveBeenCalled();
   });
 });
+
+describe("EntryPage — the preview gets the entry's files (#2490)", () => {
+  /** Load the page's one frame and answer "ready", as the player does; what it was sent. */
+  function frameSent(): unknown[] {
+    const f = frames()[0] as HTMLIFrameElement;
+    const posted = vi.spyOn(f.contentWindow!, "postMessage");
+    fireEvent.load(f);
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data: { state: "ready" }, origin: "null", source: f.contentWindow }));
+    });
+    return posted.mock.calls.map((c) => c[0]);
+  }
+
+  it("a project's pattern goes in with the project's other runnable files, from its manifest only", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const [msg] = frameSent() as Array<{ play: true; path: string; files: Array<{ path: string; kind: string; code: string }> }>;
+    expect(msg.path).toBe("main.strudel");
+    // README.md has no preview, so it stays out; the rest are the manifest's own
+    expect(msg.files.map((f) => f.path)).toEqual(["main.strudel", "bass.strudel", "viz/bloom.hydra"]);
+    for (const f of msg.files) expect(f.code).toBe(MANIFEST.files.find((m) => m.path === f.path)!.content);
+    expect(msg.files.find((f) => f.path === "viz/bloom.hydra")!.kind).toBe("hydra");
+  });
+
+  it("a music entry still sends its one file", () => {
+    renderPage({
+      detail: { status: "ready", id: "m", data: { entry: { ...ENTRY, kind: "music" }, manifest: { ...MANIFEST, files: [MANIFEST.files[0]] } } },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(frameSent()).toEqual([{ play: true, path: "main.strudel", files: [{ path: "main.strudel", kind: "strudel", code: MANIFEST.files[0].content }] }]);
+  });
+});

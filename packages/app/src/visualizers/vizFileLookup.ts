@@ -28,6 +28,12 @@ import {
 } from "@stave/editor";
 import type { WorkspaceFile } from "@stave/editor";
 
+/**
+ * What the name rule reads of a file: its path and language. A gallery
+ * preview's files (#2490) aren't workspace files, and resolve by the same rule.
+ */
+export type NamedVizFile = Pick<WorkspaceFile, "path" | "language">;
+
 /** A file's basename without its extension: `viz/Fold.p5` → `Fold`. */
 export function vizBaseName(path: string): string {
   return path.split("/").pop()!.replace(/\.[^.]+$/, "");
@@ -45,7 +51,7 @@ export function presetIdForVizFile(file: WorkspaceFile): string {
 }
 
 /** Basenames of every p5 viz file — the names a hydra/glsl twin must yield. */
-export function p5VizBasenames(files: readonly WorkspaceFile[]): Set<string> {
+export function p5VizBasenames(files: readonly NamedVizFile[]): Set<string> {
   return new Set(
     files.filter((f) => f.language === "p5js").map((f) => vizBaseName(f.path)),
   );
@@ -57,7 +63,7 @@ export function p5VizBasenames(files: readonly WorkspaceFile[]): Set<string> {
  * `scope:hydra`), or `null` when it registers under its own preset name.
  */
 export function qualifiedVizName(
-  file: WorkspaceFile,
+  file: NamedVizFile,
   p5Basenames: ReadonlySet<string>,
 ): string | null {
   const renderer = rendererForLanguage(file.language);
@@ -81,10 +87,10 @@ export function findVizFileByPresetId(
  * registry resolves it. Each viz file's registered name is its qualified name
  * or, standing in for its preset name, its basename.
  */
-export function findVizFileByName(
-  files: readonly WorkspaceFile[],
+export function findVizFileByName<F extends NamedVizFile>(
+  files: readonly F[],
   vizId: string,
-): WorkspaceFile | undefined {
+): F | undefined {
   const vizFiles = files.filter((f) => isVizLanguage(f.language));
   const p5Basenames = p5VizBasenames(vizFiles);
   const named = vizFiles.map((f) => ({

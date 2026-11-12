@@ -6,7 +6,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, act, fireEvent, cleanup } from "@testing-library/react";
 import { GalleryPreview, NAVIGATED_AWAY } from "../GalleryPreview";
-import { NEEDS_CLICK } from "../previewProtocol";
+import { NEEDS_CLICK, type PreviewFile } from "../previewProtocol";
+
+/** A one-file entry, as GalleryEntry hands it over (previewPlayFor). */
+const ONE: PreviewFile[] = [{ path: "a.strudel", kind: "strudel", code: 's("bd")' }];
 
 beforeEach(() => cleanup());
 
@@ -23,7 +26,7 @@ function fromFrame(data: unknown) {
 }
 
 function openPreview() {
-  render(<GalleryPreview code={'s("bd")'} kind="strudel" fileKey="e1/f0" />);
+  render(<GalleryPreview path="a.strudel" files={ONE} fileKey="e1/f0" />);
   fireEvent.click(screen.getByRole("button", { name: "Preview" }));
   const f = frame();
   expect(f, "the preview opened its frame").not.toBeNull();
@@ -41,7 +44,7 @@ describe("GalleryPreview — what goes into the frame, and when", () => {
     expect(plays(posted), "ready alone: the player has not finished loading").toBe(0);
     fireEvent.load(f);
     expect(plays(posted)).toBe(1);
-    expect(posted.mock.calls[0][0]).toEqual({ play: true, code: 's("bd")', kind: "strudel" });
+    expect(posted.mock.calls[0][0]).toEqual({ play: true, path: "a.strudel", files: ONE });
   });
 
   it("load first, then ready, also plays once", () => {
@@ -174,7 +177,7 @@ describe("GalleryPreview — focus moves only when this page asked the frame to 
   });
 
   it("asked by a card's or a row's play (autoStart): its NEEDS_CLICK answer moves focus into the frame", async () => {
-    render(<GalleryPreview code={'s("bd")'} kind="strudel" fileKey="e1/f0" autoStart />);
+    render(<GalleryPreview path="a.strudel" files={ONE} fileKey="e1/f0" autoStart />);
     await act(async () => {
       await new Promise((r) => requestAnimationFrame(() => r(null)));
     });
@@ -203,5 +206,25 @@ describe("GalleryPreview — focus moves only when this page asked the frame to 
     fromFrame({ state: "stopped", message: NEEDS_CLICK });
     expect(document.activeElement).toBe(f);
     search.remove();
+  });
+});
+
+describe("GalleryPreview — a project's files go in together (#2490)", () => {
+  it("sends the played file AND the entry's other files, in one message the frame accepts", async () => {
+    const { parseToFrame } = await import("../previewProtocol");
+    const files: PreviewFile[] = [
+      { path: "main.strudel", kind: "strudel", code: 's("bd").viz("bloom")' },
+      { path: "viz/bloom.hydra", kind: "hydra", code: "osc(10).out()" },
+    ];
+    render(<GalleryPreview path="main.strudel" files={files} fileKey="p1/f1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const f = frame()!;
+    const posted = vi.spyOn(f.contentWindow!, "postMessage");
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    expect(plays(posted)).toBe(1);
+    const sent = posted.mock.calls[0][0];
+    expect(sent).toEqual({ play: true, path: "main.strudel", files });
+    expect(parseToFrame(sent)).toEqual(sent);
   });
 });

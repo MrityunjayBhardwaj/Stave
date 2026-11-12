@@ -22,9 +22,13 @@
  * included. In Chromium and WebKit the refusal still fires this frame's load, so
  * the preview closes as above; in a browser where it doesn't, the player just
  * stays up. Code can still draw whatever it likes inside its own page.
+ *
+ * #2490 — what goes in is the file to play AND the entry's other files the
+ * frame can run (`previewPlayFor`, built from the entry's manifest), so a
+ * pattern's `.viz("name")` finds the entry's own visual inside the frame.
  */
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { NEEDS_CLICK, parseFromFrame, type FromFrame, type PreviewKind } from "./previewProtocol";
+import { NEEDS_CLICK, parseFromFrame, type FromFrame, type PreviewFile } from "./previewProtocol";
 
 export const PLAYER_PATH = "/gallery-player";
 const LOAD_SLOW_MS = 15_000;
@@ -38,8 +42,10 @@ export interface GalleryPreviewHandle {
 }
 
 export interface GalleryPreviewProps {
-  code: string;
-  kind: PreviewKind;
+  /** The file to play: one of `files`. */
+  path: string;
+  /** #2490 — the entry's files the frame can run, the played one first (`previewPlayFor`). */
+  files: PreviewFile[];
   fileKey: string;
   /** Start playing as soon as this file is shown (a file row's play button chose it). */
   autoStart?: boolean;
@@ -55,9 +61,14 @@ export interface GalleryPreviewProps {
  * row's play button switches the file it holds.
  */
 export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewProps>(function GalleryPreview(
-  { code, kind, fileKey, autoStart = false, onPlayingChange, idle },
+  { path, files, fileKey, autoStart = false, onPlayingChange, idle },
   ref,
 ) {
+  const kind = files.find((f) => f.path === path)?.kind ?? "strudel";
+  // What a play sends, read when it is sent: the list is rebuilt on every render
+  // of the entry page, and the frame's listener mustn't restart for that.
+  const toSend = useRef({ path, files });
+  toSend.current = { path, files };
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<FromFrame | null>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -82,8 +93,9 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
   const askToPlay = useCallback(() => {
     codeSent.current = true;
     awaitingStart.current = true;
-    send({ play: true, code, kind });
-  }, [send, code, kind]);
+    const { path: p, files: fs } = toSend.current;
+    send({ play: true, path: p, files: fs });
+  }, [send]);
 
   /** Play, once the player has both loaded and said it is listening. */
   const playWhenLoaded = useCallback(() => {
