@@ -3455,6 +3455,35 @@ export function rollOnsets(pat: MiniPattern, cyc: number): RollOnset[] | null {
 }
 
 /**
+ * THE ROLL'S PITCH READER: what a played value is as a roll note — a numeric pitch
+ * (`note("60")` MIDI / `n("0")` degree), a note name folded to lower case, or why it is
+ * not one. The value the engine yields is the ground truth. Exported so a roll drawn
+ * from the pattern's divisions (#1834) reads its notes exactly as this one does.
+ */
+export function rollPitch(v: unknown): { pitch: string; numeric: boolean } | 'no-note-content' | 'wrong-surface' {
+  if (typeof v === 'number' && Number.isFinite(v)) return { pitch: String(v), numeric: true }
+  // A `:`-variant arrives as krill's ARRAY (`["bd", 3]`, #1019). Rejoined to its
+  // own source text and judged as the token it was WRITTEN as — which for the
+  // roll is a reclassification, not new reach, and deliberately so:
+  //   `bd:3` is a sound with a sample index — the grid's surface.
+  //   `c4:2` is a pitch the roll still cannot serve, because its write-back
+  //          replaces the leaf span and has nowhere to carry the `:2`; opening
+  //          it would silently drop the index, and a view that opens and
+  //          corrupts is worse than one that never opened.
+  // `pitchToMidi` is fully anchored, so BOTH land in `wrong-surface` below.
+  // Before #1019 both were reported as `no-note-content` — "this pattern plays
+  // nothing placeable" said about a pattern that plays perfectly well, which is
+  // the same conflation #990 split the two reasons apart to stop.
+  const s = typeof v === 'string' ? v : Array.isArray(v) ? tailToken(v) : null
+  if (s === null) return 'no-note-content' // params / a signal has no note to place
+  if (NUMERIC.test(s)) return { pitch: s, numeric: true }
+  // fold case like the core does — the row math is case-blind, and the
+  // convention has no business riding back out into the document
+  if (pitchToMidi(s.toLowerCase()) !== null) return { pitch: s.toLowerCase(), numeric: false }
+  return 'wrong-surface' // a sound token — the grid's, not the roll's
+}
+
+/**
  * `rollOnsets`, saying WHY when it declines — the roll's half of
  * `readGridOnsets` (#990), and the surface where the distinction matters most:
  * a drum pattern asked of the piano roll plays SOUND names, which is not a
@@ -3470,37 +3499,9 @@ function readRollOnsets(pat: MiniPattern, cyc: number): Read<RollOnset[]> {
   }
   const out: RollOnset[] = []
   for (const { hit: h, atom } of haps) {
-    const v = h.value
-    let pitch: string
-    let numeric: boolean
-    if (typeof v === 'number' && Number.isFinite(v)) {
-      pitch = String(v)
-      numeric = true
-    } else {
-      // A `:`-variant arrives as krill's ARRAY (`["bd", 3]`, #1019). Rejoined to its
-      // own source text and judged as the token it was WRITTEN as — which for the
-      // roll is a reclassification, not new reach, and deliberately so:
-      //   `bd:3` is a sound with a sample index — the grid's surface.
-      //   `c4:2` is a pitch the roll still cannot serve, because its write-back
-      //          replaces the leaf span and has nowhere to carry the `:2`; opening
-      //          it would silently drop the index, and a view that opens and
-      //          corrupts is worse than one that never opened.
-      // `pitchToMidi` is fully anchored, so BOTH land in `wrong-surface` below.
-      // Before #1019 both were reported as `no-note-content` — "this pattern plays
-      // nothing placeable" said about a pattern that plays perfectly well, which is
-      // the same conflation #990 split the two reasons apart to stop.
-      const s = typeof v === 'string' ? v : Array.isArray(v) ? tailToken(v) : null
-      if (s === null) return no('no-note-content') // params / a signal has no note to place
-      if (NUMERIC.test(s)) {
-        pitch = s
-        numeric = true
-      } else if (pitchToMidi(s.toLowerCase()) !== null) {
-        // fold case like the core does — the row math is case-blind, and the
-        // convention has no business riding back out into the document
-        pitch = s.toLowerCase()
-        numeric = false
-      } else return no('wrong-surface') // a sound token — the grid's, not the roll's
-    }
+    const read = rollPitch(h.value)
+    if (typeof read === 'string') return no(read)
+    const { pitch, numeric } = read
     const pos = h.begin.valueOf() - cyc
     const dur = h.end.valueOf() - h.begin.valueOf()
     if (dur <= 0) return no('no-note-content')

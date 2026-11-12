@@ -25,7 +25,10 @@
  * — one on each of `resizeNote`'s branches (single-bar, and the multi-bar `<...>` form).
  */
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 async function openRoll(page: Page, code: string) {
   await bootApp(page, { drawer: { tabId: 'pattern', height: 520 } })
@@ -72,7 +75,7 @@ test.describe('the roll offers a length handle only where one would work (#1322)
   const INERT_CELL = '48:7' // c at step 7 — no writable length
   const LIVE_CELL = '48:1' // c at step 1 — same row, same document, offerable
 
-  test('withholds the handle where no length is writable, and keeps it on the same row where one is', async ({
+  test('withholds the handle where no length is writable, and keeps it on the same row where one is (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, SINGLE)
@@ -89,7 +92,7 @@ test.describe('the roll offers a length handle only where one would work (#1322)
     ).toHaveCount(0)
   })
 
-  test('says why the handle is missing, rather than leaving the absence unexplained', async ({
+  test('says why the handle is missing, rather than leaving the absence unexplained (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, SINGLE)
@@ -107,7 +110,7 @@ test.describe('the roll offers a length handle only where one would work (#1322)
     await expect(cellLoc(page, LIVE_CELL)).not.toHaveAttribute('data-roll-resize-inert', 'true')
   })
 
-  test('a note that KEEPS its handle still resizes — the gate did not take the affordance from everyone', async ({
+  test('a note that KEEPS its handle still resizes — the gate did not take the affordance from everyone (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, SINGLE)
@@ -124,7 +127,7 @@ test.describe('the roll offers a length handle only where one would work (#1322)
       .not.toBe(SINGLE)
   })
 
-  test('pressing where the handle used to be writes nothing — checked against an ACCEPTED edit, not from rest', async ({
+  test('pressing where the handle used to be writes nothing — checked against an ACCEPTED edit, not from rest (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, SINGLE)
@@ -163,7 +166,7 @@ test.describe('the roll offers a length handle only where one would work (#1322)
   // the second slot do not, and all three are the same row.
   const MULTI = '$: note("- - - <b3 [b3 b3]>")'
 
-  test('the same rule holds on the multi-bar branch', async ({ page }) => {
+  test('the same rule holds on the multi-bar branch (LCM grid)', async ({ page }) => {
     await openRoll(page, MULTI)
 
     await expect(handle(page, '59:6'), 'the offerable b3 must keep its handle').toHaveCount(1)

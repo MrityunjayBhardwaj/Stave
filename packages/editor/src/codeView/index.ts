@@ -131,7 +131,7 @@ export {
   stripContainingOffset,
 } from './mixer/stripModel'
 export { locateMiniParseError } from './miniSource/miniParseError'
-export { syntaxErrorAt } from './astParse'
+export { syntaxErrorAt, parseModule } from './astParse'
 export type { StripModel } from './mixer/stripModel'
 export { isValidTrackLabel } from './mixer/writeStrip'
 export type { StepLane, ResizeMode } from './notation'
@@ -158,7 +158,7 @@ export type {
   AltSource,
   NotationSource,
 } from './notation/model'
-export { parseStepGrid, parsePianoRoll, bracketedBarRegions } from './notation/parse'
+export { parseStepGrid, parsePianoRoll, bracketedBarRegions, rollPitch } from './notation/parse'
 export { rhythmChart, RHYTHM_CHART_MAX_BARS, type RhythmChart, type RhythmChartResult } from './notation/rhythmChart'
 export { pitchToMidi, midiToPitch, isBlackKey, noteDisplayName, cLabel } from './notation/pitch'
 export { noteToMidi } from './notation/noteToMidi'
@@ -210,7 +210,9 @@ export { playsBareExpression } from './bareExpression'
 export { planVizAssignment } from './assign/vizAssign'
 export { assignmentEdit } from './assign/soundAssign'
 export { captionEdit, shapeEdit, shapeOptions, rateEditable } from './automation/captionEdit'
-export { gridWriteEdits, readChunkGain, gainUnchanged } from './notation/gainEdit'
+export { gridWriteEdits, readChunkGain, gainUnchanged, stepGainWriteEdits } from './notation/gainEdit'
+export { stepGainEdit, gainLevelsAt, fmtLevel } from './stepGain'
+export type { StepGainRefusal, StepGainResult } from './stepGain'
 export { sliderEdit } from './sliderEdit'
 export {
   stepGridCodec,
@@ -239,6 +241,10 @@ export {
 export { masterGainEdit, masterMuteEdit, masterVizEdit, masterAudioLineEdit } from './mixer/masterEdit'
 export { renameEdit, gainEdit, panEdit, muteEdit, reconcileSoloMutes, soloMuteEdits } from './mixer/writeStrip'
 export type { SoloStripFacts } from './mixer/writeStrip'
+export { readVizOptionsLiteral, resolveVizOptions } from './mixer/vizOptionsLiteral'
+export type { CodeVizOptions } from './mixer/vizOptionsLiteral'
+export { readCodeViz } from './mixer/codeViz'
+export type { CodeViz } from './mixer/codeViz'
 export {
   knobEdit,
   knobRangeEdit,
@@ -248,6 +254,12 @@ export {
 } from './chainEdit'
 export { readSoundCall, soundArgLabel, soundPickEdit, soundPickRefusal } from './soundArg'
 export { noteSounds, soundLane, soundBlockEdit, stepNotes, stepNoteKey, type SoundBlock, type StepNotes } from './noteSounds'
+export { chunkDivisions, chunkPeriod, laneDivisions } from './gridDivisions'
+export type { BarTree, BarTreeRefusal, DivisionRow, DivisionStep, DivisionHit, LaneDivisions, LaneDivisionsRefusal, Frac, Slot, DivisionsRefusal } from './gridDivisions'
+export { toggleStep, splitStep, resizeStep, resizeStepBy, applyStepEdit, laneRowForEdit } from './stepEdit'
+export { rollAdd, rollRemove, rollResize, rollMove, noteAt, moveAcrossPlaces } from './rollEdit'
+export type { RollPlace, RollRefusal, RollEditResult } from './rollEdit'
+export type { StepAddress, StepEdit, StepEditRefusal, StepEditResult } from './stepEdit'
 export type { SoundArg, SoundPickEdit } from './soundArg'
 export type { ChainArgRef } from './chainEdit'
 export {

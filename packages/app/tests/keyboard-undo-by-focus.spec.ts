@@ -11,7 +11,10 @@
  * and asserts undo walks back through exactly those states.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 async function boot(page: Page, tab: string): Promise<void> {
@@ -93,7 +96,7 @@ test('piano roll: three edits, three ⌘Z with the roll focused, back to the ori
 // the focus change; measured 2026-09-27), so ⌘Z reaches the code editor's own
 // undo. A regression guard: the sequencer gets keyboard focus of its own with
 // the grid cursor (#1802), and the Pattern panel's undo target covers it then.
-test('sequencer: ⌘Z after a step click undoes it, ⌘⇧Z redoes it', async ({ page }) => {
+test('sequencer: ⌘Z after a step click undoes it, ⌘⇧Z redoes it (LCM grid)', async ({ page }) => {
   await boot(page, 'pattern')
   await setCode(page, '$: s("bd ~ ~ ~")', 6)
   const before = await code(page)

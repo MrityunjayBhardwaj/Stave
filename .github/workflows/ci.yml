@@ -12,9 +12,15 @@
 #
 # Not here yet, on purpose:
 # - `tsc --noEmit` over the editor's test files: 63 errors on main, all in tests (#2124).
-#   The app's tests already typecheck: `next build` checks them.
+#   The app's tests do typecheck, in their own step below: `next build` checks
+#   only the shipped code (tsconfig.build.json, #2381).
 # - The browser suite: 279 Playwright spec files (about 1,000 tests) needing a dev
-#   server and real audio; it stays a manual gate for now.
+#   server and real audio; it stays a manual gate for now. One file is the
+#   exception: tests/gallery-sandbox.spec.ts runs here, in its own job on a
+#   production build, because `next dev` can't host the gallery's sandboxed
+#   preview frame, so the manual gate skips most of it (#2343). The job also runs
+#   tests/start-screen-intro.spec.ts, the last embed the app's frame policy lists
+#   whose test lives elsewhere (#2374).
 name: CI
 
 on:
@@ -60,6 +66,11 @@ jobs:
       - name: Build
         run: pnpm turbo run build --filter=@stave/app
 
+      # The build checks only the shipped code (tsconfig.build.json); this checks
+      # everything in tsconfig.json, tests included, from a clean install (#2381).
+      - name: Type-check the app, tests included
+        run: pnpm --filter @stave/app exec tsc --noEmit -p . --incremental false
+
       - name: Editor unit tests
         run: pnpm --filter @stave/editor test
 
@@ -71,3 +82,42 @@ jobs:
       - name: App unit tests
         if: github.event_name != 'pull_request'
         run: pnpm --filter @stave/app test
+
+  # #2343 — the gallery preview's browser tests, on a production build (next dev
+  # can't host the preview's sandboxed frame). They serve their gallery entries
+  # themselves, so no database and no sign-in: a plain `next start`. Its own job,
+  # pinned to Ubuntu 24.04: Playwright's Chromium doesn't install on the newer
+  # image `ubuntu-latest` now points at, and the unit tests above stay where they are.
+  gallery-preview:
+    name: Gallery preview browser tests (production build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm turbo run build --filter=@stave/app
+
+      - name: Install Chromium
+        run: pnpm --filter @stave/app exec playwright install --with-deps chromium
+
+      - name: Gallery preview tests
+        working-directory: packages/app
+        env:
+          AUTH_SECRET: ci-only-secret-for-the-gallery-preview-tests
+          STAVE_E2E_PORT: "3359"
+        run: |
+          npx next start -p 3359 > "$RUNNER_TEMP/next-start.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:3359/ && break; sleep 2; done
+          npx playwright test tests/gallery-sandbox.spec.ts tests/start-screen-intro.spec.ts --project=chromium --workers=1 --reporter=line || {
+            echo "--- next start log ---"; cat "$RUNNER_TEMP/next-start.log"; exit 1;
+          }

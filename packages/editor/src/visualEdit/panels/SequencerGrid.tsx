@@ -36,9 +36,17 @@ import { opensStepGrid } from '../../codeView'
 import { useGridModel } from './useGridModel'
 import { stepToCycle, usePlayingStep } from './usePlayingStep'
 import { addLane, removeLane } from '../../codeView'
-import { canResizeCell, canToggleCell, resizeCell, toggleCell } from '../../codeView'
+import { resizeStep, resizeStepBy, splitStep, toggleStep, type StepEdit, type StepEditResult } from '../../codeView'
 import { DRUM_SOUNDS } from './soundCatalog'
-import { sampleVoice, chordLanes, stepNotes, stepNoteKey } from '../../codeView'
+import { sampleVoice, chordLanes, stepNotes, stepNoteKey, chunkDivisions } from '../../codeView'
+import { endInBar, groupStops, laneSteps, leafStops, splitAddressAt, stepAddressAt, type StepAtRefusal } from './gridZoom'
+import { GridZoomControl, useGridZoom } from './gridZoomControl'
+import { lookOnlyTreeGrid } from './treeGrid'
+import { TreeStepGrid } from './TreeStepGrid'
+import { lookOnlyTreeRoll } from './rollTree'
+import { TreeRollGrid } from './TreeRollGrid'
+import { useDeferredPerText } from './useDeferredPerText'
+import { useExactPlayhead } from './exactPlayhead'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
@@ -46,17 +54,18 @@ import { UNREFINED, type ViewScale } from '../../codeView'
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
 import {
-  boxLengths,
   boxesPlaceNotes,
   groupBoxesBySteps,
   linesModel,
-  ownStepWidths,
   rowBoxes,
   rulerLabels,
+  type StepGroup,
   useRulerFit,
   writtenStepStarts,
 } from './writtenSteps'
 import { useGridMode } from './gridMode'
+import { useVelocityDrag } from './velocityDrag'
+import { ExactStepGrid } from './ExactStepGrid'
 import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
 import { InViewBar, PHONE_GRID_WIDTH, PHONE_RULER_HEIGHT, PHONE_STEP_MIN, TurnHint, usePhoneGrid, useRulerPan } from './phoneGrid'
@@ -66,7 +75,8 @@ import {
   isNoteEdit,
   matchGridKey,
   mountGridGestures,
-  moveBoxCursor,
+  moveStepCursor,
+  stopAt,
   type GridAction,
   type GridCell,
 } from './gridGestures'
@@ -98,12 +108,43 @@ const clamp01 = (v: number): number => Math.max(0, Math.min(1, v))
  * toggle the corpus offers is pre-announced, so no fixture reaches that one.
  * `emitLog` coalesces identical rows, so a repeated attempt ticks one row up.
  */
-function reportRefusal(attempted: string): void {
+function reportRefusal(attempted: string, why?: string): void {
   emitLog({
     level: 'warn',
     runtime: 'stave',
-    message: `${attempted} — writing it would change the pattern in ways you didn't ask for, so it was left unchanged.`,
+    message: why
+      ? `${attempted} — ${why.charAt(0).toLowerCase()}${why.slice(1)}`
+      : `${attempted} — writing it would change the pattern in ways you didn't ask for, so it was left unchanged.`,
   })
+}
+
+/**
+ * Why a click on a step is refused (#2292), in words, for the cell's title and the
+ * console line. A click edits the step's own text or nothing (the user's ruling: refuse
+ * rather than respell), so each reason says what in the text stops it and where to go.
+ */
+function stepRefusalLine(why: string, on: boolean): string {
+  switch (why) {
+    case 'inside-a-step':
+      return 'This column is part of a longer step — click where the step begins, or change it in the code view.'
+    case 'step-is-generated':
+      return "This hit is made by an operator on its step (like *4 or (3,8)) — change it in the code view."
+    case 'step-is-replicated':
+      return 'This step is written once and repeated with ! — change it in the code view.'
+    case 'step-is-a-random-choice':
+    case 'step-under-a-generator':
+      return 'This step plays by chance (? or |) — change it in the code view.'
+    case 'loop-shorter-than-the-pattern':
+      return "This step also plays in bars the grid doesn't show — change it in the code view."
+    case 'step-crosses-a-bar':
+      return 'This note runs over a bar line — switch it where it starts, or change it in the code view.'
+    case 'step-is-a-group':
+      return on
+        ? 'This hit sits in a group the grid cannot take it out of — change it in the code view.'
+        : "This step holds a group the grid can't add a sound to — change it in the code view."
+    default:
+      return "The grid can't find this step's own text to change — change it in the code view."
+  }
 }
 
 /**
@@ -123,12 +164,22 @@ export interface SequencerGridProps {
   notice?: string | null
 }
 
-export function SequencerGrid({ onResolution, notice = null }: SequencerGridProps = {}): React.ReactElement {
+/**
+ * The step grid: Settings › Grid chooses it. Exact draws and edits from the bar's tree
+ * (`ExactStepGrid`), with no equal columns; LCM is the column grid below (#2458).
+ */
+export function SequencerGrid(props: SequencerGridProps = {}): React.ReactElement {
+  const mode = useGridMode()
+  // Exact lifts its own Slots control: a snap over the tree, never a write (#2526)
+  return mode === 'exact' ? <ExactStepGrid notice={props.notice ?? null} onResolution={props.onResolution} /> : <ColumnStepGrid {...props} />
+}
+
+function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}): React.ReactElement {
   // How finely this panel DRAWS the pattern (#1057). Purely a view: nothing here
   // reaches the document until an actual edit is made, and the first write absorbs
   // it (`useGridModel` → `absorbViewScale`).
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const { chunk, model, read, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
+  const { chunk, model, read, mutate, writeMini, writeStep, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
     ...stepGridCodec,
     source: 'seq',
     eligible: opensStepGrid,
@@ -156,7 +207,6 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     model?.barSteps,
   )
   const [colorMode] = useNoteColorMode()
-  const gridMode = useGridMode()
 
   // A SOUND-FIRST LINE (#2226): `sound("piano gm_electric_guitar_muted").note("48 67 63 [62, 58]")`.
   // The sounds set the rhythm, so this grid draws them — and each step plays the note
@@ -183,6 +233,8 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     mode: 'paint' | 'pending' | 'velocity' | 'resize'
     paintValue: boolean
   } | null>(null)
+  /** the sound of the row a paint drag began in: the drag paints that row and no other */
+  const paintSoundRef = React.useRef<string | null>(null)
 
   // Velocity is offered where the WRITER will write it — `gainWritable` asks `serializeStepGain`
   // itself, the way the roll's `gainWritable` asks `serializeRollGain` (#1089), not
@@ -193,7 +245,11 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // Asked of the CURRENT model: the writer's skips are shape (foreign `.gain`, bars,
   // parts, leaf, unspellable columns), which a gain edit does not move. Memoized on
   // the model, as `mutate` fires every pointermove of the drag it gates.
-  const gainScoped = React.useMemo(() => (model ? gainWritable(stepGridCodec, model) : false), [model])
+  //
+  // And only where the user turned velocity on (#2525: off by default — a gain is almost always
+  // one number in community code, and a wobbly click would rewrite it per column).
+  const velocityOn = useVelocityDrag()
+  const gainScoped = React.useMemo(() => (velocityOn && model ? gainWritable(stepGridCodec, model) : false), [model, velocityOn])
 
 
   // Is this a CHORD CHART rather than a drum kit (#1241)? Asked of the lane
@@ -211,15 +267,12 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     [chordHead, laneKey],
   )
 
-  // THE BOXES EACH ROW IS DRAWN AS (#1855). LCM: one per column. Exact: a row whose
-  // `,`-part is stretched onto the shared grid is drawn at the part's own steps, each box
-  // `factor` columns wide, so `~ sd ~ sd, hh*8` shows the snare as 4 boxes and the hats
-  // as 8. The part's own step is read from what the TEXT reads as, like the step lines.
+  // THE BOXES EACH ROW IS DRAWN AS (#1855): one per column. (The Exact grid, which draws a
+  // part at its own steps, is `ExactStepGrid`; this grid is the shared-column view's.)
   const boxes = React.useMemo(() => {
     if (!model) return null
-    const widths = gridMode === 'exact' ? ownStepWidths(linesModel(model, read)) : new Map<number, number>()
-    return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn))
-  }, [model, read, gridMode])
+    return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, undefined, isCellOn))
+  }, [model])
   /** columns one box of this row spans: 1 in LCM and on a row at the shared grid */
   const boxesRef = React.useRef(boxes)
   boxesRef.current = boxes
@@ -245,17 +298,55 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // over the 1,014 corpus grids (best of 3, Node) p50 0.0042 → 0.0111ms, p99 6.23 →
   // 6.52ms, worst 14.5 → 21.1ms, total +15%.
   //
-  // A box in Exact is asked as the click it is: a hit one whole box long, at its first
-  // column (#1855). The columns inside a box are never drawn, so they are not asked.
+  // ⚠ THE CLICK IS THE STEP WRITER'S NOW (#2292). A click edits the clicked step's own text
+  // — `~` → `sd`, `sd` → `~`, `bd` → `[bd,sd]` — through `toggleStep`, asked of the tree
+  // Strudel gives the text; where that cannot be written as the step's own text the click is
+  // REFUSED with its reason, never handed to the column writer to respell the pattern (the
+  // user's ruling). So this map, the press, the keys and the drag all ask that one writer.
+  // A step written once and played in several places changes everywhere it plays.
+  const stepMini = chunk?.miniString ?? null
+  const stepTrees = React.useMemo(
+    () => (model && stepMini !== null && !model.lookOnly ? chunkDivisions(stepMini, model.bars ?? 1) : null),
+    // the tree depends on the text and the bar count, not on every model a drag makes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stepMini, model?.bars, !!model, !!model?.lookOnly],
+  )
+  //
+  // A box PART-WAY THROUGH a plain step — its faint snap half (#2293, the design's option B) —
+  // SPLITS that step (`splitStep`: `bd` → `[bd bd]`, `~` → `[~ sd]`), one replacement at the
+  // step's name. Marked `split`, because a drag does not split: paint walks steps.
+  const stepToggles = React.useMemo((): Array<Array<(StepEditResult & { split?: true }) | { ok: false; why: StepAtRefusal } | null>> | null => {
+    if (!model || !stepTrees || stepMini === null) return null
+    return model.lanes.map((lane, li) => {
+      const w = boxes?.[li]?.[0]?.width ?? 1
+      // the grid's rows of this part, in its order: a chord writes its members so
+      const order = model.lanes.filter((l) => (l.part ?? 0) === (lane.part ?? 0)).map((l) => l.sound)
+      const row = { sound: lane.sound, part: lane.part, order }
+      return lane.cells.map((_, si) => {
+        if (si % w !== 0) return null
+        const at = stepAddressAt(model, stepTrees, li, si)
+        if (at === 'inside-a-step') {
+          const inside = splitAddressAt(model, stepTrees, li, si)
+          if (!inside) return { ok: false, why: at }
+          const r = splitStep(stepMini, stepTrees, inside.address, inside.at, row)
+          return r.ok ? { ...r, split: true as const } : r
+        }
+        if (typeof at === 'string') return { ok: false, why: at }
+        return toggleStep(stepMini, stepTrees, at, row)
+      })
+    })
+  }, [model, boxes, stepTrees, stepMini])
+  const stepTreesRef = React.useRef(stepTrees)
+  stepTreesRef.current = stepTrees
+  const modelRef = React.useRef(model)
+  modelRef.current = model
+  const stepTogglesRef = React.useRef(stepToggles)
+  stepTogglesRef.current = stepToggles
+  const stepMiniRef = React.useRef(stepMini)
+  stepMiniRef.current = stepMini
   const toggleable = React.useMemo(
-    () =>
-      model
-        ? model.lanes.map((lane, li) => {
-            const w = boxes?.[li]?.[0]?.width ?? 1
-            return lane.cells.map((c, si) => si % w === 0 && canToggleCell(model, li, si, !isCellOn(c), w))
-          })
-        : null,
-    [model, boxes],
+    () => (stepToggles ? stepToggles.map((row) => row.map((r) => !!r && r.ok)) : model ? model.lanes.map((l) => l.cells.map(() => false)) : null),
+    [stepToggles, model],
   )
 
   // Does this view place notes ANYWHERE? Said ONCE here rather than as a grid
@@ -268,10 +359,9 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // (#1154) some leaf grids take a note and most still do not, so the honest
   // answer is per view and only the view can give it.
   //
-  // Read off the SAME per-box answers the cells use (#1858), so in Exact it speaks
-  // about the boxes on screen, not columns it does not draw. With a box per column
-  // (LCM) those are exactly the asks `viewPlacesNotes` makes; the map is already
-  // paid for, so this costs one pass over it.
+  // Read off the SAME per-box answers the cells use (#1858). With a box per column those are
+  // exactly the asks `viewPlacesNotes` makes; the map is already paid for, so this costs one
+  // pass over it.
   const placesNotes = React.useMemo(
     () => (model && boxes && toggleable ? boxesPlaceNotes(model.lanes, boxes, isCellOn, toggleable) : false),
     [model, boxes, toggleable],
@@ -309,96 +399,150 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     return out
   }, [model, read])
 
-  // EACH ROW AS ITS WRITTEN STEPS (#1861, Exact). A step spanning several boxes is drawn as
-  // one: `hh*8` one step holding 8 small boxes, `bd` in `bd hh*2 sd cp` one box with faint
-  // halves. Edges from the step lines above; plain-or-not from the part's coverage, never
-  // the text. LCM draws every box on its own, as it always has.
+  // EACH ROW'S BOXES, GROUPED (#1861): this view draws every column as its own box, with the
+  // written steps' lines between them (`stepStarts`). A row drawn at its own written steps,
+  // nested, is the Exact grid's (`ExactStepGrid`).
   const stepGroups = React.useMemo(() => {
     if (!model || !boxes || !coverage) return null
     return model.lanes.map((lane, li) => {
       const part = lane.part ?? 0
-      const starts = gridMode === 'exact' ? stepStarts?.get(part) : undefined
       const owners = model.lanes.flatMap((l, i) =>
         (l.part ?? 0) === part ? [(c: number) => coverage[i]?.[c]?.start] : [],
       )
-      return groupBoxesBySteps(boxes[li], starts ? [...starts].sort((a, b) => a - b) : undefined, model.steps, owners)
+      return groupBoxesBySteps(boxes[li], undefined, model.steps, owners)
     })
-  }, [model, boxes, coverage, stepStarts, gridMode])
+  }, [model, boxes, coverage])
 
-  // PROVE BEFORE OFFER, at the length handle (#1053) — the same rule the cell already
-  // applies, asked of `resizeCell` itself so the handle cannot promise a drag the writer
-  // declines. A note gets a handle exactly when SOME length other than its own is
-  // admissible: one column longer, or one shorter. Both are asked, because the two
-  // decline independently — a note with no room ahead can still be shortened, and a note
-  // already at one column can only grow.
+  const miniText = chunk?.miniString ?? null
+  // `hasModel` because a grid that first drew its standby line has none yet
+  const hasModel = !!model
+  // A pattern the columns cannot hold at all is drawn from its tree alone (#1834): asked only
+  // while there is no model, and once per text
+  const stepEligible = !!chunk && opensStepGrid(chunk)
+  const lookTree = useDeferredPerText(!hasModel && stepEligible ? miniText : null, lookOnlyTreeGrid)
+  // A pattern with no head that plays NUMBERS lands here (`routeSurface` asks the roll first,
+  // and the roll had no model either). Its values are pitches, so it draws as a roll from its
+  // tree — the step grid's tree does not stand in for numbers
+  const silentHead = !!chunk && !['s', 'sound', 'chord'].includes(chunk.headFn ?? '')
+  const lookRoll = useDeferredPerText(!hasModel && stepEligible && silentHead && lookTree === null ? miniText : null, lookOnlyTreeRoll)
+  // each row's own steps by the tree the EDITS use (every mode): where the arrow keys stop (#2293)
+  const editNodes = React.useMemo(
+    () => (model && stepTrees ? model.lanes.map((_, li) => laneSteps(model, stepTrees, li)) : null),
+    [model, stepTrees],
+  )
+
+  // PROVE BEFORE OFFER, at the length handle (#1053): a note gets a handle exactly when SOME
+  // length other than its own is admissible — one unit longer, or one shorter, asked of the
+  // writer the drag runs, so the handle cannot promise a drag the writer declines. Both are
+  // asked: a note with no room ahead can still be shortened. Keyed by the note's HEAD column,
+  // and memoized on the model, as `mutate` fires every pointermove.
   //
-  // Asked around the ROUNDED length, since that is the lattice the gesture moves on: a
-  // drag sets a whole number of boxes (columns in LCM), and a sub-column note (`[hh ~]!16`
-  // → 0.5) is offered the nearest whole lengths rather than a fraction it could not be
-  // dragged to (`boxLengths`).
-  //
-  // Keyed by the note's HEAD column, so a two-column note asks once rather than once per
-  // column it covers. Memoized on the model beside `toggleable`/`coverage` and for the
-  // same reason ([[P380]]): `mutate` fires every pointermove, so anything derived per
-  // cell is recomputed per frame unless it hangs off the model.
-  //
-  // MEASURED over the 966 corpus models, because [[P380]] is precisely the entry where a
-  // comment called a per-cell map cheap before anyone had timed one: p50 0.0022ms, p99
-  // 0.357ms, worst 1.26ms — against the cell map's (then `placeable`) p50 0.0047ms, p99 2.54ms, worst 14.4ms
-  // on the same run, i.e. **16.1% of its total**. It costs less than the map beside it
-  // despite serializing, because it asks once per NOTE while that map then asked once per
-  // EMPTY cell, and grids have far more of those.
-  //
-  // In Exact the neighbours are one BOX away (#1855): on a factor-2 row ±1 column is half a
-  // step, which the writer declines both ways, so `~ sd ~ sd, hh*8` offered no handle at all
-  // while a snare two steps long was writable.
+  // ⚠ THE RESIZE IS THE STEP WRITER'S NOW (#2293): a note's length changes inside its group,
+  // in its own text (`resizeStep`: `bd ~` → `bd _`, `bd@3` → `bd@2 ~`), or not at all — never
+  // a respelling of the pattern from columns. Asked one of the note's own units longer and one
+  // shorter, so the handle is offered exactly where one of them writes.
   const resizable = React.useMemo(() => {
-    if (!model) return null
+    if (!model || !stepTrees || stepMini === null) return null
     return model.lanes.map((lane, li) => {
       const out = new Set<number>()
-      const w = boxes?.[li]?.[0]?.width ?? 1
+      const row = { sound: lane.sound, part: lane.part }
       lane.cells.forEach((c, si) => {
         if (!isCellOn(c)) return
-        const { longer, shorter } = boxLengths(c.duration, w)
-        if (canResizeCell(model, li, si, longer) || (shorter !== null && canResizeCell(model, li, si, shorter))) out.add(si)
+        const at = stepAddressAt(model, stepTrees, li, si)
+        if (typeof at === 'string') return
+        if (resizeStepBy(stepMini, stepTrees, at, 1, row).ok || resizeStepBy(stepMini, stepTrees, at, -1, row).ok) out.add(si)
       })
       return out
     })
-  }, [model, boxes])
+  }, [model, stepTrees, stepMini])
+
+  /**
+   * Make lane `li`'s note at column `head` end at column `end` (#2293), or one of its units
+   * longer / shorter (`by`) — through the step writer, in the text as it is now.
+   */
+  const resizeNote = (li: number, head: number, to: { end: number } | { by: number }, dryRun = false): boolean => {
+      const m = modelRef.current
+      const trees = stepTreesRef.current
+      const mini = stepMiniRef.current
+      const lane = m?.lanes[li]
+      if (!m || !trees || mini === null || !lane) return false
+      const at = stepAddressAt(m, trees, li, head)
+      if (typeof at === 'string') return false
+      const row = { sound: lane.sound, part: lane.part }
+      let r: StepEditResult
+      if ('by' in to) r = resizeStepBy(mini, trees, at, to.by, row)
+      else {
+        const end = endInBar(m, head, to.end)
+        if (!end) return false
+        r = resizeStep(mini, trees, at, end, row)
+      }
+      if (!r.ok) return false
+      return dryRun || writeEdit(mini, r.edit)
+  }
+
+  // ONE STEP EDIT, written in the text it was computed from (#2292): a toggle, a split, a
+  // resize. A write that finds the text changed under it (a drag faster than the re-read)
+  // writes nothing, and says false.
+  const writeEdit = React.useCallback(
+    (mini: string, edit: StepEdit): boolean => {
+      // The rows on screen stay on screen, where they were (#1161). The model is read again
+      // from the written text, which lists rows in the order sounds first play and leaves
+      // out a row with no note — so a row this edit empties, or one staged by Add voice and
+      // not written yet, is put back empty, and every row keeps its place: a click does not
+      // move the row under the pointer.
+      const shown = modelRef.current?.lanes ?? []
+      const keep = (read: StepGridModel): StepGridModel => {
+        const same = (a: { sound: string; part?: number }, b: { sound: string; part?: number }): boolean => a.sound === b.sound && (a.part ?? 0) === (b.part ?? 0)
+        const lanes = shown.map(
+          (l) => read.lanes.find((r) => same(r, l)) ?? { sound: l.sound, part: l.part, cells: Array<StepGridModel['lanes'][number]['cells'][number]>(read.steps).fill(false) },
+        )
+        for (const r of read.lanes) if (!shown.some((l) => same(r, l))) lanes.push(r)
+        return lanes.every((l, i) => l === read.lanes[i]) && lanes.length === read.lanes.length ? read : { ...read, lanes }
+      }
+      // a refined view the text now spells is absorbed by `writeStep` itself (#2293, #2410)
+      return writeStep(mini, edit, keep)
+    },
+    [writeStep],
+  )
 
   // Returns whether the writer REFUSED the toggle — `toggleCell` handing back the
   // model it was given — as distinct from a cell already in the asked state, which
   // is no refusal. The caller decides whether to say so: a single press or key does
   // (`paintOne`), a paint drag brushing across inert cells does not.
   //
-  // A hit is painted one box long: one column in LCM, one of the part's own steps in
-  // Exact (#1855) — the step the user sees and clicked.
+  // A hit is painted one box long: one column (#1855), the step the user sees and clicked.
+  //
+  // The toggle is the step writer's (#2292): the answer `stepToggles` already holds for
+  // this box, made in the text it was computed from. A write that finds the text changed
+  // under it (a drag faster than the re-read) writes nothing, and is counted as refused.
+  //
+  // `drag`: the box is one a paint drag entered (#2293). A drag walks STEPS — it paints the
+  // steps it crosses and passes over a step's snap halves, which split only for a deliberate
+  // click or key; otherwise a brush across a long rest would cut it into pieces.
   const paintCell = React.useCallback(
-    (laneIndex: number, stepIndex: number, value: boolean): boolean => {
-      let refused = false
-      const length = boxWidth(laneIndex)
-      mutate((prev) => {
-        const lane = prev.lanes[laneIndex]
-        if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) {
-          return prev // no change → useGridModel skips the write
-        }
-        const next = toggleCell(prev, laneIndex, stepIndex, value, length)
-        refused = next === prev
-        return next
-      })
-      return refused
+    (laneIndex: number, stepIndex: number, value: boolean, drag = false): { refused: boolean; why?: string } => {
+      const lane = modelRef.current?.lanes[laneIndex]
+      if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) return { refused: false }
+      const answer = stepTogglesRef.current?.[laneIndex]?.[stepIndex]
+      const mini = stepMiniRef.current
+      if (!answer || mini === null) return { refused: true }
+      if (!answer.ok) return { refused: true, why: answer.why }
+      if (drag && 'split' in answer && answer.split) return { refused: false }
+      return { refused: !writeEdit(mini, answer.edit) }
     },
-    [mutate],
+    [writeEdit],
   )
-  /** One deliberate toggle — a press or a key — which says so when it is refused. */
+  /** One deliberate toggle — a press or a key — which says so, and why, when it is refused. */
   const paintOne = React.useCallback(
     (laneIndex: number, stepIndex: number, value: boolean): void => {
-      if (paintCell(laneIndex, stepIndex, value)) {
-        reportRefusal(value ? "Couldn't add that hit" : "Couldn't remove that hit")
+      const { refused, why } = paintCell(laneIndex, stepIndex, value)
+      if (refused) {
+        reportRefusal(value ? "Couldn't add that hit" : "Couldn't remove that hit", why ? stepRefusalLine(why, !value) : undefined)
       }
     },
     [paintCell],
   )
+
 
   // Add a new drum voice (#516). The new lane is all-rest, so it stages in the
   // model and only writes to the source on the first hit (useGridModel keeps it
@@ -501,6 +645,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
 
   const onCellDown = (laneIndex: number, stepIndex: number, current: boolean, e: React.PointerEvent): void => {
     beginGesture()
+    paintSoundRef.current = model?.lanes[laneIndex]?.sound ?? null
     if (current) {
       // an ON cell starts PENDING: a vertical drag becomes velocity, a horizontal
       // drag paint-off, and a release with no drag toggles it OFF (onUp). Direct
@@ -551,21 +696,27 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     if (g.mode === 'resize') {
       // The LANE the pointer wanders into is ignored, exactly as the roll ignores the
       // row: a resize is a horizontal gesture and a few px of vertical drift should not
-      // silently retarget it. `resizeCell` floors at one column and `clampLane` caps at
-      // the room the note has, so a drag back past the note's own start, or forward past
-      // the next hit, lands on the shortest/longest length rather than doing nothing.
-      // the pointer's box ends the note: its last column, however wide the box is
-      mutate((prev) => resizeCell(prev, g.lane, g.step, stepIndex + width - g.step))
+      // silently retarget it. The pointer's box ends the note — its last column, however
+      // wide the box is — through the step writer (#2293): a length the note's group can
+      // take in its own text writes; any other (past the next note, part of a unit, before
+      // the note's own start) leaves the note as it is.
+      resizeNote(g.lane, g.step, { end: stepIndex + width })
       return
     }
     if (g.mode !== 'paint') return
-    paintCell(laneIndex, stepIndex, g.paintValue)
+    // A paint drag stays in the row it began in (#2292). A click now writes text and the
+    // grid redraws from it, so rows can move under a pointer that has not: the cell it
+    // "enters" then belongs to another row, and painting it was a write nobody made.
+    if (laneIndex !== g.lane || modelRef.current?.lanes[laneIndex]?.sound !== paintSoundRef.current) return
+    paintCell(laneIndex, stepIndex, g.paintValue, true)
   }
 
   // THE CURSOR (#1802): a (lane, step) the arrow keys move and the keys act on.
   // A press on a cell moves it there too. Local to the grid — the sequencer has no
   // selection for anything else to share.
   const [cursor, setCursor] = React.useState<GridCell | null>(null)
+  /** each row's cursor stops (#2293): the first column of every box it draws, set where the rows are drawn */
+  const stopsRef = React.useRef<number[][] | null>(null)
   const rowsN = model?.lanes.length ?? 0
   const colsN = model?.steps ?? 0
   /** The cursor, when it is still on the grid (a voice can be removed under it). */
@@ -601,9 +752,9 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     endGesture()
   }
 
-  // ⌥⇧← / ⌥⇧→ set the length of the hit under the cursor, a box at a time (#1803, #1855)
-  // — what the handle does, through the same `resizeCell`, on the note sounding
-  // through the cursor's column (its head, when the cursor sits on a held column).
+  // ⌥⇧← / ⌥⇧→ set the length of the hit under the cursor, one of its own units at a time
+  // (#1803, #2293) — what the handle does, through the same step writer, on the note
+  // sounding through the cursor's column (its head, when the cursor sits on a held column).
   // The sequencer has no move: every other note edit is declined here.
   const resizeByKey = (at: GridCell, action: GridAction, dryRun: boolean): boolean => {
     if (!model || (action !== 'shorter' && action !== 'longer')) return false
@@ -617,14 +768,11 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
       }
     }
     if (head < 0) return false
-    const c = cells[head]
-    if (!isCellOn(c)) return false
-    const { longer, shorter } = boxLengths(c.duration, boxWidth(at.row))
-    const dur = action === 'longer' ? longer : shorter
-    if (dur === null || !canResizeCell(model, at.row, head, dur)) return false
+    const by = action === 'longer' ? 1 : -1
+    if (!resizeNote(at.row, head, { by }, true)) return false
     if (!dryRun) {
       beginGesture()
-      mutate((prev) => resizeCell(prev, at.row, head, dur))
+      resizeNote(at.row, head, { by })
       endGesture()
       focusCursorRef.current = true
       setCursor({ row: at.row, col: head })
@@ -637,8 +785,10 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // the handler has already swallowed the key, so without this the key does nothing
   // and says nothing: the very bug, one input device over. A dry run (the palette
   // asking whether the command applies) stays quiet and just answers no.
-  const refuseKey = (on: boolean, dryRun: boolean): false => {
-    if (!dryRun) reportRefusal(on ? "Couldn't remove that hit" : "Couldn't add that hit")
+  const refuseKey = (on: boolean, dryRun: boolean, at?: { row: number; col: number }): false => {
+    const answer = at ? stepToggles?.[at.row]?.[at.col] : null
+    const why = answer && !answer.ok ? stepRefusalLine(answer.why, on) : undefined
+    if (!dryRun) reportRefusal(on ? "Couldn't remove that hit" : "Couldn't add that hit", why)
     return false
   }
 
@@ -654,15 +804,18 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     if (isCursorMove(action)) {
       if (dryRun) return true
       focusCursorRef.current = true
-      // ←/→ step over a whole box; ↑/↓ land on the box playing at the same moment (#1855)
-      setCursor(moveBoxCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN, boxWidth))
+      // ←/→ go to the step before or after, at whatever depth it is drawn — into an open
+      // group and out of it; ↑/↓ land on the step playing at the same moment (#1855, #2293)
+      setCursor(moveStepCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN, (r) => stopsRef.current?.[r] ?? null))
       return true
     }
     if (!at) return false
     if (isNoteEdit(action)) return resizeByKey(at, action, dryRun)
     // a key acts on the box the cursor is in, at its first column — what a click on it does
+    // (the step the cursor is on: its row's stop at or before the column, #2293)
+    const stops = stopsRef.current?.[at.row]
     const boxW = boxWidth(at.row)
-    const col = at.col - (at.col % boxW)
+    const col = stops && stops.length > 0 ? stopAt(stops, at.col) : at.col - (at.col % boxW)
     const cell = model.lanes[at.row]?.cells[col]
     const on = cell !== undefined && isCellOn(cell)
     switch (action) {
@@ -670,7 +823,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
         // Exactly what a click does: the cell flips where the writer takes it
         // (`toggleable`, the same gate that makes the cell inert to the pointer —
         // an ON cell included, #1836); a column a note sounds through is inert.
-        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun)
+        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun, { row: at.row, col })
         if (!dryRun) {
           if (!cursorRef.current) setCursor(at)
           paintByKey(at.row, col, !on)
@@ -678,7 +831,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
         return true
       case 'remove':
         if (!on) return false // nothing under the cursor: nothing asked, nothing to say
-        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun)
+        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun, { row: at.row, col })
         if (!dryRun) paintByKey(at.row, col, false)
         return true
       default:
@@ -703,12 +856,44 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone)
   /** a step's narrowest width per unit of weight */
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 16
+  // ZOOM (#2277): 1× fits the bar to the panel. A pattern that fits at 16 px a column draws
+  // exactly as it always has; one that did not is squeezed to fit. Zooming in widens every
+  // column. (Opening a step to show the steps inside it is the Exact grid's.) Not on a
+  // phone yet: its grid scrolls under a finger at its own step size (#2006).
+  const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model)
+  const zoomed = !phoneGrid.phone
+  /** a column's width per unit of weight that fits the panel at 1× — null until measured */
+  const fitPer = model && zoom.avail !== null
+    ? (() => {
+        const lay = drawnLayout(model, model.steps)
+        let total = 0
+        let bars = 0
+        for (let c = 0; c < model.steps; c++) {
+          total += lay.weight(c)
+          if (lay.barStart(c)) bars++
+        }
+        return Math.max(1, (zoom.avail - 2 * (model.steps - 1) - 8 * bars) / total)
+      })()
+    : null
+  // 1×: today's floor, lowered only as far as the panel needs; zoomed: every column the width
+  // it has at 1×, times the zoom
+  const minPer = !zoomed || fitPer === null ? stepMin : zoom.level === 1 ? Math.min(stepMin, fitPer) : Math.min(fitPer, 56) * zoom.level
+  const maxPer = zoomed ? 56 * zoom.level : 56
   /** what keeps a row's name in place while its steps scroll under it */
   const pinned: React.CSSProperties = phoneGrid.phone
     ? { position: 'sticky', left: 0, zIndex: 2, background: 'var(--background, #0f0f12)' }
     : {}
 
+  // THE PLAYHEAD AT THE EXACT POSITION (#1834): a line that moves with the phase, over the
+  // playing cell, which stays the column it falls in
+  const playheadRef = React.useRef<HTMLDivElement>(null)
+  useExactPlayhead(gridRef, playheadRef, model, (c) => gridRef.current?.querySelector<HTMLElement>(`[data-seq-col="ruler:${c}"]`) ?? null)
+
   if (!model) {
+    // NO COLUMN MODEL, BUT A TREE (#1834): too many steps, an onset between the columns —
+    // the pattern's own divisions still draw it, look-only
+    if (lookTree && 'grid' in lookTree) return <TreeStepGrid grid={lookTree.grid} reason={lookTree.reason} notice={notice} />
+    if (lookRoll && 'roll' in lookRoll) return <TreeRollGrid roll={lookRoll.roll} reason={lookRoll.reason} />
     return React.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && opensStepGrid(chunk)
@@ -729,6 +914,15 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
   // The ruler counts the steps of the row you're on — the first row until a cursor
   // exists — because rows from different `,`-parts can split a bar differently (#1841).
   const rulerPart = model.lanes[liveCursor?.row ?? 0]?.part ?? 0
+  // where the arrow keys stop in each row (#2293): each of its own steps, at every depth
+  // — asked of the tree the edits use, so LCM walks the same steps as Exact
+  stopsRef.current = model.lanes.map((_, li) => {
+    const nodes = editNodes?.[li]
+    const steps = nodes ? leafStops(nodes) : (stepGroups?.[li] ?? []).flatMap(groupStops)
+    // and every hit a click edits on its own (#2326): one hat of `hh*8` is a stop now
+    const hits = (stepToggles?.[li] ?? []).flatMap((a, si) => (a && a.ok && !('split' in a && a.split) ? [si] : []))
+    return [...new Set([...steps, ...hits])].sort((a, b) => a - b)
+  })
   const ruler = rulerLabels(model, model.steps, [...(stepStarts?.get(rulerPart) ?? [])])
 
   return (
@@ -789,6 +983,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
               moved to the editor Settings tab (#602). Both are lifted/owned
               elsewhere now — the header just carries the track identity chip. */}
           <PatternTrackChip />
+          {zoomed && <GridZoomControl zoom={zoom} />}
           <TurnHint show={phoneGrid.upright && rulerPan.inView.more} />
         </div>
         {/* ONE statement for a view that cannot take a new note, rather than a
@@ -853,7 +1048,13 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
         )}
         {/* The voices are the grid (#1802, ARIA grid pattern): a row per voice, a
             gridcell per step, one tab stop that moves with the cursor. */}
-        <div ref={gridRef} role="grid" aria-label="Step sequencer" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div ref={gridRef} role="grid" aria-label="Step sequencer" style={{ display: 'flex', flexDirection: 'column', gap: 4, position: 'relative' }}>
+        <div
+          ref={playheadRef}
+          aria-hidden="true"
+          data-seq-playhead-line
+          style={{ display: 'none', position: 'absolute', left: 0, top: 0, bottom: 0, width: 2, marginLeft: -1, background: 'var(--foreground, #e6e6ea)', opacity: 0.5, pointerEvents: 'none', zIndex: 3 }}
+        />
         {/* THE RULER (#1841): counts the written steps of the cursor's row, `1, 1.2, …, 2`.
             Laid out exactly like a row — the header's width, the same weights and bar
             gaps — so each label sits over its own column. Visual only: hidden from the
@@ -888,13 +1089,12 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
               return (
                 <div
                   key={c}
-                  // the ExtendHandle measures the last COLUMN here: in Exact a row's last box
-                  // can start several columns before the end, so no cell names that column
+                  // the ExtendHandle measures the last COLUMN here: the ruler names every column
                   data-seq-col={`ruler:${c}`}
                   style={{
                     flex: `${layout.weight(c)} ${layout.weight(c)} 0`,
-                    minWidth: stepMin * layout.weight(c),
-                    maxWidth: 56 * layout.weight(c),
+                    minWidth: minPer * layout.weight(c),
+                    maxWidth: maxPer * layout.weight(c),
                     marginLeft: layout.barStart(c) ? 8 : 0,
                     position: 'relative',
                     height: '100%',
@@ -980,7 +1180,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
             )}
             </div>
             <div role="none" style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
-              {(stepGroups?.[laneIndex] ?? []).map((g) => {
+              {(() => {
                 // ONE BOX — `solo` as it has always been drawn; `inner` a small box inside a
                 // step that holds several (#1861); `plain` one column of a step drawn as a
                 // single box, its gaps showing as faint halves.
@@ -990,9 +1190,8 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                   /** a plain step's first/last column carries the step's rounded corner */
                   ends: { first: boolean; last: boolean } = { first: true, last: true },
                 ) => {
-                // ONE BOX, `w` columns from `stepIndex` (#1855): a column in LCM, one of
-                // the part's own steps in Exact. Everything below reads the box's first
-                // column — a box only exists where no hit starts inside it (`rowBoxes`).
+                // ONE BOX, `w` columns from `stepIndex` (#1855): one column in this view. Everything
+                // below reads the box's first column (`rowBoxes`).
                 const cell = lane.cells[stepIndex]
                 // A cell is drawn from the note SOUNDING through it, not from the
                 // trigger alone (#1056): `cov.extent` is how much of this column
@@ -1037,6 +1236,9 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                 // swallowing the click the way it did before (#1064/#1070) — for a
                 // lit cell's erase too (#1836).
                 const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true
+                // a press here splits the step it is part of (#2293): said on the cell
+                const splitAnswer = stepToggles?.[laneIndex]?.[stepIndex]
+                const splits = !!splitAnswer && splitAnswer.ok && 'split' in splitAnswer && !!splitAnswer.split
                 // the note this step plays, on a sound-first line (#2226): `c / e` when it changes by pass
                 const playsNote =
                   on && !held && playedNotes
@@ -1053,8 +1255,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                 /** the step number a person reads: the box's, counted in this row */
                 const stepNo = (c: number): number => Math.floor(c / w) + 1
                 // A written step begins here, and it is not a bar line (those keep their gap)
-                const stepStart =
-                  stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex)
+                const stepStart = stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex)
                 return (
                   // A gridcell holding one toggle button — `aria-pressed` stays on the
                   // button, which may carry it; the cursor is the cell's `aria-selected`.
@@ -1066,8 +1267,8 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                     style={{
                       display: 'flex',
                       flex: `${weight} ${weight} ${gaps}px`,
-                      minWidth: stepMin * weight + gaps,
-                      maxWidth: 56 * weight + gaps,
+                      minWidth: minPer * weight + gaps,
+                      maxWidth: maxPer * weight + gaps,
                       // subtle gap at each bar boundary
                       marginLeft: variant === 'solo' && layout.barStart(stepIndex) ? 8 : 0,
                       // THREE LINE WEIGHTS (#1841): a bar is the 8px gap above; a written
@@ -1102,6 +1303,7 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                     data-gain={on && gainScoped ? gain : undefined}
                     data-playing={isPlaying ? 'true' : undefined}
                     data-seq-cell-inert={canToggle ? undefined : 'true'}
+                    data-seq-splits={splits ? 'true' : undefined}
                     aria-disabled={canToggle ? undefined : true}
                     // WHY THIS CELL IS INERT, and the two reasons are not
                     // interchangeable. On the element and alt paths every
@@ -1123,18 +1325,21 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                     // A LIT cell's reason is its own (#1836): on a leaf grid a hit
                     // whose text plays in more than one box has no replacement that
                     // removes only this box — all 285 refused erases in the corpus.
+                    //
+                    // Since #2292 the reason is the step writer's own: the click edits
+                    // the step's text or is refused, and the sentence names what in the
+                    // text stops it (`stepRefusalLine`).
                     title={
                       lookOnly
                         ? lookOnlyLine(lookOnly)
                         : canToggle
-                        ? playsNote ? `${lane.sound} plays ${playsNote}` : undefined
-                        : on
-                          ? model.leafSource
-                            ? 'This hit comes from text that plays in more than one box here — remove it in the code view.'
-                            : 'Removing this hit would change the pattern in other places too — the grid has no way to write that.'
-                          : model.leafSource
-                            ? 'This pattern edits its existing notes — add steps in the code view.'
-                            : 'Adding a step here would change how long another sound plays — the grid has no way to write that.'
+                        ? splits
+                          ? `Splits this step: adds ${lane.sound} here`
+                          : playsNote ? `${lane.sound} plays ${playsNote}` : undefined
+                        : stepRefusalLine((() => {
+                            const a = stepToggles?.[laneIndex]?.[stepIndex]
+                            return a && !a.ok ? a.why : ''
+                          })(), on)
                     }
                     onPointerDown={(e) => {
                       e.preventDefault()
@@ -1161,7 +1366,11 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                           return
                         }
                       }
-                      if (!canToggle) return
+                      // A lit cell whose toggle is refused still takes its velocity drag
+                      // where velocity is written (#2292): a hit made by `*2` cannot be
+                      // removed from the grid, but how loud it plays is its own write. A
+                      // release with no drag then asks the toggle, which says why it is refused.
+                      if (!canToggle && !(on && gainScoped)) return
                       onCellDown(laneIndex, stepIndex, on, e)
                     }}
                     onPointerEnter={() => onCellEnter(laneIndex, stepIndex, w)}
@@ -1307,6 +1516,8 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                   </div>
                 )
                 }
+                // one step's boxes
+                const drawGroup = (g: StepGroup): React.ReactNode => {
                 // A step of one box, or one a bar line would cut, is drawn box by box — inside the
                 // SAME keyed wrapper, laid out as nothing (`display: contents`). An edit can turn a
                 // grouped step into single boxes (`[bd ~ sd ~]` → `bd _ sd ~`); with a different
@@ -1322,13 +1533,13 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                 let weight = 0
                 for (let c = g.from; c < g.to; c++) weight += layout.weight(c)
                 const gaps = 2 * (g.to - g.from - 1)
-                const stepStart =
-                  g.from > 0 && !layout.barStart(g.from) && !!stepStarts?.get(lane.part ?? 0)?.has(g.from)
+                const stepStart = g.from > 0 && !layout.barStart(g.from) && !!stepStarts?.get(lane.part ?? 0)?.has(g.from)
                 return (
                   <div
                     key={`step-${g.from}`}
                     role="none"
                     data-seq-step={g.plain ? 'plain' : 'holds'}
+                    data-seq-depth={1}
                     data-seq-step-start={stepStart ? 'true' : undefined}
                     style={{
                       display: 'flex',
@@ -1337,11 +1548,11 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                       // exactly the space its boxes take drawn one by one, so its edges and
                       // its boxes' edges fall on the other rows' columns
                       flex: `${weight} ${weight} ${gaps}px`,
-                      minWidth: stepMin * weight + gaps,
-                      maxWidth: 56 * weight + gaps,
+                      minWidth: minPer * weight + gaps,
+                      maxWidth: maxPer * weight + gaps,
                       marginLeft: layout.barStart(g.from) ? 8 : 0,
                       // an outline takes no space, so it cannot push a column
-                      outline: '1px solid var(--border, #3a3a42)',
+                      outline: STEP_OUTLINE,
                       borderRadius: g.plain ? 3 : 4,
                       // NOT overflow-hidden: the focus ring is drawn just outside a cell, and
                       // clipping it here hid the keyboard cursor on a filled column
@@ -1356,7 +1567,9 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
                     )}
                   </div>
                 )
-              })}
+                }
+                return (stepGroups?.[laneIndex] ?? []).map((g) => drawGroup(g))
+              })()}
             </div>
           </div>
           )
@@ -1403,6 +1616,9 @@ export function SequencerGrid({ onResolution, notice = null }: SequencerGridProp
     </div>
   )
 }
+
+/** a row's own step's outline (steps inside steps open in the Exact grid, `ExactStepGrid`) */
+const STEP_OUTLINE = '1px solid var(--border, #3a3a42)'
 
 /** `a`, `a and b`, `a, b and c` */
 function listOf(items: readonly string[]): string {

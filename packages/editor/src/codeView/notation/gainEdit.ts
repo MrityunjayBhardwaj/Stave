@@ -80,6 +80,26 @@ export function gainUnchanged(g: GainWrite, cur: ChunkGain): boolean {
  * Null when the chunk has no mini range to write over: nothing may be written, and
  * that is not the same answer as an empty list.
  */
+/**
+ * A velocity drag on the tree grid, as edits (#2468; the result is `stepGainEdit`'s). An edit
+ * inside an existing `.gain` string is that one replacement, its quotes and every other byte
+ * as written; a new string replaces a number's `.gain(…)` argument or is appended
+ * (`gainEdits`). Null when the chunk's `.gain` is no longer one velocity manages, or the string
+ * read is not the one the edit was made against: nothing is written.
+ */
+export function stepGainWriteEdits(fresh: ChunkInfo, from: string | null, result: { gain: string; edit: { from: number; to: number; insert: string } | null }): OffsetEdit[] | null {
+  const cur = readChunkGain(fresh)
+  if (cur.foreign || cur.mini !== from) return null
+  if (result.edit && cur.mini !== null) {
+    const arg = managedGainArg(fresh)
+    if (!arg) return null
+    // the string's body starts one past its opening quote
+    const start = arg.argRange[0] + 1
+    return [{ range: [start + result.edit.from, start + result.edit.to], text: result.edit.insert }]
+  }
+  return gainEdits(fresh, { kind: 'write', value: result.gain, quoted: true })
+}
+
 export function gridWriteEdits(fresh: ChunkInfo, mini: string, gain: GainWrite | null): OffsetEdit[] | null {
   if (!fresh.miniRange) return null
   const edits: OffsetEdit[] = [{ range: fresh.miniRange, text: mini }]

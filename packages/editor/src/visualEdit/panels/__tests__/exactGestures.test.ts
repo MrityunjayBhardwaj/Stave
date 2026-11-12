@@ -15,7 +15,7 @@ import { serializeStepGain, serializeStepGrid } from '../../../codeView/notation
 import { canResizeCell, resizeCell } from '../../../codeView/notation/place'
 import { isCellOn } from '../../../codeView/notation/model'
 import { boxLengths, ownStepWidths } from '../writtenSteps'
-import { moveBoxCursor, moveCursor, type CursorMove } from '../gridGestures'
+import { moveBoxCursor, moveCursor, moveStepCursor, type CursorMove } from '../gridGestures'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 
 const grid = (mini: string) => {
@@ -139,4 +139,32 @@ describe('velocity is never offered on an Exact row', () => {
       expect(serializeStepGain({ ...m, gains })).toEqual({ kind: 'skip' })
     },
   )
+})
+
+describe('moveStepCursor — arrows over the steps a row draws (#2293)', () => {
+  // row 0: `bd [~ bd] sd ~` on 8 columns, the group open → stops 0, 2, 3, 4, 6
+  // row 1: four steps of two columns → stops 0, 2, 4, 6
+  const stops = (r: number): number[] => (r === 0 ? [0, 2, 3, 4, 6] : [0, 2, 4, 6])
+  const walk = (at: { row: number; col: number }, moves: CursorMove[]) => moves.reduce((c, mv) => moveStepCursor(c, mv, 2, 8, stops), at)
+  it('→ goes step to step, into the open group and out of it', () => {
+    expect(walk({ row: 0, col: 0 }, ['right'])).toEqual({ row: 0, col: 2 })
+    expect(walk({ row: 0, col: 0 }, ['right', 'right'])).toEqual({ row: 0, col: 3 })
+    expect(walk({ row: 0, col: 0 }, ['right', 'right', 'right'])).toEqual({ row: 0, col: 4 })
+    expect(walk({ row: 0, col: 4 }, ['left', 'left'])).toEqual({ row: 0, col: 2 })
+    // clamped at the row's ends, never a column inside a step
+    expect(walk({ row: 0, col: 6 }, ['right'])).toEqual({ row: 0, col: 6 })
+    expect(walk({ row: 0, col: 1 }, ['right'])).toEqual({ row: 0, col: 2 })
+  })
+  it('↑/↓ land on the step playing at that moment', () => {
+    // the moment is kept: column 3 is inside row 1's step at 2, which is the one selected
+    expect(walk({ row: 0, col: 3 }, ['down'])).toEqual({ row: 1, col: 3 })
+    expect(walk({ row: 0, col: 3 }, ['down', 'right'])).toEqual({ row: 1, col: 4 })
+    expect(walk({ row: 1, col: 6 }, ['up'])).toEqual({ row: 0, col: 6 })
+    expect(walk({ row: 1, col: 2 }, ['rowEnd'])).toEqual({ row: 1, col: 6 })
+    expect(walk({ row: 1, col: 2 }, ['first'])).toEqual({ row: 0, col: 0 })
+    expect(walk({ row: 0, col: 2 }, ['last'])).toEqual({ row: 1, col: 6 })
+  })
+  it('a row with no stops walks its columns', () => {
+    expect(moveStepCursor({ row: 0, col: 3 }, 'right', 1, 8, () => null)).toEqual({ row: 0, col: 4 })
+  })
 })

@@ -9,7 +9,10 @@
  * coordinates.
  */
 import { test, expect, chromium, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -501,7 +504,7 @@ test.describe('Mixer strip mute (#543 / S3)', () => {
     expect(low, 'meter follows the lowered fader live').toBeLessThan(high - 8)
   })
 
-  test('LIVE sequencer: silencing a track\'s steps while playing goes dark immediately (centralised at the write path)', async ({
+  test('LIVE sequencer: silencing a track\'s steps while playing goes dark immediately (centralised at the write path) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -512,7 +515,9 @@ test.describe('Mixer strip mute (#543 / S3)', () => {
     // Writeback (the meter darkens with no manual eval).
     const drawer = await openPattern(page)
     await enlargeDrawer(page)
-    await setStrudelCode(page, 'd1: s("bd*4")')
+    // four written kicks: each is a step a grid click can silence (the hits of `bd*4` are
+    // made by its `*4`, and a click on one is refused — #2292)
+    await setStrudelCode(page, 'd1: s("bd bd bd bd")')
 
     let lit = 0
     for (let attempt = 0; attempt < 3 && lit < 15; attempt++) {

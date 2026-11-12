@@ -13,7 +13,13 @@
  *    the live grid (the editor↔app same-document sync).
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid, velocityDragOn } from './_appBoot'
 
+// velocity drags are off by default (#2525); this spec is about the gesture, so it turns them on
+velocityDragOn(test)
+
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -113,7 +119,7 @@ test.describe('Grid visual identity (#430/#471/#428)', () => {
     await page.screenshot({ path: 'test-results/grid-identity-pianoroll.png' })
   })
 
-  test('Note Color = Velocity (set in Settings) recolours cells live (#428/#602)', async ({ page }) => {
+  test('Note Color = Velocity (set in Settings) recolours cells live (#428/#602) (LCM grid)', async ({ page }) => {
     // Sequencer: a per-column gain difference → cells of different velocity get
     // different colours under Velocity mode. The mode is now set in the editor
     // Settings tab (#602), and the live grid must recolour from that change.

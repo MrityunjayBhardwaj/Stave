@@ -23,8 +23,11 @@
  * gesture" when c3, in the same column in the same render, writes.
  */
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 import { expectRefusalReported, expectNoRefusalReported } from './_console'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 const CODE = '$: note("<g1, c1> - <c3, g4 - - >")'
 /** the accepted delete — c3 goes, and the bar re-spells without it */
@@ -62,14 +65,14 @@ async function cell(page: Page, key: string): Promise<{ x: number; y: number }> 
 }
 
 test.describe('a note is only deleted where the document keeps the rest (#1340)', () => {
-  test('the accepted note is deleted, and the document re-spells without it', async ({ page }) => {
+  test('the accepted note is deleted, and the document re-spells without it (LCM grid)', async ({ page }) => {
     await openRoll(page, CODE)
     const at = await cell(page, '48:2')
     await page.mouse.click(at.x, at.y)
     await expect.poll(() => editorValue(page)).toBe(ACCEPTED)
   })
 
-  test('the note in the same column, whose removal the document would not keep, writes nothing', async ({
+  test('the note in the same column, whose removal the document would not keep, writes nothing (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, CODE)
@@ -98,7 +101,7 @@ test.describe('a note is only deleted where the document keeps the rest (#1340)'
  * Helper shared in `_console.ts` so the next retirement breaks in one place.
  */
 test.describe('a refused delete is reported, not swallowed (#1340)', () => {
-  test('the refused delete raises exactly one warning, and it names the gesture', async ({
+  test('the refused delete raises exactly one warning, and it names the gesture (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, CODE)
@@ -112,7 +115,7 @@ test.describe('a refused delete is reported, not swallowed (#1340)', () => {
     await expectRefusalReported(page, "Couldn't delete that note")
   })
 
-  test('the accepted delete raises none — the report tracks the refusal, not the click', async ({
+  test('the accepted delete raises none — the report tracks the refusal, not the click (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, CODE)

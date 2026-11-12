@@ -1,7 +1,9 @@
 import { test, expect, type Page, type Locator } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 import { expectRefusalReported, expectNoRefusalReported } from './_console'
 
+
+pinLcmGrid(test)
 /**
  * #1803 — move, transpose and resize the note under the cursor from the keyboard.
  * Every expected document is what THE MOUSE wrote for the same edit on the same
@@ -177,7 +179,7 @@ test.describe('piano roll', () => {
 })
 
 test.describe('sequencer', () => {
-  test('⌥⇧→ / ⌥⇧← set the length, as the handle does; ⌥→ does nothing', async ({ page }) => {
+  test('⌥⇧→ / ⌥⇧← set the length, as the handle does; ⌥→ does nothing (LCM grid)', async ({ page }) => {
     const code = '$: s("[bd ~ sd ~]")'
     const seq = await open(page, code, SEQ, '[data-seq-cell="0:0"]')
     const want = await byMouse(page, code, () =>

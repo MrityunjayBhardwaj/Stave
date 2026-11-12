@@ -94,8 +94,6 @@ export type DivisionsRefusal =
   | 'marker-in-pattern'
   /** a hit has no single written note (`joinedCycle` says why) */
   | 'unpaired-hit'
-  /** `a b . c d`: feet are a row of rows, not modelled yet */
-  | 'feet'
   /** a group that mixes steps and rows, or nests rows in rows */
   | 'unknown-shape'
   /** Strudel could not evaluate the marked copy */
@@ -121,7 +119,8 @@ export type BarDivisions =
 
 const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b))
 
-function fracOf(t: MiniTime, cyc: number): Frac {
+/** a time of bar `cyc` as an exact fraction from the bar's start */
+export function fracOf(t: MiniTime, cyc: number): Frac {
   const rel = t.sub ? t.sub(cyc) : null
   const text = rel?.toFraction?.()
   const m = text === undefined ? null : /^(-?\d+)(?:\/(\d+))?$/.exec(text)
@@ -251,7 +250,10 @@ type Together = 'all' | 'one'
 /** the rows of a group, each with the path a marked copy reaches it by */
 function rowsOf(group: MiniGroup, path: number[]): { rows: Array<{ group: MiniGroup; path: number[] }>; together: Together } | DivisionsRefusal {
   if (group.children.every((c) => c.kind === 'element')) return { rows: [{ group, path }], together: 'all' }
-  if (group.alignment === 'feet') return 'feet'
+  // `a b . c d` is one row of group steps: Strudel plays its feet as `fastcat` (`mini.mjs`)
+  if (group.alignment === 'feet') {
+    return group.children.every((c) => c.kind === 'group') ? { rows: [{ group, path }], together: 'all' } : 'unknown-shape'
+  }
   const rows: Array<{ group: MiniGroup; path: number[] }> = []
   for (let i = 0; i < group.children.length; i++) {
     const child = group.children[i]
@@ -309,7 +311,9 @@ function rowsAt(root: MiniGroup, depth: number): Laid[] {
   for (let d = 0; d < depth; d++) {
     const next: Laid[] = []
     for (const r of level) {
-      ;(r.group.children as MiniElement[]).forEach((e, i) => {
+      const elements = stepsOf(r.group)
+      if (isRefusal(elements)) continue
+      elements.forEach((e, i) => {
         if (e.content.kind !== 'group') return
         const laid = rowsOf(e.content, [...r.path, i])
         if (!isRefusal(laid)) next.push(...laid.rows)
@@ -349,7 +353,9 @@ function askRows(ctx: Ctx, rows: Laid[]): Asked | DivisionsRefusal {
   const within = new Set<MiniAtom>()
   const opMarks: RowMarks[] = []
   for (const r of rows) {
-    const elements = r.group.children as MiniElement[]
+    const elements = stepsOf(r.group)
+    // a row whose steps do not read refuses on its own visit
+    if (isRefusal(elements)) continue
     const repeated = elements.flatMap((e, i) => (e.content.kind === 'group' && e.ops.length > 0 ? [i] : []))
     if (repeated.length === 0) continue
     for (const i of repeated) notesIn(elements[i], within)
@@ -396,8 +402,32 @@ function container(ctx: Ctx, group: MiniGroup, path: number[], cut: Slot[], dept
   return { rows, oneOf: laid.together === 'one' }
 }
 
+/**
+ * A foot as the group step it plays as. It has no element of its own, so no ops and no `@`, and
+ * no text either: no click addresses a foot, only the steps inside it. Its span is empty, at
+ * where it starts: that names the foot among its row's steps, and a one-note foot cannot be
+ * mistaken for its note (whose span a whole foot would otherwise equal).
+ */
+function footStep(foot: MiniGroup): MiniElement | DivisionsRefusal {
+  const first = foot.children[0]
+  if (first?.kind !== 'element' || !first.span || !foot.children.every((c) => c.kind === 'element')) return 'unknown-shape'
+  return { kind: 'element', content: foot, span: { start: first.span.start, end: first.span.start }, weight: 1, reps: 1, ops: [] }
+}
+
+/** a row's steps: its elements, a foot standing in as the group step it plays as */
+function stepsOf(group: MiniGroup): MiniElement[] | DivisionsRefusal {
+  const elements: MiniElement[] = []
+  for (const c of group.children) {
+    const e = c.kind === 'element' ? c : footStep(c)
+    if (isRefusal(e)) return e
+    elements.push(e)
+  }
+  return elements
+}
+
 function rowSteps(ctx: Ctx, group: MiniGroup, path: number[], asked: Asked, base: number, depth: number): Step[] | DivisionsRefusal {
-  const elements = group.children as MiniElement[]
+  const elements = stepsOf(group)
+  if (isRefusal(elements)) return elements
   const steps: Step[] = []
   for (let i = 0; i < elements.length; i++) {
     const element = elements[i]

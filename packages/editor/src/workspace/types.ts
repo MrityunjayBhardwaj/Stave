@@ -53,6 +53,7 @@ export type WorkspaceLanguage =
   | 'hydra'
   | 'p5js'
   | 'glsl'
+  | 'three'
   | 'markdown'
 
 /**
@@ -354,16 +355,24 @@ export interface EditorViewProps {
   readonly onStop?: () => void
 
   /** Called when the user clicks the "edit" icon on an inline viz zone.
-   *  Receives the viz name (e.g., "Piano Roll"). The host should navigate
-   *  to the corresponding viz file. */
-  readonly onEditViz?: (vizId: string) => void
+   *  Receives the viz name (e.g., "Piano Roll") and the zone's resolved
+   *  preset id (`null` while that lookup is pending). The host should
+   *  navigate to the viz file behind the preset — the one being drawn. */
+  readonly onEditViz?: (vizId: string, presetId: string | null) => void
 
   /** Called when the user clicks the "crop" icon on an inline viz zone.
    *  Receives the viz name, preset id, and `trackKey` — the per-$:-block
    *  identifier (same key used for trackSchedulers / trackAnalysers /
    *  vizRequests). Required so the host can save the crop as a per-instance
-   *  override rather than overwriting the shared VizPreset. */
-  readonly onCropViz?: (vizId: string, presetId: string | null, trackKey: string) => void
+   *  override rather than overwriting the shared VizPreset. `fileId` is the
+   *  file this editor shows — the one the strip belongs to — so the host
+   *  crops that file, not whichever tab it thinks is active (#2412). */
+  readonly onCropViz?: (
+    vizId: string,
+    presetId: string | null,
+    trackKey: string,
+    fileId: string,
+  ) => void
 }
 
 /**
@@ -445,6 +454,18 @@ export interface PreviewViewProps {
    * resume.
    */
   readonly paused?: boolean
+  /**
+   * This preview is a pane BACKGROUND. Its viz options then follow the
+   * active pattern's code (`codeBackdropOptions`) rather than only the last
+   * evaluation's capture on the audio bus, which Stop withdraws.
+   */
+  readonly backdrop?: boolean
+  /**
+   * #2423 — whose background this is: the pattern file whose code names it (its
+   * code options apply), `null` for a viz file's OWN background (its own
+   * settings only), or omitted when the host does not say.
+   */
+  readonly backdropOwner?: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -461,6 +482,9 @@ export interface PreviewViewProps {
  *     inside `PreviewView` drives state up to the shell, which persists
  *     it per tab — two viz preview tabs of the same file can be pinned to
  *     different publishers).
+ *   - `kind: 'history'` → the commit Diff / View, drawn by the shell.
+ *   - `kind: 'app'` → drawn by the HOST through `renderAppTab` (#2471); the
+ *     only kind without a `fileId`.
  *
  * Each tab carries its own `id` separate from `fileId` because multiple
  * tabs can reference the same file (e.g., an editor tab AND a preview tab
@@ -507,7 +531,7 @@ export type WorkspaceTab =
        * Reuses the preview-tab mechanism: opened as a single italic
        * `preview` slot that the next Diff/View replaces, promoted to a
        * pinned tab on double-click (same UX as opening a file in preview).
-       * Never persisted — `tabPersistence` keeps only `editor` tabs, and a
+       * Never persisted — `tabPersistence` keeps only `editor` and `app` tabs, and a
        * commit can be pruned between sessions, so a stale history tab would
        * be a ghost.
        */
@@ -534,6 +558,53 @@ export type WorkspaceTab =
       /** Preview slot (italic, replaced by the next open). Promoted on double-click. */
       readonly preview?: boolean
     }
+  | {
+      /**
+       * #2471 — a tab whose content the HOST APP draws (the Community Gallery
+       * is `appKey: 'gallery'`). The editor package cannot import app code, so
+       * the shell only owns the tab's lifecycle (open / focus / drag / split /
+       * close); the app draws its body through
+       * `WorkspaceShellProps.renderAppTab` and names it through `appTabLabel`.
+       *
+       * Deliberately has NO `fileId`: it shows no file, so the pane's
+       * background / backdrop settings never apply to it and file-scoped
+       * operations (close-tabs-for-file, preview, save) skip it.
+       *
+       * At most one tab per `appKey` exists — `openAppTab` focuses an open
+       * one in any group rather than adding a second. Persisted with its
+       * `state` (`serializeShellState`) and dropped on read when the host no
+       * longer knows `appKey` (`loadShellState`'s `validAppKeys`).
+       */
+      readonly kind: 'app'
+      readonly id: string
+      /** What the tab shows, as the host names it (e.g. `'gallery'`). */
+      readonly appKey: string
+      /**
+       * Small JSON-serialisable state the host keeps with the tab (e.g. where
+       * the gallery was) so it survives a reload. Set via `setAppTabState`.
+       */
+      readonly state?: AppTabState
+    }
+
+/**
+ * #2471 — the small value an app tab carries across reloads. JSON-shaped so
+ * it round-trips through the persisted layout unchanged.
+ */
+export type AppTabState =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly AppTabState[]
+  | { readonly [key: string]: AppTabState }
+
+/** #2471 — what the host gives the shell to label an app tab. */
+export interface AppTabLabel {
+  /** The tab's title text. */
+  readonly title: string
+  /** Optional small glyph drawn before the title (an emoji or an element). */
+  readonly icon?: ReactNode
+}
 
 /**
  * A single tab group inside the shell. Groups are the unit the `SplitPane`
@@ -1003,6 +1074,17 @@ export interface WorkspaceShellProps {
   readonly onActiveBackdropChange?: (fileId: string | null) => void
 
   /**
+   * #2423 — the background spanning the whole workspace, decided by the host:
+   * the viz `fileId` a pattern (`ownerFileId`) set to Workspace span draws behind
+   * EVERY pane, with that pattern's code options; `null` = none spans, every pane
+   * draws its own (File mode). When this prop is given the shell ignores the
+   * legacy global span setting (`get/setBackdropVizSpan`) and the viz settings
+   * popover hides its span control — the span is a pattern's setting. Omitted:
+   * the legacy behaviour (global switch, first pane with a background).
+   */
+  readonly spanningBackdrop?: { readonly fileId: string; readonly ownerFileId: string } | null
+
+  /**
    * #240 — open a viz file's preview in a pop-out browser window. The shell
    * forwards the Cmd+K W command (`workspace.openPreviewInWindow` →
    * `shell.openPopoutPreview(fileId)`) to this host callback; the app compiles
@@ -1064,6 +1146,22 @@ export interface WorkspaceShellProps {
   }) => PreviewProvider | undefined
 
   /**
+   * #2471 — draw the body of an app tab (`kind: 'app'`). Called only while
+   * the tab is its group's ACTIVE tab, so the returned content unmounts when
+   * the user switches away; the host keeps whatever it must remember in its
+   * own store (or in the tab's `state`). The shell wraps it in an opaque
+   * container — the pane's background never shows through. Returning
+   * `null` / omitting the prop draws an "unavailable" placeholder.
+   */
+  readonly renderAppTab?: (tab: WorkspaceTab & { kind: 'app' }) => ReactNode
+
+  /**
+   * #2471 — label (title + optional icon) for an app tab's chip in the tab
+   * bar. Omitted or returning `undefined` → the tab shows its `appKey`.
+   */
+  readonly appTabLabel?: (tab: WorkspaceTab & { kind: 'app' }) => AppTabLabel | undefined
+
+  /**
    * Callback for resolving per-tab runtime chrome (transport bar for
    * pattern files). Task 05 fills this in with a lookup into
    * `runtimeProviders`. Task 04 calls the callback for every editor tab
@@ -1111,13 +1209,19 @@ export interface WorkspaceShellProps {
     y: number,
   ) => void
 
-  /** Inline viz "edit" icon clicked — navigate to the viz file. */
-  readonly onEditViz?: (vizId: string) => void
+  /** Inline viz "edit" icon clicked — navigate to the viz file behind
+   *  `presetId` (or, while it is `null`, the one the name resolves to). */
+  readonly onEditViz?: (vizId: string, presetId: string | null) => void
 
   /** Inline viz "crop" icon clicked — open crop popup. `trackKey` scopes
    *  the crop to this specific zone instance; see onCropViz above for the
-   *  per-instance rationale. */
-  readonly onCropViz?: (vizId: string, presetId: string | null, trackKey: string) => void
+   *  per-instance rationale; `fileId` is the file the strip belongs to. */
+  readonly onCropViz?: (
+    vizId: string,
+    presetId: string | null,
+    trackKey: string,
+    fileId: string,
+  ) => void
 
   /**
    * #773 — open the app's backdrop crop popup for the active group's backdrop.

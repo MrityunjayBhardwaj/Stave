@@ -30,6 +30,7 @@ const MEASUREMENT_SPECS = [
   '**/strudel-viz-methods.spec.ts', // 26 worker-backed viz mounts; "varies over frames"
   '**/perf-matrix.spec.ts', // the cost ladder (env-gated)
   '**/viz-scroll-jank.spec.ts', // jank: no-viz control vs heavy worker viz (env-gated)
+  '**/three-viz.spec.ts', // a three.js knot's frame-to-frame pulse vs a silent control (#2516)
 ]
 
 /**

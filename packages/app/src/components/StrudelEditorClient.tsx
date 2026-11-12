@@ -5,6 +5,24 @@ import { useVizRefWatcher } from "../useVizRefWatcher";
 import { reportBootFailure } from "../dialogs/bootFailureNotice";
 import { promptAndCreateFile } from "../lib/newFile";
 import { loadPerTabBackdrop, savePerTabBackdrop } from "../state/tabBackdrops";
+import {
+  defaultPatternSpan,
+  loadPatternSpans,
+  savePatternSpans,
+  type PatternSpan,
+} from "../state/patternSpans";
+import {
+  codeBackdropName,
+  recordEvaluatedBackdrop,
+  fileShownIn,
+  openPatternFiles,
+  paneCodeBackdrops,
+  panesShowing,
+  pickSpanningBackdrop,
+  sameVizName,
+  shownTabBackdrop,
+  type EvaluatedBackdrop,
+} from "../state/codeBackdrop";
 import { isPlaceholder } from "../lib/fileTreeOps";
 import { BackdropPopover } from "./BackdropPopover";
 import {
@@ -14,10 +32,16 @@ import {
 import { PopoutPreviewController } from "./PopoutPreviewController";
 import { registerVizWorker } from "../visualizers/registerVizWorker";
 import {
+  p5VizBasenames,
+  presetIdForVizFile,
+  qualifiedVizName,
+} from "../visualizers/vizFileLookup";
+import {
   WorkspaceShell,
   getResolvedTheme,
   onThemeChange,
   type WorkspaceShellHandle,
+  type WorkspaceShellProps,
   type ResolvedTheme,
   getFile,
   subscribeToWorkspaceFile,
@@ -28,6 +52,7 @@ import {
   commitWorkspace,
   getViewedContent,
   isViewing,
+  getActiveProjectId,
   pruneTrackMetaForCode,
   subscribeToRuntimeView,
   subscribeToFileList,
@@ -40,11 +65,11 @@ import {
   HYDRA_VIZ,
   P5_VIZ,
   GLSL_VIZ,
+  THREE_VIZ,
   LiveCodingRuntime,
   VizPresetStore,
   bundledPresetId,
   flushToPreset,
-  getPresetIdForFile,
   isVizLanguage,
   rendererForLanguage,
   compilePreset,
@@ -82,12 +107,17 @@ import {
   registerReevalHandler,
   applyEvalSourceTransform,
   purgeLegacyMasterGain,
-  getBackdropVizSpan,
-  setBackdropVizSpan,
   getActiveEditor,
+  getActiveFileId,
   commitToFile,
   masterVizEdit,
   readMasterViz,
+  readCodeViz,
+  docParses,
+  resolveVizOptions,
+  setCodeBackdropOptions,
+  getCodeBackdropOptions,
+  retainCodeBackdropOptions,
   onActiveEditorChange,
   readPersistedOpen,
   readPersistedActiveTabId,
@@ -103,7 +133,7 @@ import {
 } from "@stave/editor";
 import { reportWriteRefusal } from "../lib/writeRefusal";
 import { noticeBareExpression, storedTold } from "../lib/bareExpressionNotice";
-import { showToast } from "../dialogs/host";
+import { showConfirm, showToast } from "../dialogs/host";
 import { effectiveLoopRange, subscribeLoopState } from "../state/loopRange";
 import { getSongCycleLimit } from "../state/songCycleLimit";
 import { createSongCollector } from "./musicalTimeline/songCollector";
@@ -117,6 +147,56 @@ import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 import { installBounceProbe } from "../e2e/bounceProbe";
 import { installAssetProbe } from "../e2e/assetProbe";
 import { warmWaveforms } from "../audio/waveformWarm";
+// #2304 — gallery code is held until the person presses Play.
+import { onGalleryRunnableChange, releaseGalleryHold } from "../gallery/safeRun";
+import { gatePreviewProvider } from "../gallery/RunGatePreview";
+// #2342 — every evaluate of a project file passes one gate (gallery/runGate.ts).
+import {
+  askBeforeRunning,
+  guardProjectEngine,
+  mayEvaluate,
+  mayEvaluateQuietly,
+  runAfterAsking,
+  type AskToRun,
+} from "../gallery/runGate";
+
+/** #2328/#2342 — how the trust question is put: the app's own confirm dialog. */
+const askToRun: AskToRun = (message) => showConfirm({ ...message, cancelLabel: "Cancel" });
+
+/**
+ * #2343 — `askToRun`, telling `onAsking` when the question goes up (true) and
+ * when it is answered yes (false), so a dialog behind it (Bounce) can say it is
+ * waiting rather than "Rendering". A no is left to the caller, which ends anyway.
+ */
+function askingFor(onAsking?: (asking: boolean) => void): AskToRun {
+  if (!onAsking) return askToRun;
+  return async (message) => {
+    onAsking(true);
+    const ok = await askToRun(message);
+    if (ok) onAsking(false);
+    return ok;
+  };
+}
+
+/**
+ * #2342 — a seek on the ruler re-evaluates the file and, when stopped, starts
+ * it (LiveCodingRuntime `seekTo` → `play`). So it asks first, as Play does; a
+ * file that may run seeks at once, with no await in between.
+ */
+function seekAfterAsking(
+  projectId: string,
+  rt: { fileId: string; seekTo?: (cycle: number) => Promise<unknown> } | undefined,
+  cycle: number,
+): void {
+  if (!rt?.seekTo) return;
+  if (mayEvaluate(projectId, rt.fileId)) {
+    void rt.seekTo(cycle);
+    return;
+  }
+  void askBeforeRunning(projectId, rt.fileId, askToRun).then((ok) => {
+    if (ok) void rt.seekTo?.(cycle);
+  });
+}
 
 
 // Phase 20-12 — the timeline collects across the same cycle window the live
@@ -259,6 +339,7 @@ function ensureProviders() {
   registerPreviewProvider(HYDRA_VIZ);
   registerPreviewProvider(P5_VIZ);
   registerPreviewProvider(GLSL_VIZ);
+  registerPreviewProvider(THREE_VIZ);
 }
 
 // ---------------------------------------------------------------------------
@@ -309,12 +390,16 @@ export interface BounceHandle {
    * `onCaptureStart` is never called: there is no capture to wait for.
    * `onRenderProgress` hears the seconds rendered so far (#1650); the live
    * path never calls it, because its progress is its own clock.
+   *
+   * #2343 — `onAsking(true)` when the file came from the gallery and the trust
+   * question goes up first; `onAsking(false)` once it is answered yes.
    */
   bounce(
     seconds: number,
     signal?: AbortSignal,
     onCaptureStart?: () => void,
     onRenderProgress?: (renderedSeconds: number) => void,
+    onAsking?: (asking: boolean) => void,
   ): Promise<BounceResult | null>;
   /**
    * How long the active document is, and at what tempo — so the bounce modal can
@@ -339,11 +424,13 @@ export interface BounceHandle {
    * document order, each named as the mixer names the track. Resolves to null
    * when the active runtime cannot, or when `signal` aborted, before or during
    * the set. A silent or failed stem comes back without a blob.
+   * `onAsking` as for `bounce` (#2343).
    */
   bounceStems(
     seconds: number,
     signal?: AbortSignal,
     onRenderProgress?: (renderedSeconds: number, totalSeconds: number) => void,
+    onAsking?: (asking: boolean) => void,
   ): Promise<BouncedStem[] | null>;
 }
 
@@ -357,6 +444,15 @@ interface StrudelEditorClientProps {
    */
   projectId: string;
   shellRef?: React.RefObject<WorkspaceShellHandle | null>;
+  /** #2473 — draws app tabs (the gallery); passed straight to the shell. */
+  renderAppTab?: WorkspaceShellProps["renderAppTab"];
+  /** #2473 — labels app tabs; passed straight to the shell. */
+  appTabLabel?: WorkspaceShellProps["appTabLabel"];
+  /**
+   * #2473 — the app tabs the host can draw. A saved layout keeps an app tab
+   * only if its key is here, so without it a gallery tab is dropped on reload.
+   */
+  validAppKeys?: ReadonlySet<string>;
   /**
    * #1346 — populated with a handle onto the ACTIVE file's live audio graph so
    * StaveApp can offer "Bounce to WAV" from the File menu.
@@ -452,9 +548,9 @@ interface StrudelEditorClientProps {
   } | null) => void;
   onTabContextMenu?: (tab: WorkspaceTab, x: number, y: number) => void;
   /** Navigate to a viz file when the user clicks the edit icon on an inline viz. */
-  onEditViz?: (vizId: string) => void;
+  onEditViz?: (vizId: string, presetId: string | null) => void;
   /** Open crop popup when the user clicks the crop icon on an inline viz. */
-  onCropViz?: (vizId: string, presetId: string | null, trackKey: string) => void;
+  onCropViz?: (vizId: string, presetId: string | null, trackKey: string, fileId: string) => void;
   /** Pass-through of the shell's backdrop change callback — fires on any
    *  group's backgroundFileId transition. StaveApp uses this to mirror
    *  the pinned backdrop into its own React state for the FileTree
@@ -465,15 +561,6 @@ interface StrudelEditorClientProps {
   onActiveBackdropChange?: (fileId: string | null) => void;
   /** Crop region applied to the pinned backdrop. `null` = full rect. */
   backgroundCrop?: { x: number; y: number; w: number; h: number } | null;
-  /**
-   * Fires after EVERY successful Strudel evaluate with the code's current
-   * backdrop viz — the resolved renderer id of a non-underscore viz method
-   * (`.scope()`, `.pianoroll()`, …), or `null` when the code has none. Code
-   * is the source of truth: StaveApp pins the resolved viz file as the
-   * backdrop, or clears the backdrop when `null` (so removing the method
-   * un-pins it). Fires on every eval so the backdrop tracks code edits.
-   */
-  onCodeBackdropChange?: (vizId: string | null) => void;
   /** #347 — open the crop modal for the active pane's backdrop (same handler
    *  the menubar bg-popover uses). Invoked from the pattern-bar set-bg popover. */
   onCropBackdrop?: () => void;
@@ -570,6 +657,9 @@ export function shownError(st: { error: Error | null; errorMessage?: string }): 
 export default function StrudelEditorClient({
   projectId,
   shellRef,
+  renderAppTab,
+  appTabLabel,
+  validAppKeys,
   bounceRef,
   onActiveFileChange,
   onActiveRuntimeStateChange,
@@ -579,7 +669,6 @@ export default function StrudelEditorClient({
   onBackgroundFileChange,
   onActiveBackdropChange,
   backgroundCrop,
-  onCodeBackdropChange,
   onCropBackdrop,
   onRevealBackdrop,
 }: StrudelEditorClientProps) {
@@ -603,6 +692,31 @@ export default function StrudelEditorClient({
   const [tabBackdrops, setTabBackdrops] = useState<ReadonlyMap<string, string>>(
     () => loadPerTabBackdrop(projectId),
   );
+  // #2423 — each pattern file's background span (File / Workspace), and when each
+  // pattern was last used (focused, played, or set to Workspace) so that, with
+  // two patterns set to Workspace, the one used last spans.
+  const [patternSpans, setPatternSpans] = useState<ReadonlyMap<string, PatternSpan>>(
+    () => loadPatternSpans(projectId),
+  );
+  const [defaultSpan] = useState<PatternSpan>(() => defaultPatternSpan());
+  useEffect(() => {
+    savePatternSpans(projectId, patternSpans);
+  }, [projectId, patternSpans]);
+  const spanOf = useCallback(
+    (fileId: string): PatternSpan => patternSpans.get(fileId) ?? defaultSpan,
+    [patternSpans, defaultSpan],
+  );
+  const recencyRef = useRef<Map<string, number>>(new Map());
+  const useStampRef = useRef(0);
+  const [recencyTick, setRecencyTick] = useState(0);
+  const markPatternUsed = useCallback((fileId: string | null) => {
+    if (!fileId || getFile(fileId)?.language !== "strudel") return;
+    useStampRef.current += 1;
+    recencyRef.current.set(fileId, useStampRef.current);
+    setRecencyTick((t) => t + 1);
+  }, []);
+  // the panes changed (tabs opened/closed/moved): the spanning pick re-reads them
+  const [groupsTick, setGroupsTick] = useState(0);
   const [bgPopover, setBgPopover] = useState<{
     rect: DOMRect;
     fileId: string;
@@ -634,7 +748,10 @@ export default function StrudelEditorClient({
       createdAt: 0,
       updatedAt: 0,
     };
-    setPopout({ fileId, descriptor: compilePreset(preset) });
+    // #2344 — the pop-out runs the file's code: ask first, as Play does.
+    void askBeforeRunning(getActiveProjectId() ?? projectIdRef.current, fileId, askToRun).then((ok) => {
+      if (ok) setPopout({ fileId, descriptor: compilePreset(preset) });
+    });
   }, []);
 
   // Persist the per-tab map (best-effort). Re-runs only when the map changes.
@@ -660,13 +777,32 @@ export default function StrudelEditorClient({
   // Pass-through that ALSO captures every manual sticky against the ACTIVE tab,
   // so backdrops set from any surface (pattern-bar popover, VizEditorChrome
   // toggle, file-tree, Cmd+K B) become per-tab and travel with the tab.
+  // #2421 — recorded against the file the CHANGED pane shows, not the active
+  // tab: right after a click into another pane the two differ for a moment.
+  // Writes this client makes itself (restoring a tab's own background, or
+  // projecting a pattern's code onto its pane) record their file explicitly and
+  // set `selfWriteRef`, so they are not recorded a second time here.
+  const selfWriteRef = useRef(false);
   const handleBackgroundFileChange = useCallback(
     (groupId: string, fileId: string | null) => {
-      const activeId = activeFileIdRef.current;
-      if (activeId) recordTabBackdrop(activeId, fileId);
+      if (!selfWriteRef.current) {
+        const shown = fileShownIn(groupsRef.current.get(groupId)) ?? activeFileIdRef.current;
+        if (shown) recordTabBackdrop(shown, fileId);
+      }
       onBackgroundFileChange?.(groupId, fileId);
     },
     [recordTabBackdrop, onBackgroundFileChange],
+  );
+  const setPaneBackgroundFile = useCallback(
+    (vizFileId: string | null, groupId?: string) => {
+      selfWriteRef.current = true;
+      try {
+        shellRef?.current?.setBackgroundFile?.(vizFileId, groupId);
+      } finally {
+        selfWriteRef.current = false;
+      }
+    },
+    [shellRef],
   );
 
   // Resolve a backdrop fileId → its display basename (no extension).
@@ -733,8 +869,109 @@ export default function StrudelEditorClient({
   // in prevCodeBackdropRef), so a keystroke elsewhere never disturbs a backdrop set
   // from another surface (file-tree / Cmd+K B) that isn't in the code.
   const prevCodeBackdropRef = useRef<string | null>(null);
+  // The background's OPTIONS follow the code too, not only the last evaluation:
+  // the bus payload that carries the evaluated ones is withdrawn on Stop and
+  // absent before the first Play, and the sketch then fell back to its defaults.
+  // What each pattern file's last evaluation asked for is kept here, per file,
+  // for the values the code computes rather than writes as literals, and for a
+  // background declared on a track, which the code reader cannot see.
+  const evalBackdropsRef = useRef<Map<string, EvaluatedBackdrop>>(new Map());
+  // #2413 — the CODE's background belongs to the pattern file that declared it.
+  // `codeBackdrops` maps a pattern file id → the viz file its code asks for; the
+  // pane's override is that entry for the ACTIVE tab and nothing for any other
+  // tab, so a played pattern's background no longer outranks a viz tab's own
+  // pinned one. It is re-derived on every edit (and after every evaluation), so
+  // deleting or clearing the declaration takes the background away without a
+  // re-run. Kept in state so each tab's "set bg" button can name it (#2414).
+  // This is the ONLY writer of the shell's code override.
+  const [codeBackdrops, setCodeBackdrops] = useState<ReadonlyMap<string, string>>(() => new Map());
+  const codeBackdropsRef = useRef<ReadonlyMap<string, string>>(codeBackdrops);
+  const setCodeBackdrop = useCallback((fileId: string, vizFileId: string | null) => {
+    const prev = codeBackdropsRef.current;
+    if ((prev.get(fileId) ?? null) !== vizFileId) {
+      const next = new Map(prev);
+      if (vizFileId) next.set(fileId, vizFileId);
+      else next.delete(fileId);
+      codeBackdropsRef.current = next;
+      setCodeBackdrops(next);
+    }
+    applyPaneOverridesRef.current();
+  }, []);
+  // #2421 — every pane's override from what it shows: a pane showing a pattern
+  // gets that pattern's code background, any other pane none. Re-applied when the
+  // code background changes and whenever the panes change (tabs, focus, splits).
+  const applyPaneOverridesRef = useRef<() => void>(() => {});
+  applyPaneOverridesRef.current = () => {
+    for (const [groupId, vizFileId] of paneCodeBackdrops(groupsRef.current.values(), codeBackdropsRef.current)) {
+      shellRef?.current?.setBackgroundOverride?.(vizFileId, groupId);
+    }
+  };
+  // Re-derive one pattern file's code background from `code` (its current text)
+  // and what its last evaluation asked for.
+  const deriveCodeBackdropRef = useRef<(fileId: string, code: string) => void>(() => {});
+  deriveCodeBackdropRef.current = (fileId: string, code: string) => {
+    // #2394 — the background the code declares, on the master line or a track
+    const found = codeBackdropName(readCodeViz(code)?.name ?? null, evalBackdropsRef.current.get(fileId) ?? null);
+    setCodeBackdrop(fileId, found ? resolveVizNameToFileId(found.name) : null);
+  };
+  // Write ONE pattern file's background options from `code` (its current text)
+  // and what its last evaluation asked for. #2395 — per pattern, for any pattern
+  // open in any pane, not only the focused one: each pane's background reads the
+  // slot of the pattern it shows.
+  const publishCodeBackdropOptionsRef = useRef<(patternFileId: string, code: string) => void>(() => {});
+  publishCodeBackdropOptionsRef.current = (patternFileId: string, code: string) => {
+    // half-typed code says nothing about the background: keep what it last said.
+    // Here, not only in the editor sync, because the open-pattern sync below
+    // reads other patterns' STORED code, which can be half-typed too.
+    if (!docParses(code)) return;
+    const last = evalBackdropsRef.current.get(patternFileId) ?? null;
+    // #2394 — master line or track: either one's options are read from the code
+    const declared = readCodeViz(code);
+    const found = codeBackdropName(declared?.name ?? null, last);
+    if (found?.source === "code" && declared) {
+      const vizFileId = resolveVizNameToFileId(declared.name);
+      const evaluated = last && sameVizName(last.vizId, declared.name) ? last.options : null;
+      setCodeBackdropOptions(
+        vizFileId ? { fileId: vizFileId, options: resolveVizOptions(declared.options, evaluated) } : null,
+        patternFileId, // #2423 — this pattern's options, for this pattern's background only
+      );
+      return;
+    }
+    // a background only the last evaluation found (a name in a variable, a call
+    // nested in an argument) — keep that evaluation's options rather than none
+    const vizFileId = found ? resolveVizNameToFileId(found.name) : null;
+    setCodeBackdropOptions(vizFileId ? { fileId: vizFileId, options: last?.options ?? {} } : null, patternFileId);
+  };
+  // #2395 — the options of every pattern open in a pane, and only those. A
+  // pattern whose last tab closed loses its slot (reopening re-reads its code);
+  // one open in a pane but not yet read this session (after a reload, the
+  // patterns in the panes that are not focused) is read from its file, so its
+  // background has its options without being focused first. The focused file is
+  // read from its editor (the live text; the file's stored content can lag it).
+  const syncOpenPatternOptionsRef = useRef<() => void>(() => {});
+  // the files (and the viz files the code names) load after the panes on a
+  // reload: read the open patterns again whenever the file list changes
+  useEffect(() => {
+    syncOpenPatternOptionsRef.current();
+    return subscribeToFileList(() => syncOpenPatternOptionsRef.current());
+  }, []);
+  syncOpenPatternOptionsRef.current = () => {
+    const open = openPatternFiles(groupsRef.current.values(), (id) => getFile(id)?.language === "strudel");
+    retainCodeBackdropOptions(open);
+    const model = getActiveEditor()?.getModel?.();
+    const focused = model?.getLanguageId?.() === "strudel" ? getActiveFileId() : null;
+    for (const id of open) {
+      if (getCodeBackdropOptions(id)) continue;
+      const content = id === focused ? model?.getValue?.() : getFile(id)?.content;
+      if (content != null) publishCodeBackdropOptionsRef.current(id, content);
+    }
+  };
   useEffect(() => {
     let sub: { dispose?: () => void } | undefined;
+    let langSub: { dispose?: () => void } | undefined;
+    // the file the focused editor shows — read from the editor registry, so it is
+    // right even when the editor change lands before the tab-change callback
+    const activePatternFileId = (): string | null => getActiveFileId() ?? activeFileIdRef.current;
     const codeBackdropOf = (): string | null => {
       const model = getActiveEditor()?.getModel?.();
       // master all() is a pattern-file concept — only sync for the Strudel editor
@@ -744,29 +981,57 @@ export default function StrudelEditorClient({
       return name ? resolveVizNameToFileId(name) : null;
     };
     const sync = () => {
-      const fileId = activeFileIdRef.current;
+      // #2413 — the code background follows the code on every edit. Derived
+      // before the tab guard below: when the editor change lands before the tab
+      // change the entry is still recorded, and the tab change then shows it.
+      const model = getActiveEditor()?.getModel?.();
+      // Half-typed code can't be read, which is not the same as declaring no
+      // background: everything below keeps what the code last said until it parses.
+      if (model?.getLanguageId?.() === "strudel" && !docParses(model.getValue?.() ?? "")) return;
+      const patternFileId = activePatternFileId();
+      if (model?.getLanguageId?.() === "strudel" && patternFileId) {
+        const text = model.getValue?.() ?? "";
+        deriveCodeBackdropRef.current(patternFileId, text);
+        // only a pattern's code declares a background; with a viz file focused
+        // the slots keep what each pattern last said
+        publishCodeBackdropOptionsRef.current(patternFileId, text);
+      }
+      // #2421 — the file whose code was just read (the focused editor's), and the
+      // pane(s) showing it: a click into another pane focuses its editor before
+      // that pane and tab become active, so the active ones can still be the
+      // pane beside it
+      const fileId = patternFileId;
       if (!fileId) return;
       const code = codeBackdropOf();
       if (code === prevCodeBackdropRef.current) return; // code backdrop unchanged → leave the sticky alone
       prevCodeBackdropRef.current = code;
       recordTabBackdrop(fileId, code);
-      shellRef?.current?.setBackgroundFile?.(code);
+      const panes = panesShowing(groupsRef.current.values(), fileId);
+      if (panes.length > 0) for (const groupId of panes) setPaneBackgroundFile(code, groupId);
+      else if (fileId === activeFileIdRef.current) setPaneBackgroundFile(code);
     };
     const wire = () => {
       sub?.dispose?.();
+      langSub?.dispose?.();
       // reset per active file so its code backdrop is (re)projected on entry
       prevCodeBackdropRef.current = null;
       const model = getActiveEditor()?.getModel?.();
       sub = model?.onDidChangeContent?.(sync);
+      // #2528 — on a reload the editor registers with its model still
+      // `plaintext`; the language turns `strudel` a moment later, which is no
+      // content change, so the read above found nothing and nothing read again.
+      // (A master line hid this: its background is also restored per tab.)
+      langSub = model?.onDidChangeLanguage?.(sync);
       sync();
     };
     wire();
     const un = onActiveEditorChange(wire);
     return () => {
       sub?.dispose?.();
+      langSub?.dispose?.();
       un?.();
     };
-  }, [recordTabBackdrop, resolveVizNameToFileId]);
+  }, [recordTabBackdrop, resolveVizNameToFileId, setPaneBackgroundFile]);
 
   // Track active file for the viz-ref watcher hook.
   const [watchedFileId, setWatchedFileId] = useState<string | null>(null);
@@ -813,17 +1078,17 @@ export default function StrudelEditorClient({
     // resolves to the p5 preset instead of last-write-wins (#181). This
     // also keeps inline `.viz("scope")` in lockstep with the `.scope()`
     // backdrop, which always prefers the p5 file.
-    const baseOf = (p: string) =>
-      p.split("/").pop()!.replace(/\.[^.]+$/, "");
-    const p5Basenames = new Set(
-      vizFiles.filter((f) => f.language === "p5js").map((f) => baseOf(f.path)),
-    );
+    //
+    // The preset id and the qualified name come from vizFileLookup — the
+    // same rules ✎ / crop use to find the file a zone draws (#2322).
+    const p5Basenames = p5VizBasenames(vizFiles);
     for (const f of vizFiles) {
-      let presetId = getPresetIdForFile(f);
-      if (!presetId) {
-        const baseName = f.path.replace(/\.[^.]+$/, "");
-        presetId = `user_${baseName.replace(/[^a-zA-Z0-9]/g, "_")}`;
-      }
+      // #2344 — a gallery viz file nobody has agreed to run is not registered:
+      // otherwise `.viz("<its name>")` in your own code would mount it unasked.
+      // It registers once trusted (the listener below re-runs this).
+      // Quiet check: it also skips a file whose import is still landing.
+      if (!mayEvaluateQuietly(getActiveProjectId() ?? projectIdRef.current, f.id)) continue;
+      const presetId = presetIdForVizFile(f);
       // Persist live code to the preset store — but NEVER while viewing
       // (the override is read-only; persisting historical code would corrupt
       // the live preset, the viz analogue of writing Y.Text).
@@ -845,19 +1110,21 @@ export default function StrudelEditorClient({
       const effective = bundledNative
         ? { ...effective0, nativeSize: bundledNative }
         : effective0;
-      const base = baseOf(f.path);
       // A non-p5 file sharing a basename with a p5 file registers under a
       // renderer-qualified name (`<name>:hydra` / `<name>:glsl`) so bare
       // `.viz("<name>")` deterministically resolves to the p5 preset (#181).
-      const name =
-        f.language !== "p5js" && p5Basenames.has(base)
-          ? `${base}:${f.language === "hydra" ? "hydra" : "glsl"}`
-          : preset.name;
+      const name = qualifiedVizName(f, p5Basenames) ?? preset.name;
       registerPresetAsNamedViz(effective, name);
     }
   }, []);
 
   useEffect(() => { void registerAllVizFiles(); }, [registerAllVizFiles]);
+
+  // #2344 — a gallery viz file becomes registrable once someone agrees to run it.
+  useEffect(
+    () => onGalleryRunnableChange(() => { void registerAllVizFiles(); }),
+    [registerAllVizFiles],
+  );
 
   // #204 time-travel: re-register viz from the snapshot on checkout
   // enter/exit/swap so inline `.viz()` follows the viewed commit, then
@@ -1002,12 +1269,6 @@ export default function StrudelEditorClient({
   // runtime state (isPlaying/error/bpm/autoRefresh) mirrors runtime events
   // into React state so chromeForTab can read it cheaply.
   const runtimesRef = useRef<Map<string, LiveCodingRuntime>>(new Map());
-  // Latest-value ref: each runtime's onEvaluateSuccess handler is registered
-  // ONCE (runtimes are cached in runtimesRef), so reading the prop directly in
-  // that closure would capture the first-render value. The ref keeps the call
-  // fresh across re-renders without re-creating runtimes.
-  const onCodeBackdropChangeRef = useRef(onCodeBackdropChange);
-  onCodeBackdropChangeRef.current = onCodeBackdropChange;
   const [runtimeStates, setRuntimeStates] = useState<Map<string, {
     isPlaying: boolean; error: Error | null; bpm?: number; autoRefresh: boolean;
     // #2259 — Play was pressed and the clock hasn't started yet (runtime.onPlayPendingChanged).
@@ -1047,6 +1308,12 @@ export default function StrudelEditorClient({
   // ⚠ That sentence used to be a claim only — the publish sat after an
   // unbounded await, so a hung evaluate silently cancelled it (#1193). It is
   // now enforced by the helper below rather than asserted here.
+  // #2304 — the project a file id belongs to is the FILE STORE's, not this
+  // mount's prop: during an import the store has already switched while this
+  // (about to unmount) editor still sees the new files arrive.
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+  const storeProjectId = useCallback(() => getActiveProjectId() ?? projectIdRef.current, []);
   const refreshTimelineMarks = useCallback(async (fid: string) => {
     const rt = runtimesRef.current.get(fid);
     const st = runtimeStatesRef.current.get(fid);
@@ -1055,8 +1322,13 @@ export default function StrudelEditorClient({
     // and inline here nothing could reach it. What is decided here is only
     // WHETHER an eval is wanted; the publish is the helper's to sequence, and
     // it runs on every path including a hung one.
+    // #2304 — a file opened from the gallery is never evaluated quietly: its code
+    // runs only once the person has chosen to run it (gallery/runGate.ts). The
+    // engine refuses it anyway; checking here keeps the timeline from asking.
     const evalRuntime =
-      rt && !st?.isPlaying && isSongTimelineVisible() ? rt : null;
+      rt && !st?.isPlaying && isSongTimelineVisible() && mayEvaluateQuietly(storeProjectId(), fid)
+        ? rt
+        : null;
     await publishSnapshotAfterBoundedEval({
       evaluate: evalRuntime ? () => evalRuntime.evaluateForTimeline() : null,
       publish: () =>
@@ -1067,7 +1339,7 @@ export default function StrudelEditorClient({
         ),
       waitMs: TIMELINE_EVAL_WAIT_MS,
     });
-  }, []);
+  }, [storeProjectId]);
 
   // #457 — keep the Song timeline + IR Inspector snapshot in sync with the
   // SOURCE while the runtime isn't live-evaluating. The snapshot is otherwise
@@ -1117,7 +1389,13 @@ export default function StrudelEditorClient({
     const provider = getRuntimeProviderForLanguage(file.language);
     if (!provider) return null;
 
-    const engine = provider.createEngine();
+    // #2342 — THE gate: every evaluate this runtime makes (play, timeline, bounce,
+    // stems, live capture, seek, loop, live mode) goes through this engine's
+    // `evaluate`, which refuses a gallery file nobody has agreed to run yet.
+    const engine = guardProjectEngine(provider.createEngine(), () => ({
+      projectId: storeProjectId(),
+      fileId,
+    }));
     // #2200–#2202 — the engine doesn't know its file; the Console names its rows
     // by it. What an evaluate had to say is written once the evaluate is known to
     // be a real one (here, after its error rows or its clean mark), because the
@@ -1164,6 +1442,8 @@ export default function StrudelEditorClient({
     );
 
     runtime.onPlayingChanged((playing: boolean) => {
+      // #2304 — Play is the person's consent to run this file's code.
+      if (playing) releaseGalleryHold(storeProjectId(), fileId);
       setRuntimeStates(prev => {
         const next = new Map(prev);
         const cur = next.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
@@ -1433,12 +1713,30 @@ export default function StrudelEditorClient({
         }
 
         // Code-driven backdrop — a non-underscore viz method (`.scope()`,
-        // `.pianoroll()`, …) maps to Stave's backdrop; its absence clears it.
-        // Code is the source of truth, so we forward on EVERY eval (null
-        // included) — removing the method un-pins the backdrop on next eval.
-        // StaveApp resolves the id to a viz file (or clears) and the "set bg"
-        // UI auto-updates. Idempotent on StaveApp's side (no churn in live mode).
-        onCodeBackdropChangeRef.current?.(runtime.getBackdropVizRequest());
+        // `.pianoroll()`, …), `.viz(name, { backdrop: true })` or a master
+        // `all(x => x.viz(name))` maps to Stave's backdrop; its absence clears it.
+        // Recorded for THIS file on every eval (null included), with the
+        // background the evaluated code declares as the code reader sees it
+        // (master line or track, #2394), then the file's code background is
+        // re-derived (#2413): it shows only while this file is the active tab.
+        const evaluated = recordEvaluatedBackdrop(
+          runtime.getBackdropVizRequest(),
+          runtime.getBackdropVizOptions(),
+          readCodeViz(evaluatedCode)?.name ?? null,
+        );
+        if (evaluated) evalBackdropsRef.current.set(fileId, evaluated);
+        else evalBackdropsRef.current.delete(fileId);
+        // the live text when this file is focused (an edit may have landed since
+        // the evaluation started) and it parses, else the code that was evaluated
+        const liveText =
+          getActiveFileId() === fileId ? getActiveEditor()?.getModel?.()?.getValue?.() : undefined;
+        const liveCode = liveText != null && docParses(liveText) ? liveText : undefined;
+        deriveCodeBackdropRef.current(fileId, liveCode ?? evaluatedCode);
+        // #2395 — THIS file's options, whether or not it is the focused one, and
+        // only while one of its tabs is open (a pattern played with its tab
+        // closed has no background to give them to; reopening reads its code)
+        const open = openPatternFiles(groupsRef.current.values(), (id) => getFile(id)?.language === "strudel");
+        if (open.includes(fileId)) publishCodeBackdropOptionsRef.current(fileId, liveCode ?? evaluatedCode);
       }
     });
     runtime.onAutoRefreshChanged((enabled: boolean) => {
@@ -1546,16 +1844,26 @@ export default function StrudelEditorClient({
   // ── Shell callbacks ─────────────────────────────────────────────────
 
   const handlePlay = useCallback((fileId: string) => {
-    const rt = getOrCreateRuntime(fileId);
-    if (!rt) return;
-    setRuntimeStates(prev => {
-      const next = new Map(prev);
-      const cur = prev.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
-      next.set(fileId, { ...cur, error: null });
-      return next;
+    markPatternUsed(fileId); // #2423 — a played pattern is the most recently used
+    const start = () => {
+      const rt = getOrCreateRuntime(fileId);
+      if (!rt) return;
+      setRuntimeStates(prev => {
+        const next = new Map(prev);
+        const cur = prev.get(fileId) ?? { isPlaying: false, error: null, autoRefresh: false };
+        next.set(fileId, { ...cur, error: null });
+        return next;
+      });
+      rt.play();
+    };
+    // #2328 — the first Play of a file taken in from the gallery asks first
+    // (gallery/runGate.ts); Cancel leaves it unrun. Any other file plays at
+    // once, exactly as before (synchronously: no await between the key and Play).
+    if (mayEvaluate(storeProjectId(), fileId)) return start();
+    void askBeforeRunning(storeProjectId(), fileId, askToRun).then((ok) => {
+      if (ok) start();
     });
-    rt.play();
-  }, [getOrCreateRuntime]);
+  }, [getOrCreateRuntime, storeProjectId, markPatternUsed]);
 
   const handleStop = useCallback((fileId: string) => {
     const rt = runtimesRef.current.get(fileId);
@@ -1655,11 +1963,14 @@ export default function StrudelEditorClient({
     const state = runtimeStates.get(tab.fileId) ?? {
       isPlaying: false, error: null, autoRefresh: false,
     };
-    // #347 — per-tab "set bg" dropdown. Pinned state + filename come from THIS
-    // tab's backdrop (tabBackdrops), so other tabs read their own. The button
-    // opens the BackdropPopover (rendered at the component root) anchored to
-    // itself and scoped to this tab's file id.
-    const tabBg = tabBackdrops.get(tab.fileId) ?? null;
+    // #347 — per-tab "set bg" dropdown, scoped to THIS tab, so other tabs read
+    // their own. #2414 — it names what the pane draws for this tab: the code's
+    // background when the code sets one, else the pinned one (the same
+    // precedence the shell resolves), so a background on screen is always one
+    // the button names and can clear. The button opens the BackdropPopover
+    // (rendered at the component root) anchored to itself.
+    const tabBg =
+      shownTabBackdrop(tabBackdrops.get(tab.fileId), codeBackdrops.get(tab.fileId));
     const ctx: ChromeContext = {
       runtime: rt,
       file,
@@ -1695,7 +2006,7 @@ export default function StrudelEditorClient({
       ),
     };
     return runtimeProvider.renderChrome(ctx);
-  }, [getOrCreateRuntime, runtimeStates, handlePlay, handleStop, handleToggleAutoRefresh, handleToggleStopAtEnd, tabBackdrops, backdropName]);
+  }, [getOrCreateRuntime, runtimeStates, handlePlay, handleStop, handleToggleAutoRefresh, handleToggleStopAtEnd, tabBackdrops, codeBackdrops, backdropName]);
 
   // onSaveFile: Cmd+S / Save button handler. For viz files, flush the
   // current in-memory content back to VizPresetStore via the bridge,
@@ -1714,16 +2025,15 @@ export default function StrudelEditorClient({
 
       // Use existing presetId, or auto-generate one for manually created
       // viz files so they become available to `.viz("name")`.
-      let presetId = getPresetIdForFile(file);
-      if (!presetId) {
-        const baseName = file.path.replace(/\.[^.]+$/, "");
-        presetId = `user_${baseName.replace(/[^a-zA-Z0-9]/g, "_")}`;
-      }
+      const presetId = presetIdForVizFile(file);
 
       flushToPreset(file.id, presetId)
         .then(() => VizPresetStore.get(presetId))
         .then((preset) => {
-          if (preset) registerPresetAsNamedViz(preset);
+          // #2344 — saving is not agreeing to run: an untrusted gallery file stays unregistered.
+          if (preset && mayEvaluate(getActiveProjectId() ?? projectIdRef.current, file.id)) {
+            registerPresetAsNamedViz(preset);
+          }
         })
         .catch((err) => {
           console.warn("[stave] flushToPreset failed:", err);
@@ -1846,8 +2156,10 @@ export default function StrudelEditorClient({
   const previewProviderFor = useCallback((tab: WorkspaceTab & { kind: "preview" }): PreviewProvider | undefined => {
     const file = getFile(tab.fileId);
     if (!file) return undefined;
-    return getPreviewProviderForLanguage(file.language) ?? undefined;
-  }, []);
+    const provider = getPreviewProviderForLanguage(file.language);
+    // #2344 — a viz file's preview tab and backdrop run its code: behind the gate.
+    return provider ? gatePreviewProvider(provider, storeProjectId, askToRun) : undefined;
+  }, [storeProjectId]);
 
   // onTabClose: dispose runtime when pattern tab is closed (U3)
   const handleTabClose = useCallback((closingTab: WorkspaceTab) => {
@@ -1884,13 +2196,17 @@ export default function StrudelEditorClient({
     (() => {
       const files = listWorkspaceFiles();
       const validIds = new Set(files.map((f) => f.id));
-      const persisted = loadShellState(projectId, validIds);
+      const persisted = loadShellState(projectId, validIds, validAppKeys);
       if (persisted) return hydrateSnapshot(persisted);
       // First load (or wiped persistence) → single Strudel tab.
       const strudelFile = files.find((f) => f.language === "strudel") ?? files[0];
       return buildDefaultSnapshot("g-main", strudelFile?.id ?? null);
     })(),
   ).current;
+  // #2421 — the shell's panes as last reported (tabs + active tab per pane), so a
+  // background write can find the pane that shows a file rather than assume the
+  // active one.
+  const groupsRef = useRef<ShellSnapshot["groups"]>(initialSnapshot.groups);
 
   // Incremental sync: watch the file list and route adds to
   // openOrFocusFile, deletes to closeTabsForFile. The shell mounts once
@@ -1988,6 +2304,26 @@ export default function StrudelEditorClient({
     // disagree in the first place.
     const rendersOffline = (rt: LiveCodingRuntime): boolean =>
       !forceLiveBounceRef.current && rt.canBounceOffline();
+    // The mix bounce, once `bounce` below has asked (#2342).
+    const bounceAsked = async (
+      rt: LiveCodingRuntime,
+      seconds: number,
+      signal?: AbortSignal,
+      onCaptureStart?: () => void,
+      onRenderProgress?: (renderedSeconds: number) => void,
+    ): Promise<BounceResult | null> => {
+      // #1631 — offline whenever the engine can render its loaded document.
+      // The live capture is the path for an engine that cannot, NOT a retry
+      // after a render that threw: a document that fails to evaluate or plays
+      // nothing fails the same way live, and retrying would spend the song's
+      // whole length in real time to report the same error.
+      if (rendersOffline(rt)) {
+        const out = await rt.bounceOffline(seconds, signal, onRenderProgress);
+        return out ? { blob: out.blob, offline: true, skipped: out.skipped } : null;
+      }
+      const blob = await rt.record(seconds, signal, onCaptureStart);
+      return blob ? { blob, offline: false, skipped: [] } : null;
+    };
     const handle: BounceHandle = {
       canBounce: () => {
         const rt = activeRuntime();
@@ -2014,29 +2350,26 @@ export default function StrudelEditorClient({
         if (!rt || !rendersOffline(rt) || !rt.canBounceStems()) return 0;
         return rt.stemTrackCount();
       },
-      bounceStems: async (seconds, signal, onRenderProgress) => {
+      bounceStems: async (seconds, signal, onRenderProgress, onAsking) => {
         const rt = activeRuntime();
         // Through `rendersOffline` for the same reason the mix path is: the
         // capability question and the executor are two readings of one fact,
         // and the point of the predicate is that they cannot differ.
         if (!rt || !rendersOffline(rt) || !rt.canBounceStems()) return null;
-        const out = await rt.bounceStemsOffline(seconds, signal, onRenderProgress);
+        // #2342 — the export evaluates the file: ask first, as Play does. Cancel
+        // rejects with GalleryRunDeclined before anything is evaluated or made.
+        const out = await runAfterAsking(storeProjectId(), rt.fileId, askingFor(onAsking), () =>
+          rt.bounceStemsOffline(seconds, signal, onRenderProgress),
+        );
         return out ? out.stems : null;
       },
-      bounce: async (seconds, signal, onCaptureStart, onRenderProgress) => {
+      bounce: async (seconds, signal, onCaptureStart, onRenderProgress, onAsking) => {
         const rt = activeRuntime();
         if (!rt) return null;
-        // #1631 — offline whenever the engine can render its loaded document.
-        // The live capture is the path for an engine that cannot, NOT a retry
-        // after a render that threw: a document that fails to evaluate or plays
-        // nothing fails the same way live, and retrying would spend the song's
-        // whole length in real time to report the same error.
-        if (rendersOffline(rt)) {
-          const out = await rt.bounceOffline(seconds, signal, onRenderProgress);
-          return out ? { blob: out.blob, offline: true, skipped: out.skipped } : null;
-        }
-        const blob = await rt.record(seconds, signal, onCaptureStart);
-        return blob ? { blob, offline: false, skipped: [] } : null;
+        // #2342 — both paths below evaluate the file: ask first, as Play does.
+        return runAfterAsking(storeProjectId(), rt.fileId, askingFor(onAsking), () =>
+          bounceAsked(rt, seconds, signal, onCaptureStart, onRenderProgress),
+        );
       },
       songSizing: async (signal) => {
         const fid = activeFileIdRef.current;
@@ -2099,7 +2432,7 @@ export default function StrudelEditorClient({
     return () => {
       if (bounceRef.current === handle) bounceRef.current = null;
     };
-  }, [bounceRef]);
+  }, [bounceRef, storeProjectId]);
 
   // #977 — visibility poll for eval-on-load. The snapshot cadence effect covers
   // file switches + edits, and onRequestSnapshot covers a cold song-view entry —
@@ -2178,7 +2511,7 @@ export default function StrudelEditorClient({
       getSongPosition: () =>
         runtimesRef.current.get(accessorFid)?.getSongPosition?.() ?? null,
       onSeek: (cycle: number) => {
-        void runtimesRef.current.get(accessorFid)?.seekTo?.(cycle);
+        seekAfterAsking(storeProjectId(), runtimesRef.current.get(accessorFid), cycle);
       },
       // #394 — publish the active file's IR for the full-song view on demand.
       // #977 — routed through refreshTimelineMarks so a cold song-view entry (or
@@ -2261,14 +2594,36 @@ export default function StrudelEditorClient({
   const handleGroupsChange = useCallback(
     (snapshot: ShellSnapshot) => {
       saveShellState(projectId, snapshot);
+      // #2421 — the panes, for the per-pane background rules above
+      groupsRef.current = snapshot.groups;
+      applyPaneOverridesRef.current();
+      // #2395 — a tab opened, closed or moved: options for exactly the open patterns
+      syncOpenPatternOptionsRef.current();
+      setGroupsTick((t) => t + 1);
     },
     [projectId],
   );
+
+  // #2423 — the pattern background spanning the workspace (a pattern set to
+  // Workspace that is open in some pane; the most recently used one if several).
+  const spanningBackdrop = React.useMemo(() => {
+    const open = openPatternFiles(groupsRef.current.values(), (id) => getFile(id)?.language === "strudel");
+    return pickSpanningBackdrop(
+      open,
+      spanOf,
+      (id) => shownTabBackdrop(tabBackdrops.get(id), codeBackdrops.get(id)),
+      recencyRef.current,
+    );
+    // groupsTick / recencyTick stand for the refs read above
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spanOf, tabBackdrops, codeBackdrops, groupsTick, recencyTick]);
 
   return (
     <>
     <WorkspaceShell
       ref={shellRef}
+      renderAppTab={renderAppTab}
+      appTabLabel={appTabLabel}
       initialGroups={initialSnapshot.groups}
       initialLayout={initialSnapshot.layout}
       initialActiveGroupId={initialSnapshot.activeGroupId}
@@ -2288,6 +2643,7 @@ export default function StrudelEditorClient({
       onRevealBackdrop={() => onRevealBackdrop?.()}
       onBackgroundFileChange={handleBackgroundFileChange}
       onActiveBackdropChange={onActiveBackdropChange}
+      spanningBackdrop={spanningBackdrop}
       onOpenPopoutPreview={handleOpenPopout}
       backgroundCrop={backgroundCrop}
       onActiveTabChange={(tab) => {
@@ -2304,10 +2660,15 @@ export default function StrudelEditorClient({
         // #347 — per-tab backdrop: swap the active group's backdrop to the new
         // active tab's stored choice (or clear when it has none). This is what
         // makes the backdrop follow the tab instead of bleeding across the pane.
-        shellRef?.current?.setBackgroundFile?.(
-          fid ? tabBackdrops.get(fid) ?? null : null,
+        setPaneBackgroundFile(fid ? tabBackdrops.get(fid) ?? null : null);
+        // #2413 — and the code's background with it: only a pattern file's own
+        // code background applies while it is the active tab; any other tab
+        // falls back to its pinned one.
+        shellRef?.current?.setBackgroundOverride?.(
+          fid ? codeBackdropsRef.current.get(fid) ?? null : null,
         );
         setWatchedFileId(fid);
+        markPatternUsed(fid); // #2423 — a focused pattern is the most recently used
         onActiveFileChange?.(fid);
         if (!onActiveRuntimeStateChange) return;
         if (!fid) {
@@ -2364,7 +2725,7 @@ export default function StrudelEditorClient({
               .get(accessorFid)
               ?.getSongPosition?.() ?? null,
           onSeek: (cycle: number) => {
-            void runtimesRef.current.get(accessorFid)?.seekTo?.(cycle);
+            seekAfterAsking(storeProjectId(), runtimesRef.current.get(accessorFid), cycle);
           },
           // #394 — on-demand snapshot capture (same shape as the useEffect
           // builder above). #977 — via refreshTimelineMarks so a cold entry
@@ -2406,15 +2767,27 @@ export default function StrudelEditorClient({
               id: f.id,
               name: f.path.split("/").pop()!.replace(/\.[^.]+$/, ""),
             }))}
-          backgroundFileId={tabBackdrops.get(bgPopover.fileId) ?? null}
+          // #2414 — what this tab shows (code background, else pinned), so a
+          // background on screen is offered for Clear
+          backgroundFileId={shownTabBackdrop(
+            tabBackdrops.get(bgPopover.fileId),
+            codeBackdrops.get(bgPopover.fileId),
+          )}
           backgroundFileName={backdropName(
-            tabBackdrops.get(bgPopover.fileId) ?? null,
+            shownTabBackdrop(tabBackdrops.get(bgPopover.fileId), codeBackdrops.get(bgPopover.fileId)),
           )}
           onSetBackdrop={(id) => {
             // Record against the tab the popover was opened from, and (since
             // that tab is the active one) drive the active group's backdrop.
             recordTabBackdrop(bgPopover.fileId, id);
             shellRef?.current?.setBackgroundFile?.(id);
+            // #2413 — a pick or a Clear here replaces what the code asked for:
+            // a track-level background known only from the last evaluation is
+            // dropped (the next evaluation brings it back if the code still
+            // declares it), and the master line is rewritten just below, whose
+            // edit re-derives the code background.
+            evalBackdropsRef.current.delete(bgPopover.fileId);
+            setCodeBackdrop(bgPopover.fileId, null);
             // #792 — ALSO write the choice into the document as
             // all(x=>x.viz("name",{backdrop:true})), so the global backdrop
             // round-trips to code (portable with the file, editable as text).
@@ -2428,8 +2801,12 @@ export default function StrudelEditorClient({
           }
           onSetOpacity={(v) => shellRef?.current?.setBackdropOpacity?.(v)}
           onSetQuality={(v) => shellRef?.current?.setBackdropQuality?.(v)}
-          vizSpan={getBackdropVizSpan()}
-          onSetVizSpan={(v) => setBackdropVizSpan(v)}
+          // #2423 — the span is THIS pattern's setting
+          vizSpan={spanOf(bgPopover.fileId)}
+          onSetVizSpan={(v) => {
+            setPatternSpans((prev) => new Map(prev).set(bgPopover.fileId, v));
+            markPatternUsed(bgPopover.fileId);
+          }}
         />
       )}
     {/* #240 — viz pop-out window. Mounted only while open; unmount/onClose

@@ -185,6 +185,7 @@ function ensureFilesMapObserver(): void {
             unwireTextObserver(key)
             cachedSnapshots.delete(key)
             notify(key)
+            notifyFileDeleted(key)
             anyStructuralChange = true
           }
         }
@@ -370,6 +371,27 @@ export function subscribeToFileList(cb: Subscriber): () => void {
 }
 
 /**
+ * #2452 — subscribers told WHICH file was deleted. The file list subscribers
+ * above can't tell a delete from a project switch (both make ids disappear from
+ * the list); these fire only when a file is removed from the current project's
+ * doc — the sidebar's Delete, an undo of a create, a remote change — so per-file
+ * state kept elsewhere (a viz's chosen source) can be dropped. A project switch
+ * swaps the whole doc and does not fire them.
+ */
+const fileDeleteSubscribers = new Set<(fileId: string) => void>()
+
+export function subscribeToFileDeletes(cb: (fileId: string) => void): () => void {
+  fileDeleteSubscribers.add(cb)
+  return () => {
+    fileDeleteSubscribers.delete(cb)
+  }
+}
+
+function notifyFileDeleted(fileId: string): void {
+  for (const cb of Array.from(fileDeleteSubscribers)) cb(fileId)
+}
+
+/**
  * Return all workspace files as a list. Snapshots are reference-stable
  * so this return value is suitable for useSyncExternalStore.
  */
@@ -397,6 +419,8 @@ export function listWorkspaceFiles(): WorkspaceFile[] {
 export function deleteWorkspaceFile(id: string): void {
   const filesMap = getFilesMap()
   if (!filesMap.has(id)) return
+  // the observer is what tells delete subscribers (#2452); make sure it's wired
+  ensureFilesMapObserver()
   const doc = ensureDoc()
   doc.transact(() => {
     filesMap.delete(id)

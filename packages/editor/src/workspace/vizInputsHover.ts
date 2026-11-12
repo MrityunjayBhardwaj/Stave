@@ -20,6 +20,7 @@ const FENCE_LANG: Record<VizRendererKind, string> = {
   p5: 'javascript',
   hydra: 'javascript',
   glsl: 'glsl',
+  three: 'javascript',
 }
 
 /** A 0..1 scalar as an 8-cell block bar. */

@@ -14,7 +14,10 @@
  *     notation (a nested group) rides back verbatim.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -68,7 +71,7 @@ async function openSequencer(page: Page) {
 }
 
 test.describe('Sequencer behaviour-projection (#922)', () => {
-  test('an `@n` elongation pattern opens an editable grid and edits locally', async ({ page }) => {
+  test('an `@n` elongation pattern opens an editable grid and edits locally (LCM grid)', async ({ page }) => {
     // `bd@2 hh` has no place in the two-level model (elongation isn't a grid
     // concept) but plays [bd ~ hh]. The projection shows that grid.
     await boot(page)
@@ -102,7 +105,7 @@ test.describe('Sequencer behaviour-projection (#922)', () => {
     await expect(grid.locator('[data-seq-cell$=":2"][aria-pressed="true"]')).toHaveCount(1)
   })
 
-  test('a nested group opens and an unrelated edit copies the group back verbatim', async ({
+  test('a nested group opens and an unrelated edit copies the group back verbatim (LCM grid)', async ({
     page,
   }) => {
     // `bd [hh [hh hh]] sd` — a two-level-deep group the model can't hold, but it
@@ -151,7 +154,7 @@ test.describe('Sequencer behaviour-projection (#922)', () => {
  * a real panel, because "the view opens" and "the view can be worked with" are
  * different claims and only the second one matters.
  */
-test('a period longer than four bars opens a coarse grid and edits by byte surgery', async ({
+test('a period longer than four bars opens a coarse grid; its stretched step keeps its `/8` (LCM grid)', async ({
   page,
 }) => {
   await boot(page)
@@ -165,10 +168,12 @@ test('a period longer than four bars opens a coarse grid and edits by byte surge
   for (let c = 1; c < 8; c++) {
     await expect(grid.locator(`[data-seq-cell="0:${c}"]`)).toHaveAttribute('aria-pressed', 'false')
   }
-  // clearing the sounding cell replaces that token's bytes; the `/8` rides back
-  await grid.locator('[data-seq-cell="0:0"]').click()
-  await page.waitForTimeout(80)
-  expect(await strudelValue(page)).toBe('$: s("~/8")')
+  // `hacking/8` is one text its own `/8` stretches over eight bars: the step's op makes
+  // where it sounds, so a click on it is refused and says why (#2292)
+  await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('title', /operator on its step/)
+  await grid.locator('[data-seq-cell="0:0"]').click({ force: true })
+  await page.waitForTimeout(150)
+  expect(await strudelValue(page)).toBe('$: s("hacking/8")')
 })
 
 /**
@@ -182,7 +187,7 @@ test('a period longer than four bars opens a coarse grid and edits by byte surge
  * claim being made is that the user gets a WORKING view: four columns, three
  * sounds, and a click that writes one token.
  */
-test('a pattern the probe marker used to refuse opens and edits (#994)', async ({ page }) => {
+test('a pattern the probe marker used to refuse opens and edits (#994) (LCM grid)', async ({ page }) => {
   await boot(page)
   await setStrudelCode(page, '$: s("<bd hh sd hh>*2")')
   const drawer = await openSequencer(page)

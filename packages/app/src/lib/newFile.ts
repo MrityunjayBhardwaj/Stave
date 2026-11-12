@@ -21,6 +21,7 @@ export function extensionToLanguage(ext: string): WorkspaceFile["language"] | nu
     case "glsl":
     case "frag":
     case "shader": return "glsl";
+    case "three": return "three";
     case "md": return "markdown";
     default: return null;
   }
@@ -38,6 +39,7 @@ export function starterCodeFor(language: WorkspaceFile["language"]): string {
     case "p5js": return P5_STARTER;
     case "hydra": return HYDRA_STARTER;
     case "glsl": return GLSL_STARTER;
+    case "three": return THREE_STARTER;
     default: return "";
   }
 }
@@ -62,6 +64,39 @@ function draw() {
   fill(237, 34, 93)
   circle(width / 2, height / 2, min(width, height) * (0.2 + level))
 }
+`;
+
+const THREE_STARTER = `// three.js sketch — a glass knot that swells with the bass.
+// Plain three.js: paste any sketch. Stave adds sig (the music), stave.options
+// and stave.width / stave.height. Use it from a pattern with .viz("<this file's name>").
+import * as THREE from 'three'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+
+const scene = new THREE.Scene()
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 100)
+camera.position.set(0, 0, 6)
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setSize(innerWidth, innerHeight)
+document.body.appendChild(renderer.domElement)
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment()).texture
+
+const knot = new THREE.Mesh(
+  new THREE.TorusKnotGeometry(1, 0.35, 256, 32),
+  new THREE.MeshPhysicalMaterial({ color: '#2f6bff', clearcoat: 1, roughness: 0.2 }),
+)
+scene.add(knot)
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight
+  camera.updateProjectionMatrix()
+  renderer.setSize(innerWidth, innerHeight)
+})
+
+renderer.setAnimationLoop(() => {
+  knot.rotation.y += 0.01
+  knot.scale.setScalar(1 + 0.4 * sig.bass)
+  renderer.render(scene, camera)
+})
 `;
 
 const HYDRA_STARTER = `// Hydra sketch — stripes that bend with the bass.
@@ -91,7 +126,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 export async function promptAndCreateFile(folderPath = ""): Promise<void> {
   const name = await showPrompt({
     title: "New file",
-    description: "Include an extension — .strudel, .sonicpi, .hydra, .p5, .glsl, or .md.",
+    description: "Include an extension — .strudel, .sonicpi, .hydra, .p5, .glsl, .three, or .md.",
     placeholder: "sketch.strudel",
     confirmLabel: "Create",
   });
@@ -102,7 +137,7 @@ export async function promptAndCreateFile(folderPath = ""): Promise<void> {
   const language = extensionToLanguage(ext);
   if (!language) {
     showToast(
-      `Unknown file extension ".${ext}". Supported: .strudel, .sonicpi, .hydra, .p5, .glsl, .md`,
+      `Unknown file extension ".${ext}". Supported: .strudel, .sonicpi, .hydra, .p5, .glsl, .three, .md`,
       "error",
     );
     return;

@@ -18,7 +18,10 @@
  * and nowhere else.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -101,11 +104,14 @@ async function dragHandleTo(page: Page, handle: string, toCell: string): Promise
 }
 
 test.describe('the grid sets a note’s length (#1053)', () => {
-  test('dragging the handle right LENGTHENS the note, in the document and in the picture', async ({
+  test('dragging the handle right LENGTHENS the note, in the document and in the picture (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
-    await setStrudelCode(page, '$: s("[bd ~ sd ~]")')
+    // #2293: the length is the step writer's, which keeps the author's brackets —
+    // `[bd ~ sd ~]` becomes `[bd _ sd ~]`, and the column reader draws THAT at two columns
+    // (#2323), so the picture is pinned on the flat spelling, which keeps its four
+    await setStrudelCode(page, '$: s("bd ~ sd ~")')
     await openSequencer(page)
     await expect(page.locator('[data-seq-cell="0:0"]')).toHaveCount(1)
     expect(await readLane(page, 0, 4)).toBe('#---')
@@ -117,13 +123,13 @@ test.describe('the grid sets a note’s length (#1053)', () => {
 
     const code = await readCode(page)
     console.log(`\n  after drag →  ${code}`)
-    // the sustain is spelled `_`, the one-token-per-column shape the grid writes
-    expect(code).toContain('bd _ sd ~')
+    // the length is spelled `@n`, as people write it (#2326)
+    expect(code).toContain('bd@2 sd ~')
     // …and the panel now DRAWS the note carrying through column 1
     expect(await readLane(page, 0, 4)).toBe('#=--')
   })
 
-  test('dragging the handle left SHORTENS it again — the direction the grid never had', async ({
+  test('dragging the handle left SHORTENS it again — the direction the grid never had (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -150,7 +156,7 @@ test.describe('the grid sets a note’s length (#1053)', () => {
     expect(await readLane(page, 0, 4)).toBe('#---')
   })
 
-  test('a FLAT grid lengthens too, and its neighbours keep their own bytes', async ({ page }) => {
+  test('a FLAT grid lengthens too, and its neighbours keep their own bytes (LCM grid)', async ({ page }) => {
     // ⚠ THIS PATTERN USED TO BE THE CONTROL — the spelling where every column is its own
     // source element, so a sustain had nowhere to go and the panel drew no handle at all.
     // #1146 taught the writer to absorb the rest the note reaches into, which is what
@@ -167,11 +173,11 @@ test.describe('the grid sets a note’s length (#1053)', () => {
     const code = await readCode(page)
     console.log(`  flat grid after drag →  ${code}`)
     // three columns of bd, and `sd` plus the rests past the note's reach untouched
-    expect(code).toContain('bd _ _ ~ sd ~ ~ ~')
+    expect(code).toContain('bd@3 ~ sd ~ ~ ~') // a length is `@n` (#2326)
     expect(await readLane(page, 0, 8)).toBe('#==-----')
   })
 
-  test('CONTROL: no handle where the writer would decline the drag', async ({ page }) => {
+  test('CONTROL: no handle where the writer would decline the drag (LCM grid)', async ({ page }) => {
     // A grid with no rest in reach of anything: every column carries a note, so there is
     // nothing for the writer to absorb and no length any note can take. The panel must
     // draw nothing to grab. A handle rendered on every note — the obvious wrong
@@ -192,7 +198,7 @@ test.describe('the grid sets a note’s length (#1053)', () => {
     expect(await page.locator('[data-seq-resize]').count()).toBeGreaterThan(0)
   })
 
-  test('the handle does not steal the cell’s own gestures', async ({ page }) => {
+  test('the handle does not steal the cell’s own gestures (LCM grid)', async ({ page }) => {
     // The handle takes the trailing edge of a cell that already means three things.
     // Pressing the cell's LEFT side must still toggle the step off, or this feature was
     // bought by breaking the gesture the panel exists for.

@@ -222,6 +222,48 @@ export function soundNoteHits(sound: string, notes: string, cyc: number): SoundN
   return out
 }
 
+/** one onset of `s(sound).gain(gain)`: when, the sound, and the level it plays at */
+export interface SoundGainHit {
+  begin: MiniTime
+  end: MiniTime
+  /** the sound as Strudel plays it: `bd`, or `['bd', 2]` for `bd:2` */
+  sound: unknown
+  /** the level as Strudel plays it */
+  gain: unknown
+  /** where in `gain` the level was written, inside its quotes */
+  gainAt: MiniSpan[]
+}
+
+/**
+ * What `s(sound).gain(gain)` plays in cycle `cyc` (#2468), Strudel's own composition, as
+ * `soundNoteHits` asks for `.note`: `.gain(…)` is a control too, so each sound keeps its own
+ * span and takes the level sounding where it starts — and a sound that starts under a rest
+ * of `gain` does not play at all. `gainAt` says which level of `gain` each hit took.
+ *
+ * THROWS what Strudel throws.
+ */
+export function soundGainHits(sound: string, gain: string, cyc: number): SoundGainHit[] {
+  type Pat = Queryable & { s(): Pat; gain(p: unknown): Pat }
+  const at = (str: string, offset: number) => patternifyAST(mini2ast(`"${str}"`), `"${str}"`, null, offset) as Pat
+  // the gain string sits past the sound string's quoted text, so their locations never mix
+  const off = sound.length + 2
+  const pat = at(sound, 0).s().gain(at(gain, off))
+  const out: SoundGainHit[] = []
+  for (const h of pat.queryArc(cyc, cyc + 1)) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue
+    const v = (h.value ?? {}) as { s?: unknown; gain?: unknown }
+    const gainAt: MiniSpan[] = []
+    for (const l of h.context?.locations ?? []) {
+      // the opening quote of `"gain"` sits at `off`
+      if (typeof l?.start === 'number' && typeof l.end === 'number' && l.start > off) {
+        gainAt.push({ start: l.start - off - 1, end: l.end - off - 1 })
+      }
+    }
+    out.push({ begin: h.whole.begin, end: h.whole.end, sound: v.s, gain: v.gain, gainAt })
+  }
+  return out
+}
+
 /** an onset's identity across two queries: its exact time and its value */
 const onsetKey = (t: MiniTime, value: unknown): string =>
   `${t.toFraction?.() ?? t.valueOf()}\u0000${JSON.stringify(value)}`

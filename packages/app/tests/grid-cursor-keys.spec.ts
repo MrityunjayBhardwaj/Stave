@@ -1,5 +1,8 @@
 import { test, expect, type Page, type Locator } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 /**
  * #1802 — the grids are ARIA grids with one tab stop and an arrow-key cursor, and
  * keys place and remove notes. Every keyboard edit is compared with the SAME edit
@@ -154,7 +157,7 @@ test.describe('piano roll', () => {
 })
 
 test.describe('sequencer', () => {
-  test('is a grid with ONE tab stop among its cells', async ({ page }) => {
+  test('is a grid with ONE tab stop among its cells (LCM grid)', async ({ page }) => {
     await boot(page)
     await setCode(page, SEQ)
     const seq = await openPattern(page, 'sequencer', '[data-seq-cell="0:0"]')
@@ -166,13 +169,16 @@ test.describe('sequencer', () => {
     await expect(seq.locator('[data-seq-cell]:not([tabindex="-1"])')).toHaveCount(1)
   })
 
-  test("arrows + ' write what a click writes, on an empty and a held column; Delete clears a hit", async ({ page }) => {
+  test("arrows + ' write what a click writes, on an empty and a held column; Delete clears a hit (LCM grid)", async ({ page }) => {
     await boot(page)
     await setCode(page, SEQ)
     const seq = await openPattern(page, 'sequencer', '[data-seq-cell="0:0"]')
     const placed = await byMouse(page, seq.locator('[data-seq-cell="0:3"]'), SEQ)
     const cleared = await byMouse(page, seq.locator('[data-seq-cell="0:0"]'), SEQ)
-    const onHeld = await byMouse(page, seq.locator('[data-seq-cell="0:1"]'), SEQ)
+    // 0:1 is held by `bd _`: the second of the two steps `bd _` counts (#1846), so the
+    // arrows stop there. It is not a note's start: since #2293 a click there SPLITS the
+    // written `bd`, keeping its `_` — and so does the key
+    await expect(seq.locator('[data-seq-cell="0:1"]')).toHaveAttribute('data-seq-splits', 'true')
 
     await seq.locator('[data-seq-cell="0:0"]').focus()
     await page.keyboard.press('ArrowRight')
@@ -181,9 +187,8 @@ test.describe('sequencer', () => {
       'aria-selected',
       'true',
     )
-    // 0:1 is held by `bd _`; whatever a click writes there, the key writes.
     await page.keyboard.press("'")
-    await expect.poll(() => source(page), { timeout: 5_000 }).toBe(onHeld)
+    await expect.poll(() => source(page), { timeout: 5_000 }).toBe('$: s("bd*2 _ ~ ~ ~ ~ ~ ~")') // `bd*2` (#2326)
     await setCode(page, SEQ)
     await seq.locator('[data-seq-cell="0:1"]').focus()
     await page.keyboard.press('ArrowRight')
@@ -198,7 +203,7 @@ test.describe('sequencer', () => {
     await expect.poll(() => source(page), { timeout: 5_000 }).toBe(cleared)
   })
 
-  test('the cursor survives an edit but not a move to another pattern', async ({ page }) => {
+  test('the cursor survives an edit but not a move to another pattern (LCM grid)', async ({ page }) => {
     await boot(page)
     const two = `${SEQ}\n$: s("hh ~ ~ ~ ~ ~ ~ ~")`
     await setCode(page, two)
@@ -222,7 +227,7 @@ test.describe('sequencer', () => {
     await expect.poll(tabStop, { timeout: 5_000 }).toBe('0:0')
   })
 
-  test('Enter on "remove voice" is still the button\'s, not a toggle', async ({ page }) => {
+  test('Enter on "remove voice" is still the button\'s, not a toggle (LCM grid)', async ({ page }) => {
     await boot(page)
     await setCode(page, '$: s("bd ~ ~ ~, hh ~ hh ~")')
     const seq = await openPattern(page, 'sequencer', '[data-seq-cell="0:0"]')

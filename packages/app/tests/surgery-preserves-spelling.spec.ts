@@ -27,7 +27,10 @@
  * from production. Verified by doing exactly that — see the break note in the issue.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -114,11 +117,13 @@ test.describe('byte surgery keeps the user’s own spelling (#1233)', () => {
   })
 
   /**
-   * A stack inside an alternation. Here the loss is the CHORD: re-emitting `[bd,hh]`
-   * with one voice gone drops the brackets entirely and leaves a bare `hh`, so the
-   * user's two-voice slot silently stops looking like one.
+   * A stack inside an alternation. This used to pin `[~,hh]` — the chord kept with a rest
+   * in it — against a re-emit that dropped the brackets. Since #2292 the click edits the
+   * chord's own text: the voice leaves, and the one voice left is written bare.
    */
-  test('deleting one voice of a chord keeps the chord’s brackets', async ({ page }) => {
+  // #2292 — a voice leaves its chord, and a chord left with one voice is that voice (the
+  // ruling of 2026-11-04): a second click gives back the text the first click changed.
+  test('deleting one voice of a two-voice chord leaves the other voice (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("<[bd,hh] [sd,cp]>")')
     const drawer = await openSequencer(page)
@@ -129,8 +134,7 @@ test.describe('byte surgery keeps the user’s own spelling (#1233)', () => {
     await grid.locator('[data-seq-cell="0:0"]').click()
     await page.waitForTimeout(120)
 
-    // the element writer's answer for this gesture is `<hh [sd,cp]>` — brackets gone
-    expect(await strudelValue(page)).toBe('$: s("<[~,hh] [sd,cp]>")')
+    expect(await strudelValue(page)).toBe('$: s("<hh [sd,cp]>")')
   })
 
   /**

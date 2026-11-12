@@ -7,7 +7,8 @@
  *
  * Each method is intercepted in BOTH chain forms so pasted Strudel code
  * works out of the gate:
- *   - `._name()` (underscore) → inline viz zone (mini, in-REPL form)
+ *   - `._name()` (underscore) → inline viz zone (mini, in-REPL form); inside a
+ *     master `all(x => …)` it is the backdrop, having no track to sit under (#2387)
  *   - `.name()`  (non-underscore) → Stave backdrop (the "big"/fullscreen form)
  *
  * Aliases map to the nearest Stave renderer that exists today:
