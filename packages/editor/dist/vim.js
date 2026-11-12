@@ -6607,6 +6607,51 @@ var _VimBar = class _VimBar {
 __name(_VimBar, "VimBar");
 var VimBar = _VimBar;
 
+// src/extensions/vim/edges.ts
+var VIM_CONTEXT_KEYS = ["insertMode"];
+var PAST_VERSION = "This is a past version, so it can\u2019t be changed here";
+function oneUndoPerInsert(editor2) {
+  let held = null;
+  const release = /* @__PURE__ */ __name(() => {
+    if (!held) return;
+    const { model, own } = held;
+    held = null;
+    if (own) Object.defineProperty(model, "pushStackElement", own);
+    else delete model.pushStackElement;
+    model.pushStackElement();
+  }, "release");
+  return {
+    enter(joinLast) {
+      release();
+      const model = editor2.getModel();
+      if (!model) return;
+      if (joinLast) model.popStackElement();
+      else model.pushStackElement();
+      held = { model, own: Object.getOwnPropertyDescriptor(model, "pushStackElement") };
+      Object.defineProperty(model, "pushStackElement", { value: /* @__PURE__ */ __name(() => void 0, "value"), configurable: true, writable: true });
+    },
+    exit: release
+  };
+}
+__name(oneUndoPerInsert, "oneUndoPerInsert");
+function hasPendingInput(s) {
+  if (!s) return false;
+  return String(s.keyBuffer ?? "").length > 0 || !!s.operator || (s.prefixRepeat?.length ?? 0) > 0 || (s.motionRepeat?.length ?? 0) > 0 || !!s.registerName;
+}
+__name(hasPendingInput, "hasPendingInput");
+function suggestListOpen(editor2) {
+  const el = editor2.getDomNode()?.querySelector(".suggest-widget");
+  if (!el) return false;
+  return el.style.visibility !== "hidden" && el.style.display !== "none";
+}
+__name(suggestListOpen, "suggestListOpen");
+function removeContextKeys(editor2) {
+  for (const key of VIM_CONTEXT_KEYS) {
+    editor2.createContextKey(key, void 0);
+  }
+}
+__name(removeContextKeys, "removeContextKeys");
+
 // src/extensions/vim/module.ts
 var SAVES_AS_YOU_TYPE = "Stave saves as you type";
 var EX_COMMANDS = [
@@ -6645,7 +6690,8 @@ function defineExCommands() {
   exDefined = true;
 }
 __name(defineExCommands, "defineExCommands");
-function keyFilteredEditor(editor2, leaveAlone) {
+var EDIT_METHODS = /* @__PURE__ */ new Set(["executeEdits", "executeCommand", "executeCommands"]);
+function keyFilteredEditor(editor2, leaveAlone, onEdit) {
   return new Proxy(editor2, {
     get(target, prop) {
       if (prop === "onKeyDown") {
@@ -6655,7 +6701,15 @@ function keyFilteredEditor(editor2, leaveAlone) {
         });
       }
       const value = Reflect.get(target, prop, target);
-      return typeof value === "function" ? value.bind(target) : value;
+      if (typeof value !== "function") return value;
+      const bound = value.bind(target);
+      if (onEdit && EDIT_METHODS.has(prop)) {
+        return (...args) => {
+          onEdit();
+          return bound(...args);
+        };
+      }
+      return bound;
     }
   });
 }
@@ -6699,12 +6753,47 @@ function attachVim(ed, host) {
   if (ed.readOnly) node.setAttribute("data-vim-readonly", "");
   ed.bar.appendChild(node);
   const before = cursorOptions(ed.editor);
-  const view = keyFilteredEditor(ed.editor, leaveAloneFor(host));
+  const handedBack = leaveAloneFor(host);
+  let inInsert = false;
+  const leaveAlone = /* @__PURE__ */ __name((event) => handedBack(event) || event.key === "Escape" && inInsert && suggestListOpen(ed.editor), "leaveAlone");
+  const sayPastVersion = /* @__PURE__ */ __name(() => vim.openNotification(PAST_VERSION), "sayPastVersion");
+  const view = keyFilteredEditor(ed.editor, leaveAlone, ed.readOnly ? sayPastVersion : void 0);
+  const vimState = /* @__PURE__ */ __name(() => vim.state?.vim, "vimState");
+  let versionAtKey = null;
+  const beforeVim = ed.editor.onKeyDown((e) => {
+    versionAtKey = ed.editor.getModel()?.getVersionId() ?? null;
+    const state = vimState();
+    const editBefore = state?.lastEditInputState;
+    if (e.browserEvent?.key === "Escape" && !inInsert && !state?.visualMode && hasPendingInput(state?.inputState)) {
+      e.stopPropagation();
+    }
+    queueMicrotask(() => {
+      versionAtKey = null;
+      const after = vimState();
+      if (ed.readOnly && after?.lastEditInputState !== editBefore && after?.lastEditActionCommand) sayPastVersion();
+    });
+  });
   const vim = initVimMode(view, node, VimBar);
   bindEditorActions(vim, {
     message: /* @__PURE__ */ __name((text) => vim.openNotification(text), "message"),
     close: /* @__PURE__ */ __name(() => ed.close(), "close"),
     closeAll: /* @__PURE__ */ __name(() => host.closeAllEditors(), "closeAll")
+  });
+  const undo = oneUndoPerInsert(ed.editor);
+  vim.on("vim-mode-change", (ev) => {
+    const insertNow = ev.mode === "insert" || ev.mode === "replace";
+    if (insertNow && !inInsert) {
+      const version = ed.editor.getModel()?.getVersionId() ?? null;
+      undo.enter(versionAtKey !== null && version !== versionAtKey);
+    } else if (!insertNow && inInsert) {
+      undo.exit();
+    }
+    inInsert = insertNow;
+  });
+  const modelSwap = ed.editor.onDidChangeModel(() => {
+    if (!inInsert) return;
+    undo.exit();
+    undo.enter(false);
   });
   if (ed.readOnly) {
     const note = doc.createElement("span");
@@ -6717,8 +6806,14 @@ function attachVim(ed, host) {
     const goingAway = !ed.editor.getModel?.();
     bindEditorActions(vim, null);
     try {
+      undo.exit();
+      beforeVim.dispose();
+      modelSwap.dispose();
       vim.dispose();
-      if (!goingAway) ed.editor.updateOptions(before);
+      if (!goingAway) {
+        ed.editor.updateOptions(before);
+        removeContextKeys(ed.editor);
+      }
     } catch (e) {
       if (!goingAway) throw e;
     } finally {

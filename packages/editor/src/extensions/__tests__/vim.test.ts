@@ -11,6 +11,7 @@ import { VIM, VIM_ID } from '../vim/manifest'
 import { VimBar, modeLabel, VIM_MESSAGE_MS } from '../vim/bar'
 import { shiftEdit } from '../vim/shiftCommand'
 import { bindEditorActions, EX_COMMANDS, keyFilteredEditor, leaveAloneFor, runExAction, SAVES_AS_YOU_TYPE, vimModule, type ExAction } from '../vim/module'
+import { hasPendingInput, oneUndoPerInsert, removeContextKeys, suggestListOpen, VIM_CONTEXT_KEYS } from '../vim/edges'
 import { checkExtensionKeys, keyId } from '../keys'
 import { BUILTIN_EXTENSIONS } from '../builtin'
 
@@ -297,5 +298,120 @@ describe(':w, :q and friends, as VS Code’s Vim does them', () => {
     vi.runAllTimers()
     expect(log).toHaveLength(3)
     vi.useRealTimers()
+  })
+})
+
+describe('Vim’s edges with Monaco (#2557)', () => {
+  /** A model whose undo stack is a list of steps, closed by `pushStackElement` as Monaco's is. */
+  class FakeModel {
+    steps: string[][] = []
+    open = false
+    pushStackElement() {
+      this.open = false
+    }
+    popStackElement() {
+      if (this.steps.length) this.open = true
+    }
+    /** What Monaco's typing does: close the step at a word/space boundary, then edit. */
+    type(text: string) {
+      for (const ch of text) {
+        if (ch === ' ' || ch === '\n') this.pushStackElement()
+        this.edit(ch)
+      }
+    }
+    edit(ch: string) {
+      if (!this.open) {
+        this.steps.push([])
+        this.open = true
+      }
+      this.steps[this.steps.length - 1].push(ch)
+    }
+  }
+
+  it('one insert is one undo step, however Monaco closes steps while it is typed', () => {
+    const model = new FakeModel()
+    const undo = oneUndoPerInsert({ getModel: () => model as never })
+    model.type('x') // an earlier edit
+    undo.enter(false)
+    model.type('one two\nthree')
+    undo.exit()
+    expect(model.steps).toEqual([['x'], [...'one two\nthree']])
+    // the model's own pushStackElement is back
+    expect(Object.prototype.hasOwnProperty.call(model, 'pushStackElement')).toBe(false)
+    // and the insert's step is closed: the next edit, even with no boundary, is a step of its own
+    model.edit('z')
+    expect(model.steps).toEqual([['x'], [...'one two\nthree'], ['z']])
+  })
+
+  it('an insert begun by a command that edited (cw, o) joins that edit', () => {
+    const model = new FakeModel()
+    const undo = oneUndoPerInsert({ getModel: () => model as never })
+    model.edit('-') // the `c` of `cw` deleting a word
+    model.pushStackElement() // monaco-vim closes it
+    undo.enter(true)
+    model.type('new word')
+    undo.exit()
+    expect(model.steps).toEqual([['-', ...'new word']])
+  })
+
+  it('a half-typed command is pending; nothing typed is not', () => {
+    expect(hasPendingInput(undefined)).toBe(false)
+    expect(hasPendingInput({ keyBuffer: [], prefixRepeat: [], motionRepeat: [], operator: null, registerName: null })).toBe(false)
+    expect(hasPendingInput({ keyBuffer: '', operator: 'delete' })).toBe(true) // d
+    expect(hasPendingInput({ keyBuffer: '2' })).toBe(true) // 2
+    expect(hasPendingInput({ keyBuffer: 'g' })).toBe(true) // g
+    expect(hasPendingInput({ prefixRepeat: ['3'] })).toBe(true) // 3 then an operator's count
+    expect(hasPendingInput({ registerName: 'a' })).toBe(true) // "a
+  })
+
+  it('the suggestion list is open only while Monaco shows it', () => {
+    const root = document.createElement('div')
+    const editor = { getDomNode: () => root }
+    expect(suggestListOpen(editor as never)).toBe(false)
+    const widget = document.createElement('div')
+    widget.className = 'editor-widget suggest-widget'
+    widget.style.display = 'none'
+    widget.style.visibility = 'hidden'
+    root.appendChild(widget)
+    expect(suggestListOpen(editor as never)).toBe(false) // made, never shown
+    widget.style.display = 'block'
+    widget.style.visibility = 'inherit'
+    expect(suggestListOpen(editor as never)).toBe(true)
+    widget.style.visibility = 'hidden'
+    expect(suggestListOpen(editor as never)).toBe(false) // shown, then hidden
+    expect(suggestListOpen({ getDomNode: () => null } as never)).toBe(false)
+  })
+
+  it('switched off, each context key monaco-vim made is made again with no default, which removes it', () => {
+    const made: [string, unknown][] = []
+    removeContextKeys({ createContextKey: (k: string, v: unknown) => made.push([k, v]) } as never)
+    expect(made).toEqual([['insertMode', undefined]])
+    // the list is every key monaco-vim makes, read from the package itself
+    const file = createRequire(import.meta.url).resolve('monaco-vim')
+    const keys = [...readFileSync(file, 'utf8').matchAll(/createContextKey\(\s*"([^"]+)"/g)].map(([, k]) => k)
+    expect(keys.length).toBeGreaterThan(0)
+    expect([...VIM_CONTEXT_KEYS].sort()).toEqual([...new Set(keys)].sort())
+  })
+
+  it('in a read-only editor, each edit Vim sends says so first; nothing else does', () => {
+    const calls: string[] = []
+    const editor = {
+      onKeyDown: () => ({ dispose: () => undefined }),
+      executeEdits: () => (calls.push('executeEdits'), false),
+      executeCommand: () => calls.push('executeCommand'),
+      executeCommands: () => calls.push('executeCommands'),
+      getValue: () => 'text',
+    }
+    const view = keyFilteredEditor(editor as never, () => false, () => calls.push('said')) as unknown as typeof editor
+    expect(view.executeEdits()).toBe(false) // the editor still answers (and refuses)
+    view.executeCommand()
+    view.executeCommands()
+    view.getValue()
+    expect(calls).toEqual(['said', 'executeEdits', 'said', 'executeCommand', 'said', 'executeCommands'])
+    // an editor that can be edited is left as it is
+    calls.length = 0
+    const plain = keyFilteredEditor(editor as never, () => false) as unknown as typeof editor
+    plain.executeEdits()
+    expect(calls).toEqual(['executeEdits'])
   })
 })
