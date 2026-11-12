@@ -878,6 +878,19 @@ interface VizRenderer {
     pause(): void;
     resume(): void;
     destroy(): void;
+    /**
+     * #2560 — settles once the sketch has finished setting up (its assets loaded,
+     * its setup run), or the renderer was destroyed. Never rejects. Optional: a
+     * renderer without it is taken as ready as soon as it is mounted. Play waits on
+     * it, with a cap, so a sketch does not start its picture frozen.
+     */
+    whenLoaded?(): Promise<void>;
+    /**
+     * #2560 — this mount is a hidden pre-Play WARM-UP: once loaded, draw one frame
+     * while paused so the GPU work (shader compile, uploads) is done before Play.
+     * Call BEFORE `mount`. Only a renderer whose container is hidden may be warmed.
+     */
+    markWarmUp?(): void;
 }
 /** A factory function returning a VizRenderer, or a VizRenderer instance directly. */
 type VizRendererSource = (() => VizRenderer) | VizRenderer;
