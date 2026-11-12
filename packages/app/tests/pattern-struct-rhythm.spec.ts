@@ -8,7 +8,10 @@
  * the line, see the chords on it, click a step, and find only that line changed.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 const LINE_2 = '~ x x ~ x ~ x x ~ x ~ x x ~ x ~'
 const SONG = `const roll = (n, seed) => irand(n).early(seed * 13.7).segment(1).slow(64)
 const vamp = "<Em9 A13>"
@@ -160,7 +163,7 @@ test('#2142 — a chord progression written inside chord("…") opens as a chord
   await expect(drawer.locator('[data-seq-voice]')).toHaveText(['Em9', 'A13'])
 })
 
-test('#2120 — on the chords, the chord chart says where its rhythm is', async ({ page }) => {
+test('#2120 — on the chords, the chord chart says where its rhythm is (LCM grid)', async ({ page }) => {
   await boot(page)
   await seed(page, SONG)
   await clickInto(page, 'chord(vamp)')

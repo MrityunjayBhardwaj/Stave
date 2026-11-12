@@ -30,7 +30,7 @@ import { createDrumDemoSignalSource } from './demoSignalSource'
 
 /** The renderer kind + raw source a library card knows about its viz. */
 export interface VizPreviewSpec {
-  readonly renderer: 'p5' | 'hydra' | 'glsl'
+  readonly renderer: 'p5' | 'hydra' | 'glsl' | 'three'
   readonly code: string
   /** Display/attribution name (used for worker error messages). */
   readonly name: string

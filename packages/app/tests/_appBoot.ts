@@ -28,7 +28,7 @@
  * 5/5 with the position advancing; programmatic focus → 0/5, position frozen.
  * A real user's focus always arrives by click or tab, so `evalCode` CLICKS.
  */
-import { expect, type Page } from '@playwright/test'
+import { expect, type Page, type test } from '@playwright/test'
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
@@ -37,6 +37,7 @@ const STORAGE = {
   open: 'stave:bottomPanel.open',
   activeTabId: 'stave:bottomPanel.activeTabId',
   gridMode: 'stave:visualEdit.gridMode',
+  velocityDrag: 'stave:visualEdit.velocityDrag',
 } as const
 
 export interface BootOptions {
@@ -109,6 +110,31 @@ export async function bootApp(page: Page, opts: BootOptions = {}): Promise<void>
 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await waitForEditorLoaded(page)
+}
+
+/** The title suffix of a test that runs on the LCM grid (Settings › Grid), see `pinLcmGrid`. */
+export const LCM_GRID = '(LCM grid)'
+
+/**
+ * RUN THE TESTS TITLED `… (LCM grid)` ON THE LCM GRID (#2294).
+ *
+ * Settings › Grid also chooses how the piano roll edits: Exact (the default) edits the
+ * pattern's own steps, LCM uses the shared-grid writer the roll always had. The roll's older
+ * specs pin the LCM writer's results, so those tests carry the suffix and this hook seeds the
+ * mode before their page loads — keyed on the title, so each test's own body is untouched
+ * and the title says which writer it pins. Call once per spec file, at the top level.
+ */
+export function pinLcmGrid(t: typeof test): void {
+  t.beforeEach(async ({ page }, testInfo) => {
+    if (!testInfo.title.endsWith(LCM_GRID)) return
+    await page.addInitScript((key: string) => {
+      try {
+        window.localStorage.setItem(key, 'lcm')
+      } catch {
+        /* private mode — the grid opens in its default */
+      }
+    }, STORAGE.gridMode)
+  })
 }
 
 /**
@@ -242,4 +268,23 @@ export async function evalCode(page: Page): Promise<void> {
 export async function stopCode(page: Page): Promise<void> {
   await page.locator('.monaco-editor').first().click()
   await page.keyboard.press(`${MOD}+Period`)
+}
+
+/**
+ * TURN THE STEP GRIDS' VELOCITY DRAG ON for every test of a spec file (#2525).
+ *
+ * Velocity drags are off by default (Settings › Pattern & Timeline › Velocity drag): a gain is
+ * almost always one number in community code. A spec about the velocity gesture says so by
+ * calling this once at the top level; it seeds the setting before each page loads.
+ */
+export function velocityDragOn(t: typeof test): void {
+  t.beforeEach(async ({ page }) => {
+    await page.addInitScript((key: string) => {
+      try {
+        window.localStorage.setItem(key, '1')
+      } catch {
+        /* private mode — the grid opens with velocity off */
+      }
+    }, STORAGE.velocityDrag)
+  })
 }

@@ -1,6 +1,9 @@
 import { test, expect, type Page, type Locator } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 import { expectRefusalReported, expectNoRefusalReported } from './_console'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 /**
  * #1824 — the `+` past a grid's last column makes the pattern longer.
@@ -66,7 +69,7 @@ test.describe('piano roll', () => {
     await expectNoRefusalReported(page)
   })
 
-  test('drag + grows a column at a time, writes nothing until release, then adds whole empty bars', async ({ page }) => {
+  test('drag + grows a column at a time, writes nothing until release, then adds whole empty bars (LCM grid)', async ({ page }) => {
     const code = `$: note("${MELODY}")`
     const roll = await open(page, code, ROLL, '[data-roll-cell="64:0"]')
     const handle = roll.locator('[data-extend-handle]')
@@ -144,7 +147,7 @@ test.describe('piano roll', () => {
 })
 
 test.describe('step sequencer', () => {
-  test('click + adds a bar to a drum pattern', async ({ page }) => {
+  test('click + adds a bar to a drum pattern (LCM grid)', async ({ page }) => {
     const seq = await open(page, '$: s("bd sd bd sd")', SEQ, '[data-seq-cell="0:0"]')
     expect(await columns(seq, 'data-seq-cell')).toBe(4)
     await seq.locator('[data-extend-handle]').click()
@@ -153,7 +156,7 @@ test.describe('step sequencer', () => {
     await expectNoRefusalReported(page)
   })
 
-  test('REFUSES a bar the step grid could not show, rather than sending it to standby', async ({ page }) => {
+  test('REFUSES a bar the step grid could not show, rather than sending it to standby (LCM grid)', async ({ page }) => {
     const code = '$: s("bd*2 sd")'
     const seq = await open(page, code, SEQ, '[data-seq-cell="0:0"]')
     await seq.locator('[data-extend-handle]').hover()

@@ -147,7 +147,7 @@ describe('barDivisions — every written step has its slot', () => {
       const d = bar(mini, cyc)
       return d.ok ? null : d.why
     }
-    expect(why('a b . c d e')).toBe('feet')
+    expect(why('a b . c d e')).toBe(null) // feet are group steps (#2454)
     expect(why('zzq1 bd')).toBe('marker-in-pattern')
     // a hit that names no place at all cannot be put in any step
     const fake: MiniPattern = {
@@ -306,15 +306,15 @@ describe('barDivisions — the corpus', () => {
  * Measured on main 58c6d2f2 + this change (2026-10-10), bars 0–3 of every distinct corpus
  * pattern. A number here moves only with a reason.
  *
- * The 28 bars with no tree are seven patterns: three written with feet (`a b . c d`),
- * two whose step is sped up by a stack (`<…>*[0.5,2]` — its copies overlap), one group
+ * The 16 bars with no tree are four patterns (2026-11-07, #2454: the three written with feet
+ * have a tree now, as group steps): two whose step is sped up by a stack (`<…>*[0.5,2]` — its copies overlap), one group
  * dropped at random (`[…]?0.5` — its row has nowhere to sit in the bars it is dropped),
  * and one range between two alternations.
  */
 const PINNED = {
   patterns: 1625,
-  perPattern: { 'a tree in every bar': 1617, 'no tree': 7, 'does not evaluate': 1 },
-  bars: { tree: 6468, 'hit-outside-its-step': 4, feet: 12, 'steps-do-not-tile': 12 },
-  inTrees: { rows: 18089, steps: 35638, rests: 5267, hits: 52283, stepsWithGeneratedHits: 5416, stepsCutShort: 892, deepest: 5 },
-  plainNotesAskedTwice: 24251,
+  perPattern: { 'a tree in every bar': 1620, 'no tree': 4, 'does not evaluate': 1 },
+  bars: { tree: 6480, 'hit-outside-its-step': 4, 'steps-do-not-tile': 12 },
+  inTrees: { rows: 18157, steps: 35754, rests: 5275, hits: 52397, stepsWithGeneratedHits: 5450, stepsCutShort: 892, deepest: 5 },
+  plainNotesAskedTwice: 24269,
 }

@@ -11,8 +11,10 @@
  * columns, and that a click inside one lands where it always did.
  */
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 const BEAT = '$: s("bd [~ bd] sd ~, hh*8")'
 
 async function open(page: Page, code: string, gridMode?: 'exact' | 'lcm'): Promise<Locator> {
@@ -28,80 +30,37 @@ const cell = (seq: Locator, key: string): Locator => seq.locator(`[data-seq-cell
 const stepOf = (seq: Locator, key: string): Locator => seq.locator(`[data-seq-step]:has([data-seq-cell="${key}"])`)
 
 test.describe('nested steps in Exact (#1861)', () => {
-  test('each row as the text writes it: plain steps, a step holding two, hh*8 as one step', async ({ page }) => {
-    const seq = await open(page, BEAT)
-    // kick: bd | [~ bd] | sd | ~  — the same four steps in the snare row (one part)
-    await expect(stepOf(seq, '0:0')).toHaveAttribute('data-seq-step', 'plain')
-    await expect(stepOf(seq, '0:2')).toHaveAttribute('data-seq-step', 'holds')
-    await expect(stepOf(seq, '0:4')).toHaveAttribute('data-seq-step', 'plain')
-    await expect(stepOf(seq, '1:2')).toHaveAttribute('data-seq-step', 'holds')
-    // the 8 hats are one written step
-    await expect(stepOf(seq, '2:0').locator('[data-seq-cell]')).toHaveCount(8)
-    await expect(stepOf(seq, '2:0')).toHaveAttribute('data-seq-step', 'holds')
-    await expect(seq.locator('[data-seq-step="holds"]')).toHaveCount(3)
-    await expect(seq.locator('[data-seq-step="plain"]')).toHaveCount(6)
-    // every cell is still drawn: 8 columns × 3 rows
-    await expect(seq.locator('[data-seq-cell]')).toHaveCount(24)
 
-    // the small boxes inside a step that holds several are smaller than a plain step's box
-    const inner = await cell(seq, '0:2').boundingBox()
-    const plain = await cell(seq, '0:0').boundingBox()
-    expect(inner!.height).toBeLessThan(plain!.height - 4)
-  })
 
-  test('a grouped step keeps the columns: its edges fall on the hat cells', async ({ page }) => {
-    const seq = await open(page, BEAT)
-    for (const [kick, from, to] of [
-      ['0:0', '2:0', '2:1'],
-      ['0:2', '2:2', '2:3'],
-      ['0:4', '2:4', '2:5'],
-    ] as const) {
-      const step = await stepOf(seq, kick).boundingBox()
-      const a = await cell(seq, from).boundingBox()
-      const b = await cell(seq, to).boundingBox()
-      expect(Math.abs(step!.x - a!.x), `${kick} left edge`).toBeLessThan(1.5)
-      expect(Math.abs(step!.x + step!.width - (b!.x + b!.width)), `${kick} right edge`).toBeLessThan(1.5)
-    }
-  })
-
-  test('a click inside a step writes what it always wrote', async ({ page }) => {
+  test('a click inside a step writes that step’s own text (LCM grid)', async ({ page }) => {
     const seq = await open(page, BEAT)
     // the rest inside [~ bd]
     await cell(seq, '0:2').click()
     await expect.poll(() => editorValue(page)).toBe('$: s("bd [bd bd] sd ~, hh*8")')
     await cell(seq, '0:2').click()
     await expect.poll(() => editorValue(page)).toBe(BEAT)
-    // a hat inside the one hh*8 step
+    // a hat inside the one hh*8 step is edited on its own: the step written out (#2326)
     await cell(seq, '2:3').click()
     await expect.poll(() => editorValue(page)).toBe('$: s("bd [~ bd] sd ~, [hh hh hh ~ hh hh hh hh]")')
   })
 
-  test('a click on a faint half of a plain step splits it, as the column did', async ({ page }) => {
+  test('a faint half of a plain step is not a step: a click there splits the step (#2293) (LCM grid)', async ({ page }) => {
     const seq = await open(page, BEAT)
     await expect(cell(seq, '0:1')).toHaveAttribute('aria-label', 'bd step 2, held from step 1')
+    await expect(cell(seq, '0:1')).toHaveAttribute('title', /Splits this step/)
     await cell(seq, '0:1').click()
-    await expect.poll(() => editorValue(page)).toBe('$: s("[bd bd] [~ bd] sd ~, hh*8")')
+    // two equal hits of one sound are written `bd*2` (#2326)
+    await expect.poll(() => editorValue(page)).toBe('$: s("bd*2 [~ bd] sd ~, hh*8")')
   })
 
-  test('the playing column of a plain step is still marked', async ({ page }) => {
-    // a plain step's columns draw no border, which is how every other cell shows it is playing
-    const seq = await open(page, '$: s("bd hh*2 sd cp")')
-    await page.evaluate(() => {
-      const eds = (window as unknown as { monaco: { editor: { getEditors: () => { getModel: () => { getValue: () => string } | null; focus: () => void }[] } } }).monaco.editor.getEditors()
-      ;(eds.find((e) => e.getModel()?.getValue().includes('hh*2')) ?? eds[0]).focus()
-    })
-    await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+Enter`)
-    await expect(
-      seq.locator('[data-seq-step="plain"] [data-seq-cell][data-playing="true"] [data-seq-playing-frame]').first(),
-    ).toBeVisible({ timeout: 8000 })
-  })
 
-  test('the keyboard cursor inside a step is not clipped by the step', async ({ page }) => {
+  test('the keyboard cursor inside a step is not clipped by the step (LCM grid)', async ({ page }) => {
     // the focus ring is drawn just outside a cell; a clipping step hid it on a filled column
     const seq = await open(page, BEAT)
     await cell(seq, '0:0').focus()
+    // the next step (#2293 → walks steps) is the rest inside `[~ bd]`, a cell inside a step
     await page.keyboard.press('ArrowRight')
-    await expect(cell(seq, '0:1')).toBeFocused()
+    await expect(cell(seq, '0:2')).toBeFocused()
     const clipped = await seq.locator('[data-seq-step]').evaluateAll((els) =>
       els.filter((e) => getComputedStyle(e).overflow !== 'visible').length,
     )

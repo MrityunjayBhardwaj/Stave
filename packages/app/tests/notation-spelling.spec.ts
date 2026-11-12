@@ -27,8 +27,14 @@
  * can be queried directly, and is not duplicated here.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
+import { pinLcmGrid, velocityDragOn } from './_appBoot'
 import { slotsControl, preset } from './_resolutionControl'
 
+// velocity drags are off by default (#2525); this spec is about the gesture, so it turns them on
+velocityDragOn(test)
+
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -108,7 +114,7 @@ test.describe('a velocity drag leaves the notation alone (#1123)', () => {
   // place, the grouping gone. 220 grid units corpus-wide.
   const GRID = '$: s("bd [hh hh] sn cp")'
 
-  test('grid: dragging a cell writes a .gain and does NOT respell the head mini', async ({
+  test('grid: dragging a cell writes a .gain and does NOT respell the head mini (LCM grid)', async ({
     page,
   }) => {
     const errors: string[] = []
@@ -133,7 +139,7 @@ test.describe('a velocity drag leaves the notation alone (#1123)', () => {
     expect(errors).toEqual([])
   })
 
-  test('grid: an operator survives the same drag (`bd*2 sn cp`)', async ({ page }) => {
+  test('grid: an operator survives the same drag (`bd*2 sn cp`) (LCM grid)', async ({ page }) => {
     // A second shape, because `*2` is a different way of having structure than a group
     // and the rebuild loses it the same way (`bd bd sn ~ cp ~`).
     await boot(page)
@@ -184,7 +190,7 @@ test.describe('looking closer and coming back returns the pattern as written (#1
   // EDITED clauses go red. They are kept because they assert a real and separate
   // property — that looking closer never writes — but they do not cover #1121, and the
   // clauses that do are the two `a velocity drag made through a REFINED view` cases.
-  test('grid: refine to 16 and back to 8 never writes (the no-write property, not #1121)', async ({ page }) => {
+  test('grid: refine to 16 and back to 8 never writes (the no-write property, not #1121) (LCM grid)', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
     await boot(page)
@@ -220,7 +226,7 @@ test.describe('looking closer and coming back returns the pattern as written (#1
     expect(errors).toEqual([])
   })
 
-  test('grid: a velocity drag made through a REFINED view still writes the original spelling', async ({
+  test('grid: a velocity drag made through a REFINED view still writes the original spelling (LCM grid)', async ({
     page,
   }) => {
     // The composition of the two fixes, which is the shape a user actually hits: look
@@ -334,7 +340,7 @@ test.describe('looking closer and coming back returns the pattern as written (#1
 })
 
 test.describe('looking closer at an alternation draws it (#1117)', () => {
-  test('grid: `<bd sn> hh` refines to a view without touching the document', async ({ page }) => {
+  test('grid: `<bd sn> hh` refines to a view without touching the document (LCM grid)', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
     await boot(page)
@@ -359,7 +365,7 @@ test.describe('looking closer at an alternation draws it (#1117)', () => {
     expect(errors).toEqual([])
   })
 
-  test('grid: `bd@2 sn cp` offers a finer view, and taking it writes nothing (#1120)', async ({
+  test('grid: `bd@2 sn cp` offers a finer view, and taking it writes nothing (#1120) (LCM grid)', async ({
     page,
   }) => {
     // A HELD NOTE, which is the property the fixtures at this seam were missing next.

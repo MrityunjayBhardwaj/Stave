@@ -27,6 +27,10 @@
  * does not assert: the lane is lost across a statement round-trip, on purpose (#597).
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
+
+// It reads the column grid's cells (`lane:col`), which only LCM draws now (#2458).
+pinLcmGrid(test)
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
@@ -80,7 +84,7 @@ async function openSequencer(page: Page) {
   return drawer
 }
 
-test('#1161 — does a lane survive its last note being cleared?', async ({ page }) => {
+test('#1161 — does a lane survive its last note being cleared? (LCM grid)', async ({ page }) => {
   await boot(page)
   // bd sounds exactly once; hh fills the bar. Clearing bd@0 empties the bd lane.
   await setStrudelCode(page, '$: s("bd ~ ~ ~, hh hh hh hh")')
@@ -122,7 +126,7 @@ test('#1161 — does a lane survive its last note being cleared?', async ({ page
  * the document's bytes; a statement change reseeds from a fresh parse, which has no lane.
  * So the question is not "does the lane survive" but "how long".
  */
-test('#1161 — does it survive the cursor leaving the statement and coming back?', async ({
+test('#1161 — does it survive the cursor leaving the statement and coming back? (LCM grid)', async ({
   page,
 }) => {
   await boot(page)

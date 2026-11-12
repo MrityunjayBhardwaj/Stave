@@ -1,0 +1,38 @@
+{
+  // The type check `next build` runs (next.config.ts → typescript.tsconfigPath).
+  // It checks the code that ships: no tests, and no incremental cache.
+  //
+  // Why (#2381): since Next 16.4 the build runs plain `tsc` over the whole
+  // tsconfig (`experimental.useTypeScriptCli` defaults to true), so it checked
+  // every test file too, with `.next/cache/.tsbuildinfo` as an incremental
+  // cache. Vercel restores that cache and node_modules from the previous
+  // deployment. Two copies of React's types live in this repo (the app's 19,
+  // the editor's 18), and Next's own .d.ts files don't depend on either: they
+  // find `react` through pnpm's hidden hoist,
+  // `node_modules/.pnpm/node_modules/@types/react`. A clean install points that
+  // at 19; a node_modules carried over from another install (pnpm records its
+  // hoist choices in node_modules/.modules.yaml) can point it at 18. With it
+  // at 18, the full
+  // tsconfig fails with exactly the Vercel error (Ruler.test.tsx(49,21), TS2345)
+  // while this one passes. Same commit, red with the cache, green without it.
+  //
+  // Tests are still type-checked in full: CI runs `tsc --noEmit -p .` over
+  // tsconfig.json (the "Type-check the app, tests included" step).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // A full check every build: nothing carried over from a restored cache.
+    "incremental": false
+  },
+  "exclude": [
+    "node_modules",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "tests/**",
+    "vitest.*.ts",
+    "vitest.*.mts",
+    "playwright.config.ts"
+  ]
+}

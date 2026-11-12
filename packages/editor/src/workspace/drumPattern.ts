@@ -160,6 +160,8 @@ let state: DrumPatternState | null = null
  * check `if (state) return` would let a second call re-enter.
  */
 let starting = false
+/** A stop that arrived while `starting`: honoured once the render finishes. */
+let stopRequested = false
 
 /**
  * Render the 2-second drum loop into an `AudioBuffer` using an
@@ -304,11 +306,22 @@ async function renderDrumLoopBuffer(): Promise<AudioBuffer> {
  * already-running case.
  */
 export async function startDrumPattern(): Promise<void> {
-  if (state || starting) return
+  if (state) return
+  if (starting) {
+    stopRequested = false // asked for again: the render under way is wanted after all
+    return
+  }
   starting = true
+  stopRequested = false
   try {
     const ctx = new AudioContext()
     const buffer = await renderDrumLoopBuffer()
+    // Stopped while the loop rendered: nothing is playing yet, so nothing else
+    // would ever stop this one (a first click that switches tab, #2451).
+    if (stopRequested) {
+      void ctx.close()
+      return
+    }
     const source = ctx.createBufferSource()
     source.buffer = buffer
     source.loop = true
@@ -346,7 +359,10 @@ export async function startDrumPattern(): Promise<void> {
  * No-op if not running.
  */
 export function stopDrumPattern(): void {
-  if (!state) return
+  if (!state) {
+    if (starting) stopRequested = true
+    return
+  }
   try {
     state.source.stop()
   } catch {

@@ -7,7 +7,10 @@
  * to the pattern on the first hit. Single-quoted literals (PV44).
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -102,7 +105,7 @@ test.describe('Sound assignment (#514/#515/#516)', () => {
     expect(await strudelValue(page)).toBe("$: s(\"bd sd hh\").bank('YamahaRX5')")
   })
 
-  test('#516 add a drum voice stages in-model, writes on first hit; remove drops it', async ({ page }) => {
+  test('#516 add a drum voice stages in-model, writes on first hit; remove drops it (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd ~ sd ~")')
     const drawer = await openPattern(page)

@@ -21,7 +21,14 @@ import * as React from 'react'
 import { pianoRollCodec, gainWritable as gainWritableOn, slotPress, slotPressCost, NO_RESOLUTION_EFFECT } from '../../codeView'
 import type { PianoRollModel, RollNote, ColumnOverlap } from '../../codeView'
 import { lookOnlyLine } from '../../codeView'
-import { drawnLayout } from '../../codeView'
+import { drawnLayout, chunkDivisions } from '../../codeView'
+import { OPEN_PX, columnPlace, columnUnit, endInBar, openAt, openStarts, partSteps, zoomRuler } from './gridZoom'
+import { applyStepEdit, rollAdd, rollMove, rollRemove, rollResize, type BarTree, type RollEditResult } from '../../codeView'
+import { GridZoomControl, useGridZoom } from './gridZoomControl'
+import { useExactPlayhead } from './exactPlayhead'
+import { lookOnlyTreeRoll } from './rollTree'
+import { TreeRollGrid } from './TreeRollGrid'
+import { useDeferredPerText } from './useDeferredPerText'
 import {
   columnCount,
   columnOverlap,
@@ -71,6 +78,8 @@ import { useSoundCatalog } from '../../workspace/soundRegistry'
 import { ExtendHandle } from './ExtendHandle'
 import { linesModel, rulerLabels, useLayoutFollow, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { usePatternLength } from './usePatternLength'
+import { useGridMode } from './gridMode'
+import { rollResizableNotes, rollStepText } from './rollWriter'
 import { InViewBar, PHONE_GRID_WIDTH, PHONE_RULER_HEIGHT, PHONE_STEP_MIN, TurnHint, usePhoneGrid, useRulerPan } from './phoneGrid'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
@@ -191,6 +200,36 @@ function soundFill(names: readonly string[]): string {
   return `linear-gradient(to bottom, ${stops.join(', ')})`
 }
 
+/** the step writer's refusals a reader can act on, in words (#2294); the rest say the general sentence */
+function rollRefusalLine(why: string): string | undefined {
+  switch (why) {
+    case 'source-and-landing-play-in-different-places':
+    case 'copies-come-from-outside-the-step':
+      return 'The note plays in several places and where it lands does not'
+    case 'no-room-to-grow':
+      return 'The next step is not a rest this note can take in'
+    case 'step-is-generated':
+      return 'This note is made by an operator on its step (like (3,8))'
+    case 'loop-shorter-than-the-pattern':
+      return "This note also plays in bars the roll doesn't show"
+    case 'columns-not-whole':
+      return "The pattern's lengths do not add up to whole columns here"
+    default:
+      return undefined
+  }
+}
+
+/** a step-writer gesture refused: its reason when it has words, else the general sentence */
+function sayRollRefusal(attempted: string, why: string | undefined, outcome: string = LEFT_UNCHANGED): void {
+  const line = why ? rollRefusalLine(why) : undefined
+  if (!line) return reportRefusal(attempted, outcome)
+  emitLog({ level: 'warn', runtime: 'stave', message: `${attempted} — ${line.charAt(0).toLowerCase()}${line.slice(1)}, ${outcome}; change it in the code view.` })
+}
+
+/** a gesture on a column that is no exact place, and one on no note, as the step writer's refusals */
+const NO_PLACE: RollEditResult = { ok: false, why: 'columns-not-whole' }
+const NO_NOTE: RollEditResult = { ok: false, why: 'no-note-there' }
+
 function reportRefusal(attempted: string, outcome: string = LEFT_UNCHANGED): void {
   emitLog({
     level: 'warn',
@@ -211,6 +250,13 @@ function rollSteps(
   cols: number,
 ): { stepStarts: Set<number>; ruler: Map<number, string> } {
   const byPart = writtenStepStarts(model)
+  const part = rollPart(model)
+  const starts = byPart.get(part) ?? []
+  return { stepStarts: new Set(starts), ruler: rulerLabels(model, cols, starts) }
+}
+
+/** the part whose steps the roll draws: the one holding the most notes, ties to the first (see `rollSteps`) */
+function rollPart(model: PianoRollModel): number {
   let part = 0
   if (model.source && model.source.parts.length > 1) {
     let most = -1
@@ -222,8 +268,7 @@ function rollSteps(
       }
     }
   }
-  const starts = byPart.get(part) ?? []
-  return { stepStarts: new Set(starts), ruler: rulerLabels(model, cols, starts) }
+  return part
 }
 
 /**
@@ -315,6 +360,16 @@ interface DragState {
    * at the last accepted frame. It is read at commit to REPORT, never to re-run or write.
    */
   dropRefused?: boolean
+  /**
+   * The step writer's start (#2294): the text the gesture began on and its tree. A drag's
+   * every frame is asked of THIS text, never of the last frame's, so the question is always
+   * about the note the user grabbed. Absent where the roll has no tree to address.
+   */
+  stepBase?: { mini: string; trees: readonly BarTree[] }
+  /** the last text a step-writer frame wrote, so a frame that changes nothing writes nothing */
+  stepWrote?: string
+  /** why the last step-writer frame was refused, said on release (#2294) */
+  refusedWhy?: string
 }
 
 export interface PianoRollGridProps {
@@ -364,7 +419,7 @@ export function PianoRollGrid({
    * worst case measured here is a sweep down the 13 declined cells of one column.
    */
   const [declinedCell, setDeclinedCell] = React.useState<string | null>(null)
-  const { chunk, model, read, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit } = useGridModel<PianoRollModel>({
+  const { chunk, model, read, mutate, settle, writeMini, writeStep, beginGesture, endGesture, patternKey, applyEdit } = useGridModel<PianoRollModel>({
     ...pianoRollCodec,
     source: 'roll',
     eligible: opensPianoRoll,
@@ -580,7 +635,14 @@ export function PianoRollGrid({
    * worst 15.88ms over the corpus, against the grid's shipped `placeable` memo at p99
    * 2.54ms / worst 14.4ms.
    */
-  const resizable = React.useMemo(() => (model ? resizableNotes(model) : null), [model])
+  // Settings › Grid: Exact edits through the tree, LCM through the column writer.
+  const gridMode = useGridMode()
+  // The tree mode asks its own writer (`rollResizableNotes`); LCM asks the column writer's.
+  const resizable = React.useMemo(() => {
+    if (!model) return null
+    const base = rollStepText(gridMode, model, chunk?.miniString ?? null)
+    return base ? rollResizableNotes(model, base) : resizableNotes(model)
+  }, [model, gridMode, chunk?.miniString])
   // How many columns this roll DRAWS — not `model.steps`, which is the pattern's length
   // and need not be a whole number of columns (#1087). See `columnCount`.
   const cols = model ? columnCount(model) : 0
@@ -609,6 +671,41 @@ export function PianoRollGrid({
     [model],
   )
 
+  // ── THE ROLL'S STEP WRITER (#2294) ─────────────────────────────────────────────
+  // Add, delete, length and move are edits of ONE step's own text, asked of the tree
+  // Strudel gives the text (`rollEdit.ts` over `stepEdit.ts`, spelled by `spell.ts`) — the
+  // writer the step grid uses. Where it cannot write the edit as a step's own text, the edit
+  // is refused with its reason, never handed to the column writer to respell the pattern.
+  // Paste still goes through the column writer for now.
+  //
+  // ⚠ THE ONE PLACE THE GRID MODE CHOOSES THE WRITER (Settings › Grid). Exact is the tree:
+  // this ref holds the text and its divisions and every gesture below asks the step writer.
+  // LCM is the shared grid: the ref is null, and every gesture falls through to the column
+  // writer exactly as it was before the step writer existed. Gestures branch on this ref
+  // (or the `stepBase` a drag copied from it) and on nothing else.
+  const stepTextRef = React.useRef<{ mini: string; trees: readonly BarTree[] } | null>(null)
+  stepTextRef.current = rollStepText(gridMode, model, chunk?.miniString ?? null)
+  /** one step edit, made in the text it was computed from; says why when refused */
+  const writeRoll = (base: { mini: string }, r: RollEditResult, refusal: string): boolean => {
+    if (!r.ok) {
+      sayRollRefusal(refusal, r.why)
+      return false
+    }
+    const wrote = writeStep(base.mini, r.edit)
+    if (!wrote) reportRefusal(refusal)
+    return wrote
+  }
+  /** a drag frame: the edit asked of the gesture's start, the whole text written when it changed */
+  const writeFrame = (d: DragState, r: RollEditResult): boolean => {
+    if (!r.ok || !d.stepBase) return false
+    const after = applyStepEdit(d.stepBase.mini, r.edit)
+    if (after !== d.stepWrote) {
+      writeMini(after)
+      d.stepWrote = after
+    }
+    return true
+  }
+
   React.useEffect(() => {
     const onUp = (): void => {
       const d = dragRef.current
@@ -617,7 +714,12 @@ export function PianoRollGrid({
       // a press with no move on a note body = a click → DELETE it (click-toggle:
       // click empty adds, click a note removes). A no-move on the resize handle
       // does nothing; a real drag already moved/resized it.
-      if (!d.moved && d.mode === 'move') {
+      if (!d.moved && d.mode === 'move' && d.stepBase) {
+        // a click on a note deletes it: that note's own text becomes a rest (#2294)
+        const midi = pitchToMidi(d.origPitch) ?? (d.base.numeric ? Number(d.origPitch) : null)
+        const place = columnPlace(d.base, d.origStart)
+        writeRoll(d.stepBase, !place ? NO_PLACE : midi === null ? NO_NOTE : rollRemove(d.stepBase.mini, d.stepBase.trees, place, midi), "Couldn't delete that note")
+      } else if (!d.moved && d.mode === 'move') {
         // ⚠ GATED ON READBACK, and like a placement it costs nothing here (#1340). A
         // click-delete is ONE gesture, so the check runs on the write rather than being
         // deferred. Ungated, 5 of 5,480 corpus deletes wrote bytes that spell and reopen
@@ -649,7 +751,17 @@ export function PianoRollGrid({
       // ⚠ AND A REFUSAL MUST GO HOME, not merely be left alone. Mid-drag the document
       // sits at the last accepted frame, so returning the base is what puts the note back
       // where the user grabbed it; doing nothing would leave the lossy write standing.
-      if (d.mode === 'resize' && d.moved && d.askedDur != null) {
+      if (d.stepBase && d.moved) {
+        // every frame was the step writer's exact edit of the gesture's start (#2294): nothing
+        // to settle. A drop the writer declined stands at the last accepted frame, and says so.
+        if (d.dropRefused) {
+          sayRollRefusal(
+            d.mode === 'move' ? "Couldn't move that note there" : "Couldn't set that length",
+            d.refusedWhy,
+            d.stepWrote != null ? STAYED_AT_LAST_ACCEPTED : LEFT_UNCHANGED,
+          )
+        }
+      } else if (d.mode === 'resize' && d.moved && d.askedDur != null) {
         const asked = d.askedDur
         // ⚠ THE REFUSAL IS READ OFF THE WRITER, NOT OFF `mutate` (#1336). Mid-drag the
         // document sits at the last accepted frame, so a refusal RETURNS THE BASE and
@@ -682,7 +794,7 @@ export function PianoRollGrid({
       //
       // ⚠ READ OFF THE WRITER, not off `mutate`, for the same reason resize is: a refused
       // move writes the base back, so `next === prev` is false exactly when it matters.
-      if (d.mode === 'move' && d.moved) {
+      if (d.mode === 'move' && d.moved && !d.stepBase) {
         // ⚠ EXACTLY ONE MESSAGE, AND THE READBACK VERDICT WINS (#1452). Both refusals can
         // be true of one gesture: the standing frame can fail readback AND the drop cell
         // can have been declined. But a readback refusal sends the note HOME, so saying it
@@ -896,6 +1008,7 @@ export function PianoRollGrid({
         origPitch: note.pitch,
         origStart: note.start,
         moved: false,
+        stepBase: stepTextRef.current ?? undefined,
       }
       beginGesture()
     } else {
@@ -913,6 +1026,14 @@ export function PianoRollGrid({
   // A one-step note at (midi, step) — the click on an empty cell, and the toggle
   // key on one (#1802). One op, one read-back, one refusal sentence.
   const placeAt = (midi: number, step: number): void => {
+    const base = stepTextRef.current
+    const place = model ? columnPlace(model, step) : null
+    if (base && model) {
+      // the note is written as a step's own text: a rest filled, a chord joined, a step split (#2294)
+      if (!place) writeRoll(base, NO_PLACE, "Couldn't add that note")
+      else writeRoll(base, rollAdd(base.mini, base.trees, place, tokenForRow(!!model.numeric, midi), columnUnit(model, step) ?? undefined), "Couldn't add that note")
+      return
+    }
     let refused = false
     mutate((prev) => {
       const next = placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1, {
@@ -935,6 +1056,7 @@ export function PianoRollGrid({
       origPitch: note.pitch,
       origStart: note.start,
       moved: false,
+      stepBase: stepTextRef.current ?? undefined,
     }
     beginGesture()
   }
@@ -965,6 +1087,17 @@ export function PianoRollGrid({
       // grid gates its own on `canResizeCell` and the roll does not yet.
       let dur = step - d.origStart + 1
       if (interval) dur = Math.max(interval, snapColumn(d.origStart + dur, interval) - d.origStart)
+      if (d.stepBase) {
+        // the note's length in its own group, written as the note writes it (`c4@2`, #2294)
+        const midi = pitchToMidi(d.origPitch) ?? (d.base.numeric ? Number(d.origPitch) : null)
+        const place = columnPlace(d.base, d.origStart)
+        const end = endInBar(d.base, d.origStart, d.origStart + dur)
+        const r: RollEditResult = !place ? NO_PLACE : midi === null || !end ? NO_NOTE : rollResize(d.stepBase.mini, d.stepBase.trees, place, midi, end)
+        d.moved = true
+        d.dropRefused = !writeFrame(d, r)
+        d.refusedWhy = r.ok ? undefined : r.why
+        return
+      }
       mutate((prev) => resizeNote(prev, d.origStart, d.origPitch, dur))
       d.moved = true
       // Kept for the commit-time re-run on release (#1331). The per-frame write stays
@@ -984,6 +1117,28 @@ export function PianoRollGrid({
     // silence by `mutate`. The same literal also could not carry `gain` — a field it does
     // not name — though no corpus unit witnesses that one, so it is fixed by construction
     // rather than on evidence.
+    if (d.stepBase) {
+      // a rest where it was and the note where it lands, every copy of the written step
+      // together; a drag across places writes out only the repeat the note sits in (#2294)
+      const midi = pitchToMidi(d.origPitch) ?? (d.base.numeric ? Number(d.origPitch) : null)
+      const from = columnPlace(d.base, d.origStart)
+      const to = columnPlace(d.base, newStart)
+      const bars = d.base.bars ?? 1
+      const r: RollEditResult =
+        !from || !to
+          ? NO_PLACE
+          : midi === null
+            ? NO_NOTE
+            : newPitch === d.origPitch && newStart === d.origStart
+              ? { ok: true, edit: { from: 0, to: 0, insert: '' } }
+              : rollMove(d.stepBase.mini, d.stepBase.trees, from, midi, to, newPitch, (t) => chunkDivisions(t, bars))
+      d.moved = true
+      const landed = writeFrame(d, r)
+      d.dropRefused = !landed
+      d.refusedWhy = r.ok ? undefined : r.why
+      setDeclinedCell(landed ? null : `${midi}:${step}`)
+      return
+    }
     const next = moveNote(d.base, d.origPitch, d.origStart, newPitch, newStart)
     d.moved = true
     // A refusal leaves the document exactly as it was — which is what used to happen
@@ -1025,6 +1180,13 @@ export function PianoRollGrid({
   // gate as the click-delete (#1340). One undo step; the cursor stays where it is,
   // so the next key acts on the same cell.
   const deleteNote = (note: RollNote): void => {
+    const base = stepTextRef.current
+    const midi = pitchToMidi(note.pitch) ?? (model?.numeric ? Number(note.pitch) : null)
+    const place = model ? columnPlace(model, note.start) : null
+    if (base) {
+      writeRoll(base, !place ? NO_PLACE : midi === null ? NO_NOTE : rollRemove(base.mini, base.trees, place, midi), "Couldn't delete that note")
+      return
+    }
     let refused = false
     mutate((prev) => {
       const next = removeNote(prev, note.start, note.pitch, { readback: true })
@@ -1162,6 +1324,16 @@ export function PianoRollGrid({
       if (step > 1) dur = Math.max(step, snapColumn(head + dur, step) - head)
       if (dur < 1 || dur === cols) return false
       if (dryRun) return true
+      const base = stepTextRef.current
+      const place = columnPlace(model, head)
+      const end = endInBar(model, head, head + dur)
+      if (base) {
+        if (!place) writeRoll(base, NO_PLACE, "Couldn't set that length")
+        else if (end) writeRoll(base, rollResize(base.mini, base.trees, place, midi, end), "Couldn't set that length")
+        else reportRefusal("Couldn't set that length")
+        follow(note.pitch, head)
+        return true
+      }
       const settled = resizeNote(model, note.start, note.pitch, dur, { readback: true })
       if (settled === model) {
         reportRefusal("Couldn't set that length")
@@ -1202,6 +1374,15 @@ export function PianoRollGrid({
     if (toMidi < 0 || toMidi > 127) return false
     if (dryRun) return true
     const toPitch = tokenForRow(!!model.numeric, toMidi)
+    const base = stepTextRef.current
+    const from = columnPlace(model, head)
+    const to = columnPlace(model, toStart)
+    if (base) {
+      const bars = model.bars ?? 1
+      if (!from || !to) writeRoll(base, NO_PLACE, "Couldn't move that note there")
+      else if (writeRoll(base, rollMove(base.mini, base.trees, from, midi, to, toPitch, (t) => chunkDivisions(t, bars)), "Couldn't move that note there")) follow(toPitch, toStart)
+      return true
+    }
     const settled = moveNote(model, note.pitch, note.start, toPitch, toStart, { readback: true })
     if (settled === model) {
       reportRefusal("Couldn't move that note there")
@@ -1276,12 +1457,68 @@ export function PianoRollGrid({
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone)
   /** a column's narrowest width per unit of weight */
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 12
+  // ZOOM (#2277), as the step grid's: 1× fits the bar to the panel and keeps every step
+  // closed; zooming in widens every column and opens the steps the text nests, adding their
+  // lines and ruler names. The notes are drawn where they are at every zoom.
+  const trackRef = React.useRef<HTMLDivElement>(null)
+  const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model, trackRef)
+  const zoomed = !phoneGrid.phone
+  // the bar's tree for the part the roll draws (#2275), built once per text
+  const rollMini = chunk?.miniString ?? null
+  const hasModel = !!model
+  const barCount = model?.bars ?? 1
+  const trees = React.useMemo(
+    () => (hasModel && rollMini !== null ? chunkDivisions(rollMini, barCount) : null),
+    [hasModel, barCount, rollMini],
+  )
+  const linesFrom = model ? linesModel(model, read) : null
+  // THE PART BEING EDITED (#2277): the one the selected note was written in, else the one
+  // with the most notes. Its steps draw the lines and the ruler; the other parts' notes dim.
+  const parts = linesFrom?.source?.parts ?? null
+  const midiOf = (token: string): number | null => (model?.numeric ? Number(token) : pitchToMidi(token))
+  /** `midi@start` of the notes each part wrote, from the text's own regions; null for one part */
+  const notesByPart = React.useMemo(() => {
+    if (!parts || parts.length < 2) return null
+    const out = new Map<number, Set<string>>()
+    for (const p of parts) {
+      const keys = new Set<string>()
+      for (const r of p.regions) for (const n of r.content) keys.add(`${midiOf(n.pitch)}@${n.start}`)
+      out.set(p.part, keys)
+    }
+    return out
+  }, [parts])
+  const editedPart = ((): number => {
+    if (!linesFrom) return 0
+    if (notesByPart && model && selected?.kind === 'roll') {
+      const m = midiOf(selected.pitch)
+      const hit = model.notes.find(
+        (n) => midiOf(n.pitch) === m && selected.start >= n.start && selected.start < n.start + Math.max(1, n.duration),
+      )
+      if (hit) for (const [part, keys] of notesByPart) if (keys.has(`${m}@${hit.start}`)) return part
+    }
+    return rollPart(linesFrom)
+  })()
+  const nodes = React.useMemo(
+    () => (linesFrom && trees ? partSteps(linesFrom, trees, editedPart) : null),
+    [linesFrom, trees, editedPart],
+  )
+  /** the notes of every other part, drawn dimmer; null when there is one part */
+  const otherNotes = notesByPart ? (key: string): boolean => !notesByPart.get(editedPart)?.has(key) : null
   /** what keeps a row's key in place while its columns scroll under it */
   const pinned: React.CSSProperties = phoneGrid.phone
     ? { position: 'sticky', left: 0, zIndex: 2, background: 'var(--background, #0f0f12)' }
     : {}
+  // THE PLAYHEAD AT THE EXACT POSITION (#1834): a line moving with the phase, measured on the
+  // ruler's columns, over the playing column the cells already mark
+  const playheadRef = React.useRef<HTMLDivElement>(null)
+  useExactPlayhead(gridRef, playheadRef, model, (c) => (trackRef.current?.children[c] as HTMLElement | undefined) ?? null)
+  // A melody the columns cannot hold at all is drawn from its tree alone (#1834): asked only
+  // while there is no model, and kept per text
+  const rollEligible = !!chunk && opensPianoRoll(chunk)
+  const lookTree = useDeferredPerText(!hasModel && rollEligible ? rollMini : null, lookOnlyTreeRoll)
 
   if (!model) {
+    if (lookTree && 'roll' in lookTree) return <TreeRollGrid roll={lookTree.roll} reason={lookTree.reason} />
     return React.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint:
@@ -1306,7 +1543,21 @@ export function PianoRollGrid({
   // and how wide a cell is, so every bar is drawn the same width whatever its count.
   const layout = drawnLayout(model, cols)
   // drawn from what the TEXT reads as — the kept model's source is the text before the edit
-  const { stepStarts, ruler } = rollSteps(linesModel(model, read), cols)
+  // the columns' widths at this zoom: 1× fits the panel (today's floor, lowered only as far
+  // as the panel needs); zoomed, every column is its 1× width times the zoom
+  let totalWeight = 0
+  for (let c = 0; c < cols; c++) totalWeight += layout.weight(c)
+  const fitPer = zoom.avail !== null && totalWeight > 0 ? Math.max(1, (zoom.avail - (cols - 1)) / totalWeight) : null
+  const minPer = !zoomed || fitPer === null ? stepMin : zoom.level === 1 ? Math.min(stepMin, fitPer) : Math.min(fitPer, 44) * zoom.level
+  const maxPer = zoomed ? 44 * zoom.level : 44
+  const perPx = Math.max(minPer, Math.min(fitPer ?? stepMin, maxPer))
+  const today = rollSteps(linesModel(model, read), cols)
+  // THE PATTERN'S OWN STEPS (#2277): open where the zoom makes them wide enough, never at 1×
+  const drawn = nodes ? openAt(nodes, (c) => perPx * layout.weight(c), zoom.level > 1 ? OPEN_PX : Infinity) : null
+  /** each step's first column → how deep it sits: 1 a row's own step, 2 a step inside one, … */
+  const stepDepth = drawn ? openStarts(drawn) : null
+  const stepStarts = stepDepth ? new Set(stepDepth.keys()) : today.stepStarts
+  const ruler = drawn ? zoomRuler(model, drawn) : today.ruler
   // THREE LINE WEIGHTS, all in that same gap (#1841): a bar line, then a lighter line
   // where a step AS WRITTEN begins, then a plain column. Colour carries the difference,
   // never width, for the reason above.
@@ -1314,17 +1565,21 @@ export function PianoRollGrid({
     layout.barStart(c)
       ? '-2px 0 0 0 var(--foreground, #e6e6ea)'
       : c > 0 && stepStarts.has(c)
-        ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)'
+        ? (stepDepth?.get(c) ?? 1) <= 1
+          ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)'
+          : // a step inside a step: lighter the deeper it sits
+            `-2px 0 0 0 color-mix(in srgb, var(--foreground-muted, #6a6a90) ${(stepDepth?.get(c) ?? 2) === 2 ? 55 : 30}%, transparent)`
         : undefined
   /** a cell's flex box: weighted so a bar of 3 is as wide as a bar of 4 */
   const cellBox = (c: number): React.CSSProperties => {
     const w = layout.weight(c)
-    return { flex: `${w} ${w} 0`, minWidth: stepMin * w, maxWidth: 44 * w }
+    return { flex: `${w} ${w} 0`, minWidth: minPer * w, maxWidth: maxPer * w }
   }
 
   return (
     <div
       data-bottom-panel-tab="piano-roll"
+      data-roll-lines-part={nodes ? editedPart : undefined}
       data-look-only={model.lookOnly ? model.lookOnly.gate : undefined}
       // Focusable, but not a tab stop: the grid's one tab stop is its cursor cell
       // (#1802, ARIA grid pattern).
@@ -1372,6 +1627,7 @@ export function PianoRollGrid({
         {/* Track identity (#589) — the bound track's colour dot + name. Click the dot to
             recolour, double-click the name to rename. */}
         <PatternTrackChip />
+        {zoomed && <GridZoomControl zoom={zoom} />}
         <TurnHint show={phoneGrid.upright && rulerPan.inView.more} />
         {/* ONE statement for a view that cannot take a new note (#1070) — the same
             fact the grid states, on the surface that carries 18,386 of the corpus's
@@ -1471,7 +1727,7 @@ export function PianoRollGrid({
             }}
           >
             <div style={{ width: model.numeric ? 36 : 40, flex: '0 0 auto', alignSelf: 'stretch', ...pinned }} />
-            <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
+            <div ref={trackRef} style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
               {Array.from({ length: cols }, (_, c) => {
                 const label = ruler.get(c)
                 const isBar = label !== undefined && !label.includes('.')
@@ -1506,8 +1762,14 @@ export function PianoRollGrid({
             ref={gridRef}
             role="grid"
             aria-label="Piano roll"
-            style={{ display: 'flex', flexDirection: 'column', gap: 1 }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 1, position: 'relative' }}
           >
+          <div
+            ref={playheadRef}
+            aria-hidden="true"
+            data-roll-playhead-line
+            style={{ display: 'none', position: 'absolute', left: 0, top: 0, bottom: 0, width: 2, marginLeft: -1, background: 'var(--foreground, #e6e6ea)', opacity: 0.5, pointerEvents: 'none', zIndex: 3 }}
+          />
           {rows.map((midi) => {
           // Piano black/white striping only makes sense for note-name rows;
           // for numeric patterns a row is a raw value (MIDI or degree), not a
@@ -1736,6 +1998,7 @@ export function PianoRollGrid({
                           data-roll-fill
                           data-roll-sustain={!isHead ? 'true' : undefined}
                           data-roll-note-sounds={sounds ? (sounds.byNote.get(note!) ?? []).join(' ') : undefined}
+                          data-roll-dim={otherNotes?.(`${midiOf(note!.pitch)}@${note!.start}`) ? '' : undefined}
                           style={{
                             position: 'absolute',
                             top: 0,
@@ -1748,7 +2011,8 @@ export function PianoRollGrid({
                                 : sounds
                                   ? soundFill(sounds.byNote.get(note!) ?? [])
                                   : 'var(--accent, #6ea8fe)',
-                            opacity: isHead ? 1 : 0.7,
+                            // another part's note is drawn dimmer (#2277): the lines are the edited part's
+                            opacity: (isHead ? 1 : 0.7) * (otherNotes?.(`${midiOf(note!.pitch)}@${note!.start}`) ? 0.35 : 1),
                             pointerEvents: 'none',
                           }}
                         />

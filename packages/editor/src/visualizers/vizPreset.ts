@@ -19,7 +19,7 @@ export interface CropRegion {
 export interface VizPreset {
   id: string
   name: string
-  renderer: 'hydra' | 'p5' | 'glsl'
+  renderer: 'hydra' | 'p5' | 'glsl' | 'three'
   code: string
   requires: (keyof EngineComponents)[]
   createdAt: number
@@ -95,7 +95,7 @@ export function sanitizePresetName(name: string): string {
  * Bundled IDs never collide with user IDs because user IDs follow the
  * `<name>_<renderer>_v<N>` format and never start with `__`.
  */
-export function bundledPresetId(name: string, renderer: 'hydra' | 'p5' | 'glsl'): string {
+export function bundledPresetId(name: string, renderer: 'hydra' | 'p5' | 'glsl' | 'three'): string {
   return `${BUNDLED_PREFIX}${sanitizePresetName(name)}_${renderer}__`
 }
 
@@ -118,7 +118,7 @@ export function isBundledPresetId(id: string): boolean {
  */
 export function generateUniquePresetId(
   name: string,
-  renderer: 'hydra' | 'p5' | 'glsl',
+  renderer: 'hydra' | 'p5' | 'glsl' | 'three',
   existingIds: Iterable<string>,
 ): string {
   const slug = sanitizePresetName(name)

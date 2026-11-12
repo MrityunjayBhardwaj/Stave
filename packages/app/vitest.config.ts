@@ -58,7 +58,12 @@ export default defineConfig({
         // probe still failed), and neither did inlining `@stave/editor`; the
         // importer has to go through Vite, and the importer is p5. With p5
         // inlined the full suite passes and the main entry loads.
-        inline: [/@strudel\//, "gifenc", /[\\/]p5[\\/]/],
+        //
+        // #2319 — next-auth imports `next/server` with no extension, which
+        // Node's ESM loader refuses (`Cannot find module .../next/server`);
+        // through Vite it resolves. Only gallerySignIn.test.ts loads the real
+        // Auth.js — the route tests mock src/auth.ts.
+        inline: [/@strudel\//, "gifenc", /[\\/]p5[\\/]/, /[\\/]next-auth[\\/]/],
       },
     },
   },

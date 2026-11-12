@@ -19,7 +19,10 @@
  * not share the code it is checking.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 async function boot(page: Page, code: string, lane: string): Promise<void> {
@@ -194,7 +197,7 @@ test('the display reads the playhead through scrubs and past the end', async ({ 
   )
 })
 
-test('the Sequencer lights the step the playhead is on after a scrub', async ({ page }) => {
+test('the Sequencer lights the step the playhead is on after a scrub (LCM grid)', async ({ page }) => {
   test.setTimeout(90_000)
   // One bar of four steps at 0.25 cps: each step lasts a full second, so the
   // half-second a tab switch takes cannot move the answer by more than one.

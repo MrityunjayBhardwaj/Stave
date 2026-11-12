@@ -3,6 +3,7 @@ import type { VizPreset } from './vizPreset'
 import { makeP5Renderer } from './renderers/makeP5Renderer'
 import { makeHydraRenderer } from './renderers/makeHydraRenderer'
 import { makeGLSLRenderer } from './renderers/makeGLSLRenderer'
+import { makeThreeRenderer } from './renderers/makeThreeRenderer'
 import { compileP5Code, isFullLifecycleSketch } from './p5Compiler'
 import { compileHydraCode } from './hydraCompiler'
 
@@ -66,6 +67,19 @@ export function compilePreset(preset: VizPreset): VizDescriptor {
       // the main-thread GLSLVizRenderer. A `.glsl` sketch is the wrapped fragment
       // source — a plain transferable string, so it crosses to the worker cleanly.
       factory: () => makeGLSLRenderer(code, source),
+    }
+  }
+
+  if (renderer === 'three') {
+    return {
+      id,
+      label: name,
+      renderer: 'three',
+      requires,
+      ...(preset.nativeSize ? { nativeSize: preset.nativeSize } : {}),
+      // #2516: a plain three.js sketch, worker-offloaded with a main-thread
+      // fallback (makeThreeRenderer), like GLSL.
+      factory: () => makeThreeRenderer(code, source),
     }
   }
 

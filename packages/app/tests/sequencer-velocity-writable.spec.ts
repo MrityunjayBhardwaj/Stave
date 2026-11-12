@@ -17,8 +17,13 @@
  * exactly where the drag is armed.
  */
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid, velocityDragOn } from './_appBoot'
 
+// velocity drags are off by default (#2525); this spec is about the gesture, so it turns them on
+velocityDragOn(test)
+
+
+pinLcmGrid(test)
 const WRITES = '$: s("bd sd hh sd")'
 /** a 60px downward drag on the first hit, observed once and pinned */
 const WRITES_AFTER = '$: s("bd sd hh sd").gain("0.25 1 1 1")'
@@ -46,7 +51,7 @@ async function dragDown(page: Page, key: string) {
 }
 
 test.describe('velocity is offered where the writer writes it (#1839)', () => {
-  test('on a grid the writer serves, the drag is offered and writes a .gain', async ({ page }) => {
+  test('on a grid the writer serves, the drag is offered and writes a .gain (LCM grid)', async ({ page }) => {
     const grid = await openSequencer(page, WRITES)
     await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('data-gain', '1')
     await dragDown(page, '0:0')

@@ -11,8 +11,11 @@
  * the grid.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 import { slotsControl, preset } from './_resolutionControl'
 
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -63,7 +66,7 @@ async function openPattern(page: Page): Promise<Locator> {
 }
 
 test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () => {
-  test('the Slots control is in the inspector, not the grid header', async ({ page }) => {
+  test('the Slots control is in the inspector, not the grid header (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd ~ sn ~")')
     const drawer = await openPattern(page)
@@ -83,7 +86,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     await expect(slots.locator('[data-resolution-step]')).toHaveCount(5)
   })
 
-  test('step grid: choosing 8 draws 8 columns and leaves the document alone (#1057)', async ({
+  test('step grid: choosing 8 draws 8 columns and leaves the document alone (#1057) (LCM grid)', async ({
     page,
   }) => {
     const errors: string[] = []
@@ -129,7 +132,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     expect(errors).toEqual([])
   })
 
-  test('step grid: a refined view writes only once you actually place a note (#1057)', async ({
+  test('step grid: a refined view writes only once you actually place a note (#1057) (LCM grid)', async ({
     page,
   }) => {
     // The other half of the rule. Refining must not write — but the finer grid has
@@ -147,8 +150,24 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     await page.waitForTimeout(120)
     expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")') // still untouched
 
-    // column 1 exists only at the refined resolution — it is between the source's
-    // own columns 0 and 1, so this is a note the document could not previously hold
+    // Column 1 exists only at the refined resolution — between the source's own columns
+    // 0 and 1, the second half of the `bd` step. A click there splits that step (#2293);
+    // it is offered as one, before anything is pressed.
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('title', /Splits this step/)
+    expect(errors).toEqual([])
+  })
+
+  test('step grid: a refined view absorbs a note placed between the source’s columns (#1057) — the split gesture (#2293) (LCM grid)', async ({
+    page,
+  }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd ~ sn ~")')
+    const drawer = await openPattern(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    const slots = slotsControl(drawer)
+    await (await preset(slots, 8)).click()
     await grid.locator('[data-seq-cell="0:1"]').click()
     await page.waitForTimeout(150)
 
@@ -161,7 +180,8 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     // same music: `[bd bd]` occupies the first quarter, so the onsets are 0 and 1/8,
     // exactly where `bd bd ~ ~ …` at eight columns would put them. The minimal edit is
     // the better answer, and the phase did not have to ask for it.
-    expect(after).toBe('$: s("[bd bd] ~ sn ~")')
+    // #2326: two equal hits of one sound are written `bd*2` — the same music, as people write it
+    expect(after).toBe('$: s("bd*2 ~ sn ~")')
     // The refinement is absorbed, and the view stays at eight columns WITHOUT a view
     // scale — the document now genuinely expresses eighth-note resolution, so the
     // reader derives eight columns from the onsets themselves.
@@ -190,7 +210,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
    * distinction from a genuine lossless reduce is kept by `canScaleStepGridTo`, which
    * still refuses this one.
    */
-  test('step grid: a reduce below the document keeps timing, lengthens, and says both', async ({
+  test('step grid: a reduce below the document keeps timing, lengthens, and says both (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -220,7 +240,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     expect(await getStrudelCode(page)).toBe('$: s("bd ~ sn ~")')
   })
 
-  test('step grid: a reduce that loses NO length is still shown as lossless', async ({ page }) => {
+  test('step grid: a reduce that loses NO length is still shown as lossless (LCM grid)', async ({ page }) => {
     // THE OTHER HALF, and the reason the arm above is not simply "coarsening warns now".
     // Every note here already spans two columns, so halving scales each to exactly one and
     // the floor never fires. That target stays a genuine lossless reduce, is NOT marked as
@@ -239,7 +259,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     )
   })
 
-  test('step grid: a hit that merges into its neighbour is not counted as made longer (#1968)', async ({
+  test('step grid: a hit that merges into its neighbour is not counted as made longer (#1968) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -259,7 +279,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     expect(await getStrudelCode(page)).toBe('$: s("bd bd ~ ~")')
   })
 
-  test('step grid: a non-power-of-2 (5-step) pattern can still be reduced (quantize)', async ({
+  test('step grid: a non-power-of-2 (5-step) pattern can still be reduced (quantize) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -302,7 +322,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
    * where the enabled-but-inert class has landed every previous time (#1010 P4c:
    * 483 grid + 123 roll dead targets, whole suite green).
    */
-  test('step grid: the ×2 / ÷2 walk refines and returns without ever writing (#1059)', async ({
+  test('step grid: the ×2 / ÷2 walk refines and returns without ever writing (#1059) (LCM grid)', async ({
     page,
   }) => {
     const errors: string[] = []
@@ -356,7 +376,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     expect(errors).toEqual([])
   })
 
-  test('step grid: ÷2 is an EDIT below the document and FREE above it — one button, two zones (#1059)', async ({
+  test('step grid: ÷2 is an EDIT below the document and FREE above it — one button, two zones (#1059) (LCM grid)', async ({
     page,
   }) => {
     await boot(page)
@@ -475,7 +495,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     await expect(four).toHaveAttribute('title', '4 slots — rewrites your file, keeps timing')
   })
 
-  test('step grid: a reduce that cuts a note short says so before you press it (#1948)', async ({ page }) => {
+  test('step grid: a reduce that cuts a note short says so before you press it (#1948) (LCM grid)', async ({ page }) => {
     await boot(page)
     // 8 → 4: `bd@7` should be 3.5 columns. The second hit (column 7 → 3.5) lands on the last
     // column, 3, and the held note is cut to the 3 columns before it. The second hit's

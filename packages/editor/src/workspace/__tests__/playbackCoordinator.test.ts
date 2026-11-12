@@ -23,6 +23,7 @@ import {
   notifyPlaybackStopped,
   getCurrentlyPlaying,
   onPlaybackChanged,
+  setAlongsideSources,
   __resetPlaybackCoordinatorForTests,
 } from '../playbackCoordinator'
 
@@ -146,5 +147,41 @@ describe('playbackCoordinator', () => {
     notifyPlaybackStarted('B')
     expect(oldStop).not.toHaveBeenCalled()
     expect(newStop).toHaveBeenCalledTimes(1)
+  })
+
+  // #2427 — a viz background's own example sound plays alongside patterns
+  describe('sources that play alongside', () => {
+    it('a pattern starting does not stop an alongside source, and still stops the rest', () => {
+      const sample = vi.fn()
+      const drums = vi.fn()
+      registerPlaybackSource('__sample__', sample)
+      registerPlaybackSource('__drums__', drums)
+      setAlongsideSources(['__sample__'])
+      notifyPlaybackStarted('song.strudel')
+      expect(sample).not.toHaveBeenCalled()
+      expect(drums).toHaveBeenCalledTimes(1)
+    })
+
+    it('an alongside source starting stops nothing, and does not take the playing marker', () => {
+      const pattern = vi.fn()
+      registerPlaybackSource('song.strudel', pattern)
+      notifyPlaybackStarted('song.strudel')
+      setAlongsideSources(['__sample__'])
+      notifyPlaybackStarted('__sample__')
+      expect(pattern).not.toHaveBeenCalled()
+      expect(getCurrentlyPlaying()).toBe('song.strudel')
+    })
+
+    it('once no background uses it, the source is back under the one-at-a-time rule', () => {
+      const sample = vi.fn()
+      registerPlaybackSource('__sample__', sample)
+      setAlongsideSources(['__sample__'])
+      notifyPlaybackStarted('song.strudel')
+      expect(sample).not.toHaveBeenCalled()
+      notifyPlaybackStopped('song.strudel')
+      setAlongsideSources([])
+      notifyPlaybackStarted('song.strudel')
+      expect(sample).toHaveBeenCalledTimes(1)
+    })
   })
 })

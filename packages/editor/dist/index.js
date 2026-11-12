@@ -1,7 +1,7 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
-import { parse } from 'acorn';
-import * as React48 from 'react';
-import React48__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import { parse, parseExpressionAt } from 'acorn';
+import * as React33 from 'react';
+import React33__default, { forwardRef, useState, useEffect, useCallback, useSyncExternalStore, useMemo, useRef, useImperativeHandle } from 'react';
 import { parse as parse$1 } from '@strudel/mini/krill-parser.js';
 import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
 import { isControlName, getControlName } from '@strudel/core/controls.mjs';
@@ -97,6 +97,20 @@ function docParses(doc) {
   return parseTopLevel(doc) !== null;
 }
 __name(docParses, "docParses");
+function parseModule(code) {
+  try {
+    return { ok: true, program: parse(code, { ecmaVersion: "latest", sourceType: "module", locations: true }) };
+  } catch (e) {
+    const err = e;
+    return {
+      ok: false,
+      message: String(err.message ?? e).replace(/\s*\(\d+:\d+\)$/, ""),
+      line: err.loc?.line,
+      column: err.loc?.column
+    };
+  }
+}
+__name(parseModule, "parseModule");
 
 // src/codeView/tempo.ts
 var SETTERS = {
@@ -1040,10 +1054,10 @@ function attachMeta(node, meta) {
 __name(attachMeta, "attachMeta");
 var IR = {
   pure: /* @__PURE__ */ __name((meta) => attachMeta({ tag: "Pure" }, meta), "pure"),
-  play: /* @__PURE__ */ __name((note, duration = 0.25, params = {}, loc) => {
+  play: /* @__PURE__ */ __name((note2, duration = 0.25, params = {}, loc) => {
     const node = {
       tag: "Play",
-      note,
+      note: note2,
       duration,
       params: { gain: 1, velocity: 1, ...params }
     };
@@ -1299,11 +1313,11 @@ function extractTransform(body, base) {
   return `() => ${gen(body)}`;
 }
 __name(extractTransform, "extractTransform");
-function genPlay(note, params) {
+function genPlay(note2, params) {
   if (params.s) {
     return `s("${params.s}")`;
   }
-  return `note("${note}")`;
+  return `note("${note2}")`;
 }
 __name(genPlay, "genPlay");
 function hasSampleDescendant(ir) {
@@ -1394,7 +1408,7 @@ function normalizeWindow(window2) {
   return { origin, span };
 }
 __name(normalizeWindow, "normalizeWindow");
-function aggregateLaneItems(items, window2, rests = []) {
+function aggregateLaneItems(items, window2, rests2 = []) {
   const { origin: originCycle, span: nCycles } = normalizeWindow(window2);
   const order = [];
   const byKey = /* @__PURE__ */ new Map();
@@ -1456,7 +1470,7 @@ function aggregateLaneItems(items, window2, rests = []) {
       if (!labels.has(it.armIndex) && it.labelValue != null) labels.set(it.armIndex, it.labelValue);
     }
   }
-  for (const r of rests) {
+  for (const r of rests2) {
     if (!byKey.has(r.laneKey)) {
       byKey.set(r.laneKey, { laneKey: r.laneKey });
       order.push(r.laneKey);
@@ -1641,10 +1655,10 @@ function walkCycle(ir, ctx) {
     case "Cycle": {
       if (ir.items.length === 0) return [];
       const weights = ir.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
-      const period = weights.reduce((s, w) => s + w, 0);
-      if (period <= 0) return [];
-      const pos = (ctx.cycle % period + period) % period;
-      const innerCycle = Math.floor(ctx.cycle / period);
+      const period2 = weights.reduce((s, w) => s + w, 0);
+      if (period2 <= 0) return [];
+      const pos = (ctx.cycle % period2 + period2) % period2;
+      const innerCycle = Math.floor(ctx.cycle / period2);
       let acc = 0;
       let selected = 0;
       for (let k = 0; k < ir.items.length; k++) {
@@ -1660,9 +1674,9 @@ function walkCycle(ir, ctx) {
     }
     case "Arrange": {
       if (ir.arms.length === 0) return [];
-      const period = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
-      if (period <= 0) return [];
-      const pos = (ctx.cycle % period + period) % period;
+      const period2 = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
+      if (period2 <= 0) return [];
+      const pos = (ctx.cycle % period2 + period2) % period2;
       let acc = 0;
       let armIndex = 0;
       let localCycle = 0;
@@ -1725,8 +1739,8 @@ function walkCycle(ir, ctx) {
       if (ir.lookup.length === 0) return [];
       const out = [];
       const selectorLoc = ir.selector.loc?.[0];
-      for (const sub of ir.lookup) {
-        for (const it of recurse(sub, ctx)) {
+      for (const sub2 of ir.lookup) {
+        for (const it of recurse(sub2, ctx)) {
           const childLoc = it.loc ?? [];
           const newLoc = [...childLoc, ...selectorLoc ? [selectorLoc] : []];
           out.push(newLoc.length > 0 ? { ...it, loc: newLoc } : it);
@@ -1739,9 +1753,9 @@ function walkCycle(ir, ctx) {
       let selectedArm;
       if (ir.selector.tag === "Cycle" && ir.selector.items.length > 0) {
         const weights = ir.selector.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
-        const period = weights.reduce((s, w) => s + w, 0);
-        if (period > 0) {
-          const pos = (ctx.cycle % period + period) % period;
+        const period2 = weights.reduce((s, w) => s + w, 0);
+        if (period2 > 0) {
+          const pos = (ctx.cycle % period2 + period2) % period2;
           let acc = 0;
           for (let k = 0; k < weights.length; k++) {
             if (pos < acc + weights[k]) {
@@ -1817,7 +1831,7 @@ function rootStackArms(ir) {
   if (node.tag !== "Stack") return null;
   if (node.userMethod !== void 0) return null;
   if (node.tracks.length < 2) return null;
-  return node.tracks.map((arm, i) => ({ arm, laneId: `d${i + 1}` }));
+  return node.tracks.map((arm2, i) => ({ arm: arm2, laneId: `d${i + 1}` }));
 }
 __name(rootStackArms, "rootStackArms");
 function walkLeafItems(ir, nCycles) {
@@ -1828,7 +1842,7 @@ function walkLeafItemsInWindow(ir, window2) {
   return walkWindow(ir, window2, void 0);
 }
 __name(walkLeafItemsInWindow, "walkLeafItemsInWindow");
-function walkWindow(ir, window2, rests) {
+function walkWindow(ir, window2, rests2) {
   const { origin, span } = normalizeWindow(window2);
   const items = [];
   const arms = rootStackArms(ir);
@@ -1841,7 +1855,7 @@ function walkWindow(ir, window2, rests) {
           outputCycle: c,
           params: {},
           ...armLaneOf ? { armLaneOf } : {},
-          ...rests ? { rests } : {}
+          ...rests2 ? { rests: rests2 } : {}
         })
       );
     } catch {
@@ -1851,9 +1865,9 @@ function walkWindow(ir, window2, rests) {
 }
 __name(walkWindow, "walkWindow");
 function structuralWalk(ir, window2) {
-  const rests = [];
-  const items = walkWindow(ir, window2, rests);
-  return aggregateLaneItems(items, window2, rests);
+  const rests2 = [];
+  const items = walkWindow(ir, window2, rests2);
+  return aggregateLaneItems(items, window2, rests2);
 }
 __name(structuralWalk, "structuralWalk");
 
@@ -2031,8 +2045,8 @@ function collect(node, overridden, timeMoved, steps, found, seen, ids) {
   if (node.tag === "Arrange") {
     const windows = sectionWindows(node);
     node.arms.forEach(
-      (arm, i) => visit(
-        arm.pattern,
+      (arm2, i) => visit(
+        arm2.pattern,
         windows ? [...steps, { node, arm: i, step: windows[i] }] : steps,
         timeMoved || windows === null
       )
@@ -2060,7 +2074,7 @@ function routeKey(steps, ids) {
 }
 __name(routeKey, "routeKey");
 function sectionWindows(node) {
-  const weights = node.arms.map((arm) => arm.weight);
+  const weights = node.arms.map((arm2) => arm2.weight);
   if (!weights.every((w) => Number.isInteger(w) && w >= 0)) return null;
   const total = weights.reduce((sum, w) => sum + w, 0);
   if (total === 0) return null;
@@ -2413,12 +2427,12 @@ var BUILTIN_ALIASES = {
 };
 function resolveAliasesForEngine(custom, engine) {
   const out = {};
-  for (const [name, slots] of Object.entries(BUILTIN_ALIASES)) {
-    const v = slots[engine];
+  for (const [name, slots2] of Object.entries(BUILTIN_ALIASES)) {
+    const v = slots2[engine];
     if (v != null) out[name] = v;
   }
-  for (const [name, slots] of Object.entries(custom)) {
-    const v = slots[engine];
+  for (const [name, slots2] of Object.entries(custom)) {
+    const v = slots2[engine];
     if (v != null) out[name] = v;
   }
   return out;
@@ -2862,10 +2876,10 @@ var _VizGovernor = class _VizGovernor {
       if (last > 0 && ts - last < gap - 1) return false;
     }
     if (n > 1) {
-      const period = periodFor(n, this.stress);
-      if (period > 1) {
+      const period2 = periodFor(n, this.stress);
+      if (period2 > 1) {
         const offset = this.registered.get(id) ?? 0;
-        if ((this.frameIndex + offset) % period !== 0) return false;
+        if ((this.frameIndex + offset) % period2 !== 0) return false;
       }
     }
     this.lastProduce.set(id, ts);
@@ -3044,7 +3058,7 @@ function subscribe(changed) {
 }
 __name(subscribe, "subscribe");
 function usePhone() {
-  return React48.useSyncExternalStore(subscribe, isPhone, () => false);
+  return React33.useSyncExternalStore(subscribe, isPhone, () => false);
 }
 __name(usePhone, "usePhone");
 function phoneLayout() {
@@ -3054,7 +3068,7 @@ function phoneLayout() {
 }
 __name(phoneLayout, "phoneLayout");
 function usePhoneLayout() {
-  return React48.useSyncExternalStore(subscribe, phoneLayout, () => "none");
+  return React33.useSyncExternalStore(subscribe, phoneLayout, () => "none");
 }
 __name(usePhoneLayout, "usePhoneLayout");
 
@@ -4207,6 +4221,31 @@ function miniParseFailure(mini) {
   }
 }
 __name(miniParseFailure, "miniParseFailure");
+function markSteps(root, path, marks) {
+  const kids = /* @__PURE__ */ __name((g) => g.source_.filter((k) => !!k && typeof k === "object" && !Array.isArray(k)), "kids");
+  let row = root;
+  for (const i of path) {
+    const child = kids(row)[i];
+    if (child?.type_ === "pattern") row = child;
+    else if (child?.type_ === "element" && child.source_.type_ === "pattern") row = child.source_;
+    else throw new Error(`markSteps: no group at ${path.join(".")}`);
+  }
+  for (const mark of marks) {
+    const el = kids(row)[mark.child];
+    if (el?.type_ === "pattern") {
+      const foot = el;
+      delete foot.arguments_;
+      foot.type_ = "element";
+      foot.source_ = { type_: "atom", source_: mark.marker, location_: { start: { offset: 0 }, end: { offset: 0 } } };
+      foot.options_ = { weight: 1, reps: 1, ops: [] };
+      continue;
+    }
+    if (el?.type_ !== "element") throw new Error(`markSteps: no step ${mark.child} at ${path.join(".")}`);
+    el.source_ = { type_: "atom", source_: mark.marker, location_: el.location_ ?? { start: { offset: 0 }, end: { offset: 0 } } };
+    if (!mark.keepOps && el.options_) el.options_ = { ...el.options_, ops: [] };
+  }
+}
+__name(markSteps, "markSteps");
 
 // src/codeView/strudelMini/shape.ts
 function argAtom(arg) {
@@ -4322,15 +4361,15 @@ function stepsOfLiteral(inner, innerStart) {
   let at = 0;
   for (const el of arms.children) {
     if (el.kind !== "element") return null;
-    const atom = el.content;
-    if (atom.kind !== "atom" || !NUMBER.test(atom.text)) return null;
+    const atom2 = el.content;
+    if (atom2.kind !== "atom" || !NUMBER.test(atom2.text)) return null;
     const weight = el.weight;
     if (!Number.isInteger(weight) || weight < 1) return null;
     if (!el.ops.every((op) => op.kind === "replicate")) return null;
-    const span = atom.span;
+    const span = atom2.span;
     const held2 = weight * stretch;
     steps.push({
-      value: Number(atom.text),
+      value: Number(atom2.text),
       weight: held2,
       startCycle: at,
       valueSpan: { start: innerStart + span.start, end: innerStart + span.end }
@@ -4374,8 +4413,8 @@ function stepIndexAtCycle(a, cycle) {
   const handed = placementsTimeAt(a.placements, Math.floor(cycle));
   if (handed === null) return null;
   const own = Math.floor(handed);
-  const period = a.periodCycles;
-  const pos = (own % period + period) % period;
+  const period2 = a.periodCycles;
+  const pos = (own % period2 + period2) % period2;
   for (let k = a.steps.length - 1; k >= 0; k--) {
     if (pos >= a.steps[k].startCycle) return k;
   }
@@ -4573,15 +4612,15 @@ function buildElement(el, isSample, baseOffset, input) {
       node = IR.play(src.text, isSample ? 1 : 0.25, params, loc);
     }
   } else {
-    const group = buildGroup(src, isSample, baseOffset, input, el);
-    if (!group) return null;
-    node = group.node;
-    contentStart = group.openPos;
-    afterContent = group.closePos + 1;
+    const group2 = buildGroup(src, isSample, baseOffset, input, el);
+    if (!group2) return null;
+    node = group2.node;
+    contentStart = group2.openPos;
+    afterContent = group2.closePos + 1;
   }
-  const euclid = ops.find((o) => o.kind === "bjorklund");
-  if (euclid && src.kind === "atom" && !isRest(src)) {
-    const expanded = expandEuclid(node, euclid, baseOffset, contentStart);
+  const euclid2 = ops.find((o) => o.kind === "bjorklund");
+  if (euclid2 && src.kind === "atom" && !isRest(src)) {
+    const expanded = expandEuclid(node, euclid2, baseOffset, contentStart);
     if (expanded) {
       node = expanded.node;
       afterContent = expanded.closeParen;
@@ -4630,13 +4669,13 @@ function expandEuclid(play, op, baseOffset, contentStart) {
   let mask = bjorklund(k, n);
   if (rot) mask = rotateEuclid(mask, rot);
   const restSlot = IR.sleep(1);
-  const slots = mask.map((on) => on ? play : restSlot);
+  const slots2 = mask.map((on) => on ? play : restSlot);
   const closeParen = (rotArg ?? step).span.end + 1;
-  if (slots.length === 1) return { node: slots[0], closeParen };
+  if (slots2.length === 1) return { node: slots2[0], closeParen };
   return {
     node: {
       tag: "Seq",
-      children: slots,
+      children: slots2,
       loc: [{ start: baseOffset + contentStart, end: baseOffset + closeParen }]
     },
     closeParen
@@ -4734,8 +4773,8 @@ function isWritableName(text) {
 __name(isWritableName, "isWritableName");
 var LABEL_HEAD = new RegExp(`^(${IDENTIFIER})\\s*:`, "u");
 function labelName(label) {
-  const bare = label == null ? void 0 : splitMuteMarker(label).bare;
-  return bare && bare !== "$" ? bare : null;
+  const bare2 = label == null ? void 0 : splitMuteMarker(label).bare;
+  return bare2 && bare2 !== "$" ? bare2 : null;
 }
 __name(labelName, "labelName");
 function labelAtOffset(code, offset) {
@@ -5085,19 +5124,19 @@ function collectTopLevelBindings(body, baseOffset, numbers) {
   if (tail.length === 0) return null;
   if (descs.length === 0) return null;
   const bindings = /* @__PURE__ */ new Map();
-  const pending = new Set(descs.map((_, i) => i));
-  for (let iter = 0; iter < descs.length && pending.size > 0; iter++) {
+  const pending2 = new Set(descs.map((_, i) => i));
+  for (let iter = 0; iter < descs.length && pending2.size > 0; iter++) {
     let progress = false;
-    for (const i of [...pending]) {
+    for (const i of [...pending2]) {
       const d = descs[i];
       const parsed = parseExpression(d.rhs, d.rhsOffset, void 0, bindings, void 0, numbers);
       const lit = classifyLiteralRhs(d.rhs);
       const parsedIsBareCode = parsed.tag === "Code" && parsed.via === void 0;
       const ir = parsedIsBareCode ? lit ?? parsed : parsed;
-      const bare = ir.tag === "Code" && ir.via === void 0;
-      if (!bare) {
+      const bare2 = ir.tag === "Code" && ir.via === void 0;
+      if (!bare2) {
         bindings.set(d.name, ir);
-        pending.delete(i);
+        pending2.delete(i);
         progress = true;
       }
     }
@@ -5206,26 +5245,26 @@ function parseDocument(code, opts, record) {
       return IR.track("d1", inner);
     }
     if (!tracks2.some((t) => !t.commented && !isMutedLabel(t.label))) {
-      const bare = bareStatementsBesideLabels(code, tracks2);
-      if (bare.length > 0) {
+      const bare2 = bareStatementsBesideLabels(code, tracks2);
+      if (bare2.length > 0) {
         const labelIds = trackIdsFromLabels(
           tracks2.map((t) => t.label),
           tracks2.map((t) => t.commented)
         );
         const taken = new Set(labelIds);
-        const bareIds = bare.map(() => {
+        const bareIds = bare2.map(() => {
           let n = 1;
           while (taken.has(`d${n}`)) n++;
           taken.add(`d${n}`);
           return `d${n}`;
         });
         const endOf = /* @__PURE__ */ __name((t) => {
-          const next = bare.find((s) => s.offset > t.dollarStart);
+          const next = bare2.find((s) => s.offset > t.dollarStart);
           return next === void 0 ? t.end : Math.min(t.end, next.offset);
         }, "endOf");
         const rows = [
           ...tracks2.map((t, i) => ({ kind: "label", at: t.dollarStart, t, id: labelIds[i] })),
-          ...bare.map((s, i) => ({ kind: "bare", at: s.offset, s, id: bareIds[i] }))
+          ...bare2.map((s, i) => ({ kind: "bare", at: s.offset, s, id: bareIds[i] }))
         ].sort((a, b) => a.at - b.at);
         return IR.stack(
           ...rows.map((r) => {
@@ -5486,7 +5525,7 @@ __name(commentedLabelIsTrack, "commentedLabelIsTrack");
 function extractTracks(code) {
   const tracks2 = [];
   const dollarRe = /^[ \t]*(\/\/[ \t]*)?([\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*)\s*:/gmu;
-  const starts = [];
+  const starts2 = [];
   let stmtExtents = null;
   const isInteriorToStatement = /* @__PURE__ */ __name((pos) => {
     if (stmtExtents === null) {
@@ -5517,12 +5556,12 @@ function extractTracks(code) {
       bodyStart++;
     }
     const commented = !!m[1];
-    starts.push({ dollarStart: m.index, bodyStart, commented, label });
+    starts2.push({ dollarStart: m.index, bodyStart, commented, label });
   }
-  if (starts.length === 0) return [];
-  for (let i = 0; i < starts.length; i++) {
-    const { dollarStart, bodyStart, commented, label } = starts[i];
-    const end = i + 1 < starts.length ? starts[i + 1].dollarStart : code.length;
+  if (starts2.length === 0) return [];
+  for (let i = 0; i < starts2.length; i++) {
+    const { dollarStart, bodyStart, commented, label } = starts2[i];
+    const end = i + 1 < starts2.length ? starts2[i + 1].dollarStart : code.length;
     if (commented) {
       tracks2.push({ expr: "", offset: bodyStart, dollarStart, end, commented: true, label });
       continue;
@@ -5708,9 +5747,9 @@ function parseTimeSequenceRoot(trimmed, baseOffset, leadingWs, bindings, opts, n
   const arms = [];
   for (const a of args) {
     if (fn === "arrange") {
-      const arm = parseArrangeArm(a.value, innerAbs + a.offset, bindings, opts, numbers);
-      if (!arm) return null;
-      arms.push(arm);
+      const arm2 = parseArrangeArm(a.value, innerAbs + a.offset, bindings, opts, numbers);
+      if (!arm2) return null;
+      arms.push(arm2);
     } else {
       const armStart = innerAbs + a.offset;
       arms.push({
@@ -5926,7 +5965,7 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
   const leadingWs = chain.length - chain.trimStart().length;
   let remaining = chain.trim();
   let remainingOffset = baseOffset + leadingWs;
-  let current8 = ir;
+  let current9 = ir;
   while (true) {
     const consumedSep = skipWhitespaceAndLineComments(remaining, 0);
     if (consumedSep > 0) {
@@ -5942,11 +5981,11 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
       remainingOffset + consumed
     ];
     const argsAbsoluteOffset = argsOffset >= 0 ? remainingOffset + argsOffset : remainingOffset;
-    current8 = applyMethod(current8, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
+    current9 = applyMethod(current9, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
     remainingOffset += consumed;
     remaining = rest;
   }
-  return current8;
+  return current9;
 }
 __name(applyChain, "applyChain");
 function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], bindings, numbers) {
@@ -6499,14 +6538,14 @@ __name(splitArgs, "splitArgs");
 function splitArgsWithOffsets(argsStr) {
   const args = [];
   let depth = 0;
-  let current8 = "";
+  let current9 = "";
   let currentStart = 0;
   let inString = false;
   let stringChar = "";
   const pushCurrent = /* @__PURE__ */ __name(() => {
-    if (current8.trim().length === 0) return;
-    const consumed = skipWhitespaceAndLineComments(current8, 0);
-    const value = current8.slice(consumed).trimEnd();
+    if (current9.trim().length === 0) return;
+    const consumed = skipWhitespaceAndLineComments(current9, 0);
+    const value = current9.slice(consumed).trimEnd();
     if (value.length === 0) return;
     args.push({
       value,
@@ -6516,47 +6555,47 @@ function splitArgsWithOffsets(argsStr) {
   for (let i = 0; i < argsStr.length; i++) {
     const ch = argsStr[i];
     if (inString) {
-      current8 += ch;
+      current9 += ch;
       if (ch === stringChar && argsStr[i - 1] !== "\\") inString = false;
       continue;
     }
     if (ch === "/" && argsStr[i + 1] === "/") {
-      if (current8.length === 0) currentStart = i;
+      if (current9.length === 0) currentStart = i;
       while (i < argsStr.length && argsStr[i] !== "\n") {
-        current8 += argsStr[i];
+        current9 += argsStr[i];
         i++;
       }
       if (i < argsStr.length) {
-        current8 += argsStr[i];
+        current9 += argsStr[i];
       }
       continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
       continue;
     }
     if (ch === "(" || ch === "[" || ch === "{") {
       depth++;
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
       continue;
     }
     if (ch === ")" || ch === "]" || ch === "}") {
       depth--;
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
       continue;
     }
     if (ch === "," && depth === 0) {
       pushCurrent();
-      current8 = "";
+      current9 = "";
       currentStart = i + 1;
     } else {
-      if (current8.length === 0) currentStart = i;
-      current8 += ch;
+      if (current9.length === 0) currentStart = i;
+      current9 += ch;
     }
   }
   pushCurrent();
@@ -6719,8 +6758,8 @@ async function previewShapeSwap(ir, a, next, opts) {
 __name(previewShapeSwap, "previewShapeSwap");
 function sharesItsControl(ir, a) {
   if (!ir) return false;
-  const same = /* @__PURE__ */ __name((b) => b.trackId === a.trackId && b.paramKey === a.paramKey, "same");
-  return signalWriters(ir).filter(same).length > 1 || steppedAutomations(ir).some(same);
+  const same4 = /* @__PURE__ */ __name((b) => b.trackId === a.trackId && b.paramKey === a.paramKey, "same");
+  return signalWriters(ir).filter(same4).length > 1 || steppedAutomations(ir).some(same4);
 }
 __name(sharesItsControl, "sharesItsControl");
 function standInPeriodOf(a, next) {
@@ -6747,20 +6786,20 @@ function withValue(ev, key3, value) {
   return ev;
 }
 __name(withValue, "withValue");
-function repeatBeside(lanePeriods, cap, period) {
-  if (period === null) return null;
+function repeatBeside(lanePeriods, cap, period2) {
+  if (period2 === null) return null;
   const repeat = repeatOf(lanePeriods.map((l) => l.periodCycles), cap);
-  return repeat !== null && repeat % period === 0 ? repeat : null;
+  return repeat !== null && repeat % period2 === 0 ? repeat : null;
 }
 __name(repeatBeside, "repeatBeside");
-function spanCoversEveryLane(events, period) {
+function spanCoversEveryLane(events, period2) {
   const inSpan = /* @__PURE__ */ new Set();
   const all = /* @__PURE__ */ new Set();
   for (const ev of events) {
     const key3 = laneKeyOf(ev);
     all.add(key3);
     const cycle = Math.floor(ev.begin);
-    if (Number.isFinite(cycle) && cycle >= 0 && cycle < period) inSpan.add(key3);
+    if (Number.isFinite(cycle) && cycle >= 0 && cycle < period2) inSpan.add(key3);
   }
   for (const key3 of all) if (!inSpan.has(key3)) return false;
   return true;
@@ -6895,8 +6934,8 @@ function rationalLcm(x, y) {
   return lcmNum / gcdInt(b, d);
 }
 __name(rationalLcm, "rationalLcm");
-function foldWithSignalPeriods(period, periods, cap) {
-  let folded = period;
+function foldWithSignalPeriods(period2, periods, cap) {
+  let folded = period2;
   for (const q of periods) {
     const next = rationalLcm(folded, q);
     if (next === null || !Number.isFinite(next) || next > cap) return null;
@@ -6906,11 +6945,11 @@ function foldWithSignalPeriods(period, periods, cap) {
 }
 __name(foldWithSignalPeriods, "foldWithSignalPeriods");
 function displayPeriodRule(events, horizon, cap, hasUnheardTrack, signals) {
-  const period = detectDisplayPeriod(events, horizon);
-  if (period !== null) {
+  const period2 = detectDisplayPeriod(events, horizon);
+  if (period2 !== null) {
     if (hasUnheardTrack && horizon < cap) return null;
-    if (!spanCoversEveryLane(events, period)) return null;
-    return period;
+    if (!spanCoversEveryLane(events, period2)) return null;
+    return period2;
   }
   return signalInformedPeriod(events, horizon, cap, signals);
 }
@@ -7026,20 +7065,20 @@ async function analyzeSong(ir, opts = {}) {
         horizon = Math.min(horizon * 2, cap);
         continue;
       }
-      const period = periodRule(events, horizon);
-      if (period !== null) {
-        const lanes = accumulateLanes(events, period);
-        const sections = computeSections(lanes, period);
+      const period2 = periodRule(events, horizon);
+      if (period2 !== null) {
+        const lanes = accumulateLanes(events, period2);
+        const sections = computeSections(lanes, period2);
         const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys);
         return {
-          periodCycles: period,
-          horizonCycles: period,
+          periodCycles: period2,
+          horizonCycles: period2,
           lanes,
           sections,
-          displaySpan: { kind: "loop", cycles: period },
+          displaySpan: { kind: "loop", cycles: period2 },
           // #1599 — over the full collection horizon, where every lane's period was
           // detected, NOT the trimmed one-loop span (one loop has no repetition).
-          repeatCycles: repeatBeside(lanePeriods, cap, period),
+          repeatCycles: repeatBeside(lanePeriods, cap, period2),
           lanePeriods
         };
       }
@@ -7502,15 +7541,15 @@ function validateNode(raw, path) {
         if (typeof a !== "object" || a === null) {
           throw new Error(`${path}.arms[${i}]: expected object`);
         }
-        const arm = a;
-        if (typeof arm.weight !== "number") {
+        const arm2 = a;
+        if (typeof arm2.weight !== "number") {
           throw new Error(`${path}.arms[${i}]: field "weight" must be a number`);
         }
         const out2 = {
-          weight: arm.weight,
-          pattern: validateNode(arm.pattern, `${path}.arms[${i}].pattern`)
+          weight: arm2.weight,
+          pattern: validateNode(arm2.pattern, `${path}.arms[${i}].pattern`)
         };
-        if (Array.isArray(arm.loc)) out2.loc = arm.loc;
+        if (Array.isArray(arm2.loc)) out2.loc = arm2.loc;
         return out2;
       });
       const out = {
@@ -7597,6 +7636,149 @@ function runPasses(input, passes) {
   return out;
 }
 __name(runPasses, "runPasses");
+var NOT_LITERAL = /* @__PURE__ */ Symbol("not-literal");
+function literalValue(node) {
+  switch (node?.type) {
+    case "Literal":
+      if (node.regex || typeof node.bigint === "string") return NOT_LITERAL;
+      return node.value;
+    case "TemplateLiteral":
+      return node.expressions.length === 0 ? node.quasis.map((q) => q.value.cooked).join("") : NOT_LITERAL;
+    case "UnaryExpression":
+      if ((node.operator === "-" || node.operator === "+") && node.argument?.type === "Literal" && typeof node.argument.value === "number") {
+        return node.operator === "-" ? -node.argument.value : node.argument.value;
+      }
+      return NOT_LITERAL;
+    case "ArrayExpression": {
+      const out = [];
+      for (const el of node.elements) {
+        if (!el || el.type === "SpreadElement") return NOT_LITERAL;
+        const v = literalValue(el);
+        if (v === NOT_LITERAL) return NOT_LITERAL;
+        out.push(v);
+      }
+      return out;
+    }
+    case "ObjectExpression": {
+      const out = {};
+      for (const p of node.properties) {
+        const key3 = propertyKey(p);
+        if (key3 === null) return NOT_LITERAL;
+        const v = literalValue(p.value);
+        if (v === NOT_LITERAL) return NOT_LITERAL;
+        out[key3] = v;
+      }
+      return out;
+    }
+    default:
+      return NOT_LITERAL;
+  }
+}
+__name(literalValue, "literalValue");
+function propertyKey(p) {
+  if (p.type !== "Property" || p.computed || p.kind !== "init" || p.method) return null;
+  if (p.key.type === "Identifier") return p.key.name;
+  if (p.key.type === "Literal" && (typeof p.key.value === "string" || typeof p.key.value === "number")) {
+    return String(p.key.value);
+  }
+  return null;
+}
+__name(propertyKey, "propertyKey");
+function readVizOptionsLiteral(raw) {
+  let node;
+  try {
+    node = parseExpressionAt(raw, 0, { ecmaVersion: "latest" });
+  } catch {
+    return { kind: "opaque" };
+  }
+  if (node.type !== "ObjectExpression" || raw.slice(node.end).trim() !== "") return { kind: "opaque" };
+  const values3 = {};
+  const dynamic = [];
+  for (const p of node.properties) {
+    const key3 = propertyKey(p);
+    if (key3 === null) return { kind: "opaque" };
+    const v = literalValue(p.value);
+    if (v === NOT_LITERAL) {
+      delete values3[key3];
+      if (!dynamic.includes(key3)) dynamic.push(key3);
+    } else {
+      values3[key3] = v;
+      const i = dynamic.indexOf(key3);
+      if (i >= 0) dynamic.splice(i, 1);
+    }
+  }
+  return { kind: "literal", values: values3, dynamic };
+}
+__name(readVizOptionsLiteral, "readVizOptionsLiteral");
+function resolveVizOptions(code, evaluated) {
+  if (code === null) return {};
+  if (code.kind === "opaque") return { ...evaluated ?? {} };
+  const out = { ...code.values };
+  for (const key3 of code.dynamic) {
+    if (evaluated && Object.prototype.hasOwnProperty.call(evaluated, key3)) out[key3] = evaluated[key3];
+  }
+  return out;
+}
+__name(resolveVizOptions, "resolveVizOptions");
+
+// src/codeView/mixer/backdropCall.ts
+function stringLiteral(raw) {
+  const m = /^(['"`])([\s\S]*)\1$/.exec(raw);
+  if (!m) return null;
+  if (m[1] === "`" && m[2].includes("${")) return null;
+  if (m[2].includes(m[1])) return null;
+  return m[2];
+}
+__name(stringLiteral, "stringLiteral");
+function isVizMethod(name) {
+  return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, name);
+}
+__name(isVizMethod, "isVizMethod");
+function readBackdropCall(call, onMaster) {
+  if (call.name === "viz") {
+    const nameArg = call.args[0];
+    const optionsArg2 = call.args[1];
+    const options = optionsArg2 ? readVizOptionsLiteral(optionsArg2.raw) : null;
+    if (!onMaster && !(options?.kind === "literal" && options.values.backdrop === true)) return null;
+    return { name: nameArg ? stringLiteral(nameArg.raw) : null, options, call };
+  }
+  const underscore = call.name.startsWith("_");
+  const method = underscore ? call.name.slice(1) : call.name;
+  if (!isVizMethod(method)) return null;
+  if (underscore && !onMaster) return null;
+  const optionsArg = call.args[0];
+  return {
+    name: STRUDEL_VIZ_METHODS[method],
+    options: optionsArg ? readVizOptionsLiteral(optionsArg.raw) : null,
+    call
+  };
+}
+__name(readBackdropCall, "readBackdropCall");
+function lastTrackBackdropCall(doc, { declaredOnly: declaredOnly2 = false } = {}) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return null;
+  let last = null;
+  for (const node of statements) {
+    const body = node.type === "LabeledStatement" ? node.body : node;
+    if (body?.type !== "ExpressionStatement") continue;
+    const expr = body.expression;
+    if (expr?.type === "CallExpression" && expr.callee?.type === "Identifier" && expr.callee.name === "all") continue;
+    const chain = collectChain(doc, expr, { ref: null });
+    const r = lastBackdropCall(declaredOnly2 ? chain.filter((c) => c.name === "viz") : chain, false);
+    if (r) last = r;
+  }
+  return last;
+}
+__name(lastTrackBackdropCall, "lastTrackBackdropCall");
+function lastBackdropCall(chain, onMaster) {
+  let last = null;
+  for (const c of chain) {
+    const r = readBackdropCall(c, onMaster);
+    if (r) last = r;
+  }
+  return last;
+}
+__name(lastBackdropCall, "lastBackdropCall");
 
 // src/codeView/mixer/masterEdit.ts
 var MASTER_UNITY_GAIN = 1;
@@ -7656,8 +7838,8 @@ function findScaleSite(doc, body, chain) {
 }
 __name(findScaleSite, "findScaleSite");
 function gainSiteOf(doc, m, body) {
-  const scale = findScaleSite(doc, body, m.chain);
-  if (scale) return scale;
+  const scale2 = findScaleSite(doc, body, m.chain);
+  if (scale2) return scale2;
   for (const name of LEGACY_MASTER_CONTROLS) {
     const call = m.chain.find((c) => c.name === name);
     if (call) return { kind: "legacy", call, arg: call.args[0] };
@@ -7668,8 +7850,8 @@ __name(gainSiteOf, "gainSiteOf");
 function findMasterGainSite(doc) {
   const lines = detectMasterAllWithBodies(doc);
   for (const { m, body } of lines) {
-    const scale = findScaleSite(doc, body, m.chain);
-    if (scale) return scale;
+    const scale2 = findScaleSite(doc, body, m.chain);
+    if (scale2) return scale2;
   }
   for (const { m, body } of lines) {
     const site = gainSiteOf(doc, m, body);
@@ -7686,16 +7868,19 @@ function findMuteLine(doc) {
   return detectMasterAll(doc).find((m) => arrowBodyText(doc, m) === "silence");
 }
 __name(findMuteLine, "findMuteLine");
-function findVizBackdropCall(m) {
-  return m.chain.find(
-    (c) => c.name === "viz" && c.args.some((a) => /\bbackdrop\s*:\s*true\b/.test(a.raw))
-  );
+function findMasterBackdrop(doc) {
+  let found = null;
+  for (const m of detectMasterAll(doc)) {
+    const bc = lastBackdropCall(m.chain, true);
+    if (bc) found = { m, bc };
+  }
+  return found;
 }
-__name(findVizBackdropCall, "findVizBackdropCall");
-function vizNameArg(c) {
-  return c.args.find((a) => /^['"`]/.test(a.raw));
+__name(findMasterBackdrop, "findMasterBackdrop");
+function masterBackdropCall(doc) {
+  return findMasterBackdrop(doc)?.bc ?? null;
 }
-__name(vizNameArg, "vizNameArg");
+__name(masterBackdropCall, "masterBackdropCall");
 function readMasterGain(doc) {
   const site = findMasterGainSite(doc);
   if (!site) return { value: MASTER_UNITY_GAIN, foreign: false };
@@ -7712,7 +7897,7 @@ __name(readMasterMute, "readMasterMute");
 function detectMasterAudioAll(doc) {
   return detectMasterAll(doc).find((m) => {
     if (arrowBodyText(doc, m) === "silence") return false;
-    if (m.chain.length >= 1 && m.chain.every((c) => c.name === "viz")) return false;
+    if (m.chain.length >= 1 && m.chain.every((c) => readBackdropCall(c, true) !== null)) return false;
     return true;
   });
 }
@@ -7746,14 +7931,9 @@ function adaptMasterChunk(doc, m) {
 }
 __name(adaptMasterChunk, "adaptMasterChunk");
 function readMasterViz(doc) {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m);
-    if (!v) continue;
-    const nameArg = vizNameArg(v);
-    if (!nameArg) continue;
-    return { name: nameArg.raw.slice(1, -1) };
-  }
-  return null;
+  const bc = masterBackdropCall(doc);
+  if (!bc || bc.name === null) return null;
+  return { name: bc.name, options: bc.options };
 }
 __name(readMasterViz, "readMasterViz");
 function scaleCall(value) {
@@ -7776,18 +7956,25 @@ function masterMuteEdit(doc, muted3) {
 }
 __name(masterMuteEdit, "masterMuteEdit");
 function masterVizEdit(doc, name) {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m);
-    if (!v) continue;
+  const found = findMasterBackdrop(doc);
+  if (found) {
+    const { m, bc } = found;
     if (name === null) {
       if (m.chain.length === 1) return removeStatement(doc, m.statementRange);
-      return { range: v.range, text: "" };
+      return { range: bc.call.range, text: "" };
     }
-    const nameArg = vizNameArg(v);
-    if (!nameArg) return null;
-    return { range: nameArg.range, text: JSON.stringify(name) };
+    if (bc.call.name === "viz") {
+      const nameArg = bc.call.args[0];
+      if (!nameArg || bc.name === null) return null;
+      return { range: nameArg.range, text: JSON.stringify(name) };
+    }
+    const optionsArg = bc.call.args[0];
+    return { range: bc.call.range, text: `.viz(${JSON.stringify(name)}${optionsArg ? `, ${optionsArg.raw}` : ""})` };
   }
-  if (name === null) return null;
+  if (name === null) {
+    const track = lastTrackBackdropCall(doc);
+    return track ? { range: track.call.range, text: "" } : null;
+  }
   return insertStatement(doc, `all(x => x.viz(${JSON.stringify(name)}, { backdrop: true }))`);
 }
 __name(masterVizEdit, "masterVizEdit");
@@ -8179,10 +8366,10 @@ function buildStripModels(chunks, doc) {
       return;
     }
     ordinal++;
-    const bare = labelName(chunk.label);
-    const id = bare ?? `#${anonAll++}`;
+    const bare2 = labelName(chunk.label);
+    const id = bare2 ?? `#${anonAll++}`;
     let captureId;
-    if (bare !== null) captureId = bare;
+    if (bare2 !== null) captureId = bare2;
     else if (isMuted(chunk.label)) captureId = `_$${index}`;
     else if (chunk.label === null)
       captureId = bareId !== null && chunk === bareOwner ? bareId : unjoinableId(index);
@@ -8226,18 +8413,18 @@ function locateMiniParseError(message, doc) {
     const failure = miniParseFailure(doc.slice(from, to));
     if (failure === null) continue;
     const at = from + failure;
-    const before = doc.slice(0, at);
-    if (before.split("\n").length !== reportedLine) continue;
-    return { line: reportedLine, column: at - before.lastIndexOf("\n") };
+    const before2 = doc.slice(0, at);
+    if (before2.split("\n").length !== reportedLine) continue;
+    return { line: reportedLine, column: at - before2.lastIndexOf("\n") };
   }
   return null;
 }
 __name(locateMiniParseError, "locateMiniParseError");
 
 // src/codeView/chainEdit.ts
-function appendCall(fresh, name, argText) {
+function appendCall(fresh, name, argText2) {
   const end = fresh.exprRange[1];
-  return { range: [end, end], text: `.${name}(${argText})` };
+  return { range: [end, end], text: `.${name}(${argText2})` };
 }
 __name(appendCall, "appendCall");
 function numberArgEdit(arg, value) {
@@ -8391,10 +8578,10 @@ function soloMuteEdits(doc, newSolo, prevSnapshot) {
 __name(soloMuteEdits, "soloMuteEdits");
 
 // src/codeView/notation/noteToMidi.ts
-function noteToMidi(note) {
-  if (typeof note === "number") return Math.round(note);
-  if (typeof note !== "string") return null;
-  const m = note.match(/^([a-gA-G])([#bsf]*)(-?\d*)$/);
+function noteToMidi(note2) {
+  if (typeof note2 === "number") return Math.round(note2);
+  if (typeof note2 !== "string") return null;
+  const m = note2.match(/^([a-gA-G])([#bsf]*)(-?\d*)$/);
   if (!m) return null;
   const [, letter, accidentals, octave] = m;
   if (octave === "-") return null;
@@ -8559,22 +8746,22 @@ var key = /* @__PURE__ */ __name((start, end) => `${start}:${end}`, "key");
 function placesOf(mini) {
   const root = miniShape(mini);
   const at = /* @__PURE__ */ new Map();
-  const group = /* @__PURE__ */ __name((g, written) => {
+  const group2 = /* @__PURE__ */ __name((g, written) => {
     arg(g.steps);
-    for (const c of g.children) c.kind === "element" ? element(c, written) : group(c, written);
+    for (const c of g.children) c.kind === "element" ? element(c, written) : group2(c, written);
   }, "group");
   const element = /* @__PURE__ */ __name((e, written) => {
     if (e.content.kind === "atom") at.set(key(e.content.span.start, e.content.span.end), { atom: e.content, written });
-    else group(e.content, written);
+    else group2(e.content, written);
     for (const op of e.ops) for (const a of Object.values(op.args)) arg(a);
   }, "element");
   const arg = /* @__PURE__ */ __name((a) => {
     if (!a || typeof a !== "object") return;
     if (a.kind === "atom") at.set(key(a.span.start, a.span.end), { atom: a, written: false });
     else if (a.kind === "element") element(a, false);
-    else group(a, false);
+    else group2(a, false);
   }, "arg");
-  group(root, true);
+  group2(root, true);
   return { root, at };
 }
 __name(placesOf, "placesOf");
@@ -8677,17 +8864,17 @@ __name(miniPieces, "miniPieces");
 function miniValuesAt(mini$1, times) {
   const pat = asked(mini$1, mini(mini$1));
   const byCycle = /* @__PURE__ */ new Map();
-  const EPS2 = 1e-9;
+  const EPS3 = 1e-9;
   return times.map((t) => {
-    const cyc = Math.floor(t + EPS2);
+    const cyc = Math.floor(t + EPS3);
     let pieces = byCycle.get(cyc);
     if (!pieces) byCycle.set(cyc, pieces = pat.pieces(cyc));
-    return pieces.filter((p) => p.begin.valueOf() <= t + EPS2 && t + EPS2 < p.end.valueOf()).map((p) => p.value);
+    return pieces.filter((p) => p.begin.valueOf() <= t + EPS3 && t + EPS3 < p.end.valueOf()).map((p) => p.value);
   });
 }
 __name(miniValuesAt, "miniValuesAt");
-function structHits(values2, rhythm, cyc, masks = []) {
-  const pat = mini(values2).struct(mini(rhythm));
+function structHits(values3, rhythm, cyc, masks = []) {
+  const pat = mini(values3).struct(mini(rhythm));
   const masked = masks.reduce((p, m) => p.mask(mini(m)), pat);
   const sounding = /* @__PURE__ */ new Set();
   for (const h of masked.queryArc(cyc, cyc + 1)) {
@@ -8710,18 +8897,44 @@ function soundNoteHits(sound, notes, cyc) {
   for (const h of pat.queryArc(cyc, cyc + 1)) {
     if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
     const v = h.value ?? {};
-    const noteAt2 = [];
+    const noteAt3 = [];
     for (const l of h.context?.locations ?? []) {
       if (typeof l?.start === "number" && typeof l.end === "number" && l.start > off) {
-        noteAt2.push({ start: l.start - off - 1, end: l.end - off - 1 });
+        noteAt3.push({ start: l.start - off - 1, end: l.end - off - 1 });
       }
     }
-    out.push({ begin: h.whole.begin, sound: v.s, note: v.note, noteAt: noteAt2 });
+    out.push({ begin: h.whole.begin, sound: v.s, note: v.note, noteAt: noteAt3 });
   }
   return out;
 }
 __name(soundNoteHits, "soundNoteHits");
+function soundGainHits(sound, gain, cyc) {
+  const at = /* @__PURE__ */ __name((str, offset) => patternifyAST(mini2ast(`"${str}"`), `"${str}"`, null, offset), "at");
+  const off = sound.length + 2;
+  const pat = at(sound, 0).s().gain(at(gain, off));
+  const out = [];
+  for (const h of pat.queryArc(cyc, cyc + 1)) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
+    const v = h.value ?? {};
+    const gainAt = [];
+    for (const l of h.context?.locations ?? []) {
+      if (typeof l?.start === "number" && typeof l.end === "number" && l.start > off) {
+        gainAt.push({ start: l.start - off - 1, end: l.end - off - 1 });
+      }
+    }
+    out.push({ begin: h.whole.begin, end: h.whole.end, sound: v.s, gain: v.gain, gainAt });
+  }
+  return out;
+}
+__name(soundGainHits, "soundGainHits");
 var onsetKey = /* @__PURE__ */ __name((t, value) => `${t.toFraction?.() ?? t.valueOf()}\0${JSON.stringify(value)}`, "onsetKey");
+function markedPattern(mini, path, marks) {
+  const code = '"' + mini + '"';
+  const ast = mini2ast(code);
+  markSteps(ast, path, marks);
+  return asked(mini, patternifyAST(ast, code));
+}
+__name(markedPattern, "markedPattern");
 
 // src/codeView/notation/perBar.ts
 var MAX_SHARED_STEPS = 4096;
@@ -8767,13 +8980,13 @@ __name(sharedAt, "sharedAt");
 function drawnAt(u, barSteps) {
   const P = lcmOf(barSteps);
   const b = Math.min(barSteps.length - 1, Math.max(0, Math.floor((u + EPS) / P)));
-  const starts = barStarts(barSteps);
-  return tidy(starts[b] + (u - b * P) * barSteps[b] / P);
+  const starts2 = barStarts(barSteps);
+  return tidy(starts2[b] + (u - b * P) * barSteps[b] / P);
 }
 __name(drawnAt, "drawnAt");
 function barOfDrawn(d, barSteps) {
-  const starts = barStarts(barSteps);
-  for (let b = barSteps.length - 1; b >= 0; b--) if (d + EPS >= starts[b]) return b;
+  const starts2 = barStarts(barSteps);
+  for (let b = barSteps.length - 1; b >= 0; b--) if (d + EPS >= starts2[b]) return b;
   return 0;
 }
 __name(barOfDrawn, "barOfDrawn");
@@ -8844,10 +9057,10 @@ function drawnLayout(model, cols) {
   const bs = model.barSteps;
   if (bs) {
     const most = Math.max(...bs);
-    const starts = barStarts(bs);
+    const starts2 = barStarts(bs);
     return {
       weight: /* @__PURE__ */ __name((c) => most / bs[barOfDrawn(c, bs)], "weight"),
-      barStart: /* @__PURE__ */ __name((c) => c > 0 && starts.includes(c), "barStart"),
+      barStart: /* @__PURE__ */ __name((c) => c > 0 && starts2.includes(c), "barStart"),
       lastBarCols: bs[bs.length - 1]
     };
   }
@@ -9069,10 +9282,10 @@ function spliceByLeaf(model, ls) {
   const want = /* @__PURE__ */ new Map();
   for (let c = 0; c < model.steps; c++) {
     const anchors = ls.cols[c];
-    const before = anchors.map((a) => a.atom);
+    const before2 = anchors.map((a) => a.atom);
     const after = [...new Set(now2[c].map((n) => n.token))];
-    const gone = before.filter((a) => !after.includes(a));
-    const added = after.filter((a) => !before.includes(a));
+    const gone = before2.filter((a) => !after.includes(a));
+    const added = after.filter((a) => !before2.includes(a));
     const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1;
     if (added.length > 0 && !swap) {
       const rest = ls.rests?.[c];
@@ -9119,10 +9332,10 @@ function spliceRollByLeaf(model, ls) {
   for (const n of model.notes) if (!byStart.has(n.start)) return null;
   const want = /* @__PURE__ */ new Map();
   for (const [start, anchors] of byStart) {
-    const before = anchors.map((a) => a.pitch);
+    const before2 = anchors.map((a) => a.pitch);
     const after = [...new Set(model.notes.filter((n) => n.start === start).map((n) => n.pitch))];
-    const gone = before.filter((p) => !after.includes(p));
-    const added = after.filter((p) => !before.includes(p));
+    const gone = before2.filter((p) => !after.includes(p));
+    const added = after.filter((p) => !before2.includes(p));
     const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1;
     if (added.length > 0 && !swap) return null;
     for (const a of anchors) {
@@ -9183,9 +9396,9 @@ function spliceBars(p, lanes, steps, stackBars, splicePart) {
     const unchanged = whole2.reemitted === 0 && whole2.rebuilt === null;
     if (Q === P || unchanged) return { text: p.before + whole2.body + p.after, ...whole2 };
   }
-  const before = P > 1 ? p.before.replace(/<\s*$/, "") : p.before;
+  const before2 = P > 1 ? p.before.replace(/<\s*$/, "") : p.before;
   const after = P > 1 ? p.after.replace(/^\s*>/, "") : p.after;
-  if (P > 1 && (before === p.before || after === p.after)) return "decline";
+  if (P > 1 && (before2 === p.before || after === p.after)) return "decline";
   const last = p.regions[p.regions.length - 1];
   if (!last || last.to % P !== 0) return "decline";
   const ownPer = last.to / P;
@@ -9205,7 +9418,7 @@ function spliceBars(p, lanes, steps, stackBars, splicePart) {
     texts.push(emptied ? "~" : bar2.body.trim());
   }
   const body = Q === 1 ? unbracketed(texts[0]) : `<${texts.map(asEntry).join(" ")}>`;
-  return { text: before + body + after, reemitted, rebuilt };
+  return { text: before2 + body + after, reemitted, rebuilt };
 }
 __name(spliceBars, "spliceBars");
 function repeatingRun(held2, n) {
@@ -9332,8 +9545,8 @@ function reemitRegion(cols, div, refined = false) {
 __name(reemitRegion, "reemitRegion");
 function stackedRegion(cols, div) {
   if (div < 2) return null;
-  const slots = cols.length / div;
-  if (!Number.isInteger(slots) || slots < 1) return null;
+  const slots2 = cols.length / div;
+  if (!Number.isInteger(slots2) || slots2 < 1) return null;
   const sounds = [];
   for (const col of cols) for (const n of col) if (!sounds.includes(n.token)) sounds.push(n.token);
   if (sounds.length === 0) return null;
@@ -9358,7 +9571,7 @@ function stackedRegion(cols, div) {
     for (let c = 0; c < cols.length; c++) if (covered[c]) seq[c] = "_";
     parts.push(seq.join(" "));
   }
-  return `[${parts.join(", ")}]` + (slots > 1 ? `@${slots}` : "");
+  return `[${parts.join(", ")}]` + (slots2 > 1 ? `@${slots2}` : "");
 }
 __name(stackedRegion, "stackedRegion");
 function sustainTokens(cols, div) {
@@ -9424,14 +9637,14 @@ __name(serializeStepGain, "serializeStepGain");
 function gridBars(model, bounds) {
   const cols = gridColumns(model.lanes, model.steps);
   if (cols === null) return null;
-  const slots = [];
+  const slots2 = [];
   for (let b = 0; b + 1 < bounds.length; b++) {
     const bar2 = cols.slice(bounds[b], bounds[b + 1]);
-    if (bar2.every((c) => c === "~")) slots.push("~");
-    else if (bar2.length === 1) slots.push(bar2[0]);
-    else slots.push(`[${bar2.join(" ")}]`);
+    if (bar2.every((c) => c === "~")) slots2.push("~");
+    else if (bar2.length === 1) slots2.push(bar2[0]);
+    else slots2.push(`[${bar2.join(" ")}]`);
   }
-  return `<${slots.join(" ")}>`;
+  return `<${slots2.join(" ")}>`;
 }
 __name(gridBars, "gridBars");
 function barBounds(model) {
@@ -9463,14 +9676,14 @@ function restTokens(width) {
 __name(restTokens, "restTokens");
 function buildGroups(model) {
   const groups = /* @__PURE__ */ new Map();
-  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
-    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+  for (const note2 of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note2.start < 0 || note2.duration < 1 || note2.start + note2.duration > model.steps) {
       return null;
     }
-    const g = groups.get(note.start);
-    if (!g) groups.set(note.start, { pitches: [note.pitch], duration: note.duration });
-    else if (g.duration !== note.duration) return null;
-    else g.pitches.push(note.pitch);
+    const g = groups.get(note2.start);
+    if (!g) groups.set(note2.start, { pitches: [note2.pitch], duration: note2.duration });
+    else if (g.duration !== note2.duration) return null;
+    else g.pitches.push(note2.pitch);
   }
   return groups;
 }
@@ -9639,7 +9852,7 @@ function reemitRollRegionFlat(notes, from, to, div) {
   if (groups === null) return null;
   if (columnSplit((to - from) / div).remainder > 0) return null;
   const at = new Map(groups.map((g) => [g.start, g]));
-  const starts = groups.map((g) => g.start).sort((a, b) => a - b);
+  const starts2 = groups.map((g) => g.start).sort((a, b) => a - b);
   const tokens = [];
   let c = from;
   let crossed = false;
@@ -9648,18 +9861,18 @@ function reemitRollRegionFlat(notes, from, to, div) {
     if (g && g.duration % div === 0) {
       const end2 = c + g.duration;
       if (end2 > to) return null;
-      if (starts.some((s) => s > c && s < end2)) return null;
+      if (starts2.some((s) => s > c && s < end2)) return null;
       tokens.push(groupToken({ pitches: g.pitches, duration: g.duration / div }));
       c = end2;
       continue;
     }
     const end = c + div;
-    const slots = [];
+    const slots2 = [];
     let k = c;
     while (k < end) {
       const gg = at.get(k);
       if (!gg) {
-        slots.push("~");
+        slots2.push("~");
         k++;
         continue;
       }
@@ -9667,16 +9880,16 @@ function reemitRollRegionFlat(notes, from, to, div) {
         crossed = true;
         break;
       }
-      slots.push(groupToken({ pitches: gg.pitches, duration: gg.duration }));
+      slots2.push(groupToken({ pitches: gg.pitches, duration: gg.duration }));
       k += gg.duration;
     }
     if (crossed) break;
     tokens.push(
-      slots.every((s) => s === "~") ? "~" : slots.length === 1 ? slots[0] : `[${slots.join(" ")}]`
+      slots2.every((s) => s === "~") ? "~" : slots2.length === 1 ? slots2[0] : `[${slots2.join(" ")}]`
     );
     c = end;
   }
-  if (crossed) return groupWrapRegion(at, starts, from, to, div);
+  if (crossed) return groupWrapRegion(at, starts2, from, to, div);
   return tokens.join(" ");
 }
 __name(reemitRollRegionFlat, "reemitRollRegionFlat");
@@ -9728,7 +9941,7 @@ function laneWrapRegion(notes, from, to, div) {
   return steps === 1 ? body : `${body}@${steps}`;
 }
 __name(laneWrapRegion, "laneWrapRegion");
-function groupWrapRegion(at, starts, from, to, div) {
+function groupWrapRegion(at, starts2, from, to, div) {
   const inner = [];
   let c = from;
   while (c < to) {
@@ -9739,7 +9952,7 @@ function groupWrapRegion(at, starts, from, to, div) {
       continue;
     }
     if (c + g.duration > to) return null;
-    if (starts.some((s) => s > c && s < c + g.duration)) return null;
+    if (starts2.some((s) => s > c && s < c + g.duration)) return null;
     inner.push(groupToken({ pitches: g.pitches, duration: g.duration }));
     c += g.duration;
   }
@@ -9750,14 +9963,14 @@ function groupWrapRegion(at, starts, from, to, div) {
 __name(groupWrapRegion, "groupWrapRegion");
 function placedGroups(model) {
   const byKey = /* @__PURE__ */ new Map();
-  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
-    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+  for (const note2 of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note2.start < 0 || note2.duration < 1 || note2.start + note2.duration > model.steps) {
       return null;
     }
-    const key3 = `${note.start}:${note.duration}`;
+    const key3 = `${note2.start}:${note2.duration}`;
     const g = byKey.get(key3);
-    if (g) g.pitches.push(note.pitch);
-    else byKey.set(key3, { pitches: [note.pitch], start: note.start, duration: note.duration });
+    if (g) g.pitches.push(note2.pitch);
+    else byKey.set(key3, { pitches: [note2.pitch], start: note2.start, duration: note2.duration });
   }
   return [...byKey.values()];
 }
@@ -9809,8 +10022,8 @@ __name(serializeRollLanes, "serializeRollLanes");
 function rollBars(groups, bounds) {
   if (!bounds.every((x) => Number.isInteger(x))) return null;
   const bars = bounds.length - 1;
-  const starts = [...groups.keys()].sort((a, b2) => a - b2);
-  const slots = [];
+  const starts2 = [...groups.keys()].sort((a, b2) => a - b2);
+  const slots2 = [];
   let b = 0;
   while (b < bars) {
     const barStart = bounds[b];
@@ -9820,13 +10033,13 @@ function rollBars(groups, bounds) {
     const k = atStart ? heldBars(bounds, b, atStart.duration) : 0;
     if (atStart && k >= 1) {
       const heldEnd = barStart + atStart.duration;
-      if (starts.some((s) => s > barStart && s < heldEnd)) return null;
-      slots.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
+      if (starts2.some((s) => s > barStart && s < heldEnd)) return null;
+      slots2.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
       b += k;
       continue;
     }
     if (perBar2 === 1) {
-      slots.push("~");
+      slots2.push("~");
       b++;
       continue;
     }
@@ -9845,11 +10058,11 @@ function rollBars(groups, bounds) {
       c += g.duration;
       consumed++;
     }
-    if (consumed !== starts.filter((s) => s >= barStart && s < barEnd).length) return null;
-    slots.push(tokens.every((t) => t === "~") ? "~" : `[${tokens.join(" ")}]`);
+    if (consumed !== starts2.filter((s) => s >= barStart && s < barEnd).length) return null;
+    slots2.push(tokens.every((t) => t === "~") ? "~" : `[${tokens.join(" ")}]`);
     b++;
   }
-  return `<${slots.join(" ")}>`;
+  return `<${slots2.join(" ")}>`;
 }
 __name(rollBars, "rollBars");
 function rollBarLanes(model, bounds) {
@@ -9859,7 +10072,7 @@ function rollBarLanes(model, bounds) {
   const notes = [...model.notes].sort((a, b2) => a.start - b2.start || a.duration - b2.duration);
   for (const n of notes)
     if (n.start < 0 || n.duration < 1 || n.start + n.duration > model.steps + E) return null;
-  const slots = [];
+  const slots2 = [];
   let b = 0;
   while (b < bars) {
     const barStart = bounds[b];
@@ -9867,7 +10080,7 @@ function rollBarLanes(model, bounds) {
     const perBar2 = barEnd - barStart;
     const over = notes.filter((n) => n.start < barEnd - E && n.start + n.duration > barStart + E);
     if (over.length === 0) {
-      slots.push("~");
+      slots2.push("~");
       b++;
       continue;
     }
@@ -9885,7 +10098,7 @@ function rollBarLanes(model, bounds) {
         if (str === null) return null;
         strings.push(str);
       }
-      slots.push(`[${strings.join(", ")}]`);
+      slots2.push(`[${strings.join(", ")}]`);
       b++;
       continue;
     }
@@ -9897,10 +10110,10 @@ function rollBarLanes(model, bounds) {
     if (k < 1) return null;
     if (notes.some((n) => n.start > barStart + E && n.start < barStart + dur - E)) return null;
     const body = groupBody({ pitches: held2.map((n) => n.pitch), duration: dur });
-    slots.push(k === 1 ? body : `${body}@${k}`);
+    slots2.push(k === 1 ? body : `${body}@${k}`);
     b += k;
   }
-  return `<${slots.join(" ")}>`;
+  return `<${slots2.join(" ")}>`;
 }
 __name(rollBarLanes, "rollBarLanes");
 function serializeRollGain(model) {
@@ -9912,14 +10125,14 @@ function serializeRollGain(model) {
   const placed = placedGroups(model);
   if (placed !== null && packLanes(placed).length > 1) return { kind: "skip" };
   const groups = /* @__PURE__ */ new Map();
-  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
-    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+  for (const note2 of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note2.start < 0 || note2.duration < 1 || note2.start + note2.duration > model.steps) {
       return { kind: "skip" };
     }
-    const gain = note.gain ?? 1;
-    const g = groups.get(note.start);
-    if (!g) groups.set(note.start, { duration: note.duration, gain });
-    else if (g.duration !== note.duration || g.gain !== gain) return { kind: "skip" };
+    const gain = note2.gain ?? 1;
+    const g = groups.get(note2.start);
+    if (!g) groups.set(note2.start, { duration: note2.duration, gain });
+    else if (g.duration !== note2.duration || g.gain !== gain) return { kind: "skip" };
   }
   const vals = [...groups.values()].map((g) => g.gain);
   if (vals.length === 0 || vals.every((g) => g === 1)) return { kind: "clear" };
@@ -9957,8 +10170,8 @@ function documentSteps(model) {
   return model.steps / (model.viewScale ?? UNREFINED);
 }
 __name(documentSteps, "documentSteps");
-function viewSteps(documentSteps2, scale) {
-  return documentSteps2 * scale;
+function viewSteps(documentSteps2, scale2) {
+  return documentSteps2 * scale2;
 }
 __name(viewSteps, "viewSteps");
 function absorbViewScale(model) {
@@ -9967,9 +10180,9 @@ function absorbViewScale(model) {
   return rest;
 }
 __name(absorbViewScale, "absorbViewScale");
-function viewScaleFits(perBar2, bars, scale) {
-  if (!isViewScale(scale)) return false;
-  return viewSteps(perBar2 * bars, scale) <= MAX_VIEW_STEPS;
+function viewScaleFits(perBar2, bars, scale2) {
+  if (!isViewScale(scale2)) return false;
+  return viewSteps(perBar2 * bars, scale2) <= MAX_VIEW_STEPS;
 }
 __name(viewScaleFits, "viewScaleFits");
 
@@ -10024,8 +10237,8 @@ function unwrapAlternation(mini) {
 __name(unwrapAlternation, "unwrapAlternation");
 var isAtom = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
 var isRestAtom = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
-var tokenOf = /* @__PURE__ */ __name((atom, ops) => {
-  let t = atom.source_;
+var tokenOf = /* @__PURE__ */ __name((atom2, ops) => {
+  let t = atom2.source_;
   for (const op of ops) {
     if (op.type_ !== "tail") continue;
     const node = op.arguments_?.element;
@@ -10044,7 +10257,7 @@ var numArg = /* @__PURE__ */ __name((node) => {
 }, "numArg");
 function readOps(ops) {
   let mult = 1;
-  let euclid = null;
+  let euclid2 = null;
   for (const op of ops) {
     switch (op.type_) {
       case "tail":
@@ -10070,7 +10283,7 @@ function readOps(ops) {
           return { reason: "invalid euclid (k,n) arguments" };
         }
         if (n < 1) return { reason: "invalid euclid step count" };
-        euclid = { k, n, rot };
+        euclid2 = { k, n, rot };
         break;
       }
       case "degradeBy":
@@ -10079,11 +10292,11 @@ function readOps(ops) {
         return { reason: `"${op.type_}" is beyond the editable subset` };
     }
   }
-  return { mult, euclid };
+  return { mult, euclid: euclid2 };
 }
 __name(readOps, "readOps");
 function groupSlots(pat, allowNumeric) {
-  const slots = [];
+  const slots2 = [];
   for (const el of pat.source_) {
     const opts = el.options_ ?? {};
     const ops = opts.ops ?? [];
@@ -10097,7 +10310,7 @@ function groupSlots(pat, allowNumeric) {
     if (isAtom(el.source_)) {
       if (isRestAtom(el.source_)) {
         if (ops.length) return { reason: 'a ":" variant on a rest has nothing to name' };
-        slots.push({ atoms: [], units });
+        slots2.push({ atoms: [], units });
         continue;
       }
       const token = tokenOf(el.source_, ops);
@@ -10105,15 +10318,15 @@ function groupSlots(pat, allowNumeric) {
         return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
       }
       if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
-      slots.push({ atoms: [token], units });
+      slots2.push({ atoms: [token], units });
       continue;
     }
-    const chord = chordAtoms(el.source_, allowNumeric);
-    if (!Array.isArray(chord)) return chord;
-    slots.push({ atoms: chord, units });
+    const chord2 = chordAtoms(el.source_, allowNumeric);
+    if (!Array.isArray(chord2)) return chord2;
+    slots2.push({ atoms: chord2, units });
   }
-  if (slots.length === 0) return { reason: "empty group" };
-  return slots;
+  if (slots2.length === 0) return { reason: "empty group" };
+  return slots2;
 }
 __name(groupSlots, "groupSlots");
 function chordAtoms(pat, allowNumeric) {
@@ -10151,7 +10364,7 @@ function elementToSteps(el, allowNumeric) {
   const rawWeight = opts.weight ?? 1;
   const read5 = readOps(ops);
   if (!("mult" in read5)) return read5;
-  const { mult, euclid } = read5;
+  const { mult, euclid: euclid2 } = read5;
   if (reps > 1 && rawWeight !== reps) {
     return { reason: "! combined with * or @ is beyond the editable subset" };
   }
@@ -10161,9 +10374,9 @@ function elementToSteps(el, allowNumeric) {
   if (!isAtom(el.source_)) {
     const alignment = el.source_.arguments_?.alignment;
     if (alignment === "stack") {
-      const chord = chordAtoms(el.source_, allowNumeric);
-      if (!Array.isArray(chord)) return chord;
-      if (euclid) return { reason: "euclid on a chord is beyond the editable subset" };
+      const chord2 = chordAtoms(el.source_, allowNumeric);
+      if (!Array.isArray(chord2)) return chord2;
+      if (euclid2) return { reason: "euclid on a chord is beyond the editable subset" };
       if (reps > 1) return { reason: "! on a chord is beyond the editable subset" };
       if (mult > 1) {
         if (weight > 1) return { reason: "* combined with @ is beyond the editable subset" };
@@ -10171,52 +10384,52 @@ function elementToSteps(el, allowNumeric) {
           {
             atoms: [],
             elongation: weight,
-            sub: Array.from({ length: mult }, () => ({ atoms: [...chord], units: 1 }))
+            sub: Array.from({ length: mult }, () => ({ atoms: [...chord2], units: 1 }))
           }
         ];
       }
-      return [{ atoms: chord, elongation: weight, sub: null }];
+      return [{ atoms: chord2, elongation: weight, sub: null }];
     }
     if (alignment !== "fastcat") {
       return { reason: `"${String(alignment)}" is beyond the editable subset` };
     }
-    if (euclid) return { reason: "euclid on a group is beyond the editable subset" };
+    if (euclid2) return { reason: "euclid on a group is beyond the editable subset" };
     if (reps > 1) return { reason: "! on a group is beyond the editable subset" };
     if (mult > 1 && weight > 1) {
       return { reason: "* combined with @ is beyond the editable subset" };
     }
-    const slots = groupSlots(el.source_, allowNumeric);
-    if (!Array.isArray(slots)) return slots;
+    const slots2 = groupSlots(el.source_, allowNumeric);
+    if (!Array.isArray(slots2)) return slots2;
     if (mult > 1) {
-      const sub = [];
+      const sub2 = [];
       for (let r = 0; r < mult; r++) {
-        for (const s of slots) sub.push({ atoms: [...s.atoms], units: s.units });
+        for (const s of slots2) sub2.push({ atoms: [...s.atoms], units: s.units });
       }
-      return [{ atoms: [], elongation: weight, sub }];
+      return [{ atoms: [], elongation: weight, sub: sub2 }];
     }
-    if (slots.length === 1 && slots[0].units === 1) {
-      return [{ atoms: slots[0].atoms, elongation: weight, sub: null }];
+    if (slots2.length === 1 && slots2[0].units === 1) {
+      return [{ atoms: slots2[0].atoms, elongation: weight, sub: null }];
     }
-    return [{ atoms: [], elongation: weight, sub: slots }];
+    return [{ atoms: [], elongation: weight, sub: slots2 }];
   }
-  const atom = el.source_;
-  const rest = isRestAtom(atom);
+  const atom2 = el.source_;
+  const rest = isRestAtom(atom2);
   if (rest && ops.some((o) => o.type_ === "tail")) {
     return { reason: 'a ":" variant on a rest has nothing to name' };
   }
-  const token = rest ? "" : tokenOf(atom, ops);
+  const token = rest ? "" : tokenOf(atom2, ops);
   if (token === null) {
-    return { reason: `a patterned ":" variant on "${atom.source_}" is beyond the editable subset` };
+    return { reason: `a patterned ":" variant on "${atom2.source_}" is beyond the editable subset` };
   }
   if (!rest && !isAtomToken(token, allowNumeric)) {
     return { reason: `unsupported token "${token}"` };
   }
   const atoms = rest ? [] : [token];
-  if (euclid) {
+  if (euclid2) {
     if (mult > 1 || reps > 1 || weight > 1) {
       return { reason: "euclid combined with * / ! / @ is beyond the editable subset" };
     }
-    const hits = rotateEuclid(bjorklund(euclid.k, euclid.n), euclid.rot);
+    const hits = rotateEuclid(bjorklund(euclid2.k, euclid2.n), euclid2.rot);
     return [{ atoms: [], elongation: 1, sub: hits.map((on) => ({ atoms: on ? [...atoms] : [], units: 1 })) }];
   }
   if (reps > 1) {
@@ -10279,9 +10492,9 @@ var tokensOf = /* @__PURE__ */ __name((cols) => cols.map((c) => c.map((n) => ({ 
 function toCells(steps, div) {
   const cells = [];
   for (const step of steps) {
-    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const slots2 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
     const total = stepUnits(step);
-    for (const slot of slots) {
+    for (const slot of slots2) {
       const span = div / total * slot.units;
       cells.push(slot.atoms.map((token) => ({ token, duration: span })));
       for (let j = 1; j < span; j++) cells.push([]);
@@ -10299,8 +10512,8 @@ function lanesFromCells(cells, part) {
     sound,
     ...part !== void 0 ? { part } : {},
     cells: cells.map((cell) => {
-      const note = cell.find((n) => n.token === sound);
-      return note ? cellOn(note.duration) : false;
+      const note2 = cell.find((n) => n.token === sound);
+      return note2 ? cellOn(note2.duration) : false;
     })
   }));
 }
@@ -10574,9 +10787,9 @@ function playedBars(pat, read5, key3, cap) {
     cycles.push(cc.onsets);
   }
   if (cycles.every((c) => c.length === 0)) return no("no-note-content");
-  const period = detectPeriod(cycles.map(key3));
-  if (period === null || period > cap) return no("unstable-period");
-  return { ok: true, perCycle: cycles.slice(0, period) };
+  const period2 = detectPeriod(cycles.map(key3));
+  if (period2 === null || period2 > cap) return no("unstable-period");
+  return { ok: true, perCycle: cycles.slice(0, period2) };
 }
 __name(playedBars, "playedBars");
 function isWholeAlternation(src) {
@@ -10612,8 +10825,8 @@ function topLevelSpans(src) {
   return out;
 }
 __name(topLevelSpans, "topLevelSpans");
-function noteSpan(atom) {
-  return atom ? { start: atom.span.start, end: atom.span.end } : null;
+function noteSpan(atom2) {
+  return atom2 ? { start: atom2.span.start, end: atom2.span.end } : null;
 }
 __name(noteSpan, "noteSpan");
 function tailToken(v) {
@@ -10653,7 +10866,7 @@ function readGridOnsets(pat, cyc) {
     return no("no-note-content");
   }
   const byCol = /* @__PURE__ */ new Map();
-  for (const { hit: h, atom } of haps) {
+  for (const { hit: h, atom: atom2 } of haps) {
     const v = h.value;
     let token;
     if (typeof v === "string") token = v;
@@ -10671,7 +10884,7 @@ function readGridOnsets(pat, cyc) {
     const cell = byCol.get(key3) ?? [];
     cell.push({
       token,
-      span: noteSpan(atom),
+      span: noteSpan(atom2),
       dur: h.end.valueOf() - h.begin.valueOf()
     });
     byCol.set(key3, cell);
@@ -10900,8 +11113,8 @@ function restSpansByColumn(src, perBar2, bars) {
     for (const o of read5.onsets) {
       const c = b * perBar2 + Math.round(o.pos * perBar2);
       if (c < 0 || c >= size) continue;
-      for (const atom of o.atoms) {
-        const m = /^qzrest(\d+)$/.exec(atom);
+      for (const atom2 of o.atoms) {
+        const m = /^qzrest(\d+)$/.exec(atom2);
         if (!m) continue;
         const idx = Number(m[1]);
         if (idx >= ordered.length) continue;
@@ -10946,14 +11159,14 @@ function projectStepGridByLeaf(src0) {
       duration: played[i].find((n) => n.token === a.atom)?.duration ?? 1
     }))
   );
-  const rests = restSpansByColumn(src, perBar2, bars);
+  const rests2 = restSpansByColumn(src, perBar2, bars);
   const model = {
     steps: perBar2 * bars,
     ...bars > 1 ? { bars } : {},
     lanes: lanesFromCells(
       cols.map((col) => col.map((a) => ({ token: a.atom, duration: a.duration })))
     ),
-    leafSource: { src, cols, attachedSteps: perBar2 * bars, ...rests ? { rests } : {} }
+    leafSource: { src, cols, attachedSteps: perBar2 * bars, ...rests2 ? { rests: rests2 } : {} }
   };
   if (!leafEditSafe(model, perBar2, bars)) return gridLookOnly("edit-unsafe", perCycle, perBar2, bars);
   if (!leafViewUsable(model)) return gridLookOnly("view-unusable", perCycle, perBar2, bars);
@@ -10973,14 +11186,14 @@ function leafViewUsable(model) {
 }
 __name(leafViewUsable, "leafViewUsable");
 function claimLeafSpan(src, span, token, seen, fold2 = false) {
-  const no2 = { ok: false, gate: "no-leaf-anchor" };
-  if (!span) return no2;
+  const no3 = { ok: false, gate: "no-leaf-anchor" };
+  if (!span) return no3;
   const bytes = src.slice(span.start, span.end);
   const isOwn = fold2 ? bytes.toLowerCase() === token.toLowerCase() : bytes === token;
-  if (!isOwn) return no2;
+  if (!isOwn) return no3;
   for (const s of seen) {
     const identical = s.start === span.start && s.end === span.end;
-    if (!identical && s.end > span.start && span.end > s.start) return no2;
+    if (!identical && s.end > span.start && span.end > s.start) return no3;
   }
   seen.push(span);
   return { ok: true, span };
@@ -11461,9 +11674,9 @@ function rollFromAltElements(mini, viewScale = UNREFINED) {
   let sawNamed = false;
   for (const barSteps of perBarSteps) {
     for (const step of barSteps) {
-      const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+      const slots2 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
       const total = stepUnits(step);
-      for (const slot of slots) {
+      for (const slot of slots2) {
         const span = step.elongation * div * slot.units / total;
         for (const token of slot.atoms) {
           const isNum = /^-?\d+$/.test(token);
@@ -11512,6 +11725,15 @@ function rollOnsets(pat, cyc) {
   return r.ok ? r.onsets : null;
 }
 __name(rollOnsets, "rollOnsets");
+function rollPitch(v) {
+  if (typeof v === "number" && Number.isFinite(v)) return { pitch: String(v), numeric: true };
+  const s = typeof v === "string" ? v : Array.isArray(v) ? tailToken(v) : null;
+  if (s === null) return "no-note-content";
+  if (NUMERIC.test(s)) return { pitch: s, numeric: true };
+  if (pitchToMidi(s.toLowerCase()) !== null) return { pitch: s.toLowerCase(), numeric: false };
+  return "wrong-surface";
+}
+__name(rollPitch, "rollPitch");
 function readRollOnsets(pat, cyc) {
   let haps;
   try {
@@ -11520,28 +11742,14 @@ function readRollOnsets(pat, cyc) {
     return no("no-note-content");
   }
   const out = [];
-  for (const { hit: h, atom } of haps) {
-    const v = h.value;
-    let pitch;
-    let numeric;
-    if (typeof v === "number" && Number.isFinite(v)) {
-      pitch = String(v);
-      numeric = true;
-    } else {
-      const s = typeof v === "string" ? v : Array.isArray(v) ? tailToken(v) : null;
-      if (s === null) return no("no-note-content");
-      if (NUMERIC.test(s)) {
-        pitch = s;
-        numeric = true;
-      } else if (pitchToMidi(s.toLowerCase()) !== null) {
-        pitch = s.toLowerCase();
-        numeric = false;
-      } else return no("wrong-surface");
-    }
+  for (const { hit: h, atom: atom2 } of haps) {
+    const read5 = rollPitch(h.value);
+    if (typeof read5 === "string") return no(read5);
+    const { pitch, numeric } = read5;
     const pos = h.begin.valueOf() - cyc;
     const dur = h.end.valueOf() - h.begin.valueOf();
     if (dur <= 0) return no("no-note-content");
-    out.push({ pos, dur, pitch, numeric, loc: noteSpan(atom) });
+    out.push({ pos, dur, pitch, numeric, loc: noteSpan(atom2) });
   }
   return { ok: true, onsets: out };
 }
@@ -11951,9 +12159,9 @@ function parsePianoRollCore(mini, viewScale = UNREFINED) {
   let sawNumeric = false;
   let sawNamed = false;
   for (const step of tok.steps) {
-    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const slots2 = step.sub ?? [{ atoms: step.atoms, units: 1 }];
     const total = stepUnits(step);
-    for (const slot of slots) {
+    for (const slot of slots2) {
       const span = step.elongation * div * slot.units / total;
       for (const token of slot.atoms) {
         const isNum = /^-?\d+$/.test(token);
@@ -12040,18 +12248,18 @@ function parseRollLanes(parts, viewScale = UNREFINED) {
 __name(parseRollLanes, "parseRollLanes");
 function scaleRoll(m, f) {
   if (f === 1) return m;
-  const note = /* @__PURE__ */ __name((n) => ({ ...n, start: n.start * f, duration: n.duration * f }), "note");
+  const note2 = /* @__PURE__ */ __name((n) => ({ ...n, start: n.start * f, duration: n.duration * f }), "note");
   return {
     ...m,
     steps: m.steps * f,
-    notes: m.notes.map(note),
+    notes: m.notes.map(note2),
     ...m.source ? {
       source: {
         ...m.source,
         parts: m.source.parts.map((p) => ({
           ...p,
           div: p.div * f,
-          regions: p.regions.map((r) => ({ ...r, from: r.from * f, to: r.to * f, content: r.content.map(note) }))
+          regions: p.regions.map((r) => ({ ...r, from: r.from * f, to: r.to * f, content: r.content.map(note2) }))
         }))
       }
     } : {}
@@ -12110,13 +12318,13 @@ var whole = /* @__PURE__ */ __name((x) => {
   const r = Math.round(x);
   return Math.abs(x - r) < 1e-9 ? r : null;
 }, "whole");
-function rhythmChart(chords, rhythm, model, parse7, masks = []) {
+function rhythmChart(chords, rhythm, model, parse8, masks = []) {
   if (chords === null || model === null) return NONE;
   if (model.barSteps) return NONE;
   const rhythmBars = model.bars ?? 1;
   const colsPerBar = model.steps / rhythmBars;
   if (!Number.isInteger(colsPerBar) || colsPerBar < 1) return NONE;
-  const chordsRead = parse7(chords);
+  const chordsRead = parse8(chords);
   if (!chordsRead.ok) return NONE;
   const chordBars = chordsRead.model.bars ?? 1;
   const readMasks = masks.filter((m) => m !== null);
@@ -12281,14 +12489,14 @@ function isPow2(n) {
   return n >= 1 && Number.isInteger(n) && (n & n - 1) === 0;
 }
 __name(isPow2, "isPow2");
-function scaleTo(model, target, scale) {
+function scaleTo(model, target, scale2) {
   if (target < 1 || target === model.steps) return model;
   const up = target > model.steps;
   const ratio = up ? target / model.steps : model.steps / target;
   if (!isPow2(ratio)) return model;
   let cur = model;
   while (cur.steps !== target) {
-    const next = scale(cur, up ? "double" : "halve");
+    const next = scale2(cur, up ? "double" : "halve");
     if (next === cur) return model;
     cur = next;
   }
@@ -12421,10 +12629,10 @@ function quantizePianoRollToWithEffect(model, target) {
     grp.push({ pitch: n.pitch, duration: n.duration, exact: n.exact, gain: n.gain });
     byCol.set(n.start, grp);
   }
-  const starts = [...byCol.keys()].sort((a, b) => a - b);
+  const starts2 = [...byCol.keys()].sort((a, b) => a - b);
   const notes = [];
-  starts.forEach((start, i) => {
-    const limit = (i + 1 < starts.length ? starts[i + 1] : target) - start;
+  starts2.forEach((start, i) => {
+    const limit = (i + 1 < starts2.length ? starts2[i + 1] : target) - start;
     const grp = byCol.get(start);
     const duration = clampInt(Math.min(...grp.map((m) => m.duration)), 1, limit);
     const gain = Math.max(...grp.map((m) => m.gain));
@@ -12529,8 +12737,8 @@ var descaleRollNotes = /* @__PURE__ */ __name((notes, k) => notes.map((n) => ({ 
 function slotState(steps, docSteps, bars, lossless, applies, target, canDrawView) {
   if (target === steps) return "active";
   if (canDrawView) {
-    const scale = freeZoneScale(docSteps, target);
-    if (scale !== null && canDrawView(scale)) return "view";
+    const scale2 = freeZoneScale(docSteps, target);
+    if (scale2 !== null && canDrawView(scale2)) return "view";
   }
   if (lossless) return "lossless";
   if ((bars ?? 1) > 1) return "disabled";
@@ -12722,9 +12930,9 @@ function buildCall(doc, node) {
   if (node.arguments.length === 0) return null;
   const arms = [];
   for (const arg of node.arguments) {
-    const arm = armFromArg(mode, arg);
-    if (!arm) return null;
-    arms.push(arm);
+    const arm2 = armFromArg(mode, arg);
+    if (!arm2) return null;
+    arms.push(arm2);
   }
   const open = doc.indexOf("(", node.callee.end);
   if (open < 0) return null;
@@ -12799,11 +13007,11 @@ function patternText(doc, call, i) {
 __name(patternText, "patternText");
 function setWeight(doc, call, i, weight) {
   const w = asWeight(weight);
-  const arm = call.arms[i];
-  if (!arm) return [];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
   if (call.mode === "arrange") {
-    if (!arm.weightRange) return [];
-    return [{ range: arm.weightRange, text: String(w) }];
+    if (!arm2.weightRange) return [];
+    return [{ range: arm2.weightRange, text: String(w) }];
   }
   if (w === 1) return [];
   const edits = [{ range: call.calleeRange, text: "arrange" }];
@@ -12838,13 +13046,13 @@ function insertArm(doc, call, at, armSource) {
 }
 __name(insertArm, "insertArm");
 function insertSilenceArm(doc, call, i) {
-  const arm = call.arms[i];
-  if (!arm) return [];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
   if (call.mode !== "arrange") {
     return insertArm(doc, call, i + 1, "silence");
   }
-  if (!arm.weightRange) return [];
-  const weightText = doc.slice(arm.weightRange[0], arm.weightRange[1]);
+  if (!arm2.weightRange) return [];
+  const weightText = doc.slice(arm2.weightRange[0], arm2.weightRange[1]);
   return insertArm(doc, call, i + 1, `[${weightText}, silence]`);
 }
 __name(insertSilenceArm, "insertSilenceArm");
@@ -12858,19 +13066,19 @@ function removeArm(doc, call, i) {
 }
 __name(removeArm, "removeArm");
 function silenceArm(doc, call, i) {
-  const arm = call.arms[i];
-  if (!arm) return [];
-  if (doc.slice(arm.patternRange[0], arm.patternRange[1]) === "silence") return [];
-  return [{ range: arm.patternRange, text: "silence" }];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
+  if (doc.slice(arm2.patternRange[0], arm2.patternRange[1]) === "silence") return [];
+  return [{ range: arm2.patternRange, text: "silence" }];
 }
 __name(silenceArm, "silenceArm");
 function setArmPattern(doc, call, i, source) {
-  const arm = call.arms[i];
-  if (!arm) return [];
+  const arm2 = call.arms[i];
+  if (!arm2) return [];
   const next = source.trim();
   if (next === "") return [];
   if (patternText(doc, call, i).trim() === next) return [];
-  return [{ range: arm.patternRange, text: next }];
+  return [{ range: arm2.patternRange, text: next }];
 }
 __name(setArmPattern, "setArmPattern");
 function wrapBare(patternRange, leadingWeight, patternWeight) {
@@ -12905,14 +13113,14 @@ function materializeBareSplit(doc, patternRange, barIndex, span) {
 }
 __name(materializeBareSplit, "materializeBareSplit");
 function splitArm(doc, call, i, firstWeight) {
-  const arm = call.arms[i];
-  if (!arm || !arm.weightRange) return [];
-  const n = parseInt(doc.slice(arm.weightRange[0], arm.weightRange[1]), 10);
+  const arm2 = call.arms[i];
+  if (!arm2 || !arm2.weightRange) return [];
+  const n = parseInt(doc.slice(arm2.weightRange[0], arm2.weightRange[1]), 10);
   if (!Number.isFinite(n) || n < 2) return [];
   const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
   const n2 = n - n1;
-  const pat = doc.slice(arm.patternRange[0], arm.patternRange[1]);
-  return [{ range: arm.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
+  const pat = doc.slice(arm2.patternRange[0], arm2.patternRange[1]);
+  return [{ range: arm2.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
 }
 __name(splitArm, "splitArm");
 var NOT_A_NAME = "__proto__";
@@ -12962,8 +13170,8 @@ function isBindingIntroduction(parent, key3) {
 }
 __name(isBindingIntroduction, "isBindingIntroduction");
 function armIdentifier(doc, call, i) {
-  const arm = call.arms[i];
-  return arm ? sectionNameAt(doc, arm.patternRange) : null;
+  const arm2 = call.arms[i];
+  return arm2 ? sectionNameAt(doc, arm2.patternRange) : null;
 }
 __name(armIdentifier, "armIdentifier");
 function countSectionArms(doc, call, i) {
@@ -13108,8 +13316,8 @@ __name(cyclesToPlayThrough, "cyclesToPlayThrough");
 var CYCLE_SLACK = 1e-3;
 function newLineForm(doc, statements) {
   if (!statements) return { labelled: /^[ \t]*\$:/m.test(doc) };
-  const bare = bareExpressionOf(statements);
-  return bare === null ? { labelled: true } : { labelled: true, label: bare };
+  const bare2 = bareExpressionOf(statements);
+  return bare2 === null ? { labelled: true } : { labelled: true, label: bare2 };
 }
 __name(newLineForm, "newLineForm");
 function assignmentEdit(plan) {
@@ -13173,12 +13381,12 @@ function rateEdit(a, nextText) {
   if (shown === null || !rateEditable(a)) return null;
   const bars = parseTypedNumber(nextText);
   if (bars === null || bars <= 0 || bars === shown) return null;
-  const scale = shown / a.periodCycles;
-  const own = bars / scale;
+  const scale2 = shown / a.periodCycles;
+  const own = bars / scale2;
   const speedUp = own < 1 && Number.isInteger(1 / own);
   const n = speedUp ? 1 / own : own;
   if (Number(n.toPrecision(RATE_DIGITS)) !== n) return null;
-  if ((speedUp ? 1 / n : n) * scale !== bars) return null;
+  if ((speedUp ? 1 / n : n) * scale2 !== bars) return null;
   const call = speedUp ? `.fast(${String(n)})` : `.slow(${String(n)})`;
   const span = a.spans.rate;
   if (span) return { range: [span.start, span.end], text: call };
@@ -13224,6 +13432,18 @@ function gainUnchanged(g, cur) {
   return g.quoted ? cur.mini === g.value : cur.numeric !== null && cur.numeric === parseFloat(g.value);
 }
 __name(gainUnchanged, "gainUnchanged");
+function stepGainWriteEdits(fresh, from, result) {
+  const cur = readChunkGain(fresh);
+  if (cur.foreign || cur.mini !== from) return null;
+  if (result.edit && cur.mini !== null) {
+    const arg = managedGainArg(fresh);
+    if (!arg) return null;
+    const start = arg.argRange[0] + 1;
+    return [{ range: [start + result.edit.from, start + result.edit.to], text: result.edit.insert }];
+  }
+  return gainEdits(fresh, { kind: "write", value: result.gain, quoted: true });
+}
+__name(stepGainWriteEdits, "stepGainWriteEdits");
 function gridWriteEdits(fresh, mini, gain) {
   if (!fresh.miniRange) return null;
   const edits = [{ range: fresh.miniRange, text: mini }];
@@ -13231,6 +13451,1248 @@ function gridWriteEdits(fresh, mini, gain) {
   return edits;
 }
 __name(gridWriteEdits, "gridWriteEdits");
+
+// src/codeView/strudelMini/divisions.ts
+var gcd3 = /* @__PURE__ */ __name((a, b) => b === 0 ? Math.abs(a) : gcd3(b, a % b), "gcd");
+function fracOf(t, cyc) {
+  const rel = t.sub ? t.sub(cyc) : null;
+  const text = rel?.toFraction?.();
+  const m = text === void 0 ? null : /^(-?\d+)(?:\/(\d+))?$/.exec(text);
+  if (!m) throw new Error(`divisions: a time that is not a fraction (${String(text)})`);
+  const n = Number(m[1]);
+  const d = m[2] === void 0 ? 1 : Number(m[2]);
+  const g = gcd3(n, d) || 1;
+  return { n: n / g, d: d / g };
+}
+__name(fracOf, "fracOf");
+var fracCompare = /* @__PURE__ */ __name((a, b) => a.n * b.d - b.n * a.d, "fracCompare");
+var same = /* @__PURE__ */ __name((a, b) => fracCompare(a, b) === 0, "same");
+var ZERO = { n: 0, d: 1 };
+var ONE = { n: 1, d: 1 };
+var WHOLE_BAR = { begin: ZERO, end: ONE, fromBefore: false, pastEnd: false };
+var MARK = "zzq";
+var markerOf = /* @__PURE__ */ __name((i) => `${MARK}${i}`, "markerOf");
+var markOf = /* @__PURE__ */ __name((value) => {
+  const head = Array.isArray(value) ? value[0] : value;
+  return typeof head === "string" && head.startsWith(MARK) ? head : null;
+}, "markOf");
+var COPIES = /* @__PURE__ */ new WeakMap();
+function copyOf(pat, path, children, keepOps) {
+  let byKey = COPIES.get(pat);
+  if (!byKey) COPIES.set(pat, byKey = /* @__PURE__ */ new Map());
+  const key3 = `${path.join(".")}|${children.join(",")}|${keepOps ? "ops" : "step"}`;
+  let copy = byKey.get(key3);
+  if (copy === void 0) {
+    try {
+      copy = markedPattern(pat.mini, path, children.map((child) => ({ child, marker: markerOf(child), keepOps })));
+    } catch {
+      copy = "fails";
+    }
+    byKey.set(key3, copy);
+  }
+  return copy;
+}
+__name(copyOf, "copyOf");
+var hitKey = /* @__PURE__ */ __name((value, begin, end) => `${JSON.stringify(value)}@${begin.toFraction?.() ?? begin.valueOf()}-${end.toFraction?.() ?? end.valueOf()}`, "hitKey");
+function notesIn2(node, out) {
+  if (node.kind === "atom") out.add(node);
+  else if (node.kind === "element") notesIn2(node.content, out);
+  else for (const c of node.children) notesIn2(c, out);
+  return out;
+}
+__name(notesIn2, "notesIn");
+function slotsOf(ctx, copy, inside) {
+  if (copy === "fails") return "marked-copy-fails";
+  const want = [];
+  for (const j of ctx.joined.hits) if (!inside.has(j.atom)) want.push(hitKey(j.hit.value, j.hit.begin, j.hit.end));
+  const got = [];
+  let pieces;
+  try {
+    for (const h of copy.hits(ctx.cyc)) if (markOf(h.value) === null) got.push(hitKey(h.value, h.begin, h.end));
+    pieces = copy.pieces(ctx.cyc);
+  } catch {
+    return "marked-copy-fails";
+  }
+  want.sort();
+  got.sort();
+  if (want.length !== got.length || want.some((k, i) => k !== got[i])) return "marked-copy-differs";
+  const byWhole = /* @__PURE__ */ new Map();
+  for (const p of pieces) {
+    const mark = markOf(p.value);
+    if (mark === null) continue;
+    const child = Number(mark.slice(MARK.length));
+    const begin = fracOf(p.begin, ctx.cyc);
+    const end = fracOf(p.end, ctx.cyc);
+    const key3 = `${child}|${hitKey(null, p.wholeBegin, p.wholeEnd)}`;
+    const seen = byWhole.get(key3);
+    if (seen) {
+      if (fracCompare(begin, seen.slot.begin) < 0) seen.slot.begin = begin;
+      if (fracCompare(end, seen.slot.end) > 0) seen.slot.end = end;
+      continue;
+    }
+    byWhole.set(key3, {
+      child,
+      slot: { begin, end, fromBefore: false, pastEnd: false },
+      from: fracOf(p.wholeBegin, ctx.cyc),
+      to: fracOf(p.wholeEnd, ctx.cyc)
+    });
+  }
+  const out = /* @__PURE__ */ new Map();
+  for (const { child, slot, from, to } of byWhole.values()) {
+    slot.fromBefore = fracCompare(from, slot.begin) < 0;
+    slot.pastEnd = fracCompare(to, slot.end) > 0;
+    const list = out.get(child);
+    if (list) list.push(slot);
+    else out.set(child, [slot]);
+  }
+  for (const list of out.values()) list.sort((a, b) => fracCompare(a.begin, b.begin));
+  return out;
+}
+__name(slotsOf, "slotsOf");
+var isRefusal = /* @__PURE__ */ __name((v) => typeof v === "string", "isRefusal");
+function rowsOf(group2, path) {
+  if (group2.children.every((c) => c.kind === "element")) return { rows: [{ group: group2, path }], together: "all" };
+  if (group2.alignment === "feet") {
+    return group2.children.every((c) => c.kind === "group") ? { rows: [{ group: group2, path }], together: "all" } : "unknown-shape";
+  }
+  const rows = [];
+  for (let i = 0; i < group2.children.length; i++) {
+    const child = group2.children[i];
+    if (child.kind !== "group" || !child.children.every((c) => c.kind === "element")) return "unknown-shape";
+    rows.push({ group: child, path: [...path, i] });
+  }
+  return { rows, together: group2.alignment === "rand" ? "one" : "all" };
+}
+__name(rowsOf, "rowsOf");
+function tiling(slots2, within2) {
+  const mine = slots2.filter((s) => fracCompare(s.begin, within2.begin) >= 0 && fracCompare(s.begin, within2.end) < 0);
+  if (mine.length === 0) return "none";
+  let at = within2.begin;
+  for (const s of mine) {
+    if (!same(s.begin, at)) return "broken";
+    at = s.end;
+  }
+  return same(at, within2.end) ? "tiles" : "broken";
+}
+__name(tiling, "tiling");
+function stretches(slots2) {
+  const out = [];
+  for (const s of [...slots2].sort((a, b) => fracCompare(a.begin, b.begin))) {
+    const last = out[out.length - 1];
+    if (last && same(last.end, s.begin)) out[out.length - 1] = { ...last, end: s.end, pastEnd: s.pastEnd };
+    else out.push({ ...s });
+  }
+  return out;
+}
+__name(stretches, "stretches");
+function rowSlots(row) {
+  return row.steps.flatMap((s) => s.slots).sort((a, b) => fracCompare(a.begin, b.begin));
+}
+__name(rowSlots, "rowSlots");
+function container(ctx, group2, path, cut) {
+  const laid = rowsOf(group2, path);
+  if (isRefusal(laid)) return laid;
+  const rows = [];
+  for (const r of laid.rows) {
+    const steps = rowSteps(ctx, r.group, r.path);
+    if (isRefusal(steps)) return steps;
+    rows.push({ group: r.group, steps });
+  }
+  const perRow = rows.map(rowSlots);
+  for (const slots2 of perRow) {
+    for (const s of slots2) {
+      if (!cut.some((c) => fracCompare(s.begin, c.begin) >= 0 && fracCompare(s.begin, c.end) < 0)) return "steps-do-not-tile";
+    }
+  }
+  for (const c of laid.together === "all" ? stretches(cut) : cut) {
+    const verdicts = perRow.map((slots2) => tiling(slots2, c));
+    const tiled = verdicts.filter((v) => v === "tiles").length;
+    const absent = verdicts.filter((v) => v === "none").length;
+    if (laid.together === "all" ? tiled !== rows.length : tiled !== 1 || absent !== rows.length - 1) return "steps-do-not-tile";
+  }
+  return { rows, oneOf: laid.together === "one" };
+}
+__name(container, "container");
+function footStep(foot) {
+  const first = foot.children[0];
+  if (first?.kind !== "element" || !first.span || !foot.children.every((c) => c.kind === "element")) return "unknown-shape";
+  return { kind: "element", content: foot, span: { start: first.span.start, end: first.span.start }, weight: 1, reps: 1, ops: [] };
+}
+__name(footStep, "footStep");
+function rowSteps(ctx, group2, path) {
+  const elements = [];
+  for (const c of group2.children) {
+    const e = c.kind === "element" ? c : footStep(c);
+    if (isRefusal(e)) return e;
+    elements.push(e);
+  }
+  const all = elements.map((_, i) => i);
+  const inside = notesIn2(group2, /* @__PURE__ */ new Set());
+  const slots2 = slotsOf(ctx, copyOf(ctx.pat, path, all, false), inside);
+  if (isRefusal(slots2)) return slots2;
+  const repeated = all.filter((i) => elements[i].content.kind === "group" && elements[i].ops.length > 0);
+  let copies = /* @__PURE__ */ new Map();
+  if (repeated.length > 0) {
+    const within2 = /* @__PURE__ */ new Set();
+    for (const i of repeated) notesIn2(elements[i], within2);
+    const asked3 = slotsOf(ctx, copyOf(ctx.pat, path, repeated, true), within2);
+    if (isRefusal(asked3)) return asked3;
+    copies = asked3;
+  }
+  const steps = [];
+  for (const i of all) {
+    const element = elements[i];
+    const mine = slots2.get(i) ?? [];
+    if (element.content.kind === "atom") {
+      const hits = ctx.joined.of(element.content);
+      for (const j of hits) {
+        const at = fracOf(j.hit.begin, ctx.cyc);
+        if (!mine.some((s) => fracCompare(at, s.begin) >= 0 && fracCompare(at, s.end) < 0)) return "hit-outside-its-step";
+      }
+      if (mine.length > 0) steps.push({ element, slots: mine, rest: isRest(element.content), hits, copies: null, rows: null, oneOf: false });
+      continue;
+    }
+    const own = repeated.includes(i) ? copies.get(i) ?? [] : null;
+    if (mine.length === 0) {
+      if (ctx.joined.of(element).length > 0) return "hit-outside-its-step";
+      continue;
+    }
+    const inner = container(ctx, element.content, [...path, i], own ?? mine);
+    if (isRefusal(inner)) return inner;
+    steps.push({ element, slots: mine, rest: false, hits: [], copies: own, rows: inner.rows, oneOf: inner.oneOf });
+  }
+  return steps;
+}
+__name(rowSteps, "rowSteps");
+function barDivisions(pat, cyc) {
+  if (pat.mini.includes(MARK)) return { ok: false, why: "marker-in-pattern" };
+  const joined = joinedCycle(pat, cyc);
+  if (joined.hits.some((j) => j.atom === null)) return { ok: false, why: "unpaired-hit" };
+  const top = container({ pat, cyc, joined }, joined.root, [], [WHOLE_BAR]);
+  if (isRefusal(top)) return { ok: false, why: top };
+  return { ok: true, parts: top.rows, oneOf: top.oneOf };
+}
+__name(barDivisions, "barDivisions");
+
+// src/codeView/gridDivisions.ts
+function nameOf2(e) {
+  if (e.content.kind !== "atom") return null;
+  let name = e.content.text;
+  for (const op of e.ops) {
+    if (op.kind !== "tail") continue;
+    const tail = argAtom(op.args.element);
+    if (!tail) return null;
+    name += ":" + tail.text;
+  }
+  return name;
+}
+__name(nameOf2, "nameOf");
+function textOf(e, name, mini) {
+  if (e.content.kind !== "atom") return null;
+  if (name !== null) return name;
+  const start = e.content.span.start;
+  let end = start + e.content.text.length;
+  for (const op of e.ops) {
+    if (op.kind !== "tail") continue;
+    const tail = op.args.element;
+    if (!tail || typeof tail !== "object") return null;
+    if ("span" in tail) {
+      if (!tail.span) return null;
+      end = Math.max(end, tail.span.end);
+      continue;
+    }
+    let last = tail;
+    while (last.kind === "group") {
+      const k = last.children[last.children.length - 1];
+      if (!k) return null;
+      last = k;
+    }
+    if (!last.span) return null;
+    const from = last.span.end;
+    const closer = mini.slice(from).search(/[\]>)}]/);
+    if (closer < 0) return null;
+    end = Math.max(end, from + closer + 1);
+  }
+  return mini.slice(start, end).trim();
+}
+__name(textOf, "textOf");
+function euclidPlaces(e) {
+  const op = e.ops.find((o) => o.kind === "bjorklund");
+  const n = op ? argAtom(op.args.step) : null;
+  const v = n ? Number(n.text) : NaN;
+  return Number.isInteger(v) && v > 0 ? v : null;
+}
+__name(euclidPlaces, "euclidPlaces");
+function plainValue(v) {
+  if (typeof v === "string" || typeof v === "number" && Number.isFinite(v)) return v;
+  if (Array.isArray(v) && v.every((p) => typeof p === "string" || typeof p === "number")) return [...v];
+  return null;
+}
+__name(plainValue, "plainValue");
+function headOf(e, name, mini) {
+  if (e.content.kind !== "atom" || name === null) return null;
+  const start = e.content.span.start;
+  const end = start + name.length;
+  return mini.slice(start, end) === name ? { start, end } : null;
+}
+__name(headOf, "headOf");
+function stepOut(s, cyc, mini) {
+  const name = nameOf2(s.element);
+  return {
+    span: s.element.span,
+    name,
+    text: textOf(s.element, name, mini),
+    head: headOf(s.element, name, mini),
+    ops: s.element.ops.map((o) => o.kind),
+    euclidPlaces: euclidPlaces(s.element),
+    rest: s.rest,
+    reps: s.element.reps,
+    weight: s.element.weight,
+    slots: s.slots,
+    hits: s.hits.map((j) => ({
+      begin: fracOf(j.hit.begin, cyc),
+      end: fracOf(j.hit.end, cyc),
+      args: j.args.map((a) => ({ text: a.text, span: a.span })),
+      value: plainValue(j.hit.value)
+    })),
+    copies: s.copies,
+    rows: s.rows ? s.rows.map((r) => rowOut(r, cyc, mini)) : null,
+    oneOf: s.oneOf
+  };
+}
+__name(stepOut, "stepOut");
+function soundsIn(group2, out) {
+  for (const c of group2.children) {
+    if (c.kind === "group") soundsIn(c, out);
+    else if (c.content.kind === "group") soundsIn(c.content, out);
+    else if (!isRest(c.content)) {
+      const name = nameOf2(c);
+      if (name !== null) out.add(name);
+    }
+  }
+  return out;
+}
+__name(soundsIn, "soundsIn");
+function notesWritten(group2, mini, out) {
+  for (const c of group2.children) {
+    if (c.kind === "group") notesWritten(c, mini, out);
+    else if (c.content.kind === "group") notesWritten(c.content, mini, out);
+    else if (!isRest(c.content)) {
+      const text = textOf(c, nameOf2(c), mini);
+      if (text !== null) out.add(text);
+    }
+  }
+  return out;
+}
+__name(notesWritten, "notesWritten");
+var rowOut = /* @__PURE__ */ __name((r, cyc, mini) => ({
+  steps: r.steps.map((s) => stepOut(s, cyc, mini)),
+  written: r.group.children.length,
+  sounds: [...soundsIn(r.group, /* @__PURE__ */ new Set())],
+  notes: [...notesWritten(r.group, mini, /* @__PURE__ */ new Set())]
+}), "rowOut");
+var KEEP = 16;
+var BUILT = /* @__PURE__ */ new Map();
+function chunkDivisions(mini, bars) {
+  const key3 = `${bars}\0${mini}`;
+  const kept = BUILT.get(key3);
+  if (kept) {
+    BUILT.delete(key3);
+    BUILT.set(key3, kept);
+    return kept;
+  }
+  let trees;
+  try {
+    const pat = miniPattern(mini);
+    trees = Array.from({ length: bars }, (_, cyc) => {
+      const d = barDivisions(pat, cyc);
+      return d.ok ? { ok: true, parts: d.parts.map((r) => rowOut(r, cyc, mini)), oneOf: d.oneOf } : { ok: false, why: d.why };
+    });
+  } catch {
+    trees = Array.from({ length: bars }, () => ({ ok: false, why: "does-not-evaluate" }));
+  }
+  BUILT.set(key3, trees);
+  if (BUILT.size > KEEP) BUILT.delete(BUILT.keys().next().value);
+  return trees;
+}
+__name(chunkDivisions, "chunkDivisions");
+function chunkPeriod(mini, cap) {
+  try {
+    const pat = miniPattern(mini);
+    const keys = [];
+    for (let c = 0; c < 2 * cap; c++) {
+      const hits = pat.hits(c).map((h) => {
+        const b = fracOf(h.begin, c);
+        const e = fracOf(h.end, c);
+        return `${b.n}/${b.d}:${e.n}/${e.d}:${JSON.stringify(h.value)}`;
+      });
+      keys.push(hits.sort().join("|"));
+    }
+    const p = detectPeriod(keys);
+    return p !== null && p <= cap ? p : null;
+  } catch {
+    return null;
+  }
+}
+__name(chunkPeriod, "chunkPeriod");
+function laneDivisions(tree, lane) {
+  if (!tree.ok) return tree;
+  let at = lane.part ?? 0;
+  if (lane.part === void 0 && tree.parts.length !== 1) {
+    const writes2 = tree.parts.flatMap((p, i) => p.sounds.includes(lane.sound) ? [i] : []);
+    if (writes2.length !== 1) return { ok: false, why: "lane-part-unknown" };
+    at = writes2[0];
+  }
+  const row = tree.parts[at];
+  if (!row) return { ok: false, why: "lane-part-missing" };
+  if (!row.sounds.includes(lane.sound)) return { ok: false, why: "lane-sound-not-in-part" };
+  return { ok: true, row, oneOf: tree.oneOf };
+}
+__name(laneDivisions, "laneDivisions");
+
+// src/codeView/strudelMini/spell.ts
+var REST = "~";
+function printOps(ops, head) {
+  let out = head;
+  for (const op of ops) {
+    const a = op.arguments_ ?? {};
+    if (op.type_ === "tail") out += ":" + String(a.element.source_);
+    else if (op.type_ === "stretch" && a.type === "fast") out += "*" + String(a.amount.source_);
+    else if (op.type_ === "stretch" && a.type === "slow") out += "/" + String(a.amount.source_);
+    else if (op.type_ === "replicate") out += "!" + String(a.amount);
+    else if (op.type_ === "bjorklund") {
+      const [k, n, r] = [argText(a.pulse), argText(a.step), a.rotation ? argText(a.rotation) : ""];
+      if (k === null || n === null || r === null) throw new Error("stepSpell: a euclid whose amounts are not plain");
+      out += `(${k},${n}${r === "" ? "" : "," + r})`;
+    } else throw new Error(`stepSpell: no spelling for op ${op.type_}`);
+  }
+  return out;
+}
+__name(printOps, "printOps");
+function printPattern(p, sep = ",") {
+  if (p.arguments_.alignment === "stack") return `[${p.source_.map((l) => printLayer(l)).join(sep)}]`;
+  if (p.arguments_.alignment === "fastcat") return `[${printSeq(p.source_)}]`;
+  throw new Error(`stepSpell: no spelling for ${p.arguments_.alignment}`);
+}
+__name(printPattern, "printPattern");
+function printLayer(l) {
+  if (l.type_ === "pattern" && l.arguments_.alignment === "fastcat") return printSeq(l.source_);
+  return l.type_ === "element" ? printElement(l) : printPattern(l);
+}
+__name(printLayer, "printLayer");
+function printSeq(els) {
+  return els.map((e) => printElement(e)).join(" ");
+}
+__name(printSeq, "printSeq");
+function printElement(e, chordSep = ",") {
+  const body = e.source_.type_ === "atom" ? e.source_.source_ : printPattern(e.source_, chordSep);
+  const text = printOps(e.options_.ops, body);
+  const reps = e.options_.reps;
+  const held2 = reps > 1 ? e.options_.weight - reps : e.options_.weight;
+  if (reps > 1 && held2 !== 0) throw new Error("stepSpell: a held replicate has no plain spelling");
+  return held2 > 1 || reps === 1 && held2 !== 1 ? `${text}@${held2}` : text;
+}
+__name(printElement, "printElement");
+var atom = /* @__PURE__ */ __name((name) => ({ type_: "atom", source_: name }), "atom");
+function note(name, weight = 1) {
+  const [base, ...tails] = name.split(":");
+  const ops = tails.map((t) => ({ type_: "tail", arguments_: { element: atom(t) } }));
+  return { type_: "element", source_: atom(base), options_: { weight, reps: 1, ops } };
+}
+__name(note, "note");
+function plainName(e) {
+  if (e.source_.type_ !== "atom" || e.options_.weight !== 1 || e.options_.reps !== 1) return null;
+  if (!e.options_.ops.every((o) => o.type_ === "tail")) return null;
+  return printElement(e);
+}
+__name(plainName, "plainName");
+function group(parts, weight = 1) {
+  const names = parts.map(plainName);
+  const first = names[0];
+  if (parts.length > 1 && first !== null && first !== REST && names.every((n) => n === first)) {
+    const e = note(first, weight);
+    e.options_.ops = [...e.options_.ops, { type_: "stretch", arguments_: { amount: atom(String(parts.length)), type: "fast" } }];
+    return e;
+  }
+  return { type_: "element", source_: { type_: "pattern", arguments_: { alignment: "fastcat", _steps: false }, source_: [...parts] }, options_: { weight, reps: 1, ops: [] } };
+}
+__name(group, "group");
+function siblings(els) {
+  const key3 = /* @__PURE__ */ __name((e) => e.options_.weight === 1 && e.options_.reps === 1 && e.options_.ops.every((o) => o.type_ === "tail") ? printElement(e) : null, "key");
+  const out = [];
+  for (let i = 0; i < els.length; ) {
+    const n = key3(els[i]);
+    let j = i + 1;
+    while (n !== null && n !== REST && j < els.length && key3(els[j]) === n) j++;
+    const k = j - i;
+    if (n !== null && n !== REST && k >= 3) {
+      const e = JSON.parse(JSON.stringify(els[i]));
+      e.options_ = { weight: k, reps: k, ops: [...e.options_.ops, { type_: "replicate", arguments_: { amount: k } }] };
+      out.push(e);
+    } else out.push(...els.slice(i, j));
+    i = j;
+  }
+  return out;
+}
+__name(siblings, "siblings");
+function chord(members) {
+  const layer = /* @__PURE__ */ __name((m) => ({ type_: "pattern", arguments_: { alignment: "fastcat", _steps: false }, source_: [note(m)] }), "layer");
+  return { type_: "element", source_: { type_: "pattern", arguments_: { alignment: "stack" }, source_: members.map(layer) }, options_: { weight: 1, reps: 1, ops: [] } };
+}
+__name(chord, "chord");
+function rests(k) {
+  return Array.from({ length: k }, () => note(REST));
+}
+__name(rests, "rests");
+function euclid(name, k, n, r, weight = 1) {
+  const amount = /* @__PURE__ */ __name((x) => ({ type_: "element", source_: atom(String(x)), options_: { weight: 1, reps: 1, ops: [] } }), "amount");
+  const e = note(name, weight);
+  e.options_.ops = [...e.options_.ops, { type_: "bjorklund", arguments_: { pulse: amount(k), step: amount(n), rotation: r === 0 ? null : amount(r) } }];
+  return e;
+}
+__name(euclid, "euclid");
+var bare = /* @__PURE__ */ __name((n) => JSON.parse(JSON.stringify(n, (key3, v) => key3 === "location_" ? void 0 : v)), "bare");
+function respellWrittenOutHere(text, kind) {
+  const els = miniTree(text).source_.map((e2) => bare(e2));
+  if (kind === "bang") return printSeq(siblings(els));
+  if (els.length !== 1) return text;
+  const e = els[0];
+  const src = e.source_;
+  if (src.type_ !== "pattern" || src.arguments_.alignment !== "fastcat" || e.options_.ops.length > 0 || e.options_.reps !== 1) return text;
+  return printElement(group(src.source_, e.options_.weight));
+}
+__name(respellWrittenOutHere, "respellWrittenOutHere");
+function respellCopiesHere(text, kind) {
+  const els = miniTree(text).source_.map((e2) => bare(e2));
+  if (kind === "bang") return printSeq(siblings(els));
+  if (els.length !== 1) return text;
+  const e = els[0];
+  const src = e.source_;
+  if (src.type_ !== "pattern" || src.arguments_.alignment !== "fastcat" || e.options_.ops.length > 0 || e.options_.reps !== 1) return text;
+  const inner = `[${printSeq(siblings(src.source_))}]`;
+  return e.options_.weight === 1 ? inner : `${inner}@${e.options_.weight}`;
+}
+__name(respellCopiesHere, "respellCopiesHere");
+function respellWrittenOut(text, kind) {
+  try {
+    return respellWrittenOutHere(text, kind);
+  } catch {
+    return text;
+  }
+}
+__name(respellWrittenOut, "respellWrittenOut");
+function respellCopies(text, kind) {
+  try {
+    return respellCopiesHere(text, kind);
+  } catch {
+    return text;
+  }
+}
+__name(respellCopies, "respellCopies");
+function writtenOutRhythm(text) {
+  let els;
+  try {
+    els = miniTree(text).source_.map((e2) => bare(e2));
+  } catch {
+    return null;
+  }
+  if (els.length !== 1) return null;
+  const e = els[0];
+  const src = e.source_;
+  if (e.type_ !== "element" || src.type_ !== "pattern" || src.arguments_.alignment !== "fastcat" || e.options_.ops.length > 0 || e.options_.reps !== 1) return null;
+  let name = null;
+  const hits = [];
+  for (const p of src.source_) {
+    const n = p.type_ === "element" ? plainName(p) : null;
+    if (n === null) return null;
+    if (n === REST || n === "-") hits.push(false);
+    else if (name === null || n === name) {
+      name = n;
+      hits.push(true);
+    } else return null;
+  }
+  return name === null || hits.length < 2 ? null : { name, weight: e.options_.weight, hits };
+}
+__name(writtenOutRhythm, "writtenOutRhythm");
+function argText(a) {
+  if (!a || typeof a !== "object") return null;
+  const n = a;
+  if (n.type_ === "atom" && typeof n.source_ === "string") return n.source_;
+  if (n.type_ === "element") return argText(n.source_);
+  return null;
+}
+__name(argText, "argText");
+function mirrorElement(e, level) {
+  const src = e.source_;
+  let body;
+  if (src.type_ === "atom") body = level;
+  else if (src.arguments_.alignment === "stack") body = level;
+  else {
+    const inner = mirrorPattern(src, level);
+    if (inner === null) return null;
+    body = src.arguments_.alignment === "polymeter_slowcat" ? inner : `[${inner}]`;
+  }
+  let text = body;
+  for (const op of e.options_.ops) {
+    const a = op.arguments_ ?? {};
+    if (op.type_ === "tail" || op.type_ === "degradeBy") continue;
+    if (op.type_ === "stretch" && (a.type === "fast" || a.type === "slow")) {
+      const k = argText(a.amount);
+      if (k === null || !/^[0-9]+(\.[0-9]+)?$/.test(k)) return null;
+      text += (a.type === "fast" ? "*" : "/") + k;
+    } else if (op.type_ === "replicate") text += "!" + String(a.amount);
+    else if (op.type_ === "bjorklund") {
+      const n = argText(a.step);
+      if (n === null || !/^[1-9][0-9]*$/.test(n)) return null;
+      text += "*" + n;
+    } else return null;
+  }
+  const reps = e.options_.reps;
+  const held2 = reps > 1 ? e.options_.weight - reps : e.options_.weight;
+  if (reps > 1 && held2 !== 0) return null;
+  return held2 > 1 || reps === 1 && held2 !== 1 ? `${text}@${held2}` : text;
+}
+__name(mirrorElement, "mirrorElement");
+function mirrorPattern(p, level) {
+  const a = p.arguments_.alignment;
+  if (a === "fastcat") return mirrorSeq(p.source_, level);
+  const layers = p.source_;
+  const seqOf = /* @__PURE__ */ __name((l) => l.type_ === "pattern" && l.arguments_.alignment === "fastcat" ? mirrorSeq(l.source_, level) : null, "seqOf");
+  if (a === "feet") {
+    const feet = layers.map(seqOf);
+    return feet.some((f) => f === null) ? null : feet.join(" . ");
+  }
+  if (a === "polymeter_slowcat" && layers.length === 1) {
+    const inner = seqOf(layers[0]);
+    return inner === null ? null : `<${inner}>`;
+  }
+  return null;
+}
+__name(mirrorPattern, "mirrorPattern");
+function mirrorSeq(els, level) {
+  const out = [];
+  for (const e of els) {
+    const t = mirrorElement(e, level);
+    if (t === null) return null;
+    out.push(t);
+  }
+  return out.join(" ");
+}
+__name(mirrorSeq, "mirrorSeq");
+function gainMirror(mini, level) {
+  try {
+    const root = bare(miniTree(mini));
+    return root.arguments_.alignment === "polymeter_slowcat" ? null : mirrorPattern(root, level);
+  } catch {
+    return null;
+  }
+}
+__name(gainMirror, "gainMirror");
+
+// src/codeView/stepEdit.ts
+function laneRowForEdit(tree, row) {
+  const lane = laneDivisions(tree, row);
+  if (!lane.ok && lane.why === "lane-part-unknown" && tree.ok) {
+    const writes2 = tree.parts.filter((p) => p.sounds.includes(row.sound));
+    return writes2.length === 1 ? { ok: true, row: writes2[0], oneOf: tree.oneOf } : lane;
+  }
+  if (lane.ok || lane.why !== "lane-sound-not-in-part" || !tree.ok) return lane;
+  if (tree.parts.some((p) => p.sounds.includes(row.sound))) return lane;
+  const part = tree.parts[row.part ?? 0];
+  return part ? { ok: true, row: part, oneOf: tree.oneOf } : lane;
+}
+__name(laneRowForEdit, "laneRowForEdit");
+var sameSpan = /* @__PURE__ */ __name((a, b) => !!a && a.start === b.start && a.end === b.end, "sameSpan");
+var sameFrac = /* @__PURE__ */ __name((a, b) => a.n * b.d === b.n * a.d, "sameFrac");
+var spanKey = /* @__PURE__ */ __name((s) => s ? `${s.start}-${s.end}` : "?", "spanKey");
+function findIn(row, key3, span, around, rows) {
+  const here = [...rows, { row, key: key3 }];
+  for (const s of row.steps) {
+    if (sameSpan(s.span, span)) return { step: s, around, rows: here };
+    const inner = s.rows ?? [];
+    for (let j = 0; j < inner.length; j++) {
+      const f = findIn(inner[j], `${spanKey(s.span)}#${j}`, span, [...around, s], here);
+      if (f) return f;
+    }
+  }
+  return null;
+}
+__name(findIn, "findIn");
+function overTheLoop(trees) {
+  const seen = /* @__PURE__ */ new Map();
+  const visit = /* @__PURE__ */ __name((row, key3) => {
+    let got = seen.get(key3);
+    if (!got) seen.set(key3, got = /* @__PURE__ */ new Set());
+    for (const s of row.steps) {
+      got.add(spanKey(s.span));
+      (s.rows ?? []).forEach((r, j) => visit(r, `${spanKey(s.span)}#${j}`));
+    }
+  }, "visit");
+  for (const t of trees) {
+    if (!t.ok) return t.why;
+    t.parts.forEach((p, i) => visit(p, `part${i}`));
+  }
+  return seen;
+}
+__name(overTheLoop, "overTheLoop");
+function chordOf(g, mini) {
+  if (!g.rows || g.rows.length < 1 || g.oneOf || g.copies || g.ops.length > 0 || g.reps > 1 || g.span === null) return null;
+  const out = [];
+  for (const r of g.rows) {
+    if (r.written !== 1 || r.steps.length !== 1) return null;
+    const s = r.steps[0];
+    if (s.rest || s.rows || s.name === null || s.span === null || s.head === null || s.ops.some((o) => o !== "tail") || s.reps !== 1 || s.weight !== 1) return null;
+    if (mini.slice(s.head.start, s.head.end) !== s.name) return null;
+    out.push({ name: s.name, span: s.span });
+  }
+  return bracketsOf(mini, out) ? out : null;
+}
+__name(chordOf, "chordOf");
+function joinChord(mini, members, order, sound) {
+  const sep = members.length > 1 ? mini.slice(members[0].span.end, members[1].span.start) : ",";
+  if (sep.trim() !== ",") return refuse("tree-is-not-this-text");
+  const at = members.findIndex((m) => rank(order, m.name) > rank(order, sound));
+  if (at < 0) {
+    const end = members[members.length - 1].span.end;
+    return write(end, end, sep + sound);
+  }
+  return write(members[at].span.start, members[at].span.start, sound + sep);
+}
+__name(joinChord, "joinChord");
+function bracketsOf(mini, members) {
+  let open = members[0].span.start - 1;
+  while (open >= 0 && /\s/.test(mini[open])) open--;
+  let close = members[members.length - 1].span.end;
+  while (close < mini.length && /\s/.test(mini[close])) close++;
+  return mini[open] === "[" && mini[close] === "]" ? { open, close } : null;
+}
+__name(bracketsOf, "bracketsOf");
+function rank(order, name) {
+  const i = order.indexOf(name);
+  return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+}
+__name(rank, "rank");
+var REPEATS = /* @__PURE__ */ new Set(["replicate", "stretch", "bjorklund"]);
+var refuse = /* @__PURE__ */ __name((why) => ({ ok: false, why }), "refuse");
+var write = /* @__PURE__ */ __name((from, to, insert) => ({ ok: true, edit: { from, to, insert } }), "write");
+function locate(trees, address, row, fromItsStart = false) {
+  const no3 = /* @__PURE__ */ __name((why) => ({ ok: false, why }), "no");
+  const tree = trees[address.bar];
+  if (!tree) return no3("no-such-bar");
+  const lane = laneRowForEdit(tree, row);
+  if (!lane.ok) return no3(lane.why);
+  if (lane.oneOf) return no3("step-is-a-random-choice");
+  const found = findIn(lane.row, `part${tree.ok ? tree.parts.indexOf(lane.row) : 0}`, address.span, [], []);
+  if (!found) return no3("no-step-there");
+  const { step, around } = found;
+  const slot = step.slots.find((s) => sameFrac(s.begin, address.at));
+  if (!slot) {
+    if (step.hits.some((h) => sameFrac(h.begin, address.at))) return no3(step.reps > 1 || step.ops.includes("replicate") ? "step-is-replicated" : "step-is-generated");
+    return no3("no-step-there");
+  }
+  if (around.some((g) => g.oneOf)) return no3("step-is-a-random-choice");
+  if (around.some((g) => g.ops.some((o) => !REPEATS.has(o)))) return no3("step-under-a-generator");
+  if (step.reps > 1 || step.ops.includes("replicate")) return no3("step-is-replicated");
+  if (step.ops.some((o) => o !== "tail")) return no3("step-is-generated");
+  if (slot.fromBefore || slot.pastEnd && !fromItsStart) return no3("step-crosses-a-bar");
+  const loop = overTheLoop(trees);
+  if (typeof loop === "string") return no3(loop);
+  for (const { row: r, key: key3 } of found.rows) {
+    if ((loop.get(key3)?.size ?? 0) < r.written) return no3("loop-shorter-than-the-pattern");
+  }
+  return { ok: true, lane, found, slot };
+}
+__name(locate, "locate");
+function toggleStepHere(mini, trees, address, row) {
+  const at = locate(trees, address, row, true);
+  if (!at.ok) return refuse(at.why);
+  const { lane, found } = at;
+  const { step, around } = found;
+  const order = row.order ?? lane.row.sounds;
+  if (step.rows !== null) {
+    const members = chordOf(step, mini);
+    if (!members || members.some((m) => m.name === row.sound)) return refuse("step-is-a-group");
+    return joinChord(mini, members, order, row.sound);
+  }
+  if (step.name === null || step.head === null || step.span === null) return refuse("step-has-no-text");
+  const { start: from, end: to } = step.head;
+  if (mini.slice(from, to) !== step.name) return refuse("tree-is-not-this-text");
+  if (step.rest) return write(from, to, row.sound);
+  if (step.hits.length !== step.slots.length || !step.hits.every((h) => step.slots.some((s) => sameFrac(h.begin, s.begin)))) return refuse("step-is-generated");
+  if (step.name === row.sound) {
+    const chord2 = around.length > 0 ? chordOf(around[around.length - 1], mini) : null;
+    if (chord2 && chord2.length > 1) {
+      const k = chord2.findIndex((m) => sameSpan(m.span, step.span));
+      if (k < 0) return refuse("tree-is-not-this-text");
+      if (chord2.length === 2) {
+        const { open, close } = bracketsOf(mini, chord2);
+        return write(open, close + 1, chord2[1 - k].name);
+      }
+      return k === 0 ? write(chord2[0].span.start, chord2[1].span.start, "") : write(chord2[k - 1].span.end, chord2[k].span.end, "");
+    }
+    return write(from, to, REST);
+  }
+  const parent = around.length > 0 ? chordOf(around[around.length - 1], mini) : null;
+  if (parent) {
+    if (parent.some((m) => m.name === row.sound)) return refuse("step-is-a-group");
+    return joinChord(mini, parent, order, row.sound);
+  }
+  const mineFirst = rank(order, row.sound) < rank(order, step.name);
+  return write(from, to, printElement(chord(mineFirst ? [row.sound, step.name] : [step.name, row.sound])));
+}
+__name(toggleStepHere, "toggleStepHere");
+function applyStepEdit(mini, edit) {
+  return mini.slice(0, edit.from) + edit.insert + mini.slice(edit.to);
+}
+__name(applyStepEdit, "applyStepEdit");
+function resizeStepByHere(mini, trees, address, delta, row) {
+  const got = locate(trees, address, row);
+  if (!got.ok) return refuse(got.why);
+  const { step } = got.found;
+  if (!Number.isInteger(step.weight) || step.weight < 1) return refuse("length-not-plain");
+  const unit = fdiv(fsub(got.slot.end, got.slot.begin), { n: step.weight, d: 1 });
+  const k = step.weight + delta;
+  const end = { n: got.slot.begin.n * unit.d + k * unit.n * got.slot.begin.d, d: got.slot.begin.d * unit.d };
+  return resizeStepHere(mini, trees, address, end, row);
+}
+__name(resizeStepByHere, "resizeStepByHere");
+var fsub = /* @__PURE__ */ __name((a, b) => ({ n: a.n * b.d - b.n * a.d, d: a.d * b.d }), "fsub");
+var gcdOf = /* @__PURE__ */ __name((a, b) => b === 0 ? Math.abs(a) : gcdOf(b, a % b), "gcdOf");
+function fdiv(a, b) {
+  let n = a.n * b.d;
+  let d = a.d * b.n;
+  if (d < 0) {
+    n = -n;
+    d = -d;
+  }
+  const g = gcdOf(n, d) || 1;
+  return { n: n / g, d: d / g };
+}
+__name(fdiv, "fdiv");
+function plainNote(mini, step) {
+  if (step.rows !== null) return "step-is-a-group";
+  if (step.name === null || step.head === null || step.span === null) return "step-has-no-text";
+  if (mini.slice(step.head.start, step.head.end) !== step.name) return "tree-is-not-this-text";
+  if (!step.rest && (step.hits.length !== step.slots.length || !step.hits.every((h) => step.slots.some((s) => sameFrac(h.begin, s.begin))))) {
+    return "step-is-generated";
+  }
+  return null;
+}
+__name(plainNote, "plainNote");
+function splitStepHere(mini, trees, address, at, row, unit) {
+  const got = locate(trees, address, row);
+  if (!got.ok) return refuse(got.why);
+  const { step } = got.found;
+  const bad = plainNote(mini, step);
+  if (bad) return refuse(bad);
+  const width = fsub(got.slot.end, got.slot.begin);
+  let p = fdiv(fsub(at, got.slot.begin), width);
+  if (p.n <= 0 || p.n >= p.d) return refuse("not-inside-the-step");
+  if (unit && step.rest) {
+    const q = fdiv(width, unit);
+    if (q.d === 1 && q.n > p.d && q.n % p.d === 0) p = { n: p.n * q.n / p.d, d: q.n };
+  }
+  const parts = Array.from({ length: p.d }, (_, i) => note(i === 0 ? step.name : i === p.n ? row.sound : REST));
+  return write(step.head.start, step.head.end, printElement(group(parts)));
+}
+__name(splitStepHere, "splitStepHere");
+var textEnd = /* @__PURE__ */ __name((mini, s) => s.span.start + mini.slice(s.span.start, s.span.end).trimEnd().length, "textEnd");
+function lengthOf(mini, step) {
+  const after = mini.slice(step.head.end, textEnd(mini, step));
+  if (after === "") return { kind: "plain" };
+  const m = /^@([1-9][0-9]*)$/.exec(after);
+  if (m) return { kind: "at", from: step.head.end, to: step.head.end + after.length, n: Number(m[1]) };
+  if (/^(\s+_)+$/.test(after)) {
+    const at = [];
+    for (let i = 0; i < after.length; i++) if (after[i] === "_") at.push(step.head.end + i);
+    return { kind: "holds", at };
+  }
+  return null;
+}
+__name(lengthOf, "lengthOf");
+function resizeStepHere(mini, trees, address, end, row) {
+  const got = locate(trees, address, row);
+  if (!got.ok) return refuse(got.why);
+  const { step } = got.found;
+  const { slot } = got;
+  if (step.rows !== null || step.rest || step.name !== row.sound) return refuse("not-the-rows-note");
+  const bad = plainNote(mini, step);
+  if (bad) return refuse(bad);
+  if (!Number.isInteger(step.weight) || step.weight < 1) return refuse("length-not-plain");
+  const len = lengthOf(mini, step);
+  if (!len || len.kind === "plain" && step.weight !== 1 || len.kind === "at" && len.n !== step.weight || len.kind === "holds" && len.at.length + 1 !== step.weight) {
+    return refuse("length-not-plain");
+  }
+  const unit = fdiv(fsub(slot.end, slot.begin), { n: step.weight, d: 1 });
+  const want = fdiv(fsub(end, slot.begin), unit);
+  const from = step.head.start;
+  const name = step.name;
+  const part = fdiv(want, { n: step.weight, d: 1 });
+  if (want.d !== 1 && part.n > 0 && part.n < part.d) {
+    return write(from, textEnd(mini, step), printElement(group([note(name, part.n), ...rests(part.d - part.n)], step.weight)));
+  }
+  if (want.n < 1 || sameFrac(want, { n: step.weight, d: 1 })) return refuse("length-not-whole-steps");
+  if (want.d === 1 && want.n < step.weight) return write(from, textEnd(mini, step), printSeq([note(name, want.n), ...rests(step.weight - want.n)]));
+  const ownRow = got.found.rows[got.found.rows.length - 1].row;
+  if (ownRow.written !== ownRow.steps.length) return refuse("no-room-to-grow");
+  const rowSteps2 = ownRow.steps;
+  const i = rowSteps2.indexOf(step);
+  let need = fsub(want, { n: step.weight, d: 1 });
+  let room = step.weight;
+  let atTime = slot.end;
+  const taken = [];
+  for (let j = i + 1; j < rowSteps2.length && need.n > 0; j++) {
+    const r = rowSteps2[j];
+    const next = r.slots.find((x) => sameFrac(x.begin, atTime));
+    if (!next || !r.rest || r.rows || r.ops.length > 0 || r.reps !== 1 || !r.span || !r.head || next.pastEnd) return refuse("no-room-to-grow");
+    const u = fdiv(fsub(next.end, next.begin), unit);
+    if (u.d !== 1) return refuse("no-room-to-grow");
+    taken.push(r);
+    room += u.n;
+    need = need.n * 1 > u.n * need.d ? fsub(need, u) : { n: 0, d: 1 };
+    atTime = next.end;
+  }
+  if (need.n > 0) return refuse("no-room-to-grow");
+  const last = taken[taken.length - 1];
+  const used = Math.ceil(want.n / want.d);
+  const left = leftOfRest(mini, last, room - used);
+  if (want.d === 1) return write(from, textEnd(mini, last), printSeq([note(name, want.n), ...left]));
+  const share = fdiv(want, { n: used, d: 1 });
+  return write(from, textEnd(mini, last), printSeq([group([note(name, share.n), ...rests(share.d - share.n)], used), ...left]));
+}
+__name(resizeStepHere, "resizeStepHere");
+function leftOfRest(mini, rest, k) {
+  if (k <= 0) return [];
+  const m = /^([~-])@[1-9][0-9]*$/.exec(mini.slice(rest.span.start, textEnd(mini, rest)));
+  return m ? [note(m[1], k)] : rests(k);
+}
+__name(leftOfRest, "leftOfRest");
+function plainGenerator(mini, step) {
+  if (step.rows !== null || step.rest || step.name === null || step.head === null || step.span === null) return null;
+  const from = step.head.start;
+  const to = textEnd(mini, step);
+  const own = mini.slice(from, to);
+  const name = step.name;
+  if (!own.startsWith(name)) return null;
+  const rest = own.slice(name.length);
+  const ops = step.ops.filter((o) => o !== "tail");
+  let kind;
+  let k;
+  let after = "";
+  const star = /^\*([1-9][0-9]*)(@[1-9][0-9]*)?$/.exec(rest);
+  const bang = /^!([1-9][0-9]*)?$/.exec(rest);
+  const euclid2 = /^(\(\s*-?[0-9]+\s*,\s*([1-9][0-9]*)\s*(?:,\s*[0-9]+\s*)?\))(@[1-9][0-9]*)?$/.exec(rest);
+  if (euclid2 && ops.length === 1 && ops[0] === "bjorklund" && step.reps === 1) return euclidWrittenOut(name, euclid2[1], Number(euclid2[2]), euclid2[3] ?? "", from, to);
+  if (star && ops.length === 1 && ops[0] === "stretch" && step.reps === 1) {
+    kind = "star";
+    k = Number(star[1]);
+    after = star[2] ?? "";
+  } else if (bang && ops.length === 1 && ops[0] === "replicate" && step.reps > 1) {
+    kind = "bang";
+    k = bang[1] ? Number(bang[1]) : 2;
+    if (k !== step.reps || step.weight !== k) return null;
+  } else return null;
+  if (k < 2) return null;
+  const heads = [];
+  let out = kind === "star" ? "[" : "";
+  for (let i = 0; i < k; i++) {
+    if (i > 0) out += " ";
+    heads.push(from + out.length);
+    out += name;
+  }
+  out += kind === "star" ? `]${after}` : "";
+  return { kind, k, from, to, out, heads };
+}
+__name(plainGenerator, "plainGenerator");
+function euclidWrittenOut(name, args, n, after, from, to) {
+  if (n < 2) return null;
+  const at = euclidPlaces2(name, args, n);
+  if (at === null || at.size === 0) return null;
+  const heads = [];
+  let out = "[";
+  for (let i = 0; i < n; i++) {
+    if (i > 0) out += " ";
+    heads.push(from + out.length);
+    out += at.has(i) ? name : REST;
+  }
+  out += `]${after}`;
+  return { kind: "euclid", k: n, from, to, out, heads, euclid: { own: `${name}${args}${after}`, name, args, weight: after === "" ? 1 : Number(after.slice(1)) } };
+}
+__name(euclidWrittenOut, "euclidWrittenOut");
+function euclidPlaces2(name, args, n) {
+  let onsets;
+  try {
+    onsets = miniPattern(`${name}${args}`).hits(0).map((h) => h.begin.valueOf() * n);
+  } catch {
+    return null;
+  }
+  const at = /* @__PURE__ */ new Set();
+  for (const x of onsets) {
+    const i = Math.round(x);
+    if (Math.abs(x - i) > 1e-9 || i < 0 || i >= n || at.has(i)) return null;
+    at.add(i);
+  }
+  return at;
+}
+__name(euclidPlaces2, "euclidPlaces");
+function respellEuclid(text, from, styles2 = []) {
+  const r = writtenOutRhythm(text);
+  if (!r) return null;
+  const n = r.hits.length;
+  const want = r.hits.flatMap((h, i) => h ? [i] : []);
+  const k = want.length;
+  const plays = /* @__PURE__ */ __name((args) => {
+    const got = euclidPlaces2(r.name, args, n);
+    return got !== null && got.size === k && want.every((i) => got.has(i));
+  }, "plays");
+  if (from && from.name === r.name && from.weight === r.weight && plays(from.args)) return from.own;
+  if (k < 2 || k >= n || n < 5 || repeatsShorter(r.hits)) return null;
+  const rot = from ? /^\([^,]*,[^,]*,\s*([0-9]+)\s*\)$/.exec(from.args)?.[1] : void 0;
+  const tries = [...rot !== void 0 && Number(rot) > 0 && Number(rot) < n ? [Number(rot)] : [], ...Array.from({ length: n }, (_, i) => i)];
+  for (const x of tries) {
+    const tight2 = x === 0 ? `(${k},${n})` : `(${k},${n},${x})`;
+    if (!plays(tight2)) continue;
+    const printed = printElement(euclid(r.name, k, n, x, r.weight));
+    const spaced = styled(k, n, x, styles2);
+    return spaced !== tight2 && plays(spaced) ? printed.replace(tight2, spaced) : printed;
+  }
+  return null;
+}
+__name(respellEuclid, "respellEuclid");
+var EUCLID_ARGS = /\((\s*)-?[0-9]+(\s*,\s*)[0-9]+(?:(\s*,\s*)([0-9]+))?(\s*)\)/g;
+function stylesIn(text) {
+  return [...text.matchAll(EUCLID_ARGS)].map((m) => ({ at: m.index, end: m.index + m[0].length, style: { open: m[1], sep: m[2], sep2: m[3] ?? null, rot: m[4] ?? null, close: m[5] } }));
+}
+__name(stylesIn, "stylesIn");
+function stylesNear(mini, from, to) {
+  const dist = /* @__PURE__ */ __name((s) => s.end <= from ? from - s.end : s.at - to, "dist");
+  return stylesIn(mini).filter((s) => s.end <= from || s.at >= to).sort((a, b) => dist(a) - dist(b)).map((s) => s.style);
+}
+__name(stylesNear, "stylesNear");
+function styled(k, n, r, styles2) {
+  const near2 = styles2[0];
+  if (!near2) return r === 0 ? `(${k},${n})` : `(${k},${n},${r})`;
+  const sep2 = near2.sep2 ?? near2.sep;
+  const zero = styles2.find((s) => s.rot === null || Number(s.rot) === 0);
+  const tail = r !== 0 ? `${sep2}${r}` : zero && zero.rot !== null ? `${sep2}0` : "";
+  return `(${near2.open}${k}${near2.sep}${n}${tail}${near2.close})`;
+}
+__name(styled, "styled");
+function repeatsShorter(hits) {
+  const n = hits.length;
+  for (let p = 1; p < n; p++) if (n % p === 0 && hits.every((h, i) => h === hits[i % p])) return true;
+  return false;
+}
+__name(repeatsShorter, "repeatsShorter");
+function viaWrittenOut(mini, trees, address, row, writer) {
+  const tree = trees[address.bar];
+  if (!tree) return null;
+  const lane = laneRowForEdit(tree, row);
+  if (!lane.ok) return null;
+  const found = findIn(lane.row, `part${tree.ok ? tree.parts.indexOf(lane.row) : 0}`, address.span, [], []);
+  if (!found) return null;
+  const gen2 = plainGenerator(mini, found.step);
+  if (!gen2) return null;
+  const written = mini.slice(0, gen2.from) + gen2.out + mini.slice(gen2.to);
+  const again = chunkDivisions(written, trees.length);
+  const t = again[address.bar];
+  if (!t || !t.ok) return refuse(t ? t.why : "no-such-bar");
+  let span = null;
+  const visit = /* @__PURE__ */ __name((r) => {
+    for (const s of r.steps) {
+      if (s.head && gen2.heads.includes(s.head.start) && s.span && s.slots.some((x) => sameFrac(x.begin, address.at))) span = s.span;
+      for (const k of s.rows ?? []) visit(k);
+    }
+  }, "visit");
+  t.parts.forEach(visit);
+  if (!span) return refuse("no-step-there");
+  const inner = writer(written, again, { bar: address.bar, span, at: address.at });
+  if (!inner.ok) return inner;
+  const edit = inner.edit;
+  const end = gen2.from + gen2.out.length;
+  const delta = edit.insert.length - (edit.to - edit.from);
+  const regionEnd = edit.to > end ? edit.from + edit.insert.length : end + delta;
+  const replacedEnd = edit.to > end ? gen2.to + (edit.to - end) : gen2.to;
+  if (edit.from < gen2.from) return refuse("tree-is-not-this-text");
+  const after = applyStepEdit(written, edit);
+  const region = after.slice(gen2.from, regionEnd);
+  const styles2 = gen2.euclid ? [...stylesIn(gen2.euclid.args).map((s) => s.style), ...stylesNear(mini, gen2.from, gen2.to)] : [];
+  return write(gen2.from, replacedEnd, gen2.euclid && respellEuclid(region, gen2.euclid, styles2) || respellWrittenOut(region, gen2.kind === "bang" ? "bang" : "star"));
+}
+__name(viaWrittenOut, "viaWrittenOut");
+function renameStepHere(mini, trees, address, row, name) {
+  const at = locate(trees, address, row, true);
+  if (!at.ok) return refuse(at.why);
+  const { step } = at.found;
+  if (step.rows !== null) return refuse("step-is-a-group");
+  if (step.head === null || step.name === null) return refuse("step-has-no-text");
+  if (mini.slice(step.head.start, step.head.end) !== step.name) return refuse("tree-is-not-this-text");
+  return write(step.head.start, step.head.end, name);
+}
+__name(renameStepHere, "renameStepHere");
+function renameStep(mini, trees, address, row, name) {
+  return viaWrittenOut(mini, trees, address, row, (m, t, a) => renameStepHere(m, t, a, row, name)) ?? renameStepHere(mini, trees, address, row, name);
+}
+__name(renameStep, "renameStep");
+function toggleStep(mini, trees, address, row) {
+  return viaWrittenOut(mini, trees, address, row, (m, t, a) => toggleStepHere(m, t, a, row)) ?? asEuclid(mini, trees, address, row, toggleStepHere(mini, trees, address, row));
+}
+__name(toggleStep, "toggleStep");
+function asEuclid(mini, trees, address, row, done) {
+  if (!done.ok) return done;
+  const tree = trees[address.bar];
+  const lane = tree ? laneRowForEdit(tree, row) : null;
+  if (!tree || !lane || !lane.ok) return done;
+  const found = findIn(lane.row, `part${tree.ok ? tree.parts.indexOf(lane.row) : 0}`, address.span, [], []);
+  const g = found?.around[found.around.length - 1];
+  if (!g || !g.span) return done;
+  let from = g.span.start;
+  while (from < g.span.end && /\s/.test(mini[from])) from++;
+  const to = textEnd(mini, g);
+  const { edit } = done;
+  if (edit.from < from || edit.to > to) return done;
+  const spelled = respellEuclid(applyStepEdit(mini.slice(from, to), { from: edit.from - from, to: edit.to - from, insert: edit.insert }), void 0, stylesNear(mini, from, to));
+  return spelled === null ? done : write(from, to, spelled);
+}
+__name(asEuclid, "asEuclid");
+function splitStep(mini, trees, address, at, row, unit) {
+  return viaWrittenOut(mini, trees, address, row, (m, t, a) => splitStepHere(m, t, a, at, row, unit)) ?? splitStepHere(mini, trees, address, at, row, unit);
+}
+__name(splitStep, "splitStep");
+function resizeStep(mini, trees, address, end, row) {
+  return viaWrittenOut(mini, trees, address, row, (m, t, a) => resizeStepHere(m, t, a, end, row)) ?? resizeStepHere(mini, trees, address, end, row);
+}
+__name(resizeStep, "resizeStep");
+function resizeStepBy(mini, trees, address, delta, row) {
+  return viaWrittenOut(mini, trees, address, row, (m, t, a) => resizeStepByHere(m, t, a, delta, row)) ?? resizeStepByHere(mini, trees, address, delta, row);
+}
+__name(resizeStepBy, "resizeStepBy");
+
+// src/codeView/stepGain.ts
+var EPS2 = 1e-9;
+var no2 = /* @__PURE__ */ __name((why) => ({ ok: false, why }), "no");
+var ASKED = /* @__PURE__ */ new Map();
+var ASKED_MAX = 2048;
+function asked2(key3, ask) {
+  let got = ASKED.get(key3);
+  if (!got) {
+    try {
+      got = { v: ask() };
+    } catch (e) {
+      got = { e };
+    }
+    if (ASKED.size >= ASKED_MAX) ASKED.delete(ASKED.keys().next().value);
+    ASKED.set(key3, got);
+  }
+  if ("e" in got) throw got.e;
+  return got.v;
+}
+__name(asked2, "asked");
+var heardIn = /* @__PURE__ */ __name((mini, gain, cyc) => asked2(`s\0${cyc}\0${mini}\0${gain}`, () => soundGainHits(mini, gain, cyc)), "heardIn");
+var playsIn = /* @__PURE__ */ __name((mini, cyc) => asked2(`p\0${cyc}\0${mini}`, () => miniPattern(mini).hits(cyc)), "playsIn");
+function fmtLevel(v) {
+  if (!Number.isFinite(v)) return "1";
+  const c = Math.min(1, Math.max(0, v));
+  if (Number.isInteger(c)) return String(c);
+  return c.toFixed(2).replace(/\.?0+$/, "");
+}
+__name(fmtLevel, "fmtLevel");
+function gainLevelsAt(gain, times) {
+  if (gain.foreign) return null;
+  if (gain.mini === null) return times.map(() => gain.numeric ?? 1);
+  let values3;
+  try {
+    values3 = miniValuesAt(gain.mini, times);
+  } catch {
+    return null;
+  }
+  return values3.map((v) => {
+    const n = v.find((x) => typeof x === "number" || typeof x === "string" && x.trim() !== "" && Number.isFinite(Number(x)));
+    return n === void 0 ? null : Number(n);
+  });
+}
+__name(gainLevelsAt, "gainLevelsAt");
+var near = /* @__PURE__ */ __name((a, b) => Math.abs(a.valueOf() - b) < EPS2, "near");
+function inBar(t, bar2) {
+  const rel = t.sub ? t.sub(bar2) : null;
+  const m = /^(\d+)(?:\/(\d+))?$/.exec(rel?.toFraction?.() ?? "");
+  return m ? { n: Number(m[1]), d: m[2] === void 0 ? 1 : Number(m[2]) } : null;
+}
+__name(inBar, "inBar");
+function stepNamedAt(parts, start) {
+  let out = null;
+  parts.forEach((row, part) => {
+    const visit = /* @__PURE__ */ __name((r) => {
+      for (const s of r.steps) {
+        if (!out && s.head && s.head.start === start) out = { step: s, part };
+        for (const k of s.rows ?? []) visit(k);
+      }
+    }, "visit");
+    visit(row);
+  });
+  return out;
+}
+__name(stepNamedAt, "stepNamedAt");
+function stepGainEdit(mini, gain, bars, hit, level) {
+  if (gain.foreign) return no2("gain-not-ours");
+  const created = gain.mini === null;
+  const text = gain.mini ?? gainMirror(mini, fmtLevel(gain.numeric ?? 1));
+  if (text === null) return no2("no-gain-for-this-pattern");
+  const cyc = Math.floor(hit.begin + EPS2);
+  const bar2 = (cyc % bars + bars) % bars;
+  let heard;
+  let plain;
+  try {
+    heard = heardIn(mini, text, cyc);
+    plain = playsIn(mini, cyc);
+    if (created) {
+      const lands = asked2(`m\0${bars}\0${mini}\0${text}`, () => {
+        for (let c = 0; c < bars; c++) if (heardIn(mini, text, c).length !== playsIn(mini, c).length) return false;
+        return true;
+      });
+      if (!lands) return no2("no-gain-for-this-pattern");
+    }
+  } catch {
+    return no2("gain-does-not-evaluate");
+  }
+  const target = heard.find((h) => near(h.begin, hit.begin));
+  if (!target) return no2(plain.some((h) => near(h.begin, hit.begin)) ? "hit-is-silent" : "no-hit-there");
+  let levels;
+  try {
+    levels = playsIn(text, cyc);
+  } catch {
+    return no2("gain-does-not-evaluate");
+  }
+  const starts2 = new Set(target.gainAt.map((l) => l.start));
+  const own = levels.find((l) => l.begin.valueOf() <= hit.begin + EPS2 && hit.begin + EPS2 < l.end.valueOf() && l.locations.some((x) => starts2.has(x.start)));
+  if (!own || !near(own.begin, hit.begin) || !near(own.end, hit.end)) return no2("gain-step-not-the-hit");
+  try {
+    for (let c = Math.floor(own.begin.valueOf() + EPS2); c < own.end.valueOf() - EPS2; c++) {
+      const hits = c === cyc ? heard : heardIn(mini, text, c);
+      if (hits.some((h) => h.begin.valueOf() > own.begin.valueOf() + EPS2 && h.begin.valueOf() < own.end.valueOf() - EPS2)) return no2("gain-step-not-the-hit");
+    }
+  } catch {
+    return no2("gain-does-not-evaluate");
+  }
+  const trees = chunkDivisions(text, bars);
+  const tree = trees[bar2];
+  if (!tree || !tree.ok) return no2(tree ? tree.why : "no-such-bar");
+  let found = null;
+  for (const s of starts2) found = found ?? stepNamedAt(tree.parts, s);
+  const at = inBar(own.begin, cyc);
+  if (!found || !found.step.span || found.step.name === null || !at) return no2("step-has-no-text");
+  const r = renameStep(text, trees, { bar: bar2, span: found.step.span, at }, { sound: found.step.name, part: found.part }, fmtLevel(level));
+  if (!r.ok) return no2(r.why);
+  const after = applyStepEdit(text, r.edit);
+  try {
+    const now2 = soundGainHits(mini, after, cyc).find((h) => near(h.begin, hit.begin));
+    if (!now2 || Math.abs(Number(now2.gain) - Number(fmtLevel(level))) > EPS2) return no2("gain-not-heard");
+  } catch {
+    return no2("gain-does-not-evaluate");
+  }
+  return { ok: true, gain: after, created, edit: created ? null : r.edit };
+}
+__name(stepGainEdit, "stepGainEdit");
 
 // src/codeView/sliderEdit.ts
 function sliderEdit(doc, span, value) {
@@ -13270,8 +14732,8 @@ function gainWritable(codec, model) {
 __name(gainWritable, "gainWritable");
 function slotPress(ops, model, target, canDrawView) {
   if (ops.slotState(model, target, canDrawView) !== "view") return { kind: "write" };
-  const scale = freeZoneScale(documentSteps(model), target);
-  return scale === null ? { kind: "none" } : { kind: "view", scale };
+  const scale2 = freeZoneScale(documentSteps(model), target);
+  return scale2 === null ? { kind: "none" } : { kind: "view", scale: scale2 };
 }
 __name(slotPress, "slotPress");
 function slotPressCost(ops, model, target, canDrawView) {
@@ -13305,6 +14767,18 @@ function gridWritePlan(codec, next) {
   };
 }
 __name(gridWritePlan, "gridWritePlan");
+
+// src/codeView/mixer/codeViz.ts
+function readCodeViz(doc) {
+  const master = masterBackdropCall(doc);
+  if (master) {
+    return master.name === null ? null : { name: master.name, options: master.options, level: "master" };
+  }
+  const track = lastTrackBackdropCall(doc, { declaredOnly: true });
+  if (!track || track.name === null) return null;
+  return { name: track.name, options: track.options, level: "track" };
+}
+__name(readCodeViz, "readCodeViz");
 
 // src/codeView/noteSounds.ts
 var VALUE_ONLY = /* @__PURE__ */ new Set([
@@ -13356,16 +14830,16 @@ function noteSounds(chunk, onsets, span, names = ["sound", "s"]) {
   if (!cur || readSoundArg(cur.value).kind === "one" || !(span > 0)) return null;
   const times = [];
   for (const t of onsets) for (let k = 0; k < SOUND_PASSES; k++) times.push(t + k * span);
-  let values2;
+  let values3;
   try {
-    values2 = miniValuesAt(cur.value, times);
+    values3 = miniValuesAt(cur.value, times);
   } catch {
     return null;
   }
   return onsets.map((_, i) => {
     const heard = [];
     for (let k = 0; k < SOUND_PASSES; k++) {
-      for (const v of values2[i * SOUND_PASSES + k]) {
+      for (const v of values3[i * SOUND_PASSES + k]) {
         const n = playedName(v);
         if (n !== null && !heard.includes(n)) heard.push(n);
       }
@@ -13475,6 +14949,205 @@ function stepNotes(chunk, span) {
 }
 __name(stepNotes, "stepNotes");
 
+// src/codeView/rollEdit.ts
+var same2 = /* @__PURE__ */ __name((a, b) => a.n * b.d === b.n * a.d, "same");
+var before = /* @__PURE__ */ __name((a, b) => a.n * b.d < b.n * a.d, "before");
+function rowOf(value) {
+  const r = rollPitch(value);
+  if (typeof r === "string") return null;
+  const m = r.numeric ? Number(r.pitch) : pitchToMidi(r.pitch);
+  return m === null || !Number.isFinite(m) ? null : m;
+}
+__name(rowOf, "rowOf");
+function eachStep(row, visit) {
+  for (const s of row.steps) {
+    visit(s);
+    for (const r of s.rows ?? []) eachStep(r, visit);
+  }
+}
+__name(eachStep, "eachStep");
+function noteAt(trees, place, midi) {
+  const tree = trees[place.bar];
+  if (!tree || !tree.ok) return null;
+  let got = null;
+  tree.parts.forEach(
+    (row, part) => eachStep(row, (s) => {
+      if (got || s.rows || s.rest || !s.span) return;
+      const h = s.hits.find((x) => same2(x.begin, place.at) && rowOf(x.value) === midi);
+      if (h) got = { step: s, part, at: h.begin };
+    })
+  );
+  return got;
+}
+__name(noteAt, "noteAt");
+function placeAt(trees, place) {
+  const tree = trees[place.bar];
+  if (!tree || !tree.ok) return "no-step-there";
+  const begins = [];
+  const through = [];
+  tree.parts.forEach(
+    (row, part) => eachStep(row, (s) => {
+      if (s.rows || !s.span) return;
+      for (const slot of s.slots) {
+        if (slot.fromBefore || slot.pastEnd) continue;
+        if (same2(slot.begin, place.at)) begins.push({ step: s, part, slotBegin: slot.begin });
+        else if (before(slot.begin, place.at) && before(place.at, slot.end)) through.push({ step: s, part, slotBegin: slot.begin });
+      }
+      for (const h of s.hits) if (same2(h.begin, place.at) && !s.slots.some((x) => same2(x.begin, place.at))) begins.push({ step: s, part, slotBegin: h.begin });
+    })
+  );
+  const pick = /* @__PURE__ */ __name((xs) => {
+    if (xs.length === 0) return null;
+    const parts = new Set(xs.map((x) => x.part));
+    if (parts.size === 1) return xs.find((x) => x.step.rest) ?? xs[0];
+    const rests2 = xs.filter((x) => x.step.rest);
+    return rests2.length === 1 ? rests2[0] : "part-unclear";
+  }, "pick");
+  const b = pick(begins);
+  if (b === "part-unclear") return b;
+  if (b) return { ...b, inside: false };
+  const t = pick(through);
+  if (t === "part-unclear") return t;
+  if (t) return { ...t, inside: true };
+  return "no-step-there";
+}
+__name(placeAt, "placeAt");
+var addressOf = /* @__PURE__ */ __name((place, step, at) => ({ bar: place.bar, span: step.span, at }), "addressOf");
+function rollAdd(mini, trees, place, pitch, unit) {
+  const midi = /^-?[0-9]+(\.[0-9]+)?$/.test(pitch) ? Number(pitch) : pitchToMidi(pitch);
+  if (midi !== null && noteAt(trees, place, midi)) return { ok: false, why: "note-already-there" };
+  const where = placeAt(trees, place);
+  if (typeof where === "string") return { ok: false, why: where };
+  const row = { sound: pitch, part: where.part };
+  if (where.inside) return splitStep(mini, trees, addressOf(place, where.step, where.slotBegin), place.at, row, unit);
+  return toggleStep(mini, trees, addressOf(place, where.step, where.slotBegin), row);
+}
+__name(rollAdd, "rollAdd");
+function rollRemove(mini, trees, place, midi) {
+  const n = noteAt(trees, place, midi);
+  if (!n) return { ok: false, why: "no-note-there" };
+  return toggleStep(mini, trees, addressOf(place, n.step, n.at), { sound: n.step.name, part: n.part });
+}
+__name(rollRemove, "rollRemove");
+function placesOf2(trees, span) {
+  const out = [];
+  trees.forEach((t, bar2) => {
+    if (!t.ok) return;
+    t.parts.forEach(
+      (row) => eachStep(row, (s) => {
+        if (s.span && s.span.start === span.start && s.span.end === span.end) {
+          for (const sl of s.slots) if (!sl.fromBefore) out.push({ bar: bar2, begin: sl.begin });
+        }
+      })
+    );
+  });
+  return out;
+}
+__name(placesOf2, "placesOf");
+var shift = /* @__PURE__ */ __name((a, n, d) => ({ n: a.n * d + n * a.d, d: a.d * d }), "shift");
+function samePlaces(source, landing, delta) {
+  if (source.length !== landing.length) return false;
+  return source.every((p) => landing.some((q) => q.bar === p.bar && same2(q.begin, shift(p.begin, delta.n, delta.d))));
+}
+__name(samePlaces, "samePlaces");
+function enclosing(row, span, around = []) {
+  for (const s of row.steps) {
+    if (s.span && s.span.start === span.start && s.span.end === span.end) return [...around].reverse();
+    for (const r of s.rows ?? []) {
+      const got = enclosing(r, span, [...around, s]);
+      if (got) return got;
+    }
+  }
+  return null;
+}
+__name(enclosing, "enclosing");
+function repeatOf2(mini, around) {
+  for (const g of around) {
+    if (!g.span || g.oneOf) continue;
+    const start = g.span.start + (mini.slice(g.span.start, g.span.end).length - mini.slice(g.span.start, g.span.end).trimStart().length);
+    const text = mini.slice(start, g.span.end).trim();
+    const m = /^(\[[^]*\])([*!])([1-9][0-9]*)$/.exec(text);
+    if (!m) continue;
+    const k = Number(m[3]);
+    if (k < 2) continue;
+    const copies = Array.from({ length: k }, () => m[1]);
+    const whole2 = mini.trim() === text;
+    const out = m[2] === "!" || whole2 ? copies.join(" ") : `[${copies.join(" ")}]`;
+    return { from: start, to: start + text.length, out, kind: m[2] === "!" || whole2 ? "bang" : "star" };
+  }
+  return null;
+}
+__name(repeatOf2, "repeatOf");
+function moveAcrossPlaces(mini, trees, source, landing, delta, treesOf) {
+  if (samePlaces(placesOf2(trees, source.step.span), placesOf2(trees, landing.step.span), delta)) return { kind: "moves-every-copy", mini, trees };
+  const tree = trees.find((t) => t.ok);
+  const row = tree && tree.ok ? tree.parts[source.part] : null;
+  const around = row ? enclosing(row, source.step.span) : null;
+  const rep = around ? repeatOf2(mini, around) : null;
+  if (!rep) return { kind: "refused", why: "copies-come-from-outside-the-step" };
+  if (/[<{|?]/.test(mini.slice(rep.from, rep.to))) return { kind: "refused", why: "repeat-plays-differently-each-time" };
+  const written = mini.slice(0, rep.from) + rep.out + mini.slice(rep.to);
+  return { kind: "written-out", mini: written, trees: treesOf(written), region: { from: rep.from, to: rep.from + rep.out.length }, spell: rep.kind };
+}
+__name(moveAcrossPlaces, "moveAcrossPlaces");
+function oneEdit(before2, after) {
+  let a = 0;
+  while (a < before2.length && a < after.length && before2[a] === after[a]) a++;
+  let z = 0;
+  while (z < before2.length - a && z < after.length - a && before2[before2.length - 1 - z] === after[after.length - 1 - z]) z++;
+  return { from: a, to: before2.length - z, insert: after.slice(a, after.length - z) };
+}
+__name(oneEdit, "oneEdit");
+function rollMove(mini, trees, from, midi, to, toPitch, treesOf) {
+  if (to.bar !== from.bar) return { ok: false, why: "moves-across-bars" };
+  const n = noteAt(trees, from, midi);
+  if (!n) return { ok: false, why: "no-note-there" };
+  const land = placeAt(trees, to);
+  if (typeof land === "string") return { ok: false, why: land };
+  const delta = { n: to.at.n * from.at.d - from.at.n * to.at.d, d: to.at.d * from.at.d };
+  const verdict = moveAcrossPlaces(mini, trees, n, land, delta, treesOf);
+  if (verdict.kind === "refused") return { ok: false, why: verdict.why };
+  const text = verdict.mini;
+  let region = verdict.kind === "written-out" ? { ...verdict.region } : null;
+  if (region) {
+    const n2 = noteAt(verdict.trees, from, midi);
+    const land2 = placeAt(verdict.trees, to);
+    if (!n2 || typeof land2 === "string") return { ok: false, why: n2 ? land2 : "no-note-there" };
+    if (!samePlaces(placesOf2(verdict.trees, n2.step.span), placesOf2(verdict.trees, land2.step.span), delta)) return { ok: false, why: "source-and-landing-play-in-different-places" };
+  }
+  const follow = /* @__PURE__ */ __name((e) => {
+    if (!region) return true;
+    const d = e.insert.length - (e.to - e.from);
+    if (e.to <= region.from) {
+      region = { from: region.from + d, to: region.to + d };
+      return true;
+    }
+    if (e.from >= region.to) return true;
+    if (e.from < region.from || e.to > region.to) return false;
+    region.to += d;
+    return true;
+  }, "follow");
+  const gone = rollRemove(text, verdict.trees, from, midi);
+  if (!gone.ok) return gone;
+  if (!follow(gone.edit)) return { ok: false, why: "no-note-there" };
+  const between = text.slice(0, gone.edit.from) + gone.edit.insert + text.slice(gone.edit.to);
+  const added = rollAdd(between, treesOf(between), to, toPitch);
+  if (!added.ok) return added;
+  if (!follow(added.edit)) return { ok: false, why: "no-step-there" };
+  let after = between.slice(0, added.edit.from) + added.edit.insert + between.slice(added.edit.to);
+  if (region && verdict.kind === "written-out") {
+    after = after.slice(0, region.from) + respellCopies(after.slice(region.from, region.to), verdict.spell) + after.slice(region.to);
+  }
+  return { ok: true, edit: oneEdit(mini, after) };
+}
+__name(rollMove, "rollMove");
+function rollResize(mini, trees, place, midi, end) {
+  const n = noteAt(trees, place, midi);
+  if (!n) return { ok: false, why: "no-note-there" };
+  return resizeStep(mini, trees, addressOf(place, n.step, n.at), end, { sound: n.step.name, part: n.part });
+}
+__name(rollResize, "rollResize");
+
 // src/codeView/regionTrim.ts
 var REGION_DEFAULT = { begin: 0, end: 1 };
 var MIN_REGION_SPAN = 0.01;
@@ -13513,14 +15186,14 @@ function regionTrimEdit(chunk, control, value) {
   if (chunk.headFn !== null && MULTI_VOICE_HEADS.has(chunk.headFn)) {
     return { edit: null, refusal: "not-one-voice", value };
   }
-  const current8 = readRegion(chunk);
-  if (!current8 || !Number.isFinite(value)) {
+  const current9 = readRegion(chunk);
+  if (!current9 || !Number.isFinite(value)) {
     return { edit: null, refusal: "not-a-number", value };
   }
-  const clamped = control === "begin" ? Math.min(Math.max(0, value), current8.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current8.begin + MIN_REGION_SPAN);
+  const clamped = control === "begin" ? Math.min(Math.max(0, value), current9.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current9.begin + MIN_REGION_SPAN);
   if (!Number.isFinite(clamped)) return { edit: null, refusal: "not-a-number", value };
-  const before = current8[control];
-  if (formatNumber(clamped) === formatNumber(before)) {
+  const before2 = current9[control];
+  if (formatNumber(clamped) === formatNumber(before2)) {
     return { edit: null, refusal: "no-change", value: clamped };
   }
   const edit = setNumberCall(chunk, [control], control, clamped);
@@ -13532,15 +15205,15 @@ __name(regionTrimEdit, "regionTrimEdit");
 // src/codeView/notation/place.ts
 function viewPlacesNotes(model) {
   if (model.lookOnly) return false;
-  let asked2 = 0;
+  let asked3 = 0;
   if ("lanes" in model) {
     for (let lane = 0; lane < model.lanes.length; lane++)
       for (let col = 0; col < model.steps; col++) {
         if (isCellOn(model.lanes[lane].cells[col])) continue;
-        asked2++;
+        asked3++;
         if (canToggleCell(model, lane, col, true)) return true;
       }
-    return asked2 === 0;
+    return asked3 === 0;
   }
   const pitches = new Set(model.notes.map((n) => n.pitch));
   if (model.notes.some((n) => pitchToMidi(n.pitch) !== null)) {
@@ -13550,10 +15223,10 @@ function viewPlacesNotes(model) {
   for (const pitch of pitches)
     for (let step = 0; step < model.steps; step++) {
       if (model.notes.some((n) => n.pitch === pitch && n.start === step)) continue;
-      asked2++;
+      asked3++;
       if (canPlaceNote(model, pitch, step, 1)) return true;
     }
-  return asked2 === 0;
+  return asked3 === 0;
 }
 __name(viewPlacesNotes, "viewPlacesNotes");
 var paint = /* @__PURE__ */ __name((value, length = 1) => value ? cellOn(length) : false, "paint");
@@ -13628,8 +15301,8 @@ function placeNote(model, pitch, start, duration, opts = {}) {
 }
 __name(placeNote, "placeNote");
 function degradesLocality(next, floor) {
-  const rank = /* @__PURE__ */ __name((p) => p === "leaf" ? 0 : p === "rebuild" ? 2 : 1, "rank");
-  return rank(next.path) > rank(floor.path);
+  const rank2 = /* @__PURE__ */ __name((p) => p === "leaf" ? 0 : p === "rebuild" ? 2 : 1, "rank");
+  return rank2(next.path) > rank2(floor.path);
 }
 __name(degradesLocality, "degradesLocality");
 function pasteNote(model, pitch, start, duration, opts = {}) {
@@ -13643,43 +15316,6 @@ function pasteNote(model, pitch, start, duration, opts = {}) {
 __name(pasteNote, "pasteNote");
 var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value, length = 1) => toggleCell(model, laneIndex, stepIndex, value, length) !== model, "canToggleCell");
 var canPlaceNote = /* @__PURE__ */ __name((model, pitch, start, duration) => placeNote(model, pitch, start, duration) !== model, "canPlaceNote");
-function partRoom(model, laneIndex, stepIndex) {
-  const part = model.lanes[laneIndex]?.part ?? 0;
-  let next = model.steps;
-  for (const lane of model.lanes) {
-    if ((lane.part ?? 0) !== part) continue;
-    for (let j = stepIndex + 1; j < lane.cells.length && j < next; j++) {
-      if (isCellOn(lane.cells[j])) {
-        next = j;
-        break;
-      }
-    }
-  }
-  return next - stepIndex;
-}
-__name(partRoom, "partRoom");
-function resizeCell(model, laneIndex, stepIndex, duration) {
-  const cell = model.lanes[laneIndex]?.cells[stepIndex];
-  if (!isCellOn(cell)) return model;
-  const capped = Math.max(1, Math.min(duration, partRoom(model, laneIndex, stepIndex)));
-  const lanes = model.lanes.map(
-    (lane, i) => i === laneIndex ? {
-      ...lane,
-      cells: clampLane(
-        lane.cells.map((c, j) => j === stepIndex ? cellOn(capped) : c),
-        model.steps
-      )
-    } : lane
-  );
-  const next = lanes[laneIndex].cells[stepIndex];
-  if (isCellOn(next) && next.duration === cell.duration) return model;
-  const written = serializeStepGrid({ ...model, lanes });
-  if (written === null) return model;
-  if (written === serializeStepGrid(model)) return model;
-  return { ...model, lanes };
-}
-__name(resizeCell, "resizeCell");
-var canResizeCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, duration) => resizeCell(model, laneIndex, stepIndex, duration) !== model, "canResizeCell");
 var resizableNotes = /* @__PURE__ */ __name((model) => {
   const out = /* @__PURE__ */ new Set();
   const now2 = serializePianoRoll(model);
@@ -13938,12 +15574,12 @@ function reify(mini) {
 __name(reify, "reify");
 var CHANGES_PER_CYCLE = "this pattern plays differently from one cycle to the next, and repeating it as bars would change what it plays";
 function oldBars(oldMini, bars) {
-  const before = reify(oldMini);
-  if (before === null) return { reason: "Strudel can't read the pattern" };
+  const before2 = reify(oldMini);
+  if (before2 === null) return { reason: "Strudel can't read the pattern" };
   const old = [];
   for (let b = 0; b < bars; b++) {
-    const k = barKey(before, b);
-    if (k === null || barKey(before, b + bars) !== k) return { reason: CHANGES_PER_CYCLE };
+    const k = barKey(before2, b);
+    if (k === null || barKey(before2, b + bars) !== k) return { reason: CHANGES_PER_CYCLE };
     old.push(k);
   }
   return old;
@@ -13982,38 +15618,38 @@ function duplicateBar(mini, bars) {
   return why === null ? { ok: true, mini: next } : { ok: false, reason: why };
 }
 __name(duplicateBar, "duplicateBar");
-function appendEmptyBars(mini, bars, add) {
-  if (!Number.isInteger(add) || add < 1) return { ok: false, reason: "nothing to add" };
+function appendEmptyBars(mini, bars, add2) {
+  if (!Number.isInteger(add2) || add2 < 1) return { ok: false, reason: "nothing to add" };
   const old = oldBars(mini, bars);
   if (!Array.isArray(old)) return { ok: false, reason: old.reason };
-  const next = `<${entriesOf(mini)}${" ~".repeat(add)}>`;
-  const why = playsAsIntended(old, next, bars + add, (b) => b < bars ? b : null);
+  const next = `<${entriesOf(mini)}${" ~".repeat(add2)}>`;
+  const why = playsAsIntended(old, next, bars + add2, (b) => b < bars ? b : null);
   return why === null ? { ok: true, mini: next } : { ok: false, reason: why };
 }
 __name(appendEmptyBars, "appendEmptyBars");
 var VELOCITY_STRING = "its velocities are written per column, and the velocity lane can't follow a longer pattern yet";
 var GRID_CANT_SHOW = "the grid couldn't show the longer pattern";
-function lengthenOffers(parse7, mini, bars, gain) {
+function lengthenOffers(parse8, mini, bars, gain) {
   return {
-    duplicate: offered(parse7, mini, () => duplicateBar(mini, bars), bars + 1, gain),
-    append: appendBarsOffer(parse7, mini, bars, 1, gain)
+    duplicate: offered(parse8, mini, () => duplicateBar(mini, bars), bars + 1, gain),
+    append: appendBarsOffer(parse8, mini, bars, 1, gain)
   };
 }
 __name(lengthenOffers, "lengthenOffers");
-function appendBarsOffer(parse7, mini, bars, add, gain) {
-  return offered(parse7, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
+function appendBarsOffer(parse8, mini, bars, add2, gain) {
+  return offered(parse8, mini, () => appendEmptyBars(mini, bars, add2), bars + add2, gain);
 }
 __name(appendBarsOffer, "appendBarsOffer");
 var NOT_EDITABLE_HERE = "the grid can show this pattern but can't edit it; make it longer in the code";
-function offered(parse7, mini, rewrite, wantBars, gain) {
-  if (!parse7(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
-  return readsBack(parse7, rewrite(), wantBars, gain);
+function offered(parse8, mini, rewrite, wantBars, gain) {
+  if (!parse8(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
+  return readsBack(parse8, rewrite(), wantBars, gain);
 }
 __name(offered, "offered");
-function readsBack(parse7, r, wantBars, gain) {
+function readsBack(parse8, r, wantBars, gain) {
   if (!r.ok) return r;
   if (gain.mini !== null) return { ok: false, reason: VELOCITY_STRING };
-  const read5 = parse7(r.mini, UNREFINED);
+  const read5 = parse8(r.mini, UNREFINED);
   return read5.ok && (read5.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
 }
 __name(readsBack, "readsBack");
@@ -14184,40 +15820,40 @@ function headText(doc, control, i) {
 __name(headText, "headText");
 function setWeight2(doc, control, i, weight) {
   const w = asWeight2(weight);
-  const arm = control.arms[i];
-  if (!arm) return [];
-  if (arm.weightRange) return [{ range: arm.weightRange, text: String(w) }];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
+  if (arm2.weightRange) return [{ range: arm2.weightRange, text: String(w) }];
   if (w === 1) return [];
-  return [{ range: [arm.headRange[1], arm.headRange[1]], text: `@${w}` }];
+  return [{ range: [arm2.headRange[1], arm2.headRange[1]], text: `@${w}` }];
 }
 __name(setWeight2, "setWeight");
 function splitArm2(doc, control, i, firstWeight) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  const n = asWeight2(arm.weight);
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
+  const n = asWeight2(arm2.weight);
   if (n < 2) return [];
   const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
   const n2 = n - n1;
   const head = headText(doc, control, i);
-  return [{ range: arm.armRange, text: `${head}@${n1} ${head}@${n2}` }];
+  return [{ range: arm2.armRange, text: `${head}@${n1} ${head}@${n2}` }];
 }
 __name(splitArm2, "splitArm");
 function silenceArm2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   if (headText(doc, control, i) === "~") return [];
-  return [{ range: arm.headRange, text: "~" }];
+  return [{ range: arm2.headRange, text: "~" }];
 }
 __name(silenceArm2, "silenceArm");
 var SELECTOR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 function setArmHead(doc, control, i, key3) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   const next = key3.trim();
   if (!SELECTOR_NAME.test(next)) return [];
   if (!control.entries.some((e) => e.key === next)) return [];
   if (headText(doc, control, i) === next) return [];
-  return [{ range: arm.headRange, text: next }];
+  return [{ range: arm2.headRange, text: next }];
 }
 __name(setArmHead, "setArmHead");
 function listSectionParts2(control) {
@@ -14230,9 +15866,9 @@ function listSectionParts2(control) {
 }
 __name(listSectionParts2, "listSectionParts");
 function insertSilenceArm2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  const armSource = arm.weightRange ? `~@${doc.slice(arm.weightRange[0], arm.weightRange[1])}` : "~";
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
+  const armSource = arm2.weightRange ? `~@${doc.slice(arm2.weightRange[0], arm2.weightRange[1])}` : "~";
   return insertArm2(doc, control, i + 1, armSource);
 }
 __name(insertSilenceArm2, "insertSilenceArm");
@@ -14267,8 +15903,8 @@ function insertArm2(doc, control, at, armSource) {
 }
 __name(insertArm2, "insertArm");
 function duplicateArm(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   return insertArm2(doc, control, i + 1, armText2(doc, control, i));
 }
 __name(duplicateArm, "duplicateArm");
@@ -14295,8 +15931,8 @@ function everyOccurrenceIsAnArmHead(doc, control, name) {
 }
 __name(everyOccurrenceIsAnArmHead, "everyOccurrenceIsAnArmHead");
 function countSectionArms2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return 0;
+  const arm2 = control.arms[i];
+  if (!arm2) return 0;
   const name = headText(doc, control, i);
   if (control.entries.filter((e) => e.key === name).length !== 1) return 0;
   if (!everyOccurrenceIsAnArmHead(doc, control, name)) return 0;
@@ -14304,8 +15940,8 @@ function countSectionArms2(doc, control, i) {
 }
 __name(countSectionArms2, "countSectionArms");
 function renameSection2(doc, control, i, newName) {
-  const arm = control.arms[i];
-  if (!arm) return [];
+  const arm2 = control.arms[i];
+  if (!arm2) return [];
   if (!SECTION_NAME.test(newName) || newName === NOT_A_KEY) return [];
   const oldName = headText(doc, control, i);
   if (newName === oldName) return [];
@@ -14450,9 +16086,9 @@ function hapMidi(value) {
   if (!value || typeof value !== "object") return null;
   const v = value;
   if (typeof v.freq === "number") return 12 * Math.log(v.freq / 440) / Math.LN2 + 69;
-  const note = v.note ?? v.n;
-  if (typeof note === "string") return noteToMidi(note);
-  if (typeof note === "number") return note;
+  const note2 = v.note ?? v.n;
+  if (typeof note2 === "string") return noteToMidi(note2);
+  if (typeof note2 === "number") return note2;
   return null;
 }
 __name(hapMidi, "hapMidi");
@@ -15131,13 +16767,13 @@ function windowsOf(haps, cps, extraStarts, sampleRate, offset) {
   const gridEnd = Math.floor(last / RENDER_WINDOW_SECONDS);
   const grid = Array.from({ length: gridEnd }, (_, k2) => (k2 + 1) * RENDER_WINDOW_SECONDS);
   const minGap = 2 * RENDER_BLOCK_FRAMES / sampleRate;
-  const starts = [0];
+  const starts2 = [0];
   for (const t of [...grid, ...extraStarts].sort((a, b) => a - b)) {
     if (t - RENDER_WINDOW_LEAD_SECONDS < minGap) continue;
-    if (t - starts[starts.length - 1] < minGap) continue;
-    starts.push(t);
+    if (t - starts2[starts2.length - 1] < minGap) continue;
+    starts2.push(t);
   }
-  const windows = starts.map((start) => ({ start, haps: [] }));
+  const windows = starts2.map((start) => ({ start, haps: [] }));
   let k = 0;
   for (const hap of haps) {
     const at = hap.whole.begin.valueOf() / cps - offset;
@@ -15384,8 +17020,8 @@ function playsAtDisplayRate(value) {
   return true;
 }
 __name(playsAtDisplayRate, "playsAtDisplayRate");
-function displayRenderRate(values2, liveRate) {
-  for (const value of values2) if (!playsAtDisplayRate(value)) return liveRate;
+function displayRenderRate(values3, liveRate) {
+  for (const value of values3) if (!playsAtDisplayRate(value)) return liveRate;
   return Math.min(liveRate, DISPLAY_RENDER_RATE);
 }
 __name(displayRenderRate, "displayRenderRate");
@@ -15396,7 +17032,7 @@ function createTrackEnvelopeScheduler(deps) {
   let cycles = 0;
   const envelopes = /* @__PURE__ */ new Map();
   const refused2 = /* @__PURE__ */ new Map();
-  const current8 = /* @__PURE__ */ new Map();
+  const current9 = /* @__PURE__ */ new Map();
   let overCap = [];
   let rendering = null;
   let cancelTimer = null;
@@ -15425,8 +17061,8 @@ function createTrackEnvelopeScheduler(deps) {
       } catch {
         fp = null;
       }
-      if (wanted.includes(id) && current8.get(id) !== fp) {
-        current8.set(id, fp);
+      if (wanted.includes(id) && current9.get(id) !== fp) {
+        current9.set(id, fp);
         deps.onChange();
       }
       deps.schedule(step, 0);
@@ -15452,7 +17088,7 @@ function createTrackEnvelopeScheduler(deps) {
     const seconds = cps > 0 ? cycles / cps : Infinity;
     let spent = 0;
     for (const id of wanted) {
-      const fp = current8.get(id);
+      const fp = current9.get(id);
       if (fp == null) continue;
       const kept = envelopes.get(id)?.fingerprint === fp;
       const cost = seconds * (deps.weight?.(id) ?? 1);
@@ -15481,7 +17117,7 @@ function createTrackEnvelopeScheduler(deps) {
       for (const id of over) if (envelopes.delete(id)) deps.onChange();
       for (const id of todo) {
         if (controller.signal.aborted) break;
-        const fp = current8.get(id);
+        const fp = current9.get(id);
         if (fp == null) continue;
         rendering = id;
         deps.onChange();
@@ -15516,8 +17152,8 @@ function createTrackEnvelopeScheduler(deps) {
   return {
     request(trackIds, span) {
       const nextWanted = [...trackIds];
-      const same = span === cycles && nextWanted.length === wanted.length && nextWanted.every((id, i) => id === wanted[i]);
-      if (same) return;
+      const same4 = span === cycles && nextWanted.length === wanted.length && nextWanted.every((id, i) => id === wanted[i]);
+      if (same4) return;
       const reordered = span === cycles && nextWanted.length === wanted.length && nextWanted.every((id) => wanted.includes(id));
       if (span !== cycles) abortInFlight();
       wanted = nextWanted;
@@ -15526,7 +17162,7 @@ function createTrackEnvelopeScheduler(deps) {
         kick();
         return;
       }
-      for (const id of [...current8.keys()]) if (!wanted.includes(id)) current8.delete(id);
+      for (const id of [...current9.keys()]) if (!wanted.includes(id)) current9.delete(id);
       deps.onChange();
       refingerprint();
     },
@@ -15551,10 +17187,10 @@ function createTrackEnvelopeScheduler(deps) {
       suspended++;
       cancelTimer?.();
       cancelTimer = null;
-      const pending = inFlight2;
-      pending?.controller.abort();
+      const pending2 = inFlight2;
+      pending2?.controller.abort();
       try {
-        if (pending) await pending.done;
+        if (pending2) await pending2.done;
         return await fn();
       } finally {
         suspended--;
@@ -15562,15 +17198,15 @@ function createTrackEnvelopeScheduler(deps) {
       }
     },
     interrupt() {
-      const pending = inFlight2;
-      if (pending == null) {
+      const pending2 = inFlight2;
+      if (pending2 == null) {
         if (cancelTimer != null) kick();
         return null;
       }
       cancelTimer?.();
       cancelTimer = null;
-      pending.controller.abort();
-      return pending.done;
+      pending2.controller.abort();
+      return pending2.done;
     },
     get(trackId) {
       const env = envelopes.get(trackId);
@@ -15579,7 +17215,7 @@ function createTrackEnvelopeScheduler(deps) {
         data: env.data,
         columns: env.columns,
         cycles: env.cycles,
-        stale: current8.get(trackId) !== env.fingerprint
+        stale: current9.get(trackId) !== env.fingerprint
       };
     },
     status: /* @__PURE__ */ __name(() => ({
@@ -15638,10 +17274,10 @@ function createLiveTriggerDrain() {
   return {
     track(done, startTime) {
       inFlight2.set(done, startTime);
-      const settle = /* @__PURE__ */ __name(() => {
+      const settle2 = /* @__PURE__ */ __name(() => {
         inFlight2.delete(done);
       }, "settle");
-      done.then(settle, settle);
+      done.then(settle2, settle2);
     },
     pending: /* @__PURE__ */ __name(() => inFlight2.size, "pending"),
     async drain({ now: now2, sleep, capSeconds, marginSeconds }) {
@@ -15953,16 +17589,16 @@ function soundIndex(n, length) {
   return (i % length + length) % length;
 }
 __name(soundIndex, "soundIndex");
-function soundWarmJobs(values2, deps) {
+function soundWarmJobs(values3, deps) {
   const jobs = /* @__PURE__ */ new Map();
-  for (const value of values2) {
+  for (const value of values3) {
     const s = asString(value.s);
     if (!s) continue;
     const bank = asString(value.bank);
     const n = asNumber(value.n);
-    const note = asNumber(value.note) ?? asString(value.note);
+    const note2 = asNumber(value.note) ?? asString(value.note);
     const freq = asNumber(value.freq);
-    const url = resolveSampleUrlIn({ s, bank, n, note, freq }, deps);
+    const url = resolveSampleUrlIn({ s, bank, n, note: note2, freq }, deps);
     if (url != null) {
       const key4 = `sample:${url}`;
       if (jobs.has(key4) || deps.getCachedBuffer(url) != null) continue;
@@ -15978,8 +17614,8 @@ function soundWarmJobs(values2, deps) {
     if (!font) continue;
     const pitch = {};
     if (freq != null) pitch.freq = freq;
-    else if (note != null) pitch.note = note;
-    const key3 = `font:${font}:${freq ?? note ?? "c3"}`;
+    else if (note2 != null) pitch.note = note2;
+    const key3 = `font:${font}:${freq ?? note2 ?? "c3"}`;
     if (jobs.has(key3)) continue;
     const load2 = deps.getFontBufferSource;
     jobs.set(key3, { key: key3, run: /* @__PURE__ */ __name(() => load2(font, pitch, deps.audioContext()), "run") });
@@ -16401,22 +18037,22 @@ ${PROBE}()`);
 __name(measureEvalFrame, "measureEvalFrame");
 var BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 function decodeSegment(segment) {
-  const values2 = [];
+  const values3 = [];
   let value = 0;
-  let shift = 0;
+  let shift2 = 0;
   for (const ch of segment) {
     const digit = BASE64.indexOf(ch);
     if (digit < 0) return null;
-    value += (digit & 31) << shift;
+    value += (digit & 31) << shift2;
     if (digit & 32) {
-      shift += 5;
+      shift2 += 5;
     } else {
-      values2.push(value & 1 ? -(value >>> 1) : value >>> 1);
+      values3.push(value & 1 ? -(value >>> 1) : value >>> 1);
       value = 0;
-      shift = 0;
+      shift2 = 0;
     }
   }
-  return values2;
+  return values3;
 }
 __name(decodeSegment, "decodeSegment");
 function originalPositionFor(mappings, line, column) {
@@ -16461,9 +18097,9 @@ function locateEvalError(err, transpileWithMap, shape) {
 }
 __name(locateEvalError, "locateEvalError");
 function positionOf(code, offset) {
-  const before = code.slice(0, offset);
-  const lineStart = before.lastIndexOf("\n") + 1;
-  return { line: before.split("\n").length, column: offset - lineStart + 1 };
+  const before2 = code.slice(0, offset);
+  const lineStart = before2.lastIndexOf("\n") + 1;
+  return { line: before2.split("\n").length, column: offset - lineStart + 1 };
 }
 __name(positionOf, "positionOf");
 function locateSoundName(code, locations, sound) {
@@ -16474,9 +18110,9 @@ function locateSoundName(code, locations, sound) {
 }
 __name(locateSoundName, "locateSoundName");
 function locateQuotedValue(code, locations, value, message) {
-  const values2 = typeof value === "string" ? [value] : value && typeof value === "object" ? Object.values(value) : [];
+  const values3 = typeof value === "string" ? [value] : value && typeof value === "object" ? Object.values(value) : [];
   const placed = /* @__PURE__ */ new Map();
-  for (const v of values2) {
+  for (const v of values3) {
     if (typeof v !== "string" || !v || !message.includes(`"${v}"`)) continue;
     const at = locateSoundName(code, locations, v);
     if (at) placed.set(v, at);
@@ -17739,6 +19375,7 @@ var _StrudelEngine = class _StrudelEngine {
     const capturedVizOptions = /* @__PURE__ */ new Map();
     let capturedBackdropViz = null;
     let capturedBackdropVizOptions = null;
+    let masterTransformDepth = 0;
     let pendingChainViz = null;
     let pendingChainVizOptions = null;
     let anonIndex = 0;
@@ -17762,6 +19399,9 @@ var _StrudelEngine = class _StrudelEngine {
     const { Pattern: Pattern2, silence } = await import('@strudel/core');
     const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "p");
     const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "viz");
+    const savedAllDescriptor = Object.getOwnPropertyDescriptor(globalThis, "all");
+    let allTrapInstalled = false;
+    let strudelAll = savedAllDescriptor?.value;
     const savedLegacyDescriptors = /* @__PURE__ */ new Map();
     const noteForApp = /* @__PURE__ */ __name((notice) => {
       this.evalNotices.notices.push(notice);
@@ -17779,6 +19419,31 @@ var _StrudelEngine = class _StrudelEngine {
       configurable: true,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       set(strudelFn) {
+        if (!allTrapInstalled) {
+          allTrapInstalled = true;
+          Object.defineProperty(globalThis, "all", {
+            configurable: true,
+            enumerable: true,
+            get() {
+              if (typeof strudelAll !== "function") return strudelAll;
+              const register = strudelAll;
+              return (transform) => {
+                if (typeof transform !== "function") return register(transform);
+                return register(function(...args) {
+                  masterTransformDepth++;
+                  try {
+                    return transform.apply(this, args);
+                  } finally {
+                    masterTransformDepth--;
+                  }
+                });
+              };
+            },
+            set(v) {
+              strudelAll = v;
+            }
+          });
+        }
         const strudelViz = Pattern2.prototype.viz;
         Object.defineProperty(Pattern2.prototype, "viz", {
           configurable: true,
@@ -17786,7 +19451,7 @@ var _StrudelEngine = class _StrudelEngine {
           value: /* @__PURE__ */ __name(function(vizName, opts) {
             const resolvedName = extractVizName(vizName);
             const optsObj = opts && typeof opts === "object" ? opts : null;
-            if (resolvedName && optsObj && optsObj.backdrop === true) {
+            if (resolvedName && (optsObj && optsObj.backdrop === true || masterTransformDepth > 0)) {
               capturedBackdropViz = resolvedName;
               capturedBackdropVizOptions = optsObj;
               return strudelViz ? strudelViz.call(this, vizName) : this;
@@ -17810,6 +19475,11 @@ var _StrudelEngine = class _StrudelEngine {
             configurable: true,
             writable: true,
             value: /* @__PURE__ */ __name(function(opts) {
+              if (masterTransformDepth > 0) {
+                capturedBackdropViz = renderer;
+                capturedBackdropVizOptions = opts && typeof opts === "object" ? opts : null;
+                return this;
+              }
               this._pendingViz = renderer;
               pendingChainViz = renderer;
               if (opts && typeof opts === "object") {
@@ -18011,6 +19681,20 @@ var _StrudelEngine = class _StrudelEngine {
       } else {
         delete Pattern2.prototype.viz;
       }
+      if (allTrapInstalled) {
+        if (strudelAll !== void 0) {
+          Object.defineProperty(globalThis, "all", {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: strudelAll
+          });
+        } else if (savedAllDescriptor) {
+          Object.defineProperty(globalThis, "all", savedAllDescriptor);
+        } else {
+          delete globalThis.all;
+        }
+      }
       for (const [methodName2, desc] of savedLegacyDescriptors) {
         if (desc) {
           Object.defineProperty(Pattern2.prototype, methodName2, desc);
@@ -18083,12 +19767,12 @@ var _StrudelEngine = class _StrudelEngine {
     if (!pattern || typeof pattern.queryArc !== "function") return [];
     try {
       const haps = pattern.queryArc(from, to, { _cps: scheduler.cps });
-      const values2 = [];
+      const values3 = [];
       for (const hap of haps) {
         if (hap.hasOnset && !hap.hasOnset()) continue;
-        if (hap.value && typeof hap.value === "object") values2.push(hap.value);
+        if (hap.value && typeof hap.value === "object") values3.push(hap.value);
       }
-      return values2;
+      return values3;
     } catch {
       return [];
     }
@@ -18583,19 +20267,19 @@ var _StrudelEngine = class _StrudelEngine {
     const pattern = this.songPatterns.get(trackId);
     if (!pattern) return null;
     let text = `${this.getCps() ?? 0.5}|${cycles}|`;
-    const values2 = [];
+    const values3 = [];
     try {
       for (const hap of pattern.queryArc(0, cycles)) {
         if (hap.whole == null) continue;
         if (typeof hap.hasOnset === "function" && !hap.hasOnset()) continue;
         text += `${Number(hap.whole.begin)},${Number(hap.whole.end)},${JSON.stringify(hap.value)};`;
-        values2.push(hap.value);
+        values3.push(hap.value);
       }
     } catch {
       this.displayRates.delete(trackId);
       return `unreadable:${this.evalEpoch}`;
     }
-    if (this.audioCtx) this.displayRates.set(trackId, displayRenderRate(values2, this.audioCtx.sampleRate));
+    if (this.audioCtx) this.displayRates.set(trackId, displayRenderRate(values3, this.audioCtx.sampleRate));
     return digest(text);
   }
   /**
@@ -19170,9 +20854,9 @@ var _VizRendererBase = class _VizRendererBase {
      */
     this.optionsRef = { current: {} };
   }
-  mount(container, components, size, onError) {
+  mount(container2, components, size, onError) {
     this.optionsRef.current = components.options ?? {};
-    this.onMount(container, components, size, onError);
+    this.onMount(container2, components, size, onError);
   }
   update(components) {
     this.optionsRef.current = components.options ?? {};
@@ -19447,9 +21131,9 @@ var _SignalBus = class _SignalBus {
   /** Normalize a note to a MIDI number (P93 — only when a NUMBER is explicitly
    *  requested; the raw `.note` preserves the user's name|number form). Returns
    *  null for percussion sample names / unrecognized input. */
-  noteToMidi(note) {
-    if (note == null) return null;
-    return noteToMidi(note);
+  noteToMidi(note2) {
+    if (note2 == null) return null;
+    return noteToMidi(note2);
   }
 };
 __name(_SignalBus, "SignalBus");
@@ -19596,7 +21280,7 @@ var _P5VizRenderer = class _P5VizRenderer extends VizRendererBase {
       })
     };
   }
-  onMount(container, components, size, onError) {
+  onMount(container2, components, size, onError) {
     perf.gauge("viz.p5", 1);
     installP5FesBridgeWith(p5);
     try {
@@ -19643,7 +21327,7 @@ var _P5VizRenderer = class _P5VizRenderer extends VizRendererBase {
         this.optionsRef,
         this.staveUniformsRef
       );
-      this.instance = new p5(sketchFn, container);
+      this.instance = new p5(sketchFn, container2);
       this.instance.resizeCanvas(size.w, size.h);
     } catch (e) {
       onError(e);
@@ -20083,6 +21767,10 @@ var VizFramePump = _VizFramePump;
 var vizFramePump = new VizFramePump();
 
 // src/visualizers/renderers/WorkerVizRenderer.ts
+function currentVizSignalAliases() {
+  return resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE);
+}
+__name(currentVizSignalAliases, "currentVizSignalAliases");
 var workerPerfSeq = 0;
 var optionsKeySeq = 0;
 function stableKey(options) {
@@ -20183,7 +21871,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
   setDemoSource(src) {
     this.demoSource = src;
   }
-  onMount(container, components, size, onError) {
+  onMount(container2, components, size, onError) {
     this.onError = onError;
     this.size = { w: size.w, h: size.h };
     perf.gauge("viz.worker", 1);
@@ -20201,7 +21889,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
       canvas.style.display = "block";
       canvas.width = Math.max(1, Math.round(size.w * dpr));
       canvas.height = Math.max(1, Math.round(size.h * dpr));
-      container.appendChild(canvas);
+      container2.appendChild(canvas);
       this.canvasEl = canvas;
       const offscreen = canvas.transferControlToOffscreen();
       const worker = this.pooled ? acquireVizWorker() ?? make() : make();
@@ -20238,7 +21926,7 @@ ${d.stack}` : "");
       };
       worker.addEventListener("message", this.diagHandler);
       this.bindSampler(components);
-      const aliases = resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE);
+      const aliases = currentVizSignalAliases();
       const mountOptions = this.postOptions(components);
       const mountMsg = {
         type: "mount",
@@ -20466,8 +22154,8 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
     this.worker = makeWorker();
     this.active = this.worker;
   }
-  mount(container, components, size, onError) {
-    this.container = container;
+  mount(container2, components, size, onError) {
+    this.container = container2;
     this.components = components;
     this.size = { w: size.w, h: size.h };
     this.hostOnError = onError;
@@ -20476,7 +22164,7 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
       this.clearProbation();
     });
     if (!this.paused) this.armProbation();
-    this.worker.mount(container, components, size, (e) => this.onWorkerError(e));
+    this.worker.mount(container2, components, size, (e) => this.onWorkerError(e));
   }
   armProbation() {
     if (this.ready || this.fellBack || this.probationTimer !== null) return;
@@ -25746,7 +27434,7 @@ var _HydraVizRenderer = class _HydraVizRenderer extends VizRendererBase {
     }, "pumpAudio");
     this.staveBag = buildHydraStaveBag(this.bus, this.optionsRef);
   }
-  onMount(container, components, size, onError) {
+  onMount(container2, components, size, onError) {
     perf.gauge("viz.hydra", 1);
     const hostOnError = onError;
     onError = /* @__PURE__ */ __name((e) => {
@@ -25797,7 +27485,7 @@ var _HydraVizRenderer = class _HydraVizRenderer extends VizRendererBase {
       this.canvas.height = size.h;
       this.canvas.style.width = "100%";
       this.canvas.style.height = "100%";
-      container.appendChild(this.canvas);
+      container2.appendChild(this.canvas);
       this.initHydra(size).catch(onError);
     } catch (e) {
       onError(e);
@@ -26952,7 +28640,7 @@ var _GLSLVizRenderer = class _GLSLVizRenderer extends VizRendererBase {
       this.rafId = requestAnimationFrame(this.loop);
     }, "loop");
   }
-  onMount(container, components, size, onError) {
+  onMount(container2, components, size, onError) {
     perf.gauge("viz.glsl", 1);
     try {
       this.size = { w: size.w, h: size.h };
@@ -26971,7 +28659,7 @@ var _GLSLVizRenderer = class _GLSLVizRenderer extends VizRendererBase {
       canvas.style.width = "100%";
       canvas.style.height = "100%";
       canvas.style.display = "block";
-      container.appendChild(canvas);
+      container2.appendChild(canvas);
       this.canvas = canvas;
       const gl = canvas.getContext("webgl2");
       if (!gl) throw new Error("GLSLVizRenderer: WebGL2 not available");
@@ -27170,8 +28858,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React48__default.Children.count(children);
-  const childArray = React48__default.Children.toArray(children);
+  const count = React33__default.Children.count(children);
+  const childArray = React33__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -27182,9 +28870,9 @@ function SplitPane({
     draggingRef.current = dividerIndex;
     const startPos = isHorizontal ? e.clientX : e.clientY;
     const startSizes = [...sizes];
-    const container = containerRef.current;
-    if (!container) return;
-    const containerSize = isHorizontal ? container.offsetWidth : container.offsetHeight;
+    const container2 = containerRef.current;
+    if (!container2) return;
+    const containerSize = isHorizontal ? container2.offsetWidth : container2.offsetHeight;
     const minPct = minSize / containerSize * 100;
     const onMouseMove = /* @__PURE__ */ __name((ev) => {
       if (draggingRef.current === null) return;
@@ -27216,7 +28904,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React48__default.useEffect(() => {
+  React33__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -27232,7 +28920,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React48__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React33__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -27465,12 +29153,12 @@ var _IdbMissingError = class _IdbMissingError extends Error {
 };
 __name(_IdbMissingError, "IdbMissingError");
 var IdbMissingError = _IdbMissingError;
-function openIdbWithTimeout(name, version, upgrade, opts = {}) {
+function openIdbWithTimeout(name, version2, upgrade, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? IDB_OPEN_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
     let settled = false;
     let missing = false;
-    const req = indexedDB.open(name, version);
+    const req = indexedDB.open(name, version2);
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
@@ -27759,19 +29447,19 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners18 = /* @__PURE__ */ new Set();
-  const notify6 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners18) l();
+  const listeners22 = /* @__PURE__ */ new Set();
+  const notify7 = /* @__PURE__ */ __name(() => {
+    for (const l of listeners22) l();
   }, "notify");
-  const onStackItemAdded = /* @__PURE__ */ __name(() => notify6(), "onStackItemAdded");
-  const onStackItemPopped = /* @__PURE__ */ __name(() => notify6(), "onStackItemPopped");
-  const onStackCleared = /* @__PURE__ */ __name(() => notify6(), "onStackCleared");
+  const onStackItemAdded = /* @__PURE__ */ __name(() => notify7(), "onStackItemAdded");
+  const onStackItemPopped = /* @__PURE__ */ __name(() => notify7(), "onStackItemPopped");
+  const onStackCleared = /* @__PURE__ */ __name(() => notify7(), "onStackCleared");
   um.on("stack-item-added", onStackItemAdded);
   um.on("stack-item-popped", onStackItemPopped);
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners18,
+    listeners: listeners22,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -27814,10 +29502,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners18 = active.listeners;
-  listeners18.add(cb);
+  const listeners22 = active.listeners;
+  listeners22.add(cb);
   return () => {
-    listeners18.delete(cb);
+    listeners22.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -27913,6 +29601,7 @@ function ensureFilesMapObserver() {
             unwireTextObserver(key3);
             cachedSnapshots.delete(key3);
             notify2(key3);
+            notifyFileDeleted(key3);
             anyStructuralChange = true;
           }
         }
@@ -28001,10 +29690,10 @@ function subscribe2(id, cb) {
   }
   set2.add(cb);
   return () => {
-    const current8 = subscribersByFile.get(id);
-    if (!current8) return;
-    current8.delete(cb);
-    if (current8.size === 0) {
+    const current9 = subscribersByFile.get(id);
+    if (!current9) return;
+    current9.delete(cb);
+    if (current9.size === 0) {
       subscribersByFile.delete(id);
     }
   };
@@ -28023,6 +29712,18 @@ function subscribeToFileList(cb) {
   };
 }
 __name(subscribeToFileList, "subscribeToFileList");
+var fileDeleteSubscribers = /* @__PURE__ */ new Set();
+function subscribeToFileDeletes(cb) {
+  fileDeleteSubscribers.add(cb);
+  return () => {
+    fileDeleteSubscribers.delete(cb);
+  };
+}
+__name(subscribeToFileDeletes, "subscribeToFileDeletes");
+function notifyFileDeleted(fileId) {
+  for (const cb of Array.from(fileDeleteSubscribers)) cb(fileId);
+}
+__name(notifyFileDeleted, "notifyFileDeleted");
 function listWorkspaceFiles() {
   ensureDoc();
   ensureFilesMapObserver();
@@ -28043,6 +29744,7 @@ __name(listWorkspaceFiles, "listWorkspaceFiles");
 function deleteWorkspaceFile(id) {
   const filesMap = getFilesMap();
   if (!filesMap.has(id)) return;
+  ensureFilesMapObserver();
   const doc = ensureDoc();
   doc.transact(() => {
     filesMap.delete(id);
@@ -28227,12 +29929,12 @@ function pruneZoneOverrides(fileId, currentViz) {
   const stale = [];
   for (const [trackKey, value] of overrides.entries()) {
     const entry = value;
-    const current8 = currentViz.get(trackKey);
-    if (!current8) {
+    const current9 = currentViz.get(trackKey);
+    if (!current9) {
       stale.push(trackKey);
-    } else if (entry.vizId && entry.vizId !== current8.vizId) {
+    } else if (entry.vizId && entry.vizId !== current9.vizId) {
       stale.push(trackKey);
-    } else if (entry.contentHash && current8.contentHash && entry.contentHash !== current8.contentHash) {
+    } else if (entry.contentHash && current9.contentHash && entry.contentHash !== current9.contentHash) {
       stale.push(trackKey);
     }
   }
@@ -28396,12 +30098,12 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe11 = useCallback(
+  const subscribe12 = useCallback(
     (onStoreChange) => subscribe2(id, onStoreChange),
     [id]
   );
   const getSnapshot = useCallback(() => getFile(id), [id]);
-  const file = useSyncExternalStore(subscribe11, getSnapshot, getSnapshot);
+  const file = useSyncExternalStore(subscribe12, getSnapshot, getSnapshot);
   const setContent2 = useCallback(
     (content) => setContent(id, content),
     [id]
@@ -31970,7 +33672,7 @@ function ensureStrudelLintCodeActionProvider(monaco, languageId) {
 __name(ensureStrudelLintCodeActionProvider, "ensureStrudelLintCodeActionProvider");
 var EMPTY_META_MAP = /* @__PURE__ */ new Map();
 function useTrackMetaMap(fileId) {
-  const subscribe11 = useCallback(
+  const subscribe12 = useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -31982,7 +33684,7 @@ function useTrackMetaMap(fileId) {
     if (!fileId) return EMPTY_META_MAP;
     return getTrackMetaMapSnapshot(fileId);
   }, [fileId]);
-  return useSyncExternalStore(subscribe11, getSnapshot, getSnapshot);
+  return useSyncExternalStore(subscribe12, getSnapshot, getSnapshot);
 }
 __name(useTrackMetaMap, "useTrackMetaMap");
 
@@ -32433,7 +34135,8 @@ var G_GLSL_TRACK = "signals \xB7 per-track";
 var RULE = {
   p5: "rule: every signal lives on sig \u2014 sig.kick is a number, sig.fft an array, sig('bd') one sound",
   hydra: "rule: every signal lives on stave.sig \u2014 sig.kick() a number, sig.fft an array, sig('bd') one sound",
-  glsl: "rule: scalars are floats \xB7 spectrum/waveform = iChannel0 texture \xB7 per-track via staveTrack(i)"
+  glsl: "rule: scalars are floats \xB7 spectrum/waveform = iChannel0 texture \xB7 per-track via staveTrack(i)",
+  three: "rule: plain three.js; every signal lives on sig \u2014 sig.bass is a number, sig.fft an array, sig('bd') one sound"
 };
 var ENV_LIVE = /* @__PURE__ */ __name((env) => ({ kind: "scalar", read: env }), "ENV_LIVE");
 var GLSL_GLOBALS = [
@@ -32500,6 +34203,11 @@ var P5_GLOBALS = [
   { group: G_STRUCTURED, decl: "string[] sig.tracks, sig.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] },
   { group: G_STRUCTURED, decl: "number   sig.density;", comment: "quality LOD multiplier (1 = full)", tokens: ["density"] }
 ];
+var THREE_GLOBALS = [
+  { group: G_CONTEXT, decl: "object            stave.options;", comment: "the .viz({ ... }) argument", tokens: ["options"] },
+  { group: G_CONTEXT, decl: "number            stave.width, stave.height;", comment: "the viz size (also innerWidth / innerHeight)", tokens: ["width", "height"] },
+  ...P5_GLOBALS.filter((g) => g.group !== G_CONTEXT)
+];
 var HYDRA_GLOBALS = [
   {
     group: G_SCALARS_THUNK,
@@ -32531,6 +34239,7 @@ var HYDRA_GLOBALS = [
 ];
 var CATALOGUE = {
   p5: P5_GLOBALS,
+  three: THREE_GLOBALS,
   hydra: HYDRA_GLOBALS,
   glsl: GLSL_GLOBALS
 };
@@ -32546,11 +34255,11 @@ function formatStaveInputs(kind) {
   }, "lastLineLen");
   const width = Math.min(64, Math.max(...rows.map((r) => lastLineLen(r.decl)))) + 2;
   const out = ["// Stave Inputs"];
-  let group = null;
+  let group2 = null;
   for (const r of rows) {
-    if (r.group !== group) {
+    if (r.group !== group2) {
       out.push("", `// \u2014 ${r.group} \u2014`);
-      group = r.group;
+      group2 = r.group;
     }
     const declLines = r.decl.split("\n");
     const last = declLines[declLines.length - 1];
@@ -32571,11 +34280,11 @@ function liveLabel(kind, token, spec) {
 __name(liveLabel, "liveLabel");
 function buildVizInputRows(kind) {
   const out = [];
-  let group = null;
+  let group2 = null;
   for (const entry of injectedGlobals(kind)) {
-    if (entry.group !== group) {
+    if (entry.group !== group2) {
       out.push({ type: "header", group: entry.group });
-      group = entry.group;
+      group2 = entry.group;
     }
     const liveTokens = entry.tokens.filter((t) => entry.live?.[t]);
     if (liveTokens.length === 0) {
@@ -32712,10 +34421,10 @@ function subscribe3(ref, cb) {
   return () => {
     if (unsubscribed) return;
     unsubscribed = true;
-    const current8 = pinnedSubscribers.get(fileId);
-    if (!current8) return;
-    current8.delete(cb);
-    if (current8.size === 0) {
+    const current9 = pinnedSubscribers.get(fileId);
+    if (!current9) return;
+    current9.delete(cb);
+    if (current9.size === 0) {
       pinnedSubscribers.delete(fileId);
     }
   };
@@ -32869,7 +34578,8 @@ var vizSignalProbe = new VizSignalProbe();
 var FENCE_LANG = {
   p5: "javascript",
   hydra: "javascript",
-  glsl: "glsl"
+  glsl: "glsl",
+  three: "javascript"
 };
 function bar(v) {
   const cells = 8;
@@ -33401,6 +35111,8 @@ function toMonacoLanguage(lang) {
       return "p5js";
     case "glsl":
       return "glsl";
+    case "three":
+      return "javascript";
     case "markdown":
       return "markdown";
   }
@@ -33981,21 +35693,21 @@ function readVisibleArea() {
   if (typeof window === "undefined" || !isPhone()) return ALL;
   const vv = window.visualViewport;
   if (!vv) return ALL;
-  const scale = vv.scale > 0 ? vv.scale : 1;
-  const showing = vv.height * scale;
+  const scale2 = vv.scale > 0 ? vv.scale : 1;
+  const showing = vv.height * scale2;
   if (window.innerHeight - showing < KEYBOARD_MIN_PX) return ALL;
   return {
     keyboardUp: true,
     height: Math.round(showing),
     // while zoomed, the offset is the zoom's pan, not the keyboard's push
-    top: scale === 1 ? Math.max(0, Math.round(vv.offsetTop)) : 0
+    top: scale2 === 1 ? Math.max(0, Math.round(vv.offsetTop)) : 0
   };
 }
 __name(readVisibleArea, "readVisibleArea");
 var current2 = ALL;
 var listeners5 = /* @__PURE__ */ new Set();
 var started = false;
-function write(area) {
+function write2(area) {
   const root = document.documentElement;
   if (area.keyboardUp && area.height !== null) {
     root.style.setProperty(VISIBLE_HEIGHT_VAR, `${area.height}px`);
@@ -34007,12 +35719,12 @@ function write(area) {
     root.removeAttribute(KEYBOARD_ATTR);
   }
 }
-__name(write, "write");
+__name(write2, "write");
 function update() {
   const next = readVisibleArea();
   if (next.keyboardUp === current2.keyboardUp && next.height === current2.height && next.top === current2.top) return;
   current2 = next;
-  write(next);
+  write2(next);
   listeners5.forEach((l) => l());
 }
 __name(update, "update");
@@ -34033,7 +35745,7 @@ function subscribe4(listener) {
 }
 __name(subscribe4, "subscribe");
 function useKeyboardUp() {
-  return React48.useSyncExternalStore(subscribe4, () => current2.keyboardUp, () => false);
+  return React33.useSyncExternalStore(subscribe4, () => current2.keyboardUp, () => false);
 }
 __name(useKeyboardUp, "useKeyboardUp");
 function getVisibleArea() {
@@ -34164,7 +35876,7 @@ function unwireVisibility() {
   document.removeEventListener("visibilitychange", onVisibilityChange);
 }
 __name(unwireVisibility, "unwireVisibility");
-function registerVizVisibility(renderer, container, opts) {
+function registerVizVisibility(renderer, container2, opts) {
   if (typeof IntersectionObserver === "undefined" || typeof document === "undefined") {
     return () => {
     };
@@ -34188,7 +35900,7 @@ function registerVizVisibility(renderer, container, opts) {
     },
     { threshold: 0 }
   );
-  entry.io.observe(container);
+  entry.io.observe(container2);
   return () => {
     entry.io?.disconnect();
     entry.io = null;
@@ -34203,16 +35915,16 @@ function registerVizVisibility(renderer, container, opts) {
 __name(registerVizVisibility, "registerVizVisibility");
 
 // src/visualizers/attachVizLifecycle.ts
-function attachVizLifecycle(renderer, container, components, size, onError, opts = {}) {
+function attachVizLifecycle(renderer, container2, components, size, onError, opts = {}) {
   try {
-    renderer.mount(container, components, size, onError);
+    renderer.mount(container2, components, size, onError);
   } catch (e) {
     if (opts.onMountError) opts.onMountError(e);
     else throw e;
   }
   return registerVizVisibility(
     renderer,
-    container,
+    container2,
     opts.teardownMs ? { teardownMs: opts.teardownMs } : void 0
   );
 }
@@ -34367,10 +36079,10 @@ var _TeardownOnPauseRenderer = class _TeardownOnPauseRenderer {
   get isTornDown() {
     return this.tornDown;
   }
-  mount(container, components, size, onError) {
-    this.args = { container, components, size, onError };
+  mount(container2, components, size, onError) {
+    this.args = { container: container2, components, size, onError };
     this.inner = this.factory();
-    this.inner.mount(container, components, size, onError);
+    this.inner.mount(container2, components, size, onError);
   }
   update(components) {
     if (this.args) this.args.components = components;
@@ -34405,9 +36117,9 @@ var _TeardownOnPauseRenderer = class _TeardownOnPauseRenderer {
   }
   reinit() {
     if (!this.args) return;
-    const { container, components, size, onError } = this.args;
+    const { container: container2, components, size, onError } = this.args;
     this.inner = this.factory();
-    this.inner.mount(container, components, size, onError);
+    this.inner.mount(container2, components, size, onError);
     this.tornDown = false;
     this.hooks.onAfterReinit?.();
   }
@@ -34441,8 +36153,8 @@ __name(renderSizeFor, "renderSizeFor");
 function computeLayout(contentW, native, crop) {
   const cropW = Math.max(0.01, crop.w);
   const cropH = Math.max(0.01, crop.h);
-  const scale = contentW / (cropW * native.w);
-  let zoneH = cropH * native.h * scale;
+  const scale2 = contentW / (cropW * native.w);
+  let zoneH = cropH * native.h * scale2;
   if (zoneH > MAX_ZONE_HEIGHT) {
     const clamped = MAX_ZONE_HEIGHT / (cropH * native.h);
     return {
@@ -34455,9 +36167,9 @@ function computeLayout(contentW, native, crop) {
   if (zoneH < MIN_ZONE_HEIGHT) zoneH = MIN_ZONE_HEIGHT;
   return {
     zoneH,
-    scale,
-    tx: -crop.x * native.w * scale,
-    ty: -crop.y * native.h * scale
+    scale: scale2,
+    tx: -crop.x * native.w * scale2,
+    ty: -crop.y * native.h * scale2
   };
 }
 __name(computeLayout, "computeLayout");
@@ -34465,17 +36177,17 @@ function layoutForIntent(contentW, native, crop, intentH) {
   const fit = computeLayout(contentW, native, crop);
   if (intentH == null) return fit;
   const denom2 = Math.max(0.01, crop.h) * native.h;
-  const scale = Math.min(fit.scale, intentH / denom2);
+  const scale2 = Math.min(fit.scale, intentH / denom2);
   return {
-    zoneH: Math.max(MIN_ZONE_HEIGHT, denom2 * scale),
-    scale,
-    tx: -crop.x * native.w * scale,
-    ty: -crop.y * native.h * scale
+    zoneH: Math.max(MIN_ZONE_HEIGHT, denom2 * scale2),
+    scale: scale2,
+    tx: -crop.x * native.w * scale2,
+    ty: -crop.y * native.h * scale2
   };
 }
 __name(layoutForIntent, "layoutForIntent");
-function readCanvasNative(container) {
-  const canvas = container.querySelector("canvas");
+function readCanvasNative(container2) {
+  const canvas = container2.querySelector("canvas");
   if (!canvas) return null;
   const w = canvas.offsetWidth | 0;
   const h = canvas.offsetHeight | 0;
@@ -34483,8 +36195,8 @@ function readCanvasNative(container) {
   return { w, h };
 }
 __name(readCanvasNative, "readCanvasNative");
-function pinCanvasIntrinsicSize(container, size) {
-  const canvas = container.querySelector(
+function pinCanvasIntrinsicSize(container2, size) {
+  const canvas = container2.querySelector(
     "[data-viz-canvas-wrap] canvas"
   );
   if (!canvas) return;
@@ -34493,11 +36205,11 @@ function pinCanvasIntrinsicSize(container, size) {
   canvas.style.height = `${size.h}px`;
 }
 __name(pinCanvasIntrinsicSize, "pinCanvasIntrinsicSize");
-function applyLayout(container, canvas, layout, pinSize) {
+function applyLayout(container2, canvas, layout, pinSize) {
   if (typeof layout.zoneH === "number") {
-    container.style.height = `${layout.zoneH}px`;
+    container2.style.height = `${layout.zoneH}px`;
   }
-  let wrapper = container.querySelector("[data-viz-canvas-wrap]");
+  let wrapper = container2.querySelector("[data-viz-canvas-wrap]");
   if (!wrapper && canvas) {
     wrapper = document.createElement("div");
     wrapper.setAttribute("data-viz-canvas-wrap", "");
@@ -34506,7 +36218,7 @@ function applyLayout(container, canvas, layout, pinSize) {
     wrapper.appendChild(canvas);
   }
   if (wrapper) {
-    if (pinSize) pinCanvasIntrinsicSize(container, pinSize);
+    if (pinSize) pinCanvasIntrinsicSize(container2, pinSize);
     wrapper.style.transform = `translate(${layout.tx}px, ${layout.ty}px) scale(${layout.scale})`;
   }
 }
@@ -34638,16 +36350,16 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const initHOverride = fileId ? getZoneHeightOverride(fileId, trackKey) : void 0;
       const layout = layoutForIntent(contentW, native, crop, initHOverride);
       const initH = layout.zoneH;
-      const container = document.createElement("div");
-      container.setAttribute("data-viz-zone", "");
-      container.setAttribute("data-viz-zone-track", trackKey);
-      container.setAttribute("data-viz-zone-id", vizId);
-      if (contentHash) container.setAttribute("data-viz-zone-hash", contentHash);
-      container.style.cssText = `overflow:hidden;height:${initH}px;position:relative;`;
+      const container2 = document.createElement("div");
+      container2.setAttribute("data-viz-zone", "");
+      container2.setAttribute("data-viz-zone-track", trackKey);
+      container2.setAttribute("data-viz-zone-id", vizId);
+      if (contentHash) container2.setAttribute("data-viz-zone-hash", contentHash);
+      container2.style.cssText = `overflow:hidden;height:${initH}px;position:relative;`;
       const zoneDesc = {
         afterLineNumber: afterLine,
         heightInPx: initH,
-        domNode: container,
+        domNode: container2,
         suppressMouseDown: true
       };
       const zoneId = accessor2.addZone(zoneDesc);
@@ -34658,20 +36370,20 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const renderer = teardownMs > 0 ? new TeardownOnPauseRenderer(makeInner, {
         // Drop the now-empty crop wrapper so reinit re-wraps the fresh canvas
         // (applyLayout only creates+fills the wrapper when none exists).
-        onAfterTeardown: /* @__PURE__ */ __name(() => container.querySelector("[data-viz-canvas-wrap]")?.remove(), "onAfterTeardown"),
+        onAfterTeardown: /* @__PURE__ */ __name(() => container2.querySelector("[data-viz-canvas-wrap]")?.remove(), "onAfterTeardown"),
         onAfterReinit: /* @__PURE__ */ __name(() => relayout(), "onAfterReinit")
       }) : makeInner();
       renderers2.push(renderer);
       visibilityCleanups.push(
-        attachVizLifecycle(renderer, container, zoneComponents, renderSize, console.error, {
+        attachVizLifecycle(renderer, container2, zoneComponents, renderSize, console.error, {
           teardownMs,
           onMountError: /* @__PURE__ */ __name((e) => console.error("[stave] viz mount failed:", e), "onMountError")
         })
       );
-      const canvas = container.querySelector("canvas");
-      applyLayout(container, canvas, layout, renderSize);
+      const canvas = container2.querySelector("canvas");
+      applyLayout(container2, canvas, layout, renderSize);
       requestAnimationFrame(() => {
-        applyLayout(container, container.querySelector("canvas"), layout, renderSize);
+        applyLayout(container2, container2.querySelector("canvas"), layout, renderSize);
       });
       let vizDecoration = null;
       const modelForMount = editor.getModel?.();
@@ -34700,7 +36412,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         zoneId,
         zoneDesc,
         afterLine,
-        container,
+        container: container2,
         canvas,
         trackKey,
         vizId,
@@ -34729,12 +36441,12 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           }
         }
         if (!orphan) return;
-        const wrap = container.querySelector("[data-viz-canvas-wrap]");
+        const wrap = container2.querySelector("[data-viz-canvas-wrap]");
         if (wrap?.querySelector("canvas")) return;
         wrap?.remove();
         relayout();
       });
-      canvasWatcher.observe(container, { childList: true });
+      canvasWatcher.observe(container2, { childList: true });
       visibilityCleanups.push(() => canvasWatcher.disconnect());
       const resizeHandle = document.createElement("div");
       resizeHandle.style.cssText = `
@@ -34752,7 +36464,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           resizeHandle.style.opacity = "1";
         }
       });
-      container.addEventListener("pointerdown", (e) => {
+      container2.addEventListener("pointerdown", (e) => {
         if (e.target !== resizeHandle) return;
         e.preventDefault();
         e.stopPropagation();
@@ -34790,7 +36502,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         resizeHandle.addEventListener("pointermove", onMove);
         resizeHandle.addEventListener("pointerup", onUp);
       }, true);
-      container.appendChild(resizeHandle);
+      container2.appendChild(resizeHandle);
       let refineAttempts = 0;
       const tryRefine = /* @__PURE__ */ __name(() => {
         refineAttempts++;
@@ -34937,7 +36649,8 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     editBtn.onclick = (e) => {
       e.stopPropagation();
       const vizId = floatingBar?.getAttribute("data-viz-id");
-      if (vizId && actions.onEdit) actions.onEdit(vizId);
+      const presetId = floatingBar?.getAttribute("data-preset-id") || null;
+      if (vizId && actions.onEdit) actions.onEdit(vizId, presetId);
     };
     cropBtn.onclick = (e) => {
       e.stopPropagation();
@@ -35095,10 +36808,10 @@ function getCurrentBranch(h) {
   return h.currentBranch;
 }
 __name(getCurrentBranch, "getCurrentBranch");
-function headOf(h, branch = h.currentBranch) {
+function headOf2(h, branch = h.currentBranch) {
   return h.branches[branch]?.head ?? null;
 }
-__name(headOf, "headOf");
+__name(headOf2, "headOf");
 function getFileContentAt(h, fileId, commitId) {
   let walk5 = commitId;
   while (walk5 !== null) {
@@ -35179,7 +36892,7 @@ function filesAliveAt(h, commitId) {
   return alive;
 }
 __name(filesAliveAt, "filesAliveAt");
-function changedFiles(h, liveFiles, baseCommit = headOf(h)) {
+function changedFiles(h, liveFiles, baseCommit = headOf2(h)) {
   const changed = {};
   for (const [f, content] of Object.entries(liveFiles)) {
     const at = baseCommit ? getFileContentAt(h, f, baseCommit) : null;
@@ -35404,10 +37117,10 @@ function readWorkspaceOrder() {
 }
 __name(readWorkspaceOrder, "readWorkspaceOrder");
 function applySnapshot(files, fileMeta, order) {
-  const current8 = listWorkspaceFiles();
-  const currentIds = new Set(current8.map((f) => f.id));
+  const current9 = listWorkspaceFiles();
+  const currentIds = new Set(current9.map((f) => f.id));
   const wantIds = new Set(Object.keys(files));
-  for (const f of current8) {
+  for (const f of current9) {
     if (!wantIds.has(f.id)) deleteWorkspaceFile(f.id);
   }
   const recreatedMissing = [];
@@ -35750,7 +37463,7 @@ async function _commit(kind, opts = {}) {
   const changedKeys = Object.keys(changed);
   if (changedKeys.length === 0 && !opts.allowEmpty) return null;
   if (opts.gate) {
-    const head = headOf(current3);
+    const head = headOf2(current3);
     const pairs = changedKeys.map((f) => ({
       prev: head && getFileContentAt(current3, f, head) || "",
       next: changed[f]
@@ -35814,7 +37527,7 @@ __name(revertFileToSeed, "revertFileToSeed");
 function discardFileChanges(fileId) {
   return withLock(async () => {
     if (!current3) return;
-    const head = headOf(current3);
+    const head = headOf2(current3);
     if (!head) return;
     const content = getFileContentAt(current3, fileId, head);
     const live = readWorkspaceFiles();
@@ -35833,7 +37546,7 @@ function discardFileChanges(fileId) {
 __name(discardFileChanges, "discardFileChanges");
 function isFileModifiedSinceHead(fileId) {
   if (!current3) return false;
-  const head = headOf(current3);
+  const head = headOf2(current3);
   if (!head) return false;
   const live = readWorkspaceFiles();
   const liveContent = Object.prototype.hasOwnProperty.call(live, fileId) ? live[fileId] : null;
@@ -35847,7 +37560,7 @@ function getLiveFileContent(fileId) {
 __name(getLiveFileContent, "getLiveFileContent");
 function getModifiedFileIdsSinceHead() {
   if (!current3) return /* @__PURE__ */ new Set();
-  const head = headOf(current3);
+  const head = headOf2(current3);
   if (!head) return /* @__PURE__ */ new Set();
   return new Set(Object.keys(changedFiles(current3, readWorkspaceFiles(), head)));
 }
@@ -35870,7 +37583,7 @@ function forkToEditFromCommit(commitId) {
     while (existing.has(name)) name = `${base}-${n++}`;
     current3 = createBranch(current3, name, commitId, now());
     current3 = switchBranch(current3, name);
-    const head = headOf(current3);
+    const head = headOf2(current3);
     if (head) {
       const snap = snapshotAt(current3, head);
       applySnapshot(snap.files, current3.fileMeta, snap.order);
@@ -35884,7 +37597,7 @@ function switchToBranch(name) {
   return withLock(async () => {
     if (!current3) return;
     current3 = switchBranch(current3, name);
-    const head = headOf(current3);
+    const head = headOf2(current3);
     if (head) {
       const snap = snapshotAt(current3, head);
       applySnapshot(snap.files, current3.fileMeta, snap.order);
@@ -35946,6 +37659,8 @@ function EditorView({
   const viewZoneHandleRef = useRef(null);
   const sliderHandleRef = useRef(null);
   const lastPayloadRef = useRef(null);
+  const vizHandlersRef = useRef({ onEditViz, onCropViz });
+  vizHandlersRef.current = { onEditViz, onCropViz };
   const [hapStream, setHapStream] = useState(null);
   const [breakpointStore, setBreakpointStore] = useState(null);
   const [onResume, setOnResume] = useState(null);
@@ -35959,6 +37674,13 @@ function EditorView({
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
+  const zoneActions = /* @__PURE__ */ __name((forFileId) => {
+    const { onEditViz: edit, onCropViz: crop } = vizHandlersRef.current;
+    return {
+      onEdit: edit ? (vizId, presetId) => vizHandlersRef.current.onEditViz?.(vizId, presetId) : void 0,
+      onCrop: crop ? (vizId, presetId, trackKey) => vizHandlersRef.current.onCropViz?.(vizId, presetId, trackKey, forFileId) : void 0
+    };
+  }, "zoneActions");
   useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
@@ -35974,12 +37696,15 @@ function EditorView({
             editorRef.current,
             payload.engineComponents ?? payload,
             DEFAULT_VIZ_DESCRIPTORS,
-            { onEdit: onEditViz, onCrop: onCropViz },
+            zoneActions(fileId),
             fileId
           );
           viewZoneHandleRef.current?.resume();
         } else if (payload === null) {
           viewZoneHandleRef.current?.pause();
+        } else {
+          viewZoneHandleRef.current?.cleanup();
+          viewZoneHandleRef.current = null;
         }
         if (payload && editorRef.current && monacoRef.current) {
           sliderHandleRef.current?.cleanup();
@@ -36010,7 +37735,7 @@ function EditorView({
         editorRef.current,
         payload.engineComponents ?? payload,
         DEFAULT_VIZ_DESCRIPTORS,
-        { onEdit: onEditViz, onCrop: onCropViz },
+        zoneActions(fileId),
         fileId
       );
       viewZoneHandleRef.current?.resume();
@@ -36247,7 +37972,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React48__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React33__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -36391,7 +38116,9 @@ function PreviewView({
   onSourceRefChange,
   theme = "dark",
   hidden = false,
-  paused = false
+  paused = false,
+  backdrop = false,
+  backdropOwner
 }) {
   const { file } = useWorkspaceFile(fileId);
   const containerRef = useRef(null);
@@ -36469,16 +38196,18 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React48__default.useMemo(() => {
+  const providerNode = React33__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
       audioSource: audioPayload,
       hidden: effectivelyHidden,
-      paused
+      paused,
+      backdrop,
+      backdropOwner
     });
-  }, [file, provider, audioPayload, effectivelyHidden, paused, reloadTick]);
-  const providerKey = `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
+  }, [file, provider, audioPayload, effectivelyHidden, paused, backdrop, backdropOwner, reloadTick]);
+  const providerKey = backdrop ? `bg:${reloadTick}` : `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
   return /* @__PURE__ */ jsx(
     "div",
     {
@@ -36550,6 +38279,7 @@ function generateTabId(prefix) {
 }
 __name(generateTabId, "generateTabId");
 function getLanguageFromTab(tab) {
+  if (tab.kind === "app") return void 0;
   const file = getFile(tab.fileId);
   if (file) return file.language;
   const dot = tab.fileId.lastIndexOf(".");
@@ -36580,6 +38310,7 @@ function registerBuiltinCommands() {
       const { activeTab, activeGroupId, shell, getPreviewProvider } = ctx;
       if (!activeTab || !activeGroupId) return;
       if (activeTab.kind === "preview") return;
+      if (activeTab.kind === "app") return;
       const language = getLanguageFromTab(activeTab);
       if (!language) return;
       const provider = getPreviewProvider(language);
@@ -36717,6 +38448,8 @@ function extensionToLanguage(ext) {
       return "p5js";
     case ".glsl":
       return "glsl";
+    case ".three":
+      return "three";
     case ".md":
       return "markdown";
     default:
@@ -36762,25 +38495,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React48.useMemo(
+  const changedIds = React33.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit3.files),
     [commit3, pickerFileIds]
   );
-  const [mode, setMode2] = React48.useState(defaultMode);
-  React48.useEffect(() => {
+  const [mode, setMode2] = React33.useState(defaultMode);
+  React33.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React48.useState(
+  const [fileId, setFileId] = React33.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React48.useRef(null);
-  const handleMount = React48.useCallback(
+  const diffEditorRef = React33.useRef(null);
+  const handleMount = React33.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -36790,7 +38523,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -36915,18 +38648,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React48.useMemo(() => snapshotAt(history2, commit3.id), [history2, commit3]);
-  const fileIds = React48.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React48.useState(
+  const snapshot = React33.useMemo(() => snapshotAt(history2, commit3.id), [history2, commit3]);
+  const fileIds = React33.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React33.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React48.useCallback(
+  const handleMount = React33.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -37024,6 +38757,46 @@ function resolveBackdropFileId(stickyFileId, overrideFileId) {
   return overrideFileId ?? stickyFileId;
 }
 __name(resolveBackdropFileId, "resolveBackdropFileId");
+function backdropOwnerFor(bgFileId, paneFileId) {
+  return paneFileId && paneFileId !== bgFileId ? paneFileId : null;
+}
+__name(backdropOwnerFor, "backdropOwnerFor");
+function backdropSourceFor(owner, bgFileId, isPattern, chosen) {
+  if (owner && isPattern(owner)) return { kind: "file", fileId: owner };
+  return chosen(bgFileId) ?? { kind: "default" };
+}
+__name(backdropSourceFor, "backdropSourceFor");
+function isOwnBackdropPaused(bgFileId, paneFileId, pausedFiles) {
+  return paneFileId === bgFileId && pausedFiles.has(bgFileId);
+}
+__name(isOwnBackdropPaused, "isOwnBackdropPaused");
+
+// src/workspace/vizLanguages.ts
+var VIZ_LANGUAGES = ["p5js", "hydra", "glsl", "three"];
+var LANGUAGE_TO_RENDERER = {
+  p5js: "p5",
+  hydra: "hydra",
+  glsl: "glsl",
+  three: "three"
+};
+var RENDERER_TO_LANGUAGE = {
+  p5: "p5js",
+  hydra: "hydra",
+  glsl: "glsl",
+  three: "three"
+};
+function isVizLanguage(lang) {
+  return VIZ_LANGUAGES.includes(lang);
+}
+__name(isVizLanguage, "isVizLanguage");
+function rendererForLanguage(lang) {
+  return isVizLanguage(lang) ? LANGUAGE_TO_RENDERER[lang] : null;
+}
+__name(rendererForLanguage, "rendererForLanguage");
+function languageForRenderer(renderer) {
+  return RENDERER_TO_LANGUAGE[renderer];
+}
+__name(languageForRenderer, "languageForRenderer");
 
 // src/workspace/groupLayout.ts
 function findGroupCoords(layout, groupId) {
@@ -37088,6 +38861,11 @@ __name(removeGroup, "removeGroup");
 var registry2 = /* @__PURE__ */ new Map();
 var changeListeners = /* @__PURE__ */ new Set();
 var currentlyPlaying = null;
+var alongside = /* @__PURE__ */ new Set();
+function setAlongsideSources(sourceIds) {
+  alongside = new Set(sourceIds);
+}
+__name(setAlongsideSources, "setAlongsideSources");
 function registerPlaybackSource(sourceId, stop, label) {
   registry2.set(sourceId, { stop, label });
   return () => {
@@ -37104,8 +38882,9 @@ function registerPlaybackSource(sourceId, stop, label) {
 __name(registerPlaybackSource, "registerPlaybackSource");
 function notifyPlaybackStarted(sourceId) {
   if (currentlyPlaying === sourceId) return;
+  if (alongside.has(sourceId)) return;
   for (const [id, src] of registry2) {
-    if (id === sourceId) continue;
+    if (id === sourceId || alongside.has(id)) continue;
     try {
       src.stop();
     } catch (err) {
@@ -37317,6 +39096,7 @@ __name(_DrumPatternScheduler, "DrumPatternScheduler");
 var DrumPatternScheduler = _DrumPatternScheduler;
 var state3 = null;
 var starting = false;
+var stopRequested = false;
 async function renderDrumLoopBuffer() {
   const sampleRate = 44100;
   const durationSeconds = 2;
@@ -37423,11 +39203,20 @@ async function renderDrumLoopBuffer() {
 }
 __name(renderDrumLoopBuffer, "renderDrumLoopBuffer");
 async function startDrumPattern() {
-  if (state3 || starting) return;
+  if (state3) return;
+  if (starting) {
+    stopRequested = false;
+    return;
+  }
   starting = true;
+  stopRequested = false;
   try {
     const ctx = new AudioContext();
     const buffer = await renderDrumLoopBuffer();
+    if (stopRequested) {
+      void ctx.close();
+      return;
+    }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -37457,7 +39246,10 @@ async function startDrumPattern() {
 }
 __name(startDrumPattern, "startDrumPattern");
 function stopDrumPattern() {
-  if (!state3) return;
+  if (!state3) {
+    if (starting) stopRequested = true;
+    return;
+  }
   try {
     state3.source.stop();
   } catch {
@@ -37514,23 +39306,23 @@ var _ChordProgressionScheduler = class _ChordProgressionScheduler {
     for (let cycle = firstCycle; cycle <= lastCycle; cycle++) {
       const cycleStart = cycle * CYCLE_SECONDS;
       for (let i = 0; i < CHORD_PROGRESSION.length; i++) {
-        const chord = CHORD_PROGRESSION[i];
+        const chord2 = CHORD_PROGRESSION[i];
         const chordBegin = cycleStart + i * CHORD_DURATION;
         const chordEnd = chordBegin + CHORD_DURATION;
         if (chordEnd <= begin || chordBegin >= end) continue;
-        for (const midi of chord.notes) {
+        for (const midi of chord2.notes) {
           events.push({
             begin: chordBegin,
             end: chordEnd,
             endClipped: chordEnd,
             note: midi,
             freq: 440 * Math.pow(2, (midi - 69) / 12),
-            s: `chord-${chord.root}`,
+            s: `chord-${chord2.root}`,
             type: "synth",
             gain: 1,
             velocity: 1,
             color: null,
-            trackId: `chord-${chord.root}`
+            trackId: `chord-${chord2.root}`
           });
         }
       }
@@ -37542,6 +39334,7 @@ __name(_ChordProgressionScheduler, "ChordProgressionScheduler");
 var ChordProgressionScheduler = _ChordProgressionScheduler;
 var state4 = null;
 var starting2 = false;
+var stopRequested2 = false;
 async function renderChordLoopBuffer() {
   const sampleRate = 44100;
   const durationSeconds = 8;
@@ -37555,10 +39348,10 @@ async function renderChordLoopBuffer() {
   const release = 0.05;
   const sustainLevel = 0.06;
   for (let i = 0; i < CHORD_PROGRESSION.length; i++) {
-    const chord = CHORD_PROGRESSION[i];
+    const chord2 = CHORD_PROGRESSION[i];
     const chordStart = i * chordDuration;
     const chordEnd = chordStart + chordDuration;
-    for (const midi of chord.notes) {
+    for (const midi of chord2.notes) {
       const freq = 440 * Math.pow(2, (midi - 69) / 12);
       const osc = offline.createOscillator();
       osc.type = "triangle";
@@ -37577,11 +39370,20 @@ async function renderChordLoopBuffer() {
 }
 __name(renderChordLoopBuffer, "renderChordLoopBuffer");
 async function startChordProgression() {
-  if (state4 || starting2) return;
+  if (state4) return;
+  if (starting2) {
+    stopRequested2 = false;
+    return;
+  }
   starting2 = true;
+  stopRequested2 = false;
   try {
     const ctx = new AudioContext();
     const buffer = await renderChordLoopBuffer();
+    if (stopRequested2) {
+      void ctx.close();
+      return;
+    }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -37611,7 +39413,10 @@ async function startChordProgression() {
 }
 __name(startChordProgression, "startChordProgression");
 function stopChordProgression() {
-  if (!state4) return;
+  if (!state4) {
+    if (starting2) stopRequested2 = true;
+    return;
+  }
   try {
     state4.source.stop();
   } catch {
@@ -37657,8 +39462,10 @@ var BUILTIN_EXAMPLE_SOURCES = [
   {
     sourceId: DRUM_PATTERN_SOURCE_ID,
     label: DRUM_PATTERN_LABEL,
+    // Not guarded on "playing", which includes "starting": a start must reach a
+    // render already under way, to take back a stop that came meanwhile.
     startIfIdle: /* @__PURE__ */ __name(() => {
-      if (!isDrumPatternPlaying()) startDrumPattern();
+      void startDrumPattern();
     }, "startIfIdle"),
     stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isDrumPatternPlaying()) stopDrumPattern();
@@ -37668,7 +39475,7 @@ var BUILTIN_EXAMPLE_SOURCES = [
     sourceId: CHORD_PROGRESSION_SOURCE_ID,
     label: CHORD_PROGRESSION_LABEL,
     startIfIdle: /* @__PURE__ */ __name(() => {
-      if (!isChordProgressionPlaying()) startChordProgression();
+      void startChordProgression();
     }, "startIfIdle"),
     stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isChordProgressionPlaying()) stopChordProgression();
@@ -37683,32 +39490,181 @@ function findBuiltinExampleSource(sourceId) {
 }
 __name(findBuiltinExampleSource, "findBuiltinExampleSource");
 
+// src/workspace/audioGestureGate.ts
+var pending = /* @__PURE__ */ new Map();
+var listeners10 = /* @__PURE__ */ new Set();
+var armed = false;
+var GESTURES2 = ["pointerdown", "pointerup", "touchend", "click", "keydown"];
+function audioMayStart() {
+  if (typeof navigator === "undefined") return true;
+  const ua = navigator.userActivation;
+  return ua ? ua.hasBeenActive : true;
+}
+__name(audioMayStart, "audioMayStart");
+function notify4() {
+  for (const cb of Array.from(listeners10)) cb();
+}
+__name(notify4, "notify");
+function onGesture() {
+  if (!audioMayStart()) return;
+  disarm();
+  const starts2 = Array.from(pending.values());
+  pending.clear();
+  notify4();
+  for (const start of starts2) start();
+}
+__name(onGesture, "onGesture");
+function arm() {
+  if (armed || typeof window === "undefined") return;
+  armed = true;
+  for (const type of GESTURES2) window.addEventListener(type, onGesture, true);
+}
+__name(arm, "arm");
+function disarm() {
+  if (!armed) return;
+  armed = false;
+  for (const type of GESTURES2) window.removeEventListener(type, onGesture, true);
+}
+__name(disarm, "disarm");
+function startWhenAudioAllowed(key3, start) {
+  if (audioMayStart()) {
+    cancelAudioStart(key3);
+    start();
+    return;
+  }
+  pending.set(key3, start);
+  arm();
+  notify4();
+}
+__name(startWhenAudioAllowed, "startWhenAudioAllowed");
+function cancelAudioStart(key3) {
+  if (!pending.delete(key3)) return;
+  if (pending.size === 0) disarm();
+  notify4();
+}
+__name(cancelAudioStart, "cancelAudioStart");
+function isWaitingForGesture(key3) {
+  return pending.has(key3);
+}
+__name(isWaitingForGesture, "isWaitingForGesture");
+function onGestureWaitChange(cb) {
+  listeners10.add(cb);
+  return () => {
+    listeners10.delete(cb);
+  };
+}
+__name(onGestureWaitChange, "onGestureWaitChange");
+
+// src/workspace/preview/vizSourceChoice.ts
+var STORAGE_PREFIX3 = "stave:vizSource:";
+var DEFAULT = { kind: "default" };
+function safeLocalStorage4() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+__name(safeLocalStorage4, "safeLocalStorage");
+var values2 = /* @__PURE__ */ new Map();
+var listeners11 = /* @__PURE__ */ new Set();
+function keyFor2(fileId) {
+  return `${STORAGE_PREFIX3}${fileId}`;
+}
+__name(keyFor2, "keyFor");
+function parse7(raw) {
+  if (!raw) return DEFAULT;
+  try {
+    const v = JSON.parse(raw);
+    if (v.kind === "none") return { kind: "none" };
+    if (v.kind === "file" && typeof v.fileId === "string" && v.fileId) {
+      return { kind: "file", fileId: v.fileId };
+    }
+  } catch {
+  }
+  return DEFAULT;
+}
+__name(parse7, "parse");
+function same3(a, b) {
+  if (a.kind !== b.kind) return false;
+  return a.kind !== "file" || b.kind === "file" && a.fileId === b.fileId;
+}
+__name(same3, "same");
+function getVizSourceChoice(fileId) {
+  const cached2 = values2.get(fileId);
+  if (cached2) return cached2;
+  const ref = parse7(safeLocalStorage4()?.getItem(keyFor2(fileId)));
+  values2.set(fileId, ref);
+  return ref;
+}
+__name(getVizSourceChoice, "getVizSourceChoice");
+function setVizSourceChoice(fileId, ref) {
+  if (same3(getVizSourceChoice(fileId), ref)) return;
+  values2.set(fileId, ref);
+  const ls = safeLocalStorage4();
+  if (ref.kind === "default") ls?.removeItem(keyFor2(fileId));
+  else ls?.setItem(keyFor2(fileId), JSON.stringify(ref));
+  for (const cb of Array.from(listeners11)) cb(fileId, ref);
+}
+__name(setVizSourceChoice, "setVizSourceChoice");
+function forgetVizSourceChoicesFor(deletedFileId) {
+  const ls = safeLocalStorage4();
+  const vizIds = new Set(values2.keys());
+  if (ls && typeof ls.key === "function") {
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i);
+      if (k?.startsWith(STORAGE_PREFIX3)) vizIds.add(k.slice(STORAGE_PREFIX3.length));
+    }
+  }
+  for (const vizId of vizIds) {
+    if (vizId === deletedFileId) {
+      values2.delete(vizId);
+      ls?.removeItem(keyFor2(vizId));
+      continue;
+    }
+    const ref = getVizSourceChoice(vizId);
+    if (ref.kind === "file" && ref.fileId === deletedFileId) {
+      setVizSourceChoice(vizId, DEFAULT);
+    }
+  }
+}
+__name(forgetVizSourceChoicesFor, "forgetVizSourceChoicesFor");
+function onVizSourceChoiceChange(cb) {
+  listeners11.add(cb);
+  return () => {
+    listeners11.delete(cb);
+  };
+}
+__name(onVizSourceChoiceChange, "onVizSourceChoiceChange");
+
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
-var listeners10 = /* @__PURE__ */ new Set();
-function notify4() {
-  for (const l of listeners10) {
+var listeners12 = /* @__PURE__ */ new Set();
+function notify5() {
+  for (const l of listeners12) {
     try {
       l();
     } catch {
     }
   }
 }
-__name(notify4, "notify");
+__name(notify5, "notify");
 function registerBottomPanelTab(tab) {
   tabs.set(tab.id, tab);
-  notify4();
+  notify5();
   return () => {
     if (tabs.get(tab.id) === tab) {
       tabs.delete(tab.id);
-      notify4();
+      notify5();
     }
   };
 }
 __name(registerBottomPanelTab, "registerBottomPanelTab");
 function unregisterBottomPanelTab(id) {
   if (tabs.delete(id)) {
-    notify4();
+    notify5();
   }
 }
 __name(unregisterBottomPanelTab, "unregisterBottomPanelTab");
@@ -37721,9 +39677,9 @@ function getBottomPanelTab(id) {
 }
 __name(getBottomPanelTab, "getBottomPanelTab");
 function subscribeToBottomPanelTabs(cb) {
-  listeners10.add(cb);
+  listeners12.add(cb);
   return () => {
-    listeners10.delete(cb);
+    listeners12.delete(cb);
   };
 }
 __name(subscribeToBottomPanelTabs, "subscribeToBottomPanelTabs");
@@ -37744,7 +39700,7 @@ function clampHeight(value) {
   return value;
 }
 __name(clampHeight, "clampHeight");
-function safeLocalStorage4() {
+function safeLocalStorage5() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -37753,9 +39709,9 @@ function safeLocalStorage4() {
     return null;
   }
 }
-__name(safeLocalStorage4, "safeLocalStorage");
+__name(safeLocalStorage5, "safeLocalStorage");
 function safeGetItem(key3) {
-  const ls = safeLocalStorage4();
+  const ls = safeLocalStorage5();
   if (!ls) return null;
   try {
     return ls.getItem(key3);
@@ -37765,7 +39721,7 @@ function safeGetItem(key3) {
 }
 __name(safeGetItem, "safeGetItem");
 function safeSetItem(key3, value) {
-  const ls = safeLocalStorage4();
+  const ls = safeLocalStorage5();
   if (!ls) return;
   try {
     ls.setItem(key3, value);
@@ -37774,7 +39730,7 @@ function safeSetItem(key3, value) {
 }
 __name(safeSetItem, "safeSetItem");
 function safeRemoveItem(key3) {
-  const ls = safeLocalStorage4();
+  const ls = safeLocalStorage5();
   if (!ls) return;
   try {
     ls.removeItem(key3);
@@ -37818,7 +39774,7 @@ function writePersistedActiveTabId(value) {
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 var SERVER_STATE = { open: false, activeTabId: null };
 var state5 = null;
-var listeners11 = /* @__PURE__ */ new Set();
+var listeners13 = /* @__PURE__ */ new Set();
 function current4() {
   if (state5 === null) state5 = { open: readPersistedOpen(), activeTabId: readPersistedActiveTabId() };
   return state5;
@@ -37826,7 +39782,7 @@ function current4() {
 __name(current4, "current");
 function commit2(next) {
   state5 = next;
-  for (const l of listeners11) {
+  for (const l of listeners13) {
     try {
       l();
     } catch {
@@ -37861,14 +39817,14 @@ function showBottomPanelTab(activeTabId) {
 }
 __name(showBottomPanelTab, "showBottomPanelTab");
 function subscribeToBottomPanelState(cb) {
-  listeners11.add(cb);
+  listeners13.add(cb);
   return () => {
-    listeners11.delete(cb);
+    listeners13.delete(cb);
   };
 }
 __name(subscribeToBottomPanelState, "subscribeToBottomPanelState");
 function useBottomPanelState() {
-  return React48.useSyncExternalStore(subscribeToBottomPanelState, getBottomPanelState, () => SERVER_STATE);
+  return React33.useSyncExternalStore(subscribeToBottomPanelState, getBottomPanelState, () => SERVER_STATE);
 }
 __name(useBottomPanelState, "useBottomPanelState");
 
@@ -37895,7 +39851,7 @@ function useTouchBar() {
 }
 __name(useTouchBar, "useTouchBar");
 function EmptyTimelineStub() {
-  return React48.createElement(
+  return React33.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -37913,7 +39869,7 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React48.createElement(EmptyTimelineStub)
+  content: React33.createElement(EmptyTimelineStub)
 });
 
 // src/workspace/codeUndo.ts
@@ -37937,14 +39893,14 @@ function codeUndoForFocus(el, which) {
 }
 __name(codeUndoForFocus, "codeUndoForFocus");
 function useActiveWriter() {
-  const [editor, setEditor] = React48.useState(() => getActiveEditor());
-  const editorRef = React48.useRef(null);
-  const writerRef = React48.useRef(null);
-  React48.useEffect(() => {
+  const [editor, setEditor] = React33.useState(() => getActiveEditor());
+  const editorRef = React33.useRef(null);
+  const writerRef = React33.useRef(null);
+  React33.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     editorRef.current = editor;
     writerRef.current = editor ? createWriter(editor) : null;
   }, [editor]);
@@ -37955,10 +39911,10 @@ __name(useActiveWriter, "useActiveWriter");
 // src/visualEdit/panels/useActiveChunk.ts
 function useActiveChunk() {
   const { editor, editorRef, writerRef } = useActiveWriter();
-  const [chunk, setChunk] = React48.useState(null);
-  const anchorRef = React48.useRef(null);
+  const [chunk, setChunk] = React33.useState(null);
+  const anchorRef = React33.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -37985,7 +39941,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React48.useCallback(
+  const applyEdit = React33.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writerRef.current;
@@ -38000,8 +39956,8 @@ function useActiveChunk() {
     },
     [editorRef, writerRef]
   );
-  const beginGesture = React48.useCallback(() => openGesture(writerRef.current), [writerRef]);
-  const endGesture = React48.useCallback(() => closeGesture(writerRef.current), [writerRef]);
+  const beginGesture = React33.useCallback(() => openGesture(writerRef.current), [writerRef]);
+  const endGesture = React33.useCallback(() => closeGesture(writerRef.current), [writerRef]);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -38019,14 +39975,14 @@ function readStored() {
 }
 __name(readStored, "readStored");
 var current5 = readStored();
-var listeners12 = /* @__PURE__ */ new Set();
+var listeners14 = /* @__PURE__ */ new Set();
 function subscribe5(listener) {
-  listeners12.add(listener);
-  return () => listeners12.delete(listener);
+  listeners14.add(listener);
+  return () => listeners14.delete(listener);
 }
 __name(subscribe5, "subscribe");
 function usePatternSideShown() {
-  return React48.useSyncExternalStore(subscribe5, () => current5, () => DEFAULT_SHOWN);
+  return React33.useSyncExternalStore(subscribe5, () => current5, () => DEFAULT_SHOWN);
 }
 __name(usePatternSideShown, "usePatternSideShown");
 function setPatternSideShown(shown) {
@@ -38036,7 +39992,7 @@ function setPatternSideShown(shown) {
     window.localStorage.setItem(PATTERN_SIDE_KEY, shown ? "shown" : "hidden");
   } catch {
   }
-  listeners12.forEach((l) => l());
+  listeners14.forEach((l) => l());
 }
 __name(setPatternSideShown, "setPatternSideShown");
 function PatternSideToggle() {
@@ -38079,11 +40035,11 @@ function reducedMotion() {
 }
 __name(reducedMotion, "reducedMotion");
 function PatternSideDrawer({ children }) {
-  const [open, setOpen] = React48.useState(false);
-  const [built, setBuilt] = React48.useState(false);
-  const railRef = React48.useRef(null);
-  const closeRef = React48.useRef(null);
-  const moved = React48.useRef(false);
+  const [open, setOpen] = React33.useState(false);
+  const [built, setBuilt] = React33.useState(false);
+  const railRef = React33.useRef(null);
+  const closeRef = React33.useRef(null);
+  const moved = React33.useRef(false);
   const slide = reducedMotion() ? 0 : SLIDE_MS;
   const show = /* @__PURE__ */ __name(() => {
     moved.current = true;
@@ -38094,11 +40050,11 @@ function PatternSideDrawer({ children }) {
     moved.current = true;
     setOpen(false);
   }, "hide");
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (!moved.current) return;
     (open ? closeRef : railRef).current?.focus({ preventScroll: true });
   }, [open]);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (!open) return;
     const onKey = /* @__PURE__ */ __name((e) => {
       if (e.key === "Escape") hide();
@@ -38261,7 +40217,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React48.createElement(
+  return React33.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -38280,12 +40236,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React48.createElement("span", {
+    icon ? React33.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React48.createElement("span", null, hint)
+    React33.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -38311,27 +40267,33 @@ var VISUAL_EDIT_TABS = [
   }
 ];
 var keyOf = /* @__PURE__ */ __name((at, mini) => `${at}:${mini ?? ""}`, "keyOf");
+function stepWriteEdits(fresh, from, edit) {
+  const [start, end] = fresh.miniRange;
+  return end - start === from.length ? [{ range: [start + edit.from, start + edit.to], text: edit.insert }] : gridWriteEdits(fresh, applyStepEdit(from, edit), null);
+}
+__name(stepWriteEdits, "stepWriteEdits");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React48.useState(null);
-  const [read5, setRead] = React48.useState(null);
-  const modelRef = React48.useRef(null);
-  React48.useEffect(() => {
+  const [model, setModel] = React33.useState(null);
+  const [read5, setRead] = React33.useState(null);
+  const modelRef = React33.useRef(null);
+  React33.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React48.useRef(opts);
+  const optsRef = React33.useRef(opts);
   optsRef.current = opts;
   const viewScale = opts.viewScale ?? UNREFINED;
-  const modelScaleRef = React48.useRef(UNREFINED);
-  const ownEchoRef = React48.useRef(null);
-  const patternKeyRef = React48.useRef(null);
-  const patternKey = React48.useMemo(() => {
+  const modelScaleRef = React33.useRef(UNREFINED);
+  const ownEchoRef = React33.useRef(null);
+  const keepRef = React33.useRef(null);
+  const patternKeyRef = React33.useRef(null);
+  const patternKey = React33.useMemo(() => {
     if (!chunk) return patternKeyRef.current = null;
     const key3 = keyOf(chunk.exprRange[0], chunk.miniString);
     if (key3 !== ownEchoRef.current) patternKeyRef.current = key3;
     return patternKeyRef.current;
   }, [chunk]);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -38355,10 +40317,13 @@ function useGridModel(opts) {
     }
     setRead(held2.read);
     modelScaleRef.current = viewScale;
-    modelRef.current = held2.model;
-    setModel(held2.model);
+    const pending2 = keepRef.current;
+    keepRef.current = null;
+    const kept = pending2 && pending2.mini === chunk.miniString && held2.model !== modelRef.current ? pending2.keep(held2.model) : held2.model;
+    modelRef.current = kept;
+    setModel(kept);
   }, [chunk, viewScale]);
-  const writeModel = React48.useCallback(
+  const writeModel = React33.useCallback(
     (next) => {
       if (modelRef.current?.lookOnly) return;
       const o = optsRef.current;
@@ -38375,7 +40340,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  const mutate = React48.useCallback(
+  const mutate = React33.useCallback(
     (fn) => {
       const prev = modelRef.current;
       if (prev == null) return;
@@ -38385,8 +40350,8 @@ function useGridModel(opts) {
     },
     [writeModel]
   );
-  const settle = React48.useCallback((next) => writeModel(next), [writeModel]);
-  const writeMini = React48.useCallback(
+  const settle2 = React33.useCallback((next) => writeModel(next), [writeModel]);
+  const writeMini = React33.useCallback(
     (mini) => {
       if (modelRef.current?.lookOnly) return;
       applyEdit((fresh, wb) => {
@@ -38395,7 +40360,33 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  return { model, read: read5, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit };
+  const writeStep = React33.useCallback(
+    (from, edit, keep) => {
+      if (modelRef.current?.lookOnly) return false;
+      let wrote = false;
+      let written = null;
+      const drawn = modelRef.current?.steps;
+      applyEdit((fresh, wb) => {
+        if (fresh.miniString !== from || !fresh.miniRange) return;
+        const after = applyStepEdit(from, edit);
+        written = after;
+        keepRef.current = keep ? { mini: after, keep } : null;
+        ownEchoRef.current = keyOf(fresh.exprRange[0], after);
+        wrote = commit(wb, stepWriteEdits(fresh, from, edit), optsRef.current.source) === "written";
+      });
+      const o = optsRef.current;
+      if (wrote && written !== null && (o.viewScale ?? UNREFINED) !== UNREFINED) {
+        const natural = o.parse(written, UNREFINED);
+        if (natural.ok && natural.model.steps === drawn) {
+          modelScaleRef.current = UNREFINED;
+          o.onViewScaleConsumed?.();
+        }
+      }
+      return wrote;
+    },
+    [applyEdit]
+  );
+  return { model, read: read5, chunk, mutate, settle: settle2, writeMini, writeStep, beginGesture, endGesture, patternKey, applyEdit };
 }
 __name(useGridModel, "useGridModel");
 
@@ -38422,8 +40413,8 @@ function cycleToStep(cycle, steps, bars, cols, barSteps) {
   const phase = (cycle % b + b) % b;
   if (barSteps && barSteps.length === b) {
     const bar2 = Math.min(b - 1, Math.floor(phase));
-    const before = barSteps.slice(0, bar2).reduce((a, n) => a + n, 0);
-    const step2 = before + Math.floor((phase - bar2) * barSteps[bar2]);
+    const before2 = barSteps.slice(0, bar2).reduce((a, n) => a + n, 0);
+    const step2 = before2 + Math.floor((phase - bar2) * barSteps[bar2]);
     return Math.max(0, Math.min(cols - 1, step2));
   }
   const step = Math.floor(phase / b * steps);
@@ -38433,19 +40424,19 @@ __name(cycleToStep, "cycleToStep");
 function stepToCycle(start, steps, bars, barSteps) {
   const b = bars > 0 ? bars : 1;
   if (barSteps && barSteps.length === b) {
-    let before = 0;
+    let before2 = 0;
     for (let bar2 = 0; bar2 < b; bar2++) {
-      if (start < before + barSteps[bar2] || bar2 === b - 1) return bar2 + (start - before) / barSteps[bar2];
-      before += barSteps[bar2];
+      if (start < before2 + barSteps[bar2] || bar2 === b - 1) return bar2 + (start - before2) / barSteps[bar2];
+      before2 += barSteps[bar2];
     }
   }
   return steps > 0 ? start / steps * b : 0;
 }
 __name(stepToCycle, "stepToCycle");
 function usePlayingStep(steps, bars, cols, barSteps) {
-  const [step, setStep] = React48.useState(null);
+  const [step, setStep] = React33.useState(null);
   const layoutKey = barSteps?.join(",") ?? "";
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     let raf = 0;
     const counts = layoutKey ? layoutKey.split(",").map(Number) : void 0;
     const tick = /* @__PURE__ */ __name(() => {
@@ -38463,8 +40454,8 @@ function cycleToColumn(t, steps, bars, barSteps) {
   const b = bars > 0 ? bars : 1;
   if (barSteps && barSteps.length === b) {
     const bar2 = Math.max(0, Math.min(b - 1, Math.floor(t)));
-    const before = barSteps.slice(0, bar2).reduce((a, n) => a + n, 0);
-    return before + (t - bar2) * barSteps[bar2];
+    const before2 = barSteps.slice(0, bar2).reduce((a, n) => a + n, 0);
+    return before2 + (t - bar2) * barSteps[bar2];
   }
   return t / b * steps;
 }
@@ -38610,6 +40601,2000 @@ var DRUM_SOUNDS = [
   { value: "perc", label: "Perc (perc)" },
   { value: "tb", label: "Tambourine (tb)" }
 ];
+function sharedSteps(m) {
+  return m.barSteps ? m.barSteps.length * lcmOf(m.barSteps) : m.steps;
+}
+__name(sharedSteps, "sharedSteps");
+function toDrawn(u, m) {
+  const d = m.barSteps ? drawnAt(u, m.barSteps) : u;
+  return Number.isInteger(d) ? d : null;
+}
+__name(toDrawn, "toDrawn");
+function regionStepStarts(r) {
+  const w = r.weight ?? 1;
+  const span = r.to - r.from;
+  if (!Number.isInteger(w) || w <= 1 || span % w !== 0) return [r.from];
+  return Array.from({ length: w }, (_, k) => r.from + k * span / w);
+}
+__name(regionStepStarts, "regionStepStarts");
+function wholeBarStepStarts(r) {
+  const regions = bracketedBarRegions(r.raw);
+  if (!regions) return null;
+  const cols = regions[regions.length - 1]?.to;
+  if (!cols) return null;
+  const starts2 = regions.flatMap(regionStepStarts).map((c) => r.from + c * (r.to - r.from) / cols);
+  return starts2.every(Number.isInteger) ? starts2 : null;
+}
+__name(wholeBarStepStarts, "wholeBarStepStarts");
+function writtenStepStarts(m) {
+  const out = /* @__PURE__ */ new Map();
+  const shared = sharedSteps(m);
+  const put = /* @__PURE__ */ __name((part, us) => {
+    const cols = /* @__PURE__ */ new Set();
+    for (const u of us) {
+      const d = toDrawn(u, m);
+      if (d !== null) cols.add(d);
+    }
+    out.set(part, [...cols].sort((a2, b) => a2 - b));
+  }, "put");
+  if (m.source) {
+    for (const p of m.source.parts) {
+      const last = p.regions[p.regions.length - 1];
+      const repeats = p.bars === void 0 ? 1 : (m.bars ?? 1) / p.bars;
+      if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== shared) continue;
+      const span = last.to * p.factor;
+      const bar2 = (m.bars ?? 1) > 1 ? shared / (m.bars ?? 1) : null;
+      const once = p.regions.flatMap(
+        (r) => bar2 !== null && (r.to - r.from) * p.factor === bar2 ? wholeBarStepStarts(r) ?? regionStepStarts(r) : regionStepStarts(r)
+      ).map((c) => c * p.factor);
+      put(
+        p.part,
+        Array.from({ length: repeats }, (_, k) => once.map((c) => c + k * span)).flat()
+      );
+    }
+    return out;
+  }
+  const a = m.altSource;
+  if (a && a.perBar * a.bars === shared) {
+    const us = [];
+    for (let b = 0; b < a.bars; b++) for (const r of a.regions) us.push(b * a.perBar + r.from);
+    put(0, us);
+  }
+  return out;
+}
+__name(writtenStepStarts, "writtenStepStarts");
+function rowBoxes(cells, steps, width, isOn) {
+  const w = width !== void 0 && width > 1 && steps % width === 0 && cells.every((c, i) => i % width === 0 || !isOn(c)) ? width : 1;
+  return Array.from({ length: steps / w }, (_, k) => ({ start: k * w, width: w }));
+}
+__name(rowBoxes, "rowBoxes");
+function boxesPlaceNotes(lanes, boxes, isOn, placeable) {
+  let asked3 = 0;
+  for (let li = 0; li < lanes.length; li++)
+    for (const b of boxes[li] ?? []) {
+      if (isOn(lanes[li].cells[b.start])) continue;
+      asked3++;
+      if (placeable[li]?.[b.start]) return true;
+    }
+  return asked3 === 0;
+}
+__name(boxesPlaceNotes, "boxesPlaceNotes");
+function groupBoxesBySteps(boxes, starts2, steps, owners2) {
+  const alone = /* @__PURE__ */ __name(() => boxes.map((b) => ({ from: b.start, to: b.start + b.width, boxes: [b], plain: true })), "alone");
+  if (!starts2 || starts2.length === 0) return alone();
+  const edges2 = [.../* @__PURE__ */ new Set([...starts2, steps])].filter((c) => c >= 0 && c <= steps).sort((a, b) => a - b);
+  if (edges2[0] !== 0) edges2.unshift(0);
+  const out = [];
+  let k = 0;
+  for (let i = 0; i + 1 < edges2.length; i++) {
+    const [from, to] = [edges2[i], edges2[i + 1]];
+    const inStep = [];
+    while (k < boxes.length && boxes[k].start < to) {
+      if (boxes[k].start < from || boxes[k].start + boxes[k].width > to) return alone();
+      inStep.push(boxes[k++]);
+    }
+    if (inStep.length === 0) continue;
+    let plain = true;
+    for (const owner of owners2) {
+      const first = owner(from);
+      for (let c = from + 1; c < to && plain; c++) plain = owner(c) === first;
+    }
+    out.push({ from, to, boxes: inStep, plain });
+  }
+  return k === boxes.length ? out : alone();
+}
+__name(groupBoxesBySteps, "groupBoxesBySteps");
+function linesModel(shown, read5) {
+  if (!read5 || read5.steps !== shown.steps || (read5.bars ?? 1) !== (shown.bars ?? 1)) return shown;
+  return (read5.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read5 : shown;
+}
+__name(linesModel, "linesModel");
+function drawnBarStarts(m, cols) {
+  const layout = drawnLayout(m, cols);
+  const out = [0];
+  for (let c = 1; c < cols; c++) if (layout.barStart(c)) out.push(c);
+  out.push(cols);
+  return out;
+}
+__name(drawnBarStarts, "drawnBarStarts");
+function rulerLabels(m, cols, starts2) {
+  const bars = drawnBarStarts(m, cols);
+  const labels = /* @__PURE__ */ new Map();
+  for (let b = 0; b + 1 < bars.length; b++) {
+    const from = bars[b];
+    const to = bars[b + 1];
+    labels.set(from, String(b + 1));
+    let k = 1;
+    for (const c of starts2 ?? []) {
+      if (c <= from || c >= to) continue;
+      k++;
+      labels.set(c, `${b + 1}.${k}`);
+    }
+  }
+  return labels;
+}
+__name(rulerLabels, "rulerLabels");
+var LABEL_GAP = 3;
+function fitLabels(boxes) {
+  const show = boxes.map(() => false);
+  let lastBarRight = -Infinity;
+  boxes.forEach((b, i) => {
+    if (b.bar && (lastBarRight === -Infinity || b.left >= lastBarRight + LABEL_GAP)) {
+      show[i] = true;
+      lastBarRight = b.right;
+    }
+  });
+  let prevRight = -Infinity;
+  boxes.forEach((b, i) => {
+    if (b.bar) {
+      if (show[i]) prevRight = b.right;
+      return;
+    }
+    let nextBar = Infinity;
+    for (let j = i + 1; j < boxes.length; j++) {
+      if (boxes[j].bar && show[j]) {
+        nextBar = boxes[j].left;
+        break;
+      }
+    }
+    if (b.left >= prevRight + LABEL_GAP && b.right + LABEL_GAP <= nextBar) {
+      show[i] = true;
+      prevRight = b.right;
+    }
+  });
+  return show;
+}
+__name(fitLabels, "fitLabels");
+function useRulerFit(rulerRef, labelAttr) {
+  const fit = React33.useCallback(() => {
+    const root = rulerRef.current;
+    if (!root) return;
+    const els = [...root.querySelectorAll(`[${labelAttr}]`)];
+    const boxes = els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return { left: r.left, right: r.right, bar: e.hasAttribute("data-ruler-bar") };
+    });
+    const show = fitLabels(boxes);
+    els.forEach((e, i) => {
+      e.style.visibility = show[i] ? "" : "hidden";
+    });
+  }, [rulerRef, labelAttr]);
+  useLayoutFollow(rulerRef, fit);
+}
+__name(useRulerFit, "useRulerFit");
+function useLayoutFollow(ref, run) {
+  const runRef = React33.useRef(run);
+  runRef.current = run;
+  const observed = React33.useRef(null);
+  React33.useLayoutEffect(() => {
+    runRef.current();
+    const el = ref.current;
+    if (observed.current?.el === el) return;
+    observed.current?.ro.disconnect();
+    observed.current = null;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => runRef.current());
+    ro.observe(el);
+    observed.current = { el, ro };
+  });
+  React33.useEffect(() => () => observed.current?.ro.disconnect(), []);
+}
+__name(useLayoutFollow, "useLayoutFollow");
+
+// src/visualEdit/panels/gridZoom.ts
+var OPEN_PX = 16;
+var wholeColumns = /* @__PURE__ */ __name((c, ...cols) => Number.isInteger(c.start) && Number.isInteger(c.per) && cols.every(Number.isInteger), "wholeColumns");
+function barColumns(m, b) {
+  const bars = m.bars ?? 1;
+  if (m.barSteps) return { start: m.barSteps.slice(0, b).reduce((a, n) => a + n, 0), per: m.barSteps[b] };
+  return { start: b * (m.steps / bars), per: m.steps / bars };
+}
+__name(barColumns, "barColumns");
+function endInBar(m, col, end) {
+  const bars = m.bars ?? 1;
+  for (let b = 0; b < bars; b++) {
+    const c = barColumns(m, b);
+    const { start, per } = c;
+    if (col < start || col >= start + per) continue;
+    if (!wholeColumns(c, col, end)) return null;
+    return end > start && end <= start + per ? frac(end - start, per) : null;
+  }
+  return null;
+}
+__name(endInBar, "endInBar");
+function columnPlace(m, col) {
+  const bars = m.bars ?? 1;
+  for (let b = 0; b < bars; b++) {
+    const c = barColumns(m, b);
+    const { start, per } = c;
+    if (col >= start && col < start + per) return wholeColumns(c, col) ? { bar: b, at: frac(col - start, per) } : null;
+  }
+  return null;
+}
+__name(columnPlace, "columnPlace");
+function columnUnit(m, col) {
+  const bars = m.bars ?? 1;
+  for (let b = 0; b < bars; b++) {
+    const c = barColumns(m, b);
+    const { start, per } = c;
+    if (col >= start && col < start + per) return wholeColumns(c, col) ? frac(1, per) : null;
+  }
+  return null;
+}
+__name(columnUnit, "columnUnit");
+var gcd4 = /* @__PURE__ */ __name((a, b) => b === 0 ? Math.abs(a) : gcd4(b, a % b), "gcd");
+function frac(n, d) {
+  const g = gcd4(n, d) || 1;
+  const s = d < 0 ? -1 : 1;
+  return { n: s * n / g, d: s * d / g };
+}
+__name(frac, "frac");
+var cmp = /* @__PURE__ */ __name((a, b) => a.n * b.d - b.n * a.d, "cmp");
+var sub = /* @__PURE__ */ __name((a, b) => frac(a.n * b.d - b.n * a.d, a.d * b.d), "sub");
+var add = /* @__PURE__ */ __name((a, b) => frac(a.n * b.d + b.n * a.d, a.d * b.d), "add");
+var scale = /* @__PURE__ */ __name((a, k, n) => frac(a.n * k, a.d * n), "scale");
+var fmax = /* @__PURE__ */ __name((a, b) => cmp(a, b) >= 0 ? a : b, "fmax");
+var fmin = /* @__PURE__ */ __name((a, b) => cmp(a, b) <= 0 ? a : b, "fmin");
+var fracNum = /* @__PURE__ */ __name((x) => x.n / x.d, "fracNum");
+var ZERO2 = frac(0, 1);
+var ONE2 = frac(1, 1);
+function columnOf(f, start, per) {
+  const c = f.n * per / f.d;
+  const r = Math.round(c);
+  return Math.abs(c - r) > 1e-9 ? null : start + r;
+}
+__name(columnOf, "columnOf");
+function innerRow(s, sound) {
+  if (!s.rows || s.oneOf) return null;
+  if (s.rows.length === 1) return s.rows[0];
+  const mine = s.rows.filter((r) => r.notes.includes(sound));
+  return mine.length === 1 ? mine[0] : null;
+}
+__name(innerRow, "innerRow");
+function nodesOf(row, within2, depth, sound) {
+  const out = [];
+  for (const s of row.steps) {
+    for (const slot of s.slots) {
+      const b = fmax(slot.begin, ZERO2);
+      const e = fmin(slot.end, ONE2);
+      if (cmp(b, within2.b) < 0 || cmp(b, within2.e) >= 0) continue;
+      const parts = s.rows === null ? Number.isInteger(s.weight) && s.weight > 1 ? s.weight : 1 : s.reps;
+      const n = slot.fromBefore || slot.pastEnd ? 1 : parts;
+      const len = sub(e, b);
+      for (let k = 0; k < n; k++) out.push(stepNode(s, add(b, scale(len, k, n)), add(b, scale(len, k + 1, n)), depth, sound));
+    }
+  }
+  return out.sort((x, y) => cmp(x.begin, y.begin));
+}
+__name(nodesOf, "nodesOf");
+function stepNode(s, b, e, depth, sound) {
+  const node = { begin: b, end: e, depth, children: null, step: s };
+  const inner = innerRow(s, sound);
+  if (!inner) return node;
+  if (s.copies) {
+    const copies = s.copies.filter((c) => cmp(c.begin, b) >= 0 && cmp(c.begin, e) < 0).map((c) => {
+      const cb = fmax(c.begin, ZERO2);
+      const ce = fmin(c.end, ONE2);
+      return { begin: cb, end: ce, depth: depth + 1, children: nodesOf(inner, { b: cb, e: ce }, depth + 2, sound) };
+    });
+    node.children = copies.length > 1 ? copies : copies.length === 1 ? copies[0].children.map((n) => lift(n)) : null;
+    return node;
+  }
+  node.children = nodesOf(inner, { b, e }, depth + 1, sound);
+  return node;
+}
+__name(stepNode, "stepNode");
+function lift(n) {
+  return { ...n, depth: n.depth - 1, children: n.children ? n.children.map(lift) : null };
+}
+__name(lift, "lift");
+function tiles(nodes, from, to) {
+  let at = from;
+  for (const n of nodes) {
+    if (cmp(n.begin, at) !== 0 || cmp(n.end, n.begin) <= 0) return false;
+    while (n.children && n.children.length === 1) {
+      const only = n.children[0];
+      if (cmp(only.begin, n.begin) !== 0 || cmp(only.end, n.end) !== 0) return false;
+      n.children = only.children ? only.children.map(lift) : null;
+    }
+    if (n.children && !tiles(n.children, n.begin, n.end)) return false;
+    at = n.end;
+  }
+  return cmp(at, to) === 0;
+}
+__name(tiles, "tiles");
+function edges(nodes, out = []) {
+  for (const n of nodes) {
+    out.push(n.begin, n.end);
+    if (n.children) edges(n.children, out);
+  }
+  return out;
+}
+__name(edges, "edges");
+function writtenSteps(row, sound) {
+  return nodesOf(row, { b: ZERO2, e: ONE2 }, 1, sound);
+}
+__name(writtenSteps, "writtenSteps");
+function settle(nodes) {
+  if (!tiles(nodes, ZERO2, ONE2)) return null;
+  while (nodes.length === 1 && nodes[0].children) nodes = nodes[0].children.map(lift);
+  return nodes;
+}
+__name(settle, "settle");
+function barStepsOrWhy(row, sound) {
+  return settle(writtenSteps(row, sound)) ?? "does-not-tile";
+}
+__name(barStepsOrWhy, "barStepsOrWhy");
+function onColumns(nodes, start, per) {
+  const out = [];
+  for (const n of nodes) {
+    const from = columnOf(n.begin, start, per);
+    const to = columnOf(n.end, start, per);
+    if (from === null || to === null) return null;
+    let children = null;
+    if (n.children) {
+      children = onColumns(n.children, start, per);
+      if (!children) return null;
+    }
+    out.push({ from, to, depth: n.depth, children });
+  }
+  return out;
+}
+__name(onColumns, "onColumns");
+function treeStarts(row, sound, out) {
+  for (const s of row.steps) {
+    if (s.name === sound) {
+      for (const h of s.hits) if (cmp(h.begin, ZERO2) >= 0 && cmp(h.begin, ONE2) < 0) out.push(h.begin);
+    }
+    for (const r of s.rows ?? []) treeStarts(r, sound, out);
+  }
+}
+__name(treeStarts, "treeStarts");
+function laneSteps(model, trees, lane) {
+  const r = laneStepsOrWhy(model, trees, lane);
+  return typeof r === "string" ? null : r;
+}
+__name(laneSteps, "laneSteps");
+function laneStepsOrWhy(model, trees, lane) {
+  const bars = model.bars ?? 1;
+  if (trees.length !== bars) return "bar-count";
+  const l = model.lanes[lane];
+  const out = [];
+  for (let b = 0; b < bars; b++) {
+    const d = laneDivisions(trees[b], l);
+    if (!d.ok) return d.why;
+    const { start, per } = barColumns(model, b);
+    const written = writtenSteps(d.row, l.sound);
+    if (edges(written).some((f) => columnOf(f, start, per) === null)) return "off-grid";
+    const steps = settle(written);
+    if (!steps) return "does-not-tile";
+    const nodes = onColumns(steps, start, per);
+    if (!nodes) return "off-grid";
+    const begins = [];
+    treeStarts(d.row, l.sound, begins);
+    const starts2 = /* @__PURE__ */ new Set();
+    for (const f of begins) {
+      const c = columnOf(f, start, per);
+      if (c === null) return "off-grid";
+      starts2.add(c);
+    }
+    for (let c = start; c < start + per; c++) {
+      if (!!l.cells[c] !== starts2.has(c)) return "cells-differ";
+    }
+    out.push(...nodes);
+  }
+  return out;
+}
+__name(laneStepsOrWhy, "laneStepsOrWhy");
+function partStepsOrWhy(model, trees, part) {
+  const bars = model.bars ?? 1;
+  if (trees.length !== bars) return "bar-count";
+  const out = [];
+  for (let b = 0; b < bars; b++) {
+    const t = trees[b];
+    if (!t.ok) return t.why;
+    const row = t.parts[part];
+    if (!row) return "lane-part-missing";
+    const { start, per } = barColumns(model, b);
+    const written = writtenSteps(row, "");
+    if (edges(written).some((f) => columnOf(f, start, per) === null)) return "off-grid";
+    const steps = settle(written);
+    if (!steps) return "does-not-tile";
+    const nodes = onColumns(steps, start, per);
+    if (!nodes) return "off-grid";
+    const every = /* @__PURE__ */ __name((r) => {
+      for (const s of r.steps) {
+        for (const h of s.hits) if (cmp(h.begin, ZERO2) >= 0 && cmp(h.begin, ONE2) < 0 && columnOf(h.begin, start, per) === null) return false;
+        for (const k of s.rows ?? []) if (!every(k)) return false;
+      }
+      return true;
+    }, "every");
+    if (!every(row)) return "off-grid";
+    out.push(...nodes);
+  }
+  return out;
+}
+__name(partStepsOrWhy, "partStepsOrWhy");
+function partSteps(model, trees, part) {
+  const r = partStepsOrWhy(model, trees, part);
+  return typeof r === "string" ? null : r;
+}
+__name(partSteps, "partSteps");
+function stepAddressAtPlace(trees, lane, bar2, at) {
+  const tree = trees[bar2];
+  if (!tree) return "inside-a-step";
+  const d = laneRowForEdit(tree, lane);
+  if (!d.ok) return d.why;
+  const visit = /* @__PURE__ */ __name((row) => {
+    for (const s of row.steps) {
+      const inner = s.rows ? innerRow(s, lane.sound) : null;
+      if (inner) {
+        const got = visit(inner);
+        if (got) return got;
+        continue;
+      }
+      if (!s.span) continue;
+      for (const slot of s.slots) {
+        if (slot.fromBefore) continue;
+        if (cmp(slot.begin, at) === 0) return { bar: bar2, span: s.span, at: slot.begin };
+      }
+      const hit = s.hits.find((h) => cmp(h.begin, at) === 0);
+      if (hit) return { bar: bar2, span: s.span, at: hit.begin };
+      if (s.ops.includes("bjorklund")) {
+        if (s.slots.some((slot) => !slot.fromBefore && cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0)) return { bar: bar2, span: s.span, at };
+      }
+    }
+    return null;
+  }, "visit");
+  return visit(d.row) ?? "inside-a-step";
+}
+__name(stepAddressAtPlace, "stepAddressAtPlace");
+function placeOfColumn(m, col) {
+  const bars = m.bars ?? 1;
+  for (let b = 0; b < bars; b++) {
+    const { start, per } = barColumns(m, b);
+    if (col >= start && col < start + per) return { bar: b, at: Number.isInteger(per) ? frac(col - start, per) : { n: col - start, d: per } };
+  }
+  return null;
+}
+__name(placeOfColumn, "placeOfColumn");
+function stepAddressAt(model, trees, lane, col) {
+  if (trees.length !== (model.bars ?? 1)) return "bar-count";
+  const l = model.lanes[lane];
+  if (!l) return "lane-part-missing";
+  const place = placeOfColumn(model, col);
+  return place ? stepAddressAtPlace(trees, l, place.bar, place.at) : "inside-a-step";
+}
+__name(stepAddressAt, "stepAddressAt");
+function splitAddressAtPlace(trees, lane, bar2, at) {
+  const tree = trees[bar2];
+  if (!tree) return null;
+  const d = laneRowForEdit(tree, lane);
+  if (!d.ok) return null;
+  const visit = /* @__PURE__ */ __name((row) => {
+    for (const s of row.steps) {
+      const inner = s.rows ? innerRow(s, lane.sound) : null;
+      if (inner) {
+        const got = visit(inner);
+        if (got) return got;
+        continue;
+      }
+      if (!s.span || s.rows) continue;
+      for (const slot of s.slots) {
+        if (slot.fromBefore || slot.pastEnd) continue;
+        if (cmp(slot.begin, at) < 0 && cmp(at, slot.end) < 0) return { address: { bar: bar2, span: s.span, at: slot.begin }, at };
+      }
+    }
+    return null;
+  }, "visit");
+  return visit(d.row);
+}
+__name(splitAddressAtPlace, "splitAddressAtPlace");
+function splitAddressAt(model, trees, lane, col) {
+  if (trees.length !== (model.bars ?? 1)) return null;
+  const l = model.lanes[lane];
+  const place = l ? placeOfColumn(model, col) : null;
+  return l && place ? splitAddressAtPlace(trees, l, place.bar, place.at) : null;
+}
+__name(splitAddressAt, "splitAddressAt");
+function leafStops(nodes) {
+  const out = [];
+  const walk5 = /* @__PURE__ */ __name((n) => {
+    if (n.children) n.children.forEach(walk5);
+    else out.push(n.from);
+  }, "walk");
+  nodes.forEach(walk5);
+  return out;
+}
+__name(leafStops, "leafStops");
+function groupStops(g) {
+  return g.plain ? [g.from] : g.boxes.map((b) => b.start);
+}
+__name(groupStops, "groupStops");
+function openStarts(drawn, out = /* @__PURE__ */ new Map()) {
+  for (const n of drawn) {
+    if (!out.has(n.from) || out.get(n.from) > n.depth) out.set(n.from, n.depth);
+    if (n.open && n.children) openStarts(n.children, out);
+  }
+  return out;
+}
+__name(openStarts, "openStarts");
+function openAt(nodes, colPx, openPx = OPEN_PX) {
+  const px = /* @__PURE__ */ __name((n) => {
+    let w = 0;
+    for (let c = n.from; c < n.to; c++) w += colPx(c);
+    return w;
+  }, "px");
+  const at = /* @__PURE__ */ __name((n) => {
+    const open = !!n.children && n.children.every((k) => px(k) >= openPx - 1e-6);
+    return { ...n, open, children: n.children && open ? n.children.map(at) : null };
+  }, "at");
+  return nodes.map(at);
+}
+__name(openAt, "openAt");
+function zoomRuler(model, drawn) {
+  const out = /* @__PURE__ */ new Map();
+  const bars = model.bars ?? 1;
+  const name = /* @__PURE__ */ __name((nodes, prefix) => {
+    nodes.forEach((n, i) => {
+      const label = `${prefix}.${i + 1}`;
+      if (!out.has(n.from)) out.set(n.from, label);
+      if (n.open && n.children) name(n.children, label);
+    });
+  }, "name");
+  for (let b = 0; b < bars; b++) {
+    const { start, per } = barColumns(model, b);
+    const inBar2 = drawn.filter((n) => n.from >= start && n.from < start + per);
+    out.set(start, String(b + 1));
+    inBar2.forEach((n, i) => {
+      if (i > 0) out.set(n.from, `${b + 1}.${i + 1}`);
+      if (n.open && n.children) name(n.children, i === 0 ? `${b + 1}.1` : `${b + 1}.${i + 1}`);
+    });
+  }
+  return out;
+}
+__name(zoomRuler, "zoomRuler");
+var ZOOM_LEVELS = [1, 1.5, 2, 3, 4, 6, 8, 12, 16];
+var CHROME_PX = 16 + 16 + 28 + 104;
+function useGridZoom(scrollRef, enabled, mounted2, trackRef) {
+  const [index, setIndex] = React33.useState(0);
+  const [avail, setAvail] = React33.useState(null);
+  const indexRef = React33.useRef(index);
+  indexRef.current = index;
+  React33.useLayoutEffect(() => {
+    const el = trackRef?.current ?? scrollRef.current;
+    if (!el || !enabled) return;
+    const measure = /* @__PURE__ */ __name(() => {
+      const w = trackRef?.current ? el.clientWidth : el.clientWidth - CHROME_PX;
+      setAvail(w >= 50 ? w : null);
+    }, "measure");
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [scrollRef, trackRef, enabled, mounted2]);
+  const go = React33.useCallback(
+    (next, x) => {
+      const el = scrollRef.current;
+      const from = ZOOM_LEVELS[indexRef.current];
+      const to = ZOOM_LEVELS[next];
+      if (next === indexRef.current) return;
+      setIndex(next);
+      if (!el) return;
+      const before2 = el.scrollLeft;
+      requestAnimationFrame(() => {
+        el.scrollLeft = Math.max(0, (before2 + x) * (to / from) - x);
+      });
+    },
+    [scrollRef]
+  );
+  React33.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !enabled) return;
+    const onWheel = /* @__PURE__ */ __name((e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.deltaY === 0) return;
+      e.preventDefault();
+      const at = indexRef.current;
+      const next = Math.min(ZOOM_LEVELS.length - 1, Math.max(0, at + (e.deltaY < 0 ? 1 : -1)));
+      go(next, e.clientX - el.getBoundingClientRect().left);
+    }, "onWheel");
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [scrollRef, enabled, mounted2, go]);
+  return {
+    level: enabled ? ZOOM_LEVELS[index] : 1,
+    avail: enabled ? avail : null,
+    zoomIn: /* @__PURE__ */ __name(() => go(Math.min(ZOOM_LEVELS.length - 1, indexRef.current + 1), 0), "zoomIn"),
+    zoomOut: /* @__PURE__ */ __name(() => go(Math.max(0, indexRef.current - 1), 0), "zoomOut"),
+    canIn: index < ZOOM_LEVELS.length - 1,
+    canOut: index > 0
+  };
+}
+__name(useGridZoom, "useGridZoom");
+var button = {
+  width: 18,
+  height: 18,
+  padding: 0,
+  lineHeight: "16px",
+  fontSize: 12,
+  borderRadius: 3,
+  border: "1px solid var(--border, #3a3a42)",
+  background: "transparent",
+  color: "var(--foreground-muted, #a0a0aa)",
+  cursor: "pointer"
+};
+function GridZoomControl({ zoom }) {
+  return /* @__PURE__ */ jsxs("div", { "data-grid-zoom": true, style: { display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--foreground-muted, #a0a0aa)" }, children: [
+    /* @__PURE__ */ jsx("button", { type: "button", "aria-label": "zoom out", title: "Zoom out (\u2318/Ctrl + scroll)", "data-grid-zoom-out": true, disabled: !zoom.canOut, onClick: zoom.zoomOut, style: { ...button, opacity: zoom.canOut ? 1 : 0.4 }, children: "\u2212" }),
+    /* @__PURE__ */ jsxs("span", { "data-grid-zoom-level": true, style: { minWidth: 24, textAlign: "center", fontVariantNumeric: "tabular-nums" }, children: [
+      zoom.level,
+      "\xD7"
+    ] }),
+    /* @__PURE__ */ jsx("button", { type: "button", "aria-label": "zoom in", title: "Zoom in (\u2318/Ctrl + scroll)", "data-grid-zoom-in": true, disabled: !zoom.canIn, onClick: zoom.zoomIn, style: { ...button, opacity: zoom.canIn ? 1 : 0.4 }, children: "+" })
+  ] });
+}
+__name(GridZoomControl, "GridZoomControl");
+function perText(fn, keep = 16) {
+  const kept = /* @__PURE__ */ new Map();
+  const f = /* @__PURE__ */ __name(((text) => {
+    if (kept.has(text)) return kept.get(text);
+    const out = fn(text);
+    kept.set(text, out);
+    if (kept.size > keep) kept.delete(kept.keys().next().value);
+    return out;
+  }), "f");
+  f.cached = (text) => kept.get(text);
+  return f;
+}
+__name(perText, "perText");
+var DEFER_MS = 250;
+function useDeferredPerText(text, f, delayMs = DEFER_MS) {
+  const [last, setLast] = React33.useState(null);
+  const kept = text === null ? void 0 : f.cached(text);
+  React33.useEffect(() => {
+    if (text === null || kept !== void 0) return;
+    const id = setTimeout(() => setLast({ text, value: f(text) }), delayMs);
+    return () => clearTimeout(id);
+  }, [text, kept, f, delayMs]);
+  if (text === null) return null;
+  if (kept !== void 0) return kept;
+  return last?.value ?? null;
+}
+__name(useDeferredPerText, "useDeferredPerText");
+
+// src/visualEdit/panels/treeGrid.ts
+var TREE_MAX_BARS = 12;
+var TREE_LONG_BARS = 64;
+var PROBE_BARS = 2 * TREE_MAX_BARS;
+function period(trees) {
+  const keys = trees.map((t) => JSON.stringify(t));
+  for (let p = 1; p <= TREE_LONG_BARS && 2 * p <= keys.length; p++) {
+    let ok = true;
+    for (let k = 0; k + p < keys.length && ok; k++) if (keys[k] !== keys[k + p]) ok = false;
+    if (ok) return p;
+  }
+  return null;
+}
+__name(period, "period");
+function repeatingBars(probed) {
+  for (const t of probed) if (!t.ok) return { ok: false, why: t.why };
+  const bars = period(probed);
+  if (bars === null) return { ok: false, why: "does-not-repeat" };
+  const trees = probed.slice(0, bars);
+  if (trees.some((t) => t.oneOf && t.parts.length > 1)) return { ok: false, why: "parts-are-a-choice" };
+  return { ok: true, bars, trees };
+}
+__name(repeatingBars, "repeatingBars");
+function probeTrees(mini) {
+  const p = chunkPeriod(mini, TREE_MAX_BARS) ?? chunkPeriod(mini, TREE_LONG_BARS);
+  if (p === null) return chunkDivisions(mini, PROBE_BARS);
+  const first = chunkDivisions(mini, 2 * p);
+  const rep = repeatingBars(first);
+  if (!rep.ok && rep.why === "does-not-repeat") return chunkDivisions(mini, PROBE_BARS);
+  return first;
+}
+__name(probeTrees, "probeTrees");
+function eachNote(row, visit) {
+  for (const s of row.steps) {
+    if (s.hits.length > 0) visit(s.text, s.hits);
+    for (const r of s.rows ?? []) eachNote(r, visit);
+  }
+}
+__name(eachNote, "eachNote");
+function treeGridOf(mini) {
+  return treeGridFrom(probeTrees(mini));
+}
+__name(treeGridOf, "treeGridOf");
+function treeGridFrom(probed, silent = "refused") {
+  const rep = repeatingBars(probed);
+  if (!rep.ok) return rep;
+  const { bars, trees } = rep;
+  const rows = [];
+  const parts = trees[0].parts.length;
+  let played = 0;
+  for (let p = 0; p < parts; p++) {
+    for (const sound of trees[0].parts[p].notes) {
+      const hits = [];
+      let why = null;
+      const perBar2 = [];
+      trees.forEach((t, b) => {
+        const row = t.parts[p];
+        eachNote(row, (name, hs) => {
+          if (name === sound) for (const h of hs) hits.push({ begin: b + fracNum(h.begin), end: b + fracNum(h.end) });
+        });
+        const steps = barStepsOrWhy(row, sound);
+        if (typeof steps === "string") why = why ?? steps;
+        else perBar2.push(steps);
+      });
+      hits.sort((x, y) => x.begin - y.begin);
+      played += hits.length;
+      rows.push({ sound, part: p, bars: why ? null : perBar2, why, hits });
+    }
+  }
+  for (const t of trees) {
+    for (const part of t.parts) {
+      let unnamed = false;
+      eachNote(part, (name) => {
+        if (name === null) unnamed = true;
+      });
+      if (unnamed) return { ok: false, why: "unnamed-hit" };
+    }
+  }
+  if (played === 0 && silent === "refused") return { ok: false, why: "no-hits" };
+  return { ok: true, bars, rows };
+}
+__name(treeGridFrom, "treeGridFrom");
+var NOT_A_GRID = /* @__PURE__ */ new Set(["wrong-surface", "no-note-content", "mixed-pitch-domain", "escaped-source"]);
+var lookOnlyTreeGrid = perText(lookOnlyTreeGridUncached);
+function lookOnlyTreeGridUncached(mini) {
+  const g = parseStepGrid(mini);
+  if (g.ok || g.lookOnly) return null;
+  if (NOT_A_GRID.has(g.gate)) return null;
+  const t = treeGridOf(mini);
+  if (!t.ok) return { why: t.why };
+  return { grid: t, reason: g.reason };
+}
+__name(lookOnlyTreeGridUncached, "lookOnlyTreeGridUncached");
+function openFracAt(bars, barPx, openPx = OPEN_PX) {
+  return bars.map((steps, b) => {
+    const at = /* @__PURE__ */ __name((n) => {
+      const open = !!n.children && n.children.every((k) => (fracNum(k.end) - fracNum(k.begin)) * barPx >= openPx - 1e-6);
+      return {
+        begin: b + fracNum(n.begin),
+        end: b + fracNum(n.end),
+        depth: n.depth,
+        open,
+        children: n.children && open ? n.children.map(at) : null
+      };
+    }, "at");
+    return steps.map(at);
+  });
+}
+__name(openFracAt, "openFracAt");
+function leaves(n, b, out) {
+  for (const k of n.children ?? []) {
+    if (k.children) leaves(k, b, out);
+    else out.push({ begin: b + fracNum(k.begin), end: b + fracNum(k.end), depth: k.depth });
+  }
+}
+__name(leaves, "leaves");
+function drawTreeRow(bars, barPx, openPx = OPEN_PX) {
+  const out = { steps: [], inner: [], lines: [] };
+  const lines = /* @__PURE__ */ new Map();
+  const drawn = openFracAt(bars, barPx, openPx);
+  const walk5 = /* @__PURE__ */ __name((d, n, b) => {
+    if (d.begin !== b && (!lines.has(d.begin) || lines.get(d.begin) > d.depth)) lines.set(d.begin, d.depth);
+    if (d.open && d.children) {
+      d.children.forEach((c, i) => walk5(c, n.children[i], b));
+      return;
+    }
+    out.steps.push({ begin: d.begin, end: d.end, depth: d.depth });
+    if (n.children) leaves(n, b, out.inner);
+  }, "walk");
+  drawn.forEach((row, b) => row.forEach((d, i) => walk5(d, bars[b][i], b)));
+  out.lines = [...lines].map(([at, depth]) => ({ at, depth })).sort((x, y) => x.at - y.at);
+  return out;
+}
+__name(drawTreeRow, "drawTreeRow");
+function treeRuler(bars, barPx, openPx = OPEN_PX) {
+  const out = /* @__PURE__ */ new Map();
+  const drawn = openFracAt(bars, barPx, openPx);
+  const name = /* @__PURE__ */ __name((nodes, prefix) => {
+    nodes.forEach((n, i) => {
+      const label = `${prefix}.${i + 1}`;
+      if (!out.has(n.begin)) out.set(n.begin, label);
+      if (n.open && n.children) name(n.children, label);
+    });
+  }, "name");
+  drawn.forEach((row, b) => {
+    out.set(b, String(b + 1));
+    row.forEach((n, i) => {
+      const label = `${b + 1}.${i + 1}`;
+      if (i > 0) out.set(n.begin, label);
+      if (n.open && n.children) name(n.children, label);
+    });
+  });
+  return [...out].map(([at, label]) => ({ at, label })).sort((x, y) => x.at - y.at);
+}
+__name(treeRuler, "treeRuler");
+function treePlayhead(cycle, bars) {
+  if (cycle === null || !Number.isFinite(cycle) || bars <= 0) return null;
+  return (cycle % bars + bars) % bars;
+}
+__name(treePlayhead, "treePlayhead");
+function emptyMasterChunk(doc) {
+  const pos = doc.length;
+  return {
+    statementRange: [pos, pos],
+    statementText: "",
+    exprRange: [pos, pos],
+    label: null,
+    headFn: null,
+    miniRange: null,
+    miniString: null,
+    miniVia: null,
+    miniAnchor: null,
+    chain: [{ name: "x", args: [], range: [pos, pos] }],
+    type: "knobs",
+    nested: false
+  };
+}
+__name(emptyMasterChunk, "emptyMasterChunk");
+function deriveMasterChunk(doc) {
+  const line = detectMasterAudioAll(doc);
+  return line ? adaptMasterChunk(doc, line) : emptyMasterChunk(doc);
+}
+__name(deriveMasterChunk, "deriveMasterChunk");
+var EMPTY_DERIVED = {
+  strips: [],
+  chunks: [],
+  masterGain: { value: 1, foreign: false },
+  masterMuted: false,
+  masterChunk: emptyMasterChunk("")
+};
+function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
+  try {
+    const pos = model.getPositionAt?.(trackOffset);
+    if (!pos) return;
+    const changed = lastJumpRef.current !== trackOffset;
+    const focuses = revealTakesFocus();
+    if (changed || focuses && !editor.hasTextFocus?.()) {
+      editor.setPosition?.(pos);
+      editor.revealLineInCenter?.(pos.lineNumber);
+      if (focuses) editor.focus?.();
+    }
+    lastJumpRef.current = trackOffset;
+  } catch {
+  }
+}
+__name(jumpCursorToTrack, "jumpCursorToTrack");
+function useMixerModel() {
+  const { editor, editorRef, writerRef: writebackRef } = useActiveWriter();
+  const [derived, setDerived] = React33.useState(EMPTY_DERIVED);
+  const lastJumpRef = React33.useRef(null);
+  React33.useEffect(() => {
+    lastJumpRef.current = null;
+  }, [editor]);
+  React33.useEffect(() => {
+    if (!editor) {
+      setDerived(EMPTY_DERIVED);
+      return;
+    }
+    const rederive = /* @__PURE__ */ __name(() => {
+      const model2 = editor.getModel?.();
+      if (!model2) {
+        setDerived(EMPTY_DERIVED);
+        return;
+      }
+      const value = model2.getValue();
+      const allChunks = detectAllChunks(value);
+      const strips = buildStripModels(allChunks, value);
+      setDerived({
+        strips,
+        chunks: strips.map((s) => allChunks[s.index]),
+        masterGain: readMasterGain(value),
+        masterMuted: readMasterMute(value),
+        masterChunk: deriveMasterChunk(value)
+      });
+    }, "rederive");
+    rederive();
+    const model = editor.getModel?.();
+    const sub2 = model?.onDidChangeContent?.(rederive);
+    return () => sub2?.dispose?.();
+  }, [editor]);
+  const applyToStrip = React33.useCallback(
+    (id, mutate) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      if (!ed || !wb) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      const doc = model.getValue();
+      const chunks = detectAllChunks(doc);
+      const strip = buildStripModels(chunks, doc).find((s) => s.id === id);
+      if (!strip) return;
+      const fresh = chunks[strip.index];
+      const trackOffset = fresh.statementRange[0];
+      mutate(fresh, wb);
+      jumpCursorToTrack(ed, model, trackOffset, lastJumpRef);
+    },
+    []
+  );
+  const applyToStripAt = React33.useCallback(
+    (anchor, mutate) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      if (!ed || !wb) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      const doc = model.getValue();
+      const fresh = detectAllChunks(doc).find((c) => c.statementRange[0] === anchor);
+      if (!fresh) return;
+      mutate(fresh, wb, doc);
+      jumpCursorToTrack(ed, model, anchor, lastJumpRef);
+    },
+    []
+  );
+  const applyToMaster = React33.useCallback(
+    (mutate) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      if (!ed || !wb) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      mutate(model.getValue(), wb);
+    },
+    []
+  );
+  const applyToMasterChunk = React33.useCallback(
+    (mutate) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      if (!ed || !wb) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      const doc = model.getValue();
+      const line = detectMasterAudioAll(doc);
+      if (line) {
+        mutate(adaptMasterChunk(doc, line), wb);
+        return;
+      }
+      const base = masterAudioLineEdit(doc);
+      if (!base) return;
+      openGesture(wb);
+      commit(wb, base, "mixer");
+      const next = model.getValue();
+      const fresh = detectMasterAudioAll(next);
+      if (fresh) mutate(adaptMasterChunk(next, fresh), wb);
+      closeGesture(wb);
+    },
+    []
+  );
+  const beginGesture = React33.useCallback(() => openGesture(writebackRef.current), [writebackRef]);
+  const endGesture = React33.useCallback(() => closeGesture(writebackRef.current), [writebackRef]);
+  const [selectedId, setSelectedId] = React33.useState(null);
+  const stripsRef = React33.useRef(EMPTY_DERIVED.strips);
+  stripsRef.current = derived.strips;
+  React33.useEffect(() => {
+    if (!editor) {
+      setSelectedId(null);
+      return;
+    }
+    const model = editor.getModel?.();
+    if (!model) {
+      setSelectedId(null);
+      return;
+    }
+    const recompute = /* @__PURE__ */ __name(() => {
+      try {
+        const pos = editor.getPosition?.();
+        if (!pos) {
+          setSelectedId(null);
+          return;
+        }
+        const off = model.getOffsetAt(pos);
+        const sel = stripsRef.current.find(
+          (s) => off >= s.statementRange[0] && off <= s.statementRange[1]
+        )?.id ?? null;
+        setSelectedId((prev) => prev === sel ? prev : sel);
+      } catch {
+      }
+    }, "recompute");
+    recompute();
+    const sub2 = editor.onDidChangeCursorPosition?.(recompute);
+    return () => sub2?.dispose?.();
+  }, [editor, derived.strips]);
+  const selectTrack = React33.useCallback((id) => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const model = ed.getModel?.();
+    if (!model) return;
+    const strip = buildStripModels(detectAllChunks(model.getValue()), model.getValue()).find((s) => s.id === id);
+    if (!strip) return;
+    jumpCursorToTrack(ed, model, strip.statementRange[0], lastJumpRef);
+  }, []);
+  return {
+    strips: derived.strips,
+    chunks: derived.chunks,
+    applyToStrip,
+    applyToStripAt,
+    masterGain: derived.masterGain,
+    masterMuted: derived.masterMuted,
+    masterChunk: derived.masterChunk,
+    applyToMaster,
+    applyToMasterChunk,
+    beginGesture,
+    endGesture,
+    selectedId,
+    selectTrack
+  };
+}
+__name(useMixerModel, "useMixerModel");
+function StripColorPopover({
+  anchorRect,
+  currentColor,
+  onPick,
+  onReset,
+  onClose
+}) {
+  const ref = React33.useRef(null);
+  React33.useEffect(() => {
+    const onDown = /* @__PURE__ */ __name((e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    }, "onDown");
+    const onKey = /* @__PURE__ */ __name((e) => {
+      if (e.key === "Escape") onClose();
+    }, "onKey");
+    const onReflow = /* @__PURE__ */ __name(() => onClose(), "onReflow");
+    const t = setTimeout(() => document.addEventListener("mousedown", onDown), 0);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onReflow, true);
+    window.addEventListener("resize", onReflow);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onReflow, true);
+      window.removeEventListener("resize", onReflow);
+    };
+  }, [onClose]);
+  const POPOVER_WIDTH2 = 8 * 16 + 7 * 4 + 12;
+  const left = typeof window !== "undefined" ? Math.max(8, Math.min(window.innerWidth - 8 - POPOVER_WIDTH2, anchorRect.left)) : anchorRect.left;
+  const top = anchorRect.bottom + 4;
+  const customColor = currentColor && !TRACK_PALETTE_32.includes(currentColor) ? currentColor : "#888888";
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    /* @__PURE__ */ jsxs(
+      "div",
+      {
+        ref,
+        "data-mixer-strip-color-popover": true,
+        role: "dialog",
+        "aria-label": "Pick track color",
+        style: {
+          position: "fixed",
+          top,
+          left,
+          zIndex: 1e3,
+          background: "var(--background-elevated, #1a1a1a)",
+          border: "1px solid var(--border, #333)",
+          padding: 6,
+          borderRadius: 4,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)"
+        },
+        children: [
+          /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(8, 16px)", gridGap: 4 }, children: TRACK_PALETTE_32.map((color) => {
+            const isCurrent = color === currentColor;
+            return /* @__PURE__ */ jsx(
+              "button",
+              {
+                type: "button",
+                "data-mixer-strip-swatch": true,
+                "data-color": color,
+                "aria-label": `Color ${color}`,
+                "aria-current": isCurrent ? "true" : void 0,
+                onClick: () => {
+                  onPick(color);
+                  onClose();
+                },
+                style: {
+                  width: 16,
+                  height: 16,
+                  padding: 0,
+                  border: isCurrent ? "2px solid white" : "1px solid rgba(255,255,255,0.18)",
+                  background: color,
+                  cursor: "pointer",
+                  borderRadius: 3,
+                  boxSizing: "border-box"
+                }
+              },
+              color
+            );
+          }) }),
+          /* @__PURE__ */ jsxs(
+            "div",
+            {
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                paddingTop: 4,
+                borderTop: "1px solid var(--border, rgba(255,255,255,0.12))",
+                fontSize: 11,
+                color: "var(--foreground-muted, rgba(255,255,255,0.55))"
+              },
+              children: [
+                /* @__PURE__ */ jsx("label", { htmlFor: "mixer-strip-custom-color", style: { flex: 1, cursor: "pointer" }, children: "Custom" }),
+                onReset && /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "data-mixer-strip-color-reset": true,
+                    "aria-label": "Reset to default colour",
+                    title: "Reset to the default palette colour",
+                    onClick: () => {
+                      onReset();
+                      onClose();
+                    },
+                    style: {
+                      padding: "1px 6px",
+                      fontSize: 10,
+                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
+                      borderRadius: 3,
+                      background: "transparent",
+                      color: "inherit",
+                      cursor: "pointer"
+                    },
+                    children: "Default"
+                  }
+                ),
+                /* @__PURE__ */ jsx(
+                  "input",
+                  {
+                    id: "mixer-strip-custom-color",
+                    type: "color",
+                    "data-mixer-strip-custom-color": true,
+                    "aria-label": "Custom track color",
+                    defaultValue: customColor,
+                    onChange: (e) => onPick(e.currentTarget.value),
+                    style: {
+                      width: 28,
+                      height: 18,
+                      padding: 0,
+                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
+                      borderRadius: 3,
+                      background: "transparent",
+                      cursor: "pointer"
+                    }
+                  }
+                )
+              ]
+            }
+          )
+        ]
+      }
+    ),
+    document.body
+  );
+}
+__name(StripColorPopover, "StripColorPopover");
+function PatternTrackChip() {
+  const { chunk } = useActiveChunk();
+  const { strips, applyToStripAt } = useMixerModel();
+  const [fileId, setFileId] = React33.useState(() => getActiveFileId());
+  React33.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const trackMeta = useTrackMetaMap(fileId ?? void 0);
+  const [colorAnchor, setColorAnchor] = React33.useState(null);
+  const [renaming, setRenaming] = React33.useState(false);
+  const settledRef = React33.useRef(false);
+  const openRename = /* @__PURE__ */ __name(() => {
+    settledRef.current = false;
+    setRenaming(true);
+  }, "openRename");
+  const cancelRename = /* @__PURE__ */ __name(() => {
+    settledRef.current = true;
+    setRenaming(false);
+  }, "cancelRename");
+  const anchor = chunk ? chunk.statementRange[0] : null;
+  const strip = anchor != null ? stripContainingOffset(strips, anchor) : void 0;
+  if (!strip) return null;
+  const customColor = trackMeta.get(strip.name)?.color;
+  const dotColor = trackIdentity(strip.name, customColor).color;
+  const bareLabel = strip.label ?? "";
+  const renameSeed = bareLabel !== "" && bareLabel !== "$" ? bareLabel : "";
+  const commitRename = /* @__PURE__ */ __name((raw) => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    setRenaming(false);
+    const v = raw.trim();
+    if (!v) return;
+    applyToStripAt(strip.statementRange[0], (fresh, wb, doc) => {
+      const taken = new Set(otherTrackNames(doc, fresh.statementRange[0]));
+      if (commit(wb, renameEdit(fresh, v, taken), "rename") !== "written") return;
+      if (fileId) {
+        const prevColor = getTrackMeta(fileId, strip.name).color;
+        if (prevColor && strip.name !== v) {
+          setTrackMeta(fileId, v, { color: prevColor });
+          setTrackMeta(fileId, strip.name, { color: void 0 });
+        }
+      }
+    });
+  }, "commitRename");
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-pattern-track-chip": true,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        minWidth: 0,
+        padding: "3px 8px",
+        background: "var(--surface, #14142a)",
+        border: "1px solid var(--border, #2a2a4a)",
+        borderRadius: "0 0 6px 0",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      },
+      children: [
+        fileId ? /* @__PURE__ */ jsx(
+          "button",
+          {
+            type: "button",
+            "data-pattern-track-dot": true,
+            "aria-label": `Change colour of ${strip.shownName}`,
+            title: `${strip.shownName} \u2014 click to change colour`,
+            onClick: (e) => setColorAnchor(e.currentTarget.getBoundingClientRect()),
+            style: {
+              width: 9,
+              height: 9,
+              padding: 0,
+              border: "none",
+              borderRadius: "50%",
+              background: dotColor,
+              flexShrink: 0,
+              cursor: "pointer"
+            }
+          }
+        ) : /* @__PURE__ */ jsx(
+          "span",
+          {
+            "data-pattern-track-dot": true,
+            style: { width: 9, height: 9, borderRadius: "50%", background: dotColor, flexShrink: 0 }
+          }
+        ),
+        colorAnchor && fileId && /* @__PURE__ */ jsx(
+          StripColorPopover,
+          {
+            anchorRect: colorAnchor,
+            currentColor: dotColor,
+            onPick: (color) => setTrackMeta(fileId, strip.name, { color }),
+            onReset: () => setTrackMeta(fileId, strip.name, { color: void 0 }),
+            onClose: () => setColorAnchor(null)
+          }
+        ),
+        renaming ? /* @__PURE__ */ jsx(
+          "input",
+          {
+            "data-pattern-track-rename": true,
+            autoFocus: true,
+            defaultValue: renameSeed,
+            placeholder: "name this track",
+            spellCheck: false,
+            onFocus: (e) => e.currentTarget.select(),
+            onKeyDown: (e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitRename(e.currentTarget.value);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelRename();
+              }
+              e.stopPropagation();
+            },
+            onBlur: (e) => commitRename(e.currentTarget.value),
+            style: {
+              minWidth: 0,
+              width: 96,
+              fontSize: 11,
+              fontWeight: 600,
+              fontFamily: "inherit",
+              color: "var(--foreground, #e6e6ea)",
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.25)",
+              borderRadius: 3,
+              padding: "0 3px",
+              outline: "none"
+            }
+          }
+        ) : /* @__PURE__ */ jsx(
+          "span",
+          {
+            "data-pattern-track-name": true,
+            title: `${strip.shownName} \u2014 double-click to rename`,
+            onDoubleClick: openRename,
+            style: {
+              fontSize: 11,
+              fontWeight: 600,
+              color: "var(--foreground, #e6e6ea)",
+              maxWidth: 160,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              cursor: "text"
+            },
+            children: strip.shownName
+          }
+        )
+      ]
+    }
+  );
+}
+__name(PatternTrackChip, "PatternTrackChip");
+var PHONE_STEP_MIN = 40;
+var PHONE_RULER_HEIGHT = 44;
+function usePhoneGrid() {
+  const layout = usePhoneLayout();
+  return { phone: layout !== "none", upright: layout === "upright" };
+}
+__name(usePhoneGrid, "usePhoneGrid");
+var ALL_IN_VIEW = { start: 0, end: 1, more: false };
+function gridInView(scrollLeft, clientWidth, scrollWidth) {
+  if (!(scrollWidth > 0) || !(clientWidth > 0) || scrollWidth <= clientWidth + 1) return ALL_IN_VIEW;
+  const start = Math.max(0, Math.min(1, scrollLeft / scrollWidth));
+  const end = Math.max(start, Math.min(1, (scrollLeft + clientWidth) / scrollWidth));
+  return { start, end, more: true };
+}
+__name(gridInView, "gridInView");
+function useRulerPan(scrollRef, enabled) {
+  const [inView, setInView] = React33.useState(ALL_IN_VIEW);
+  const [viewWidth, setViewWidth] = React33.useState(0);
+  const [scroller, setScroller] = React33.useState(null);
+  const read5 = React33.useCallback(() => {
+    const sc = scrollRef.current;
+    const next = enabled && sc ? gridInView(sc.scrollLeft, sc.clientWidth, sc.scrollWidth) : ALL_IN_VIEW;
+    setInView((prev) => prev.start === next.start && prev.end === next.end && prev.more === next.more ? prev : next);
+    setViewWidth(enabled && sc ? sc.clientWidth : 0);
+  }, [scrollRef, enabled]);
+  React33.useLayoutEffect(() => {
+    if (scrollRef.current !== scroller) setScroller(scrollRef.current);
+    read5();
+  });
+  React33.useEffect(() => {
+    if (!enabled || !scroller) return;
+    scroller.addEventListener("scroll", read5, { passive: true });
+    window.addEventListener("resize", read5);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(read5) : null;
+    observer?.observe(scroller);
+    return () => {
+      scroller.removeEventListener("scroll", read5);
+      window.removeEventListener("resize", read5);
+      observer?.disconnect();
+    };
+  }, [enabled, scroller, read5]);
+  const onPointerDown = React33.useCallback(
+    (e) => {
+      const sc = scrollRef.current;
+      if (!sc) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.preventDefault();
+      const pointerId = e.pointerId;
+      const startX = e.clientX;
+      const startLeft = sc.scrollLeft;
+      const move = /* @__PURE__ */ __name((ev) => {
+        if (ev.pointerId !== pointerId) return;
+        sc.scrollLeft = startLeft - (ev.clientX - startX);
+      }, "move");
+      const end = /* @__PURE__ */ __name((ev) => {
+        if (ev.pointerId !== pointerId) return;
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", end);
+        window.removeEventListener("pointercancel", end);
+      }, "end");
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", end);
+      window.addEventListener("pointercancel", end);
+    },
+    [scrollRef]
+  );
+  return { handlers: enabled ? { onPointerDown } : {}, inView, viewWidth };
+}
+__name(useRulerPan, "useRulerPan");
+var PHONE_GRID_WIDTH = { width: "max-content", minWidth: "100%" };
+function InViewBar({ inView, width }) {
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      "data-grid-in-view": true,
+      "data-more": inView.more ? "true" : "false",
+      "aria-hidden": "true",
+      style: {
+        position: "absolute",
+        left: 0,
+        width: Math.max(0, width),
+        top: 6,
+        height: 3,
+        borderRadius: 2,
+        // drawn only when there is something out of view to point at
+        background: inView.more ? "var(--border, #3a3a42)" : "transparent",
+        pointerEvents: "none"
+      },
+      children: /* @__PURE__ */ jsx(
+        "div",
+        {
+          "data-grid-in-view-part": true,
+          style: {
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: `${inView.start * 100}%`,
+            width: `${(inView.end - inView.start) * 100}%`,
+            borderRadius: 2,
+            background: inView.more ? "var(--accent, #8b5cf6)" : "transparent"
+          }
+        }
+      )
+    }
+  );
+}
+__name(InViewBar, "InViewBar");
+function TurnHint({ show }) {
+  if (!show) return null;
+  return /* @__PURE__ */ jsx("span", { "data-grid-turn-hint": true, style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)", whiteSpace: "nowrap" }, children: "Drag the numbers, or turn the phone" });
+}
+__name(TurnHint, "TurnHint");
+var BAR_GAP = 8;
+var NAME_PX = 96;
+var ROW_PX = 22;
+function outline(depth) {
+  if (depth <= 1) return "1px solid var(--border, #3a3a42)";
+  if (depth === 2) return "1px solid color-mix(in srgb, var(--border, #3a3a42) 60%, transparent)";
+  return "1px dashed color-mix(in srgb, var(--border, #3a3a42) 50%, transparent)";
+}
+__name(outline, "outline");
+function lineColor(depth) {
+  if (depth <= 1) return "var(--foreground-muted, #6a6a90)";
+  if (depth === 2) return "color-mix(in srgb, var(--foreground-muted, #6a6a90) 55%, transparent)";
+  return "color-mix(in srgb, var(--foreground-muted, #6a6a90) 30%, transparent)";
+}
+__name(lineColor, "lineColor");
+function TreeStepGrid({ grid, reason, notice = null }) {
+  const scrollRef = React33.useRef(null);
+  const phone = usePhoneGrid().phone;
+  const zoom = useGridZoom(scrollRef, !phone, true);
+  const bars = grid.bars;
+  const fit = zoom.avail !== null ? Math.max(40, (zoom.avail - BAR_GAP * (bars - 1)) / bars) : 320;
+  const barPx = fit * zoom.level;
+  const openPx = zoom.level > 1 ? OPEN_PX : Infinity;
+  const x = /* @__PURE__ */ __name((t) => {
+    const b = Math.min(bars - 1, Math.max(0, Math.floor(t)));
+    return b * (barPx + BAR_GAP) + (t - b) * barPx;
+  }, "x");
+  const trackPx = bars * barPx + (bars - 1) * BAR_GAP;
+  const drawings = React33.useMemo(
+    () => grid.rows.map((r) => r.bars ? drawTreeRow(r.bars, barPx, openPx) : null),
+    [grid, barPx, openPx]
+  );
+  const rulerRow = grid.rows.find((r) => r.bars);
+  const ruler = React33.useMemo(
+    () => rulerRow?.bars ? treeRuler(rulerRow.bars, barPx, openPx) : Array.from({ length: bars }, (_, b) => ({ at: b, label: String(b + 1) })),
+    [rulerRow, barPx, openPx, bars]
+  );
+  const headRef = React33.useRef(null);
+  const xRef = React33.useRef(x);
+  xRef.current = x;
+  React33.useEffect(() => {
+    let raf = 0;
+    const tick = /* @__PURE__ */ __name(() => {
+      const el = headRef.current;
+      if (el) {
+        const t = treePlayhead(readCurrentCycle(), bars);
+        if (t === null) el.style.display = "none";
+        else {
+          el.style.display = "block";
+          el.style.transform = `translateX(${xRef.current(t)}px)`;
+          el.dataset.treePlayhead = t.toFixed(4);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    }, "tick");
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [bars]);
+  const muted3 = "var(--foreground-muted, #a0a0aa)";
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      ref: scrollRef,
+      "data-bottom-panel-tab": "sequencer",
+      "data-look-only": "tree",
+      "data-tree-grid": true,
+      "data-tree-bars": bars,
+      "data-pattern-scroll": true,
+      style: {
+        padding: 16,
+        height: "100%",
+        overflow: "auto",
+        boxSizing: "border-box",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      },
+      children: /* @__PURE__ */ jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: NAME_PX + 8 + trackPx + 28, paddingRight: 28, minWidth: "100%", boxSizing: "border-box" }, children: [
+        /* @__PURE__ */ jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 4, position: "sticky", left: 0, width: zoom.avail !== null ? zoom.avail + NAME_PX + 8 : void 0 }, children: [
+          /* @__PURE__ */ jsx(PatternTrackChip, {}),
+          !phone && /* @__PURE__ */ jsx(GridZoomControl, { zoom })
+        ] }),
+        notice && /* @__PURE__ */ jsx("div", { "data-seq-notice": true, style: { fontSize: 11, color: muted3, paddingBottom: 2 }, children: notice }),
+        /* @__PURE__ */ jsx("div", { "data-seq-look-only": true, style: { fontSize: 11, color: muted3, paddingBottom: 2, position: "sticky", left: 0 }, children: lookOnlyLine({ reason }) }),
+        /* @__PURE__ */ jsxs("div", { role: "table", "aria-label": "Step sequencer, look only", style: { display: "flex", flexDirection: "column", gap: 4 }, children: [
+          /* @__PURE__ */ jsxs("div", { "data-seq-ruler": true, "aria-hidden": "true", style: { display: "flex", gap: 8, height: 12 }, children: [
+            /* @__PURE__ */ jsx("div", { style: { width: NAME_PX, flex: "0 0 auto" } }),
+            /* @__PURE__ */ jsx("div", { style: { position: "relative", width: trackPx, flex: "0 0 auto", height: "100%" }, children: ruler.map(({ at, label }) => {
+              const isBar = !label.includes(".");
+              return /* @__PURE__ */ jsx(
+                "span",
+                {
+                  "data-seq-ruler-label": label,
+                  "data-ruler-bar": isBar ? "" : void 0,
+                  "data-tree-at": at.toFixed(6),
+                  style: {
+                    position: "absolute",
+                    left: x(at),
+                    bottom: 0,
+                    fontSize: 9,
+                    lineHeight: "10px",
+                    whiteSpace: "nowrap",
+                    fontVariantNumeric: "tabular-nums",
+                    fontWeight: isBar ? 600 : 400,
+                    color: isBar ? "var(--foreground, #e6e6ea)" : muted3
+                  },
+                  children: label
+                },
+                label
+              );
+            }) })
+          ] }),
+          grid.rows.map((row, ri) => {
+            const voice = sampleVoice(row.sound);
+            const d = drawings[ri];
+            return /* @__PURE__ */ jsxs("div", { role: "row", "data-tree-row": row.sound, "data-tree-part": row.part, style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+              /* @__PURE__ */ jsx(
+                "span",
+                {
+                  role: "rowheader",
+                  "data-seq-voice": row.sound,
+                  title: row.sound,
+                  style: { width: NAME_PX - 24, marginRight: 24, flex: "0 0 auto", textAlign: "right", fontSize: 11, color: "var(--foreground, #e6e6ea)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+                  children: voice.label
+                }
+              ),
+              /* @__PURE__ */ jsxs(
+                "div",
+                {
+                  role: "cell",
+                  "aria-label": `${row.sound}: ${row.hits.length} ${row.hits.length === 1 ? "hit" : "hits"}, look only`,
+                  "data-tree-why": row.why ?? void 0,
+                  title: lookOnlyLine({ reason }),
+                  style: { position: "relative", width: trackPx, height: ROW_PX, flex: "0 0 auto" },
+                  children: [
+                    d?.steps.map((s) => /* @__PURE__ */ jsx(
+                      "div",
+                      {
+                        "data-tree-step": s.depth,
+                        "data-tree-begin": s.begin.toFixed(6),
+                        "data-tree-end": s.end.toFixed(6),
+                        style: {
+                          position: "absolute",
+                          left: x(s.begin) + 1,
+                          width: Math.max(1, x(s.end) - x(s.begin) - 2),
+                          top: 0,
+                          bottom: 0,
+                          boxSizing: "border-box",
+                          border: outline(s.depth),
+                          borderRadius: 3,
+                          background: "var(--background, #1e1e24)"
+                        }
+                      },
+                      `s${s.begin}`
+                    )),
+                    d?.inner.map((s) => /* @__PURE__ */ jsx(
+                      "div",
+                      {
+                        "data-tree-inner": s.depth,
+                        style: {
+                          position: "absolute",
+                          left: x(s.begin) + 2,
+                          width: Math.max(1, x(s.end) - x(s.begin) - 3),
+                          top: 4,
+                          bottom: 4,
+                          boxSizing: "border-box",
+                          border: "1px solid var(--border, #3a3a42)",
+                          borderRadius: 2,
+                          background: "var(--background-elevated, #26262c)"
+                        }
+                      },
+                      `i${s.begin}`
+                    )),
+                    d?.lines.map((l) => /* @__PURE__ */ jsx(
+                      "div",
+                      {
+                        "data-tree-line": l.depth,
+                        style: { position: "absolute", left: x(l.at) - 1, width: 2, top: 0, bottom: 0, background: lineColor(l.depth), pointerEvents: "none" }
+                      },
+                      `l${l.at}`
+                    )),
+                    row.hits.map((h, i) => /* @__PURE__ */ jsx(
+                      "div",
+                      {
+                        "data-tree-hit": h.begin.toFixed(6),
+                        style: {
+                          position: "absolute",
+                          left: x(h.begin) + 2,
+                          width: Math.max(2, x(Math.min(h.end, bars)) - x(h.begin) - 3),
+                          top: 5,
+                          bottom: 5,
+                          borderRadius: 2,
+                          background: voice.color,
+                          pointerEvents: "none"
+                        }
+                      },
+                      `h${i}`
+                    ))
+                  ]
+                }
+              )
+            ] }, `${row.sound}:${row.part}`);
+          }),
+          /* @__PURE__ */ jsx("div", { style: { position: "relative", height: 0, marginLeft: NAME_PX + 8 }, children: /* @__PURE__ */ jsx(
+            "div",
+            {
+              ref: headRef,
+              "aria-hidden": "true",
+              "data-tree-playhead-line": true,
+              style: {
+                display: "none",
+                position: "absolute",
+                left: 0,
+                bottom: 0,
+                width: 2,
+                height: grid.rows.length * (ROW_PX + 4) + 16,
+                background: "var(--foreground, #e6e6ea)",
+                opacity: 0.6,
+                pointerEvents: "none"
+              }
+            }
+          ) })
+        ] })
+      ] })
+    }
+  );
+}
+__name(TreeStepGrid, "TreeStepGrid");
+
+// src/visualEdit/panels/rollTree.ts
+function eachHit(row, visit) {
+  for (const s of row.steps) {
+    for (const h of s.hits) visit(h);
+    for (const r of s.rows ?? []) eachHit(r, visit);
+  }
+}
+__name(eachHit, "eachHit");
+function treeRollOf(mini) {
+  return treeRollFrom(probeTrees(mini));
+}
+__name(treeRollOf, "treeRollOf");
+function treeRollFrom(probed) {
+  const rep = repeatingBars(probed);
+  if (!rep.ok) return rep;
+  const { bars, trees } = rep;
+  const parts = trees[0].parts.length;
+  const notes = [];
+  const perPart = new Array(parts).fill(0);
+  let numeric = null;
+  let why = null;
+  trees.forEach((t, b) => {
+    t.parts.forEach((row, p) => {
+      eachHit(row, (h) => {
+        if (why) return;
+        const read5 = rollPitch(h.value);
+        if (typeof read5 === "string") {
+          why = read5;
+          return;
+        }
+        if (numeric !== null && numeric !== read5.numeric) {
+          why = "mixed-pitch-domain";
+          return;
+        }
+        numeric = read5.numeric;
+        const midi = read5.numeric ? Number(read5.pitch) : pitchToMidi(read5.pitch);
+        if (midi === null || !Number.isFinite(midi)) {
+          why = "wrong-surface";
+          return;
+        }
+        notes.push({ begin: b + fracNum(h.begin), end: Math.min(bars, b + fracNum(h.end)), midi, part: p });
+        perPart[p]++;
+      });
+    });
+  });
+  if (why) return { ok: false, why };
+  if (notes.length === 0) return { ok: false, why: "no-hits" };
+  notes.sort((x, y) => x.begin - y.begin || x.midi - y.midi);
+  let linesPart = 0;
+  perPart.forEach((n, p) => {
+    if (n > perPart[linesPart]) linesPart = p;
+  });
+  const lines = [];
+  let linesWhy = null;
+  for (const t of trees) {
+    const steps = barStepsOrWhy(t.parts[linesPart], "");
+    if (typeof steps === "string") {
+      linesWhy = steps;
+      break;
+    }
+    lines.push(steps);
+  }
+  return { ok: true, bars, numeric: numeric ?? false, notes, parts, linesPart, lines: linesWhy ? null : lines, linesWhy };
+}
+__name(treeRollFrom, "treeRollFrom");
+var NOT_A_ROLL = /* @__PURE__ */ new Set(["wrong-surface", "no-note-content", "mixed-pitch-domain", "escaped-source"]);
+var lookOnlyTreeRoll = perText(lookOnlyTreeRollUncached);
+function lookOnlyTreeRollUncached(mini) {
+  const r = parsePianoRoll(mini);
+  if (r.ok || r.lookOnly) return null;
+  if (NOT_A_ROLL.has(r.gate)) return null;
+  const t = treeRollOf(mini);
+  if (!t.ok) return { why: t.why };
+  const { ok: _ok, ...roll } = t;
+  return { roll, reason: r.reason };
+}
+__name(lookOnlyTreeRollUncached, "lookOnlyTreeRollUncached");
+var BAR_GAP2 = 8;
+var ROW_PX2 = 16;
+var KEY_PX = 98;
+function lineColor2(depth) {
+  if (depth <= 1) return "var(--foreground-muted, #6a6a90)";
+  if (depth === 2) return "color-mix(in srgb, var(--foreground-muted, #6a6a90) 55%, transparent)";
+  return "color-mix(in srgb, var(--foreground-muted, #6a6a90) 30%, transparent)";
+}
+__name(lineColor2, "lineColor");
+function TreeRollGrid({ roll, reason }) {
+  const scrollRef = React33.useRef(null);
+  const phone = usePhoneGrid().phone;
+  const zoom = useGridZoom(scrollRef, !phone, true);
+  const { bars } = roll;
+  const fit = zoom.avail !== null ? Math.max(40, (zoom.avail - BAR_GAP2 * (bars - 1)) / bars) : 320;
+  const barPx = fit * zoom.level;
+  const openPx = zoom.level > 1 ? OPEN_PX : Infinity;
+  const x = /* @__PURE__ */ __name((t) => {
+    const b = Math.min(bars - 1, Math.max(0, Math.floor(t)));
+    return b * (barPx + BAR_GAP2) + (t - b) * barPx;
+  }, "x");
+  const trackPx = bars * barPx + (bars - 1) * BAR_GAP2;
+  const rows = React33.useMemo(() => {
+    const ms = roll.notes.map((n) => n.midi);
+    const lo = Math.min(...ms);
+    const hi = Math.max(...ms);
+    return Array.from({ length: hi - lo + 1 }, (_, i) => hi - i);
+  }, [roll]);
+  const rowOf2 = /* @__PURE__ */ __name((midi) => rows[0] - midi, "rowOf");
+  const drawing = React33.useMemo(() => roll.lines ? drawTreeRow(roll.lines, barPx, openPx) : null, [roll, barPx, openPx]);
+  const ruler = React33.useMemo(
+    () => roll.lines ? treeRuler(roll.lines, barPx, openPx) : Array.from({ length: bars }, (_, b) => ({ at: b, label: String(b + 1) })),
+    [roll, barPx, openPx, bars]
+  );
+  const headRef = React33.useRef(null);
+  const xRef = React33.useRef(x);
+  xRef.current = x;
+  React33.useEffect(() => {
+    let raf = 0;
+    const tick = /* @__PURE__ */ __name(() => {
+      const el = headRef.current;
+      if (el) {
+        const t = treePlayhead(readCurrentCycle(), bars);
+        if (t === null) el.style.display = "none";
+        else {
+          el.style.display = "block";
+          el.style.transform = `translateX(${xRef.current(t)}px)`;
+          el.dataset.treePlayhead = t.toFixed(4);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    }, "tick");
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [bars]);
+  const muted3 = "var(--foreground-muted, #a0a0aa)";
+  const height = rows.length * (ROW_PX2 + 1);
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      ref: scrollRef,
+      "data-bottom-panel-tab": "piano-roll",
+      "data-look-only": "tree",
+      "data-tree-roll": true,
+      "data-tree-bars": bars,
+      "data-roll-lines-part": roll.linesPart,
+      "data-pattern-scroll": true,
+      style: { padding: 16, height: "100%", overflow: "auto", boxSizing: "border-box", fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif' },
+      children: /* @__PURE__ */ jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: KEY_PX + 6 + trackPx + 28, paddingRight: 28, minWidth: "100%", boxSizing: "border-box" }, children: [
+        /* @__PURE__ */ jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 4, position: "sticky", left: 0, width: zoom.avail !== null ? zoom.avail + KEY_PX + 6 : void 0 }, children: [
+          /* @__PURE__ */ jsx(PatternTrackChip, {}),
+          !phone && /* @__PURE__ */ jsx(GridZoomControl, { zoom })
+        ] }),
+        /* @__PURE__ */ jsx("div", { "data-roll-look-only": true, style: { fontSize: 11, color: muted3, paddingBottom: 2, position: "sticky", left: 0 }, children: lookOnlyLine({ reason }) }),
+        /* @__PURE__ */ jsxs("div", { "data-roll-ruler": true, "aria-hidden": "true", style: { display: "flex", gap: 6, height: 12 }, children: [
+          /* @__PURE__ */ jsx("div", { style: { width: KEY_PX, flex: "0 0 auto" } }),
+          /* @__PURE__ */ jsx("div", { style: { position: "relative", width: trackPx, flex: "0 0 auto", height: "100%" }, children: ruler.map(({ at, label }) => {
+            const isBar = !label.includes(".");
+            return /* @__PURE__ */ jsx(
+              "span",
+              {
+                "data-roll-ruler-label": label,
+                "data-ruler-bar": isBar ? "" : void 0,
+                "data-tree-at": at.toFixed(6),
+                style: { position: "absolute", left: x(at), bottom: 0, fontSize: 9, lineHeight: "10px", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", fontWeight: isBar ? 600 : 400, color: isBar ? "var(--foreground, #e6e6ea)" : muted3 },
+                children: label
+              },
+              label
+            );
+          }) })
+        ] }),
+        /* @__PURE__ */ jsxs("div", { role: "table", "aria-label": "Piano roll, look only", style: { display: "flex", gap: 6 }, children: [
+          /* @__PURE__ */ jsx("div", { style: { width: KEY_PX, flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 1 }, children: rows.map((midi) => /* @__PURE__ */ jsx(
+            "div",
+            {
+              role: "rowheader",
+              "data-roll-key": midi,
+              style: {
+                height: ROW_PX2,
+                fontSize: 9,
+                lineHeight: `${ROW_PX2}px`,
+                textAlign: "right",
+                paddingRight: 4,
+                color: muted3,
+                background: !roll.numeric && isBlackKey(midi) ? "var(--background, #1a1a20)" : "var(--background-elevated, #26262c)",
+                borderRadius: 2
+              },
+              children: roll.numeric ? midi : cLabel(midi) ?? noteDisplayName(midi)
+            },
+            midi
+          )) }),
+          /* @__PURE__ */ jsxs("div", { role: "cell", title: lookOnlyLine({ reason }), style: { position: "relative", width: trackPx, height, flex: "0 0 auto" }, children: [
+            rows.map((midi, i) => /* @__PURE__ */ jsx(
+              "div",
+              {
+                style: {
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: i * (ROW_PX2 + 1),
+                  height: ROW_PX2,
+                  background: !roll.numeric && isBlackKey(midi) ? "var(--background, #1a1a20)" : "var(--background-elevated, #222228)"
+                }
+              },
+              midi
+            )),
+            Array.from({ length: bars - 1 }, (_, b) => /* @__PURE__ */ jsx("div", { style: { position: "absolute", left: x(b + 1) - BAR_GAP2, width: BAR_GAP2, top: 0, bottom: 0, background: "var(--background, #0f0f12)" } }, `gap${b}`)),
+            drawing?.lines.map((l) => /* @__PURE__ */ jsx(
+              "div",
+              {
+                "data-tree-line": l.depth,
+                style: { position: "absolute", left: x(l.at) - 1, width: 2, top: 0, bottom: 0, background: lineColor2(l.depth), pointerEvents: "none" }
+              },
+              `l${l.at}`
+            )),
+            roll.notes.map((n, i) => {
+              const dim = roll.parts > 1 && n.part !== roll.linesPart;
+              const w = Math.max(3, x(n.end) - x(n.begin) - 1);
+              return /* @__PURE__ */ jsx(
+                "div",
+                {
+                  "data-tree-note": n.midi,
+                  "data-tree-begin": n.begin.toFixed(6),
+                  "data-tree-end": n.end.toFixed(6),
+                  "data-roll-dim": dim ? "" : void 0,
+                  title: roll.numeric ? String(n.midi) : noteDisplayName(n.midi),
+                  style: {
+                    position: "absolute",
+                    left: x(n.begin) + 1,
+                    width: w,
+                    top: rowOf2(n.midi) * (ROW_PX2 + 1) + 1,
+                    height: ROW_PX2 - 2,
+                    boxSizing: "border-box",
+                    borderRadius: 3,
+                    background: "var(--accent, #7c6cf0)",
+                    opacity: dim ? 0.35 : 1,
+                    fontSize: 9,
+                    lineHeight: `${ROW_PX2 - 2}px`,
+                    paddingLeft: 3,
+                    overflow: "hidden",
+                    whiteSpace: "nowrap",
+                    color: "var(--background, #1c1c22)",
+                    pointerEvents: "none"
+                  },
+                  children: w > 24 ? roll.numeric ? String(n.midi) : noteDisplayName(n.midi) : null
+                },
+                i
+              );
+            }),
+            /* @__PURE__ */ jsx(
+              "div",
+              {
+                ref: headRef,
+                "aria-hidden": "true",
+                "data-tree-playhead-line": true,
+                style: { display: "none", position: "absolute", left: -1, top: 0, bottom: 0, width: 2, background: "var(--foreground, #e6e6ea)", opacity: 0.6, pointerEvents: "none" }
+              }
+            )
+          ] })
+        ] })
+      ] })
+    }
+  );
+}
+__name(TreeRollGrid, "TreeRollGrid");
+function patternPhase(cycle, bars) {
+  if (cycle === null || !Number.isFinite(cycle)) return null;
+  const b = bars > 0 ? bars : 1;
+  return (cycle % b + b) % b;
+}
+__name(patternPhase, "patternPhase");
+function useExactPlayhead(box, line, layout, column) {
+  const steps = layout?.steps ?? 0;
+  const bars = layout?.bars ?? 1;
+  const layoutKey = layout?.barSteps?.join(",") ?? "";
+  const columnRef = React33.useRef(column);
+  columnRef.current = column;
+  React33.useEffect(() => {
+    if (steps <= 0) return;
+    const counts = layoutKey ? layoutKey.split(",").map(Number) : void 0;
+    let raf = 0;
+    const tick = /* @__PURE__ */ __name(() => {
+      const el = line.current;
+      const root = box.current;
+      if (el && root) {
+        const t = patternPhase(readCurrentCycle(), bars);
+        const at = t === null ? null : Math.min(steps - 1e-9, Math.max(0, cycleToColumn(t, steps, bars, counts)));
+        const c = at === null ? -1 : Math.floor(at);
+        const col = c >= 0 ? columnRef.current(c) : null;
+        if (!col || at === null) el.style.display = "none";
+        else {
+          const r = col.getBoundingClientRect();
+          const x = r.left - root.getBoundingClientRect().left + (at - c) * r.width;
+          el.style.display = "block";
+          el.style.transform = `translateX(${x}px)`;
+          el.dataset.playheadCol = at.toFixed(4);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    }, "tick");
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [box, line, steps, bars, layoutKey]);
+}
+__name(useExactPlayhead, "useExactPlayhead");
 var NOTE_COLOR_MODE_KEY = "stave:visualEdit.noteColorMode";
 var DEFAULT_MODE = "off";
 var clamp01 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
@@ -38630,7 +42615,7 @@ function readStored2() {
 }
 __name(readStored2, "readStored");
 var current6 = readStored2();
-var listeners13 = /* @__PURE__ */ new Set();
+var listeners15 = /* @__PURE__ */ new Set();
 function setMode(mode) {
   if (mode === current6) return;
   current6 = mode;
@@ -38638,16 +42623,16 @@ function setMode(mode) {
     window.localStorage.setItem(NOTE_COLOR_MODE_KEY, mode);
   } catch {
   }
-  listeners13.forEach((l) => l());
+  listeners15.forEach((l) => l());
 }
 __name(setMode, "setMode");
 function subscribe6(listener) {
-  listeners13.add(listener);
-  return () => listeners13.delete(listener);
+  listeners15.add(listener);
+  return () => listeners15.delete(listener);
 }
 __name(subscribe6, "subscribe");
 function useNoteColorMode() {
-  const mode = React48.useSyncExternalStore(subscribe6, () => current6, () => DEFAULT_MODE);
+  const mode = React33.useSyncExternalStore(subscribe6, () => current6, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -38664,20 +42649,20 @@ function subscribeNoteColorMode(listener) {
 }
 __name(subscribeNoteColorMode, "subscribeNoteColorMode");
 function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
-  const slotStateRef = React48.useRef(slotState2);
+  const slotStateRef = React33.useRef(slotState2);
   slotStateRef.current = slotState2;
-  const onScaleToRef = React48.useRef(onScaleTo);
+  const onScaleToRef = React33.useRef(onScaleTo);
   onScaleToRef.current = onScaleTo;
-  const effectRef = React48.useRef(effect);
+  const effectRef = React33.useRef(effect);
   effectRef.current = effect;
-  const stableSlotState = React48.useCallback((t) => slotStateRef.current(t), []);
-  const stableScaleTo = React48.useCallback((t) => onScaleToRef.current(t), []);
+  const stableSlotState = React33.useCallback((t) => slotStateRef.current(t), []);
+  const stableScaleTo = React33.useCallback((t) => onScaleToRef.current(t), []);
   const hasEffect = effect !== void 0;
-  const stableEffect = React48.useCallback(
+  const stableEffect = React33.useCallback(
     (t) => effectRef.current?.(t) ?? NO_RESOLUTION_EFFECT,
     []
   );
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (!onResolution) return;
     onResolution(
       steps == null ? null : {
@@ -38688,31 +42673,31 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
       }
     );
   }, [steps, onResolution, stableSlotState, stableScaleTo, hasEffect, stableEffect]);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     return () => onResolution?.(null);
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
-function useViewProver(mini, parse7) {
-  const cacheRef = React48.useRef({
+function useViewProver(mini, parse8) {
+  const cacheRef = React33.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React48.useRef(parse7);
-  parseRef.current = parse7;
+  const parseRef = React33.useRef(parse8);
+  parseRef.current = parse8;
   const key3 = mini ?? null;
-  return React48.useCallback(
-    (scale) => {
+  return React33.useCallback(
+    (scale2) => {
       if (key3 == null) return false;
       const c = cacheRef.current;
       if (c.mini !== key3) {
         c.mini = key3;
         c.answers = /* @__PURE__ */ new Map();
       }
-      const hit = c.answers.get(scale);
+      const hit = c.answers.get(scale2);
       if (hit !== void 0) return hit;
-      const answer = parseRef.current(key3, scale).ok;
-      c.answers.set(scale, answer);
+      const answer = parseRef.current(key3, scale2).ok;
+      c.answers.set(scale2, answer);
       return answer;
     },
     [key3]
@@ -38766,9 +42751,9 @@ function ResolutionControl({
   onScaleTo,
   effect
 }) {
-  const [open, setOpen] = React48.useState(false);
-  const rootRef = React48.useRef(null);
-  React48.useEffect(() => {
+  const [open, setOpen] = React33.useState(false);
+  const rootRef = React33.useRef(null);
+  React33.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       if (!rootRef.current?.contains(e.target)) setOpen(false);
@@ -38940,518 +42925,6 @@ function ResolutionControl({
   );
 }
 __name(ResolutionControl, "ResolutionControl");
-function emptyMasterChunk(doc) {
-  const pos = doc.length;
-  return {
-    statementRange: [pos, pos],
-    statementText: "",
-    exprRange: [pos, pos],
-    label: null,
-    headFn: null,
-    miniRange: null,
-    miniString: null,
-    miniVia: null,
-    miniAnchor: null,
-    chain: [{ name: "x", args: [], range: [pos, pos] }],
-    type: "knobs",
-    nested: false
-  };
-}
-__name(emptyMasterChunk, "emptyMasterChunk");
-function deriveMasterChunk(doc) {
-  const line = detectMasterAudioAll(doc);
-  return line ? adaptMasterChunk(doc, line) : emptyMasterChunk(doc);
-}
-__name(deriveMasterChunk, "deriveMasterChunk");
-var EMPTY_DERIVED = {
-  strips: [],
-  chunks: [],
-  masterGain: { value: 1, foreign: false },
-  masterMuted: false,
-  masterChunk: emptyMasterChunk("")
-};
-function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
-  try {
-    const pos = model.getPositionAt?.(trackOffset);
-    if (!pos) return;
-    const changed = lastJumpRef.current !== trackOffset;
-    const focuses = revealTakesFocus();
-    if (changed || focuses && !editor.hasTextFocus?.()) {
-      editor.setPosition?.(pos);
-      editor.revealLineInCenter?.(pos.lineNumber);
-      if (focuses) editor.focus?.();
-    }
-    lastJumpRef.current = trackOffset;
-  } catch {
-  }
-}
-__name(jumpCursorToTrack, "jumpCursorToTrack");
-function useMixerModel() {
-  const { editor, editorRef, writerRef: writebackRef } = useActiveWriter();
-  const [derived, setDerived] = React48.useState(EMPTY_DERIVED);
-  const lastJumpRef = React48.useRef(null);
-  React48.useEffect(() => {
-    lastJumpRef.current = null;
-  }, [editor]);
-  React48.useEffect(() => {
-    if (!editor) {
-      setDerived(EMPTY_DERIVED);
-      return;
-    }
-    const rederive = /* @__PURE__ */ __name(() => {
-      const model2 = editor.getModel?.();
-      if (!model2) {
-        setDerived(EMPTY_DERIVED);
-        return;
-      }
-      const value = model2.getValue();
-      const allChunks = detectAllChunks(value);
-      const strips = buildStripModels(allChunks, value);
-      setDerived({
-        strips,
-        chunks: strips.map((s) => allChunks[s.index]),
-        masterGain: readMasterGain(value),
-        masterMuted: readMasterMute(value),
-        masterChunk: deriveMasterChunk(value)
-      });
-    }, "rederive");
-    rederive();
-    const model = editor.getModel?.();
-    const sub = model?.onDidChangeContent?.(rederive);
-    return () => sub?.dispose?.();
-  }, [editor]);
-  const applyToStrip = React48.useCallback(
-    (id, mutate) => {
-      const ed = editorRef.current;
-      const wb = writebackRef.current;
-      if (!ed || !wb) return;
-      const model = ed.getModel?.();
-      if (!model) return;
-      const doc = model.getValue();
-      const chunks = detectAllChunks(doc);
-      const strip = buildStripModels(chunks, doc).find((s) => s.id === id);
-      if (!strip) return;
-      const fresh = chunks[strip.index];
-      const trackOffset = fresh.statementRange[0];
-      mutate(fresh, wb);
-      jumpCursorToTrack(ed, model, trackOffset, lastJumpRef);
-    },
-    []
-  );
-  const applyToStripAt = React48.useCallback(
-    (anchor, mutate) => {
-      const ed = editorRef.current;
-      const wb = writebackRef.current;
-      if (!ed || !wb) return;
-      const model = ed.getModel?.();
-      if (!model) return;
-      const doc = model.getValue();
-      const fresh = detectAllChunks(doc).find((c) => c.statementRange[0] === anchor);
-      if (!fresh) return;
-      mutate(fresh, wb, doc);
-      jumpCursorToTrack(ed, model, anchor, lastJumpRef);
-    },
-    []
-  );
-  const applyToMaster = React48.useCallback(
-    (mutate) => {
-      const ed = editorRef.current;
-      const wb = writebackRef.current;
-      if (!ed || !wb) return;
-      const model = ed.getModel?.();
-      if (!model) return;
-      mutate(model.getValue(), wb);
-    },
-    []
-  );
-  const applyToMasterChunk = React48.useCallback(
-    (mutate) => {
-      const ed = editorRef.current;
-      const wb = writebackRef.current;
-      if (!ed || !wb) return;
-      const model = ed.getModel?.();
-      if (!model) return;
-      const doc = model.getValue();
-      const line = detectMasterAudioAll(doc);
-      if (line) {
-        mutate(adaptMasterChunk(doc, line), wb);
-        return;
-      }
-      const base = masterAudioLineEdit(doc);
-      if (!base) return;
-      openGesture(wb);
-      commit(wb, base, "mixer");
-      const next = model.getValue();
-      const fresh = detectMasterAudioAll(next);
-      if (fresh) mutate(adaptMasterChunk(next, fresh), wb);
-      closeGesture(wb);
-    },
-    []
-  );
-  const beginGesture = React48.useCallback(() => openGesture(writebackRef.current), [writebackRef]);
-  const endGesture = React48.useCallback(() => closeGesture(writebackRef.current), [writebackRef]);
-  const [selectedId, setSelectedId] = React48.useState(null);
-  const stripsRef = React48.useRef(EMPTY_DERIVED.strips);
-  stripsRef.current = derived.strips;
-  React48.useEffect(() => {
-    if (!editor) {
-      setSelectedId(null);
-      return;
-    }
-    const model = editor.getModel?.();
-    if (!model) {
-      setSelectedId(null);
-      return;
-    }
-    const recompute = /* @__PURE__ */ __name(() => {
-      try {
-        const pos = editor.getPosition?.();
-        if (!pos) {
-          setSelectedId(null);
-          return;
-        }
-        const off = model.getOffsetAt(pos);
-        const sel = stripsRef.current.find(
-          (s) => off >= s.statementRange[0] && off <= s.statementRange[1]
-        )?.id ?? null;
-        setSelectedId((prev) => prev === sel ? prev : sel);
-      } catch {
-      }
-    }, "recompute");
-    recompute();
-    const sub = editor.onDidChangeCursorPosition?.(recompute);
-    return () => sub?.dispose?.();
-  }, [editor, derived.strips]);
-  const selectTrack = React48.useCallback((id) => {
-    const ed = editorRef.current;
-    if (!ed) return;
-    const model = ed.getModel?.();
-    if (!model) return;
-    const strip = buildStripModels(detectAllChunks(model.getValue()), model.getValue()).find((s) => s.id === id);
-    if (!strip) return;
-    jumpCursorToTrack(ed, model, strip.statementRange[0], lastJumpRef);
-  }, []);
-  return {
-    strips: derived.strips,
-    chunks: derived.chunks,
-    applyToStrip,
-    applyToStripAt,
-    masterGain: derived.masterGain,
-    masterMuted: derived.masterMuted,
-    masterChunk: derived.masterChunk,
-    applyToMaster,
-    applyToMasterChunk,
-    beginGesture,
-    endGesture,
-    selectedId,
-    selectTrack
-  };
-}
-__name(useMixerModel, "useMixerModel");
-function StripColorPopover({
-  anchorRect,
-  currentColor,
-  onPick,
-  onReset,
-  onClose
-}) {
-  const ref = React48.useRef(null);
-  React48.useEffect(() => {
-    const onDown = /* @__PURE__ */ __name((e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
-    }, "onDown");
-    const onKey = /* @__PURE__ */ __name((e) => {
-      if (e.key === "Escape") onClose();
-    }, "onKey");
-    const onReflow = /* @__PURE__ */ __name(() => onClose(), "onReflow");
-    const t = setTimeout(() => document.addEventListener("mousedown", onDown), 0);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", onReflow, true);
-    window.addEventListener("resize", onReflow);
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", onReflow, true);
-      window.removeEventListener("resize", onReflow);
-    };
-  }, [onClose]);
-  const POPOVER_WIDTH2 = 8 * 16 + 7 * 4 + 12;
-  const left = typeof window !== "undefined" ? Math.max(8, Math.min(window.innerWidth - 8 - POPOVER_WIDTH2, anchorRect.left)) : anchorRect.left;
-  const top = anchorRect.bottom + 4;
-  const customColor = currentColor && !TRACK_PALETTE_32.includes(currentColor) ? currentColor : "#888888";
-  if (typeof document === "undefined") return null;
-  return createPortal(
-    /* @__PURE__ */ jsxs(
-      "div",
-      {
-        ref,
-        "data-mixer-strip-color-popover": true,
-        role: "dialog",
-        "aria-label": "Pick track color",
-        style: {
-          position: "fixed",
-          top,
-          left,
-          zIndex: 1e3,
-          background: "var(--background-elevated, #1a1a1a)",
-          border: "1px solid var(--border, #333)",
-          padding: 6,
-          borderRadius: 4,
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)"
-        },
-        children: [
-          /* @__PURE__ */ jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(8, 16px)", gridGap: 4 }, children: TRACK_PALETTE_32.map((color) => {
-            const isCurrent = color === currentColor;
-            return /* @__PURE__ */ jsx(
-              "button",
-              {
-                type: "button",
-                "data-mixer-strip-swatch": true,
-                "data-color": color,
-                "aria-label": `Color ${color}`,
-                "aria-current": isCurrent ? "true" : void 0,
-                onClick: () => {
-                  onPick(color);
-                  onClose();
-                },
-                style: {
-                  width: 16,
-                  height: 16,
-                  padding: 0,
-                  border: isCurrent ? "2px solid white" : "1px solid rgba(255,255,255,0.18)",
-                  background: color,
-                  cursor: "pointer",
-                  borderRadius: 3,
-                  boxSizing: "border-box"
-                }
-              },
-              color
-            );
-          }) }),
-          /* @__PURE__ */ jsxs(
-            "div",
-            {
-              style: {
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                paddingTop: 4,
-                borderTop: "1px solid var(--border, rgba(255,255,255,0.12))",
-                fontSize: 11,
-                color: "var(--foreground-muted, rgba(255,255,255,0.55))"
-              },
-              children: [
-                /* @__PURE__ */ jsx("label", { htmlFor: "mixer-strip-custom-color", style: { flex: 1, cursor: "pointer" }, children: "Custom" }),
-                onReset && /* @__PURE__ */ jsx(
-                  "button",
-                  {
-                    type: "button",
-                    "data-mixer-strip-color-reset": true,
-                    "aria-label": "Reset to default colour",
-                    title: "Reset to the default palette colour",
-                    onClick: () => {
-                      onReset();
-                      onClose();
-                    },
-                    style: {
-                      padding: "1px 6px",
-                      fontSize: 10,
-                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
-                      borderRadius: 3,
-                      background: "transparent",
-                      color: "inherit",
-                      cursor: "pointer"
-                    },
-                    children: "Default"
-                  }
-                ),
-                /* @__PURE__ */ jsx(
-                  "input",
-                  {
-                    id: "mixer-strip-custom-color",
-                    type: "color",
-                    "data-mixer-strip-custom-color": true,
-                    "aria-label": "Custom track color",
-                    defaultValue: customColor,
-                    onChange: (e) => onPick(e.currentTarget.value),
-                    style: {
-                      width: 28,
-                      height: 18,
-                      padding: 0,
-                      border: "1px solid var(--border, rgba(255,255,255,0.18))",
-                      borderRadius: 3,
-                      background: "transparent",
-                      cursor: "pointer"
-                    }
-                  }
-                )
-              ]
-            }
-          )
-        ]
-      }
-    ),
-    document.body
-  );
-}
-__name(StripColorPopover, "StripColorPopover");
-function PatternTrackChip() {
-  const { chunk } = useActiveChunk();
-  const { strips, applyToStripAt } = useMixerModel();
-  const [fileId, setFileId] = React48.useState(() => getActiveFileId());
-  React48.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
-  const trackMeta = useTrackMetaMap(fileId ?? void 0);
-  const [colorAnchor, setColorAnchor] = React48.useState(null);
-  const [renaming, setRenaming] = React48.useState(false);
-  const settledRef = React48.useRef(false);
-  const openRename = /* @__PURE__ */ __name(() => {
-    settledRef.current = false;
-    setRenaming(true);
-  }, "openRename");
-  const cancelRename = /* @__PURE__ */ __name(() => {
-    settledRef.current = true;
-    setRenaming(false);
-  }, "cancelRename");
-  const anchor = chunk ? chunk.statementRange[0] : null;
-  const strip = anchor != null ? stripContainingOffset(strips, anchor) : void 0;
-  if (!strip) return null;
-  const customColor = trackMeta.get(strip.name)?.color;
-  const dotColor = trackIdentity(strip.name, customColor).color;
-  const bareLabel = strip.label ?? "";
-  const renameSeed = bareLabel !== "" && bareLabel !== "$" ? bareLabel : "";
-  const commitRename = /* @__PURE__ */ __name((raw) => {
-    if (settledRef.current) return;
-    settledRef.current = true;
-    setRenaming(false);
-    const v = raw.trim();
-    if (!v) return;
-    applyToStripAt(strip.statementRange[0], (fresh, wb, doc) => {
-      const taken = new Set(otherTrackNames(doc, fresh.statementRange[0]));
-      if (commit(wb, renameEdit(fresh, v, taken), "rename") !== "written") return;
-      if (fileId) {
-        const prevColor = getTrackMeta(fileId, strip.name).color;
-        if (prevColor && strip.name !== v) {
-          setTrackMeta(fileId, v, { color: prevColor });
-          setTrackMeta(fileId, strip.name, { color: void 0 });
-        }
-      }
-    });
-  }, "commitRename");
-  return /* @__PURE__ */ jsxs(
-    "div",
-    {
-      "data-pattern-track-chip": true,
-      style: {
-        display: "flex",
-        alignItems: "center",
-        gap: 5,
-        minWidth: 0,
-        padding: "3px 8px",
-        background: "var(--surface, #14142a)",
-        border: "1px solid var(--border, #2a2a4a)",
-        borderRadius: "0 0 6px 0",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
-        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
-      },
-      children: [
-        fileId ? /* @__PURE__ */ jsx(
-          "button",
-          {
-            type: "button",
-            "data-pattern-track-dot": true,
-            "aria-label": `Change colour of ${strip.shownName}`,
-            title: `${strip.shownName} \u2014 click to change colour`,
-            onClick: (e) => setColorAnchor(e.currentTarget.getBoundingClientRect()),
-            style: {
-              width: 9,
-              height: 9,
-              padding: 0,
-              border: "none",
-              borderRadius: "50%",
-              background: dotColor,
-              flexShrink: 0,
-              cursor: "pointer"
-            }
-          }
-        ) : /* @__PURE__ */ jsx(
-          "span",
-          {
-            "data-pattern-track-dot": true,
-            style: { width: 9, height: 9, borderRadius: "50%", background: dotColor, flexShrink: 0 }
-          }
-        ),
-        colorAnchor && fileId && /* @__PURE__ */ jsx(
-          StripColorPopover,
-          {
-            anchorRect: colorAnchor,
-            currentColor: dotColor,
-            onPick: (color) => setTrackMeta(fileId, strip.name, { color }),
-            onReset: () => setTrackMeta(fileId, strip.name, { color: void 0 }),
-            onClose: () => setColorAnchor(null)
-          }
-        ),
-        renaming ? /* @__PURE__ */ jsx(
-          "input",
-          {
-            "data-pattern-track-rename": true,
-            autoFocus: true,
-            defaultValue: renameSeed,
-            placeholder: "name this track",
-            spellCheck: false,
-            onFocus: (e) => e.currentTarget.select(),
-            onKeyDown: (e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commitRename(e.currentTarget.value);
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                cancelRename();
-              }
-              e.stopPropagation();
-            },
-            onBlur: (e) => commitRename(e.currentTarget.value),
-            style: {
-              minWidth: 0,
-              width: 96,
-              fontSize: 11,
-              fontWeight: 600,
-              fontFamily: "inherit",
-              color: "var(--foreground, #e6e6ea)",
-              background: "rgba(255,255,255,0.08)",
-              border: "1px solid rgba(255,255,255,0.25)",
-              borderRadius: 3,
-              padding: "0 3px",
-              outline: "none"
-            }
-          }
-        ) : /* @__PURE__ */ jsx(
-          "span",
-          {
-            "data-pattern-track-name": true,
-            title: `${strip.shownName} \u2014 double-click to rename`,
-            onDoubleClick: openRename,
-            style: {
-              fontSize: 11,
-              fontWeight: 600,
-              color: "var(--foreground, #e6e6ea)",
-              maxWidth: 160,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              cursor: "text"
-            },
-            children: strip.shownName
-          }
-        )
-      ]
-    }
-  );
-}
-__name(PatternTrackChip, "PatternTrackChip");
 
 // src/visualEdit/panels/inspector.ts
 function gainAtStart(model, start) {
@@ -39476,13 +42949,13 @@ function setColumnGain(model, stepIndex, gain) {
 __name(setColumnGain, "setColumnGain");
 var CLICK_SLOP_PX = 4;
 function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
-  const selfRef = React48.useRef(null);
-  const [frame, setFrame] = React48.useState(null);
-  const [added, setAdded] = React48.useState(0);
-  const [engaged, setEngaged] = React48.useState(false);
-  const dragRef = React48.useRef(null);
-  const swallowClick = React48.useRef(false);
-  const measure = React48.useCallback(() => {
+  const selfRef = React33.useRef(null);
+  const [frame, setFrame] = React33.useState(null);
+  const [added, setAdded] = React33.useState(0);
+  const [engaged, setEngaged] = React33.useState(false);
+  const dragRef = React33.useRef(null);
+  const swallowClick = React33.useRef(false);
+  const measure = React33.useCallback(() => {
     const grid = gridRef.current;
     const parent = selfRef.current?.offsetParent;
     if (!grid || !parent || cols < 1) return;
@@ -39505,8 +42978,8 @@ function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
       (f) => f && f.left === next.left && f.top === next.top && f.height === next.height && f.pitch === next.pitch && f.maxRight === next.maxRight ? f : next
     );
   }, [gridRef, cellAttr, cols]);
-  React48.useLayoutEffect(measure);
-  React48.useEffect(() => {
+  React33.useLayoutEffect(measure);
+  React33.useEffect(() => {
     const grid = gridRef.current;
     if (!grid || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => measure());
@@ -39642,223 +43115,6 @@ function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
   ] });
 }
 __name(ExtendHandle, "ExtendHandle");
-function sharedSteps(m) {
-  return m.barSteps ? m.barSteps.length * lcmOf(m.barSteps) : m.steps;
-}
-__name(sharedSteps, "sharedSteps");
-function toDrawn(u, m) {
-  const d = m.barSteps ? drawnAt(u, m.barSteps) : u;
-  return Number.isInteger(d) ? d : null;
-}
-__name(toDrawn, "toDrawn");
-function regionStepStarts(r) {
-  const w = r.weight ?? 1;
-  const span = r.to - r.from;
-  if (!Number.isInteger(w) || w <= 1 || span % w !== 0) return [r.from];
-  return Array.from({ length: w }, (_, k) => r.from + k * span / w);
-}
-__name(regionStepStarts, "regionStepStarts");
-function wholeBarStepStarts(r) {
-  const regions = bracketedBarRegions(r.raw);
-  if (!regions) return null;
-  const cols = regions[regions.length - 1]?.to;
-  if (!cols) return null;
-  const starts = regions.flatMap(regionStepStarts).map((c) => r.from + c * (r.to - r.from) / cols);
-  return starts.every(Number.isInteger) ? starts : null;
-}
-__name(wholeBarStepStarts, "wholeBarStepStarts");
-function writtenStepStarts(m) {
-  const out = /* @__PURE__ */ new Map();
-  const shared = sharedSteps(m);
-  const put = /* @__PURE__ */ __name((part, us) => {
-    const cols = /* @__PURE__ */ new Set();
-    for (const u of us) {
-      const d = toDrawn(u, m);
-      if (d !== null) cols.add(d);
-    }
-    out.set(part, [...cols].sort((a2, b) => a2 - b));
-  }, "put");
-  if (m.source) {
-    for (const p of m.source.parts) {
-      const last = p.regions[p.regions.length - 1];
-      const repeats = p.bars === void 0 ? 1 : (m.bars ?? 1) / p.bars;
-      if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== shared) continue;
-      const span = last.to * p.factor;
-      const bar2 = (m.bars ?? 1) > 1 ? shared / (m.bars ?? 1) : null;
-      const once = p.regions.flatMap(
-        (r) => bar2 !== null && (r.to - r.from) * p.factor === bar2 ? wholeBarStepStarts(r) ?? regionStepStarts(r) : regionStepStarts(r)
-      ).map((c) => c * p.factor);
-      put(
-        p.part,
-        Array.from({ length: repeats }, (_, k) => once.map((c) => c + k * span)).flat()
-      );
-    }
-    return out;
-  }
-  const a = m.altSource;
-  if (a && a.perBar * a.bars === shared) {
-    const us = [];
-    for (let b = 0; b < a.bars; b++) for (const r of a.regions) us.push(b * a.perBar + r.from);
-    put(0, us);
-  }
-  return out;
-}
-__name(writtenStepStarts, "writtenStepStarts");
-function ownStepWidths(m) {
-  const out = /* @__PURE__ */ new Map();
-  if (!m.source || m.barSteps) return out;
-  for (const p of m.source.parts) {
-    const last = p.regions[p.regions.length - 1];
-    const repeats = p.bars === void 0 ? 1 : (m.bars ?? 1) / p.bars;
-    if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== m.steps) continue;
-    if (p.factor > 1 && Number.isInteger(p.factor) && m.steps % p.factor === 0) out.set(p.part, p.factor);
-  }
-  return out;
-}
-__name(ownStepWidths, "ownStepWidths");
-function rowBoxes(cells, steps, width, isOn) {
-  const w = width !== void 0 && width > 1 && steps % width === 0 && cells.every((c, i) => i % width === 0 || !isOn(c)) ? width : 1;
-  return Array.from({ length: steps / w }, (_, k) => ({ start: k * w, width: w }));
-}
-__name(rowBoxes, "rowBoxes");
-function boxesPlaceNotes(lanes, boxes, isOn, placeable) {
-  let asked2 = 0;
-  for (let li = 0; li < lanes.length; li++)
-    for (const b of boxes[li] ?? []) {
-      if (isOn(lanes[li].cells[b.start])) continue;
-      asked2++;
-      if (placeable[li]?.[b.start]) return true;
-    }
-  return asked2 === 0;
-}
-__name(boxesPlaceNotes, "boxesPlaceNotes");
-function groupBoxesBySteps(boxes, starts, steps, owners2) {
-  const alone = /* @__PURE__ */ __name(() => boxes.map((b) => ({ from: b.start, to: b.start + b.width, boxes: [b], plain: true })), "alone");
-  if (!starts || starts.length === 0) return alone();
-  const edges = [.../* @__PURE__ */ new Set([...starts, steps])].filter((c) => c >= 0 && c <= steps).sort((a, b) => a - b);
-  if (edges[0] !== 0) edges.unshift(0);
-  const out = [];
-  let k = 0;
-  for (let i = 0; i + 1 < edges.length; i++) {
-    const [from, to] = [edges[i], edges[i + 1]];
-    const inStep = [];
-    while (k < boxes.length && boxes[k].start < to) {
-      if (boxes[k].start < from || boxes[k].start + boxes[k].width > to) return alone();
-      inStep.push(boxes[k++]);
-    }
-    if (inStep.length === 0) continue;
-    let plain = true;
-    for (const owner of owners2) {
-      const first = owner(from);
-      for (let c = from + 1; c < to && plain; c++) plain = owner(c) === first;
-    }
-    out.push({ from, to, boxes: inStep, plain });
-  }
-  return k === boxes.length ? out : alone();
-}
-__name(groupBoxesBySteps, "groupBoxesBySteps");
-function boxLengths(duration, w) {
-  const d = Math.round(duration);
-  const down = Math.ceil(d / w) - 1;
-  return { longer: (Math.floor(d / w) + 1) * w, shorter: down >= 1 ? down * w : null };
-}
-__name(boxLengths, "boxLengths");
-function linesModel(shown, read5) {
-  if (!read5 || read5.steps !== shown.steps || (read5.bars ?? 1) !== (shown.bars ?? 1)) return shown;
-  return (read5.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read5 : shown;
-}
-__name(linesModel, "linesModel");
-function drawnBarStarts(m, cols) {
-  const layout = drawnLayout(m, cols);
-  const out = [0];
-  for (let c = 1; c < cols; c++) if (layout.barStart(c)) out.push(c);
-  out.push(cols);
-  return out;
-}
-__name(drawnBarStarts, "drawnBarStarts");
-function rulerLabels(m, cols, starts) {
-  const bars = drawnBarStarts(m, cols);
-  const labels = /* @__PURE__ */ new Map();
-  for (let b = 0; b + 1 < bars.length; b++) {
-    const from = bars[b];
-    const to = bars[b + 1];
-    labels.set(from, String(b + 1));
-    let k = 1;
-    for (const c of starts ?? []) {
-      if (c <= from || c >= to) continue;
-      k++;
-      labels.set(c, `${b + 1}.${k}`);
-    }
-  }
-  return labels;
-}
-__name(rulerLabels, "rulerLabels");
-var LABEL_GAP = 3;
-function fitLabels(boxes) {
-  const show = boxes.map(() => false);
-  let lastBarRight = -Infinity;
-  boxes.forEach((b, i) => {
-    if (b.bar && (lastBarRight === -Infinity || b.left >= lastBarRight + LABEL_GAP)) {
-      show[i] = true;
-      lastBarRight = b.right;
-    }
-  });
-  let prevRight = -Infinity;
-  boxes.forEach((b, i) => {
-    if (b.bar) {
-      if (show[i]) prevRight = b.right;
-      return;
-    }
-    let nextBar = Infinity;
-    for (let j = i + 1; j < boxes.length; j++) {
-      if (boxes[j].bar && show[j]) {
-        nextBar = boxes[j].left;
-        break;
-      }
-    }
-    if (b.left >= prevRight + LABEL_GAP && b.right + LABEL_GAP <= nextBar) {
-      show[i] = true;
-      prevRight = b.right;
-    }
-  });
-  return show;
-}
-__name(fitLabels, "fitLabels");
-function useRulerFit(rulerRef, labelAttr) {
-  const fit = React48.useCallback(() => {
-    const root = rulerRef.current;
-    if (!root) return;
-    const els = [...root.querySelectorAll(`[${labelAttr}]`)];
-    const boxes = els.map((e) => {
-      const r = e.getBoundingClientRect();
-      return { left: r.left, right: r.right, bar: e.hasAttribute("data-ruler-bar") };
-    });
-    const show = fitLabels(boxes);
-    els.forEach((e, i) => {
-      e.style.visibility = show[i] ? "" : "hidden";
-    });
-  }, [rulerRef, labelAttr]);
-  useLayoutFollow(rulerRef, fit);
-}
-__name(useRulerFit, "useRulerFit");
-function useLayoutFollow(ref, run) {
-  const runRef = React48.useRef(run);
-  runRef.current = run;
-  const observed = React48.useRef(null);
-  React48.useLayoutEffect(() => {
-    runRef.current();
-    const el = ref.current;
-    if (observed.current?.el === el) return;
-    observed.current?.ro.disconnect();
-    observed.current = null;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => runRef.current());
-    ro.observe(el);
-    observed.current = { el, ro };
-  });
-  React48.useEffect(() => () => observed.current?.ro.disconnect(), []);
-}
-__name(useLayoutFollow, "useLayoutFollow");
 var GRID_MODE_KEY = "stave:visualEdit.gridMode";
 var DEFAULT_MODE2 = "exact";
 function readStored3() {
@@ -39872,14 +43128,14 @@ function readStored3() {
 }
 __name(readStored3, "readStored");
 var current7 = readStored3();
-var listeners14 = /* @__PURE__ */ new Set();
+var listeners16 = /* @__PURE__ */ new Set();
 function subscribe7(listener) {
-  listeners14.add(listener);
-  return () => listeners14.delete(listener);
+  listeners16.add(listener);
+  return () => listeners16.delete(listener);
 }
 __name(subscribe7, "subscribe");
 function useGridMode() {
-  return React48.useSyncExternalStore(subscribe7, () => current7, () => DEFAULT_MODE2);
+  return React33.useSyncExternalStore(subscribe7, () => current7, () => DEFAULT_MODE2);
 }
 __name(useGridMode, "useGridMode");
 function getGridMode() {
@@ -39893,156 +43149,235 @@ function setGridMode(mode) {
     window.localStorage.setItem(GRID_MODE_KEY, mode);
   } catch {
   }
-  listeners14.forEach((l) => l());
+  listeners16.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
-function usePatternLength(chunk, model, parse7, writeMini) {
-  const mini = model ? chunk?.miniString ?? null : null;
-  const bars = model?.bars ?? 1;
-  const gain = chunk ? readChunkGain(chunk) : null;
-  const velocity = gain?.mini != null;
-  const parseRef = React48.useRef(parse7);
-  parseRef.current = parse7;
-  const cache3 = React48.useRef(null);
-  const verdict = /* @__PURE__ */ __name(() => {
-    if (mini === null || gain === null) return null;
-    const key3 = `${bars}|${velocity}|${mini}`;
-    if (cache3.current?.key !== key3) {
-      cache3.current = { key: key3, verdict: lengthenOffers(parseRef.current, mini, bars, gain) };
+var VELOCITY_DRAG_KEY = "stave:visualEdit.velocityDrag";
+var DEFAULT_ON = false;
+function readStored4() {
+  if (typeof window === "undefined") return DEFAULT_ON;
+  try {
+    const v = window.localStorage.getItem(VELOCITY_DRAG_KEY);
+    return v === "1" ? true : v === "0" ? false : DEFAULT_ON;
+  } catch {
+    return DEFAULT_ON;
+  }
+}
+__name(readStored4, "readStored");
+var current8 = readStored4();
+var listeners17 = /* @__PURE__ */ new Set();
+function subscribe8(listener) {
+  listeners17.add(listener);
+  return () => listeners17.delete(listener);
+}
+__name(subscribe8, "subscribe");
+function useVelocityDrag() {
+  return React33.useSyncExternalStore(subscribe8, () => current8, () => DEFAULT_ON);
+}
+__name(useVelocityDrag, "useVelocityDrag");
+function getVelocityDrag() {
+  return current8;
+}
+__name(getVelocityDrag, "getVelocityDrag");
+function setVelocityDrag(on) {
+  if (on === current8) return;
+  current8 = on;
+  try {
+    window.localStorage.setItem(VELOCITY_DRAG_KEY, on ? "1" : "0");
+  } catch {
+  }
+  listeners17.forEach((l) => l());
+}
+__name(setVelocityDrag, "setVelocityDrag");
+
+// src/visualEdit/panels/exactGrid.ts
+var MAX_DIVISION = 4096;
+var gcd5 = /* @__PURE__ */ __name((a, b) => b === 0 ? Math.abs(a) : gcd5(b, a % b), "gcd");
+var lcm2 = /* @__PURE__ */ __name((a, b) => a / gcd5(a, b) * b, "lcm");
+var keyOf2 = /* @__PURE__ */ __name((f) => `${f.n}/${f.d}`, "keyOf");
+function hitCells(row, sound, bar2, out) {
+  for (const s of row.steps) {
+    if (s.text === sound) {
+      for (const h of s.hits) {
+        if (fracNum(h.begin) >= 0 && fracNum(h.begin) < 1) out.push({ bar: bar2, begin: frac(h.begin.n, h.begin.d), end: frac(h.end.n, h.end.d), on: true, split: false });
+      }
     }
-    return cache3.current.verdict;
-  }, "verdict");
-  const onDuplicate = /* @__PURE__ */ __name(() => {
-    const r = verdict()?.duplicate;
-    if (!r) return;
-    if (r.ok) writeMini(r.mini);
-    else report("Couldn't add a bar that continues the pattern", r.reason);
-  }, "onDuplicate");
-  const onAddBars = /* @__PURE__ */ __name((n) => {
-    if (mini === null || gain === null || n < 1) return;
-    const r = appendBarsOffer(parseRef.current, mini, bars, n, gain);
-    if (r.ok) writeMini(r.mini);
-    else report(`Couldn't add ${n === 1 ? "a bar" : `${n} bars`}`, r.reason);
-  }, "onAddBars");
-  return { bars, verdict, onDuplicate, onAddBars };
+    for (const r of s.rows ?? []) hitCells(r, sound, bar2, out);
+  }
+  return out.sort((a, b) => fracNum(a.begin) - fracNum(b.begin));
 }
-__name(usePatternLength, "usePatternLength");
-function report(attempted, reason) {
-  emitLog({ level: "warn", runtime: "stave", message: `${attempted} \u2014 ${reason}, so it was left unchanged.` });
+__name(hitCells, "hitCells");
+function starts(row, sound, out) {
+  for (const s of row.steps) {
+    if (s.text === sound) for (const h of s.hits) out.add(keyOf2(frac(h.begin.n, h.begin.d)));
+    for (const r of s.rows ?? []) starts(r, sound, out);
+  }
+  return out;
 }
-__name(report, "report");
-var PHONE_STEP_MIN = 40;
-var PHONE_RULER_HEIGHT = 44;
-function usePhoneGrid() {
-  const layout = usePhoneLayout();
-  return { phone: layout !== "none", upright: layout === "upright" };
+__name(starts, "starts");
+function finest(row, d = 1) {
+  for (const s of row.steps) {
+    for (const slot of s.slots) d = lcm2(lcm2(d, frac(slot.begin.n, slot.begin.d).d), frac(slot.end.n, slot.end.d).d);
+    for (const h of s.hits) d = lcm2(d, frac(h.begin.n, h.begin.d).d);
+    for (const r of s.rows ?? []) d = finest(r, d);
+    if (d > MAX_DIVISION) return d;
+  }
+  return d;
 }
-__name(usePhoneGrid, "usePhoneGrid");
-var ALL_IN_VIEW = { start: 0, end: 1, more: false };
-function gridInView(scrollLeft, clientWidth, scrollWidth) {
-  if (!(scrollWidth > 0) || !(clientWidth > 0) || scrollWidth <= clientWidth + 1) return ALL_IN_VIEW;
-  const start = Math.max(0, Math.min(1, scrollLeft / scrollWidth));
-  const end = Math.max(start, Math.min(1, (scrollLeft + clientWidth) / scrollWidth));
-  return { start, end, more: true };
+__name(finest, "finest");
+function leafCells(leaf, bar2, division2, mine, snap = 1) {
+  const hits = (leaf.step?.hits ?? []).filter((h) => fracNum(h.begin) >= fracNum(leaf.begin) && fracNum(h.begin) < fracNum(leaf.end));
+  const cell = /* @__PURE__ */ __name((begin, end, split) => ({ bar: bar2, begin, end, on: mine.has(keyOf2(begin)), split }), "cell");
+  const span = frac(leaf.end.n * leaf.begin.d - leaf.begin.n * leaf.end.d, leaf.end.d * leaf.begin.d);
+  const whole2 = /* @__PURE__ */ __name((x) => Number.isInteger(x) && x >= 1 ? x : 1, "whole");
+  let own = leaf.step?.euclidPlaces ?? 1;
+  if (own === 1) {
+    let d = 1;
+    const lead = leaf.begin;
+    for (const h of hits) d = lcm2(d, frac(h.begin.n * lead.d - lead.n * h.begin.d, h.begin.d * lead.d).d);
+    own = whole2(span.n * d / span.d);
+  }
+  const parts = lcm2(own, division2 > MAX_DIVISION ? 1 : whole2(span.n * division2 / span.d)) * snap;
+  if (parts <= 1) return [cell(leaf.begin, leaf.end, false)];
+  const place = /* @__PURE__ */ __name((k) => {
+    const step = frac(span.n, span.d * parts);
+    return frac(leaf.begin.n * step.d + k * step.n * leaf.begin.d, leaf.begin.d * step.d);
+  }, "place");
+  const everyOwn = parts / own;
+  return Array.from({ length: parts }, (_, k) => cell(place(k), k === parts - 1 ? leaf.end : place(k + 1), k % everyOwn !== 0));
 }
-__name(gridInView, "gridInView");
-function useRulerPan(scrollRef, enabled) {
-  const [inView, setInView] = React48.useState(ALL_IN_VIEW);
-  const [viewWidth, setViewWidth] = React48.useState(0);
-  const [scroller, setScroller] = React48.useState(null);
-  const read5 = React48.useCallback(() => {
-    const sc = scrollRef.current;
-    const next = enabled && sc ? gridInView(sc.scrollLeft, sc.clientWidth, sc.scrollWidth) : ALL_IN_VIEW;
-    setInView((prev) => prev.start === next.start && prev.end === next.end && prev.more === next.more ? prev : next);
-    setViewWidth(enabled && sc ? sc.clientWidth : 0);
-  }, [scrollRef, enabled]);
-  React48.useLayoutEffect(() => {
-    if (scrollRef.current !== scroller) setScroller(scrollRef.current);
-    read5();
+__name(leafCells, "leafCells");
+function leavesOf(steps, out = []) {
+  for (const s of steps) {
+    if (s.children) leavesOf(s.children, out);
+    else out.push(s);
+  }
+  return out;
+}
+__name(leavesOf, "leavesOf");
+function exactGridFrom(probed, kept = [], snap = 1) {
+  const rep = repeatingBars(probed);
+  const grid = treeGridFrom(probed, "allowed");
+  if (!rep.ok) return rep;
+  if (!grid.ok) return grid;
+  const divisions = /* @__PURE__ */ new Map();
+  for (const t of rep.trees) t.parts.forEach((row, p) => divisions.set(p, finest(row, divisions.get(p) ?? 1)));
+  const written = grid.rows.map((r) => `${r.part}\0${r.sound}`);
+  const extra = kept.filter((k) => !written.includes(`${k.part}\0${k.sound}`) && rep.trees[0].parts[k.part]).map((k) => {
+    const perBar2 = [];
+    let why = null;
+    for (const t of rep.trees) {
+      const steps = barStepsOrWhy(t.parts[k.part], k.sound);
+      if (typeof steps === "string") why = why ?? steps;
+      else perBar2.push(steps);
+    }
+    return { sound: k.sound, part: k.part, bars: why ? null : perBar2, why, hits: [] };
   });
-  React48.useEffect(() => {
-    if (!enabled || !scroller) return;
-    scroller.addEventListener("scroll", read5, { passive: true });
-    window.addEventListener("resize", read5);
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(read5) : null;
-    observer?.observe(scroller);
-    return () => {
-      scroller.removeEventListener("scroll", read5);
-      window.removeEventListener("resize", read5);
-      observer?.disconnect();
-    };
-  }, [enabled, scroller, read5]);
-  const onPointerDown = React48.useCallback(
-    (e) => {
-      const sc = scrollRef.current;
-      if (!sc) return;
-      if (e.pointerType === "mouse" && e.button !== 0) return;
-      e.preventDefault();
-      const pointerId = e.pointerId;
-      const startX = e.clientX;
-      const startLeft = sc.scrollLeft;
-      const move = /* @__PURE__ */ __name((ev) => {
-        if (ev.pointerId !== pointerId) return;
-        sc.scrollLeft = startLeft - (ev.clientX - startX);
-      }, "move");
-      const end = /* @__PURE__ */ __name((ev) => {
-        if (ev.pointerId !== pointerId) return;
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", end);
-        window.removeEventListener("pointercancel", end);
-      }, "end");
-      window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", end);
-      window.addEventListener("pointercancel", end);
-    },
-    [scrollRef]
-  );
-  return { handlers: enabled ? { onPointerDown } : {}, inView, viewWidth };
-}
-__name(useRulerPan, "useRulerPan");
-var PHONE_GRID_WIDTH = { width: "max-content", minWidth: "100%" };
-function InViewBar({ inView, width }) {
-  return /* @__PURE__ */ jsx(
-    "div",
-    {
-      "data-grid-in-view": true,
-      "data-more": inView.more ? "true" : "false",
-      "aria-hidden": "true",
-      style: {
-        position: "absolute",
-        left: 0,
-        width: Math.max(0, width),
-        top: 6,
-        height: 3,
-        borderRadius: 2,
-        // drawn only when there is something out of view to point at
-        background: inView.more ? "var(--border, #3a3a42)" : "transparent",
-        pointerEvents: "none"
-      },
-      children: /* @__PURE__ */ jsx(
-        "div",
-        {
-          "data-grid-in-view-part": true,
-          style: {
-            position: "absolute",
-            top: 0,
-            bottom: 0,
-            left: `${inView.start * 100}%`,
-            width: `${(inView.end - inView.start) * 100}%`,
-            borderRadius: 2,
-            background: inView.more ? "var(--accent, #8b5cf6)" : "transparent"
-          }
-        }
-      )
+  const rows = [...grid.rows, ...extra].map((r) => {
+    const cells = [];
+    for (let b = 0; b < rep.bars; b++) {
+      const row = rep.trees[b].parts[r.part];
+      const steps = barStepsOrWhy(row, r.sound);
+      if (typeof steps === "string") {
+        cells.push(...hitCells(row, r.sound, b, []));
+        continue;
+      }
+      const mine = starts(row, r.sound, /* @__PURE__ */ new Set());
+      for (const leaf of leavesOf(steps)) cells.push(...leafCells(leaf, b, divisions.get(r.part) ?? 1, mine, snap));
     }
-  );
+    return { ...r, cells };
+  });
+  const firstPlay = /* @__PURE__ */ __name((r) => r.hits[0]?.begin ?? Infinity, "firstPlay");
+  rows.sort((a, b) => a.part - b.part || firstPlay(a) - firstPlay(b));
+  return { ok: true, bars: rep.bars, trees: rep.trees, rows };
 }
-__name(InViewBar, "InViewBar");
-function TurnHint({ show }) {
-  if (!show) return null;
-  return /* @__PURE__ */ jsx("span", { "data-grid-turn-hint": true, style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)", whiteSpace: "nowrap" }, children: "Drag the numbers, or turn the phone" });
+__name(exactGridFrom, "exactGridFrom");
+var cellAt = /* @__PURE__ */ __name((c) => c.bar + fracNum(c.begin), "cellAt");
+var cellEnd = /* @__PURE__ */ __name((c) => c.bar + fracNum(c.end), "cellEnd");
+function drawnCells(cells, barPx, openPx = OPEN_PX) {
+  const out = [];
+  for (const c of cells) {
+    const wide = (fracNum(c.end) - fracNum(c.begin)) * barPx >= openPx - 1e-6;
+    const last = out[out.length - 1];
+    if (c.split && !wide && last) out[out.length - 1] = { ...last, end: c.end };
+    else out.push(c);
+  }
+  return out;
 }
-__name(TurnHint, "TurnHint");
+__name(drawnCells, "drawnCells");
+function removeRowText(mini, bars, row, order) {
+  let text = mini;
+  for (let guard = 0; guard < 4096; guard++) {
+    const g = exactGridFrom(chunkDivisions(text, 2 * bars), [row]);
+    if (!g.ok) return { ok: false, why: g.why };
+    const r = g.rows.find((x) => x.sound === row.sound && x.part === row.part);
+    const on = r?.cells.find((c) => c.on);
+    if (!r || !on) return { ok: true, mini: text };
+    const e = cellEdit(text, g.trees, r, order, on);
+    if (!e.ok) return { ok: false, why: e.why };
+    text = applyStepEdit(text, e.edit);
+  }
+  return { ok: false, why: "too-many-notes" };
+}
+__name(removeRowText, "removeRowText");
+function playsNumbers(trees) {
+  let any = false;
+  let all = true;
+  const visit = /* @__PURE__ */ __name((row) => {
+    for (const s of row.steps) {
+      for (const h of s.hits) {
+        any = true;
+        const v = Array.isArray(h.value) ? h.value[0] : h.value;
+        if (typeof v !== "number") all = false;
+      }
+      for (const r of s.rows ?? []) visit(r);
+    }
+  }, "visit");
+  for (const t of trees) if (t.ok) t.parts.forEach(visit);
+  return any && all;
+}
+__name(playsNumbers, "playsNumbers");
+function cellEdit(mini, trees, row, order, cell, silent = false) {
+  const writerRow = { sound: row.sound, part: row.part, order };
+  const at = stepAddressAtPlace(trees, row, cell.bar, cell.begin);
+  if (at === "inside-a-step") {
+    const inside = splitAddressAtPlace(trees, row, cell.bar, cell.begin);
+    if (!inside) return { ok: false, why: at };
+    const r2 = splitStep(mini, trees, inside.address, inside.at, writerRow);
+    if (r2.ok && silent) return { ok: false, why: "under-a-gain-rest" };
+    return r2.ok ? { ...r2, split: true } : r2;
+  }
+  if (typeof at === "string") return { ok: false, why: at };
+  const r = toggleStep(mini, trees, at, writerRow);
+  return r.ok && silent && !cell.on ? { ok: false, why: "under-a-gain-rest" } : r;
+}
+__name(cellEdit, "cellEdit");
+function placesPerBar(rows) {
+  let most = 0;
+  for (const r of rows) {
+    const perBar2 = /* @__PURE__ */ new Map();
+    for (const c of r.cells) perBar2.set(c.bar, (perBar2.get(c.bar) ?? 0) + 1);
+    for (const n of perBar2.values()) most = Math.max(most, n);
+  }
+  return most;
+}
+__name(placesPerBar, "placesPerBar");
+function snappable(rows) {
+  return rows.length > 0 && rows.every((r) => r.bars !== null);
+}
+__name(snappable, "snappable");
+var MAX_SNAP_PLACES = 256;
+function exactSlotState(target, own, current9) {
+  if (target === current9) return "active";
+  if (own <= 0 || target < own || target % own !== 0 || target > MAX_SNAP_PLACES) return "disabled";
+  return "view";
+}
+__name(exactSlotState, "exactSlotState");
+function snapFor(target, own) {
+  if (target === null || own <= 0 || target % own !== 0 || target < own) return 1;
+  return target / own;
+}
+__name(snapFor, "snapFor");
 
 // src/keys/chord.ts
 function isMacPlatform() {
@@ -40127,11 +43462,11 @@ function chordFromEvent(e, opts = {}) {
 }
 __name(chordFromEvent, "chordFromEvent");
 var MODIFIER_ORDER = ["mod", "ctrl", "shift", "alt"];
-function normalizeChord(chord, opts = {}) {
+function normalizeChord(chord2, opts = {}) {
   const isMac = opts.isMac ?? isMacPlatform();
   const mods = /* @__PURE__ */ new Set();
   let key3 = "";
-  for (const raw of chord.toLowerCase().split("+")) {
+  for (const raw of chord2.toLowerCase().split("+")) {
     let t = raw;
     if (t === "cmd" || t === "command" || t === "meta") t = "mod";
     else if (t === "control") t = isMac ? "ctrl" : "mod";
@@ -40332,16 +43667,44 @@ function moveCursor(at, move, rows, cols) {
   }
 }
 __name(moveCursor, "moveCursor");
-function moveBoxCursor(at, move, rows, cols, widthOf) {
-  if (move === "up" || move === "down") return moveCursor(at, move, rows, cols);
-  const w = widthOf(at.row);
-  const start = at.col - at.col % w;
-  const from = { row: at.row, col: move === "right" ? start + w - 1 : start };
-  const to = moveCursor(from, move, rows, cols);
-  const tw = widthOf(to.row);
-  return { row: to.row, col: to.col - to.col % tw };
+function stopAt(stops, col) {
+  let got = stops[0] ?? col;
+  for (const s of stops) if (s <= col) got = s;
+  return got;
 }
-__name(moveBoxCursor, "moveBoxCursor");
+__name(stopAt, "stopAt");
+function moveStepCursor(at, move, rows, cols, stopsOf) {
+  const stops = /* @__PURE__ */ __name((row) => {
+    const s = stopsOf(row);
+    return s && s.length > 0 ? s : Array.from({ length: cols }, (_, c) => c);
+  }, "stops");
+  const clampRow = /* @__PURE__ */ __name((r) => Math.max(0, Math.min(rows - 1, r)), "clampRow");
+  const here = stops(at.row);
+  const i = here.indexOf(stopAt(here, at.col));
+  switch (move) {
+    case "left":
+      return { row: at.row, col: here[i] < at.col ? here[i] : here[Math.max(0, i - 1)] };
+    case "right": {
+      const next = here.find((s) => s > at.col);
+      return { row: at.row, col: next ?? at.col };
+    }
+    case "up":
+    case "down":
+      return { row: clampRow(at.row + (move === "up" ? -1 : 1)), col: at.col };
+    case "rowStart":
+      return { row: at.row, col: here[0] };
+    case "rowEnd":
+      return { row: at.row, col: here[here.length - 1] };
+    case "first":
+      return { row: 0, col: stops(0)[0] };
+    case "last": {
+      const row = Math.max(0, rows - 1);
+      const s = stops(row);
+      return { row, col: s[s.length - 1] };
+    }
+  }
+}
+__name(moveStepCursor, "moveStepCursor");
 function isCursorMove(action) {
   return CURSOR_MOVES.has(action);
 }
@@ -40352,10 +43715,10 @@ var GRID_SCOPE_LABEL = {
   sequencer: { category: "Sequencer", where: "In the sequencer, on the selected cell" }
 };
 function matchDefaults(scope2, e) {
-  const chord = chordFromEvent(e);
+  const chord2 = chordFromEvent(e);
   for (const g of GRID_GESTURES) {
     if (g.scope !== scope2) continue;
-    if ([g.keybinding, ...g.alternateKeybindings ?? []].some((b) => chordMatches(chord, b))) return g.id;
+    if ([g.keybinding, ...g.alternateKeybindings ?? []].some((b) => chordMatches(chord2, b))) return g.id;
   }
   return void 0;
 }
@@ -40387,27 +43750,782 @@ function runGridGesture(scope2, id, dryRun) {
   return mounted.get(scope2)?.(action, dryRun) ?? false;
 }
 __name(runGridGesture, "runGridGesture");
-var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
-var VELOCITY_FULL_PX = 80;
-var DRAG_THRESHOLD = 4;
-var RESIZE_ZONE_PX = 8;
-var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
-function reportRefusal(attempted) {
-  emitLog({
-    level: "warn",
-    runtime: "stave",
-    message: `${attempted} \u2014 writing it would change the pattern in ways you didn't ask for, so it was left unchanged.`
-  });
+function usePatternLength(chunk, model, parse8, writeMini) {
+  const mini = model ? chunk?.miniString ?? null : null;
+  const bars = model?.bars ?? 1;
+  const gain = chunk ? readChunkGain(chunk) : null;
+  const velocity = gain?.mini != null;
+  const parseRef = React33.useRef(parse8);
+  parseRef.current = parse8;
+  const cache3 = React33.useRef(null);
+  const verdict = /* @__PURE__ */ __name(() => {
+    if (mini === null || gain === null) return null;
+    const key3 = `${bars}|${velocity}|${mini}`;
+    if (cache3.current?.key !== key3) {
+      cache3.current = { key: key3, verdict: lengthenOffers(parseRef.current, mini, bars, gain) };
+    }
+    return cache3.current.verdict;
+  }, "verdict");
+  const onDuplicate = /* @__PURE__ */ __name(() => {
+    const r = verdict()?.duplicate;
+    if (!r) return;
+    if (r.ok) writeMini(r.mini);
+    else report("Couldn't add a bar that continues the pattern", r.reason);
+  }, "onDuplicate");
+  const onAddBars = /* @__PURE__ */ __name((n) => {
+    if (mini === null || gain === null || n < 1) return;
+    const r = appendBarsOffer(parseRef.current, mini, bars, n, gain);
+    if (r.ok) writeMini(r.mini);
+    else report(`Couldn't add ${n === 1 ? "a bar" : `${n} bars`}`, r.reason);
+  }, "onAddBars");
+  return { bars, verdict, onDuplicate, onAddBars };
 }
-__name(reportRefusal, "reportRefusal");
+__name(usePatternLength, "usePatternLength");
+function report(attempted, reason) {
+  emitLog({ level: "warn", runtime: "stave", message: `${attempted} \u2014 ${reason}, so it was left unchanged.` });
+}
+__name(report, "report");
 function opensRhythmLine(call) {
   const raw = call.args[0]?.raw ?? "";
   return call.name === "struct" && (/^["'`]/.test(raw) || /\.pick\w*\(\s*\[\s*["'`]/.test(raw));
 }
 __name(opensRhythmLine, "opensRhythmLine");
-function SequencerGrid({ onResolution, notice = null } = {}) {
-  const [viewScale, setViewScale] = React48.useState(UNREFINED);
-  const { chunk, model, read: read5, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
+var BAR_GAP3 = 8;
+var NAME_PX2 = 96;
+var ROW_PX3 = 22;
+var RESIZE_ZONE_PX = 8;
+var DRAG_THRESHOLD = 4;
+var VELOCITY_FULL_PX = 80;
+var clamp012 = /* @__PURE__ */ __name((v) => Math.min(1, Math.max(0, v)), "clamp01");
+var STEP_REFUSALS = {
+  "inside-a-step": "This place is part of a longer step \u2014 click where the step begins, or change it in the code view.",
+  "step-is-generated": "This hit is made by an operator on its step (like *4 or (3,8)) \u2014 change it in the code view.",
+  "step-is-replicated": "This step is written once and repeated with ! \u2014 change it in the code view.",
+  "step-is-a-random-choice": "This step plays by chance (? or |) \u2014 change it in the code view.",
+  "step-under-a-generator": "This step plays by chance (? or |) \u2014 change it in the code view.",
+  "loop-shorter-than-the-pattern": "This step also plays in bars the grid doesn't show \u2014 change it in the code view.",
+  "step-crosses-a-bar": "This note runs over a bar line \u2014 switch it where it starts, or change it in the code view.",
+  "step-has-no-text": "This note isn't one plain name in the code, so the grid can't change it \u2014 change it in the code view.",
+  "under-a-gain-rest": "The .gain has a rest (~) here, so a hit here would play nothing \u2014 change the .gain in the code view."
+};
+var VELOCITY_REFUSALS = {
+  "gain-not-ours": "this pattern's .gain isn't a plain number or string, so the grid leaves it as written",
+  "hit-is-silent": "the .gain has a rest (~) on this hit, so it plays nothing",
+  "gain-step-not-the-hit": "the .gain's level on this hit also covers other places, so changing it would change them too",
+  "no-gain-for-this-pattern": "a new .gain could not follow this pattern\u2019s steps (parts side by side, a random choice, or {\u2026})",
+  "step-is-a-random-choice": "the .gain's level on this hit is chosen by chance",
+  "step-under-a-generator": "the .gain's level on this hit sits under an op the grid can't write through",
+  "loop-shorter-than-the-pattern": "the .gain plays past the bars the grid shows"
+};
+var velocityLine = /* @__PURE__ */ __name((why) => `${VELOCITY_REFUSALS[why] ?? "the grid can't find this hit's own level in the .gain"} \u2014 change it in the code view.`, "velocityLine");
+function refusalLine(why, on) {
+  if (why === "step-is-a-group") {
+    return on ? "This hit sits in a group the grid cannot take it out of \u2014 change it in the code view." : "This step holds a group the grid can't add a sound to \u2014 change it in the code view.";
+  }
+  return STEP_REFUSALS[why] ?? "The grid can't find this step's own text to change \u2014 change it in the code view.";
+}
+__name(refusalLine, "refusalLine");
+function report2(attempted, why) {
+  emitLog({
+    level: "warn",
+    runtime: "stave",
+    message: why ? `${attempted} \u2014 ${why.charAt(0).toLowerCase()}${why.slice(1)}` : `${attempted} \u2014 writing it would change the pattern in ways you didn't ask for, so it was left unchanged.`
+  });
+}
+__name(report2, "report");
+function outline2(depth) {
+  if (depth <= 1) return "1px solid var(--border, #3a3a42)";
+  if (depth === 2) return "1px solid color-mix(in srgb, var(--border, #3a3a42) 60%, transparent)";
+  return "1px dashed color-mix(in srgb, var(--border, #3a3a42) 50%, transparent)";
+}
+__name(outline2, "outline");
+function lineColor3(depth) {
+  if (depth <= 1) return "var(--foreground-muted, #6a6a90)";
+  if (depth === 2) return "color-mix(in srgb, var(--foreground-muted, #6a6a90) 55%, transparent)";
+  return "color-mix(in srgb, var(--foreground-muted, #6a6a90) 30%, transparent)";
+}
+__name(lineColor3, "lineColor");
+var NO_ROWS = [];
+var NO_OFFERS = /* @__PURE__ */ new Set();
+var sameSet = /* @__PURE__ */ __name((a, b) => a.size === b.size && [...a].every((x) => b.has(x)), "sameSet");
+var cellKeyOf = /* @__PURE__ */ __name((ri, c) => `${ri}:${c.bar}:${c.begin.n}/${c.begin.d}`, "cellKeyOf");
+var listOf = /* @__PURE__ */ __name((items) => items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`, "listOf");
+function parseForLength(mini, _scale) {
+  const g = exactGridFrom(probeTrees(mini));
+  return g.ok ? { ok: true, model: { bars: g.bars } } : { ok: false, reason: "this pattern doesn't open as a grid" };
+}
+__name(parseForLength, "parseForLength");
+function ExactStepGrid({ notice = null, onResolution }) {
+  const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
+  const mini = chunk?.miniString ?? null;
+  const eligible = !!chunk && mini !== null && opensStepGrid(chunk);
+  const stmtId = chunk ? chunk.statementRange[0] : null;
+  const [kept, setKept] = React33.useState([]);
+  const ownWrite = React33.useRef(null);
+  const lastText = React33.useRef({ stmt: stmtId, mini });
+  React33.useEffect(() => {
+    const was = lastText.current;
+    lastText.current = { stmt: stmtId, mini };
+    if (was.stmt !== stmtId || was.mini !== mini && ownWrite.current !== mini) setKept([]);
+  }, [stmtId, mini]);
+  const probed = React33.useMemo(() => eligible ? probeTrees(mini) : null, [eligible, mini]);
+  const [slotsWanted, setSlotsWanted] = React33.useState(null);
+  const ownPlaces = React33.useMemo(() => {
+    const g = probed ? exactGridFrom(probed, kept) : null;
+    return g && g.ok ? placesPerBar(g.rows) : 0;
+  }, [probed, kept]);
+  const snap = snapFor(slotsWanted, ownPlaces);
+  const grid = React33.useMemo(() => probed ? exactGridFrom(probed, kept, snap) : null, [probed, kept, snap]);
+  const ok = grid && grid.ok && !playsNumbers(grid.trees) ? grid : null;
+  const bars = ok?.bars ?? 1;
+  const gain = React33.useMemo(() => chunk ? readChunkGain(chunk) : null, [chunk]);
+  const gainRef = React33.useRef(gain);
+  gainRef.current = gain;
+  const velocityOn = useVelocityDrag();
+  const velocityOnRef = React33.useRef(velocityOn);
+  velocityOnRef.current = velocityOn;
+  const gridRef_ = React33.useRef(ok);
+  gridRef_.current = ok;
+  const miniRef = React33.useRef(mini);
+  miniRef.current = mini;
+  const writeEdit = React33.useCallback(
+    (from, edit) => {
+      let wrote = false;
+      applyEdit((fresh, wb) => {
+        if (fresh.miniString !== from || !fresh.miniRange) return;
+        ownWrite.current = from.slice(0, edit.from) + edit.insert + from.slice(edit.to);
+        wrote = commit(wb, stepWriteEdits(fresh, from, edit), "seq") === "written";
+      });
+      return wrote;
+    },
+    [applyEdit]
+  );
+  const writeMini = React33.useCallback(
+    (text) => {
+      applyEdit((fresh, wb) => {
+        ownWrite.current = text;
+        commit(wb, gridWriteEdits(fresh, text, null), "seq");
+      });
+    },
+    [applyEdit]
+  );
+  const placesNow = ok ? placesPerBar(ok.rows) : null;
+  useLiftResolution(
+    placesNow,
+    // a pattern with a row no snap reaches (its steps do not tile its bars) offers none (#2526)
+    (target) => ok && snappable(ok.rows) ? exactSlotState(target, ownPlaces, placesNow ?? 0) : target === placesNow ? "active" : "disabled",
+    (target) => setSlotsWanted(target === ownPlaces ? null : target),
+    onResolution
+  );
+  const length = usePatternLength(chunk, ok ? { bars: ok.bars } : null, parseForLength, writeMini);
+  const span = bars;
+  const playedNotes = React33.useMemo(() => chunk && ok ? stepNotes(chunk, span) : null, [chunk, ok, span]);
+  const [colorMode] = useNoteColorMode();
+  const phone = usePhoneGrid();
+  const scrollRef = React33.useRef(null);
+  const rulerPan = useRulerPan(scrollRef, phone.phone);
+  const zoom = useGridZoom(scrollRef, !phone.phone, !!ok);
+  const maxCellsInBar = React33.useMemo(() => {
+    let most = 1;
+    for (const r of ok?.rows ?? []) {
+      const perBar2 = /* @__PURE__ */ new Map();
+      for (const c of r.cells) if (!c.split) perBar2.set(c.bar, (perBar2.get(c.bar) ?? 0) + 1);
+      for (const n of perBar2.values()) most = Math.max(most, n);
+    }
+    return most;
+  }, [ok]);
+  const fit = zoom.avail !== null ? Math.max(40, (zoom.avail - BAR_GAP3 * (bars - 1)) / bars) : 320;
+  const fingerPx = PHONE_STEP_MIN + 2;
+  const halfPx = phone.phone ? fingerPx : OPEN_PX;
+  const narrowest = React33.useMemo(() => {
+    let w = 1;
+    for (const r of ok?.rows ?? []) for (const c of r.cells) w = Math.min(w, cellEnd(c) - cellAt(c));
+    return w;
+  }, [ok]);
+  const snapPx = snap > 1 && narrowest > 0 ? halfPx / narrowest : 0;
+  const barPx = Math.max(phone.phone ? Math.max(fit, maxCellsInBar * fingerPx) : fit * zoom.level, snapPx);
+  const openPx = zoom.level > 1 ? OPEN_PX : Infinity;
+  const x = /* @__PURE__ */ __name((t) => {
+    const b = Math.min(bars - 1, Math.max(0, Math.floor(t)));
+    return b * (barPx + BAR_GAP3) + (t - b) * barPx;
+  }, "x");
+  const xRef = React33.useRef(x);
+  xRef.current = x;
+  const trackPx = bars * barPx + (bars - 1) * BAR_GAP3;
+  const rows = ok?.rows ?? NO_ROWS;
+  const drawn = React33.useMemo(() => rows.map((r) => drawnCells(r.cells, barPx, halfPx)), [rows, barPx, halfPx]);
+  const levelAt = React33.useMemo(() => {
+    const times = [.../* @__PURE__ */ new Set([...drawn.flatMap((cs) => cs.map(cellAt)), ...rows.flatMap((r) => r.hits.map((h) => h.begin))])];
+    const levels = gain ? gainLevelsAt(gain, times) : null;
+    const out = /* @__PURE__ */ new Map();
+    if (levels) times.forEach((t, i) => out.set(t.toFixed(9), levels[i]));
+    return out;
+  }, [drawn, rows, gain]);
+  const levelOf = /* @__PURE__ */ __name((t) => levelAt.get(t.toFixed(9)), "levelOf");
+  const [offered2, setOffered] = React33.useState(NO_OFFERS);
+  React33.useEffect(() => {
+    const out = /* @__PURE__ */ new Set();
+    setOffered(NO_OFFERS);
+    if (!velocityOn || mini === null || !gain || gain.foreign) return;
+    const todo = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const r of rows) {
+      for (const h of r.hits) {
+        const k = h.begin.toFixed(9);
+        if (h.begin < bars && !seen.has(k)) {
+          seen.add(k);
+          todo.push({ begin: h.begin, end: h.end });
+        }
+      }
+    }
+    let i = 0;
+    let timer = null;
+    const slice = /* @__PURE__ */ __name(() => {
+      const until = performance.now() + 8;
+      while (i < todo.length && performance.now() < until) {
+        const h = todo[i++];
+        if (stepGainEdit(mini, gain, bars, h, 0.5).ok) out.add(h.begin.toFixed(9));
+      }
+      if (i < todo.length) timer = setTimeout(slice, 0);
+      else setOffered((prev) => sameSet(prev, out) ? prev : out);
+    }, "slice");
+    slice();
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [mini, gain, rows, bars, velocityOn]);
+  const drawings = React33.useMemo(() => rows.map((r) => r.bars ? drawTreeRow(r.bars, barPx, openPx) : null), [rows, barPx, openPx]);
+  const orderOf = /* @__PURE__ */ __name((r) => rows.filter((k) => k.part === r.part).map((k) => k.sound), "orderOf");
+  const answers = React33.useMemo(() => {
+    const out = /* @__PURE__ */ new Map();
+    if (!ok || mini === null) return out;
+    rows.forEach((r, ri) => {
+      const order = rows.filter((k) => k.part === r.part).map((k) => k.sound);
+      for (const c of drawn[ri]) out.set(cellKeyOf(ri, c), cellEdit(mini, ok.trees, r, order, c, levelAt.get(cellAt(c).toFixed(9)) === null));
+    });
+    return out;
+  }, [ok, mini, drawn, levelAt]);
+  const answersRef = React33.useRef(answers);
+  answersRef.current = answers;
+  const resizable = React33.useMemo(() => {
+    const out = /* @__PURE__ */ new Set();
+    if (!ok || mini === null) return out;
+    rows.forEach((r, ri) => {
+      const row = { sound: r.sound, part: r.part };
+      for (const c of r.cells) {
+        if (!c.on) continue;
+        const at = stepAddressAtPlace(ok.trees, r, c.bar, c.begin);
+        if (typeof at === "string") continue;
+        if (resizeStepBy(mini, ok.trees, at, 1, row).ok || resizeStepBy(mini, ok.trees, at, -1, row).ok) out.add(cellKeyOf(ri, c));
+      }
+    });
+    return out;
+  }, [ok, mini]);
+  const [cursor, setCursor] = React33.useState(null);
+  const liveCursor = cursor && cursor.row < rows.length && cursor.col < bars ? cursor : null;
+  const cursorRef = React33.useRef(liveCursor);
+  cursorRef.current = liveCursor;
+  const stops = React33.useMemo(() => rows.map((r) => r.cells.filter((c) => !c.split).map(cellAt)), [rows]);
+  const stopsRef = React33.useRef(stops);
+  stopsRef.current = stops;
+  const stmtRef = React33.useRef(stmtId);
+  React33.useEffect(() => {
+    if (stmtRef.current !== stmtId) {
+      stmtRef.current = stmtId;
+      setCursor(null);
+      setSlotsWanted(null);
+    }
+  }, [stmtId]);
+  const tab = liveCursor ?? { row: 0, col: 0 };
+  const focusNext = React33.useRef(false);
+  const gridBox = React33.useRef(null);
+  React33.useEffect(() => {
+    if (!focusNext.current) return;
+    focusNext.current = false;
+    gridBox.current?.querySelector('[role="gridcell"][aria-selected="true"]')?.focus();
+  });
+  const cellHolding = /* @__PURE__ */ __name((ri, t) => drawn[ri]?.find((c) => cellAt(c) <= t + 1e-9 && t < cellEnd(c) - 1e-9) ?? null, "cellHolding");
+  const paint2 = React33.useCallback(
+    (ri, cell, on, drag = false) => {
+      if (cell.on === on) return { refused: false };
+      const answer = answersRef.current.get(cellKeyOf(ri, cell));
+      const from = miniRef.current;
+      if (!answer || from === null) return { refused: true };
+      if (!answer.ok) return { refused: true, why: answer.why };
+      if (drag && "split" in answer && answer.split) return { refused: false };
+      const row = gridRef_.current?.rows[ri];
+      if (row && !on) setKept((k) => k.some((r) => r.sound === row.sound && r.part === row.part) ? k : [...k, { sound: row.sound, part: row.part }]);
+      return { refused: !writeEdit(from, answer.edit) };
+    },
+    [writeEdit]
+  );
+  const paintOne = /* @__PURE__ */ __name((ri, cell, on) => {
+    const { refused: refused2, why } = paint2(ri, cell, on);
+    if (refused2) report2(on ? "Couldn't add that hit" : "Couldn't remove that hit", why ? refusalLine(why, !on) : void 0);
+  }, "paintOne");
+  const paintOneRef = React33.useRef(paintOne);
+  paintOneRef.current = paintOne;
+  const resizeNote2 = React33.useCallback(
+    (ri, cell, to, dryRun = false) => {
+      const g = gridRef_.current;
+      const from = miniRef.current;
+      const row = g?.rows[ri];
+      if (!g || !row || from === null) return false;
+      const at = stepAddressAtPlace(g.trees, row, cell.bar, cell.begin);
+      if (typeof at === "string") return false;
+      const writerRow = { sound: row.sound, part: row.part };
+      const r = "by" in to ? resizeStepBy(from, g.trees, at, to.by, writerRow) : resizeStep(from, g.trees, at, to.end, writerRow);
+      if (!r.ok) return false;
+      return dryRun || writeEdit(from, r.edit);
+    },
+    [writeEdit]
+  );
+  const writeLevel = React33.useCallback(
+    (hit, level, dryRun = false) => {
+      const from = miniRef.current;
+      const g = gainRef.current;
+      if (from === null || !g) return { ok: false, why: "gain-not-ours" };
+      if (dryRun) {
+        const r = stepGainEdit(from, g, bars, hit, level);
+        return r.ok ? { ok: true } : r;
+      }
+      let out = { ok: false, why: "gain-not-ours" };
+      applyEdit((fresh, wb) => {
+        if (fresh.miniString === null) return;
+        const now2 = readChunkGain(fresh);
+        const r = stepGainEdit(fresh.miniString, now2, bars, hit, level);
+        if (!r.ok) {
+          out = r;
+          return;
+        }
+        commit(wb, stepGainWriteEdits(fresh, now2.mini, r), "seq");
+        out = { ok: true };
+      });
+      return out;
+    },
+    [applyEdit, bars]
+  );
+  const press = React33.useRef(null);
+  const writeLevelRef = React33.useRef(writeLevel);
+  writeLevelRef.current = writeLevel;
+  React33.useEffect(() => {
+    const onMove = /* @__PURE__ */ __name((e) => {
+      const g = press.current;
+      if (!g) return;
+      const dx = e.clientX - g.startX;
+      const dy = e.clientY - g.startY;
+      if (g.mode === "pending") {
+        if (g.hit && velocityOnRef.current && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
+          const can = writeLevelRef.current(g.hit, (g.startLevel ?? 1) === 0 ? 1 : 0, true);
+          if (!can.ok) {
+            if (!g.saidNo) report2("Couldn't change that hit's velocity", velocityLine(can.why));
+            g.saidNo = true;
+            return;
+          }
+          g.mode = "velocity";
+        } else if (Math.abs(dx) > DRAG_THRESHOLD) {
+          g.mode = "paint";
+          paintOneRef.current(g.row, g.cell, g.paintOn);
+          return;
+        } else return;
+      }
+      if (g.mode === "velocity" && g.hit) {
+        const level = clamp012((g.startLevel ?? 1) - dy / VELOCITY_FULL_PX);
+        const text = fmtLevel(level);
+        if (text === g.wroteLevel) return;
+        g.wroteLevel = text;
+        writeLevelRef.current(g.hit, level);
+      }
+    }, "onMove");
+    const onUp = /* @__PURE__ */ __name(() => {
+      const g = press.current;
+      if (!g) return;
+      press.current = null;
+      if (g.mode === "pending" && !g.saidNo) paintOneRef.current(g.row, g.cell, false);
+      endGesture();
+    }, "onUp");
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [endGesture]);
+  const onCellDown = /* @__PURE__ */ __name((ri, cell, e) => {
+    e.preventDefault();
+    setCursor({ row: ri, col: cellAt(cell) });
+    const answer = answers.get(cellKeyOf(ri, cell));
+    if (!answer?.ok) return;
+    beginGesture();
+    const at = cellAt(cell);
+    const h = cell.on ? rows[ri].hits.find((x2) => Math.abs(x2.begin - at) < 1e-9) : void 0;
+    const hit = h ? { begin: h.begin, end: h.end } : void 0;
+    press.current = { row: ri, cell, startX: e.clientX, startY: e.clientY, mode: cell.on ? "pending" : "paint", paintOn: !cell.on, sound: rows[ri].sound, hit, startLevel: hit ? levelOf(hit.begin) ?? 1 : void 0 };
+    if (!cell.on) paintOne(ri, cell, true);
+  }, "onCellDown");
+  const onCellEnter = /* @__PURE__ */ __name((ri, cell) => {
+    const g = press.current;
+    if (!g) return;
+    if (g.mode === "resize") {
+      const end = rows[g.row]?.cells.find((c) => c.bar === g.cell.bar && cellAt(c) <= cellAt(cell) && cellAt(cell) < cellEnd(c));
+      if (end && cell.bar === g.cell.bar && cellAt(end) >= cellAt(g.cell)) resizeNote2(g.row, g.cell, { end: end.end });
+      return;
+    }
+    if (g.mode !== "paint" || ri !== g.row || rows[ri]?.sound !== g.sound) return;
+    paint2(ri, cell, g.paintOn, true);
+  }, "onCellEnter");
+  const onResizeDown = /* @__PURE__ */ __name((ri, cell, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    beginGesture();
+    press.current = { row: ri, cell, startX: e.clientX, startY: e.clientY, mode: "resize", paintOn: false, sound: rows[ri].sound };
+  }, "onResizeDown");
+  const runGesture = /* @__PURE__ */ __name((action, dryRun, fromKey = false) => {
+    if (!ok || rows.length === 0) return false;
+    const at = cursorRef.current ?? (fromKey ? { row: 0, col: 0 } : null);
+    if (isCursorMove(action)) {
+      if (dryRun) return true;
+      focusNext.current = true;
+      setCursor(moveStepCursor(at ?? { row: 0, col: 0 }, action, rows.length, Math.max(1, bars), (r) => stopsRef.current[r] ?? null));
+      return true;
+    }
+    if (!at) return false;
+    const place = stopsRef.current[at.row]?.length ? stopAt(stopsRef.current[at.row], at.col) : at.col;
+    const cell = cellHolding(at.row, place);
+    if (!cell) return false;
+    if (isNoteEdit(action)) {
+      if (action !== "shorter" && action !== "longer") return false;
+      const row = rows[at.row];
+      const head = [...row.cells].reverse().find((c) => c.on && cellAt(c) <= at.col + 1e-9 && row.hits.some((h) => Math.abs(h.begin - cellAt(c)) < 1e-9 && at.col < h.end));
+      if (!head) return false;
+      const by = action === "longer" ? 1 : -1;
+      if (!resizeNote2(at.row, head, { by }, true)) return false;
+      if (!dryRun) {
+        beginGesture();
+        resizeNote2(at.row, head, { by });
+        endGesture();
+        focusNext.current = true;
+        setCursor({ row: at.row, col: cellAt(head) });
+      }
+      return true;
+    }
+    if (action !== "toggle" && action !== "remove") return false;
+    if (action === "remove" && !cell.on) return false;
+    const answer = answers.get(cellKeyOf(at.row, cell));
+    if (!answer?.ok) {
+      if (!dryRun) report2(cell.on ? "Couldn't remove that hit" : "Couldn't add that hit", answer ? refusalLine(answer.why, cell.on) : void 0);
+      return false;
+    }
+    if (!dryRun) {
+      if (!cursorRef.current) setCursor(at);
+      beginGesture();
+      paintOne(at.row, cell, action === "toggle" ? !cell.on : false);
+      endGesture();
+      focusNext.current = true;
+    }
+    return true;
+  }, "runGesture");
+  const runRef = React33.useRef(runGesture);
+  runRef.current = runGesture;
+  React33.useEffect(() => mountGridGestures(GRID_SCOPE.sequencer, (a, dry) => runRef.current(a, dry)), []);
+  const headRef = React33.useRef(null);
+  const [playAt, setPlayAt] = React33.useState(null);
+  const edges2 = React33.useMemo(() => [...new Set(rows.flatMap((r) => r.cells.map(cellAt)))].sort((a, b) => a - b), [rows]);
+  const edgesRef = React33.useRef(edges2);
+  edgesRef.current = edges2;
+  React33.useEffect(() => {
+    let raf = 0;
+    const tick = /* @__PURE__ */ __name(() => {
+      const t = treePlayhead(readCurrentCycle(), bars);
+      const el = headRef.current;
+      if (el) {
+        if (t === null) el.style.display = "none";
+        else {
+          el.style.display = "block";
+          el.style.transform = `translateX(${xRef.current(t)}px)`;
+          el.dataset.treePlayhead = t.toFixed(4);
+        }
+      }
+      let edge = null;
+      if (t !== null) {
+        for (const k of edgesRef.current) if (k <= t + 1e-9) edge = k;
+      }
+      setPlayAt((p) => p === edge ? p : edge);
+      raf = requestAnimationFrame(tick);
+    }, "tick");
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [bars]);
+  const lookRoll = useDeferredPerText(eligible && grid?.ok && playsNumbers(grid.trees) ? mini : null, lookOnlyTreeRoll);
+  const rulerRow = rows[liveCursor?.row ?? 0]?.bars ? rows[liveCursor?.row ?? 0] : rows.find((r) => r.bars);
+  const ruler = rulerRow?.bars ? treeRuler(rulerRow.bars, barPx, openPx) : Array.from({ length: bars }, (_, b) => ({ at: b, label: String(b + 1) }));
+  const chordChart = chunk?.headFn === "chord" || chordLanes(rows.map((r) => r.sound));
+  if (!ok) {
+    if (lookRoll && "roll" in lookRoll) return /* @__PURE__ */ jsx(TreeRollGrid, { roll: lookRoll.roll, reason: lookRoll.reason });
+    return React33.createElement(VisualEditStandby, {
+      panel: SEQUENCER_TAB_ID,
+      hint: eligible ? "This pattern isn't grid-editable \u2014 edit it as code." : "Click a drum pattern to edit it as a step grid.",
+      icon: "symbol-array"
+    });
+  }
+  const muted3 = "var(--foreground-muted, #a0a0aa)";
+  const pinned = phone.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
+  const anyWrites = [...answers.values()].some((a) => a.ok);
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      ref: scrollRef,
+      "data-bottom-panel-tab": "sequencer",
+      "data-exact-grid": true,
+      "data-tree-bars": bars,
+      "data-pattern-scroll": true,
+      onPointerDownCapture: (e) => {
+        e.target.closest("[data-seq-cell]")?.focus({ preventScroll: true });
+      },
+      onKeyDown: (e) => {
+        if (!e.target.closest?.("[data-seq-cell]")) return;
+        const action = matchGridKey(GRID_SCOPE.sequencer, e.nativeEvent);
+        if (!action) return;
+        e.preventDefault();
+        e.stopPropagation();
+        runGesture(action, false, true);
+      },
+      style: { padding: phone.phone ? "16px 16px 16px 0" : 16, height: "100%", overflow: "auto", outline: "none", boxSizing: "border-box", fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif', touchAction: "none" },
+      children: /* @__PURE__ */ jsxs("div", { style: { position: "relative", display: "flex", flexDirection: "column", gap: 4, width: NAME_PX2 + 8 + trackPx + 28, paddingRight: 28, minWidth: "100%", boxSizing: "border-box" }, children: [
+        /* @__PURE__ */ jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 4, position: "sticky", left: 0, width: phone.phone ? Math.max(0, rulerPan.viewWidth - 44) : zoom.avail !== null ? zoom.avail + NAME_PX2 + 8 : void 0, boxSizing: "border-box" }, children: [
+          /* @__PURE__ */ jsx(PatternTrackChip, {}),
+          !phone.phone && /* @__PURE__ */ jsx(GridZoomControl, { zoom }),
+          /* @__PURE__ */ jsx(TurnHint, { show: phone.upright && rulerPan.inView.more })
+        ] }),
+        chordChart && /* @__PURE__ */ jsxs("div", { "data-seq-chord-chart": true, style: { fontSize: 11, color: muted3, paddingBottom: 2 }, children: [
+          "Chord chart \u2014 each lane is a chord, not a sound.",
+          chunk?.chain.some(opensRhythmLine) && " They play to the rhythm in .struct(\u2026): click into a rhythm line to see them on it and edit it."
+        ] }),
+        playedNotes && /* @__PURE__ */ jsxs("div", { "data-seq-sound-first": true, style: { fontSize: 11, color: muted3, paddingBottom: 2 }, children: [
+          "The sounds set the rhythm here: each step plays the note written where it starts",
+          playedNotes.unheard.length > 0 ? `, so ${listOf(playedNotes.unheard)} never ${playedNotes.unheard.length === 1 ? "plays" : "play"}.` : "."
+        ] }),
+        notice && /* @__PURE__ */ jsx("div", { "data-seq-notice": true, style: { fontSize: 11, color: muted3, paddingBottom: 2 }, children: notice }),
+        !anyWrites && rows.length > 0 && /* @__PURE__ */ jsx("div", { "data-seq-look-only": true, style: { fontSize: 11, color: muted3, paddingBottom: 2 }, children: lookOnlyLine({ reason: "the grid can't reach this pattern's own text" }) }),
+        /* @__PURE__ */ jsxs("div", { ref: gridBox, role: "grid", "aria-label": "Step sequencer", style: { display: "flex", flexDirection: "column", gap: 4, position: "relative" }, children: [
+          phone.phone && /* @__PURE__ */ jsx("div", { style: { position: "sticky", left: 104, width: 0, height: 0, marginBottom: -4 }, children: /* @__PURE__ */ jsx(InViewBar, { inView: rulerPan.inView, width: rulerPan.viewWidth - 16 - 104 }) }),
+          /* @__PURE__ */ jsxs("div", { "data-seq-ruler": true, "aria-hidden": "true", ...rulerPan.handlers, style: { display: "flex", gap: 8, height: phone.phone ? PHONE_RULER_HEIGHT : 12, ...phone.phone ? { touchAction: "none", cursor: "grab" } : {} }, children: [
+            /* @__PURE__ */ jsx("div", { style: { width: NAME_PX2, flex: "0 0 auto", alignSelf: "stretch", ...pinned } }),
+            /* @__PURE__ */ jsxs("div", { style: { position: "relative", width: trackPx, flex: "0 0 auto", height: "100%" }, children: [
+              Array.from({ length: bars }, (_, b) => (
+                // what the `+` handle measures: one bar is one of its columns
+                /* @__PURE__ */ jsx("div", { "data-exact-bar": `bar:${b}`, style: { position: "absolute", left: x(b), width: barPx, top: 0, bottom: 0, pointerEvents: "none" } }, `bar${b}`)
+              )),
+              ruler.map(({ at, label }) => {
+                const isBar = !label.includes(".");
+                return /* @__PURE__ */ jsx(
+                  "span",
+                  {
+                    "data-seq-ruler-label": label,
+                    "data-ruler-bar": isBar ? "" : void 0,
+                    style: { position: "absolute", left: x(at), bottom: 0, fontSize: 9, lineHeight: "10px", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", fontWeight: isBar ? 600 : 400, color: isBar ? "var(--foreground, #e6e6ea)" : muted3 },
+                    children: label
+                  },
+                  label
+                );
+              })
+            ] })
+          ] }),
+          rows.map((row, ri) => {
+            const voice = sampleVoice(row.sound);
+            const d = drawings[ri];
+            return /* @__PURE__ */ jsxs("div", { role: "row", "data-tree-row": row.sound, "data-tree-part": row.part, style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+              /* @__PURE__ */ jsxs("div", { role: "rowheader", style: { display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto", alignSelf: "stretch", width: NAME_PX2, boxSizing: "border-box", ...pinned }, children: [
+                /* @__PURE__ */ jsx("span", { "data-seq-voice": row.sound, title: row.sound, style: { width: 72, textAlign: "right", fontSize: 11, color: "var(--foreground, #e6e6ea)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: voice.label }),
+                /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": `remove ${row.sound}`,
+                    "data-seq-remove-voice": row.sound,
+                    title: `Remove ${row.sound}`,
+                    onClick: () => {
+                      if (mini === null) return;
+                      const r = removeRowText(mini, bars, { sound: row.sound, part: row.part }, orderOf(row));
+                      if (!r.ok) {
+                        report2(`Couldn't remove ${row.sound}`, refusalLine(r.why, true));
+                        return;
+                      }
+                      setKept((k) => k.filter((x2) => x2.sound !== row.sound || x2.part !== row.part));
+                      if (r.mini !== mini) writeMini(r.mini);
+                    },
+                    style: { width: 16, height: 16, flex: "0 0 auto", padding: 0, lineHeight: "14px", fontSize: 12, borderRadius: 3, border: "1px solid var(--border, #3a3a42)", background: "transparent", color: muted3, cursor: "pointer" },
+                    children: "\xD7"
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxs("div", { role: "none", "data-tree-why": row.why ?? void 0, style: { position: "relative", width: trackPx, height: ROW_PX3, flex: "0 0 auto" }, children: [
+                d?.steps.map((s) => /* @__PURE__ */ jsx("div", { "data-tree-step": s.depth, style: { position: "absolute", left: x(s.begin) + 1, width: Math.max(1, x(s.end) - x(s.begin) - 2), top: 0, bottom: 0, boxSizing: "border-box", border: outline2(s.depth), borderRadius: 3, background: d.inner.some((k) => k.begin >= s.begin && k.begin < s.end) ? "var(--background, #1e1e24)" : "var(--background-elevated, #26262c)", pointerEvents: "none" } }, `s${s.begin}`)),
+                d?.inner.map((s) => /* @__PURE__ */ jsx("div", { "data-tree-inner": s.depth, style: { position: "absolute", left: x(s.begin) + 2, width: Math.max(1, x(s.end) - x(s.begin) - 3), top: 4, bottom: 4, boxSizing: "border-box", border: "1px solid var(--border, #3a3a42)", borderRadius: 2, background: "var(--background-elevated, #26262c)", pointerEvents: "none" } }, `i${s.begin}`)),
+                d?.lines.map((l) => /* @__PURE__ */ jsx("div", { "data-tree-line": l.depth, style: { position: "absolute", left: x(l.at) - 1, width: 2, top: 0, bottom: 0, background: lineColor3(l.depth), pointerEvents: "none" } }, `l${l.at}`)),
+                row.hits.map((h, i) => {
+                  const level = velocityOn ? clamp012(levelOf(h.begin) ?? 1) : 1;
+                  return /* @__PURE__ */ jsx("div", { "data-seq-fill": true, "data-tree-hit": h.begin.toFixed(6), style: { position: "absolute", left: x(h.begin) + 2, width: Math.max(2, x(Math.min(h.end, bars)) - x(h.begin) - 3), top: 3 + (1 - level) * (ROW_PX3 - 6), bottom: 3, borderRadius: 2, background: colorMode === "velocity" ? velocityColor(level) : voice.color, pointerEvents: "none" } }, `h${i}`);
+                }),
+                drawn[ri].map((cell) => {
+                  const key3 = cellKeyOf(ri, cell);
+                  const answer = answers.get(key3);
+                  const can = !!answer?.ok;
+                  const splits = !!answer && answer.ok && "split" in answer && !!answer.split;
+                  const at = cellAt(cell);
+                  const inCell = /* @__PURE__ */ __name((t) => at <= t + 1e-9 && t < cellEnd(cell) - 1e-9, "inCell");
+                  const isCursor = liveCursor?.row === ri && inCell(liveCursor.col);
+                  const isTab = tab.row === ri && (inCell(tab.col) || tab.col === 0 && at === 0);
+                  const plays = cell.on && playedNotes ? playedNotes.notes.get(stepNoteKey(row.sound, at))?.join(" / ") ?? null : null;
+                  const held2 = !cell.on && row.hits.some((h) => h.begin < at - 1e-9 && at < h.end - 1e-9);
+                  const stepNo = row.cells.filter((c) => !c.split && cellAt(c) <= at + 1e-9).length;
+                  return /* @__PURE__ */ jsx(
+                    "button",
+                    {
+                      type: "button",
+                      role: "gridcell",
+                      "aria-selected": isCursor,
+                      "aria-pressed": cell.on,
+                      "aria-disabled": can ? void 0 : true,
+                      "aria-label": held2 ? `${row.sound} step ${stepNo}, held` : `${row.sound} step ${stepNo}${plays ? `, plays ${plays}` : ""}`,
+                      tabIndex: isTab ? 0 : -1,
+                      "data-seq-cell": key3,
+                      "data-seq-at": at.toFixed(6),
+                      "data-seq-cell-inert": can ? void 0 : "true",
+                      "data-seq-splits": splits ? "true" : void 0,
+                      "data-seq-sustain": held2 ? "true" : void 0,
+                      "data-seq-step-note": plays ?? void 0,
+                      "data-gain": cell.on && offered2.has(at.toFixed(9)) && levelOf(at) != null ? fmtLevel(levelOf(at)) : void 0,
+                      "data-playing": playAt !== null && inCell(playAt) ? "true" : void 0,
+                      title: can ? splits ? `Splits this step: adds ${row.sound} here` : plays ? `${row.sound} plays ${plays}` : void 0 : answer && !answer.ok ? refusalLine(answer.why, cell.on) : void 0,
+                      onFocus: () => {
+                        if (!isCursor) setCursor({ row: ri, col: at });
+                      },
+                      onPointerDown: (e) => onCellDown(ri, cell, e),
+                      onPointerEnter: () => onCellEnter(ri, cell),
+                      style: {
+                        position: "absolute",
+                        left: x(at) + 1,
+                        width: Math.max(1, x(cellEnd(cell)) - x(at) - 2),
+                        top: 0,
+                        bottom: 0,
+                        padding: 0,
+                        overflow: "hidden",
+                        boxSizing: "border-box",
+                        background: "transparent",
+                        border: playAt !== null && inCell(playAt) ? "1px solid var(--foreground, #e6e6ea)" : cell.split ? "none" : "1px solid color-mix(in srgb, var(--border, #3a3a42) 70%, transparent)",
+                        borderRadius: 3,
+                        cursor: can ? "pointer" : "default"
+                      },
+                      children: plays && /* @__PURE__ */ jsx("span", { "data-seq-step-note-label": true, style: { position: "absolute", inset: 0, display: "flex", alignItems: "center", paddingLeft: 3, fontSize: 9, lineHeight: 1, color: "var(--background, #1c1c22)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none" }, children: plays })
+                    },
+                    key3
+                  );
+                }),
+                row.cells.filter((c) => c.on && resizable.has(cellKeyOf(ri, c))).map((cell) => {
+                  const hit = row.hits.find((h) => Math.abs(h.begin - cellAt(cell)) < 1e-9);
+                  if (!hit) return null;
+                  const end = x(Math.min(hit.end, bars)) - 1;
+                  return /* @__PURE__ */ jsx(
+                    "span",
+                    {
+                      "data-seq-resize": cellKeyOf(ri, cell),
+                      "aria-label": `resize ${row.sound}`,
+                      onPointerDown: (e) => onResizeDown(ri, cell, e),
+                      style: { position: "absolute", top: 0, bottom: 0, left: end - RESIZE_ZONE_PX, width: RESIZE_ZONE_PX, cursor: "ew-resize", background: "var(--foreground, #e6e6ea)", opacity: 0.45, borderRadius: "0 2px 2px 0" }
+                    },
+                    `r${cellKeyOf(ri, cell)}`
+                  );
+                })
+              ] })
+            ] }, `${row.sound}:${row.part}`);
+          }),
+          /* @__PURE__ */ jsx("div", { style: { position: "relative", height: 0, marginLeft: NAME_PX2 + 8 }, children: /* @__PURE__ */ jsx(
+            "div",
+            {
+              ref: headRef,
+              "aria-hidden": "true",
+              "data-seq-playhead-line": true,
+              style: { display: "none", position: "absolute", left: 0, bottom: 0, width: 2, marginLeft: -1, height: rows.length * (ROW_PX3 + 4) + 16, background: "var(--foreground, #e6e6ea)", opacity: 0.5, pointerEvents: "none", zIndex: 3 }
+            }
+          ) })
+        ] }),
+        /* @__PURE__ */ jsx(ExtendHandle, { length, gridRef: gridBox, cellAttr: "data-exact-bar", cols: bars, lastBarCols: 1 }),
+        !chordChart && /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 4 }, children: [
+          /* @__PURE__ */ jsx("span", { style: { width: 72, flex: "0 0 auto" } }),
+          /* @__PURE__ */ jsxs(
+            "select",
+            {
+              "data-seq-add-voice": true,
+              "aria-label": "add drum voice",
+              value: "",
+              onChange: (e) => {
+                const sound = e.target.value;
+                if (!sound) return;
+                const part = rows[liveCursor?.row ?? 0]?.part ?? 0;
+                setKept((k) => k.some((r) => r.sound === sound) || rows.some((r) => r.sound === sound) ? k : [...k, { sound, part }]);
+              },
+              style: { fontSize: 11, padding: "3px 8px", borderRadius: 4, border: "1px dashed var(--border, #3a3a42)", background: "var(--background-elevated, #26262c)", color: muted3, cursor: "pointer" },
+              children: [
+                /* @__PURE__ */ jsx("option", { value: "", children: "+ add voice\u2026" }),
+                DRUM_SOUNDS.map((s) => /* @__PURE__ */ jsx("option", { value: s.value, children: s.label }, s.value))
+              ]
+            }
+          )
+        ] })
+      ] })
+    }
+  );
+}
+__name(ExactStepGrid, "ExactStepGrid");
+var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
+var VELOCITY_FULL_PX2 = 80;
+var DRAG_THRESHOLD2 = 4;
+var RESIZE_ZONE_PX2 = 8;
+var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+function reportRefusal(attempted, why) {
+  emitLog({
+    level: "warn",
+    runtime: "stave",
+    message: why ? `${attempted} \u2014 ${why.charAt(0).toLowerCase()}${why.slice(1)}` : `${attempted} \u2014 writing it would change the pattern in ways you didn't ask for, so it was left unchanged.`
+  });
+}
+__name(reportRefusal, "reportRefusal");
+function stepRefusalLine(why, on) {
+  switch (why) {
+    case "inside-a-step":
+      return "This column is part of a longer step \u2014 click where the step begins, or change it in the code view.";
+    case "step-is-generated":
+      return "This hit is made by an operator on its step (like *4 or (3,8)) \u2014 change it in the code view.";
+    case "step-is-replicated":
+      return "This step is written once and repeated with ! \u2014 change it in the code view.";
+    case "step-is-a-random-choice":
+    case "step-under-a-generator":
+      return "This step plays by chance (? or |) \u2014 change it in the code view.";
+    case "loop-shorter-than-the-pattern":
+      return "This step also plays in bars the grid doesn't show \u2014 change it in the code view.";
+    case "step-crosses-a-bar":
+      return "This note runs over a bar line \u2014 switch it where it starts, or change it in the code view.";
+    case "step-is-a-group":
+      return on ? "This hit sits in a group the grid cannot take it out of \u2014 change it in the code view." : "This step holds a group the grid can't add a sound to \u2014 change it in the code view.";
+    default:
+      return "The grid can't find this step's own text to change \u2014 change it in the code view.";
+  }
+}
+__name(stepRefusalLine, "stepRefusalLine");
+function opensRhythmLine2(call) {
+  const raw = call.args[0]?.raw ?? "";
+  return call.name === "struct" && (/^["'`]/.test(raw) || /\.pick\w*\(\s*\[\s*["'`]/.test(raw));
+}
+__name(opensRhythmLine2, "opensRhythmLine");
+function SequencerGrid(props = {}) {
+  const mode = useGridMode();
+  return mode === "exact" ? /* @__PURE__ */ jsx(ExactStepGrid, { notice: props.notice ?? null, onResolution: props.onResolution }) : /* @__PURE__ */ jsx(ColumnStepGrid, { ...props });
+}
+__name(SequencerGrid, "SequencerGrid");
+function ColumnStepGrid({ onResolution, notice = null } = {}) {
+  const [viewScale, setViewScale] = React33.useState(UNREFINED);
+  const { chunk, model, read: read5, mutate, writeMini, writeStep, beginGesture, endGesture, patternKey } = useGridModel({
     ...stepGridCodec,
     source: "seq",
     eligible: opensStepGrid,
@@ -40415,7 +44533,7 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, stepGridCodec.parse, writeMini);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     setViewScale(UNREFINED);
   }, [patternKey]);
   const playingStep = usePlayingStep(
@@ -40425,109 +44543,182 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
-  const gridMode = useGridMode();
   const span = model?.bars ?? 1;
-  const playedNotes = React48.useMemo(() => chunk ? stepNotes(chunk, span) : null, [chunk, span]);
-  const gestureRef = React48.useRef(null);
-  const gainScoped = React48.useMemo(() => model ? gainWritable(stepGridCodec, model) : false, [model]);
+  const playedNotes = React33.useMemo(() => chunk ? stepNotes(chunk, span) : null, [chunk, span]);
+  const gestureRef = React33.useRef(null);
+  const paintSoundRef = React33.useRef(null);
+  const velocityOn = useVelocityDrag();
+  const gainScoped = React33.useMemo(() => velocityOn && model ? gainWritable(stepGridCodec, model) : false, [model, velocityOn]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
   const chordHead = chunk?.headFn === "chord";
-  const isChordChart = React48.useMemo(
+  const isChordChart = React33.useMemo(
     () => chordHead || chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
     [chordHead, laneKey]
   );
-  const boxes = React48.useMemo(() => {
+  const boxes = React33.useMemo(() => {
     if (!model) return null;
-    const widths = gridMode === "exact" ? ownStepWidths(linesModel(model, read5)) : /* @__PURE__ */ new Map();
-    return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn));
-  }, [model, read5, gridMode]);
-  const boxesRef = React48.useRef(boxes);
+    return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, void 0, isCellOn));
+  }, [model]);
+  const boxesRef = React33.useRef(boxes);
   boxesRef.current = boxes;
   const boxWidth = /* @__PURE__ */ __name((laneIndex) => boxesRef.current?.[laneIndex]?.[0]?.width ?? 1, "boxWidth");
-  const toggleable = React48.useMemo(
-    () => model ? model.lanes.map((lane, li) => {
-      const w = boxes?.[li]?.[0]?.width ?? 1;
-      return lane.cells.map((c, si) => si % w === 0 && canToggleCell(model, li, si, !isCellOn(c), w));
-    }) : null,
-    [model, boxes]
+  const stepMini = chunk?.miniString ?? null;
+  const stepTrees = React33.useMemo(
+    () => model && stepMini !== null && !model.lookOnly ? chunkDivisions(stepMini, model.bars ?? 1) : null,
+    // the tree depends on the text and the bar count, not on every model a drag makes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stepMini, model?.bars, !!model, !!model?.lookOnly]
   );
-  const placesNotes = React48.useMemo(
+  const stepToggles = React33.useMemo(() => {
+    if (!model || !stepTrees || stepMini === null) return null;
+    return model.lanes.map((lane, li) => {
+      const w = boxes?.[li]?.[0]?.width ?? 1;
+      const order = model.lanes.filter((l) => (l.part ?? 0) === (lane.part ?? 0)).map((l) => l.sound);
+      const row = { sound: lane.sound, part: lane.part, order };
+      return lane.cells.map((_, si) => {
+        if (si % w !== 0) return null;
+        const at = stepAddressAt(model, stepTrees, li, si);
+        if (at === "inside-a-step") {
+          const inside = splitAddressAt(model, stepTrees, li, si);
+          if (!inside) return { ok: false, why: at };
+          const r = splitStep(stepMini, stepTrees, inside.address, inside.at, row);
+          return r.ok ? { ...r, split: true } : r;
+        }
+        if (typeof at === "string") return { ok: false, why: at };
+        return toggleStep(stepMini, stepTrees, at, row);
+      });
+    });
+  }, [model, boxes, stepTrees, stepMini]);
+  const stepTreesRef = React33.useRef(stepTrees);
+  stepTreesRef.current = stepTrees;
+  const modelRef = React33.useRef(model);
+  modelRef.current = model;
+  const stepTogglesRef = React33.useRef(stepToggles);
+  stepTogglesRef.current = stepToggles;
+  const stepMiniRef = React33.useRef(stepMini);
+  stepMiniRef.current = stepMini;
+  const toggleable = React33.useMemo(
+    () => stepToggles ? stepToggles.map((row) => row.map((r) => !!r && r.ok)) : model ? model.lanes.map((l) => l.cells.map(() => false)) : null,
+    [stepToggles, model]
+  );
+  const placesNotes = React33.useMemo(
     () => model && boxes && toggleable ? boxesPlaceNotes(model.lanes, boxes, isCellOn, toggleable) : false,
     [model, boxes, toggleable]
   );
-  const coverage = React48.useMemo(
+  const coverage = React33.useMemo(
     () => model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null,
     [model]
   );
-  const stepStarts = React48.useMemo(() => {
+  const stepStarts = React33.useMemo(() => {
     if (!model) return null;
     const out = /* @__PURE__ */ new Map();
     for (const [part, cols] of writtenStepStarts(linesModel(model, read5))) out.set(part, new Set(cols));
     return out;
   }, [model, read5]);
-  const stepGroups = React48.useMemo(() => {
+  const stepGroups = React33.useMemo(() => {
     if (!model || !boxes || !coverage) return null;
     return model.lanes.map((lane, li) => {
       const part = lane.part ?? 0;
-      const starts = gridMode === "exact" ? stepStarts?.get(part) : void 0;
       const owners2 = model.lanes.flatMap(
         (l, i) => (l.part ?? 0) === part ? [(c) => coverage[i]?.[c]?.start] : []
       );
-      return groupBoxesBySteps(boxes[li], starts ? [...starts].sort((a, b) => a - b) : void 0, model.steps, owners2);
+      return groupBoxesBySteps(boxes[li], void 0, model.steps, owners2);
     });
-  }, [model, boxes, coverage, stepStarts, gridMode]);
-  const resizable = React48.useMemo(() => {
-    if (!model) return null;
+  }, [model, boxes, coverage]);
+  const miniText2 = chunk?.miniString ?? null;
+  const hasModel = !!model;
+  const stepEligible = !!chunk && opensStepGrid(chunk);
+  const lookTree = useDeferredPerText(!hasModel && stepEligible ? miniText2 : null, lookOnlyTreeGrid);
+  const silentHead = !!chunk && !["s", "sound", "chord"].includes(chunk.headFn ?? "");
+  const lookRoll = useDeferredPerText(!hasModel && stepEligible && silentHead && lookTree === null ? miniText2 : null, lookOnlyTreeRoll);
+  const editNodes = React33.useMemo(
+    () => model && stepTrees ? model.lanes.map((_, li) => laneSteps(model, stepTrees, li)) : null,
+    [model, stepTrees]
+  );
+  const resizable = React33.useMemo(() => {
+    if (!model || !stepTrees || stepMini === null) return null;
     return model.lanes.map((lane, li) => {
       const out = /* @__PURE__ */ new Set();
-      const w = boxes?.[li]?.[0]?.width ?? 1;
+      const row = { sound: lane.sound, part: lane.part };
       lane.cells.forEach((c, si) => {
         if (!isCellOn(c)) return;
-        const { longer, shorter } = boxLengths(c.duration, w);
-        if (canResizeCell(model, li, si, longer) || shorter !== null && canResizeCell(model, li, si, shorter)) out.add(si);
+        const at = stepAddressAt(model, stepTrees, li, si);
+        if (typeof at === "string") return;
+        if (resizeStepBy(stepMini, stepTrees, at, 1, row).ok || resizeStepBy(stepMini, stepTrees, at, -1, row).ok) out.add(si);
       });
       return out;
     });
-  }, [model, boxes]);
-  const paintCell = React48.useCallback(
-    (laneIndex, stepIndex, value) => {
-      let refused2 = false;
-      const length2 = boxWidth(laneIndex);
-      mutate((prev) => {
-        const lane = prev.lanes[laneIndex];
-        if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) {
-          return prev;
-        }
-        const next = toggleCell(prev, laneIndex, stepIndex, value, length2);
-        refused2 = next === prev;
-        return next;
-      });
-      return refused2;
+  }, [model, stepTrees, stepMini]);
+  const resizeNote2 = /* @__PURE__ */ __name((li, head, to, dryRun = false) => {
+    const m = modelRef.current;
+    const trees = stepTreesRef.current;
+    const mini = stepMiniRef.current;
+    const lane = m?.lanes[li];
+    if (!m || !trees || mini === null || !lane) return false;
+    const at = stepAddressAt(m, trees, li, head);
+    if (typeof at === "string") return false;
+    const row = { sound: lane.sound, part: lane.part };
+    let r;
+    if ("by" in to) r = resizeStepBy(mini, trees, at, to.by, row);
+    else {
+      const end = endInBar(m, head, to.end);
+      if (!end) return false;
+      r = resizeStep(mini, trees, at, end, row);
+    }
+    if (!r.ok) return false;
+    return dryRun || writeEdit(mini, r.edit);
+  }, "resizeNote");
+  const writeEdit = React33.useCallback(
+    (mini, edit) => {
+      const shown = modelRef.current?.lanes ?? [];
+      const keep = /* @__PURE__ */ __name((read6) => {
+        const same4 = /* @__PURE__ */ __name((a, b) => a.sound === b.sound && (a.part ?? 0) === (b.part ?? 0), "same");
+        const lanes = shown.map(
+          (l) => read6.lanes.find((r) => same4(r, l)) ?? { sound: l.sound, part: l.part, cells: Array(read6.steps).fill(false) }
+        );
+        for (const r of read6.lanes) if (!shown.some((l) => same4(r, l))) lanes.push(r);
+        return lanes.every((l, i) => l === read6.lanes[i]) && lanes.length === read6.lanes.length ? read6 : { ...read6, lanes };
+      }, "keep");
+      return writeStep(mini, edit, keep);
     },
-    [mutate]
+    [writeStep]
   );
-  const paintOne = React48.useCallback(
+  const paintCell = React33.useCallback(
+    (laneIndex, stepIndex, value, drag = false) => {
+      const lane = modelRef.current?.lanes[laneIndex];
+      if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) return { refused: false };
+      const answer = stepTogglesRef.current?.[laneIndex]?.[stepIndex];
+      const mini = stepMiniRef.current;
+      if (!answer || mini === null) return { refused: true };
+      if (!answer.ok) return { refused: true, why: answer.why };
+      if (drag && "split" in answer && answer.split) return { refused: false };
+      return { refused: !writeEdit(mini, answer.edit) };
+    },
+    [writeEdit]
+  );
+  const paintOne = React33.useCallback(
     (laneIndex, stepIndex, value) => {
-      if (paintCell(laneIndex, stepIndex, value)) {
-        reportRefusal(value ? "Couldn't add that hit" : "Couldn't remove that hit");
+      const { refused: refused2, why } = paintCell(laneIndex, stepIndex, value);
+      if (refused2) {
+        reportRefusal(value ? "Couldn't add that hit" : "Couldn't remove that hit", why ? stepRefusalLine(why, !value) : void 0);
       }
     },
     [paintCell]
   );
-  const addVoice = React48.useCallback(
+  const addVoice = React33.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React48.useCallback(
+  const removeVoice = React33.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
   const canDrawView = useViewProver(chunk?.miniString, stepGridCodec.parse);
-  const scaleToSlots = React48.useCallback(
+  const scaleToSlots = React33.useCallback(
     (target) => {
       if (!model) return;
       const press = slotPress(stepGridCodec, model, target, canDrawView);
@@ -40547,16 +44738,16 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     // looking closer costs nothing.
     (t) => model ? slotPressCost(stepGridCodec, model, t, canDrawView) : NO_RESOLUTION_EFFECT
   );
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
       const dx = e.clientX - g.startX;
       const dy = e.clientY - g.startY;
       if (g.mode === "pending") {
-        if (gainScoped && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
+        if (gainScoped && Math.abs(dy) > DRAG_THRESHOLD2 && Math.abs(dy) >= Math.abs(dx)) {
           g.mode = "velocity";
-        } else if (Math.abs(dx) > DRAG_THRESHOLD) {
+        } else if (Math.abs(dx) > DRAG_THRESHOLD2) {
           g.mode = "paint";
           paintOne(g.lane, g.step, g.paintValue);
           return;
@@ -40565,7 +44756,7 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
         }
       }
       if (g.mode === "velocity") {
-        const next = clamp012(g.startGain - dy / VELOCITY_FULL_PX);
+        const next = clamp013(g.startGain - dy / VELOCITY_FULL_PX2);
         mutate((prev) => setColumnGain(prev, g.step, next));
       }
     }, "onMove");
@@ -40583,9 +44774,10 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
       window.removeEventListener("pointerup", onUp);
     };
   }, [mutate, paintOne, endGesture, gainScoped]);
-  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current8, e) => {
+  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current9, e) => {
     beginGesture();
-    if (current8) {
+    paintSoundRef.current = model?.lanes[laneIndex]?.sound ?? null;
+    if (current9) {
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
@@ -40624,29 +44816,31 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     const g = gestureRef.current;
     if (!g) return;
     if (g.mode === "resize") {
-      mutate((prev) => resizeCell(prev, g.lane, g.step, stepIndex + width - g.step));
+      resizeNote2(g.lane, g.step, { end: stepIndex + width });
       return;
     }
     if (g.mode !== "paint") return;
-    paintCell(laneIndex, stepIndex, g.paintValue);
+    if (laneIndex !== g.lane || modelRef.current?.lanes[laneIndex]?.sound !== paintSoundRef.current) return;
+    paintCell(laneIndex, stepIndex, g.paintValue, true);
   }, "onCellEnter");
-  const [cursor, setCursor] = React48.useState(null);
+  const [cursor, setCursor] = React33.useState(null);
+  const stopsRef = React33.useRef(null);
   const rowsN = model?.lanes.length ?? 0;
   const colsN = model?.steps ?? 0;
   const liveCursor = cursor && cursor.row < rowsN && cursor.col < colsN ? cursor : null;
-  const cursorRef = React48.useRef(liveCursor);
+  const cursorRef = React33.useRef(liveCursor);
   cursorRef.current = liveCursor;
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React48.useRef(stmtId);
-  React48.useEffect(() => {
+  const stmtRef = React33.useRef(stmtId);
+  React33.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setCursor(null);
     }
   }, [stmtId]);
-  const focusCursorRef = React48.useRef(false);
-  const gridRef = React48.useRef(null);
-  React48.useEffect(() => {
+  const focusCursorRef = React33.useRef(false);
+  const gridRef = React33.useRef(null);
+  React33.useEffect(() => {
     if (!focusCursorRef.current) return;
     focusCursorRef.current = false;
     gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-seq-cell]')?.focus();
@@ -40661,29 +44855,28 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     const cells = model.lanes[at.row]?.cells ?? [];
     let head = -1;
     for (let si = at.col; si >= 0; si--) {
-      const c2 = cells[si];
-      if (isCellOn(c2)) {
-        if (si + Math.ceil(c2.duration) > at.col) head = si;
+      const c = cells[si];
+      if (isCellOn(c)) {
+        if (si + Math.ceil(c.duration) > at.col) head = si;
         break;
       }
     }
     if (head < 0) return false;
-    const c = cells[head];
-    if (!isCellOn(c)) return false;
-    const { longer, shorter } = boxLengths(c.duration, boxWidth(at.row));
-    const dur = action === "longer" ? longer : shorter;
-    if (dur === null || !canResizeCell(model, at.row, head, dur)) return false;
+    const by = action === "longer" ? 1 : -1;
+    if (!resizeNote2(at.row, head, { by }, true)) return false;
     if (!dryRun) {
       beginGesture();
-      mutate((prev) => resizeCell(prev, at.row, head, dur));
+      resizeNote2(at.row, head, { by });
       endGesture();
       focusCursorRef.current = true;
       setCursor({ row: at.row, col: head });
     }
     return true;
   }, "resizeByKey");
-  const refuseKey = /* @__PURE__ */ __name((on, dryRun) => {
-    if (!dryRun) reportRefusal(on ? "Couldn't remove that hit" : "Couldn't add that hit");
+  const refuseKey = /* @__PURE__ */ __name((on, dryRun, at) => {
+    const answer = at ? stepToggles?.[at.row]?.[at.col] : null;
+    const why = answer && !answer.ok ? stepRefusalLine(answer.why, on) : void 0;
+    if (!dryRun) reportRefusal(on ? "Couldn't remove that hit" : "Couldn't add that hit", why);
     return false;
   }, "refuseKey");
   const runGesture = /* @__PURE__ */ __name((action, dryRun, fromKey = false) => {
@@ -40693,18 +44886,19 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     if (isCursorMove(action)) {
       if (dryRun) return true;
       focusCursorRef.current = true;
-      setCursor(moveBoxCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN, boxWidth));
+      setCursor(moveStepCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN, (r) => stopsRef.current?.[r] ?? null));
       return true;
     }
     if (!at) return false;
     if (isNoteEdit(action)) return resizeByKey(at, action, dryRun);
+    const stops = stopsRef.current?.[at.row];
     const boxW = boxWidth(at.row);
-    const col = at.col - at.col % boxW;
+    const col = stops && stops.length > 0 ? stopAt(stops, at.col) : at.col - at.col % boxW;
     const cell = model.lanes[at.row]?.cells[col];
     const on = cell !== void 0 && isCellOn(cell);
     switch (action) {
       case "toggle":
-        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun);
+        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun, { row: at.row, col });
         if (!dryRun) {
           if (!cursorRef.current) setCursor(at);
           paintByKey(at.row, col, !on);
@@ -40712,28 +44906,46 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
         return true;
       case "remove":
         if (!on) return false;
-        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun);
+        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun, { row: at.row, col });
         if (!dryRun) paintByKey(at.row, col, false);
         return true;
       default:
         return false;
     }
   }, "runGesture");
-  const runGestureRef = React48.useRef(runGesture);
+  const runGestureRef = React33.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React48.useEffect(
+  React33.useEffect(
     () => mountGridGestures(GRID_SCOPE.sequencer, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React48.useRef(null);
+  const rulerRef = React33.useRef(null);
   useRulerFit(rulerRef, "data-seq-ruler-label");
   const phoneGrid = usePhoneGrid();
-  const scrollRef = React48.useRef(null);
+  const scrollRef = React33.useRef(null);
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone);
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 16;
+  const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model);
+  const zoomed = !phoneGrid.phone;
+  const fitPer = model && zoom.avail !== null ? (() => {
+    const lay = drawnLayout(model, model.steps);
+    let total = 0;
+    let bars = 0;
+    for (let c = 0; c < model.steps; c++) {
+      total += lay.weight(c);
+      if (lay.barStart(c)) bars++;
+    }
+    return Math.max(1, (zoom.avail - 2 * (model.steps - 1) - 8 * bars) / total);
+  })() : null;
+  const minPer = !zoomed || fitPer === null ? stepMin : zoom.level === 1 ? Math.min(stepMin, fitPer) : Math.min(fitPer, 56) * zoom.level;
+  const maxPer = zoomed ? 56 * zoom.level : 56;
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
+  const playheadRef = React33.useRef(null);
+  useExactPlayhead(gridRef, playheadRef, model, (c) => gridRef.current?.querySelector(`[data-seq-col="ruler:${c}"]`) ?? null);
   if (!model) {
-    return React48.createElement(VisualEditStandby, {
+    if (lookTree && "grid" in lookTree) return /* @__PURE__ */ jsx(TreeStepGrid, { grid: lookTree.grid, reason: lookTree.reason, notice });
+    if (lookRoll && "roll" in lookRoll) return /* @__PURE__ */ jsx(TreeRollGrid, { roll: lookRoll.roll, reason: lookRoll.reason });
+    return React33.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && opensStepGrid(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -40743,6 +44955,12 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
   const lookOnly = model.lookOnly ?? null;
   const tabCell = liveCursor ?? { row: 0, col: 0 };
   const rulerPart = model.lanes[liveCursor?.row ?? 0]?.part ?? 0;
+  stopsRef.current = model.lanes.map((_, li) => {
+    const nodes = editNodes?.[li];
+    const steps = nodes ? leafStops(nodes) : (stepGroups?.[li] ?? []).flatMap(groupStops);
+    const hits = (stepToggles?.[li] ?? []).flatMap((a, si) => a && a.ok && !("split" in a && a.split) ? [si] : []);
+    return [.../* @__PURE__ */ new Set([...steps, ...hits])].sort((a, b) => a - b);
+  });
   const ruler = rulerLabels(model, model.steps, [...stepStarts?.get(rulerPart) ?? []]);
   return /* @__PURE__ */ jsx(
     "div",
@@ -40789,6 +45007,7 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
             },
             children: [
               /* @__PURE__ */ jsx(PatternTrackChip, {}),
+              zoomed && /* @__PURE__ */ jsx(GridZoomControl, { zoom }),
               /* @__PURE__ */ jsx(TurnHint, { show: phoneGrid.upright && rulerPan.inView.more })
             ]
           }
@@ -40804,13 +45023,13 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
             },
             children: [
               "Chord chart \u2014 each lane is a chord, not a sound.",
-              chunk?.chain.some(opensRhythmLine) && " They play to the rhythm in .struct(\u2026): click into a rhythm line to see them on it and edit it."
+              chunk?.chain.some(opensRhythmLine2) && " They play to the rhythm in .struct(\u2026): click into a rhythm line to see them on it and edit it."
             ]
           }
         ),
         playedNotes && /* @__PURE__ */ jsxs("div", { "data-seq-sound-first": true, style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)", paddingBottom: 2 }, children: [
           "The sounds set the rhythm here: each step plays the note written where it starts",
-          playedNotes.unheard.length > 0 ? `, so ${listOf(playedNotes.unheard)} never ${playedNotes.unheard.length === 1 ? "plays" : "play"}.` : "."
+          playedNotes.unheard.length > 0 ? `, so ${listOf2(playedNotes.unheard)} never ${playedNotes.unheard.length === 1 ? "plays" : "play"}.` : "."
         ] }),
         notice && /* @__PURE__ */ jsx("div", { "data-seq-notice": true, style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)", paddingBottom: 2 }, children: notice }),
         lookOnly && /* @__PURE__ */ jsx(
@@ -40837,7 +45056,16 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
             children: "Edits the notes already here \u2014 to add one, use the code view."
           }
         ),
-        /* @__PURE__ */ jsxs("div", { ref: gridRef, role: "grid", "aria-label": "Step sequencer", style: { display: "flex", flexDirection: "column", gap: 4 }, children: [
+        /* @__PURE__ */ jsxs("div", { ref: gridRef, role: "grid", "aria-label": "Step sequencer", style: { display: "flex", flexDirection: "column", gap: 4, position: "relative" }, children: [
+          /* @__PURE__ */ jsx(
+            "div",
+            {
+              ref: playheadRef,
+              "aria-hidden": "true",
+              "data-seq-playhead-line": true,
+              style: { display: "none", position: "absolute", left: 0, top: 0, bottom: 0, width: 2, marginLeft: -1, background: "var(--foreground, #e6e6ea)", opacity: 0.5, pointerEvents: "none", zIndex: 3 }
+            }
+          ),
           phoneGrid.phone && // which part of the pattern is on screen. It sits over the top of the ruler
           // and stays put while the ruler's numbers scroll under it; its width is the
           // panel's, not the pattern's.
@@ -40868,8 +45096,8 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                       "data-seq-col": `ruler:${c}`,
                       style: {
                         flex: `${layout.weight(c)} ${layout.weight(c)} 0`,
-                        minWidth: stepMin * layout.weight(c),
-                        maxWidth: 56 * layout.weight(c),
+                        minWidth: minPer * layout.weight(c),
+                        maxWidth: maxPer * layout.weight(c),
                         marginLeft: layout.barStart(c) ? 8 : 0,
                         position: "relative",
                         height: "100%"
@@ -40952,7 +45180,7 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                       }
                     )
                   ] }),
-                  /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: (stepGroups?.[laneIndex] ?? []).map((g) => {
+                  /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: (() => {
                     const cellFor = /* @__PURE__ */ __name(({ start: stepIndex, width: w }, variant, ends = { first: true, last: true }) => {
                       const cell = lane.cells[stepIndex];
                       const on = isCellOn(cell);
@@ -40972,15 +45200,17 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                       const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
                       const isPlaying = playingStep !== null && playingStep >= stepIndex && playingStep < stepIndex + w;
                       const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true;
+                      const splitAnswer = stepToggles?.[laneIndex]?.[stepIndex];
+                      const splits = !!splitAnswer && splitAnswer.ok && "split" in splitAnswer && !!splitAnswer.split;
                       const playsNote = on && !held2 && playedNotes ? playedNotes.notes.get(stepNoteKey(lane.sound, stepToCycle(stepIndex, model.steps, span, model.barSteps)))?.join(" / ") ?? null : null;
                       const inBox = /* @__PURE__ */ __name((c) => c >= stepIndex && c < stepIndex + w, "inBox");
                       const isCursor = liveCursor?.row === laneIndex && inBox(liveCursor.col);
                       const isTab = tabCell.row === laneIndex && inBox(tabCell.col);
-                      let weight2 = 0;
-                      for (let c = stepIndex; c < stepIndex + w; c++) weight2 += layout.weight(c);
-                      const gaps2 = 2 * (w - 1);
+                      let weight = 0;
+                      for (let c = stepIndex; c < stepIndex + w; c++) weight += layout.weight(c);
+                      const gaps = 2 * (w - 1);
                       const stepNo = /* @__PURE__ */ __name((c) => Math.floor(c / w) + 1, "stepNo");
-                      const stepStart2 = stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex);
+                      const stepStart = stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex);
                       return (
                         // A gridcell holding one toggle button — `aria-pressed` stays on the
                         // button, which may carry it; the cursor is the cell's `aria-selected`.
@@ -40989,12 +45219,12 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                           {
                             role: "gridcell",
                             "aria-selected": isCursor,
-                            "data-seq-step-start": variant === "solo" && stepStart2 ? "true" : void 0,
+                            "data-seq-step-start": variant === "solo" && stepStart ? "true" : void 0,
                             style: {
                               display: "flex",
-                              flex: `${weight2} ${weight2} ${gaps2}px`,
-                              minWidth: stepMin * weight2 + gaps2,
-                              maxWidth: 56 * weight2 + gaps2,
+                              flex: `${weight} ${weight} ${gaps}px`,
+                              minWidth: minPer * weight + gaps,
+                              maxWidth: maxPer * weight + gaps,
                               // subtle gap at each bar boundary
                               marginLeft: variant === "solo" && layout.barStart(stepIndex) ? 8 : 0,
                               // THREE LINE WEIGHTS (#1841): a bar is the 8px gap above; a written
@@ -41002,7 +45232,7 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                               // leaves that gap empty. Drawn as a shadow INTO the gap rather than
                               // as extra width, because rows of different parts start steps at
                               // different columns and a real gap would push their columns apart.
-                              boxShadow: variant === "solo" && stepStart2 ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
+                              boxShadow: variant === "solo" && stepStart ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
                             },
                             children: /* @__PURE__ */ jsxs(
                               "button",
@@ -41020,21 +45250,25 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                                 "data-gain": on && gainScoped ? gain : void 0,
                                 "data-playing": isPlaying ? "true" : void 0,
                                 "data-seq-cell-inert": canToggle ? void 0 : "true",
+                                "data-seq-splits": splits ? "true" : void 0,
                                 "aria-disabled": canToggle ? void 0 : true,
-                                title: lookOnly ? lookOnlyLine(lookOnly) : canToggle ? playsNote ? `${lane.sound} plays ${playsNote}` : void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
+                                title: lookOnly ? lookOnlyLine(lookOnly) : canToggle ? splits ? `Splits this step: adds ${lane.sound} here` : playsNote ? `${lane.sound} plays ${playsNote}` : void 0 : stepRefusalLine((() => {
+                                  const a = stepToggles?.[laneIndex]?.[stepIndex];
+                                  return a && !a.ok ? a.why : "";
+                                })(), on),
                                 onPointerDown: (e) => {
                                   e.preventDefault();
                                   setCursor({ row: laneIndex, col: stepIndex });
                                   if (resizeStart !== null) {
                                     const rect = e.currentTarget.getBoundingClientRect();
-                                    const barW = clamp012(extent) * rect.width;
-                                    const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4));
+                                    const barW = clamp013(extent) * rect.width;
+                                    const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX2, barW * 0.4));
                                     if (e.clientX - rect.left >= barW - zone) {
                                       onResizeDown(laneIndex, resizeStart);
                                       return;
                                     }
                                   }
-                                  if (!canToggle) return;
+                                  if (!canToggle && !(on && gainScoped)) return;
                                   onCellDown(laneIndex, stepIndex, on, e);
                                 },
                                 onPointerEnter: () => onCellEnter(laneIndex, stepIndex, w),
@@ -41078,9 +45312,9 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                                         // note whose length rounds to nothing still has to be
                                         // visible, or the grid would silently lose a trigger it
                                         // can spell.
-                                        width: `${clamp012(extent) * 100}%`,
+                                        width: `${clamp013(extent) * 100}%`,
                                         minWidth: held2 ? 0 : 2,
-                                        height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
+                                        height: `${clamp013(gainScoped ? gain : 1) * 100}%`,
                                         background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
                                         // one plain step is one note: its columns are not a second trigger
                                         opacity: held2 && variant !== "plain" ? 0.7 : 1,
@@ -41155,8 +45389,8 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                                         position: "absolute",
                                         top: 0,
                                         bottom: 0,
-                                        right: `${(1 - clamp012(extent)) * 100}%`,
-                                        width: `min(${RESIZE_ZONE_PX}px, ${clamp012(extent) * 100}%)`,
+                                        right: `${(1 - clamp013(extent)) * 100}%`,
+                                        width: `min(${RESIZE_ZONE_PX2}px, ${clamp013(extent) * 100}%)`,
                                         cursor: "ew-resize",
                                         background: "var(--foreground, #e6e6ea)",
                                         opacity: 0.45,
@@ -41172,47 +45406,51 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
                         )
                       );
                     }, "cellFor");
-                    const grouped = g.boxes.length > 1 && !g.boxes.slice(1).some((b) => layout.barStart(b.start));
-                    if (!grouped) {
-                      return /* @__PURE__ */ jsx("div", { role: "none", style: { display: "contents" }, children: g.boxes.map((b) => cellFor(b, "solo")) }, `step-${g.from}`);
-                    }
-                    let weight = 0;
-                    for (let c = g.from; c < g.to; c++) weight += layout.weight(c);
-                    const gaps = 2 * (g.to - g.from - 1);
-                    const stepStart = g.from > 0 && !layout.barStart(g.from) && !!stepStarts?.get(lane.part ?? 0)?.has(g.from);
-                    return /* @__PURE__ */ jsx(
-                      "div",
-                      {
-                        role: "none",
-                        "data-seq-step": g.plain ? "plain" : "holds",
-                        "data-seq-step-start": stepStart ? "true" : void 0,
-                        style: {
-                          display: "flex",
-                          gap: 2,
-                          height: 22,
-                          // exactly the space its boxes take drawn one by one, so its edges and
-                          // its boxes' edges fall on the other rows' columns
-                          flex: `${weight} ${weight} ${gaps}px`,
-                          minWidth: stepMin * weight + gaps,
-                          maxWidth: 56 * weight + gaps,
-                          marginLeft: layout.barStart(g.from) ? 8 : 0,
-                          // an outline takes no space, so it cannot push a column
-                          outline: "1px solid var(--border, #3a3a42)",
-                          borderRadius: g.plain ? 3 : 4,
-                          // NOT overflow-hidden: the focus ring is drawn just outside a cell, and
-                          // clipping it here hid the keyboard cursor on a filled column
-                          // plain: the gaps between its columns read as faint halves; a step that
-                          // holds several: a darker well its small boxes sit in
-                          background: g.plain ? "var(--border, #3a3a42)" : "var(--background, #1e1e24)",
-                          boxShadow: stepStart ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
+                    const drawGroup = /* @__PURE__ */ __name((g) => {
+                      const grouped = g.boxes.length > 1 && !g.boxes.slice(1).some((b) => layout.barStart(b.start));
+                      if (!grouped) {
+                        return /* @__PURE__ */ jsx("div", { role: "none", style: { display: "contents" }, children: g.boxes.map((b) => cellFor(b, "solo")) }, `step-${g.from}`);
+                      }
+                      let weight = 0;
+                      for (let c = g.from; c < g.to; c++) weight += layout.weight(c);
+                      const gaps = 2 * (g.to - g.from - 1);
+                      const stepStart = g.from > 0 && !layout.barStart(g.from) && !!stepStarts?.get(lane.part ?? 0)?.has(g.from);
+                      return /* @__PURE__ */ jsx(
+                        "div",
+                        {
+                          role: "none",
+                          "data-seq-step": g.plain ? "plain" : "holds",
+                          "data-seq-depth": 1,
+                          "data-seq-step-start": stepStart ? "true" : void 0,
+                          style: {
+                            display: "flex",
+                            gap: 2,
+                            height: 22,
+                            // exactly the space its boxes take drawn one by one, so its edges and
+                            // its boxes' edges fall on the other rows' columns
+                            flex: `${weight} ${weight} ${gaps}px`,
+                            minWidth: minPer * weight + gaps,
+                            maxWidth: maxPer * weight + gaps,
+                            marginLeft: layout.barStart(g.from) ? 8 : 0,
+                            // an outline takes no space, so it cannot push a column
+                            outline: STEP_OUTLINE,
+                            borderRadius: g.plain ? 3 : 4,
+                            // NOT overflow-hidden: the focus ring is drawn just outside a cell, and
+                            // clipping it here hid the keyboard cursor on a filled column
+                            // plain: the gaps between its columns read as faint halves; a step that
+                            // holds several: a darker well its small boxes sit in
+                            background: g.plain ? "var(--border, #3a3a42)" : "var(--background, #1e1e24)",
+                            boxShadow: stepStart ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
+                          },
+                          children: g.boxes.map(
+                            (b, i) => cellFor(b, g.plain ? "plain" : "inner", { first: i === 0, last: i === g.boxes.length - 1 })
+                          )
                         },
-                        children: g.boxes.map(
-                          (b, i) => cellFor(b, g.plain ? "plain" : "inner", { first: i === 0, last: i === g.boxes.length - 1 })
-                        )
-                      },
-                      `step-${g.from}`
-                    );
-                  }) })
+                        `step-${g.from}`
+                      );
+                    }, "drawGroup");
+                    return (stepGroups?.[laneIndex] ?? []).map((g) => drawGroup(g));
+                  })() })
                 ]
               },
               `${lane.sound}:${lane.part ?? 0}`
@@ -41251,11 +45489,12 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
     }
   );
 }
-__name(SequencerGrid, "SequencerGrid");
-function listOf(items) {
+__name(ColumnStepGrid, "ColumnStepGrid");
+var STEP_OUTLINE = "1px solid var(--border, #3a3a42)";
+function listOf2(items) {
   return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
-__name(listOf, "listOf");
+__name(listOf2, "listOf");
 var parseChords = /* @__PURE__ */ __name((mini) => stepGridCodec.parse(mini, UNREFINED), "parseChords");
 function RhythmChartGrid({ onResolution }) {
   const phone = usePhoneGrid().phone;
@@ -41264,11 +45503,11 @@ function RhythmChartGrid({ onResolution }) {
     source: "seq",
     eligible: opensStepGrid
   });
-  const result = React48.useMemo(
+  const result = React33.useMemo(
     () => chunk?.structRhythm && chunk.miniString !== null ? rhythmChart(chunk.structOver?.miniString ?? null, chunk.miniString, model, parseChords, chunk.structOver?.masks) : { ok: false, reason: null },
     [chunk, model]
   );
-  const toggleable = React48.useMemo(() => {
+  const toggleable = React33.useMemo(() => {
     if (!model || !result.ok || result.chart.lookOnly) return null;
     return Array.from({ length: model.steps }, (_, m) => {
       const on = model.lanes.findIndex((l) => isCellOn(l.cells[m]));
@@ -41276,7 +45515,7 @@ function RhythmChartGrid({ onResolution }) {
     });
   }, [model, result]);
   const chartShown = result.ok;
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (chartShown) onResolution?.(null);
   }, [chartShown, onResolution]);
   if (!result.ok) return /* @__PURE__ */ jsx(SequencerGrid, { onResolution, notice: result.reason });
@@ -41501,11 +45740,11 @@ function viewportRect() {
 }
 __name(viewportRect, "viewportRect");
 function useAnchorScroll(open, anchorRef, menuRef, place, close) {
-  const placedAt = React48.useRef(null);
-  React48.useLayoutEffect(() => {
+  const placedAt = React33.useRef(null);
+  React33.useLayoutEffect(() => {
     placedAt.current = open ? anchorRef.current?.getBoundingClientRect() ?? null : null;
   }, [open, anchorRef]);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (!open) return;
     const onScroll = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -41531,9 +45770,9 @@ function useAnchorScroll(open, anchorRef, menuRef, place, close) {
 __name(useAnchorScroll, "useAnchorScroll");
 
 // src/visualEdit/panels/soundPickerFilter.ts
-function soundCategory(group) {
-  const i = group.indexOf(" \xB7 ");
-  return i > 0 ? group.slice(0, i) : group;
+function soundCategory(group2) {
+  const i = group2.indexOf(" \xB7 ");
+  return i > 0 ? group2.slice(0, i) : group2;
 }
 __name(soundCategory, "soundCategory");
 function categoryCounts(groups) {
@@ -41586,15 +45825,15 @@ function SoundPickerMenu({
   onAudition,
   renderTrigger
 }) {
-  const [open, setOpen] = React48.useState(false);
-  const [query, setQuery] = React48.useState("");
-  const [category, setCategory] = React48.useState(null);
-  const [pos, setPos] = React48.useState(null);
-  const btnRef = React48.useRef(null);
-  const menuRef = React48.useRef(null);
+  const [open, setOpen] = React33.useState(false);
+  const [query, setQuery] = React33.useState("");
+  const [category, setCategory] = React33.useState(null);
+  const [pos, setPos] = React33.useState(null);
+  const btnRef = React33.useRef(null);
+  const menuRef = React33.useRef(null);
   const lc = label.toLowerCase();
   const currentLabel = summary ?? (groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder);
-  const place = React48.useCallback(() => {
+  const place = React33.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -41608,17 +45847,17 @@ function SoundPickerMenu({
       maxHeight
     });
   }, []);
-  React48.useLayoutEffect(() => {
+  React33.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (open) {
       ensureCatScrollStyle();
       setQuery("");
       setCategory(null);
     }
   }, [open]);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -41638,7 +45877,7 @@ function SoundPickerMenu({
       window.removeEventListener("resize", dismiss);
     };
   }, [open]);
-  const close = React48.useCallback(() => setOpen(false), []);
+  const close = React33.useCallback(() => setOpen(false), []);
   useAnchorScroll(open, btnRef, menuRef, place, close);
   const pick = /* @__PURE__ */ __name((v) => {
     onChange(v);
@@ -42114,19 +46353,19 @@ function groupDrumKits(bankNames) {
   const byGroup = /* @__PURE__ */ new Map();
   for (const bank of bankNames) {
     const maker = KIT_MAKERS.find((m) => bank.startsWith(m.prefix));
-    const group = maker?.group ?? "Other";
+    const group2 = maker?.group ?? "Other";
     const rest = maker ? bank.slice(maker.prefix.length) : bank;
     const label = spaceCamel(rest) || bank;
-    const opts = byGroup.get(group) ?? [];
+    const opts = byGroup.get(group2) ?? [];
     opts.push({ value: bank, label });
-    byGroup.set(group, opts);
+    byGroup.set(group2, opts);
   }
   const groups = [];
-  for (const group of KIT_GROUP_ORDER) {
-    const opts = byGroup.get(group);
+  for (const group2 of KIT_GROUP_ORDER) {
+    const opts = byGroup.get(group2);
     if (opts && opts.length) {
       groups.push({
-        group,
+        group: group2,
         options: opts.sort((a, b) => a.label.localeCompare(b.label))
       });
     }
@@ -42137,7 +46376,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners18 = /* @__PURE__ */ new Set();
+  const listeners22 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -42152,19 +46391,19 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners18.forEach((l) => l());
+    listeners22.forEach((l) => l());
   }, "setAccessor");
-  const notify6 = /* @__PURE__ */ __name(() => {
+  const notify7 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners18.forEach((l) => l());
+    listeners22.forEach((l) => l());
   }, "notify");
   const read5 = /* @__PURE__ */ __name(() => cached2, "read");
-  const subscribe11 = /* @__PURE__ */ __name((listener) => {
-    listeners18.add(listener);
-    return () => listeners18.delete(listener);
+  const subscribe12 = /* @__PURE__ */ __name((listener) => {
+    listeners22.add(listener);
+    return () => listeners22.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React48.useSyncExternalStore(subscribe11, read5, () => null), "useCatalog");
-  return { setAccessor, notify: notify6, read: read5, useCatalog };
+  const useCatalog = /* @__PURE__ */ __name(() => React33.useSyncExternalStore(subscribe12, read5, () => null), "useCatalog");
+  return { setAccessor, notify: notify7, read: read5, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
 var instrumentStore = createCatalogStore();
@@ -42177,6 +46416,33 @@ var setDrumKitAccessor = drumKitStore.setAccessor;
 var notifyDrumKitChanged = drumKitStore.notify;
 drumKitStore.read;
 var useDrumKitCatalog = drumKitStore.useCatalog;
+
+// src/visualEdit/panels/rollWriter.ts
+function rollStepText(mode, model, mini) {
+  if (mode !== "exact" || !model || model.lookOnly || mini == null) return null;
+  return { mini, trees: chunkDivisions(mini, model.bars ?? 1) };
+}
+__name(rollStepText, "rollStepText");
+function rollResizableNotes(model, base) {
+  const out = /* @__PURE__ */ new Set();
+  for (const note2 of model.notes) {
+    const midi = pitchToMidi(note2.pitch) ?? (model.numeric ? Number(note2.pitch) : null);
+    const place = columnPlace(model, note2.start);
+    if (midi === null || !place) continue;
+    const cols = Math.max(1, Math.round(note2.duration));
+    for (let dur = 1; ; dur++) {
+      if (dur === cols) continue;
+      const end = endInBar(model, note2.start, note2.start + dur);
+      if (!end) break;
+      if (rollResize(base.mini, base.trees, place, midi, end).ok) {
+        out.add(note2);
+        break;
+      }
+    }
+  }
+  return out;
+}
+__name(rollResizableNotes, "rollResizableNotes");
 var AUDITION_ENVELOPE = {
   gain: 0.9,
   attack: 0.01,
@@ -42184,16 +46450,16 @@ var AUDITION_ENVELOPE = {
   release: 0.08
 };
 var AUDITION_DUR_S = 0.22;
-function fireOnce(sound, note) {
-  onLiveGraph(() => fireNow(sound, note));
+function fireOnce(sound, note2) {
+  onLiveGraph(() => fireNow(sound, note2));
 }
 __name(fireOnce, "fireOnce");
-function fireNow(sound, note) {
+function fireNow(sound, note2) {
   try {
     const ctx = getAudioContext();
     void ctx.resume();
     const value = {
-      note,
+      note: note2,
       s: sound,
       ...AUDITION_ENVELOPE
     };
@@ -42203,16 +46469,16 @@ function fireNow(sound, note) {
   }
 }
 __name(fireNow, "fireNow");
-function auditionSound(sound, note = "c4") {
+function auditionSound(sound, note2 = "c4") {
   if (!sound) return;
-  fireOnce(sound, note);
+  fireOnce(sound, note2);
 }
 __name(auditionSound, "auditionSound");
-function startAudition(sound, note = "c4") {
+function startAudition(sound, note2 = "c4") {
   if (!sound) return { stop: /* @__PURE__ */ __name(() => {
   }, "stop") };
-  fireOnce(sound, note);
-  const timer = setInterval(() => fireOnce(sound, note), AUDITION_DUR_S * 1e3);
+  fireOnce(sound, note2);
+  const timer = setInterval(() => fireOnce(sound, note2), AUDITION_DUR_S * 1e3);
   let stopped = false;
   return {
     stop: /* @__PURE__ */ __name(() => {
@@ -42277,12 +46543,12 @@ function startClipPreview(url, gain = AUDITION_ENVELOPE.gain) {
 }
 __name(startClipPreview, "startClipPreview");
 var ROLL_HINT = "Click a melody to edit its notes.";
-var RESIZE_ZONE_PX2 = 8;
+var RESIZE_ZONE_PX3 = 8;
 var HOLD_RETRIGGER_MS = AUDITION_DUR_S * 1e3;
 var VELOCITY_READ_ONLY = "Shows this pattern\u2019s velocities \u2014 to change them, use the code view.";
 var LANE_HEIGHT = 48;
-var VELOCITY_FULL_PX2 = 80;
-var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+var VELOCITY_FULL_PX3 = 80;
+var clamp014 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function gainInScope(model) {
   return !model.gainForeign && (model.bars == null || model.bars === model.steps);
 }
@@ -42298,6 +46564,32 @@ function soundFill(names) {
   return `linear-gradient(to bottom, ${stops.join(", ")})`;
 }
 __name(soundFill, "soundFill");
+function rollRefusalLine(why) {
+  switch (why) {
+    case "source-and-landing-play-in-different-places":
+    case "copies-come-from-outside-the-step":
+      return "The note plays in several places and where it lands does not";
+    case "no-room-to-grow":
+      return "The next step is not a rest this note can take in";
+    case "step-is-generated":
+      return "This note is made by an operator on its step (like (3,8))";
+    case "loop-shorter-than-the-pattern":
+      return "This note also plays in bars the roll doesn't show";
+    case "columns-not-whole":
+      return "The pattern's lengths do not add up to whole columns here";
+    default:
+      return void 0;
+  }
+}
+__name(rollRefusalLine, "rollRefusalLine");
+function sayRollRefusal(attempted, why, outcome = LEFT_UNCHANGED) {
+  const line = why ? rollRefusalLine(why) : void 0;
+  if (!line) return reportRefusal2(attempted, outcome);
+  emitLog({ level: "warn", runtime: "stave", message: `${attempted} \u2014 ${line.charAt(0).toLowerCase()}${line.slice(1)}, ${outcome}; change it in the code view.` });
+}
+__name(sayRollRefusal, "sayRollRefusal");
+var NO_PLACE = { ok: false, why: "columns-not-whole" };
+var NO_NOTE = { ok: false, why: "no-note-there" };
 function reportRefusal2(attempted, outcome = LEFT_UNCHANGED) {
   emitLog({
     level: "warn",
@@ -42308,6 +46600,12 @@ function reportRefusal2(attempted, outcome = LEFT_UNCHANGED) {
 __name(reportRefusal2, "reportRefusal");
 function rollSteps(model, cols) {
   const byPart = writtenStepStarts(model);
+  const part = rollPart(model);
+  const starts2 = byPart.get(part) ?? [];
+  return { stepStarts: new Set(starts2), ruler: rulerLabels(model, cols, starts2) };
+}
+__name(rollSteps, "rollSteps");
+function rollPart(model) {
   let part = 0;
   if (model.source && model.source.parts.length > 1) {
     let most = -1;
@@ -42319,10 +46617,9 @@ function rollSteps(model, cols) {
       }
     }
   }
-  const starts = byPart.get(part) ?? [];
-  return { stepStarts: new Set(starts), ruler: rulerLabels(model, cols, starts) };
+  return part;
 }
-__name(rollSteps, "rollSteps");
+__name(rollPart, "rollPart");
 function overlapAt(model, midi, step) {
   for (const n of model.notes) {
     if (pitchToMidi(n.pitch) !== midi) continue;
@@ -42332,19 +46629,19 @@ function overlapAt(model, midi, step) {
   return void 0;
 }
 __name(overlapAt, "overlapAt");
-function noteAt(model, midi, step) {
+function noteAt2(model, midi, step) {
   return overlapAt(model, midi, step)?.note;
 }
-__name(noteAt, "noteAt");
+__name(noteAt2, "noteAt");
 function PianoRollGrid({
   selected,
   onSelect,
   division: division2 = DEFAULT_DIVISION,
   onResolution
 } = {}) {
-  const [viewScale, setViewScale] = React48.useState(UNREFINED);
-  const [declinedCell, setDeclinedCell] = React48.useState(null);
-  const { chunk, model, read: read5, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit } = useGridModel({
+  const [viewScale, setViewScale] = React33.useState(UNREFINED);
+  const [declinedCell, setDeclinedCell] = React33.useState(null);
+  const { chunk, model, read: read5, mutate, settle: settle2, writeMini, writeStep, beginGesture, endGesture, patternKey, applyEdit } = useGridModel({
     ...pianoRollCodec,
     source: "roll",
     eligible: opensPianoRoll,
@@ -42352,11 +46649,11 @@ function PianoRollGrid({
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, pianoRollCodec.parse, writeMini);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     setViewScale(UNREFINED);
   }, [patternKey]);
-  const dragRef = React48.useRef(null);
-  const velRef = React48.useRef(null);
+  const dragRef = React33.useRef(null);
+  const velRef = React33.useRef(null);
   const playingStep = usePlayingStep(
     model?.steps ?? 0,
     model?.bars ?? 1,
@@ -42364,7 +46661,7 @@ function PianoRollGrid({
     model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
-  const sounds = React48.useMemo(() => {
+  const sounds = React33.useMemo(() => {
     if (!chunk || !model) return null;
     const span = model.bars ?? 1;
     const onsets = model.notes.map((n) => stepToCycle(n.start, model.steps, span, model.barSteps));
@@ -42374,8 +46671,8 @@ function PianoRollGrid({
     if (names.length < 2) return null;
     return { names, byNote: new Map(model.notes.map((n, i) => [n, per[i]])) };
   }, [chunk, model]);
-  const lane = React48.useMemo(() => chunk && model ? soundLane(chunk, model.bars ?? 1) : null, [chunk, model]);
-  const laneSegments = React48.useMemo(() => {
+  const lane = React33.useMemo(() => chunk && model ? soundLane(chunk, model.bars ?? 1) : null, [chunk, model]);
+  const laneSegments = React33.useMemo(() => {
     const out = [];
     if (!lane || !model) return out;
     const span = model.bars ?? 1;
@@ -42388,7 +46685,7 @@ function PianoRollGrid({
     });
     return out;
   }, [lane, model]);
-  const laneToggles = React48.useRef(/* @__PURE__ */ new Map());
+  const laneToggles = React33.useRef(/* @__PURE__ */ new Map());
   const instruments = useSoundCatalog();
   const writeBlock = /* @__PURE__ */ __name((block, value) => {
     if (value === "") return;
@@ -42398,21 +46695,21 @@ function PianoRollGrid({
       commit(wb, "edit" in r ? r.edit : null, "roll");
     });
   }, "writeBlock");
-  const [hoveredMidi, setHoveredMidi] = React48.useState(null);
-  const holdMidiRef = React48.useRef(null);
-  const holdTimerRef = React48.useRef(null);
-  const onSelectRef = React48.useRef(onSelect);
+  const [hoveredMidi, setHoveredMidi] = React33.useState(null);
+  const holdMidiRef = React33.useRef(null);
+  const holdTimerRef = React33.useRef(null);
+  const onSelectRef = React33.useRef(onSelect);
   onSelectRef.current = onSelect;
-  const selectedRef = React48.useRef(selected);
+  const selectedRef = React33.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range2, setRange] = React48.useState(
+  const [range2, setRange] = React33.useState(
     () => rollContentRange({ notes: [] })
   );
-  const stmtIdRef = React48.useRef(null);
-  const scrollRef = React48.useRef(null);
-  const openScrollRef = React48.useRef(false);
-  React48.useEffect(() => {
+  const stmtIdRef = React33.useRef(null);
+  const scrollRef = React33.useRef(null);
+  const openScrollRef = React33.useRef(false);
+  React33.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = rollContentRange(model);
@@ -42436,9 +46733,9 @@ function PianoRollGrid({
       openScrollRef.current = false;
       return;
     }
-    const rowOf = /* @__PURE__ */ __name((midi) => sc.querySelector(`[data-roll-cell^="${midi}:"]`), "rowOf");
-    const top = rowOf(Math.max(...midis));
-    const bottom = rowOf(Math.min(...midis));
+    const rowOf2 = /* @__PURE__ */ __name((midi) => sc.querySelector(`[data-roll-cell^="${midi}:"]`), "rowOf");
+    const top = rowOf2(Math.max(...midis));
+    const bottom = rowOf2(Math.min(...midis));
     if (!top || !bottom) return;
     openScrollRef.current = false;
     const box = sc.getBoundingClientRect();
@@ -42448,19 +46745,48 @@ function PianoRollGrid({
     const room = sc.clientHeight - 2 * pad;
     sc.scrollTop = y1 - y0 <= room ? (y0 + y1) / 2 - sc.clientHeight / 2 : y1 + pad - sc.clientHeight;
   });
-  const placesNotes = React48.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
-  const resizable = React48.useMemo(() => model ? resizableNotes(model) : null, [model]);
+  const placesNotes = React33.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
+  const gridMode = useGridMode();
+  const resizable = React33.useMemo(() => {
+    if (!model) return null;
+    const base = rollStepText(gridMode, model, chunk?.miniString ?? null);
+    return base ? rollResizableNotes(model, base) : resizableNotes(model);
+  }, [model, gridMode, chunk?.miniString]);
   const cols = model ? columnCount(model) : 0;
-  const gainWritable2 = React48.useMemo(
+  const gainWritable2 = React33.useMemo(
     () => model ? gainWritable(pianoRollCodec, model) : false,
     [model]
   );
-  React48.useEffect(() => {
+  const stepTextRef = React33.useRef(null);
+  stepTextRef.current = rollStepText(gridMode, model, chunk?.miniString ?? null);
+  const writeRoll = /* @__PURE__ */ __name((base, r, refusal) => {
+    if (!r.ok) {
+      sayRollRefusal(refusal, r.why);
+      return false;
+    }
+    const wrote = writeStep(base.mini, r.edit);
+    if (!wrote) reportRefusal2(refusal);
+    return wrote;
+  }, "writeRoll");
+  const writeFrame = /* @__PURE__ */ __name((d, r) => {
+    if (!r.ok || !d.stepBase) return false;
+    const after = applyStepEdit(d.stepBase.mini, r.edit);
+    if (after !== d.stepWrote) {
+      writeMini(after);
+      d.stepWrote = after;
+    }
+    return true;
+  }, "writeFrame");
+  React33.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
-      if (!d.moved && d.mode === "move") {
+      if (!d.moved && d.mode === "move" && d.stepBase) {
+        const midi = pitchToMidi(d.origPitch) ?? (d.base.numeric ? Number(d.origPitch) : null);
+        const place = columnPlace(d.base, d.origStart);
+        writeRoll(d.stepBase, !place ? NO_PLACE : midi === null ? NO_NOTE : rollRemove(d.stepBase.mini, d.stepBase.trees, place, midi), "Couldn't delete that note");
+      } else if (!d.moved && d.mode === "move") {
         let refused2 = false;
         mutate((prev) => {
           const next = removeNote(prev, d.origStart, d.origPitch, { readback: true });
@@ -42469,17 +46795,25 @@ function PianoRollGrid({
         });
         if (refused2) reportRefusal2("Couldn't delete that note");
       }
-      if (d.mode === "resize" && d.moved && d.askedDur != null) {
-        const asked2 = d.askedDur;
-        const settled = resizeNote(d.base, d.origStart, d.origPitch, asked2, {
+      if (d.stepBase && d.moved) {
+        if (d.dropRefused) {
+          sayRollRefusal(
+            d.mode === "move" ? "Couldn't move that note there" : "Couldn't set that length",
+            d.refusedWhy,
+            d.stepWrote != null ? STAYED_AT_LAST_ACCEPTED : LEFT_UNCHANGED
+          );
+        }
+      } else if (d.mode === "resize" && d.moved && d.askedDur != null) {
+        const asked3 = d.askedDur;
+        const settled = resizeNote(d.base, d.origStart, d.origPitch, asked3, {
           readback: true
         });
         const refused2 = settled === d.base;
-        if (refused2) settle(d.base);
+        if (refused2) settle2(d.base);
         else mutate(() => settled);
         if (refused2) reportRefusal2("Couldn't set that length");
       }
-      if (d.mode === "move" && d.moved) {
+      if (d.mode === "move" && d.moved && !d.stepBase) {
         let wentHome = false;
         if (d.askedPitch != null && d.askedStart != null) {
           const toPitch = d.askedPitch;
@@ -42488,7 +46822,7 @@ function PianoRollGrid({
             readback: true
           });
           wentHome = settled === d.base;
-          if (wentHome) settle(d.base);
+          if (wentHome) settle2(d.base);
           else mutate(() => settled);
         }
         if (wentHome) reportRefusal2("Couldn't move that note there");
@@ -42504,11 +46838,11 @@ function PianoRollGrid({
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
-      const next = clamp013(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX2);
+      const next = clamp014(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX3);
       mutate((prev) => setGroupGain(prev, v.start, next));
     }, "onMove");
     const onUp = /* @__PURE__ */ __name(() => {
@@ -42572,7 +46906,7 @@ function PianoRollGrid({
       holdTimerRef.current = null;
     }
   }, "stopHold");
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     window.addEventListener("pointerup", stopHold);
     window.addEventListener("pointercancel", stopHold);
     return () => {
@@ -42593,33 +46927,41 @@ function PianoRollGrid({
       return;
     }
     select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
-    const note = noteAt(model, midi, step);
-    if (note) {
-      const isTail = tailColumn(note) === step;
+    const note2 = noteAt2(model, midi, step);
+    if (note2) {
+      const isTail = tailColumn(note2) === step;
       const rect = e.currentTarget.getBoundingClientRect();
-      const ov = columnOverlap(note.start, note.start + note.duration, step);
+      const ov = columnOverlap(note2.start, note2.start + note2.duration, step);
       const barEnd = ov ? (ov.offset + ov.extent) * rect.width : rect.width;
       const barW = ov ? ov.extent * rect.width : rect.width;
-      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX2, barW * 0.4));
+      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX3, barW * 0.4));
       if (isTail && e.clientX - rect.left >= barEnd - zone) {
-        if (!resizable?.has(note)) return;
-        onResizeDown(note);
+        if (!resizable?.has(note2)) return;
+        onResizeDown(note2);
         return;
       }
       dragRef.current = {
         mode: "move",
         base: model,
-        grabOffset: step - note.start,
-        origPitch: note.pitch,
-        origStart: note.start,
-        moved: false
+        grabOffset: step - note2.start,
+        origPitch: note2.pitch,
+        origStart: note2.start,
+        moved: false,
+        stepBase: stepTextRef.current ?? void 0
       };
       beginGesture();
     } else {
-      placeAt(midi, step);
+      placeAt2(midi, step);
     }
   }, "onCellDown");
-  const placeAt = /* @__PURE__ */ __name((midi, step) => {
+  const placeAt2 = /* @__PURE__ */ __name((midi, step) => {
+    const base = stepTextRef.current;
+    const place = model ? columnPlace(model, step) : null;
+    if (base && model) {
+      if (!place) writeRoll(base, NO_PLACE, "Couldn't add that note");
+      else writeRoll(base, rollAdd(base.mini, base.trees, place, tokenForRow(!!model.numeric, midi), columnUnit(model, step) ?? void 0), "Couldn't add that note");
+      return;
+    }
     let refused2 = false;
     mutate((prev) => {
       const next = placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1, {
@@ -42630,15 +46972,16 @@ function PianoRollGrid({
     });
     if (refused2) reportRefusal2("Couldn't add that note");
   }, "placeAt");
-  const onResizeDown = /* @__PURE__ */ __name((note) => {
+  const onResizeDown = /* @__PURE__ */ __name((note2) => {
     if (!model) return;
     dragRef.current = {
       mode: "resize",
       base: model,
       grabOffset: 0,
-      origPitch: note.pitch,
-      origStart: note.start,
-      moved: false
+      origPitch: note2.pitch,
+      origStart: note2.start,
+      moved: false,
+      stepBase: stepTextRef.current ?? void 0
     };
     beginGesture();
   }, "onResizeDown");
@@ -42649,6 +46992,16 @@ function PianoRollGrid({
     if (d.mode === "resize") {
       let dur = step - d.origStart + 1;
       if (interval) dur = Math.max(interval, snapColumn(d.origStart + dur, interval) - d.origStart);
+      if (d.stepBase) {
+        const midi2 = pitchToMidi(d.origPitch) ?? (d.base.numeric ? Number(d.origPitch) : null);
+        const place = columnPlace(d.base, d.origStart);
+        const end = endInBar(d.base, d.origStart, d.origStart + dur);
+        const r = !place ? NO_PLACE : midi2 === null || !end ? NO_NOTE : rollResize(d.stepBase.mini, d.stepBase.trees, place, midi2, end);
+        d.moved = true;
+        d.dropRefused = !writeFrame(d, r);
+        d.refusedWhy = r.ok ? void 0 : r.why;
+        return;
+      }
       mutate((prev) => resizeNote(prev, d.origStart, d.origPitch, dur));
       d.moved = true;
       d.askedDur = dur;
@@ -42657,6 +47010,19 @@ function PianoRollGrid({
     let newStart = Math.max(0, Math.min(step - d.grabOffset, d.base.steps - 1));
     if (interval) newStart = Math.max(0, Math.min(snapColumn(newStart, interval), d.base.steps - 1));
     const newPitch = tokenForRow(!!d.base.numeric, midi);
+    if (d.stepBase) {
+      const midi2 = pitchToMidi(d.origPitch) ?? (d.base.numeric ? Number(d.origPitch) : null);
+      const from = columnPlace(d.base, d.origStart);
+      const to = columnPlace(d.base, newStart);
+      const bars = d.base.bars ?? 1;
+      const r = !from || !to ? NO_PLACE : midi2 === null ? NO_NOTE : newPitch === d.origPitch && newStart === d.origStart ? { ok: true, edit: { from: 0, to: 0, insert: "" } } : rollMove(d.stepBase.mini, d.stepBase.trees, from, midi2, to, newPitch, (t) => chunkDivisions(t, bars));
+      d.moved = true;
+      const landed = writeFrame(d, r);
+      d.dropRefused = !landed;
+      d.refusedWhy = r.ok ? void 0 : r.why;
+      setDeclinedCell(landed ? null : `${midi2}:${step}`);
+      return;
+    }
     const next = moveNote(d.base, d.origPitch, d.origStart, newPitch, newStart);
     d.moved = true;
     const declined = next === d.base;
@@ -42667,17 +47033,24 @@ function PianoRollGrid({
     d.askedPitch = newPitch;
     d.askedStart = newStart;
   }, "onCellEnter");
-  const deleteNote = /* @__PURE__ */ __name((note) => {
+  const deleteNote = /* @__PURE__ */ __name((note2) => {
+    const base = stepTextRef.current;
+    const midi = pitchToMidi(note2.pitch) ?? (model?.numeric ? Number(note2.pitch) : null);
+    const place = model ? columnPlace(model, note2.start) : null;
+    if (base) {
+      writeRoll(base, !place ? NO_PLACE : midi === null ? NO_NOTE : rollRemove(base.mini, base.trees, place, midi), "Couldn't delete that note");
+      return;
+    }
     let refused2 = false;
     mutate((prev) => {
-      const next = removeNote(prev, note.start, note.pitch, { readback: true });
+      const next = removeNote(prev, note2.start, note2.pitch, { readback: true });
       refused2 = next === prev;
       return next;
     });
     if (refused2) reportRefusal2("Couldn't delete that note");
   }, "deleteNote");
-  const copyNote = /* @__PURE__ */ __name((note) => {
-    setNoteClip({ pitch: note.pitch, duration: note.duration, gain: note.gain ?? 1 });
+  const copyNote = /* @__PURE__ */ __name((note2) => {
+    setNoteClip({ pitch: note2.pitch, duration: note2.duration, gain: note2.gain ?? 1 });
   }, "copyNote");
   const pasteClip = /* @__PURE__ */ __name(() => {
     const clip2 = getNoteClip();
@@ -42730,38 +47103,48 @@ function PianoRollGrid({
     }
     return best ?? { row: 0, col: 0 };
   }, "defaultCell");
-  const focusCursorRef = React48.useRef(false);
-  const gridRef = React48.useRef(null);
-  React48.useEffect(() => {
+  const focusCursorRef = React33.useRef(false);
+  const gridRef = React33.useRef(null);
+  React33.useEffect(() => {
     if (!focusCursorRef.current) return;
     const cell = gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-roll-cell]');
     if (!cell) return;
     focusCursorRef.current = false;
     cell.focus();
   });
-  const editNote = /* @__PURE__ */ __name((note, edit, dryRun) => {
+  const editNote = /* @__PURE__ */ __name((note2, edit, dryRun) => {
     if (!model) return false;
     const step = snapInterval(stepsPerBar(model.steps, model.bars, model.barSteps), division2) ?? 1;
-    const head = headColumn(note);
-    const midi = pitchToMidi(note.pitch);
+    const head = headColumn(note2);
+    const midi = pitchToMidi(note2.pitch);
     if (midi === null) return false;
     const follow = /* @__PURE__ */ __name((pitch, start) => {
       focusCursorRef.current = true;
       select({ kind: "roll", pitch, start });
     }, "follow");
     if (edit === "shorter" || edit === "longer") {
-      const cols2 = Math.max(1, Math.round(note.duration));
+      const cols2 = Math.max(1, Math.round(note2.duration));
       let dur = edit === "longer" ? cols2 + step : cols2 - step;
       if (step > 1) dur = Math.max(step, snapColumn(head + dur, step) - head);
       if (dur < 1 || dur === cols2) return false;
       if (dryRun) return true;
-      const settled2 = resizeNote(model, note.start, note.pitch, dur, { readback: true });
+      const base2 = stepTextRef.current;
+      const place = columnPlace(model, head);
+      const end = endInBar(model, head, head + dur);
+      if (base2) {
+        if (!place) writeRoll(base2, NO_PLACE, "Couldn't set that length");
+        else if (end) writeRoll(base2, rollResize(base2.mini, base2.trees, place, midi, end), "Couldn't set that length");
+        else reportRefusal2("Couldn't set that length");
+        follow(note2.pitch, head);
+        return true;
+      }
+      const settled2 = resizeNote(model, note2.start, note2.pitch, dur, { readback: true });
       if (settled2 === model) {
         reportRefusal2("Couldn't set that length");
         return true;
       }
       mutate(() => settled2);
-      follow(note.pitch, head);
+      follow(note2.pitch, head);
       return true;
     }
     if (edit === "octaveUp" || edit === "octaveDown") {
@@ -42790,7 +47173,16 @@ function PianoRollGrid({
     if (toMidi < 0 || toMidi > 127) return false;
     if (dryRun) return true;
     const toPitch = tokenForRow(!!model.numeric, toMidi);
-    const settled = moveNote(model, note.pitch, note.start, toPitch, toStart, { readback: true });
+    const base = stepTextRef.current;
+    const from = columnPlace(model, head);
+    const to = columnPlace(model, toStart);
+    if (base) {
+      const bars = model.bars ?? 1;
+      if (!from || !to) writeRoll(base, NO_PLACE, "Couldn't move that note there");
+      else if (writeRoll(base, rollMove(base.mini, base.trees, from, midi, to, toPitch, (t) => chunkDivisions(t, bars)), "Couldn't move that note there")) follow(toPitch, toStart);
+      return true;
+    }
+    const settled = moveNote(model, note2.pitch, note2.start, toPitch, toStart, { readback: true });
     if (settled === model) {
       reportRefusal2("Couldn't move that note there");
       return true;
@@ -42812,45 +47204,91 @@ function PianoRollGrid({
     if (!at) return false;
     if (model.lookOnly && action !== "copy") return false;
     const midi = rows[at.row];
-    const note = noteAt(model, midi, at.col);
-    if (isNoteEdit(action)) return note ? editNote(note, action, dryRun) : false;
+    const note2 = noteAt2(model, midi, at.col);
+    if (isNoteEdit(action)) return note2 ? editNote(note2, action, dryRun) : false;
     switch (action) {
       case "remove":
-        if (!note) return false;
-        if (!dryRun) deleteNote(note);
+        if (!note2) return false;
+        if (!dryRun) deleteNote(note2);
         return true;
       case "copy":
-        if (!note) return false;
-        if (!dryRun) copyNote(note);
+        if (!note2) return false;
+        if (!dryRun) copyNote(note2);
         return true;
       case "paste":
         if (!getNoteClip() || !cursorCell()) return false;
         if (!dryRun) pasteClip();
         return true;
       case "toggle":
-        if (note) {
-          if (!dryRun) deleteNote(note);
+        if (note2) {
+          if (!dryRun) deleteNote(note2);
           return true;
         }
         if (!placesNotes) return false;
-        if (!dryRun) placeAt(midi, at.col);
+        if (!dryRun) placeAt2(midi, at.col);
         return true;
     }
   }, "runGesture");
-  const runGestureRef = React48.useRef(runGesture);
+  const runGestureRef = React33.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React48.useEffect(
+  React33.useEffect(
     () => mountGridGestures(GRID_SCOPE.pianoRoll, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React48.useRef(null);
+  const rulerRef = React33.useRef(null);
   useRulerFit(rulerRef, "data-roll-ruler-label");
   const phoneGrid = usePhoneGrid();
   const rulerPan = useRulerPan(scrollRef, phoneGrid.phone);
   const stepMin = phoneGrid.phone ? PHONE_STEP_MIN : 12;
+  const trackRef = React33.useRef(null);
+  const zoom = useGridZoom(scrollRef, !phoneGrid.phone, !!model, trackRef);
+  const zoomed = !phoneGrid.phone;
+  const rollMini = chunk?.miniString ?? null;
+  const hasModel = !!model;
+  const barCount = model?.bars ?? 1;
+  const trees = React33.useMemo(
+    () => hasModel && rollMini !== null ? chunkDivisions(rollMini, barCount) : null,
+    [hasModel, barCount, rollMini]
+  );
+  const linesFrom = model ? linesModel(model, read5) : null;
+  const parts = linesFrom?.source?.parts ?? null;
+  const midiOf = /* @__PURE__ */ __name((token) => model?.numeric ? Number(token) : pitchToMidi(token), "midiOf");
+  const notesByPart = React33.useMemo(() => {
+    if (!parts || parts.length < 2) return null;
+    const out = /* @__PURE__ */ new Map();
+    for (const p of parts) {
+      const keys = /* @__PURE__ */ new Set();
+      for (const r of p.regions) for (const n of r.content) keys.add(`${midiOf(n.pitch)}@${n.start}`);
+      out.set(p.part, keys);
+    }
+    return out;
+  }, [parts]);
+  const editedPart = (() => {
+    if (!linesFrom) return 0;
+    if (notesByPart && model && selected?.kind === "roll") {
+      const m = midiOf(selected.pitch);
+      const hit = model.notes.find(
+        (n) => midiOf(n.pitch) === m && selected.start >= n.start && selected.start < n.start + Math.max(1, n.duration)
+      );
+      if (hit) {
+        for (const [part, keys] of notesByPart) if (keys.has(`${m}@${hit.start}`)) return part;
+      }
+    }
+    return rollPart(linesFrom);
+  })();
+  const nodes = React33.useMemo(
+    () => linesFrom && trees ? partSteps(linesFrom, trees, editedPart) : null,
+    [linesFrom, trees, editedPart]
+  );
+  const otherNotes = notesByPart ? (key3) => !notesByPart.get(editedPart)?.has(key3) : null;
   const pinned = phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2, background: "var(--background, #0f0f12)" } : {};
+  const playheadRef = React33.useRef(null);
+  useExactPlayhead(gridRef, playheadRef, model, (c) => trackRef.current?.children[c] ?? null);
+  const rollEligible = !!chunk && opensPianoRoll(chunk);
+  const lookTree = useDeferredPerText(!hasModel && rollEligible ? rollMini : null, lookOnlyTreeRoll);
   if (!model) {
-    return React48.createElement(VisualEditStandby, {
+    if (lookTree && "roll" in lookTree) return /* @__PURE__ */ jsx(TreeRollGrid, { roll: lookTree.roll, reason: lookTree.reason });
+    return React33.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && opensPianoRoll(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -42858,16 +47296,30 @@ function PianoRollGrid({
   }
   const tabCell = cursorCell() ?? defaultCell();
   const layout = drawnLayout(model, cols);
-  const { stepStarts, ruler } = rollSteps(linesModel(model, read5), cols);
-  const barLine = /* @__PURE__ */ __name((c) => layout.barStart(c) ? "-2px 0 0 0 var(--foreground, #e6e6ea)" : c > 0 && stepStarts.has(c) ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0, "barLine");
+  let totalWeight = 0;
+  for (let c = 0; c < cols; c++) totalWeight += layout.weight(c);
+  const fitPer = zoom.avail !== null && totalWeight > 0 ? Math.max(1, (zoom.avail - (cols - 1)) / totalWeight) : null;
+  const minPer = !zoomed || fitPer === null ? stepMin : zoom.level === 1 ? Math.min(stepMin, fitPer) : Math.min(fitPer, 44) * zoom.level;
+  const maxPer = zoomed ? 44 * zoom.level : 44;
+  const perPx = Math.max(minPer, Math.min(fitPer ?? stepMin, maxPer));
+  const today = rollSteps(linesModel(model, read5), cols);
+  const drawn = nodes ? openAt(nodes, (c) => perPx * layout.weight(c), zoom.level > 1 ? OPEN_PX : Infinity) : null;
+  const stepDepth = drawn ? openStarts(drawn) : null;
+  const stepStarts = stepDepth ? new Set(stepDepth.keys()) : today.stepStarts;
+  const ruler = drawn ? zoomRuler(model, drawn) : today.ruler;
+  const barLine = /* @__PURE__ */ __name((c) => layout.barStart(c) ? "-2px 0 0 0 var(--foreground, #e6e6ea)" : c > 0 && stepStarts.has(c) ? (stepDepth?.get(c) ?? 1) <= 1 ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : (
+    // a step inside a step: lighter the deeper it sits
+    `-2px 0 0 0 color-mix(in srgb, var(--foreground-muted, #6a6a90) ${(stepDepth?.get(c) ?? 2) === 2 ? 55 : 30}%, transparent)`
+  ) : void 0, "barLine");
   const cellBox = /* @__PURE__ */ __name((c) => {
     const w = layout.weight(c);
-    return { flex: `${w} ${w} 0`, minWidth: stepMin * w, maxWidth: 44 * w };
+    return { flex: `${w} ${w} 0`, minWidth: minPer * w, maxWidth: maxPer * w };
   }, "cellBox");
   return /* @__PURE__ */ jsxs(
     "div",
     {
       "data-bottom-panel-tab": "piano-roll",
+      "data-roll-lines-part": nodes ? editedPart : void 0,
       "data-look-only": model.lookOnly ? model.lookOnly.gate : void 0,
       tabIndex: -1,
       onPointerDownCapture: (e) => {
@@ -42896,6 +47348,7 @@ function PianoRollGrid({
       children: [
         /* @__PURE__ */ jsxs("div", { "data-roll-header": true, style: { display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }, children: [
           /* @__PURE__ */ jsx(PatternTrackChip, {}),
+          zoomed && /* @__PURE__ */ jsx(GridZoomControl, { zoom }),
           /* @__PURE__ */ jsx(TurnHint, { show: phoneGrid.upright && rulerPan.inView.more }),
           model.lookOnly && /* @__PURE__ */ jsx(
             "div",
@@ -42968,7 +47421,7 @@ function PianoRollGrid({
                       },
                       children: [
                         /* @__PURE__ */ jsx("div", { style: { width: model.numeric ? 36 : 40, flex: "0 0 auto", alignSelf: "stretch", ...pinned } }),
-                        /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, c) => {
+                        /* @__PURE__ */ jsx("div", { ref: trackRef, style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, c) => {
                           const label = ruler.get(c);
                           const isBar = label !== void 0 && !label.includes(".");
                           return /* @__PURE__ */ jsx("div", { style: { ...cellBox(c), position: "relative", height: "100%" }, children: label !== void 0 && /* @__PURE__ */ jsx(
@@ -42994,328 +47447,341 @@ function PianoRollGrid({
                       ]
                     }
                   ),
-                  /* @__PURE__ */ jsx(
+                  /* @__PURE__ */ jsxs(
                     "div",
                     {
                       ref: gridRef,
                       role: "grid",
                       "aria-label": "Piano roll",
-                      style: { display: "flex", flexDirection: "column", gap: 1 },
-                      children: rows.map((midi) => {
-                        const black = !model.numeric && isBlackKey(midi);
-                        const hovered = midi === hoveredMidi;
-                        const keyC = cLabel(midi);
-                        return /* @__PURE__ */ jsxs(
+                      style: { display: "flex", flexDirection: "column", gap: 1, position: "relative" },
+                      children: [
+                        /* @__PURE__ */ jsx(
                           "div",
                           {
-                            role: "row",
-                            style: { display: "flex", alignItems: "center", gap: 6 },
-                            onPointerEnter: () => {
-                              if (!dragRef.current && !velRef.current) setHoveredMidi(midi);
-                            },
-                            children: [
-                              model.numeric ? (
-                                // Numeric rows are raw values/degrees, not piano keys — keep the
-                                // value label (no keyboard graphic).
-                                /* @__PURE__ */ jsx(
-                                  "span",
-                                  {
-                                    role: "rowheader",
-                                    style: {
-                                      width: 36,
-                                      fontSize: 9,
-                                      textAlign: "right",
-                                      color: "var(--foreground, #e6e6ea)",
-                                      ...pinned
-                                    },
-                                    children: tokenForRow(true, midi)
-                                  }
-                                )
-                              ) : (
-                                // Graphical piano key (#430). Fixed-width key bed so the note
-                                // cells stay column-aligned across every row (PV120 single
-                                // vertical axis — same `rows` midi list). White keys fill the
-                                // bed light; a black key is a shorter dark bar overlaid on the
-                                // BACK (left) of the bed, leaving the white front edge visible —
-                                // the keyboard look. C rows are labelled (C is always white).
-                                /* @__PURE__ */ jsxs(
-                                  "span",
-                                  {
-                                    role: "rowheader",
-                                    "aria-label": noteDisplayName(midi),
-                                    "data-roll-key": midi,
-                                    "data-roll-key-black": black ? "true" : void 0,
-                                    title: `Play ${noteDisplayName(midi)}`,
-                                    onPointerDown: (e) => {
-                                      e.preventDefault();
-                                      startHold(midi);
-                                    },
-                                    onPointerEnter: () => moveHold(midi),
-                                    style: {
-                                      position: "relative",
-                                      width: 40,
-                                      height: 16,
-                                      flex: "0 0 auto",
-                                      boxSizing: "border-box",
-                                      borderRadius: "2px 3px 3px 2px",
-                                      border: "1px solid var(--border, #3a3a42)",
-                                      background: hovered ? "#cdd3ff" : "#e8e8ec",
-                                      color: "#3a3a42",
-                                      fontSize: 8,
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "flex-end",
-                                      paddingRight: 3,
-                                      overflow: "hidden",
-                                      cursor: "pointer",
-                                      touchAction: "none",
-                                      // let a touch-drag glissando across keys
-                                      // pinned on a phone (#2006); the key keeps its own colour
-                                      ...phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2 } : {}
-                                    },
-                                    children: [
-                                      black && /* @__PURE__ */ jsx(
-                                        "span",
-                                        {
-                                          "aria-hidden": "true",
-                                          style: {
-                                            position: "absolute",
-                                            left: 0,
-                                            top: 0,
-                                            bottom: 0,
-                                            width: "62%",
-                                            background: hovered ? "#3a3a44" : "#1b1b20",
-                                            borderRadius: "1px 2px 2px 1px"
-                                          }
-                                        }
-                                      ),
-                                      /* @__PURE__ */ jsx("span", { style: { position: "relative" }, children: keyC ?? "" })
-                                    ]
-                                  }
-                                )
-                              ),
-                              /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, step) => {
-                                const hit = overlapAt(model, midi, step);
-                                const note = hit?.note;
-                                const on = note !== void 0;
-                                const isHead = on && headColumn(note) === step;
-                                const isTail = on && tailColumn(note) === step;
-                                const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
-                                const canPlace = !model.lookOnly && (on || placesNotes);
-                                const dropRefused = declinedCell === `${midi}:${step}`;
-                                const resizeInert = on && isTail && resizable?.has(note) === false;
-                                const isTab = tabCell.col === step && rows[tabCell.row] === midi;
-                                return (
-                                  // A gridcell holding one toggle button (ARIA grid pattern: a cell
-                                  // with a single widget puts focus on the widget). The button keeps
-                                  // `aria-pressed` — a gridcell may not carry it, a button may — and
-                                  // the cell carries the cursor as `aria-selected` (#1802).
+                            ref: playheadRef,
+                            "aria-hidden": "true",
+                            "data-roll-playhead-line": true,
+                            style: { display: "none", position: "absolute", left: 0, top: 0, bottom: 0, width: 2, marginLeft: -1, background: "var(--foreground, #e6e6ea)", opacity: 0.5, pointerEvents: "none", zIndex: 3 }
+                          }
+                        ),
+                        rows.map((midi) => {
+                          const black = !model.numeric && isBlackKey(midi);
+                          const hovered = midi === hoveredMidi;
+                          const keyC = cLabel(midi);
+                          return /* @__PURE__ */ jsxs(
+                            "div",
+                            {
+                              role: "row",
+                              style: { display: "flex", alignItems: "center", gap: 6 },
+                              onPointerEnter: () => {
+                                if (!dragRef.current && !velRef.current) setHoveredMidi(midi);
+                              },
+                              children: [
+                                model.numeric ? (
+                                  // Numeric rows are raw values/degrees, not piano keys — keep the
+                                  // value label (no keyboard graphic).
                                   /* @__PURE__ */ jsx(
-                                    "div",
+                                    "span",
                                     {
-                                      role: "gridcell",
-                                      "aria-selected": isSel,
-                                      "data-roll-step-start": step > 0 && !layout.barStart(step) && stepStarts.has(step) ? "true" : void 0,
-                                      style: { display: "flex", ...cellBox(step), boxShadow: barLine(step) },
-                                      children: /* @__PURE__ */ jsxs(
-                                        "button",
-                                        {
-                                          type: "button",
-                                          tabIndex: isTab ? 0 : -1,
-                                          onFocus: () => {
-                                            if (!isSel) select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
-                                          },
-                                          "aria-pressed": on,
-                                          "aria-label": on && !isHead ? `${tokenForRow(!!model.numeric, midi)} step ${step + 1}, held from step ${headColumn(note) + 1}` : `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
-                                          "data-roll-cell": `${midi}:${step}`,
-                                          "data-roll-selected": isSel ? "true" : void 0,
-                                          "data-playing": step === playingStep ? "true" : void 0,
-                                          "data-roll-cell-inert": canPlace ? void 0 : "true",
-                                          "data-roll-drop-refused": dropRefused ? "true" : void 0,
-                                          "data-roll-resize-inert": resizeInert ? "true" : void 0,
-                                          "aria-disabled": canPlace ? void 0 : true,
-                                          title: model.lookOnly ? lookOnlyLine(model.lookOnly) : !canPlace ? "This pattern edits its existing notes \u2014 add notes in the code view." : resizeInert ? "This note has no other length the pattern can hold \u2014 change its length in the code view." : void 0,
-                                          onPointerDown: (e) => {
-                                            e.preventDefault();
-                                            if (!canPlace && !(e.metaKey || e.ctrlKey)) return;
-                                            onCellDown(midi, step, e);
-                                          },
-                                          onPointerEnter: () => onCellEnter(midi, step),
-                                          style: {
-                                            position: "relative",
-                                            width: "100%",
-                                            height: 16,
-                                            padding: 0,
-                                            border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
-                                            borderRadius: 2,
-                                            // The note is drawn by the fill BELOW, not by this background, so
-                                            // that a note occupying part of a column occupies part of the box
-                                            // (#1074). The cell keeps its own empty-cell background.
-                                            background: step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
-                                            cursor: dropRefused ? "not-allowed" : model.lookOnly ? "default" : "pointer"
-                                            // The selection ring (#432) is NOT here — see the overlay that
-                                            // is the cell's last child (#1077).
-                                          },
-                                          children: [
-                                            hit && // The note itself. WIDTH is how much of this column it sounds
-                                            // for and LEFT is where in the column it begins — the same
-                                            // geometry the step grid draws (#1056), from the same shared
-                                            // `columnOverlap` rule, with the offset that only the roll needs
-                                            // because only a roll note carries a fractional start.
-                                            //
-                                            // A non-head is dimmed, which is what this surface already did
-                                            // via the button's own opacity; moving it onto the fill keeps the
-                                            // cell's playhead border and selection ring at full strength.
-                                            /* @__PURE__ */ jsx(
-                                              "span",
-                                              {
-                                                "data-roll-fill": true,
-                                                "data-roll-sustain": !isHead ? "true" : void 0,
-                                                "data-roll-note-sounds": sounds ? (sounds.byNote.get(note) ?? []).join(" ") : void 0,
-                                                style: {
-                                                  position: "absolute",
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  left: `${hit.overlap.offset * 100}%`,
-                                                  width: `${hit.overlap.extent * 100}%`,
-                                                  background: colorMode === "velocity" ? velocityColor(note.gain ?? 1) : sounds ? soundFill(sounds.byNote.get(note) ?? []) : "var(--accent, #6ea8fe)",
-                                                  opacity: isHead ? 1 : 0.7,
-                                                  pointerEvents: "none"
-                                                }
-                                              }
-                                            ),
-                                            isHead && // Note name inside the bar (#605) — rendered on the head
-                                            // cell, clipped to THE BAR so it never spills onto a
-                                            // neighbour or onto the empty part of its own column.
-                                            // pointer-events:none so it never blocks the cell's
-                                            // pointer gestures (paint/drag) or the tail resize handle.
-                                            //
-                                            // Positioned against the FILL's box, not the cell's (#1078).
-                                            // While the note WAS the whole cell the two rectangles
-                                            // coincided and nothing had to choose; once the note became a
-                                            // child span occupying only its overlap (#1076), `inset: 0`
-                                            // put the label on empty background BESIDE the bar it names —
-                                            // 12 of 4842 corpus notes, every one of them a note that
-                                            // begins mid-column. Same two numbers the bar uses, so the
-                                            // two cannot drift apart again.
-                                            /* @__PURE__ */ jsx(
-                                              "span",
-                                              {
-                                                "data-roll-note-name": true,
-                                                "aria-hidden": "true",
-                                                style: {
-                                                  position: "absolute",
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  left: `${hit.overlap.offset * 100}%`,
-                                                  width: `${hit.overlap.extent * 100}%`,
-                                                  display: "flex",
-                                                  alignItems: "center",
-                                                  paddingLeft: 3,
-                                                  fontSize: 8,
-                                                  lineHeight: 1,
-                                                  fontWeight: 600,
-                                                  color: "#fff",
-                                                  textShadow: "0 1px 1px rgba(0,0,0,0.55)",
-                                                  whiteSpace: "nowrap",
-                                                  overflow: "hidden",
-                                                  pointerEvents: "none"
-                                                },
-                                                children: model.numeric ? String(midi) : noteDisplayName(midi)
-                                              }
-                                            ),
-                                            isTail && resizable?.has(note) && // RENDERED ONLY WHERE A DRAG WOULD WRITE (`resizable`, #1322),
-                                            // which is the standing rule for every affordance this panel
-                                            // draws (#1064/#1070/#1089). 1,861 of 5,480 corpus notes have no
-                                            // length the document can carry, and until now every one of them
-                                            // drew a handle that took the cursor and did nothing.
-                                            //
-                                            // The resize handle sits at the BAR's trailing edge, not the
-                                            // cell's (#1078). A note that ends mid-column used to put its
-                                            // handle at the far side of the column — floating in empty
-                                            // background past the end of the note it resizes, which is a
-                                            // handle you cannot aim at because it is not on the thing.
-                                            // 18 of 4842 corpus notes.
-                                            //
-                                            // WIDTH IS CLAMPED TO THE BAR: a `@0.25` note in a
-                                            // minimum-width (12px) column is a 3px bar, and a fixed 8px
-                                            // handle would be wider than the note, overhanging backwards
-                                            // past its own start. The handle is never wider than what it
-                                            // resizes. What that costs — a very small note draws a very
-                                            // small handle — is paid back by the pointer-down grab zone
-                                            // below, which is floored and invisible: what you SEE is the
-                                            // note's own trailing edge, what you can HIT is larger.
-                                            /* @__PURE__ */ jsx(
-                                              "span",
-                                              {
-                                                "data-roll-resize": `${midi}:${note.start}`,
-                                                "aria-label": `resize ${tokenForRow(!!model.numeric, midi)}`,
-                                                onPointerDown: (e) => {
-                                                  e.preventDefault();
-                                                  e.stopPropagation();
-                                                  onResizeDown(note);
-                                                },
-                                                style: {
-                                                  position: "absolute",
-                                                  top: 0,
-                                                  bottom: 0,
-                                                  right: `${(1 - hit.overlap.offset - hit.overlap.extent) * 100}%`,
-                                                  width: `min(${RESIZE_ZONE_PX2}px, ${hit.overlap.extent * 100}%)`,
-                                                  cursor: "ew-resize",
-                                                  background: "var(--foreground, #e6e6ea)",
-                                                  opacity: 0.45,
-                                                  borderRadius: "0 2px 2px 0"
-                                                }
-                                              }
-                                            ),
-                                            isSel && // Selection ring (#432), drawn as the LAST child rather than as
-                                            // the cell's own inset shadow (#1077).
-                                            //
-                                            // An inset box-shadow paints with the element's background, and
-                                            // every child paints above it. That cost nothing while the note
-                                            // WAS the background; once the note became a child span (#1074)
-                                            // the ring was covered on every cell holding a note — which is
-                                            // every cell you would want to select. Measured against the
-                                            // previous build: 424 white ring pixels on a selected note cell
-                                            // → 0, while a selected EMPTY cell was unaffected, which is
-                                            // exactly why every existing assertion stayed green.
-                                            //
-                                            // Drawn last so it frames whatever is underneath — note, name,
-                                            // resize handle or bare cell — and never has to know which.
-                                            /* @__PURE__ */ jsx(
-                                              "span",
-                                              {
-                                                "data-roll-selection": true,
-                                                "aria-hidden": "true",
-                                                style: {
-                                                  position: "absolute",
-                                                  // Laid out against the PADDING box, so the ring sits a pixel
-                                                  // further in than the old inset shadow did — measured 403
-                                                  // white frame pixels against the original 424. Growing the
-                                                  // overlay by the border width to close that gap was tried and
-                                                  // MEASURED WORSE: at `inset: -1` the ring is drawn outside the
-                                                  // cell and bleeds across the 1px lane gap (2156). The pixel
-                                                  // nearest the border is not worth a ring that leaves its cell.
-                                                  inset: 0,
-                                                  borderRadius: 2,
-                                                  boxShadow: "inset 0 0 0 2px var(--foreground, #e6e6ea)",
-                                                  pointerEvents: "none"
-                                                }
-                                              }
-                                            )
-                                          ]
-                                        }
-                                      )
-                                    },
-                                    step
+                                      role: "rowheader",
+                                      style: {
+                                        width: 36,
+                                        fontSize: 9,
+                                        textAlign: "right",
+                                        color: "var(--foreground, #e6e6ea)",
+                                        ...pinned
+                                      },
+                                      children: tokenForRow(true, midi)
+                                    }
                                   )
-                                );
-                              }) })
-                            ]
-                          },
-                          midi
-                        );
-                      })
+                                ) : (
+                                  // Graphical piano key (#430). Fixed-width key bed so the note
+                                  // cells stay column-aligned across every row (PV120 single
+                                  // vertical axis — same `rows` midi list). White keys fill the
+                                  // bed light; a black key is a shorter dark bar overlaid on the
+                                  // BACK (left) of the bed, leaving the white front edge visible —
+                                  // the keyboard look. C rows are labelled (C is always white).
+                                  /* @__PURE__ */ jsxs(
+                                    "span",
+                                    {
+                                      role: "rowheader",
+                                      "aria-label": noteDisplayName(midi),
+                                      "data-roll-key": midi,
+                                      "data-roll-key-black": black ? "true" : void 0,
+                                      title: `Play ${noteDisplayName(midi)}`,
+                                      onPointerDown: (e) => {
+                                        e.preventDefault();
+                                        startHold(midi);
+                                      },
+                                      onPointerEnter: () => moveHold(midi),
+                                      style: {
+                                        position: "relative",
+                                        width: 40,
+                                        height: 16,
+                                        flex: "0 0 auto",
+                                        boxSizing: "border-box",
+                                        borderRadius: "2px 3px 3px 2px",
+                                        border: "1px solid var(--border, #3a3a42)",
+                                        background: hovered ? "#cdd3ff" : "#e8e8ec",
+                                        color: "#3a3a42",
+                                        fontSize: 8,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "flex-end",
+                                        paddingRight: 3,
+                                        overflow: "hidden",
+                                        cursor: "pointer",
+                                        touchAction: "none",
+                                        // let a touch-drag glissando across keys
+                                        // pinned on a phone (#2006); the key keeps its own colour
+                                        ...phoneGrid.phone ? { position: "sticky", left: 0, zIndex: 2 } : {}
+                                      },
+                                      children: [
+                                        black && /* @__PURE__ */ jsx(
+                                          "span",
+                                          {
+                                            "aria-hidden": "true",
+                                            style: {
+                                              position: "absolute",
+                                              left: 0,
+                                              top: 0,
+                                              bottom: 0,
+                                              width: "62%",
+                                              background: hovered ? "#3a3a44" : "#1b1b20",
+                                              borderRadius: "1px 2px 2px 1px"
+                                            }
+                                          }
+                                        ),
+                                        /* @__PURE__ */ jsx("span", { style: { position: "relative" }, children: keyC ?? "" })
+                                      ]
+                                    }
+                                  )
+                                ),
+                                /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, step) => {
+                                  const hit = overlapAt(model, midi, step);
+                                  const note2 = hit?.note;
+                                  const on = note2 !== void 0;
+                                  const isHead = on && headColumn(note2) === step;
+                                  const isTail = on && tailColumn(note2) === step;
+                                  const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
+                                  const canPlace = !model.lookOnly && (on || placesNotes);
+                                  const dropRefused = declinedCell === `${midi}:${step}`;
+                                  const resizeInert = on && isTail && resizable?.has(note2) === false;
+                                  const isTab = tabCell.col === step && rows[tabCell.row] === midi;
+                                  return (
+                                    // A gridcell holding one toggle button (ARIA grid pattern: a cell
+                                    // with a single widget puts focus on the widget). The button keeps
+                                    // `aria-pressed` — a gridcell may not carry it, a button may — and
+                                    // the cell carries the cursor as `aria-selected` (#1802).
+                                    /* @__PURE__ */ jsx(
+                                      "div",
+                                      {
+                                        role: "gridcell",
+                                        "aria-selected": isSel,
+                                        "data-roll-step-start": step > 0 && !layout.barStart(step) && stepStarts.has(step) ? "true" : void 0,
+                                        style: { display: "flex", ...cellBox(step), boxShadow: barLine(step) },
+                                        children: /* @__PURE__ */ jsxs(
+                                          "button",
+                                          {
+                                            type: "button",
+                                            tabIndex: isTab ? 0 : -1,
+                                            onFocus: () => {
+                                              if (!isSel) select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
+                                            },
+                                            "aria-pressed": on,
+                                            "aria-label": on && !isHead ? `${tokenForRow(!!model.numeric, midi)} step ${step + 1}, held from step ${headColumn(note2) + 1}` : `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
+                                            "data-roll-cell": `${midi}:${step}`,
+                                            "data-roll-selected": isSel ? "true" : void 0,
+                                            "data-playing": step === playingStep ? "true" : void 0,
+                                            "data-roll-cell-inert": canPlace ? void 0 : "true",
+                                            "data-roll-drop-refused": dropRefused ? "true" : void 0,
+                                            "data-roll-resize-inert": resizeInert ? "true" : void 0,
+                                            "aria-disabled": canPlace ? void 0 : true,
+                                            title: model.lookOnly ? lookOnlyLine(model.lookOnly) : !canPlace ? "This pattern edits its existing notes \u2014 add notes in the code view." : resizeInert ? "This note has no other length the pattern can hold \u2014 change its length in the code view." : void 0,
+                                            onPointerDown: (e) => {
+                                              e.preventDefault();
+                                              if (!canPlace && !(e.metaKey || e.ctrlKey)) return;
+                                              onCellDown(midi, step, e);
+                                            },
+                                            onPointerEnter: () => onCellEnter(midi, step),
+                                            style: {
+                                              position: "relative",
+                                              width: "100%",
+                                              height: 16,
+                                              padding: 0,
+                                              border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                                              borderRadius: 2,
+                                              // The note is drawn by the fill BELOW, not by this background, so
+                                              // that a note occupying part of a column occupies part of the box
+                                              // (#1074). The cell keeps its own empty-cell background.
+                                              background: step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
+                                              cursor: dropRefused ? "not-allowed" : model.lookOnly ? "default" : "pointer"
+                                              // The selection ring (#432) is NOT here — see the overlay that
+                                              // is the cell's last child (#1077).
+                                            },
+                                            children: [
+                                              hit && // The note itself. WIDTH is how much of this column it sounds
+                                              // for and LEFT is where in the column it begins — the same
+                                              // geometry the step grid draws (#1056), from the same shared
+                                              // `columnOverlap` rule, with the offset that only the roll needs
+                                              // because only a roll note carries a fractional start.
+                                              //
+                                              // A non-head is dimmed, which is what this surface already did
+                                              // via the button's own opacity; moving it onto the fill keeps the
+                                              // cell's playhead border and selection ring at full strength.
+                                              /* @__PURE__ */ jsx(
+                                                "span",
+                                                {
+                                                  "data-roll-fill": true,
+                                                  "data-roll-sustain": !isHead ? "true" : void 0,
+                                                  "data-roll-note-sounds": sounds ? (sounds.byNote.get(note2) ?? []).join(" ") : void 0,
+                                                  "data-roll-dim": otherNotes?.(`${midiOf(note2.pitch)}@${note2.start}`) ? "" : void 0,
+                                                  style: {
+                                                    position: "absolute",
+                                                    top: 0,
+                                                    bottom: 0,
+                                                    left: `${hit.overlap.offset * 100}%`,
+                                                    width: `${hit.overlap.extent * 100}%`,
+                                                    background: colorMode === "velocity" ? velocityColor(note2.gain ?? 1) : sounds ? soundFill(sounds.byNote.get(note2) ?? []) : "var(--accent, #6ea8fe)",
+                                                    // another part's note is drawn dimmer (#2277): the lines are the edited part's
+                                                    opacity: (isHead ? 1 : 0.7) * (otherNotes?.(`${midiOf(note2.pitch)}@${note2.start}`) ? 0.35 : 1),
+                                                    pointerEvents: "none"
+                                                  }
+                                                }
+                                              ),
+                                              isHead && // Note name inside the bar (#605) — rendered on the head
+                                              // cell, clipped to THE BAR so it never spills onto a
+                                              // neighbour or onto the empty part of its own column.
+                                              // pointer-events:none so it never blocks the cell's
+                                              // pointer gestures (paint/drag) or the tail resize handle.
+                                              //
+                                              // Positioned against the FILL's box, not the cell's (#1078).
+                                              // While the note WAS the whole cell the two rectangles
+                                              // coincided and nothing had to choose; once the note became a
+                                              // child span occupying only its overlap (#1076), `inset: 0`
+                                              // put the label on empty background BESIDE the bar it names —
+                                              // 12 of 4842 corpus notes, every one of them a note that
+                                              // begins mid-column. Same two numbers the bar uses, so the
+                                              // two cannot drift apart again.
+                                              /* @__PURE__ */ jsx(
+                                                "span",
+                                                {
+                                                  "data-roll-note-name": true,
+                                                  "aria-hidden": "true",
+                                                  style: {
+                                                    position: "absolute",
+                                                    top: 0,
+                                                    bottom: 0,
+                                                    left: `${hit.overlap.offset * 100}%`,
+                                                    width: `${hit.overlap.extent * 100}%`,
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    paddingLeft: 3,
+                                                    fontSize: 8,
+                                                    lineHeight: 1,
+                                                    fontWeight: 600,
+                                                    color: "#fff",
+                                                    textShadow: "0 1px 1px rgba(0,0,0,0.55)",
+                                                    whiteSpace: "nowrap",
+                                                    overflow: "hidden",
+                                                    pointerEvents: "none"
+                                                  },
+                                                  children: model.numeric ? String(midi) : noteDisplayName(midi)
+                                                }
+                                              ),
+                                              isTail && resizable?.has(note2) && // RENDERED ONLY WHERE A DRAG WOULD WRITE (`resizable`, #1322),
+                                              // which is the standing rule for every affordance this panel
+                                              // draws (#1064/#1070/#1089). 1,861 of 5,480 corpus notes have no
+                                              // length the document can carry, and until now every one of them
+                                              // drew a handle that took the cursor and did nothing.
+                                              //
+                                              // The resize handle sits at the BAR's trailing edge, not the
+                                              // cell's (#1078). A note that ends mid-column used to put its
+                                              // handle at the far side of the column — floating in empty
+                                              // background past the end of the note it resizes, which is a
+                                              // handle you cannot aim at because it is not on the thing.
+                                              // 18 of 4842 corpus notes.
+                                              //
+                                              // WIDTH IS CLAMPED TO THE BAR: a `@0.25` note in a
+                                              // minimum-width (12px) column is a 3px bar, and a fixed 8px
+                                              // handle would be wider than the note, overhanging backwards
+                                              // past its own start. The handle is never wider than what it
+                                              // resizes. What that costs — a very small note draws a very
+                                              // small handle — is paid back by the pointer-down grab zone
+                                              // below, which is floored and invisible: what you SEE is the
+                                              // note's own trailing edge, what you can HIT is larger.
+                                              /* @__PURE__ */ jsx(
+                                                "span",
+                                                {
+                                                  "data-roll-resize": `${midi}:${note2.start}`,
+                                                  "aria-label": `resize ${tokenForRow(!!model.numeric, midi)}`,
+                                                  onPointerDown: (e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    onResizeDown(note2);
+                                                  },
+                                                  style: {
+                                                    position: "absolute",
+                                                    top: 0,
+                                                    bottom: 0,
+                                                    right: `${(1 - hit.overlap.offset - hit.overlap.extent) * 100}%`,
+                                                    width: `min(${RESIZE_ZONE_PX3}px, ${hit.overlap.extent * 100}%)`,
+                                                    cursor: "ew-resize",
+                                                    background: "var(--foreground, #e6e6ea)",
+                                                    opacity: 0.45,
+                                                    borderRadius: "0 2px 2px 0"
+                                                  }
+                                                }
+                                              ),
+                                              isSel && // Selection ring (#432), drawn as the LAST child rather than as
+                                              // the cell's own inset shadow (#1077).
+                                              //
+                                              // An inset box-shadow paints with the element's background, and
+                                              // every child paints above it. That cost nothing while the note
+                                              // WAS the background; once the note became a child span (#1074)
+                                              // the ring was covered on every cell holding a note — which is
+                                              // every cell you would want to select. Measured against the
+                                              // previous build: 424 white ring pixels on a selected note cell
+                                              // → 0, while a selected EMPTY cell was unaffected, which is
+                                              // exactly why every existing assertion stayed green.
+                                              //
+                                              // Drawn last so it frames whatever is underneath — note, name,
+                                              // resize handle or bare cell — and never has to know which.
+                                              /* @__PURE__ */ jsx(
+                                                "span",
+                                                {
+                                                  "data-roll-selection": true,
+                                                  "aria-hidden": "true",
+                                                  style: {
+                                                    position: "absolute",
+                                                    // Laid out against the PADDING box, so the ring sits a pixel
+                                                    // further in than the old inset shadow did — measured 403
+                                                    // white frame pixels against the original 424. Growing the
+                                                    // overlay by the border width to close that gap was tried and
+                                                    // MEASURED WORSE: at `inset: -1` the ring is drawn outside the
+                                                    // cell and bleeds across the 1px lane gap (2156). The pixel
+                                                    // nearest the border is not worth a ring that leaves its cell.
+                                                    inset: 0,
+                                                    borderRadius: 2,
+                                                    boxShadow: "inset 0 0 0 2px var(--foreground, #e6e6ea)",
+                                                    pointerEvents: "none"
+                                                  }
+                                                }
+                                              )
+                                            ]
+                                          }
+                                        )
+                                      },
+                                      step
+                                    )
+                                  );
+                                }) })
+                              ]
+                            },
+                            midi
+                          );
+                        })
+                      ]
                     }
                   ),
                   !model.lookOnly && /* @__PURE__ */ jsx(ExtendHandle, { length, gridRef, cellAttr: "data-roll-cell", cols, lastBarCols: layout.lastBarCols }),
@@ -43458,7 +47924,7 @@ function PianoRollGrid({
                                       left: `${grp.offset * 100}%`,
                                       width: `${grp.extent * 100}%`,
                                       bottom: 0,
-                                      height: `${clamp013(gg) * 100}%`,
+                                      height: `${clamp014(gg) * 100}%`,
                                       background: colorMode === "velocity" ? velocityColor(gg) : "var(--accent, #6ea8fe)",
                                       borderRadius: 2,
                                       // VISUAL ONLY, and still deliberately so. Every column
@@ -43488,7 +47954,7 @@ function PianoRollGrid({
                                     left: 1,
                                     right: 1,
                                     bottom: 0,
-                                    height: `${clamp013(g) * 100}%`,
+                                    height: `${clamp014(g) * 100}%`,
                                     background: colorMode === "velocity" ? velocityColor(g) : "var(--accent, #6ea8fe)",
                                     borderRadius: 2,
                                     pointerEvents: "none"
@@ -43514,21 +47980,21 @@ function PianoRollGrid({
 __name(PianoRollGrid, "PianoRollGrid");
 
 // src/visualEdit/panels/knobScale.ts
-function clamp014(pos) {
+function clamp015(pos) {
   return Math.min(1, Math.max(0, pos));
 }
-__name(clamp014, "clamp01");
-function positionOfValue(value, min, max, scale) {
+__name(clamp015, "clamp01");
+function positionOfValue(value, min, max, scale2) {
   if (!Number.isFinite(value) || !(max > min)) return 0;
-  if (scale === "log" && min > 0 && value > 0) {
-    return clamp014(Math.log(value / min) / Math.log(max / min));
+  if (scale2 === "log" && min > 0 && value > 0) {
+    return clamp015(Math.log(value / min) / Math.log(max / min));
   }
-  return clamp014((value - min) / (max - min));
+  return clamp015((value - min) / (max - min));
 }
 __name(positionOfValue, "positionOfValue");
-function valueAtPosition(pos, min, max, scale) {
-  const t = clamp014(Number.isFinite(pos) ? pos : 0);
-  if (scale === "log" && min > 0 && max > min) return min * Math.pow(max / min, t);
+function valueAtPosition(pos, min, max, scale2) {
+  const t = clamp015(Number.isFinite(pos) ? pos : 0);
+  if (scale2 === "log" && min > 0 && max > min) return min * Math.pow(max / min, t);
   return min + t * (max - min);
 }
 __name(valueAtPosition, "valueAtPosition");
@@ -43558,13 +48024,13 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React48.useRef(null);
-  const [editing, setEditing] = React48.useState(false);
-  const [draftMin, setDraftMin] = React48.useState("");
-  const [draftMax, setDraftMax] = React48.useState("");
-  const [popupPos, setPopupPos] = React48.useState(null);
-  const sliderRef = React48.useRef(null);
-  const popupRef = React48.useRef(null);
+  const dragRef = React33.useRef(null);
+  const [editing, setEditing] = React33.useState(false);
+  const [draftMin, setDraftMin] = React33.useState("");
+  const [draftMax, setDraftMax] = React33.useState("");
+  const [popupPos, setPopupPos] = React33.useState(null);
+  const sliderRef = React33.useRef(null);
+  const popupRef = React33.useRef(null);
   const POPUP_W = 132;
   const openRangeEditor = /* @__PURE__ */ __name(() => {
     if (!onRangeChange) return;
@@ -43580,7 +48046,7 @@ function Knob({
     }
     setEditing(false);
   }, "commitRange");
-  const placePopup = React48.useCallback(() => {
+  const placePopup = React33.useCallback(() => {
     const r = sliderRef.current?.getBoundingClientRect();
     if (!r) return;
     const margin = 8;
@@ -43594,10 +48060,10 @@ function Knob({
       )
     });
   }, []);
-  React48.useLayoutEffect(() => {
+  React33.useLayoutEffect(() => {
     if (editing) placePopup();
   }, [editing, placePopup]);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (!editing) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -43612,7 +48078,7 @@ function Knob({
       window.removeEventListener("resize", dismiss);
     };
   }, [editing]);
-  const closePopup = React48.useCallback(() => setEditing(false), []);
+  const closePopup = React33.useCallback(() => setEditing(false), []);
   useAnchorScroll(editing, sliderRef, popupRef, placePopup, closePopup);
   const pos = toPosition(value, range2);
   const angle = -135 + pos * 270;
@@ -44445,12 +48911,12 @@ function AddEffectMenu({
   present,
   onToggle
 }) {
-  const [open, setOpen] = React48.useState(false);
-  const [query, setQuery] = React48.useState("");
-  const [pos, setPos] = React48.useState(null);
-  const btnRef = React48.useRef(null);
-  const menuRef = React48.useRef(null);
-  const place = React48.useCallback(() => {
+  const [open, setOpen] = React33.useState(false);
+  const [query, setQuery] = React33.useState("");
+  const [pos, setPos] = React33.useState(null);
+  const btnRef = React33.useRef(null);
+  const menuRef = React33.useRef(null);
+  const place = React33.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -44464,10 +48930,10 @@ function AddEffectMenu({
       maxHeight
     });
   }, []);
-  React48.useLayoutEffect(() => {
+  React33.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -44487,12 +48953,12 @@ function AddEffectMenu({
       window.removeEventListener("resize", dismiss);
     };
   }, [open]);
-  const close = React48.useCallback(() => setOpen(false), []);
+  const close = React33.useCallback(() => setOpen(false), []);
   useAnchorScroll(open, btnRef, menuRef, place, close);
   const q = query.trim().toLowerCase();
   const groups = EFFECT_GROUPS.map(
-    ([group, effects]) => [
-      group,
+    ([group2, effects]) => [
+      group2,
       q ? effects.filter(
         (e) => e.label.toLowerCase().includes(q) || e.method.toLowerCase().includes(q)
       ) : effects
@@ -44541,7 +49007,7 @@ function AddEffectMenu({
               }
             }
           ),
-          groups.map(([group, effects]) => /* @__PURE__ */ jsxs("div", { children: [
+          groups.map(([group2, effects]) => /* @__PURE__ */ jsxs("div", { children: [
             /* @__PURE__ */ jsx(
               "div",
               {
@@ -44552,7 +49018,7 @@ function AddEffectMenu({
                   color: "var(--foreground-muted, #6a6a72)",
                   margin: "6px 4px 2px"
                 },
-                children: group
+                children: group2
               }
             ),
             effects.map((e) => {
@@ -44586,7 +49052,7 @@ function AddEffectMenu({
                 e.method
               );
             })
-          ] }, group)),
+          ] }, group2)),
           groups.length === 0 && /* @__PURE__ */ jsxs("div", { style: { padding: 8, fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" }, children: [
             "No effects match \u201C",
             query,
@@ -44732,37 +49198,37 @@ function MixerBody({
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
   const knobs = knobsFromChunk(chunk, showGain);
-  const writeKnob = React48.useCallback(
+  const writeKnob = React33.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => commit(wb, knobEdit(fresh, entry, value), "knob"));
     },
     [applyEdit]
   );
-  const writeRange = React48.useCallback(
+  const writeRange = React33.useCallback(
     (entry, min, max) => {
       applyEdit((fresh, wb) => commit(wb, knobRangeEdit(fresh, entry, min, max), "knob"));
     },
     [applyEdit]
   );
-  const resetRange = React48.useCallback(
+  const resetRange = React33.useCallback(
     (entry) => {
       applyEdit((fresh, wb) => commit(wb, knobRangeResetEdit(fresh, entry), "knob"));
     },
     [applyEdit]
   );
-  const toggleEffect = React48.useCallback(
+  const toggleEffect = React33.useCallback(
     (e) => {
       applyEdit((fresh, wb) => commit(wb, toggleCallEdit(fresh, effectNames(e), e.method, e.def), "knob"));
     },
     [applyEdit]
   );
-  const removeMethod = React48.useCallback(
+  const removeMethod = React33.useCallback(
     (method) => {
       applyEdit((fresh, wb) => commit(wb, removeNamedCall(fresh, method), "knob"));
     },
     [applyEdit]
   );
-  const writeChainMethod = React48.useCallback(
+  const writeChainMethod = React33.useCallback(
     (names, canonical, value, noun) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -44944,7 +49410,7 @@ var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function Mixer({ division: division2, onDivisionChange, resolution } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   if (!chunk || chunk.chain.length === 0) {
-    return React48.createElement(VisualEditStandby, {
+    return React33.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -44971,13 +49437,13 @@ __name(Mixer, "Mixer");
 var MAX_FADER_GAIN = 10 ** (6 / 20);
 var TAPER = 4;
 function faderPosToGain(pos) {
-  const p = clamp015(pos);
+  const p = clamp016(pos);
   return MAX_FADER_GAIN * p ** TAPER;
 }
 __name(faderPosToGain, "faderPosToGain");
 function gainToFaderPos(gain) {
   if (!(gain > 0)) return 0;
-  return clamp015((gain / MAX_FADER_GAIN) ** (1 / TAPER));
+  return clamp016((gain / MAX_FADER_GAIN) ** (1 / TAPER));
 }
 __name(gainToFaderPos, "gainToFaderPos");
 function gainToDb(gain) {
@@ -44992,10 +49458,10 @@ function formatDb(gain) {
   return (r > 0 ? "+" : "") + r.toFixed(1);
 }
 __name(formatDb, "formatDb");
-function clamp015(v) {
+function clamp016(v) {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
-__name(clamp015, "clamp01");
+__name(clamp016, "clamp01");
 
 // src/visualEdit/mixer/meterMath.ts
 var DEFAULT_BALLISTICS = {
@@ -45057,33 +49523,33 @@ function schedulersOf(payload) {
   return payload.engineComponents?.queryable?.trackSchedulers ?? null;
 }
 __name(schedulersOf, "schedulersOf");
-function levelColor(frac) {
-  if (frac >= 0.9) return "var(--meter-red, #ff5a52)";
-  if (frac >= 0.72) return "var(--meter-yellow, #ffcc4d)";
+function levelColor(frac2) {
+  if (frac2 >= 0.9) return "var(--meter-red, #ff5a52)";
+  if (frac2 >= 0.72) return "var(--meter-yellow, #ffcc4d)";
   return "var(--meter-green, #44d07b)";
 }
 __name(levelColor, "levelColor");
 var MIN_FRAME_MS = 1e3 / 60;
 var QUERY_WINDOW_CYCLES = 0.01;
 function useTrackMeters() {
-  const elsRef = React48.useRef(/* @__PURE__ */ new Map());
-  const stateRef = React48.useRef(/* @__PURE__ */ new Map());
-  const schedulersRef = React48.useRef(null);
-  const rafRef = React48.useRef(null);
-  const lastTsRef = React48.useRef(0);
-  const [fileId, setFileId] = React48.useState(() => getActiveFileId());
-  React48.useEffect(() => {
+  const elsRef = React33.useRef(/* @__PURE__ */ new Map());
+  const stateRef = React33.useRef(/* @__PURE__ */ new Map());
+  const schedulersRef = React33.useRef(null);
+  const rafRef = React33.useRef(null);
+  const lastTsRef = React33.useRef(0);
+  const [fileId, setFileId] = React33.useState(() => getActiveFileId());
+  React33.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React48.useCallback((captureId, els) => {
+  const register = React33.useCallback((captureId, els) => {
     if (els) elsRef.current.set(captureId, els);
     else {
       elsRef.current.delete(captureId);
       stateRef.current.delete(captureId);
     }
   }, []);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       schedulersRef.current = schedulersOf(payload);
     }) : (() => {
@@ -45174,13 +49640,13 @@ function useTrackMeters() {
       stateRef.current.clear();
     };
   }, [fileId]);
-  return React48.useMemo(() => ({ register }), [register]);
+  return React33.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners15 = /* @__PURE__ */ new Set();
+var listeners18 = /* @__PURE__ */ new Set();
 function read2(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
@@ -45192,7 +49658,7 @@ function toggleSolo(fileId, id) {
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners15.forEach((l) => l());
+  listeners18.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -45206,16 +49672,16 @@ function setPreSoloMutes(fileId, snapshot) {
   else snapshots.set(fileId, snapshot);
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
-function subscribe8(listener) {
-  listeners15.add(listener);
+function subscribe9(listener) {
+  listeners18.add(listener);
   return () => {
-    listeners15.delete(listener);
+    listeners18.delete(listener);
   };
 }
-__name(subscribe8, "subscribe");
+__name(subscribe9, "subscribe");
 function useActiveFileId() {
-  const [id, setId] = React48.useState(() => getActiveFileId());
-  React48.useEffect(() => {
+  const [id, setId] = React33.useState(() => getActiveFileId());
+  React33.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -45224,8 +49690,8 @@ function useActiveFileId() {
 __name(useActiveFileId, "useActiveFileId");
 function useSoloedIds() {
   const fileId = useActiveFileId();
-  return React48.useSyncExternalStore(
-    subscribe8,
+  return React33.useSyncExternalStore(
+    subscribe9,
     () => read2(fileId),
     () => EMPTY
   );
@@ -45234,7 +49700,7 @@ __name(useSoloedIds, "useSoloedIds");
 function useSoloStrips() {
   const fileId = useActiveFileId();
   const soloed = useSoloedIds();
-  const toggle = React48.useCallback(
+  const toggle = React33.useCallback(
     (id) => {
       if (fileId) toggleSolo(fileId, id);
     },
@@ -45247,7 +49713,7 @@ __name(useSoloStrips, "useSoloStrips");
 // src/visualEdit/mixer/soloMuteSync.ts
 function useSoloMuteSync() {
   const { soloed, toggle: toggleSet } = useSoloStrips();
-  const toggle = React48.useCallback(
+  const toggle = React33.useCallback(
     (id) => {
       const fileId = getActiveFileId();
       const editor = getActiveEditor();
@@ -45275,9 +49741,9 @@ function StripMeter({
   controller,
   horizontal = false
 }) {
-  const fillRef = React48.useRef(null);
-  const peakRef = React48.useRef(null);
-  React48.useEffect(() => {
+  const fillRef = React33.useRef(null);
+  const peakRef = React33.useRef(null);
+  React33.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -45340,7 +49806,7 @@ function panLabel(pan) {
   return `R${Math.round((pan - 0.5) * 200)}`;
 }
 __name(panLabel, "panLabel");
-var clamp016 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
+var clamp017 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
 function compactBtn(bg3, color, enabled) {
   return {
     flexShrink: 0,
@@ -45383,14 +49849,14 @@ function ChannelStrip({
   orientation = "vertical"
 }) {
   const horizontal = orientation === "horizontal";
-  const [colorAnchor, setColorAnchor] = React48.useState(null);
+  const [colorAnchor, setColorAnchor] = React33.useState(null);
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
-  const [renaming, setRenaming] = React48.useState(false);
+  const [renaming, setRenaming] = React33.useState(false);
   const bareLabel = strip.label ?? "";
   const renameSeed = bareLabel !== "" && bareLabel !== "$" ? bareLabel : "";
   const renameEnabled = onRename !== void 0;
-  const settledRef = React48.useRef(false);
+  const settledRef = React33.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {
     settledRef.current = false;
     setRenaming(true);
@@ -45411,8 +49877,8 @@ function ChannelStrip({
   const faderEnabled = gain !== null && onGainChange !== void 0;
   const panEnabled = !strip.panForeign && onPanChange !== void 0;
   const panValue = strip.pan ?? 0.5;
-  const faderDrag = React48.useRef(null);
-  const panDrag = React48.useRef(null);
+  const faderDrag = React33.useRef(null);
+  const panDrag = React33.useRef(null);
   const onFaderDown = /* @__PURE__ */ __name((e) => {
     if (!faderEnabled) return;
     e.preventDefault();
@@ -45424,7 +49890,7 @@ function ChannelStrip({
     const d = faderDrag.current;
     if (!d) return;
     const delta = horizontal ? e.clientX - d.start : d.start - e.clientY;
-    const next = faderPosToGain(clamp016(d.startPos + delta / DRAG_SPAN_PX2));
+    const next = faderPosToGain(clamp017(d.startPos + delta / DRAG_SPAN_PX2));
     onGainChange?.(Math.round(next * 1e3) / 1e3);
   }, "onFaderMove");
   const endFader = /* @__PURE__ */ __name((e) => {
@@ -45446,7 +49912,7 @@ function ChannelStrip({
   const onPanMove = /* @__PURE__ */ __name((e) => {
     const d = panDrag.current;
     if (!d) return;
-    const next = clamp016(d.startPan + (e.clientX - d.startX) / DRAG_SPAN_PX2);
+    const next = clamp017(d.startPan + (e.clientX - d.startX) / DRAG_SPAN_PX2);
     onPanChange?.(Math.round(next * 100) / 100);
   }, "onPanMove");
   const endPan = /* @__PURE__ */ __name((e) => {
@@ -46017,17 +50483,17 @@ function PatternPanel() {
   const phone = usePhone();
   const sideShown = usePatternSideShown();
   const gridAlone = phone || !sideShown;
-  const [selected, setSelected] = React48.useState(null);
+  const [selected, setSelected] = React33.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React48.useRef(stmtId);
-  React48.useEffect(() => {
+  const stmtRef = React33.useRef(stmtId);
+  React33.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setSelected(null);
     }
   }, [stmtId]);
-  const [division2, setDivision] = React48.useState(DEFAULT_DIVISION);
-  const [resolution, setResolution] = React48.useState(null);
+  const [division2, setDivision] = React33.useState(DEFAULT_DIVISION);
+  const [resolution, setResolution] = React33.useState(null);
   const grid = kind === "step" ? (
     // a `.struct` rhythm line draws the chords it times (#2120)
     chunk?.structRhythm ? /* @__PURE__ */ jsx(RhythmChartGrid, { onResolution: setResolution }) : /* @__PURE__ */ jsx(SequencerGrid, { onResolution: setResolution })
@@ -46072,7 +50538,7 @@ function key2(fileId) {
   return KEY_PREFIX + fileId;
 }
 __name(key2, "key");
-function safeLocalStorage5() {
+function safeLocalStorage6() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -46081,9 +50547,9 @@ function safeLocalStorage5() {
     return null;
   }
 }
-__name(safeLocalStorage5, "safeLocalStorage");
+__name(safeLocalStorage6, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners16 = /* @__PURE__ */ new Set();
+var listeners19 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -46095,7 +50561,7 @@ function parseExpanded(raw) {
 }
 __name(parseExpanded, "parseExpanded");
 function load(fileId) {
-  const ls = safeLocalStorage5();
+  const ls = safeLocalStorage6();
   if (!ls) return /* @__PURE__ */ new Set();
   try {
     return parseExpanded(ls.getItem(key2(fileId)));
@@ -46115,7 +50581,7 @@ function read3(fileId) {
 }
 __name(read3, "read");
 function persist(fileId, set2) {
-  const ls = safeLocalStorage5();
+  const ls = safeLocalStorage6();
   if (!ls) return;
   try {
     ls.setItem(key2(fileId), JSON.stringify([...set2]));
@@ -46129,19 +50595,19 @@ function toggleExpanded(fileId, id) {
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners16.forEach((l) => l());
+  listeners19.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
-function subscribe9(listener) {
-  listeners16.add(listener);
+function subscribe10(listener) {
+  listeners19.add(listener);
   return () => {
-    listeners16.delete(listener);
+    listeners19.delete(listener);
   };
 }
-__name(subscribe9, "subscribe");
+__name(subscribe10, "subscribe");
 function useActiveFileId2() {
-  const [id, setId] = React48.useState(() => getActiveFileId());
-  React48.useEffect(() => {
+  const [id, setId] = React33.useState(() => getActiveFileId());
+  React33.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -46150,12 +50616,12 @@ function useActiveFileId2() {
 __name(useActiveFileId2, "useActiveFileId");
 function useExpandedStrips() {
   const fileId = useActiveFileId2();
-  const expanded = React48.useSyncExternalStore(
-    subscribe9,
+  const expanded = React33.useSyncExternalStore(
+    subscribe10,
     () => read3(fileId),
     () => EMPTY2
   );
-  const toggle = React48.useCallback(
+  const toggle = React33.useCallback(
     (id) => {
       if (fileId) toggleExpanded(fileId, id);
     },
@@ -46185,7 +50651,7 @@ function parseMixerZoom(raw) {
   }
 }
 __name(parseMixerZoom, "parseMixerZoom");
-function safeLocalStorage6() {
+function safeLocalStorage7() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -46194,19 +50660,19 @@ function safeLocalStorage6() {
     return null;
   }
 }
-__name(safeLocalStorage6, "safeLocalStorage");
+__name(safeLocalStorage7, "safeLocalStorage");
 var cached = null;
-var listeners17 = /* @__PURE__ */ new Set();
+var listeners20 = /* @__PURE__ */ new Set();
 function read4() {
   if (cached == null) {
-    const ls = safeLocalStorage6();
+    const ls = safeLocalStorage7();
     cached = ls ? parseMixerZoom(ls.getItem(KEY)) : MIXER_ZOOM_DEFAULT;
   }
   return cached;
 }
 __name(read4, "read");
 function persist2(v) {
-  const ls = safeLocalStorage6();
+  const ls = safeLocalStorage7();
   if (!ls) return;
   try {
     ls.setItem(KEY, JSON.stringify(v));
@@ -46219,27 +50685,27 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners17.forEach((l) => l());
+  listeners20.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
   setMixerZoom(read4() + dir * MIXER_ZOOM_STEP);
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
-function subscribe10(listener) {
-  listeners17.add(listener);
+function subscribe11(listener) {
+  listeners20.add(listener);
   return () => {
-    listeners17.delete(listener);
+    listeners20.delete(listener);
   };
 }
-__name(subscribe10, "subscribe");
+__name(subscribe11, "subscribe");
 function useMixerZoom() {
-  const zoom = React48.useSyncExternalStore(subscribe10, read4, () => MIXER_ZOOM_DEFAULT);
+  const zoom = React33.useSyncExternalStore(subscribe11, read4, () => MIXER_ZOOM_DEFAULT);
   return {
     zoom,
     percent: Math.round(zoom * 100),
-    zoomIn: React48.useCallback(() => nudgeMixerZoom(1), []),
-    zoomOut: React48.useCallback(() => nudgeMixerZoom(-1), []),
+    zoomIn: React33.useCallback(() => nudgeMixerZoom(1), []),
+    zoomOut: React33.useCallback(() => nudgeMixerZoom(-1), []),
     canZoomIn: zoom < MIXER_ZOOM_MAX,
     canZoomOut: zoom > MIXER_ZOOM_MIN
   };
@@ -46306,29 +50772,29 @@ function analyserOf(payload) {
   return payload?.analyser ?? null;
 }
 __name(analyserOf, "analyserOf");
-function levelColor2(frac) {
-  if (frac >= 0.9) return "var(--meter-red, #ff5a52)";
-  if (frac >= 0.72) return "var(--meter-yellow, #ffcc4d)";
+function levelColor2(frac2) {
+  if (frac2 >= 0.9) return "var(--meter-red, #ff5a52)";
+  if (frac2 >= 0.72) return "var(--meter-yellow, #ffcc4d)";
   return "var(--meter-green, #44d07b)";
 }
 __name(levelColor2, "levelColor");
 function useMasterMeter() {
-  const elsRef = React48.useRef(null);
-  const stateRef = React48.useRef(ZERO_METER);
-  const analyserRef = React48.useRef(null);
-  const bufRef = React48.useRef(null);
-  const rafRef = React48.useRef(null);
-  const lastTsRef = React48.useRef(0);
-  const [fileId, setFileId] = React48.useState(() => getActiveFileId());
-  React48.useEffect(() => {
+  const elsRef = React33.useRef(null);
+  const stateRef = React33.useRef(ZERO_METER);
+  const analyserRef = React33.useRef(null);
+  const bufRef = React33.useRef(null);
+  const rafRef = React33.useRef(null);
+  const lastTsRef = React33.useRef(0);
+  const [fileId, setFileId] = React33.useState(() => getActiveFileId());
+  React33.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React48.useCallback((els) => {
+  const register = React33.useCallback((els) => {
     elsRef.current = els;
     if (!els) stateRef.current = ZERO_METER;
   }, []);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       analyserRef.current = analyserOf(payload);
     }) : (() => {
@@ -46402,12 +50868,12 @@ function useMasterMeter() {
       stateRef.current = ZERO_METER;
     };
   }, [fileId]);
-  return React48.useMemo(() => ({ register }), [register]);
+  return React33.useMemo(() => ({ register }), [register]);
 }
 __name(useMasterMeter, "useMasterMeter");
 var FADER_HEIGHT2 = 80;
 var DRAG_SPAN_PX3 = 160;
-var clamp017 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
+var clamp018 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
 function MasterStrip({
   zoom = 1,
   gain,
@@ -46421,9 +50887,9 @@ function MasterStrip({
   onGestureEnd
 }) {
   const meter = useMasterMeter();
-  const fillRef = React48.useRef(null);
-  const peakRef = React48.useRef(null);
-  React48.useEffect(() => {
+  const fillRef = React33.useRef(null);
+  const peakRef = React33.useRef(null);
+  React33.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -46431,7 +50897,7 @@ function MasterStrip({
     return () => meter.register(null);
   }, [meter]);
   const pos = gainToFaderPos(gain);
-  const drag = React48.useRef(null);
+  const drag = React33.useRef(null);
   const onDown = /* @__PURE__ */ __name((e) => {
     if (foreign) return;
     e.preventDefault();
@@ -46442,7 +50908,7 @@ function MasterStrip({
   const onMove = /* @__PURE__ */ __name((e) => {
     const d = drag.current;
     if (!d) return;
-    const next = faderPosToGain(clamp017(d.startPos + (d.startY - e.clientY) / DRAG_SPAN_PX3));
+    const next = faderPosToGain(clamp018(d.startPos + (d.startY - e.clientY) / DRAG_SPAN_PX3));
     onGainChange(Math.round(next * 1e3) / 1e3);
   }, "onMove");
   const onUp = /* @__PURE__ */ __name((e) => {
@@ -46712,8 +51178,8 @@ function MixerStrips({
     selectTrack
   } = useMixerModel();
   const meters = useTrackMeters();
-  const [fileId, setFileId] = React48.useState(() => getActiveFileId());
-  React48.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React33.useState(() => getActiveFileId());
+  React33.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
   const { expanded, toggle } = useExpandedStrips();
   const masterExpanded = expanded.has(MASTER_EXPAND_ID);
@@ -47006,9 +51472,9 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React48.createElement(Panel),
+      content: React33.createElement(Panel),
       // the Pattern tab's button for its right side panel (#2044)
-      headerActions: tab.id === PATTERN_TAB_ID ? React48.createElement(PatternSideToggle) : void 0
+      headerActions: tab.id === PATTERN_TAB_ID ? React33.createElement(PatternSideToggle) : void 0
     });
   }
 }
@@ -47049,24 +51515,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React48.useState(opts.initial);
-  const [dragging, setDragging] = React48.useState(false);
-  const startYRef = React48.useRef(0);
-  const startValueRef = React48.useRef(opts.initial);
-  const pointerIdRef = React48.useRef(null);
-  const draggingRef = React48.useRef(false);
-  const minRef = React48.useRef(opts.min);
-  const maxRef = React48.useRef(opts.max);
-  React48.useEffect(() => {
+  const [value, setValueState] = React33.useState(opts.initial);
+  const [dragging, setDragging] = React33.useState(false);
+  const startYRef = React33.useRef(0);
+  const startValueRef = React33.useRef(opts.initial);
+  const pointerIdRef = React33.useRef(null);
+  const draggingRef = React33.useRef(false);
+  const minRef = React33.useRef(opts.min);
+  const maxRef = React33.useRef(opts.max);
+  React33.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React48.useCallback((v) => {
+  const setValue = React33.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React48.useCallback(
+  const onPointerDown = React33.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -47081,7 +51547,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React48.useCallback(
+  const endDrag = React33.useCallback(
     (e, commit3) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -47096,7 +51562,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React48.useCallback(
+  const onPointerMove = React33.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -47112,13 +51578,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React48.useCallback(
+  const onPointerUp = React33.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React48.useCallback(
+  const onPointerCancel = React33.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -47145,18 +51611,18 @@ function pickActiveTabId(tabs2, chosen) {
 }
 __name(pickActiveTabId, "pickActiveTabId");
 function BottomPanel({ hidden = false } = {}) {
-  const [tabs2, setTabs] = React48.useState(
+  const [tabs2, setTabs] = React33.useState(
     () => listBottomPanelTabs()
   );
   const { open, activeTabId: chosenTabId } = useBottomPanelState();
   const setOpen = setBottomPanelOpen;
   const setActiveTabId = setBottomPanelActiveTab;
-  const [height, setHeight] = React48.useState(readPersistedHeight);
+  const [height, setHeight] = React33.useState(readPersistedHeight);
   const activeTabId = pickActiveTabId(tabs2, chosenTabId);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     return subscribeToBottomPanelTabs(() => setTabs(listBottomPanelTabs()));
   }, []);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (activeTabId !== chosenTabId) setBottomPanelActiveTab(activeTabId);
   }, [activeTabId, chosenTabId]);
   const drag = useDragResize({
@@ -47171,12 +51637,12 @@ function BottomPanel({ hidden = false } = {}) {
   const layout = usePhoneLayout();
   const sheet = layout === "upright";
   const wholeView = layout === "sideways";
-  const [sheetRest, setSheetRest] = React48.useState("half");
+  const [sheetRest, setSheetRest] = React33.useState("half");
   const stop = !open ? "closed" : typeof sheetRest === "number" ? "free" : sheetRest;
-  const [pulled, setPulled] = React48.useState(null);
-  const [room, setRoom] = React48.useState(null);
-  const spaceRef = React48.useRef(null);
-  const measureRoom = React48.useCallback(() => {
+  const [pulled, setPulled] = React33.useState(null);
+  const [room, setRoom] = React33.useState(null);
+  const spaceRef = React33.useRef(null);
+  const measureRoom = React33.useCallback(() => {
     const parent = spaceRef.current?.parentElement;
     if (!parent) return null;
     const box = parent.getBoundingClientRect();
@@ -47187,7 +51653,7 @@ function BottomPanel({ hidden = false } = {}) {
     return next;
   }, []);
   const drawn = tabs2.length > 0 && !hidden;
-  React48.useLayoutEffect(() => {
+  React33.useLayoutEffect(() => {
     if (!(sheet || wholeView) || !drawn) return;
     measureRoom();
     const parent = spaceRef.current?.parentElement;
@@ -47199,7 +51665,7 @@ function BottomPanel({ hidden = false } = {}) {
       observer?.disconnect();
     };
   }, [sheet, wholeView, drawn, open, measureRoom]);
-  const goToRest = React48.useCallback((next) => {
+  const goToRest = React33.useCallback((next) => {
     if (next === "closed") {
       setBottomPanelOpen(false);
       return;
@@ -47207,13 +51673,13 @@ function BottomPanel({ hidden = false } = {}) {
     setSheetRest(next);
     setBottomPanelOpen(true);
   }, []);
-  const pullRef = React48.useRef(null);
-  const swallowClickRef = React48.useRef(false);
-  const restRef = React48.useRef(open ? sheetRest : "closed");
+  const pullRef = React33.useRef(null);
+  const swallowClickRef = React33.useRef(false);
+  const restRef = React33.useRef(open ? sheetRest : "closed");
   restRef.current = open ? sheetRest : "closed";
-  const endPullRef = React48.useRef(null);
-  React48.useEffect(() => () => endPullRef.current?.(), []);
-  const onStripPointerDown = React48.useCallback(
+  const endPullRef = React33.useRef(null);
+  React33.useEffect(() => () => endPullRef.current?.(), []);
+  const onStripPointerDown = React33.useCallback(
     (e) => {
       swallowClickRef.current = false;
       if (!sheet || pullRef.current) return;
@@ -47232,14 +51698,14 @@ function BottomPanel({ hidden = false } = {}) {
         pull.moved = true;
         setPulled(heightAt(pull, ev.clientY));
       }, "move");
-      const finish = /* @__PURE__ */ __name((ev, settle) => {
+      const finish = /* @__PURE__ */ __name((ev, settle2) => {
         const pull = pullRef.current;
         if (!pull || ev.pointerId !== pull.pointerId) return;
         end();
         if (!pull.moved) return;
         swallowClickRef.current = true;
         setPulled(null);
-        if (settle) goToRest(sheetRestAfterPull(heightAt(pull, ev.clientY), pull.heights, window.innerHeight));
+        if (settle2) goToRest(sheetRestAfterPull(heightAt(pull, ev.clientY), pull.heights, window.innerHeight));
       }, "finish");
       const up = /* @__PURE__ */ __name((ev) => finish(ev, true), "up");
       const cancel = /* @__PURE__ */ __name((ev) => finish(ev, false), "cancel");
@@ -47260,25 +51726,25 @@ function BottomPanel({ hidden = false } = {}) {
     },
     [sheet, measureRoom, goToRest]
   );
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const wasOpenOnTabPressRef = React48.useRef(open);
-  const tabButtonRefs = React48.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React48.useCallback(
+  const wasOpenOnTabPressRef = React33.useRef(open);
+  const tabButtonRefs = React33.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React33.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React48.useCallback((id) => {
+  const focusTab = React33.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React48.useCallback(
+  const onTabsKeyDown = React33.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -47305,8 +51771,8 @@ function BottomPanel({ hidden = false } = {}) {
     [tabs2, activeTabId, focusTab]
   );
   const keyboardUp = useKeyboardUp();
-  const [, refocused] = React48.useReducer((n) => n + 1, 0);
-  React48.useEffect(() => {
+  const [, refocused] = React33.useReducer((n) => n + 1, 0);
+  React33.useEffect(() => {
     if (!keyboardUp) return;
     document.addEventListener("focusin", refocused);
     return () => document.removeEventListener("focusin", refocused);
@@ -47612,8 +52078,8 @@ __name(typeSymbol, "typeSymbol");
 function SymbolRow() {
   const upright = usePhoneLayout() === "upright";
   const keyboardUp = useKeyboardUp();
-  const [, focusMoved] = React48.useReducer((n) => n + 1, 0);
-  React48.useEffect(() => {
+  const [, focusMoved] = React33.useReducer((n) => n + 1, 0);
+  React33.useEffect(() => {
     if (!keyboardUp) return;
     document.addEventListener("focusin", focusMoved);
     document.addEventListener("focusout", focusMoved);
@@ -47673,38 +52139,18 @@ function SymbolRow() {
 }
 __name(SymbolRow, "SymbolRow");
 
-// src/workspace/vizLanguages.ts
-var VIZ_LANGUAGES = ["p5js", "hydra", "glsl"];
-var LANGUAGE_TO_RENDERER = {
-  p5js: "p5",
-  hydra: "hydra",
-  glsl: "glsl"
-};
-var RENDERER_TO_LANGUAGE = {
-  p5: "p5js",
-  hydra: "hydra",
-  glsl: "glsl"
-};
-function isVizLanguage(lang) {
-  return VIZ_LANGUAGES.includes(lang);
-}
-__name(isVizLanguage, "isVizLanguage");
-function rendererForLanguage(lang) {
-  return isVizLanguage(lang) ? LANGUAGE_TO_RENDERER[lang] : null;
-}
-__name(rendererForLanguage, "rendererForLanguage");
-function languageForRenderer(renderer) {
-  return RENDERER_TO_LANGUAGE[renderer];
-}
-__name(languageForRenderer, "languageForRenderer");
-
 // src/workspace/bottomPanel/hiddenForTab.ts
 function bottomPanelHiddenForTab(tab) {
   if (!tab) return false;
+  if (tab.kind === "app") return false;
   const language = getFile(tab.fileId)?.language;
   return language != null && isVizLanguage(language);
 }
 __name(bottomPanelHiddenForTab, "bottomPanelHiddenForTab");
+function paneShownFileId(tab) {
+  return tab && (tab.kind === "editor" || tab.kind === "preview") ? tab.fileId : null;
+}
+__name(paneShownFileId, "paneShownFileId");
 var tabbarScrollStyleInjected = false;
 function ensureTabbarScrollStyle() {
   if (tabbarScrollStyleInjected) return;
@@ -47744,25 +52190,42 @@ function transferBackdropWithTab(next, sourceGroup, movingTab, destGroupId) {
 __name(transferBackdropWithTab, "transferBackdropWithTab");
 function createInitialGroupState(initialTabs) {
   const id = generateGroupId();
-  const group = {
+  const group2 = {
     id,
     tabs: initialTabs,
     activeTabId: initialTabs.length > 0 ? initialTabs[0].id : null
   };
   const groups = /* @__PURE__ */ new Map();
-  groups.set(id, group);
+  groups.set(id, group2);
   return { groups, layout: [[id]], activeGroupId: id };
 }
 __name(createInitialGroupState, "createInitialGroupState");
-function tabFileName(tab) {
+function tabFileName(tab, appTabLabel) {
+  if (tab.kind === "app") return appTabLabel?.(tab)?.title ?? tab.appKey;
   const file = getFile(tab.fileId);
   if (!file) return tab.fileId;
   const parts = file.path.split("/");
   return parts[parts.length - 1];
 }
 __name(tabFileName, "tabFileName");
+function AppTabIcon({
+  tab,
+  appTabLabel
+}) {
+  const icon = appTabLabel?.(tab)?.icon;
+  if (icon === void 0 || icon === null) return null;
+  return /* @__PURE__ */ jsx(
+    "span",
+    {
+      "data-app-tab-icon": tab.appKey,
+      style: { display: "inline-flex", alignItems: "center", marginRight: 4, fontStyle: "normal" },
+      children: icon
+    }
+  );
+}
+__name(AppTabIcon, "AppTabIcon");
 function GroupTabBar({
-  group,
+  group: group2,
   canClose,
   onTabBarDragOver,
   onTabBarDrop,
@@ -47771,6 +52234,7 @@ function GroupTabBar({
   onTabDragStart,
   onTabContextMenu,
   onTabPromote,
+  appTabLabel,
   onNewFile,
   onSplitRight,
   onSplitDown,
@@ -47803,12 +52267,12 @@ function GroupTabBar({
       el.removeEventListener("scroll", update2);
       ro?.disconnect();
     };
-  }, [group.tabs.length]);
+  }, [group2.tabs.length]);
   useEffect(() => {
     const el = activeTabElRef.current;
     if (!el || typeof el.scrollIntoView !== "function") return;
     el.scrollIntoView({ inline: "nearest", block: "nearest" });
-  }, [group.activeTabId]);
+  }, [group2.activeTabId]);
   useEffect(() => {
     if (!menuOpen) return;
     const onDoc = /* @__PURE__ */ __name((e) => {
@@ -47831,7 +52295,7 @@ function GroupTabBar({
   return /* @__PURE__ */ jsxs(
     "div",
     {
-      "data-workspace-group-tabbar": group.id,
+      "data-workspace-group-tabbar": group2.id,
       onDragOver: onTabBarDragOver,
       onDrop: onTabBarDrop,
       style: {
@@ -47857,7 +52321,7 @@ function GroupTabBar({
                 "div",
                 {
                   ref: scrollRef,
-                  "data-workspace-tab-strip": group.id,
+                  "data-workspace-tab-strip": group2.id,
                   style: {
                     display: "flex",
                     alignItems: "center",
@@ -47868,8 +52332,8 @@ function GroupTabBar({
                     msOverflowStyle: "none"
                   },
                   children: [
-                    group.tabs.map((tab) => {
-                      const isActive = tab.id === group.activeTabId;
+                    group2.tabs.map((tab) => {
+                      const isActive = tab.id === group2.activeTabId;
                       const isPreview = (tab.kind === "editor" || tab.kind === "history") && tab.preview === true;
                       return /* @__PURE__ */ jsxs(
                         "div",
@@ -47924,8 +52388,8 @@ function GroupTabBar({
                                   },
                                   children: tab.mode === "view" ? "VIEW" : "DIFF"
                                 }
-                              ) : tab.kind === "preview" ? "\u{1F3A5} " : null,
-                              tabFileName(tab)
+                              ) : tab.kind === "preview" ? "\u{1F3A5} " : tab.kind === "app" ? /* @__PURE__ */ jsx(AppTabIcon, { tab, appTabLabel }) : null,
+                              tabFileName(tab, appTabLabel)
                             ] }),
                             /* @__PURE__ */ jsx(
                               "button",
@@ -47947,7 +52411,7 @@ function GroupTabBar({
                     onNewFile && /* @__PURE__ */ jsx(
                       "button",
                       {
-                        "data-testid": `tab-new-file-${group.id}`,
+                        "data-testid": `tab-new-file-${group2.id}`,
                         onClick: onNewFile,
                         title: "New file",
                         "aria-label": "New file",
@@ -47975,7 +52439,7 @@ function GroupTabBar({
                 "div",
                 {
                   "aria-hidden": true,
-                  "data-testid": `tab-strip-fade-left-${group.id}`,
+                  "data-testid": `tab-strip-fade-left-${group2.id}`,
                   style: {
                     position: "absolute",
                     top: 0,
@@ -47991,7 +52455,7 @@ function GroupTabBar({
                 "div",
                 {
                   "aria-hidden": true,
-                  "data-testid": `tab-strip-fade-right-${group.id}`,
+                  "data-testid": `tab-strip-fade-right-${group2.id}`,
                   style: {
                     position: "absolute",
                     top: 0,
@@ -48022,7 +52486,7 @@ function GroupTabBar({
                 "button",
                 {
                   ref: menuBtnRef,
-                  "data-testid": `tab-overflow-menu-${group.id}`,
+                  "data-testid": `tab-overflow-menu-${group2.id}`,
                   onClick: () => setMenuOpen((v) => !v),
                   title: "Show all tabs",
                   "aria-haspopup": "menu",
@@ -48034,7 +52498,7 @@ function GroupTabBar({
               /* @__PURE__ */ jsx(
                 "button",
                 {
-                  "data-testid": `group-split-${group.id}`,
+                  "data-testid": `group-split-${group2.id}`,
                   onClick: onSplitRight,
                   title: "Split right (\u2318\\\\)",
                   style: actionBtnStyle,
@@ -48044,7 +52508,7 @@ function GroupTabBar({
               /* @__PURE__ */ jsx(
                 "button",
                 {
-                  "data-testid": `group-split-down-${group.id}`,
+                  "data-testid": `group-split-down-${group2.id}`,
                   onClick: onSplitDown,
                   title: "Split down (\u2318\u21E7\\\\)",
                   style: actionBtnStyle,
@@ -48054,7 +52518,7 @@ function GroupTabBar({
               canClose && /* @__PURE__ */ jsx(
                 "button",
                 {
-                  "data-testid": `group-close-${group.id}`,
+                  "data-testid": `group-close-${group2.id}`,
                   onClick: onCloseGroup,
                   title: "Close group",
                   style: actionBtnStyle,
@@ -48066,7 +52530,7 @@ function GroupTabBar({
                 {
                   ref: menuRef,
                   role: "menu",
-                  "data-testid": `tab-overflow-list-${group.id}`,
+                  "data-testid": `tab-overflow-list-${group2.id}`,
                   style: {
                     position: "absolute",
                     top: "100%",
@@ -48082,8 +52546,8 @@ function GroupTabBar({
                     padding: "4px 0",
                     marginTop: 2
                   },
-                  children: group.tabs.map((tab) => {
-                    const isActive = tab.id === group.activeTabId;
+                  children: group2.tabs.map((tab) => {
+                    const isActive = tab.id === group2.activeTabId;
                     return /* @__PURE__ */ jsxs(
                       "div",
                       {
@@ -48116,7 +52580,8 @@ function GroupTabBar({
                               },
                               children: [
                                 tab.kind === "preview" ? "\u{1F3A5} " : "",
-                                tabFileName(tab)
+                                tab.kind === "app" ? /* @__PURE__ */ jsx(AppTabIcon, { tab, appTabLabel }) : null,
+                                tabFileName(tab, appTabLabel)
                               ]
                             }
                           ),
@@ -48159,10 +52624,13 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   onNewFile,
   onBackgroundFileChange,
   onActiveBackdropChange,
+  spanningBackdrop,
   onOpenPopoutPreview,
   backgroundCrop,
   onTabClose,
   previewProviderFor,
+  renderAppTab,
+  appTabLabel,
   chromeForTab,
   editorExtrasForTab,
   onSaveFile,
@@ -48254,9 +52722,9 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     ensureTabbarScrollStyle();
   }, []);
   const activeTab = useMemo(() => {
-    const group = groups.get(activeGroupId);
-    if (!group || group.activeTabId === null) return null;
-    return group.tabs.find((t) => t.id === group.activeTabId) ?? null;
+    const group2 = groups.get(activeGroupId);
+    if (!group2 || group2.activeTabId === null) return null;
+    return group2.tabs.find((t) => t.id === group2.activeTabId) ?? null;
   }, [groups, activeGroupId]);
   const prevActiveTabRef = useRef(void 0);
   useEffect(() => {
@@ -48285,13 +52753,64 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     [updateGroup]
   );
   const backdropSourceByFile = useRef(/* @__PURE__ */ new Map());
+  const syncAlongsideSources = useCallback(() => {
+    const ids = [];
+    for (const ref of backdropSourceByFile.current.values()) {
+      if (ref.kind === "file" && findBuiltinExampleSource(ref.fileId)) ids.push(ref.fileId);
+    }
+    setAlongsideSources(ids);
+  }, []);
+  const recordBackdropSource = useCallback(
+    (fileId, ref) => {
+      if (ref?.kind === "file") backdropSourceByFile.current.set(fileId, ref);
+      else backdropSourceByFile.current.delete(fileId);
+      syncAlongsideSources();
+    },
+    [syncAlongsideSources]
+  );
+  const [sourceChoiceVersion, setSourceChoiceVersion] = useState(0);
+  useEffect(
+    () => onVizSourceChoiceChange(() => setSourceChoiceVersion((n) => n + 1)),
+    []
+  );
+  useEffect(() => subscribeToFileDeletes(forgetVizSourceChoicesFor), []);
+  const sourceForBackdrop = useCallback(
+    (owner, bgFileId) => backdropSourceFor(
+      owner,
+      bgFileId,
+      (id) => {
+        const f = getFile(id);
+        return !!f && !isVizLanguage(f.language);
+      },
+      (id) => getVizSourceChoice(id)
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sourceChoiceVersion]
+  );
   const stopBackdropSource = useCallback((fileId) => {
     const ref = backdropSourceByFile.current.get(fileId);
     if (ref?.kind === "file") {
       findBuiltinExampleSource(ref.fileId)?.stopIfRunning();
     }
-    backdropSourceByFile.current.delete(fileId);
-  }, []);
+    cancelAudioStart(fileId);
+    recordBackdropSource(fileId, null);
+  }, [recordBackdropSource]);
+  const restoreOwnBackdropSound = useCallback(
+    (g, bgFileId) => {
+      const shown = paneShownFileId(g?.tabs.find((t) => t.id === g.activeTabId));
+      const ref = getVizSourceChoice(bgFileId);
+      if (ref.kind !== "file" || !findBuiltinExampleSource(ref.fileId)) return;
+      if (shown !== bgFileId || pausedPreviews.has(bgFileId)) return;
+      recordBackdropSource(bgFileId, ref);
+      startWhenAudioAllowed(bgFileId, () => {
+        const now2 = getVizSourceChoice(bgFileId);
+        const builtin = now2.kind === "file" ? findBuiltinExampleSource(now2.fileId) : void 0;
+        recordBackdropSource(bgFileId, builtin ? now2 : null);
+        builtin?.startIfIdle();
+      });
+    },
+    [recordBackdropSource, pausedPreviews]
+  );
   const stopDisplacedBackdrop = useCallback(
     (sourceGroupId, tabId, targetGroupId) => {
       if (sourceGroupId === targetGroupId) return;
@@ -48308,16 +52827,15 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   );
   const handleTabClose = useCallback(
     (groupId, tabId) => {
-      let closedTab = null;
       const existing = groups.get(groupId);
       const wasLastTab = existing !== void 0 && existing.tabs.length === 1;
       const canCollapseGroup = wasLastTab && groups.size > 1;
+      const closedTab = existing?.tabs.find((t) => t.id === tabId) ?? null;
       setGroups((prev) => {
         const cur = prev.get(groupId);
         if (!cur) return prev;
         const idx = cur.tabs.findIndex((t) => t.id === tabId);
         if (idx === -1) return prev;
-        closedTab = cur.tabs[idx];
         const nextTabs = cur.tabs.filter((t) => t.id !== tabId);
         let nextActive = cur.activeTabId;
         if (cur.activeTabId === tabId) {
@@ -48531,14 +53049,24 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
       if (prev) stopBackdropSource(prev);
+      if (backgroundFileId) restoreOwnBackdropSound(groups.get(groupId), backgroundFileId);
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? void 0
       }));
       onBackgroundFileChange?.(groupId, backgroundFileId);
     },
-    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource]
+    [groups, updateGroup, onBackgroundFileChange, stopBackdropSource, restoreOwnBackdropSound]
   );
+  useEffect(() => {
+    for (const g of groups.values()) {
+      if (g.backgroundFileId) restoreOwnBackdropSound(g, g.backgroundFileId);
+    }
+    const waiting = backdropSourceByFile.current;
+    return () => {
+      for (const id of waiting.keys()) cancelAudioStart(id);
+    };
+  }, []);
   const updateGroupOverride = useCallback(
     (groupId, overrideFileId) => {
       setBgOverrides((prev) => {
@@ -48655,7 +53183,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       if (fromRegistry) return fromRegistry;
       if (previewProviderFor) {
         const currentTab = activeTab;
-        const fileId = currentTab?.fileId ?? "";
+        const fileId = currentTab && currentTab.kind !== "app" ? currentTab.fileId : "";
         return previewProviderFor({
           kind: "preview",
           id: "__cmd-lookup__",
@@ -48709,12 +53237,12 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
-      const current8 = onSaveFileRef.current;
-      if (!current8) return;
+      const current9 = onSaveFileRef.current;
+      if (!current9) return;
       const tab = activeTab;
       if (!tab || tab.kind !== "editor") return;
       e.preventDefault();
-      current8(tab);
+      current9(tab);
     }, "handler");
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -48956,24 +53484,24 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     }
                   }, "onTogglePausePreview"),
                   onChangePreviewSource: /* @__PURE__ */ __name((nextRef) => {
-                    const current8 = shellActionsRef.current.findTabByFileId(
+                    const current9 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (!current8) return;
-                    updateGroup(current8.groupId, (g) => ({
+                    if (!current9) return;
+                    updateGroup(current9.groupId, (g) => ({
                       ...g,
                       tabs: g.tabs.map(
-                        (t) => t.id === current8.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
+                        (t) => t.id === current9.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
                       )
                     }));
                   }, "onChangePreviewSource"),
                   onOpenPreview: /* @__PURE__ */ __name((selectedSourceRef) => {
-                    const current8 = shellActionsRef.current.findTabByFileId(
+                    const current9 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (current8) {
+                    if (current9) {
                       return;
                     }
                     const sourceRef = selectedSourceRef ?? { kind: "default" };
@@ -49016,7 +53544,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                       }, "getPreviewProvider")
                     });
                     if (willActivate && sourceRef?.kind === "file") {
-                      backdropSourceByFile.current.set(tab.fileId, sourceRef);
+                      recordBackdropSource(tab.fileId, sourceRef);
                     }
                   }, "onToggleBackground"),
                   // #788 — the popover's source dropdown changed while this
@@ -49030,11 +53558,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     if (groups.get(groupId)?.backgroundFileId !== tab.fileId) {
                       return;
                     }
-                    if (ref.kind === "file") {
-                      backdropSourceByFile.current.set(tab.fileId, ref);
-                    } else {
-                      backdropSourceByFile.current.delete(tab.fileId);
-                    }
+                    recordBackdropSource(tab.fileId, ref);
                   }, "onBackdropSourceChange"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
                   // #773 — close THIS file's side preview when the viz-settings
@@ -49055,7 +53579,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   // the host (app popups).
                   backdropOpacity: groups.get(groupId)?.backdropOpacity ?? backdropOpacity,
                   backdropQuality: groups.get(groupId)?.backdropQuality ?? backdropQuality,
-                  backdropVizSpan,
+                  // #2423 — a host-owned span is a pattern's setting: no control here
+                  backdropVizSpan: spanningBackdrop === void 0 ? backdropVizSpan : void 0,
                   onSetBackdropOpacity: /* @__PURE__ */ __name((v) => updateGroupBackdropOpacity(groupId, v), "onSetBackdropOpacity"),
                   onSetBackdropQuality: /* @__PURE__ */ __name((q) => updateGroupBackdropQuality(groupId, q), "onSetBackdropQuality"),
                   onSetBackdropVizSpan: /* @__PURE__ */ __name((s) => setBackdropVizSpan(s), "onSetBackdropVizSpan"),
@@ -49169,6 +53694,40 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             `${tab.id}:diff`
           ) });
         }
+        case "app": {
+          const body = renderAppTab?.(tab);
+          return /* @__PURE__ */ jsx(
+            "div",
+            {
+              "data-workspace-view": "app",
+              "data-app-tab": tab.appKey,
+              style: {
+                position: "relative",
+                zIndex: 1,
+                height: "100%",
+                width: "100%",
+                overflow: "auto",
+                background: "var(--background)"
+              },
+              children: body ?? /* @__PURE__ */ jsx(
+                "div",
+                {
+                  "data-testid": `app-tab-unavailable-${tab.id}`,
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    height: "100%",
+                    color: "var(--foreground-muted)",
+                    fontSize: 12
+                  },
+                  children: "This tab is not available."
+                }
+              )
+            },
+            tab.id
+          );
+        }
         default:
           return assertNever(tab);
       }
@@ -49201,12 +53760,15 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       findGroupWithAnyPreview,
       editorExtrasForTab,
       closeTabById,
+      // #2471 — the app tab's body comes from this host hook
+      renderAppTab,
       // P239 guard — the viz-settings ctx (#773) reads these; without them
       // in the deps the callback closes over stale backdrop settings /
       // handlers and the popover controls act on outdated values.
       backdropOpacity,
       backdropQuality,
       backdropVizSpan,
+      spanningBackdrop,
       updateGroupBackdropOpacity,
       updateGroupBackdropQuality,
       onCropBackdrop,
@@ -49214,6 +53776,16 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     ]
   );
   const workspaceSpanBackdrop = useMemo(() => {
+    if (spanningBackdrop !== void 0) {
+      if (!spanningBackdrop) return null;
+      const showing = allGroupIds(layout).map((gid) => groups.get(gid)).find((g) => g && paneShownFileId(g.tabs.find((t) => t.id === g.activeTabId)) === spanningBackdrop.ownerFileId);
+      return {
+        fileId: spanningBackdrop.fileId,
+        ownerFileId: spanningBackdrop.ownerFileId,
+        quality: showing?.backdropQuality ?? backdropQuality,
+        opacity: showing?.backdropOpacity ?? backdropOpacity
+      };
+    }
     if (backdropVizSpan !== "workspace") return null;
     for (const gid of allGroupIds(layout)) {
       const g = groups.get(gid);
@@ -49222,18 +53794,19 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       if (fileId) {
         return {
           fileId,
-          groupId: gid,
+          // legacy: the driving pane's file — the viz itself when it is that viz's own pin
+          ownerFileId: paneShownFileId(g.tabs.find((t) => t.id === g.activeTabId)),
           quality: g.backdropQuality ?? backdropQuality,
           opacity: g.backdropOpacity ?? backdropOpacity
         };
       }
     }
     return null;
-  }, [backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity]);
+  }, [spanningBackdrop, backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity]);
   const workspaceSpanActive = workspaceSpanBackdrop != null;
   const renderBackdropLayer = useCallback(
     (params) => {
-      const { bgFileId, dataGroupId, quality, opacity, crop, paused } = params;
+      const { bgFileId, dataGroupId, quality, opacity, crop, paused, owner, sourceRef } = params;
       const bgProvider = previewProviderFor?.({
         kind: "preview",
         id: `bg-${bgFileId}`,
@@ -49258,6 +53831,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           "data-background-file-id": bgFileId,
           "data-backdrop-quality": quality,
           "data-backdrop-live": paused ? "false" : "true",
+          "data-backdrop-owner": owner ?? "own",
+          "data-backdrop-source": sourceRef.kind === "file" ? sourceRef.fileId : sourceRef.kind,
           style: {
             position: "absolute",
             inset: 0,
@@ -49280,10 +53855,12 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                 {
                   fileId: bgFileId,
                   provider: bgProvider,
-                  sourceRef: { kind: "default" },
+                  sourceRef,
                   theme,
                   hidden: false,
                   paused,
+                  backdrop: true,
+                  backdropOwner: owner,
                   onSourceRefChange: () => {
                   }
                 }
@@ -49296,39 +53873,39 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
     [previewProviderFor, theme]
   );
   const renderGroup = useCallback(
-    (group) => {
-      const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
-      const isShellActiveGroup = activeGroupId === group.id;
+    (group2) => {
+      const activeTabObj = group2.tabs.find((t) => t.id === group2.activeTabId);
+      const isShellActiveGroup = activeGroupId === group2.id;
       const canClose = groups.size > 1;
-      const isDragOver = dragOverTarget?.groupId === group.id;
+      const isDragOver = dragOverTarget?.groupId === group2.id;
       return /* @__PURE__ */ jsxs(
         "div",
         {
-          "data-workspace-group": group.id,
+          "data-workspace-group": group2.id,
           "data-active-group": isShellActiveGroup ? "true" : "false",
           onDragOver: (e) => {
             if (e.dataTransfer.types.includes(DRAG_MIME)) {
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
               const direction = computeQuadrant(e, e.currentTarget);
-              if (dragOverTarget?.groupId !== group.id || dragOverTarget.direction !== direction) {
-                setDragOverTarget({ groupId: group.id, direction });
+              if (dragOverTarget?.groupId !== group2.id || dragOverTarget.direction !== direction) {
+                setDragOverTarget({ groupId: group2.id, direction });
               }
             }
           },
           onDragLeave: (e) => {
             if (!e.currentTarget.contains(e.relatedTarget)) {
               setDragOverTarget(
-                (t) => t?.groupId === group.id ? null : t
+                (t) => t?.groupId === group2.id ? null : t
               );
             }
           },
-          onDrop: (e) => handleDropOnGroup(e, group.id),
-          onMouseEnter: playVizOnHover ? () => setHoveredGroupId(group.id) : void 0,
-          onMouseLeave: playVizOnHover ? () => setHoveredGroupId((h) => h === group.id ? null : h) : void 0,
+          onDrop: (e) => handleDropOnGroup(e, group2.id),
+          onMouseEnter: playVizOnHover ? () => setHoveredGroupId(group2.id) : void 0,
+          onMouseLeave: playVizOnHover ? () => setHoveredGroupId((h) => h === group2.id ? null : h) : void 0,
           onMouseDown: () => {
-            if (activeGroupId !== group.id) {
-              setActiveGroupId(group.id);
+            if (activeGroupId !== group2.id) {
+              setActiveGroupId(group2.id);
             }
           },
           style: {
@@ -49346,7 +53923,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             /* @__PURE__ */ jsx(
               GroupTabBar,
               {
-                group,
+                group: group2,
                 canClose,
                 onTabBarDragOver: (e) => {
                   if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
@@ -49354,56 +53931,66 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   e.stopPropagation();
                   e.dataTransfer.dropEffect = "move";
                 },
-                onTabBarDrop: (e) => handleTabBarDrop(e, group.id),
-                onTabClick: (tabId) => handleTabClick(group.id, tabId),
-                onTabClose: (tabId) => handleTabClose(group.id, tabId),
-                onTabDragStart: (e, tab) => handleTabDragStart(e, group.id, tab),
+                onTabBarDrop: (e) => handleTabBarDrop(e, group2.id),
+                onTabClick: (tabId) => handleTabClick(group2.id, tabId),
+                onTabClose: (tabId) => handleTabClose(group2.id, tabId),
+                onTabDragStart: (e, tab) => handleTabDragStart(e, group2.id, tab),
                 onTabContextMenu,
                 onTabPromote: (tabId) => {
                   setGroups((prev) => {
-                    const g = prev.get(group.id);
+                    const g = prev.get(group2.id);
                     if (!g) return prev;
                     const nextTabs = g.tabs.map(
                       (t) => t.id === tabId && (t.kind === "editor" || t.kind === "history") ? { ...t, preview: false } : t
                     );
                     const nx = new Map(prev);
-                    nx.set(group.id, { ...g, tabs: nextTabs });
+                    nx.set(group2.id, { ...g, tabs: nextTabs });
                     return nx;
                   });
                 },
+                appTabLabel,
                 onNewFile,
-                onSplitRight: () => handleSplit(group.id, "east"),
-                onSplitDown: () => handleSplit(group.id, "south"),
-                onCloseGroup: () => handleCloseGroup(group.id)
+                onSplitRight: () => handleSplit(group2.id, "east"),
+                onSplitDown: () => handleSplit(group2.id, "south"),
+                onCloseGroup: () => handleCloseGroup(group2.id)
               }
             ),
             /* @__PURE__ */ jsxs(
               "div",
               {
-                "data-workspace-group-content": group.id,
+                "data-workspace-group-content": group2.id,
                 style: { flex: 1, minHeight: 0, position: "relative" },
                 children: [
                   (() => {
-                    if (backdropVizSpan === "workspace") return null;
+                    if (workspaceSpanBackdrop) return null;
+                    if (activeTabObj?.kind === "app") return null;
                     const bgFileId = resolveBackdropFileId(
-                      group.backgroundFileId,
-                      bgOverrides.get(group.id)
+                      group2.backgroundFileId,
+                      bgOverrides.get(group2.id)
                     );
                     if (!bgFileId) return null;
-                    const groupQuality = group.backdropQuality ?? backdropQuality;
-                    const groupOpacity = group.backdropOpacity ?? backdropOpacity;
-                    const backdropPaused = playVizOnHover && !isShellActiveGroup && hoveredGroupId !== group.id;
+                    const groupQuality = group2.backdropQuality ?? backdropQuality;
+                    const groupOpacity = group2.backdropOpacity ?? backdropOpacity;
+                    const backdropPaused = playVizOnHover && !isShellActiveGroup && hoveredGroupId !== group2.id;
                     return renderBackdropLayer({
                       bgFileId,
-                      dataGroupId: group.id,
+                      dataGroupId: group2.id,
                       quality: groupQuality,
                       opacity: groupOpacity,
                       crop: backgroundCrop ?? null,
                       // #781 — the viz chrome's play/pause button pauses the backdrop
                       // through the same per-file `pausedPreviews` set it uses for
-                      // side previews (a viz's placement is exclusive, so one flag
-                      // covers both). OR it with the hover-gate policy above.
-                      paused: backdropPaused || pausedPreviews.has(bgFileId)
+                      // side previews. #2422 — but only the viz's OWN background: this
+                      // pane's, while the viz file is its active tab. The same file can
+                      // also be a pattern's code background or another tab's pin (a
+                      // viz's placement is no longer exclusive); those keep running.
+                      // OR it with the hover-gate policy above.
+                      paused: backdropPaused || isOwnBackdropPaused(bgFileId, paneShownFileId(activeTabObj), pausedPreviews),
+                      // #2423 — the viz file's own background (its tab is this pane's
+                      // active tab) takes its own settings; any other is the
+                      // background of the file the pane shows (a pattern: its code options)
+                      owner: backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj)),
+                      sourceRef: sourceForBackdrop(backdropOwnerFor(bgFileId, paneShownFileId(activeTabObj)), bgFileId)
                     });
                   })(),
                   activeTabObj ? /* @__PURE__ */ jsx(
@@ -49411,25 +53998,26 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     {
                       "data-stave-code-panel": "true",
                       "data-stave-backdrop": (
-                        // #770: in workspace-span mode EVERY pane goes transparent so the
+                        // #2471 — never for an app tab: its page is opaque.
+                        activeTabObj.kind !== "app" && // #770: in workspace-span mode EVERY pane goes transparent so the
                         // single shared backdrop shows behind all of them — not just panes
                         // that have their own backdrop (the file-mode condition).
-                        workspaceSpanActive || resolveBackdropFileId(
-                          group.backgroundFileId,
-                          bgOverrides.get(group.id)
-                        ) ? "on" : "off"
+                        (workspaceSpanActive || resolveBackdropFileId(
+                          group2.backgroundFileId,
+                          bgOverrides.get(group2.id)
+                        )) ? "on" : "off"
                       ),
                       style: {
                         position: "relative",
                         zIndex: 0,
                         height: "100%"
                       },
-                      children: renderTabContent(activeTabObj, group.id, isShellActiveGroup)
+                      children: renderTabContent(activeTabObj, group2.id, isShellActiveGroup)
                     }
                   ) : /* @__PURE__ */ jsx(
                     "div",
                     {
-                      "data-testid": `group-empty-${group.id}`,
+                      "data-testid": `group-empty-${group2.id}`,
                       style: {
                         display: "flex",
                         alignItems: "center",
@@ -49483,7 +54071,11 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       // #781: the backdrop `paused` now also reads `pausedPreviews` (the chrome
       // play/pause button). Omit it and toggling pause never reaches the
       // backdrop — the same P239 stale-closure trap.
-      pausedPreviews
+      pausedPreviews,
+      // #2426 — each background's audio source reads the chosen sources
+      sourceForBackdrop,
+      // #2471 — app tab chips read the host's label hook
+      appTabLabel
     ]
   );
   const totalGroupCount = useMemo(
@@ -49531,8 +54123,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         const preview = options?.preview === true;
         let foundGroupId = null;
         let foundTabId = null;
-        for (const [gid, group] of groups) {
-          const hit = group.tabs.find(
+        for (const [gid, group2] of groups) {
+          const hit = group2.tabs.find(
             (t) => t.kind === "editor" && t.fileId === fileId
           );
           if (hit) {
@@ -49646,6 +54238,68 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         });
         setActiveGroupId(activeGroupId);
       }, "openHistoryTab"),
+      openAppTab: /* @__PURE__ */ __name((appKey, opts) => {
+        const hasState = opts?.state !== void 0;
+        let foundGroupId = null;
+        for (const [gid, g] of groups) {
+          if (g.tabs.some((t) => t.kind === "app" && t.appKey === appKey)) {
+            foundGroupId = gid;
+            break;
+          }
+        }
+        const targetGid = foundGroupId ?? activeGroupId;
+        setGroups((prev) => {
+          for (const [gid, g2] of prev) {
+            const hit = g2.tabs.find((t) => t.kind === "app" && t.appKey === appKey);
+            if (!hit) continue;
+            if (g2.activeTabId === hit.id && !hasState) return prev;
+            const next2 = new Map(prev);
+            next2.set(gid, {
+              ...g2,
+              tabs: hasState ? g2.tabs.map((t) => t.id === hit.id ? { ...t, state: opts.state } : t) : g2.tabs,
+              activeTabId: hit.id
+            });
+            return next2;
+          }
+          const g = prev.get(targetGid);
+          if (!g) return prev;
+          const newTab = {
+            kind: "app",
+            id: `app-${appKey}`,
+            appKey,
+            ...hasState ? { state: opts.state } : {}
+          };
+          const next = new Map(prev);
+          next.set(targetGid, { ...g, tabs: [...g.tabs, newTab], activeTabId: newTab.id });
+          return next;
+        });
+        setActiveGroupId(targetGid);
+      }, "openAppTab"),
+      setAppTabState: /* @__PURE__ */ __name((appKey, state6) => {
+        setGroups((prev) => {
+          for (const [gid, g] of prev) {
+            const hit = g.tabs.find(
+              (t) => t.kind === "app" && t.appKey === appKey
+            );
+            if (!hit) continue;
+            if (JSON.stringify(hit.state) === JSON.stringify(state6)) return prev;
+            const next = new Map(prev);
+            next.set(gid, {
+              ...g,
+              tabs: g.tabs.map((t) => {
+                if (t.id !== hit.id || t.kind !== "app") return t;
+                if (state6 === void 0) {
+                  const { state: _dropped, ...rest } = t;
+                  return rest;
+                }
+                return { ...t, state: state6 };
+              })
+            });
+            return next;
+          }
+          return prev;
+        });
+      }, "setAppTabState"),
       promoteTab: /* @__PURE__ */ __name((tabId) => {
         setGroups((prev) => {
           let changed = false;
@@ -49663,6 +54317,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           return changed ? next : prev;
         });
       }, "promoteTab"),
+      closeTab: /* @__PURE__ */ __name((tabId) => closeTabById(tabId), "closeTab"),
       closeTabsForFile: /* @__PURE__ */ __name((fileId) => {
         const targets = [];
         for (const g of groups.values()) {
@@ -49852,7 +54507,20 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                 crop: backgroundCrop ?? null,
                 // #781 — pause the shared span backdrop when its source viz is
                 // paused via the chrome play/pause button (same per-file set).
-                paused: pausedPreviews.has(workspaceSpanBackdrop.fileId)
+                // #2422 — "own" here is the pane DRIVING the span: the pause applies
+                // when that pane's active tab is the viz file itself, not when the
+                // span is a pattern's code background drawn from the same file.
+                paused: isOwnBackdropPaused(
+                  workspaceSpanBackdrop.fileId,
+                  workspaceSpanBackdrop.ownerFileId,
+                  pausedPreviews
+                ),
+                owner: backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId),
+                // #2426 — the spanning background is the pattern's: the pattern's audio
+                sourceRef: sourceForBackdrop(
+                  backdropOwnerFor(workspaceSpanBackdrop.fileId, workspaceSpanBackdrop.ownerFileId),
+                  workspaceSpanBackdrop.fileId
+                )
               }),
               /* @__PURE__ */ jsx(
                 "div",
@@ -49886,7 +54554,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
                     if (column.length === 1) {
                       const g = groups.get(column[0]);
-                      return /* @__PURE__ */ jsx(React48__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                      return /* @__PURE__ */ jsx(React33__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
                     }
                     return /* @__PURE__ */ jsx(
                       SplitPane,
@@ -49894,7 +54562,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                         direction: "vertical",
                         children: column.map((gid) => {
                           const g = groups.get(gid);
-                          return /* @__PURE__ */ jsx(React48__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                          return /* @__PURE__ */ jsx(React33__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                         })
                       },
                       `col-${colIdx}-${column.join("+")}`
@@ -50763,12 +55431,12 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
   isPlayPending() {
     return this.playPendingState;
   }
-  setPlayPending(pending) {
-    if (this.playPendingState === pending) return;
-    this.playPendingState = pending;
+  setPlayPending(pending2) {
+    if (this.playPendingState === pending2) return;
+    this.playPendingState = pending2;
     for (const cb of Array.from(this.playPendingListeners)) {
       try {
-        cb(pending);
+        cb(pending2);
       } catch {
       }
     }
@@ -50894,10 +55562,10 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
       return { error: null };
     }
     const now2 = this.rawSchedulerNow();
-    const before = now2 === null ? null : songPositionAt(now2, engine.getTransportOffset?.() ?? 0, this.currentLoopRange());
+    const before2 = now2 === null ? null : songPositionAt(now2, engine.getTransportOffset?.() ?? 0, this.currentLoopRange());
     setRange.call(this.engine, next);
     if (now2 !== null && typeof setOffset === "function") {
-      const target = next ? before !== null && isInsideLoop(before, next) ? before : next.startCycle : before ?? 0;
+      const target = next ? before2 !== null && isInsideLoop(before2, next) ? before2 : next.startCycle : before2 ?? 0;
       setOffset.call(this.engine, transportOffsetForSeek(now2, target, next));
     }
     if (!this.isPlayingState) return { error: null };
@@ -50993,6 +55661,15 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    */
   getBackdropVizRequest() {
     return this.engine.components.inlineViz?.backdropRequest?.vizId ?? null;
+  }
+  /**
+   * The options the last evaluation captured for its backdrop viz, or null. The
+   * app keeps them beside the code so a background viz option the code computes
+   * (not a literal) still reaches the sketch after Stop, when the bus payload
+   * that carried it is gone.
+   */
+  getBackdropVizOptions() {
+    return this.engine.components.inlineViz?.backdropRequest?.options ?? null;
   }
   // -------------------------------------------------------------------------
   // Phase 20-07 — debugger pause/resume + BreakpointStore accessor.
@@ -51549,7 +56226,7 @@ var _DemoEngine = class _DemoEngine {
     }
     return bag;
   }
-  noteToFreq(note) {
+  noteToFreq(note2) {
     const NOTES = {
       c4: 261.63,
       d4: 293.66,
@@ -51562,7 +56239,7 @@ var _DemoEngine = class _DemoEngine {
       d5: 587.33,
       e5: 659.25
     };
-    return NOTES[note.toLowerCase()] ?? 440;
+    return NOTES[note2.toLowerCase()] ?? 440;
   }
 };
 __name(_DemoEngine, "DemoEngine");
@@ -51874,9 +56551,9 @@ __name(_WorkerBusFeed, "WorkerBusFeed");
 var WorkerBusFeed = _WorkerBusFeed;
 
 // src/visualizers/mountVizRenderer.ts
-function mountVizRenderer(container, source, components, size, onError) {
+function mountVizRenderer(container2, source, components, size, onError) {
   const renderer = typeof source === "function" ? source() : source;
-  const detachLifecycle = attachVizLifecycle(renderer, container, components, size, onError);
+  const detachLifecycle = attachVizLifecycle(renderer, container2, components, size, onError);
   let lastW = size.w;
   let lastH = size.h;
   const ro = new ResizeObserver((entries3) => {
@@ -51887,7 +56564,7 @@ function mountVizRenderer(container, source, components, size, onError) {
       renderer.resize(width, height);
     }
   });
-  ro.observe(container);
+  ro.observe(container2);
   return {
     renderer,
     disconnect: /* @__PURE__ */ __name(() => {
@@ -52420,6 +57097,661 @@ function VizEditor({
 }
 __name(VizEditor, "VizEditor");
 
+// src/visualizers/renderers/threeSketch.ts
+var ADDONS = {
+  "environments/RoomEnvironment.js": /* @__PURE__ */ __name(() => import('three/addons/environments/RoomEnvironment.js'), "environments/RoomEnvironment.js"),
+  "postprocessing/EffectComposer.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/EffectComposer.js'), "postprocessing/EffectComposer.js"),
+  "postprocessing/RenderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/RenderPass.js'), "postprocessing/RenderPass.js"),
+  "postprocessing/ShaderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/ShaderPass.js'), "postprocessing/ShaderPass.js"),
+  "postprocessing/OutputPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/OutputPass.js'), "postprocessing/OutputPass.js"),
+  "postprocessing/UnrealBloomPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/UnrealBloomPass.js'), "postprocessing/UnrealBloomPass.js"),
+  "postprocessing/BokehPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/BokehPass.js'), "postprocessing/BokehPass.js"),
+  "postprocessing/AfterimagePass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/AfterimagePass.js'), "postprocessing/AfterimagePass.js"),
+  "postprocessing/FilmPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/FilmPass.js'), "postprocessing/FilmPass.js"),
+  "postprocessing/GlitchPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/GlitchPass.js'), "postprocessing/GlitchPass.js"),
+  "postprocessing/SMAAPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/SMAAPass.js'), "postprocessing/SMAAPass.js"),
+  "postprocessing/FXAAPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/FXAAPass.js'), "postprocessing/FXAAPass.js"),
+  "shaders/CopyShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/CopyShader.js'), "shaders/CopyShader.js"),
+  "shaders/FXAAShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/FXAAShader.js'), "shaders/FXAAShader.js"),
+  "shaders/RGBShiftShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/RGBShiftShader.js'), "shaders/RGBShiftShader.js"),
+  "shaders/VignetteShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/VignetteShader.js'), "shaders/VignetteShader.js"),
+  "loaders/GLTFLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/GLTFLoader.js'), "loaders/GLTFLoader.js"),
+  "loaders/RGBELoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/RGBELoader.js'), "loaders/RGBELoader.js"),
+  "loaders/HDRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/HDRLoader.js'), "loaders/HDRLoader.js"),
+  "loaders/EXRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/EXRLoader.js'), "loaders/EXRLoader.js"),
+  "geometries/RoundedBoxGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/RoundedBoxGeometry.js'), "geometries/RoundedBoxGeometry.js"),
+  "utils/BufferGeometryUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/BufferGeometryUtils.js'), "utils/BufferGeometryUtils.js"),
+  "math/SimplexNoise.js": /* @__PURE__ */ __name(() => import('three/addons/math/SimplexNoise.js'), "math/SimplexNoise.js"),
+  "math/ImprovedNoise.js": /* @__PURE__ */ __name(() => import('three/addons/math/ImprovedNoise.js'), "math/ImprovedNoise.js")
+};
+var THREE_ADDONS = Object.keys(ADDONS);
+var NEEDS_INPUT = /(^|\/)(OrbitControls|TrackballControls|FlyControls|FirstPersonControls|PointerLockControls|DragControls|TransformControls|MapControls|ArcballControls)\.js$/;
+function resolveSpecifier(spec) {
+  if (spec === "three") return { kind: "three" };
+  const m = /^three\/(?:addons|examples\/jsm)\/(.+)$/.exec(spec);
+  if (!m) return null;
+  const path = m[1].endsWith(".js") ? m[1] : `${m[1]}.js`;
+  return { kind: "addon", path };
+}
+__name(resolveSpecifier, "resolveSpecifier");
+function unsupportedImportMessage(spec) {
+  const resolved = resolveSpecifier(spec);
+  if (resolved?.kind === "addon" && NEEDS_INPUT.test(resolved.path)) {
+    return `'${spec}' needs pointer input, which a Stave viz doesn't receive. Move the camera in code instead (for example from \`sig\` or the time).`;
+  }
+  return `'${spec}' isn't available in Stave. A three.js sketch can import 'three' and these addons: ${THREE_ADDONS.map((p) => `three/addons/${p}`).join(", ")}.`;
+}
+__name(unsupportedImportMessage, "unsupportedImportMessage");
+var _ThreeImportError = class _ThreeImportError extends Error {
+  constructor(message, line) {
+    super(message);
+    this.line = line;
+    this.name = "ThreeImportError";
+  }
+};
+__name(_ThreeImportError, "ThreeImportError");
+var ThreeImportError = _ThreeImportError;
+var THREE_LINE_OFFSET = 3;
+var PARAMS = ["__env", "__mod", "__import"];
+function isIdent(s) {
+  return /^[A-Za-z_$][\w$]*$/.test(s);
+}
+__name(isIdent, "isIdent");
+function compileThreeSketch(code) {
+  const parsed = parseModule(code);
+  if (!parsed.ok) {
+    return {
+      imports: [],
+      source: "",
+      syntaxError: new VizSyntaxError(parsed.message, parsed.line, parsed.column !== void 0 ? parsed.column + 1 : void 0)
+    };
+  }
+  const ast = parsed.program;
+  const chars = code.split("");
+  const blank = /* @__PURE__ */ __name((start, end) => {
+    for (let i = start; i < end; i++) if (chars[i] !== "\n") chars[i] = " ";
+  }, "blank");
+  const imports = [];
+  const bindings = [];
+  for (const node of ast.body) {
+    if (node.type === "ImportDeclaration") {
+      const index = imports.length;
+      imports.push({ spec: String(node.source.value), line: node.loc.start.line });
+      for (const s of node.specifiers) {
+        if (s.type === "ImportDefaultSpecifier") bindings.push({ module: index, imported: "default", local: s.local.name });
+        else if (s.type === "ImportNamespaceSpecifier") bindings.push({ module: index, imported: "*", local: s.local.name });
+        else {
+          const imported = s.imported.type === "Identifier" ? s.imported.name : String(s.imported.value);
+          bindings.push({ module: index, imported, local: s.local.name });
+        }
+      }
+      blank(node.start, node.end);
+    } else if (node.type === "ExportNamedDeclaration" || node.type === "ExportDefaultDeclaration") {
+      if (node.declaration) blank(node.start, node.declaration.start);
+      else blank(node.start, node.end);
+    } else if (node.type === "ExportAllDeclaration") {
+      blank(node.start, node.end);
+    }
+  }
+  const dynamic = [];
+  const walk5 = /* @__PURE__ */ __name((n) => {
+    if (!n || typeof n.type !== "string") return;
+    if (n.type === "ImportExpression") dynamic.push(n.start);
+    for (const key3 of Object.keys(n)) {
+      const v = n[key3];
+      if (Array.isArray(v)) v.forEach(walk5);
+      else if (v && typeof v === "object" && typeof v.type === "string") walk5(v);
+    }
+  }, "walk");
+  walk5(ast);
+  for (const at of dynamic) {
+    chars[at] = "__import";
+    for (let i = at + 1; i < at + 6; i++) chars[i] = "";
+  }
+  const decls = bindings.map((b) => {
+    const from = `__mod[${b.module}]`;
+    if (b.imported === "*") return `const ${b.local} = ${from};`;
+    const key3 = isIdent(b.imported) ? `.${b.imported}` : `[${JSON.stringify(b.imported)}]`;
+    return `const ${b.local} = ${from}${key3};`;
+  });
+  const head = `with (__env) { return (async () => { 'use strict'; ${decls.join(" ")}`;
+  const source = `${head}
+${chars.join("")}
+})() }`;
+  return { imports, source, syntaxError: null };
+}
+__name(compileThreeSketch, "compileThreeSketch");
+var threePromise = null;
+function loadThree() {
+  threePromise ?? (threePromise = import('three'));
+  return threePromise;
+}
+__name(loadThree, "loadThree");
+async function loadThreeModules(compiled) {
+  for (const imp of compiled.imports) {
+    const r = resolveSpecifier(imp.spec);
+    if (!r || r.kind === "addon" && !ADDONS[r.path]) {
+      throw new ThreeImportError(unsupportedImportMessage(imp.spec), imp.line);
+    }
+  }
+  const THREE = await loadThree();
+  const modules = await Promise.all(
+    compiled.imports.map((imp) => {
+      const r = resolveSpecifier(imp.spec);
+      return r.kind === "three" ? null : ADDONS[r.path]();
+    })
+  );
+  return { THREE, modules };
+}
+__name(loadThreeModules, "loadThreeModules");
+var INPUT_EVENTS = /* @__PURE__ */ new Set([
+  "pointerdown",
+  "pointerup",
+  "pointermove",
+  "pointerenter",
+  "pointerleave",
+  "pointerover",
+  "pointerout",
+  "pointercancel",
+  "mousedown",
+  "mouseup",
+  "mousemove",
+  "mouseenter",
+  "mouseleave",
+  "mouseover",
+  "mouseout",
+  "click",
+  "dblclick",
+  "contextmenu",
+  "wheel",
+  "touchstart",
+  "touchmove",
+  "touchend",
+  "touchcancel",
+  "keydown",
+  "keyup",
+  "keypress"
+]);
+function threeUserLine(err) {
+  const loc = parseStackLocation(err);
+  if (!loc) return void 0;
+  const line = loc.line - THREE_LINE_OFFSET;
+  return line >= 1 ? { line, column: loc.column } : void 0;
+}
+__name(threeUserLine, "threeUserLine");
+function errorOf(e) {
+  return e instanceof Error ? e : new Error(String(e));
+}
+__name(errorOf, "errorOf");
+function runThreeSketch(compiled, loaded, host) {
+  var _a;
+  const BaseRenderer = loaded.THREE.WebGLRenderer;
+  let disposed = false;
+  let topLevelDone = false;
+  let renderedThisFrame = false;
+  const renderers2 = [];
+  const loops = /* @__PURE__ */ new Map();
+  let rafQueue = /* @__PURE__ */ new Map();
+  let rafSeq = 0;
+  const resizeListeners = /* @__PURE__ */ new Set();
+  const seen = /* @__PURE__ */ new Set();
+  const reportOnce = /* @__PURE__ */ __name((level, e, prefix = "") => {
+    const err = errorOf(e);
+    const at = threeUserLine(err);
+    const key3 = `${level}|${err.message}|${at?.line ?? ""}`;
+    if (seen.has(key3)) return;
+    if (seen.size > 64) seen.clear();
+    seen.add(key3);
+    host.report({
+      level,
+      message: prefix + err.message,
+      line: at?.line,
+      column: at?.column,
+      stack: String(err.stack ?? "").split("\n").slice(0, 6).join("\n")
+    });
+  }, "reportOnce");
+  const warnHere = /* @__PURE__ */ __name((message) => reportOnce("warn", new Error(message)), "warnHere");
+  const warnInput = /* @__PURE__ */ __name((type) => warnHere(`'${type}' events don't reach a three.js sketch in Stave (a viz receives no pointer or keyboard input). Move things in code instead.`), "warnInput");
+  const warnDom = /* @__PURE__ */ __name(() => warnHere(`HTML overlays (panels, stats meters, text) aren't shown in Stave: a three.js sketch draws only on its canvas.`), "warnDom");
+  const addListener = /* @__PURE__ */ __name((type, fn) => {
+    if (type === "resize" && typeof fn === "function") resizeListeners.add(fn);
+    else if (INPUT_EVENTS.has(type)) warnInput(type);
+  }, "addListener");
+  const removeListener = /* @__PURE__ */ __name((type, fn) => {
+    if (type === "resize") resizeListeners.delete(fn);
+  }, "removeListener");
+  const canvas = host.canvas;
+  if (!("style" in canvas)) canvas.style = {};
+  const canvasAddListener = canvas.addEventListener;
+  let canvasPatched = false;
+  const _StaveWebGLRenderer = class _StaveWebGLRenderer extends BaseRenderer {
+    constructor(params = {}) {
+      if (disposed) throw new Error("this sketch was stopped");
+      super({ ...params, canvas: host.canvas });
+      const self = this;
+      renderers2.push(self);
+      const render = self.render;
+      self.render = function(scene, camera) {
+        renderedThisFrame = true;
+        return render.call(self, scene, camera);
+      };
+      const setSize = self.setSize;
+      self.setSize = function(w, h) {
+        return setSize.call(self, w, h, false);
+      };
+      self.setAnimationLoop = (cb) => {
+        if (typeof cb === "function") loops.set(self, cb);
+        else loops.delete(self);
+      };
+      if (!canvasPatched && typeof canvasAddListener === "function") {
+        canvasPatched = true;
+        canvas.addEventListener = function(type, ...rest) {
+          if (INPUT_EVENTS.has(type)) warnInput(type);
+          return canvasAddListener.call(canvas, type, ...rest);
+        };
+      }
+    }
+  };
+  __name(_StaveWebGLRenderer, "StaveWebGLRenderer");
+  let StaveWebGLRenderer = _StaveWebGLRenderer;
+  let TextureLoader = loaded.THREE.TextureLoader;
+  if (typeof document === "undefined" && loaded.THREE.ImageBitmapLoader) {
+    const { Loader, Texture, ImageBitmapLoader } = loaded.THREE;
+    TextureLoader = (_a = class extends Loader {
+      load(url, onLoad, onProgress, onError) {
+        const texture = new Texture();
+        const loader2 = new ImageBitmapLoader(this.manager);
+        loader2.setOptions({ imageOrientation: "flipY" });
+        loader2.setCrossOrigin(this.crossOrigin);
+        loader2.setPath(this.path);
+        loader2.load(
+          url,
+          (bitmap) => {
+            texture.image = bitmap;
+            texture.flipY = false;
+            texture.needsUpdate = true;
+            onLoad?.(texture);
+          },
+          onProgress,
+          onError
+        );
+        return texture;
+      }
+    }, __name(_a, "StaveTextureLoader"), _a);
+  }
+  const THREE = { ...loaded.THREE, WebGLRenderer: StaveWebGLRenderer, TextureLoader };
+  const modules = loaded.modules.map((m) => m === null ? THREE : m);
+  const requestAnimationFrame2 = /* @__PURE__ */ __name((cb) => {
+    const id = ++rafSeq;
+    if (!disposed && typeof cb === "function") rafQueue.set(id, cb);
+    return id;
+  }, "requestAnimationFrame");
+  const cancelAnimationFrame2 = /* @__PURE__ */ __name((id) => {
+    rafQueue.delete(id);
+  }, "cancelAnimationFrame");
+  const stave = {
+    get width() {
+      return host.size().w;
+    },
+    get height() {
+      return host.size().h;
+    },
+    get options() {
+      return host.options();
+    },
+    get sig() {
+      return host.uniforms().sig;
+    }
+  };
+  const stubElement = /* @__PURE__ */ __name(() => {
+    warnDom();
+    const el = {
+      style: {},
+      dataset: {},
+      classList: { add() {
+      }, remove() {
+      }, toggle() {
+      }, contains: /* @__PURE__ */ __name(() => false, "contains") },
+      appendChild: /* @__PURE__ */ __name((c) => c, "appendChild"),
+      removeChild: /* @__PURE__ */ __name((c) => c, "removeChild"),
+      remove() {
+      },
+      setAttribute() {
+      },
+      getAttribute: /* @__PURE__ */ __name(() => null, "getAttribute"),
+      addEventListener: addListener,
+      removeEventListener: removeListener,
+      textContent: "",
+      innerHTML: ""
+    };
+    return el;
+  }, "stubElement");
+  const createElement8 = /* @__PURE__ */ __name((tag) => String(tag).toLowerCase() === "canvas" ? host.createCanvas() : stubElement(), "createElement");
+  const body = {
+    style: {},
+    appendChild: /* @__PURE__ */ __name((c) => c, "appendChild"),
+    removeChild: /* @__PURE__ */ __name((c) => c, "removeChild"),
+    addEventListener: addListener,
+    removeEventListener: removeListener
+  };
+  const documentShim = {
+    body,
+    documentElement: body,
+    createElement: createElement8,
+    createElementNS: /* @__PURE__ */ __name((_ns, tag) => createElement8(tag), "createElementNS"),
+    getElementById: /* @__PURE__ */ __name(() => null, "getElementById"),
+    querySelector: /* @__PURE__ */ __name(() => null, "querySelector"),
+    addEventListener: addListener,
+    removeEventListener: removeListener
+  };
+  const own = {};
+  Object.defineProperties(own, {
+    innerWidth: { get: /* @__PURE__ */ __name(() => host.size().w, "get"), enumerable: true },
+    innerHeight: { get: /* @__PURE__ */ __name(() => host.size().h, "get"), enumerable: true },
+    devicePixelRatio: { get: /* @__PURE__ */ __name(() => host.dpr(), "get"), enumerable: true }
+  });
+  Object.assign(own, {
+    addEventListener: addListener,
+    removeEventListener: removeListener,
+    requestAnimationFrame: requestAnimationFrame2,
+    cancelAnimationFrame: cancelAnimationFrame2,
+    document: documentShim
+  });
+  const boundCache = /* @__PURE__ */ new Map();
+  const windowShim = new Proxy(own, {
+    get(t, key3) {
+      if (key3 in t) return t[key3];
+      if (key3 === "window" || key3 === "self" || key3 === "globalThis") return windowShim;
+      const v = globalThis[key3];
+      if (typeof v !== "function") return v;
+      if (/^[A-Z]/.test(String(key3))) return v;
+      if (!boundCache.has(key3)) boundCache.set(key3, v.bind(globalThis));
+      return boundCache.get(key3);
+    },
+    has(t, key3) {
+      return key3 in t || key3 in globalThis;
+    }
+  });
+  const env = {};
+  Object.defineProperties(env, {
+    innerWidth: { get: /* @__PURE__ */ __name(() => host.size().w, "get") },
+    innerHeight: { get: /* @__PURE__ */ __name(() => host.size().h, "get") },
+    devicePixelRatio: { get: /* @__PURE__ */ __name(() => host.dpr(), "get") },
+    sig: { get: /* @__PURE__ */ __name(() => host.uniforms().sig, "get") }
+  });
+  Object.assign(env, {
+    stave,
+    window: windowShim,
+    self: windowShim,
+    document: documentShim,
+    requestAnimationFrame: requestAnimationFrame2,
+    cancelAnimationFrame: cancelAnimationFrame2,
+    addEventListener: addListener,
+    removeEventListener: removeListener
+  });
+  const importDynamic = /* @__PURE__ */ __name(async (spec) => {
+    const r = resolveSpecifier(String(spec));
+    if (r?.kind === "three") return THREE;
+    if (r?.kind === "addon" && ADDONS[r.path]) return ADDONS[r.path]();
+    throw new ThreeImportError(unsupportedImportMessage(String(spec)));
+  }, "importDynamic");
+  let done;
+  try {
+    const fn = new Function(...PARAMS, compiled.source);
+    done = Promise.resolve(fn(env, modules, importDynamic)).then(
+      () => {
+        topLevelDone = true;
+        return { error: null };
+      },
+      (e) => {
+        topLevelDone = true;
+        if (!disposed) reportOnce("error", e);
+        return { error: errorOf(e) };
+      }
+    );
+  } catch (e) {
+    topLevelDone = true;
+    const err = errorOf(e);
+    host.report({ level: "error", message: err.message });
+    done = Promise.resolve({ error: err });
+  }
+  return {
+    done,
+    ready: /* @__PURE__ */ __name(() => topLevelDone || loops.size > 0 || rafQueue.size > 0, "ready"),
+    rendered: /* @__PURE__ */ __name(() => renderedThisFrame, "rendered"),
+    frame(timeMs) {
+      if (disposed) return;
+      renderedThisFrame = false;
+      const queued = rafQueue;
+      rafQueue = /* @__PURE__ */ new Map();
+      for (const cb of queued.values()) {
+        try {
+          cb(timeMs);
+        } catch (e) {
+          reportOnce("error", e);
+        }
+      }
+      for (const cb of [...loops.values()]) {
+        try {
+          cb(timeMs);
+        } catch (e) {
+          reportOnce("error", e);
+        }
+      }
+    },
+    resize() {
+      if (disposed) return;
+      if (resizeListeners.size > 0) {
+        const ev = { type: "resize", target: windowShim };
+        for (const fn of [...resizeListeners]) {
+          try {
+            fn(ev);
+          } catch (e) {
+            reportOnce("error", e);
+          }
+        }
+        return;
+      }
+      const { w, h } = host.size();
+      for (const r of renderers2) {
+        try {
+          r.setSize(w, h, false);
+        } catch {
+        }
+      }
+    },
+    gl() {
+      try {
+        return renderers2[0]?.getContext?.() ?? null;
+      } catch {
+        return null;
+      }
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      loops.clear();
+      rafQueue.clear();
+      resizeListeners.clear();
+      for (const r of renderers2) {
+        try {
+          r.dispose();
+        } catch {
+        }
+        try {
+          const gl = r.getContext?.();
+          if (gl && !gl.isContextLost?.()) r.forceContextLoss();
+        } catch {
+        }
+      }
+      renderers2.length = 0;
+      if (canvasPatched) {
+        try {
+          delete canvas.addEventListener;
+        } catch {
+        }
+      }
+    }
+  };
+}
+__name(runThreeSketch, "runThreeSketch");
+
+// src/visualizers/renderers/ThreeVizRenderer.ts
+var threePerfSeq = 0;
+var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
+  /** `code` = the sketch; `name` = its workspace path, for error attribution. */
+  constructor(code, name = "") {
+    super();
+    this.code = code;
+    this.name = name;
+    this.canvas = null;
+    this.run = null;
+    this.rafId = null;
+    this.paused = false;
+    this.destroyed = false;
+    this.size = { w: 400, h: 300 };
+    this.perfId = `three#${++threePerfSeq}`;
+    this.bus = new SignalBus();
+    this.hapStream = null;
+    this.busHapHandler = null;
+    this.loop = /* @__PURE__ */ __name((now2) => {
+      if (this.paused || this.destroyed || !this.run) {
+        this.rafId = null;
+        return;
+      }
+      perf.frame(this.perfId);
+      perf.begin("three.draw");
+      try {
+        if (this.bus) {
+          this.bus.tick();
+          this.bus.refreshActive(this.bus.now());
+          this.bus.readAudio();
+        }
+        this.run.frame(now2);
+      } finally {
+        perf.end("three.draw");
+      }
+      this.rafId = requestAnimationFrame(this.loop);
+    }, "loop");
+    this.uniforms = buildStaveUniforms(this.bus);
+  }
+  onMount(container2, components, size, onError) {
+    perf.gauge("viz.three", 1);
+    this.size = { w: size.w, h: size.h };
+    this.bus?.bindScheduler(components.queryable?.scheduler, components.queryable?.trackSchedulers);
+    this.bus?.bindAnalysers(components.audio?.analyser, components.audio?.trackAnalysers);
+    this.bus?.setAliases(currentVizSignalAliases());
+    this.hapStream = components.streaming?.hapStream ?? null;
+    if (this.hapStream && this.bus) {
+      this.busHapHandler = (e) => this.bus?.bump(e);
+      this.hapStream.on(this.busHapHandler);
+    }
+    const canvas = document.createElement("canvas");
+    const dpr = effectiveDpr();
+    canvas.width = Math.max(1, Math.round(size.w * dpr));
+    canvas.height = Math.max(1, Math.round(size.h * dpr));
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    canvas.style.display = "block";
+    container2.appendChild(canvas);
+    this.canvas = canvas;
+    void this.start(onError);
+  }
+  /** A sketch that can't start: one Console row on its line, then the host's onError. */
+  fail(err, line, onError) {
+    emitLog({ level: "error", runtime: "three", source: this.name || void 0, message: err.message, line });
+    markVizErrorReported(err);
+    onError(err);
+  }
+  async start(onError) {
+    const compiled = compileThreeSketch(this.code);
+    if (compiled.syntaxError) {
+      this.fail(compiled.syntaxError, compiled.syntaxError.line, onError);
+      return;
+    }
+    let loaded;
+    try {
+      loaded = await loadThreeModules(compiled);
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      this.fail(err, e instanceof ThreeImportError ? e.line : void 0, onError);
+      return;
+    }
+    if (this.destroyed || !this.canvas) return;
+    this.run = runThreeSketch(compiled, loaded, {
+      canvas: this.canvas,
+      size: /* @__PURE__ */ __name(() => this.size, "size"),
+      dpr: effectiveDpr,
+      uniforms: /* @__PURE__ */ __name(() => this.uniforms, "uniforms"),
+      options: /* @__PURE__ */ __name(() => this.optionsRef.current ?? {}, "options"),
+      createCanvas: /* @__PURE__ */ __name(() => document.createElement("canvas"), "createCanvas"),
+      // The core places each problem on its line; runtime and file come from here.
+      report: /* @__PURE__ */ __name((entry) => emitLog({ ...entry, runtime: "three", source: this.name || void 0 }), "report")
+    });
+    void this.run.done.then(({ error }) => {
+      if (error && !this.destroyed) {
+        markVizErrorReported(error);
+        onError(error);
+      }
+    });
+    if (!this.paused && !this.destroyed && this.rafId == null) {
+      this.rafId = requestAnimationFrame(this.loop);
+    }
+  }
+  onUpdate(components) {
+    this.bus?.bindScheduler(components.queryable?.scheduler ?? null, components.queryable?.trackSchedulers);
+    this.bus?.bindAnalysers(components.audio?.analyser ?? null, components.audio?.trackAnalysers);
+  }
+  resize(w, h) {
+    this.size = { w, h };
+    this.run?.resize();
+  }
+  pause() {
+    this.paused = true;
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+  resume() {
+    this.paused = false;
+    if (this.rafId == null && !this.destroyed && this.run) {
+      this.rafId = requestAnimationFrame(this.loop);
+    }
+  }
+  destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    perf.gauge("viz.three", -1);
+    perf.dropFrames(this.perfId);
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.run?.dispose();
+    this.run = null;
+    this.canvas?.remove();
+    this.canvas = null;
+    if (this.hapStream && this.busHapHandler) {
+      this.hapStream.off(this.busHapHandler);
+      this.busHapHandler = null;
+    }
+    this.hapStream = null;
+    this.bus = null;
+  }
+};
+__name(_ThreeVizRenderer, "ThreeVizRenderer");
+var ThreeVizRenderer = _ThreeVizRenderer;
+
+// src/visualizers/renderers/makeThreeRenderer.ts
+function makeThreeRenderer(code, name) {
+  return shouldUseWorkerRenderer() ? new FallbackVizRenderer(
+    () => new WorkerVizRenderer("three", code, name),
+    () => new ThreeVizRenderer(code, name)
+  ) : new ThreeVizRenderer(code, name);
+}
+__name(makeThreeRenderer, "makeThreeRenderer");
+
 // src/visualizers/vizCompiler.ts
 function compilePreset(preset) {
   const { id, name, renderer, code, requires } = preset;
@@ -52450,6 +57782,18 @@ function compilePreset(preset) {
       // the main-thread GLSLVizRenderer. A `.glsl` sketch is the wrapped fragment
       // source — a plain transferable string, so it crosses to the worker cleanly.
       factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(code, source), "factory")
+    };
+  }
+  if (renderer === "three") {
+    return {
+      id,
+      label: name,
+      renderer: "three",
+      requires,
+      ...preset.nativeSize ? { nativeSize: preset.nativeSize } : {},
+      // #2516: a plain three.js sketch, worker-offloaded with a main-thread
+      // fallback (makeThreeRenderer), like GLSL.
+      factory: /* @__PURE__ */ __name(() => makeThreeRenderer(code, source), "factory")
     };
   }
   if (renderer === "p5") {
@@ -52574,7 +57918,7 @@ function synthesizeSpectrum(pos) {
 __name(synthesizeSpectrum, "synthesizeSpectrum");
 
 // src/visualizers/mountVizPreview.ts
-function mountVizPreview(container, spec, size, onError) {
+function mountVizPreview(container2, spec, size, onError) {
   if (!shouldUseWorkerRenderer()) return null;
   const demo = createDrumDemoSignalSource();
   const source = /* @__PURE__ */ __name(() => {
@@ -52582,7 +57926,7 @@ function mountVizPreview(container, spec, size, onError) {
     r.setDemoSource(demo);
     return r;
   }, "source");
-  const { renderer, disconnect } = mountVizRenderer(container, source, {}, size, onError);
+  const { renderer, disconnect } = mountVizRenderer(container2, source, {}, size, onError);
   return {
     disconnect: /* @__PURE__ */ __name(() => {
       disconnect();
@@ -52634,13 +57978,13 @@ function usePopoutPreview({
     popup.document.body.style.margin = "0";
     popup.document.body.style.padding = "0";
     popup.document.body.style.overflow = "hidden";
-    const container = popup.document.createElement("div");
-    container.style.width = "100vw";
-    container.style.height = "100vh";
-    container.style.position = "relative";
-    popup.document.body.appendChild(container);
-    applyTheme(container, theme);
-    popup.document.body.style.background = container.style.getPropertyValue("--background") || "#090912";
+    const container2 = popup.document.createElement("div");
+    container2.style.width = "100vw";
+    container2.style.height = "100vh";
+    container2.style.position = "relative";
+    popup.document.body.appendChild(container2);
+    applyTheme(container2, theme);
+    popup.document.body.style.background = container2.style.getPropertyValue("--background") || "#090912";
     try {
       const renderer = descriptor.factory();
       rendererRef.current = renderer;
@@ -52649,7 +57993,7 @@ function usePopoutPreview({
       if (analyser) components.audio = { analyser, audioCtx: analyser.context };
       if (scheduler) components.queryable = { scheduler };
       renderer.mount(
-        container,
+        container2,
         components,
         { w: 800, h: 600 },
         (err) => console.error("Viz popout error:", err)
@@ -52700,7 +58044,7 @@ __name(warmMonaco, "warmMonaco");
 
 // src/visualEdit/mixer/purgeLegacyMasterGain.ts
 var KEY_PREFIX2 = "stave:mixer.master:";
-function safeLocalStorage7() {
+function safeLocalStorage8() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -52709,8 +58053,8 @@ function safeLocalStorage7() {
     return null;
   }
 }
-__name(safeLocalStorage7, "safeLocalStorage");
-function purgeLegacyMasterGain(storage = safeLocalStorage7()) {
+__name(safeLocalStorage8, "safeLocalStorage");
+function purgeLegacyMasterGain(storage = safeLocalStorage8()) {
   if (!storage) return 0;
   try {
     const stale = [];
@@ -52990,8 +58334,8 @@ var inFlight = /* @__PURE__ */ new Map();
 async function resolveAsset(blobHash) {
   const cached2 = urlCache.get(blobHash);
   if (cached2) return cached2;
-  const pending = inFlight.get(blobHash);
-  if (pending) return pending;
+  const pending2 = inFlight.get(blobHash);
+  if (pending2) return pending2;
   const work = (async () => {
     const blob = await getAsset(blobHash);
     if (!blob) return null;
@@ -53065,20 +58409,20 @@ __name(importAsset, "importAsset");
 
 // src/workspace/assetDoc.ts
 var subscribers = /* @__PURE__ */ new Set();
-function notify5() {
+function notify6() {
   for (const cb of Array.from(subscribers)) cb();
 }
-__name(notify5, "notify");
+__name(notify6, "notify");
 function getAssetsMap() {
   return ensureDoc().getMap("assets");
 }
 __name(getAssetsMap, "getAssetsMap");
 var wiredAssetsMap = null;
 function ensureAssetsObserver() {
-  const current8 = getAssetsMap();
-  if (wiredAssetsMap === current8) return;
-  current8.observe(() => notify5());
-  wiredAssetsMap = current8;
+  const current9 = getAssetsMap();
+  if (wiredAssetsMap === current9) return;
+  current9.observe(() => notify6());
+  wiredAssetsMap = current9;
 }
 __name(ensureAssetsObserver, "ensureAssetsObserver");
 function subscribeToAssets(cb) {
@@ -53257,8 +58601,8 @@ function sampleRefOf(ev) {
   const b = ev.params?.bank;
   const bank = typeof b === "string" && b !== "" ? b : null;
   const n = typeof ev.n === "number" && Number.isFinite(ev.n) ? ev.n : null;
-  const note = ev.note != null && !(n != null && ev.note === n) ? ev.note : null;
-  return { s: ev.s, bank, n, note, freq: ev.freq ?? null };
+  const note2 = ev.note != null && !(n != null && ev.note === n) ? ev.note : null;
+  return { s: ev.s, bank, n, note: note2, freq: ev.freq ?? null };
 }
 __name(sampleRefOf, "sampleRefOf");
 
@@ -53572,10 +58916,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React48.useReducer((x) => x + 1, 0);
-  React48.useEffect(() => subscribeToHistory(force), []);
-  React48.useEffect(() => subscribeToRuntimeView(force), []);
-  React48.useEffect(() => {
+  const [, force] = React33.useReducer((x) => x + 1, 0);
+  React33.useEffect(() => subscribeToHistory(force), []);
+  React33.useEffect(() => subscribeToRuntimeView(force), []);
+  React33.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -53592,17 +58936,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React48.useState(null);
-  const [forkName, setForkName] = React48.useState("");
-  const [committing, setCommitting] = React48.useState(false);
-  const [commitLabel, setCommitLabel] = React48.useState("");
-  const [expanded, setExpanded] = React48.useState(null);
-  const [hovered, setHovered] = React48.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React48.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React48.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React48.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React33.useState(null);
+  const [forkName, setForkName] = React33.useState("");
+  const [committing, setCommitting] = React33.useState(false);
+  const [commitLabel, setCommitLabel] = React33.useState("");
+  const [expanded, setExpanded] = React33.useState(null);
+  const [hovered, setHovered] = React33.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React33.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React33.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React33.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -54275,7 +59619,8 @@ var SONICPI_RUNTIME = {
 var KIND_LABEL2 = {
   p5: "p5",
   hydra: "hydra",
-  glsl: "glsl"
+  glsl: "glsl",
+  three: "three.js"
 };
 var PAINT_INTERVAL_MS = 1e3 / 12;
 var SPARK2 = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588";
@@ -54814,15 +60159,31 @@ function VizEditorChrome({
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = useState({
-    kind: "default"
-  });
+  const [selectedSource, setSelectedSource] = useState(
+    () => getVizSourceChoice(file.id)
+  );
+  useEffect(() => {
+    setSelectedSource(getVizSourceChoice(file.id));
+    return onVizSourceChoiceChange((id, ref) => {
+      if (id === file.id) setSelectedSource(ref);
+    });
+  }, [file.id]);
+  const [soundWaiting, setSoundWaiting] = useState(
+    () => isWaitingForGesture(file.id)
+  );
+  useEffect(() => {
+    setSoundWaiting(isWaitingForGesture(file.id));
+    return onGestureWaitChange(() => setSoundWaiting(isWaitingForGesture(file.id)));
+  }, [file.id]);
   const handleSourceChange = useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
       const nextBuiltin = next.kind === "file" ? findBuiltinExampleSource(next.fileId) : void 0;
-      setSelectedSource(next);
+      setVizSourceChoice(file.id, next);
+      if (isBackground && onBackdropSourceChange) {
+        onBackdropSourceChange(next);
+      }
       const previewingAnywhere = isBackground || previewOpen;
       if (previewingAnywhere) {
         if (nextBuiltin && !previewPaused) {
@@ -54835,11 +60196,9 @@ function VizEditorChrome({
       if (previewOpen && onChangePreviewSource) {
         onChangePreviewSource(next);
       }
-      if (isBackground && onBackdropSourceChange) {
-        onBackdropSourceChange(next);
-      }
     },
     [
+      file.id,
       isBackground,
       previewOpen,
       previewPaused,
@@ -54870,8 +60229,8 @@ function VizEditorChrome({
       if (previewMode === "backdrop") onToggleBackground();
       if (next === "side") openSidePreview();
       if (next === "backdrop") {
-        startSelectedBuiltin();
         onToggleBackground(selectedSource);
+        startSelectedBuiltin();
       }
     },
     [
@@ -54888,8 +60247,8 @@ function VizEditorChrome({
   const buttonTitle = buttonState === "running" ? "Pause this viz (side tab or backdrop)" : buttonState === "paused" ? "Resume this viz" : `Play this viz as ${placementPref === "backdrop" ? "backdrop" : "side preview"}`;
   const activatePreferred = useCallback(() => {
     if (placementPref === "backdrop") {
-      startSelectedBuiltin();
       onToggleBackground(selectedSource);
+      startSelectedBuiltin();
     } else {
       openSidePreview();
     }
@@ -54987,6 +60346,22 @@ function VizEditorChrome({
               children: "\u2699"
             }
           ),
+          soundWaiting && /* @__PURE__ */ jsx(
+            "span",
+            {
+              "data-testid": "viz-chrome-sound-waiting",
+              title: "Browsers only play sound after you interact with the page. Its sound starts on your first click or key press.",
+              style: {
+                padding: "3px 8px",
+                borderRadius: 3,
+                fontSize: 10,
+                color: "var(--foreground-muted)",
+                border: "1px dashed var(--border)",
+                userSelect: "none"
+              },
+              children: "\u{1F507} sound starts on your first click"
+            }
+          ),
           /* @__PURE__ */ jsx("div", { style: { flex: 1 } })
         ]
       }
@@ -55014,6 +60389,66 @@ function VizEditorChrome({
   ] });
 }
 __name(VizEditorChrome, "VizEditorChrome");
+
+// src/workspace/preview/codeBackdropOptions.ts
+var LEGACY = "";
+var slots = /* @__PURE__ */ new Map();
+var listeners21 = /* @__PURE__ */ new Set();
+var version = 0;
+function sameOptions(a, b) {
+  if (a === b) return true;
+  if (!a || !b || a.fileId !== b.fileId) return false;
+  try {
+    return JSON.stringify(a.options) === JSON.stringify(b.options);
+  } catch {
+    return false;
+  }
+}
+__name(sameOptions, "sameOptions");
+function setCodeBackdropOptions(next, patternFileId) {
+  const key3 = patternFileId ?? LEGACY;
+  if (sameOptions(slots.get(key3) ?? null, next)) return;
+  if (next) slots.set(key3, next);
+  else slots.delete(key3);
+  version++;
+  for (const l of [...listeners21]) l();
+}
+__name(setCodeBackdropOptions, "setCodeBackdropOptions");
+function retainCodeBackdropOptions(openPatternFileIds) {
+  const keep = new Set(openPatternFileIds);
+  let dropped = false;
+  for (const key3 of [...slots.keys()]) {
+    if (key3 === LEGACY || keep.has(key3)) continue;
+    slots.delete(key3);
+    dropped = true;
+  }
+  if (!dropped) return;
+  version++;
+  for (const l of [...listeners21]) l();
+}
+__name(retainCodeBackdropOptions, "retainCodeBackdropOptions");
+function getCodeBackdropOptions(patternFileId) {
+  return slots.get(patternFileId ?? LEGACY) ?? null;
+}
+__name(getCodeBackdropOptions, "getCodeBackdropOptions");
+function getCodeBackdropOptionsVersion() {
+  return version;
+}
+__name(getCodeBackdropOptionsVersion, "getCodeBackdropOptionsVersion");
+function subscribeCodeBackdropOptions(listener) {
+  listeners21.add(listener);
+  return () => {
+    listeners21.delete(listener);
+  };
+}
+__name(subscribeCodeBackdropOptions, "subscribeCodeBackdropOptions");
+function backdropOptionsFor(owner, vizFileId) {
+  if (owner === null) return { codeOptions: null, busOptions: false };
+  const slot = getCodeBackdropOptions(owner ?? void 0);
+  const codeOptions = slot && slot.fileId === vizFileId ? slot.options : null;
+  return { codeOptions, busOptions: owner === void 0 };
+}
+__name(backdropOptionsFor, "backdropOptionsFor");
 function createCompiledVizProvider(opts) {
   return {
     extensions: opts.extensions,
@@ -55033,7 +60468,9 @@ function createCompiledVizProvider(opts) {
           audioSource: ctx.audioSource,
           hidden: ctx.hidden,
           paused: ctx.paused ?? false,
-          fileId: ctx.file.id
+          fileId: ctx.file.id,
+          backdrop: ctx.backdrop ?? false,
+          backdropOwner: ctx.backdropOwner
         }
       );
     }, "render"),
@@ -55044,7 +60481,13 @@ function createCompiledVizProvider(opts) {
 }
 __name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
-  const { file, rendererType, audioSource, hidden, paused, fileId } = props;
+  const { file, rendererType, audioSource, hidden, paused, fileId, backdrop, backdropOwner } = props;
+  const optionsVersion = useSyncExternalStore(subscribeCodeBackdropOptions, getCodeBackdropOptionsVersion);
+  const { codeOptions, busOptions } = useMemo(
+    () => backdrop ? backdropOptionsFor(backdropOwner, fileId) : { codeOptions: null, busOptions: true },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [backdrop, backdropOwner, fileId, optionsVersion]
+  );
   const { descriptor, compileError } = useMemo(() => {
     try {
       const preset = {
@@ -55110,11 +60553,14 @@ function CompiledVizMount(props) {
     if (audioSource?.inlineViz) {
       bag.inlineViz = audioSource.inlineViz;
     }
-    if (audioSource?.inlineViz?.backdropRequest?.options) {
+    if (busOptions && audioSource?.inlineViz?.backdropRequest?.options) {
       bag.options = audioSource.inlineViz.backdropRequest.options;
     }
+    if (codeOptions) {
+      bag.options = codeOptions;
+    }
     return bag;
-  }, [audioSource]);
+  }, [audioSource, codeOptions, busOptions]);
   useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;
@@ -55276,6 +60722,13 @@ var GLSL_VIZ = createCompiledVizProvider({
   renderer: "glsl"
 });
 
+// src/workspace/preview/threeViz.tsx
+var THREE_VIZ = createCompiledVizProvider({
+  extensions: ["three"],
+  label: "three.js Visualization",
+  renderer: "three"
+});
+
 // src/workspace/preview/namedVizBridge.ts
 function registerPresetAsNamedViz(preset, name = preset.name) {
   try {
@@ -55377,10 +60830,10 @@ function trackPlaced(fileId, model, entry, marker, kept) {
   } else {
     const t = { model, placed: [placed], stop: /* @__PURE__ */ __name(() => {
     }, "stop") };
-    const sub = model.onDidChangeContent(() => onEdited(fileId, t));
+    const sub2 = model.onDidChangeContent(() => onEdited(fileId, t));
     const gone = model.onWillDispose?.(() => untrack(fileId));
     t.stop = () => {
-      sub.dispose();
+      sub2.dispose();
       gone?.dispose();
     };
     tracks.set(fileId, t);
@@ -55576,13 +61029,13 @@ function silencedNamesFrom(strips, soloed) {
 __name(silencedNamesFrom, "silencedNamesFrom");
 function useSilencedTrackNames() {
   const soloed = useSoloedIds();
-  const [editor, setEditor] = React48.useState(() => getActiveEditor());
-  const [strips, setStrips] = React48.useState([]);
-  React48.useEffect(() => {
+  const [editor, setEditor] = React33.useState(() => getActiveEditor());
+  const [strips, setStrips] = React33.useState([]);
+  React33.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React48.useEffect(() => {
+  React33.useEffect(() => {
     if (!editor) {
       setStrips([]);
       return;
@@ -55603,10 +61056,10 @@ function useSilencedTrackNames() {
     }, "rederive");
     rederive();
     const model = editor.getModel?.();
-    const sub = model?.onDidChangeContent?.(rederive);
-    return () => sub?.dispose?.();
+    const sub2 = model?.onDidChangeContent?.(rederive);
+    return () => sub2?.dispose?.();
   }, [editor]);
-  return React48.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
+  return React33.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
 }
 __name(useSilencedTrackNames, "useSilencedTrackNames");
 
@@ -55625,7 +61078,8 @@ function shellStateKeyFor(projectId) {
   return `${SHELL_STATE_KEY_PREFIX}${projectId}:state`;
 }
 __name(shellStateKeyFor, "shellStateKeyFor");
-function loadShellState(projectId, validFileIds) {
+var NO_APP_KEYS = /* @__PURE__ */ new Set();
+function loadShellState(projectId, validFileIds, validAppKeys = NO_APP_KEYS) {
   if (typeof window === "undefined") return null;
   let raw = null;
   try {
@@ -55640,10 +61094,10 @@ function loadShellState(projectId, validFileIds) {
   } catch {
     return null;
   }
-  return validatePersistedState(parsed, validFileIds);
+  return validatePersistedState(parsed, validFileIds, validAppKeys);
 }
 __name(loadShellState, "loadShellState");
-function validatePersistedState(input, validFileIds) {
+function validatePersistedState(input, validFileIds, validAppKeys = NO_APP_KEYS) {
   if (!input || typeof input !== "object") return null;
   const s = input;
   if (s.version !== SHELL_STATE_VERSION) return null;
@@ -55651,6 +61105,7 @@ function validatePersistedState(input, validFileIds) {
   if (!Array.isArray(s.layout)) return null;
   if (typeof s.activeGroupId !== "string") return null;
   const cleanedGroups = {};
+  const seenAppKeys = /* @__PURE__ */ new Set();
   for (const [gid, rawGroup] of Object.entries(s.groups)) {
     const g = rawGroup;
     if (!g || typeof g !== "object" || g.id !== gid) continue;
@@ -55658,6 +61113,19 @@ function validatePersistedState(input, validFileIds) {
     const cleanedTabs = [];
     for (const t of inTabs) {
       if (!t || typeof t !== "object") continue;
+      if (t.kind === "app") {
+        const at = t;
+        if (typeof at.id !== "string" || typeof at.appKey !== "string") continue;
+        if (!validAppKeys.has(at.appKey) || seenAppKeys.has(at.appKey)) continue;
+        seenAppKeys.add(at.appKey);
+        cleanedTabs.push({
+          kind: "app",
+          id: at.id,
+          appKey: at.appKey,
+          ...at.state !== void 0 ? { state: at.state } : {}
+        });
+        continue;
+      }
       if (t.kind !== "editor") continue;
       const tt = t;
       if (typeof tt.id !== "string" || typeof tt.fileId !== "string") continue;
@@ -55711,10 +61179,19 @@ __name(validatePersistedState, "validatePersistedState");
 function serializeShellState(snapshot) {
   const groups = {};
   for (const [gid, g] of snapshot.groups.entries()) {
-    const editorTabs = [];
+    const keptTabs = [];
     for (const t of g.tabs) {
       if (!isPersistableTab(t)) continue;
-      editorTabs.push({
+      if (t.kind === "app") {
+        keptTabs.push({
+          kind: "app",
+          id: t.id,
+          appKey: t.appKey,
+          ...t.state !== void 0 ? { state: t.state } : {}
+        });
+        continue;
+      }
+      keptTabs.push({
         kind: "editor",
         id: t.id,
         fileId: t.fileId,
@@ -55722,12 +61199,12 @@ function serializeShellState(snapshot) {
       });
     }
     let activeTabId = g.activeTabId;
-    if (activeTabId !== null && !editorTabs.some((t) => t.id === activeTabId)) {
-      activeTabId = editorTabs.length > 0 ? editorTabs[0].id : null;
+    if (activeTabId !== null && !keptTabs.some((t) => t.id === activeTabId)) {
+      activeTabId = keptTabs.length > 0 ? keptTabs[0].id : null;
     }
     groups[gid] = {
       id: gid,
-      tabs: editorTabs,
+      tabs: keptTabs,
       activeTabId,
       ...g.backgroundFileId !== void 0 ? { backgroundFileId: g.backgroundFileId } : {},
       ...g.backdropOpacity !== void 0 ? { backdropOpacity: g.backdropOpacity } : {},
@@ -55761,13 +61238,13 @@ function clearShellState(projectId) {
 __name(clearShellState, "clearShellState");
 function buildDefaultSnapshot(newGroupId, defaultFileId) {
   const tabs2 = defaultFileId ? [{ kind: "editor", id: `tab-${defaultFileId}`, fileId: defaultFileId }] : [];
-  const group = {
+  const group2 = {
     id: newGroupId,
     tabs: tabs2,
     activeTabId: tabs2.length > 0 ? tabs2[0].id : null
   };
   const groups = /* @__PURE__ */ new Map();
-  groups.set(newGroupId, group);
+  groups.set(newGroupId, group2);
   return {
     groups,
     layout: [[newGroupId]],
@@ -55780,12 +61257,19 @@ function hydrateSnapshot(persisted) {
   for (const [gid, pg] of Object.entries(persisted.groups)) {
     groups.set(gid, {
       id: pg.id,
-      tabs: pg.tabs.map((t) => ({
-        kind: "editor",
-        id: t.id,
-        fileId: t.fileId,
-        ...t.preview === true ? { preview: true } : {}
-      })),
+      tabs: pg.tabs.map(
+        (t) => t.kind === "app" ? {
+          kind: "app",
+          id: t.id,
+          appKey: t.appKey,
+          ...t.state !== void 0 ? { state: t.state } : {}
+        } : {
+          kind: "editor",
+          id: t.id,
+          fileId: t.fileId,
+          ...t.preview === true ? { preview: true } : {}
+        }
+      ),
       activeTabId: pg.activeTabId,
       ...pg.backgroundFileId !== void 0 ? { backgroundFileId: pg.backgroundFileId } : {},
       ...pg.backdropOpacity !== void 0 ? { backdropOpacity: pg.backdropOpacity } : {},
@@ -55800,11 +61284,11 @@ function hydrateSnapshot(persisted) {
 }
 __name(hydrateSnapshot, "hydrateSnapshot");
 function isPersistableTab(t) {
-  return t.kind === "editor";
+  return t.kind === "editor" || t.kind === "app";
 }
 __name(isPersistableTab, "isPersistableTab");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, THREE_ADDONS, THREE_VIZ, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VELOCITY_DRAG_KEY, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, compileThreeSketch, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, errorPositionNow, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getVelocityDrag, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCodeViz, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retainCodeBackdropOptions, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVelocityDrag, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useVelocityDrag, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

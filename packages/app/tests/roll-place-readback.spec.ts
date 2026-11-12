@@ -28,8 +28,11 @@
  * gesture" when column 6, one cell away on the same row in the same render, writes.
  */
 import { test, expect, type Page } from '@playwright/test'
-import { bootApp, seedCode, editorValue } from './_appBoot'
+import { bootApp, seedCode, editorValue, pinLcmGrid } from './_appBoot'
 import { expectRefusalReported, expectNoRefusalReported } from './_console'
+
+// The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
+pinLcmGrid(test)
 
 const CODE = '$: note("<c2*2 g2*3 [a g] c2*6>")'
 /** the accepted click — c2 joins the first g2 as a chord */
@@ -53,14 +56,14 @@ async function cell(page: Page, key: string): Promise<{ x: number; y: number }> 
 }
 
 test.describe('a placed note is only written where the document keeps it (#1333)', () => {
-  test('the accepted cell places the note, and the document holds it', async ({ page }) => {
+  test('the accepted cell places the note, and the document holds it (LCM grid)', async ({ page }) => {
     await openRoll(page, CODE)
     const at = await cell(page, '36:6')
     await page.mouse.click(at.x, at.y)
     await expect.poll(() => editorValue(page)).toBe(ACCEPTED)
   })
 
-  test('the adjacent cell, whose note the document would not keep, writes nothing at all', async ({
+  test('the adjacent cell, whose note the document would not keep, writes nothing at all (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, CODE)
@@ -119,7 +122,7 @@ test.describe('a placed note is only written where the document keeps it (#1333)
  * runtimes — and the accepted arm below is the control that proves it.
  */
 test.describe('a refused roll gesture is reported, not swallowed (#1336)', () => {
-  test('the refused placement raises exactly one warning, and it names the gesture', async ({
+  test('the refused placement raises exactly one warning, and it names the gesture (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, CODE)
@@ -133,7 +136,7 @@ test.describe('a refused roll gesture is reported, not swallowed (#1336)', () =>
     await expectRefusalReported(page, "Couldn't add that note")
   })
 
-  test('the accepted placement raises none — the report tracks the refusal, not the click', async ({
+  test('the accepted placement raises none — the report tracks the refusal, not the click (LCM grid)', async ({
     page,
   }) => {
     await openRoll(page, CODE)

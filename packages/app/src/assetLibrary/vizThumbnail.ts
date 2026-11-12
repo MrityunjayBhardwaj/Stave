@@ -17,6 +17,7 @@ const RENDERER_BASE_HUE: Record<VizLibItem["renderer"], number> = {
   glsl: 268,
   p5: 150,
   hydra: 322,
+  three: 205,
 };
 
 /** Deterministic small hash of a string → used to jitter the hue per package. */

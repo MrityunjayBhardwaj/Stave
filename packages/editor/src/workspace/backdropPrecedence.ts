@@ -24,3 +24,76 @@ export function resolveBackdropFileId(
 ): string | undefined {
   return overrideFileId ?? stickyFileId
 }
+
+/**
+ * #2423 — whose background a pane draws: the file its active tab shows, unless
+ * that IS the viz being drawn — then it is the viz's own background (`null`),
+ * which takes its own settings rather than any pattern's code options. A
+ * pattern's pane (or a pattern spanning the workspace) is that pattern's.
+ *
+ * @param bgFileId    the viz file the background draws
+ * @param paneFileId  the file the pane's active tab shows (or, for a spanning
+ *                    background, the pattern set to Workspace)
+ */
+export function backdropOwnerFor(
+  bgFileId: string,
+  paneFileId: string | null | undefined,
+): string | null {
+  return paneFileId && paneFileId !== bgFileId ? paneFileId : null
+}
+
+/** The bus selector a background listens to (structural copy of `AudioSourceRef`). */
+export type BackdropSourceRef =
+  | { readonly kind: 'default' }
+  | { readonly kind: 'file'; readonly fileId: string }
+  | { readonly kind: 'none' }
+
+/**
+ * #2426 — which audio a background listens to, by whose background it is.
+ *
+ * - A PATTERN's background (its code background in its own pane, or spanning the
+ *   workspace) listens to that pattern's own audio: the bus source the pattern
+ *   publishes under its file id. Another file's chosen source never reaches it.
+ * - Any other background — a viz file's own, or a viz pinned behind a non-pattern
+ *   tab — listens to the source chosen in that viz's settings (an example sound,
+ *   a specific pattern, none), or `default` (follow the most recent publisher)
+ *   when nothing was chosen or "default" was.
+ *
+ * @param owner      whose background (see `backdropOwnerFor`): null = the viz's own
+ * @param bgFileId   the viz file the background draws
+ * @param isPattern  whether a file is a pattern (publishes audio under its id)
+ * @param chosen     the source chosen in a viz file's settings, if any
+ */
+export function backdropSourceFor(
+  owner: string | null,
+  bgFileId: string,
+  isPattern: (fileId: string) => boolean,
+  chosen: (vizFileId: string) => BackdropSourceRef | undefined,
+): BackdropSourceRef {
+  if (owner && isPattern(owner)) return { kind: 'file', fileId: owner }
+  return chosen(bgFileId) ?? { kind: 'default' }
+}
+
+/**
+ * #2422 — does a viz tab's ⏸ pause THIS pane's background?
+ *
+ * The viz chrome's play/pause (#781) flips a per-FILE flag (`pausedPreviews`,
+ * keyed by file so a pause survives dragging the tab to another pane). It
+ * controls that viz's OWN placements: its side preview, and the background of a
+ * pane while the viz file itself is that pane's active tab. A background that
+ * another tab draws from the same file — a pattern's code background
+ * (`all(x => x.viz("Fold"))`) or another tab's pin — is not the viz's own and
+ * keeps running: Play/Stop only start and stop the music, and the pattern tab has
+ * no pause control to undo it.
+ *
+ * @param bgFileId     the file the pane's background draws
+ * @param paneFileId   the file the pane's active tab shows (null for none)
+ * @param pausedFiles  the viz files paused from their own tab
+ */
+export function isOwnBackdropPaused(
+  bgFileId: string,
+  paneFileId: string | null | undefined,
+  pausedFiles: ReadonlySet<string>,
+): boolean {
+  return paneFileId === bgFileId && pausedFiles.has(bgFileId)
+}

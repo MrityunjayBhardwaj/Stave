@@ -10,7 +10,7 @@
  *
  * #2248 — the short form, `/s/<id>#<key>`, carries the same gzipped manifest,
  * sealed with a key that stays in the link and stored by id (see shareCrypto.ts).
- * Copy Share Link tries it first and falls back to the long link.
+ * Copy Private Link tries it first and falls back to the long link.
  */
 import {
   listWorkspaceFiles,
@@ -28,12 +28,17 @@ import {
   type WorkspaceLanguage,
 } from "@stave/editor";
 
-import { fromBase64Url, openShare, parseShortShare, sealShare, toBase64Url } from "./shareCrypto";
+import { showPrompt } from "./dialogs/host";
+import { addPrivateLink } from "./gallery/localShares";
+import { currentGallerySession } from "./gallery/session";
+import { turnstileSiteKey } from "./gallery/TurnstileWidget";
+import { SHARE_LINK_NAME_HEADER, TURNSTILE_HEADER } from "./gallery/types";
+import { fromBase64Url, MAX_SEALED_BYTES, openShare, parseShortShare, sealShare, toBase64Url } from "./shareCrypto";
 
 export const SHARE_HASH_PREFIX = "#share=";
 const MAX_RAW_BYTES = 2 * 1024 * 1024;
 
-interface ShareManifest {
+export interface ShareManifest {
   schemaVersion: 1;
   project: { name: string; sharedAt: number };
   files: Array<{ id: string; path: string; language: string; content: string }>;
@@ -80,7 +85,8 @@ async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
   return merged;
 }
 
-function collectManifest(project: ProjectMeta): ShareManifest {
+/** The active project's manifest. Also the payload of a gallery entry (#2306). */
+export function collectManifest(project: ProjectMeta): ShareManifest {
   const files = listWorkspaceFiles();
 
   const folderPaths = new Set<string>([""]);
@@ -146,20 +152,68 @@ function appPath(): string {
 
 /** #2250 — `Error.name` when the store refused because of the per-visitor limit. */
 export const SHARE_RATE_LIMITED = "ShareRateLimited";
+/** #2364 — `Error.name` when the server refused the "are you human" check. */
+export const SHARE_CHECK_REFUSED = "ShareCheckRefused";
+/** #2364 — `Error.name` when the person closed the check: no link, and nothing to say. */
+export const SHARE_CHECK_CANCELLED = "ShareCheckCancelled";
+/** #2364 — `Error.name` when the person chose the long link over the check. */
+export const SHARE_CHECK_SKIPPED = "ShareCheckSkipped";
+
+/** #2364 — what the check in front of a short link answered: a token good for one send, or no token. */
+export type ShareCheckAnswer = { token: string } | { skip: "cancel" | "long" };
+
+async function tokenFrom(askCheck: () => Promise<ShareCheckAnswer>): Promise<string> {
+  const answer = await askCheck();
+  if ("token" in answer) return answer.token;
+  const err = new Error("no short link without the check");
+  err.name = answer.skip === "cancel" ? SHARE_CHECK_CANCELLED : SHARE_CHECK_SKIPPED;
+  throw err;
+}
 
 /**
  * #2248 — a short link, `/s/<id>#<key>`. The project is sealed here with a fresh
  * key and only the sealed bytes are uploaded; the key stays in the link's `#` part,
  * which browsers never send. Throws when the store can't take it (offline, not set
  * up, too large) — the caller falls back to the long link.
+ *
+ * #2364 — on a site with the "are you human" check, `askCheck` is asked for a token
+ * unless this page knows it is signed in. Still loading, or a failed lookup, counts
+ * as not knowing. The server has the last word: if it reads no session after all
+ * (the cookie ran out), it refuses and the check is asked for then. A token goes
+ * out with one request, whatever that request's answer.
  */
-export async function buildShortShareUrl(project: ProjectMeta): Promise<string> {
+export async function buildShortShareUrl(
+  project: ProjectMeta,
+  askCheck: () => Promise<ShareCheckAnswer>,
+): Promise<string> {
   const { sealed, key } = await sealShare(await packProject(project));
-  const res = await fetch("/api/share", {
-    method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: sealed as BodyInit,
-  });
+  // The server would refuse this size too, but only after the person passed the check.
+  if (sealed.byteLength > MAX_SEALED_BYTES) throw new Error("project too large for a short link");
+  // #2321 — signed in, the link is also listed on the account (by its project
+  // name) so My shares can show and revoke it on every device. #2329 — the key
+  // never leaves this browser, signed in or not: only this browser's own list
+  // (addPrivateLink below) can copy the link again.
+  const session = currentGallerySession();
+  const accountAuthorId = session.status === "ready" ? (session.session.user?.authorId ?? null) : null;
+  const headers: Record<string, string> = { "Content-Type": "application/octet-stream" };
+  if (accountAuthorId) {
+    headers[SHARE_LINK_NAME_HEADER] = encodeURIComponent(project.name);
+  }
+  const send = (token: string | null) =>
+    fetch("/api/share", {
+      method: "POST",
+      headers: token ? { ...headers, [TURNSTILE_HEADER]: token } : headers,
+      body: sealed as BodyInit,
+    });
+  const checkHere = !!turnstileSiteKey();
+  const checkFirst = checkHere && !accountAuthorId;
+  let res = await send(checkFirst ? await tokenFrom(askCheck) : null);
+  if (res.status === 403 && checkHere && !checkFirst) res = await send(await tokenFrom(askCheck));
+  if (res.status === 403) {
+    const err = new Error("the \"are you human\" check didn't pass");
+    err.name = SHARE_CHECK_REFUSED;
+    throw err;
+  }
   if (res.status === 429) {
     // #2250 — the site's firewall caps short links per visitor. Named, so Copy
     // Share Link can say why it copied the long link instead.
@@ -168,8 +222,46 @@ export async function buildShortShareUrl(project: ProjectMeta): Promise<string> 
     throw err;
   }
   if (!res.ok) throw new Error(`the share store answered ${res.status}`);
-  const { id } = (await res.json()) as { id: string };
-  return `${window.location.origin}/s/${id}#${key}`;
+  const { id, manageToken, onAccount } = (await res.json()) as { id: string; manageToken?: string; onAccount?: boolean };
+  const url = `${window.location.origin}/s/${id}#${key}`;
+  // #2311 — remember it, so My shares can copy it again or revoke it. #2320 —
+  // already on the account: marked so the claim doesn't send it again.
+  if (manageToken) {
+    try {
+      addPrivateLink({
+        id,
+        url,
+        projectName: project.name,
+        createdAt: Date.now(),
+        manageToken,
+        ...(onAccount && accountAuthorId ? { claimedBy: accountAuthorId } : {}),
+      });
+    } catch (err) {
+      console.warn("[stave] couldn't remember the share link:", err);
+    }
+  }
+  return url;
+}
+
+/**
+ * #2364 — copy a link that may have taken a while to make. Some browsers only let
+ * a page write to the clipboard just after a click, and the upload (or the check)
+ * can outlast that. So when the write is refused, show the link with a Copy button:
+ * pressing it is a fresh click. False when the person closed that instead.
+ */
+export async function copyLink(url: string): Promise<boolean> {
+  let description = "Your browser wants one more click before it copies this.";
+  for (;;) {
+    try {
+      await navigator.clipboard.writeText(url);
+      return true;
+    } catch (err) {
+      console.warn("[stave] the clipboard refused the link:", err);
+    }
+    const again = await showPrompt({ title: "Your link is ready", description, initialValue: url, confirmLabel: "Copy" });
+    if (again === null) return false;
+    description = "Your browser won't let Stave copy this. Select it and copy it yourself.";
+  }
 }
 
 /**

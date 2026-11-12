@@ -113,6 +113,7 @@ interface Handle {
   mutate: (fn: (m: StepGridModel) => StepGridModel) => void
   settle: (m: StepGridModel) => void
   writeMini: (mini: string) => void
+  writeStep: (from: string, edit: { from: number; to: number; insert: string }) => boolean
   beginGesture: () => void
   endGesture: () => void
   setViewScale: (s: ViewScale) => void
@@ -122,7 +123,7 @@ let h: Handle
 
 function Harness(): React.ReactElement {
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const { model, mutate, settle, writeMini, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
+  const { model, mutate, settle, writeMini, writeStep, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
     source: 'seq',
     eligible: isStepChunk,
     parse: parseStepGrid,
@@ -136,7 +137,7 @@ function Harness(): React.ReactElement {
   React.useEffect(() => {
     setViewScale(UNREFINED)
   }, [patternKey])
-  h = { model, mutate, settle, writeMini, beginGesture, endGesture, setViewScale, viewScale }
+  h = { model, mutate, settle, writeMini, writeStep, beginGesture, endGesture, setViewScale, viewScale }
   return React.createElement('div')
 }
 
@@ -192,6 +193,36 @@ describe('useGridModel — writing from a refined view (#1057)', () => {
     expect(h.viewScale).toBe(UNREFINED)
     expect(h.model?.steps).toBe(8)
     expect(documentSteps(h.model as StepGridModel)).toBe(8)
+  })
+
+  it('#2410: a STEP write that spells the refinement absorbs the view, as the column writer does', () => {
+    render(React.createElement(Harness))
+    act(() => h.setViewScale(2))
+    expect(h.model?.steps).toBe(8)
+
+    // the step writer splits the first rest at its second half: `~` → `[~ bd]`
+    act(() => {
+      h.writeStep('bd ~ sn ~', { from: 3, to: 4, insert: '[~ bd]' })
+    })
+
+    expect(DOC).toBe('s("bd [~ bd] sn ~")')
+    // the text now opens at the 8 columns on screen: the ×2 is dropped, not applied again
+    expect(h.viewScale).toBe(UNREFINED)
+    expect(h.model?.steps).toBe(8)
+  })
+
+  it('#2410 CONTROL: a step write that leaves the text at its own resolution keeps the zoom', () => {
+    render(React.createElement(Harness))
+    act(() => h.setViewScale(2))
+
+    // a rest filled whole: the text still spells 4 steps, so the user's ×2 stays
+    act(() => {
+      h.writeStep('bd ~ sn ~', { from: 3, to: 4, insert: 'hh' })
+    })
+
+    expect(DOC).toBe('s("bd hh sn ~")')
+    expect(h.viewScale).toBe(2)
+    expect(h.model?.steps).toBe(8)
   })
 
   /**

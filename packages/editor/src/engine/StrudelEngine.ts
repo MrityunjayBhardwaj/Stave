@@ -1360,6 +1360,12 @@ export class StrudelEngine implements LiveCodingEngine {
     // capture so a bare top-level `.scope()` still registers.
     let capturedBackdropViz: string | null = null
     let capturedBackdropVizOptions: Record<string, unknown> | null = null
+    // A `.viz()` inside a master `all(x => …)` belongs to no single track, so it
+    // IS the backdrop — `{ backdrop: true }` is implied there. Strudel applies the
+    // `all()` transforms to the stacked mix AFTER the user code has run, while the
+    // `.viz` wrapper below is still installed; this counts how deep we are inside
+    // one of those transforms so the wrapper can tell the master from a track.
+    let masterTransformDepth = 0
     // #571 — fallback for an inline viz request (`.viz()` / `._pianoroll()` …)
     // that ISN'T the terminal chain call. The request is tagged on the returned
     // Pattern instance (`_pendingViz`), but Strudel patterns are immutable so any
@@ -1408,6 +1414,13 @@ export class StrudelEngine implements LiveCodingEngine {
     // Save current descriptor (may be value descriptor from previous injectPatternMethods)
     const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern.prototype, 'p')
     const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern.prototype, 'viz')
+    // The global `all` the repl installs (the `evalScope({ all, … })` call in
+    // @strudel/core repl.mjs `injectPatternMethods`) — trapped for
+    // the length of this evaluate so each transform it registers is run inside
+    // `masterTransformDepth` (see the trap in the `.p` setter below).
+    const savedAllDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'all')
+    let allTrapInstalled = false
+    let strudelAll: unknown = savedAllDescriptor?.value
 
     // Strudel-official viz methods (see STRUDEL_VIZ_METHODS). Both chain
     // forms of every name are intercepted below; we save the prior
@@ -1438,6 +1451,34 @@ export class StrudelEngine implements LiveCodingEngine {
       configurable: true,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       set(strudelFn: (id: string) => any) {
+        // Trap the global `all` BEFORE the repl's evalScope assigns it (that
+        // assignment comes after this setter, inside the same
+        // injectPatternMethods, in @strudel/core repl.mjs). The user's `all(fn)` then
+        // registers `fn` wrapped so that, when Strudel applies it to the stacked
+        // mix, every `.viz()` it calls knows it is the master's.
+        if (!allTrapInstalled) {
+          allTrapInstalled = true
+          Object.defineProperty(globalThis, 'all', {
+            configurable: true,
+            enumerable: true,
+            get() {
+              if (typeof strudelAll !== 'function') return strudelAll
+              const register = strudelAll as (transform: unknown) => unknown
+              return (transform: unknown) => {
+                if (typeof transform !== 'function') return register(transform)
+                return register(function (this: unknown, ...args: unknown[]) {
+                  masterTransformDepth++
+                  try {
+                    return (transform as (...a: unknown[]) => unknown).apply(this, args)
+                  } finally {
+                    masterTransformDepth--
+                  }
+                })
+              }
+            },
+            set(v: unknown) { strudelAll = v },
+          })
+        }
         // NOW install .viz() wrapper — after injectPatternMethods has set Strudel's .viz()
         // Wrap Strudel's existing .viz() so it still renders, but also capture the viz name.
         const strudelViz = Pattern.prototype.viz // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -1464,7 +1505,10 @@ export class StrudelEngine implements LiveCodingEngine {
             // G3: in a NON-active program this only mutates the closure, which the
             // singular engine commits for the active evaluate alone → effectively a
             // no-op until that program is active. `.viz('name')` (no flag) stays inline.
-            if (resolvedName && optsObj && optsObj.backdrop === true) {
+            // A `.viz()` inside a master `all(x => …)` is the backdrop too, with
+            // or without the flag: it belongs to no single track, so there is no
+            // line for an inline zone to sit under.
+            if (resolvedName && ((optsObj && optsObj.backdrop === true) || masterTransformDepth > 0)) {
               capturedBackdropViz = resolvedName
               capturedBackdropVizOptions = optsObj
               return strudelViz ? strudelViz.call(this, vizName) : this
@@ -1492,7 +1536,8 @@ export class StrudelEngine implements LiveCodingEngine {
         // For each official viz name we intercept BOTH chain forms so pasted
         // Strudel code works out of the gate:
         //   - `._name()` (underscore) → inline viz zone  (tags `_pendingViz`,
-        //      read by the `.p()` wrapper below → capturedVizRequests)
+        //      read by the `.p()` wrapper below → capturedVizRequests); inside a
+        //      master `all()` transform, the backdrop (#2387)
         //   - `.name()`  (non-underscore) → Stave backdrop  (sets the
         //      `capturedBackdropViz` closure directly; does not depend on `.p()`)
         // Neither form chains to Strudel's real method: `@strudel/draw` isn't
@@ -1507,6 +1552,14 @@ export class StrudelEngine implements LiveCodingEngine {
             configurable: true,
             writable: true,
             value: function(this: any, opts?: unknown) { // eslint-disable-line @typescript-eslint/no-explicit-any
+              // #2387 — inside a master `all(x => …)` transform there is no track
+              // (no `.p()` runs after it), so an inline zone tagged here would be
+              // dropped silently. Like `.viz()` there, it IS the backdrop.
+              if (masterTransformDepth > 0) {
+                capturedBackdropViz = renderer
+                capturedBackdropVizOptions = opts && typeof opts === 'object' ? (opts as Record<string, unknown>) : null
+                return this
+              }
               this._pendingViz = renderer
               pendingChainViz = renderer // #571 — survive non-terminal chains
               // Carry the `.pianoroll({...})` argument so the `.p()` wrapper
@@ -1932,6 +1985,20 @@ export class StrudelEngine implements LiveCodingEngine {
         Object.defineProperty(Pattern.prototype, 'viz', savedVizDescriptor)
       } else {
         delete (Pattern.prototype as any).viz // eslint-disable-line @typescript-eslint/no-explicit-any
+      }
+
+      // Put the global `all` back as a plain value: the repl's own function if
+      // it assigned one during this evaluate, else whatever was there before.
+      if (allTrapInstalled) {
+        if (strudelAll !== undefined) {
+          Object.defineProperty(globalThis, 'all', {
+            configurable: true, enumerable: true, writable: true, value: strudelAll,
+          })
+        } else if (savedAllDescriptor) {
+          Object.defineProperty(globalThis, 'all', savedAllDescriptor)
+        } else {
+          delete (globalThis as Record<string, unknown>).all
+        }
       }
 
       // Restore legacy ._vizName() methods

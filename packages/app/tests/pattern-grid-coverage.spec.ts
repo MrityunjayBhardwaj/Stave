@@ -10,7 +10,10 @@
  * (and the numeric write-back) fail.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -64,7 +67,7 @@ async function openPattern(page: Page) {
 }
 
 test.describe('#468 — `-` rest binds the grid', () => {
-  test('sequencer: `s("bd - bd")` binds with the `-` as a silent slot', async ({ page }) => {
+  test('sequencer: `s("bd - bd")` binds with the `-` as a silent slot (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd - bd")')
     const drawer = await openPattern(page)
@@ -124,7 +127,7 @@ test.describe('#469 — numeric patterns bind the Piano Roll', () => {
 })
 
 test.describe('#467 — `[group]*n` multiplier binds the grid', () => {
-  test('sequencer: `s("[bd hh]*2")` binds as the expanded 4-step sequence', async ({ page }) => {
+  test('sequencer: `s("[bd hh]*2")` binds as the expanded 4-step sequence (LCM grid)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("[bd hh]*2")')
     const drawer = await openPattern(page)

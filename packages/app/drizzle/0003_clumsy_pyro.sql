@@ -1,0 +1,1 @@
+ALTER TABLE "entries" ADD COLUMN "has_recording" boolean DEFAULT false NOT NULL;

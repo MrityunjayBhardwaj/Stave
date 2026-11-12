@@ -89,7 +89,7 @@
  * gets a fresh renderer state.
  */
 
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import type { VizDescriptor } from '../../visualizers/types'
 import type { VizPreset } from '../../visualizers/vizPreset'
 import { compilePreset } from '../../visualizers/vizCompiler'
@@ -99,6 +99,7 @@ import { isReportedVizError } from '../../visualizers/reportedVizErrors'
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { PreviewContext, PreviewEditorChromeContext, PreviewProvider } from '../PreviewProvider'
 import { VizEditorChrome } from './VizEditorChrome'
+import { backdropOptionsFor, getCodeBackdropOptionsVersion, subscribeCodeBackdropOptions } from './codeBackdropOptions'
 import { emitLog, emitFixed, type RuntimeId } from '../../engine/engineLog'
 import { formatFriendlyError } from '../../engine/friendlyErrors'
 import { P5_DOCS_INDEX } from '../../monaco/docs/p5'
@@ -118,7 +119,7 @@ export interface CompiledVizProviderOptions {
   /** Display label used in dropdown tooltips / error messages. */
   readonly label: string
   /** Which concrete renderer `compilePreset` should produce. */
-  readonly renderer: 'hydra' | 'p5' | 'glsl'
+  readonly renderer: 'hydra' | 'p5' | 'glsl' | 'three'
 }
 
 /**
@@ -163,6 +164,8 @@ export function createCompiledVizProvider(
           hidden={ctx.hidden}
           paused={ctx.paused ?? false}
           fileId={ctx.file.id}
+          backdrop={ctx.backdrop ?? false}
+          backdropOwner={ctx.backdropOwner}
         />
       )
     },
@@ -188,8 +191,8 @@ interface CompiledVizMountProps {
    * change.
    */
   readonly file: PreviewContext['file']
-  /** Which renderer the provider wraps ('hydra' | 'p5' | 'glsl'). */
-  readonly rendererType: 'hydra' | 'p5' | 'glsl'
+  /** Which renderer the provider wraps ('hydra' | 'p5' | 'glsl' | 'three'). */
+  readonly rendererType: 'hydra' | 'p5' | 'glsl' | 'three'
   readonly audioSource: PreviewContext['audioSource']
   readonly hidden: boolean
   /**
@@ -201,6 +204,10 @@ interface CompiledVizMountProps {
    */
   readonly paused: boolean
   readonly fileId: string
+  /** a pane background — its options follow the code (codeBackdropOptions) */
+  readonly backdrop: boolean
+  /** #2423 — whose background this is (pattern file id, null = the viz's own, undefined = unsaid) */
+  readonly backdropOwner?: string | null
 }
 
 /**
@@ -221,7 +228,19 @@ interface CompiledVizMountProps {
  * teardown.
  */
 function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
-  const { file, rendererType, audioSource, hidden, paused, fileId } = props
+  const { file, rendererType, audioSource, hidden, paused, fileId, backdrop, backdropOwner } = props
+  // What the CODE gives this background (its pattern's background viz, read
+  // statically): present before the first Play and after Stop, when the bus
+  // payload below is not. Only for a background showing that same file.
+  // #2423 — and only for the pattern whose background it is: a viz file's own
+  // background (owner null) takes its own settings, never a pattern's options
+  // nor the bus's, even when both draw the same viz file.
+  const optionsVersion = useSyncExternalStore(subscribeCodeBackdropOptions, getCodeBackdropOptionsVersion)
+  const { codeOptions, busOptions } = useMemo(
+    () => (backdrop ? backdropOptionsFor(backdropOwner, fileId) : { codeOptions: null, busOptions: true }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [backdrop, backdropOwner, fileId, optionsVersion],
+  )
 
   // Compile ONCE per file-content change. This is the memoization
   // boundary that keeps the descriptor stable across re-renders
@@ -329,15 +348,21 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
     // options into `bag.options` the same way viewZones does per inline zone —
     // P5VizRenderer reads `components.options` into `stave.options`. Without
     // this the backdrop ignored every option.
-    if (audioSource?.inlineViz?.backdropRequest?.options) {
+    if (busOptions && audioSource?.inlineViz?.backdropRequest?.options) {
       bag.options = audioSource.inlineViz.backdropRequest.options
+    }
+    // The code's options win for a background: they are what the document says
+    // now, and they survive Stop (which withdraws the payload above). Values only
+    // an evaluation can produce were already folded in from the last one.
+    if (codeOptions) {
+      bag.options = codeOptions
     }
     return bag
     // We deliberately depend on the audioSource reference, which is stable
     // within a single mount lifetime (PreviewView's key formula enforces
     // this). A shallow-unsafe dep is fine here because a stale value is
     // impossible — the component unmounts before audioSource changes.
-  }, [audioSource])
+  }, [audioSource, codeOptions, busOptions])
 
   // Mount/unmount the renderer. This effect runs exactly once per mount
   // because descriptor is captured at mount time and PreviewView owns the

@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd ../.. && pnpm turbo run build --filter=@stave/app"
+  "buildCommand": "cd ../.. && pnpm turbo run build --filter=@stave/app",
+  "crons": [
+    {
+      "path": "/api/gallery/cron/purge",
+      "schedule": "0 3 * * *"
+    }
+  ]
 }

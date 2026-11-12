@@ -97,7 +97,9 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
     // Backdrop controls surface in the popover while in backdrop mode.
     const popover = page.locator('[data-testid="viz-settings-popover"]')
     await expect(popover.locator('[data-testid="viz-settings-quality"]')).toBeVisible()
-    await expect(popover.locator('[data-testid="viz-settings-vizspan"]')).toBeVisible()
+    // #2423 — the viz span is a PATTERN's setting (its set-bg popover), not a viz
+    // file's: the viz settings popover no longer offers it
+    await expect(popover.locator('[data-testid="viz-settings-vizspan"]')).toHaveCount(0)
 
     // preview=off clears the backdrop.
     await popover.locator('[data-testid="viz-preview-mode-off"]').click()
@@ -241,13 +243,15 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
       'viz-settings-quality',
       'viz-settings-crop',
       'viz-settings-reveal',
-      'viz-settings-vizspan',
     ]) {
       const el = popover.locator(`[data-testid="${tid}"]`)
       await expect(el).toBeVisible()
       await expect(el).toHaveAttribute('data-disabled', 'true')
       await expect(el).toBeDisabled()
     }
+
+    // #2423 — no span control here: the span is a pattern's setting
+    await expect(popover.locator('[data-testid="viz-settings-vizspan"]')).toHaveCount(0)
 
     // Switch to backdrop → the same controls enable.
     await popover.locator('[data-testid="viz-preview-mode-backdrop"]').click()
@@ -257,7 +261,6 @@ test.describe('Backdrop via viz-settings popover (#773)', () => {
       'viz-settings-quality',
       'viz-settings-crop',
       'viz-settings-reveal',
-      'viz-settings-vizspan',
     ]) {
       const el = popover.locator(`[data-testid="${tid}"]`)
       await expect(el).toHaveAttribute('data-disabled', 'false')

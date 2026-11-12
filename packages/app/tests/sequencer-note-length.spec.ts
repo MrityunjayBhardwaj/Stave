@@ -16,8 +16,11 @@
  * pass on a grid that lit every column, so the full row is compared both ways.
  */
 import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 import { slotsControl } from './_resolutionControl'
 
+
+pinLcmGrid(test)
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 15_000 })
@@ -76,7 +79,7 @@ async function readLane(page: Page, lane: number, steps: number): Promise<string
 }
 
 test.describe('a note is drawn across the columns it covers (#1056)', () => {
-  test('the pair that used to render identically now differs, in the right column', async ({ page }) => {
+  test('the pair that used to render identically now differs, in the right column (LCM grid)', async ({ page }) => {
     await boot(page)
 
     await setStrudelCode(page, '$: s("bd ~ sd ~")')
@@ -98,7 +101,7 @@ test.describe('a note is drawn across the columns it covers (#1056)', () => {
     expect(held).not.toBe(short)
   })
 
-  test('a carried column is drawn as a continuation, not as a second strike', async ({ page }) => {
+  test('a carried column is drawn as a continuation, not as a second strike (LCM grid)', async ({ page }) => {
     // The head/sustain distinction is the piano roll's shipped vocabulary (a non-head
     // draws at 0.7). If a carried column were drawn identically to a struck one, the
     // picture would say `bd bd sd ~` — a different pattern — so the two are compared as
@@ -134,7 +137,7 @@ test.describe('a note is drawn across the columns it covers (#1056)', () => {
     await expect(page.locator('[data-seq-cell="0:2"]')).toHaveAttribute('aria-label', 'bd step 3')
   })
 
-  test('the length is still drawn at a REFINED view scale (×2)', async ({ page }) => {
+  test('the length is still drawn at a REFINED view scale (×2) (LCM grid)', async ({ page }) => {
     /**
      * WHY THIS ARM EXISTS. Everything above observes the pattern at its own resolution,
      * and the panel's render is scale-agnostic — it reads `laneCoverage` and nothing else,
@@ -172,7 +175,7 @@ test.describe('a note is drawn across the columns it covers (#1056)', () => {
     expect(refinedShort).not.toBe(refinedHeld)
   })
 
-  test('drawing the length does not disturb an ordinary all-length-1 pattern', async ({ page }) => {
+  test('drawing the length does not disturb an ordinary all-length-1 pattern (LCM grid)', async ({ page }) => {
     // The control arm in the live app: where every note lasts its own column, the grid
     // must be exactly the grid it has always been — one full-width box per trigger, no
     // carried columns anywhere.
