@@ -86,7 +86,10 @@ export interface GalleryPreviewProps {
   fileKey: string;
   /** Start playing as soon as this file is shown (a file row's play button chose it). */
   autoStart?: boolean;
-  /** Playing or not — so the file row that started it can show Stop. */
+  /**
+   * Whether the preview is running — so the file row that started it can show Stop.
+   * #2579: the page's own state (its frame is up), not what the frame reports.
+   */
   onPlayingChange?: (playing: boolean) => void;
   /** #2488 — what the stage shows before it plays: the file's recorded timeline, when there is one. */
   idle?: React.ReactNode;
