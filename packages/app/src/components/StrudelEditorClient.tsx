@@ -1865,9 +1865,11 @@ export default function StrudelEditorClient({
     });
   }, [getOrCreateRuntime, storeProjectId, markPatternUsed]);
 
+  // #2593 — the transport's Stop: stops and keeps the playhead where it was;
+  // pressed again while stopped, it rewinds to the start (Logic's two presses).
   const handleStop = useCallback((fileId: string) => {
     const rt = runtimesRef.current.get(fileId);
-    if (rt) rt.stop();
+    if (rt) rt.transportStop();
   }, []);
 
   // #1388, inverted by #1396 — Cycle/Loop. Per file, user-set, default OFF,
@@ -1924,8 +1926,13 @@ export default function StrudelEditorClient({
         runtimeStatesRef.current.get(fid)?.stopAtEnd ?? false,
       // The same Stop the transport button issues — one path stops a file, so
       // the runtime teardown, the bus unpublish and the playing-state edge all
-      // happen exactly as they do when the user presses the button.
-      stop: handleStop,
+      // happen exactly as they do when the user presses the button. #2593 —
+      // then rewind: a song that stopped at its end starts from the top on the
+      // next Play, not from its end into silence.
+      stop: (fid: string) => {
+        handleStop(fid);
+        runtimesRef.current.get(fid)?.rewind();
+      },
     });
     const id = setInterval(() => watcher.tick(), END_OF_SONG_POLL_MS);
     return () => clearInterval(id);
