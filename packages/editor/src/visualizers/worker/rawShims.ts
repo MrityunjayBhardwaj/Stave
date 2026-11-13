@@ -111,10 +111,29 @@ export class RawAnalyserShim {
 export class RawSchedulerShim implements IRPattern {
   private _now = 0
   private events: RawHapSummary[] = []
+  private _version: number | undefined = undefined
+  private _cps = 0
 
   set(raw: RawSchedulerFrame | null | undefined): void {
     this._now = raw?.now ?? 0
     this.events = raw?.events ?? []
+    this._version = raw?.version
+    this._cps = raw?.cps ?? 0
+  }
+
+  /** The whole shipped window (the GLSL note texture packs it, #2571). */
+  all(): readonly RawHapSummary[] {
+    return this.events
+  }
+
+  /** The window's change counter (`RawSchedulerFrame.version`). */
+  version(): number | undefined {
+    return this._version
+  }
+
+  /** Cycles per second, 0 when the frame carried none. */
+  cps(): number {
+    return this._cps
   }
 
   now(): number {

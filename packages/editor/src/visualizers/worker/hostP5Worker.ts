@@ -49,6 +49,7 @@ import { compileP5Code } from '../p5Compiler'
 import { compileHydraCode, getHydraLineOffset } from '../hydraCompiler'
 import { createGLSLProgram, type GLSLProgram } from '../renderers/glslCore'
 import { readGLSLEvents, readGLSLTracks } from '../renderers/glslEvents'
+import { GLSLNoteFeed, droppedNotesMessage } from '../renderers/glslNotes'
 import { compileThreeSketch, loadThreeModules, runThreeSketch } from '../renderers/threeSketch'
 import { subscribeLog, type LogEntry } from '../../engine/engineLog'
 import { parseStackLocation } from '../../engine/friendlyErrors'
@@ -323,7 +324,7 @@ export function hostVizWorker(scope: WorkerScope): void {
       msg.kind === 'hydra'
         ? await mountHydra(msg, feed, rawAnalyser, rawScheduler, dpr)
         : msg.kind === 'glsl'
-          ? mountGLSL(msg, rawAnalyser, feed)
+          ? mountGLSL(msg, rawAnalyser, rawScheduler, feed)
           : msg.kind === 'three'
             ? await mountThree(msg, feed, rawScheduler, containerSizeRef, dpr)
             : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr)
@@ -665,7 +666,12 @@ export function hostVizWorker(scope: WorkerScope): void {
   }
 
   // ── glsl (Tier 1: raw WebGL2 on the canvas → render direct, no blit, no lib) ──
-  function mountGLSL(msg: MountMessage, rawAnalyser: RawAnalyserShim, feed: WorkerBusFeed): RendererStrategy {
+  function mountGLSL(
+    msg: MountMessage,
+    rawAnalyser: RawAnalyserShim,
+    rawScheduler: RawSchedulerShim,
+    feed: WorkerBusFeed,
+  ): RendererStrategy {
     // Size the presenting canvas to CSS px (match HydraVizRenderer / mountHydra —
     // the Tier-1 direct-render sibling; maxDpr is 1 so backing == CSS anyway).
     msg.canvas.width = Math.max(1, Math.round(msg.size.w))
@@ -678,6 +684,11 @@ export function hostVizWorker(scope: WorkerScope): void {
     // main-thread GLSLVizRenderer (#247), exactly like a p5/hydra compile error.
     const program: GLSLProgram = createGLSLProgram(gl, msg.code)
     const startMs = globalThis.performance?.now?.() ?? 0
+    // Upcoming notes (#2571): the frame's `rawScheduler` window, packed into the
+    // `uNotes` texture. Repacked only when the window's version moves.
+    const notes = new GLSLNoteFeed()
+    const warnDropped = (dropped: number, total: number): void =>
+      postVizLog({ level: 'warn', runtime: 'glsl', source: msg.name || undefined, message: droppedNotesMessage(dropped, total) })
 
     return {
       setupDone: () => true, // program built synchronously above; draw on first frame
@@ -693,11 +704,18 @@ export function hostVizWorker(scope: WorkerScope): void {
         // hydra/p5 use). This is the contract's predicted generalization point: the
         // event feed is kind-specific (a uniform marshal), unlike the audio texture.
         const timeMs = (globalThis.performance?.now?.() ?? 0) - startMs
+        if (program.readsNotes) {
+          notes.update(
+            rawScheduler.all(), rawScheduler.version(), rawScheduler.now(), rawScheduler.cps(),
+            feed.bus.tracks, warnDropped,
+          )
+        }
         program.draw(
           rawAnalyser,
           { width: msg.canvas.width, height: msg.canvas.height, timeMs },
           readGLSLEvents(feed.bus),
           readGLSLTracks(feed.bus), // #297 per-track signals (same already-ticked bus)
+          notes, // #2571 upcoming notes → uNotes / uNoteCount / uNow / uCps
         )
       },
       resizeKind: (w, h) => {

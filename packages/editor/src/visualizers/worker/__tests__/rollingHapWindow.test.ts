@@ -38,6 +38,45 @@ function schedulerOf(pat: any): IRPattern & { calls: Array<[number, number]> } {
 const key = (e: IREvent) => `${e.begin.toFixed(6)}|${e.end.toFixed(6)}|${String((e as any).note)}|${String((e as any).s)}`
 const asSet = (es: IREvent[]) => [...new Set(es.map(key))].sort()
 
+describe('RollingHapWindow.version (#2571)', () => {
+  it('equal across two frames exactly when the answer is the same notes', () => {
+    const pat = stack(mini('c3 [e3 g3] <b3 d4> ~'), mini('bd*3 [~ sd]'), mini('<c2 ~>@3 a1'))
+    const sched = schedulerOf(pat)
+    const w = new RollingHapWindow(BACK, FWD)
+    let now = 2
+    let prevSet = ''
+    let prevVersion = -1
+    let same = 0
+    let moved = 0
+    for (let f = 0; f < 600; f++) {
+      const answer = w.at(sched, now, sched.query)
+      const set = asSet(answer).join('\n')
+      if (f > 0) {
+        if (w.version === prevVersion) {
+          expect(set).toBe(prevSet)
+          same++
+        } else moved++
+      }
+      prevSet = set
+      prevVersion = w.version
+      now += 1 / 60 + ((f % 7) - 3) / 2000
+    }
+    // the check bit both ways: most frames keep the version, some move it
+    expect(same).toBeGreaterThan(300)
+    expect(moved).toBeGreaterThan(5)
+  })
+
+  it('moves on a reset and never goes back', () => {
+    const sched = schedulerOf(mini('c3 e3'))
+    const w = new RollingHapWindow(BACK, FWD)
+    w.at(sched, 1, sched.query)
+    const v = w.version
+    w.reset()
+    w.at(sched, 1, sched.query)
+    expect(w.version).toBeGreaterThan(v)
+  })
+})
+
 function fullWindow(sched: IRPattern, now: number) {
   return sched.query(now - BACK, now + FWD)
 }

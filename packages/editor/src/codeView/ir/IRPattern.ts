@@ -16,4 +16,7 @@ export interface IRPattern {
   now(): number
   /** Query events overlapping the time range [begin, end). */
   query(begin: number, end: number): IREvent[]
+  /** Time units (cycles) per second, when the engine has a tempo. Optional:
+   *  only the combined scheduler reports it (#2571, the GLSL `uCps`). */
+  cps?(): number
 }

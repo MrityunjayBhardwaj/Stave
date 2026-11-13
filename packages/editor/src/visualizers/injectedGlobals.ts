@@ -84,12 +84,13 @@ const G_STRUCTURED = 'signals · structured (on sig)'
 const G_CORE = 'core'
 const G_GLSL_SCALARS = 'signals · scalars (0..1)'
 const G_GLSL_TRACK = 'signals · per-track'
+const G_GLSL_NOTES = 'upcoming notes'
 
 /** The trailing one-line rule per kind (the scalar-vs-accessor payoff). */
 const RULE: Record<VizRendererKind, string | null> = {
   p5: 'rule: every signal lives on sig — sig.kick is a number, sig.fft an array, sig(\'bd\') one sound',
   hydra: 'rule: every signal lives on stave.sig — sig.kick() a number, sig.fft an array, sig(\'bd\') one sound',
-  glsl: 'rule: scalars are floats · spectrum/waveform = iChannel0 texture · per-track via staveTrack(i)',
+  glsl: 'rule: scalars are floats · spectrum/waveform = iChannel0 texture · per-track via staveTrack(i) · notes via staveNote(i)',
   three: 'rule: plain three.js; every signal lives on sig — sig.bass is a number, sig.fft an array, sig(\'bd\') one sound',
 }
 
@@ -125,6 +126,10 @@ const GLSL_GLOBALS: readonly InjectedGlobal[] = [
   },
   { group: G_GLSL_TRACK, decl: 'uniform int       uTrackCount;', comment: 'live track count', tokens: ['uTrackCount'] },
   { group: G_GLSL_TRACK, decl: 'StaveTrack        staveTrack(int i);', comment: '{ env, velocity, rms, bass, mid, treble } — per track i', tokens: ['staveTrack', 'StaveTrack'] },
+  { group: G_GLSL_NOTES, decl: 'uniform int       uNoteCount;', comment: 'notes in uNotes (≤ STAVE_MAX_NOTES), now−4 … now+2 cycles', tokens: ['uNoteCount', 'STAVE_MAX_NOTES'] },
+  { group: G_GLSL_NOTES, decl: 'StaveNote         staveNote(int i);', comment: '{ begin, end, midi (−1 = drum), gain, velocity, track } — sorted by begin', tokens: ['staveNote', 'StaveNote'] },
+  { group: G_GLSL_NOTES, decl: 'uniform float     uNow, uCps;', comment: 'scheduler now (cycles) · cycles per second', tokens: ['uNow', 'uCps'] },
+  { group: G_GLSL_NOTES, decl: 'uniform sampler2D uNotes;', comment: 'the raw texture staveNote(i) reads (texelFetch)', tokens: ['uNotes'] },
 ]
 
 const P5_GLOBALS: readonly InjectedGlobal[] = [
