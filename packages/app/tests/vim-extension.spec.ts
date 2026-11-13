@@ -694,7 +694,9 @@ test.describe('off a Mac, where Vim’s Ctrl keys are Stave’s Ctrl keys', () =
     await page.keyboard.press('Control+c')
     await expect(modeOf(page)).toHaveText('-- NORMAL --')
     const typed = (await focused(page))?.text
-    expect(typed).toBe(TEXT.replace('\n', 'hello there\nmore\n'))
+    // "hello there" goes at the end of the first line, then a new line "more" below it
+    const [firstLine, ...otherLines] = TEXT.split('\n')
+    expect(typed).toBe([`${firstLine}hello there`, 'more', ...otherLines].join('\n'))
     await page.keyboard.type('u')
     expect((await focused(page))?.text).toBe(TEXT)
     await page.keyboard.press('Control+r')
