@@ -151,6 +151,11 @@ export function CardPicture({ entry, rec }: { entry: GalleryEntry; rec: GalleryR
  *
  * #2548 — only when there is something to preview: a card whose record counts no
  * pattern and no visual has no play button (see `mayHavePreview`).
+ *
+ * #2578 — a project's "what it holds" label shares the picture's bottom edge
+ * with that button: beside it, the label stops short of it; without it, the
+ * label may run the full width. A label too long for its room ends in an
+ * ellipsis, its whole text in the tooltip.
  */
 export function Card({
   entry,
@@ -165,6 +170,7 @@ export function Card({
   onAuthor?: (authorId: string) => void;
 }) {
   const rec = useEntryRecording(entry);
+  const hasPlay = !!onPlay && mayHavePreview(rec);
   const count =
     entry.kind === "project"
       ? (contentsLine(rec) ?? `${entry.fileCount} ${entry.fileCount === 1 ? "file" : "files"}`)
@@ -174,8 +180,16 @@ export function Card({
       <div className="sg-gcard-pic" data-gallery-card-picture={rec && coverPattern(rec) && entry.kind !== "viz" ? "timeline" : entry.hasThumbnail ? "thumbnail" : "generated"}>
         <CardPicture entry={entry} rec={rec} />
         <span className="sg-gcard-kind">{KIND_LABEL[entry.kind] ?? entry.kind}</span>
-        {count && <span className="sg-gcard-count" data-gallery-card-count>{count}</span>}
-        {onPlay && mayHavePreview(rec) && (
+        {count && (
+          <span
+            className={hasPlay ? "sg-gcard-count sg-gcard-count-beside-play" : "sg-gcard-count"}
+            data-gallery-card-count
+            title={count}
+          >
+            {count}
+          </span>
+        )}
+        {onPlay && hasPlay && (
           <button
             type="button"
             className="sg-gcard-play"
@@ -233,7 +247,8 @@ export const CARD_CSS = `
 .sg-gcard-pic .sg-thumb { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; }
 .sg-gcard-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .sg-gcard-kind { position: absolute; left: 8px; top: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; padding: 3px 7px; border-radius: 6px; background: rgba(8,8,15,.72); color: rgba(235,235,250,.85); backdrop-filter: blur(6px); }
-.sg-gcard-count { position: absolute; left: 8px; bottom: 8px; font-size: 11px; padding: 3px 7px; border-radius: 6px; background: rgba(8,8,15,.78); color: #ececf4; backdrop-filter: blur(6px); }
+.sg-gcard-count { position: absolute; left: 8px; bottom: 8px; box-sizing: border-box; max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; padding: 3px 7px; border-radius: 6px; background: rgba(8,8,15,.78); color: #ececf4; backdrop-filter: blur(6px); }
+.sg-gcard-count-beside-play { max-width: calc(100% - 8px - 8px - 34px - 8px); }
 .sg-gcard-play { position: absolute; right: 8px; bottom: 8px; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.18); border-radius: 50%; background: rgba(8,8,15,.78); color: #ececf4; cursor: pointer; backdrop-filter: blur(6px); transition: background .15s, transform .15s; }
 .sg-gcard-play svg { margin-left: 2px; }
 .sg-gcard-play:hover { background: var(--accent, #7aa2f7); color: #0b0b16; transform: scale(1.06); }

@@ -93,3 +93,53 @@ describe("Card", () => {
     expect(document.querySelector(".sg-gcard-kind")!.textContent).toBe("Project");
   });
 });
+
+/**
+ * #2578 — the "what it holds" label and the ▶ share the picture's bottom edge.
+ * Beside a ▶ the label leaves the button its room; without one it may take the
+ * full width; too long for its room, it ends in an ellipsis with the whole text
+ * as its tooltip. (That the boxes never overlap is measured in a real browser:
+ * gallery-overlay.spec.ts.)
+ */
+describe("Card — a project's label beside the ▶ (#2578)", () => {
+  const LONG: GalleryRecording = { ...REC, contents: { patterns: 12, visuals: 11, other: 10 } };
+  const count = () => document.querySelector<HTMLElement>("[data-gallery-card-count]")!;
+
+  it("beside a ▶ the label leaves the button its room", async () => {
+    stubFetch(LONG);
+    render(<Card entry={E({ hasRecording: true })} onOpen={() => {}} onPlay={() => {}} />);
+    await waitFor(() => expect(count().textContent).toBe("12 patterns · 11 visuals · 10 other files"));
+    expect(document.querySelector("[data-gallery-card-play]")).not.toBeNull();
+    expect(count().classList.contains("sg-gcard-count-beside-play")).toBe(true);
+  });
+
+  it("its whole text is its tooltip", async () => {
+    stubFetch(LONG);
+    render(<Card entry={E({ hasRecording: true })} onOpen={() => {}} onPlay={() => {}} />);
+    await waitFor(() => expect(count().getAttribute("title")).toBe("12 patterns · 11 visuals · 10 other files"));
+  });
+
+  it("without a ▶ the label keeps the full width", async () => {
+    stubFetch(LONG);
+    render(<Card entry={E({ hasRecording: true })} onOpen={() => {}} />);
+    await waitFor(() => expect(count().textContent).toBe("12 patterns · 11 visuals · 10 other files"));
+    expect(document.querySelector("[data-gallery-card-play]")).toBeNull();
+    expect(count().classList.contains("sg-gcard-count-beside-play")).toBe(false);
+  });
+
+  it("the stylesheet: an ellipsis on one line, and the room beside the ▶ is the button's width and both gaps", async () => {
+    const { CARD_CSS } = await import("../GalleryCards");
+    const rule = (sel: string) => CARD_CSS.match(new RegExp(`\\${sel} \\{([^}]*)\\}`))?.[1] ?? "";
+    const base = rule(".sg-gcard-count");
+    expect(base).toMatch(/text-overflow: ellipsis/);
+    expect(base).toMatch(/white-space: nowrap/);
+    expect(base).toMatch(/overflow: hidden/);
+    expect(base).toMatch(/max-width: calc\(100% - 16px\)/);
+    const play = rule(".sg-gcard-play");
+    const playWidth = Number(play.match(/width: (\d+)px/)![1]);
+    const beside = rule(".sg-gcard-count-beside-play");
+    const parts = [...beside.matchAll(/- (\d+)px/g)].map((m) => Number(m[1]));
+    // left inset + gap + the button + right inset
+    expect(parts.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(8 + 8 + playWidth + 8);
+  });
+});
