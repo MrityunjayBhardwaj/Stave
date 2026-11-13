@@ -59565,5 +59565,6 @@ exports.withStructBatch = withStructBatch;
 exports.workspaceAudioBus = workspaceAudioBus;
 exports.workspaceFileIdForPreset = workspaceFileIdForPreset;
 exports.wrapBare = wrapBare;
+exports.writtenCps = writtenCps;
 //# sourceMappingURL=index.cjs.map
 //# sourceMappingURL=index.cjs.map

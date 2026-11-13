@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { encodeUnderLimit, findLiveVizCanvas, isBlankFrame, type EncodeFn } from "../thumbnail";
+import { FRAME_SIZE, captureVisualFrames, encodeUnderLimit, findLiveVizCanvas, isBlankFrame, type CaptureResult, type EncodeFn } from "../thumbnail";
+import { RECORDING_LIMITS } from "../recording";
 
 const px = (...rgba: number[][]) => new Uint8ClampedArray(rgba.flat());
 
@@ -63,5 +64,68 @@ describe("fitting the picture under the limit", () => {
     const small = { width: 240, height: 135 } as HTMLCanvasElement;
     expect(await encodeUnderLimit(small, 200, encode)).toBeNull();
     expect(calls).toBe(3);
+  });
+});
+
+describe("#2590 — a still of each running visual", () => {
+  function mount(id: string, w: number, h: number): HTMLCanvasElement {
+    const host = document.createElement("div");
+    host.innerHTML = `<div data-testid="compiled-viz-mount-${id}"><canvas></canvas></div>`;
+    document.body.appendChild(host);
+    const c = host.querySelector("canvas")!;
+    c.width = w;
+    c.height = h;
+    c.getBoundingClientRect = () => ({ width: w, height: h }) as DOMRect;
+    c.dataset.file = id;
+    return c;
+  }
+  /** Stands in for the copy: "reads" a canvas as its file id, or blank when told. */
+  const taken: string[] = [];
+  const take = (blank: Set<string> = new Set()) => async (c: HTMLCanvasElement): Promise<CaptureResult> => {
+    taken.push(c.dataset.file!);
+    return blank.has(c.dataset.file!)
+      ? { ok: false, reason: "blank" }
+      : { ok: true, thumbnail: { dataUrl: `data:image/webp;base64,${c.dataset.file}`, bytes: 10, type: "image/webp" } };
+  };
+
+  it("each visual file's still comes from its own mount; patterns, other files and visuals not on screen get none", async () => {
+    document.body.innerHTML = "";
+    taken.length = 0;
+    mount("a", 400, 300);
+    mount("b", 800, 600); // larger, but another file's: never a's still
+    mount("p", 400, 300); // a pattern's id on a mount (can't happen, but must not count)
+    mount("hidden", 0, 0); // a visual whose tab isn't showing
+    const files = [
+      { id: "a", path: "a.hydra" },
+      { id: "b", path: "b.p5" },
+      { id: "p", path: "p.strudel" },
+      { id: "hidden", path: "h.glsl" },
+      { id: "off", path: "off.hydra" }, // not running at all
+    ];
+    const got = await captureVisualFrames(files, document, take());
+    expect(got).toEqual([
+      { path: "a.hydra", image: "data:image/webp;base64,a" },
+      { path: "b.p5", image: "data:image/webp;base64,b" },
+    ]);
+    expect(taken).toEqual(["a", "b"]);
+  });
+
+  it("a visual that reads back blank gets no still", async () => {
+    document.body.innerHTML = "";
+    mount("a", 400, 300);
+    expect(await captureVisualFrames([{ id: "a", path: "a.hydra" }], document, take(new Set(["a"])))).toEqual([]);
+  });
+
+  it("at most the record's number of stills", async () => {
+    document.body.innerHTML = "";
+    const files = Array.from({ length: RECORDING_LIMITS.frames + 3 }, (_, i) => ({ id: `v${i}`, path: `v${i}.hydra` }));
+    for (const f of files) mount(f.id, 100, 100);
+    expect(await captureVisualFrames(files, document, take())).toHaveLength(RECORDING_LIMITS.frames);
+  });
+
+  it("a still is small: the record's width and bytes", () => {
+    expect(FRAME_SIZE.width).toBe(RECORDING_LIMITS.frameWidth);
+    expect(FRAME_SIZE.maxBytes).toBe(RECORDING_LIMITS.frameBytes);
+    expect(Math.max(...FRAME_SIZE.widths)).toBeLessThanOrEqual(RECORDING_LIMITS.frameWidth);
   });
 });

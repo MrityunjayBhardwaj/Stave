@@ -17,8 +17,9 @@
  * A pattern's timeline strip, its length in bars and the author-chosen cover
  * come from what is recorded at publish (#2487, #2488). "Add to this project"
  * adds one file: a music or visual entry's only file, or the one chosen from a
- * project's list. Not drawn yet: the tempo (publishing doesn't record it) and the
- * live piano roll inside the frame (#2489).
+ * project's list. The tempo a pattern starts at and a still of each visual are
+ * recorded at publish too (#2590): shown when recorded, and nothing (no guess)
+ * for an entry published before, or a pattern that sets no tempo of its own.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AuthorName, EntryPicture, avatarColour, useEntryRecording } from "./GalleryCards";
@@ -26,6 +27,8 @@ import { GalleryPreview, type GalleryPreviewHandle } from "./GalleryPreview";
 import { previewKindOf, previewPlayFor } from "./previewProtocol";
 import { LIGHT_CODE_BG, codeLanguageOf, colourLines, type TokenKind } from "./codeColour";
 import { RecordingTimeline, lengthLabel } from "./GalleryTimeline";
+import { durationLabel, frameFor, tempoLabel, type RecordedPattern } from "./recording";
+import { useDisplayMeter } from "../state/displayMeter";
 import { GALLERY_FILTERS, KIND_LABEL, contentsSummary, fileRole, formatGalleryDate, publishedAgo } from "./galleryModel";
 import { shownName } from "./reservedNames";
 import { GalleryCrumbs } from "./GalleryBar";
@@ -97,6 +100,11 @@ export function CodeView({ path, content }: { path: string; content: string }) {
   );
 }
 
+/** #2590 — a pattern's row: "16 bars · 120 BPM", or just "16 bars" when it records no tempo. */
+function rowLabel(p: RecordedPattern, tempo: string | null): string {
+  return tempo ? `${lengthLabel(p)} · ${tempo}` : lengthLabel(p);
+}
+
 const PLAY_ICON = (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z" /></svg>
 );
@@ -138,6 +146,8 @@ export function EntryPage(props: EntryPageProps) {
   const ready = detail.status === "ready" ? detail.data : null;
   // #2487 — what each pattern plays, recorded at publish (none for older entries)
   const rec = useEntryRecording(ready?.entry ?? { id: detail.id, hasRecording: false });
+  // #2590 — BPM counted the way the studio's transport counts it
+  const meter = useDisplayMeter();
   const kindLabel = ready ? GALLERY_FILTERS.find((f) => f.id === ready.entry.kind)?.label : undefined;
   const kindCrumb =
     ready && kindLabel ? [{ label: kindLabel, hook: "kind", onClick: () => onKind(ready.entry.kind) }] : [];
@@ -198,6 +208,10 @@ export function EntryPage(props: EntryPageProps) {
   };
 
   const recordedFor = (path: string) => rec?.files.find((r) => r.path === path) ?? null;
+  // #2590 — the cover pattern's tempo and its length in minutes, when its code set a tempo
+  const coverRec = rec?.cover ? recordedFor(rec.cover) : null;
+  const coverTempo = coverRec ? tempoLabel(coverRec.tempo, meter) : null;
+  const coverTime = coverRec ? durationLabel(coverRec) : null;
 
   const more = (props.listed ?? [])
     .filter((e) => e.authorId && e.authorId === entry.authorId && e.id !== entry.id)
@@ -238,6 +252,7 @@ export function EntryPage(props: EntryPageProps) {
                 const role = fileRole(f.path);
                 const lines = f.content.split("\n").length;
                 const recorded = rec?.files.find((r) => r.path === f.path) ?? null;
+                const still = role === "visual" ? frameFor(rec, f.path) : null;
                 const isCover = rec?.cover === f.path;
                 return (
                   <div
@@ -261,11 +276,19 @@ export function EntryPage(props: EntryPageProps) {
                     <button className="sg-fname" onClick={() => showFile(i)}>
                       <b>{f.path}</b>
                       <span>
-                        {recorded ? lengthLabel(recorded) : `${role} · ${lines} ${lines === 1 ? "line" : "lines"}`}
+                        {recorded ? rowLabel(recorded, tempoLabel(recorded.tempo, meter)) : `${role} · ${lines} ${lines === 1 ? "line" : "lines"}`}
                       </span>
                     </button>
                     <div className="sg-frow-strip">
                       {recorded && <RecordingTimeline rec={recorded} compact className="sg-frow-canvas" />}
+                      {still && (
+                        <img
+                          className="sg-frow-frame"
+                          src={still.image}
+                          alt={`A still of ${f.path}`}
+                          data-gallery-visual-frame={f.path}
+                        />
+                      )}
                     </div>
                     {isCover ? <span className="sg-frow-tag" data-gallery-cover>Cover</span> : <span />}
                   </div>
@@ -380,10 +403,17 @@ export function EntryPage(props: EntryPageProps) {
             {rec?.cover && (
               <>
                 <dt>Cover</dt>
-                <dd>
+                <dd data-gallery-cover-length>
                   {rec.cover}
-                  {rec.files.find((r) => r.path === rec.cover) ? `, ${lengthLabel(rec.files.find((r) => r.path === rec.cover)!)}` : ""}
+                  {coverRec ? `, ${lengthLabel(coverRec)}` : ""}
+                  {coverTime ? ` · ${coverTime}` : ""}
                 </dd>
+              </>
+            )}
+            {coverTempo && (
+              <>
+                <dt>Tempo</dt>
+                <dd data-gallery-tempo>{coverTempo}</dd>
               </>
             )}
             <dt>Published</dt>
@@ -441,6 +471,7 @@ export const ENTRY_CSS = `
 .sg-frow:last-child { border-bottom: 0; }
 .sg-frow-strip { min-width: 0; height: 34px; }
 .sg-frow-canvas { width: 100%; height: 34px; display: block; border-radius: 6px; }
+.sg-frow-frame { height: 34px; width: auto; max-width: 100%; display: block; border-radius: 6px; object-fit: cover; border: 1px solid var(--border-subtle); }
 .sg-frow-tag { font-size: 11px; color: var(--text-muted, var(--text-chrome)); border: 1px solid var(--border-subtle); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
 .sg-frow-on { background: var(--bg-hover, rgba(255,255,255,.05)); }
 .sg-miniplay { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-strong); background: none; display: grid; place-items: center; color: var(--text-primary); cursor: pointer; padding: 0; }
