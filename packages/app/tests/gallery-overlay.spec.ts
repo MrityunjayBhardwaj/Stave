@@ -21,7 +21,9 @@
  * The CONTROL arm proves it: an ordinary (non-gallery) edit in the same state
  * DOES run, so a zero in the subject arm is the gate, not a blind instrument.
  */
-import { test, expect, type Page } from '@playwright/test'
+import { existsSync } from 'node:fs'
+
+import { test, expect, webkit, type Page } from '@playwright/test'
 import { bootApp, editorValue, evalCode, seedCode } from './_appBoot'
 import {
   ADA_SESSION_USER,
@@ -456,4 +458,92 @@ test.describe('community gallery overlay', () => {
     await expect(page.locator('[data-gallery-state]').or(page.locator('[data-gallery-card]')).first()).toBeVisible()
     await expect(card).toHaveCount(0)
   })
+
+  test("#2578 a project card's label stays clear of its ▶, at the narrowest card, dark and light (Chromium)", async ({ page }) => {
+    await cardLabelClear(page, 'chromium')
+  })
+
+  test('#2578 the same in WebKit', async ({ baseURL }) => {
+    test.skip(!existsSync(webkit.executablePath()), "WebKit isn't installed here (CI installs Chromium only): npx playwright install webkit")
+    const browser = await webkit.launch()
+    try {
+      await cardLabelClear(await (await browser.newContext({ baseURL })).newPage(), 'webkit')
+    } finally {
+      await browser.close()
+    }
+  })
 })
+
+// #2578 — a project's "what it holds" label and the card's ▶ share the
+// picture's bottom edge. At the narrowest card the grid makes (150px, its
+// phone minimum) the label must never run under the button, in either theme;
+// too long, it ends in an ellipsis with its whole text as the tooltip; a card
+// with no ▶ lets it use the full width.
+async function cardLabelClear(page: Page, engine: 'chromium' | 'webkit'): Promise<void> {
+  const LONG = '12 patterns · 11 visuals · 10 other files'
+  const NOPLAY = '10000 other files'
+  const at = Date.UTC(2026, 10, 1)
+  const card = (id: string, title: string) => ({ id, title, kind: 'project', tags: [], authorName: 'Lena', authorId: 'lena00000001', publishedAt: at, fileCount: 33, hasThumbnail: false, hasRecording: true })
+  const recs: Record<string, unknown> = {
+    // patterns to play: the card has a ▶
+    long1AAAAAA: { v: 1, cover: null, contents: { patterns: 12, visuals: 11, other: 10 }, files: [] },
+    // nothing the preview can play: no ▶
+    nopl1BBBBBB: { v: 1, cover: null, contents: { patterns: 0, visuals: 0, other: 10000 }, files: [] },
+  }
+  await page.route(/\/api\/gallery\/[^/]+\/recording$/, (route) => {
+    const id = new URL(route.request().url()).pathname.split('/')[3]
+    return recs[id] ? route.fulfill({ json: recs[id] }) : route.fulfill({ status: 404, json: {} })
+  })
+  await page.route('**/api/gallery/authors/lena00000001', (route) =>
+    route.fulfill({
+      json: {
+        author: { authorId: 'lena00000001', name: 'Lena', bio: '', createdAt: 1, updatedAt: 1 },
+        entries: [card('long1AAAAAA', 'Long Label'), card('nopl1BBBBBB', 'No Play')],
+        collections: [],
+      },
+    }),
+  )
+  await page.route('**/api/gallery/me', (route) => route.fulfill({ json: { signInAvailable: false, providers: [], user: null } }))
+  await page.goto('/#gallery-author=lena00000001', { waitUntil: 'domcontentloaded' })
+  const longCard = page.locator('[data-gallery-card="long1AAAAAA"]')
+  await expect(longCard.locator('[data-gallery-card-count]')).toHaveText(LONG, { timeout: 60_000 })
+  await expect(page.locator('[data-gallery-card="nopl1BBBBBB"] [data-gallery-card-count]')).toHaveText(NOPLAY)
+  // the narrowest card the grid draws: its phone minimum, 150px a column
+  await page.addStyleTag({ content: '.sg-grid { grid-template-columns: repeat(auto-fill, 150px) !important; }' })
+
+  for (const theme of ['dark', 'light'] as const) {
+    await page.evaluate((t) => document.documentElement.setAttribute('data-stave-theme', t), theme)
+    const pic = await longCard.locator('.sg-gcard-pic').boundingBox()
+    const label = await longCard.locator('[data-gallery-card-count]').boundingBox()
+    const play = await longCard.locator('[data-gallery-card-play]').boundingBox()
+    expect(pic && label && play, 'all three are on screen').toBeTruthy()
+    console.log(`${engine} ${theme}: picture ${pic!.width}px wide; label x ${label!.x.toFixed(1)}..${(label!.x + label!.width).toFixed(1)}, ▶ x ${play!.x.toFixed(1)}..${(play!.x + play!.width).toFixed(1)}`)
+    expect(pic!.width, 'the card is at its narrowest').toBeLessThanOrEqual(152)
+    // on screen whole, so what is measured is what is seen
+    const vw = page.viewportSize()!.width
+    expect(pic!.x + pic!.width).toBeLessThanOrEqual(vw)
+    // the boxes don't overlap: the label ends before the button begins
+    const overlapX = Math.min(label!.x + label!.width, play!.x + play!.width) - Math.max(label!.x, play!.x)
+    const overlapY = Math.min(label!.y + label!.height, play!.y + play!.height) - Math.max(label!.y, play!.y)
+    expect(overlapX > 0 && overlapY > 0, `label and ▶ overlap by ${overlapX.toFixed(1)}×${overlapY.toFixed(1)}px`).toBe(false)
+    expect(label!.x + label!.width).toBeLessThanOrEqual(play!.x)
+    // too long for its room: cut with an ellipsis, the whole text in its tooltip
+    const cut = await longCard.locator('[data-gallery-card-count]').evaluate((el) => ({
+      clipped: el.scrollWidth > el.clientWidth,
+      overflow: getComputedStyle(el).textOverflow,
+      title: el.getAttribute('title'),
+    }))
+    expect(cut).toEqual({ clipped: true, overflow: 'ellipsis', title: LONG })
+    // no ▶: the label may run past where a button would be, to the picture's inset
+    const noPlay = page.locator('[data-gallery-card="nopl1BBBBBB"]')
+    await expect(noPlay.locator('[data-gallery-card-play]')).toHaveCount(0)
+    const npPic = await noPlay.locator('.sg-gcard-pic').boundingBox()
+    const npLabel = await noPlay.locator('[data-gallery-card-count]').boundingBox()
+    expect(npLabel!.width, 'wider than the room left beside a ▶').toBeGreaterThan(npPic!.width - 58)
+    expect(npLabel!.x + npLabel!.width).toBeLessThanOrEqual(npPic!.x + npPic!.width - 7.5)
+    if (process.env.GALLERY_SHOTS) {
+      await longCard.screenshot({ path: `${process.env.GALLERY_SHOTS}/${engine}-card-label-${theme}.png` })
+      await noPlay.screenshot({ path: `${process.env.GALLERY_SHOTS}/${engine}-card-label-noplay-${theme}.png` })
+    }
+  }
+}

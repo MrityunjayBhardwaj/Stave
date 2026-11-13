@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, act, fireEvent, cleanup } from "@testing-library/react";
-import { GalleryPreview, NAVIGATED_AWAY } from "../GalleryPreview";
+import { GalleryPreview, NAVIGATED_AWAY, STOPPED } from "../GalleryPreview";
 import { NEEDS_CLICK, type PreviewFile } from "../previewProtocol";
 
 /** A one-file entry, as GalleryEntry hands it over (previewPlayFor). */
@@ -90,7 +90,8 @@ describe("GalleryPreview — a frame that needs its own press (#2495)", () => {
 
   it("CONTROL: any other stopped message leaves focus where it was", () => {
     const { f } = openPreview();
-    const button = screen.getByRole("button", { name: "Preview" });
+    // #2579 — open, the big button is the page's Stop, whatever the frame says
+    const button = screen.getByRole("button", { name: "Stop preview" });
     button.focus();
     fireEvent.load(f);
     fromFrame({ state: "ready" });
@@ -105,7 +106,7 @@ describe("GalleryPreview — a frame that needs its own press (#2495)", () => {
     fromFrame({ state: "ready" });
     fromFrame({ state: "stopped", message: NEEDS_CLICK });
     expect(document.activeElement).toBe(f);
-    const button = screen.getByRole("button", { name: "Preview" });
+    const button = screen.getByRole("button", { name: "Stop preview" });
     button.focus();
     fromFrame({ state: "stopped", message: NEEDS_CLICK });
     expect(document.activeElement).toBe(button);
@@ -194,17 +195,23 @@ describe("GalleryPreview — focus moves only when this page asked the frame to 
   });
 
   it("asked again (Preview pressed after a stop): that answer may move focus again", () => {
-    const { f, posted } = openPreview();
+    const { f } = openPreview();
     fireEvent.load(f);
     fromFrame({ state: "ready" });
     fromFrame({ state: "playing" });
     fireEvent.click(screen.getByRole("button", { name: "Stop preview" }));
-    fromFrame({ state: "stopped" });
+    // #2579 — Stop removed the frame; ▶ loads a fresh one and asks it to play
+    expect(frame()).toBeNull();
     const search = focusElsewhere();
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-    expect(plays(posted)).toBe(2);
+    const g = frame()!;
+    expect(g).not.toBe(f);
+    const posted = vi.spyOn(g.contentWindow!, "postMessage");
+    fireEvent.load(g);
+    fromFrame({ state: "ready" });
+    expect(plays(posted)).toBe(1);
     fromFrame({ state: "stopped", message: NEEDS_CLICK });
-    expect(document.activeElement).toBe(f);
+    expect(document.activeElement).toBe(g);
     search.remove();
   });
 });
@@ -226,5 +233,108 @@ describe("GalleryPreview — a project's files go in together (#2490)", () => {
     const sent = posted.mock.calls[0][0];
     expect(sent).toEqual({ play: true, path: "main.strudel", files });
     expect(parseToFrame(sent)).toEqual(sent);
+  });
+});
+
+/**
+ * #2579 — the frame runs someone else's code, which can post the player's own
+ * messages. The page doesn't take its word for the button, or for its words.
+ */
+describe("GalleryPreview — the page doesn't take the frame's word (#2579)", () => {
+  const shown = () => document.querySelector("[data-gallery-preview-state]")!.textContent;
+
+  function playingFrame() {
+    const opened = openPreview();
+    fireEvent.load(opened.f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "playing" });
+    return opened;
+  }
+
+  it("a stopped message's text is shown as the code's words, never as the page's", () => {
+    playingFrame();
+    fromFrame({ state: "stopped", message: "Sign in again to keep listening" });
+    expect(shown()).toBe("The code reported that it stopped: Sign in again to keep listening");
+    fromFrame({ state: "stopped" });
+    expect(shown()).toBe("The code reported that it stopped.");
+  });
+
+  it("every state the frame reports is labelled when it carries the frame's text", () => {
+    playingFrame();
+    const said = "Sign in again to keep listening";
+    for (const state of ["playing", "stopped", "error"] as const) {
+      fromFrame({ state, message: said });
+      expect(shown(), state).toMatch(/The code reported/);
+      expect(shown(), state).not.toBe(said);
+    }
+  });
+
+  it("the gallery's own needs-a-press request is recognised and written by the page", () => {
+    const { f } = openPreview();
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "stopped", message: NEEDS_CLICK });
+    expect(shown()).toBe(NEEDS_CLICK);
+    expect(document.querySelector("[data-gallery-preview-state]")!.getAttribute("data-gallery-preview-from")).toBe("frame");
+  });
+
+  it("a frame that says it stopped while it plays still gets Stop, and one press removes the frame", () => {
+    const { posted } = playingFrame();
+    fromFrame({ state: "stopped", message: "Stopped." });
+    const stop = screen.getByRole("button", { name: "Stop preview" });
+    fireEvent.click(stop);
+    expect(frame(), "the frame is gone: nothing it ran is left running").toBeNull();
+    expect(shown()).toBe(STOPPED);
+    expect(document.querySelector("[data-gallery-preview-state]")!.getAttribute("data-gallery-preview-from")).toBe("page");
+    // nothing was asked of the code: it was removed, not asked to stop
+    expect(posted.mock.calls.filter((a) => (a[0] as { stop?: boolean }).stop === true)).toEqual([]);
+    expect(screen.getByRole("button", { name: "Preview" })).toBeTruthy();
+  });
+
+  it("the frame's state never turns the button into ▶ while the frame is up", () => {
+    playingFrame();
+    for (const msg of [{ state: "stopped" }, { state: "error", message: "x" }, { state: "stopped", message: NEEDS_CLICK }]) {
+      fromFrame(msg);
+      expect(screen.queryByRole("button", { name: "Preview" }), JSON.stringify(msg)).toBeNull();
+      expect(screen.getByRole("button", { name: "Stop preview" })).toBeTruthy();
+    }
+  });
+
+  it("▶ after a stop starts clean: a fresh frame, which gets the code once it has loaded and said ready", () => {
+    const { f } = playingFrame();
+    fireEvent.click(screen.getByRole("button", { name: "Stop preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const g = frame()!;
+    expect(g, "a new frame, not the old one").not.toBe(f);
+    expect(shown()).toBe("Loading the preview…");
+    const posted = vi.spyOn(g.contentWindow!, "postMessage");
+    fireEvent.load(g);
+    expect(plays(posted)).toBe(0);
+    fromFrame({ state: "ready" });
+    expect(plays(posted)).toBe(1);
+    // its own first load is not a navigation
+    expect(frame()).toBe(g);
+  });
+
+  it("onPlayingChange follows the page's own state, not the frame's", () => {
+    const seen: boolean[] = [];
+    render(<GalleryPreview path="a.strudel" files={ONE} fileKey="e1/f0" onPlayingChange={(p) => seen.push(p)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const f = frame()!;
+    fireEvent.load(f);
+    fromFrame({ state: "ready" });
+    fromFrame({ state: "playing" });
+    fromFrame({ state: "stopped" });
+    expect(seen.at(-1), "the frame's claim doesn't tell the file row it stopped").toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Stop preview" }));
+    expect(seen.at(-1)).toBe(false);
+  });
+});
+
+describe("GalleryPreview — one status line, announced once (#2580)", () => {
+  it("the page's status line is the live region", () => {
+    render(<GalleryPreview path="a.strudel" files={ONE} fileKey="e1/f0" />);
+    const line = screen.getByRole("status");
+    expect(line.hasAttribute("data-gallery-preview-state")).toBe(true);
   });
 });

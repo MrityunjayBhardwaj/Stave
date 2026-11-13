@@ -1052,3 +1052,153 @@ test.describe("a project previews as itself, its pattern's visual from its own f
     }
   })
 })
+
+// ─── #2579 / #2580 / #2581 the preview's own words, its Stop, its notes ──────
+
+/**
+ * #2579 — code that plays and, every 200ms, posts the player's own "stopped"
+ * message with a sentence in the gallery's voice. Its top-level counter shows
+ * how many times a frame ran it; its pattern keeps the scheduler busy.
+ */
+const LIAR_SAYS = 'Sign in again to keep listening'
+const LIAR = `${MUSIC_CODE.split('\n')[0]}
+setInterval(() => parent.postMessage({ state: 'stopped', message: '${LIAR_SAYS}' }, '*'), 200)
+s('bd*4, hh*8')`
+
+/** #2579 — the liar's words show labelled; one Stop removes its frame; ▶ again starts a fresh one. */
+async function stopRemovesALiar(page: Page, engine: 'chromium' | 'webkit'): Promise<void> {
+  const { id } = await routeEntry(page, 'Liar', 'liar.strudel', LIAR)
+  await page.goto(`/#gallery=${id}`, { waitUntil: 'domcontentloaded' })
+  await expect(page.locator(`[data-gallery-detail="${id}"]`)).toBeVisible({ timeout: 60_000 })
+  const button = page.locator('[data-gallery-preview-button]')
+  await button.click({ timeout: 60_000 })
+  const line = page.locator('[data-gallery-preview-state]')
+  // the code's sentence shows only as the code's words
+  await expect(line).toHaveText(`The code reported that it stopped: ${LIAR_SAYS}`, { timeout: 150_000 })
+  const frame = playerFrame(page)!
+  expect(await frame.evaluate(() => (window as unknown as { __galleryRuns?: number }).__galleryRuns ?? 0), 'the code is running in the frame').toBeGreaterThan(0)
+  // whatever it claims, the page's button is Stop
+  await expect(button).toHaveAttribute('aria-label', 'Stop preview')
+  // read the shown text for a second: it is never the code's sentence alone
+  const seen = new Set<string>()
+  for (let i = 0; i < 10; i++) {
+    seen.add((await line.textContent()) ?? '')
+    await page.waitForTimeout(100)
+  }
+  expect([...seen].filter((t) => t === LIAR_SAYS)).toEqual([])
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-liar-labelled.png` })
+
+  // ONE press: the frame is gone, so nothing it ran is still running
+  const framesBefore = page.frames().filter((f) => f.url().includes('/gallery-player')).length
+  await button.click()
+  await expect(page.locator('[data-gallery-preview-frame]')).toHaveCount(0)
+  expect(page.frames().filter((f) => f.url().includes('/gallery-player')), `was ${framesBefore}`).toEqual([])
+  expect(frame.isDetached(), "the old frame's document is detached").toBe(true)
+  await expect(line).toHaveText('Stopped.')
+  // and stays stopped: the code that kept posting can't post anymore
+  await page.waitForTimeout(800)
+  await expect(line).toHaveText('Stopped.')
+  await expect(button).toHaveAttribute('aria-label', 'Preview')
+
+  // ▶ again starts clean: a fresh frame that loads, gets the code, and runs it once
+  await button.click()
+  await expect(line).toHaveText(`The code reported that it stopped: ${LIAR_SAYS}`, { timeout: 150_000 })
+  const fresh = playerFrame(page)!
+  expect(fresh).not.toBe(frame)
+  expect(await fresh.evaluate(() => (window as unknown as { __galleryRuns?: number }).__galleryRuns ?? 0)).toBe(1)
+  await button.click()
+  await expect(page.locator('[data-gallery-preview-frame]')).toHaveCount(0)
+}
+
+/** #2580 — while it plays, one status line is seen and announced: the page's. */
+async function oneStatusLine(page: Page, engine: 'chromium' | 'webkit'): Promise<void> {
+  await previewToPlaying(page, 'musc1CCCCCC', engine)
+  const pageLine = page.locator('[data-gallery-preview-state]')
+  await expect(pageLine).toHaveText('Playing in a sealed preview.')
+  await expect(pageLine).toBeVisible()
+  await expect(pageLine).toHaveAttribute('role', 'status')
+  // the frame's own line is there (for the player on its own) but not drawn, nor read out
+  const frameLine = frameLoc(page).locator('[data-gallery-player-status]')
+  await expect(frameLine).toHaveCount(1)
+  await expect(frameLine).toBeHidden()
+  // every visible line, page and frame together, that says it plays: one
+  const onPage = await page.getByText(/^Playing/).filter({ visible: true }).count()
+  const inFrame = await frameLoc(page).getByText(/^Playing/).filter({ visible: true }).count()
+  expect({ onPage, inFrame }).toEqual({ onPage: 1, inFrame: 0 })
+  // and what a screen reader gets from the frame has no second status in it
+  const tree = await frameLoc(page).locator('main').ariaSnapshot()
+  expect(tree).not.toMatch(/Playing/)
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-one-status-line.png` })
+}
+
+/** Run `fn` on a WebKit page (CI installs Chromium only, so it skips there). */
+async function inWebKit(probe: Page, baseURL: string | undefined, fn: (page: Page) => Promise<void>): Promise<void> {
+  test.skip(await isDevServer(probe), DEV_SKIP)
+  test.skip(!existsSync(webkit.executablePath()), "WebKit isn't installed here (CI installs Chromium only): npx playwright install webkit")
+  const browser = await webkit.launch()
+  try {
+    const page = await (await browser.newContext({ baseURL })).newPage()
+    await routeGallery(page)
+    await fn(page)
+  } finally {
+    await browser.close()
+  }
+}
+
+test.describe("the preview doesn't take its frame's word (#2579, #2580, #2581)", () => {
+  test('#2579 a frame that says it stopped while it plays: its words are labelled, and one Stop removes it (Chromium)', async ({ page }) => {
+    test.setTimeout(240_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    await routeGallery(page)
+    await stopRemovesALiar(page, 'chromium')
+  })
+
+  test('#2579 the same in WebKit', async ({ page: probe, baseURL }) => {
+    test.setTimeout(240_000)
+    await inWebKit(probe, baseURL, (page) => stopRemovesALiar(page, 'webkit'))
+  })
+
+  test("#2580 while a preview plays, one status line shows: the page's (Chromium)", async ({ page }) => {
+    test.setTimeout(240_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    await routeGallery(page)
+    await oneStatusLine(page, 'chromium')
+  })
+
+  test('#2580 the same in WebKit', async ({ page: probe, baseURL }) => {
+    test.setTimeout(240_000)
+    await inWebKit(probe, baseURL, (page) => oneStatusLine(page, 'webkit'))
+  })
+
+  test('#2580 CONTROL: the player opened on its own shows its status line', async ({ page }) => {
+    test.skip(await isDevServer(page), DEV_SKIP)
+    await page.goto('/gallery-player')
+    await expect(page.locator('[data-gallery-player-status]')).toBeVisible({ timeout: 60_000 })
+    await expect(page.locator('[data-gallery-player-status]')).toHaveText('Preview ready.')
+  })
+
+  test('#2581 a pattern with five visuals draws four and says so; with four, no note', async ({ page }) => {
+    test.setTimeout(300_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    await routeGallery(page)
+    const names = ['va', 'vb', 'vc', 'vd', 've']
+    const visuals = names.map((n) => ({ path: `viz/${n}.hydra`, language: 'hydra', content: BLOOM }))
+    const pattern = (k: number) => `${MUSIC_CODE.split('\n')[0]}\n${names.slice(0, k).map((n) => `$: s("bd*4").viz("${n}")`).join('\n')}`
+    const five = await routeProject(page, 'Five Visuals', [{ path: 'main.strudel', language: 'strudel', content: pattern(5) }, ...visuals])
+    const four = await routeProject(page, 'Four Visuals', [{ path: 'main.strudel', language: 'strudel', content: pattern(4) }, ...visuals])
+
+    await previewToPlaying(page, five.id, 'chromium')
+    await expect(frameLoc(page).locator('[data-gallery-player-visual]')).toHaveCount(4, { timeout: 30_000 })
+    const note = frameLoc(page).locator('[data-gallery-player-capped]')
+    await expect(note).toHaveText('This pattern calls for 5 visuals; the preview draws the first 4.', { timeout: 30_000 })
+    await expect(note).toBeVisible()
+    await page.waitForTimeout(1000)
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/five-visuals-note.png` })
+
+    // CONTROL: four visuals, all drawn, no note
+    await previewToPlaying(page, four.id, 'chromium')
+    await expect(frameLoc(page).locator('[data-gallery-player-visual]')).toHaveCount(4, { timeout: 30_000 })
+    await page.waitForTimeout(1000)
+    await expect(frameLoc(page).locator('[data-gallery-player-capped]')).toHaveCount(0)
+  })
+})

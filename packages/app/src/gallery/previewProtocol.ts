@@ -10,7 +10,10 @@
  *
  *   gallery → frame   { play: true, path, files }  play the file at `path`, with
  *                                                  the entry's other files beside it
- *                     { stop: true }               stop
+ *                     { stop: true }               stop (the frame still honours it; the
+ *                                                  gallery's own Stop removes the frame
+ *                                                  instead, #2579, so code that ignores it
+ *                                                  or lies about it can't keep playing)
  *   frame → gallery   { state: "ready" }           listening (sent once, on load)
  *                     { state: "playing" | "stopped" | "error", message? }
  *

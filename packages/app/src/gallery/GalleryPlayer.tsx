@@ -60,6 +60,16 @@ function compileVisual(editor: Editor, file: PreviewFile, name: string): VizSour
 /** #2490 — visuals one pattern may draw at once in the preview. */
 export const MAX_PREVIEW_VISUALS = 4;
 
+/**
+ * #2581 — the note the frame shows when a pattern calls for more visuals than
+ * the preview draws, so the ones past the limit aren't dropped without a word.
+ * `null` at the limit or under it.
+ */
+export function visualsCappedNote(found: number): string | null {
+  if (found <= MAX_PREVIEW_VISUALS) return null;
+  return `This pattern calls for ${found} visuals; the preview draws the first ${MAX_PREVIEW_VISUALS}.`;
+}
+
 export function GalleryPlayer() {
   const vizRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Engine | null>(null);
@@ -76,6 +86,13 @@ export function GalleryPlayer() {
   const [showViz, setShowViz] = useState(false);
   // #2490 — `.viz` names the playing pattern calls that resolve to no visual.
   const [missing, setMissing] = useState<string[]>([]);
+  // #2581 — how many visuals the playing pattern calls for that resolved, when over the limit.
+  const [cappedNote, setCappedNote] = useState<string | null>(null);
+  // #2580 — inside the gallery's preview the page's status line is the one shown
+  // (and announced); this frame's own line is for the player opened on its own.
+  // Assumed embedded until checked, so the embedded case never flashes a second line.
+  const [embedded, setEmbedded] = useState(true);
+  useEffect(() => setEmbedded(window.parent !== window), []);
 
   const post = useCallback((msg: FromFrame) => {
     setStatus(msg);
@@ -132,6 +149,7 @@ export function GalleryPlayer() {
     vizRef.current?.replaceChildren();
     setShowViz(false);
     setMissing([]);
+    setCappedNote(null);
   }, []);
 
   const startSound = useCallback(async (mine: number) => {
@@ -236,6 +254,7 @@ export function GalleryPlayer() {
         else if (!unresolved.includes(vizId.slice(0, 60))) unresolved.push(vizId.slice(0, 60));
       }
       setMissing(unresolved);
+      setCappedNote(visualsCappedNote(found.length));
       if (found.length === 0) return;
       setShowViz(true);
       await new Promise((r) => requestAnimationFrame(r));
@@ -383,6 +402,11 @@ export function GalleryPlayer() {
             : `This pattern calls ${missing.map((m) => `.viz("${m}")`).join(", ")}, and this entry has no visuals by those names.`}
         </div>
       )}
+      {cappedNote && (
+        <div data-gallery-player-capped style={{ padding: "0 12px", textAlign: "center" }}>
+          {cappedNote}
+        </div>
+      )}
       {needsClick && (
         <button
           ref={startRef}
@@ -402,7 +426,8 @@ export function GalleryPlayer() {
           ▶ Play
         </button>
       )}
-      <div data-gallery-player-status>
+      {/* #2580 — hidden (and so not announced) when embedded: the gallery page shows and announces it. */}
+      <div data-gallery-player-status hidden={embedded}>
         {status.state === "ready" && "Preview ready."}
         {status.state === "playing" && (status.message ? `Playing. The code reported: ${status.message}` : "Playing in the preview.")}
         {status.state === "stopped" && (status.message ?? "Stopped.")}

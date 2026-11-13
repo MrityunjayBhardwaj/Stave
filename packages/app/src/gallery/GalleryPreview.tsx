@@ -26,6 +26,18 @@
  * #2490 — what goes in is the file to play AND the entry's other files the
  * frame can run (`previewPlayFor`, built from the entry's manifest), so a
  * pattern's `.viz("name")` finds the entry's own visual inside the frame.
+ *
+ * #2579 — the frame runs someone else's code, and that code can post the same
+ * messages the player does. So the page never takes the frame's word for what
+ * the big button should do, or for the words in its status line:
+ *  - the button is the page's own: it shows Stop from the moment you press ▶
+ *    until you stop (or the preview closes), whatever the frame reports. Stop
+ *    removes the frame, which ends everything running in it (sound, timers,
+ *    visuals) — it doesn't ask the code to stop. ▶ after that loads a fresh one.
+ *  - the status line is written here. Text that came from the frame is always
+ *    shown as the code's own words ("The code reported…"), in every state; the
+ *    one exception is the gallery's own fixed NEEDS_CLICK, which the page
+ *    recognises and writes itself.
  */
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { NEEDS_CLICK, parseFromFrame, type FromFrame, type PreviewFile } from "./previewProtocol";
@@ -34,6 +46,31 @@ export const PLAYER_PATH = "/gallery-player";
 const LOAD_SLOW_MS = 15_000;
 export const NAVIGATED_AWAY =
   "The preview was closed: its code tried to open another page in the preview's place.";
+/** #2579 — what the page says after its own Stop removed the frame. */
+export const STOPPED = "Stopped.";
+
+/**
+ * #2579 — what the status line shows: words the page wrote, or a message from
+ * the frame (which this page words itself, labelling the code's text as its own).
+ */
+type Shown = { by: "page"; text: string } | { by: "frame"; msg: FromFrame };
+
+/** #2579 — the status line's text for a frame's message. The frame's own words are always labelled. */
+export function frameStatusText(msg: FromFrame): string {
+  if (msg.state === "playing") {
+    return msg.message
+      ? `Playing in a sealed preview. The code reported an error: ${msg.message}`
+      : "Playing in a sealed preview.";
+  }
+  if (msg.state === "stopped") {
+    // The gallery's own fixed request, recognised by its exact words and written here.
+    if (msg.message === NEEDS_CLICK) return NEEDS_CLICK;
+    return msg.message ? `The code reported that it stopped: ${msg.message}` : "The code reported that it stopped.";
+  }
+  if (msg.state === "error") return `The code reported an error: ${msg.message ?? "unknown"}`;
+  // "ready" is never shown (the page acts on it); said here so nothing unlabelled can slip through.
+  return msg.message ? `The code reported: ${msg.message}` : "The preview is ready.";
+}
 
 /** #2491 — what the entry page's file rows can do with the one preview. */
 export interface GalleryPreviewHandle {
@@ -49,7 +86,10 @@ export interface GalleryPreviewProps {
   fileKey: string;
   /** Start playing as soon as this file is shown (a file row's play button chose it). */
   autoStart?: boolean;
-  /** Playing or not — so the file row that started it can show Stop. */
+  /**
+   * Whether the preview is running — so the file row that started it can show Stop.
+   * #2579: the page's own state (its frame is up), not what the frame reports.
+   */
   onPlayingChange?: (playing: boolean) => void;
   /** #2488 — what the stage shows before it plays: the file's recorded timeline, when there is one. */
   idle?: React.ReactNode;
@@ -70,7 +110,8 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
   const toSend = useRef({ path, files });
   toSend.current = { path, files };
   const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState<FromFrame | null>(null);
+  const [status, setStatus] = useState<Shown | null>(null);
+  const say = (text: string) => setStatus({ by: "page", text });
   const frameRef = useRef<HTMLIFrameElement>(null);
   const wantPlay = useRef(false);
   // The frame's own load and its "ready", both needed before code goes in; and
@@ -111,7 +152,7 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
   useEffect(() => {
     if (autoStartRef.current) {
       wantPlay.current = true;
-      setStatus({ state: "stopped", message: "Loading the preview…" });
+      say("Loading the preview…");
       setOpen(false);
       // A new frame for the new code: close, then open on the next frame.
       const t = requestAnimationFrame(() => setOpen(true));
@@ -134,7 +175,7 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
   const onFrameLoad = () => {
     if (codeSent.current) {
       setOpen(false);
-      setStatus({ state: "stopped", message: NAVIGATED_AWAY });
+      say(NAVIGATED_AWAY);
       wantPlay.current = false;
       return;
     }
@@ -166,7 +207,7 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
       const answer = awaitingStart.current;
       awaitingStart.current = false;
       if (answer && msg.state === "stopped" && msg.message === NEEDS_CLICK) frame.focus();
-      setStatus(msg);
+      setStatus({ by: "frame", msg });
     };
     window.addEventListener("message", onMessage);
     // A frame that is slow to say it's ready (or never does: its scripts didn't
@@ -174,10 +215,10 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
     const timer = window.setTimeout(() => {
       if (!wantPlay.current) return;
       setStatus({
-        state: "stopped",
+        by: "page",
         // `next dev` refuses the scripts of an opaque-origin frame and its client
         // never starts there (observed, #2328); a production build serves it.
-        message:
+        text:
           process.env.NODE_ENV === "development"
             ? "Previews don't load on the development server — try a production build (next build && next start)."
             : "The preview is taking a while to load…",
@@ -189,33 +230,40 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
     };
   }, [open, playWhenLoaded]);
 
-  const playing = status?.state === "playing";
+  // #2579 — the page's own answer to "is anything running?": the frame is up
+  // (loading, playing, asking for its press, or saying anything else). What
+  // the frame reports doesn't change it, so Stop is always one press away.
+  const playing = open;
   const playingChange = useRef(onPlayingChange);
   playingChange.current = onPlayingChange;
-  useEffect(() => playingChange.current?.(playing), [playing]);
+  useEffect(() => {
+    // braces: whatever the callback returns must not become this effect's cleanup
+    playingChange.current?.(playing);
+  }, [playing]);
   const onPreview = () => {
     if (!open) {
       wantPlay.current = true;
-      setStatus({ state: "stopped", message: "Loading the preview…" });
+      say("Loading the preview…");
       setOpen(true);
       return;
     }
-    if (playing) send({ stop: true });
-    else askToPlay();
+    // #2579 — Stop removes the frame rather than asking its code to stop: a
+    // removed frame's document is gone, and with it its sound, timers and
+    // visuals. The next ▶ loads a fresh frame (the effect above resets it).
+    wantPlay.current = false;
+    setOpen(false);
+    say(STOPPED);
   };
 
   useImperativeHandle(ref, () => ({ toggle: onPreview }));
 
-  const statusText =
-    status?.state === "playing"
-      ? status.message
-        ? `Playing in a sealed preview. The code reported an error: ${status.message}`
-        : "Playing in a sealed preview."
-      : status?.state === "stopped"
-        ? (status.message ?? "Stopped.")
-        : status?.state === "error"
-          ? `The code reported an error: ${status.message ?? "unknown"}`
-          : "Plays in a sealed frame. It can't reach your projects or account.";
+  const statusText = !status
+    ? "Plays in a sealed frame. It can't reach your projects or account."
+    : status.by === "page"
+      ? status.text
+      : frameStatusText(status.msg);
+  // What the frame last said its state was; the page's own notes read as "stopped".
+  const shownState = !status ? "closed" : status.by === "page" ? "stopped" : status.msg.state;
 
   return (
     <div className={kind === "strudel" ? "sg-stage sg-stage-sound" : "sg-stage"} data-gallery-preview={fileKey}>
@@ -251,7 +299,8 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z" /></svg>
           )}
         </button>
-        <span className="sg-sealed" data-gallery-preview-state={status?.state ?? "closed"}>
+        {/* #2580 — the one status line, here in the page's controls (the frame's own is hidden when embedded). */}
+        <span className="sg-sealed" role="status" data-gallery-preview-state={shownState} data-gallery-preview-from={status?.by ?? "page"}>
           {!status && (
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <rect x="5" y="11" width="14" height="10" rx="2" />
