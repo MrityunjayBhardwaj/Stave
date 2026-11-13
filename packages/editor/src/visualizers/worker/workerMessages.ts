@@ -176,6 +176,14 @@ export interface WorkerFrameAckMessage {
   drawMs?: number
 }
 
+/** WORKER → MAIN: the `stave.scheduler` shim got a frame saying "the notes are
+ *  unchanged since version N" while holding a different version — the frame that
+ *  carried version N's notes never reached this mount (#2582). Main sends the
+ *  whole window with its next frame. Sent once per gap, not once per frame. */
+export interface WorkerRawWindowResyncMessage {
+  type: 'rawWindowResync'
+}
+
 /** Structural guard — is this a control message (has a string `type`) rather than
  *  a `SignalFrame` envelope? */
 export function isControlMessage(data: unknown): data is WorkerControlMessage {

@@ -18,7 +18,8 @@
  * The ONLY per-frame main-thread cost is `sample()` (read analyser bytes + the
  * narrow active-at-now queries + now, and — for kinds whose sketches get
  * `stave.scheduler`, see `kindReadsRawScheduler` — the wide window, kept by
- * `RollingHapWindow` so most frames run no wide query at all)
+ * `RollingHapWindow` so most frames run no wide query at all, and shipped only on
+ * the frames where it changed, #2582)
  * + a transferable `postMessage` — the heavy `draw()` is gone from main. That
  * residual is what the matrix measures (PLAN §8). The wide query is the costly
  * part with a dense song (#2561), which is why it is skipped where unused.
@@ -58,6 +59,7 @@ import type {
   WorkerLoadedMessage,
   WorkerFrameAckMessage,
   WorkerVizLogMessage,
+  WorkerRawWindowResyncMessage,
 } from '../worker/workerMessages'
 import { VizRendererBase } from './VizRendererBase'
 
@@ -238,6 +240,9 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
    *  restores the live path. The pump reads `next(ts)` each produced frame. */
   setDemoSource(src: SignalFrameSource | null): void {
     this.demoSource = src
+    // Demo frames replace the worker's notes; the live feed must send its whole
+    // window again when it takes over (#2582).
+    this.sampler.resendRawWindow()
   }
 
   protected onMount(
@@ -289,6 +294,7 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
           | WorkerLoadedMessage
           | WorkerFrameAckMessage
           | WorkerVizLogMessage
+          | WorkerRawWindowResyncMessage
           | undefined
         if (!d) return
         if (d.type === 'alive') {
@@ -299,6 +305,11 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
         if (d.type === 'loaded') {
           // #2560 — the sketch finished setting up; Play may stop waiting for it.
           this.settleLoaded()
+          return
+        }
+        if (d.type === 'rawWindowResync') {
+          // The worker missed the frame that carried the current notes (#2582).
+          this.sampler.resendRawWindow()
           return
         }
         if (d.type === 'frameAck') {
@@ -349,6 +360,8 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
       worker.addEventListener('message', this.diagHandler)
 
       // Bind the live signal feed, then ship the mount with the transferred canvas.
+      // (A new mount holds no notes; its first frame carries them because the
+      // sampler is new or was disposed with the last mount, #2582.)
       this.bindSampler(components)
       const aliases = currentVizSignalAliases()
       const mountOptions = this.postOptions(components)

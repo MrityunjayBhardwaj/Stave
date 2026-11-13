@@ -6475,12 +6475,34 @@ interface RawHapSummary {
 interface RawSchedulerFrame {
     /** `scheduler.now()` at sample (same value as `SignalFrame.now`). */
     now: number;
-    /** Events in the shipped wide window, in query order. */
-    events: RawHapSummary[];
-    /** The window's change counter (`RollingHapWindow.version`): equal across two
-     *  frames → the same `events` (#2571 — the GLSL note texture re-uploads only
-     *  when it moves). Absent → unknown; treat every frame as changed. */
+    /**
+     * The notes, in query order — sent only when they changed (#2582). Re-sending
+     * the same few hundred notes every frame was most of the cost of posting one.
+     *
+     *   - present → the notes as of `version`; replace what you hold.
+     *   - absent, `version` set → the same notes as the frame that carried this
+     *     `version`'s; keep them. A consumer holding another version missed that
+     *     frame: it drops what it holds and asks main to send them again
+     *     (`WorkerRawWindowResyncMessage`).
+     *   - absent, no `version` → no events.
+     *
+     * With `lo`/`hi` set they are the main thread's HELD notes (`RollingHapWindow.
+     * held()`: notes already behind the window not yet dropped, and the half cycle
+     * prefetched past its front), and the consumer narrows them to the window
+     * itself each frame: `end > lo + EDGE && begin < hi − EDGE` (`rollingHapWindow.
+     * ts`). That set changes only when a query lands, about twice a cycle; the
+     * window's own contents change whenever a note enters or leaves it, which on a
+     * dense song is most frames. Without `lo`/`hi` the events ARE the window.
+     */
+    events?: RawHapSummary[];
+    /** The change counter of the shipped notes: equal across two frames → the same
+     *  `events` (#2582 — they are shipped only when it moves). Absent → unknown;
+     *  treat every frame as changed. */
     version?: number;
+    /** The window's edges this frame (now − 4, now + 2 cycles), when `events` are a
+     *  held superset to narrow — see `events`. */
+    lo?: number;
+    hi?: number;
     /** Cycles per second (`IRPattern.cps`), when the scheduler reports one. */
     cps?: number;
 }
@@ -6967,7 +6989,8 @@ declare const ALIAS_MAP: Record<string, EngineAliasValue>;
  * The ONLY per-frame main-thread cost is `sample()` (read analyser bytes + the
  * narrow active-at-now queries + now, and — for kinds whose sketches get
  * `stave.scheduler`, see `kindReadsRawScheduler` — the wide window, kept by
- * `RollingHapWindow` so most frames run no wide query at all)
+ * `RollingHapWindow` so most frames run no wide query at all, and shipped only on
+ * the frames where it changed, #2582)
  * + a transferable `postMessage` — the heavy `draw()` is gone from main. That
  * residual is what the matrix measures (PLAN §8). The wide query is the costly
  * part with a dense song (#2561), which is why it is skipped where unused.
@@ -9369,6 +9392,21 @@ declare class MainSignalSampler {
     /** The wide window, advanced by querying only the new sliver each frame
      *  (#2563) instead of the whole window. Reset on every rebind. */
     private readonly rawWindow;
+    /**
+     * The notes as shipped (#2582). `rawVersion` is the frame's `version`: it moves
+     * whenever the shipped notes may differ — the window's held set moved
+     * (`heldVersion`), or the feed switched between a window and none (no
+     * scheduler) — and never goes back, across binds too. `rawEvents` is the
+     * summarised held set for that version, built only when it moves.
+     * `sentVersion` is the version whose notes the consumer was last sent; a frame
+     * carries `events` only when it differs.
+     */
+    private rawVersion;
+    /** What `rawVersion` was derived from: the window's `heldVersion`, −1 for "no
+     *  window", NaN before the first frame. */
+    private rawSource;
+    private rawEvents;
+    private sentVersion;
     /** "What's playing now" for the combined pattern and per track, re-queried
      *  only when a note starts or ends (#2567). Reset on every rebind. */
     private readonly activeNow;
@@ -9380,6 +9418,10 @@ declare class MainSignalSampler {
     /** Rebind the live inputs (mirror the renderer's in-place rebind on
      *  re-evaluate). Pass `null`/absent for demo / IR-only mode. */
     bind(inputs: SamplerInputs): void;
+    /** Ship the whole window with the next frame even if it hasn't changed — the
+     *  consumer lost what it held (a worker remount, a frame that never arrived,
+     *  frames from a demo feed in between; #2582). */
+    resendRawWindow(): void;
     /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
      *  — so the bump feed survives a re-evaluate that swaps the stream (mirror
      *  P5VizRenderer.update). A partial stream (no `.on`) degrades to no feed. */
