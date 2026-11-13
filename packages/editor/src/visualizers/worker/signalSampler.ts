@@ -62,6 +62,7 @@ function summariseRawHap(e: {
   gain?: number
   velocity?: number
   color?: string | null
+  trackKey?: string
 }): RawHapSummary {
   const begin = e.begin ?? 0
   const end = e.end ?? begin
@@ -76,6 +77,7 @@ function summariseRawHap(e: {
     gain: e.gain ?? 1,
     velocity: e.velocity ?? 1,
     color: e.color ?? null,
+    trackKey: e.trackKey ?? null,
   }
 }
 
@@ -149,11 +151,10 @@ function readAnalyserBytes(key: string, an: BusAnalyser): AnalyserBytes | null {
 export class MainSignalSampler {
   /**
    * Whether `sample()` runs the WIDE raw-scheduler query (`stave.scheduler`, B-3).
-   * Only p5 and hydra sketches are handed `stave.scheduler`; a three.js or GLSL
-   * sketch never sees it, so for them the query is pure main-thread cost — and it
-   * is the expensive one: it walks the whole song over `RAW_QUERY_BACK +
-   * RAW_QUERY_FWD` cycles every frame (#2561 measured it as most of the main
-   * thread during Play with a dense song). Off → `rawScheduler.events` is empty.
+   * Every kind reads it now (p5/hydra/three.js as `stave.scheduler`, GLSL as the
+   * `uNotes` texture, #2571); the flag stays so a consumer that doesn't can skip
+   * it (#2561 measured the old whole-window query as most of the main thread
+   * during Play with a dense song). Off → `rawScheduler.events` is empty.
    */
   constructor(private readonly wantsRawScheduler = true) {}
 
@@ -271,7 +272,10 @@ export class MainSignalSampler {
       events: scheduler && this.wantsRawScheduler
         ? this.rawWindow.at(scheduler, now, (a, b) => queryAt(scheduler, a, b)).map(summariseRawHap)
         : [],
+      version: this.rawWindow.version,
     }
+    const cps = scheduler?.cps?.()
+    if (typeof cps === 'number' && Number.isFinite(cps)) rawScheduler.cps = cps
 
     return { seq, now, analysers, activeEvents, activeByTrack, bumps, rawScheduler }
   }

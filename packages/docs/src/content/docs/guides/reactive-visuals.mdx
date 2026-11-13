@@ -47,6 +47,7 @@ The circle jumps on every kick, right under that line of code. Change the beat t
 | The mix's spectrum and waveform | `sig.fft`, `sig.wave` (arrays) | `s.a.fft[i]` | `iChannel0` (row 0 spectrum, row 1 waveform) |
 | One sound | `sig('bd')` | `stave.sig('bd')` | — |
 | One track | `sig.track('$0')` | `stave.sig.track('$0')` | `staveTrack(i)` |
+| The notes coming up | `stave.scheduler.query(a, b)` | `stave.scheduler.query(a, b)` | `staveNote(i)`, `uNoteCount` |
 
 Every value runs from 0 to 1. A drum signal jumps to 1 the moment that drum plays, then fades back towards 0, so multiplying by it gives you a hit that decays on its own.
 
