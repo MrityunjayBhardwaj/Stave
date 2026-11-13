@@ -97,12 +97,13 @@ async function routeRoundTrip(page: Page): Promise<Request[]> {
 }
 
 /** Publish the project as it is now, with the given title; the request it sent. */
-async function publish(page: Page, seen: Request[], title: string): Promise<Sent> {
+async function publish(page: Page, seen: Request[], title: string, keepStills = true): Promise<Sent> {
   await openPublish(page)
   await expect(page.getByTestId('gallery-publish-thumbnail-img')).toBeVisible({ timeout: 15_000 })
   // #2590 — the dialog says which visuals keep a still, and lets the author leave them out
   await expect(page.getByTestId('gallery-publish-frames')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('gallery-publish-frames-include')).toBeChecked()
+  if (!keepStills) await page.getByTestId('gallery-publish-frames-include').uncheck()
   await page.getByTestId('gallery-publish-title').fill(title)
   await page.getByTestId('gallery-publish-submit').click()
   await expect(page.locator('[data-testid="toast"]', { hasText: `Published "${title}"` })).toBeVisible({ timeout: 15_000 })
@@ -216,5 +217,21 @@ test.describe('#2590 tempo and visual stills, recorded at publish', () => {
     await openEntry(page)
     await expect(page.locator('[data-gallery-tempo]')).toHaveText('starts at 120 BPM')
     await expect(page.locator('[data-gallery-cover-length]')).not.toContainText(':')
+  })
+
+  test('the author leaves the stills out: none are sent, and the visual rows stay plain', async ({ page }) => {
+    await page.setViewportSize({ width: 1360, height: 900 })
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    const seen = await routeRoundTrip(page)
+    await bootApp(page)
+    await evalCode(page)
+    await waitForVizDrawn(page)
+    const sent = await publish(page, seen, 'No stills', false)
+    await stopCode(page)
+    expect(sent.recording).toBeDefined()
+    expect(sent.recording).not.toHaveProperty('frames')
+    await openEntry(page)
+    await expect(page.locator('[data-gallery-file-row]').first()).toBeVisible()
+    await expect(page.locator('[data-gallery-visual-frame]')).toHaveCount(0)
   })
 })
