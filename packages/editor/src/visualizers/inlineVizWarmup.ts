@@ -26,6 +26,21 @@
 import type { VizDescriptor, VizRenderer } from './types'
 import { resolveDescriptor } from './resolveDescriptor'
 
+/**
+ * A stopped zone's sketch offered for the next Play (#2560). After Stop the zone
+ * keeps its paused renderer on screen (its last frame); building a warm copy
+ * beside it would hold a heavy sketch twice. Instead the warm-up claims it: the
+ * zone stops owning it (its cleanup at Play will not destroy it) and the next
+ * Play's zone adopts it, so Play still starts at once and nothing new is shown.
+ */
+export interface ReuseOffer {
+  readonly descriptor: VizDescriptor
+  readonly container: HTMLDivElement
+  readonly renderSize: { w: number; h: number }
+  /** Take the renderer; null when the zone no longer holds a live one. */
+  claim(): VizRenderer | null
+}
+
 export interface WarmInlineViz {
   readonly vizId: string
   readonly descriptor: VizDescriptor
@@ -33,6 +48,9 @@ export interface WarmInlineViz {
   /** The container the renderer was mounted into; adopted as the zone's node. */
   readonly container: HTMLDivElement
   readonly renderSize: { w: number; h: number }
+  /** Reused from a stopped zone (`ReuseOffer`): its container is still that
+   *  zone's node on screen, so it is never removed from here. */
+  readonly reused?: boolean
 }
 
 const byFile = new Map<string, WarmInlineViz[]>()
@@ -69,7 +87,7 @@ function destroyEntry(e: WarmInlineViz): void {
   } catch {
     /* a renderer's teardown failure must not stop the others */
   }
-  e.container.remove()
+  if (!e.reused) e.container.remove()
 }
 
 function build(
@@ -119,8 +137,12 @@ export function warmInlineViz(
   vizIds: readonly string[],
   descriptors: VizDescriptor[],
   sizeFor: (descriptor: VizDescriptor) => { w: number; h: number },
+  /** #2560 — sketches held by this file's stopped zones, taken before building
+   *  a copy (see `ReuseOffer`). */
+  offers: readonly ReuseOffer[] = [],
 ): void {
   const pool = [...(byFile.get(fileId) ?? [])]
+  const unclaimed = [...offers]
   const keep: WarmInlineViz[] = []
   for (const vizId of vizIds) {
     const descriptor = resolveDescriptor(vizId, descriptors)
@@ -129,6 +151,15 @@ export function warmInlineViz(
     if (i >= 0) {
       keep.push(pool.splice(i, 1)[0])
       continue
+    }
+    const o = unclaimed.findIndex((x) => sameSketch(x.descriptor, descriptor))
+    if (o >= 0) {
+      const offer = unclaimed.splice(o, 1)[0]
+      const renderer = offer.claim()
+      if (renderer) {
+        keep.push({ vizId, descriptor, renderer, container: offer.container, renderSize: { ...offer.renderSize }, reused: true })
+        continue
+      }
     }
     const built = build(vizId, descriptor, sizeFor(descriptor))
     if (built) keep.push(built)

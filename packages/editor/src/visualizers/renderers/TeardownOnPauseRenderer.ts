@@ -71,6 +71,17 @@ export class TeardownOnPauseRenderer implements VizRenderer {
     this.inner = inner
   }
 
+  /**
+   * #2560 — hand the inner renderer over to a new owner (the warm-up reusing a
+   * stopped zone's sketch for the next Play) and forget it: this wrapper's later
+   * pause/resume/destroy no longer reach it. Null when torn down (nothing live).
+   */
+  release(): VizRenderer | null {
+    const inner = this.inner
+    this.inner = null
+    return inner
+  }
+
   /** #2560 — the current inner renderer's loaded signal (taken as loaded when
    *  torn down, or when the inner has none). */
   whenLoaded(): Promise<void> {

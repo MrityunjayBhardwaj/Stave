@@ -371,7 +371,10 @@ export function EditorView({
     const timer = setTimeout(() => {
       const names = readInlineVizNames(warmCode)
       if (names === null) return // mid-keystroke: keep what is warm
-      warmInlineViz(fileId, names, DEFAULT_VIZ_DESCRIPTORS, inlineRenderSizeFor)
+      // After Stop the zones still hold their (paused) sketches: reuse those
+      // rather than build a second copy of each.
+      const offers = viewZoneHandleRef.current?.offerForReuse?.() ?? []
+      warmInlineViz(fileId, names, DEFAULT_VIZ_DESCRIPTORS, inlineRenderSizeFor, offers)
     }, INLINE_WARM_DEBOUNCE_MS)
     return () => clearTimeout(timer)
   }, [fileId, busLive, warmLanguage, warmCode, vizRegistryTick])

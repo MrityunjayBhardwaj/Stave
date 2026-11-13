@@ -22,6 +22,13 @@ import {
 import { addInlineViewZones } from '../viewZones'
 import { pendingPatternVizLoads, __resetVizLoadGateForTests } from '../vizLoadGate'
 
+// the off-screen teardown wrapper on (its default) or off, per test
+const teardown = { on: true }
+vi.mock('../../workspace/editorRegistry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../workspace/editorRegistry')>()
+  return { ...actual, getInlineVizTeardownMs: () => (teardown.on ? 60_000 : 0) }
+})
+
 vi.mock('p5', () => ({ default: vi.fn() }))
 
 function fakeRenderer() {
@@ -187,5 +194,77 @@ describe('addInlineViewZones adopts a warm sketch (#2560)', () => {
     expect(made).toHaveLength(1)
     expect(made[0].markWarmUp).not.toHaveBeenCalled() // a zone at Play is not a warm-up
     expect(made[0].mount).toHaveBeenCalledTimes(1)
+  })
+})
+
+// #2560 — after Stop the zones keep their paused sketch on screen. The warm-up
+// reuses it instead of building a second copy, so a heavy sketch is held once;
+// the next Play adopts it, so Play still starts at once.
+describe('after Stop, the warm-up reuses the zone sketch (#2560)', () => {
+  function editorOf() {
+    const domNodes: HTMLElement[] = []
+    const accessor = {
+      addZone: vi.fn((z: { domNode: HTMLElement }) => {
+        domNodes.push(z.domNode)
+        return `z${domNodes.length}`
+      }),
+      removeZone: vi.fn(),
+    }
+    const editor = {
+      changeViewZones: (cb: (a: typeof accessor) => void) => cb(accessor),
+      getLayoutInfo: () => ({ contentWidth: 800 }),
+      getModel: () => ({ getValue: () => '$: s("bd").viz("A")', getLineMaxColumn: () => 80 }),
+      onDidChangeModelContent: () => ({ dispose() {} }),
+      onDidLayoutChange: () => ({ dispose() {} }),
+      onDidScrollChange: () => ({ dispose() {} }),
+      onMouseMove: () => ({ dispose() {} }),
+      createDecorationsCollection: () => ({ getRanges: () => [], clear() {} }),
+      getDomNode: () => null,
+    }
+    return { editor, domNodes }
+  }
+  const components = {
+    inlineViz: { vizRequests: new Map([['$0', { vizId: 'A', afterLine: 1 }]]) },
+  } as never
+
+  for (const on of [true, false]) {
+    it(`one instance per sketch across Stop and the next Play (teardown wrapper ${on ? 'on' : 'off'})`, () => {
+      teardown.on = on
+      const made: Fake[] = []
+      const a = descriptor('A', made)
+      const { editor, domNodes } = editorOf()
+      // Play 1: built at Play (nothing warm yet)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const play1 = addInlineViewZones(editor as any, components, [a], undefined, 'f')
+      expect(made).toHaveLength(1)
+      play1.pause() // Stop: the zone keeps its paused sketch on screen
+
+      // the warm-up after Stop reuses it: no second build
+      warmInlineViz('f', ['A'], [a], SIZE, play1.offerForReuse!())
+      expect(made).toHaveLength(1)
+      expect(warmInlineVizCount('f')).toBe(1)
+
+      // Play 2: the old zones go, the reused sketch survives and is adopted
+      play1.cleanup()
+      expect(made[0].destroy).not.toHaveBeenCalled()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      addInlineViewZones(editor as any, components, [a], undefined, 'f')
+      expect(made).toHaveLength(1)
+      expect(made[0].mount).toHaveBeenCalledTimes(1)
+      expect(domNodes[1]).toBe(domNodes[0]) // same node, re-added as the new zone
+      expect(domNodes[1].querySelectorAll('[data-viz-zone-resize]')).toHaveLength(1) // no stale strip
+      teardown.on = true
+    })
+  }
+
+  it('a claimed sketch cannot be claimed twice', () => {
+    const made: Fake[] = []
+    const a = descriptor('A', made)
+    const { editor } = editorOf()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const h = addInlineViewZones(editor as any, components, [a], undefined, 'f')
+    const [offer] = h.offerForReuse!()
+    expect(offer.claim()).not.toBeNull()
+    expect(offer.claim()).toBeNull()
   })
 })

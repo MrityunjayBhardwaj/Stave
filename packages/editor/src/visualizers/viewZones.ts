@@ -9,13 +9,15 @@ import { VizPresetStore, type CropRegion, type VizPreset } from './vizPreset'
 import { getZoneCropOverride, getZoneHeightOverride, setZoneHeightOverride, pruneZoneOverrides } from '../workspace/WorkspaceFile'
 import { getInlineVizResolution, getInlineVizTeardownMs } from '../workspace/editorRegistry'
 import { TeardownOnPauseRenderer } from './renderers/TeardownOnPauseRenderer'
-import { takeWarmInlineViz } from './inlineVizWarmup'
+import { takeWarmInlineViz, type ReuseOffer } from './inlineVizWarmup'
 import { trackPatternVizLoad } from './vizLoadGate'
 
 export interface InlineZoneHandle {
   cleanup(): void
   pause(): void
   resume(): void
+  /** #2560 — this handle's sketches, for the warm-up to reuse after Stop. */
+  offerForReuse?(): ReuseOffer[]
 }
 
 export interface VizZoneActions {
@@ -433,6 +435,10 @@ export function addInlineViewZones(
   }
 
   const renderers: VizRenderer[] = []
+  // #2560 — sketches the warm-up took over after Stop: cleanup must not destroy
+  // them (the next Play's zones adopt them).
+  const donated = new Set<VizRenderer>()
+  const offers: ReuseOffer[] = []
   // Phase C (#258): one detach fn per zone — pauses the renderer while its zone is
   // scrolled off-screen / collapsed or the tab is hidden. The inline path does its
   // OWN mount (Monaco-layout reflow, teardown-wrap, crop, decorations) so it can't
@@ -508,6 +514,9 @@ export function addInlineViewZones(
       const warm = fileId ? takeWarmInlineViz(fileId, descriptor) : null
       const container = warm?.container ?? document.createElement('div')
       container.removeAttribute('data-viz-warm')
+      // A sketch reused from the last Play's zone brings that zone's container:
+      // drop the old zone's resize strip (its listener answers only to it).
+      if (warm?.reused) container.querySelectorAll('[data-viz-zone-resize]').forEach((el) => el.remove())
       container.setAttribute('data-viz-zone', '')
       container.setAttribute('data-viz-zone-track', trackKey)
       container.setAttribute('data-viz-zone-id', vizId)
@@ -553,6 +562,19 @@ export function addInlineViewZones(
         renderer = warm?.renderer ?? makeInner()
       }
       renderers.push(renderer)
+      {
+        const zoneRenderer = renderer
+        offers.push({
+          descriptor,
+          container,
+          renderSize,
+          claim: () => {
+            if (donated.has(zoneRenderer)) return null
+            donated.add(zoneRenderer)
+            return zoneRenderer instanceof TeardownOnPauseRenderer ? zoneRenderer.release() : zoneRenderer
+          },
+        })
+      }
       // Shared per-mount lifecycle (#260): mount + visibility pausing via the one
       // choke point. `onMountError` keeps the prior inline behaviour — log + carry
       // on (one bad zone must not abort the others) and still wire visibility.
@@ -689,6 +711,7 @@ export function addInlineViewZones(
       // Thin strip at the bottom of the zone — reveals on hover, drag
       // to resize the zone height. Persists via setZoneHeightOverride.
       const resizeHandle = document.createElement('div')
+      resizeHandle.setAttribute('data-viz-zone-resize', '')
       resizeHandle.style.cssText = `
         position:absolute;bottom:0;left:0;right:0;height:6px;
         cursor:row-resize;z-index:50;
@@ -1069,7 +1092,12 @@ export function addInlineViewZones(
       editorDom?.removeEventListener('mouseleave', mouseLeaveHandler)
       floatingBar?.remove()
       visibilityCleanups.forEach(fn => fn())
-      renderers.forEach(r => r.destroy())
+      renderers.forEach(r => {
+        // a wrapper whose inner was released destroys nothing; a plain donated
+        // renderer belongs to the warm-up now
+        if (donated.has(r) && !(r instanceof TeardownOnPauseRenderer)) return
+        r.destroy()
+      })
       bufferedSchedulers.forEach(s => s.dispose())
       editor.changeViewZones((accessor) => {
         zoneEntries.forEach(e => accessor.removeZone(e.zoneId))
@@ -1078,5 +1106,7 @@ export function addInlineViewZones(
     },
     pause() { renderers.forEach(r => r.pause()) },
     resume() { renderers.forEach(r => r.resume()) },
+    // a claimed offer answers null to a second claim
+    offerForReuse: () => offers.slice(),
   }
 }
