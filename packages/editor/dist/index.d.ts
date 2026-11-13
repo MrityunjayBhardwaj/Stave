@@ -9958,10 +9958,16 @@ declare const SIGNALS_BACKDROP_P5_CODE = "// Stave p5 viz \u2014 Signals (Backdr
  *   5. Marks the target group's active tab = the dropped tab.
  *   6. Fires `onActiveTabChange` if the active tab changed.
  *
- * The source group may become empty after the drop — that's legal. The
- * shell does not auto-collapse empty groups (the user might be about to
- * drop something else into it); the explicit "close group" button handles
- * removal.
+ * A group the drop leaves empty is removed, unless it is the only group.
+ *
+ * ## An emptied group goes away
+ *
+ * Closing a group's last tab removes the group, unless it is the only one
+ * (that one stays as the empty "Drop a tab here" placeholder). This holds
+ * however many tabs one action closes — Close All, a file's tabs, a viz
+ * editor taking its side preview — because it is decided after the close
+ * lands, on the tabs that are left (#2586). The empty group `splitGroup`
+ * makes on purpose stays until a tab is closed in it.
  *
  * ## Group split
  *

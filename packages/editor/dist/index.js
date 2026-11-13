@@ -1,7 +1,7 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
 import { parse as parse$1, parseExpressionAt } from 'acorn';
 import * as React48 from 'react';
-import React48__default, { forwardRef, useState, useEffect, useCallback, useSyncExternalStore, useMemo, useRef, useImperativeHandle } from 'react';
+import React48__default, { forwardRef, useState, useEffect, useCallback, useSyncExternalStore, useMemo, useRef, useLayoutEffect, useImperativeHandle } from 'react';
 import { parse as parse$2 } from '@strudel/mini/krill-parser.js';
 import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
 import { isControlName, getControlName } from '@strudel/core/controls.mjs';
@@ -50222,6 +50222,24 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   const [activeGroupId, setActiveGroupId] = useState(
     () => initialState.current.activeGroupId
   );
+  const closedInRef = useRef(/* @__PURE__ */ new Set());
+  useLayoutEffect(() => {
+    const marked = closedInRef.current;
+    if (marked.size === 0) return;
+    closedInRef.current = /* @__PURE__ */ new Set();
+    const order = allGroupIds(layout).filter((id) => groups.has(id));
+    const candidates = order.filter((id) => marked.has(id) && groups.get(id).tabs.length === 0).sort((a, b) => Number(a === activeGroupId) - Number(b === activeGroupId));
+    const drop = candidates.slice(0, Math.max(0, Math.min(candidates.length, order.length - 1)));
+    if (drop.length === 0) return;
+    const nextLayout = drop.reduce((l, id) => removeGroup(l, id), layout);
+    setGroups((prev) => {
+      const next = new Map(prev);
+      for (const id of drop) next.delete(id);
+      return next;
+    });
+    setLayout(nextLayout);
+    setActiveGroupId((prev) => drop.includes(prev) ? allGroupIds(nextLayout)[0] ?? prev : prev);
+  }, [groups, layout, activeGroupId]);
   const [bgOverrides, setBgOverrides] = useState(
     () => /* @__PURE__ */ new Map()
   );
@@ -50393,8 +50411,6 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   const handleTabClose = useCallback(
     (groupId, tabId) => {
       const existing = groups.get(groupId);
-      const wasLastTab = existing !== void 0 && existing.tabs.length === 1;
-      const canCollapseGroup = wasLastTab && groups.size > 1;
       const closedTab = existing?.tabs.find((t) => t.id === tabId) ?? null;
       setGroups((prev) => {
         const cur = prev.get(groupId);
@@ -50413,25 +50429,14 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           }
         }
         const next = new Map(prev);
-        if (canCollapseGroup) {
-          next.delete(groupId);
-        } else {
-          next.set(groupId, {
-            ...cur,
-            tabs: nextTabs,
-            activeTabId: nextActive
-          });
-        }
+        next.set(groupId, {
+          ...cur,
+          tabs: nextTabs,
+          activeTabId: nextActive
+        });
         return next;
       });
-      if (canCollapseGroup) {
-        setLayout((prev) => removeGroup(prev, groupId));
-        setActiveGroupId((prev) => {
-          if (prev !== groupId) return prev;
-          const remaining = allGroupIds(removeGroup(layout, groupId));
-          return remaining[0] ?? prev;
-        });
-      }
+      closedInRef.current.add(groupId);
       if (closedTab) {
         const maybePreview = closedTab;
         if (maybePreview.kind === "preview") {
@@ -50466,7 +50471,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         onTabClose?.(closedTab);
       }
     },
-    [groups, layout, onTabClose, stopBackdropSource]
+    [groups, onTabClose, stopBackdropSource]
   );
   const handleSplit = useCallback(
     (groupId, direction = "east") => {
@@ -50674,27 +50679,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       }
       if (!ownerGroupId) return;
       handleTabClose(ownerGroupId, tabId);
-      const owner = groups.get(ownerGroupId);
-      const wasLastTab = owner ? owner.tabs.length === 1 : false;
-      const willCollapse = wasLastTab && groups.size > 1;
-      if (willCollapse) {
-        setGroups((prev) => {
-          if (prev.size <= 1) return prev;
-          const next = new Map(prev);
-          next.delete(ownerGroupId);
-          return next;
-        });
-        setLayout((prev) => removeGroup(prev, ownerGroupId));
-        setActiveGroupId((prev) => {
-          if (prev !== ownerGroupId) return prev;
-          const remaining = allGroupIds(
-            removeGroup(layout, ownerGroupId)
-          );
-          return remaining[0] ?? prev;
-        });
-      }
     },
-    [groups, layout, handleTabClose]
+    [groups, handleTabClose]
   );
   const pendingCloseRef = useRef([]);
   const closeNextPending = useCallback(() => {

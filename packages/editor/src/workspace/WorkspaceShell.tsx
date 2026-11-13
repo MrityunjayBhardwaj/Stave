@@ -68,10 +68,16 @@
  *   5. Marks the target group's active tab = the dropped tab.
  *   6. Fires `onActiveTabChange` if the active tab changed.
  *
- * The source group may become empty after the drop — that's legal. The
- * shell does not auto-collapse empty groups (the user might be about to
- * drop something else into it); the explicit "close group" button handles
- * removal.
+ * A group the drop leaves empty is removed, unless it is the only group.
+ *
+ * ## An emptied group goes away
+ *
+ * Closing a group's last tab removes the group, unless it is the only one
+ * (that one stays as the empty "Drop a tab here" placeholder). This holds
+ * however many tabs one action closes — Close All, a file's tabs, a viz
+ * editor taking its side preview — because it is decided after the close
+ * lands, on the tabs that are left (#2586). The empty group `splitGroup`
+ * makes on purpose stays until a tab is closed in it.
  *
  * ## Group split
  *
@@ -110,6 +116,7 @@ import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -960,6 +967,34 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
     () => initialState.current.activeGroupId,
   )
 
+  // #2586 — the panes a tab was closed in since the last render. A pane a close
+  // leaves empty goes away (unless it is the last one), decided in the layout
+  // effect below on the state AFTER the close: one action can close several
+  // tabs (Close All, a file's tabs, a viz editor taking its side preview), and
+  // each close only sees the tabs as they were before the action started. A pane
+  // emptied any other way (Split makes one on purpose) is never marked.
+  const closedInRef = useRef<Set<string>>(new Set())
+  useLayoutEffect(() => {
+    const marked = closedInRef.current
+    if (marked.size === 0) return
+    closedInRef.current = new Set()
+    const order = allGroupIds(layout).filter((id) => groups.has(id))
+    // the active pane is the last to go when every pane empties, so it is the one kept
+    const candidates = order
+      .filter((id) => marked.has(id) && groups.get(id)!.tabs.length === 0)
+      .sort((a, b) => Number(a === activeGroupId) - Number(b === activeGroupId))
+    const drop = candidates.slice(0, Math.max(0, Math.min(candidates.length, order.length - 1)))
+    if (drop.length === 0) return
+    const nextLayout = drop.reduce((l, id) => layoutRemoveGroup(l, id), layout)
+    setGroups((prev) => {
+      const next = new Map(prev)
+      for (const id of drop) next.delete(id)
+      return next
+    })
+    setLayout(nextLayout)
+    setActiveGroupId((prev) => (drop.includes(prev) ? (allGroupIds(nextLayout)[0] ?? prev) : prev))
+  }, [groups, layout, activeGroupId])
+
   // #350a — transient per-group code-OVERRIDE backdrop layer. Deliberately kept
   // OUT of `groups` / the `onGroupsChange` snapshot: the active program declares
   // it every eval, so persisting it would churn tab-persistence and outlive the
@@ -1273,17 +1308,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
 
   const handleTabClose = useCallback(
     (groupId: string, tabId: string) => {
-      // Snapshot the tab count BEFORE the close so we can decide below
-      // whether this was the last tab in its group and therefore the
-      // group itself should collapse (VS Code parity). We read from
-      // the current `groups` closure instead of the setGroups updater
-      // because the collapse decision branches on the count AFTER
-      // removal, and doing it inside the updater would fight React's
-      // batching.
       const existing = groups.get(groupId)
-      const wasLastTab =
-        existing !== undefined && existing.tabs.length === 1
-      const canCollapseGroup = wasLastTab && groups.size > 1
       // #2430 — the closed tab comes from that same snapshot. Assigning it inside
       // the setGroups updater below only worked while React ran the updater
       // eagerly, which it does only when nothing else is pending; otherwise the
@@ -1308,35 +1333,17 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           }
         }
         const next = new Map(prev)
-        // Auto-collapse: removing the last tab of a non-only group
-        // drops the group entirely. Matches VS Code's "close the last
-        // tab and the pane goes away" behavior. Only leaves the group
-        // around as an empty "Drop a tab here" placeholder when it's
-        // the only group in the shell (otherwise the shell would have
-        // nowhere to render).
-        if (canCollapseGroup) {
-          next.delete(groupId)
-        } else {
-          next.set(groupId, {
-            ...cur,
-            tabs: nextTabs,
-            activeTabId: nextActive,
-          })
-        }
+        next.set(groupId, {
+          ...cur,
+          tabs: nextTabs,
+          activeTabId: nextActive,
+        })
         return next
       })
-
-      if (canCollapseGroup) {
-        setLayout((prev) => layoutRemoveGroup(prev, groupId))
-        // If the closed group was the shell-active one, pick a
-        // neighbor from the post-remove layout so the user still has
-        // a focused group to interact with.
-        setActiveGroupId((prev) => {
-          if (prev !== groupId) return prev
-          const remaining = allGroupIds(layoutRemoveGroup(layout, groupId))
-          return remaining[0] ?? prev
-        })
-      }
+      // The last tab of a pane takes the pane with it (VS Code parity), unless it
+      // is the only pane, which stays as the empty "Drop a tab here" placeholder.
+      // Decided after the close lands (#2586), see `closedInRef`.
+      closedInRef.current.add(groupId)
 
       if (closedTab) {
         // If the closed tab was a preview, clean up its pause
@@ -1392,7 +1399,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         onTabClose?.(closedTab)
       }
     },
-    [groups, layout, onTabClose, stopBackdropSource],
+    [groups, onTabClose, stopBackdropSource],
   )
 
   /**
@@ -1747,35 +1754,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         }
       }
       if (!ownerGroupId) return
+      // the pane goes with its last tab through handleTabClose (#2586)
       handleTabClose(ownerGroupId, tabId)
-
-      // Collapse the group if it's now empty AND we have more than one
-      // group. Single-group shells keep the empty group around so the
-      // shell doesn't render a blank screen with no tab bar.
-      const owner = groups.get(ownerGroupId)
-      const wasLastTab = owner ? owner.tabs.length === 1 : false
-      const willCollapse = wasLastTab && groups.size > 1
-
-      if (willCollapse) {
-        setGroups((prev) => {
-          if (prev.size <= 1) return prev
-          const next = new Map(prev)
-          next.delete(ownerGroupId!)
-          return next
-        })
-        setLayout((prev) => layoutRemoveGroup(prev, ownerGroupId!))
-        // If the closed group was active, pick the first remaining
-        // group from the post-remove layout.
-        setActiveGroupId((prev) => {
-          if (prev !== ownerGroupId) return prev
-          const remaining = allGroupIds(
-            layoutRemoveGroup(layout, ownerGroupId!),
-          )
-          return remaining[0] ?? prev
-        })
-      }
     },
-    [groups, layout, handleTabClose],
+    [groups, handleTabClose],
   )
 
   // #2148 — close every code editor's tab (Vim's `:qa`): the editor tabs and the history
