@@ -347,6 +347,24 @@ describe('PreviewView', () => {
     expect(mountCount.current).toBe(1)
   })
 
+  it('a background switching to another sketch file builds it once (no reload of the new file)', () => {
+    vi.useFakeTimers()
+    createWorkspaceFile('bgA', 'bgA.three', '// a', 'three')
+    createWorkspaceFile('bgB', 'bgB.three', '// b, different', 'three')
+    const { provider, mountCount, calls } = makeRecordingProvider({ reload: 'debounced', debounceMs: 300 })
+    const view = (id: string) => (
+      <PreviewView fileId={id} provider={provider} sourceRef={{ kind: 'default' }} onSourceRefChange={() => {}} backdrop />
+    )
+    const { rerender, getByTestId } = render(view('bgA'))
+    rerender(view('bgB'))
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
+    expect(calls[calls.length - 1].file.id).toBe('bgB')
+    expect(getByTestId('preview-provider-mount-bgB').getAttribute('data-provider-key')).toBe('bg:0')
+    expect(mountCount.current).toBe(1)
+  })
+
   it('an edit to it still reloads it, once, after the debounce', () => {
     vi.useFakeTimers()
     createWorkspaceFile('bg2', 'bg2.three', '// v0', 'three')

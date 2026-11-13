@@ -245,9 +245,16 @@ export function PreviewView({
   // first render (and on any new `file` object with the same content), so every
   // preview and background built its sketch twice at open, ~300 ms apart, and a
   // heavy three.js sketch ran its top level twice. Set when the file is first
-  // seen and on every bump.
+  // seen and on every bump. A DIFFERENT file (a background switching sketch,
+  // `bgFileId` changing under the same view) is a new mount, not an edit: the
+  // provider already renders the new file, so a reload ~300 ms later would build
+  // it a second time.
   const mountedContentRef = useRef<string | null>(null)
-  if (file && mountedContentRef.current === null) mountedContentRef.current = file.content
+  const mountedFileRef = useRef<string | null>(null)
+  if (file && mountedFileRef.current !== file.id) {
+    mountedFileRef.current = file.id
+    mountedContentRef.current = file.content
+  }
 
   // Reload dispatch — keyed on file content. Observes the provider's
   // reload policy. `instant` bumps the counter on every change; `debounced`
