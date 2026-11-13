@@ -11,9 +11,25 @@
  * survives reload. Writes are write-through + notify subscribers. Persistence
  * lives here in the app package — the editor package must NOT depend on app
  * commands (layering).
+ *
+ * Extensions' keys (#2513): an extension declares the keys it uses in the code
+ * (`provides.keys`, read through `extensionKeysInCode`). While it is on and the
+ * cursor is in a code editor, a declared key that is not handed back runs no
+ * Stave command. Who wins a key there: the person's own rebind, then the
+ * extension's key, then Stave's default. Nothing here ever writes
+ * `stave:keybindings` on an extension's behalf.
  */
 
-import { chordFromEvent, chordMatches, isMacPlatform } from "@stave/editor";
+import {
+  chordFromEvent,
+  chordMatches,
+  isMacPlatform,
+  extensionKeysInCode,
+  hasActiveExtensions,
+  getActiveEditor,
+  type ExtensionKeyInCode,
+} from "@stave/editor";
+import { EDITOR_OWNED_KEYS } from "../components/settings/editorOwnedKeys";
 import { executeCommand, listCommands, getCommand, type Command } from "./registry";
 
 const STORAGE_KEY = "stave:keybindings";
@@ -238,12 +254,91 @@ function cannotTypeText(e: KeyboardEvent): boolean {
 }
 
 /**
+ * True when focus is in the code of an editor extensions can follow (#2513):
+ * the code editor or the read-only history view (each marks itself
+ * `data-code-editor`), not the side-by-side diff, which no extension gets.
+ */
+function isExtensionCodeContext(e: KeyboardEvent): boolean {
+  const target = e.target as HTMLElement | null;
+  return isCodeEditorContext(e) && !!target?.closest?.("[data-code-editor]");
+}
+
+/** Can this command run from inside the code on this keystroke? The rule `onKey` applies (#2100). */
+function runsFromCode(cmd: Command, e: KeyboardEvent): boolean {
+  return cannotTypeText(e) || cmd.id.startsWith("stave.palette.") || cmd.id === "stave.quickOpen";
+}
+
+/** A Monaco action the code editor owns, as `codeEditorAt` finds it. */
+interface EditorAction {
+  run(): unknown;
+}
+
+/** What the dispatcher reads about extensions; tests hand in their own. */
+export interface KeybindingDispatcherOptions {
+  /** the keys switched-on extensions take in the code now (default: the page's) */
+  extensionKeysInCode?: () => readonly ExtensionKeyInCode[];
+  /** is any extension switched on? (default: the page's) */
+  extensionsActive?: () => boolean;
+  /** the code editor a keystroke landed in, to run its own Play or Stop */
+  codeEditorAt?: (target: Element) => { getAction?(id: string): EditorAction | null } | null;
+}
+
+/** The focused code editor, if the keystroke landed inside it. */
+function activeEditorAt(target: Element): { getAction?(id: string): EditorAction | null } | null {
+  const editor = getActiveEditor();
+  const node: Element | null | undefined = editor?.getDomNode?.();
+  return editor && node?.contains(target) ? editor : null;
+}
+
+/**
  * Install a global keydown listener that matches the pressed chord
  * against every registered command's keybinding and executes the first
  * match. Returns an unsubscribe.
+ *
+ * With an extension on (#2513), a second listener runs first, in the capture
+ * phase, before the editor or any extension sees the key:
+ *  - a key an extension takes, which the person has bound to a Stave command
+ *    THEMSELVES, runs that command (the person's own rebind wins);
+ *  - Play and Stop, the editor's own keys (`EDITOR_OWNED_KEYS` with an
+ *    `actionId`), run the editor's action unless an extension takes that key.
+ *    So an extension that swallows keys inside Monaco can never silently
+ *    break them: only declaring the key, with the person not handing it back,
+ *    gives it away, and that shows in Keyboard Shortcuts (#2545).
+ * With no extension on, it does nothing and every key behaves as before.
  */
-export function installKeybindingDispatcher(): () => void {
+export function installKeybindingDispatcher(opts: KeybindingDispatcherOptions = {}): () => void {
+  const keysInCode = opts.extensionKeysInCode ?? (() => extensionKeysInCode());
+  const extensionsActive = opts.extensionsActive ?? (() => hasActiveExtensions());
+  const codeEditorAt = opts.codeEditorAt ?? activeEditorAt;
+  const takenInCode = (chord: string) => keysInCode().some((k) => chordMatches(chord, k.key));
+
+  const onKeyFirst = (e: KeyboardEvent) => {
+    if (!extensionsActive() || !isExtensionCodeContext(e)) return;
+    const chord = eventToChord(e);
+    if (takenInCode(chord)) {
+      for (const cmd of listCommands()) {
+        if (cmd.scope) continue;
+        const own = overrides.get(cmd.id);
+        if (!own || !chordMatches(chord, own) || !runsFromCode(cmd, e)) continue;
+        e.preventDefault();
+        e.stopPropagation();
+        executeCommand(cmd.id);
+        return;
+      }
+      return; // the extension's key: it answers it inside the editor
+    }
+    const owned = EDITOR_OWNED_KEYS.find((k) => k.actionId && chordMatches(chord, k.chord));
+    const action = owned?.actionId ? codeEditorAt(e.target as Element)?.getAction?.(owned.actionId) : null;
+    if (!action) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void action.run();
+  };
+
   const onKey = (e: KeyboardEvent) => {
+    // A key a switched-on extension takes in the code runs no Stave command
+    // there (#2513). The person's own rebind of it already ran in onKeyFirst.
+    if (isExtensionCodeContext(e) && takenInCode(eventToChord(e))) return;
     const editable = isEditableContext(e);
     // In the code, a key the editor uses (⌘Z, ⌘/, ⌘D …) never gets here:
     // Monaco handles it and stops it. So whatever arrives from the code and
@@ -272,8 +367,12 @@ export function installKeybindingDispatcher(): () => void {
       return;
     }
   };
+  window.addEventListener("keydown", onKeyFirst, true);
   window.addEventListener("keydown", onKey);
-  return () => window.removeEventListener("keydown", onKey);
+  return () => {
+    window.removeEventListener("keydown", onKeyFirst, true);
+    window.removeEventListener("keydown", onKey);
+  };
 }
 
 /**

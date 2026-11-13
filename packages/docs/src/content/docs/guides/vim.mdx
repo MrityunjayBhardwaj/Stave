@@ -1,0 +1,86 @@
+---
+title: Vim keybindings
+description: Switch on Vim in the code editor, see its mode in the bar under each editor, and choose which keys stay with Stave.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+If you live in Vim, you can have it in Stave's code editor. Vim is an **extension**: it is off until you switch it on, and while it is off the editor is exactly as it always was.
+
+## Switching it on
+
+1. Open **Extensions** in the activity bar on the left.
+2. Find **Vim** and press **Switch on**.
+
+It takes effect at once, in every code editor, with no reload. Vim's code is downloaded only the first time you switch it on. **Switch off** puts everything back as it was.
+
+## The bar under each editor
+
+With Vim on, each code editor gets a bar underneath it:
+
+```
+-- NORMAL --                                      2d
+```
+
+- The **mode** is on the left: `-- NORMAL --`, `-- INSERT --`, `-- VISUAL --`, `-- VISUAL LINE --` or `-- VISUAL BLOCK --`.
+- The **keys you have typed so far** are on the right, until the command is complete.
+- Press **`:`** to type a command, such as `:%s/bd/sd/g`. It opens in the bar of the editor you're typing in. **Enter** runs it and **Esc** closes it.
+- Short messages show in the bar for a few seconds.
+
+With two editors side by side, each has its own bar.
+
+## Saving and closing
+
+Stave saves as you type, so there is never anything to save or lose. The saving and quitting commands do what VS Code's Vim does:
+
+| Command | What it does |
+| --- | --- |
+| `:w`, `:wa` | Shows **Stave saves as you type**, nothing else |
+| `:q`, `:q!`, `:wq`, `:x` | Closes the tab you typed it in |
+| `:qa`, `:wqa`, `:xa` | Closes every code tab |
+
+In a past version from Version History, `:q` closes that history tab.
+
+## Keys
+
+Inside the code, Vim's keys go to Vim, as they do in Vim itself: Ctrl+R redoes, Ctrl+D and Ctrl+U move half a page, Ctrl+V starts a visual block, Ctrl+C goes back to normal mode, and so on.
+
+A few keys stay with Stave, so you can always play and find your way around:
+
+| Key | What it does |
+| --- | --- |
+| Ctrl+Enter (⌘⏎ on a Mac) | Play |
+| Ctrl+. (⌘. on a Mac) | Stop |
+| Ctrl+Shift+P (⌘⇧P) | Command palette |
+| Ctrl+P (⌘P) | Quick open |
+| Ctrl+Z (⌘Z) | Undo |
+
+Play and Stop work in normal mode and in insert mode.
+
+<Aside>
+**On a Mac**, Stave's shortcuts use **⌘** and Vim's use **Control**, so the two never meet: every ⌘ shortcut works as usual, and Vim has its Control keys.
+
+**On Windows and Linux**, Stave and Vim both use **Ctrl**. Inside the code Vim wins, apart from the keys above, so for example Ctrl+B is Vim's page up there, not Toggle Sidebar. Outside the code every shortcut is Stave's.
+</Aside>
+
+Your own shortcuts in **Settings → Keyboard Shortcuts** are never changed by Vim.
+
+## Esc
+
+Inside the code, Vim gets **Esc** first. When Esc takes you out of insert or visual mode, closes the `:` line, or cancels a command you've only half typed (such as `d` or `2`), that is all it does. It won't also close a menu or drawer that happens to be open, and it won't leave zen mode. In normal mode, when Vim has nothing to cancel, Esc does what it always did in Stave, such as leaving zen mode.
+
+In insert mode with the suggestion list open, the first Esc closes the list and you stay in insert mode, as in VS Code's Vim. The next Esc takes you back to normal mode. Ctrl+[ and Ctrl+C, which are Esc to Vim, do the same.
+
+## Undo
+
+As in Vim, everything you type between entering insert mode and pressing Esc is one change, so one `u` undoes it all and Ctrl+R brings it all back. A command that changes text and then lets you type, such as `cw` or `o`, is one change together with what you typed.
+
+If something else changes the code while you're in insert mode, for example a step you click in the Pattern tab, that change stays a step of its own. `u` undoes your typing after it, then the change, then your typing before it. Stave's own undo (Ctrl+Z, or ⌘Z on a Mac) still goes back one small step at a time.
+
+## Past versions
+
+When you look at a past version, from **Version History**, you can move around, search and yank with Vim, but you can't edit it: the bar says **read-only**, insert mode does not start, and every edit is refused. When you try one, or press `u` or Ctrl+R, the bar tells you why: **This is a past version, so it can’t be changed here**. The side-by-side diff has no Vim.
+
+## What it's built on
+
+Stave's Vim is built on [monaco-vim](https://github.com/brijeshb42/monaco-vim) (MIT), which brings CodeMirror's Vim mode to the Monaco editor. Most of Vim's normal, insert and visual mode commands, motions, text objects, registers, marks, search, and `:s`, `:g` and `:sort` work. A few less common things work differently from Vim itself.

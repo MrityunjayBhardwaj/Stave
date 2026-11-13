@@ -1,3 +1,11 @@
+import { pageExtensions, setKeyEventMatcher } from './extensions'
+import { emitLog } from './engine/engineLog'
+import { chordFromEvent as chordOfKeystroke, chordMatches as chordIsKey } from './keys/chord'
+
+// #2148 — extensions match a keystroke against the keys they declare with Stave's one chord
+// builder; the extensions directory does not import it, so it is handed in here.
+setKeyEventMatcher((event, key) => chordIsKey(chordOfKeystroke(event), key))
+
 // Pattern IR — universal music representation
 export type { IREvent, SourceLocation, IRPattern } from './codeView'
 export { merge, transpose, timestretch, filter, scaleGain } from './codeView'
@@ -320,6 +328,59 @@ export { getStorageStatus, subscribeStorageStatus } from './storageStatus'
 export type { StorageStatus } from './storageStatus'
 export type { ProjectDocInitResult } from './workspace/projectDoc'
 export { warmMonaco } from './workspace/warmMonaco'
+
+/**
+ * The page has loaded: switch on the person's extensions (#2538). Each one's common part
+ * comes on now, with no audio engine involved; its Strudel part follows when a Strudel
+ * engine starts. Failures go to the Console under the extension's name. Safe to call
+ * again; never rejects. The app calls it once, as the editor package loads.
+ */
+export function startPageExtensions(): Promise<void> {
+  return pageExtensions().start({
+    report: (level, message) => emitLog({ level, runtime: 'stave', message }),
+  })
+}
+// #2511 — what the app's Extensions view reads and switches: the listed extensions (the
+// same list the page runtime switches on), the person's switches, and the host's list of
+// what switching off cannot undo.
+export {
+  BUILTIN_EXTENSIONS,
+  listedExtensions,
+  enabledExtensionIds,
+  isExtensionEnabled,
+  setExtensionEnabled,
+  onExtensionsEnabledChange,
+  RESIDUE,
+  E2E_TONE_ID,
+  E2E_TONE_SOUND,
+  E2E_TONE_KEY,
+  // #2552 — why switching one on failed, and hearing when that changes
+  extensionFailure,
+  onPageExtensionsChange,
+} from './extensions'
+export type { ExtensionAbout, ExtensionLanguage } from './extensions'
+// #2513 — the keys switched-on extensions take in the code (the app's key dispatcher and
+// Keyboard Shortcuts read them), the person's "handed back" choices, and the manifest
+// types an extension's page and the Shortcuts panel show.
+export {
+  extensionKeysInCode,
+  // #2545 — the switched-on extensions, so Keyboard Shortcuts lists their keys
+  activeExtensionManifests,
+  hasActiveExtensions,
+  extensionKeys,
+  isExtensionKeyGivenBack,
+  setExtensionKeyGivenBack,
+  onExtensionKeysChange,
+} from './extensions'
+export type {
+  ExtensionKey,
+  ExtensionKeyInCode,
+  ExtensionKeyState,
+  ExtensionManifest,
+  ExtensionHost,
+  CodeEditor,
+  EditorCleanup,
+} from './extensions'
 export {
   undo,
   redo,

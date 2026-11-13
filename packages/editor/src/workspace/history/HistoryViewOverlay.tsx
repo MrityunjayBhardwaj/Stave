@@ -25,6 +25,7 @@ import { snapshotAt, type ProjectHistory, type Commit } from './historyGraph'
 import { defineStrudelMonacoTheme } from '../../theme/monacoTheme'
 import { ensureWorkspaceLanguages, toMonacoLanguage } from '../languages'
 import { registerStrudelLanguage } from '../../monaco/language'
+import { offerCodeEditor } from '../../extensions'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const Editor = EditorRaw as any
@@ -69,12 +70,37 @@ export function HistoryViewOverlay({
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId)
   }, [initialFileId, fileIds])
 
+  // #2513 — the bar under the editor (extensions show a status there; empty, it takes no
+  // space), and what an extension asking this editor's language reads: the file shown now,
+  // since picking another file keeps the same editor.
+  const barRef = React.useRef<HTMLDivElement>(null)
+  const shownRef = React.useRef({ history, fileId })
+  shownRef.current = { history, fileId }
+  // #2148 — an extension closing this editor (Vim's `:q`) closes this history tab
+  const onCloseRef = React.useRef(onClose)
+  onCloseRef.current = onClose
+
   const handleMount = React.useCallback(
-    (_editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco): void => {
+    (editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco): void => {
       defineStrudelMonacoTheme(monaco)
       registerStrudelLanguage(monaco)
       ensureWorkspaceLanguages(monaco)
       monaco.editor.setTheme('stave-dark')
+      // Offered to extensions that follow code editors, read-only; withdrawn on the
+      // editor's own dispose event (closing the history view). The diff view is not offered.
+      if (barRef.current) {
+        offerCodeEditor({
+          editor,
+          monaco,
+          readOnly: true,
+          bar: barRef.current,
+          language: () => {
+            const { history: h, fileId: f } = shownRef.current
+            return h.fileMeta[f]?.language ?? null
+          },
+          close: () => onCloseRef.current(),
+        })
+      }
     },
     [],
   )
@@ -108,7 +134,7 @@ export function HistoryViewOverlay({
   }
 
   return (
-    <div style={wrap} data-history-view-overlay={commit.id}>
+    <div style={wrap} data-history-view-overlay={commit.id} data-code-editor="">
       <div style={headerRow}>
         <span
           style={{
@@ -169,6 +195,7 @@ export function HistoryViewOverlay({
           </div>
         )}
       </div>
+      <div ref={barRef} data-editor-bar="" style={{ flexShrink: 0, display: 'flex', flexDirection: 'column' }} />
     </div>
   )
 }

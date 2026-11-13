@@ -422,6 +422,10 @@ export const StrudelEditorDynamic = dynamic(
       // (which lands after the shell renders). Fire-and-forget — must never
       // block the boot or the preloader clear (#689).
       void editor.warmMonaco();
+      // Switch on the person's extensions now (#2538): an extension for every
+      // language (Vim) must not wait for the audio engine. Never rejects; a
+      // failure is a Console row under the extension's name.
+      void editor.startPageExtensions();
       return makeBootstrapOrchestrator(staveAppMod, editor, templates);
     }),
   {

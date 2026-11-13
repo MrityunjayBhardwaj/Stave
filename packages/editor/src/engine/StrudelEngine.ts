@@ -10,6 +10,7 @@ import { canPauseOfflineRender, piecesOf, renderInPieces } from './pieceRender'
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { planStems, tagTrack, trackTagsOf } from './stemSplit'
 import { createTransportHold } from './transportHold'
+import { fromStrudel, pageExtensions } from '../extensions'
 import { onLiveGraph, registerBackgroundRender, whenGraphFree, withOfflineGraph, withUserRender } from './offlineGraph'
 import { displayRenderRate } from './displayRate'
 import {
@@ -542,6 +543,8 @@ export class StrudelEngine implements LiveCodingEngine {
   private stopListeningForPlayErrors: (() => void) | null = null
   /** #2201 — stops this engine owning Strudel's messages. See `strudelLogBridge`. */
   private stopOwningLogs: (() => void) | null = null
+  /** #2510 — stop reading the sound names again when extensions switch on or off */
+  private stopFollowingExtensions: (() => void) | null = null
   /** #2201 — above zero while this engine's evaluate runs */
   private evaluating = 0
   /** #2201 — above zero while this engine hands a note to superdough */
@@ -1073,10 +1076,36 @@ export class StrudelEngine implements LiveCodingEngine {
     // observation visible until structural parity ships.
     console.log(`[StrudelEngine] aliasBank: soundMap keys ${preAliasCount} → ${postAliasCount} (Δ ${postAliasCount - preAliasCount}; expect non-negative)`)
 
+    // #2510 #2538 — the Strudel parts of the person's extensions: AFTER every built-in
+    // sound above (so a name an extension asks for that is already taken is refused, never
+    // overwritten) and BEFORE the sound names are read below. This tells the page's one
+    // runtime that Strudel is here; if the page has not started it (`start`, a test or a
+    // page without the app's loader), this starts it, common parts included. A second
+    // engine or a retried init only re-applies the switches. Bounded by its own wait,
+    // never by boot's budget: a budget already spent must not mean the extensions never
+    // start; past the wait they finish in the background and `onChange` reads the names again.
+    const extensions = pageExtensions()
+    const extensionsStarted = extensions.attachStrudel({
+      registries: () => fromStrudel(webaudioMod, coreMod),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      registerWorklet: (url) => (webaudioMod as any).registerWorklet(url),
+      // Read when used, once no render holds the globals (a render swaps superdough's
+      // context for its own offline one). Never captured here: this engine may be
+      // starting while another engine renders.
+      liveContext: () => new Promise((resolve) => whenGraphFree(() => resolve(getAudioContext()))),
+      report: (level, message) => emitLog({ level, runtime: 'stave', message }),
+    })
+    let extensionsWait: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([
+      extensionsStarted,
+      new Promise<void>((resolve) => { extensionsWait = setTimeout(resolve, EXTENSIONS_BOOT_WAIT_MS) }),
+    ])
+    clearTimeout(extensionsWait)
+    this.stopFollowingExtensions?.()
+    this.stopFollowingExtensions = extensions.onChange(() => this.readSoundNames())
+
     // Snapshot all registered sound names (synths + Dirt-Samples) for editor autocompletion.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const soundMapData: Record<string, unknown> = (webaudioMod as any).soundMap?.get() ?? {}
-    this.loadedSoundNames = Object.keys(soundMapData).filter(k => !k.startsWith('_'))
+    this.readSoundNames()
     this.audioCtx = getAudioContext()
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const audioCtx = this.audioCtx!
@@ -2145,11 +2174,18 @@ export class StrudelEngine implements LiveCodingEngine {
     // where the next start begins: `start()` queries from `lastEnd` (`cyclist.mjs:47`),
     // which `stop()` rewinds to 0
     const from = Number(this.repl?.scheduler?.lastEnd) || 0
-    try {
-      await runWarmJobs(soundWarmJobs(this.noteValuesBetween(from, from + cycles), deps), capMs)
-    } catch {
-      // warming is a courtesy: the trigger still loads on demand
-    }
+    await Promise.all([
+      (async () => {
+        try {
+          await runWarmJobs(soundWarmJobs(this.noteValuesBetween(from, from + cycles), deps), capMs)
+        } catch {
+          // warming is a courtesy: the trigger still loads on demand
+        }
+      })(),
+      // #2510 — extensions get ready in the same wait (never inside a note). It reports
+      // its own failures and never rejects.
+      pageExtensions().prepare(capMs),
+    ])
   }
 
   /**
@@ -2651,6 +2687,12 @@ export class StrudelEngine implements LiveCodingEngine {
     if (!this.audioCtx) {
       throw new Error('StrudelEngine not initialized — call init() first')
     }
+    // #2510 — a render has no warm step of its own (Play's is `warmSounds`), so the
+    // extensions get ready here: bounce, stems and the waveform all come through this
+    // door. Before the graph is borrowed, so a slow preparation holds no render lock.
+    // A cancel stops the wait at once (the preparation itself goes on for next time).
+    await pageExtensions().prepare(EXTENSIONS_RENDER_PREPARE_MS, signal)
+    if (signal?.aborted) throw new RenderCancelledError()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const wa: any = await import('@strudel/webaudio')
     const options = {
@@ -3119,6 +3161,12 @@ export class StrudelEngine implements LiveCodingEngine {
     return this.loadedSoundNames
   }
 
+  /** Read the registered sound names: at init, and again when an extension switches on or off (#2510). */
+  private readSoundNames(): void {
+    const soundMapData: Record<string, unknown> = this.soundMapRef?.get?.() ?? {}
+    this.loadedSoundNames = Object.keys(soundMapData).filter(k => !k.startsWith('_'))
+  }
+
   /**
    * #2200–#2202 — the file this engine plays, as the Console names it. The app
    * knows it; the engine doesn't. Rows the engine writes on its own (play-time
@@ -3177,6 +3225,8 @@ export class StrudelEngine implements LiveCodingEngine {
     this.stopListeningForPlayErrors = null
     this.stopOwningLogs?.()
     this.stopOwningLogs = null
+    this.stopFollowingExtensions?.()
+    this.stopFollowingExtensions = null
     this.trackEnvelopes.dispose()
     this.trackEnvelopeListeners.clear()
     this.unregisterBackgroundRender()
@@ -3391,6 +3441,17 @@ export const STRUDEL_LOG_EVENT = 'strudel.log'
  * enough that a slow one still starts, with the rest loading as it plays.
  */
 export const WARM_CAP_MS = 2500
+/**
+ * #2510 — how long boot waits for the person's extensions to switch on. Past it boot
+ * goes on and they finish in the background (the sound names are read again then).
+ */
+export const EXTENSIONS_BOOT_WAIT_MS = 5000
+/**
+ * #2510 — how long a render waits for extensions to get ready. Longer than Play's
+ * `WARM_CAP_MS`: a bounce that starts without an extension's sound is a file without it,
+ * where Play only loses its first notes. Past it the render goes on, and says so.
+ */
+export const EXTENSIONS_RENDER_PREPARE_MS = 15000
 /** How often the warm-ahead loop checks the playing position. */
 const WARM_AHEAD_POLL_MS = 250
 

@@ -132,6 +132,7 @@ import { getPreviewProviderForLanguage } from './preview/registry'
 import { getFile, subscribe as subscribeToWorkspaceFile, subscribeToFileDeletes } from './WorkspaceFile'
 import { HistoryDiffOverlay } from './history/HistoryDiffOverlay'
 import { HistoryViewOverlay } from './history/HistoryViewOverlay'
+import { setCloseAllCodeEditors } from '../extensions'
 import { getCurrentHistory } from './history/historyService'
 import { getCommit } from './history/historyGraph'
 import {
@@ -1759,6 +1760,42 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
     [groups, handleTabClose],
   )
 
+  // #2148 — close every code editor's tab (Vim's `:qa`): the editor tabs and the history
+  // view tabs, each through `closeTabById`, ONE PER RENDER. `closeTabById` decides from
+  // the `groups` it closed over whether a group collapses, so closing several from one
+  // snapshot could collapse every group; the effect below closes the next one only after
+  // the last close has rendered.
+  const pendingCloseRef = useRef<string[]>([])
+  const closeNextPending = useCallback(() => {
+    const open = new Set<string>()
+    for (const g of groups.values()) for (const t of g.tabs) open.add(t.id)
+    const queue = pendingCloseRef.current
+    while (queue.length && !open.has(queue[0])) queue.shift()
+    const next = queue.shift()
+    if (next) closeTabById(next)
+  }, [groups, closeTabById])
+  useEffect(() => {
+    if (pendingCloseRef.current.length) closeNextPending()
+  }, [groups, closeNextPending])
+  const closeNextRef = useRef(closeNextPending)
+  closeNextRef.current = closeNextPending
+  const groupsRef = useRef(groups)
+  groupsRef.current = groups
+  useEffect(() => {
+    const closeAll = () => {
+      const ids: string[] = []
+      for (const g of groupsRef.current.values()) {
+        for (const t of g.tabs) {
+          if (t.kind === 'editor' || (t.kind === 'history' && t.mode === 'view')) ids.push(t.id)
+        }
+      }
+      pendingCloseRef.current = ids
+      closeNextRef.current()
+    }
+    setCloseAllCodeEditors(closeAll)
+    return () => setCloseAllCodeEditors(null)
+  }, [])
+
   /**
    * Find the first tab with the given file id and kind across all groups.
    * Returns `{ groupId, tabId }` or `null`. The chrome uses this to check
@@ -2506,6 +2543,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 error={extras?.error}
                 onEditViz={onEditViz}
                 onCropViz={onCropViz}
+                onCloseTab={() => closeTabById(tab.id)}
               />
             </ErrorBoundary>
           )
