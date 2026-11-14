@@ -72,6 +72,71 @@ interface ExtensionProvides {
     readonly strudel?: StrudelProvides;
     /** the keys it uses in the code editor (#2513) */
     readonly keys?: readonly ExtensionKey[];
+    /** its settings, which Stave draws in Settings › Extensions (#2556); see `ExtensionSetting` */
+    readonly settings?: readonly ExtensionSetting[];
+}
+/** What a setting can hold: on/off, a choice's value, a number, or text. */
+type ExtensionSettingValue = boolean | number | string;
+/** One choice of a `'choice'` setting: the value the extension reads, and the words people see. */
+interface ExtensionSettingOption {
+    readonly value: string;
+    readonly label: string;
+}
+/** What every setting says about itself, whatever its type. */
+interface ExtensionSettingBase {
+    /** stable within the extension, and the key it is stored under (`relativeNumbers`) */
+    readonly id: string;
+    /** the name people see in Settings (`Relative line numbers`) */
+    readonly label: string;
+    /** one line on what it does; Settings search reads it too */
+    readonly description: string;
+}
+/**
+ * A setting an extension declares (#2556), the way a VS Code extension lists
+ * `contributes.configuration`: plain data, read without loading the extension. Stave
+ * draws it in Settings under the extension's name, so an extension never draws its own
+ * settings UI. The extension reads the current value through its host
+ * (`host.settings.get`) and hears changes (`host.settings.onChange`).
+ *
+ * A value the person never changed follows `default`, so a new default reaches them.
+ * Checked when the list is read (`settings.ts`): a setting that is not well formed is left
+ * out and reported on the Console under the extension's name; the rest still work.
+ */
+type ExtensionSetting = (ExtensionSettingBase & {
+    readonly type: 'boolean';
+    readonly default: boolean;
+}) | (ExtensionSettingBase & {
+    readonly type: 'choice';
+    /** at least one, each value once; `default` is one of them */
+    readonly options: readonly ExtensionSettingOption[];
+    readonly default: string;
+}) | (ExtensionSettingBase & {
+    readonly type: 'number';
+    readonly default: number;
+    /** the smallest value allowed, if any */
+    readonly min?: number;
+    /** the largest value allowed, if any */
+    readonly max?: number;
+    /** the step the control moves by; 1 when left out */
+    readonly step?: number;
+}) | (ExtensionSettingBase & {
+    readonly type: 'text';
+    readonly default: string;
+});
+/** An extension's settings, as its host gives them (#2556). */
+interface ExtensionSettingsAccess {
+    /**
+     * The current value of one of its declared settings: the person's own if they changed
+     * it, else the manifest's default. Asking for a setting it does not declare throws.
+     */
+    get(id: string): ExtensionSettingValue;
+    /**
+     * Call `fn` whenever one of its settings changes value: changed in Settings, put back to
+     * its default, or changed in another tab of this browser. Called once per setting that
+     * changed, with the new value. Released when the extension is switched off; the
+     * returned function releases it sooner.
+     */
+    onChange(fn: (id: string, value: ExtensionSettingValue) => void): () => void;
 }
 /** The data half: read freely, loads nothing. */
 interface ExtensionManifest {
@@ -193,6 +258,8 @@ interface ExtensionHost {
      * through the workspace's own tab-close path. Does nothing while no workspace is open.
      */
     closeAllEditors(): void;
+    /** Its declared settings (`provides.settings`, #2556): read the current values, hear changes. */
+    readonly settings: ExtensionSettingsAccess;
 }
 /**
  * What an extension's Strudel part may do. Everything here is undone when it is switched
@@ -259,4 +326,4 @@ interface ExtensionAbout {
     readonly prepares?: string;
 }
 
-export type { CodeEditor as C, ExtensionManifest as E, SoundTrigger as S, ExtensionModule as a, ExtensionLanguage as b, EditorCleanup as c, ExtensionAbout as d, ExtensionHost as e, ExtensionKey as f };
+export type { CodeEditor as C, ExtensionManifest as E, SoundTrigger as S, ExtensionModule as a, ExtensionLanguage as b, ExtensionSetting as c, ExtensionSettingValue as d, EditorCleanup as e, ExtensionAbout as f, ExtensionHost as g, ExtensionKey as h, ExtensionSettingOption as i };

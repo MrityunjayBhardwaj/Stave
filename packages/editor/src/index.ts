@@ -377,8 +377,18 @@ export {
   isExtensionKeyGivenBack,
   setExtensionKeyGivenBack,
   onExtensionKeysChange,
+  // #2556 — the settings extensions declare: Settings › Extensions draws and changes them
+  extensionSettings,
+  extensionSettingValue,
+  setExtensionSetting,
+  onExtensionSettingsChange,
+  declaredSettings,
 } from './extensions'
 export type {
+  ExtensionSetting,
+  ExtensionSettingOption,
+  ExtensionSettingValue,
+  ExtensionSettingState,
   ExtensionKey,
   ExtensionKeyInCode,
   ExtensionKeyState,

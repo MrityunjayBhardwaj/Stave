@@ -277,6 +277,25 @@ export const SETTINGS_SHELL_CSS = `
 .stave-settings .kb-give:hover{ border-color:var(--s-accent); }
 .stave-settings .kb-row.given .kb-name, .stave-settings .kb-row.given .chord kbd{ opacity:.6; }
 
+/* #2556 — Settings › Extensions: a group per extension, its rows, text box, reset */
+.stave-settings .ext-grp{ padding:4px 0 10px; }
+.stave-settings .ext-grp + .ext-grp{ border-top:1px solid var(--s-border-soft); margin-top:6px; padding-top:12px; }
+.stave-settings .ext-grp-title{
+  font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--s-text-2); font-weight:600; padding:4px 0 2px;
+}
+.stave-settings .ext-grp [data-ext-setting] + [data-ext-setting] > .row{ border-top:1px solid var(--s-border-soft); }
+.stave-settings .textinput{
+  width:200px; font:inherit; font-size:12.5px; color:var(--s-text);
+  background:var(--s-surface-2); border:1px solid var(--s-border); border-radius:var(--s-radius-s); padding:5px 9px;
+}
+.stave-settings .textinput:focus-visible, .stave-settings .numinput:focus-visible{ outline:none; border-color:var(--s-accent); box-shadow:0 0 0 3px var(--s-accent-ghost); }
+.stave-settings .numinput.err{ border-color:var(--s-danger); }
+.stave-settings .ext-reset{
+  appearance:none; border:0; background:none; cursor:pointer; color:var(--s-accent-2); font-size:14px; line-height:1; padding:2px 4px;
+  border-radius:var(--s-radius-s);
+}
+.stave-settings .ext-reset:hover{ background:var(--s-surface-3); }
+
 .stave-settings .empty{ padding:40px 0; text-align:center; color:var(--s-text-3); font-size:12.5px; }
 
 @media (prefers-reduced-motion:reduce){ .stave-settings *{ animation:none !important; transition:none !important; } }

@@ -44,7 +44,16 @@ import {
   setPlayVizOnHoverEnabled,
   type EditorTheme,
   type TierName,
+  listedExtensions,
 } from "@stave/editor";
+import { useEnabledExtensions } from "../../extensions/useExtensionSwitches";
+import { useExtensionSettingsVersion } from "../../extensions/useExtensionSettings";
+import {
+  emptyExtensionFilterLine,
+  extensionSettingGroups,
+  parseSettingsQuery,
+} from "../../extensions/extensionSettingsView";
+import { ExtensionSettingsGroups } from "./ExtensionSettingsSection";
 import {
   buildAliasMap,
   rowsFromAliasMap,
@@ -72,6 +81,7 @@ import {
   IconPerf,
   IconModules,
   IconAliases,
+  IconExtensions,
 } from "./icons";
 
 type SettingValue = string | number | boolean;
@@ -123,6 +133,7 @@ const NAV_ICONS: Record<string, () => React.ReactElement> = {
   perf: IconPerf,
   modules: IconModules,
   aliases: IconAliases,
+  extensions: IconExtensions,
 };
 
 // Strudel modules tier UI (Phase 20-14 β-3). MIDI is the only wired row;
@@ -215,14 +226,27 @@ export function SettingsPanel({ query }: SettingsPanelProps) {
     setSignalAliases(map);
   };
 
-  const q = query.trim().toLowerCase();
-  const searching = q.length > 0;
+  // #2556 — `@ext:<id>` in the search narrows Settings to that extension's settings (its
+  // page's Settings button opens it so, as VS Code does); the rest is the words to find.
+  const parsed = parseSettingsQuery(query);
+  const q = parsed.text;
+  const searching = q.length > 0 || parsed.extensionId !== null;
+
+  // #2556 — the switched-on extensions' settings, redrawn on any change to them or the switches
+  const enabledExtensions = useEnabledExtensions();
+  useExtensionSettingsVersion();
+  const extensionManifests = listedExtensions();
+  const extensionGroups = extensionSettingGroups(extensionManifests, enabledExtensions, parsed);
+  const extensionEmptyLine =
+    emptyExtensionFilterLine(extensionManifests, enabledExtensions, parsed, extensionGroups) ??
+    "No extension that is switched on has settings. Switch one on in the Extensions view to see its settings here.";
 
   // Which sections to show, and (when searching) which fields within.
   const visibleSections = useMemo(() => {
+    if (parsed.extensionId !== null) return SECTION_DEFS.filter((s) => s.custom === "extensions");
     if (!searching) return SECTION_DEFS.filter((s) => s.id === activeSection);
-    return SECTION_DEFS.filter((s) => sectionMatches(s, q));
-  }, [searching, q, activeSection]);
+    return SECTION_DEFS.filter((s) => (s.custom === "extensions" ? extensionGroups.length > 0 : sectionMatches(s, q)));
+  }, [searching, q, activeSection, parsed.extensionId, extensionGroups.length]);
 
   const renderControl = (f: SettingFieldDef): React.ReactNode => {
     const a = ADAPTERS[f.key];
@@ -413,6 +437,7 @@ export function SettingsPanel({ query }: SettingsPanelProps) {
   const renderSectionBody = (sec: SettingsSectionDef): React.ReactNode => {
     if (sec.custom === "modules") return renderModules();
     if (sec.custom === "aliases") return renderAliases();
+    if (sec.custom === "extensions") return <ExtensionSettingsGroups groups={extensionGroups} emptyLine={extensionEmptyLine} />;
     return sec.fields!.map(renderField);
   };
 

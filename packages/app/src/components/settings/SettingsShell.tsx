@@ -20,6 +20,12 @@ interface SettingsShellProps {
   activeTab: string;
   onTabChange: (id: string) => void;
   tabs: ShellTabDef[];
+  /**
+   * #2556 — what the search box holds when the window opens or the tab changes: empty
+   * unless the opener asks for a search (an extension's page opens Settings on
+   * `@ext:<id>`).
+   */
+  initialQuery?: string;
 }
 
 /**
@@ -29,12 +35,13 @@ interface SettingsShellProps {
  * `render(query)`. Styling lives in shellStyles.ts, scoped under the
  * `.stave-settings` root.
  */
-export function SettingsShell({ open, onClose, activeTab, onTabChange, tabs }: SettingsShellProps) {
+export function SettingsShell({ open, onClose, activeTab, onTabChange, tabs, initialQuery = "" }: SettingsShellProps) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset the search when the surface changes or the window (re)opens.
-  useEffect(() => { setQuery(""); }, [activeTab, open]);
+  // Reset the search when the surface changes or the window (re)opens: to what the opener
+  // asked for, else empty.
+  useEffect(() => { setQuery(initialQuery); }, [activeTab, open, initialQuery]);
 
   // Escape closes the window. Capture-phase listeners inside a surface (the
   // keybinding capture) stopPropagation first, so this only fires when idle.

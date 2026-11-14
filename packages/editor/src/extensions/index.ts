@@ -16,6 +16,10 @@ export type {
   ExtensionModule,
   ExtensionProvides,
   ExtensionHost,
+  ExtensionSetting,
+  ExtensionSettingOption,
+  ExtensionSettingValue,
+  ExtensionSettingsAccess,
   StrudelHost,
   StrudelPart,
   StrudelProvides,
@@ -39,7 +43,7 @@ export {
   extensionFailure,
   onPageExtensionsChange,
 } from './runtime'
-export { createCodeEditorList, offerCodeEditor, pageCodeEditors, setCloseAllCodeEditors } from './editors'
+export { createCodeEditorList, offerCodeEditor, pageCodeEditors, reportExtensionError, setCloseAllCodeEditors } from './editors'
 export type { CodeEditorList, CodeEditorSite, EditorWatcher } from './editors'
 export {
   checkExtensionKeys,
@@ -53,5 +57,16 @@ export {
   declaredKeyOf,
 } from './keys'
 export type { ExtensionKeyState, ExtensionKeyInCode, KeyEventMatcher } from './keys'
+export {
+  checkExtensionSettings,
+  declaredSettings,
+  settingProblems,
+  fitsSetting,
+  extensionSettingValue,
+  setExtensionSetting,
+  onExtensionSettingsChange,
+  extensionSettings,
+} from './settings'
+export type { CheckedSettings, ExtensionSettingState } from './settings'
 export { VIM, VIM_ID } from './vim/manifest'
 export type { ExtensionRuntime } from './runtime'
