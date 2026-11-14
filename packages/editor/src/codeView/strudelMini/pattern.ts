@@ -286,9 +286,16 @@ export interface MarkedPattern extends MiniPattern {
   pieces(cyc: number): MiniPiece[]
 }
 
+/** the steps to mark in one row of a marked copy: the row's path and its marks */
+export interface RowMarks {
+  path: readonly number[]
+  marks: readonly StepMark[]
+}
+
 /**
- * What `mini` plays with some steps of one row replaced by markers (#1833) — the way a
- * written step is asked where it sits. The string is parsed as `mini()` parses it
+ * What `mini` plays with some steps of some rows replaced by markers (#1833) — the way a
+ * written step is asked where it sits. Several rows can be marked in one copy (#2278),
+ * so a group's rows cost one evaluation together, not one each. The string is parsed as `mini()` parses it
  * (`mini.mjs` `mini`: quote, `mini2ast`, `patternifyAST`), the TREE is marked
  * (`./tree.ts` `markSteps`), and Strudel evaluates that tree; the text is never
  * rewritten. `mini` on the result is the ORIGINAL string: a marker's locations mean
@@ -296,9 +303,9 @@ export interface MarkedPattern extends MiniPattern {
  *
  * THROWS what krill and Strudel throw, and what `markSteps` throws for a bad path.
  */
-export function markedPattern(mini: string, path: readonly number[], marks: readonly StepMark[]): MarkedPattern {
+export function markedPattern(mini: string, rows: readonly RowMarks[]): MarkedPattern {
   const code = '"' + mini + '"'
   const ast = mini2ast(code) as KPattern
-  markSteps(ast, path, marks)
+  for (const row of rows) markSteps(ast, row.path, row.marks)
   return asked(mini, patternifyAST(ast, code) as Queryable)
 }
