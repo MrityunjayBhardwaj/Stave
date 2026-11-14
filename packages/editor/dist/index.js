@@ -52838,10 +52838,12 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     if (this.isDisposed) return;
     this.setPlayPending(false);
     const wasPlaying = this.isPlayingState;
+    const stoppedAt = wasPlaying ? this.getSongPosition() : null;
     try {
       this.engine.stop();
     } finally {
       workspaceAudioBus.unpublish(this.fileId);
+      if (stoppedAt !== null) this.parkPlayheadAt(stoppedAt);
       if (wasPlaying) {
         this.isPlayingState = false;
         this.firePlayingChanged(false);
@@ -53110,6 +53112,49 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     if (now2 === null || typeof setOffset !== "function") return { error: null };
     setOffset.call(this.engine, transportOffsetForSeek(now2, targetCycle, this.currentLoopRange()));
     return this.play();
+  }
+  /**
+   * #2593 — the transport's Stop (the button and Ctrl/Cmd+.), with Logic Pro's
+   * two presses (Logic Pro for Mac 13.0, "Control playback with the transport
+   * buttons": Stop "Stops playback or recording. Click a second time to move
+   * the playhead to the start of the project, or to the left locator position
+   * when in Cycle mode."):
+   *   - while playing, it stops and the playhead stays where it was, so Play
+   *     carries on from there (`stop` parks it);
+   *   - while stopped, it rewinds to the start of the song, or to the loop's
+   *     start when a loop is armed.
+   * `stop()` runs either way: a play()/stop() race can leave audio running
+   * while `isPlayingState` reads false (#811), and Stop must still silence it.
+   */
+  transportStop() {
+    const wasPlaying = this.isPlayingState;
+    this.stop();
+    if (!wasPlaying) this.rewind();
+  }
+  /**
+   * #2593 — put a STOPPED transport back at the start of the song (the loop's
+   * start when one is armed), so the next Play begins there. While playing it
+   * does nothing: moving a playing transport is a seek (`seekTo`).
+   */
+  rewind() {
+    if (this.isPlayingState || this.isDisposed) return;
+    this.parkPlayheadAt(0);
+  }
+  /**
+   * #2593 — set the transport offset so a stopped transport's next Play starts
+   * at song cycle `songCycle`. The same arithmetic as `seekTo`, against the
+   * stopped scheduler's clock: Strudel's cyclist reads 0 while stopped and
+   * starts counting from 0 on Play (`cyclist.now()` returns 0 when not
+   * started; `stop()` sets `lastEnd = 0`). Without this the offset from the
+   * last ruler click outlived Stop, and Play landed on `click − clock-at-click`.
+   * Under a loop a target outside it lands on the loop's start, as Logic's
+   * Cycle mode does. No-op on engines without a transport offset.
+   */
+  parkPlayheadAt(songCycle) {
+    const now2 = this.rawSchedulerNow();
+    const setOffset = this.engine.setTransportOffset;
+    if (now2 === null || typeof setOffset !== "function" || !Number.isFinite(songCycle)) return;
+    setOffset.call(this.engine, transportOffsetForSeek(now2, songCycle, this.currentLoopRange()));
   }
   /** #1570 — the loop range the engine currently holds (`null` on non-Strudel engines). */
   currentLoopRange() {
