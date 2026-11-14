@@ -39,7 +39,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { NEEDS_CLICK, parseToFrame, type FromFrame, type PreviewFile } from "./previewProtocol";
-import { PREVIEW_ROLL_VIZ, rollLabel, rollShows, songBarsOf } from "./previewRoll";
+import { codeErrorFromLog, PREVIEW_ROLL_VIZ, rollLabel, rollShows, songBarsOf, STRUDEL_LOG_EVENT } from "./previewRoll";
 
 type Engine = import("@stave/editor").StrudelEngine;
 type Editor = typeof import("@stave/editor");
@@ -98,7 +98,7 @@ export function GalleryPlayer() {
   const [cappedNote, setCappedNote] = useState<string | null>(null);
   // #2489 — the piano roll drawn when the pattern draws no visual of its own.
   const [roll, setRoll] = useState<Roll | null>(null);
-  const rollMountRef = useRef<{ box: HTMLDivElement; mounted: Mounted } | null>(null);
+  const rollMountRef = useRef<{ box: HTMLDivElement; mounted: Mounted; stopListening: () => void } | null>(null);
   // #2580 — inside the gallery's preview the page's status line is the one shown
   // (and announced); this frame's own line is for the player opened on its own.
   // Assumed embedded until checked, so the embedded case never flashes a second line.
@@ -133,6 +133,7 @@ export function GalleryPlayer() {
     rollMountRef.current = null;
     setRoll(null);
     if (!r) return;
+    r.stopListening();
     vizMountsRef.current = vizMountsRef.current.filter((m) => m !== r.mounted);
     r.mounted.renderer.destroy();
     r.mounted.disconnect();
@@ -171,6 +172,7 @@ export function GalleryPlayer() {
       m.disconnect();
     }
     vizMountsRef.current = [];
+    rollMountRef.current?.stopListening();
     rollMountRef.current = null;
     setRoll(null);
     vizRef.current?.replaceChildren();
@@ -342,22 +344,48 @@ export function GalleryPlayer() {
       setShowViz(true);
       await new Promise((r) => requestAnimationFrame(r));
       if (mine !== generation.current) return;
+      // The roll's queries reach the entry's code, and an error that code throws
+      // there is the code's error: what Strudel logs while the roll asks is
+      // reported, as the engine reports what it logs while the scheduler asks
+      // (previewRoll.ts says why the engine's own report can't be relied on here).
+      const inRollQuery = { depth: 0 };
+      const rollScheduler: typeof scheduler = {
+        ...scheduler,
+        query: (begin: number, end: number) => {
+          inRollQuery.depth++;
+          try {
+            return scheduler.query(begin, end);
+          } finally {
+            inRollQuery.depth--;
+          }
+        },
+      };
+      const onLog = (event: Event) => {
+        if (inRollQuery.depth === 0 || mine !== generation.current) return;
+        const message = codeErrorFromLog((event as CustomEvent).detail);
+        if (message) reportError(message);
+      };
+      document.addEventListener(STRUDEL_LOG_EVENT, onLog);
+      const stopListening = () => document.removeEventListener(STRUDEL_LOG_EVENT, onLog);
       const components: Components = {
         ...comps,
-        queryable: { scheduler, trackSchedulers: comps.queryable?.trackSchedulers ?? new Map() },
+        queryable: { scheduler: rollScheduler, trackSchedulers: comps.queryable?.trackSchedulers ?? new Map() },
         options: {},
       };
-      // The roll is Stave's picture, not the entry's: if it fails, it goes, and
-      // the music (and its status) goes on.
+      // A fault in the roll's own drawing is Stave's, not the entry's: the roll
+      // goes, quietly, and the music (and every error its code raises) goes on.
       const onError = () => {
         if (mine === generation.current) clearRoll();
       };
       const m = mountVisual(editor, mine, PREVIEW_ROLL_VIZ, descriptor.factory, components, onError, "data-gallery-player-roll");
-      if (!m) return;
-      rollMountRef.current = m;
+      if (!m) {
+        stopListening();
+        return;
+      }
+      rollMountRef.current = { ...m, stopListening };
       setRoll({ path: file.path, bars, now: () => scheduler.now() });
     },
-    [clearRoll, mountVisual],
+    [clearRoll, mountVisual, reportError],
   );
 
   const play = useCallback(

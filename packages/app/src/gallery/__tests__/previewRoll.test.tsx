@@ -8,7 +8,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
-import { barAt, rollLabel, rollShows, songBarsOf } from "../previewRoll";
+import { barAt, codeErrorFromLog, rollLabel, rollShows, songBarsOf } from "../previewRoll";
 
 // ─── the rules ──────────────────────────────────────────────────────────────
 
@@ -48,6 +48,19 @@ describe("previewRoll — the line under it", () => {
   });
 });
 
+describe("previewRoll — which logged lines are the code's errors", () => {
+  it("a query error, a trigger error: the message, as the engine raises it", () => {
+    expect(codeErrorFromLog({ message: "[query] error: PROBE {}" })).toBe("PROBE {}");
+    expect(codeErrorFromLog({ message: "[getTrigger] error: bad\nline" })).toBe("bad\nline");
+  });
+  it("an evaluate's error (reported by the evaluate) and plain log lines: none", () => {
+    expect(codeErrorFromLog({ message: "[eval] error: nope" })).toBeNull();
+    expect(codeErrorFromLog({ message: '[sampler] load sound "bd:0:0"..' })).toBeNull();
+    expect(codeErrorFromLog({ message: 42 })).toBeNull();
+    expect(codeErrorFromLog(null)).toBeNull();
+  });
+});
+
 // ─── the frame, with the engine stood in for ────────────────────────────────
 
 const fake = vi.hoisted(() => ({
@@ -57,6 +70,10 @@ const fake = vi.hoisted(() => ({
   playThrows: false,
   mounts: [] as Array<{ label: string; destroyed: boolean }>,
   queried: 0,
+  /** What Strudel logs while the pattern is queried: its queryArc catches a throw and logs `[query] error: …`. */
+  queryLogs: null as string | null,
+  /** The scheduler each mount was handed. */
+  schedulers: [] as Array<{ query(a: number, b: number): unknown }>,
 }));
 
 vi.mock("@stave/editor", () => {
@@ -65,6 +82,8 @@ vi.mock("@stave/editor", () => {
     cps: () => 0.5,
     query: () => {
       fake.queried++;
+      // as Strudel's queryArc does with a throw from the code: log it (synchronously) and answer nothing
+      if (fake.queryLogs) document.dispatchEvent(new CustomEvent("strudel.log", { detail: { message: fake.queryLogs } }));
       return [];
     },
   };
@@ -107,6 +126,7 @@ vi.mock("@stave/editor", () => {
     mountVizRenderer: (box: HTMLElement, _f: unknown, components: { queryable?: { scheduler?: { query(a: number, b: number): unknown } } }) => {
       const rec = { label: box.getAttribute("data-gallery-player-roll") ?? box.getAttribute("data-gallery-player-visual") ?? "?", destroyed: false };
       fake.mounts.push(rec);
+      if (components.queryable?.scheduler) fake.schedulers.push(components.queryable.scheduler);
       box.appendChild(document.createElement("canvas"));
       components.queryable?.scheduler?.query(0, 1); // the roll asks its scheduler, as the real sketch does each frame
       return { renderer: { destroy: () => (rec.destroyed = true) }, disconnect() {} };
@@ -128,6 +148,8 @@ beforeEach(() => {
   fake.playThrows = false;
   fake.mounts = [];
   fake.queried = 0;
+  fake.queryLogs = null;
+  fake.schedulers = [];
   posted.length = 0;
   parentStub = { postMessage: (m: unknown) => posted.push(m) };
   parentDesc = Object.getOwnPropertyDescriptor(window, "parent");
@@ -276,6 +298,62 @@ describe("GalleryPlayer — the roll (#2489)", () => {
     expect(posted.at(-1)).toEqual({ state: "playing" });
     expect(rollBox()).toBeNull();
     expect(label()).toBeNull();
+  });
+
+  it("an error the code throws while the roll asks for its notes is reported, as it is without the roll", async () => {
+    await act(async () => {
+      render(<GalleryPlayer />);
+    });
+    await act(async () => fromPage(playMsg('s("bd*4")')));
+    await settle();
+    expect(posted).toEqual([{ state: "ready" }, { state: "playing" }]);
+    // the code starts throwing; the roll's next query is where it throws first
+    fake.queryLogs = "[query] error: PROBE {\"a\":1}";
+    await act(async () => {
+      fake.schedulers[0].query(0, 4);
+    });
+    expect(posted).toEqual([{ state: "ready" }, { state: "playing" }, { state: "playing", message: 'PROBE {"a":1}' }]);
+    expect(rollBox()).not.toBeNull(); // the roll stays: the error is the code's, not the roll's
+    // said once, as reportError says a repeating error once
+    await act(async () => {
+      fake.schedulers[0].query(0, 4);
+    });
+    expect(posted.length).toBe(3);
+  });
+
+  it("CONTROL: what the roll's query logs that isn't an error, or an evaluate's error, is not reported", async () => {
+    await act(async () => {
+      render(<GalleryPlayer />);
+    });
+    await act(async () => fromPage(playMsg('s("bd*4")')));
+    await settle();
+    for (const line of ['[sampler] load sound "bd:0:0"..', "[eval] error: nope"]) {
+      fake.queryLogs = line;
+      await act(async () => {
+        fake.schedulers[0].query(0, 4);
+      });
+    }
+    // and an error logged outside the roll's query is the engine's to raise, not the roll's
+    await act(async () => {
+      document.dispatchEvent(new CustomEvent("strudel.log", { detail: { message: "[query] error: elsewhere" } }));
+    });
+    expect(posted).toEqual([{ state: "ready" }, { state: "playing" }]);
+  });
+
+  it("after stop, the roll's listening is gone too", async () => {
+    await act(async () => {
+      render(<GalleryPlayer />);
+    });
+    await act(async () => fromPage(playMsg('s("bd*4")')));
+    await settle();
+    const old = fake.schedulers[0];
+    await act(async () => fromPage({ stop: true }));
+    await settle();
+    fake.queryLogs = "[query] error: late";
+    await act(async () => {
+      old.query(0, 4);
+    });
+    expect(posted).toEqual([{ state: "ready" }, { state: "playing" }, { state: "stopped" }]);
   });
 
   it("playing again replaces the roll; it never stacks a second", async () => {

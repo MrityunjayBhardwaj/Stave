@@ -22,6 +22,35 @@
  * to one line.
  */
 
+/**
+ * ERRORS THE ROLL MEETS ARE THE CODE'S, AND ARE REPORTED. The roll asks the
+ * playing pattern for its notes about 60 times a second, so when the entry's
+ * code throws while being queried, the roll's query is where it throws first.
+ * Strudel catches that inside `queryArc` and only logs it (`[query] error: …`,
+ * `@strudel/core/pattern.mjs` queryArc), and its logger drops the same message
+ * again within a second (`@strudel/core/logger.mjs`, the `debounce` check). The
+ * engine raises only what is logged during the SCHEDULER's own query
+ * (`listenForPlayTimeErrors`), so the scheduler's copy of the error, arriving
+ * inside that second, was dropped, and the error went unreported (observed:
+ * every logged copy came from the roll's draw). So the frame listens to what is
+ * logged during the roll's own queries and reports it as the code's error: the
+ * same message the engine would have raised.
+ */
+export const STRUDEL_LOG_EVENT = "strudel.log";
+
+/**
+ * The code's error a Strudel log entry reports, or null. The engine's own rule
+ * (`playTimeErrorFrom` in StrudelEngine.ts): `[origin] error: message`, any
+ * origin but `eval` (an evaluate's error is reported by the evaluate).
+ */
+export function codeErrorFromLog(detail: unknown): string | null {
+  const message = (detail as { message?: unknown } | null)?.message;
+  if (typeof message !== "string") return null;
+  const m = message.match(/^\[([^\]]+)\] error: ([\s\S]+)$/);
+  if (!m || m[1] === "eval") return null;
+  return m[2];
+}
+
 /** The built-in visual the roll is. */
 export const PREVIEW_ROLL_VIZ = "pianoroll";
 
