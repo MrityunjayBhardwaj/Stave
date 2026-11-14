@@ -1268,9 +1268,9 @@ describe('LiveCodingRuntime', () => {
       }
     }
 
-    // #2593 — Stop keeps the playhead; Stop again rewinds (Logic Pro's two
-    // presses). Strudel's clock reads 0 while stopped and counts from 0 on Play,
-    // so the mock's engine.stop() puts `now` back to 0 as the real one does.
+    // #2593 — Play after Stop always starts again from cycle 0, as in Strudel.
+    // Strudel's clock reads 0 while stopped and counts from 0 on Play, so the
+    // mock's engine.stop() puts `now` back to 0 as the real one does.
     function stoppableLoopEngine() {
       const h = makeLoopEngine()
       const realStop = h.engine.stop.bind(h.engine)
@@ -1281,64 +1281,32 @@ describe('LiveCodingRuntime', () => {
       return h
     }
 
-    it('#2593 Play after Stop carries on from where Stop was pressed, not the last seek', async () => {
+    it('#2593 Play after Stop starts again from cycle 0', async () => {
       const { engine, setNow } = stoppableLoopEngine()
-      const runtime = new LiveCodingRuntime('stop-park-1', engine, () => 'code')
+      const runtime = new LiveCodingRuntime('stop-zero-1', engine, () => 'code')
       await runtime.play()
-      setNow(1.2)
-      await runtime.seekTo(4.5) // the ruler click
-      setNow(4.2) // three cycles later: song cycle 7.5
-      expect(runtime.getSongPosition()).toBeCloseTo(7.5)
-
-      runtime.transportStop()
-      await runtime.play() // the clock restarts at 0
-      expect(runtime.getSongPosition()).toBeCloseTo(7.5)
-      setNow(0.5)
-      expect(runtime.getSongPosition()).toBeCloseTo(8)
-      runtime.dispose()
-    })
-
-    it('#2593 a second Stop while stopped rewinds to the start of the song', async () => {
-      const { engine, setNow } = stoppableLoopEngine()
-      const runtime = new LiveCodingRuntime('stop-park-2', engine, () => 'code')
-      await runtime.play()
-      setNow(2)
-      await runtime.seekTo(6)
-      setNow(3)
-      runtime.transportStop() // parks at 7
-      runtime.transportStop() // stopped: rewinds
+      setNow(5.5)
+      expect(runtime.getSongPosition()).toBeCloseTo(5.5)
+      runtime.stop()
       await runtime.play()
       expect(runtime.getSongPosition()).toBeCloseTo(0)
       runtime.dispose()
     })
 
-    it('#2593 with a loop armed, the second Stop rewinds to the loop start', async () => {
-      const { engine, setNow } = stoppableLoopEngine()
-      const runtime = new LiveCodingRuntime('stop-park-3', engine, () => 'code')
-      await runtime.play()
-      setNow(0)
-      await runtime.setLoopRange({ startCycle: 3, cycles: 2 })
-      setNow(1.5) // inside the loop: song 4.5
-      expect(runtime.getSongPosition()).toBeCloseTo(4.5)
-      runtime.transportStop()
-      await runtime.play()
-      expect(runtime.getSongPosition()).toBeCloseTo(4.5) // first Stop keeps it
-      runtime.transportStop()
-      runtime.transportStop()
-      await runtime.play()
-      expect(runtime.getSongPosition()).toBeCloseTo(3) // second Stop: loop start
-      runtime.dispose()
-    })
-
-    it('#2593 rewind does nothing while playing (moving a playing transport is a seek)', async () => {
+    it('#2593 Play after Stop starts from cycle 0, not near the last ruler click', async () => {
       const { engine, setNow, getOffset } = stoppableLoopEngine()
-      const runtime = new LiveCodingRuntime('stop-park-4', engine, () => 'code')
+      const runtime = new LiveCodingRuntime('stop-zero-2', engine, () => 'code')
       await runtime.play()
-      setNow(2)
-      await runtime.seekTo(6)
-      const before = getOffset()
-      runtime.rewind()
-      expect(getOffset()).toBe(before)
+      setNow(1.2)
+      await runtime.seekTo(4.5) // the ruler click
+      setNow(4.2) // song cycle 7.5
+      expect(runtime.getSongPosition()).toBeCloseTo(7.5)
+      runtime.stop()
+      expect(getOffset()).toBe(0)
+      await runtime.play()
+      expect(runtime.getSongPosition()).toBeCloseTo(0)
+      setNow(0.5)
+      expect(runtime.getSongPosition()).toBeCloseTo(0.5)
       runtime.dispose()
     })
 
@@ -1903,12 +1871,14 @@ describe('bounce rewinds to the top of the song (#1371)', () => {
     // of the four — that is the assertion the old behaviour fails.
     expect(engine.callLog).toEqual([
       'stop',
+      'setTransportOffset(0)', // #2593: Stop puts the transport back at cycle 0
       'waitUntilQuiet',
       'setTransportOffset(0)',
       'evaluate',
       'play',
       'record',
       'stop',
+      'setTransportOffset(0)', // #2593: Stop puts the transport back at cycle 0
     ])
     runtime.dispose()
   })
@@ -2074,6 +2044,7 @@ describe('offline bounce loads the document in the song frame, then renders it (
     // loaded last, and one before the frame is cleared would be refused.
     expect(engine.callLog).toEqual([
       'stop',
+      'setTransportOffset(0)', // #2593: Stop puts the transport back at cycle 0
       'setTransportOffset(0)',
       'setLoopRange(null)',
       'evaluate',
@@ -2220,6 +2191,7 @@ describe('offline bounce loads the document in the song frame, then renders it (
     expect(runtime.canBounceStems()).toBe(true)
     expect(engine.callLog).toEqual([
       'stop',
+      'setTransportOffset(0)', // #2593: Stop puts the transport back at cycle 0
       'setTransportOffset(0)',
       'setLoopRange(null)',
       'evaluate',

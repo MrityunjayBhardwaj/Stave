@@ -723,7 +723,7 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
-  "stop-keeps-playhead.spec.ts": {
+  "stop-restarts-from-zero.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
