@@ -882,7 +882,15 @@ export function hostVizWorker(scope: WorkerScope): void {
     let master: AnalyserBytes | undefined
     for (const a of frame.analysers) if (a.key === MASTER_KEY) master = a
     s.rawAnalyser.set(master)
-    s.rawScheduler.set(frame.rawScheduler)
+    // The notes come only when they change (#2582); a gap (this mount missed the
+    // frame that carried them) asks main for the whole window again.
+    if (s.rawScheduler.set(frame.rawScheduler)) {
+      try {
+        scope.postMessage({ type: 'rawWindowResync' })
+      } catch {
+        /* ignore late-teardown failures */
+      }
+    }
 
     if (!s.setupDone() || s.paused) return
     const drawT0 = globalThis.performance?.now?.() ?? 0

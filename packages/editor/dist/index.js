@@ -21245,6 +21245,17 @@ var _RollingHapWindow = class _RollingHapWindow {
      * an unchanged answer.
      */
     this.version = 0;
+    /**
+     * Moves whenever the held haps were replaced or grew — a query landed (a reset,
+     * or a new slice with onsets in it) — and NOT when old ones are dropped behind
+     * the window (#2582). Between two moves the held haps only shrink from the back,
+     * so a copy taken at a move, narrowed to `[now−back, now+fwd)` the same way
+     * `at()` narrows (`end > lo + EDGE`, `begin < hi − EDGE`), gives `at()`'s answer
+     * frame after frame. That is what the worker is sent: about twice a cycle,
+     * where the answer itself changes whenever a note enters or leaves the window.
+     * Never goes back, across resets too.
+     */
+    this.heldVersion = 0;
   }
   /** Forget everything; the next `at()` runs one full query. */
   reset() {
@@ -21282,16 +21293,22 @@ var _RollingHapWindow = class _RollingHapWindow {
       this.lastEnd = hi + PREFETCH;
       this.lastNow = now2;
       this.changed = true;
+      this.heldVersion++;
       return hi;
     }
     if (hi > this.lastEnd) {
       const from = this.lastEnd;
       const to = hi + PREFETCH;
+      let grew = false;
       for (const e of query(from, to)) {
         if (e.begin >= from - EDGE) {
           this.events.push(e);
-          this.changed = true;
+          grew = true;
         }
+      }
+      if (grew) {
+        this.changed = true;
+        this.heldVersion++;
       }
       this.lastEnd = to;
     }
@@ -21319,6 +21336,11 @@ var _RollingHapWindow = class _RollingHapWindow {
       if (e.end > now2 && e.end < next) next = e.end;
     }
     return next;
+  }
+  /** Every held hap, the prefetched ones past the front edge included, in the
+   *  order `at()` answers them. Read-only: the window compacts it in place. */
+  held() {
+    return this.events;
   }
   /** The held haps that have started before the window's front edge (the rest
    *  were prefetched and wait for the window to reach them). */
@@ -21455,6 +21477,21 @@ var _MainSignalSampler = class _MainSignalSampler {
     /** The wide window, advanced by querying only the new sliver each frame
      *  (#2563) instead of the whole window. Reset on every rebind. */
     this.rawWindow = new RollingHapWindow(RAW_QUERY_BACK, RAW_QUERY_FWD);
+    /**
+     * The notes as shipped (#2582). `rawVersion` is the frame's `version`: it moves
+     * whenever the shipped notes may differ — the window's held set moved
+     * (`heldVersion`), or the feed switched between a window and none (no
+     * scheduler) — and never goes back, across binds too. `rawEvents` is the
+     * summarised held set for that version, built only when it moves.
+     * `sentVersion` is the version whose notes the consumer was last sent; a frame
+     * carries `events` only when it differs.
+     */
+    this.rawVersion = 0;
+    /** What `rawVersion` was derived from: the window's `heldVersion`, −1 for "no
+     *  window", NaN before the first frame. */
+    this.rawSource = NaN;
+    this.rawEvents = [];
+    this.sentVersion = void 0;
     /** "What's playing now" for the combined pattern and per track, re-queried
      *  only when a note starts or ends (#2567). Reset on every rebind. */
     this.activeNow = new ActiveNowCache(EPSILON2);
@@ -21477,6 +21514,12 @@ var _MainSignalSampler = class _MainSignalSampler {
     this.rawWindow.reset();
     this.activeNow.reset();
     this.activeNowByTrack = /* @__PURE__ */ new Map();
+  }
+  /** Ship the whole window with the next frame even if it hasn't changed — the
+   *  consumer lost what it held (a worker remount, a frame that never arrived,
+   *  frames from a demo feed in between; #2582). */
+  resendRawWindow() {
+    this.sentVersion = void 0;
   }
   /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
    *  — so the bump feed survives a re-evaluate that swaps the stream (mirror
@@ -21532,11 +21575,25 @@ var _MainSignalSampler = class _MainSignalSampler {
     }
     const bumps = this.pendingBumps;
     this.pendingBumps = [];
-    const rawScheduler = {
-      now: now2,
-      events: scheduler && this.wantsRawScheduler ? this.rawWindow.at(scheduler, now2, (a, b) => queryAt(scheduler, a, b)).map(summariseRawHap) : [],
-      version: this.rawWindow.version
-    };
+    let held2 = null;
+    let source = -1;
+    const rawScheduler = { now: now2 };
+    if (scheduler && this.wantsRawScheduler) {
+      rawScheduler.hi = this.rawWindow.advance(scheduler, now2, (a, b) => queryAt(scheduler, a, b));
+      rawScheduler.lo = now2 - RAW_QUERY_BACK;
+      held2 = this.rawWindow.held();
+      source = this.rawWindow.heldVersion;
+    }
+    if (source !== this.rawSource) {
+      this.rawSource = source;
+      this.rawVersion++;
+      this.rawEvents = held2 ? held2.map(summariseRawHap) : [];
+    }
+    rawScheduler.version = this.rawVersion;
+    if (this.sentVersion !== this.rawVersion) {
+      rawScheduler.events = this.rawEvents;
+      this.sentVersion = this.rawVersion;
+    }
     const cps = scheduler?.cps?.();
     if (typeof cps === "number" && Number.isFinite(cps)) rawScheduler.cps = cps;
     return { seq, now: now2, analysers, activeEvents, activeByTrack, bumps, rawScheduler };
@@ -21550,6 +21607,9 @@ var _MainSignalSampler = class _MainSignalSampler {
     this.pendingBumps = [];
     this.inputs = {};
     this.rawWindow.reset();
+    this.rawSource = NaN;
+    this.rawEvents = [];
+    this.sentVersion = void 0;
     this.activeNow.reset();
     this.activeNowByTrack = /* @__PURE__ */ new Map();
   }
@@ -21888,6 +21948,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
    *  restores the live path. The pump reads `next(ts)` each produced frame. */
   setDemoSource(src) {
     this.demoSource = src;
+    this.sampler.resendRawWindow();
   }
   onMount(container, components, size, onError) {
     this.onError = onError;
@@ -21923,6 +21984,10 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
         }
         if (d.type === "loaded") {
           this.settleLoaded();
+          return;
+        }
+        if (d.type === "rawWindowResync") {
+          this.sampler.resendRawWindow();
           return;
         }
         if (d.type === "frameAck") {
