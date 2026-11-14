@@ -324,6 +324,68 @@ describe('PreviewView', () => {
     expect(mountCount.current).toBeGreaterThan(mountsBeforeNone)
   })
 
+  // #2560 — a reload is for a CHANGE to the code. The reload effect also fired on
+  // first render, so every background and preview built its sketch twice at open
+  // (~300 ms apart) and a heavy three.js sketch ran its top level twice.
+  it('opening a background builds its sketch once: no reload when nothing changed', () => {
+    vi.useFakeTimers()
+    createWorkspaceFile('bg1', 'bg1.three', '// sketch', 'three')
+    const { provider, mountCount } = makeRecordingProvider({ reload: 'debounced', debounceMs: 300 })
+    const { getByTestId } = render(
+      <PreviewView fileId="bg1" provider={provider} sourceRef={{ kind: 'default' }} onSourceRefChange={() => {}} backdrop />,
+    )
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
+    expect(mountCount.current).toBe(1)
+    expect(getByTestId('preview-provider-mount-bg1').getAttribute('data-provider-key')).toBe('bg:0')
+    // the same content written again is not a change either
+    act(() => {
+      setContent('bg1', '// sketch')
+      vi.advanceTimersByTime(2000)
+    })
+    expect(mountCount.current).toBe(1)
+  })
+
+  it('a background switching to another sketch file builds it once (no reload of the new file)', () => {
+    vi.useFakeTimers()
+    createWorkspaceFile('bgA', 'bgA.three', '// a', 'three')
+    createWorkspaceFile('bgB', 'bgB.three', '// b, different', 'three')
+    const { provider, mountCount, calls } = makeRecordingProvider({ reload: 'debounced', debounceMs: 300 })
+    const view = (id: string) => (
+      <PreviewView fileId={id} provider={provider} sourceRef={{ kind: 'default' }} onSourceRefChange={() => {}} backdrop />
+    )
+    const { rerender, getByTestId } = render(view('bgA'))
+    rerender(view('bgB'))
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
+    expect(calls[calls.length - 1].file.id).toBe('bgB')
+    expect(getByTestId('preview-provider-mount-bgB').getAttribute('data-provider-key')).toBe('bg:0')
+    expect(mountCount.current).toBe(1)
+  })
+
+  it('an edit to it still reloads it, once, after the debounce', () => {
+    vi.useFakeTimers()
+    createWorkspaceFile('bg2', 'bg2.three', '// v0', 'three')
+    const { provider, mountCount } = makeRecordingProvider({ reload: 'debounced', debounceMs: 300 })
+    const { getByTestId } = render(
+      <PreviewView fileId="bg2" provider={provider} sourceRef={{ kind: 'default' }} onSourceRefChange={() => {}} backdrop />,
+    )
+    act(() => {
+      setContent('bg2', '// v1')
+    })
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
+    expect(getByTestId('preview-provider-mount-bg2').getAttribute('data-provider-key')).toBe('bg:1')
+    expect(mountCount.current).toBe(2)
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
+    expect(mountCount.current).toBe(2)
+  })
+
   it("collapses rapid typing into one reload with reload: 'debounced'", () => {
     vi.useFakeTimers()
     createWorkspaceFile('v', 'v.hydra', 'v0', 'hydra')

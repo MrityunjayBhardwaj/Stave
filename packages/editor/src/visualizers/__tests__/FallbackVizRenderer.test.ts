@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-import { FallbackVizRenderer } from '../renderers/FallbackVizRenderer'
+import { FallbackVizRenderer, PROBATION_MS } from '../renderers/FallbackVizRenderer'
 import type { WorkerVizRenderer } from '../renderers/WorkerVizRenderer'
 import type { VizRenderer } from '../types'
 
@@ -44,13 +44,40 @@ class FakeRenderer implements VizRenderer {
   }
 }
 
-/** A fake worker renderer — a FakeRenderer plus the `whenReady` hook the wrapper
- *  arms before mount. */
+/** A fake worker renderer — a FakeRenderer plus the `whenReady` / `whenAlive`
+ *  hooks the wrapper arms before mount, and a `whenLoaded` it settles by hand. */
 class FakeWorkerRenderer extends FakeRenderer {
   readyCb: (() => void) | null = null
+  aliveCb: (() => void) | null = null
+  warmed = false
+  settleLoaded: () => void = () => {}
+  private readonly loaded = new Promise<void>((r) => {
+    this.settleLoaded = r
+  })
   whenReady(cb: () => void): void {
     this.readyCb = cb
   }
+  whenAlive(cb: () => void): void {
+    this.aliveCb = cb
+  }
+  whenLoaded(): Promise<void> {
+    return this.loaded
+  }
+  markWarmUp(): void {
+    this.warmed = true
+  }
+}
+
+/** A promise's state, read after the microtask queue drains. */
+async function settled(p: Promise<unknown>): Promise<boolean> {
+  let done = false
+  void p.then(() => {
+    done = true
+  })
+  await Promise.resolve()
+  await Promise.resolve()
+  await Promise.resolve()
+  return done
 }
 
 function makeContainer(): HTMLDivElement {
@@ -176,9 +203,10 @@ describe('FallbackVizRenderer — startup probation (#247)', () => {
     expect(main.resizes).toEqual([[800, 600]])
   })
 
-  // ── Phase C (#258): pausing an off-screen viz must not trip the probation
-  // timer into a spurious fallback while the worker is intentionally not framing.
-  it('pause before ready SUSPENDS probation → no spurious fallback on timer fire', () => {
+  // ── #2560: the probation judges ALIVE (the worker took the mount), not LOADED
+  // (its first frame). A heavy sketch loading a big asset before its first frame
+  // is slow, not hung, and must stay off the main thread.
+  it('an ALIVE worker that has not framed for 20 s is NOT moved to the main thread', () => {
     const worker = new FakeWorkerRenderer()
     const main = new FakeRenderer()
     const fb = new FallbackVizRenderer(
@@ -186,15 +214,42 @@ describe('FallbackVizRenderer — startup probation (#247)', () => {
       () => main,
     )
     fb.mount(makeContainer(), {}, { w: 100, h: 100 }, vi.fn())
-
-    fb.pause() // scrolled off-screen before the worker readied
-    expect(worker.paused).toBe(true)
-    vi.advanceTimersByTime(20000) // well past PROBATION_MS — must NOT fall back
+    worker.aliveCb?.() // took the mount; now loading a 4K HDRI…
+    vi.advanceTimersByTime(20000) // far past PROBATION_MS, still no first frame
     expect(main.mounted).toBe(false)
     expect(worker.destroyed).toBe(false)
   })
 
-  it('resume RE-ARMS probation → a still-stuck worker then falls back', () => {
+  it('a worker that never answers is moved to the main thread after PROBATION_MS', () => {
+    const worker = new FakeWorkerRenderer()
+    const main = new FakeRenderer()
+    const fb = new FallbackVizRenderer(
+      () => worker as unknown as WorkerVizRenderer,
+      () => main,
+    )
+    fb.mount(makeContainer(), {}, { w: 100, h: 100 }, vi.fn())
+    vi.advanceTimersByTime(PROBATION_MS - 1)
+    expect(main.mounted).toBe(false)
+    vi.advanceTimersByTime(2)
+    expect(worker.destroyed).toBe(true)
+    expect(main.mounted).toBe(true)
+  })
+
+  it('a PAUSED worker is judged too: alive is not a frame, so pausing does not suspend it', () => {
+    const worker = new FakeWorkerRenderer()
+    const main = new FakeRenderer()
+    const fb = new FallbackVizRenderer(
+      () => worker as unknown as WorkerVizRenderer,
+      () => main,
+    )
+    fb.mount(makeContainer(), {}, { w: 100, h: 100 }, vi.fn())
+    fb.pause() // a hidden warm-up, or off-screen
+    vi.advanceTimersByTime(PROBATION_MS + 1) // never answered
+    expect(main.mounted).toBe(true)
+    expect(main.paused).toBe(true) // and the fallback stays paused
+  })
+
+  it('a paused worker that answered stays on the worker however long it waits', () => {
     const worker = new FakeWorkerRenderer()
     const main = new FakeRenderer()
     const fb = new FallbackVizRenderer(
@@ -203,14 +258,46 @@ describe('FallbackVizRenderer — startup probation (#247)', () => {
     )
     fb.mount(makeContainer(), {}, { w: 100, h: 100 }, vi.fn())
     fb.pause()
-    vi.advanceTimersByTime(20000)
-    expect(main.mounted).toBe(false) // suspended
+    worker.aliveCb?.()
+    vi.advanceTimersByTime(60000)
+    fb.resume()
+    vi.advanceTimersByTime(60000)
+    expect(main.mounted).toBe(false)
+  })
 
-    fb.resume() // back on-screen → probation re-armed
-    expect(worker.paused).toBe(false)
-    vi.advanceTimersByTime(8001) // still never frames
-    expect(worker.destroyed).toBe(true)
-    expect(main.mounted).toBe(true)
+  it('whenLoaded follows the worker, and settles at fallback and at destroy', async () => {
+    const mk = () => {
+      const worker = new FakeWorkerRenderer()
+      const main = new FakeRenderer()
+      const fb = new FallbackVizRenderer(
+        () => worker as unknown as WorkerVizRenderer,
+        () => main,
+      )
+      fb.mount(makeContainer(), {}, { w: 100, h: 100 }, vi.fn())
+      return { worker, fb }
+    }
+    const a = mk()
+    expect(await settled(a.fb.whenLoaded())).toBe(false)
+    a.worker.settleLoaded()
+    expect(await settled(a.fb.whenLoaded())).toBe(true)
+
+    const b = mk() // falls back to a main renderer with no loaded signal
+    b.worker.capturedOnError?.(new Error('import failed'))
+    expect(await settled(b.fb.whenLoaded())).toBe(true)
+
+    const c = mk()
+    c.fb.destroy()
+    expect(await settled(c.fb.whenLoaded())).toBe(true)
+  })
+
+  it('markWarmUp reaches the worker renderer', () => {
+    const worker = new FakeWorkerRenderer()
+    const fb = new FallbackVizRenderer(
+      () => worker as unknown as WorkerVizRenderer,
+      () => new FakeRenderer(),
+    )
+    fb.markWarmUp()
+    expect(worker.warmed).toBe(true)
   })
 
   it('resume after ready does NOT re-arm probation (already healthy)', () => {

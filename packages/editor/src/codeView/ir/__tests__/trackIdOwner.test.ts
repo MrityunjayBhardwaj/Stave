@@ -59,6 +59,10 @@ const OTHER_FACTS: Record<string, { count: number; why: string }> = {
     count: 1,
     why: 'the same viz method family (`._pianoroll` vs `.pianoroll`), read off a chain call name; not a label',
   },
+  'packages/editor/src/codeView/mixer/inlineVizCalls.ts': {
+    count: 1,
+    why: 'the inline viz method family again (`._pianoroll`), read off a chain call name; the track label goes through splitMuteMarker (#2560)',
+  },
 }
 
 function countIn(text: string): number {

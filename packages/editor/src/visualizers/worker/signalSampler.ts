@@ -15,7 +15,7 @@
  */
 
 import type { BusAnalyser } from '../signals/SignalBus'
-import type { IRPattern } from '../../codeView'
+import type { IRPattern, IREvent } from '../../codeView'
 import type { HapEvent } from '../../engine/HapStream'
 import type { FrameSampleCache } from './frameSampleCache'
 import { RollingHapWindow } from './rollingHapWindow'
@@ -51,7 +51,7 @@ const RAW_QUERY_FWD = 2
 
 /** Map a queried scheduler event to the lean raw-hap shape (drop loc/ids — heavy,
  *  viz-irrelevant). Defaults mirror the bus + the built-in sketches' `?? 1`. */
-function summariseRawHap(e: {
+export function summariseRawHap(e: {
   begin?: number
   end?: number
   endClipped?: number
@@ -163,6 +163,21 @@ export class MainSignalSampler {
   /** The wide window, advanced by querying only the new sliver each frame
    *  (#2563) instead of the whole window. Reset on every rebind. */
   private readonly rawWindow = new RollingHapWindow(RAW_QUERY_BACK, RAW_QUERY_FWD)
+  /**
+   * The notes as shipped (#2582). `rawVersion` is the frame's `version`: it moves
+   * whenever the shipped notes may differ — the window's held set moved
+   * (`heldVersion`), or the feed switched between a window and none (no
+   * scheduler) — and never goes back, across binds too. `rawEvents` is the
+   * summarised held set for that version, built only when it moves.
+   * `sentVersion` is the version whose notes the consumer was last sent; a frame
+   * carries `events` only when it differs.
+   */
+  private rawVersion = 0
+  /** What `rawVersion` was derived from: the window's `heldVersion`, −1 for "no
+   *  window", NaN before the first frame. */
+  private rawSource = NaN
+  private rawEvents: RawHapSummary[] = []
+  private sentVersion: number | undefined = undefined
   /** "What's playing now" for the combined pattern and per track, re-queried
    *  only when a note starts or ends (#2567). Reset on every rebind. */
   private readonly activeNow = new ActiveNowCache(EPSILON)
@@ -188,6 +203,13 @@ export class MainSignalSampler {
     this.rawWindow.reset()
     this.activeNow.reset()
     this.activeNowByTrack = new Map()
+  }
+
+  /** Ship the whole window with the next frame even if it hasn't changed — the
+   *  consumer lost what it held (a worker remount, a frame that never arrived,
+   *  frames from a demo feed in between; #2582). */
+  resendRawWindow(): void {
+    this.sentVersion = undefined
   }
 
   /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
@@ -267,12 +289,29 @@ export class MainSignalSampler {
     // ── raw scheduler feed (B-3) — one WIDE combined query for `stave.scheduler`
     // sketches. Separate from the bus's [now, now+ε] active query above (that
     // feeds the bus; this feeds raw sketches that scroll a window of haps). ──
-    const rawScheduler: RawSchedulerFrame = {
-      now,
-      events: scheduler && this.wantsRawScheduler
-        ? this.rawWindow.at(scheduler, now, (a, b) => queryAt(scheduler, a, b)).map(summariseRawHap)
-        : [],
-      version: this.rawWindow.version,
+    // What travels is the HELD set (prefetch included), which changes only when a
+    // query lands — about twice a cycle; the worker narrows it to the window each
+    // frame with the edges below (#2582, see `RawSchedulerFrame.events`).
+    let held: readonly IREvent[] | null = null
+    let source = -1
+    const rawScheduler: RawSchedulerFrame = { now }
+    if (scheduler && this.wantsRawScheduler) {
+      rawScheduler.hi = this.rawWindow.advance(scheduler, now, (a, b) => queryAt(scheduler, a, b))
+      rawScheduler.lo = now - RAW_QUERY_BACK
+      held = this.rawWindow.held()
+      source = this.rawWindow.heldVersion
+    }
+    if (source !== this.rawSource) {
+      // The notes changed: summarise them once, here, not every frame.
+      this.rawSource = source
+      this.rawVersion++
+      this.rawEvents = held ? held.map(summariseRawHap) : []
+    }
+    rawScheduler.version = this.rawVersion
+    // The notes travel only when the consumer doesn't have them.
+    if (this.sentVersion !== this.rawVersion) {
+      rawScheduler.events = this.rawEvents
+      this.sentVersion = this.rawVersion
     }
     const cps = scheduler?.cps?.()
     if (typeof cps === 'number' && Number.isFinite(cps)) rawScheduler.cps = cps
@@ -289,6 +328,10 @@ export class MainSignalSampler {
     this.pendingBumps = []
     this.inputs = {}
     this.rawWindow.reset()
+    // The next consumer (a remount) holds no notes: its first frame carries them.
+    this.rawSource = NaN
+    this.rawEvents = []
+    this.sentVersion = undefined
     this.activeNow.reset()
     this.activeNowByTrack = new Map()
   }

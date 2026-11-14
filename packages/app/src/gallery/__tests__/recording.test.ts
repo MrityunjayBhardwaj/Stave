@@ -9,9 +9,14 @@ import {
   coverPattern,
   encodeRecording,
   mayHavePreview,
+  durationLabel,
+  frameFor,
   readRecording,
+  tempoLabel,
   type GalleryRecording,
 } from "../recording";
+import { checkRecording } from "../../app/api/gallery/validate";
+import { DEFAULT_METER as FOUR_FOUR } from "../../lib/meter";
 import { drawnCycles, lengthLabel } from "../GalleryTimeline";
 import { fileRole } from "../galleryModel";
 import { previewKindOf } from "../previewProtocol";
@@ -140,3 +145,104 @@ describe("mayHavePreview (#2548)", () => {
   });
 });
 
+
+/** A tiny image with a real header: "png" or "webp", padded to `bytes`. */
+function still(kind: "png" | "webp" = "webp", bytes = 64): string {
+  const body = Buffer.alloc(bytes);
+  if (kind === "png") Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(body);
+  else {
+    body.write("RIFF", 0, "latin1");
+    body.write("WEBPVP8 ", 8, "latin1");
+  }
+  return `data:image/${kind};base64,${body.toString("base64")}`;
+}
+
+describe("#2590 — tempo and stills in the record", () => {
+  const TEMPO = { ...REC, files: [{ ...REC.files[0], tempo: { cps: 0.5, changes: false } }, REC.files[1]] };
+  const FRAMES = { ...REC, frames: [{ path: "viz.hydra", image: still() }, { path: "b.p5", image: still("png") }] };
+
+  it("an older record, with neither, still reads back unchanged and gains no fields", () => {
+    const back = readRecording(JSON.parse(JSON.stringify(REC)))!;
+    expect(back).toEqual(REC);
+    expect(back).not.toHaveProperty("frames");
+    expect(back.files[0]).not.toHaveProperty("tempo");
+  });
+
+  it("reads a tempo and stills back unchanged", () => {
+    expect(readRecording(JSON.parse(JSON.stringify(TEMPO)))).toEqual(TEMPO);
+    expect(readRecording(JSON.parse(JSON.stringify(FRAMES)))).toEqual(FRAMES);
+  });
+
+  it.each([
+    ["a tempo of zero", withFile({ tempo: { cps: 0, changes: false } })],
+    ["a negative tempo", withFile({ tempo: { cps: -0.5, changes: false } })],
+    ["a tempo past the cap", withFile({ tempo: { cps: RECORDING_LIMITS.maxCps * 2, changes: false } })],
+    ["a tempo under the floor", withFile({ tempo: { cps: RECORDING_LIMITS.minCps / 2, changes: false } })],
+    ["a tempo that isn't a number", withFile({ tempo: { cps: "fast", changes: false } })],
+    ["a tempo of infinity, as JSON writes it", withFile({ tempo: { cps: null, changes: false } })],
+    ["a tempo with no 'changes'", withFile({ tempo: { cps: 0.5 } })],
+    ["a tempo that is just a number", withFile({ tempo: 0.5 })],
+    ["stills that aren't a list", { ...REC, frames: {} }],
+    ["too many stills", { ...REC, frames: Array.from({ length: RECORDING_LIMITS.frames + 1 }, (_, i) => ({ path: `v${i}.hydra`, image: still() })) }],
+    ["a still that isn't an image", { ...REC, frames: [{ path: "v.hydra", image: "data:text/html;base64,PHNjcmlwdD4=" }] }],
+    ["a still from the web", { ...REC, frames: [{ path: "v.hydra", image: "https://example.com/a.webp" }] }],
+    ["a still that says webp but isn't", { ...REC, frames: [{ path: "v.hydra", image: still("png").replace("image/png", "image/webp") }] }],
+    ["a still over its size", { ...REC, frames: [{ path: "v.hydra", image: still("webp", RECORDING_LIMITS.frameBytes + 1) }] }],
+    ["two stills for one file", { ...REC, frames: [{ path: "v.hydra", image: still() }, { path: "v.hydra", image: still() }] }],
+    ["a still with no path", { ...REC, frames: [{ path: "", image: still() }] }],
+  ])("refuses %s", (_why, raw) => {
+    expect(readRecording(JSON.parse(JSON.stringify(raw)))).toBeNull();
+  });
+
+  it("a still exactly at its size is kept", () => {
+    const at = { ...REC, frames: [{ path: "v.hydra", image: still("webp", RECORDING_LIMITS.frameBytes) }] };
+    expect(readRecording(at)?.frames).toHaveLength(1);
+  });
+
+  it("frameFor finds a visual's still, and nothing on an older record", () => {
+    expect(frameFor(FRAMES, "b.p5")?.image).toBe(still("png"));
+    expect(frameFor(FRAMES, "nope.hydra")).toBeNull();
+    expect(frameFor(REC, "viz.hydra")).toBeNull();
+    expect(frameFor(null, "viz.hydra")).toBeNull();
+  });
+
+  it("the publish route takes stills only for the entry's own visuals", () => {
+    const manifest = {
+      schemaVersion: 1 as const,
+      project: { name: "p", sharedAt: 1 },
+      files: ["main.strudel", "bass.strudel", "viz.hydra", "b.p5", "notes.md"].map((path) => ({ id: path, path, language: "x", content: "" })),
+      fileOrder: {},
+      subfolderOrder: {},
+    };
+    expect(checkRecording(FRAMES, manifest).ok).toBe(true);
+    expect(checkRecording({ ...REC, frames: [{ path: "gone.hydra", image: still() }] }, manifest).ok).toBe(false);
+    expect(checkRecording({ ...REC, frames: [{ path: "notes.md", image: still() }] }, manifest).ok).toBe(false);
+    expect(checkRecording({ ...REC, frames: [{ path: "main.strudel", image: still() }] }, manifest).ok).toBe(false);
+  });
+});
+
+describe("#2590 — how the entry page says a tempo", () => {
+  it("quarter-note BPM, the transport's conversion: 0.5 cps at 4/4 is 120", () => {
+    expect(tempoLabel({ cps: 0.5, changes: false }, FOUR_FOUR)).toBe("120 BPM");
+    expect(tempoLabel({ cps: 92 / 60 / 4, changes: false }, FOUR_FOUR)).toBe("92 BPM");
+  });
+
+  it("moves with the reader's meter as the transport readout does (3/4: three quarters to the bar)", () => {
+    expect(tempoLabel({ cps: 0.5, changes: false }, { beatsPerBar: 3, beatUnit: 4 })).toBe("90 BPM");
+  });
+
+  it('a tempo that changes says "starts at"', () => {
+    expect(tempoLabel({ cps: 0.5, changes: true }, FOUR_FOUR)).toBe("starts at 120 BPM");
+  });
+
+  it("no tempo recorded: nothing, never a default", () => {
+    expect(tempoLabel(undefined, FOUR_FOUR)).toBeNull();
+  });
+
+  it("the length in minutes from the length in cycles, only when the tempo stays put", () => {
+    expect(durationLabel({ cycles: 16, tempo: { cps: 0.5, changes: false } })).toBe("0:32");
+    expect(durationLabel({ cycles: 64, tempo: { cps: 0.5, changes: false } })).toBe("2:08");
+    expect(durationLabel({ cycles: 16, tempo: { cps: 0.5, changes: true } })).toBeNull();
+    expect(durationLabel({ cycles: 16 })).toBeNull();
+  });
+});

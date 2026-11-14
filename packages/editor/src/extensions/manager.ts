@@ -27,7 +27,9 @@
  *
  * Read when the list is given (construction), refused there: two manifests with one id,
  * a `provides` key that is not one of the manifest's languages listed by name (`keys`
- * belongs to no language), and declared keys that are not well formed (#2513, `keys.ts`).
+ * and `settings` belong to no language), and declared keys that are not well formed
+ * (#2513, `keys.ts`). Declared settings that are not well formed refuse nothing: they are
+ * left out and reported by the runtime (#2556, `settings.ts`).
  */
 import type { CodeEditorList } from './editors'
 import { createCommonHost, type PartRecording } from './host'
@@ -185,7 +187,8 @@ export function createExtensionManager(opts: {
   for (const m of opts.manifests) {
     if (byId.has(m.id)) throw new Error(`Two extensions share the id "${m.id}".`)
     for (const language of Object.keys(m.provides ?? {})) {
-      if (language === 'keys') continue
+      // `keys` and `settings` belong to no language; each is checked on its own (keys.ts, settings.ts)
+      if (language === 'keys' || language === 'settings') continue
       if (!declares(m, language)) {
         throw new Error(
           `The ${m.id} extension says what it provides for ${language}, but ${language} is not one of the languages it lists.`,

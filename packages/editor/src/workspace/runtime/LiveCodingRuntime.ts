@@ -115,6 +115,7 @@ import {
   type LoopRange,
 } from '../../engine/transportFrame'
 import { workspaceAudioBus } from '../WorkspaceAudioBus'
+import { waitForPatternViz, PLAY_VIZ_WAIT_CAP_MS } from '../../visualizers/vizLoadGate'
 import { countStemTracks, stemFileNames } from '../../visualEdit/mixer/stemNames'
 import type {
   AudioPayload,
@@ -251,6 +252,8 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   /** #2259 — a Play was asked for and the clock hasn't started yet (see `play`). */
   private playPendingState = false
   private readonly playPendingListeners = new Set<(pending: boolean) => void>()
+  /** #2560 — ends a Play's wait for the pattern's sketches early (Stop). */
+  private cancelVizWait: (() => void) | null = null
   private readonly evaluateSuccessListeners = new Set<(code: string) => void>()
 
   /**
@@ -510,6 +513,10 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     // that asked for Play, which is the only moment some browsers let audio start.
     this.engine.unlockAudio?.()
 
+    // #2560 — a Play that starts the transport (not a re-evaluate of a running
+    // one) waits for the pattern's sketches at step 7a.
+    const fromStop = !this.isPlayingState
+
     // Supersede any earlier in-flight play() and record our generation. After
     // each await below we compare against this — if a stop() or a newer play()
     // bumped the counter in the meantime, we abort before starting the
@@ -617,6 +624,25 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
 
     // Step 7 — publish to the bus BEFORE play. Subscribers fire SYNC.
     workspaceAudioBus.publish(this.fileId, payload)
+
+    // Step 7a — #2560: the publish above built the inline zones (adopting the
+    // sketches warmed up before Play) and the background is already mounted. If
+    // one of them is still loading, hold the music until it is ready — at most
+    // PLAY_VIZ_WAIT_CAP_MS, so a sketch that never loads cannot hold it longer —
+    // so the song does not start under a frozen picture. Play is pending all the
+    // while (the transport says "Loading visuals…"). Only from a stopped
+    // transport: a re-evaluate of a running song never waits. A Stop ends the
+    // wait; stop() has already unpublished, so the supersession gate returns.
+    if (fromStop) {
+      const cancelled = new Promise<void>((resolve) => {
+        this.cancelVizWait = resolve
+      })
+      await waitForPatternViz(PLAY_VIZ_WAIT_CAP_MS, cancelled)
+      this.cancelVizWait = null
+      if (superseded()) {
+        return { error: null }
+      }
+    }
 
     // Step 8 — start the engine.
     try {
@@ -953,11 +979,17 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     // restarting the scheduler we're about to stop (#811). Bump first, before
     // any early-return, so the guard can't be skipped.
     this.playGeneration++
+    // #2560 — a Play waiting for its sketches stops waiting now.
+    this.cancelVizWait?.()
+    this.cancelVizWait = null
     if (this.isDisposed) return
     // #2259 — a Stop while Play is pending cancels that Play; the wait is over too.
     this.setPlayPending(false)
 
     const wasPlaying = this.isPlayingState
+    // #2593 — where the song is at the instant Stop is pressed, read BEFORE the
+    // engine stops (afterwards the clock reads 0 and `getSongPosition` is null).
+    const stoppedAt = wasPlaying ? this.getSongPosition() : null
 
     // Stop the engine UNCONDITIONALLY — do NOT gate on isPlayingState. A
     // play()/stop() race can leave the scheduler running while isPlayingState
@@ -972,6 +1004,9 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
       // Always unpublish, even if engine.stop throws — leaving a phantom
       // entry on the bus is worse than swallowing a stop error.
       workspaceAudioBus.unpublish(this.fileId)
+      // #2593 — keep the playhead where Stop was pressed, so Play carries on
+      // from there (Logic: "Starts playback at the playhead position").
+      if (stoppedAt !== null) this.parkPlayheadAt(stoppedAt)
       // Fire the transition listeners only on a real playing→stopped edge so
       // idempotent double-stops don't spam a redundant `false`. In the race
       // case wasPlaying is already false and the UI already reads stopped —
@@ -1313,6 +1348,55 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     // Re-eval through the normal hot-swap so the wrap takes effect. If we're
     // not playing yet, play() also starts the transport at the sought cycle.
     return this.play()
+  }
+
+  /**
+   * #2593 — the transport's Stop (the button and Ctrl/Cmd+.), with Logic Pro's
+   * two presses (Logic Pro for Mac 13.0, "Control playback with the transport
+   * buttons": Stop "Stops playback or recording. Click a second time to move
+   * the playhead to the start of the project, or to the left locator position
+   * when in Cycle mode."):
+   *   - while playing, it stops and the playhead stays where it was, so Play
+   *     carries on from there (`stop` parks it);
+   *   - while stopped, it rewinds to the start of the song, or to the loop's
+   *     start when a loop is armed.
+   * `stop()` runs either way: a play()/stop() race can leave audio running
+   * while `isPlayingState` reads false (#811), and Stop must still silence it.
+   */
+  transportStop(): void {
+    const wasPlaying = this.isPlayingState
+    this.stop()
+    if (!wasPlaying) this.rewind()
+  }
+
+  /**
+   * #2593 — put a STOPPED transport back at the start of the song (the loop's
+   * start when one is armed), so the next Play begins there. While playing it
+   * does nothing: moving a playing transport is a seek (`seekTo`).
+   */
+  rewind(): void {
+    if (this.isPlayingState || this.isDisposed) return
+    this.parkPlayheadAt(0)
+  }
+
+  /**
+   * #2593 — set the transport offset so a stopped transport's next Play starts
+   * at song cycle `songCycle`. The same arithmetic as `seekTo`, against the
+   * stopped scheduler's clock: Strudel's cyclist reads 0 while stopped and
+   * starts counting from 0 on Play (`cyclist.now()` returns 0 when not
+   * started; `stop()` sets `lastEnd = 0`). Without this the offset from the
+   * last ruler click outlived Stop, and Play landed on `click − clock-at-click`.
+   * Under a loop a target outside it lands on the loop's start, as Logic's
+   * Cycle mode does. No-op on engines without a transport offset.
+   */
+  private parkPlayheadAt(songCycle: number): void {
+    const now = this.rawSchedulerNow()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const setOffset = (this.engine as any).setTransportOffset as
+      | ((offset: number) => void)
+      | undefined
+    if (now === null || typeof setOffset !== 'function' || !Number.isFinite(songCycle)) return
+    setOffset.call(this.engine, transportOffsetForSeek(now, songCycle, this.currentLoopRange()))
   }
 
   /** #1570 — the loop range the engine currently holds (`null` on non-Strudel engines). */

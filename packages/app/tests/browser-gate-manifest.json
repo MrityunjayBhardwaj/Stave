@@ -515,6 +515,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "gallery-publish-tempo-frames.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project"
+  },
   "gallery-publish.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
@@ -720,6 +724,10 @@
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
   "storage-full.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "stop-keeps-playhead.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
@@ -996,6 +1004,10 @@
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
   "share-short-link.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "sketch-warmup.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
@@ -1304,6 +1316,10 @@
     "why": "collected by the gate — it runs the whole chromium project"
   },
   "extension-keys.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project"
+  },
+  "extension-settings.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate — it runs the whole chromium project"
   }

@@ -111,12 +111,34 @@ export interface RawHapSummary {
 export interface RawSchedulerFrame {
   /** `scheduler.now()` at sample (same value as `SignalFrame.now`). */
   now: number
-  /** Events in the shipped wide window, in query order. */
-  events: RawHapSummary[]
-  /** The window's change counter (`RollingHapWindow.version`): equal across two
-   *  frames → the same `events` (#2571 — the GLSL note texture re-uploads only
-   *  when it moves). Absent → unknown; treat every frame as changed. */
+  /**
+   * The notes, in query order — sent only when they changed (#2582). Re-sending
+   * the same few hundred notes every frame was most of the cost of posting one.
+   *
+   *   - present → the notes as of `version`; replace what you hold.
+   *   - absent, `version` set → the same notes as the frame that carried this
+   *     `version`'s; keep them. A consumer holding another version missed that
+   *     frame: it drops what it holds and asks main to send them again
+   *     (`WorkerRawWindowResyncMessage`).
+   *   - absent, no `version` → no events.
+   *
+   * With `lo`/`hi` set they are the main thread's HELD notes (`RollingHapWindow.
+   * held()`: notes already behind the window not yet dropped, and the half cycle
+   * prefetched past its front), and the consumer narrows them to the window
+   * itself each frame: `end > lo + EDGE && begin < hi − EDGE` (`rollingHapWindow.
+   * ts`). That set changes only when a query lands, about twice a cycle; the
+   * window's own contents change whenever a note enters or leaves it, which on a
+   * dense song is most frames. Without `lo`/`hi` the events ARE the window.
+   */
+  events?: RawHapSummary[]
+  /** The change counter of the shipped notes: equal across two frames → the same
+   *  `events` (#2582 — they are shipped only when it moves). Absent → unknown;
+   *  treat every frame as changed. */
   version?: number
+  /** The window's edges this frame (now − 4, now + 2 cycles), when `events` are a
+   *  held superset to narrow — see `events`. */
+  lo?: number
+  hi?: number
   /** Cycles per second (`IRPattern.cps`), when the scheduler reports one. */
   cps?: number
 }

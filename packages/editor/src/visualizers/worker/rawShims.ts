@@ -20,6 +20,7 @@
 import type { IRPattern } from '../../codeView'
 import type { IREvent } from '../../codeView'
 import type { AnalyserBytes, RawSchedulerFrame, RawHapSummary } from './signalFrame'
+import { EDGE } from './rollingHapWindow'
 
 /**
  * An `AnalyserNode`-shaped shim backed by one frame's master `AnalyserBytes`.
@@ -110,15 +111,66 @@ export class RawAnalyserShim {
  */
 export class RawSchedulerShim implements IRPattern {
   private _now = 0
+  /** The notes as last shipped (#2582) — a superset of the window when the
+   *  frames carry `lo`/`hi`. */
+  private held: RawHapSummary[] = []
+  /** The shipped version of `held`; undefined when unknown or lost. */
+  private heldVersion: number | undefined = undefined
+  /** This frame's window: `held` narrowed to `[lo, hi)`. */
   private events: RawHapSummary[] = []
-  private _version: number | undefined = undefined
+  /** Moves whenever `events` differs from the previous frame's. */
+  private eventsVersion = 0
+  /** The frame carried no version: every frame counts as changed. */
+  private unversioned = true
   private _cps = 0
+  /** A resend has been asked for and not yet arrived. */
+  private awaitingWindow = false
 
-  set(raw: RawSchedulerFrame | null | undefined): void {
+  /**
+   * Adopt one frame's feed. Main ships the notes only when they change (#2582):
+   * a frame without `events` but with the `version` held here means "unchanged",
+   * so the notes are kept. With a different version, the frame that carried
+   * that version's notes never reached this mount — what is held is not the
+   * current window, so it is dropped (never drawn as if current), and the call
+   * returns true ONCE so the host can ask main to send the notes again.
+   */
+  set(raw: RawSchedulerFrame | null | undefined): boolean {
     this._now = raw?.now ?? 0
-    this.events = raw?.events ?? []
-    this._version = raw?.version
     this._cps = raw?.cps ?? 0
+    let resync = false
+    if (raw?.events) {
+      this.held = raw.events
+      this.heldVersion = raw.version
+      this.awaitingWindow = false
+    } else if (raw?.version === undefined) {
+      this.held = []
+      this.heldVersion = undefined
+      this.awaitingWindow = false
+    } else if (raw.version !== this.heldVersion) {
+      this.held = []
+      this.heldVersion = undefined
+      if (!this.awaitingWindow) {
+        this.awaitingWindow = true
+        resync = true
+      }
+    }
+    this.unversioned = raw?.version === undefined
+    this.narrow(raw?.lo, raw?.hi)
+    return resync
+  }
+
+  /** `held` narrowed to this frame's window — the same test the main thread's
+   *  `RollingHapWindow.at()` applies, so the answer is the one it would give. */
+  private narrow(lo: number | undefined, hi: number | undefined): void {
+    const next =
+      lo === undefined || hi === undefined
+        ? this.held
+        : this.held.filter((e) => e.end > lo + EDGE && e.begin < hi - EDGE)
+    const prev = this.events
+    let same = next.length === prev.length
+    for (let i = 0; same && i < next.length; i++) same = next[i] === prev[i]
+    if (!same) this.eventsVersion++
+    this.events = next
   }
 
   /** The whole shipped window (the GLSL note texture packs it, #2571). */
@@ -126,9 +178,11 @@ export class RawSchedulerShim implements IRPattern {
     return this.events
   }
 
-  /** The window's change counter (`RawSchedulerFrame.version`). */
+  /** Equal across two frames → `all()` holds the same notes (the GLSL texture
+   *  repacks only when it moves, #2571). Undefined when the frames carry no
+   *  version: treat every frame as changed. */
   version(): number | undefined {
-    return this._version
+    return this.unversioned ? undefined : this.eventsVersion
   }
 
   /** Cycles per second, 0 when the frame carried none. */

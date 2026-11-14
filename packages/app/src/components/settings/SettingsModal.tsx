@@ -14,6 +14,8 @@ interface SettingsModalProps {
   /** Which surface to show — both File-menu items open the same window. */
   tab: SettingsTab;
   onTabChange: (tab: SettingsTab) => void;
+  /** #2556 — the search to open with (an extension's page asks for `@ext:<id>`); empty when left out */
+  initialQuery?: string;
 }
 
 /**
@@ -21,7 +23,7 @@ interface SettingsModalProps {
  * modals (EditorSettingsModal + ShortcutsOverlay) with one shell hosting
  * two tabbed surfaces. Both File-menu entries open this on the right tab.
  */
-export function SettingsModal({ open, onClose, tab, onTabChange }: SettingsModalProps) {
+export function SettingsModal({ open, onClose, tab, onTabChange, initialQuery }: SettingsModalProps) {
   const tabs: ShellTabDef[] = [
     {
       id: "settings",
@@ -46,6 +48,7 @@ export function SettingsModal({ open, onClose, tab, onTabChange }: SettingsModal
       activeTab={tab}
       onTabChange={(id) => onTabChange(id as SettingsTab)}
       tabs={tabs}
+      initialQuery={initialQuery}
     />
   );
 }

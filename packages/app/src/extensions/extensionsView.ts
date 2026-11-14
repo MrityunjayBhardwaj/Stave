@@ -6,7 +6,7 @@
  * kept here: a manifest is plain data, so an extension that is off (its code never
  * loaded) shows the same names, languages and "what it adds" as one that is on.
  */
-import type { ExtensionLanguage, ExtensionManifest, RESIDUE } from "@stave/editor";
+import { declaredSettings, type ExtensionLanguage, type ExtensionManifest, type RESIDUE } from "@stave/editor";
 
 /** The All / On / Off filter. */
 export type ExtensionFilter = "all" | "on" | "off";
@@ -160,6 +160,9 @@ export function addsOf(m: ExtensionManifest): AddsLine[] {
   // #2545 — the keys it declares, counted here; each one, with its toggle, is on the Keys tab
   const keys = m.provides?.keys?.length ?? 0;
   if (keys) lines.push({ kind: "Keys", text: `${keys === 1 ? "one key" : `${keys} keys`} inside the code — see Keys` });
+  // #2556 — its settings, counted here; each one, with its default, is listed below the table
+  const settings = declaredSettings(m).length;
+  if (settings) lines.push({ kind: "Settings", text: `${settings === 1 ? "one setting" : `${settings} settings`}, in Settings › Extensions — listed below` });
   return lines;
 }
 

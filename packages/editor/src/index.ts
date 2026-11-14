@@ -17,6 +17,8 @@ export type { LaneSkeleton, LaneItem, WalkWindow } from './codeView'
 export { analyzeSong, analyzeEvents, accumulateLanes, cycleFingerprints, detectPeriod, computeSections, laneKeyOf, analyzeWindow, accumulateLanesInWindow, computeSectionsInWindow } from './codeView'
 export type { SongAnalysis, DisplaySpan, LaneActivity, SongSection, AnalyzeSongOptions, WindowAnalysis, AnalyzeWindowOptions } from './codeView'
 export { songExtent } from './codeView'
+// #2590: the tempo a document sets, for the gallery's record at publish
+export { writtenCps } from './codeView'
 export { labelAtOffset, sectionNameAt, shownTrackName } from './codeView'
 // the one track palette, read by the Mixer and the Song timeline (#1943 retired the app's copy)
 export { trackIdentity, TRACK_PALETTE_32 } from './codeView'
@@ -218,6 +220,12 @@ export { compilePreset } from './visualizers/vizCompiler'
 // starter against them; editor support for `.three` builds on them next).
 export { compileThreeSketch, THREE_ADDONS } from './visualizers/renderers/threeSketch'
 export { mountVizRenderer } from './visualizers/mountVizRenderer'
+// #2560 — Play waits (capped) for the pattern's sketches; the transport shows it.
+export {
+  isWaitingForVisuals,
+  onWaitingForVisualsChanged,
+  PLAY_VIZ_WAIT_CAP_MS,
+} from './visualizers/vizLoadGate'
 export { mountVizPreview, type VizPreviewSpec } from './visualizers/mountVizPreview'
 // #240 — viz pop-out: the hook drives a window.open() preview; the app host
 // wires it through `WorkspaceShellProps.onOpenPopoutPreview` (Cmd+K W).
@@ -371,8 +379,18 @@ export {
   isExtensionKeyGivenBack,
   setExtensionKeyGivenBack,
   onExtensionKeysChange,
+  // #2556 — the settings extensions declare: Settings › Extensions draws and changes them
+  extensionSettings,
+  extensionSettingValue,
+  setExtensionSetting,
+  onExtensionSettingsChange,
+  declaredSettings,
 } from './extensions'
 export type {
+  ExtensionSetting,
+  ExtensionSettingOption,
+  ExtensionSettingValue,
+  ExtensionSettingState,
   ExtensionKey,
   ExtensionKeyInCode,
   ExtensionKeyState,

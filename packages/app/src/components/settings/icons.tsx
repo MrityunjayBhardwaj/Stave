@@ -82,6 +82,17 @@ export const IconModules = () =>
     </>,
   );
 
+// #2556 — four squares, one lifted out: the Extensions section
+export const IconExtensions = () =>
+  svg(
+    <>
+      <rect x="3" y="10" width="5.5" height="5.5" rx="1" />
+      <rect x="3" y="16.5" width="5.5" height="5.5" rx="1" transform="translate(0 -1)" />
+      <rect x="9.5" y="14.5" width="5.5" height="5.5" rx="1" />
+      <rect x="14" y="3" width="6" height="6" rx="1" transform="rotate(12 17 6)" />
+    </>,
+  );
+
 export const IconAliases = () =>
   svg(
     <>
