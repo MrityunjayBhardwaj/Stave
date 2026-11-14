@@ -8954,10 +8954,10 @@ function soundGainHits(sound, gain, cyc) {
 }
 __name(soundGainHits, "soundGainHits");
 var onsetKey = /* @__PURE__ */ __name((t, value) => `${t.toFraction?.() ?? t.valueOf()}\0${JSON.stringify(value)}`, "onsetKey");
-function markedPattern(mini, path, marks) {
+function markedPattern(mini, rows) {
   const code = '"' + mini + '"';
   const ast = mini_mjs.mini2ast(code);
-  markSteps(ast, path, marks);
+  for (const row of rows) markSteps(ast, row.path, row.marks);
   return asked(mini, mini_mjs.patternifyAST(ast, code));
 }
 __name(markedPattern, "markedPattern");
@@ -13503,14 +13503,14 @@ var markOf = /* @__PURE__ */ __name((value) => {
   return typeof head === "string" && head.startsWith(MARK) ? head : null;
 }, "markOf");
 var COPIES = /* @__PURE__ */ new WeakMap();
-function copyOf(pat, path, children, keepOps) {
+function copyOf(pat, rows) {
   let byKey = COPIES.get(pat);
   if (!byKey) COPIES.set(pat, byKey = /* @__PURE__ */ new Map());
-  const key3 = `${path.join(".")}|${children.join(",")}|${keepOps ? "ops" : "step"}`;
+  const key3 = rows.map((r) => `${r.path.join(".")}:${r.marks.map((m) => `${m.child}=${m.marker}${m.keepOps ? "+ops" : ""}`).join(",")}`).join(";");
   let copy = byKey.get(key3);
   if (copy === void 0) {
     try {
-      copy = markedPattern(pat.mini, path, children.map((child) => ({ child, marker: markerOf(child), keepOps })));
+      copy = markedPattern(pat.mini, rows);
     } catch {
       copy = "fails";
     }
@@ -13615,12 +13615,73 @@ function rowSlots(row) {
   return row.steps.flatMap((s) => s.slots).sort((a, b) => fracCompare(a.begin, b.begin));
 }
 __name(rowSlots, "rowSlots");
-function container(ctx, group2, path, cut) {
+function rowsAt(root, depth) {
+  const top = rowsOf(root, []);
+  let level = isRefusal(top) ? [] : top.rows;
+  for (let d = 0; d < depth; d++) {
+    const next = [];
+    for (const r of level) {
+      const elements = stepsOf(r.group);
+      if (isRefusal(elements)) continue;
+      elements.forEach((e, i) => {
+        if (e.content.kind !== "group") return;
+        const laid = rowsOf(e.content, [...r.path, i]);
+        if (!isRefusal(laid)) next.push(...laid.rows);
+      });
+    }
+    level = next;
+  }
+  return level;
+}
+__name(rowsAt, "rowsAt");
+function levelOf(ctx, depth) {
+  let asked3 = ctx.levels.get(depth);
+  if (asked3 === void 0) ctx.levels.set(depth, asked3 = askRows(ctx, rowsAt(ctx.joined.root, depth)));
+  return asked3;
+}
+__name(levelOf, "levelOf");
+function askRows(ctx, rows) {
+  const base = /* @__PURE__ */ new Map();
+  let next = 0;
+  for (const r of rows) {
+    base.set(r.path.join("."), next);
+    next += r.group.children.length;
+  }
+  const inside = /* @__PURE__ */ new Set();
+  for (const r of rows) notesIn2(r.group, inside);
+  const marks = rows.map((r) => ({
+    path: r.path,
+    marks: r.group.children.map((_, i) => ({ child: i, marker: markerOf(base.get(r.path.join(".")) + i), keepOps: false }))
+  }));
+  const slots2 = slotsOf(ctx, copyOf(ctx.pat, marks), inside);
+  if (isRefusal(slots2)) return slots2;
+  const within2 = /* @__PURE__ */ new Set();
+  const opMarks = [];
+  for (const r of rows) {
+    const elements = stepsOf(r.group);
+    if (isRefusal(elements)) continue;
+    const repeated = elements.flatMap((e, i) => e.content.kind === "group" && e.ops.length > 0 ? [i] : []);
+    if (repeated.length === 0) continue;
+    for (const i of repeated) notesIn2(elements[i], within2);
+    const first = base.get(r.path.join("."));
+    opMarks.push({ path: r.path, marks: repeated.map((i) => ({ child: i, marker: markerOf(first + i), keepOps: true })) });
+  }
+  if (opMarks.length === 0) return { slots: slots2, copies: /* @__PURE__ */ new Map(), base };
+  const copies = slotsOf(ctx, copyOf(ctx.pat, opMarks), within2);
+  if (isRefusal(copies)) return copies;
+  return { slots: slots2, copies, base };
+}
+__name(askRows, "askRows");
+function container(ctx, group2, path, cut, depth) {
   const laid = rowsOf(group2, path);
   if (isRefusal(laid)) return laid;
+  const asked3 = levelOf(ctx, depth);
+  if (isRefusal(asked3)) return asked3;
   const rows = [];
   for (const r of laid.rows) {
-    const steps = rowSteps(ctx, r.group, r.path);
+    const base = asked3.base.get(r.path.join("."));
+    if (base === void 0) throw new Error(`divisions: the row at ${r.path.join(".")} was not asked with its depth`);
+    const steps = rowSteps(ctx, r.group, r.path, asked3, base, depth);
     if (isRefusal(steps)) return steps;
     rows.push({ group: r.group, steps });
   }
@@ -13645,30 +13706,23 @@ function footStep(foot) {
   return { kind: "element", content: foot, span: { start: first.span.start, end: first.span.start }, weight: 1, reps: 1, ops: [] };
 }
 __name(footStep, "footStep");
-function rowSteps(ctx, group2, path) {
+function stepsOf(group2) {
   const elements = [];
   for (const c of group2.children) {
     const e = c.kind === "element" ? c : footStep(c);
     if (isRefusal(e)) return e;
     elements.push(e);
   }
-  const all = elements.map((_, i) => i);
-  const inside = notesIn2(group2, /* @__PURE__ */ new Set());
-  const slots2 = slotsOf(ctx, copyOf(ctx.pat, path, all, false), inside);
-  if (isRefusal(slots2)) return slots2;
-  const repeated = all.filter((i) => elements[i].content.kind === "group" && elements[i].ops.length > 0);
-  let copies = /* @__PURE__ */ new Map();
-  if (repeated.length > 0) {
-    const within2 = /* @__PURE__ */ new Set();
-    for (const i of repeated) notesIn2(elements[i], within2);
-    const asked3 = slotsOf(ctx, copyOf(ctx.pat, path, repeated, true), within2);
-    if (isRefusal(asked3)) return asked3;
-    copies = asked3;
-  }
+  return elements;
+}
+__name(stepsOf, "stepsOf");
+function rowSteps(ctx, group2, path, asked3, base, depth) {
+  const elements = stepsOf(group2);
+  if (isRefusal(elements)) return elements;
   const steps = [];
-  for (const i of all) {
+  for (let i = 0; i < elements.length; i++) {
     const element = elements[i];
-    const mine = slots2.get(i) ?? [];
+    const mine = asked3.slots.get(base + i) ?? [];
     if (element.content.kind === "atom") {
       const hits = ctx.joined.of(element.content);
       for (const j of hits) {
@@ -13678,12 +13732,12 @@ function rowSteps(ctx, group2, path) {
       if (mine.length > 0) steps.push({ element, slots: mine, rest: isRest(element.content), hits, copies: null, rows: null, oneOf: false });
       continue;
     }
-    const own = repeated.includes(i) ? copies.get(i) ?? [] : null;
+    const own = element.ops.length > 0 ? asked3.copies.get(base + i) ?? [] : null;
     if (mine.length === 0) {
       if (ctx.joined.of(element).length > 0) return "hit-outside-its-step";
       continue;
     }
-    const inner = container(ctx, element.content, [...path, i], own ?? mine);
+    const inner = container(ctx, element.content, [...path, i], own ?? mine, depth + 1);
     if (isRefusal(inner)) return inner;
     steps.push({ element, slots: mine, rest: false, hits: [], copies: own, rows: inner.rows, oneOf: inner.oneOf });
   }
@@ -13694,7 +13748,7 @@ function barDivisions(pat, cyc) {
   if (pat.mini.includes(MARK)) return { ok: false, why: "marker-in-pattern" };
   const joined = joinedCycle(pat, cyc);
   if (joined.hits.some((j) => j.atom === null)) return { ok: false, why: "unpaired-hit" };
-  const top = container({ pat, cyc, joined }, joined.root, [], [WHOLE_BAR]);
+  const top = container({ pat, cyc, joined, levels: /* @__PURE__ */ new Map() }, joined.root, [], [WHOLE_BAR], 0);
   if (isRefusal(top)) return { ok: false, why: top };
   return { ok: true, parts: top.rows, oneOf: top.oneOf };
 }
@@ -43987,7 +44041,7 @@ function ExactStepGrid({ notice = null, onResolution }) {
     if (levels) times.forEach((t, i) => out.set(t.toFixed(9), levels[i]));
     return out;
   }, [drawn, rows, gain]);
-  const levelOf = /* @__PURE__ */ __name((t) => levelAt.get(t.toFixed(9)), "levelOf");
+  const levelOf2 = /* @__PURE__ */ __name((t) => levelAt.get(t.toFixed(9)), "levelOf");
   const [offered2, setOffered] = React33__namespace.useState(NO_OFFERS);
   React33__namespace.useEffect(() => {
     const out = /* @__PURE__ */ new Set();
@@ -44186,7 +44240,7 @@ function ExactStepGrid({ notice = null, onResolution }) {
     const at = cellAt(cell);
     const h = cell.on ? rows[ri].hits.find((x2) => Math.abs(x2.begin - at) < 1e-9) : void 0;
     const hit = h ? { begin: h.begin, end: h.end } : void 0;
-    press.current = { row: ri, cell, startX: e.clientX, startY: e.clientY, mode: cell.on ? "pending" : "paint", paintOn: !cell.on, sound: rows[ri].sound, hit, startLevel: hit ? levelOf(hit.begin) ?? 1 : void 0 };
+    press.current = { row: ri, cell, startX: e.clientX, startY: e.clientY, mode: cell.on ? "pending" : "paint", paintOn: !cell.on, sound: rows[ri].sound, hit, startLevel: hit ? levelOf2(hit.begin) ?? 1 : void 0 };
     if (!cell.on) paintOne(ri, cell, true);
   }, "onCellDown");
   const onCellEnter = /* @__PURE__ */ __name((ri, cell) => {
@@ -44390,7 +44444,7 @@ function ExactStepGrid({ notice = null, onResolution }) {
                 d?.inner.map((s) => /* @__PURE__ */ jsxRuntime.jsx("div", { "data-tree-inner": s.depth, style: { position: "absolute", left: x(s.begin) + 2, width: Math.max(1, x(s.end) - x(s.begin) - 3), top: 4, bottom: 4, boxSizing: "border-box", border: "1px solid var(--border, #3a3a42)", borderRadius: 2, background: "var(--background-elevated, #26262c)", pointerEvents: "none" } }, `i${s.begin}`)),
                 d?.lines.map((l) => /* @__PURE__ */ jsxRuntime.jsx("div", { "data-tree-line": l.depth, style: { position: "absolute", left: x(l.at) - 1, width: 2, top: 0, bottom: 0, background: lineColor3(l.depth), pointerEvents: "none" } }, `l${l.at}`)),
                 row.hits.map((h, i) => {
-                  const level = velocityOn ? clamp012(levelOf(h.begin) ?? 1) : 1;
+                  const level = velocityOn ? clamp012(levelOf2(h.begin) ?? 1) : 1;
                   return /* @__PURE__ */ jsxRuntime.jsx("div", { "data-seq-fill": true, "data-tree-hit": h.begin.toFixed(6), style: { position: "absolute", left: x(h.begin) + 2, width: Math.max(2, x(Math.min(h.end, bars)) - x(h.begin) - 3), top: 3 + (1 - level) * (ROW_PX3 - 6), bottom: 3, borderRadius: 2, background: colorMode === "velocity" ? velocityColor(level) : voice.color, pointerEvents: "none" } }, `h${i}`);
                 }),
                 drawn[ri].map((cell) => {
@@ -44421,7 +44475,7 @@ function ExactStepGrid({ notice = null, onResolution }) {
                       "data-seq-splits": splits ? "true" : void 0,
                       "data-seq-sustain": held2 ? "true" : void 0,
                       "data-seq-step-note": plays ?? void 0,
-                      "data-gain": cell.on && offered2.has(at.toFixed(9)) && levelOf(at) != null ? fmtLevel(levelOf(at)) : void 0,
+                      "data-gain": cell.on && offered2.has(at.toFixed(9)) && levelOf2(at) != null ? fmtLevel(levelOf2(at)) : void 0,
                       "data-playing": playAt !== null && inCell(playAt) ? "true" : void 0,
                       title: can ? splits ? `Splits this step: adds ${row.sound} here` : plays ? `${row.sound} plays ${plays}` : void 0 : answer && !answer.ok ? refusalLine(answer.why, cell.on) : void 0,
                       onFocus: () => {
