@@ -54,6 +54,11 @@ export interface MountMessage {
    *  was threaded. Structured-cloned, so non-cloneable values are dropped on main
    *  before posting (`cloneableOptions`). */
   options?: VizOptions
+  /** #2560 — a pre-Play WARM-UP mount: the renderer sits hidden and paused, so no
+   *  signal frame will arrive to draw it. Once the sketch has loaded, the worker
+   *  draws ONE frame itself (shaders compile, GPU uploads happen) before it says
+   *  `loaded`, so Play reveals a sketch that is ready to move. */
+  warm?: boolean
 }
 
 /** MAIN → WORKER: live update of the per-render viz options (#875). Posted when a
@@ -128,11 +133,27 @@ export interface WorkerVizLogMessage {
 }
 
 /** WORKER → MAIN: the worker drew its FIRST frame successfully (B-5 / #247). One-
- *  shot liveness signal: `FallbackVizRenderer` waits for this to mark the worker
- *  healthy; an error or a mount timeout BEFORE it triggers the main-thread
- *  fallback (a worker that throws or hangs at startup = blank viz without this). */
+ *  shot health signal: `FallbackVizRenderer` treats an error BEFORE it as a
+ *  startup failure (fall back to the main thread) and an error after it as the
+ *  sketch's own. Whether the worker is answering at all is `alive` (#2560). */
 export interface WorkerReadyMessage {
   type: 'ready'
+}
+
+/** WORKER → MAIN (#2560): the worker took the `mount` message — the thread is up
+ *  and answering. This, not the first frame, is what the startup probation waits
+ *  for: a sketch that loads a large asset before its first frame is slow, not
+ *  hung, and must not be moved onto the thread that schedules the music. */
+export interface WorkerAliveMessage {
+  type: 'alive'
+}
+
+/** WORKER → MAIN (#2560): the sketch has finished setting up — its top level ran,
+ *  the assets it asked for arrived (three.js: every loader item is done; p5: its
+ *  `setup()` ran) and, for a warm-up mount, one hidden frame was drawn. Sent once
+ *  per mount. Play waits on it (with a cap) so the picture can move at once. */
+export interface WorkerLoadedMessage {
+  type: 'loaded'
 }
 
 /** WORKER → MAIN: the worker consumed one transported `SignalFrame` (#261). The

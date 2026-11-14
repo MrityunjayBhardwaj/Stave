@@ -214,13 +214,25 @@ The worker acks **every** received frame on receipt (`hostP5Worker.ts:502`), eve
 
 ### 5. Startup fallback to the main thread
 
-A worker that throws at import/compile/first-draw, or hangs, must not leave a blank pane. `FallbackVizRenderer` wraps the worker renderer with a startup probation:
+A worker that throws at import/compile/first-draw, or never answers, must not leave a blank pane. `FallbackVizRenderer` wraps the worker renderer with a startup probation:
 
-- mount the worker, arm `whenReady` + an 8s timer (`FallbackVizRenderer.ts:36`).
-- first successful worker frame posts `ready` (`hostP5Worker.ts:526`) → HEALTHY; clear the timer. Later (user-sketch) errors surface normally — they do **not** trigger fallback.
-- a fatal error *before* `ready`, or the timeout → tear down the worker attempt, clear the container, mount the proven main-thread renderer with the same components/size (`FallbackVizRenderer.ts:102`).
+- mount the worker, arm `whenAlive` + `whenReady` + an 8s timer (`PROBATION_MS` in `FallbackVizRenderer.ts`).
+- the worker posts `alive` the moment it takes the `mount` message (`post('alive')`, first line of `mount` in `hostP5Worker.ts`) → clear the timer. **The timer judges "alive", not "loaded"** (#2560): a sketch that loads a 4K HDRI or a model before its first frame is slow, not hung, and moving it to the main thread — the one that schedules the music — would be the worst place for it. Because `alive` needs no frame, the timer also runs while paused (a hidden warm-up, an off-screen zone).
+- the first successful worker frame posts `ready` → HEALTHY. Later (user-sketch) errors surface normally — they do **not** trigger fallback.
+- a fatal error *before* `ready`, or the timeout before `alive` → tear down the worker attempt, clear the container, mount the proven main-thread renderer with the same components/size (`fallback` in `FallbackVizRenderer.ts`).
 
-This is why the contract's first successful `draw()` must post `ready` (`hostP5Worker.ts:525`) — it is the liveness signal the probation waits on. A renderer that can't reach a first frame correctly degrades to its main-thread twin. (Both factories wire this: `makeP5Renderer.ts:48`, `makeHydraRenderer.ts:32`.)
+A renderer that throws before its first frame correctly degrades to its main-thread twin. (Every factory wires this: `makeP5Renderer`, `makeHydraRenderer`, `makeGLSLRenderer`, `makeThreeRenderer`.)
+
+### 5b. Loaded, warm-up before Play, and Play's capped wait (#2560)
+
+A third startup signal, `loaded`, says the sketch has finished setting up: `RendererStrategy.whenLoaded` per kind — p5 when its (async) `setup()` ran, hydra and GLSL at once, three.js when its top level finished **and** no three.js loader item is in flight (`runThreeSketch(...).whenLoaded`, which counts `DefaultLoadingManager`'s `itemStart`/`itemEnd`; three calls a load's callback before `itemEnd`, so the meshes a `GLTFLoader` callback builds are part of the load). On the main side it is `VizRenderer.whenLoaded?()` (settles on `loaded`, on destroy, and on a fallback).
+
+The pattern's sketches are built **before** Play, hidden:
+
+- **Background** — mounted when the file resolves a backdrop (`WorkspaceShell` → `renderBackdropLayer` → `compiledVizProvider`) and kept across Play/Stop, so it is already warm. `PreviewView` reloads a provider only when the file's content CHANGES (`mountedContentRef`); it used to reload ~300 ms after first render too, which built every background twice at open.
+- **Inline `.viz()`** — `EditorView` reads the inline viz names statically (`readInlineVizNames`, `codeView/mixer/inlineVizCalls.ts`) a moment after the code settles, while the file is not playing, and `warmInlineViz` (`inlineVizWarmup.ts`) builds each one: `markWarmUp()`, mounted into a container parked in a `visibility:hidden` off-screen host, and paused. A warm-up mount (`MountMessage.warm`) makes the worker draw ONE frame once loaded, so shaders compile and textures upload before Play; nothing shows. At Play, `addInlineViewZones` adopts the warm renderer: its very container becomes the zone's DOM node (so the fallback and the teardown wrapper keep a valid container), `attachVizLifecycle(..., { adopted: true })` hands it the live components instead of mounting again.
+
+Both doors register their renderer with `vizLoadGate` (`trackPatternVizLoad`). From a stopped transport, `LiveCodingRuntime.playSteps` step 7a waits for every registered sketch to load — at most `PLAY_VIZ_WAIT_CAP_MS` (20 s), so a sketch that never loads cannot hold the music longer; a cap of 0 restores "start at once". Stop ends the wait. While it waits, `isWaitingForVisuals()` is true and the transport shows "Loading visuals…". A re-evaluate of a running song never waits.
 
 ### 6. Visibility pausing and off-screen teardown
 

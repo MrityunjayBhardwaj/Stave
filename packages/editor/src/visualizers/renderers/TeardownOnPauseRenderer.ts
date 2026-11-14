@@ -54,6 +54,40 @@ export class TeardownOnPauseRenderer implements VizRenderer {
     private readonly hooks: TeardownHooks = {},
   ) {}
 
+  /**
+   * #2560 — take an inner renderer that is ALREADY mounted into `container` (a
+   * warm-up built before Play) instead of building one in `mount`. The args are
+   * remembered exactly as `mount` would, so an off-screen teardown re-creates it
+   * the usual way. Call INSTEAD of `mount`.
+   */
+  adoptMounted(
+    inner: VizRenderer,
+    container: HTMLDivElement,
+    components: Partial<EngineComponents>,
+    size: { w: number; h: number },
+    onError: (e: Error) => void,
+  ): void {
+    this.args = { container, components, size, onError }
+    this.inner = inner
+  }
+
+  /**
+   * #2560 — hand the inner renderer over to a new owner (the warm-up reusing a
+   * stopped zone's sketch for the next Play) and forget it: this wrapper's later
+   * pause/resume/destroy no longer reach it. Null when torn down (nothing live).
+   */
+  release(): VizRenderer | null {
+    const inner = this.inner
+    this.inner = null
+    return inner
+  }
+
+  /** #2560 — the current inner renderer's loaded signal (taken as loaded when
+   *  torn down, or when the inner has none). */
+  whenLoaded(): Promise<void> {
+    return this.inner?.whenLoaded?.() ?? Promise.resolve()
+  }
+
   /** True while reclaimed (inner destroyed). Exposed for tests/observation. */
   get isTornDown(): boolean {
     return this.tornDown

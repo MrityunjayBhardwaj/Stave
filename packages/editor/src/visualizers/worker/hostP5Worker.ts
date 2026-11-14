@@ -78,6 +78,10 @@ interface GLLoseCtx {
 interface RendererStrategy {
   /** True once the renderer can draw (p5 setup is async; hydra is sync). */
   setupDone: () => boolean
+  /** #2560 — settles once the sketch has finished setting up (assets in, setup
+   *  run). Never rejects; may never settle for a sketch that never finishes, which
+   *  is why everything waiting on it has a cap. */
+  whenLoaded: () => Promise<void>
   /** Render exactly one frame from the (already-refreshed) shims. May throw — the
    *  caller catches + reports + suppresses the `ready` signal. */
   draw: () => void
@@ -142,6 +146,15 @@ export function hostVizWorker(scope: WorkerScope): void {
   const signalReady = (): void => {
     try {
       scope.postMessage({ type: 'ready' })
+    } catch {
+      /* ignore */
+    }
+  }
+  // #2560 — `alive`: the thread took the mount (the startup probation's question).
+  // `loaded`: the sketch finished setting up (what Play waits on).
+  const post = (type: 'alive' | 'loaded'): void => {
+    try {
+      scope.postMessage({ type })
     } catch {
       /* ignore */
     }
@@ -303,6 +316,10 @@ export function hostVizWorker(scope: WorkerScope): void {
   }
 
   async function mount(msg: MountMessage): Promise<void> {
+    // #2560 — the thread is up and took the mount. Said FIRST, before the sketch
+    // runs: a sketch that is slow to set up (a big model, an HDRI) is alive, and
+    // the probation must not move it to the main thread for being slow.
+    post('alive')
     // Tear down a previous mount (a pooled/shared worker re-mount — B-6; harmless
     // for the one-shot worker).
     if (state) destroy()
@@ -344,6 +361,36 @@ export function hostVizWorker(scope: WorkerScope): void {
     }
     reader.onFrame(applyAndDraw)
     diag('info', `mounted ${msg.kind} viz '${msg.name}' (${msg.size.w}×${msg.size.h}@${dpr})`)
+
+    // #2560 — say `loaded` once the sketch has set up. A warm-up mount is paused
+    // and hidden, so no frame will come to draw it: draw ONE here first, so its
+    // shaders compile and its textures upload now rather than on Play's first
+    // frame. The container is hidden, so nothing shows.
+    const mine = state
+    void strategy.whenLoaded().then(() => {
+      if (state !== mine) return // destroyed or re-mounted meanwhile
+      if (msg.warm) warmDraw(mine)
+      post('loaded')
+    })
+  }
+
+  /** #2560 — the one hidden frame of a warm-up mount (see `mount`). No signal
+   *  frame has arrived, so the sketch reads silence; a throw is reported like any
+   *  draw error and the sketch still counts as loaded (a broken sketch must not
+   *  hold Play up). */
+  function warmDraw(s: MountState): void {
+    if (s.readySent) return
+    const t0 = globalThis.performance?.now?.() ?? 0
+    try {
+      s.draw()
+    } catch (e) {
+      postVizLog({ level: 'error', runtime: currentRuntimeRef.kind, message: `draw(): ${errMsg(e)}`, stack: errStack(e) })
+      return
+    }
+    lastDrawMs = (globalThis.performance?.now?.() ?? 0) - t0
+    s.readySent = true
+    signalReady()
+    accountGL()
   }
 
   // ── p5 (Tier 2: makes its own canvases → blit) ─────────────────────────────
@@ -412,6 +459,11 @@ export function hostVizWorker(scope: WorkerScope): void {
     let adopted = false
 
     let setup = false
+    // #2560 — p5's setup is async (#_setup awaits preload); loaded = it ran.
+    let markLoaded: () => void = () => {}
+    const loadedP5 = new Promise<void>((resolve) => {
+      markLoaded = resolve
+    })
     // Wrap the sketch: after the user's setup runs, stop p5's auto-loop so WE drive
     // one redraw() per frame (1:1 cadence). p5 reads p.setup AFTER this fn assigns
     // it (instance-mode contract), so wrapping here is what #_setup calls.
@@ -454,6 +506,7 @@ export function hostVizWorker(scope: WorkerScope): void {
           /* noLoop before renderer ready — redraw still drives draws */
         }
         setup = true
+        markLoaded()
       }
     }
     const inst = new P5ctor(sketchFn)
@@ -475,6 +528,7 @@ export function hostVizWorker(scope: WorkerScope): void {
 
     return {
       setupDone: () => setup,
+      whenLoaded: () => loadedP5,
       // #266 — p5's WEBGL context lives on its internal render canvas (drawingContext);
       // 2D sketches return a CanvasRenderingContext2D whose getExtension yields null.
       gl: () => (inst?.drawingContext as GLLoseCtx | undefined) ?? null,
@@ -526,6 +580,7 @@ export function hostVizWorker(scope: WorkerScope): void {
         inst?.resizeCanvas?.(w, h)
       },
       teardown: () => {
+        markLoaded() // nothing left to wait for
         // Mirror P5VizRenderer.destroy's belt-and-suspenders teardown — neutralise
         // p5's async #_setup chain so a destroy mid-flight can't produce output.
         try {
@@ -613,6 +668,7 @@ export function hostVizWorker(scope: WorkerScope): void {
 
     return {
       setupDone: () => true, // pattern ran synchronously above; frames arrive after
+      whenLoaded: () => Promise.resolve(),
       // #266 — hydra renders directly into the presenting canvas (regl owns its
       // WebGL context); re-getContext returns that same context for release.
       gl: () =>
@@ -692,6 +748,7 @@ export function hostVizWorker(scope: WorkerScope): void {
 
     return {
       setupDone: () => true, // program built synchronously above; draw on first frame
+      whenLoaded: () => Promise.resolve(),
       // #266 — raw WebGL2 context we own; re-get returns the same context for the
       // host's accountGL/releaseGL. The EASIEST gl() of the three kinds (no search).
       gl: () => (msg.canvas.getContext('webgl2') as GLLoseCtx | null),
@@ -780,6 +837,8 @@ export function hostVizWorker(scope: WorkerScope): void {
 
     return {
       setupDone: () => run.ready(),
+      // #2560 — top level done and every loader item in (the model, the HDRI).
+      whenLoaded: () => run.whenLoaded(),
       gl: () => run.gl() as GLLoseCtx | null,
       setOptions: (options: Record<string, unknown>) => {
         optionsRef.current = options

@@ -240,6 +240,22 @@ export function PreviewView({
   // Always false for `keepRunningWhenHidden: true` providers.
   const effectivelyHidden = hidden && !provider.keepRunningWhenHidden
 
+  // #2560 — the content the provider's current mount was built from. A reload
+  // is for a CHANGE to the code; without this the effect below also fired on
+  // first render (and on any new `file` object with the same content), so every
+  // preview and background built its sketch twice at open, ~300 ms apart, and a
+  // heavy three.js sketch ran its top level twice. Set when the file is first
+  // seen and on every bump. A DIFFERENT file (a background switching sketch,
+  // `bgFileId` changing under the same view) is a new mount, not an edit: the
+  // provider already renders the new file, so a reload ~300 ms later would build
+  // it a second time.
+  const mountedContentRef = useRef<string | null>(null)
+  const mountedFileRef = useRef<string | null>(null)
+  if (file && mountedFileRef.current !== file.id) {
+    mountedFileRef.current = file.id
+    mountedContentRef.current = file.content
+  }
+
   // Reload dispatch — keyed on file content. Observes the provider's
   // reload policy. `instant` bumps the counter on every change; `debounced`
   // starts a timer and bumps on fire; `manual` never bumps. Hidden +
@@ -247,6 +263,8 @@ export function PreviewView({
   // the missed change).
   useEffect(() => {
     if (!file) return
+    // #2560 — nothing changed since the mount: nothing to reload.
+    if (file.content === mountedContentRef.current) return
     if (provider.reload === 'manual') return
     // User-facing hot-reload toggle: treat as 'manual' while off so the
     // compiled preview freezes on its last state across content edits.
@@ -261,6 +279,7 @@ export function PreviewView({
     }
 
     if (provider.reload === 'instant') {
+      mountedContentRef.current = file.content
       setReloadTick((n) => n + 1)
       return
     }
@@ -271,7 +290,9 @@ export function PreviewView({
     // interface marks it optional only because `'instant'`/`'manual'`
     // providers may omit it).
     const ms = provider.debounceMs ?? 0
+    const content = file.content
     const handle = setTimeout(() => {
+      mountedContentRef.current = content
       setReloadTick((n) => n + 1)
     }, ms)
     return () => {
@@ -295,6 +316,7 @@ export function PreviewView({
     prevEffectivelyHiddenRef.current = effectivelyHidden
     if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
       catchUpNeededRef.current = false
+      mountedContentRef.current = file?.content ?? null
       setReloadTick((n) => n + 1)
     }
   }, [effectivelyHidden])
@@ -308,6 +330,7 @@ export function PreviewView({
     prevLiveOnRef.current = liveOn
     if (wasOff && liveOn && catchUpNeededRef.current) {
       catchUpNeededRef.current = false
+      mountedContentRef.current = file?.content ?? null
       setReloadTick((n) => n + 1)
     }
   }, [liveOn])

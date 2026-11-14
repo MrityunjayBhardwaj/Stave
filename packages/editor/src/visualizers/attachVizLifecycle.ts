@@ -37,10 +37,17 @@ export function attachVizLifecycle(
   components: Partial<EngineComponents>,
   size: { w: number; h: number },
   onError: (e: Error) => void,
-  opts: { teardownMs?: number; onMountError?: (e: unknown) => void } = {},
+  opts: {
+    teardownMs?: number
+    onMountError?: (e: unknown) => void
+    /** #2560 — the renderer is ALREADY mounted into `container` (a warm-up built
+     *  before Play): hand it the live components instead of mounting it again. */
+    adopted?: boolean
+  } = {},
 ): () => void {
   try {
-    renderer.mount(container, components, size, onError)
+    if (opts.adopted) renderer.update(components)
+    else renderer.mount(container, components, size, onError)
   } catch (e) {
     if (opts.onMountError) opts.onMountError(e)
     else throw e

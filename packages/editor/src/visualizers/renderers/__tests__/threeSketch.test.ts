@@ -325,3 +325,93 @@ describe('runThreeSketch', () => {
     expect(report).not.toHaveBeenCalled() // a stopped sketch reports nothing
   })
 })
+
+// #2560 — "loaded": the top level finished AND no three.js loader item is in
+// flight, so a model loaded with a callback (and what the callback builds) is
+// part of the load.
+describe('runThreeSketch whenLoaded (#2560)', () => {
+  /** A loader that reports to the manager like three's own (FileLoader.js:90,
+   *  GLTFLoader.js:335-337: the callback runs BEFORE itemEnd). */
+  function withLoader() {
+    const fake = fakeThree()
+    const manager = {
+      itemStart(_url: string) {},
+      itemEnd(_url: string) {},
+    }
+    class SlowLoader {
+      load(url: string, cb: () => void, ms = 30) {
+        manager.itemStart(url)
+        setTimeout(() => {
+          cb()
+          manager.itemEnd(url)
+        }, ms)
+      }
+    }
+    const THREE = { ...fake.THREE, DefaultLoadingManager: manager, SlowLoader }
+    return { THREE, manager }
+  }
+  async function settledWithin(p: Promise<unknown>, ms: number): Promise<boolean> {
+    return Promise.race([p.then(() => true), new Promise<boolean>((r) => setTimeout(() => r(false), ms))])
+  }
+  function run(code: string, THREE: Record<string, unknown>) {
+    const compiled = compileThreeSketch(code)
+    return runThreeSketch(compiled, { THREE, modules: compiled.imports.map(() => null) }, makeHost().host)
+  }
+
+  it('waits for a callback load, and for a load the callback starts', async () => {
+    const { THREE } = withLoader()
+    const r = run(
+      `
+      import * as THREE from 'three'
+      globalThis.__out = { a: false, b: false }
+      new THREE.SlowLoader().load('a', () => {
+        __out.a = true
+        new THREE.SlowLoader().load('b', () => { __out.b = true })
+      })
+    `,
+      THREE,
+    )
+    await r.done // the top level is done at once…
+    expect(await settledWithin(r.whenLoaded(), 10)).toBe(false) // …but 'a' is loading
+    expect(await settledWithin(r.whenLoaded(), 300)).toBe(true)
+    expect((globalThis as Record<string, any>).__out).toEqual({ a: true, b: true })
+  })
+
+  it('a load started from a timer after the last one ended is still waited for', async () => {
+    const { THREE } = withLoader()
+    const r = run(
+      `
+      import * as THREE from 'three'
+      globalThis.__out = { b: false }
+      new THREE.SlowLoader().load('a', () => {
+        setTimeout(() => new THREE.SlowLoader().load('b', () => { __out.b = true }), 0)
+      }, 5)
+    `,
+      THREE,
+    )
+    await r.whenLoaded()
+    expect((globalThis as Record<string, any>).__out.b).toBe(true)
+  })
+
+  it('waits for an awaited top level', async () => {
+    const { THREE } = withLoader()
+    const r = run(
+      `
+      import * as THREE from 'three'
+      await new Promise((ok) => setTimeout(ok, 40))
+    `,
+      THREE,
+    )
+    expect(await settledWithin(r.whenLoaded(), 10)).toBe(false)
+    expect(await settledWithin(r.whenLoaded(), 300)).toBe(true)
+  })
+
+  it('a top level that never finishes never loads, until disposed', async () => {
+    const { THREE } = withLoader()
+    const r = run(`import * as THREE from 'three'\nawait new Promise(() => {})`, THREE)
+    const p = r.whenLoaded()
+    expect(await settledWithin(p, 50)).toBe(false)
+    r.dispose()
+    expect(await settledWithin(p, 50)).toBe(true)
+  })
+})

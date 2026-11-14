@@ -95,6 +95,7 @@ import type { VizPreset } from '../../visualizers/vizPreset'
 import { compilePreset } from '../../visualizers/vizCompiler'
 import { VizSyntaxError } from '../../visualizers/vizSyntaxError'
 import { mountVizRenderer } from '../../visualizers/mountVizRenderer'
+import { trackPatternVizLoad } from '../../visualizers/vizLoadGate'
 import { isReportedVizError } from '../../visualizers/reportedVizErrors'
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { PreviewContext, PreviewEditorChromeContext, PreviewProvider } from '../PreviewProvider'
@@ -431,6 +432,9 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
         reportError,
       )
       rendererRef.current = mounted
+      // #2560 — a background is a sketch the pattern uses: Play waits (capped)
+      // for it to finish loading. A preview tab's viz does not hold Play.
+      if (backdrop) trackPatternVizLoad(mounted.renderer)
       // A renderer mounted while paused (e.g. an inactive pane's backdrop, #350d)
       // must start paused — the `[paused]` effect below won't re-fire on a remount
       // that doesn't change the prop, so it would otherwise come up running.

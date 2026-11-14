@@ -10,13 +10,21 @@
  *
  * Probation model (startup-only, so a USER sketch error doesn't permanently
  * downgrade rendering to the main thread):
- *   - mount → start the worker renderer; arm a `whenReady` callback + a timeout.
- *   - worker posts `ready` (first successful frame) → HEALTHY; clear the timer.
- *     Subsequent errors surface normally (a user-sketch runtime error is NOT a
- *     worker-infrastructure failure — don't fall back).
- *   - a fatal error BEFORE `ready`, OR the timeout fires before `ready` (worker
- *     threw at import / hung / never framed) → tear down the worker attempt, clear
- *     the container, mount the main-thread renderer with the SAME components/size.
+ *   - mount → start the worker renderer; arm `whenAlive` / `whenReady` callbacks
+ *     + a timeout.
+ *   - worker posts `alive` (it took the mount) → the TIMER is cleared. #2560: the
+ *     timer asks "is the thread answering?", not "has it drawn yet?". A sketch
+ *     that loads a 4K HDRI before its first frame is slow, not hung; moving it
+ *     to the main thread (the one that schedules the music) for that would be
+ *     the worst place for it. And since `alive` does not depend on frames, the
+ *     timer runs while paused too: a paused warm-up is still judged.
+ *   - worker posts `ready` (first successful frame) → HEALTHY. Subsequent errors
+ *     surface normally (a user-sketch runtime error is NOT a worker-infrastructure
+ *     failure — don't fall back).
+ *   - a fatal error BEFORE `ready` (worker threw at import / compile / setup), OR
+ *     the timeout before `alive` (the worker never answered) → tear down the
+ *     worker attempt, clear the container, mount the main-thread renderer with
+ *     the SAME components/size.
  *
  * Renderer-agnostic: it only knows `makeWorker()` (→ a `WorkerVizRenderer`, for the
  * `whenReady` hook) and `makeMain()` (→ any `VizRenderer`). Used by `makeP5Renderer`
@@ -29,11 +37,12 @@ import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { VizRenderer } from '../types'
 import type { WorkerVizRenderer } from './WorkerVizRenderer'
 
-/** How long (ms) to wait for the worker's first-frame `ready` before assuming it
- *  hung and falling back. Generous — worker spawn + library import + first draw is
- *  well under a second even under load; this only catches a genuinely stuck worker.
- *  A throw is caught immediately via onError regardless of this timeout. */
-const PROBATION_MS = 8000
+/** How long (ms) to wait for the worker's `alive` before assuming it never started
+ *  and falling back. Generous — worker spawn + module load is well under a second
+ *  even under load; this only catches a worker that never answers. #2560: it no
+ *  longer waits for the first FRAME, which a heavy sketch may take far longer to
+ *  reach. A throw is caught immediately via onError regardless of this timeout. */
+export const PROBATION_MS = 8000
 
 /** What's left when the main-thread renderer couldn't be built (#2220). */
 const INERT: VizRenderer = {
@@ -50,7 +59,15 @@ export class FallbackVizRenderer implements VizRenderer {
   private active: VizRenderer
   private fellBack = false
   private ready = false
+  /** #2560 — the worker took the mount; the probation timer has nothing to judge. */
+  private alive = false
   private paused = false
+  /** #2560 — settles when the active renderer has loaded (or there is nothing left
+   *  to wait for). See `whenLoaded`. */
+  private settleLoaded: () => void = () => {}
+  private readonly loaded = new Promise<void>((resolve) => {
+    this.settleLoaded = resolve
+  })
   private probationTimer: ReturnType<typeof setTimeout> | null = null
 
   // Captured at mount so the fallback can re-mount the main renderer identically.
@@ -82,22 +99,42 @@ export class FallbackVizRenderer implements VizRenderer {
       this.ready = true
       this.clearProbation()
     })
-    // Don't arm probation if the viz mounted already paused (off-screen / hidden
-    // tab) — a paused worker won't frame, so the timer would fire a spurious
-    // fallback. resume() arms it then (Phase C, #258).
-    if (!this.paused) this.armProbation()
+    this.worker.whenAlive(() => {
+      this.alive = true
+      this.clearProbation()
+    })
+    // #2560 — `alive` does not wait on frames, so a paused mount is judged too.
+    this.armProbation()
+    // The worker's loaded settles ours unless a fallback took over first.
+    void this.worker.whenLoaded().then(() => {
+      if (!this.fellBack) this.settleLoaded()
+    })
 
     // Route the worker's errors through the probation gate.
     this.worker.mount(container, components, size, (e) => this.onWorkerError(e))
   }
 
   private armProbation(): void {
-    if (this.ready || this.fellBack || this.probationTimer !== null) return
+    if (this.alive || this.ready || this.fellBack || this.probationTimer !== null) return
     this.probationTimer = setTimeout(() => {
-      if (!this.ready && !this.fellBack) {
-        this.fallback(new Error('worker viz did not produce a frame within probation'))
+      this.probationTimer = null
+      if (!this.alive && !this.ready && !this.fellBack) {
+        this.fallback(new Error('worker viz did not answer within probation'))
       }
     }, PROBATION_MS)
+  }
+
+  /** #2560 — see `VizRenderer.whenLoaded`. Follows whichever renderer is active:
+   *  the worker's `loaded`, or — after a fallback — the main renderer's own
+   *  (settled at once when it has none). Destroy settles it. */
+  whenLoaded(): Promise<void> {
+    return this.loaded
+  }
+
+  /** #2560 — see `VizRenderer.markWarmUp`. A warm-up mount is the worker's to draw;
+   *  a main-thread fallback stays paused and draws nothing until revealed. */
+  markWarmUp(): void {
+    this.worker.markWarmUp()
   }
 
   private onWorkerError(e: Error): void {
@@ -133,10 +170,14 @@ export class FallbackVizRenderer implements VizRenderer {
       // nothing to draw; the worker is already destroyed, and destroying it
       // again would count its gauges down twice
       this.active = INERT
+      this.settleLoaded()
       this.hostOnError?.(e as Error)
       return
     }
-    if (!this.container) return
+    if (!this.container) {
+      this.settleLoaded()
+      return
+    }
     try {
       this.active.mount(
         this.container,
@@ -150,6 +191,9 @@ export class FallbackVizRenderer implements VizRenderer {
     } catch (e) {
       this.hostOnError?.(e as Error)
     }
+    const mainLoaded = this.active.whenLoaded?.()
+    if (mainLoaded) void mainLoaded.then(() => this.settleLoaded())
+    else this.settleLoaded()
   }
 
   update(components: Partial<EngineComponents>): void {
@@ -163,23 +207,20 @@ export class FallbackVizRenderer implements VizRenderer {
   }
 
   pause(): void {
+    // #2560 — the probation keeps running: it waits for `alive`, which a paused
+    // worker still sends (it never needed frames).
     this.paused = true
-    // Suspend probation while paused — the worker is intentionally not framing,
-    // so the timer must not fire a spurious fallback. resume() re-arms it.
-    if (!this.ready && !this.fellBack) this.clearProbation()
     this.active.pause()
   }
 
   resume(): void {
     this.paused = false
-    // Re-arm probation if the worker still hasn't readied (it was paused before
-    // its first frame); a now-visible worker gets its fair probation window.
-    if (!this.ready && !this.fellBack) this.armProbation()
     this.active.resume()
   }
 
   destroy(): void {
     this.clearProbation()
+    this.settleLoaded()
     this.active.destroy()
   }
 

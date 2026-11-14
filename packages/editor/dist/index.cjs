@@ -497,7 +497,7 @@ function createRecordingHost(id, reg, declared2) {
   const open = /* @__PURE__ */ __name(() => {
     if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`);
   }, "open");
-  const host = {
+  const host2 = {
     id,
     registerSound(name, onTrigger, data = {}) {
       open();
@@ -540,7 +540,7 @@ function createRecordingHost(id, reg, declared2) {
     }
   };
   return {
-    host,
+    host: host2,
     undo() {
       closed = true;
       const errors = [];
@@ -567,13 +567,13 @@ function declares(m, language) {
 __name(declares, "declares");
 function slots() {
   const active2 = /* @__PURE__ */ new Map();
-  const pending2 = /* @__PURE__ */ new Map();
+  const pending3 = /* @__PURE__ */ new Map();
   return {
     active: active2,
-    pending: pending2,
+    pending: pending3,
     on(key3, run) {
       if (active2.has(key3)) return Promise.resolve();
-      const inFlight2 = pending2.get(key3);
+      const inFlight2 = pending3.get(key3);
       if (inFlight2 && !inFlight2.cancelled) return inFlight2.promise;
       const ticket = { cancelled: false, promise: Promise.resolve() };
       const after = inFlight2 ? inFlight2.promise.catch(() => void 0) : Promise.resolve();
@@ -587,13 +587,13 @@ function slots() {
         active2.set(key3, out.rec);
         out.kept?.();
       }).finally(() => {
-        if (pending2.get(key3) === ticket) pending2.delete(key3);
+        if (pending3.get(key3) === ticket) pending3.delete(key3);
       });
-      pending2.set(key3, ticket);
+      pending3.set(key3, ticket);
       return ticket.promise;
     },
     off(key3) {
-      const inFlight2 = pending2.get(key3);
+      const inFlight2 = pending3.get(key3);
       if (inFlight2) inFlight2.cancelled = true;
       const rec = active2.get(key3);
       if (!rec) return [];
@@ -827,8 +827,8 @@ async function load() {
   return {
     strudel: {
       worklets: [url],
-      activate(host) {
-        host.registerSound(E2E_TONE_SOUND, trigger, { type: "synth" });
+      activate(host2) {
+        host2.registerSound(E2E_TONE_SOUND, trigger, { type: "synth" });
       }
     }
   };
@@ -995,7 +995,7 @@ async function prepareStrudelParts(manager, report2, capMs, signal) {
   const nameOf2 = /* @__PURE__ */ __name((id) => manager.manifest(id)?.name ?? id, "nameOf");
   const jobs = manager.preparers();
   if (!jobs.length) return;
-  const pending2 = new Set(jobs);
+  const pending3 = new Set(jobs);
   const all = Promise.all(
     jobs.map(async (job) => {
       try {
@@ -1003,7 +1003,7 @@ async function prepareStrudelParts(manager, report2, capMs, signal) {
       } catch (e) {
         report2("error", `${nameOf2(job.id)} extension could not get ready to play: ${messageOf(e)}. The rest of the song plays without it.`);
       } finally {
-        pending2.delete(job);
+        pending3.delete(job);
       }
     })
   );
@@ -1021,8 +1021,8 @@ async function prepareStrudelParts(manager, report2, capMs, signal) {
   ]);
   clearTimeout(timer);
   if (onAbort) signal?.removeEventListener("abort", onAbort);
-  if (ended === "capped" && pending2.size) {
-    const names = [...new Set([...pending2].map((j) => j.id))].map(nameOf2).join(", ");
+  if (ended === "capped" && pending3.size) {
+    const names = [...new Set([...pending3].map((j) => j.id))].map(nameOf2).join(", ");
     report2("warn", `${names} extension was still getting ready after ${Math.round(capMs / 100) / 10} s, so its sounds may be missing at the start.`);
   }
 }
@@ -1032,7 +1032,7 @@ __name(prepareStrudelParts, "prepareStrudelParts");
 function createExtensionRuntime(opts) {
   let strudel = null;
   let pageReport2 = null;
-  const listeners23 = /* @__PURE__ */ new Set();
+  const listeners24 = /* @__PURE__ */ new Set();
   let failures = /* @__PURE__ */ new Map();
   const report2 = /* @__PURE__ */ __name((level, message) => (pageReport2 ?? strudel?.report)?.(level, message), "report");
   const manager = createExtensionManager({
@@ -1075,7 +1075,7 @@ function createExtensionRuntime(opts) {
         );
       }
       failures = failedNow;
-      if (state6() !== before) for (const fn of [...listeners23]) fn();
+      if (state6() !== before) for (const fn of [...listeners24]) fn();
     }, "run");
     queue2 = queue2.then(run, run);
     return queue2;
@@ -1103,9 +1103,9 @@ function createExtensionRuntime(opts) {
     },
     prepare: /* @__PURE__ */ __name((capMs, signal) => prepareStrudelParts(manager, report2, capMs, signal), "prepare"),
     onChange(fn) {
-      listeners23.add(fn);
+      listeners24.add(fn);
       return () => {
-        listeners23.delete(fn);
+        listeners24.delete(fn);
       };
     },
     failure: /* @__PURE__ */ __name((id) => failures.get(id), "failure")
@@ -6438,10 +6438,10 @@ function collectTopLevelBindings(body, baseOffset, numbers) {
   if (tail.length === 0) return null;
   if (descs.length === 0) return null;
   const bindings = /* @__PURE__ */ new Map();
-  const pending2 = new Set(descs.map((_, i) => i));
-  for (let iter = 0; iter < descs.length && pending2.size > 0; iter++) {
+  const pending3 = new Set(descs.map((_, i) => i));
+  for (let iter = 0; iter < descs.length && pending3.size > 0; iter++) {
     let progress = false;
-    for (const i of [...pending2]) {
+    for (const i of [...pending3]) {
       const d = descs[i];
       const parsed = parseExpression(d.rhs, d.rhsOffset, void 0, bindings, void 0, numbers);
       const lit = classifyLiteralRhs(d.rhs);
@@ -6450,7 +6450,7 @@ function collectTopLevelBindings(body, baseOffset, numbers) {
       const bare = ir.tag === "Code" && ir.via === void 0;
       if (!bare) {
         bindings.set(d.name, ir);
-        pending2.delete(i);
+        pending3.delete(i);
         progress = true;
       }
     }
@@ -14819,6 +14819,48 @@ function readCodeViz(doc) {
 }
 __name(readCodeViz, "readCodeViz");
 
+// src/codeView/mixer/inlineVizCalls.ts
+function stringLiteral2(raw) {
+  const m = /^(['"`])([\s\S]*)\1$/.exec(raw);
+  if (!m) return null;
+  if (m[1] === "`" && m[2].includes("${")) return null;
+  if (m[2].includes(m[1])) return null;
+  return m[2];
+}
+__name(stringLiteral2, "stringLiteral");
+function inlineName(call) {
+  if (call.name === "viz") {
+    const optionsArg = call.args[1];
+    const options = optionsArg ? readVizOptionsLiteral(optionsArg.raw) : null;
+    if (options?.kind === "literal" && options.values.backdrop === true) return null;
+    return call.args[0] ? stringLiteral2(call.args[0].raw) : null;
+  }
+  if (!call.name.startsWith("_")) return null;
+  const method = call.name.slice(1);
+  return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, method) ? STRUDEL_VIZ_METHODS[method] : null;
+}
+__name(inlineName, "inlineName");
+function readInlineVizNames(doc) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return null;
+  const names = [];
+  for (const node of statements) {
+    if (node?.type !== "LabeledStatement") continue;
+    const mute = splitMuteMarker(node.label?.name ?? "");
+    if (mute.prefix || mute.suffix) continue;
+    const body = node.body;
+    if (body?.type !== "ExpressionStatement") continue;
+    let last = null;
+    for (const call of collectChain(doc, body.expression, { ref: null })) {
+      const name = inlineName(call);
+      if (name !== null) last = name;
+    }
+    if (last !== null) names.push(last);
+  }
+  return names;
+}
+__name(readInlineVizNames, "readInlineVizNames");
+
 // src/codeView/noteSounds.ts
 var VALUE_ONLY = /* @__PURE__ */ new Set([
   "gain",
@@ -15232,7 +15274,7 @@ function resizeNote(model, start, pitch, duration, opts = {}) {
       ...model.notes.filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start).map((n) => n.start),
       model.steps
     ), "capTo");
-    const build = /* @__PURE__ */ __name((cap, scoped) => {
+    const build2 = /* @__PURE__ */ __name((cap, scoped) => {
       const capped2 = Math.max(1, Math.min(duration, cap - start));
       return {
         ...model,
@@ -15243,11 +15285,11 @@ function resizeNote(model, start, pitch, duration, opts = {}) {
     }, "build");
     const anyCap = capTo(false);
     const sameCap = capTo(true);
-    const legacy = build(anyCap, false);
+    const legacy = build2(anyCap, false);
     if (sameCap === anyCap && model.notes.filter((n) => n.start === start).length < 2)
       return accept(legacy);
     const floor = serializePianoRollWithExtent(legacy);
-    for (const rung of [build(sameCap, true), build(anyCap, true)]) {
+    for (const rung of [build2(sameCap, true), build2(anyCap, true)]) {
       const out = serializePianoRollWithExtent(rung);
       if (out.mini === null) continue;
       if (degradesLocality(out.extent, floor.extent)) continue;
@@ -16943,10 +16985,10 @@ function createTrackEnvelopeScheduler(deps) {
       suspended++;
       cancelTimer?.();
       cancelTimer = null;
-      const pending2 = inFlight2;
-      pending2?.controller.abort();
+      const pending3 = inFlight2;
+      pending3?.controller.abort();
       try {
-        if (pending2) await pending2.done;
+        if (pending3) await pending3.done;
         return await fn();
       } finally {
         suspended--;
@@ -16954,15 +16996,15 @@ function createTrackEnvelopeScheduler(deps) {
       }
     },
     interrupt() {
-      const pending2 = inFlight2;
-      if (pending2 == null) {
+      const pending3 = inFlight2;
+      if (pending3 == null) {
         if (cancelTimer != null) kick();
         return null;
       }
       cancelTimer?.();
       cancelTimer = null;
-      pending2.controller.abort();
-      return pending2.done;
+      pending3.controller.abort();
+      return pending3.done;
     },
     get(trackId) {
       const env = envelopes.get(trackId);
@@ -21813,6 +21855,18 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
     /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
      *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
     this.onReady = null;
+    /** #2560 — fired once when the worker took the mount (`alive`). The
+     *  `FallbackVizRenderer` ends its startup probation here: alive, not loaded. */
+    this.onAlive = null;
+    /** #2560 — this mount is a hidden warm-up (see `markWarmUp`). */
+    this.warm = false;
+    /** #2560 — settles on the worker's `loaded`, on destroy, or when the mount
+     *  failed (nothing will ever load). */
+    this.settleLoaded = /* @__PURE__ */ __name(() => {
+    }, "settleLoaded");
+    this.loaded = new Promise((resolve) => {
+      this.settleLoaded = resolve;
+    });
     /** Unsubscribe from vizConfig changes — re-marshals the worker subset on a
      *  quality/LOD change (#269). Cleared in destroy() so a torn-down renderer
      *  doesn't post to a terminated worker. */
@@ -21836,10 +21890,24 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
     this.sampler = new MainSignalSampler(kindReadsRawScheduler(kind));
   }
   /** Register a callback fired once when the worker reports its first successful
-   *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
-   *  must be set BEFORE `mount`. */
+   *  frame (`ready`). Used by `FallbackVizRenderer` to mark the worker healthy (a
+   *  later error is then the sketch's, not a reason to fall back); must be set
+   *  BEFORE `mount`. */
   whenReady(cb) {
     this.onReady = cb;
+  }
+  /** #2560 — register a callback fired once when the worker reports it took the
+   *  mount (`alive`). Must be set BEFORE `mount`. */
+  whenAlive(cb) {
+    this.onAlive = cb;
+  }
+  /** #2560 — see `VizRenderer.whenLoaded`. */
+  whenLoaded() {
+    return this.loaded;
+  }
+  /** #2560 — see `VizRenderer.markWarmUp`. Rides on the mount message. */
+  markWarmUp() {
+    this.warm = true;
   }
   /** Drive this renderer from a muted DEMO signal feed instead of the live
    *  analyser/scheduler (viz PREVIEWS, #838). Set before/after mount; null
@@ -21853,6 +21921,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
     perf.gauge("viz.worker", 1);
     const make = getVizWorkerFactory();
     if (!make) {
+      this.settleLoaded();
       onError(new Error("WorkerVizRenderer: no viz-worker factory registered"));
       return;
     }
@@ -21874,6 +21943,14 @@ var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
       this.diagHandler = (ev) => {
         const d = ev.data;
         if (!d) return;
+        if (d.type === "alive") {
+          this.onAlive?.();
+          return;
+        }
+        if (d.type === "loaded") {
+          this.settleLoaded();
+          return;
+        }
         if (d.type === "frameAck") {
           if (this.inFlight > 0) this.inFlight--;
           if (typeof d.drawMs === "number") perf.record("viz.worker.draw", d.drawMs);
@@ -21920,7 +21997,9 @@ ${d.stack}` : "");
         p5DirectCanvas: this.kind === "p5" && isP5DirectCanvasEnabled(),
         // #875 — the sketch's `stave.options`. The main-thread renderer hands the
         // bag straight to the compiler; the worker can only get it by value.
-        options: mountOptions
+        options: mountOptions,
+        // #2560 — a hidden pre-Play warm-up: draw one frame once loaded.
+        ...this.warm ? { warm: true } : {}
       };
       this.lastOptionsKey = stableKey(mountOptions);
       worker.postMessage(mountMsg, [offscreen]);
@@ -21929,6 +22008,7 @@ ${d.stack}` : "");
       });
       this.start();
     } catch (e) {
+      this.settleLoaded();
       onError(e);
     }
   }
@@ -21992,6 +22072,7 @@ ${d.stack}` : "");
     this.start();
   }
   destroy() {
+    this.settleLoaded();
     perf.gauge("viz.worker", -1);
     if (this.glAccounted) {
       perf.gauge("viz.glctx", -1);
@@ -22120,7 +22201,16 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
     this.makeMain = makeMain;
     this.fellBack = false;
     this.ready = false;
+    /** #2560 — the worker took the mount; the probation timer has nothing to judge. */
+    this.alive = false;
     this.paused = false;
+    /** #2560 — settles when the active renderer has loaded (or there is nothing left
+     *  to wait for). See `whenLoaded`. */
+    this.settleLoaded = /* @__PURE__ */ __name(() => {
+    }, "settleLoaded");
+    this.loaded = new Promise((resolve) => {
+      this.settleLoaded = resolve;
+    });
     this.probationTimer = null;
     // Captured at mount so the fallback can re-mount the main renderer identically.
     this.container = null;
@@ -22139,16 +22229,35 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
       this.ready = true;
       this.clearProbation();
     });
-    if (!this.paused) this.armProbation();
+    this.worker.whenAlive(() => {
+      this.alive = true;
+      this.clearProbation();
+    });
+    this.armProbation();
+    void this.worker.whenLoaded().then(() => {
+      if (!this.fellBack) this.settleLoaded();
+    });
     this.worker.mount(container, components, size, (e) => this.onWorkerError(e));
   }
   armProbation() {
-    if (this.ready || this.fellBack || this.probationTimer !== null) return;
+    if (this.alive || this.ready || this.fellBack || this.probationTimer !== null) return;
     this.probationTimer = setTimeout(() => {
-      if (!this.ready && !this.fellBack) {
-        this.fallback(new Error("worker viz did not produce a frame within probation"));
+      this.probationTimer = null;
+      if (!this.alive && !this.ready && !this.fellBack) {
+        this.fallback(new Error("worker viz did not answer within probation"));
       }
     }, PROBATION_MS);
+  }
+  /** #2560 — see `VizRenderer.whenLoaded`. Follows whichever renderer is active:
+   *  the worker's `loaded`, or — after a fallback — the main renderer's own
+   *  (settled at once when it has none). Destroy settles it. */
+  whenLoaded() {
+    return this.loaded;
+  }
+  /** #2560 — see `VizRenderer.markWarmUp`. A warm-up mount is the worker's to draw;
+   *  a main-thread fallback stays paused and draws nothing until revealed. */
+  markWarmUp() {
+    this.worker.markWarmUp();
   }
   onWorkerError(e) {
     if (!this.fellBack && !this.ready) {
@@ -22172,10 +22281,14 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
       this.active = this.makeMain();
     } catch (e) {
       this.active = INERT;
+      this.settleLoaded();
       this.hostOnError?.(e);
       return;
     }
-    if (!this.container) return;
+    if (!this.container) {
+      this.settleLoaded();
+      return;
+    }
     try {
       this.active.mount(
         this.container,
@@ -22188,6 +22301,9 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
     } catch (e) {
       this.hostOnError?.(e);
     }
+    const mainLoaded = this.active.whenLoaded?.();
+    if (mainLoaded) void mainLoaded.then(() => this.settleLoaded());
+    else this.settleLoaded();
   }
   update(components) {
     this.components = components;
@@ -22199,16 +22315,15 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
   }
   pause() {
     this.paused = true;
-    if (!this.ready && !this.fellBack) this.clearProbation();
     this.active.pause();
   }
   resume() {
     this.paused = false;
-    if (!this.ready && !this.fellBack) this.armProbation();
     this.active.resume();
   }
   destroy() {
     this.clearProbation();
+    this.settleLoaded();
     this.active.destroy();
   }
   clearProbation() {
@@ -29613,9 +29728,9 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners23 = /* @__PURE__ */ new Set();
+  const listeners24 = /* @__PURE__ */ new Set();
   const notify7 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners23) l();
+    for (const l of listeners24) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify7(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify7(), "onStackItemPopped");
@@ -29625,7 +29740,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners23,
+    listeners: listeners24,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -29668,10 +29783,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners23 = active.listeners;
-  listeners23.add(cb);
+  const listeners24 = active.listeners;
+  listeners24.add(cb);
   return () => {
-    listeners23.delete(cb);
+    listeners24.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -33878,15 +33993,15 @@ function useTrackColourBars(editor, fileId) {
   React48.useEffect(() => onTrackColourBarsChange(setEnabled), []);
   React48.useEffect(() => {
     if (!editor || !enabled) return;
-    const host = editor.getDomNode?.();
-    if (!host) return;
+    const host2 = editor.getDomNode?.();
+    if (!host2) return;
     const overlay = document.createElement("div");
     overlay.setAttribute("data-track-colour-bars", "");
     overlay.style.cssText = `position:absolute;left:0;top:0;width:${BAR_WIDTH_PX}px;height:100%;overflow:hidden;pointer-events:none;z-index:5;`;
     const inner = document.createElement("div");
     inner.style.cssText = "position:absolute;left:0;top:0;width:100%;will-change:transform;";
     overlay.appendChild(inner);
-    host.appendChild(overlay);
+    host2.appendChild(overlay);
     const applyScroll = /* @__PURE__ */ __name(() => {
       inner.style.transform = `translateY(${-editor.getScrollTop()}px)`;
     }, "applyScroll");
@@ -36089,7 +36204,8 @@ __name(registerVizVisibility, "registerVizVisibility");
 // src/visualizers/attachVizLifecycle.ts
 function attachVizLifecycle(renderer, container, components, size, onError, opts = {}) {
   try {
-    renderer.mount(container, components, size, onError);
+    if (opts.adopted) renderer.update(components);
+    else renderer.mount(container, components, size, onError);
   } catch (e) {
     if (opts.onMountError) opts.onMountError(e);
     else throw e;
@@ -36247,6 +36363,31 @@ var _TeardownOnPauseRenderer = class _TeardownOnPauseRenderer {
     this.args = null;
     this.tornDown = false;
   }
+  /**
+   * #2560 — take an inner renderer that is ALREADY mounted into `container` (a
+   * warm-up built before Play) instead of building one in `mount`. The args are
+   * remembered exactly as `mount` would, so an off-screen teardown re-creates it
+   * the usual way. Call INSTEAD of `mount`.
+   */
+  adoptMounted(inner, container, components, size, onError) {
+    this.args = { container, components, size, onError };
+    this.inner = inner;
+  }
+  /**
+   * #2560 — hand the inner renderer over to a new owner (the warm-up reusing a
+   * stopped zone's sketch for the next Play) and forget it: this wrapper's later
+   * pause/resume/destroy no longer reach it. Null when torn down (nothing live).
+   */
+  release() {
+    const inner = this.inner;
+    this.inner = null;
+    return inner;
+  }
+  /** #2560 — the current inner renderer's loaded signal (taken as loaded when
+   *  torn down, or when the inner has none). */
+  whenLoaded() {
+    return this.inner?.whenLoaded?.() ?? Promise.resolve();
+  }
   /** True while reclaimed (inner destroyed). Exposed for tests/observation. */
   get isTornDown() {
     return this.tornDown;
@@ -36299,6 +36440,171 @@ var _TeardownOnPauseRenderer = class _TeardownOnPauseRenderer {
 __name(_TeardownOnPauseRenderer, "TeardownOnPauseRenderer");
 var TeardownOnPauseRenderer = _TeardownOnPauseRenderer;
 
+// src/visualizers/inlineVizWarmup.ts
+var byFile = /* @__PURE__ */ new Map();
+var descriptorSource = /* @__PURE__ */ new WeakMap();
+var host = null;
+function setVizDescriptorSource(descriptor, key3) {
+  descriptorSource.set(descriptor, key3);
+}
+__name(setVizDescriptorSource, "setVizDescriptorSource");
+function sameSketch(a, b) {
+  if (a === b) return true;
+  const ka = descriptorSource.get(a);
+  return ka !== void 0 && ka === descriptorSource.get(b);
+}
+__name(sameSketch, "sameSketch");
+function warmHost() {
+  if (host && host.isConnected) return host;
+  host = document.createElement("div");
+  host.setAttribute("data-viz-warm-host", "");
+  host.setAttribute("aria-hidden", "true");
+  host.style.cssText = "position:fixed;left:-100000px;top:0;width:1px;height:1px;overflow:hidden;visibility:hidden;pointer-events:none;";
+  document.body.appendChild(host);
+  return host;
+}
+__name(warmHost, "warmHost");
+function destroyEntry(e) {
+  try {
+    e.renderer.destroy();
+  } catch {
+  }
+  if (!e.reused) e.container.remove();
+}
+__name(destroyEntry, "destroyEntry");
+function build(vizId, descriptor, size) {
+  if (typeof document === "undefined") return null;
+  if (typeof descriptor.factory !== "function") return null;
+  let renderer;
+  try {
+    renderer = descriptor.factory();
+  } catch {
+    return null;
+  }
+  renderer.markWarmUp?.();
+  const container = document.createElement("div");
+  container.setAttribute("data-viz-warm", vizId);
+  container.style.cssText = `position:relative;overflow:hidden;width:${size.w}px;height:${size.h}px;`;
+  warmHost().appendChild(container);
+  try {
+    renderer.mount(container, { options: {} }, size, (e) => console.error("[stave] viz warm-up:", e));
+    renderer.pause();
+  } catch (e) {
+    console.error("[stave] viz warm-up mount failed:", e);
+    try {
+      renderer.destroy();
+    } catch {
+    }
+    container.remove();
+    return null;
+  }
+  return { vizId, descriptor, renderer, container, renderSize: { ...size } };
+}
+__name(build, "build");
+function warmInlineViz(fileId, vizIds, descriptors, sizeFor, offers = []) {
+  const pool = [...byFile.get(fileId) ?? []];
+  const unclaimed = [...offers];
+  const keep = [];
+  for (const vizId of vizIds) {
+    const descriptor = resolveDescriptor(vizId, descriptors);
+    if (!descriptor) continue;
+    const i = pool.findIndex((e) => sameSketch(e.descriptor, descriptor));
+    if (i >= 0) {
+      keep.push(pool.splice(i, 1)[0]);
+      continue;
+    }
+    const o = unclaimed.findIndex((x) => sameSketch(x.descriptor, descriptor));
+    if (o >= 0) {
+      const offer = unclaimed.splice(o, 1)[0];
+      const renderer = offer.claim();
+      if (renderer) {
+        keep.push({ vizId, descriptor, renderer, container: offer.container, renderSize: { ...offer.renderSize }, reused: true });
+        continue;
+      }
+    }
+    const built = build(vizId, descriptor, sizeFor(descriptor));
+    if (built) keep.push(built);
+  }
+  for (const e of pool) destroyEntry(e);
+  if (keep.length > 0) byFile.set(fileId, keep);
+  else byFile.delete(fileId);
+}
+__name(warmInlineViz, "warmInlineViz");
+function takeWarmInlineViz(fileId, descriptor) {
+  const list = byFile.get(fileId);
+  if (!list) return null;
+  const i = list.findIndex((e) => sameSketch(e.descriptor, descriptor));
+  if (i < 0) return null;
+  const [entry] = list.splice(i, 1);
+  if (list.length === 0) byFile.delete(fileId);
+  return entry;
+}
+__name(takeWarmInlineViz, "takeWarmInlineViz");
+function releaseWarmInlineViz(fileId) {
+  const list = byFile.get(fileId);
+  if (!list) return;
+  byFile.delete(fileId);
+  for (const e of list) destroyEntry(e);
+}
+__name(releaseWarmInlineViz, "releaseWarmInlineViz");
+
+// src/visualizers/vizLoadGate.ts
+var PLAY_VIZ_WAIT_CAP_MS = 2e4;
+var pending = /* @__PURE__ */ new Set();
+function trackPatternVizLoad(renderer) {
+  const p = renderer.whenLoaded?.();
+  if (!p) return;
+  pending.add(p);
+  void p.then(
+    () => pending.delete(p),
+    () => pending.delete(p)
+  );
+}
+__name(trackPatternVizLoad, "trackPatternVizLoad");
+var waiting = false;
+var listeners9 = /* @__PURE__ */ new Set();
+function setWaiting(next) {
+  if (waiting === next) return;
+  waiting = next;
+  for (const cb of Array.from(listeners9)) {
+    try {
+      cb(next);
+    } catch {
+    }
+  }
+}
+__name(setWaiting, "setWaiting");
+function isWaitingForVisuals() {
+  return waiting;
+}
+__name(isWaitingForVisuals, "isWaitingForVisuals");
+function onWaitingForVisualsChanged(cb) {
+  listeners9.add(cb);
+  return () => {
+    listeners9.delete(cb);
+  };
+}
+__name(onWaitingForVisualsChanged, "onWaitingForVisualsChanged");
+function waitForPatternViz(capMs = PLAY_VIZ_WAIT_CAP_MS, cancel) {
+  if (pending.size === 0 || capMs <= 0) return Promise.resolve("none");
+  const all = Promise.all(Array.from(pending)).then(() => "loaded");
+  setWaiting(true);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = /* @__PURE__ */ __name((outcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      setWaiting(false);
+      resolve(outcome);
+    }, "finish");
+    const timer = setTimeout(() => finish("cap"), capMs);
+    void all.then(finish);
+    void cancel?.then(() => finish("cancelled"));
+  });
+}
+__name(waitForPatternViz, "waitForPatternViz");
+
 // src/visualizers/viewZones.ts
 var DEFAULT_NATIVE = { w: 1200, h: 600 };
 var MAX_ZONE_HEIGHT = 600;
@@ -36310,6 +36616,10 @@ function nativeSizeFor(preset) {
 }
 __name(nativeSizeFor, "nativeSizeFor");
 var MAX_RENDER_WIDTH = 4096;
+function inlineRenderSizeFor(descriptor) {
+  return renderSizeFor(descriptor.nativeSize ?? DEFAULT_NATIVE);
+}
+__name(inlineRenderSizeFor, "inlineRenderSizeFor");
 function renderSizeFor(native) {
   const n = getInlineVizResolution();
   const aspect = native.h > 0 ? native.w / native.h : 1;
@@ -36483,6 +36793,8 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     }, "resume") };
   }
   const renderers2 = [];
+  const donated = /* @__PURE__ */ new Set();
+  const offers = [];
   const visibilityCleanups = [];
   const bufferedSchedulers = [];
   const zoneEntries = [];
@@ -36522,7 +36834,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const initHOverride = fileId ? getZoneHeightOverride(fileId, trackKey) : void 0;
       const layout = layoutForIntent(contentW, native, crop, initHOverride);
       const initH = layout.zoneH;
-      const container = document.createElement("div");
+      const warm = fileId ? takeWarmInlineViz(fileId, descriptor) : null;
+      const container = warm?.container ?? document.createElement("div");
+      container.removeAttribute("data-viz-warm");
+      if (warm?.reused) container.querySelectorAll("[data-viz-zone-resize]").forEach((el) => el.remove());
       container.setAttribute("data-viz-zone", "");
       container.setAttribute("data-viz-zone-track", trackKey);
       container.setAttribute("data-viz-zone-id", vizId);
@@ -36539,19 +36854,44 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       let relayout = /* @__PURE__ */ __name(() => {
       }, "relayout");
       const teardownMs = getInlineVizTeardownMs();
-      const renderer = teardownMs > 0 ? new TeardownOnPauseRenderer(makeInner, {
-        // Drop the now-empty crop wrapper so reinit re-wraps the fresh canvas
-        // (applyLayout only creates+fills the wrapper when none exists).
-        onAfterTeardown: /* @__PURE__ */ __name(() => container.querySelector("[data-viz-canvas-wrap]")?.remove(), "onAfterTeardown"),
-        onAfterReinit: /* @__PURE__ */ __name(() => relayout(), "onAfterReinit")
-      }) : makeInner();
+      let renderer;
+      if (teardownMs > 0) {
+        const wrapper = new TeardownOnPauseRenderer(makeInner, {
+          // Drop the now-empty crop wrapper so reinit re-wraps the fresh canvas
+          // (applyLayout only creates+fills the wrapper when none exists).
+          onAfterTeardown: /* @__PURE__ */ __name(() => container.querySelector("[data-viz-canvas-wrap]")?.remove(), "onAfterTeardown"),
+          onAfterReinit: /* @__PURE__ */ __name(() => relayout(), "onAfterReinit")
+        });
+        if (warm) wrapper.adoptMounted(warm.renderer, container, zoneComponents, renderSize, console.error);
+        renderer = wrapper;
+      } else {
+        renderer = warm?.renderer ?? makeInner();
+      }
       renderers2.push(renderer);
+      {
+        const zoneRenderer = renderer;
+        offers.push({
+          descriptor,
+          container,
+          renderSize,
+          claim: /* @__PURE__ */ __name(() => {
+            if (donated.has(zoneRenderer)) return null;
+            donated.add(zoneRenderer);
+            return zoneRenderer instanceof TeardownOnPauseRenderer ? zoneRenderer.release() : zoneRenderer;
+          }, "claim")
+        });
+      }
       visibilityCleanups.push(
         attachVizLifecycle(renderer, container, zoneComponents, renderSize, console.error, {
           teardownMs,
-          onMountError: /* @__PURE__ */ __name((e) => console.error("[stave] viz mount failed:", e), "onMountError")
+          onMountError: /* @__PURE__ */ __name((e) => console.error("[stave] viz mount failed:", e), "onMountError"),
+          adopted: warm !== null
         })
       );
+      if (warm && (warm.renderSize.w !== renderSize.w || warm.renderSize.h !== renderSize.h)) {
+        renderer.resize(renderSize.w, renderSize.h);
+      }
+      trackPatternVizLoad(renderer);
       const canvas = container.querySelector("canvas");
       applyLayout(container, canvas, layout, renderSize);
       requestAnimationFrame(() => {
@@ -36621,6 +36961,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       canvasWatcher.observe(container, { childList: true });
       visibilityCleanups.push(() => canvasWatcher.disconnect());
       const resizeHandle = document.createElement("div");
+      resizeHandle.setAttribute("data-viz-zone-resize", "");
       resizeHandle.style.cssText = `
         position:absolute;bottom:0;left:0;right:0;height:6px;
         cursor:row-resize;z-index:50;
@@ -36884,7 +37225,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       editorDom?.removeEventListener("mouseleave", mouseLeaveHandler);
       floatingBar?.remove();
       visibilityCleanups.forEach((fn) => fn());
-      renderers2.forEach((r) => r.destroy());
+      renderers2.forEach((r) => {
+        if (donated.has(r) && !(r instanceof TeardownOnPauseRenderer)) return;
+        r.destroy();
+      });
       bufferedSchedulers.forEach((s) => s.dispose());
       editor.changeViewZones((accessor2) => {
         zoneEntries.forEach((e) => accessor2.removeZone(e.zoneId));
@@ -36896,16 +37240,18 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     },
     resume() {
       renderers2.forEach((r) => r.resume());
-    }
+    },
+    // a claimed offer answers null to a second claim
+    offerForReuse: /* @__PURE__ */ __name(() => offers.slice(), "offerForReuse")
   };
 }
 __name(addInlineViewZones, "addInlineViewZones");
 
 // src/workspace/history/historyViewing.ts
 var state = null;
-var listeners9 = /* @__PURE__ */ new Set();
+var listeners10 = /* @__PURE__ */ new Set();
 function notify3() {
-  for (const l of listeners9) {
+  for (const l of listeners10) {
     try {
       l();
     } catch {
@@ -36942,8 +37288,8 @@ function getViewedFileIds() {
 }
 __name(getViewedFileIds, "getViewedFileIds");
 function subscribeToRuntimeView(cb) {
-  listeners9.add(cb);
-  return () => listeners9.delete(cb);
+  listeners10.add(cb);
+  return () => listeners10.delete(cb);
 }
 __name(subscribeToRuntimeView, "subscribeToRuntimeView");
 
@@ -37537,12 +37883,12 @@ function withLock(fn) {
   return run;
 }
 __name(withLock, "withLock");
-var listeners10 = /* @__PURE__ */ new Set();
+var listeners11 = /* @__PURE__ */ new Set();
 var lastNotified = null;
 function notifyIfChanged() {
   if (current3 === lastNotified) return;
   lastNotified = current3;
-  for (const l of listeners10) {
+  for (const l of listeners11) {
     try {
       l();
     } catch {
@@ -37551,12 +37897,12 @@ function notifyIfChanged() {
 }
 __name(notifyIfChanged, "notifyIfChanged");
 function subscribeToHistory(cb) {
-  listeners10.add(cb);
-  return () => listeners10.delete(cb);
+  listeners11.add(cb);
+  return () => listeners11.delete(cb);
 }
 __name(subscribeToHistory, "subscribeToHistory");
 function notifyAll() {
-  for (const l of listeners10) {
+  for (const l of listeners11) {
     try {
       l();
     } catch {
@@ -37808,6 +38154,7 @@ var MONACO_OPTIONS = {
   cursorBlinking: "smooth",
   cursorSmoothCaretAnimation: "on"
 };
+var INLINE_WARM_DEBOUNCE_MS = 400;
 function EditorView({
   fileId,
   theme = "dark",
@@ -37840,6 +38187,8 @@ function EditorView({
   const vizHandlersRef = React48.useRef({ onEditViz, onCropViz });
   vizHandlersRef.current = { onEditViz, onCropViz };
   const [hapStream, setHapStream] = React48.useState(null);
+  const [busLive, setBusLive] = React48.useState(false);
+  const [vizRegistryTick, setVizRegistryTick] = React48.useState(0);
   const [breakpointStore, setBreakpointStore] = React48.useState(null);
   const [onResume, setOnResume] = React48.useState(null);
   const [editorReady, setEditorReady] = React48.useState(false);
@@ -37865,6 +38214,7 @@ function EditorView({
       { kind: "file", fileId },
       (payload) => {
         setHapStream(payload?.hapStream ?? null);
+        setBusLive(payload !== null);
         setBreakpointStore(payload?.breakpointStore ?? null);
         setOnResume(() => payload?.onResume ?? null);
         lastPayloadRef.current = payload;
@@ -37878,11 +38228,13 @@ function EditorView({
             fileId
           );
           viewZoneHandleRef.current?.resume();
+          releaseWarmInlineViz(fileId);
         } else if (payload === null) {
           viewZoneHandleRef.current?.pause();
         } else {
           viewZoneHandleRef.current?.cleanup();
           viewZoneHandleRef.current = null;
+          releaseWarmInlineViz(fileId);
         }
         if (payload && editorRef.current && monacoRef.current) {
           sliderHandleRef.current?.cleanup();
@@ -37918,12 +38270,31 @@ function EditorView({
       );
       viewZoneHandleRef.current?.resume();
     }, "remount");
-    const unsubViz = onNamedVizChanged(remount);
+    const unsubViz = onNamedVizChanged(() => {
+      remount();
+      setVizRegistryTick((n) => n + 1);
+    });
     const unsubOverrides = subscribeToZoneOverrides(fileId, remount);
     return () => {
       unsubViz();
       unsubOverrides();
     };
+  }, [fileId]);
+  const warmCode = viewedContent ?? file?.content ?? null;
+  const warmLanguage = file?.language;
+  React48.useEffect(() => {
+    if (!fileId || busLive || warmLanguage !== "strudel" || warmCode === null) return;
+    const timer = setTimeout(() => {
+      const names = readInlineVizNames(warmCode);
+      if (names === null) return;
+      const offers = viewZoneHandleRef.current?.offerForReuse?.() ?? [];
+      warmInlineViz(fileId, names, DEFAULT_VIZ_DESCRIPTORS, inlineRenderSizeFor, offers);
+    }, INLINE_WARM_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [fileId, busLive, warmLanguage, warmCode, vizRegistryTick]);
+  React48.useEffect(() => {
+    if (!fileId) return;
+    return () => releaseWarmInlineViz(fileId);
   }, [fileId]);
   useHighlighting(editorRef.current, hapStream);
   useBreakpoints(editorRef.current, breakpointStore, onResume ?? void 0);
@@ -38241,7 +38612,7 @@ function safeLocalStorage3() {
 }
 __name(safeLocalStorage3, "safeLocalStorage");
 var values = /* @__PURE__ */ new Map();
-var listeners11 = /* @__PURE__ */ new Map();
+var listeners12 = /* @__PURE__ */ new Map();
 function keyFor(fileId) {
   return `${STORAGE_PREFIX2}${fileId}`;
 }
@@ -38261,7 +38632,7 @@ function setVizLive(fileId, on) {
   if (prev === on) return;
   values.set(fileId, on);
   safeLocalStorage3()?.setItem(keyFor(fileId), on ? "1" : "0");
-  const set2 = listeners11.get(fileId);
+  const set2 = listeners12.get(fileId);
   if (set2) for (const cb of Array.from(set2)) cb(on);
 }
 __name(setVizLive, "setVizLive");
@@ -38270,15 +38641,15 @@ function toggleVizLive(fileId) {
 }
 __name(toggleVizLive, "toggleVizLive");
 function onVizLiveChange(fileId, cb) {
-  let set2 = listeners11.get(fileId);
+  let set2 = listeners12.get(fileId);
   if (!set2) {
     set2 = /* @__PURE__ */ new Set();
-    listeners11.set(fileId, set2);
+    listeners12.set(fileId, set2);
   }
   set2.add(cb);
   return () => {
     set2.delete(cb);
-    if (set2.size === 0) listeners11.delete(fileId);
+    if (set2.size === 0) listeners12.delete(fileId);
   };
 }
 __name(onVizLiveChange, "onVizLiveChange");
@@ -38338,8 +38709,15 @@ function PreviewView({
     return unsubscribe;
   }, []);
   const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
+  const mountedContentRef = React48.useRef(null);
+  const mountedFileRef = React48.useRef(null);
+  if (file && mountedFileRef.current !== file.id) {
+    mountedFileRef.current = file.id;
+    mountedContentRef.current = file.content;
+  }
   React48.useEffect(() => {
     if (!file) return;
+    if (file.content === mountedContentRef.current) return;
     if (provider.reload === "manual") return;
     if (!liveOn) {
       catchUpNeededRef.current = true;
@@ -38350,11 +38728,14 @@ function PreviewView({
       return;
     }
     if (provider.reload === "instant") {
+      mountedContentRef.current = file.content;
       setReloadTick((n) => n + 1);
       return;
     }
     const ms = provider.debounceMs ?? 0;
+    const content = file.content;
     const handle = setTimeout(() => {
+      mountedContentRef.current = content;
       setReloadTick((n) => n + 1);
     }, ms);
     return () => {
@@ -38374,6 +38755,7 @@ function PreviewView({
     prevEffectivelyHiddenRef.current = effectivelyHidden;
     if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
       catchUpNeededRef.current = false;
+      mountedContentRef.current = file?.content ?? null;
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
@@ -38383,6 +38765,7 @@ function PreviewView({
     prevLiveOnRef.current = liveOn;
     if (wasOff && liveOn && catchUpNeededRef.current) {
       catchUpNeededRef.current = false;
+      mountedContentRef.current = file?.content ?? null;
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
@@ -39700,8 +40083,8 @@ function findBuiltinExampleSource(sourceId) {
 __name(findBuiltinExampleSource, "findBuiltinExampleSource");
 
 // src/workspace/audioGestureGate.ts
-var pending = /* @__PURE__ */ new Map();
-var listeners12 = /* @__PURE__ */ new Set();
+var pending2 = /* @__PURE__ */ new Map();
+var listeners13 = /* @__PURE__ */ new Set();
 var armed = false;
 var GESTURES2 = ["pointerdown", "pointerup", "touchend", "click", "keydown"];
 function audioMayStart() {
@@ -39711,14 +40094,14 @@ function audioMayStart() {
 }
 __name(audioMayStart, "audioMayStart");
 function notify4() {
-  for (const cb of Array.from(listeners12)) cb();
+  for (const cb of Array.from(listeners13)) cb();
 }
 __name(notify4, "notify");
 function onGesture() {
   if (!audioMayStart()) return;
   disarm();
-  const starts = Array.from(pending.values());
-  pending.clear();
+  const starts = Array.from(pending2.values());
+  pending2.clear();
   notify4();
   for (const start of starts) start();
 }
@@ -39741,25 +40124,25 @@ function startWhenAudioAllowed(key3, start) {
     start();
     return;
   }
-  pending.set(key3, start);
+  pending2.set(key3, start);
   arm();
   notify4();
 }
 __name(startWhenAudioAllowed, "startWhenAudioAllowed");
 function cancelAudioStart(key3) {
-  if (!pending.delete(key3)) return;
-  if (pending.size === 0) disarm();
+  if (!pending2.delete(key3)) return;
+  if (pending2.size === 0) disarm();
   notify4();
 }
 __name(cancelAudioStart, "cancelAudioStart");
 function isWaitingForGesture(key3) {
-  return pending.has(key3);
+  return pending2.has(key3);
 }
 __name(isWaitingForGesture, "isWaitingForGesture");
 function onGestureWaitChange(cb) {
-  listeners12.add(cb);
+  listeners13.add(cb);
   return () => {
-    listeners12.delete(cb);
+    listeners13.delete(cb);
   };
 }
 __name(onGestureWaitChange, "onGestureWaitChange");
@@ -39778,7 +40161,7 @@ function safeLocalStorage4() {
 }
 __name(safeLocalStorage4, "safeLocalStorage");
 var values2 = /* @__PURE__ */ new Map();
-var listeners13 = /* @__PURE__ */ new Set();
+var listeners14 = /* @__PURE__ */ new Set();
 function keyFor2(fileId) {
   return `${STORAGE_PREFIX3}${fileId}`;
 }
@@ -39815,7 +40198,7 @@ function setVizSourceChoice(fileId, ref) {
   const ls = safeLocalStorage4();
   if (ref.kind === "default") ls?.removeItem(keyFor2(fileId));
   else ls?.setItem(keyFor2(fileId), JSON.stringify(ref));
-  for (const cb of Array.from(listeners13)) cb(fileId, ref);
+  for (const cb of Array.from(listeners14)) cb(fileId, ref);
 }
 __name(setVizSourceChoice, "setVizSourceChoice");
 function forgetVizSourceChoicesFor(deletedFileId) {
@@ -39841,18 +40224,18 @@ function forgetVizSourceChoicesFor(deletedFileId) {
 }
 __name(forgetVizSourceChoicesFor, "forgetVizSourceChoicesFor");
 function onVizSourceChoiceChange(cb) {
-  listeners13.add(cb);
+  listeners14.add(cb);
   return () => {
-    listeners13.delete(cb);
+    listeners14.delete(cb);
   };
 }
 __name(onVizSourceChoiceChange, "onVizSourceChoiceChange");
 
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
-var listeners14 = /* @__PURE__ */ new Set();
+var listeners15 = /* @__PURE__ */ new Set();
 function notify5() {
-  for (const l of listeners14) {
+  for (const l of listeners15) {
     try {
       l();
     } catch {
@@ -39886,9 +40269,9 @@ function getBottomPanelTab(id) {
 }
 __name(getBottomPanelTab, "getBottomPanelTab");
 function subscribeToBottomPanelTabs(cb) {
-  listeners14.add(cb);
+  listeners15.add(cb);
   return () => {
-    listeners14.delete(cb);
+    listeners15.delete(cb);
   };
 }
 __name(subscribeToBottomPanelTabs, "subscribeToBottomPanelTabs");
@@ -39983,7 +40366,7 @@ function writePersistedActiveTabId(value) {
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 var SERVER_STATE = { open: false, activeTabId: null };
 var state5 = null;
-var listeners15 = /* @__PURE__ */ new Set();
+var listeners16 = /* @__PURE__ */ new Set();
 function current4() {
   if (state5 === null) state5 = { open: readPersistedOpen(), activeTabId: readPersistedActiveTabId() };
   return state5;
@@ -39991,7 +40374,7 @@ function current4() {
 __name(current4, "current");
 function commit2(next) {
   state5 = next;
-  for (const l of listeners15) {
+  for (const l of listeners16) {
     try {
       l();
     } catch {
@@ -40026,9 +40409,9 @@ function showBottomPanelTab(activeTabId) {
 }
 __name(showBottomPanelTab, "showBottomPanelTab");
 function subscribeToBottomPanelState(cb) {
-  listeners15.add(cb);
+  listeners16.add(cb);
   return () => {
-    listeners15.delete(cb);
+    listeners16.delete(cb);
   };
 }
 __name(subscribeToBottomPanelState, "subscribeToBottomPanelState");
@@ -40085,8 +40468,8 @@ registerBottomPanelTab({
 var CODE_UNDO_ATTR = "data-code-undo-file";
 var CODE_UNDO_ACTIVE = "active";
 function codeEditorForFocus(el) {
-  const host = el?.closest?.(`[${CODE_UNDO_ATTR}]`);
-  const target = host?.getAttribute(CODE_UNDO_ATTR);
+  const host2 = el?.closest?.(`[${CODE_UNDO_ATTR}]`);
+  const target = host2?.getAttribute(CODE_UNDO_ATTR);
   if (!target) return void 0;
   const editor = target === CODE_UNDO_ACTIVE ? getActiveEditor() : getEditorForFile(target);
   return editor ?? void 0;
@@ -40184,10 +40567,10 @@ function readStored() {
 }
 __name(readStored, "readStored");
 var current5 = readStored();
-var listeners16 = /* @__PURE__ */ new Set();
+var listeners17 = /* @__PURE__ */ new Set();
 function subscribe5(listener) {
-  listeners16.add(listener);
-  return () => listeners16.delete(listener);
+  listeners17.add(listener);
+  return () => listeners17.delete(listener);
 }
 __name(subscribe5, "subscribe");
 function usePatternSideShown() {
@@ -40201,7 +40584,7 @@ function setPatternSideShown(shown) {
     window.localStorage.setItem(PATTERN_SIDE_KEY, shown ? "shown" : "hidden");
   } catch {
   }
-  listeners16.forEach((l) => l());
+  listeners17.forEach((l) => l());
 }
 __name(setPatternSideShown, "setPatternSideShown");
 function PatternSideToggle() {
@@ -40795,7 +41178,7 @@ function readStored2() {
 }
 __name(readStored2, "readStored");
 var current6 = readStored2();
-var listeners17 = /* @__PURE__ */ new Set();
+var listeners18 = /* @__PURE__ */ new Set();
 function setMode(mode) {
   if (mode === current6) return;
   current6 = mode;
@@ -40803,12 +41186,12 @@ function setMode(mode) {
     window.localStorage.setItem(NOTE_COLOR_MODE_KEY, mode);
   } catch {
   }
-  listeners17.forEach((l) => l());
+  listeners18.forEach((l) => l());
 }
 __name(setMode, "setMode");
 function subscribe6(listener) {
-  listeners17.add(listener);
-  return () => listeners17.delete(listener);
+  listeners18.add(listener);
+  return () => listeners18.delete(listener);
 }
 __name(subscribe6, "subscribe");
 function useNoteColorMode() {
@@ -42037,10 +42420,10 @@ function readStored3() {
 }
 __name(readStored3, "readStored");
 var current7 = readStored3();
-var listeners18 = /* @__PURE__ */ new Set();
+var listeners19 = /* @__PURE__ */ new Set();
 function subscribe7(listener) {
-  listeners18.add(listener);
-  return () => listeners18.delete(listener);
+  listeners19.add(listener);
+  return () => listeners19.delete(listener);
 }
 __name(subscribe7, "subscribe");
 function useGridMode() {
@@ -42058,7 +42441,7 @@ function setGridMode(mode) {
     window.localStorage.setItem(GRID_MODE_KEY, mode);
   } catch {
   }
-  listeners18.forEach((l) => l());
+  listeners19.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
 function usePatternLength(chunk, model, parse9, writeMini) {
@@ -44194,7 +44577,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners23 = /* @__PURE__ */ new Set();
+  const listeners24 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -44209,16 +44592,16 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners23.forEach((l) => l());
+    listeners24.forEach((l) => l());
   }, "setAccessor");
   const notify7 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners23.forEach((l) => l());
+    listeners24.forEach((l) => l());
   }, "notify");
   const read7 = /* @__PURE__ */ __name(() => cached2, "read");
   const subscribe11 = /* @__PURE__ */ __name((listener) => {
-    listeners23.add(listener);
-    return () => listeners23.delete(listener);
+    listeners24.add(listener);
+    return () => listeners24.delete(listener);
   }, "subscribe");
   const useCatalog = /* @__PURE__ */ __name(() => React48__namespace.useSyncExternalStore(subscribe11, read7, () => null), "useCatalog");
   return { setAccessor, notify: notify7, read: read7, useCatalog };
@@ -47237,7 +47620,7 @@ __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners19 = /* @__PURE__ */ new Set();
+var listeners20 = /* @__PURE__ */ new Set();
 function read4(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
@@ -47249,7 +47632,7 @@ function toggleSolo(fileId, id) {
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners19.forEach((l) => l());
+  listeners20.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -47264,9 +47647,9 @@ function setPreSoloMutes(fileId, snapshot) {
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
 function subscribe8(listener) {
-  listeners19.add(listener);
+  listeners20.add(listener);
   return () => {
-    listeners19.delete(listener);
+    listeners20.delete(listener);
   };
 }
 __name(subscribe8, "subscribe");
@@ -48140,7 +48523,7 @@ function safeLocalStorage6() {
 }
 __name(safeLocalStorage6, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners20 = /* @__PURE__ */ new Set();
+var listeners21 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -48186,13 +48569,13 @@ function toggleExpanded(fileId, id) {
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners20.forEach((l) => l());
+  listeners21.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
 function subscribe9(listener) {
-  listeners20.add(listener);
+  listeners21.add(listener);
   return () => {
-    listeners20.delete(listener);
+    listeners21.delete(listener);
   };
 }
 __name(subscribe9, "subscribe");
@@ -48253,7 +48636,7 @@ function safeLocalStorage7() {
 }
 __name(safeLocalStorage7, "safeLocalStorage");
 var cached = null;
-var listeners21 = /* @__PURE__ */ new Set();
+var listeners22 = /* @__PURE__ */ new Set();
 function read6() {
   if (cached == null) {
     const ls = safeLocalStorage7();
@@ -48276,7 +48659,7 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners21.forEach((l) => l());
+  listeners22.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
@@ -48284,9 +48667,9 @@ function nudgeMixerZoom(dir) {
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
 function subscribe10(listener) {
-  listeners21.add(listener);
+  listeners22.add(listener);
   return () => {
-    listeners21.delete(listener);
+    listeners22.delete(listener);
   };
 }
 __name(subscribe10, "subscribe");
@@ -50658,9 +51041,9 @@ var WorkspaceShell = React48.forwardRef(/* @__PURE__ */ __name(function Workspac
     for (const g of groups.values()) {
       if (g.backgroundFileId) restoreOwnBackdropSound(g, g.backgroundFileId);
     }
-    const waiting = backdropSourceByFile.current;
+    const waiting2 = backdropSourceByFile.current;
     return () => {
-      for (const id of waiting.keys()) cancelAudioStart(id);
+      for (const id of waiting2.keys()) cancelAudioStart(id);
     };
   }, []);
   const updateGroupOverride = React48.useCallback(
@@ -52358,6 +52741,8 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     /** #2259 — a Play was asked for and the clock hasn't started yet (see `play`). */
     this.playPendingState = false;
     this.playPendingListeners = /* @__PURE__ */ new Set();
+    /** #2560 — ends a Play's wait for the pattern's sketches early (Stop). */
+    this.cancelVizWait = null;
     this.evaluateSuccessListeners = /* @__PURE__ */ new Set();
     /**
      * Unregister callback from the playback coordinator. Called in
@@ -52570,6 +52955,7 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
       return { error: err };
     }
     this.engine.unlockAudio?.();
+    const fromStop = !this.isPlayingState;
     const myGen = ++this.playGeneration;
     const superseded = /* @__PURE__ */ __name(() => this.isDisposed || myGen !== this.playGeneration, "superseded");
     try {
@@ -52636,6 +53022,16 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
       } : void 0
     };
     workspaceAudioBus.publish(this.fileId, payload);
+    if (fromStop) {
+      const cancelled = new Promise((resolve) => {
+        this.cancelVizWait = resolve;
+      });
+      await waitForPatternViz(PLAY_VIZ_WAIT_CAP_MS, cancelled);
+      this.cancelVizWait = null;
+      if (superseded()) {
+        return { error: null };
+      }
+    }
     try {
       this.engine.play();
     } catch (err) {
@@ -52861,6 +53257,8 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
   }
   stop() {
     this.playGeneration++;
+    this.cancelVizWait?.();
+    this.cancelVizWait = null;
     if (this.isDisposed) return;
     this.setPlayPending(false);
     const wasPlaying = this.isPlayingState;
@@ -53041,12 +53439,12 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
   isPlayPending() {
     return this.playPendingState;
   }
-  setPlayPending(pending2) {
-    if (this.playPendingState === pending2) return;
-    this.playPendingState = pending2;
+  setPlayPending(pending3) {
+    if (this.playPendingState === pending3) return;
+    this.playPendingState = pending3;
     for (const cb of Array.from(this.playPendingListeners)) {
       try {
-        cb(pending2);
+        cb(pending3);
       } catch {
       }
     }
@@ -54936,9 +55334,32 @@ function errorOf(e) {
   return e instanceof Error ? e : new Error(String(e));
 }
 __name(errorOf, "errorOf");
-function runThreeSketch(compiled, loaded, host) {
+var loadTrackers = /* @__PURE__ */ new WeakMap();
+function trackLoads(manager) {
+  if (!manager || typeof manager.itemStart !== "function" || typeof manager.itemEnd !== "function") return null;
+  const known = loadTrackers.get(manager);
+  if (known) return known;
+  const t = { pending: 0, idle: /* @__PURE__ */ new Set() };
+  const start = manager.itemStart;
+  const end = manager.itemEnd;
+  manager.itemStart = function(url) {
+    t.pending++;
+    return start.call(this, url);
+  };
+  manager.itemEnd = function(url) {
+    if (t.pending > 0) t.pending--;
+    const r = end.call(this, url);
+    if (t.pending === 0) for (const fn of [...t.idle]) fn();
+    return r;
+  };
+  loadTrackers.set(manager, t);
+  return t;
+}
+__name(trackLoads, "trackLoads");
+function runThreeSketch(compiled, loaded, host2) {
   var _a;
   const BaseRenderer = loaded.THREE.WebGLRenderer;
+  const loads = trackLoads(loaded.THREE.DefaultLoadingManager);
   let disposed = false;
   let topLevelDone = false;
   let renderedThisFrame = false;
@@ -54955,7 +55376,7 @@ function runThreeSketch(compiled, loaded, host) {
     if (seen.has(key3)) return;
     if (seen.size > 64) seen.clear();
     seen.add(key3);
-    host.report({
+    host2.report({
       level,
       message: prefix + err.message,
       line: at?.line,
@@ -54973,14 +55394,14 @@ function runThreeSketch(compiled, loaded, host) {
   const removeListener = /* @__PURE__ */ __name((type, fn) => {
     if (type === "resize") resizeListeners.delete(fn);
   }, "removeListener");
-  const canvas = host.canvas;
+  const canvas = host2.canvas;
   if (!("style" in canvas)) canvas.style = {};
   const canvasAddListener = canvas.addEventListener;
   let canvasPatched = false;
   const _StaveWebGLRenderer = class _StaveWebGLRenderer extends BaseRenderer {
     constructor(params = {}) {
       if (disposed) throw new Error("this sketch was stopped");
-      super({ ...params, canvas: host.canvas });
+      super({ ...params, canvas: host2.canvas });
       const self = this;
       renderers2.push(self);
       const render = self.render;
@@ -55044,19 +55465,19 @@ function runThreeSketch(compiled, loaded, host) {
   }, "cancelAnimationFrame");
   const stave = {
     get width() {
-      return host.size().w;
+      return host2.size().w;
     },
     get height() {
-      return host.size().h;
+      return host2.size().h;
     },
     get options() {
-      return host.options();
+      return host2.options();
     },
     get scheduler() {
-      return host.scheduler();
+      return host2.scheduler();
     },
     get sig() {
-      return host.uniforms().sig;
+      return host2.uniforms().sig;
     }
   };
   const stubElement = /* @__PURE__ */ __name(() => {
@@ -55082,7 +55503,7 @@ function runThreeSketch(compiled, loaded, host) {
     };
     return el;
   }, "stubElement");
-  const createElement7 = /* @__PURE__ */ __name((tag) => String(tag).toLowerCase() === "canvas" ? host.createCanvas() : stubElement(), "createElement");
+  const createElement7 = /* @__PURE__ */ __name((tag) => String(tag).toLowerCase() === "canvas" ? host2.createCanvas() : stubElement(), "createElement");
   const body = {
     style: {},
     appendChild: /* @__PURE__ */ __name((c) => c, "appendChild"),
@@ -55102,9 +55523,9 @@ function runThreeSketch(compiled, loaded, host) {
   };
   const own = {};
   Object.defineProperties(own, {
-    innerWidth: { get: /* @__PURE__ */ __name(() => host.size().w, "get"), enumerable: true },
-    innerHeight: { get: /* @__PURE__ */ __name(() => host.size().h, "get"), enumerable: true },
-    devicePixelRatio: { get: /* @__PURE__ */ __name(() => host.dpr(), "get"), enumerable: true }
+    innerWidth: { get: /* @__PURE__ */ __name(() => host2.size().w, "get"), enumerable: true },
+    innerHeight: { get: /* @__PURE__ */ __name(() => host2.size().h, "get"), enumerable: true },
+    devicePixelRatio: { get: /* @__PURE__ */ __name(() => host2.dpr(), "get"), enumerable: true }
   });
   Object.assign(own, {
     addEventListener: addListener,
@@ -55130,10 +55551,10 @@ function runThreeSketch(compiled, loaded, host) {
   });
   const env = {};
   Object.defineProperties(env, {
-    innerWidth: { get: /* @__PURE__ */ __name(() => host.size().w, "get") },
-    innerHeight: { get: /* @__PURE__ */ __name(() => host.size().h, "get") },
-    devicePixelRatio: { get: /* @__PURE__ */ __name(() => host.dpr(), "get") },
-    sig: { get: /* @__PURE__ */ __name(() => host.uniforms().sig, "get") }
+    innerWidth: { get: /* @__PURE__ */ __name(() => host2.size().w, "get") },
+    innerHeight: { get: /* @__PURE__ */ __name(() => host2.size().h, "get") },
+    devicePixelRatio: { get: /* @__PURE__ */ __name(() => host2.dpr(), "get") },
+    sig: { get: /* @__PURE__ */ __name(() => host2.uniforms().sig, "get") }
   });
   Object.assign(env, {
     stave,
@@ -55168,11 +55589,36 @@ function runThreeSketch(compiled, loaded, host) {
   } catch (e) {
     topLevelDone = true;
     const err = errorOf(e);
-    host.report({ level: "error", message: err.message });
+    host2.report({ level: "error", message: err.message });
     done = Promise.resolve({ error: err });
   }
+  let loadedPromise = null;
+  const whenLoadedOnce = /* @__PURE__ */ __name(() => {
+    if (loadedPromise) return loadedPromise;
+    loadedPromise = done.then(
+      () => new Promise((resolve) => {
+        const idle = /* @__PURE__ */ __name(() => disposed || !loads || loads.pending === 0, "idle");
+        const check = /* @__PURE__ */ __name(() => {
+          if (!idle()) return;
+          setTimeout(() => {
+            if (!idle()) return;
+            loads?.idle.delete(check);
+            resolve();
+          }, 0);
+        }, "check");
+        loads?.idle.add(check);
+        check();
+      })
+    );
+    return loadedPromise;
+  }, "whenLoadedOnce");
+  const settleOnDispose = [];
   return {
     done,
+    whenLoaded: /* @__PURE__ */ __name(() => disposed ? Promise.resolve() : new Promise((resolve) => {
+      settleOnDispose.push(resolve);
+      void whenLoadedOnce().then(resolve);
+    }), "whenLoaded"),
     ready: /* @__PURE__ */ __name(() => topLevelDone || loops.size > 0 || rafQueue.size > 0, "ready"),
     rendered: /* @__PURE__ */ __name(() => renderedThisFrame, "rendered"),
     frame(timeMs) {
@@ -55208,7 +55654,7 @@ function runThreeSketch(compiled, loaded, host) {
         }
         return;
       }
-      const { w, h } = host.size();
+      const { w, h } = host2.size();
       for (const r of renderers2) {
         try {
           r.setSize(w, h, false);
@@ -55226,6 +55672,7 @@ function runThreeSketch(compiled, loaded, host) {
     dispose() {
       if (disposed) return;
       disposed = true;
+      for (const fn of settleOnDispose.splice(0)) fn();
       loops.clear();
       rafQueue.clear();
       resizeListeners.clear();
@@ -55997,8 +56444,8 @@ var inFlight = /* @__PURE__ */ new Map();
 async function resolveAsset(blobHash) {
   const cached2 = urlCache.get(blobHash);
   if (cached2) return cached2;
-  const pending2 = inFlight.get(blobHash);
-  if (pending2) return pending2;
+  const pending3 = inFlight.get(blobHash);
+  if (pending3) return pending3;
   const work = (async () => {
     const blob = await getAsset(blobHash);
     if (!blob) return null;
@@ -58056,7 +58503,7 @@ __name(VizEditorChrome, "VizEditorChrome");
 // src/workspace/preview/codeBackdropOptions.ts
 var LEGACY = "";
 var slots2 = /* @__PURE__ */ new Map();
-var listeners22 = /* @__PURE__ */ new Set();
+var listeners23 = /* @__PURE__ */ new Set();
 var version = 0;
 function sameOptions(a, b) {
   if (a === b) return true;
@@ -58074,7 +58521,7 @@ function setCodeBackdropOptions(next, patternFileId) {
   if (next) slots2.set(key3, next);
   else slots2.delete(key3);
   version++;
-  for (const l of [...listeners22]) l();
+  for (const l of [...listeners23]) l();
 }
 __name(setCodeBackdropOptions, "setCodeBackdropOptions");
 function retainCodeBackdropOptions(openPatternFileIds) {
@@ -58087,7 +58534,7 @@ function retainCodeBackdropOptions(openPatternFileIds) {
   }
   if (!dropped) return;
   version++;
-  for (const l of [...listeners22]) l();
+  for (const l of [...listeners23]) l();
 }
 __name(retainCodeBackdropOptions, "retainCodeBackdropOptions");
 function getCodeBackdropOptions(patternFileId) {
@@ -58099,9 +58546,9 @@ function getCodeBackdropOptionsVersion() {
 }
 __name(getCodeBackdropOptionsVersion, "getCodeBackdropOptionsVersion");
 function subscribeCodeBackdropOptions(listener) {
-  listeners22.add(listener);
+  listeners23.add(listener);
   return () => {
-    listeners22.delete(listener);
+    listeners23.delete(listener);
   };
 }
 __name(subscribeCodeBackdropOptions, "subscribeCodeBackdropOptions");
@@ -58265,6 +58712,7 @@ function CompiledVizMount(props) {
         reportError
       );
       rendererRef.current = mounted2;
+      if (backdrop) trackPatternVizLoad(mounted2.renderer);
       if (paused) {
         try {
           mounted2.renderer.pause();
@@ -58396,6 +58844,10 @@ var THREE_VIZ = createCompiledVizProvider({
 function registerPresetAsNamedViz(preset, name = preset.name) {
   try {
     const descriptor = compilePreset(preset);
+    setVizDescriptorSource(
+      descriptor,
+      JSON.stringify([preset.renderer, preset.code, preset.filePath ?? null, preset.nativeSize ?? null])
+    );
     registerNamedViz(name, descriptor);
     return true;
   } catch {
@@ -59032,6 +59484,7 @@ exports.PATTERN_TAB_ID = PATTERN_TAB_ID;
 exports.PIANOROLL_P5_CODE = PIANOROLL_P5_CODE;
 exports.PIANO_ROLL_TAB_ID = PIANO_ROLL_TAB_ID;
 exports.PITCHWHEEL_P5_CODE = PITCHWHEEL_P5_CODE;
+exports.PLAY_VIZ_WAIT_CAP_MS = PLAY_VIZ_WAIT_CAP_MS;
 exports.PatternPanel = PatternPanel;
 exports.PianoRollGrid = PianoRollGrid;
 exports.PreviewView = PreviewView;
@@ -59300,6 +59753,7 @@ exports.isVizGovernorEnabled = isVizGovernorEnabled;
 exports.isVizLanguage = isVizLanguage;
 exports.isVizPumpSharedCacheEnabled = isVizPumpSharedCacheEnabled;
 exports.isVizWorkerPoolEnabled = isVizWorkerPoolEnabled;
+exports.isWaitingForVisuals = isWaitingForVisuals;
 exports.knobRangeFor = knobRangeFor;
 exports.labelAtOffset = labelAtOffset;
 exports.laneKeyOf = laneKeyOf;
@@ -59361,6 +59815,7 @@ exports.onTrackColourBarsChange = onTrackColourBarsChange;
 exports.onUiIconSizeChange = onUiIconSizeChange;
 exports.onVizInputsLiveValuesChange = onVizInputsLiveValuesChange;
 exports.onVizQualityChange = onVizQualityChange;
+exports.onWaitingForVisualsChanged = onWaitingForVisualsChanged;
 exports.openAudioFrame = openAudioFrame;
 exports.otherTrackNames = otherTrackNames;
 exports.parseMessageLocation = parseMessageLocation;
