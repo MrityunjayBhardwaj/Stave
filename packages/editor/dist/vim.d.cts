@@ -1,5 +1,5 @@
 import * as Monaco from 'monaco-editor';
-import { C as CodeEditor, e as ExtensionHost, a as ExtensionModule } from './types-2qbwQyap.cjs';
+import { C as CodeEditor, g as ExtensionHost, a as ExtensionModule } from './types-BOR17yiy.cjs';
 
 /** What `:w` and friends say. */
 declare const SAVES_AS_YOU_TYPE = "Stave saves as you type";

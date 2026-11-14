@@ -70,6 +70,7 @@ import { listedExtensions } from "@stave/editor";
 import { ExtensionsPanel } from "../extensions/ExtensionsPanel";
 import { extensionAppTabs } from "../extensions/ExtensionPage";
 import { extensionTabKey, showsExtensionsPanel } from "../extensions/extensionsView";
+import { extensionSettingsQuery } from "../extensions/extensionSettingsView";
 import { appTabShellProps } from "./appTabs";
 import {
   bumpEditorFontSize,
@@ -362,6 +363,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [docsSearchOpen, setDocsSearchOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("settings");
+  // #2556 — the search Settings opens with: an extension's page asks for `@ext:<id>`;
+  // cleared when the window closes or changes tab, so the File menu opens it unfiltered.
+  const [settingsQuery, setSettingsQuery] = useState("");
+  const openExtensionSettings = useCallback((extensionId: string) => {
+    setSettingsQuery(extensionSettingsQuery(extensionId));
+    setSettingsTab("settings");
+    setSettingsOpen(true);
+  }, []);
   const [cropTarget, setCropTarget] = useState<
     | { mode: "inline"; vizId: string; presetId: string; fileId: string; trackKey: string; renderSize?: { w: number; h: number } }
     | { mode: "backdrop"; adapter: import("./CropPopup").CropAdapter }
@@ -747,10 +756,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const appTabs = useMemo(
     () =>
       appTabShellProps(
-        [galleryAppTab({ actions: galleryActions, onPublish: openPublish }), ...extensionAppTabs(listedExtensions())],
+        [
+          galleryAppTab({ actions: galleryActions, onPublish: openPublish }),
+          ...extensionAppTabs(listedExtensions(), { openSettings: openExtensionSettings }),
+        ],
         shellRef,
       ),
-    [galleryActions, openPublish],
+    [galleryActions, openPublish, openExtensionSettings],
   );
   // #1346 — the File menu's "Bounce to WAV" needs the LIVE audio graph, which
   // lives in StrudelEditorClient's runtime map. Same shape as `shellRef`: we
@@ -2519,9 +2531,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
       <SettingsModal
         open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => { setSettingsOpen(false); setSettingsQuery(""); }}
         tab={settingsTab}
-        onTabChange={setSettingsTab}
+        onTabChange={(t) => { setSettingsQuery(""); setSettingsTab(t); }}
+        initialQuery={settingsQuery}
       />
 
       <DocsSearchPalette

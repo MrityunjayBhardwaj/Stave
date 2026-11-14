@@ -8,7 +8,7 @@
  * SettingsPanel (and vice-versa), mirroring the existing
  * `assertTierSchemaCoverage` pattern for tier flags.
  *
- * "Custom" sections (Modules, Signal Aliases) are NOT simple fields — they
+ * "Custom" sections (Modules, Signal Aliases, Extensions) are NOT simple fields — they
  * render bespoke content (tier disclosure / alias editor) and declare
  * `custom` instead of `fields`. Their own contract is guarded separately
  * (Modules by `assertTierSchemaCoverage`).
@@ -52,7 +52,7 @@ export interface SettingsSectionDef {
   /** simple, coverage-tracked fields. Omitted for custom sections. */
   readonly fields?: readonly SettingFieldDef[];
   /** bespoke content instead of simple fields. */
-  readonly custom?: "modules" | "aliases";
+  readonly custom?: "modules" | "aliases" | "extensions";
 }
 
 const THEME_OPTIONS: readonly SelectOption[] = [
@@ -151,6 +151,8 @@ export const SECTION_DEFS: readonly SettingsSectionDef[] = [
   },
   { id: "modules", navLabel: "Modules", title: "Strudel modules", custom: "modules" },
   { id: "aliases", navLabel: "Signal Aliases", title: "Signal Aliases", custom: "aliases" },
+  // #2556 — the settings switched-on extensions declare, a group per extension
+  { id: "extensions", navLabel: "Extensions", title: "Extensions", custom: "extensions" },
 ];
 
 /** Flat list of every simple-field key across all sections (coverage token set). */

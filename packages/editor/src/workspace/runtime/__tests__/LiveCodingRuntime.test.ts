@@ -1268,6 +1268,80 @@ describe('LiveCodingRuntime', () => {
       }
     }
 
+    // #2593 — Stop keeps the playhead; Stop again rewinds (Logic Pro's two
+    // presses). Strudel's clock reads 0 while stopped and counts from 0 on Play,
+    // so the mock's engine.stop() puts `now` back to 0 as the real one does.
+    function stoppableLoopEngine() {
+      const h = makeLoopEngine()
+      const realStop = h.engine.stop.bind(h.engine)
+      ;(h.engine as unknown as { stop: () => void }).stop = () => {
+        realStop()
+        h.setNow(0)
+      }
+      return h
+    }
+
+    it('#2593 Play after Stop carries on from where Stop was pressed, not the last seek', async () => {
+      const { engine, setNow } = stoppableLoopEngine()
+      const runtime = new LiveCodingRuntime('stop-park-1', engine, () => 'code')
+      await runtime.play()
+      setNow(1.2)
+      await runtime.seekTo(4.5) // the ruler click
+      setNow(4.2) // three cycles later: song cycle 7.5
+      expect(runtime.getSongPosition()).toBeCloseTo(7.5)
+
+      runtime.transportStop()
+      await runtime.play() // the clock restarts at 0
+      expect(runtime.getSongPosition()).toBeCloseTo(7.5)
+      setNow(0.5)
+      expect(runtime.getSongPosition()).toBeCloseTo(8)
+      runtime.dispose()
+    })
+
+    it('#2593 a second Stop while stopped rewinds to the start of the song', async () => {
+      const { engine, setNow } = stoppableLoopEngine()
+      const runtime = new LiveCodingRuntime('stop-park-2', engine, () => 'code')
+      await runtime.play()
+      setNow(2)
+      await runtime.seekTo(6)
+      setNow(3)
+      runtime.transportStop() // parks at 7
+      runtime.transportStop() // stopped: rewinds
+      await runtime.play()
+      expect(runtime.getSongPosition()).toBeCloseTo(0)
+      runtime.dispose()
+    })
+
+    it('#2593 with a loop armed, the second Stop rewinds to the loop start', async () => {
+      const { engine, setNow } = stoppableLoopEngine()
+      const runtime = new LiveCodingRuntime('stop-park-3', engine, () => 'code')
+      await runtime.play()
+      setNow(0)
+      await runtime.setLoopRange({ startCycle: 3, cycles: 2 })
+      setNow(1.5) // inside the loop: song 4.5
+      expect(runtime.getSongPosition()).toBeCloseTo(4.5)
+      runtime.transportStop()
+      await runtime.play()
+      expect(runtime.getSongPosition()).toBeCloseTo(4.5) // first Stop keeps it
+      runtime.transportStop()
+      runtime.transportStop()
+      await runtime.play()
+      expect(runtime.getSongPosition()).toBeCloseTo(3) // second Stop: loop start
+      runtime.dispose()
+    })
+
+    it('#2593 rewind does nothing while playing (moving a playing transport is a seek)', async () => {
+      const { engine, setNow, getOffset } = stoppableLoopEngine()
+      const runtime = new LiveCodingRuntime('stop-park-4', engine, () => 'code')
+      await runtime.play()
+      setNow(2)
+      await runtime.seekTo(6)
+      const before = getOffset()
+      runtime.rewind()
+      expect(getOffset()).toBe(before)
+      runtime.dispose()
+    })
+
     it('arming from outside the span starts playback at the loop start', async () => {
       const { engine, setNow, getLoop } = makeLoopEngine()
       const runtime = new LiveCodingRuntime('loop-1', engine, () => 'code')

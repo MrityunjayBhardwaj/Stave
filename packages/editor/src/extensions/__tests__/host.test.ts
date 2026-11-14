@@ -147,9 +147,9 @@ describe('createRecordingHost', () => {
 })
 
 describe('createCommonHost (#2538)', () => {
-  it('names no language: an id, onDeactivate, and the editor hook and keys (#2513), nothing else', () => {
+  it('names no language: an id, onDeactivate, the editor hook and keys (#2513), settings (#2556), nothing else', () => {
     const rec = createCommonHost('zzext')
-    expect(Object.keys(rec.host).sort()).toEqual(['closeAllEditors', 'id', 'keyOf', 'onDeactivate', 'onEditor', 'takesKey'])
+    expect(Object.keys(rec.host).sort()).toEqual(['closeAllEditors', 'id', 'keyOf', 'onDeactivate', 'onEditor', 'settings', 'takesKey'])
     rec.undo()
   })
 

@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest'
 import type { IRPattern } from '../../../codeView/ir/IRPattern'
 import type { IREvent } from '../../../codeView/ir/IREvent'
 import { MainSignalSampler } from '../signalSampler'
+import { RawSchedulerShim } from '../rawShims'
 import { kindReadsRawScheduler } from '../../renderers/WorkerVizRenderer'
 
 /** A scheduler that records every query window it is asked for. */
@@ -72,19 +73,25 @@ describe('MainSignalSampler raw-scheduler query (#2561)', () => {
       query: (a: number, b: number) => (ev.begin < b && ev.end > a ? [ev] : []),
     } as unknown as IRPattern
     const s = new MainSignalSampler(true)
+    // What the worker sketch / GLSL texture reads: the frames through the shim.
+    const shim = new RawSchedulerShim()
     s.bind({ scheduler: sched })
     const f1 = s.sample()
+    shim.set(f1.rawScheduler)
     expect(f1.rawScheduler?.cps).toBe(0.75)
-    expect(f1.rawScheduler?.events[0].trackKey).toBe('$1')
-    const v1 = f1.rawScheduler?.version
+    expect(shim.cps()).toBe(0.75)
+    expect(shim.all()[0]?.trackKey).toBe('$1')
+    const v1 = shim.version()
     expect(typeof v1).toBe('number')
     // a frame later, same notes in the window → same version
     now = 10.01
-    expect(s.sample().rawScheduler?.version).toBe(v1)
+    shim.set(s.sample().rawScheduler)
+    expect(shim.version()).toBe(v1)
     // the note ends behind the window → the answer changes → the version moves
+    // (the frame need not carry notes for that, #2582: the shim narrows them)
     now = 15
-    const f3 = s.sample()
-    expect(f3.rawScheduler?.events).toEqual([])
-    expect(f3.rawScheduler?.version).not.toBe(v1)
+    shim.set(s.sample().rawScheduler)
+    expect(shim.all()).toEqual([])
+    expect(shim.version()).not.toBe(v1)
   })
 })

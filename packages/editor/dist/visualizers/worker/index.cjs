@@ -1449,6 +1449,9 @@ var _WorkerBusFeed = class _WorkerBusFeed {
 __name(_WorkerBusFeed, "WorkerBusFeed");
 var WorkerBusFeed = _WorkerBusFeed;
 
+// src/visualizers/worker/rollingHapWindow.ts
+var EDGE = 1e-6;
+
 // src/visualizers/worker/rawShims.ts
 var _RawAnalyserShim = class _RawAnalyserShim {
   constructor() {
@@ -1504,23 +1507,72 @@ var RawAnalyserShim = _RawAnalyserShim;
 var _RawSchedulerShim = class _RawSchedulerShim {
   constructor() {
     this._now = 0;
+    /** The notes as last shipped (#2582) — a superset of the window when the
+     *  frames carry `lo`/`hi`. */
+    this.held = [];
+    /** The shipped version of `held`; undefined when unknown or lost. */
+    this.heldVersion = void 0;
+    /** This frame's window: `held` narrowed to `[lo, hi)`. */
     this.events = [];
-    this._version = void 0;
+    /** Moves whenever `events` differs from the previous frame's. */
+    this.eventsVersion = 0;
+    /** The frame carried no version: every frame counts as changed. */
+    this.unversioned = true;
     this._cps = 0;
+    /** A resend has been asked for and not yet arrived. */
+    this.awaitingWindow = false;
   }
+  /**
+   * Adopt one frame's feed. Main ships the notes only when they change (#2582):
+   * a frame without `events` but with the `version` held here means "unchanged",
+   * so the notes are kept. With a different version, the frame that carried
+   * that version's notes never reached this mount — what is held is not the
+   * current window, so it is dropped (never drawn as if current), and the call
+   * returns true ONCE so the host can ask main to send the notes again.
+   */
   set(raw) {
     this._now = raw?.now ?? 0;
-    this.events = raw?.events ?? [];
-    this._version = raw?.version;
     this._cps = raw?.cps ?? 0;
+    let resync = false;
+    if (raw?.events) {
+      this.held = raw.events;
+      this.heldVersion = raw.version;
+      this.awaitingWindow = false;
+    } else if (raw?.version === void 0) {
+      this.held = [];
+      this.heldVersion = void 0;
+      this.awaitingWindow = false;
+    } else if (raw.version !== this.heldVersion) {
+      this.held = [];
+      this.heldVersion = void 0;
+      if (!this.awaitingWindow) {
+        this.awaitingWindow = true;
+        resync = true;
+      }
+    }
+    this.unversioned = raw?.version === void 0;
+    this.narrow(raw?.lo, raw?.hi);
+    return resync;
+  }
+  /** `held` narrowed to this frame's window — the same test the main thread's
+   *  `RollingHapWindow.at()` applies, so the answer is the one it would give. */
+  narrow(lo, hi) {
+    const next = lo === void 0 || hi === void 0 ? this.held : this.held.filter((e) => e.end > lo + EDGE && e.begin < hi - EDGE);
+    const prev = this.events;
+    let same = next.length === prev.length;
+    for (let i = 0; same && i < next.length; i++) same = next[i] === prev[i];
+    if (!same) this.eventsVersion++;
+    this.events = next;
   }
   /** The whole shipped window (the GLSL note texture packs it, #2571). */
   all() {
     return this.events;
   }
-  /** The window's change counter (`RawSchedulerFrame.version`). */
+  /** Equal across two frames → `all()` holds the same notes (the GLSL texture
+   *  repacks only when it moves, #2571). Undefined when the frames carry no
+   *  version: treat every frame as changed. */
   version() {
-    return this._version;
+    return this.unversioned ? void 0 : this.eventsVersion;
   }
   /** Cycles per second, 0 when the frame carried none. */
   cps() {
@@ -7018,9 +7070,32 @@ function errorOf(e) {
   return e instanceof Error ? e : new Error(String(e));
 }
 __name(errorOf, "errorOf");
+var loadTrackers = /* @__PURE__ */ new WeakMap();
+function trackLoads(manager) {
+  if (!manager || typeof manager.itemStart !== "function" || typeof manager.itemEnd !== "function") return null;
+  const known = loadTrackers.get(manager);
+  if (known) return known;
+  const t = { pending: 0, idle: /* @__PURE__ */ new Set() };
+  const start = manager.itemStart;
+  const end = manager.itemEnd;
+  manager.itemStart = function(url) {
+    t.pending++;
+    return start.call(this, url);
+  };
+  manager.itemEnd = function(url) {
+    if (t.pending > 0) t.pending--;
+    const r = end.call(this, url);
+    if (t.pending === 0) for (const fn of [...t.idle]) fn();
+    return r;
+  };
+  loadTrackers.set(manager, t);
+  return t;
+}
+__name(trackLoads, "trackLoads");
 function runThreeSketch(compiled, loaded, host) {
   var _a;
   const BaseRenderer = loaded.THREE.WebGLRenderer;
+  const loads = trackLoads(loaded.THREE.DefaultLoadingManager);
   let disposed = false;
   let topLevelDone = false;
   let renderedThisFrame = false;
@@ -7253,8 +7328,33 @@ function runThreeSketch(compiled, loaded, host) {
     host.report({ level: "error", message: err.message });
     done = Promise.resolve({ error: err });
   }
+  let loadedPromise = null;
+  const whenLoadedOnce = /* @__PURE__ */ __name(() => {
+    if (loadedPromise) return loadedPromise;
+    loadedPromise = done.then(
+      () => new Promise((resolve) => {
+        const idle = /* @__PURE__ */ __name(() => disposed || !loads || loads.pending === 0, "idle");
+        const check = /* @__PURE__ */ __name(() => {
+          if (!idle()) return;
+          setTimeout(() => {
+            if (!idle()) return;
+            loads?.idle.delete(check);
+            resolve();
+          }, 0);
+        }, "check");
+        loads?.idle.add(check);
+        check();
+      })
+    );
+    return loadedPromise;
+  }, "whenLoadedOnce");
+  const settleOnDispose = [];
   return {
     done,
+    whenLoaded: /* @__PURE__ */ __name(() => disposed ? Promise.resolve() : new Promise((resolve) => {
+      settleOnDispose.push(resolve);
+      void whenLoadedOnce().then(resolve);
+    }), "whenLoaded"),
     ready: /* @__PURE__ */ __name(() => topLevelDone || loops.size > 0 || rafQueue.size > 0, "ready"),
     rendered: /* @__PURE__ */ __name(() => renderedThisFrame, "rendered"),
     frame(timeMs) {
@@ -7308,6 +7408,7 @@ function runThreeSketch(compiled, loaded, host) {
     dispose() {
       if (disposed) return;
       disposed = true;
+      for (const fn of settleOnDispose.splice(0)) fn();
       loops.clear();
       rafQueue.clear();
       resizeListeners.clear();
@@ -7360,6 +7461,12 @@ function hostVizWorker(scope) {
     } catch {
     }
   }, "signalReady");
+  const post = /* @__PURE__ */ __name((type) => {
+    try {
+      scope.postMessage({ type });
+    } catch {
+    }
+  }, "post");
   const seenWorkerErrors = /* @__PURE__ */ new Set();
   const currentRuntimeRef = { kind: "p5" };
   const postVizLog = /* @__PURE__ */ __name((entry) => {
@@ -7466,6 +7573,7 @@ function hostVizWorker(scope) {
   }
   __name(handleControl, "handleControl");
   async function mount(msg) {
+    post("alive");
     if (state) destroy();
     if (msg.config) updateVizConfig(msg.config);
     currentRuntimeRef.kind = msg.kind;
@@ -7491,8 +7599,29 @@ function hostVizWorker(scope) {
     };
     reader.onFrame(applyAndDraw);
     diag("info", `mounted ${msg.kind} viz '${msg.name}' (${msg.size.w}\xD7${msg.size.h}@${dpr})`);
+    const mine = state;
+    void strategy.whenLoaded().then(() => {
+      if (state !== mine) return;
+      if (msg.warm) warmDraw(mine);
+      post("loaded");
+    });
   }
   __name(mount, "mount");
+  function warmDraw(s) {
+    if (s.readySent) return;
+    const t0 = globalThis.performance?.now?.() ?? 0;
+    try {
+      s.draw();
+    } catch (e) {
+      postVizLog({ level: "error", runtime: currentRuntimeRef.kind, message: `draw(): ${errMsg(e)}`, stack: errStack(e) });
+      return;
+    }
+    lastDrawMs = (globalThis.performance?.now?.() ?? 0) - t0;
+    s.readySent = true;
+    signalReady();
+    accountGL();
+  }
+  __name(warmDraw, "warmDraw");
   async function mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr) {
     if (!P5ctor) {
       installWorkerDomShim(() => wrapCanvas(new OffscreenCanvas(1, 1)));
@@ -7519,6 +7648,11 @@ function hostVizWorker(scope) {
     const RENDERER_CONSTS = /* @__PURE__ */ new Set(["p2d", "p2d-hdr", "webgl", "webgl2", "webgpu"]);
     let adopted = false;
     let setup = false;
+    let markLoaded = /* @__PURE__ */ __name(() => {
+    }, "markLoaded");
+    const loadedP5 = new Promise((resolve) => {
+      markLoaded = resolve;
+    });
     const sketchFn = /* @__PURE__ */ __name((p) => {
       if (directCanvas) {
         const displayEl = wrapCanvas(msg.canvas);
@@ -7541,6 +7675,7 @@ function hostVizWorker(scope) {
         } catch {
         }
         setup = true;
+        markLoaded();
       };
     }, "sketchFn");
     const inst = new P5ctor(sketchFn);
@@ -7556,6 +7691,7 @@ function hostVizWorker(scope) {
     }
     return {
       setupDone: /* @__PURE__ */ __name(() => setup, "setupDone"),
+      whenLoaded: /* @__PURE__ */ __name(() => loadedP5, "whenLoaded"),
       // #266 — p5's WEBGL context lives on its internal render canvas (drawingContext);
       // 2D sketches return a CanvasRenderingContext2D whose getExtension yields null.
       gl: /* @__PURE__ */ __name(() => inst?.drawingContext ?? null, "gl"),
@@ -7593,6 +7729,7 @@ function hostVizWorker(scope) {
         inst?.resizeCanvas?.(w, h);
       }, "resizeKind"),
       teardown: /* @__PURE__ */ __name(() => {
+        markLoaded();
         try {
           inst.hitCriticalError = true;
           inst.setup = function() {
@@ -7654,6 +7791,7 @@ function hostVizWorker(scope) {
     return {
       setupDone: /* @__PURE__ */ __name(() => true, "setupDone"),
       // pattern ran synchronously above; frames arrive after
+      whenLoaded: /* @__PURE__ */ __name(() => Promise.resolve(), "whenLoaded"),
       // #266 — hydra renders directly into the presenting canvas (regl owns its
       // WebGL context); re-getContext returns that same context for release.
       gl: /* @__PURE__ */ __name(() => msg.canvas.getContext("webgl2") ?? msg.canvas.getContext("webgl"), "gl"),
@@ -7713,6 +7851,7 @@ function hostVizWorker(scope) {
     return {
       setupDone: /* @__PURE__ */ __name(() => true, "setupDone"),
       // program built synchronously above; draw on first frame
+      whenLoaded: /* @__PURE__ */ __name(() => Promise.resolve(), "whenLoaded"),
       // #266 — raw WebGL2 context we own; re-get returns the same context for the
       // host's accountGL/releaseGL. The EASIEST gl() of the three kinds (no search).
       gl: /* @__PURE__ */ __name(() => msg.canvas.getContext("webgl2"), "gl"),
@@ -7782,6 +7921,8 @@ function hostVizWorker(scope) {
     });
     return {
       setupDone: /* @__PURE__ */ __name(() => run.ready(), "setupDone"),
+      // #2560 — top level done and every loader item in (the model, the HDRI).
+      whenLoaded: /* @__PURE__ */ __name(() => run.whenLoaded(), "whenLoaded"),
       gl: /* @__PURE__ */ __name(() => run.gl(), "gl"),
       setOptions: /* @__PURE__ */ __name((options) => {
         optionsRef.current = options;
@@ -7812,7 +7953,12 @@ function hostVizWorker(scope) {
     let master;
     for (const a of frame.analysers) if (a.key === MASTER_KEY) master = a;
     s.rawAnalyser.set(master);
-    s.rawScheduler.set(frame.rawScheduler);
+    if (s.rawScheduler.set(frame.rawScheduler)) {
+      try {
+        scope.postMessage({ type: "rawWindowResync" });
+      } catch {
+      }
+    }
     if (!s.setupDone() || s.paused) return;
     const drawT0 = globalThis.performance?.now?.() ?? 0;
     try {

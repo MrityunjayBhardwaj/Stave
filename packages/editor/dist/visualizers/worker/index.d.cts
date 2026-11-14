@@ -1,4 +1,4 @@
-import { W as WorkerVizConfig, e as VizOptions } from '../../vizConfig-B8SU4sBG.cjs';
+import { W as WorkerVizConfig, e as VizOptions } from '../../vizConfig-QHv8dfVJ.cjs';
 import 'p5';
 import 'react';
 
@@ -105,6 +105,11 @@ interface MountMessage {
      *  was threaded. Structured-cloned, so non-cloneable values are dropped on main
      *  before posting (`cloneableOptions`). */
     options?: VizOptions;
+    /** #2560 — a pre-Play WARM-UP mount: the renderer sits hidden and paused, so no
+     *  signal frame will arrive to draw it. Once the sketch has loaded, the worker
+     *  draws ONE frame itself (shaders compile, GPU uploads happen) before it says
+     *  `loaded`, so Play reveals a sketch that is ready to move. */
+    warm?: boolean;
 }
 /** MAIN → WORKER: live update of the per-render viz options (#875). Posted when a
  *  re-evaluate changes the options bag, mirroring the main-thread renderer, whose
@@ -152,9 +157,9 @@ interface WorkerDiagMessage {
     stack?: string;
 }
 /** WORKER → MAIN: the worker drew its FIRST frame successfully (B-5 / #247). One-
- *  shot liveness signal: `FallbackVizRenderer` waits for this to mark the worker
- *  healthy; an error or a mount timeout BEFORE it triggers the main-thread
- *  fallback (a worker that throws or hangs at startup = blank viz without this). */
+ *  shot health signal: `FallbackVizRenderer` treats an error BEFORE it as a
+ *  startup failure (fall back to the main thread) and an error after it as the
+ *  sketch's own. Whether the worker is answering at all is `alive` (#2560). */
 interface WorkerReadyMessage {
     type: 'ready';
 }

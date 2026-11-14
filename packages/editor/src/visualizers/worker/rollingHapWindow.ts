@@ -70,6 +70,17 @@ export class RollingHapWindow {
    * an unchanged answer.
    */
   version = 0
+  /**
+   * Moves whenever the held haps were replaced or grew — a query landed (a reset,
+   * or a new slice with onsets in it) — and NOT when old ones are dropped behind
+   * the window (#2582). Between two moves the held haps only shrink from the back,
+   * so a copy taken at a move, narrowed to `[now−back, now+fwd)` the same way
+   * `at()` narrows (`end > lo + EDGE`, `begin < hi − EDGE`), gives `at()`'s answer
+   * frame after frame. That is what the worker is sent: about twice a cycle,
+   * where the answer itself changes whenever a note enters or leaves the window.
+   * Never goes back, across resets too.
+   */
+  heldVersion = 0
 
   constructor(
     private readonly back: number,
@@ -118,16 +129,22 @@ export class RollingHapWindow {
       this.lastEnd = hi + PREFETCH
       this.lastNow = now
       this.changed = true
+      this.heldVersion++
       return hi
     }
     if (hi > this.lastEnd) {
       const from = this.lastEnd
       const to = hi + PREFETCH
+      let grew = false
       for (const e of query(from, to)) {
         if (e.begin >= from - EDGE) {
           this.events.push(e)
-          this.changed = true
+          grew = true
         }
+      }
+      if (grew) {
+        this.changed = true
+        this.heldVersion++
       }
       this.lastEnd = to
     }
@@ -157,6 +174,12 @@ export class RollingHapWindow {
       if (e.end > now && e.end < next) next = e.end
     }
     return next
+  }
+
+  /** Every held hap, the prefetched ones past the front edge included, in the
+   *  order `at()` answers them. Read-only: the window compacts it in place. */
+  held(): readonly IREvent[] {
+    return this.events
   }
 
   /** The held haps that have started before the window's front edge (the rest

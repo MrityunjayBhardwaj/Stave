@@ -33,6 +33,9 @@
  * pass over the switches replaces the set: a later success clears it, and so does
  * switching the extension off. `onChange` fires when it changes.
  *
+ * SETTINGS DECLARED BADLY (#2556) are reported once, as a warning per setting, when the
+ * runtime starts following the switches; the extension still switches on without them.
+ *
  * What is Strudel's (worklets, its registries, getting ready before sound) lives in
  * `strudel.ts`. Nothing here imports the engine.
  */
@@ -40,6 +43,7 @@ import { listedExtensions } from './builtin'
 import { setCodeEditorErrorReport } from './editors'
 import { keysTakenBy, type ExtensionKeyInCode } from './keys'
 import { enabledExtensionIds, onExtensionsEnabledChange } from './enablement'
+import { settingProblems } from './settings'
 import { createExtensionManager, type ExtensionManager } from './manager'
 import { createStrudelDriver, messageOf, prepareStrudelParts, type ExtensionReport, type ExtensionStrudelDoors } from './strudel'
 import type { ExtensionManifest } from './types'
@@ -146,6 +150,10 @@ export function createExtensionRuntime(opts: {
   function follow(): Promise<void> {
     if (!following) {
       following = true
+      // #2556 — a setting declared badly is left out, not a crash: say so once, by name
+      for (const m of opts.manifests) {
+        for (const problem of settingProblems(m)) report('warn', `${problem} It is left out of Settings.`)
+      }
       opts.subscribe((ids) => void apply(ids))
     }
     return apply(opts.enabled())
