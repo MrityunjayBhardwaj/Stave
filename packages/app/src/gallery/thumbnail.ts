@@ -12,6 +12,8 @@
  * all transparent or all black is treated as "no thumbnail" rather than uploaded.
  */
 import { MAX_THUMBNAIL_BYTES } from "./types";
+import { RECORDING_LIMITS, type RecordedFrame } from "./recording";
+import { fileRole } from "./galleryModel";
 
 export const THUMBNAIL_WIDTH = 480;
 
@@ -87,8 +89,9 @@ export async function encodeUnderLimit(
   frame: HTMLCanvasElement,
   maxBytes = MAX_THUMBNAIL_BYTES,
   encode: EncodeFn = toBlob,
+  widths: readonly number[] = WIDTHS,
 ): Promise<Blob | null> {
-  for (const width of WIDTHS) {
+  for (const width of widths) {
     const c = width >= frame.width ? frame : scaledCopy(frame, width);
     for (const q of QUALITIES) {
       const blob = await encode(c, "image/webp", q);
@@ -119,16 +122,37 @@ export type CaptureResult =
   | { ok: true; thumbnail: CapturedThumbnail }
   | { ok: false; reason: string };
 
+/** How big a capture is: the cover picture's size, or a row's small still (#2590). */
+export interface CaptureSize {
+  width: number;
+  maxBytes: number;
+  /** The widths tried, largest first, when the frame is over `maxBytes`. */
+  widths: readonly number[];
+}
+
+const COVER_SIZE: CaptureSize = { width: THUMBNAIL_WIDTH, maxBytes: MAX_THUMBNAIL_BYTES, widths: WIDTHS };
+
+/** #2590 — a visual's still on its row in "In this project": small, and small in bytes. */
+export const FRAME_SIZE: CaptureSize = {
+  width: RECORDING_LIMITS.frameWidth,
+  maxBytes: RECORDING_LIMITS.frameBytes,
+  widths: [RECORDING_LIMITS.frameWidth, 120],
+};
+
 /**
  * One frame of `canvas` as a gallery thumbnail. Tries a few frames, because the
  * first can land before the viz has drawn.
  */
-export async function captureThumbnail(canvas: HTMLCanvasElement, attempts = 4): Promise<CaptureResult> {
+export async function captureThumbnail(
+  canvas: HTMLCanvasElement,
+  attempts = 4,
+  size: CaptureSize = COVER_SIZE,
+): Promise<CaptureResult> {
   for (let i = 0; i < attempts; i++) {
     await nextFrame();
     let frame: HTMLCanvasElement;
     try {
-      frame = scaledCopy(canvas, THUMBNAIL_WIDTH);
+      frame = scaledCopy(canvas, size.width);
     } catch {
       return { ok: false, reason: "The running viz couldn't be copied." };
     }
@@ -139,7 +163,7 @@ export async function captureThumbnail(canvas: HTMLCanvasElement, attempts = 4):
       return { ok: false, reason: "The running viz couldn't be read." };
     }
     if (isBlankFrame(pixels)) continue;
-    const blob = await encodeUnderLimit(frame);
+    const blob = await encodeUnderLimit(frame, size.maxBytes, toBlob, size.widths);
     if (!blob) return { ok: false, reason: "The frame was too large to keep as a thumbnail." };
     return { ok: true, thumbnail: { dataUrl: await blobToDataUrl(blob), bytes: blob.size, type: blob.type } };
   }
@@ -160,4 +184,39 @@ export async function captureLiveVizThumbnail(root: ParentNode = document): Prom
     if (last.ok) return last;
   }
   return last;
+}
+
+/**
+ * #2590 — a small still of each visual file that is running in the author's
+ * studio right now, for its row in the entry's "In this project".
+ *
+ * Read the same way as the cover picture: a visual's preview tab (or the
+ * backdrop) draws into `compiled-viz-mount-<file id>`, and the canvas there is
+ * copied once. Nothing is run to take it: a visual that isn't on screen gets no
+ * still, and its row stays as it is. At most `RECORDING_LIMITS.frames`.
+ */
+export async function captureVisualFrames(
+  files: ReadonlyArray<{ id: string; path: string }>,
+  root: ParentNode = document,
+  take: (canvas: HTMLCanvasElement) => Promise<CaptureResult> = (c) => captureThumbnail(c, 4, FRAME_SIZE),
+): Promise<RecordedFrame[]> {
+  const mounts = new Map<string, Element>();
+  for (const el of root.querySelectorAll('[data-testid^="compiled-viz-mount-"]')) {
+    mounts.set(el.getAttribute("data-testid")!.slice("compiled-viz-mount-".length), el);
+  }
+  const out: RecordedFrame[] = [];
+  for (const f of files) {
+    if (out.length >= RECORDING_LIMITS.frames) break;
+    if (fileRole(f.path) !== "visual" || out.some((x) => x.path === f.path)) continue;
+    const mount = mounts.get(f.id);
+    const canvases = mount ? findLiveVizCanvases(mount).filter((c) => mount.contains(c)) : [];
+    for (const canvas of canvases) {
+      const got = await take(canvas);
+      if (got.ok) {
+        out.push({ path: f.path, image: got.thumbnail.dataUrl });
+        break;
+      }
+    }
+  }
+  return out;
 }

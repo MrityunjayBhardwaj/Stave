@@ -14,7 +14,8 @@ import {
   type PublishForm,
 } from "./publish";
 import { shownName } from "./reservedNames";
-import { captureLiveVizThumbnail, type CaptureResult } from "./thumbnail";
+import { captureLiveVizThumbnail, captureVisualFrames, type CaptureResult } from "./thumbnail";
+import type { RecordedFrame } from "./recording";
 import { recordEntry } from "./recordAtPublish";
 import { fileRole } from "./galleryModel";
 import { TurnstileWidget, turnstileSiteKey } from "./TurnstileWidget";
@@ -140,6 +141,9 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
   const activeFileRef = useRef(activeFileId);
   activeFileRef.current = activeFileId;
   const [includeThumb, setIncludeThumb] = useState(true);
+  // #2590 — a still of each visual running in the studio now, for its row on the entry page
+  const [frames, setFrames] = useState<RecordedFrame[]>([]);
+  const [includeFrames, setIncludeFrames] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   // #2330 — the Turnstile check, when this site has one. A token is good once:
@@ -174,8 +178,19 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
     setTurnstileToken(null);
     setTurnstileRound((r) => r + 1);
     setIncludeThumb(true);
+    setFrames([]);
+    setIncludeFrames(true);
     capture();
+    let live = true;
+    void captureVisualFrames(m.files)
+      .catch(() => [])
+      .then((got) => {
+        if (live) setFrames(got);
+      });
     queueMicrotask(() => titleRef.current?.focus());
+    return () => {
+      live = false;
+    };
   }, [open, project, capture]);
 
   const choices = useMemo(() => (manifest ? filesForKind(manifest.files, form.kind) : []), [manifest, form.kind]);
@@ -225,7 +240,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
         form.kind === "project" ? (manifest.files.find((f) => f.id === coverId)?.path ?? null) : (built.request.manifest.files[0]?.path ?? null);
       setRecording(true);
       const rec = await Promise.race([
-        recordEntry(project.id, built.request.manifest, coverPath).catch(() => null),
+        recordEntry(project.id, built.request.manifest, coverPath, form.kind === "project" && includeFrames ? frames : []).catch(() => null),
         new Promise<null>((r) => setTimeout(() => r(null), RECORD_TIMEOUT_MS)),
       ]);
       setRecording(false);
@@ -252,7 +267,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
       void loadGallerySession();
       if (siteKey) setTurnstileRound((r) => r + 1); // the token was spent; get a fresh one
     }
-  }, [manifest, sending, siteKey, turnstileToken, form, thumbnail, onClose, coverId, project.id]);
+  }, [manifest, sending, siteKey, turnstileToken, form, thumbnail, onClose, coverId, project.id, frames, includeFrames]);
 
   if (!open) return null;
 
@@ -428,6 +443,19 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
               </span>
             )}
           </div>
+
+          {form.kind === "project" && frames.length > 0 && (
+            <label style={styles.check} data-testid="gallery-publish-frames">
+              <input
+                type="checkbox"
+                checked={includeFrames}
+                onChange={(e) => setIncludeFrames(e.target.checked)}
+                data-testid="gallery-publish-frames-include"
+              />
+              Keep a small still of {frames.length === 1 ? "the running visual" : `the ${frames.length} running visuals`} for{" "}
+              {frames.length === 1 ? "its row" : "their rows"} ({frames.map((f) => f.path).join(", ")})
+            </label>
+          )}
 
           <p style={styles.note}>
             Limits: title {MAX_TITLE_CHARS} characters, project up to {kib(MAX_MANIFEST_BYTES)}, picture up to{" "}

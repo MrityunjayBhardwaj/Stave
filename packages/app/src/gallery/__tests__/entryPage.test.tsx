@@ -260,4 +260,69 @@ describe("EntryPage — the preview gets the entry's files (#2490)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
     expect(frameSent()).toEqual([{ play: true, path: "main.strudel", files: [{ path: "main.strudel", kind: "strudel", code: MANIFEST.files[0].content }] }]);
   });
+
+  describe("#2590 — the tempo and the visual stills recorded at publish", () => {
+    /** A tiny image with a real WebP header. */
+    const STILL = (() => {
+      const body = Buffer.alloc(64);
+      body.write("RIFF", 0, "latin1");
+      body.write("WEBPVP8 ", 8, "latin1");
+      return `data:image/webp;base64,${body.toString("base64")}`;
+    })();
+    const base = {
+      v: 1,
+      cover: "main.strudel",
+      contents: { patterns: 2, visuals: 1, other: 1 },
+    };
+    const song = { path: "main.strudel", span: "arranged", cycles: 16, lanes: [{ name: "bd" }], events: [[0, 0, 1, null]], sections: [] };
+    const bass = { path: "bass.strudel", span: "loop", cycles: 2, lanes: [{ name: "saw" }], events: [[0, 0, 1, 36]], sections: [] };
+
+    async function open(rec: unknown) {
+      vi.stubGlobal("fetch", vi.fn(async () => Response.json(rec)));
+      renderPage({ detail: { status: "ready", id: ENTRY.id, data: { entry: { ...ENTRY, hasRecording: true }, manifest: MANIFEST } } });
+      await waitFor(() => expect(document.querySelector('[data-gallery-file-row="main.strudel"] [data-gallery-timeline]')).not.toBeNull());
+    }
+    const facts = () => document.querySelector(".sg-facts")!.textContent;
+
+    it("a tempo the code set: BPM in the details, the length in minutes beside the bars, and on its row", async () => {
+      await open({ ...base, files: [{ ...song, tempo: { cps: 0.5, changes: false } }, bass] });
+      expect(document.querySelector("[data-gallery-tempo]")!.textContent).toBe("120 BPM");
+      expect(document.querySelector("[data-gallery-cover-length]")!.textContent).toBe("main.strudel, 16 bars · 0:32");
+      expect(facts()).toContain("Tempo120 BPM");
+      expect(document.querySelector('[data-gallery-file-row="main.strudel"]')!.textContent).toContain("16 bars · 120 BPM");
+      // a pattern that set none says nothing about tempo on its row
+      expect(document.querySelector('[data-gallery-file-row="bass.strudel"]')!.textContent).not.toMatch(/BPM/);
+    });
+
+    it('a tempo that changes: "starts at", and no length in minutes', async () => {
+      await open({ ...base, files: [{ ...song, tempo: { cps: 0.5, changes: true } }] });
+      expect(document.querySelector("[data-gallery-tempo]")!.textContent).toBe("starts at 120 BPM");
+      expect(document.querySelector("[data-gallery-cover-length]")!.textContent).toBe("main.strudel, 16 bars");
+    });
+
+    it("no tempo recorded (the code set none, or an older entry): no Tempo line, no minutes, no BPM anywhere", async () => {
+      await open({ ...base, files: [song, bass] });
+      expect(document.querySelector("[data-gallery-tempo]")).toBeNull();
+      expect(facts()).not.toMatch(/Tempo|BPM/);
+      expect(document.querySelector("[data-gallery-cover-length]")!.textContent).toBe("main.strudel, 16 bars");
+      expect(document.body.textContent).not.toMatch(/BPM|\d:\d\d/);
+    });
+
+    it("a visual with a still shows it on its row; a pattern's row keeps its strip", async () => {
+      await open({ ...base, files: [song], frames: [{ path: "viz/bloom.hydra", image: STILL }] });
+      const img = document.querySelector('[data-gallery-file-row="viz/bloom.hydra"] img[data-gallery-visual-frame]') as HTMLImageElement;
+      expect(img).not.toBeNull();
+      expect(img.getAttribute("src")).toBe(STILL);
+      expect(img.getAttribute("alt")).toBe("A still of viz/bloom.hydra");
+      expect(document.querySelectorAll("[data-gallery-visual-frame]")).toHaveLength(1);
+    });
+
+    it("an older entry's record has no stills: the visual's row is as it was", async () => {
+      await open({ ...base, files: [song] });
+      const row = document.querySelector('[data-gallery-file-row="viz/bloom.hydra"]')!;
+      expect(row.querySelector("img")).toBeNull();
+      expect(row.querySelector(".sg-frow-strip")!.children).toHaveLength(0);
+      expect(row.textContent).toContain("visual · 1 line");
+    });
+  });
 });

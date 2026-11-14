@@ -1,4 +1,5 @@
 import { RECORDING_LIMITS, encodeRecording, readRecording } from "../../../gallery/recording";
+import { fileRole } from "../../../gallery/galleryModel";
 import {
   GALLERY_ID_PATTERN,
   GALLERY_KINDS,
@@ -56,6 +57,10 @@ export function checkRecording(v: unknown, manifest: GalleryManifest): Checked<U
   const paths = new Set(manifest.files.map((f) => f.path));
   if (rec.cover !== null && !paths.has(rec.cover)) return bad("the recording's cover isn't a file of the entry");
   if (rec.files.some((f) => !paths.has(f.path))) return bad("the recording names a file the entry doesn't have");
+  // #2590 — a still belongs to a visual file of this entry
+  if (rec.frames?.some((f) => !paths.has(f.path) || fileRole(f.path) !== "visual")) {
+    return bad("the recording has a still for a file that isn't one of the entry's visuals");
+  }
   const bytes = encodeRecording(rec);
   if (!bytes) return tooLarge(`the recording is larger than ${RECORDING_LIMITS.bytes} bytes`);
   return { ok: true, value: bytes };
