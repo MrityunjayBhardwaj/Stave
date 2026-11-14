@@ -10,7 +10,7 @@
  * Its code is the manifest's `load`, so like any extension nothing here runs until it is
  * switched on. The worklet is a `blob:` URL made the first time it is.
  */
-import type { ExtensionManifest, ExtensionModule, SoundTrigger } from './types'
+import type { ExtensionHost, ExtensionManifest, ExtensionModule, ExtensionSetting, SoundTrigger } from './types'
 
 export const E2E_TONE_ID = 'e2e-tone'
 export const E2E_TONE_SOUND = 'e2etone'
@@ -18,6 +18,70 @@ const PROCESSOR = 'stave-e2e-tone'
 
 /** The key it declares (#2545): Toggle Sidebar's chord, taken inside the code. */
 export const E2E_TONE_KEY = { key: 'mod+b', name: 'A test key that does nothing', where: 'code' } as const
+
+/**
+ * Its settings (#2556): one of each type, and all four used, by a label it can put in the
+ * bar under each code editor, so a browser test can see a change reach the running
+ * extension with no reload. Off by default, so nothing shows until a test turns it on.
+ *
+ * The label's default text can be set by the page before any script runs
+ * (`__STAVE_E2E_TONE_LABEL_DEFAULT__`), so a test can reload as if a new version had
+ * changed the default, and see an unchanged value follow it.
+ */
+const LABEL_DEFAULT =
+  typeof (globalThis as { __STAVE_E2E_TONE_LABEL_DEFAULT__?: unknown }).__STAVE_E2E_TONE_LABEL_DEFAULT__ === 'string'
+    ? ((globalThis as { __STAVE_E2E_TONE_LABEL_DEFAULT__?: string }).__STAVE_E2E_TONE_LABEL_DEFAULT__ as string)
+    : 'Test tone is on'
+
+export const E2E_TONE_SETTINGS: readonly ExtensionSetting[] = [
+  { id: 'showLabel', label: 'Show a label', description: 'Put a line of text in the bar under each code editor.', type: 'boolean', default: false },
+  { id: 'labelText', label: 'Label text', description: 'What the label says.', type: 'text', default: LABEL_DEFAULT },
+  {
+    id: 'labelCase',
+    label: 'Label case',
+    description: 'Whether the label is shown as typed or in capitals.',
+    type: 'choice',
+    options: [
+      { value: 'asTyped', label: 'As typed' },
+      { value: 'upper', label: 'Capitals' },
+    ],
+    default: 'asTyped',
+  },
+  { id: 'labelSize', label: 'Label size', description: 'The size of the label’s letters, in pixels.', type: 'number', default: 12, min: 8, max: 32, step: 1 },
+]
+
+/** The common part: the label, redrawn whenever one of its settings changes. */
+function showLabel(host: ExtensionHost): void {
+  const draws = new Set<() => void>()
+  host.onEditor((code) => {
+    let el: HTMLElement | null = null
+    const draw = () => {
+      if (host.settings.get('showLabel') !== true) {
+        el?.remove()
+        el = null
+        return
+      }
+      if (!el) {
+        el = code.bar.ownerDocument.createElement('div')
+        el.setAttribute('data-e2e-tone-label', '')
+        el.style.cssText = 'padding:2px 10px;color:var(--text-secondary);font-family:system-ui,sans-serif'
+        code.bar.appendChild(el)
+      }
+      const text = String(host.settings.get('labelText'))
+      el.textContent = host.settings.get('labelCase') === 'upper' ? text.toUpperCase() : text
+      el.style.fontSize = `${Number(host.settings.get('labelSize'))}px`
+    }
+    draw()
+    draws.add(draw)
+    return () => {
+      draws.delete(draw)
+      el?.remove()
+    }
+  })
+  host.settings.onChange(() => {
+    for (const draw of draws) draw()
+  })
+}
 
 /** The worklet: a sine between `begin` and `end` (audio-clock seconds), then it ends itself. */
 const PROCESSOR_SOURCE = `
@@ -82,6 +146,7 @@ async function load(): Promise<ExtensionModule> {
     return { node, stop: () => undefined }
   }
   return {
+    activate: showLabel,
     strudel: {
       worklets: [url],
       activate(host) {
@@ -103,6 +168,8 @@ export const E2E_TONE: ExtensionManifest = {
     // extension does nothing with it: while it is taken, the key simply runs no Stave
     // command inside the code.
     keys: [E2E_TONE_KEY],
+    // #2556 — one setting of each type, all used by the label (`showLabel` above)
+    settings: E2E_TONE_SETTINGS,
   },
   load,
   about: {
@@ -116,6 +183,10 @@ export const E2E_TONE: ExtensionManifest = {
         heading: 'Play it like any sound',
         text: 'Switch it on, then use it as a sound name. It plays live and in bounces.',
         code: 'note("c4 e4 g4").s("e2etone")',
+      },
+      {
+        heading: 'Settings',
+        text: 'It has one setting of each kind, all for a label it can show under the code. They are there to test how Settings shows an extension’s settings.',
       },
       {
         heading: 'Keys',

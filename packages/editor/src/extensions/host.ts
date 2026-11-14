@@ -21,9 +21,20 @@
  * files `.name(…)` as a parameter. The method itself is gone, so running such code reports
  * a missing method. This is listed in `RESIDUE`, so it is stated, not hidden.
  */
-import { closeAllCodeEditors, pageCodeEditors, type CodeEditorList } from './editors'
+import { closeAllCodeEditors, pageCodeEditors, reportExtensionError, type CodeEditorList } from './editors'
 import { declaredKeyOf, isExtensionKeyGivenBack } from './keys'
-import type { CodeEditor, EditorCleanup, ExtensionHost, ExtensionManifest, SoundTrigger, StrudelHost, StrudelProvides } from './types'
+import { declaredSettings, extensionSettingValue, onExtensionSettingsChange } from './settings'
+import type {
+  CodeEditor,
+  EditorCleanup,
+  ExtensionHost,
+  ExtensionManifest,
+  ExtensionSettingValue,
+  ExtensionSettingsAccess,
+  SoundTrigger,
+  StrudelHost,
+  StrudelProvides,
+} from './types'
 
 /** Things a switched-off extension leaves behind, by registration kind. */
 export const RESIDUE = {
@@ -125,6 +136,11 @@ function runCleanup(out: EditorCleanup): void {
  * callback's cleanup runs and the strip is removed, so a switched-off extension leaves no
  * listener and no bar behind. `takesKey` reads the manifest's keys and the person's
  * choices (`keys.ts`) when it is asked.
+ *
+ * `settings` (#2556) reads the manifest's declared settings and the person's values
+ * (`settings.ts`) when asked. Each `onChange` listener keeps the values it last saw and,
+ * on any change to the store (this page or another tab), is called once per setting whose
+ * value moved; switching the extension off releases it.
  */
 export function createCommonHost(
   id: string,
@@ -136,8 +152,50 @@ export function createCommonHost(
     if (closed) throw new Error(`The ${id} extension is switched off; it cannot register anything now.`)
   }
   const label = opts.manifest?.name ?? id
+  const manifest = opts.manifest
+  const settings: ExtensionSettingsAccess = {
+    get(settingId) {
+      const value = manifest ? extensionSettingValue(manifest, settingId) : undefined
+      if (value === undefined) {
+        throw new Error(`The ${label} extension reads the setting "${settingId}", which it does not declare.`)
+      }
+      return value
+    },
+    onChange(fn) {
+      open()
+      const now = () => new Map((manifest ? declaredSettings(manifest) : []).map((s) => [s.id, extensionSettingValue(manifest!, s.id)!]))
+      let seen: Map<string, ExtensionSettingValue> = now()
+      let released = false
+      const stop = onExtensionSettingsChange(() => {
+        const next = now()
+        const before = seen
+        seen = next
+        for (const [settingId, value] of next) {
+          if (released) return
+          if (before.get(settingId) === value) continue
+          try {
+            fn(settingId, value)
+          } catch (e) {
+            // one listener's throw must not stop the others, nor the change that caused it
+            const message = typeof (e as { message?: unknown } | null)?.message === 'string' ? (e as Error).message : String(e)
+            const err = new Error(`The ${label} extension could not take the new value of its setting "${settingId}": ${message}`) as Error & { cause?: unknown }
+            err.cause = e
+            reportExtensionError(err)
+          }
+        }
+      })
+      const release = () => {
+        if (released) return
+        released = true
+        stop()
+      }
+      onOff.push(release)
+      return release
+    },
+  }
   return {
     host: {
+      settings,
       id,
       onDeactivate(fn) {
         open()

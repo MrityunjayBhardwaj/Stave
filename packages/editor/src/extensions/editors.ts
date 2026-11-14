@@ -133,14 +133,19 @@ export function setCodeEditorErrorReport(fn: ((error: unknown) => void) | null):
   pageReport = fn
 }
 
+/**
+ * Report an extension's throw from a callback Stave runs for it (an editor watcher, a
+ * settings listener, #2556): to the page's Console once the runtime has started, else the
+ * browser console.
+ */
+export function reportExtensionError(e: unknown): void {
+  if (pageReport) pageReport(e)
+  else console.error(e)
+}
+
 /** The page's one list of live code editors. */
 export function pageCodeEditors(): CodeEditorList {
-  page ??= createCodeEditorList({
-    onError: (e) => {
-      if (pageReport) pageReport(e)
-      else console.error(e)
-    },
-  })
+  page ??= createCodeEditorList({ onError: reportExtensionError })
   return page
 }
 

@@ -17,11 +17,16 @@
  * two always agree, with no reload. It works while the extension is off too: the choice is
  * kept and applies when it is switched on.
  *
+ * #2556 — an extension that declares settings has a "Settings" button by its switch, which
+ * opens Settings filtered to it (`@ext:<id>` in the search box, as VS Code does), and
+ * "What it adds" lists each setting with its default. Stave draws the settings themselves
+ * in Settings › Extensions; the page never does.
+ *
  * The page's tab (Details / What it adds / Keys / Changes) is kept in the tab's state, so
  * it comes back after a reload.
  */
 import React from "react";
-import { extensionKeys, type AppTabLabel, type AppTabState, type ExtensionManifest } from "@stave/editor";
+import { declaredSettings, extensionKeys, type AppTabLabel, type AppTabState, type ExtensionManifest } from "@stave/editor";
 import type { AppTab, AppTabDefinition } from "../components/appTabs";
 import { Icon } from "../components/Icon";
 import { addsOf, extensionTabKey, failedToStart, languagesLabel, leftoversOf, switchStateLine } from "./extensionsView";
@@ -30,6 +35,7 @@ import { ExtensionBadges, ExtensionTile, SwitchButton } from "./ExtensionParts";
 import { toggleAriaLabel, toggleExtensionKey, toggleLabel, whereLine } from "./extensionKeysView";
 import { useGivenBackVersion } from "./useExtensionKeys";
 import { keybindingTokens } from "../commands/keybindings";
+import { defaultText, typeText } from "./extensionSettingsView";
 
 export type PageSection = "details" | "adds" | "keys" | "changes";
 const SECTIONS: readonly { id: PageSection; label: string }[] = [
@@ -69,10 +75,13 @@ export function ExtensionPage({
   manifest,
   section,
   onSection,
+  onOpenSettings,
 }: {
   manifest: ExtensionManifest;
   section: PageSection;
   onSection: (s: PageSection) => void;
+  /** #2556 — open Settings filtered to this extension; the button shows only when it declares settings */
+  onOpenSettings?: () => void;
 }) {
   const on = useEnabledExtensions().has(manifest.id);
   const failure = useExtensionFailure(manifest.id);
@@ -109,6 +118,18 @@ export function ExtensionPage({
           <p style={styles.summary}>{about?.summary ?? manifest.description}</p>
           <div style={styles.actions}>
             <SwitchButton id={manifest.id} name={manifest.name} on={on} large where="page" />
+            {onOpenSettings && declaredSettings(manifest).length > 0 && (
+              <button
+                type="button"
+                style={styles.settingsButton}
+                data-extension-settings-button={manifest.id}
+                aria-label={`Open ${manifest.name}’s settings`}
+                title={on ? `Open Settings on ${manifest.name}’s settings` : `${manifest.name} is off: switch it on to change its settings`}
+                onClick={onOpenSettings}
+              >
+                Settings
+              </button>
+            )}
             <span
               style={{ ...styles.state, ...(failed ? styles.stateFailed : null) }}
               data-extension-state={manifest.id}
@@ -214,6 +235,7 @@ function Adds({ manifest }: { manifest: ExtensionManifest }) {
           ))}
         </tbody>
       </table>
+      <AddsSettings manifest={manifest} />
       <h2 style={styles.h2}>When switched off</h2>
       {leftovers.length ? (
         <div data-extension-leftovers>
@@ -243,6 +265,39 @@ function Adds({ manifest }: { manifest: ExtensionManifest }) {
           Nothing stays behind: switching it off removes everything it added, at once.
         </p>
       )}
+    </div>
+  );
+}
+
+/** #2556 — the settings it declares, each with its kind and its default. */
+function AddsSettings({ manifest }: { manifest: ExtensionManifest }) {
+  const settings = declaredSettings(manifest);
+  if (!settings.length) return null;
+  return (
+    <div data-extension-adds-settings={manifest.id}>
+      <h2 style={styles.h2}>Settings</h2>
+      <p style={styles.p}>Change them in Settings › Extensions, under {manifest.name}, while it is on.</p>
+      <table style={styles.table}>
+        <tbody>
+          <tr>
+            <th style={styles.th}>Setting</th>
+            <th style={styles.th}>Kind</th>
+            <th style={styles.th}>Default</th>
+          </tr>
+          {settings.map((s) => (
+            <tr key={s.id} data-adds-setting={s.id}>
+              <td style={styles.td}>
+                <div>{s.label}</div>
+                <div style={styles.where}>{s.description}</div>
+              </td>
+              <td style={{ ...styles.td, color: "var(--text-secondary)", width: 90 }}>{typeText(s)}</td>
+              <td style={{ ...styles.td, width: 150 }} data-adds-setting-default={s.id}>
+                {defaultText(s)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -313,8 +368,14 @@ function Changes({ manifest }: { manifest: ExtensionManifest }) {
   );
 }
 
-/** The app tabs for the listed extensions' pages, one per extension. */
-export function extensionAppTabs(manifests: readonly ExtensionManifest[]): AppTabDefinition[] {
+/**
+ * The app tabs for the listed extensions' pages, one per extension. `openSettings` (#2556)
+ * opens Settings filtered to an extension, for its page's Settings button.
+ */
+export function extensionAppTabs(
+  manifests: readonly ExtensionManifest[],
+  opts: { openSettings?: (extensionId: string) => void } = {},
+): AppTabDefinition[] {
   return manifests.map((m) => ({
     key: extensionTabKey(m.id),
     label: (): AppTabLabel => ({ title: `Extension: ${m.name}`, icon: <Icon name="extensions" size={13} /> }),
@@ -323,6 +384,7 @@ export function extensionAppTabs(manifests: readonly ExtensionManifest[]): AppTa
         manifest={m}
         section={sectionOf(tab.state, m)}
         onSection={(section) => ctx.setState({ section })}
+        onOpenSettings={opts.openSettings ? () => opts.openSettings!(m.id) : undefined}
       />
     ),
   }));
@@ -390,6 +452,27 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "auto",
   },
   table: { borderCollapse: "collapse", width: "100%", maxWidth: 680, marginBottom: 22 },
+  th: {
+    textAlign: "left",
+    padding: "6px 10px",
+    borderBottom: "1px solid var(--border-subtle)",
+    fontSize: 11,
+    fontWeight: 600,
+    color: "var(--text-muted)",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  settingsButton: {
+    background: "transparent",
+    border: "1px solid var(--border-strong)",
+    borderRadius: 3,
+    padding: "6px 16px",
+    fontSize: 12.5,
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+  },
   td: { textAlign: "left", padding: "7px 10px", borderBottom: "1px solid var(--border-subtle)", verticalAlign: "top", fontSize: 12.5, color: "var(--text-primary)" },
   kind: { color: "var(--text-secondary)", width: 170 },
   inlineCode: { fontFamily: mono, fontSize: "0.95em", color: "var(--accent-strong)" },
