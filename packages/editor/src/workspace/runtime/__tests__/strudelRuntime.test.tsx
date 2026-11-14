@@ -261,6 +261,38 @@ describe('STRUDEL_RUNTIME renderChrome', () => {
     fireEvent.click(getByTestId('strudel-chrome-loop-toggle'))
     expect(onToggleStopAtEnd).toHaveBeenCalledTimes(1)
   })
+
+  // #2599 — the transport is one Play/Stop toggle, so once stopped there is no
+  // second Stop to click. Go to start is the mouse's way back to the top.
+  describe('StrudelChrome — Go to start (#2599)', () => {
+    it('is hidden when the embedder supplies no handler', () => {
+      const { queryByTestId } = render(
+        STRUDEL_RUNTIME.renderChrome(makeCtx()) as React.ReactElement,
+      )
+      expect(queryByTestId('strudel-chrome-go-to-start')).toBeNull()
+    })
+
+    it('shows while stopped AND while playing, and calls onGoToStart once per click', () => {
+      for (const isPlaying of [false, true]) {
+        const onGoToStart = vi.fn()
+        const { getByTestId } = render(
+          STRUDEL_RUNTIME.renderChrome(makeCtx({ isPlaying, onGoToStart })) as React.ReactElement,
+        )
+        fireEvent.click(getByTestId('strudel-chrome-go-to-start'))
+        expect(onGoToStart).toHaveBeenCalledTimes(1)
+        cleanup()
+      }
+    })
+
+    it('sits before the Play/Stop button, where Logic puts Go to Beginning', () => {
+      const { getByTestId } = render(
+        STRUDEL_RUNTIME.renderChrome(makeCtx({ onGoToStart: () => {} })) as React.ReactElement,
+      )
+      const start = getByTestId('strudel-chrome-go-to-start')
+      const transport = getByTestId('strudel-chrome-transport')
+      expect(start.compareDocumentPosition(transport) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -53630,6 +53630,24 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     this.parkPlayheadAt(0);
   }
   /**
+   * #2599 — the Go to start button: back to the start of the song, or to the
+   * loop's start when a loop is armed (Logic Pro's "Go to Beginning" transport
+   * button). The toolbar has one Play/Stop toggle, so once stopped there is no
+   * second Stop to click; this is the mouse's way to the start.
+   *   - while playing, it seeks there and keeps playing (the ruler's seek; a
+   *     target outside the loop lands on the loop's start);
+   *   - otherwise it parks the playhead there (`rewind`) and does NOT start
+   *     playback, because `seekTo` ends in `play()`.
+   */
+  async goToStart() {
+    if (this.isDisposed) return;
+    if (this.isPlayingState) {
+      await this.seekTo(0);
+      return;
+    }
+    this.rewind();
+  }
+  /**
    * #2593 — set the transport offset so a stopped transport's next Play starts
    * at song cycle `songCycle`. The same arithmetic as `seekTo`, against the
    * stopped scheduler's clock: Strudel's cyclist reads 0 while stopped and
@@ -57589,7 +57607,8 @@ function StrudelChrome(ctx) {
     autoRefresh,
     onToggleAutoRefresh,
     stopAtEnd,
-    onToggleStopAtEnd
+    onToggleStopAtEnd,
+    onGoToStart
   } = ctx;
   const bar2 = useTouchBar();
   const busy = isPlaying || isPlayPending;
@@ -57611,6 +57630,29 @@ function StrudelChrome(ctx) {
         fontSize: 12
       },
       children: [
+        onGoToStart && // #2599 — before Play/Stop, where Logic Pro puts "Go to Beginning".
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "button",
+          {
+            "data-testid": "strudel-chrome-go-to-start",
+            onClick: onGoToStart,
+            title: "Go to start (the loop's start when a loop is set)",
+            "aria-label": "Go to start",
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "4px 8px",
+              borderRadius: 4,
+              border: "1px solid var(--border)",
+              background: "none",
+              color: "var(--foreground-muted)",
+              cursor: "pointer",
+              fontSize: 11,
+              fontFamily: "var(--font-mono)"
+            },
+            children: "\u23EE\uFE0E"
+          }
+        ),
         /* @__PURE__ */ jsxRuntime.jsx(
           "button",
           {

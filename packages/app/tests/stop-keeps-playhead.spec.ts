@@ -1,5 +1,6 @@
 /**
- * Stop keeps the playhead; Play carries on from it (#2593) — Playwright spec.
+ * Stop keeps the playhead; Play carries on from it (#2593), and Go to start
+ * takes it back to the top with the mouse (#2599) — Playwright spec.
  *
  * Logic Pro for Mac 13.0, "Control playback with the transport buttons":
  *   Stop: "Stops playback or recording. Click a second time to move the
@@ -200,4 +201,49 @@ test('Stop twice goes back to the start of the song', async ({ page }) => {
   const resumed = await settledPlayhead(page)
   console.log(`[#2593] double stop: beforeStop=${beforeStop.toFixed(2)} resumed=${resumed.toFixed(2)}`)
   expect(resumed, 'a second Stop rewinds to bar 1').toBeLessThan(1.2)
+})
+
+// #2599 — the transport is one Play/Stop toggle, so once stopped it reads Play
+// and Stop's second press is keyboard-only. Go to start is the mouse's way back
+// (Logic Pro's "Go to Beginning" button). These arms use the mouse only.
+const transportButton = (page: Page) => page.getByTestId('strudel-chrome-transport').first()
+const goToStartButton = (page: Page) => page.getByTestId('strudel-chrome-go-to-start').first()
+
+test('#2599 with the mouse only: Stop, Go to start, Play starts from the top', async ({ page }) => {
+  test.setTimeout(90_000)
+  await boot(page, SONG, 'drums')
+  await clickRuler(page, 0.4)
+  await page.waitForTimeout(1500)
+  const beforeStop = (await read(page)).playhead!
+  expect(beforeStop).toBeGreaterThan(5)
+
+  await transportButton(page).click() // Stop
+  await expect(lcdState(page)).not.toHaveAttribute('data-stave-lcd-state', 'play', { timeout: 5_000 })
+  await goToStartButton(page).click()
+  // Going to the start while stopped must not start playback.
+  await page.waitForTimeout(600)
+  await expect(lcdState(page)).not.toHaveAttribute('data-stave-lcd-state', 'play')
+  await transportButton(page).click() // Play
+  await expect(lcdState(page)).toHaveAttribute('data-stave-lcd-state', 'play', { timeout: 10_000 })
+  const resumed = await settledPlayhead(page)
+  console.log(`[#2599] stopped: beforeStop=${beforeStop.toFixed(2)} resumed=${resumed.toFixed(2)}`)
+  expect(resumed, 'Play after Go to start begins at bar 1').toBeLessThan(1.2)
+})
+
+test('#2599 Go to start while playing jumps back to the top and keeps playing', async ({ page }) => {
+  test.setTimeout(90_000)
+  await boot(page, SONG, 'drums')
+  await clickRuler(page, 0.4)
+  await page.waitForTimeout(1500)
+  const before = (await read(page)).playhead!
+  expect(before).toBeGreaterThan(5)
+
+  await goToStartButton(page).click()
+  const after = await settledPlayhead(page)
+  console.log(`[#2599] playing: before=${before.toFixed(2)} after=${after.toFixed(2)}`)
+  expect(after, 'the playhead jumped back to bar 1').toBeLessThan(1.2)
+  await expect(lcdState(page)).toHaveAttribute('data-stave-lcd-state', 'play')
+  await page.waitForTimeout(1000)
+  const later = (await read(page)).playhead!
+  expect(later - after, 'and playback carries on from there').toBeGreaterThan(0.5)
 })

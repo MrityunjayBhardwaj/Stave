@@ -911,6 +911,16 @@ export interface ChromeContext {
    * settings are about, so neither of them means anything there.
    */
   readonly onToggleStopAtEnd?: () => void
+
+  /**
+   * #2599 — Go to start: back to the start of the song (the loop's start when
+   * one is armed); playback keeps going if it was playing. When supplied the
+   * chrome renders a button for it beside Play/Stop; when omitted the button
+   * is hidden. It exists because the transport is one Play/Stop toggle: once
+   * stopped it reads Play, so Stop's second press (which also goes to the
+   * start, #2593) can only be reached from the keyboard.
+   */
+  readonly onGoToStart?: () => void
 }
 
 /**

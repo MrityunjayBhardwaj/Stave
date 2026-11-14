@@ -1380,6 +1380,25 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   }
 
   /**
+   * #2599 — the Go to start button: back to the start of the song, or to the
+   * loop's start when a loop is armed (Logic Pro's "Go to Beginning" transport
+   * button). The toolbar has one Play/Stop toggle, so once stopped there is no
+   * second Stop to click; this is the mouse's way to the start.
+   *   - while playing, it seeks there and keeps playing (the ruler's seek; a
+   *     target outside the loop lands on the loop's start);
+   *   - otherwise it parks the playhead there (`rewind`) and does NOT start
+   *     playback, because `seekTo` ends in `play()`.
+   */
+  async goToStart(): Promise<void> {
+    if (this.isDisposed) return
+    if (this.isPlayingState) {
+      await this.seekTo(0)
+      return
+    }
+    this.rewind()
+  }
+
+  /**
    * #2593 — set the transport offset so a stopped transport's next Play starts
    * at song cycle `songCycle`. The same arithmetic as `seekTo`, against the
    * stopped scheduler's clock: Strudel's cyclist reads 0 while stopped and

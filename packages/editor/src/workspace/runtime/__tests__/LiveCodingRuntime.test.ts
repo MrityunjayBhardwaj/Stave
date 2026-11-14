@@ -1342,6 +1342,55 @@ describe('LiveCodingRuntime', () => {
       runtime.dispose()
     })
 
+    // #2599 — Go to start: the mouse's way back, since the toggle reads Play
+    // once stopped and Stop's second press is keyboard-only.
+    it('#2599 Go to start while stopped parks at 0 and does not start playback', async () => {
+      const { engine, setNow } = stoppableLoopEngine()
+      const runtime = new LiveCodingRuntime('go-start-1', engine, () => 'code')
+      await runtime.play()
+      setNow(2)
+      await runtime.seekTo(6)
+      setNow(3) // song 7
+      runtime.transportStop() // parks at 7
+      const playsBefore = engine.playFn.mock.calls.length
+      await runtime.goToStart()
+      expect(engine.playFn.mock.calls.length).toBe(playsBefore) // still stopped
+      expect(runtime.getSongPosition()).toBeNull()
+      await runtime.play()
+      expect(runtime.getSongPosition()).toBeCloseTo(0)
+      runtime.dispose()
+    })
+
+    it('#2599 Go to start while playing jumps back to 0 and keeps playing', async () => {
+      const { engine, setNow } = stoppableLoopEngine()
+      const runtime = new LiveCodingRuntime('go-start-2', engine, () => 'code')
+      await runtime.play()
+      setNow(5.25)
+      expect(runtime.getSongPosition()).toBeCloseTo(5.25)
+      await runtime.goToStart()
+      expect(runtime.getSongPosition()).toBeCloseTo(0)
+      setNow(6)
+      expect(runtime.getSongPosition()).toBeCloseTo(0.75)
+      runtime.dispose()
+    })
+
+    it('#2599 with a loop armed, Go to start goes to the loop start (playing and stopped)', async () => {
+      const { engine, setNow } = stoppableLoopEngine()
+      const runtime = new LiveCodingRuntime('go-start-3', engine, () => 'code')
+      await runtime.play()
+      setNow(0)
+      await runtime.setLoopRange({ startCycle: 3, cycles: 2 })
+      setNow(1.5) // song 4.5
+      await runtime.goToStart()
+      expect(runtime.getSongPosition()).toBeCloseTo(3)
+      setNow(1.8)
+      runtime.transportStop()
+      await runtime.goToStart()
+      await runtime.play()
+      expect(runtime.getSongPosition()).toBeCloseTo(3)
+      runtime.dispose()
+    })
+
     it('arming from outside the span starts playback at the loop start', async () => {
       const { engine, setNow, getLoop } = makeLoopEngine()
       const runtime = new LiveCodingRuntime('loop-1', engine, () => 'code')

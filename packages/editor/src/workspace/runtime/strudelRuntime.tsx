@@ -188,6 +188,7 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
     onToggleAutoRefresh,
     stopAtEnd,
     onToggleStopAtEnd,
+    onGoToStart,
   } = ctx
   const bar = useTouchBar()
   const busy = isPlaying || isPlayPending
@@ -208,6 +209,31 @@ function StrudelChrome(ctx: ChromeContext): React.ReactElement {
         fontSize: 12,
       }}
     >
+      {onGoToStart && (
+        // #2599 — before Play/Stop, where Logic Pro puts "Go to Beginning".
+        <button
+          data-testid="strudel-chrome-go-to-start"
+          onClick={onGoToStart}
+          title="Go to start (the loop's start when a loop is set)"
+          aria-label="Go to start"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '4px 8px',
+            borderRadius: 4,
+            border: '1px solid var(--border)',
+            background: 'none',
+            color: 'var(--foreground-muted)',
+            cursor: 'pointer',
+            fontSize: 11,
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          {/* U+FE0E keeps the glyph as text, not a colour emoji. */}
+          {'\u23EE\uFE0E'}
+        </button>
+      )}
+
       <button
         data-testid="strudel-chrome-transport"
         // #2259 — while Play is still loading the button says so, and pressing

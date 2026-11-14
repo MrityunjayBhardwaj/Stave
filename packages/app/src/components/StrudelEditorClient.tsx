@@ -1988,6 +1988,9 @@ export default function StrudelEditorClient({
       bpm: state.bpm,
       onPlay: () => handlePlay(tab.fileId),
       onStop: () => handleStop(tab.fileId),
+      // #2599 — the mouse's way back to the start: the toggle reads Play once
+      // stopped, so Stop's second press is keyboard-only.
+      onGoToStart: () => { void rt.goToStart(); },
       autoRefresh: state.autoRefresh,
       onToggleAutoRefresh: () => handleToggleAutoRefresh(tab.fileId),
       // #1388 — the toggle is offered ONLY for a document that HAS an end to

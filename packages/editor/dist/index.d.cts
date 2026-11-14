@@ -8645,6 +8645,15 @@ interface ChromeContext {
      * settings are about, so neither of them means anything there.
      */
     readonly onToggleStopAtEnd?: () => void;
+    /**
+     * #2599 — Go to start: back to the start of the song (the loop's start when
+     * one is armed); playback keeps going if it was playing. When supplied the
+     * chrome renders a button for it beside Play/Stop; when omitted the button
+     * is hidden. It exists because the transport is one Play/Stop toggle: once
+     * stopped it reads Play, so Stop's second press (which also goes to the
+     * start, #2593) can only be reached from the keyboard.
+     */
+    readonly onGoToStart?: () => void;
 }
 /**
  * Per-extension provider for executable file types. Owns engine creation
@@ -13209,6 +13218,17 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
      * does nothing: moving a playing transport is a seek (`seekTo`).
      */
     rewind(): void;
+    /**
+     * #2599 — the Go to start button: back to the start of the song, or to the
+     * loop's start when a loop is armed (Logic Pro's "Go to Beginning" transport
+     * button). The toolbar has one Play/Stop toggle, so once stopped there is no
+     * second Stop to click; this is the mouse's way to the start.
+     *   - while playing, it seeks there and keeps playing (the ruler's seek; a
+     *     target outside the loop lands on the loop's start);
+     *   - otherwise it parks the playhead there (`rewind`) and does NOT start
+     *     playback, because `seekTo` ends in `play()`.
+     */
+    goToStart(): Promise<void>;
     /**
      * #2593 — set the transport offset so a stopped transport's next Play starts
      * at song cycle `songCycle`. The same arithmetic as `seekTo`, against the
