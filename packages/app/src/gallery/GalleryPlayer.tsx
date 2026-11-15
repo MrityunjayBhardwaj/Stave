@@ -31,14 +31,22 @@
  * studio's rule (previewRegistry.ts); a name nothing in the entry answers to
  * falls back to Stave's built-in visuals, and one that resolves nowhere is said
  * so in the frame rather than drawing nothing silently.
+ *
+ * #2489 — a pattern that draws none of its own visuals here gets Stave's
+ * built-in piano roll as its picture, fed by its own scheduler, with a line
+ * under it naming the file and the bar playing (previewRoll.ts says when it
+ * shows and how the bar is counted). It is gone when the run stops or fails.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { NEEDS_CLICK, parseToFrame, type FromFrame, type PreviewFile } from "./previewProtocol";
+import { codeErrorFromLog, PREVIEW_ROLL_VIZ, rollLabel, rollShows, songBarsOf, STRUDEL_LOG_EVENT } from "./previewRoll";
 
 type Engine = import("@stave/editor").StrudelEngine;
 type Editor = typeof import("@stave/editor");
 type Components = Partial<import("@stave/editor").EngineComponents>;
 type Mounted = { renderer: { destroy(): void; resume?(): void }; disconnect(): void };
+/** #2489 — the roll on show: the file it plays, the song's length in bars if it has one, and the playing cycle. */
+type Roll = { path: string; bars: number | null; now: () => number };
 type VizSource = import("@stave/editor").VizDescriptor["factory"];
 /** The kinds that compile to a visual: every preview kind but a pattern. */
 type VizKind = Exclude<PreviewFile["kind"], "strudel">;
@@ -88,6 +96,9 @@ export function GalleryPlayer() {
   const [missing, setMissing] = useState<string[]>([]);
   // #2581 — how many visuals the playing pattern calls for that resolved, when over the limit.
   const [cappedNote, setCappedNote] = useState<string | null>(null);
+  // #2489 — the piano roll drawn when the pattern draws no visual of its own.
+  const [roll, setRoll] = useState<Roll | null>(null);
+  const rollMountRef = useRef<{ box: HTMLDivElement; mounted: Mounted; stopListening: () => void } | null>(null);
   // #2580 — inside the gallery's preview the page's status line is the one shown
   // (and announced); this frame's own line is for the player opened on its own.
   // Assumed embedded until checked, so the embedded case never flashes a second line.
@@ -116,13 +127,28 @@ export function GalleryPlayer() {
     [post],
   );
 
+  /** #2489 — take the roll down (a failed run keeps no picture of notes that aren't playing). */
+  const clearRoll = useCallback(() => {
+    const r = rollMountRef.current;
+    rollMountRef.current = null;
+    setRoll(null);
+    if (!r) return;
+    r.stopListening();
+    vizMountsRef.current = vizMountsRef.current.filter((m) => m !== r.mounted);
+    r.mounted.renderer.destroy();
+    r.mounted.disconnect();
+    r.box.remove();
+    if (vizMountsRef.current.length === 0) setShowViz(false);
+  }, []);
+
   /** The run failed before anything played. */
   const failRun = useCallback(
     (message: string) => {
       run.current = { phase: "idle" };
+      clearRoll();
       post({ state: "error", message });
     },
-    [post],
+    [clearRoll, post],
   );
 
   /** It plays; say so, with any error the code raised on the way. */
@@ -146,6 +172,9 @@ export function GalleryPlayer() {
       m.disconnect();
     }
     vizMountsRef.current = [];
+    rollMountRef.current?.stopListening();
+    rollMountRef.current = null;
+    setRoll(null);
     vizRef.current?.replaceChildren();
     setShowViz(false);
     setMissing([]);
@@ -202,21 +231,30 @@ export function GalleryPlayer() {
   }, [needsClick, startSound]);
 
   /**
-   * Mount one visual in a box of its own inside the visual area. A sketch's
-   * error goes to `onError`. False when this run was replaced meanwhile.
+   * Mount one visual in a box of its own inside the visual area, the box marked
+   * with `attr` = `label`. A sketch's error goes to `onError`. Null when this run
+   * was replaced meanwhile.
    */
   const mountVisual = useCallback(
-    (editor: Editor, mine: number, label: string, factory: VizSource, components: Components, onError: (err: Error) => void) => {
+    (
+      editor: Editor,
+      mine: number,
+      label: string,
+      factory: VizSource,
+      components: Components,
+      onError: (err: Error) => void,
+      attr = "data-gallery-player-visual",
+    ): { box: HTMLDivElement; mounted: Mounted } | null => {
       const area = vizRef.current;
-      if (!area || mine !== generation.current) return false;
+      if (!area || mine !== generation.current) return null;
       const box = document.createElement("div");
-      box.setAttribute("data-gallery-player-visual", label);
+      box.setAttribute(attr, label);
       box.style.cssText = "position:relative;flex:1 1 0;min-height:0;width:100%;overflow:hidden;";
       area.appendChild(box);
       const mounted = editor.mountVizRenderer(box, factory, components, VIZ_SIZE, onError);
       vizMountsRef.current.push(mounted);
       mounted.renderer.resume?.();
-      return true;
+      return { box, mounted };
     },
     [],
   );
@@ -226,14 +264,15 @@ export function GalleryPlayer() {
    * each from the entry's own files by the studio's name rule, else one of
    * Stave's built-in visuals, mounted fed by its own track (its scheduler and,
    * when the engine has one, its analyser), as the studio's inline zones are.
-   * Names that resolve to nothing are listed in the frame.
+   * Names that resolve to nothing are listed in the frame. Resolves to how
+   * many it drew.
    */
   const showPatternVisuals = useCallback(
-    async (editor: Editor, e: Engine, mine: number, files: PreviewFile[]) => {
+    async (editor: Editor, e: Engine, mine: number, files: PreviewFile[]): Promise<number> => {
       const requests = [...e.getVizRequests()];
-      if (requests.length === 0) return;
+      if (requests.length === 0) return 0;
       const { previewRegistry, visualName } = await import("./previewRegistry");
-      if (mine !== generation.current) return;
+      if (mine !== generation.current) return 0;
       const registry = previewRegistry(files);
       const found: Array<{ trackKey: string; label: string; factory: VizSource }> = [];
       const unresolved: string[] = [];
@@ -255,10 +294,11 @@ export function GalleryPlayer() {
       }
       setMissing(unresolved);
       setCappedNote(visualsCappedNote(found.length));
-      if (found.length === 0) return;
+      if (found.length === 0) return 0;
       setShowViz(true);
       await new Promise((r) => requestAnimationFrame(r));
       const comps = e.components;
+      let drawn = 0;
       for (const { trackKey, label, factory } of found.slice(0, MAX_PREVIEW_VISUALS)) {
         const trackAnalyser = comps.audio?.trackAnalysers?.get(trackKey);
         const components: Components = {
@@ -275,10 +315,77 @@ export function GalleryPlayer() {
         const onError = (err: Error) => {
           if (mine === generation.current) reportError(err.message);
         };
-        if (!mountVisual(editor, mine, label, factory, components, onError)) return;
+        if (!mountVisual(editor, mine, label, factory, components, onError)) return drawn;
+        drawn++;
       }
+      return drawn;
     },
     [mountVisual, reportError],
+  );
+
+  /**
+   * #2489 — Stave's built-in piano roll, as the picture of a pattern that draws
+   * none of its own: fed by the whole pattern's scheduler (every track), as the
+   * studio's `.pianoroll()` backdrop is. Its line says which bar plays, out of
+   * the song's length when the song has one.
+   */
+  const showRoll = useCallback(
+    async (editor: Editor, e: Engine, mine: number, file: PreviewFile) => {
+      const descriptor = editor.DEFAULT_VIZ_DESCRIPTORS.find((d) => d.id === PREVIEW_ROLL_VIZ);
+      const comps = e.components;
+      const scheduler = comps.queryable?.scheduler ?? null;
+      if (!descriptor || !scheduler) return;
+      let bars: number | null = null;
+      try {
+        bars = songBarsOf(editor.songEndOf(file.code));
+      } catch {
+        /* no reading of its length: count bars without a total */
+      }
+      setShowViz(true);
+      await new Promise((r) => requestAnimationFrame(r));
+      if (mine !== generation.current) return;
+      // The roll's queries reach the entry's code, and an error that code throws
+      // there is the code's error: what Strudel logs while the roll asks is
+      // reported, as the engine reports what it logs while the scheduler asks
+      // (previewRoll.ts says why the engine's own report can't be relied on here).
+      const inRollQuery = { depth: 0 };
+      const rollScheduler: typeof scheduler = {
+        ...scheduler,
+        query: (begin: number, end: number) => {
+          inRollQuery.depth++;
+          try {
+            return scheduler.query(begin, end);
+          } finally {
+            inRollQuery.depth--;
+          }
+        },
+      };
+      const onLog = (event: Event) => {
+        if (inRollQuery.depth === 0 || mine !== generation.current) return;
+        const message = codeErrorFromLog((event as CustomEvent).detail);
+        if (message) reportError(message);
+      };
+      document.addEventListener(STRUDEL_LOG_EVENT, onLog);
+      const stopListening = () => document.removeEventListener(STRUDEL_LOG_EVENT, onLog);
+      const components: Components = {
+        ...comps,
+        queryable: { scheduler: rollScheduler, trackSchedulers: comps.queryable?.trackSchedulers ?? new Map() },
+        options: {},
+      };
+      // A fault in the roll's own drawing is Stave's, not the entry's: the roll
+      // goes, quietly, and the music (and every error its code raises) goes on.
+      const onError = () => {
+        if (mine === generation.current) clearRoll();
+      };
+      const m = mountVisual(editor, mine, PREVIEW_ROLL_VIZ, descriptor.factory, components, onError, "data-gallery-player-roll");
+      if (!m) {
+        stopListening();
+        return;
+      }
+      rollMountRef.current = { ...m, stopListening };
+      setRoll({ path: file.path, bars, now: () => scheduler.now() });
+    },
+    [clearRoll, mountVisual, reportError],
   );
 
   const play = useCallback(
@@ -306,8 +413,12 @@ export function GalleryPlayer() {
             failRun(error.message);
             return;
           }
-          await showPatternVisuals(editor, e, mine, files);
+          const drawn = await showPatternVisuals(editor, e, mine, files);
           if (mine !== generation.current) return;
+          if (rollShows(drawn)) {
+            await showRoll(editor, e, mine, file);
+            if (mine !== generation.current) return;
+          }
           await startSound(mine);
           return;
         }
@@ -325,7 +436,7 @@ export function GalleryPlayer() {
         failRun(err instanceof Error ? err.message : String(err));
       }
     },
-    [failRun, mountVisual, nowPlaying, reportError, showPatternVisuals, startSound, stopAll],
+    [failRun, mountVisual, nowPlaying, reportError, showPatternVisuals, showRoll, startSound, stopAll],
   );
 
   useEffect(() => {
@@ -380,6 +491,7 @@ export function GalleryPlayer() {
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
         fontSize: 12,
         overflow: "hidden",
+        position: "relative",
       }}
     >
       <div
@@ -395,6 +507,7 @@ export function GalleryPlayer() {
           overflow: "hidden",
         }}
       />
+      {roll && status.state === "playing" && <RollLabel roll={roll} />}
       {missing.length > 0 && (
         <div data-gallery-player-missing style={{ padding: "0 12px", textAlign: "center" }}>
           {missing.length === 1
@@ -434,5 +547,44 @@ export function GalleryPlayer() {
         {status.state === "error" && `Error: ${status.message ?? "unknown"}`}
       </div>
     </main>
+  );
+}
+
+/** #2489 — the line under the roll: the file and the bar playing, read from the scheduler ten times a second. */
+function RollLabel({ roll }: { roll: Roll }) {
+  const read = useCallback(() => {
+    let cycle = 0;
+    try {
+      cycle = roll.now();
+    } catch {
+      /* not started yet: bar 1 */
+    }
+    return rollLabel(roll.path, cycle, roll.bars);
+  }, [roll]);
+  const [text, setText] = useState(read);
+  useEffect(() => {
+    setText(read());
+    const id = setInterval(() => setText(read()), 100);
+    return () => clearInterval(id);
+  }, [read]);
+  return (
+    // Over the roll's top-left corner: the gallery page lays its own controls
+    // over the bottom of the frame, so a line down there would sit under them.
+    <div
+      data-gallery-player-roll-label
+      style={{
+        position: "absolute",
+        top: 8,
+        left: 10,
+        padding: "3px 8px",
+        borderRadius: 4,
+        background: "rgba(0, 0, 0, 0.55)",
+        color: "#e6e6ee",
+        pointerEvents: "none",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {text}
+    </div>
   );
 }

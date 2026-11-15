@@ -31,6 +31,12 @@
  *    (read from the frame's pixels, not its DOM), in Chromium and in WebKit; the
  *    same pattern with the visual left out of the project draws nothing and the
  *    frame says which name it couldn't find.
+ * 6. THE PREVIEW DRAWS WHAT PLAYS (#2489). A music file with no visual of its
+ *    own draws Stave's piano roll in the frame: its notes are on screen and move
+ *    (two shots of the frame's pixels, 700 ms apart), the line reads "bar N of 4"
+ *    for a four-bar song and "bar N" for a loop, the frame's own stop and the
+ *    page's Stop both clear it, and the frame's messages to the page are the same
+ *    states as ever; silence, the control, draws no notes. Chromium and WebKit.
  *
  * Screenshots go to $GALLERY_SHOT_DIR.
  *
@@ -1200,5 +1206,149 @@ test.describe("the preview doesn't take its frame's word (#2579, #2580, #2581)",
     await expect(frameLoc(page).locator('[data-gallery-player-visual]')).toHaveCount(4, { timeout: 30_000 })
     await page.waitForTimeout(1000)
     await expect(frameLoc(page).locator('[data-gallery-player-capped]')).toHaveCount(0)
+  })
+})
+
+// ─── #2489 the preview draws what is playing ─────────────────────────────────
+
+/** A four-bar song of pitched notes (two sections of two bars), and silence as the control. */
+const SONG = `${MUSIC_CODE.split('\n')[0]}
+arrange([2, note("c3 e3 g3 b3")], [2, note("a2 c3 e3 g3")]).s("sawtooth")`
+const LOOP = `${MUSIC_CODE.split('\n')[0]}
+note("c3 e3 g3 b3").s("sawtooth")`
+const QUIET = `${MUSIC_CODE.split('\n')[0]}
+silence`
+
+/** The page-bound messages every frame sends, recorded on the gallery page as they arrive. */
+const RECORD_FRAME_MESSAGES = () => {
+  const w = window as unknown as { __frameMsgs: string[] }
+  w.__frameMsgs = []
+  addEventListener('message', (e) => {
+    const f = document.querySelector('[data-gallery-preview-frame]') as HTMLIFrameElement | null
+    if (f && e.source === f.contentWindow) w.__frameMsgs.push(JSON.stringify(e.data))
+  })
+}
+const frameMessages = (page: Page) => page.evaluate(() => (window as unknown as { __frameMsgs: string[] }).__frameMsgs.slice())
+
+/**
+ * Two shots of the roll: how many pixels in each are a note's colour (saturated:
+ * the roll's notes are purple, orange, cyan, green; its playhead and the
+ * background are grey), and how many pixels changed between them.
+ */
+async function rollPixels(page: Page, a: Buffer, b: Buffer): Promise<{ notesA: number; notesB: number; changed: number; pixels: number }> {
+  return page.evaluate(
+    async ([a64, b64]) => {
+      const read = async (b: string) => {
+        const bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${b}`)).blob())
+        const c = document.createElement('canvas')
+        c.width = bmp.width
+        c.height = bmp.height
+        const g = c.getContext('2d')!
+        g.drawImage(bmp, 0, 0)
+        return g.getImageData(0, 0, c.width, c.height).data
+      }
+      const [da, db] = [await read(a64), await read(b64)]
+      const sat = (d: Uint8ClampedArray, i: number) => Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2]) > 40
+      let notesA = 0
+      let notesB = 0
+      let changed = 0
+      const n = Math.min(da.length, db.length)
+      for (let i = 0; i < n; i += 4) {
+        if (sat(da, i)) notesA++
+        if (sat(db, i)) notesB++
+        if (Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]) > 60) changed++
+      }
+      return { notesA, notesB, changed, pixels: n / 4 }
+    },
+    [a.toString('base64'), b.toString('base64')],
+  )
+}
+
+const LABEL = /^▶ main\.strudel · bar (\d+)( of (\d+))?$/
+
+/** Play a music entry, see its notes drawn and moving, read its bar, stop it; then the silent control. */
+async function previewDrawsWhatPlays(page: Page, engine: 'chromium' | 'webkit'): Promise<void> {
+  await page.addInitScript(RECORD_FRAME_MESSAGES)
+  const song = await routeProject(page, 'Four Bar Song', [{ path: 'main.strudel', language: 'strudel', content: SONG }])
+  const loop = await routeProject(page, 'Loop', [{ path: 'main.strudel', language: 'strudel', content: LOOP }])
+  const quiet = await routeProject(page, 'Quiet', [{ path: 'main.strudel', language: 'strudel', content: QUIET }])
+
+  // THE SONG: the roll is up, drawing notes that move, with "bar N of 4" under it
+  await previewToPlaying(page, song.id, engine)
+  const roll = frameLoc(page).locator('[data-gallery-player-roll="pianoroll"]')
+  await expect(roll.locator('canvas')).not.toHaveCount(0, { timeout: 30_000 })
+  const label = frameLoc(page).locator('[data-gallery-player-roll-label]')
+  await expect(label).toHaveText(LABEL, { timeout: 15_000 })
+  await page.waitForTimeout(800)
+  const shotA = await roll.screenshot()
+  const barA = Number(LABEL.exec((await label.textContent()) ?? '')![1])
+  await page.waitForTimeout(700)
+  const shotB = await roll.screenshot()
+  const px = await rollPixels(page, shotA, shotB)
+  console.log(`${engine} song: note pixels ${px.notesA} then ${px.notesB}, ${px.changed} changed in 700 ms, of ${px.pixels}`)
+  expect(px.notesA).toBeGreaterThan(500)
+  expect(px.notesB).toBeGreaterThan(500)
+  expect(px.changed).toBeGreaterThan(200)
+  await expect(label).toHaveText(new RegExp(`^▶ main\\.strudel · bar \\d+ of 4$`))
+  // the bar moves on with the music (a bar is 2 s at the default tempo)
+  await expect.poll(async () => Number(LABEL.exec((await label.textContent()) ?? '')![1]), { timeout: 6_000 }).not.toBe(barA)
+  const barB = Number(LABEL.exec((await label.textContent()) ?? '')![1])
+  console.log(`${engine} song: label went from bar ${barA} to bar ${barB} of 4`)
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-roll-song.png` })
+  await expect(frameLoc(page).locator('[data-gallery-player-visual]')).toHaveCount(0)
+
+  // the frame's own stop (the message the page may still send) clears the roll and its line
+  await page.evaluate(() => (document.querySelector('[data-gallery-preview-frame]') as HTMLIFrameElement).contentWindow!.postMessage({ stop: true }, '*'))
+  await expect(roll).toHaveCount(0, { timeout: 10_000 })
+  await expect(label).toHaveCount(0)
+  await expect(frameLoc(page).locator('[data-gallery-player-viz] canvas')).toHaveCount(0)
+  // the page's Stop removes the frame, roll and all
+  await page.locator('[data-gallery-preview-button]').click()
+  await expect(page.locator('[data-gallery-preview-frame]')).toHaveCount(0)
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-roll-after-stop.png` })
+
+  // the frame told the page nothing new: the same states, in the same shapes
+  const first = await frameMessages(page)
+  const expected = engine === 'webkit'
+    ? ['{"state":"ready"}', '{"state":"stopped","message":"Press Play in the preview to hear it."}', '{"state":"playing"}', '{"state":"stopped"}']
+    : ['{"state":"ready"}', '{"state":"playing"}', '{"state":"stopped"}']
+  console.log(`${engine} frame -> page: ${first.join(' ')}`)
+  expect(first).toEqual(expected)
+
+  // A LOOP: "bar N" with no total
+  await previewToPlaying(page, loop.id, engine)
+  await expect(frameLoc(page).locator('[data-gallery-player-roll-label]')).toHaveText(/^▶ main\.strudel · bar \d+$/, { timeout: 15_000 })
+  console.log(`${engine} loop: ${await frameLoc(page).locator('[data-gallery-player-roll-label]').textContent()}`)
+
+  // CONTROL — silence: the roll is up, and draws no notes
+  await previewToPlaying(page, quiet.id, engine)
+  const qroll = frameLoc(page).locator('[data-gallery-player-roll="pianoroll"]')
+  await expect(qroll.locator('canvas')).not.toHaveCount(0, { timeout: 30_000 })
+  await page.waitForTimeout(1000)
+  const qa = await qroll.screenshot()
+  await page.waitForTimeout(700)
+  const qpx = await rollPixels(page, qa, await qroll.screenshot())
+  console.log(`${engine} silence: note pixels ${qpx.notesA} then ${qpx.notesB}, ${qpx.changed} changed in 700 ms, of ${qpx.pixels}`)
+  expect(qpx.pixels).toBeGreaterThan(1000)
+  expect(qpx.notesA).toBe(0)
+  expect(qpx.notesB).toBe(0)
+  // nothing moves but what the page lays over the frame (a few dozen pixels, against tens of thousands above)
+  expect(qpx.changed).toBeLessThan(500)
+}
+
+test.describe('#2489 the preview draws what is playing', () => {
+  test('Chromium', async ({ page }) => {
+    test.setTimeout(300_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    const errors = consoleErrors(page)
+    await routeGallery(page)
+    await previewDrawsWhatPlays(page, 'chromium')
+    console.log('CONSOLE ERRORS\n' + errors.join('\n'))
+    expect(errors.filter((e) => e.startsWith('pageerror:'))).toEqual([])
+  })
+
+  test('WebKit', async ({ page: probe, baseURL }) => {
+    test.setTimeout(300_000)
+    await inWebKit(probe, baseURL, (page) => previewDrawsWhatPlays(page, 'webkit'))
   })
 })
