@@ -60,7 +60,9 @@ interface Sent {
 
 /**
  * Answer the publish, then serve the entry back from what was sent: the list,
- * the entry, and its record. Everything else under /api/gallery is a 404.
+ * the entry, its record and its stills. Everything else under /api/gallery is a 404.
+ * #2603 — served as the routes serve them: the record without its stills, the
+ * stills from their own route (the server stores them apart).
  */
 async function routeRoundTrip(page: Page): Promise<Request[]> {
   const seen: Request[] = []
@@ -90,7 +92,13 @@ async function routeRoundTrip(page: Page): Promise<Request[]> {
     }
     if (path === '/api/gallery' && req.method() === 'GET') return route.fulfill({ json: { entries: sent ? [entry()] : [] } })
     if (sent && path === `/api/gallery/${ID}`) return route.fulfill({ json: { entry: entry(), manifest: sent.manifest } })
-    if (sent && path === `/api/gallery/${ID}/recording` && sent.recording) return route.fulfill({ json: sent.recording })
+    if (sent && path === `/api/gallery/${ID}/recording` && sent.recording) {
+      const { frames: _frames, ...bare } = sent.recording
+      return route.fulfill({ json: bare })
+    }
+    if (sent && path === `/api/gallery/${ID}/frames` && sent.recording) {
+      return route.fulfill({ json: { frames: sent.recording.frames ?? [] } })
+    }
     return route.fulfill({ status: 404, json: { error: 'not found' } })
   })
   return seen

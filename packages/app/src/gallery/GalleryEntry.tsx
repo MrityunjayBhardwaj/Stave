@@ -27,7 +27,8 @@ import { GalleryPreview, type GalleryPreviewHandle } from "./GalleryPreview";
 import { previewKindOf, previewPlayFor } from "./previewProtocol";
 import { LIGHT_CODE_BG, codeLanguageOf, colourLines, type TokenKind } from "./codeColour";
 import { RecordingTimeline, lengthLabel } from "./GalleryTimeline";
-import { durationLabel, frameFor, tempoLabel, type RecordedPattern } from "./recording";
+import { durationLabel, frameFor, tempoLabel, type GalleryRecording, type RecordedFrame, type RecordedPattern } from "./recording";
+import { fetchGalleryFrames } from "./client";
 import { useDisplayMeter } from "../state/displayMeter";
 import { GALLERY_FILTERS, KIND_LABEL, contentsSummary, fileRole, formatGalleryDate, publishedAgo } from "./galleryModel";
 import { shownName } from "./reservedNames";
@@ -36,6 +37,28 @@ import type { DetailState } from "./galleryStore";
 import type { GalleryEntry, GalleryEntryResponse, GalleryKind } from "./types";
 
 type Manifest = GalleryEntryResponse["manifest"];
+
+/**
+ * #2603 — the stills of an entry's visuals, kept apart from its record so the
+ * cards (which share the record) never download them. Asked for only once the
+ * record says the entry has a visual; null until they arrive, and when there are none.
+ */
+function useEntryFrames(id: string, rec: GalleryRecording | null): RecordedFrame[] | null {
+  const [frames, setFrames] = useState<RecordedFrame[] | null>(null);
+  const wanted = !!rec && rec.contents.visuals > 0;
+  useEffect(() => {
+    setFrames(null);
+    if (!wanted) return;
+    let live = true;
+    void fetchGalleryFrames(id).then((f) => {
+      if (live) setFrames(f);
+    });
+    return () => {
+      live = false;
+    };
+  }, [id, wanted]);
+  return frames;
+}
 
 export interface EntryPageProps {
   detail: DetailState;
@@ -146,6 +169,8 @@ export function EntryPage(props: EntryPageProps) {
   const ready = detail.status === "ready" ? detail.data : null;
   // #2487 — what each pattern plays, recorded at publish (none for older entries)
   const rec = useEntryRecording(ready?.entry ?? { id: detail.id, hasRecording: false });
+  // #2603 — the visuals' stills, fetched here only (never by a card)
+  const stills = useEntryFrames(detail.id, rec);
   // #2590 — BPM counted the way the studio's transport counts it
   const meter = useDisplayMeter();
   const kindLabel = ready ? GALLERY_FILTERS.find((f) => f.id === ready.entry.kind)?.label : undefined;
@@ -252,7 +277,7 @@ export function EntryPage(props: EntryPageProps) {
                 const role = fileRole(f.path);
                 const lines = f.content.split("\n").length;
                 const recorded = rec?.files.find((r) => r.path === f.path) ?? null;
-                const still = role === "visual" ? frameFor(rec, f.path) : null;
+                const still = role === "visual" ? frameFor(stills, f.path) : null;
                 const isCover = rec?.cover === f.path;
                 return (
                   <div

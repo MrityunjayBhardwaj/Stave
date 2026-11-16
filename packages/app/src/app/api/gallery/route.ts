@@ -127,7 +127,7 @@ async function handlePOST(req: Request): Promise<Response> {
   // The files first, then the row: once the entry can be listed, its manifest
   // (and thumbnail) already exist. A failure before the insert leaves only
   // unlisted files behind, never a listed entry without them.
-  await putEntryFiles(store, id, v.manifestBytes, v.thumbnail, v.recording);
+  await putEntryFiles(store, id, v.manifestBytes, v.thumbnail, v.recording, v.frames);
   const stored = await inTransaction(db, (tx) => insertEntry(tx, { entry, authorEmail: account.email, manageTokenHash: hashToken(manageToken) }));
   if (!stored) return Response.json({ error: "could not store the entry" }, { status: 500 });
 

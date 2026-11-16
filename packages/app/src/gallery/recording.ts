@@ -73,7 +73,13 @@ export interface GalleryRecording {
   cover: string | null;
   contents: { patterns: number; visuals: number; other: number };
   files: RecordedPattern[];
-  /** #2590 — one still per visual that was running at publish. Absent on older records. */
+  /**
+   * #2590 — one still per visual that was running at publish. Publishing sends
+   * them here, but since #2603 the server stores them apart from the record and
+   * the record it serves never carries them (`withoutFrames`): a card fetches the
+   * record and never shows a still. Entries published before #2603 stored them
+   * here; the stills route still finds them. Absent on records without stills.
+   */
   frames?: RecordedFrame[];
 }
 
@@ -228,16 +234,38 @@ export function readRecording(raw: unknown): GalleryRecording | null {
   }
   const rec: GalleryRecording = { v: 1, cover: cover as string | null, contents: { patterns, visuals, other }, files: out };
   if (raw.frames !== undefined) {
-    if (!Array.isArray(raw.frames) || raw.frames.length > RECORDING_LIMITS.frames) return null;
-    const frames: RecordedFrame[] = [];
-    for (const f of raw.frames) {
-      const frame = readFrame(f);
-      if (!frame || frames.some((x) => x.path === frame.path)) return null;
-      frames.push(frame);
-    }
+    const frames = readFrames(raw.frames);
+    if (!frames) return null;
     rec.frames = frames;
   }
   return rec;
+}
+
+/**
+ * #2590 / #2603 — a list of visual stills, or null when it isn't one: at most
+ * `frames` of them, one per path, each a real PNG or WebP within its size. The
+ * one reader of stills, whether they arrive inside a record (as publishing sends
+ * them, and as older entries stored them) or in the entry's own stills file.
+ */
+export function readFrames(raw: unknown): RecordedFrame[] | null {
+  if (!Array.isArray(raw) || raw.length > RECORDING_LIMITS.frames) return null;
+  const frames: RecordedFrame[] = [];
+  for (const f of raw) {
+    const frame = readFrame(f);
+    if (!frame || frames.some((x) => x.path === frame.path)) return null;
+    frames.push(frame);
+  }
+  return frames;
+}
+
+/**
+ * #2603 — the record as the cards get it: everything but the stills. A card never
+ * shows a still, so it never downloads one; the stills are stored and served apart
+ * (`/api/gallery/<id>/frames`) and only the entry page fetches them.
+ */
+export function withoutFrames(rec: GalleryRecording): GalleryRecording {
+  const { frames: _frames, ...rest } = rec;
+  return rest;
 }
 
 /** The record as stored and served: JSON bytes, or null when over the size cap. */
@@ -278,8 +306,8 @@ export function contentsLine(rec: GalleryRecording | null): string | null {
 }
 
 /** #2590 — the still recorded for a visual, when there is one. */
-export function frameFor(rec: GalleryRecording | null, path: string): RecordedFrame | null {
-  return rec?.frames?.find((f) => f.path === path) ?? null;
+export function frameFor(frames: readonly RecordedFrame[] | null, path: string): RecordedFrame | null {
+  return frames?.find((f) => f.path === path) ?? null;
 }
 
 /**

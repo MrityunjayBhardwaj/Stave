@@ -277,8 +277,23 @@ describe("EntryPage — the preview gets the entry's files (#2490)", () => {
     const song = { path: "main.strudel", span: "arranged", cycles: 16, lanes: [{ name: "bd" }], events: [[0, 0, 1, null]], sections: [] };
     const bass = { path: "bass.strudel", span: "loop", cycles: 2, lanes: [{ name: "saw" }], events: [[0, 0, 1, 36]], sections: [] };
 
-    async function open(rec: unknown) {
-      vi.stubGlobal("fetch", vi.fn(async () => Response.json(rec)));
+    /**
+     * #2603 — served as the routes serve them: the record never carries stills
+     * (they're left out of it), the stills come from their own route.
+     */
+    let asked: string[] = [];
+    async function open(rec: { frames?: unknown } & Record<string, unknown>) {
+      const { frames, ...bare } = rec;
+      asked = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          asked.push(url);
+          if (url.endsWith("/recording")) return Response.json(bare);
+          if (url.endsWith("/frames")) return Response.json({ frames: frames ?? [] });
+          return new Response(null, { status: 404 });
+        }),
+      );
       renderPage({ detail: { status: "ready", id: ENTRY.id, data: { entry: { ...ENTRY, hasRecording: true }, manifest: MANIFEST } } });
       await waitFor(() => expect(document.querySelector('[data-gallery-file-row="main.strudel"] [data-gallery-timeline]')).not.toBeNull());
     }
@@ -310,11 +325,21 @@ describe("EntryPage — the preview gets the entry's files (#2490)", () => {
 
     it("a visual with a still shows it on its row; a pattern's row keeps its strip", async () => {
       await open({ ...base, files: [song], frames: [{ path: "viz/bloom.hydra", image: STILL }] });
+      // the stills arrive after the record, from their own request
+      await waitFor(() => expect(document.querySelector("img[data-gallery-visual-frame]")).not.toBeNull());
       const img = document.querySelector('[data-gallery-file-row="viz/bloom.hydra"] img[data-gallery-visual-frame]') as HTMLImageElement;
       expect(img).not.toBeNull();
       expect(img.getAttribute("src")).toBe(STILL);
       expect(img.getAttribute("alt")).toBe("A still of viz/bloom.hydra");
       expect(document.querySelectorAll("[data-gallery-visual-frame]")).toHaveLength(1);
+      // #2603 — from the stills route: the record it was given had none
+      expect(asked).toContain(`/api/gallery/${ENTRY.id}/frames`);
+    });
+
+    it("#2603 — an entry with no visual doesn't ask for stills", async () => {
+      await open({ ...base, contents: { patterns: 2, visuals: 0, other: 1 }, files: [song] });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(asked).toEqual([`/api/gallery/${ENTRY.id}/recording`]);
     });
 
     it("an older entry's record has no stills: the visual's row is as it was", async () => {

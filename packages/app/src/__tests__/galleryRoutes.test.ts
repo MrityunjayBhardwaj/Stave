@@ -35,6 +35,7 @@ import { GET as listRoute, POST as publishRoute } from "../app/api/gallery/route
 import { DELETE as deleteRoute, GET as entryRoute } from "../app/api/gallery/[id]/route";
 import { GET as thumbnailRoute } from "../app/api/gallery/[id]/thumbnail/route";
 import { GET as recordingRoute } from "../app/api/gallery/[id]/recording/route";
+import { GET as framesRoute } from "../app/api/gallery/[id]/frames/route";
 import { RECORDING_LIMITS, type GalleryRecording } from "../gallery/recording";
 import { POST as reportRoute } from "../app/api/gallery/[id]/report/route";
 import { GET as reportsRoute } from "../app/api/gallery/reports/route";
@@ -232,6 +233,68 @@ describe("recordings (#2487)", () => {
     expect((await stat(file)).isFile()).toBe(true);
     expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBeLessThan(300);
     expect((await recordingOf(id)).status).toBe(404);
+    await expect(stat(file)).rejects.toThrow();
+  });
+});
+
+// #2603 — the visuals' stills are stored and served apart from the record, so a
+// card (which fetches the record) never downloads one; only the entry page asks.
+const framesOf = (id: string) => framesRoute(new Request(`http://x/api/gallery/${id}/frames`), ctx(id));
+const STILL = `data:image/png;base64,${PNG_1x1}`;
+const withVisual = (): GalleryManifest => {
+  const m = manifest(1);
+  m.files.push({ id: "v", path: "viz/bloom.hydra", language: "hydra", content: "osc(10).out()" });
+  m.fileOrder = { "": ["f0", "v"] };
+  return m;
+};
+const WITH_STILL: GalleryRecording = {
+  ...RECORD,
+  contents: { patterns: 1, visuals: 1, other: 0 },
+  frames: [{ path: "viz/bloom.hydra", image: STILL }],
+};
+
+describe("stills apart from the record (#2603)", () => {
+  it("a new entry: the record the cards fetch has no still; the stills route has it", async () => {
+    const { id } = await published({ kind: "project", manifest: withVisual(), recording: WITH_STILL });
+    const rec = await recordingOf(id);
+    expect(rec.status).toBe(200);
+    const text = await rec.text();
+    expect(text).not.toContain("data:image");
+    const { frames: _f, ...bare } = WITH_STILL;
+    expect(JSON.parse(text)).toEqual(bare);
+    // stored apart too: the record's own file holds no picture
+    expect(await readFile(path.join(dir, "gallery", "recordings", `${id}.json`), "utf8")).not.toContain("data:image");
+    const res = await framesOf(id);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await res.json()).toEqual({ frames: WITH_STILL.frames });
+  });
+
+  it("an entry published with its stills inside the record: the record is served without them, the stills route finds them", async () => {
+    const { id } = await published({ kind: "project", manifest: withVisual(), recording: WITH_STILL });
+    // as entries published before #2603 were stored: one file, stills inside, no stills file
+    await writeFile(path.join(dir, "gallery", "recordings", `${id}.json`), JSON.stringify(WITH_STILL));
+    await rm(path.join(dir, "gallery", "frames", `${id}.json`));
+    const text = await (await recordingOf(id)).text();
+    expect(text).not.toContain("data:image");
+    expect(JSON.parse(text)).not.toHaveProperty("frames");
+    expect(await (await framesOf(id)).json()).toEqual({ frames: WITH_STILL.frames });
+  });
+
+  it("an entry with a record but no stills: an empty list; with no record: 404", async () => {
+    const a = await published({ recording: RECORD });
+    expect(await (await framesOf(a.id)).json()).toEqual({ frames: [] });
+    await expect(stat(path.join(dir, "gallery", "frames", `${a.id}.json`))).rejects.toThrow();
+    const b = await published();
+    expect((await framesOf(b.id)).status).toBe(404);
+  });
+
+  it("a taken-down entry's stills aren't served; the author's delete removes their file", async () => {
+    const { id, manageToken } = await published({ kind: "project", manifest: withVisual(), recording: WITH_STILL });
+    const file = path.join(dir, "gallery", "frames", `${id}.json`);
+    expect((await stat(file)).isFile()).toBe(true);
+    expect((await remove(id, { [MANAGE_TOKEN_HEADER]: manageToken })).status).toBeLessThan(300);
+    expect((await framesOf(id)).status).toBe(404);
     await expect(stat(file)).rejects.toThrow();
   });
 });

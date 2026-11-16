@@ -2,7 +2,7 @@
  * Community gallery (#2306) — the browser side of the routes in types.ts.
  * Every function throws an Error whose message a person can act on.
  */
-import { readRecording, type GalleryRecording } from "./recording";
+import { readFrames, readRecording, type GalleryRecording, type RecordedFrame } from "./recording";
 import {
   AUTHOR_KEY_HEADER,
   MANAGE_TOKEN_HEADER,
@@ -102,9 +102,31 @@ export function fetchGalleryRecording(id: string): Promise<GalleryRecording | nu
   return p;
 }
 
-/** Test seam: forget fetched records. */
+const stills = new Map<string, Promise<RecordedFrame[] | null>>();
+
+/**
+ * #2603 — the stills of an entry's visuals, served apart from its record so the
+ * cards never download them. Only the entry page calls this. Null when there are
+ * none to show or they couldn't be read; read through `readFrames` again here.
+ * One request per entry per page; a failed fetch is forgotten.
+ */
+export function fetchGalleryFrames(id: string): Promise<RecordedFrame[] | null> {
+  const had = stills.get(id);
+  if (had) return had;
+  const p = fetch(`/api/gallery/${encodeURIComponent(id)}/frames`)
+    .then(async (res) => (res.ok ? readFrames(((await res.json()) as { frames?: unknown })?.frames) : null))
+    .catch(() => {
+      stills.delete(id);
+      return null;
+    });
+  stills.set(id, p);
+  return p;
+}
+
+/** Test seam: forget fetched records and stills. */
 export function forgetGalleryRecordingsForTests(): void {
   recordings.clear();
+  stills.clear();
 }
 
 export function galleryThumbnailUrl(id: string): string {

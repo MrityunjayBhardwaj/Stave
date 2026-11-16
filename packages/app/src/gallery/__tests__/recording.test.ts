@@ -11,7 +11,9 @@ import {
   mayHavePreview,
   durationLabel,
   frameFor,
+  readFrames,
   readRecording,
+  withoutFrames,
   tempoLabel,
   type GalleryRecording,
 } from "../recording";
@@ -199,11 +201,24 @@ describe("#2590 — tempo and stills in the record", () => {
     expect(readRecording(at)?.frames).toHaveLength(1);
   });
 
-  it("frameFor finds a visual's still, and nothing on an older record", () => {
-    expect(frameFor(FRAMES, "b.p5")?.image).toBe(still("png"));
-    expect(frameFor(FRAMES, "nope.hydra")).toBeNull();
-    expect(frameFor(REC, "viz.hydra")).toBeNull();
+  it("frameFor finds a visual's still, and nothing when there are none", () => {
+    expect(frameFor(FRAMES.frames, "b.p5")?.image).toBe(still("png"));
+    expect(frameFor(FRAMES.frames, "nope.hydra")).toBeNull();
+    expect(frameFor([], "viz.hydra")).toBeNull();
     expect(frameFor(null, "viz.hydra")).toBeNull();
+  });
+
+  it("#2603 — readFrames reads a stills file with the record's own rules", () => {
+    expect(readFrames(JSON.parse(JSON.stringify(FRAMES.frames)))).toEqual(FRAMES.frames);
+    expect(readFrames([])).toEqual([]);
+    expect(readFrames({})).toBeNull();
+    expect(readFrames([{ path: "v.hydra", image: "https://example.com/a.webp" }])).toBeNull();
+  });
+
+  it("#2603 — withoutFrames leaves the stills out and keeps everything else", () => {
+    const bare = withoutFrames(FRAMES);
+    expect(bare).not.toHaveProperty("frames");
+    expect(bare).toEqual(REC);
   });
 
   it("the publish route takes stills only for the entry's own visuals", () => {
@@ -214,7 +229,17 @@ describe("#2590 — tempo and stills in the record", () => {
       fileOrder: {},
       subfolderOrder: {},
     };
-    expect(checkRecording(FRAMES, manifest).ok).toBe(true);
+    const ok = checkRecording(FRAMES, manifest);
+    expect(ok.ok).toBe(true);
+    // #2603 — split: the record carries no still, the stills file carries them all
+    const value = ok.ok ? ok.value! : null;
+    const text = (b: Uint8Array | null | undefined) => new TextDecoder().decode(b ?? new Uint8Array());
+    expect(JSON.parse(text(value?.recording))).toEqual(REC);
+    expect(text(value?.recording)).not.toContain("data:image");
+    expect(JSON.parse(text(value?.frames))).toEqual({ frames: FRAMES.frames });
+    // a record with no stills writes no stills file
+    const none = checkRecording(REC, manifest);
+    expect(none.ok && none.value?.frames).toBeNull();
     expect(checkRecording({ ...REC, frames: [{ path: "gone.hydra", image: still() }] }, manifest).ok).toBe(false);
     expect(checkRecording({ ...REC, frames: [{ path: "notes.md", image: still() }] }, manifest).ok).toBe(false);
     expect(checkRecording({ ...REC, frames: [{ path: "main.strudel", image: still() }] }, manifest).ok).toBe(false);

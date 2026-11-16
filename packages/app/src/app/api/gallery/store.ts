@@ -38,6 +38,11 @@ export const galleryPaths = {
   thumbnail: (id: string) => `gallery/thumbnails/${id}`,
   /** #2487 — what the entry plays, recorded at publish. */
   recording: (id: string) => `gallery/recordings/${id}.json`,
+  /**
+   * #2603 — the visuals' stills, kept apart from the recording so the cards,
+   * which fetch the recording, never download them. `{ frames: RecordedFrame[] }`.
+   */
+  frames: (id: string) => `gallery/frames/${id}.json`,
 };
 
 const blobStore: GalleryBlobStore = {
