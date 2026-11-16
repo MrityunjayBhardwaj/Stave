@@ -128,13 +128,13 @@ describe('moveBoxCursor — arrows over boxes', () => {
   })
 })
 
-describe('velocity is never offered on an Exact row', () => {
+describe('the column writer writes no .gain on a row drawn at its own steps', () => {
   it.each(['~ sd ~ sd, hh*8', 'bd*3, hh*4', '<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd, hh*8', '<bd sd>, hh*4'])(
     '%s',
     (mini) => {
       const m = grid(mini)
       expect(ownStepWidths(m).size).toBeGreaterThan(0)
-      // the panel offers a velocity drag only where this writes (`gainScoped`)
+      // the column grid carries a .gain along with a toggle only where this writes (no step grid edits velocity, #2606)
       const gains = m.lanes[0].cells.map((c) => (isCellOn(c) ? 0.5 : 1))
       expect(serializeStepGain({ ...m, gains })).toEqual({ kind: 'skip' })
     },

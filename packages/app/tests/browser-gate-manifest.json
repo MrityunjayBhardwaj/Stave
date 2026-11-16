@@ -931,9 +931,9 @@
     "runs": "gate",
     "why": "The step grid in Exact, drawn and edited from the bar's tree with no equal columns (#2458): real clicks, a paint drag, the length handle, the keys, add and remove a voice, the + handle, zoom and the playhead, each with the code read back and what the page's own Strudel plays."
   },
-  "pattern-exact-velocity.spec.ts": {
+  "pattern-step-gain.spec.ts": {
     "runs": "gate",
-    "why": "Velocity per step on the Exact grid (#2468) and the click under a gain rest (#2467): real vertical drags on lit cells write a new .gain that mirrors the steps, rewrite an existing level in place, write out one hit of 1*4, undo as one step, and refuse with a reason where the level covers more than the hit; a click under a gain ~ is inert and says why. Each with the code read back and what the page's own Strudel plays, hit by hit."
+    "why": "The step grids read a chain's .gain and never write it (#2606): a click under a gain ~ is inert and says why (#2467), with what the page's own Strudel plays read back; in both grid modes no cell claims a level and a vertical drag on a lit cell is a click; Settings has no velocity drag switch; Note Colour = By velocity tints loud and soft hits apart at one height."
   },
   "pattern-tree-grid.spec.ts": {
     "runs": "gate",
@@ -978,10 +978,6 @@
   "sequencer-erase-refusal.spec.ts": {
     "runs": "gate",
     "why": "A hit the grid draws more than once from one written note (#1836 refused its erase): since the ruling of #2292 the click erases the written note, every copy. Pins the code read back, that both copies go dark (and only they), by mouse and by key, with a note drawn once erasing alone as the control, on a two-bar and a one-bar grid."
-  },
-  "sequencer-velocity-writable.spec.ts": {
-    "runs": "gate",
-    "why": "The sequencer offers a velocity drag only where the gain writer writes it (#1839). Its own copy of the writer's rule missed the leaf line, so on 20 leaf-read corpus grids a drag redrew the bar and never changed the code."
   },
   "roll-move-decline-reported.spec.ts": {
     "runs": "gate",

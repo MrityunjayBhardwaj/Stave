@@ -210,9 +210,8 @@ export { playsBareExpression } from './bareExpression'
 export { planVizAssignment } from './assign/vizAssign'
 export { assignmentEdit } from './assign/soundAssign'
 export { captionEdit, shapeEdit, shapeOptions, rateEditable } from './automation/captionEdit'
-export { gridWriteEdits, readChunkGain, gainUnchanged, stepGainWriteEdits } from './notation/gainEdit'
-export { stepGainEdit, gainLevelsAt, fmtLevel } from './stepGain'
-export type { StepGainRefusal, StepGainResult } from './stepGain'
+export { gridWriteEdits, readChunkGain, gainUnchanged } from './notation/gainEdit'
+export { gainLevelsAt } from './gainLevels'
 export { sliderEdit } from './sliderEdit'
 export {
   stepGridCodec,

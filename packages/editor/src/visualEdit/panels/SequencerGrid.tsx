@@ -13,12 +13,9 @@
  * the roll's gesture on the other surface. The handle is drawn only where the
  * writer would take the drag, so it never promises an edit the document refuses.
  *
- * Velocity: an ON cell shows its level as a bottom-anchored fill; dragging it
- * vertically sets the column's gain (DAW velocity-lane behaviour — drag down to
- * soften). The level is written to a parallel `.gain("…")` mini aligned to the
- * serialized columns; when every column returns to neutral the `.gain` is
- * removed. Gain is single-part / single-bar only; richer shapes keep toggling
- * but the `.gain` is left untouched.
+ * Velocity is read, not edited (#2606): a lit cell is drawn full height, tinted by
+ * its level when Note Colour is By velocity; how loud a note plays is set in the
+ * piano roll's velocity lane or in the code.
  *
  * The model lives in component state, not derived per-render from the chunk, so
  * a lane the user clears completely keeps its row. The model is reseeded only
@@ -26,7 +23,7 @@
  */
 import * as React from 'react'
 
-import { stepGridCodec, gainWritable, slotPress, slotPressCost, NO_RESOLUTION_EFFECT } from '../../codeView'
+import { stepGridCodec, slotPress, slotPressCost, NO_RESOLUTION_EFFECT } from '../../codeView'
 import { columnCount, isCellOn, laneCoverage, lookOnlyLine } from '../../codeView'
 import type { StepGridModel } from '../../codeView'
 import { drawnLayout } from '../../codeView'
@@ -51,7 +48,6 @@ import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
 import { UNREFINED, type ViewScale } from '../../codeView'
-import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
 import {
   boxesPlaceNotes,
@@ -64,7 +60,6 @@ import {
   writtenStepStarts,
 } from './writtenSteps'
 import { useGridMode } from './gridMode'
-import { useVelocityDrag } from './velocityDrag'
 import { ExactStepGrid } from './ExactStepGrid'
 import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
@@ -83,8 +78,6 @@ import {
 
 const SEQ_HINT = 'Click a drum pattern to edit it as a step grid.'
 
-/** px of vertical drag that spans the full 0→1 velocity range */
-const VELOCITY_FULL_PX = 80
 /** px of movement before a press on an ON cell becomes a drag (not a click) */
 const DRAG_THRESHOLD = 4
 /**
@@ -216,9 +209,8 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   const playedNotes = React.useMemo(() => (chunk ? stepNotes(chunk, span) : null), [chunk, span])
 
   // One pointer gesture from a cell press. An OFF cell paints immediately (snappy
-  // step entry); an ON cell starts PENDING — a vertical drag past the threshold
-  // becomes velocity, a horizontal drag becomes paint-off, and a release with no
-  // move is a plain toggle-off. The whole gesture is one undo step.
+  // step entry); an ON cell starts PENDING — a horizontal drag becomes paint-off,
+  // and a release with no sideways move is a plain toggle-off. The whole gesture is one undo step.
   //
   // A press inside a note's trailing grab zone is 'resize' and is decided BEFORE any
   // of that (#1053), so it never passes through 'pending' — which is what keeps a
@@ -228,29 +220,11 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
     lane: number
     step: number
     startX: number
-    startY: number
-    startGain: number
-    mode: 'paint' | 'pending' | 'velocity' | 'resize'
+    mode: 'paint' | 'pending' | 'resize'
     paintValue: boolean
   } | null>(null)
   /** the sound of the row a paint drag began in: the drag paints that row and no other */
   const paintSoundRef = React.useRef<string | null>(null)
-
-  // Velocity is offered where the WRITER will write it — `gainWritable` asks `serializeStepGain`
-  // itself, the way the roll's `gainWritable` asks `serializeRollGain` (#1089), not
-  // predicted beside it (#1839). The prediction that lived here copied the writer's
-  // foreign/bars/parts lines and missed its leaf line, so on every leaf-read grid a
-  // vertical drag redrew the bar and the code never changed.
-  //
-  // Asked of the CURRENT model: the writer's skips are shape (foreign `.gain`, bars,
-  // parts, leaf, unspellable columns), which a gain edit does not move. Memoized on
-  // the model, as `mutate` fires every pointermove of the drag it gates.
-  //
-  // And only where the user turned velocity on (#2525: off by default — a gain is almost always
-  // one number in community code, and a wobbly click would rewrite it per column).
-  const velocityOn = useVelocityDrag()
-  const gainScoped = React.useMemo(() => (velocityOn && model ? gainWritable(stepGridCodec, model) : false), [model, velocityOn])
-
 
   // Is this a CHORD CHART rather than a drum kit (#1241)? Asked of the lane
   // tokens, because the route cannot answer it: seven of the thirteen units
@@ -289,9 +263,6 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
   // than one box of the view (`hh` outside `< >` over two bars) — 285 of the
   // 5,707 erase clicks the corpus offers. Answering `true` for those made the
   // cell look pressable and do nothing, with nothing said.
-  //
-  // A refused lit cell loses its velocity drag with the rest: all 285 are on
-  // leaf-read grids, where the writer never writes velocity anyway (#1839).
   //
   // Memoized on the model, so the serialize-per-cell is paid once per edit rather
   // than once per render. Asking the lit cells too was TIMED, not estimated ([[P380]]):
@@ -605,23 +576,10 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
     const onMove = (e: PointerEvent): void => {
       const g = gestureRef.current
       if (!g) return
-      const dx = e.clientX - g.startX
-      const dy = e.clientY - g.startY
-      if (g.mode === 'pending') {
-        if (gainScoped && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
-          g.mode = 'velocity'
-        } else if (Math.abs(dx) > DRAG_THRESHOLD) {
-          g.mode = 'paint'
-          paintOne(g.lane, g.step, g.paintValue) // toggle the start cell off
-          return
-        } else {
-          return
-        }
-      }
-      if (g.mode === 'velocity') {
-        // drag DOWN (positive dy) softens; up to a full-1 ceiling, down to 0.
-        const next = clamp01(g.startGain - dy / VELOCITY_FULL_PX)
-        mutate((prev) => setColumnGain(prev, g.step, next))
+      // a sideways drag off a lit cell paints the row off from there
+      if (g.mode === 'pending' && Math.abs(e.clientX - g.startX) > DRAG_THRESHOLD) {
+        g.mode = 'paint'
+        paintOne(g.lane, g.step, g.paintValue) // toggle the start cell off
       }
     }
     const onUp = (): void => {
@@ -629,9 +587,8 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
       if (!g) return
       gestureRef.current = null
       // a plain click on an ON cell with NO drag → toggle it OFF (click-toggle:
-      // click empty turns a step on, click it again turns it off). A vertical/
-      // horizontal drag already ran as velocity / paint-off and left mode !=
-      // 'pending'.
+      // click empty turns a step on, click it again turns it off). A horizontal
+      // drag already ran as paint-off and left mode != 'pending'.
       if (g.mode === 'pending') paintOne(g.lane, g.step, false)
       endGesture()
     }
@@ -641,21 +598,18 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
     }
-  }, [mutate, paintOne, endGesture, gainScoped])
+  }, [paintOne, endGesture])
 
   const onCellDown = (laneIndex: number, stepIndex: number, current: boolean, e: React.PointerEvent): void => {
     beginGesture()
     paintSoundRef.current = model?.lanes[laneIndex]?.sound ?? null
     if (current) {
-      // an ON cell starts PENDING: a vertical drag becomes velocity, a horizontal
-      // drag paint-off, and a release with no drag toggles it OFF (onUp). Direct
-      // edit — no selection.
+      // an ON cell starts PENDING: a horizontal drag becomes paint-off, and a
+      // release with no drag toggles it OFF (onUp). Direct edit — no selection.
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
         startX: e.clientX,
-        startY: e.clientY,
-        startGain: model?.gains?.[stepIndex] ?? 1,
         mode: 'pending',
         paintValue: false,
       }
@@ -665,8 +619,6 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
         lane: laneIndex,
         step: stepIndex,
         startX: e.clientX,
-        startY: e.clientY,
-        startGain: 1,
         mode: 'paint',
         paintValue: true,
       }
@@ -683,8 +635,6 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
       lane: laneIndex,
       step: startCol,
       startX: 0,
-      startY: 0,
-      startGain: 1,
       mode: 'resize',
       paintValue: false,
     }
@@ -1197,7 +1147,7 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                 // trigger alone (#1056): `cov.extent` is how much of this column
                 // the note fills, so a half-column note draws a half-width bar and
                 // a two-column note lights both. `on` stays the trigger — it is
-                // what the ops, `aria-pressed` and the velocity gesture mean.
+                // what the ops and `aria-pressed` mean.
                 const on = isCellOn(cell)
                 const cov = coverage?.[laneIndex]?.[stepIndex]
                 /** this column is carried by a note that began earlier in the lane */
@@ -1225,10 +1175,8 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                   cov !== undefined && isTail && resizable?.[laneIndex]?.has(cov.start)
                     ? cov.start
                     : null
-                // A held column shows the HEAD's velocity, not its own: the grid's
-                // gains are per column and a column with no trigger has none, so
-                // reading `stepIndex` would make a long note jump to full height
-                // halfway through. Same rule the roll's velocity lane already uses.
+                // the level it plays at, for the By-velocity colour. A held column shows the
+                // HEAD's level: a column with no trigger has none of its own (#409).
                 const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1
                 const isPlaying = playingStep !== null && playingStep >= stepIndex && playingStep < stepIndex + w
                 // A cell is offered only where the writer will take its toggle.
@@ -1300,7 +1248,6 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                     data-seq-step-note={playsNote ?? undefined}
                     data-seq-cell={`${laneIndex}:${stepIndex}`}
                     data-seq-box-width={w > 1 ? w : undefined}
-                    data-gain={on && gainScoped ? gain : undefined}
                     data-playing={isPlaying ? 'true' : undefined}
                     data-seq-cell-inert={canToggle ? undefined : 'true'}
                     data-seq-splits={splits ? 'true' : undefined}
@@ -1366,11 +1313,7 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                           return
                         }
                       }
-                      // A lit cell whose toggle is refused still takes its velocity drag
-                      // where velocity is written (#2292): a hit made by `*2` cannot be
-                      // removed from the grid, but how loud it plays is its own write. A
-                      // release with no drag then asks the toggle, which says why it is refused.
-                      if (!canToggle && !(on && gainScoped)) return
+                      if (!canToggle) return
                       onCellDown(laneIndex, stepIndex, on, e)
                     }}
                     onPointerEnter={() => onCellEnter(laneIndex, stepIndex, w)}
@@ -1397,17 +1340,16 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                       background: isPlaying
                         ? 'var(--background, #34343c)'
                         : 'var(--background-elevated, #26262c)',
-                      cursor: !canToggle ? 'default' : gainScoped && on ? 'ns-resize' : 'pointer',
+                      cursor: !canToggle ? 'default' : 'pointer',
                     }}
                   >
                     {cov && (
                       // Two orthogonal axes on one bar, which is how a DAW draws a
                       // note: WIDTH is how much of this column the note sounds for
-                      // (#1056), HEIGHT is velocity, bottom-anchored and full when
-                      // neutral — so a length-1 note at neutral gain is the same
-                      // solid square it has always been. The hue is the voice
-                      // colour (#471), or a velocity ramp when View ▸ Note Color =
-                      // Velocity (#428).
+                      // (#1056), and the bar is always full height (velocity is not
+                      // edited on this grid, #2606). The hue is the voice colour
+                      // (#471), or the note's level on the velocity ramp when
+                      // Note Colour = By velocity (#428).
                       //
                       // A carried column is dimmed rather than drawn solid, the
                       // vocabulary the piano roll already ships for the same fact
@@ -1427,11 +1369,8 @@ function ColumnStepGrid({ onResolution, notice = null }: SequencerGridProps = {}
                           // can spell.
                           width: `${clamp01(extent) * 100}%`,
                           minWidth: held ? 0 : 2,
-                          height: `${clamp01(gainScoped ? gain : 1) * 100}%`,
-                          background:
-                            colorMode === 'velocity'
-                              ? velocityColor(gainScoped ? gain : 1)
-                              : voice.color,
+                          height: '100%',
+                          background: colorMode === 'velocity' ? velocityColor(clamp01(gain)) : voice.color,
                           // one plain step is one note: its columns are not a second trigger
                           opacity: held && variant !== 'plain' ? 0.7 : 1,
                           pointerEvents: 'none',

@@ -7,12 +7,9 @@
  *     pattern (surgical replace of the mini range only);
  *   - a pattern outside the grid subset falls back to standby (code-only).
  */
-import { test, expect, type Locator, type Page } from '@playwright/test'
-import { pinLcmGrid, velocityDragOn } from './_appBoot'
+import { test, expect, type Page } from '@playwright/test'
+import { pinLcmGrid } from './_appBoot'
 import { slotsControl, preset } from './_resolutionControl'
-
-// velocity drags are off by default (#2525); this spec is about the gesture, so it turns them on
-velocityDragOn(test)
 
 
 pinLcmGrid(test)
@@ -61,20 +58,6 @@ async function strudelValue(page: Page): Promise<string> {
       editors.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? editors[0]
     return target?.getModel()?.getValue() ?? ''
   })
-}
-
-/** A real vertical mouse drag on a cell — how a velocity is set. */
-async function dragVertical(page: Page, target: Locator, dy: number): Promise<void> {
-  await target.scrollIntoViewIfNeeded()
-  const box = await target.boundingBox()
-  if (!box) throw new Error('drag target has no box')
-  const cx = box.x + box.width / 2
-  const cy = box.y + box.height / 2
-  await page.mouse.move(cx, cy)
-  await page.mouse.down()
-  await page.mouse.move(cx, cy + dy, { steps: 10 })
-  await page.mouse.up()
-  await page.waitForTimeout(150)
 }
 
 async function openSequencer(page: Page) {
@@ -587,54 +570,5 @@ test.describe('Sequencer (#382)', () => {
     await placeCursorOn(page, 'bd ~')
     await expect(grid.locator('[data-seq-voice]').first()).toHaveAttribute('data-seq-voice', 'bd')
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
-  })
-
-  /**
-   * #1950 — THE SAME LANE SURVIVES A VELOCITY DRAG MADE WHILE ZOOMED IN.
-   *
-   * The emptied lane above lives only in the panel's kept model. A velocity drag at a finer
-   * view writes `.gain` from the model collapsed to the document's resolution; the keep check
-   * used to compare the REFINED model's gain against that echo, call it changed, and rebuild
-   * the model from the text — which names no bd, so the lane vanished.
-   *
-   * ⚠ ONE PART, NOT `bd ~ ~ ~, hh hh hh hh`: the writer declines a `.gain` across stacked
-   * parts, so on that pattern no velocity is offered and the drag is a plain click (#1964).
-   */
-  test('an emptied lane survives a velocity drag made through a refined view (#1950) (LCM grid)', async ({
-    page,
-  }) => {
-    await boot(page)
-    await setStrudelCode(page, '$: s("bd ~ hh ~")')
-    const drawer = await openSequencer(page)
-    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    const voices = (): Promise<(string | null)[]> =>
-      grid
-        .locator('[data-seq-voice]')
-        .evaluateAll((els) => els.map((e) => e.getAttribute('data-seq-voice')))
-
-    // look closer: the document's 4 steps drawn as 8
-    await (await preset(slotsControl(drawer), 8)).click()
-    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
-
-    // empty bd's lane
-    await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
-    await grid.locator('[data-seq-cell="0:0"]').click()
-    await expect
-      .poll(() => strudelValue(page), { timeout: 8_000 })
-      .toBe('$: s("~ ~ hh ~")')
-    expect(await voices(), 'the emptied lane is kept before the drag').toEqual(['bd', 'hh'])
-
-    // a velocity drag on hh (an ON cell, asserted, so the drag really writes; drawn column 4
-    // is the document's column 2)
-    await expect(grid.locator('[data-seq-cell="1:4"]')).toHaveAttribute('aria-pressed', 'true')
-    await dragVertical(page, grid.locator('[data-seq-cell="1:4"]'), 40)
-    // one sounding column, so the writer spells a scalar `.gain(0.5)` — the unquoted echo
-    // the keep check must read as numeric
-    await expect.poll(() => strudelValue(page), { timeout: 8_000 }).toMatch(/\.gain\(/)
-    // let the write's echo come back through the panel before reading the lanes
-    await page.waitForTimeout(400)
-
-    expect(await voices(), 'the emptied lane survives its own velocity write').toEqual(['bd', 'hh'])
-    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
   })
 })

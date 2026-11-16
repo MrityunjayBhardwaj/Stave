@@ -1,19 +1,13 @@
 /**
- * Per-note velocity (#409) — vertical drag on a cell/note sets its `.gain`.
+ * Per-note velocity in the piano roll's velocity lane (#409): a vertical drag on a
+ * note's bar sets its `.gain`.
  *
- * Observes (AnviDev: verify AND observe):
- *   - dragging a Sequencer cell DOWN writes a parallel `.gain("…")` aligned to
- *     the columns, and the cell's fill height drops (a softer hit);
- *   - dragging it back to neutral removes the `.gain` method entirely;
- *   - the `.gain` round-trips: re-reading the code shows the same level.
- * The Piano Roll velocity test lives below once the shared path is extended.
+ * The step grids do not edit velocity (#2606); their tests here were removed with the
+ * gesture. The roll's lane is where a note's level is set.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
-import { pinLcmGrid, velocityDragOn } from './_appBoot'
+import { pinLcmGrid } from './_appBoot'
 import { slotsControl, preset } from './_resolutionControl'
-
-// velocity drags are off by default (#2525); this spec is about the gesture, so it turns them on
-velocityDragOn(test)
 
 // The tests titled `(LCM grid)` pin the shared-grid writer's results (Settings › Grid, #2294).
 pinLcmGrid(test)
@@ -85,101 +79,6 @@ async function dragVertical(page: Page, cell: Locator, dy: number): Promise<void
   await page.mouse.up()
   await page.waitForTimeout(100)
 }
-
-test.describe('velocity — Sequencer (#409)', () => {
-  test('dragging a cell down writes a column-aligned .gain and softens its fill (LCM grid)', async ({
-    page,
-  }) => {
-    await boot(page)
-    await setStrudelCode(page, '$: s("bd hh sn hh")')
-    const drawer = await openSequencer(page)
-    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    await expect(grid).toHaveCount(1)
-
-    const hhLast = grid.locator('[data-seq-cell="1:3"]') // hh lane, last column
-    await expect(hhLast).toHaveAttribute('aria-pressed', 'true')
-    // neutral: no .gain yet
-    expect(await strudelValue(page)).toBe('$: s("bd hh sn hh")')
-
-    // drag the last column down ~40px → ~0.5 (VELOCITY_FULL_PX = 80)
-    await dragVertical(page, hhLast, 40)
-
-    const code = await strudelValue(page)
-    // a parallel .gain appears, aligned to the 4 columns, last one softened
-    expect(code).toMatch(/^\$: s\("bd hh sn hh"\)\.gain\("1 1 1 [\d.]+"\)$/)
-    const softened = Number(code.match(/\.gain\("1 1 1 ([\d.]+)"\)/)![1])
-    expect(softened).toBeGreaterThan(0)
-    expect(softened).toBeLessThan(1)
-
-    // OBSERVE the fill: the softened cell's fill is shorter than a neutral one
-    const fillH = async (sel: string): Promise<number> => {
-      const box = await grid.locator(`${sel} [data-seq-fill]`).boundingBox()
-      return box?.height ?? -1
-    }
-    const softH = await fillH('[data-seq-cell="1:3"]')
-    const fullH = await fillH('[data-seq-cell="1:1"]')
-    expect(softH).toBeGreaterThan(0)
-    expect(softH).toBeLessThan(fullH - 2)
-  })
-
-  test('dragging back to neutral removes the .gain method (LCM grid)', async ({ page }) => {
-    await boot(page)
-    await setStrudelCode(page, '$: s("bd hh sn hh")')
-    const drawer = await openSequencer(page)
-    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    const hhLast = grid.locator('[data-seq-cell="1:3"]')
-
-    await dragVertical(page, hhLast, 40) // soften
-    expect(await strudelValue(page)).toMatch(/\.gain\(/)
-
-    await dragVertical(page, hhLast, -60) // drag well past full → clamps to neutral
-    expect(await strudelValue(page)).toBe('$: s("bd hh sn hh")') // .gain removed
-  })
-
-  test('reads an existing column .gain back onto the grid (round-trip) (LCM grid)', async ({ page }) => {
-    await boot(page)
-    await setStrudelCode(page, '$: s("bd hh sn hh").gain("1 0.5 1 0.25")')
-    await page.evaluate(() => {
-      const monaco = (window as unknown as { monaco?: { editor?: { getEditors?: () => unknown[] } } }).monaco
-      const eds = (monaco?.editor?.getEditors?.() ?? []) as Array<{
-        getModel: () => { getValue: () => string } | null
-        focus: () => void
-        setPosition: (p: { lineNumber: number; column: number }) => void
-      }>
-      const t = eds.find((e) => e.getModel()?.getValue?.().includes('bd hh sn hh')) ?? eds[0]
-      t?.focus()
-      t?.setPosition({ lineNumber: 1, column: 8 }) // inside the head mini
-    })
-    await page.waitForTimeout(120)
-    const drawer = await openSequencer(page)
-    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    await expect(grid).toHaveCount(1)
-    // the softened columns expose their level via data-gain
-    await expect(grid.locator('[data-seq-cell="1:1"]')).toHaveAttribute('data-gain', '0.5')
-    await expect(grid.locator('[data-seq-cell="1:3"]')).toHaveAttribute('data-gain', '0.25')
-    await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('data-gain', '1')
-  })
-
-  test('reads a scalar .gain(0.4) as a uniform base and expands it on drag (LCM grid)', async ({ page }) => {
-    await boot(page)
-    // a track-level numeric .gain (the Mixer-knob form, as in the starter patterns)
-    await setStrudelCode(page, '$: s("bd hh sn hh").gain(0.4)')
-    const drawer = await openSequencer(page)
-    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    await expect(grid).toHaveCount(1)
-    // every cell reads the 0.4 base (velocity is enabled, fills at 40%)
-    await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('data-gain', '0.4')
-    await expect(grid.locator('[data-seq-cell="2:2"]')).toHaveAttribute('data-gain', '0.4')
-
-    // drag the sn column down → the scalar expands to a per-column string,
-    // the base 0.4 preserved on the untouched columns
-    await dragVertical(page, grid.locator('[data-seq-cell="2:2"]'), 16)
-    const code = await strudelValue(page)
-    expect(code).toMatch(/^\$: s\("bd hh sn hh"\)\.gain\("0\.4 0\.4 [\d.]+ 0\.4"\)$/)
-    const softened = Number(code.match(/\.gain\("0\.4 0\.4 ([\d.]+) 0\.4"\)/)![1])
-    expect(softened).toBeLessThan(0.4)
-  })
-})
 
 test.describe('velocity — Piano Roll (#409)', () => {
   test('dragging a note bar down writes a structure-aligned .gain', async ({ page }) => {
