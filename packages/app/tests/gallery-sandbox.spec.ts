@@ -37,6 +37,12 @@
  *    for a four-bar song and "bar N" for a loop, the frame's own stop and the
  *    page's Stop both clear it, and the frame's messages to the page are the same
  *    states as ever; silence, the control, draws no notes. Chromium and WebKit.
+ * 7. THREE.JS PREVIEWS (#2608). A lone `.three` visual entry whose sketch imports
+ *    an add-on (`three/addons/geometries/RoundedBoxGeometry.js`, the shape people
+ *    paste from the three.js examples) draws in the frame: its background and the
+ *    add-on's box are both on screen, read from the frame's pixels. A project
+ *    whose pattern calls `.viz("knot")` draws its own `viz/knot.three` the same
+ *    way. Chromium and WebKit.
  *
  * Screenshots go to $GALLERY_SHOT_DIR.
  *
@@ -940,12 +946,17 @@ const BLOOM = 's.solid(1, 0, 1).out()'
 const BLOOM_PATTERN = `${MUSIC_CODE.split('\n')[0]}\n$: s("bd*4, hh*8").viz("bloom")`
 
 /** Serve a project entry (GET only), as the gallery serves one. */
-async function routeProject(page: Page, title: string, files: Array<{ path: string; language: string; content: string }>): Promise<{ id: string }> {
+async function routeProject(
+  page: Page,
+  title: string,
+  files: Array<{ path: string; language: string; content: string }>,
+  kind: 'project' | 'viz' = 'project',
+): Promise<{ id: string }> {
   const id = newId()
   const now = Date.now()
   const withIds = files.map((f, i) => ({ id: `p${i}`, ...f }))
   const body = {
-    entry: { id, title, kind: 'project', tags: ['sandbox-test'], authorName: 'Peg', publishedAt: now, fileCount: files.length, hasThumbnail: false },
+    entry: { id, title, kind, tags: ['sandbox-test'], authorName: 'Peg', publishedAt: now, fileCount: files.length, hasThumbnail: false },
     manifest: { schemaVersion: 1, project: { name: title, sharedAt: now }, files: withIds, fileOrder: { '': withIds.map((f) => f.id) }, subfolderOrder: {} },
   }
   await page.route(`**/api/gallery/${id}`, (route) => (route.request().method() === 'GET' ? route.fulfill({ json: body }) : route.fallback()))
@@ -978,12 +989,14 @@ const frameLoc = (page: Page) => page.frameLocator('[data-gallery-preview-frame]
 /**
  * Open the entry, press its Preview, and get it playing: in Chromium the page's
  * click starts it; in WebKit the frame asks for its own press, given by Enter.
+ * A visual with no pattern makes no sound, so it asks for no press anywhere
+ * (`sound: false`, #2608).
  */
-async function previewToPlaying(page: Page, id: string, engine: 'chromium' | 'webkit'): Promise<void> {
+async function previewToPlaying(page: Page, id: string, engine: 'chromium' | 'webkit', sound = true): Promise<void> {
   await page.goto(`/#gallery=${id}`, { waitUntil: 'domcontentloaded' })
   await expect(page.locator(`[data-gallery-detail="${id}"]`)).toBeVisible({ timeout: 60_000 })
   await page.locator('[data-gallery-preview-button]').click({ timeout: 60_000 })
-  if (engine === 'webkit') {
+  if (engine === 'webkit' && sound) {
     await expect(page.locator('[data-gallery-preview-state="stopped"]')).toHaveText('Press Play in the preview to hear it.', { timeout: 60_000 })
     await expect(page.locator('[data-gallery-preview-frame]')).toBeFocused()
     await page.keyboard.press('Enter')
@@ -1350,5 +1363,110 @@ test.describe('#2489 the preview draws what is playing', () => {
   test('WebKit', async ({ page: probe, baseURL }) => {
     test.setTimeout(300_000)
     await inWebKit(probe, baseURL, (page) => previewDrawsWhatPlays(page, 'webkit'))
+  })
+})
+
+// ─── #2608 three.js previews ─────────────────────────────────────────────────
+
+/**
+ * A plain three.js sketch, as pasted from the examples: a magenta background and,
+ * in front of it, a cyan box from an add-on import. Both colours are ones nothing
+ * else in the preview draws, so the frame's pixels say whether the sketch ran
+ * (magenta) and whether its add-on loaded and drew (cyan).
+ */
+const THREE_SKETCH = `import * as THREE from 'three'
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+const scene = new THREE.Scene()
+scene.background = new THREE.Color(1, 0, 1)
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100)
+camera.position.set(0, 0, 6)
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setSize(innerWidth, innerHeight)
+document.body.appendChild(renderer.domElement)
+const box = new THREE.Mesh(new RoundedBoxGeometry(1.6, 1.6, 1.6, 4, 0.25), new THREE.MeshBasicMaterial({ color: new THREE.Color(0, 1, 1) }))
+scene.add(box)
+renderer.setAnimationLoop((t) => {
+  box.rotation.y = t / 1000
+  renderer.render(scene, camera)
+})
+`
+const KNOT_PATTERN = `${MUSIC_CODE.split('\n')[0]}\n$: s("bd*4, hh*8").viz("knot")`
+
+/** The share of a screenshot's pixels near magenta and near cyan. */
+async function threeColours(page: Page, png: Buffer): Promise<{ magenta: number; cyan: number; pixels: number }> {
+  return page.evaluate(async (b64) => {
+    const bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob())
+    const c = document.createElement('canvas')
+    c.width = bmp.width
+    c.height = bmp.height
+    const g = c.getContext('2d')!
+    g.drawImage(bmp, 0, 0)
+    const d = g.getImageData(0, 0, c.width, c.height).data
+    let magenta = 0
+    let cyan = 0
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] > 200 && d[i + 1] < 60 && d[i + 2] > 200) magenta++
+      if (d[i] < 60 && d[i + 1] > 200 && d[i + 2] > 200) cyan++
+    }
+    const pixels = d.length / 4
+    return { magenta: magenta / pixels, cyan: cyan / pixels, pixels }
+  }, png.toString('base64'))
+}
+
+/** Wait until the frame shows the sketch: its background, and the add-on's box in front of it. */
+async function expectSketchDrawn(page: Page, engine: 'chromium' | 'webkit', what: string): Promise<void> {
+  let drawn = { magenta: 0, cyan: 0, pixels: 0 }
+  await expect
+    .poll(
+      async () => {
+        drawn = await threeColours(page, await page.locator('[data-gallery-preview-frame]').screenshot())
+        return drawn.magenta > 0.3 && drawn.cyan > 0.01
+      },
+      { timeout: 45_000 },
+    )
+    .toBe(true)
+  console.log(`${engine} ${what}: magenta ${(drawn.magenta * 100).toFixed(1)}%, cyan ${(drawn.cyan * 100).toFixed(1)}% of ${drawn.pixels} frame pixels`)
+}
+
+async function threePreviews(page: Page, engine: 'chromium' | 'webkit'): Promise<void> {
+  const lone = await routeProject(page, 'Rounded Box', [{ path: 'box.three', language: 'three', content: THREE_SKETCH }], 'viz')
+  const project = await routeProject(page, 'Knot Project', [
+    { path: 'main.strudel', language: 'strudel', content: KNOT_PATTERN },
+    { path: 'viz/knot.three', language: 'three', content: THREE_SKETCH },
+  ])
+
+  // A LONE .three ENTRY: the sketch runs in the frame, its add-on included
+  await previewToPlaying(page, lone.id, engine, false)
+  await expect(frameLoc(page).locator('[data-gallery-player-viz] canvas')).not.toHaveCount(0, { timeout: 30_000 })
+  await expectSketchDrawn(page, engine, 'lone .three')
+  expect(await playerFrame(page)!.evaluate(() => self.origin)).toBe('null')
+  expect(await previewState(page), 'the sketch errored after starting').toBe('playing')
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-three-lone.png` })
+
+  // A PROJECT whose pattern draws its own .three visual
+  await previewToPlaying(page, project.id, engine)
+  const visual = frameLoc(page).locator('[data-gallery-player-visual="viz/knot.three"]')
+  await expect(visual).toHaveCount(1, { timeout: 30_000 })
+  await expect(visual.locator('canvas')).not.toHaveCount(0, { timeout: 30_000 })
+  await expect(frameLoc(page).locator('[data-gallery-player-missing]')).toHaveCount(0)
+  await expectSketchDrawn(page, engine, 'project .viz("knot")')
+  expect(await previewState(page), 'the visual errored after starting').toBe('playing')
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-three-project.png` })
+}
+
+test.describe('#2608 a three.js sketch previews in the frame', () => {
+  test('Chromium', async ({ page }) => {
+    test.setTimeout(300_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    const errors = consoleErrors(page)
+    await routeGallery(page)
+    await threePreviews(page, 'chromium')
+    console.log('CONSOLE ERRORS\n' + errors.join('\n'))
+    expect(errors.filter((e) => e.startsWith('pageerror:'))).toEqual([])
+  })
+
+  test('WebKit', async ({ page: probe, baseURL }) => {
+    test.setTimeout(300_000)
+    await inWebKit(probe, baseURL, (page) => threePreviews(page, 'webkit'))
   })
 })
