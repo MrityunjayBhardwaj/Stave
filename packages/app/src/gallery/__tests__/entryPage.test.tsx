@@ -4,7 +4,7 @@
  */
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { EntryPage, type EntryPageProps } from "../GalleryEntry";
 import { forgetGalleryRecordingsForTests } from "../client";
 import type { GalleryEntry, GalleryEntryResponse } from "../types";
@@ -349,5 +349,123 @@ describe("EntryPage — the preview gets the entry's files (#2490)", () => {
       expect(row.querySelector(".sg-frow-strip")!.children).toHaveLength(0);
       expect(row.textContent).toContain("visual · 1 line");
     });
+  });
+});
+
+describe("EntryPage — a visual's picture on the stage before Play (#2611)", () => {
+  /** A tiny image with a real WebP header. */
+  const STILL = (() => {
+    const body = Buffer.alloc(64);
+    body.write("RIFF", 0, "latin1");
+    body.write("WEBPVP8 ", 8, "latin1");
+    return `data:image/webp;base64,${body.toString("base64")}`;
+  })();
+  const VIZ_MANIFEST: GalleryEntryResponse["manifest"] = {
+    ...MANIFEST,
+    files: [
+      { id: "f1", path: "main.strudel", language: "strudel", content: 's("bd*4")' },
+      { id: "k1", path: "Knot.three", language: "three", content: "// knot" },
+      { id: "b1", path: "viz/bloom.hydra", language: "hydra", content: "osc(10).out()" },
+    ],
+  };
+  const song = { path: "main.strudel", span: "loop", cycles: 4, lanes: [{ name: "bd" }], events: [[0, 0, 1, null]], sections: [] };
+
+  /** Serve the record and the stills as their routes do, and open the entry. */
+  async function open(opts: { cover: string; frames?: unknown[]; hasThumbnail?: boolean }) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/recording")) return Response.json({ v: 1, cover: opts.cover, contents: { patterns: 1, visuals: 2, other: 0 }, files: [song] });
+        if (url.endsWith("/frames")) return Response.json({ frames: opts.frames ?? [] });
+        return new Response(null, { status: 404 });
+      }),
+    );
+    renderPage({
+      detail: {
+        status: "ready",
+        id: ENTRY.id,
+        data: { entry: { ...ENTRY, hasRecording: true, hasThumbnail: opts.hasThumbnail ?? true }, manifest: VIZ_MANIFEST },
+      },
+    });
+    // the record has arrived once the cover leads the list
+    await waitFor(() => expect(document.querySelector("[data-gallery-file-row]")!.getAttribute("data-gallery-file-row")).toBe(opts.cover));
+  }
+  const stage = () => document.querySelector("[data-gallery-preview]")!;
+  const picture = () => stage().querySelector("img[data-gallery-stage-picture]") as HTMLImageElement | null;
+  const choose = (path: string) => fireEvent.click(within(document.querySelector(`[data-gallery-file-row="${path}"]`) as HTMLElement).getByText(path));
+
+  it("the cover visual shows the entry's cover picture, the same one its card shows", async () => {
+    await open({ cover: "Knot.three", frames: [{ path: "Knot.three", image: STILL }] });
+    await waitFor(() => expect(picture()).not.toBeNull());
+    expect(picture()!.getAttribute("data-gallery-stage-picture")).toBe("thumbnail");
+    expect(picture()!.getAttribute("src")).toBe(`/api/gallery/${ENTRY.id}/thumbnail`);
+    expect(picture()!.getAttribute("alt")).toBe("The cover picture of Knot.three");
+    expect(stage().textContent).not.toMatch(/Visual/);
+  });
+
+  it("another visual shows its own still", async () => {
+    await open({ cover: "Knot.three", frames: [{ path: "viz/bloom.hydra", image: STILL }] });
+    choose("viz/bloom.hydra");
+    await waitFor(() => expect(picture()?.getAttribute("data-gallery-stage-picture")).toBe("still"));
+    expect(picture()!.getAttribute("src")).toBe(STILL);
+    expect(picture()!.getAttribute("data-gallery-stage-picture-of")).toBe("viz/bloom.hydra");
+    // and the cover's picture is not reused for it
+    expect(stage().querySelector('[data-gallery-stage-picture="thumbnail"]')).toBeNull();
+  });
+
+  it("a visual with neither keeps the placeholder", async () => {
+    await open({ cover: "Knot.three", frames: [] });
+    choose("viz/bloom.hydra");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(picture()).toBeNull();
+    expect(stage().querySelector(".sg-stage-idle")!.textContent).toBe("Visual");
+  });
+
+  it("a cover visual with no stored picture falls back to its still", async () => {
+    await open({ cover: "Knot.three", hasThumbnail: false, frames: [{ path: "Knot.three", image: STILL }] });
+    await waitFor(() => expect(picture()?.getAttribute("data-gallery-stage-picture")).toBe("still"));
+  });
+
+  it("a picture that won't load gives way to the next, then to the placeholder", async () => {
+    await open({ cover: "Knot.three", frames: [{ path: "Knot.three", image: STILL }] });
+    await waitFor(() => expect(picture()?.getAttribute("data-gallery-stage-picture")).toBe("thumbnail"));
+    await waitFor(() => expect(document.querySelector('[data-gallery-file-row="Knot.three"] img')).not.toBeNull());
+    fireEvent.error(picture()!);
+    expect(picture()!.getAttribute("data-gallery-stage-picture")).toBe("still");
+    fireEvent.error(picture()!);
+    expect(picture()).toBeNull();
+    expect(stage().querySelector(".sg-stage-idle")!.textContent).toBe("Visual");
+  });
+
+  it("a pattern still shows its timeline, not a picture", async () => {
+    await open({ cover: "Knot.three", frames: [{ path: "Knot.three", image: STILL }] });
+    choose("main.strudel");
+    expect(stage().querySelector('[data-gallery-timeline="main.strudel"]')).not.toBeNull();
+    expect(picture()).toBeNull();
+  });
+
+  it("Play puts the live preview in the picture's place", async () => {
+    await open({ cover: "Knot.three" });
+    await waitFor(() => expect(picture()).not.toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(picture()).toBeNull();
+    expect(stage().querySelector("[data-gallery-preview-frame]")).not.toBeNull();
+    // and Stop brings it back
+    fireEvent.click(screen.getByRole("button", { name: "Stop preview" }));
+    expect(picture()?.getAttribute("data-gallery-stage-picture")).toBe("thumbnail");
+  });
+
+  it("an entry from before records keeps the placeholder, as it did", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 404 })));
+    renderPage({
+      detail: {
+        status: "ready",
+        id: "vizold",
+        data: { entry: { ...ENTRY, id: "vizold", kind: "viz", hasThumbnail: true }, manifest: { ...MANIFEST, files: [VIZ_MANIFEST.files[1]] } },
+      },
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(picture()).toBeNull();
+    expect(stage().querySelector(".sg-stage-idle")!.textContent).toBe("Visual");
   });
 });

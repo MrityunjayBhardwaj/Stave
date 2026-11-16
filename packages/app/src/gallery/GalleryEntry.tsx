@@ -20,15 +20,17 @@
  * project's list. The tempo a pattern starts at and a still of each visual are
  * recorded at publish too (#2590): shown when recorded, and nothing (no guess)
  * for an entry published before, or a pattern that sets no tempo of its own.
+ * Before Play the stage shows a pattern's timeline, or a visual's picture
+ * (#2611): the cover picture for the cover visual, else the visual's still.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AuthorName, EntryPicture, avatarColour, useEntryRecording } from "./GalleryCards";
-import { GalleryPreview, type GalleryPreviewHandle } from "./GalleryPreview";
+import { GalleryPreview, StageIdle, type GalleryPreviewHandle } from "./GalleryPreview";
 import { previewKindOf, previewPlayFor } from "./previewProtocol";
 import { LIGHT_CODE_BG, codeLanguageOf, colourLines, type TokenKind } from "./codeColour";
 import { RecordingTimeline, lengthLabel } from "./GalleryTimeline";
 import { durationLabel, frameFor, tempoLabel, type GalleryRecording, type RecordedFrame, type RecordedPattern } from "./recording";
-import { fetchGalleryFrames } from "./client";
+import { fetchGalleryFrames, galleryThumbnailUrl } from "./client";
 import { useDisplayMeter } from "../state/displayMeter";
 import { GALLERY_FILTERS, KIND_LABEL, contentsSummary, fileRole, formatGalleryDate, publishedAgo } from "./galleryModel";
 import { shownName } from "./reservedNames";
@@ -58,6 +60,37 @@ function useEntryFrames(id: string, rec: GalleryRecording | null): RecordedFrame
     };
   }, [id, wanted]);
   return frames;
+}
+
+/** #2611 — one picture the stage can show for a visual before Play. */
+interface StageSource {
+  from: "thumbnail" | "still";
+  src: string;
+  alt: string;
+}
+
+/**
+ * #2611 — what a visual's stage shows before Play, from stored pictures only:
+ * the entry's cover picture (its thumbnail) when the file is the cover, the
+ * file's own still when it has one, in that order. A picture that fails to load
+ * gives way to the next, and the last to the "Visual" placeholder. Drawn whole
+ * (`object-fit: contain`), never stretched or cropped to the stage's shape.
+ */
+function VisualStagePicture({ path, sources }: { path: string; sources: readonly StageSource[] }) {
+  const [failed, setFailed] = useState(0);
+  const shown = sources[failed];
+  if (!shown) return <StageIdle visual />;
+  return (
+    <img
+      key={shown.src}
+      className="sg-stage-picture"
+      src={shown.src}
+      alt={shown.alt}
+      data-gallery-stage-picture={shown.from}
+      data-gallery-stage-picture-of={path}
+      onError={() => setFailed((n) => n + 1)}
+    />
+  );
 }
 
 export interface EntryPageProps {
@@ -238,6 +271,24 @@ export function EntryPage(props: EntryPageProps) {
   const coverTempo = coverRec ? tempoLabel(coverRec.tempo, meter) : null;
   const coverTime = coverRec ? durationLabel(coverRec) : null;
 
+  // #2611 — the stage before Play: a pattern's recorded timeline; a visual's
+  // cover picture or its own still; otherwise the preview's placeholder.
+  const stageIdle = (() => {
+    if (!file) return undefined;
+    const recorded = recordedFor(file.path);
+    if (recorded) return <RecordingTimeline rec={recorded} className="sg-stage-canvas" />;
+    if (fileRole(file.path) !== "visual") return undefined;
+    const sources: StageSource[] = [];
+    // the cover is known only from the record: an entry from before it has none
+    if (rec?.cover === file.path && entry.hasThumbnail) {
+      sources.push({ from: "thumbnail", src: galleryThumbnailUrl(entry.id), alt: `The cover picture of ${file.path}` });
+    }
+    const still = frameFor(stills, file.path);
+    if (still) sources.push({ from: "still", src: still.image, alt: `A still of ${file.path}` });
+    if (sources.length === 0) return undefined;
+    return <VisualStagePicture key={`${entry.id}/${file.path}`} path={file.path} sources={sources} />;
+  })();
+
   const more = (props.listed ?? [])
     .filter((e) => e.authorId && e.authorId === entry.authorId && e.id !== entry.id)
     .slice(0, 3);
@@ -250,7 +301,7 @@ export function EntryPage(props: EntryPageProps) {
         <div className="sg-entry-main">
           {file && toPlay ? (
             <GalleryPreview
-              idle={recordedFor(file.path) ? <RecordingTimeline rec={recordedFor(file.path)!} className="sg-stage-canvas" /> : undefined}
+              idle={stageIdle}
               ref={preview}
               path={toPlay.path}
               files={toPlay.files}
@@ -483,6 +534,7 @@ export const ENTRY_CSS = `
 .sg-stage { position: relative; aspect-ratio: 2 / 1; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-subtle); background: radial-gradient(120% 90% at 30% 20%, rgba(124,108,255,.22), transparent 60%), radial-gradient(90% 80% at 85% 90%, rgba(127,214,194,.14), transparent 60%), var(--bg-input, #12121f); }
 .sg-stage-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
 .sg-stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.sg-stage-picture { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: contain; }
 .sg-stage-idle { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted, var(--text-chrome)); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
 .sg-stage-bar { position: absolute; inset: auto 0 0 0; display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: linear-gradient(transparent, rgba(8,8,15,.88)); }
 .sg-bigplay { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--text-primary, #eee); color: var(--bg-elevated, #111); display: grid; place-items: center; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
