@@ -13,10 +13,8 @@
  *    the live grid (the editor↔app same-document sync).
  */
 import { test, expect, type Page } from '@playwright/test'
-import { pinLcmGrid, velocityDragOn } from './_appBoot'
+import { pinLcmGrid } from './_appBoot'
 
-// velocity drags are off by default (#2525); this spec is about the gesture, so it turns them on
-velocityDragOn(test)
 
 
 pinLcmGrid(test)

@@ -10,7 +10,7 @@
  *
  *   THE FIXTURES AT THIS SEAM WERE ALL PATTERNS THAT CANNOT EXPRESS THE DEFECT.
  *   `resolution.spec.ts` drives refine→collapse on `s("bd ~ sn ~")` and
- *   `velocity.spec.ts` drags a cell on `s("bd hh sn hh")`. Both are FLAT. A flat
+ *   `velocity.spec.ts` dragged a cell on `s("bd hh sn hh")`. Both are FLAT. A flat
  *   pattern spells its own content uniquely, so the rebuild those bugs fell back to
  *   reproduces it byte-for-byte. Every assertion here was green throughout, and could
  *   not have gone red even in principle.
@@ -27,11 +27,9 @@
  * can be queried directly, and is not duplicated here.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test'
-import { pinLcmGrid, velocityDragOn } from './_appBoot'
+import { pinLcmGrid } from './_appBoot'
 import { slotsControl, preset } from './_resolutionControl'
 
-// velocity drags are off by default (#2525); this spec is about the gesture, so it turns them on
-velocityDragOn(test)
 
 
 pinLcmGrid(test)
@@ -109,49 +107,8 @@ function headMini(code: string): string {
 }
 
 test.describe('a velocity drag leaves the notation alone (#1123)', () => {
-  // `bd [hh hh] sn cp` opens at 8 columns: the group subdivides column 1. The rebuild
-  // this defect fell back to spelled it `bd _ hh hh sn _ cp _` — every hit in the right
-  // place, the grouping gone. 220 grid units corpus-wide.
-  const GRID = '$: s("bd [hh hh] sn cp")'
-
-  test('grid: dragging a cell writes a .gain and does NOT respell the head mini (LCM grid)', async ({
-    page,
-  }) => {
-    const errors: string[] = []
-    page.on('pageerror', (e) => errors.push(e.message))
-    await boot(page)
-    await setStrudelCode(page, GRID)
-    const drawer = await openPattern(page)
-    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    await expect(grid).toHaveCount(1)
-
-    // the group's own two cells — this is the structure the rebuild would flatten
-    await expect(grid.locator('[data-seq-cell="1:2"]')).toHaveAttribute('aria-pressed', 'true')
-    await expect(grid.locator('[data-seq-cell="1:3"]')).toHaveAttribute('aria-pressed', 'true')
-
-    await dragVertical(page, grid.locator('[data-seq-cell="1:2"]'), 40)
-
-    const after = await strudelValue(page)
-    // the gain landed…
-    expect(after).toMatch(/\.gain\("/)
-    // …and the notation is untouched. Before the fix this read `bd _ hh hh sn _ cp _`.
-    expect(headMini(after)).toBe('bd [hh hh] sn cp')
-    expect(errors).toEqual([])
-  })
-
-  test('grid: an operator survives the same drag (`bd*2 sn cp`) (LCM grid)', async ({ page }) => {
-    // A second shape, because `*2` is a different way of having structure than a group
-    // and the rebuild loses it the same way (`bd bd sn ~ cp ~`).
-    await boot(page)
-    await setStrudelCode(page, '$: s("bd*2 sn cp")')
-    const drawer = await openPattern(page)
-    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    await expect(grid).toHaveCount(1)
-    await dragVertical(page, grid.locator('[data-seq-cell="0:0"]'), 40)
-    const after = await strudelValue(page)
-    expect(after).toMatch(/\.gain\("/)
-    expect(headMini(after)).toBe('bd*2 sn cp')
-  })
+  // The step grids' velocity drag was removed (#2606), and its two clauses with it; the
+  // roll's velocity lane is where the same write still happens.
 
   test('roll: dragging a velocity bar does NOT respell the head mini', async ({ page }) => {
     // The roll was measured separately rather than assumed: its gain mini emits one
@@ -189,7 +146,8 @@ test.describe('looking closer and coming back returns the pattern as written (#1
   // dist rebuilt, the two `refine and come back` clauses below stay GREEN and only the
   // EDITED clauses go red. They are kept because they assert a real and separate
   // property — that looking closer never writes — but they do not cover #1121, and the
-  // clauses that do are the two `a velocity drag made through a REFINED view` cases.
+  // clause that does is `roll: a velocity drag made through a REFINED view` (the grid's
+  // twin went with the step grids' velocity drag, #2606).
   test('grid: refine to 16 and back to 8 never writes (the no-write property, not #1121) (LCM grid)', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
@@ -224,32 +182,6 @@ test.describe('looking closer and coming back returns the pattern as written (#1
     await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
     expect(await strudelValue(page)).toBe(GRID)
     expect(errors).toEqual([])
-  })
-
-  test('grid: a velocity drag made through a REFINED view still writes the original spelling (LCM grid)', async ({
-    page,
-  }) => {
-    // The composition of the two fixes, which is the shape a user actually hits: look
-    // closer, then adjust a velocity. The write must spell the document, not the view.
-    await boot(page)
-    await setStrudelCode(page, GRID)
-    const drawer = await openPattern(page)
-    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    const slots = slotsControl(drawer)
-
-    await (await preset(slots, 16)).click()
-    await page.waitForTimeout(150)
-    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(16)
-    expect(await strudelValue(page)).toBe(GRID)
-
-    // at 16 columns the group's first hit sits at column 4 — asserted, not assumed,
-    // because a drag on an empty cell would write nothing and the clause would pass
-    // for the wrong reason
-    await expect(grid.locator('[data-seq-cell="1:4"]')).toHaveAttribute('aria-pressed', 'true')
-    await dragVertical(page, grid.locator('[data-seq-cell="1:4"]'), 40)
-    const after = await strudelValue(page)
-    expect(after).toMatch(/\.gain\("/)
-    expect(headMini(after)).toBe('bd [hh hh] sn cp')
   })
 
   test('roll: refine to 16 and back to 8 never writes (the no-write property, not #1121)', async ({ page }) => {
