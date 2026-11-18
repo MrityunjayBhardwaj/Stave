@@ -2,6 +2,7 @@
 
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { listWorkspaceFiles } from "@stave/editor";
+import { shownIndex, usePointerMoved } from "./listHighlight";
 
 export interface WorkspaceSearchViewHandle {
   focus: () => void;
@@ -56,23 +57,26 @@ export const WorkspaceSearchView = forwardRef<WorkspaceSearchViewHandle, Workspa
       return out;
     }, [query, caseSensitive]);
 
-    useEffect(() => { setActive(0); }, [query]);
+    // #2614 — the highlight never points past the list (the case toggle can
+    // narrow it), and follows the mouse only when it moves.
+    const shown = shownIndex(active, hits.length);
+    const pointerMoved = usePointerMoved();
     useEffect(() => {
       const el = listRef.current?.querySelector<HTMLElement>(
-        `[data-search-row="${active}"]`,
+        `[data-search-row="${shown}"]`,
       );
       el?.scrollIntoView({ block: "nearest" });
-    }, [active]);
+    }, [shown]);
 
     const jump = (h: Hit) => onOpenFile(h.fileId);
 
     const onKey = (e: React.KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); onEscape?.(); }
-      else if (e.key === "ArrowDown") { e.preventDefault(); setActive((i) => Math.min(hits.length - 1, i + 1)); }
-      else if (e.key === "ArrowUp") { e.preventDefault(); setActive((i) => Math.max(0, i - 1)); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); setActive(Math.min(hits.length - 1, shown + 1)); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); setActive(Math.max(0, shown - 1)); }
       else if (e.key === "Enter") {
         e.preventDefault();
-        const hit = hits[active];
+        const hit = hits[shown];
         if (hit) jump(hit);
       }
     };
@@ -84,7 +88,7 @@ export const WorkspaceSearchView = forwardRef<WorkspaceSearchViewHandle, Workspa
             ref={inputRef}
             style={styles.input}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setActive(0); }}
             onKeyDown={onKey}
             placeholder="Search in files..."
             spellCheck={false}
@@ -109,8 +113,8 @@ export const WorkspaceSearchView = forwardRef<WorkspaceSearchViewHandle, Workspa
             <div
               key={`${h.fileId}:${h.line}:${i}`}
               data-search-row={i}
-              style={{ ...styles.row, ...(i === active ? styles.rowActive : {}) }}
-              onMouseEnter={() => setActive(i)}
+              style={{ ...styles.row, ...(i === shown ? styles.rowActive : {}) }}
+              onMouseMove={(e) => { if (pointerMoved(e)) setActive(i); }}
               onClick={() => jump(h)}
             >
               <div style={styles.rowSnippet}>{highlight(h.text, query, caseSensitive)}</div>

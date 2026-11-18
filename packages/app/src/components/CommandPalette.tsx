@@ -8,6 +8,7 @@ import {
   type Command,
 } from "../commands/registry";
 import { formatKeybinding, getKeybindingFor } from "../commands/keybindings";
+import { shownIndex, usePointerMoved } from "./listHighlight";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -91,15 +92,18 @@ export function CommandPalette({
     return fuzzyFilter(allRows, q);
   }, [allRows, query]);
 
-  useEffect(() => { setActive(0); }, [query]);
+  // #2614 — the highlight never points past the list, and follows the mouse
+  // only when it moves (see listHighlight.ts).
+  const shown = shownIndex(active, rows.length);
+  const pointerMoved = usePointerMoved();
 
   // Scroll active row into view.
   useEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>(
-      `[data-palette-row="${active}"]`,
+      `[data-palette-row="${shown}"]`,
     );
     el?.scrollIntoView({ block: "nearest" });
-  }, [active]);
+  }, [shown]);
 
   if (!open) return null;
 
@@ -114,13 +118,13 @@ export function CommandPalette({
       onClose();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActive((i) => Math.min(rows.length - 1, i + 1));
+      setActive(Math.min(rows.length - 1, shown + 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActive((i) => Math.max(0, i - 1));
+      setActive(Math.max(0, shown - 1));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const row = rows[active];
+      const row = rows[shown];
       if (row) runRow(row);
     }
   };
@@ -132,7 +136,13 @@ export function CommandPalette({
           ref={inputRef}
           style={styles.input}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            // Back to the top match as the query changes, in the same render
+            // the filtered list appears (#2614: an effect left a window where
+            // Enter read the old index).
+            setQuery(e.target.value);
+            setActive(0);
+          }}
           onKeyDown={handleKey}
           placeholder={placeholder ?? "Type a command..."}
           spellCheck={false}
@@ -147,11 +157,12 @@ export function CommandPalette({
             <div
               key={row.id}
               data-palette-row={i}
+              data-palette-active={i === shown ? "" : undefined}
               style={{
                 ...styles.row,
-                ...(i === active ? styles.rowActive : {}),
+                ...(i === shown ? styles.rowActive : {}),
               }}
-              onMouseEnter={() => setActive(i)}
+              onMouseMove={(e) => { if (pointerMoved(e)) setActive(i); }}
               onClick={() => runRow(row)}
             >
               <div style={styles.rowLeft}>
