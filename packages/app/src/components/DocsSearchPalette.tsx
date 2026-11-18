@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
+import { shownIndex, usePointerMoved } from "./listHighlight";
+
 /**
  * In-editor docs search — Phase 2 + 3 of the docs initiative.
  *
@@ -127,22 +129,23 @@ export function DocsSearchPalette({ open, onClose }: Props): React.ReactElement 
 
   const rows = useMemo(() => (index ? filter(index, query) : []), [index, query])
 
-  useEffect(() => {
-    if (active >= rows.length) setActive(Math.max(0, rows.length - 1))
-  }, [rows.length, active])
+  // #2614 — the highlight never points past the list (the index can load or
+  // the query narrow under it), and follows the mouse only when it moves.
+  const shown = shownIndex(active, rows.length)
+  const pointerMoved = usePointerMoved()
 
   // Keep the active row in view.
   useEffect(() => {
     if (!listRef.current) return
     const el = listRef.current.querySelector<HTMLElement>(
-      `[data-docs-row="${active}"]`,
+      `[data-docs-row="${shown}"]`,
     )
     el?.scrollIntoView({ block: "nearest" })
-  }, [active])
+  }, [shown])
 
   if (!open) return null
 
-  const selected = rows[active]
+  const selected = rows[shown]
 
   const openDocs = (row: DocsSearchRow, upstream = false) => {
     const href = upstream && row.upstream ? row.upstream : `/docs${row.url}`
@@ -156,10 +159,10 @@ export function DocsSearchPalette({ open, onClose }: Props): React.ReactElement 
       onClose()
     } else if (e.key === "ArrowDown") {
       e.preventDefault()
-      setActive((a) => Math.min(rows.length - 1, a + 1))
+      setActive(Math.min(rows.length - 1, shown + 1))
     } else if (e.key === "ArrowUp") {
       e.preventDefault()
-      setActive((a) => Math.max(0, a - 1))
+      setActive(Math.max(0, shown - 1))
     } else if (e.key === "Enter") {
       if (!selected) return
       e.preventDefault()
@@ -176,7 +179,7 @@ export function DocsSearchPalette({ open, onClose }: Props): React.ReactElement 
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setActive(0) }}
             onKeyDown={handleKey}
             placeholder={index ? `Search docs · ${index.length} symbols` : "Loading docs index…"}
             style={styles.input}
@@ -201,11 +204,11 @@ export function DocsSearchPalette({ open, onClose }: Props): React.ReactElement 
               <button
                 key={`${row.runtime}:${row.name}`}
                 data-docs-row={i}
-                onMouseEnter={() => setActive(i)}
+                onMouseMove={(e) => { if (pointerMoved(e)) setActive(i) }}
                 onClick={() => openDocs(row)}
                 style={{
                   ...styles.row,
-                  ...(i === active ? styles.rowActive : {}),
+                  ...(i === shown ? styles.rowActive : {}),
                 }}
               >
                 <span
