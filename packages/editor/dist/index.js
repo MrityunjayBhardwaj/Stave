@@ -19342,7 +19342,7 @@ var _StrudelEngine = class _StrudelEngine {
     this.stopFollowingExtensions?.();
     this.stopFollowingExtensions = extensions.onChange(() => this.readSoundNames());
     this.readSoundNames();
-    this.audioCtx = getAudioContext4();
+    this.audioCtx = await new Promise((resolve) => whenGraphFree(() => resolve(getAudioContext4())));
     const audioCtx = this.audioCtx;
     this.stopAskingForAudio?.();
     this.stopAskingForAudio = startAudioOnNextGesture(audioCtx);
@@ -19427,17 +19427,24 @@ var _StrudelEngine = class _StrudelEngine {
       }
     }, "wrappedOutput");
     this.evalFrame = await measureEvalFrame();
-    this.repl = webaudioRepl({
-      transpiler: /* @__PURE__ */ __name((code, options = {}) => {
-        this.lastTranspile = { code, options, run: /* @__PURE__ */ __name((o) => transpiler(code, o), "run") };
-        return transpiler(code, options);
-      }, "transpiler"),
-      defaultOutput: wrappedOutput,
-      onEvalError: /* @__PURE__ */ __name((err) => {
-        this.evalResolve?.({ error: err });
-        this.evalResolve = null;
-      }, "onEvalError")
-    });
+    this.repl = await new Promise((resolve, reject) => whenGraphFree(() => {
+      try {
+        resolve(webaudioRepl({
+          audioContext: audioCtx,
+          transpiler: /* @__PURE__ */ __name((code, options = {}) => {
+            this.lastTranspile = { code, options, run: /* @__PURE__ */ __name((o) => transpiler(code, o), "run") };
+            return transpiler(code, options);
+          }, "transpiler"),
+          defaultOutput: wrappedOutput,
+          onEvalError: /* @__PURE__ */ __name((err) => {
+            this.evalResolve?.({ error: err });
+            this.evalResolve = null;
+          }, "onEvalError")
+        }));
+      } catch (err) {
+        reject(err);
+      }
+    }));
     watchSkippedTicks(this.repl.scheduler, (n) => {
       this.lateNotes += n;
     }, this.schedulerQuery);

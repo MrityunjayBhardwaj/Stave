@@ -1106,7 +1106,11 @@ export class StrudelEngine implements LiveCodingEngine {
 
     // Snapshot all registered sound names (synths + Dirt-Samples) for editor autocompletion.
     this.readSoundNames()
-    this.audioCtx = getAudioContext()
+    // #2616 — the LIVE context, read once no render holds the graph. While another
+    // engine renders, superdough's global is that render's OfflineAudioContext;
+    // taken then, this engine would meter, warm sounds and (below) clock its
+    // scheduler on a context that stops at the render's length.
+    this.audioCtx = await new Promise<AudioContext>((resolve) => whenGraphFree(() => resolve(getAudioContext())))
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const audioCtx = this.audioCtx!
     // #1987 — the context was made at boot, before any gesture, so it is suspended and
@@ -1294,17 +1298,31 @@ export class StrudelEngine implements LiveCodingEngine {
     // #2175 — note what each evaluate transpiles, so on an error the same code
     // can be transpiled again with a source map (only then: no cost per eval).
     this.evalFrame = await measureEvalFrame()
-    this.repl = webaudioRepl({
-      transpiler: (code: string, options: Record<string, unknown> = {}) => {
-        this.lastTranspile = { code, options, run: (o) => transpiler(code, o) }
-        return transpiler(code, options)
-      },
-      defaultOutput: wrappedOutput,
-      onEvalError: (err: Error) => {
-        this.evalResolve?.({ error: err })
-        this.evalResolve = null
-      },
-    })
+    // #2616 — the scheduler's clock is the context `webaudioRepl` is built with, kept
+    // for good (`getTime: () => audioContext.currentTime`, webaudio.mjs:106-109), and
+    // the repl also writes it back as superdough's global. Hand it the live context
+    // explicitly, and build it only while no render holds the graph: built during a
+    // render, it would read the render's offline context (a clock that stops, so every
+    // note lands in the past and nothing sounds), or, given the live one, overwrite
+    // the global under the render and pull its sounds out of the file being written.
+    this.repl = await new Promise((resolve, reject) => whenGraphFree(() => {
+      try {
+        resolve(webaudioRepl({
+          audioContext: audioCtx,
+          transpiler: (code: string, options: Record<string, unknown> = {}) => {
+            this.lastTranspile = { code, options, run: (o) => transpiler(code, o) }
+            return transpiler(code, options)
+          },
+          defaultOutput: wrappedOutput,
+          onEvalError: (err: Error) => {
+            this.evalResolve?.({ error: err })
+            this.evalResolve = null
+          },
+        }))
+      } catch (err) {
+        reject(err)
+      }
+    }))
     // #1348 — count the notes a late scheduler tick drops. See `watchSkippedTicks`.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     watchSkippedTicks((this.repl as any).scheduler, (n) => { this.lateNotes += n }, this.schedulerQuery)
