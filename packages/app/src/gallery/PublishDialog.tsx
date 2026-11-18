@@ -14,7 +14,8 @@ import {
   type PublishForm,
 } from "./publish";
 import { shownName } from "./reservedNames";
-import { captureLiveVizThumbnail, type CaptureResult } from "./thumbnail";
+import { captureCoverThumbnail, captureVisualFrames, type CoverCapture, type MissedStill } from "./thumbnail";
+import type { RecordedFrame } from "./recording";
 import { recordEntry } from "./recordAtPublish";
 import { fileRole } from "./galleryModel";
 import { TurnstileWidget, turnstileSiteKey } from "./TurnstileWidget";
@@ -119,7 +120,7 @@ interface PublishDialogProps {
   onClose: () => void;
 }
 
-type Thumb = { state: "capturing" } | { state: "done"; result: CaptureResult };
+type Thumb = { state: "capturing" } | { state: "done"; result: CoverCapture };
 
 export function PublishDialog({ open, project, activeFileId, onClose }: PublishDialogProps) {
   const [manifest, setManifest] = useState<GalleryManifest | null>(null);
@@ -140,6 +141,11 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
   const activeFileRef = useRef(activeFileId);
   activeFileRef.current = activeFileId;
   const [includeThumb, setIncludeThumb] = useState(true);
+  // #2590 — a still of each visual running in the studio now, for its row on the entry page
+  const [frames, setFrames] = useState<RecordedFrame[]>([]);
+  // #2610 — visuals drawing on screen whose still couldn't be taken, said in the dialog
+  const [missedStills, setMissedStills] = useState<MissedStill[]>([]);
+  const [includeFrames, setIncludeFrames] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   // #2330 — the Turnstile check, when this site has one. A token is good once:
@@ -149,10 +155,23 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
   const [turnstileRound, setTurnstileRound] = useState(0);
   const titleRef = useRef<HTMLInputElement>(null);
 
-  const capture = useCallback(() => {
+  // #2610 — the picture follows the file the card will show: a project's cover,
+  // or the one visual being published. A later capture replaces an earlier one.
+  const pictureFileId = form.kind === "project" ? coverId : form.kind === "viz" ? form.fileId : null;
+  const captureRound = useRef(0);
+  const capture = useCallback((files: GalleryManifest["files"], fileId: string | null) => {
+    const round = ++captureRound.current;
     setThumb({ state: "capturing" });
-    void captureLiveVizThumbnail().then((result) => setThumb({ state: "done", result }));
+    void captureCoverThumbnail(files, fileId).then((result) => {
+      if (round === captureRound.current) setThumb({ state: "done", result });
+    });
   }, []);
+  const retake = () => {
+    if (manifest) capture(manifest.files, pictureFileId);
+  };
+  useEffect(() => {
+    if (open && manifest) capture(manifest.files, pictureFileId);
+  }, [open, manifest, pictureFileId, capture]);
 
   // Each opening starts from the project as it is now.
   useEffect(() => {
@@ -174,9 +193,22 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
     setTurnstileToken(null);
     setTurnstileRound((r) => r + 1);
     setIncludeThumb(true);
-    capture();
+    setFrames([]);
+    setMissedStills([]);
+    setIncludeFrames(true);
+    let live = true;
+    void captureVisualFrames(m.files)
+      .catch(() => ({ frames: [], missed: [] }))
+      .then((got) => {
+        if (!live) return;
+        setFrames(got.frames);
+        setMissedStills(got.missed);
+      });
     queueMicrotask(() => titleRef.current?.focus());
-  }, [open, project, capture]);
+    return () => {
+      live = false;
+    };
+  }, [open, project]);
 
   const choices = useMemo(() => (manifest ? filesForKind(manifest.files, form.kind) : []), [manifest, form.kind]);
 
@@ -225,7 +257,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
         form.kind === "project" ? (manifest.files.find((f) => f.id === coverId)?.path ?? null) : (built.request.manifest.files[0]?.path ?? null);
       setRecording(true);
       const rec = await Promise.race([
-        recordEntry(project.id, built.request.manifest, coverPath).catch(() => null),
+        recordEntry(project.id, built.request.manifest, coverPath, form.kind === "project" && includeFrames ? frames : []).catch(() => null),
         new Promise<null>((r) => setTimeout(() => r(null), RECORD_TIMEOUT_MS)),
       ]);
       setRecording(false);
@@ -252,7 +284,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
       void loadGallerySession();
       if (siteKey) setTurnstileRound((r) => r + 1); // the token was spent; get a fresh one
     }
-  }, [manifest, sending, siteKey, turnstileToken, form, thumbnail, onClose, coverId, project.id]);
+  }, [manifest, sending, siteKey, turnstileToken, form, thumbnail, onClose, coverId, project.id, frames, includeFrames]);
 
   if (!open) return null;
 
@@ -414,20 +446,47 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
                     Include this picture
                   </label>
                   <span style={styles.hint}>{kib(thumb.result.thumbnail.bytes)}</span>
-                  <button type="button" style={styles.linkBtn} onClick={capture}>
+                  <button type="button" style={styles.linkBtn} onClick={retake}>
                     Take another frame
                   </button>
+                  {thumb.result.note && (
+                    <span style={styles.hint} data-testid="gallery-publish-thumbnail-note">
+                      {thumb.result.note}
+                    </span>
+                  )}
                 </div>
               </div>
             ) : (
-              <span style={styles.hint}>
+              <span style={styles.hint} data-testid="gallery-publish-thumbnail-reason">
                 {thumb.result.reason}{" "}
-                <button type="button" style={styles.linkBtn} onClick={capture}>
+                <button type="button" style={styles.linkBtn} onClick={retake}>
                   Try again
                 </button>
               </span>
             )}
           </div>
+
+          {form.kind === "project" && frames.length > 0 && (
+            <label style={styles.check} data-testid="gallery-publish-frames">
+              <input
+                type="checkbox"
+                checked={includeFrames}
+                onChange={(e) => setIncludeFrames(e.target.checked)}
+                data-testid="gallery-publish-frames-include"
+              />
+              Keep a small still of {frames.length === 1 ? "the running visual" : `the ${frames.length} running visuals`} for{" "}
+              {frames.length === 1 ? "its row" : "their rows"} ({frames.map((f) => f.path).join(", ")})
+            </label>
+          )}
+
+          {form.kind === "project" && missedStills.length > 0 && (
+            <div style={styles.note} data-testid="gallery-publish-frames-missed">
+              {missedStills.map((m) => (
+                <div key={m.path} data-gallery-missed-still={m.path}>
+                  No still for {m.path}: it&apos;s on screen, but {m.reason.charAt(0).toLowerCase() + m.reason.slice(1)}                </div>
+              ))}
+            </div>
+          )}
 
           <p style={styles.note}>
             Limits: title {MAX_TITLE_CHARS} characters, project up to {kib(MAX_MANIFEST_BYTES)}, picture up to{" "}

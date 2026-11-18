@@ -4,7 +4,7 @@
  */
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { EntryPage, type EntryPageProps } from "../GalleryEntry";
 import { forgetGalleryRecordingsForTests } from "../client";
 import type { GalleryEntry, GalleryEntryResponse } from "../types";
@@ -259,5 +259,213 @@ describe("EntryPage — the preview gets the entry's files (#2490)", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
     expect(frameSent()).toEqual([{ play: true, path: "main.strudel", files: [{ path: "main.strudel", kind: "strudel", code: MANIFEST.files[0].content }] }]);
+  });
+
+  describe("#2590 — the tempo and the visual stills recorded at publish", () => {
+    /** A tiny image with a real WebP header. */
+    const STILL = (() => {
+      const body = Buffer.alloc(64);
+      body.write("RIFF", 0, "latin1");
+      body.write("WEBPVP8 ", 8, "latin1");
+      return `data:image/webp;base64,${body.toString("base64")}`;
+    })();
+    const base = {
+      v: 1,
+      cover: "main.strudel",
+      contents: { patterns: 2, visuals: 1, other: 1 },
+    };
+    const song = { path: "main.strudel", span: "arranged", cycles: 16, lanes: [{ name: "bd" }], events: [[0, 0, 1, null]], sections: [] };
+    const bass = { path: "bass.strudel", span: "loop", cycles: 2, lanes: [{ name: "saw" }], events: [[0, 0, 1, 36]], sections: [] };
+
+    /**
+     * #2603 — served as the routes serve them: the record never carries stills
+     * (they're left out of it), the stills come from their own route.
+     */
+    let asked: string[] = [];
+    async function open(rec: { frames?: unknown } & Record<string, unknown>) {
+      const { frames, ...bare } = rec;
+      asked = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          asked.push(url);
+          if (url.endsWith("/recording")) return Response.json(bare);
+          if (url.endsWith("/frames")) return Response.json({ frames: frames ?? [] });
+          return new Response(null, { status: 404 });
+        }),
+      );
+      renderPage({ detail: { status: "ready", id: ENTRY.id, data: { entry: { ...ENTRY, hasRecording: true }, manifest: MANIFEST } } });
+      await waitFor(() => expect(document.querySelector('[data-gallery-file-row="main.strudel"] [data-gallery-timeline]')).not.toBeNull());
+    }
+    const facts = () => document.querySelector(".sg-facts")!.textContent;
+
+    it("a tempo the code set: BPM in the details, the length in minutes beside the bars, and on its row", async () => {
+      await open({ ...base, files: [{ ...song, tempo: { cps: 0.5, changes: false } }, bass] });
+      expect(document.querySelector("[data-gallery-tempo]")!.textContent).toBe("120 BPM");
+      expect(document.querySelector("[data-gallery-cover-length]")!.textContent).toBe("main.strudel, 16 bars · 0:32");
+      expect(facts()).toContain("Tempo120 BPM");
+      expect(document.querySelector('[data-gallery-file-row="main.strudel"]')!.textContent).toContain("16 bars · 120 BPM");
+      // a pattern that set none says nothing about tempo on its row
+      expect(document.querySelector('[data-gallery-file-row="bass.strudel"]')!.textContent).not.toMatch(/BPM/);
+    });
+
+    it('a tempo that changes: "starts at", and no length in minutes', async () => {
+      await open({ ...base, files: [{ ...song, tempo: { cps: 0.5, changes: true } }] });
+      expect(document.querySelector("[data-gallery-tempo]")!.textContent).toBe("starts at 120 BPM");
+      expect(document.querySelector("[data-gallery-cover-length]")!.textContent).toBe("main.strudel, 16 bars");
+    });
+
+    it("no tempo recorded (the code set none, or an older entry): no Tempo line, no minutes, no BPM anywhere", async () => {
+      await open({ ...base, files: [song, bass] });
+      expect(document.querySelector("[data-gallery-tempo]")).toBeNull();
+      expect(facts()).not.toMatch(/Tempo|BPM/);
+      expect(document.querySelector("[data-gallery-cover-length]")!.textContent).toBe("main.strudel, 16 bars");
+      expect(document.body.textContent).not.toMatch(/BPM|\d:\d\d/);
+    });
+
+    it("a visual with a still shows it on its row; a pattern's row keeps its strip", async () => {
+      await open({ ...base, files: [song], frames: [{ path: "viz/bloom.hydra", image: STILL }] });
+      // the stills arrive after the record, from their own request
+      await waitFor(() => expect(document.querySelector("img[data-gallery-visual-frame]")).not.toBeNull());
+      const img = document.querySelector('[data-gallery-file-row="viz/bloom.hydra"] img[data-gallery-visual-frame]') as HTMLImageElement;
+      expect(img).not.toBeNull();
+      expect(img.getAttribute("src")).toBe(STILL);
+      expect(img.getAttribute("alt")).toBe("A still of viz/bloom.hydra");
+      expect(document.querySelectorAll("[data-gallery-visual-frame]")).toHaveLength(1);
+      // #2603 — from the stills route: the record it was given had none
+      expect(asked).toContain(`/api/gallery/${ENTRY.id}/frames`);
+    });
+
+    it("#2603 — an entry with no visual doesn't ask for stills", async () => {
+      await open({ ...base, contents: { patterns: 2, visuals: 0, other: 1 }, files: [song] });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(asked).toEqual([`/api/gallery/${ENTRY.id}/recording`]);
+    });
+
+    it("an older entry's record has no stills: the visual's row is as it was", async () => {
+      await open({ ...base, files: [song] });
+      const row = document.querySelector('[data-gallery-file-row="viz/bloom.hydra"]')!;
+      expect(row.querySelector("img")).toBeNull();
+      expect(row.querySelector(".sg-frow-strip")!.children).toHaveLength(0);
+      expect(row.textContent).toContain("visual · 1 line");
+    });
+  });
+});
+
+describe("EntryPage — a visual's picture on the stage before Play (#2611)", () => {
+  /** A tiny image with a real WebP header. */
+  const STILL = (() => {
+    const body = Buffer.alloc(64);
+    body.write("RIFF", 0, "latin1");
+    body.write("WEBPVP8 ", 8, "latin1");
+    return `data:image/webp;base64,${body.toString("base64")}`;
+  })();
+  const VIZ_MANIFEST: GalleryEntryResponse["manifest"] = {
+    ...MANIFEST,
+    files: [
+      { id: "f1", path: "main.strudel", language: "strudel", content: 's("bd*4")' },
+      { id: "k1", path: "Knot.three", language: "three", content: "// knot" },
+      { id: "b1", path: "viz/bloom.hydra", language: "hydra", content: "osc(10).out()" },
+    ],
+  };
+  const song = { path: "main.strudel", span: "loop", cycles: 4, lanes: [{ name: "bd" }], events: [[0, 0, 1, null]], sections: [] };
+
+  /** Serve the record and the stills as their routes do, and open the entry. */
+  async function open(opts: { cover: string; frames?: unknown[]; hasThumbnail?: boolean }) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/recording")) return Response.json({ v: 1, cover: opts.cover, contents: { patterns: 1, visuals: 2, other: 0 }, files: [song] });
+        if (url.endsWith("/frames")) return Response.json({ frames: opts.frames ?? [] });
+        return new Response(null, { status: 404 });
+      }),
+    );
+    renderPage({
+      detail: {
+        status: "ready",
+        id: ENTRY.id,
+        data: { entry: { ...ENTRY, hasRecording: true, hasThumbnail: opts.hasThumbnail ?? true }, manifest: VIZ_MANIFEST },
+      },
+    });
+    // the record has arrived once the cover leads the list
+    await waitFor(() => expect(document.querySelector("[data-gallery-file-row]")!.getAttribute("data-gallery-file-row")).toBe(opts.cover));
+  }
+  const stage = () => document.querySelector("[data-gallery-preview]")!;
+  const picture = () => stage().querySelector("img[data-gallery-stage-picture]") as HTMLImageElement | null;
+  const choose = (path: string) => fireEvent.click(within(document.querySelector(`[data-gallery-file-row="${path}"]`) as HTMLElement).getByText(path));
+
+  it("the cover visual shows the entry's cover picture, the same one its card shows", async () => {
+    await open({ cover: "Knot.three", frames: [{ path: "Knot.three", image: STILL }] });
+    await waitFor(() => expect(picture()).not.toBeNull());
+    expect(picture()!.getAttribute("data-gallery-stage-picture")).toBe("thumbnail");
+    expect(picture()!.getAttribute("src")).toBe(`/api/gallery/${ENTRY.id}/thumbnail`);
+    expect(picture()!.getAttribute("alt")).toBe("The cover picture of Knot.three");
+    expect(stage().textContent).not.toMatch(/Visual/);
+  });
+
+  it("another visual shows its own still", async () => {
+    await open({ cover: "Knot.three", frames: [{ path: "viz/bloom.hydra", image: STILL }] });
+    choose("viz/bloom.hydra");
+    await waitFor(() => expect(picture()?.getAttribute("data-gallery-stage-picture")).toBe("still"));
+    expect(picture()!.getAttribute("src")).toBe(STILL);
+    expect(picture()!.getAttribute("data-gallery-stage-picture-of")).toBe("viz/bloom.hydra");
+    // and the cover's picture is not reused for it
+    expect(stage().querySelector('[data-gallery-stage-picture="thumbnail"]')).toBeNull();
+  });
+
+  it("a visual with neither keeps the placeholder", async () => {
+    await open({ cover: "Knot.three", frames: [] });
+    choose("viz/bloom.hydra");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(picture()).toBeNull();
+    expect(stage().querySelector(".sg-stage-idle")!.textContent).toBe("Visual");
+  });
+
+  it("a cover visual with no stored picture falls back to its still", async () => {
+    await open({ cover: "Knot.three", hasThumbnail: false, frames: [{ path: "Knot.three", image: STILL }] });
+    await waitFor(() => expect(picture()?.getAttribute("data-gallery-stage-picture")).toBe("still"));
+  });
+
+  it("a picture that won't load gives way to the next, then to the placeholder", async () => {
+    await open({ cover: "Knot.three", frames: [{ path: "Knot.three", image: STILL }] });
+    await waitFor(() => expect(picture()?.getAttribute("data-gallery-stage-picture")).toBe("thumbnail"));
+    await waitFor(() => expect(document.querySelector('[data-gallery-file-row="Knot.three"] img')).not.toBeNull());
+    fireEvent.error(picture()!);
+    expect(picture()!.getAttribute("data-gallery-stage-picture")).toBe("still");
+    fireEvent.error(picture()!);
+    expect(picture()).toBeNull();
+    expect(stage().querySelector(".sg-stage-idle")!.textContent).toBe("Visual");
+  });
+
+  it("a pattern still shows its timeline, not a picture", async () => {
+    await open({ cover: "Knot.three", frames: [{ path: "Knot.three", image: STILL }] });
+    choose("main.strudel");
+    expect(stage().querySelector('[data-gallery-timeline="main.strudel"]')).not.toBeNull();
+    expect(picture()).toBeNull();
+  });
+
+  it("Play puts the live preview in the picture's place", async () => {
+    await open({ cover: "Knot.three" });
+    await waitFor(() => expect(picture()).not.toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(picture()).toBeNull();
+    expect(stage().querySelector("[data-gallery-preview-frame]")).not.toBeNull();
+    // and Stop brings it back
+    fireEvent.click(screen.getByRole("button", { name: "Stop preview" }));
+    expect(picture()?.getAttribute("data-gallery-stage-picture")).toBe("thumbnail");
+  });
+
+  it("an entry from before records keeps the placeholder, as it did", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 404 })));
+    renderPage({
+      detail: {
+        status: "ready",
+        id: "vizold",
+        data: { entry: { ...ENTRY, id: "vizold", kind: "viz", hasThumbnail: true }, manifest: { ...MANIFEST, files: [VIZ_MANIFEST.files[1]] } },
+      },
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(picture()).toBeNull();
+    expect(stage().querySelector(".sg-stage-idle")!.textContent).toBe("Visual");
   });
 });

@@ -31,6 +31,18 @@
  *    (read from the frame's pixels, not its DOM), in Chromium and in WebKit; the
  *    same pattern with the visual left out of the project draws nothing and the
  *    frame says which name it couldn't find.
+ * 6. THE PREVIEW DRAWS WHAT PLAYS (#2489). A music file with no visual of its
+ *    own draws Stave's piano roll in the frame: its notes are on screen and move
+ *    (two shots of the frame's pixels, 700 ms apart), the line reads "bar N of 4"
+ *    for a four-bar song and "bar N" for a loop, the frame's own stop and the
+ *    page's Stop both clear it, and the frame's messages to the page are the same
+ *    states as ever; silence, the control, draws no notes. Chromium and WebKit.
+ * 7. THREE.JS PREVIEWS (#2608). A lone `.three` visual entry whose sketch imports
+ *    an add-on (`three/addons/geometries/RoundedBoxGeometry.js`, the shape people
+ *    paste from the three.js examples) draws in the frame: its background and the
+ *    add-on's box are both on screen, read from the frame's pixels. A project
+ *    whose pattern calls `.viz("knot")` draws its own `viz/knot.three` the same
+ *    way. Chromium and WebKit.
  *
  * Screenshots go to $GALLERY_SHOT_DIR.
  *
@@ -934,12 +946,17 @@ const BLOOM = 's.solid(1, 0, 1).out()'
 const BLOOM_PATTERN = `${MUSIC_CODE.split('\n')[0]}\n$: s("bd*4, hh*8").viz("bloom")`
 
 /** Serve a project entry (GET only), as the gallery serves one. */
-async function routeProject(page: Page, title: string, files: Array<{ path: string; language: string; content: string }>): Promise<{ id: string }> {
+async function routeProject(
+  page: Page,
+  title: string,
+  files: Array<{ path: string; language: string; content: string }>,
+  kind: 'project' | 'viz' = 'project',
+): Promise<{ id: string }> {
   const id = newId()
   const now = Date.now()
   const withIds = files.map((f, i) => ({ id: `p${i}`, ...f }))
   const body = {
-    entry: { id, title, kind: 'project', tags: ['sandbox-test'], authorName: 'Peg', publishedAt: now, fileCount: files.length, hasThumbnail: false },
+    entry: { id, title, kind, tags: ['sandbox-test'], authorName: 'Peg', publishedAt: now, fileCount: files.length, hasThumbnail: false },
     manifest: { schemaVersion: 1, project: { name: title, sharedAt: now }, files: withIds, fileOrder: { '': withIds.map((f) => f.id) }, subfolderOrder: {} },
   }
   await page.route(`**/api/gallery/${id}`, (route) => (route.request().method() === 'GET' ? route.fulfill({ json: body }) : route.fallback()))
@@ -972,12 +989,14 @@ const frameLoc = (page: Page) => page.frameLocator('[data-gallery-preview-frame]
 /**
  * Open the entry, press its Preview, and get it playing: in Chromium the page's
  * click starts it; in WebKit the frame asks for its own press, given by Enter.
+ * A visual with no pattern makes no sound, so it asks for no press anywhere
+ * (`sound: false`, #2608).
  */
-async function previewToPlaying(page: Page, id: string, engine: 'chromium' | 'webkit'): Promise<void> {
+async function previewToPlaying(page: Page, id: string, engine: 'chromium' | 'webkit', sound = true): Promise<void> {
   await page.goto(`/#gallery=${id}`, { waitUntil: 'domcontentloaded' })
   await expect(page.locator(`[data-gallery-detail="${id}"]`)).toBeVisible({ timeout: 60_000 })
   await page.locator('[data-gallery-preview-button]').click({ timeout: 60_000 })
-  if (engine === 'webkit') {
+  if (engine === 'webkit' && sound) {
     await expect(page.locator('[data-gallery-preview-state="stopped"]')).toHaveText('Press Play in the preview to hear it.', { timeout: 60_000 })
     await expect(page.locator('[data-gallery-preview-frame]')).toBeFocused()
     await page.keyboard.press('Enter')
@@ -1200,5 +1219,254 @@ test.describe("the preview doesn't take its frame's word (#2579, #2580, #2581)",
     await expect(frameLoc(page).locator('[data-gallery-player-visual]')).toHaveCount(4, { timeout: 30_000 })
     await page.waitForTimeout(1000)
     await expect(frameLoc(page).locator('[data-gallery-player-capped]')).toHaveCount(0)
+  })
+})
+
+// ─── #2489 the preview draws what is playing ─────────────────────────────────
+
+/** A four-bar song of pitched notes (two sections of two bars), and silence as the control. */
+const SONG = `${MUSIC_CODE.split('\n')[0]}
+arrange([2, note("c3 e3 g3 b3")], [2, note("a2 c3 e3 g3")]).s("sawtooth")`
+const LOOP = `${MUSIC_CODE.split('\n')[0]}
+note("c3 e3 g3 b3").s("sawtooth")`
+const QUIET = `${MUSIC_CODE.split('\n')[0]}
+silence`
+
+/** The page-bound messages every frame sends, recorded on the gallery page as they arrive. */
+const RECORD_FRAME_MESSAGES = () => {
+  const w = window as unknown as { __frameMsgs: string[] }
+  w.__frameMsgs = []
+  addEventListener('message', (e) => {
+    const f = document.querySelector('[data-gallery-preview-frame]') as HTMLIFrameElement | null
+    if (f && e.source === f.contentWindow) w.__frameMsgs.push(JSON.stringify(e.data))
+  })
+}
+const frameMessages = (page: Page) => page.evaluate(() => (window as unknown as { __frameMsgs: string[] }).__frameMsgs.slice())
+
+/**
+ * Two shots of the roll: how many pixels in each are a note's colour (saturated:
+ * the roll's notes are purple, orange, cyan, green; its playhead and the
+ * background are grey), and how many pixels changed between them.
+ */
+async function rollPixels(page: Page, a: Buffer, b: Buffer): Promise<{ notesA: number; notesB: number; changed: number; pixels: number }> {
+  return page.evaluate(
+    async ([a64, b64]) => {
+      const read = async (b: string) => {
+        const bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${b}`)).blob())
+        const c = document.createElement('canvas')
+        c.width = bmp.width
+        c.height = bmp.height
+        const g = c.getContext('2d')!
+        g.drawImage(bmp, 0, 0)
+        return g.getImageData(0, 0, c.width, c.height).data
+      }
+      const [da, db] = [await read(a64), await read(b64)]
+      const sat = (d: Uint8ClampedArray, i: number) => Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2]) > 40
+      let notesA = 0
+      let notesB = 0
+      let changed = 0
+      const n = Math.min(da.length, db.length)
+      for (let i = 0; i < n; i += 4) {
+        if (sat(da, i)) notesA++
+        if (sat(db, i)) notesB++
+        if (Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]) > 60) changed++
+      }
+      return { notesA, notesB, changed, pixels: n / 4 }
+    },
+    [a.toString('base64'), b.toString('base64')],
+  )
+}
+
+const LABEL = /^▶ main\.strudel · bar (\d+)( of (\d+))?$/
+
+/** Play a music entry, see its notes drawn and moving, read its bar, stop it; then the silent control. */
+async function previewDrawsWhatPlays(page: Page, engine: 'chromium' | 'webkit'): Promise<void> {
+  await page.addInitScript(RECORD_FRAME_MESSAGES)
+  const song = await routeProject(page, 'Four Bar Song', [{ path: 'main.strudel', language: 'strudel', content: SONG }])
+  const loop = await routeProject(page, 'Loop', [{ path: 'main.strudel', language: 'strudel', content: LOOP }])
+  const quiet = await routeProject(page, 'Quiet', [{ path: 'main.strudel', language: 'strudel', content: QUIET }])
+
+  // THE SONG: the roll is up, drawing notes that move, with "bar N of 4" under it
+  await previewToPlaying(page, song.id, engine)
+  const roll = frameLoc(page).locator('[data-gallery-player-roll="pianoroll"]')
+  await expect(roll.locator('canvas')).not.toHaveCount(0, { timeout: 30_000 })
+  const label = frameLoc(page).locator('[data-gallery-player-roll-label]')
+  await expect(label).toHaveText(LABEL, { timeout: 15_000 })
+  await page.waitForTimeout(800)
+  const shotA = await roll.screenshot()
+  const barA = Number(LABEL.exec((await label.textContent()) ?? '')![1])
+  await page.waitForTimeout(700)
+  const shotB = await roll.screenshot()
+  const px = await rollPixels(page, shotA, shotB)
+  console.log(`${engine} song: note pixels ${px.notesA} then ${px.notesB}, ${px.changed} changed in 700 ms, of ${px.pixels}`)
+  expect(px.notesA).toBeGreaterThan(500)
+  expect(px.notesB).toBeGreaterThan(500)
+  expect(px.changed).toBeGreaterThan(200)
+  await expect(label).toHaveText(new RegExp(`^▶ main\\.strudel · bar \\d+ of 4$`))
+  // the bar moves on with the music (a bar is 2 s at the default tempo)
+  await expect.poll(async () => Number(LABEL.exec((await label.textContent()) ?? '')![1]), { timeout: 6_000 }).not.toBe(barA)
+  const barB = Number(LABEL.exec((await label.textContent()) ?? '')![1])
+  console.log(`${engine} song: label went from bar ${barA} to bar ${barB} of 4`)
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-roll-song.png` })
+  await expect(frameLoc(page).locator('[data-gallery-player-visual]')).toHaveCount(0)
+
+  // the frame's own stop (the message the page may still send) clears the roll and its line
+  await page.evaluate(() => (document.querySelector('[data-gallery-preview-frame]') as HTMLIFrameElement).contentWindow!.postMessage({ stop: true }, '*'))
+  await expect(roll).toHaveCount(0, { timeout: 10_000 })
+  await expect(label).toHaveCount(0)
+  await expect(frameLoc(page).locator('[data-gallery-player-viz] canvas')).toHaveCount(0)
+  // the page's Stop removes the frame, roll and all
+  await page.locator('[data-gallery-preview-button]').click()
+  await expect(page.locator('[data-gallery-preview-frame]')).toHaveCount(0)
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-roll-after-stop.png` })
+
+  // the frame told the page nothing new: the same states, in the same shapes
+  const first = await frameMessages(page)
+  const expected = engine === 'webkit'
+    ? ['{"state":"ready"}', '{"state":"stopped","message":"Press Play in the preview to hear it."}', '{"state":"playing"}', '{"state":"stopped"}']
+    : ['{"state":"ready"}', '{"state":"playing"}', '{"state":"stopped"}']
+  console.log(`${engine} frame -> page: ${first.join(' ')}`)
+  expect(first).toEqual(expected)
+
+  // A LOOP: "bar N" with no total
+  await previewToPlaying(page, loop.id, engine)
+  await expect(frameLoc(page).locator('[data-gallery-player-roll-label]')).toHaveText(/^▶ main\.strudel · bar \d+$/, { timeout: 15_000 })
+  console.log(`${engine} loop: ${await frameLoc(page).locator('[data-gallery-player-roll-label]').textContent()}`)
+
+  // CONTROL — silence: the roll is up, and draws no notes
+  await previewToPlaying(page, quiet.id, engine)
+  const qroll = frameLoc(page).locator('[data-gallery-player-roll="pianoroll"]')
+  await expect(qroll.locator('canvas')).not.toHaveCount(0, { timeout: 30_000 })
+  await page.waitForTimeout(1000)
+  const qa = await qroll.screenshot()
+  await page.waitForTimeout(700)
+  const qpx = await rollPixels(page, qa, await qroll.screenshot())
+  console.log(`${engine} silence: note pixels ${qpx.notesA} then ${qpx.notesB}, ${qpx.changed} changed in 700 ms, of ${qpx.pixels}`)
+  expect(qpx.pixels).toBeGreaterThan(1000)
+  expect(qpx.notesA).toBe(0)
+  expect(qpx.notesB).toBe(0)
+  // nothing moves but what the page lays over the frame (a few dozen pixels, against tens of thousands above)
+  expect(qpx.changed).toBeLessThan(500)
+}
+
+test.describe('#2489 the preview draws what is playing', () => {
+  test('Chromium', async ({ page }) => {
+    test.setTimeout(300_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    const errors = consoleErrors(page)
+    await routeGallery(page)
+    await previewDrawsWhatPlays(page, 'chromium')
+    console.log('CONSOLE ERRORS\n' + errors.join('\n'))
+    expect(errors.filter((e) => e.startsWith('pageerror:'))).toEqual([])
+  })
+
+  test('WebKit', async ({ page: probe, baseURL }) => {
+    test.setTimeout(300_000)
+    await inWebKit(probe, baseURL, (page) => previewDrawsWhatPlays(page, 'webkit'))
+  })
+})
+
+// ─── #2608 three.js previews ─────────────────────────────────────────────────
+
+/**
+ * A plain three.js sketch, as pasted from the examples: a magenta background and,
+ * in front of it, a cyan box from an add-on import. Both colours are ones nothing
+ * else in the preview draws, so the frame's pixels say whether the sketch ran
+ * (magenta) and whether its add-on loaded and drew (cyan).
+ */
+const THREE_SKETCH = `import * as THREE from 'three'
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+const scene = new THREE.Scene()
+scene.background = new THREE.Color(1, 0, 1)
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100)
+camera.position.set(0, 0, 6)
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setSize(innerWidth, innerHeight)
+document.body.appendChild(renderer.domElement)
+const box = new THREE.Mesh(new RoundedBoxGeometry(1.6, 1.6, 1.6, 4, 0.25), new THREE.MeshBasicMaterial({ color: new THREE.Color(0, 1, 1) }))
+scene.add(box)
+renderer.setAnimationLoop((t) => {
+  box.rotation.y = t / 1000
+  renderer.render(scene, camera)
+})
+`
+const KNOT_PATTERN = `${MUSIC_CODE.split('\n')[0]}\n$: s("bd*4, hh*8").viz("knot")`
+
+/** The share of a screenshot's pixels near magenta and near cyan. */
+async function threeColours(page: Page, png: Buffer): Promise<{ magenta: number; cyan: number; pixels: number }> {
+  return page.evaluate(async (b64) => {
+    const bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob())
+    const c = document.createElement('canvas')
+    c.width = bmp.width
+    c.height = bmp.height
+    const g = c.getContext('2d')!
+    g.drawImage(bmp, 0, 0)
+    const d = g.getImageData(0, 0, c.width, c.height).data
+    let magenta = 0
+    let cyan = 0
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] > 200 && d[i + 1] < 60 && d[i + 2] > 200) magenta++
+      if (d[i] < 60 && d[i + 1] > 200 && d[i + 2] > 200) cyan++
+    }
+    const pixels = d.length / 4
+    return { magenta: magenta / pixels, cyan: cyan / pixels, pixels }
+  }, png.toString('base64'))
+}
+
+/** Wait until the frame shows the sketch: its background, and the add-on's box in front of it. */
+async function expectSketchDrawn(page: Page, engine: 'chromium' | 'webkit', what: string): Promise<void> {
+  let drawn = { magenta: 0, cyan: 0, pixels: 0 }
+  await expect
+    .poll(
+      async () => {
+        drawn = await threeColours(page, await page.locator('[data-gallery-preview-frame]').screenshot())
+        return drawn.magenta > 0.3 && drawn.cyan > 0.01
+      },
+      { timeout: 45_000 },
+    )
+    .toBe(true)
+  console.log(`${engine} ${what}: magenta ${(drawn.magenta * 100).toFixed(1)}%, cyan ${(drawn.cyan * 100).toFixed(1)}% of ${drawn.pixels} frame pixels`)
+}
+
+async function threePreviews(page: Page, engine: 'chromium' | 'webkit'): Promise<void> {
+  const lone = await routeProject(page, 'Rounded Box', [{ path: 'box.three', language: 'three', content: THREE_SKETCH }], 'viz')
+  const project = await routeProject(page, 'Knot Project', [
+    { path: 'main.strudel', language: 'strudel', content: KNOT_PATTERN },
+    { path: 'viz/knot.three', language: 'three', content: THREE_SKETCH },
+  ])
+
+  // A LONE .three ENTRY: the sketch runs in the frame, its add-on included
+  await previewToPlaying(page, lone.id, engine, false)
+  await expect(frameLoc(page).locator('[data-gallery-player-viz] canvas')).not.toHaveCount(0, { timeout: 30_000 })
+  await expectSketchDrawn(page, engine, 'lone .three')
+  expect(await playerFrame(page)!.evaluate(() => self.origin)).toBe('null')
+  expect(await previewState(page), 'the sketch errored after starting').toBe('playing')
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-three-lone.png` })
+
+  // A PROJECT whose pattern draws its own .three visual
+  await previewToPlaying(page, project.id, engine)
+  const visual = frameLoc(page).locator('[data-gallery-player-visual="viz/knot.three"]')
+  await expect(visual).toHaveCount(1, { timeout: 30_000 })
+  await expect(visual.locator('canvas')).not.toHaveCount(0, { timeout: 30_000 })
+  await expect(frameLoc(page).locator('[data-gallery-player-missing]')).toHaveCount(0)
+  await expectSketchDrawn(page, engine, 'project .viz("knot")')
+  expect(await previewState(page), 'the visual errored after starting').toBe('playing')
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${engine}-three-project.png` })
+}
+
+test.describe('#2608 a three.js sketch previews in the frame', () => {
+  test('Chromium', async ({ page }) => {
+    test.setTimeout(300_000)
+    test.skip(await isDevServer(page), DEV_SKIP)
+    const errors = consoleErrors(page)
+    await routeGallery(page)
+    await threePreviews(page, 'chromium')
+    console.log('CONSOLE ERRORS\n' + errors.join('\n'))
+    expect(errors.filter((e) => e.startsWith('pageerror:'))).toEqual([])
+  })
+
+  test('WebKit', async ({ page: probe, baseURL }) => {
+    test.setTimeout(300_000)
+    await inWebKit(probe, baseURL, (page) => threePreviews(page, 'webkit'))
   })
 })

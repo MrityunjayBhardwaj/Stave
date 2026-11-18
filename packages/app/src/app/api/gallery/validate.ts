@@ -1,4 +1,5 @@
-import { RECORDING_LIMITS, encodeRecording, readRecording } from "../../../gallery/recording";
+import { RECORDING_LIMITS, encodeRecording, readRecording, withoutFrames } from "../../../gallery/recording";
+import { fileRole } from "../../../gallery/galleryModel";
 import {
   GALLERY_ID_PATTERN,
   GALLERY_KINDS,
@@ -40,8 +41,16 @@ export interface ValidPublish {
   manifest: GalleryManifest;
   manifestBytes: Uint8Array;
   thumbnail: { bytes: Uint8Array; contentType: "image/png" | "image/webp" } | null;
-  /** #2487 — what the entry plays, recorded at publish; stored beside it as JSON. */
+  /** #2487 — what the entry plays, recorded at publish; stored beside it as JSON, without its stills. */
   recording: Uint8Array | null;
+  /** #2603 — the visuals' stills, when there are any: stored in their own file, `{ frames }`. */
+  frames: Uint8Array | null;
+}
+
+/** #2603 — a checked record, split into what the cards fetch and the stills only the entry page does. */
+export interface CheckedRecording {
+  recording: Uint8Array;
+  frames: Uint8Array | null;
 }
 
 /**
@@ -49,16 +58,23 @@ export interface ValidPublish {
  * the cards use (`readRecording`), so a record this route stores is one they can
  * draw. Every recorded file and the cover must be a file of the entry.
  */
-export function checkRecording(v: unknown, manifest: GalleryManifest): Checked<Uint8Array | null> {
+export function checkRecording(v: unknown, manifest: GalleryManifest): Checked<CheckedRecording | null> {
   if (v === undefined || v === null) return { ok: true, value: null };
   const rec = readRecording(v);
   if (!rec) return bad("the recording isn't in the expected shape");
   const paths = new Set(manifest.files.map((f) => f.path));
   if (rec.cover !== null && !paths.has(rec.cover)) return bad("the recording's cover isn't a file of the entry");
   if (rec.files.some((f) => !paths.has(f.path))) return bad("the recording names a file the entry doesn't have");
-  const bytes = encodeRecording(rec);
-  if (!bytes) return tooLarge(`the recording is larger than ${RECORDING_LIMITS.bytes} bytes`);
-  return { ok: true, value: bytes };
+  // #2590 — a still belongs to a visual file of this entry
+  if (rec.frames?.some((f) => !paths.has(f.path) || fileRole(f.path) !== "visual")) {
+    return bad("the recording has a still for a file that isn't one of the entry's visuals");
+  }
+  // The cap is on the record as sent, stills included, as it was before #2603.
+  if (!encodeRecording(rec)) return tooLarge(`the recording is larger than ${RECORDING_LIMITS.bytes} bytes`);
+  // #2603 — the stills go in their own file, so the record the cards fetch carries none.
+  const recording = encodeRecording(withoutFrames(rec))!;
+  const frames = rec.frames?.length ? new TextEncoder().encode(JSON.stringify({ frames: rec.frames })) : null;
+  return { ok: true, value: { recording, frames } };
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -194,7 +210,8 @@ export function checkPublish(body: unknown): Checked<ValidPublish> {
       manifest: manifest.value,
       manifestBytes,
       thumbnail: thumbnail.value,
-      recording: recording.value,
+      recording: recording.value?.recording ?? null,
+      frames: recording.value?.frames ?? null,
     },
   };
 }

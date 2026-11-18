@@ -78,6 +78,14 @@ describe("Card", () => {
     expect(document.querySelector("[data-gallery-card-count]")).toBeNull();
   });
 
+  it("#2603 — a card asks for the record only, never for the visuals' stills", async () => {
+    const f = stubFetch();
+    render(<Card entry={E({ hasRecording: true })} onOpen={() => {}} />);
+    await waitFor(() => expect(picture()).toBe("timeline"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(f.mock.calls.map(([url]) => url)).toEqual(["/api/gallery/proj1xxxxxx/recording"]);
+  });
+
   it("a record of the wrong shape draws nothing from it", async () => {
     stubFetch({ v: 1, cover: "main.strudel", files: "<script>" });
     render(<Card entry={E({ hasRecording: true })} onOpen={() => {}} />);

@@ -18,8 +18,12 @@
  *
  * Recording is best effort. A file that fails to evaluate, or a record over the
  * size cap, is dropped; publishing never fails because of it.
+ *
+ * #2590 adds a file's starting tempo (only when its own code sets one, see
+ * `tempoOf`) and a still of each visual that was running in the author's studio
+ * (taken by the dialog, `captureVisualFrames`, never by running anything here).
  */
-import { StrudelEngine, analyzeSong, parseStrudel, songEnd } from "@stave/editor";
+import { StrudelEngine, analyzeSong, parseStrudel, songEnd, writtenCps } from "@stave/editor";
 import { collectNoteMarks } from "../components/musicalTimeline/timelineMarks";
 import { resolveSectionName } from "../components/musicalTimeline/sectionLabel";
 import { mayEvaluateQuietly } from "./runGate";
@@ -28,11 +32,14 @@ import {
   RECORDING_LIMITS,
   encodeRecording,
   readRecording,
+  roundCps,
   roundCycle,
   type GalleryRecording,
   type RecordedEvent,
+  type RecordedFrame,
   type RecordedPattern,
   type RecordedSection,
+  type RecordedTempo,
 } from "./recording";
 import type { GalleryManifest } from "./types";
 
@@ -124,7 +131,41 @@ export async function recordPattern(path: string, code: string): Promise<Recorde
     .slice(0, RECORDING_LIMITS.sectionsPerFile)
     .map((s) => [roundCycle(s.a), roundCycle(Math.min(s.b, cycles)), resolveSectionName(s.arm, s.range, code)]);
 
-  return { path, span, cycles, lanes, events: out, sections };
+  const tempo = tempoOf(code, e.getCps(), events);
+  return { path, span, cycles, lanes, events: out, sections, ...(tempo ? { tempo } : {}) };
+}
+
+/** Two tempos this close are the same one (a cpm written as `n / 60` doesn't come back exact). */
+const sameCps = (a: number, b: number) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+
+/**
+ * #2590 — the tempo a file starts at, once its code has run, or none.
+ *
+ * Kept only when the code itself sets it as a plain number: its last top-level
+ * `setcps`/`setcpm` (or the camel-case twins) is literal arithmetic (`writtenCps`
+ * reads that from the parsed code), AND the scheduler is at exactly that tempo
+ * once the code has run. The engine alone can't tell "the code chose this" from
+ * Strudel's default, or from the tempo the previous file on this shared engine
+ * left behind; the code alone can't tell a setter that ran from one that was
+ * overridden later. Both agreeing is the narrowest honest reading: anything else
+ * (no setter, `setcps(tempo)`, a disagreement) records no tempo, never a guess.
+ *
+ * `changes`: an event in the recorded span carries a `cps` of its own that
+ * differs (`.cps(…)` on a pattern), which the scheduler applies as it plays.
+ */
+export function tempoOf(
+  code: string,
+  running: number | null,
+  events: ReadonlyArray<{ params?: Record<string, unknown> }>,
+): RecordedTempo | null {
+  const written = writtenCps(code);
+  if (typeof written !== "number" || running === null || !sameCps(written, running)) return null;
+  if (running < RECORDING_LIMITS.minCps || running > RECORDING_LIMITS.maxCps) return null;
+  const changes = events.some((ev) => {
+    const c = ev.params?.cps;
+    return typeof c === "number" && Number.isFinite(c) && !sameCps(c, running);
+  });
+  return { cps: roundCps(running), changes };
 }
 
 /**
@@ -136,6 +177,7 @@ export async function recordEntry(
   projectId: string,
   manifest: GalleryManifest,
   cover: string | null,
+  frames: readonly RecordedFrame[] = [],
 ): Promise<GalleryRecording | null> {
   const contents = { patterns: 0, visuals: 0, other: 0 };
   for (const f of manifest.files) {
@@ -156,6 +198,15 @@ export async function recordEntry(
     } catch (err) {
       console.warn(`[stave] couldn't record ${f.path} for the gallery:`, err);
     }
+  }
+  // #2590 — the visuals' stills, one per visual file of this entry. They go
+  // first when the record is over its size cap: the patterns' timelines matter more.
+  const visuals = new Set(manifest.files.filter((f) => fileRole(f.path) === "visual").map((f) => f.path));
+  const kept = frames.filter((f, i) => visuals.has(f.path) && frames.findIndex((x) => x.path === f.path) === i);
+  const stills = kept.slice(0, RECORDING_LIMITS.frames);
+  if (stills.length) {
+    const withFrames = readRecording({ v: 1, cover, contents, files, frames: stills });
+    if (withFrames && encodeRecording(withFrames)) return withFrames;
   }
   const rec = readRecording({ v: 1, cover, contents, files });
   return rec && encodeRecording(rec) ? rec : null;

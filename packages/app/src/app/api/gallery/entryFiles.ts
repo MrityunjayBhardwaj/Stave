@@ -8,6 +8,7 @@ import { galleryPaths, type GalleryBlobStore } from "./store";
  *   gallery/manifests/<id>.json    the project manifest
  *   gallery/thumbnails/<id>        PNG or WebP bytes
  *   gallery/recordings/<id>.json   what it plays, recorded at publish (#2487)
+ *   gallery/frames/<id>.json       its visuals' stills, apart so cards never load them (#2603)
  *
  * Nothing else is written here (#2363: the old Blob records publish and
  * take-down used to mirror are gone; galleryBlobContentOnly.test.ts holds the line).
@@ -30,18 +31,20 @@ export async function putEntryFiles(
   manifestBytes: Uint8Array,
   thumbnail: { bytes: Uint8Array; contentType: string } | null,
   recording: Uint8Array | null = null,
+  frames: Uint8Array | null = null,
 ): Promise<void> {
   await store.put(galleryPaths.manifest(id), manifestBytes, "application/json");
   if (thumbnail) await store.put(galleryPaths.thumbnail(id), thumbnail.bytes, thumbnail.contentType);
+  if (frames) await store.put(galleryPaths.frames(id), frames, "application/json");
   if (recording) await store.put(galleryPaths.recording(id), recording, "application/json");
 }
 
 /**
- * Delete the entry's files. Pictures first (the recording, the thumbnail): if the
+ * Delete the entry's files. Pictures first (the stills, the recording, the thumbnail): if the
  * manifest's delete then fails, an entry rolled back to live has lost only its
  * pictures and can still be opened. An entry with no recording deletes nothing
  * there; the store's delete of a missing path is not an error.
  */
 export async function deleteEntryFiles(store: GalleryBlobStore, id: string): Promise<void> {
-  await store.del([galleryPaths.recording(id), galleryPaths.thumbnail(id), galleryPaths.manifest(id)]);
+  await store.del([galleryPaths.frames(id), galleryPaths.recording(id), galleryPaths.thumbnail(id), galleryPaths.manifest(id)]);
 }

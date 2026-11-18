@@ -17,15 +17,21 @@
  * A pattern's timeline strip, its length in bars and the author-chosen cover
  * come from what is recorded at publish (#2487, #2488). "Add to this project"
  * adds one file: a music or visual entry's only file, or the one chosen from a
- * project's list. Not drawn yet: the tempo (publishing doesn't record it) and the
- * live piano roll inside the frame (#2489).
+ * project's list. The tempo a pattern starts at and a still of each visual are
+ * recorded at publish too (#2590): shown when recorded, and nothing (no guess)
+ * for an entry published before, or a pattern that sets no tempo of its own.
+ * Before Play the stage shows a pattern's timeline, or a visual's picture
+ * (#2611): the cover picture for the cover visual, else the visual's still.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AuthorName, EntryPicture, avatarColour, useEntryRecording } from "./GalleryCards";
-import { GalleryPreview, type GalleryPreviewHandle } from "./GalleryPreview";
+import { GalleryPreview, StageIdle, type GalleryPreviewHandle } from "./GalleryPreview";
 import { previewKindOf, previewPlayFor } from "./previewProtocol";
 import { LIGHT_CODE_BG, codeLanguageOf, colourLines, type TokenKind } from "./codeColour";
 import { RecordingTimeline, lengthLabel } from "./GalleryTimeline";
+import { durationLabel, frameFor, tempoLabel, type GalleryRecording, type RecordedFrame, type RecordedPattern } from "./recording";
+import { fetchGalleryFrames, galleryThumbnailUrl } from "./client";
+import { useDisplayMeter } from "../state/displayMeter";
 import { GALLERY_FILTERS, KIND_LABEL, contentsSummary, fileRole, formatGalleryDate, publishedAgo } from "./galleryModel";
 import { shownName } from "./reservedNames";
 import { GalleryCrumbs } from "./GalleryBar";
@@ -33,6 +39,59 @@ import type { DetailState } from "./galleryStore";
 import type { GalleryEntry, GalleryEntryResponse, GalleryKind } from "./types";
 
 type Manifest = GalleryEntryResponse["manifest"];
+
+/**
+ * #2603 — the stills of an entry's visuals, kept apart from its record so the
+ * cards (which share the record) never download them. Asked for only once the
+ * record says the entry has a visual; null until they arrive, and when there are none.
+ */
+function useEntryFrames(id: string, rec: GalleryRecording | null): RecordedFrame[] | null {
+  const [frames, setFrames] = useState<RecordedFrame[] | null>(null);
+  const wanted = !!rec && rec.contents.visuals > 0;
+  useEffect(() => {
+    setFrames(null);
+    if (!wanted) return;
+    let live = true;
+    void fetchGalleryFrames(id).then((f) => {
+      if (live) setFrames(f);
+    });
+    return () => {
+      live = false;
+    };
+  }, [id, wanted]);
+  return frames;
+}
+
+/** #2611 — one picture the stage can show for a visual before Play. */
+interface StageSource {
+  from: "thumbnail" | "still";
+  src: string;
+  alt: string;
+}
+
+/**
+ * #2611 — what a visual's stage shows before Play, from stored pictures only:
+ * the entry's cover picture (its thumbnail) when the file is the cover, the
+ * file's own still when it has one, in that order. A picture that fails to load
+ * gives way to the next, and the last to the "Visual" placeholder. Drawn whole
+ * (`object-fit: contain`), never stretched or cropped to the stage's shape.
+ */
+function VisualStagePicture({ path, sources }: { path: string; sources: readonly StageSource[] }) {
+  const [failed, setFailed] = useState(0);
+  const shown = sources[failed];
+  if (!shown) return <StageIdle visual />;
+  return (
+    <img
+      key={shown.src}
+      className="sg-stage-picture"
+      src={shown.src}
+      alt={shown.alt}
+      data-gallery-stage-picture={shown.from}
+      data-gallery-stage-picture-of={path}
+      onError={() => setFailed((n) => n + 1)}
+    />
+  );
+}
 
 export interface EntryPageProps {
   detail: DetailState;
@@ -97,6 +156,11 @@ export function CodeView({ path, content }: { path: string; content: string }) {
   );
 }
 
+/** #2590 — a pattern's row: "16 bars · 120 BPM", or just "16 bars" when it records no tempo. */
+function rowLabel(p: RecordedPattern, tempo: string | null): string {
+  return tempo ? `${lengthLabel(p)} · ${tempo}` : lengthLabel(p);
+}
+
 const PLAY_ICON = (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4v16l13-8z" /></svg>
 );
@@ -138,6 +202,10 @@ export function EntryPage(props: EntryPageProps) {
   const ready = detail.status === "ready" ? detail.data : null;
   // #2487 — what each pattern plays, recorded at publish (none for older entries)
   const rec = useEntryRecording(ready?.entry ?? { id: detail.id, hasRecording: false });
+  // #2603 — the visuals' stills, fetched here only (never by a card)
+  const stills = useEntryFrames(detail.id, rec);
+  // #2590 — BPM counted the way the studio's transport counts it
+  const meter = useDisplayMeter();
   const kindLabel = ready ? GALLERY_FILTERS.find((f) => f.id === ready.entry.kind)?.label : undefined;
   const kindCrumb =
     ready && kindLabel ? [{ label: kindLabel, hook: "kind", onClick: () => onKind(ready.entry.kind) }] : [];
@@ -198,6 +266,28 @@ export function EntryPage(props: EntryPageProps) {
   };
 
   const recordedFor = (path: string) => rec?.files.find((r) => r.path === path) ?? null;
+  // #2590 — the cover pattern's tempo and its length in minutes, when its code set a tempo
+  const coverRec = rec?.cover ? recordedFor(rec.cover) : null;
+  const coverTempo = coverRec ? tempoLabel(coverRec.tempo, meter) : null;
+  const coverTime = coverRec ? durationLabel(coverRec) : null;
+
+  // #2611 — the stage before Play: a pattern's recorded timeline; a visual's
+  // cover picture or its own still; otherwise the preview's placeholder.
+  const stageIdle = (() => {
+    if (!file) return undefined;
+    const recorded = recordedFor(file.path);
+    if (recorded) return <RecordingTimeline rec={recorded} className="sg-stage-canvas" />;
+    if (fileRole(file.path) !== "visual") return undefined;
+    const sources: StageSource[] = [];
+    // the cover is known only from the record: an entry from before it has none
+    if (rec?.cover === file.path && entry.hasThumbnail) {
+      sources.push({ from: "thumbnail", src: galleryThumbnailUrl(entry.id), alt: `The cover picture of ${file.path}` });
+    }
+    const still = frameFor(stills, file.path);
+    if (still) sources.push({ from: "still", src: still.image, alt: `A still of ${file.path}` });
+    if (sources.length === 0) return undefined;
+    return <VisualStagePicture key={`${entry.id}/${file.path}`} path={file.path} sources={sources} />;
+  })();
 
   const more = (props.listed ?? [])
     .filter((e) => e.authorId && e.authorId === entry.authorId && e.id !== entry.id)
@@ -211,7 +301,7 @@ export function EntryPage(props: EntryPageProps) {
         <div className="sg-entry-main">
           {file && toPlay ? (
             <GalleryPreview
-              idle={recordedFor(file.path) ? <RecordingTimeline rec={recordedFor(file.path)!} className="sg-stage-canvas" /> : undefined}
+              idle={stageIdle}
               ref={preview}
               path={toPlay.path}
               files={toPlay.files}
@@ -238,6 +328,7 @@ export function EntryPage(props: EntryPageProps) {
                 const role = fileRole(f.path);
                 const lines = f.content.split("\n").length;
                 const recorded = rec?.files.find((r) => r.path === f.path) ?? null;
+                const still = role === "visual" ? frameFor(stills, f.path) : null;
                 const isCover = rec?.cover === f.path;
                 return (
                   <div
@@ -261,11 +352,19 @@ export function EntryPage(props: EntryPageProps) {
                     <button className="sg-fname" onClick={() => showFile(i)}>
                       <b>{f.path}</b>
                       <span>
-                        {recorded ? lengthLabel(recorded) : `${role} · ${lines} ${lines === 1 ? "line" : "lines"}`}
+                        {recorded ? rowLabel(recorded, tempoLabel(recorded.tempo, meter)) : `${role} · ${lines} ${lines === 1 ? "line" : "lines"}`}
                       </span>
                     </button>
                     <div className="sg-frow-strip">
                       {recorded && <RecordingTimeline rec={recorded} compact className="sg-frow-canvas" />}
+                      {still && (
+                        <img
+                          className="sg-frow-frame"
+                          src={still.image}
+                          alt={`A still of ${f.path}`}
+                          data-gallery-visual-frame={f.path}
+                        />
+                      )}
                     </div>
                     {isCover ? <span className="sg-frow-tag" data-gallery-cover>Cover</span> : <span />}
                   </div>
@@ -380,10 +479,17 @@ export function EntryPage(props: EntryPageProps) {
             {rec?.cover && (
               <>
                 <dt>Cover</dt>
-                <dd>
+                <dd data-gallery-cover-length>
                   {rec.cover}
-                  {rec.files.find((r) => r.path === rec.cover) ? `, ${lengthLabel(rec.files.find((r) => r.path === rec.cover)!)}` : ""}
+                  {coverRec ? `, ${lengthLabel(coverRec)}` : ""}
+                  {coverTime ? ` · ${coverTime}` : ""}
                 </dd>
+              </>
+            )}
+            {coverTempo && (
+              <>
+                <dt>Tempo</dt>
+                <dd data-gallery-tempo>{coverTempo}</dd>
               </>
             )}
             <dt>Published</dt>
@@ -428,6 +534,7 @@ export const ENTRY_CSS = `
 .sg-stage { position: relative; aspect-ratio: 2 / 1; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-subtle); background: radial-gradient(120% 90% at 30% 20%, rgba(124,108,255,.22), transparent 60%), radial-gradient(90% 80% at 85% 90%, rgba(127,214,194,.14), transparent 60%), var(--bg-input, #12121f); }
 .sg-stage-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
 .sg-stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.sg-stage-picture { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: contain; }
 .sg-stage-idle { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted, var(--text-chrome)); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
 .sg-stage-bar { position: absolute; inset: auto 0 0 0; display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: linear-gradient(transparent, rgba(8,8,15,.88)); }
 .sg-bigplay { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--text-primary, #eee); color: var(--bg-elevated, #111); display: grid; place-items: center; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
@@ -441,6 +548,7 @@ export const ENTRY_CSS = `
 .sg-frow:last-child { border-bottom: 0; }
 .sg-frow-strip { min-width: 0; height: 34px; }
 .sg-frow-canvas { width: 100%; height: 34px; display: block; border-radius: 6px; }
+.sg-frow-frame { height: 34px; width: auto; max-width: 100%; display: block; border-radius: 6px; object-fit: cover; border: 1px solid var(--border-subtle); }
 .sg-frow-tag { font-size: 11px; color: var(--text-muted, var(--text-chrome)); border: 1px solid var(--border-subtle); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
 .sg-frow-on { background: var(--bg-hover, rgba(255,255,255,.05)); }
 .sg-miniplay { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-strong); background: none; display: grid; place-items: center; color: var(--text-primary); cursor: pointer; padding: 0; }

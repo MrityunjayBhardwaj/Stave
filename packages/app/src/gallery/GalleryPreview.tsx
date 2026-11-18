@@ -91,8 +91,20 @@ export interface GalleryPreviewProps {
    * #2579: the page's own state (its frame is up), not what the frame reports.
    */
   onPlayingChange?: (playing: boolean) => void;
-  /** #2488 — what the stage shows before it plays: the file's recorded timeline, when there is one. */
+  /**
+   * #2488 — what the stage shows before it plays: the file's recorded timeline,
+   * when there is one; #2611 — or a visual's picture. Gone once the frame is up.
+   */
   idle?: React.ReactNode;
+}
+
+/** The stage's words before Play when there is no picture of the file: "Pattern" or "Visual". */
+export function StageIdle({ visual }: { visual: boolean }) {
+  return (
+    <div className="sg-stage-idle" aria-hidden="true">
+      <span>{visual ? "Visual" : "Pattern"}</span>
+    </div>
+  );
 }
 
 /**
@@ -279,11 +291,7 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
           data-gallery-preview-frame
         />
       ) : (
-        (idle ?? (
-          <div className="sg-stage-idle" aria-hidden="true">
-            <span>{kind === "strudel" ? "Pattern" : "Visual"}</span>
-          </div>
-        ))
+        (idle ?? <StageIdle visual={kind !== "strudel"} />)
       )}
       <div className="sg-stage-bar">
         <button

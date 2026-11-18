@@ -1381,6 +1381,65 @@ describe('StrudelEngine.init() guard (#815)', () => {
 })
 
 /**
+ * #2616 — an engine that starts while another engine renders offline must
+ * still clock its scheduler from the LIVE context.
+ *
+ * A render points superdough's global context at its own OfflineAudioContext
+ * until it ends (`renderPatternOffline.ts`). Strudel's `webaudioRepl` reads that
+ * global when it is built and keeps it as the scheduler's clock for good
+ * (`@strudel/webaudio/webaudio.mjs:106-109`), and writes it back as the global.
+ * An engine built mid-render therefore ran on a clock that stopped at the
+ * render's length, while superdough played on the live context: every Play
+ * sent beat one once, seconds in the past, and then nothing (measured in
+ * Firefox: "cannot schedule sounds in the past (target: 12.11, now: 186.57)").
+ */
+describe('StrudelEngine starting during an offline render (#2616)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('takes the live context, and builds the scheduler on it, once the render lets go', async () => {
+    const webaudio = await import('@strudel/webaudio')
+    const fakeContext = (name: string) => ({
+      name,
+      createAnalyser: vi.fn(() => ({ fftSize: 2048, smoothingTimeConstant: 0.8, connect: vi.fn(), disconnect: vi.fn() })),
+      currentTime: 0,
+      sampleRate: 48000,
+    })
+    const live = fakeContext('live')
+    const offline = fakeContext('offline')
+    // What superdough's getAudioContext() returns: the render's context while it holds the graph.
+    let global: ReturnType<typeof fakeContext> = live
+    vi.mocked(webaudio.getAudioContext).mockImplementation(() => global as unknown as AudioContext)
+
+    let release!: () => void
+    let replCallsWhileHeld = -1
+    const render = withOfflineGraph(async () => {
+      global = offline
+      await new Promise<void>((r) => { release = r })
+      replCallsWhileHeld = vi.mocked(webaudio.webaudioRepl).mock.calls.length
+      global = live
+    })
+    await Promise.resolve()
+
+    const engine = new StrudelEngine()
+    const started = engine.init()
+    // Give init every chance to run ahead while the render holds the graph.
+    await new Promise((r) => setTimeout(r, 50))
+    release()
+    await render
+    await started
+
+    expect(replCallsWhileHeld, 'the scheduler must not be built while a render holds the graph').toBe(0)
+    expect(vi.mocked(webaudio.webaudioRepl)).toHaveBeenCalledTimes(1)
+    const options = vi.mocked(webaudio.webaudioRepl).mock.calls[0][0] as { audioContext?: unknown }
+    expect(options.audioContext, "the scheduler's clock is the live context, handed over explicitly").toBe(live)
+    expect(engine.getAudioContext()).toBe(live)
+    engine.dispose()
+  })
+})
+
+/**
  * #1186 — evaluating must never start the transport.
  *
  * Strudel's `evaluate(code, autostart = true, …)` (@strudel/core/repl.mjs:222)
