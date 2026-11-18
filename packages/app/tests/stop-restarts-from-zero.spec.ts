@@ -1,17 +1,15 @@
 /**
- * Stop keeps the playhead; Play carries on from it (#2593) — Playwright spec.
+ * Play after Stop always starts again from cycle 0, as in Strudel (#2593) —
+ * Playwright spec.
  *
- * Logic Pro for Mac 13.0, "Control playback with the transport buttons":
- *   Stop: "Stops playback or recording. Click a second time to move the
- *   playhead to the start of the project, or to the left locator position
- *   when in Cycle mode."
- *   Play: "Starts playback at the playhead position ..."
- *
- * The bug: Stop reset the scheduler's clock but kept the offset from the last
- * ruler click, so Play after Stop landed on that click, not where Stop was
- * pressed. Every arm drives the real gestures (ruler click, Ctrl/Cmd+. to
- * stop, Ctrl/Cmd+Enter to play) and reads the playhead the timeline DREW, from
- * its pixels against the ruler's labelled ticks (helpers shared in shape with
+ * Strudel's scheduler (@strudel/core 1.2.6, cyclist.mjs) goes back to 0 on
+ * Stop: `stop()` sets `lastEnd = 0`, `now()` reads 0 while stopped, and
+ * `start()` counts from 0 again. Stave's song position is that clock minus a
+ * transport offset a ruler click sets, and the bug was the offset outliving
+ * Stop: Play landed near the last ruler click instead of at the top. Every arm
+ * drives the real gestures (ruler click, the Play/Stop button, Ctrl/Cmd+. and
+ * Ctrl/Cmd+Enter) and reads the playhead the timeline DREW, from its pixels
+ * against the ruler's labelled ticks (helpers shared in shape with
  * transport-follows-song-position.spec.ts).
  */
 import { test, expect, type Page } from '@playwright/test'
@@ -160,7 +158,7 @@ async function settledPlayhead(page: Page): Promise<number> {
   return r.playhead!
 }
 
-test('Play after Stop carries on from where Stop was pressed, not from the last ruler click', async ({ page }) => {
+test('Play after Stop starts from cycle 0, not near the last ruler click', async ({ page }) => {
   test.setTimeout(90_000)
   await boot(page, SONG, 'drums')
 
@@ -178,12 +176,11 @@ test('Play after Stop carries on from where Stop was pressed, not from the last 
   await play(page)
   const resumed = await settledPlayhead(page)
   console.log(`[#2593] clicked=${clicked.toFixed(2)} beforeStop=${beforeStop.toFixed(2)} resumed=${resumed.toFixed(2)}`)
-  // ~0.4 cycle of play since resuming, plus the read-to-stop gap: allow -0.3 … +1.2.
-  expect(resumed, 'Play resumes where Stop was pressed').toBeGreaterThan(beforeStop - 0.3)
-  expect(resumed, 'Play resumes where Stop was pressed').toBeLessThan(beforeStop + 1.2)
+  // ~0.4 cycle of play before the read: anything under 1.2 is the top.
+  expect(resumed, 'Play after Stop starts again from cycle 0').toBeLessThan(1.2)
 })
 
-test('Stop twice goes back to the start of the song', async ({ page }) => {
+test('with the mouse: the Play/Stop button stops, and pressed again plays from cycle 0', async ({ page }) => {
   test.setTimeout(90_000)
   await boot(page, SONG, 'drums')
   await clickRuler(page, 0.4)
@@ -191,13 +188,13 @@ test('Stop twice goes back to the start of the song', async ({ page }) => {
   const beforeStop = (await read(page)).playhead!
   expect(beforeStop).toBeGreaterThan(5)
 
-  await stop(page)
+  const transport = page.getByTestId('strudel-chrome-transport').first()
+  await transport.click() // Stop
+  await expect(lcdState(page)).not.toHaveAttribute('data-stave-lcd-state', 'play', { timeout: 5_000 })
   await page.waitForTimeout(300)
-  await focusEditor(page)
-  await page.keyboard.press(`${MOD}+Period`) // a second Stop while stopped
-  await page.waitForTimeout(300)
-  await play(page)
+  await transport.click() // Play
+  await expect(lcdState(page)).toHaveAttribute('data-stave-lcd-state', 'play', { timeout: 10_000 })
   const resumed = await settledPlayhead(page)
-  console.log(`[#2593] double stop: beforeStop=${beforeStop.toFixed(2)} resumed=${resumed.toFixed(2)}`)
-  expect(resumed, 'a second Stop rewinds to bar 1').toBeLessThan(1.2)
+  console.log(`[#2593] button: beforeStop=${beforeStop.toFixed(2)} resumed=${resumed.toFixed(2)}`)
+  expect(resumed, 'Play after Stop starts again from cycle 0').toBeLessThan(1.2)
 })
