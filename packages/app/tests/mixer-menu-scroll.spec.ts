@@ -40,41 +40,55 @@ test('a wheel scroll just before the click does not close the menu it opens', as
   // The fixture must actually scroll, or the arm proves nothing.
   expect(await page.locator('[data-mixer-body]').evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(40)
 
-  // Each try records whether the press landed on the trigger and whether the
-  // wheel's scroll had already arrived (#2597). The box is read straight after
-  // the wheel, so when the scroll lands first (about 1 try in 10, measured) the
-  // trigger has moved 40 px and the press misses it: no menu, and nothing to
-  // do with the bug. Those tries don't count. The case the bug was about is
-  // the press arriving BEFORE the scroll, so most counted tries must be that.
-  await page.evaluate((trigger) => {
-    const w = window as unknown as { __try: { scrolled: boolean; hit: boolean | null } }
-    w.__try = { scrolled: false, hit: null }
-    document.querySelector('[data-mixer-body]')!.addEventListener('scroll', () => { w.__try.scrolled = true })
-    document.addEventListener('pointerdown', (e) => {
-      if (w.__try.hit === null) w.__try.hit = !!(e.target as Element | null)?.closest(trigger)
-      ;(w.__try as { pressedBeforeScroll?: boolean }).pressedBeforeScroll ??= !w.__try.scrolled
-    }, true)
-  }, TRIGGER)
+  // Real wheel, real click (#2597). The box is read straight after the wheel, so
+  // when the scroll lands first the trigger has moved 40 px and the press can
+  // miss it; under load the scroll can also land between press and release, so
+  // the release misses and there is no click. Neither has anything to do with the
+  // bug, so only tries whose press AND release land on the trigger count, and
+  // each records whether the menu ever appeared. Whether the scroll EVENT arrives
+  // before or after the click is the machine's timing: alone, 9 tries in 10
+  // clicked first; under the full gate's load, as few as 1 in 5. So this half
+  // checks real gestures, and the half below makes the late scroll on purpose.
+  await page.evaluate(({ trigger, menu }) => {
+    const w = window as unknown as { __try: { down: boolean | null; up: boolean | null; appeared: boolean } }
+    w.__try = { down: null, up: null, appeared: false }
+    const on = (e: Event) => !!(e.target as Element | null)?.closest(trigger)
+    document.addEventListener('pointerdown', (e) => { if (w.__try.down === null) w.__try.down = on(e) }, true)
+    document.addEventListener('pointerup', (e) => { if (w.__try.up === null) w.__try.up = on(e) }, true)
+    new MutationObserver(() => {
+      if (document.querySelector(menu)) w.__try.appeared = true
+    }).observe(document.body, { childList: true, subtree: true })
+  }, { trigger: TRIGGER, menu: MENU })
 
-  const tries: Array<{ hit: boolean; pressedBeforeScroll: boolean; opened: boolean }> = []
+  const tries: Array<{ hit: boolean; appeared: boolean; opened: boolean }> = []
   for (let attempt = 0; attempt < 12 && tries.filter((t) => t.hit).length < 5; attempt++) {
     await page.keyboard.press('Escape')
     await page.locator('[data-mixer-body]').evaluate((el) => { el.scrollTop = 0 })
     await page.waitForTimeout(250)
-    await page.evaluate(() => { (window as unknown as { __try: object }).__try = { scrolled: false, hit: null } })
+    await page.evaluate(() => { (window as unknown as { __try: object }).__try = { down: null, up: null, appeared: false } })
     await page.mouse.move(body.x + body.width / 2, body.y + 20)
     await page.mouse.wheel(0, 40)
     const t = await page.locator(TRIGGER).boundingBox()
     if (!t) throw new Error('no trigger')
     await page.mouse.click(t.x + t.width / 2, t.y + t.height / 2)
     await page.waitForTimeout(400)
-    const rec = await page.evaluate(() => (window as unknown as { __try: { hit: boolean | null; pressedBeforeScroll?: boolean } }).__try)
-    tries.push({ hit: rec.hit === true, pressedBeforeScroll: rec.pressedBeforeScroll === true, opened: await page.locator(MENU).isVisible() })
+    const rec = await page.evaluate(() => (window as unknown as { __try: { down: boolean | null; up: boolean | null; appeared: boolean } }).__try)
+    tries.push({ hit: rec.down === true && rec.up === true, appeared: rec.appeared, opened: await page.locator(MENU).isVisible() })
   }
   const counted = tries.filter((t) => t.hit)
-  expect(counted.length, `presses that landed on the trigger, of ${tries.length}`).toBe(5)
-  expect(counted.filter((t) => t.pressedBeforeScroll).length, 'counted presses that came before the scroll').toBeGreaterThanOrEqual(3)
+  expect(counted.length, `clicks that landed on the trigger, of ${tries.length}`).toBe(5)
+  expect(counted.filter((t) => t.appeared).length, 'menus that opened').toBe(5)
   expect(counted.filter((t) => t.opened).length, 'menus that stayed open').toBe(5)
+
+  // The bug's own case, on every machine: the browser delivers a scroll event a
+  // frame late, after the click has opened the menu, while the trigger has not
+  // moved since the menu was placed from it. That scroll must be ignored.
+  await page.keyboard.press('Escape')
+  await page.locator(TRIGGER).click()
+  await expect(page.locator(MENU)).toBeVisible()
+  await page.locator('[data-mixer-body]').evaluate((el) => el.dispatchEvent(new Event('scroll')))
+  await page.waitForTimeout(300)
+  await expect(page.locator(MENU), 'a late scroll that moved nothing').toBeVisible()
 })
 
 test('scrolling the panel carries the open menu with its trigger, and closes it once the trigger is out of view', async ({ page }) => {
