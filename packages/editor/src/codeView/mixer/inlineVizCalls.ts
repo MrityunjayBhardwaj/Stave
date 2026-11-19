@@ -42,25 +42,52 @@ function inlineName(call: ChainCall): string | null {
   return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, method) ? STRUDEL_VIZ_METHODS[method] : null
 }
 
-/** One entry per track that shows an inline viz, in source order: the viz name
- *  as the code writes it (a `.viz()` name or a viz method's renderer id). Null
- *  when the document does not parse. */
-export function readInlineVizNames(doc: string): string[] | null {
+/**
+ * The options an inline call writes, as far as the code alone can say (#2630):
+ * `{}` when it passes none, the values when every one of them is a literal, and
+ * null when any needs an evaluation (a variable, a slider, a spread). A `.viz()`
+ * call passes them second; a viz method (`._pianoroll({…})`) first.
+ */
+function inlineOptions(call: ChainCall): Record<string, unknown> | null {
+  const arg = call.name === 'viz' ? call.args[1] : call.args[0]
+  if (!arg) return {}
+  const read = readVizOptionsLiteral(arg.raw)
+  return read.kind === 'literal' && read.dynamic.length === 0 ? { ...read.values } : null
+}
+
+/** One inline viz a track's code asks for: its name and the options it writes. */
+export interface InlineVizCall {
+  /** the viz name as the code writes it (a `.viz()` name or a viz method's renderer id) */
+  readonly name: string
+  /** the call's options (`inlineOptions`): null when only an evaluation can tell */
+  readonly options: Readonly<Record<string, unknown>> | null
+}
+
+/** One entry per track that shows an inline viz, in source order. Null when the
+ *  document does not parse. */
+export function readInlineVizCalls(doc: string): InlineVizCall[] | null {
   const statements = parseTopLevel(doc)
   if (!statements) return null
-  const names: string[] = []
+  const calls: InlineVizCall[] = []
   for (const node of statements) {
     if (node?.type !== 'LabeledStatement') continue
     const mute = splitMuteMarker(node.label?.name ?? '')
     if (mute.prefix || mute.suffix) continue // muted: never captured
     const body = node.body
     if (body?.type !== 'ExpressionStatement') continue
-    let last: string | null = null
+    let last: InlineVizCall | null = null
     for (const call of collectChain(doc, body.expression, { ref: null })) {
       const name = inlineName(call)
-      if (name !== null) last = name
+      if (name !== null) last = { name, options: inlineOptions(call) }
     }
-    if (last !== null) names.push(last)
+    if (last !== null) calls.push(last)
   }
-  return names
+  return calls
+}
+
+/** One entry per track that shows an inline viz, in source order: the viz name
+ *  as the code writes it (a `.viz()` name or a viz method's renderer id). Null
+ *  when the document does not parse. */
+export function readInlineVizNames(doc: string): string[] | null {
+  return readInlineVizCalls(doc)?.map((c) => c.name) ?? null
 }

@@ -309,7 +309,8 @@ export function hostVizWorker(scope: WorkerScope): void {
       case 'options':
         // Live per-render options (#875) — REPLACE (the bag is the whole `{…}`
         // argument, so a removed key must disappear, unlike the config MERGE).
-        // No-op for hydra/glsl, whose sketches have no `stave.options`.
+        // p5 and hydra (#883) swap their slot; a sketch that read the bag once,
+        // at mount, keeps what it read (#2630: why a warm-up must mount with them).
         state?.setOptions?.(msg.options)
         break
     }

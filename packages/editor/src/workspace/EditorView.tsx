@@ -51,7 +51,7 @@ import {
 } from '../monaco/diagnostics'
 import { addInlineViewZones, inlineRenderSizeFor } from '../visualizers/viewZones'
 import { warmInlineViz, releaseWarmInlineViz } from '../visualizers/inlineVizWarmup'
-import { readInlineVizNames } from '../codeView'
+import { readInlineVizCalls } from '../codeView'
 import { onNamedVizChanged } from '../visualizers/namedVizRegistry'
 import { getFile, subscribeToZoneOverrides } from './WorkspaceFile'
 import {
@@ -360,7 +360,8 @@ export function EditorView({
   // ----------------------------------------------------------------
   // #2560 — warm up the inline sketches the code asks for, hidden, before Play.
   // While stopped, a moment after the code settles (and when a named viz is
-  // registered), read the inline `.viz()` names statically and make the warm set
+  // registered), read the inline `.viz()` names and their literal options (#2630)
+  // statically and make the warm set
   // match; Play's zones then adopt them instead of building from scratch. Only a
   // Strudel file, only while not playing; the warm set is let go on unmount.
   // ----------------------------------------------------------------
@@ -369,12 +370,12 @@ export function EditorView({
   useEffect(() => {
     if (!fileId || busLive || warmLanguage !== 'strudel' || warmCode === null) return
     const timer = setTimeout(() => {
-      const names = readInlineVizNames(warmCode)
-      if (names === null) return // mid-keystroke: keep what is warm
+      const calls = readInlineVizCalls(warmCode)
+      if (calls === null) return // mid-keystroke: keep what is warm
       // After Stop the zones still hold their (paused) sketches: reuse those
       // rather than build a second copy of each.
       const offers = viewZoneHandleRef.current?.offerForReuse?.() ?? []
-      warmInlineViz(fileId, names, DEFAULT_VIZ_DESCRIPTORS, inlineRenderSizeFor, offers)
+      warmInlineViz(fileId, calls.map((c) => ({ vizId: c.name, options: c.options })), DEFAULT_VIZ_DESCRIPTORS, inlineRenderSizeFor, offers)
     }, INLINE_WARM_DEBOUNCE_MS)
     return () => clearTimeout(timer)
   }, [fileId, busLive, warmLanguage, warmCode, vizRegistryTick])
