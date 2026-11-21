@@ -17,6 +17,7 @@ import {
   releaseWarmInlineViz,
   warmInlineVizCount,
   setVizDescriptorSource,
+  optionsKey,
   __resetInlineVizWarmupForTests,
 } from '../inlineVizWarmup'
 import { addInlineViewZones } from '../viewZones'
@@ -68,6 +69,8 @@ function descriptor(id: string, made: Fake[]): VizDescriptor {
   }
 }
 const SIZE = () => ({ w: 400, h: 200 })
+/** warm requests for these names, each writing no options */
+const req = (...names: string[]) => names.map((vizId) => ({ vizId, options: {} }))
 
 beforeEach(() => {
   __resetInlineVizWarmupForTests()
@@ -78,7 +81,7 @@ describe('warmInlineViz (#2560)', () => {
   it('builds each named sketch hidden and paused, marked as a warm-up before mount', () => {
     const made: Fake[] = []
     const d = descriptor('Exchange', made)
-    warmInlineViz('f', ['Exchange'], [d], SIZE)
+    warmInlineViz('f', req('Exchange'), [d], SIZE)
     expect(made).toHaveLength(1)
     expect(made[0].calls).toEqual(['markWarmUp', 'mount', 'pause'])
     const host = made[0].container!.parentElement!
@@ -93,19 +96,19 @@ describe('warmInlineViz (#2560)', () => {
     const made: Fake[] = []
     const a = descriptor('A', made)
     const b = descriptor('B', made)
-    warmInlineViz('f', ['A', 'A'], [a, b], SIZE) // two tracks show A
+    warmInlineViz('f', req('A', 'A'), [a, b], SIZE) // two tracks show A
     expect(made).toHaveLength(2)
-    warmInlineViz('f', ['A', 'B'], [a, b], SIZE)
+    warmInlineViz('f', req('A', 'B'), [a, b], SIZE)
     expect(made).toHaveLength(3) // one A kept, one A destroyed, B built
     expect(made.filter((r) => r.calls.includes('destroy'))).toHaveLength(1)
-    warmInlineViz('f', [], [a, b], SIZE)
+    warmInlineViz('f', req(), [a, b], SIZE)
     expect(made.every((r) => r.calls.includes('destroy'))).toBe(true)
     expect(warmInlineVizCount()).toBe(0)
     expect(document.querySelectorAll('[data-viz-warm]')).toHaveLength(0)
   })
 
   it('a name that resolves to nothing warms nothing', () => {
-    warmInlineViz('f', ['Nope'], [], SIZE)
+    warmInlineViz('f', req('Nope'), [], SIZE)
     expect(warmInlineVizCount()).toBe(0)
   })
 
@@ -113,14 +116,14 @@ describe('warmInlineViz (#2560)', () => {
     const made: Fake[] = []
     const v1 = descriptor('A', made)
     setVizDescriptorSource(v1, 'three:code-1')
-    warmInlineViz('f', ['A'], [v1], SIZE)
+    warmInlineViz('f', req('A'), [v1], SIZE)
     const v1again = descriptor('A', made)
     setVizDescriptorSource(v1again, 'three:code-1')
-    warmInlineViz('f', ['A'], [v1again], SIZE)
+    warmInlineViz('f', req('A'), [v1again], SIZE)
     expect(made).toHaveLength(1)
     const v2 = descriptor('A', made)
     setVizDescriptorSource(v2, 'three:code-2')
-    warmInlineViz('f', ['A'], [v2], SIZE)
+    warmInlineViz('f', req('A'), [v2], SIZE)
     expect(made).toHaveLength(2)
     expect(made[0].calls).toContain('destroy')
   })
@@ -128,8 +131,8 @@ describe('warmInlineViz (#2560)', () => {
   it('take hands one over and forgets it; release destroys the rest', () => {
     const made: Fake[] = []
     const a = descriptor('A', made)
-    warmInlineViz('f', ['A', 'A'], [a], SIZE)
-    const got = takeWarmInlineViz('f', a)
+    warmInlineViz('f', req('A', 'A'), [a], SIZE)
+    const got = takeWarmInlineViz('f', a, {})
     expect(got?.renderer).toBe(made[0])
     expect(warmInlineVizCount('f')).toBe(1)
     releaseWarmInlineViz('f')
@@ -168,7 +171,7 @@ describe('addInlineViewZones adopts a warm sketch (#2560)', () => {
   it('uses the warm renderer and its container: no second build, live components handed over', () => {
     const made: Fake[] = []
     const a = descriptor('A', made)
-    warmInlineViz('f', ['A'], [a], SIZE)
+    warmInlineViz('f', [{ vizId: 'A', options: { hue: 1 } }], [a], SIZE) // what the zone gets
     const warm = made[0]
     const warmContainer = warm.container!
     const { editor, domNodes } = makeEditor()
@@ -240,7 +243,7 @@ describe('after Stop, the warm-up reuses the zone sketch (#2560)', () => {
       play1.pause() // Stop: the zone keeps its paused sketch on screen
 
       // the warm-up after Stop reuses it: no second build
-      warmInlineViz('f', ['A'], [a], SIZE, play1.offerForReuse!())
+      warmInlineViz('f', req('A'), [a], SIZE, play1.offerForReuse!())
       expect(made).toHaveLength(1)
       expect(warmInlineVizCount('f')).toBe(1)
 
@@ -266,5 +269,111 @@ describe('after Stop, the warm-up reuses the zone sketch (#2560)', () => {
     const [offer] = h.offerForReuse!()
     expect(offer.claim()).not.toBeNull()
     expect(offer.claim()).toBeNull()
+  })
+})
+
+// #2630 — a sketch may read `stave.options` once, when its code runs at mount (a
+// hydra `s.solid(o.r, o.g, o.b)`). Warmed with no options and adopted at Play, it
+// drew its defaults for good. So it warms with the options the code writes, and
+// Play adopts it only when the zone's options are the same.
+describe('a warm sketch carries the options it was mounted with (#2630)', () => {
+  function editorWith(options: Record<string, unknown> | undefined) {
+    const domNodes: HTMLElement[] = []
+    const accessor = {
+      addZone: vi.fn((z: { domNode: HTMLElement }) => {
+        domNodes.push(z.domNode)
+        return `z${domNodes.length}`
+      }),
+      removeZone: vi.fn(),
+    }
+    const editor = {
+      changeViewZones: (cb: (a: typeof accessor) => void) => cb(accessor),
+      getLayoutInfo: () => ({ contentWidth: 800 }),
+      getModel: () => ({ getValue: () => '$: s("bd").viz("A")', getLineMaxColumn: () => 80 }),
+      onDidChangeModelContent: () => ({ dispose() {} }),
+      onDidLayoutChange: () => ({ dispose() {} }),
+      onDidScrollChange: () => ({ dispose() {} }),
+      onMouseMove: () => ({ dispose() {} }),
+      createDecorationsCollection: () => ({ getRanges: () => [], clear() {} }),
+      getDomNode: () => null,
+    }
+    const components = {
+      inlineViz: { vizRequests: new Map([['$0', { vizId: 'A', afterLine: 1, ...(options ? { options } : {}) }]]) },
+    } as never
+    return { editor, components, domNodes }
+  }
+  const mountedOptions = (r: Fake) => (r.mount.mock.calls[0] as unknown[])[1] as { options: unknown }
+
+  it('mounts with the options the code writes', () => {
+    const made: Fake[] = []
+    warmInlineViz('f', [{ vizId: 'A', options: { r: 1, g: 0, b: 0 } }], [descriptor('A', made)], SIZE)
+    expect(mountedOptions(made[0]).options).toEqual({ r: 1, g: 0, b: 0 })
+  })
+
+  it('options only an evaluation can tell warm as none', () => {
+    const made: Fake[] = []
+    warmInlineViz('f', [{ vizId: 'A', options: null }], [descriptor('A', made)], SIZE)
+    expect(mountedOptions(made[0]).options).toEqual({})
+  })
+
+  it('Play adopts it when the zone gets the same options, in any key order', () => {
+    const made: Fake[] = []
+    const a = descriptor('A', made)
+    warmInlineViz('f', [{ vizId: 'A', options: { r: 1, g: 0, b: 0 } }], [a], SIZE)
+    const { editor, components } = editorWith({ b: 0, g: 0, r: 1 })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    addInlineViewZones(editor as any, components, [a], undefined, 'f')
+    expect(made).toHaveLength(1)
+    expect(made[0].mount).toHaveBeenCalledTimes(1)
+  })
+
+  it('Play builds it fresh, with the zone\'s options, when the warm one had others', () => {
+    const made: Fake[] = []
+    const a = descriptor('A', made)
+    warmInlineViz('f', req('A'), [a], SIZE) // warmed with none
+    const { editor, components } = editorWith({ r: 1, g: 0, b: 0 })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    addInlineViewZones(editor as any, components, [a], undefined, 'f')
+    expect(made).toHaveLength(2) // not adopted: built again
+    expect(mountedOptions(made[1]).options).toEqual({ r: 1, g: 0, b: 0 })
+    expect(made[1].markWarmUp).not.toHaveBeenCalled()
+    releaseWarmInlineViz('f') // Play lets the surplus go
+    expect(made[0].calls).toContain('destroy')
+  })
+
+  it('a change to the options the code writes rebuilds the warm sketch', () => {
+    const made: Fake[] = []
+    const a = descriptor('A', made)
+    warmInlineViz('f', [{ vizId: 'A', options: { r: 1 } }], [a], SIZE)
+    warmInlineViz('f', [{ vizId: 'A', options: { r: 1 } }], [a], SIZE)
+    expect(made).toHaveLength(1) // unchanged: kept
+    warmInlineViz('f', [{ vizId: 'A', options: { r: 0 } }], [a], SIZE)
+    expect(made).toHaveLength(2)
+    expect(made[0].calls).toContain('destroy')
+    expect(mountedOptions(made[1]).options).toEqual({ r: 0 })
+  })
+
+  it('after Stop, a zone sketch is reused only for the same options', () => {
+    const made: Fake[] = []
+    const a = descriptor('A', made)
+    const { editor, components } = editorWith({ r: 1 })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const play1 = addInlineViewZones(editor as any, components, [a], undefined, 'f')
+    play1.pause()
+    warmInlineViz('f', [{ vizId: 'A', options: { r: 0 } }], [a], SIZE, play1.offerForReuse!())
+    expect(made).toHaveLength(2) // the code now writes other options: a new warm copy
+    expect(made[0].destroy).not.toHaveBeenCalled() // the zone still owns its own
+    warmInlineViz('f', [{ vizId: 'A', options: { r: 1 } }], [a], SIZE, play1.offerForReuse!())
+    expect(made).toHaveLength(2) // the zone's sketch, reused
+    expect(warmInlineVizCount('f')).toBe(1)
+  })
+
+  it('the options key ignores key order and never matches what JSON cannot write', () => {
+    expect(optionsKey({ a: 1, b: { y: [1, 2], x: 'q' } })).toBe(optionsKey({ b: { x: 'q', y: [1, 2] }, a: 1 }))
+    expect(optionsKey({})).toBe(optionsKey(null))
+    const fn = () => 1
+    expect(optionsKey({ f: fn })).not.toBe(optionsKey({ f: fn }))
+    class Pat {}
+    expect(optionsKey({ label: new Pat() })).not.toBe(optionsKey({ label: new Pat() }))
   })
 })

@@ -15131,10 +15131,17 @@ function inlineName(call) {
   return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, method) ? STRUDEL_VIZ_METHODS[method] : null;
 }
 __name(inlineName, "inlineName");
-function readInlineVizNames(doc) {
+function inlineOptions(call) {
+  const arg = call.name === "viz" ? call.args[1] : call.args[0];
+  if (!arg) return {};
+  const read8 = readVizOptionsLiteral(arg.raw);
+  return read8.kind === "literal" && read8.dynamic.length === 0 ? { ...read8.values } : null;
+}
+__name(inlineOptions, "inlineOptions");
+function readInlineVizCalls(doc) {
   const statements = parseTopLevel(doc);
   if (!statements) return null;
-  const names = [];
+  const calls = [];
   for (const node of statements) {
     if (node?.type !== "LabeledStatement") continue;
     const mute = splitMuteMarker(node.label?.name ?? "");
@@ -15144,13 +15151,13 @@ function readInlineVizNames(doc) {
     let last = null;
     for (const call of collectChain(doc, body.expression, { ref: null })) {
       const name = inlineName(call);
-      if (name !== null) last = name;
+      if (name !== null) last = { name, options: inlineOptions(call) };
     }
-    if (last !== null) names.push(last);
+    if (last !== null) calls.push(last);
   }
-  return names;
+  return calls;
 }
-__name(readInlineVizNames, "readInlineVizNames");
+__name(readInlineVizCalls, "readInlineVizCalls");
 
 // src/codeView/noteSounds.ts
 var VALUE_ONLY = /* @__PURE__ */ new Set([
@@ -36804,6 +36811,24 @@ __name(_TeardownOnPauseRenderer, "TeardownOnPauseRenderer");
 var TeardownOnPauseRenderer = _TeardownOnPauseRenderer;
 
 // src/visualizers/inlineVizWarmup.ts
+var unkeyable = 0;
+function optionsKey(options) {
+  const sorted = /* @__PURE__ */ __name((v) => {
+    if (Array.isArray(v)) return v.map(sorted);
+    if (v && typeof v === "object") {
+      if (Object.getPrototypeOf(v) !== Object.prototype) throw new Error("not plain data");
+      return Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])]));
+    }
+    if (typeof v === "function" || typeof v === "symbol" || typeof v === "bigint") throw new Error("not plain data");
+    return v;
+  }, "sorted");
+  try {
+    return JSON.stringify(sorted(options ?? {}));
+  } catch {
+    return `unkeyable:${++unkeyable}`;
+  }
+}
+__name(optionsKey, "optionsKey");
 var byFile = /* @__PURE__ */ new Map();
 var descriptorSource = /* @__PURE__ */ new WeakMap();
 var host = null;
@@ -36835,7 +36860,7 @@ function destroyEntry(e) {
   if (!e.reused) e.container.remove();
 }
 __name(destroyEntry, "destroyEntry");
-function build(vizId, descriptor, size) {
+function build(vizId, descriptor, size, options) {
   if (typeof document === "undefined") return null;
   if (typeof descriptor.factory !== "function") return null;
   let renderer;
@@ -36850,7 +36875,7 @@ function build(vizId, descriptor, size) {
   container.style.cssText = `position:relative;overflow:hidden;width:${size.w}px;height:${size.h}px;`;
   warmHost().appendChild(container);
   try {
-    renderer.mount(container, { options: {} }, size, (e) => console.error("[stave] viz warm-up:", e));
+    renderer.mount(container, { options: { ...options } }, size, (e) => console.error("[stave] viz warm-up:", e));
     renderer.pause();
   } catch (e) {
     console.error("[stave] viz warm-up mount failed:", e);
@@ -36861,31 +36886,33 @@ function build(vizId, descriptor, size) {
     container.remove();
     return null;
   }
-  return { vizId, descriptor, renderer, container, renderSize: { ...size } };
+  return { vizId, descriptor, renderer, container, renderSize: { ...size }, optionsKey: optionsKey(options) };
 }
 __name(build, "build");
-function warmInlineViz(fileId, vizIds, descriptors, sizeFor, offers = []) {
+function warmInlineViz(fileId, requests, descriptors, sizeFor, offers = []) {
   const pool = [...byFile.get(fileId) ?? []];
   const unclaimed = [...offers];
   const keep = [];
-  for (const vizId of vizIds) {
+  for (const { vizId, options } of requests) {
     const descriptor = resolveDescriptor(vizId, descriptors);
     if (!descriptor) continue;
-    const i = pool.findIndex((e) => sameSketch(e.descriptor, descriptor));
+    const wanted = options ?? {};
+    const key3 = optionsKey(wanted);
+    const i = pool.findIndex((e) => sameSketch(e.descriptor, descriptor) && e.optionsKey === key3);
     if (i >= 0) {
       keep.push(pool.splice(i, 1)[0]);
       continue;
     }
-    const o = unclaimed.findIndex((x) => sameSketch(x.descriptor, descriptor));
+    const o = unclaimed.findIndex((x) => sameSketch(x.descriptor, descriptor) && optionsKey(x.options) === key3);
     if (o >= 0) {
       const offer = unclaimed.splice(o, 1)[0];
       const renderer = offer.claim();
       if (renderer) {
-        keep.push({ vizId, descriptor, renderer, container: offer.container, renderSize: { ...offer.renderSize }, reused: true });
+        keep.push({ vizId, descriptor, renderer, container: offer.container, renderSize: { ...offer.renderSize }, optionsKey: key3, reused: true });
         continue;
       }
     }
-    const built = build(vizId, descriptor, sizeFor(descriptor));
+    const built = build(vizId, descriptor, sizeFor(descriptor), wanted);
     if (built) keep.push(built);
   }
   for (const e of pool) destroyEntry(e);
@@ -36893,10 +36920,11 @@ function warmInlineViz(fileId, vizIds, descriptors, sizeFor, offers = []) {
   else byFile.delete(fileId);
 }
 __name(warmInlineViz, "warmInlineViz");
-function takeWarmInlineViz(fileId, descriptor) {
+function takeWarmInlineViz(fileId, descriptor, options) {
   const list = byFile.get(fileId);
   if (!list) return null;
-  const i = list.findIndex((e) => sameSketch(e.descriptor, descriptor));
+  const key3 = optionsKey(options);
+  const i = list.findIndex((e) => sameSketch(e.descriptor, descriptor) && e.optionsKey === key3);
   if (i < 0) return null;
   const [entry] = list.splice(i, 1);
   if (list.length === 0) byFile.delete(fileId);
@@ -37197,7 +37225,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const initHOverride = fileId ? getZoneHeightOverride(fileId, trackKey) : void 0;
       const layout = layoutForIntent(contentW, native, crop, initHOverride);
       const initH = layout.zoneH;
-      const warm = fileId ? takeWarmInlineViz(fileId, descriptor) : null;
+      const warm = fileId ? takeWarmInlineViz(fileId, descriptor, zoneComponents.options ?? {}) : null;
       const container = warm?.container ?? document.createElement("div");
       container.removeAttribute("data-viz-warm");
       if (warm?.reused) container.querySelectorAll("[data-viz-zone-resize]").forEach((el) => el.remove());
@@ -37235,6 +37263,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         const zoneRenderer = renderer;
         offers.push({
           descriptor,
+          options: zoneComponents.options ?? {},
           container,
           renderSize,
           claim: /* @__PURE__ */ __name(() => {
@@ -38648,10 +38677,10 @@ function EditorView({
   useEffect(() => {
     if (!fileId || busLive || warmLanguage !== "strudel" || warmCode === null) return;
     const timer = setTimeout(() => {
-      const names = readInlineVizNames(warmCode);
-      if (names === null) return;
+      const calls = readInlineVizCalls(warmCode);
+      if (calls === null) return;
       const offers = viewZoneHandleRef.current?.offerForReuse?.() ?? [];
-      warmInlineViz(fileId, names, DEFAULT_VIZ_DESCRIPTORS, inlineRenderSizeFor, offers);
+      warmInlineViz(fileId, calls.map((c) => ({ vizId: c.name, options: c.options })), DEFAULT_VIZ_DESCRIPTORS, inlineRenderSizeFor, offers);
     }, INLINE_WARM_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [fileId, busLive, warmLanguage, warmCode, vizRegistryTick]);

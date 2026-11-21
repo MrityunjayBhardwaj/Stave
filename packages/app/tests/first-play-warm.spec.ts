@@ -125,19 +125,23 @@ test.describe('first play loads its sounds first (#2256)', () => {
  * transport says LOAD and the Play button says Loading, so the wait doesn't read
  * as a Play that did nothing. Every change of the transport's state word, and of
  * the button's label, is recorded with its page time.
+ *
+ * Recorded when the page changes (a MutationObserver), not once a frame (#2596):
+ * sampled on animation frames, a slow frame stamps every change in it late. In
+ * one run of 20 everything was recorded late (LOAD at 472 ms, not ~230) and PLAY
+ * 78 ms after the first note, where the other 19 had it 11–15 ms after.
  */
 async function recordTransportStates(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const seen: Array<{ t: number; state: string }> = []
     ;(window as unknown as { __lcdStates: typeof seen }).__lcdStates = seen
-    const tick = (): void => {
+    const read = (): void => {
       const lcd = document.querySelector<HTMLElement>('[data-stave-lcd-state]')?.dataset.staveLcdState ?? ''
       const button = document.querySelector('[data-testid="strudel-chrome-transport"]')?.textContent?.trim() ?? ''
       const state = lcd && `${lcd}|${button}`
       if (state && seen[seen.length - 1]?.state !== state) seen.push({ t: performance.now(), state })
-      requestAnimationFrame(tick)
     }
-    requestAnimationFrame(tick)
+    new MutationObserver(read).observe(document, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['data-stave-lcd-state'] })
   })
 }
 
@@ -170,9 +174,18 @@ test.describe('the wait for sounds is shown (#2259)', () => {
     const first = (await firstNoteAfter(page, pressed))!
     console.log(`[#2259] ${states.map((s) => `${s.state} @${Math.round(s.t - pressed)}`).join(', ')}; first note ${first} ms after Play`)
     // each surface on its own: the transport is drawn a render after the button
-    // (it goes through the app shell), so for a frame the two may differ
-    const sequence = (part: 0 | 1): string[] =>
-      states.map((s) => s.state.split('|')[part]).filter((v, i, all) => v !== all[i - 1])
+    // (it goes through the app shell), so for a frame the two may differ. That
+    // includes the press itself (#2596): the button can read Loading a frame
+    // before the transport leaves STOP, which records `stop|◌ Loading` after the
+    // press, about 10 ms ahead of `load|◌ Loading`. So a leading `stop` counts
+    // only if it lasts longer than that lag; a transport that stayed on STOP
+    // after Play would still fail here.
+    const LAG_MS = 50
+    const sequence = (part: 0 | 1): string[] => {
+      const values = states.map((s) => ({ t: s.t, v: s.state.split('|')[part] }))
+      const lagging = values.length > 1 && values[0].v === 'stop' && values[1].t - values[0].t <= LAG_MS
+      return (lagging ? values.slice(1) : values).map((s) => s.v).filter((v, i, all) => v !== all[i - 1])
+    }
     expect(sequence(0)).toEqual(['load', 'play'])
     expect(sequence(1)).toEqual(['\u25CC Loading', '\u25A0 Stop'])
     expect(load).toBeDefined()

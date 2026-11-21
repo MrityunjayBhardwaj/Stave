@@ -242,7 +242,7 @@ export type { SoloStripFacts } from './mixer/writeStrip'
 export { readVizOptionsLiteral, resolveVizOptions } from './mixer/vizOptionsLiteral'
 export type { CodeVizOptions } from './mixer/vizOptionsLiteral'
 export { readCodeViz } from './mixer/codeViz'
-export { readInlineVizNames } from './mixer/inlineVizCalls'
+export { readInlineVizNames, readInlineVizCalls, type InlineVizCall } from './mixer/inlineVizCalls'
 export type { CodeViz } from './mixer/codeViz'
 export {
   knobEdit,

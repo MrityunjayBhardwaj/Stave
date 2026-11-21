@@ -77,10 +77,15 @@ test("what Stave already shows another way is left out (#2201)", async ({ page }
   for (const left of ['[eval]', '[cyclist]', '@strudel/core loaded', '[superdough] ready', 'Deprecation warning']) {
     await expect(page.locator(ROW).filter({ hasText: left }), left).toHaveCount(0)
   }
-  // the first half of a sample load ("load sound …..") is left out; its "done" half stays
-  expect(logger.some((l) => /^\[sampler\] load sound "bd:0:0"\.\.(?!\.)/.test(l))).toBe(true)
-  await expect(page.locator(ROW).filter({ hasText: /load sound "bd:0:0"\.\.(?!\.)/ })).toHaveCount(0)
-  await expect(page.locator(ROW).filter({ hasText: 'load sound "bd:0:0"... done!' })).toHaveCount(1)
+  // the first half of a sample load ("load sound …..") is left out; its "done" half stays.
+  // The name is `bd:0` when Stave's warm-up loads it before Play (#2258 calls
+  // superdough's `loadBuffer(url, ac, "bd", 0)`), `bd:0:0` when Strudel's own trigger
+  // does (its label already ends in `:0`, sampler.mjs `loadBuffer`). Whichever loads
+  // first is the one that logs (#2575).
+  const BD = 'bd:0(?::0)?'
+  expect(logger.some((l) => new RegExp(`^\\[sampler\\] load sound "${BD}"\\.\\.(?!\\.)`).test(l))).toBe(true)
+  await expect(page.locator(ROW).filter({ hasText: new RegExp(`load sound "${BD}"\\.\\.(?!\\.)`) })).toHaveCount(0)
+  await expect(page.locator(ROW).filter({ hasText: new RegExp(`load sound "${BD}"\\.\\.\\. done!`) })).toHaveCount(1)
 })
 
 test('the `.animate()` warning names its file and line, and is underlined (#2200)', async ({ page }) => {

@@ -511,7 +511,8 @@ export function addInlineViewZones(
 
       // #2560 — a sketch warmed up before Play: its container (and the renderer
       // mounted in it) becomes this zone's node. Otherwise build it now, as before.
-      const warm = fileId ? takeWarmInlineViz(fileId, descriptor) : null
+      // #2630 — only one warmed with this zone's options: a sketch may read them once, at mount.
+      const warm = fileId ? takeWarmInlineViz(fileId, descriptor, zoneComponents.options ?? {}) : null
       const container = warm?.container ?? document.createElement('div')
       container.removeAttribute('data-viz-warm')
       // A sketch reused from the last Play's zone brings that zone's container:
@@ -566,6 +567,7 @@ export function addInlineViewZones(
         const zoneRenderer = renderer
         offers.push({
           descriptor,
+          options: zoneComponents.options ?? {},
           container,
           renderSize,
           claim: () => {

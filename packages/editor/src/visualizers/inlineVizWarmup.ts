@@ -22,6 +22,15 @@
  * destroyed at the next `warmInlineViz` for that file. Entries are matched by
  * descriptor, or — when the registry rebuilt the descriptor from unchanged code —
  * by the source key the registry recorded (`setVizDescriptorSource`).
+ *
+ * ⚠ AND BY THE OPTIONS IT WAS MOUNTED WITH (#2630). A sketch may read
+ * `stave.options` once, when its code runs at mount: a hydra sketch's
+ * `s.solid(o.r, o.g, o.b)` takes plain numbers. Mounted with an empty bag and
+ * adopted at Play, such a sketch kept drawing its defaults, and the zone's later
+ * options update reached a slot nothing read again. So a sketch warms with the
+ * options its code writes (when they are literal), records them, and Play adopts
+ * it only when the zone's options are the same; otherwise Play builds it fresh,
+ * as it did before the warm-up.
  */
 import type { VizDescriptor, VizRenderer } from './types'
 import { resolveDescriptor } from './resolveDescriptor'
@@ -35,6 +44,8 @@ import { resolveDescriptor } from './resolveDescriptor'
  */
 export interface ReuseOffer {
   readonly descriptor: VizDescriptor
+  /** the options the zone's sketch was mounted and last updated with */
+  readonly options: Readonly<Record<string, unknown>>
   readonly container: HTMLDivElement
   readonly renderSize: { w: number; h: number }
   /** Take the renderer; null when the zone no longer holds a live one. */
@@ -48,9 +59,42 @@ export interface WarmInlineViz {
   /** The container the renderer was mounted into; adopted as the zone's node. */
   readonly container: HTMLDivElement
   readonly renderSize: { w: number; h: number }
+  /** `optionsKey` of the options it was mounted with (#2630). */
+  readonly optionsKey: string
   /** Reused from a stopped zone (`ReuseOffer`): its container is still that
    *  zone's node on screen, so it is never removed from here. */
   readonly reused?: boolean
+}
+
+/** One inline viz the code asks for: its name and the options its code writes
+ *  (null when only an evaluation can tell; it then warms with none, and Play
+ *  adopts it only if the zone gets none either). */
+export interface WarmRequest {
+  readonly vizId: string
+  readonly options: Readonly<Record<string, unknown>> | null
+}
+
+/**
+ * A key that two equal options bags share, whatever their key order (#2630).
+ * Values that JSON cannot write (a function, a Pattern a string turned into)
+ * make a key no other bag has, so such a sketch is never adopted on a guess.
+ */
+let unkeyable = 0
+export function optionsKey(options: Readonly<Record<string, unknown>> | null | undefined): string {
+  const sorted = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(sorted)
+    if (v && typeof v === 'object') {
+      if (Object.getPrototypeOf(v) !== Object.prototype) throw new Error('not plain data')
+      return Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted((v as Record<string, unknown>)[k])]))
+    }
+    if (typeof v === 'function' || typeof v === 'symbol' || typeof v === 'bigint') throw new Error('not plain data')
+    return v
+  }
+  try {
+    return JSON.stringify(sorted(options ?? {}))
+  } catch {
+    return `unkeyable:${++unkeyable}`
+  }
 }
 
 const byFile = new Map<string, WarmInlineViz[]>()
@@ -94,6 +138,7 @@ function build(
   vizId: string,
   descriptor: VizDescriptor,
   size: { w: number; h: number },
+  options: Readonly<Record<string, unknown>>,
 ): WarmInlineViz | null {
   if (typeof document === 'undefined') return null
   // A descriptor whose factory is a shared INSTANCE (not a function) can't be
@@ -111,7 +156,7 @@ function build(
   container.style.cssText = `position:relative;overflow:hidden;width:${size.w}px;height:${size.h}px;`
   warmHost().appendChild(container)
   try {
-    renderer.mount(container, { options: {} }, size, (e) => console.error('[stave] viz warm-up:', e))
+    renderer.mount(container, { options: { ...options } }, size, (e) => console.error('[stave] viz warm-up:', e))
     renderer.pause()
   } catch (e) {
     console.error('[stave] viz warm-up mount failed:', e)
@@ -123,18 +168,18 @@ function build(
     container.remove()
     return null
   }
-  return { vizId, descriptor, renderer, container, renderSize: { ...size } }
+  return { vizId, descriptor, renderer, container, renderSize: { ...size }, optionsKey: optionsKey(options) }
 }
 
 /**
- * Make the warm set for `fileId` match `vizIds` (one per track that shows an
- * inline viz): keep the warm renderers still asked for, build the missing ones,
- * destroy the rest. Names that resolve to no descriptor are skipped (a viz file
+ * Make the warm set for `fileId` match `requests` (one per track that shows an
+ * inline viz): keep the warm renderers still asked for with the same options,
+ * build the missing ones, destroy the rest. Names that resolve to no descriptor are skipped (a viz file
  * not registered — e.g. a gallery file nobody agreed to run — never warms).
  */
 export function warmInlineViz(
   fileId: string,
-  vizIds: readonly string[],
+  requests: readonly WarmRequest[],
   descriptors: VizDescriptor[],
   sizeFor: (descriptor: VizDescriptor) => { w: number; h: number },
   /** #2560 — sketches held by this file's stopped zones, taken before building
@@ -144,24 +189,26 @@ export function warmInlineViz(
   const pool = [...(byFile.get(fileId) ?? [])]
   const unclaimed = [...offers]
   const keep: WarmInlineViz[] = []
-  for (const vizId of vizIds) {
+  for (const { vizId, options } of requests) {
     const descriptor = resolveDescriptor(vizId, descriptors)
     if (!descriptor) continue
-    const i = pool.findIndex((e) => sameSketch(e.descriptor, descriptor))
+    const wanted = options ?? {}
+    const key = optionsKey(wanted)
+    const i = pool.findIndex((e) => sameSketch(e.descriptor, descriptor) && e.optionsKey === key)
     if (i >= 0) {
       keep.push(pool.splice(i, 1)[0])
       continue
     }
-    const o = unclaimed.findIndex((x) => sameSketch(x.descriptor, descriptor))
+    const o = unclaimed.findIndex((x) => sameSketch(x.descriptor, descriptor) && optionsKey(x.options) === key)
     if (o >= 0) {
       const offer = unclaimed.splice(o, 1)[0]
       const renderer = offer.claim()
       if (renderer) {
-        keep.push({ vizId, descriptor, renderer, container: offer.container, renderSize: { ...offer.renderSize }, reused: true })
+        keep.push({ vizId, descriptor, renderer, container: offer.container, renderSize: { ...offer.renderSize }, optionsKey: key, reused: true })
         continue
       }
     }
-    const built = build(vizId, descriptor, sizeFor(descriptor))
+    const built = build(vizId, descriptor, sizeFor(descriptor), wanted)
     if (built) keep.push(built)
   }
   for (const e of pool) destroyEntry(e)
@@ -171,13 +218,20 @@ export function warmInlineViz(
 
 /**
  * Take (and remove from the warm set) a warm renderer for this file's sketch, or
- * null when none is warm. The caller owns it from here: it re-parents the
- * container and eventually destroys the renderer.
+ * null when none is warm with these `options` (#2630: a sketch warmed with other
+ * options is left for `releaseWarmInlineViz`, and Play builds a fresh one). The
+ * caller owns it from here: it re-parents the container and eventually destroys
+ * the renderer.
  */
-export function takeWarmInlineViz(fileId: string, descriptor: VizDescriptor): WarmInlineViz | null {
+export function takeWarmInlineViz(
+  fileId: string,
+  descriptor: VizDescriptor,
+  options: Readonly<Record<string, unknown>>,
+): WarmInlineViz | null {
   const list = byFile.get(fileId)
   if (!list) return null
-  const i = list.findIndex((e) => sameSketch(e.descriptor, descriptor))
+  const key = optionsKey(options)
+  const i = list.findIndex((e) => sameSketch(e.descriptor, descriptor) && e.optionsKey === key)
   if (i < 0) return null
   const [entry] = list.splice(i, 1)
   if (list.length === 0) byFile.delete(fileId)
