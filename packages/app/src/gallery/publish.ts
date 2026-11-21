@@ -7,6 +7,7 @@
  * person is told before anything is uploaded.
  */
 import { VIZ_LANGUAGES as EDITOR_VIZ_LANGUAGES } from "@stave/editor";
+import { findVizFileByName, type NamedVizFile } from "../visualizers/vizFileLookup";
 import { publishToGallery, galleryEntryLink } from "./client";
 import { addLocalShare, recordListChange } from "./localShares";
 import {
@@ -41,41 +42,95 @@ function parentOf(path: string): string {
 }
 
 /**
- * The manifest a gallery entry carries. A project is the whole manifest; music and
- * viz are the one chosen file, at the path it has in the project, with the folder
- * orders cut down to that file and the folders above it.
+ * The project cut down to `keep`: those files at the paths they have in the
+ * project, each folder's file order holding only them, and each folder's
+ * subfolder order holding only the folders on the way down to one of them.
+ * Folders left with nothing are dropped.
+ */
+function cutDown(project: GalleryManifest, keep: readonly ManifestFile[]): GalleryManifest {
+  const ids = new Set(keep.map((f) => f.id));
+  // every folder that still holds a kept file, at any depth ("" is the root)
+  const live = new Set<string>([""]);
+  for (const f of keep) {
+    for (let folder = parentOf(f.path); folder && !live.has(folder); folder = parentOf(folder)) live.add(folder);
+  }
+  const fileOrder: Record<string, string[]> = {};
+  for (const [folder, order] of Object.entries(project.fileOrder)) {
+    const kept = order.filter((id) => ids.has(id));
+    if (kept.length) fileOrder[folder] = kept;
+  }
+  const subfolderOrder: Record<string, string[]> = {};
+  for (const [parent, names] of Object.entries(project.subfolderOrder)) {
+    if (!live.has(parent)) continue;
+    const kept = names.filter((name) => live.has(parent ? `${parent}/${name}` : name));
+    if (kept.length) subfolderOrder[parent] = kept;
+  }
+  return {
+    schemaVersion: 1,
+    project: { ...project.project },
+    files: keep.map((f) => ({ ...f })),
+    fileOrder,
+    subfolderOrder,
+  };
+}
+
+/**
+ * The manifest a gallery entry carries. Music and viz are the one chosen file.
+ * #2632 — a project is the files ticked in the dialog (`fileIds`), or the whole
+ * project when nothing was chosen (null). Either way each file keeps the path it
+ * has in the project, and the folder orders are cut down to what is sent.
  */
 export function buildGalleryManifest(
   project: GalleryManifest,
   kind: GalleryKind,
   fileId: string | null,
+  fileIds: readonly string[] | null = null,
 ): GalleryManifest {
-  if (kind === "project") return project;
+  if (kind === "project") {
+    if (!fileIds) return project;
+    const picked = new Set(fileIds);
+    const keep = project.files.filter((f) => picked.has(f.id));
+    if (!keep.length) throw new Error("tick at least one file to publish");
+    return keep.length === project.files.length ? project : cutDown(project, keep);
+  }
   const file = project.files.find((f) => f.id === fileId);
   if (!file) throw new Error(`choose the ${kind} file to publish`);
   if (!filesForKind([file], kind).length) throw new Error(`${file.path} isn't a ${kind} file`);
+  return cutDown(project, [file]);
+}
 
-  const folder = parentOf(file.path);
-  const fileOrder: Record<string, string[]> = {};
-  if (project.fileOrder[folder]?.includes(file.id)) fileOrder[folder] = [file.id];
+const VIZ_CALL = /\.viz\(\s*["'`]([^"'`]+)["'`]/g;
 
-  // Each folder above the file keeps only the one subfolder on the way down to it.
-  const subfolderOrder: Record<string, string[]> = {};
-  let child = folder;
-  while (child) {
-    const parent = parentOf(child);
-    const name = child.slice(parent ? parent.length + 1 : 0);
-    if (project.subfolderOrder[parent]?.includes(name)) subfolderOrder[parent] = [name];
-    child = parent;
+/**
+ * #2632 — visuals a ticked pattern draws (`.viz("name")`) whose file is in the
+ * project but not ticked: the published entry would not find them. Each as
+ * the pattern's path and the visual's path. A name no project file answers to
+ * (a built-in such as `pianoroll`) is not a file, so it is never listed.
+ */
+export function untickedVizUses(
+  project: GalleryManifest,
+  fileIds: readonly string[],
+): Array<{ pattern: string; visual: string }> {
+  const picked = new Set(fileIds);
+  // a manifest's language is a plain string; the lookup reads it the way the studio does
+  const all = project.files as ReadonlyArray<ManifestFile & NamedVizFile>;
+  const ticked = all.filter((f) => picked.has(f.id));
+  const out: Array<{ pattern: string; visual: string }> = [];
+  const seen = new Set<string>();
+  for (const f of ticked) {
+    if (!MUSIC_LANGUAGES.includes(f.language)) continue;
+    for (const m of f.content.matchAll(VIZ_CALL)) {
+      const name = m[1];
+      if (findVizFileByName(ticked, name)) continue;
+      const file = findVizFileByName(all, name);
+      const key = `${f.path}\u0000${file?.path}`;
+      if (file && !seen.has(key)) {
+        seen.add(key);
+        out.push({ pattern: f.path, visual: file.path });
+      }
+    }
   }
-
-  return {
-    schemaVersion: 1,
-    project: { ...project.project },
-    files: [{ ...file }],
-    fileOrder,
-    subfolderOrder,
-  };
+  return out;
 }
 
 /** "Ambient, drums,ambient , " → ["Ambient", "drums"]: trimmed, empties dropped, repeats (any case) dropped. */
@@ -100,6 +155,8 @@ export interface PublishForm {
   kind: GalleryKind;
   /** The chosen file when kind is music or viz. */
   fileId: string | null;
+  /** #2632 — the files a project carries; null (or left out) for every file. */
+  fileIds?: string[] | null;
   /** As typed: comma-separated. */
   tags: string;
 }
@@ -130,7 +187,7 @@ export function buildPublishRequest(
 
   let manifest: GalleryManifest | null = null;
   try {
-    manifest = buildGalleryManifest(project, form.kind, form.fileId);
+    manifest = buildGalleryManifest(project, form.kind, form.fileId, form.fileIds ?? null);
   } catch (err) {
     errors.push(`${capitalise((err as Error).message)}.`);
   }

@@ -120,6 +120,55 @@ test.describe('Publish to Gallery (#2301)', () => {
     expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/#gallery=AbCdEfGhIjK$/)
   })
 
+  test('#2632 a project sends only the files ticked; a folder box ticks its files; none is refused', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await routeSession(page, ADA_SESSION_USER)
+    await bootApp(page)
+    const seen = answerPublish(page)
+    await openPublish(page)
+    await expect(page.getByTestId('gallery-publish-as')).toBeVisible()
+
+    const picker = page.getByTestId('gallery-publish-files')
+    await expect(picker).toBeVisible()
+    const rows = picker.locator('[data-gallery-publish-file]')
+    const paths = await rows.evaluateAll((els) => els.map((e) => e.getAttribute('data-gallery-publish-file')!))
+    expect(paths.length).toBeGreaterThan(2)
+    // every file starts ticked, and the count says so
+    await expect(picker.locator('[data-gallery-publish-file] input:not(:checked)')).toHaveCount(0)
+    await expect(page.getByTestId('gallery-publish-files-count')).toContainText(`${paths.length} of ${paths.length}`)
+
+    // None, then Publish: refused before anything is sent
+    await page.getByTestId('gallery-publish-files-none').click()
+    await page.getByTestId('gallery-publish-submit').click()
+    await expect(page.getByTestId('gallery-publish-errors')).toContainText('Tick at least one file to publish.')
+    expect(seen).toHaveLength(0)
+
+    // a folder's box ticks everything in it, and only that
+    const folderRow = picker.locator('[data-gallery-publish-folder]').first()
+    const folder = (await folderRow.getAttribute('data-gallery-publish-folder'))!
+    await folderRow.locator('input').check()
+    const inFolder = paths.filter((p) => p.slice(0, p.lastIndexOf('/')) === folder)
+    expect(inFolder.length).toBeGreaterThan(0)
+    // plus one top-level file, ticked on its own
+    const top = paths.find((p) => !p.includes('/'))!
+    await picker.locator(`[data-gallery-publish-file="${top}"] input`).check()
+    await expect(page.getByTestId('gallery-publish-files-count')).toContainText(`${inFolder.length + 1} of ${paths.length}`)
+    if (SHOTS) await page.getByTestId('gallery-publish-dialog').screenshot({ path: `${SHOTS}/gallery-publish-files.png` })
+
+    await page.getByTestId('gallery-publish-submit').click()
+    await expect(page.locator('[data-testid="toast"]', { hasText: 'Published' })).toBeVisible({ timeout: 10_000 })
+    expect(seen).toHaveLength(1)
+    const body = seen[0].postDataJSON() as {
+      kind: string
+      manifest: { files: Array<{ id: string; path: string }>; fileOrder: Record<string, string[]>; subfolderOrder: Record<string, string[]> }
+    }
+    expect(body.kind).toBe('project')
+    expect(body.manifest.files.map((f) => f.path).sort()).toEqual([...inFolder, top].sort())
+    // the folder orders name only files that were sent
+    const sentIds = new Set(body.manifest.files.map((f) => f.id))
+    for (const ids of Object.values(body.manifest.fileOrder)) for (const id of ids) expect(sentIds.has(id)).toBe(true)
+  })
+
   test('a music entry sends one file and no picture', async ({ page }) => {
     await routeSession(page, ADA_SESSION_USER)
     await bootApp(page)
