@@ -420,7 +420,7 @@ export const MINE_CSS = `
 .sg-mshare-head { color: var(--text-muted, var(--text-chrome)); font-size: 11.5px; letter-spacing: .02em; padding-top: 8px; padding-bottom: 8px; border-radius: 12px 12px 0 0; background: var(--bg-hover, rgba(255,255,255,.03)); }
 .sg-mshare-row { border-top: 1px solid var(--border-subtle); }
 .sg-mshare-row:hover { background: var(--bg-hover, rgba(255,255,255,.04)); }
-.sg-mshare-pic { width: 112px; height: 44px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-subtle); background: #111; }
+.sg-mshare-pic { position: relative; width: 112px; height: 44px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-subtle); background: #111; }
 .sg-mshare-pic > * { width: 100% !important; height: 100% !important; aspect-ratio: auto !important; }
 .sg-mshare-pic > img, .sg-mshare-pic > canvas { display: block; }
 .sg-mshare-pic .sg-initials { font-size: 15px; }
