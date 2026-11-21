@@ -7,6 +7,7 @@ import {
   filesForKind,
   parseTags,
   publishAndRemember,
+  untickedVizUses,
   type PublishForm,
 } from "../publish";
 import { listLocalShares, loadAuthor, saveAuthor } from "../localShares";
@@ -85,6 +86,65 @@ describe("the manifest each kind sends", () => {
   it("refuses a missing file and a file of the wrong kind", () => {
     expect(() => buildGalleryManifest(project(), "music", null)).toThrow(/choose the music file/);
     expect(() => buildGalleryManifest(project(), "viz", "song")).toThrow(/isn't a viz file/);
+  });
+});
+
+describe("#2632 a project carries the files ticked", () => {
+  it("null (nothing chosen) and every file ticked both send the project as it is", () => {
+    const p = project();
+    expect(buildGalleryManifest(p, "project", null, null)).toBe(p);
+    expect(buildGalleryManifest(p, "project", null, p.files.map((f) => f.id))).toBe(p);
+  });
+
+  it("sends only the ticked files, at their paths, with the folder orders cut down", () => {
+    const m = buildGalleryManifest(project(), "project", null, ["song", "dots"]);
+    expect(m.files.map((f) => f.path)).toEqual(["song.strudel", "preset/viz/dots.p5"]);
+    expect(m.fileOrder).toEqual({ "": ["song"], "preset/viz": ["dots"] });
+    // art/ held nothing ticked, so the root keeps only preset; preset keeps viz
+    expect(m.subfolderOrder).toEqual({ "": ["preset"], preset: ["viz"] });
+    expect(m.project).toEqual(project().project);
+  });
+
+  it("a top-level file alone leaves no subfolders", () => {
+    const m = buildGalleryManifest(project(), "project", null, ["notes"]);
+    expect(m.fileOrder).toEqual({ "": ["notes"] });
+    expect(m.subfolderOrder).toEqual({});
+  });
+
+  it("nothing ticked is refused, and the form says so", () => {
+    expect(() => buildGalleryManifest(project(), "project", null, [])).toThrow(/tick at least one file/);
+    const built = buildPublishRequest(form({ fileIds: [] }), project());
+    expect(built.request).toBeNull();
+    expect(built.errors).toContain("Tick at least one file to publish.");
+  });
+
+  it("the request carries the cut-down manifest, and its size is what is checked", () => {
+    const p = project();
+    p.files.push({ id: "big", path: "big.md", language: "markdown", content: "x".repeat(MAX_MANIFEST_BYTES) });
+    p.fileOrder[""].push("big");
+    expect(buildPublishRequest(form(), p).request).toBeNull(); // every file: too big
+    const built = buildPublishRequest(form({ fileIds: ["song"] }), p);
+    expect(built.request?.manifest.files.map((f) => f.id)).toEqual(["song"]);
+  });
+});
+
+describe("#2632 a ticked pattern drawing a visual that isn't ticked", () => {
+  const withViz = (): GalleryManifest => {
+    const p = project();
+    p.files[0] = { ...p.files[0], content: 's("bd").viz("dots", { a: 1 })\nn("0").viz("pianoroll")' };
+    return p;
+  };
+
+  it("names the pattern and the visual file it would miss", () => {
+    expect(untickedVizUses(withViz(), ["song"])).toEqual([{ pattern: "song.strudel", visual: "preset/viz/dots.p5" }]);
+  });
+
+  it("says nothing once the visual is ticked, for a built-in name, or when the pattern isn't ticked", () => {
+    expect(untickedVizUses(withViz(), ["song", "dots"])).toEqual([]);
+    expect(untickedVizUses(withViz(), ["notes"])).toEqual([]);
+    const builtinOnly = project();
+    builtinOnly.files[0] = { ...builtinOnly.files[0], content: 'n("0").viz("pianoroll")' };
+    expect(untickedVizUses(builtinOnly, ["song"])).toEqual([]);
   });
 });
 

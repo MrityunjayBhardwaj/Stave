@@ -11,6 +11,8 @@ import {
   filesForKind,
   kib,
   publishAndRemember,
+  untickedVizUses,
+  utf8Bytes,
   type PublishForm,
 } from "./publish";
 import { shownName } from "./reservedNames";
@@ -104,7 +106,7 @@ function SignInGate({ state }: { state: GallerySessionState }) {
 
 const KIND_LABEL: Record<GalleryKind, string> = { project: "Project", music: "Music", viz: "Visual" };
 const KIND_NOTE: Record<GalleryKind, string> = {
-  project: "Every file in this project.",
+  project: "The files you tick below.",
   music: "One pattern file.",
   viz: "One visual (Hydra, p5 or GLSL) file.",
 };
@@ -146,6 +148,8 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
   // #2610 — visuals drawing on screen whose still couldn't be taken, said in the dialog
   const [missedStills, setMissedStills] = useState<MissedStill[]>([]);
   const [includeFrames, setIncludeFrames] = useState(true);
+  // #2632 — the files a project entry carries: every file to start with, then what is ticked
+  const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set());
   const [errors, setErrors] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   // #2330 — the Turnstile check, when this site has one. A token is good once:
@@ -154,6 +158,18 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [turnstileRound, setTurnstileRound] = useState(0);
   const titleRef = useRef<HTMLInputElement>(null);
+
+  // #2632 — the project's files that go in the entry, in the project's order
+  const pickedFiles = useMemo(
+    () => (manifest ? manifest.files.filter((f) => picked.has(f.id)) : []),
+    [manifest, picked],
+  );
+  const coverChoices = useMemo(() => pickedFiles.filter((f) => fileRole(f.path) !== "file"), [pickedFiles]);
+  // the cover is always one of the ticked files: untick it and the next one that can be a cover takes over
+  useEffect(() => {
+    if (coverId && coverChoices.some((f) => f.id === coverId)) return;
+    setCoverId((coverChoices.find((f) => fileRole(f.path) === "pattern") ?? coverChoices[0])?.id ?? null);
+  }, [coverChoices, coverId]);
 
   // #2610 — the picture follows the file the card will show: a project's cover,
   // or the one visual being published. A later capture replaces an earlier one.
@@ -178,6 +194,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
     if (!open) return;
     const m = collectManifest(project) as GalleryManifest;
     setManifest(m);
+    setPicked(new Set(m.files.map((f) => f.id)));
     // the file in front, when it can be a cover; else the first pattern, else the first visual
     const covers = m.files.filter((f) => fileRole(f.path) !== "file");
     const front = covers.find((f) => f.id === activeFileRef.current);
@@ -242,7 +259,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
       setErrors(["Please finish the \u201care you human\u201d check above the Publish button first."]);
       return;
     }
-    const built = buildPublishRequest(form, manifest, thumbnail);
+    const built = buildPublishRequest({ ...form, fileIds: form.kind === "project" ? [...picked] : null }, manifest, thumbnail);
     if (!built.request) {
       setErrors(built.errors);
       return;
@@ -256,8 +273,10 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
       const coverPath =
         form.kind === "project" ? (manifest.files.find((f) => f.id === coverId)?.path ?? null) : (built.request.manifest.files[0]?.path ?? null);
       setRecording(true);
+      const sentPaths = new Set(built.request.manifest.files.map((f) => f.path));
+      const sentFrames = frames.filter((f) => sentPaths.has(f.path));
       const rec = await Promise.race([
-        recordEntry(project.id, built.request.manifest, coverPath, form.kind === "project" && includeFrames ? frames : []).catch(() => null),
+        recordEntry(project.id, built.request.manifest, coverPath, form.kind === "project" && includeFrames ? sentFrames : []).catch(() => null),
         new Promise<null>((r) => setTimeout(() => r(null), RECORD_TIMEOUT_MS)),
       ]);
       setRecording(false);
@@ -284,9 +303,13 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
       void loadGallerySession();
       if (siteKey) setTurnstileRound((r) => r + 1); // the token was spent; get a fresh one
     }
-  }, [manifest, sending, siteKey, turnstileToken, form, thumbnail, onClose, coverId, project.id, frames, includeFrames]);
+  }, [manifest, sending, siteKey, turnstileToken, form, picked, thumbnail, onClose, coverId, project.id, frames, includeFrames]);
 
   if (!open) return null;
+
+  const pickedPaths = new Set(pickedFiles.map((f) => f.path));
+  const shownFrames = frames.filter((f) => pickedPaths.has(f.path));
+  const shownMissed = missedStills.filter((m) => pickedPaths.has(m.path));
 
   const set = <K extends keyof PublishForm>(key: K) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -386,7 +409,18 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
             </label>
           )}
 
-          {form.kind === "project" && manifest && manifest.files.some((f) => fileRole(f.path) !== "file") && (
+          {form.kind === "project" && manifest && (
+            <FilePicker
+              manifest={manifest}
+              picked={picked}
+              onChange={(next) => {
+                setPicked(next);
+                setErrors([]);
+              }}
+            />
+          )}
+
+          {form.kind === "project" && coverChoices.length > 0 && (
             <label style={styles.field}>
               <span style={styles.label}>Cover</span>
               <select
@@ -395,9 +429,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
                 onChange={(e) => setCoverId(e.target.value || null)}
                 data-testid="gallery-publish-cover"
               >
-                {manifest.files
-                  .filter((f) => fileRole(f.path) !== "file")
-                  .map((f) => (
+                {coverChoices.map((f) => (
                     <option key={f.id} value={f.id}>
                       {f.path}
                     </option>
@@ -466,7 +498,7 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
             )}
           </div>
 
-          {form.kind === "project" && frames.length > 0 && (
+          {form.kind === "project" && shownFrames.length > 0 && (
             <label style={styles.check} data-testid="gallery-publish-frames">
               <input
                 type="checkbox"
@@ -474,14 +506,14 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
                 onChange={(e) => setIncludeFrames(e.target.checked)}
                 data-testid="gallery-publish-frames-include"
               />
-              Keep a small still of {frames.length === 1 ? "the running visual" : `the ${frames.length} running visuals`} for{" "}
-              {frames.length === 1 ? "its row" : "their rows"} ({frames.map((f) => f.path).join(", ")})
+              Keep a small still of {shownFrames.length === 1 ? "the running visual" : `the ${shownFrames.length} running visuals`} for{" "}
+              {shownFrames.length === 1 ? "its row" : "their rows"} ({shownFrames.map((f) => f.path).join(", ")})
             </label>
           )}
 
-          {form.kind === "project" && missedStills.length > 0 && (
+          {form.kind === "project" && shownMissed.length > 0 && (
             <div style={styles.note} data-testid="gallery-publish-frames-missed">
-              {missedStills.map((m) => (
+              {shownMissed.map((m) => (
                 <div key={m.path} data-gallery-missed-still={m.path}>
                   No still for {m.path}: it&apos;s on screen, but {m.reason.charAt(0).toLowerCase() + m.reason.slice(1)}                </div>
               ))}
@@ -527,6 +559,128 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
         </form>
         )}
       </div>
+    </div>
+  );
+}
+
+/** A folder's path, "" for the project's top level. */
+function folderOf(path: string): string {
+  const i = path.lastIndexOf("/");
+  return i < 0 ? "" : path.slice(0, i);
+}
+
+/**
+ * #2632 — which of the project's files the entry carries. One row per file,
+ * under its folder; a folder's box ticks or clears everything in it (and is
+ * half-ticked when only some are). All and None for the whole project. Says
+ * how many files and how big, and when a ticked pattern draws a visual that
+ * isn't ticked.
+ */
+function FilePicker({
+  manifest,
+  picked,
+  onChange,
+}: {
+  manifest: GalleryManifest;
+  picked: ReadonlySet<string>;
+  onChange: (next: Set<string>) => void;
+}) {
+  // folders in the order their first file comes, each with its files
+  const groups = useMemo(() => {
+    const byFolder = new Map<string, GalleryManifest["files"]>();
+    for (const f of manifest.files) {
+      const folder = folderOf(f.path);
+      if (!byFolder.has(folder)) byFolder.set(folder, []);
+      byFolder.get(folder)!.push(f);
+    }
+    return [...byFolder.entries()].map(([folder, files]) => ({ folder, files }));
+  }, [manifest]);
+
+  const pickedFiles = manifest.files.filter((f) => picked.has(f.id));
+  const bytes = pickedFiles.reduce((n, f) => n + utf8Bytes(f.content), 0);
+  const missing = useMemo(() => untickedVizUses(manifest, [...picked]), [manifest, picked]);
+
+  const set = (ids: string[], on: boolean) => {
+    const next = new Set(picked);
+    for (const id of ids) {
+      if (on) next.add(id);
+      else next.delete(id);
+    }
+    onChange(next);
+  };
+
+  return (
+    <div style={styles.field} data-testid="gallery-publish-files">
+      <div style={styles.filesHead}>
+        <span style={styles.label}>Files</span>
+        <span style={styles.hint} data-testid="gallery-publish-files-count">
+          {pickedFiles.length} of {manifest.files.length} · {kib(bytes)}
+        </span>
+        <span style={{ flex: 1 }} />
+        <button
+          type="button"
+          style={styles.linkBtn}
+          onClick={() => onChange(new Set(manifest.files.map((f) => f.id)))}
+          data-testid="gallery-publish-files-all"
+        >
+          All
+        </button>
+        <button type="button" style={styles.linkBtn} onClick={() => onChange(new Set())} data-testid="gallery-publish-files-none">
+          None
+        </button>
+      </div>
+      <div style={styles.files} role="group" aria-label="Files to publish">
+        {groups.map(({ folder, files }) => {
+          const on = files.filter((f) => picked.has(f.id)).length;
+          return (
+            <div key={folder || "/"}>
+              {folder && (
+                <label style={styles.folderRow} data-gallery-publish-folder={folder}>
+                  <input
+                    type="checkbox"
+                    checked={on === files.length}
+                    ref={(el) => {
+                      if (el) el.indeterminate = on > 0 && on < files.length;
+                    }}
+                    onChange={(e) => set(files.map((f) => f.id), e.target.checked)}
+                  />
+                  <span style={styles.folderName}>{folder}/</span>
+                </label>
+              )}
+              {files.map((f) => (
+                <label
+                  key={f.id}
+                  style={{ ...styles.fileRow, paddingLeft: folder ? 26 : 6 }}
+                  data-gallery-publish-file={f.path}
+                >
+                  <input type="checkbox" checked={picked.has(f.id)} onChange={(e) => set([f.id], e.target.checked)} />
+                  <span style={styles.fileName}>{f.path.slice(folder ? folder.length + 1 : 0)}</span>
+                  <span style={styles.fileSize}>{kib(utf8Bytes(f.content))}</span>
+                </label>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+      {missing.length > 0 && (
+        <div style={styles.warn} role="status" data-testid="gallery-publish-files-missing">
+          {missing.map((m) => (
+            <div key={`${m.pattern}>${m.visual}`}>
+              ⚠ {m.pattern} draws {m.visual}, which isn&apos;t ticked; the entry won&apos;t find it.{" "}
+              <button
+                type="button"
+                style={styles.linkBtn}
+                onClick={() => {
+                  const v = manifest.files.find((f) => f.path === m.visual);
+                  if (v) set([v.id], true);
+                }}
+              >
+                Tick it
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -616,6 +770,44 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--bg-hover)",
     borderColor: "var(--accent)",
     boxShadow: "0 0 0 1px var(--accent)",
+  },
+  filesHead: { display: "flex", alignItems: "baseline", gap: 8 },
+  files: {
+    maxHeight: 220,
+    overflowY: "auto",
+    background: "var(--bg-panel)",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: 5,
+    padding: "4px 0",
+  },
+  folderRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "3px 6px",
+    fontSize: 12,
+    color: "var(--text-tertiary)",
+    cursor: "pointer",
+  },
+  folderName: { fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  fileRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "3px 8px 3px 6px",
+    fontSize: 13,
+    color: "var(--text-primary)",
+    cursor: "pointer",
+  },
+  fileName: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  fileSize: { fontSize: 11, color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" },
+  warn: {
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "var(--text-chrome)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
   },
   thumbRow: { display: "flex", gap: 12, alignItems: "flex-start" },
   thumb: {
