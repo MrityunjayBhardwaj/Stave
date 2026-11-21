@@ -16,7 +16,11 @@ import { contentsLine, coverPattern, mayHavePreview, type GalleryRecording } fro
 import { shownName } from "./reservedNames";
 import type { GalleryEntry } from "./types";
 
-export function Thumb({ entry }: { entry: GalleryEntry }) {
+/**
+ * #2633 — `label: false` for a picture too small to carry the kind on it (a My
+ * shares row): its fallback card then shows only the initials.
+ */
+export function Thumb({ entry, label = true }: { entry: GalleryEntry; label?: boolean }) {
   const [failed, setFailed] = useState(false);
   if (entry.hasThumbnail && !failed) {
     return (
@@ -29,7 +33,7 @@ export function Thumb({ entry }: { entry: GalleryEntry }) {
       />
     );
   }
-  return <GeneratedThumb id={entry.id} title={entry.title} label={KIND_LABEL[entry.kind]} />;
+  return <GeneratedThumb id={entry.id} title={entry.title} label={label ? KIND_LABEL[entry.kind] : null} />;
 }
 
 export function GeneratedThumb({ id, title, label }: { id: string; title: string; label: string | null }) {
@@ -131,7 +135,8 @@ export function Avatar({ name, colourKey, size = 18 }: { name: string; colourKey
 export function CardPicture({ entry, rec }: { entry: GalleryEntry; rec: GalleryRecording | null }) {
   const cover = entry.kind === "viz" ? null : coverPattern(rec);
   if (cover) return <RecordingTimeline rec={cover} className="sg-gcard-canvas" />;
-  if (entry.hasThumbnail) return <Thumb entry={entry} />;
+  // the card writes the kind beside the picture itself, so the picture's own fallback never does (#2633)
+  if (entry.hasThumbnail) return <Thumb entry={entry} label={false} />;
   return <GeneratedThumb id={entry.id} title={entry.title} label={null} />;
 }
 
