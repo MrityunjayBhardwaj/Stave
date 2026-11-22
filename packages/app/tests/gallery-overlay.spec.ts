@@ -307,6 +307,60 @@ test.describe('community gallery overlay', () => {
     expect(left).toEqual(['gone0ZZZZZZ'])
   })
 
+  // #2635 — a share whose cover is a recorded pattern draws that pattern's
+  // timeline as its row picture. The canvas fills its box with absolute
+  // positioning, so the row's picture must be the box it fills: before, it
+  // filled the whole gallery and hid every row under it.
+  test('#2635 My shares: a recorded cover stays inside its row picture', async ({ page }) => {
+    await routeGallery(page)
+    const ID = 'musc1CCCCCC'
+    // routes added later are asked first: this list marks the entry as recorded, the rest falls through
+    await page.route(/\/api\/gallery(\/.*)?$/, async (route) => {
+      const req = route.request()
+      const path = new URL(req.url()).pathname
+      if (path === '/api/gallery' && req.method() === 'GET') {
+        return route.fulfill({
+          json: { entries: [{ id: ID, title: 'Four On The Floor', kind: 'music', tags: [], authorName: 'Carol', publishedAt: Date.UTC(2026, 10, 1), fileCount: 1, hasThumbnail: false, hasRecording: true }] },
+        })
+      }
+      if (path === `/api/gallery/${ID}/recording`) {
+        return route.fulfill({
+          json: {
+            v: 1,
+            cover: 'floor.strudel',
+            contents: { patterns: 1, visuals: 0, other: 0 },
+            files: [{ path: 'floor.strudel', span: 'loop', cycles: 4, lanes: [{ name: 'kick' }], events: [[0, 0, 0.25, null], [0, 1, 0.25, null]], sections: [] }],
+          },
+        })
+      }
+      return route.fallback()
+    })
+    await page.addInitScript((id) => {
+      localStorage.setItem('stave.gallery.shares', JSON.stringify([{ id, title: 'Four On The Floor', kind: 'music', publishedAt: Date.UTC(2026, 10, 1), manageToken: 'tok-a' }]))
+    }, ID)
+    await bootApp(page)
+    await openGalleryFromMenu(page)
+    await page.locator('[data-gallery-tab="mine"]').click()
+    const row = page.locator(`[data-gallery-mine="${ID}"]`)
+    const canvas = row.locator('.sg-mshare-pic canvas[data-gallery-timeline]')
+    await expect(canvas).toHaveCount(1)
+    const pic = (await row.locator('.sg-mshare-pic').boundingBox())!
+    const drawn = (await canvas.boundingBox())!
+    console.log(`#2635 row picture ${pic.width}×${pic.height}, timeline ${drawn.width}×${drawn.height}`)
+    // inside its picture (a pixel of slack for the border)
+    expect(drawn.x).toBeGreaterThanOrEqual(pic.x - 1)
+    expect(drawn.y).toBeGreaterThanOrEqual(pic.y - 1)
+    expect(drawn.x + drawn.width).toBeLessThanOrEqual(pic.x + pic.width + 1)
+    expect(drawn.y + drawn.height).toBeLessThanOrEqual(pic.y + pic.height + 1)
+    // and the row's title is not under it
+    const titleButton = row.locator('.sg-mshare-title')
+    await expect(titleButton).toHaveText('Four On The Floor')
+    const title = (await titleButton.boundingBox())!
+    const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.tagName, [title.x + title.width / 2, title.y + title.height / 2])
+    expect(hit, 'what a click on the title lands on').not.toBe('CANVAS')
+    if (process.env.GALLERY_SHOTS) await page.screenshot({ path: `${process.env.GALLERY_SHOTS}/my-shares-recorded-cover.png` })
+  })
+
   test('#2433 your own publish and delete show at once, even while the cached list is older', async ({ page }) => {
     const NEW_ID = 'newEntry001'
     const published = {
