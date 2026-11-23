@@ -105,6 +105,36 @@ describe('instantiateLibraryGraph', () => {
   })
 })
 
+describe('instantiateLibraryGraph releases its module URLs (#2641 handoff)', () => {
+  it('revokes every statically imported module URL once imported; keeps dynamic-import targets', async () => {
+    const files = {
+      [`${BASE}index.js`]: `import { a } from './a.js';\nexport const lazy = () => import('./lazy.js');\nexport { a };\n`,
+      [`${BASE}a.js`]: `import * as THREE from 'three';\nexport const a = THREE.REVISION;\n`,
+      [`${BASE}lazy.js`]: `export const later = 42;\n`,
+    }
+    const g = await graphOf(files)
+    const revoked: string[] = []
+    const lib = await instantiateWith(g, { makeUrl: dataModuleUrl, shims: nodeShims, revokeUrl: (u) => revoked.push(u) })
+    expect(lib.urls).toHaveLength(3)
+    expect(lib.retained).toHaveLength(1) // lazy.js: only reached by import()
+    expect(revoked).toHaveLength(2)
+    expect(revoked).not.toContain(lib.retained[0])
+    // Shim URLs belong to the realm, not to this library.
+    expect(revoked.every((u) => lib.urls.includes(u))).toBe(true)
+    // The library still works after its URLs are released, the dynamic import included.
+    expect(lib.namespace.a).toBe((await import('three')).REVISION)
+    expect((await (lib.namespace.lazy as () => Promise<{ later: number }>)()).later).toBe(42)
+  })
+
+  it('a library whose entry throws while importing releases every URL it made', async () => {
+    const files = { [`${BASE}index.js`]: `import './a.js';\nthrow new Error('boom');\n`, [`${BASE}a.js`]: `export {}\n` }
+    const revoked: string[] = []
+    const e = await instantiateWith(await graphOf(files), { makeUrl: dataModuleUrl, shims: nodeShims, revokeUrl: (u) => revoked.push(u) }).catch((x) => x)
+    expect(e.message).toBe('boom')
+    expect(revoked).toHaveLength(2)
+  })
+})
+
 describe('a sketch importing a declared library', () => {
   // Each case starts with nothing loaded in this realm (a verified library is otherwise reused).
   beforeEach(() => forgetLoadedLibraries())

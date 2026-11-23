@@ -56822,12 +56822,16 @@ function hostShims() {
 __name(hostShims, "hostShims");
 
 // src/visualizers/libraries/instantiate.ts
+var defaultRevoke = /* @__PURE__ */ __name((url) => {
+  if (url.startsWith("blob:") && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(url);
+}, "defaultRevoke");
 async function instantiateLibraryGraph(graph, options = {}) {
   const shims = options.shims ?? hostShims();
   const makeUrl = options.makeUrl ?? defaultModuleUrlMaker();
   const made = /* @__PURE__ */ new Map();
   const visiting = /* @__PURE__ */ new Set();
   const urls = [];
+  const dynamicTargets = /* @__PURE__ */ new Set();
   let hostRewrites = 0;
   const make = /* @__PURE__ */ __name(async (url) => {
     const done = made.get(url);
@@ -56850,6 +56854,7 @@ async function instantiateLibraryGraph(graph, options = {}) {
         hostRewrites++;
       } else if (t.kind === "url") {
         to = await make(t.url);
+        if (imp.dynamic) dynamicTargets.add(to);
       } else {
         throw new LibraryLoadError(bareImportMessage(url, imp.specifier));
       }
@@ -56864,12 +56869,21 @@ async function instantiateLibraryGraph(graph, options = {}) {
     return moduleUrl;
   }, "make");
   const entryUrl = await make(graph.entry);
-  const namespace = await import(
-    /* webpackIgnore: true */
-    /* @vite-ignore */
-    entryUrl
-  );
-  return { namespace, urls, hostRewrites };
+  const revoke = options.revokeUrl ?? defaultRevoke;
+  let namespace;
+  try {
+    namespace = await import(
+      /* webpackIgnore: true */
+      /* @vite-ignore */
+      entryUrl
+    );
+  } catch (e) {
+    for (const u of urls) revoke(u);
+    throw e;
+  }
+  const retained = urls.filter((u) => dynamicTargets.has(u));
+  for (const u of urls) if (!dynamicTargets.has(u)) revoke(u);
+  return { namespace, urls, retained, hostRewrites };
 }
 __name(instantiateLibraryGraph, "instantiateLibraryGraph");
 

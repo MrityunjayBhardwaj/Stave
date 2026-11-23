@@ -7,6 +7,13 @@
  * made dependencies first, so every URL a module names exists when it is made;
  * then the entry is imported. Blob URLs in the browser (worker and page alike),
  * `data:` URLs where there are none (Node tests).
+ *
+ * Once the entry is imported, every module it reached statically is in the
+ * realm's module map, so their blob URLs are revoked at once: the sketch's
+ * teardown ledger (#2641) never sees them, since they are made before the
+ * sketch runs. A module that is only the target of a dynamic `import("…")`
+ * may still be fetched later, so its URL is kept (listed in `retained`).
+ * Shim URLs are shared by every library in the realm and are never revoked here.
  */
 
 import { bareImportMessage, classifyImport, LibraryLoadError, moduleImports, type LibraryGraph } from './graph'
@@ -15,13 +22,21 @@ import { defaultModuleUrlMaker, hostShims as sharedHostShims, type HostShims, ty
 export interface InstantiateOptions {
   shims?: HostShims
   makeUrl?: ModuleUrlMaker
+  /** How a made module URL is released once imported. Default: `URL.revokeObjectURL` for `blob:` URLs. */
+  revokeUrl?: (url: string) => void
+}
+
+const defaultRevoke = (url: string): void => {
+  if (url.startsWith('blob:') && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url)
 }
 
 export interface InstantiatedLibrary {
   /** The entry module's namespace. */
   readonly namespace: Record<string, unknown>
-  /** Every module URL made (the entry's last), for whoever tears them down. */
+  /** Every module URL made (the entry's last). */
   readonly urls: readonly string[]
+  /** The URLs still live after import: modules reached only by a dynamic `import()`. */
+  readonly retained: readonly string[]
   /** How many imports were pointed at Stave's own modules. */
   readonly hostRewrites: number
 }
@@ -32,6 +47,8 @@ export async function instantiateLibraryGraph(graph: LibraryGraph, options: Inst
   const made = new Map<string, string>()
   const visiting = new Set<string>()
   const urls: string[] = []
+  /** Module URLs named by a dynamic import somewhere in the graph. */
+  const dynamicTargets = new Set<string>()
   let hostRewrites = 0
 
   const make = async (url: string): Promise<string> => {
@@ -55,6 +72,7 @@ export async function instantiateLibraryGraph(graph: LibraryGraph, options: Inst
         hostRewrites++
       } else if (t.kind === 'url') {
         to = await make(t.url)
+        if (imp.dynamic) dynamicTargets.add(to)
       } else {
         throw new LibraryLoadError(bareImportMessage(url, imp.specifier))
       }
@@ -70,6 +88,17 @@ export async function instantiateLibraryGraph(graph: LibraryGraph, options: Inst
   }
 
   const entryUrl = await make(graph.entry)
-  const namespace = (await import(/* webpackIgnore: true */ /* @vite-ignore */ entryUrl)) as Record<string, unknown>
-  return { namespace, urls, hostRewrites }
+  const revoke = options.revokeUrl ?? defaultRevoke
+  let namespace: Record<string, unknown>
+  try {
+    namespace = (await import(/* webpackIgnore: true */ /* @vite-ignore */ entryUrl)) as Record<string, unknown>
+  } catch (e) {
+    // Nothing will import these again: release them all.
+    for (const u of urls) revoke(u)
+    throw e
+  }
+  // Imported: every statically reached module is evaluated, so its URL is no longer needed.
+  const retained = urls.filter((u) => dynamicTargets.has(u))
+  for (const u of urls) if (!dynamicTargets.has(u)) revoke(u)
+  return { namespace, urls, retained, hostRewrites }
 }

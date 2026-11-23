@@ -9844,17 +9844,28 @@ interface HostShims {
  * made dependencies first, so every URL a module names exists when it is made;
  * then the entry is imported. Blob URLs in the browser (worker and page alike),
  * `data:` URLs where there are none (Node tests).
+ *
+ * Once the entry is imported, every module it reached statically is in the
+ * realm's module map, so their blob URLs are revoked at once: the sketch's
+ * teardown ledger (#2641) never sees them, since they are made before the
+ * sketch runs. A module that is only the target of a dynamic `import("…")`
+ * may still be fetched later, so its URL is kept (listed in `retained`).
+ * Shim URLs are shared by every library in the realm and are never revoked here.
  */
 
 interface InstantiateOptions {
     shims?: HostShims;
     makeUrl?: ModuleUrlMaker;
+    /** How a made module URL is released once imported. Default: `URL.revokeObjectURL` for `blob:` URLs. */
+    revokeUrl?: (url: string) => void;
 }
 interface InstantiatedLibrary {
     /** The entry module's namespace. */
     readonly namespace: Record<string, unknown>;
-    /** Every module URL made (the entry's last), for whoever tears them down. */
+    /** Every module URL made (the entry's last). */
     readonly urls: readonly string[];
+    /** The URLs still live after import: modules reached only by a dynamic `import()`. */
+    readonly retained: readonly string[];
     /** How many imports were pointed at Stave's own modules. */
     readonly hostRewrites: number;
 }
