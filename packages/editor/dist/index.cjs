@@ -42719,12 +42719,12 @@ function groupBoxesBySteps(boxes, starts, steps, owners2) {
       inStep.push(boxes[k++]);
     }
     if (inStep.length === 0) continue;
-    let plain = true;
+    let plain2 = true;
     for (const owner of owners2) {
       const first = owner(from);
-      for (let c = from + 1; c < to && plain; c++) plain = owner(c) === first;
+      for (let c = from + 1; c < to && plain2; c++) plain2 = owner(c) === first;
     }
-    out.push({ from, to, boxes: inStep, plain });
+    out.push({ from, to, boxes: inStep, plain: plain2 });
   }
   return k === boxes.length ? out : alone();
 }
@@ -57540,6 +57540,185 @@ function compilePreset(preset) {
 }
 __name(compilePreset, "compilePreset");
 
+// src/visualizers/libraries/catalogue.ts
+var LIBRARY_CATALOGUE = [
+  {
+    name: "@sparkjsdev/spark",
+    title: "Spark",
+    version: "2.4.0",
+    description: "Gaussian splats in three.js",
+    license: "MIT",
+    url: "https://esm.sh/@sparkjsdev/spark@2.4.0?external=three&target=es2022",
+    importLine: "import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark'"
+  },
+  {
+    name: "postprocessing",
+    title: "postprocessing",
+    version: "6.39.6",
+    description: "Post-processing effects (bloom, colour, depth of field\u2026)",
+    license: "Zlib",
+    url: "https://esm.sh/postprocessing@6.39.6?external=three&target=es2022",
+    importLine: "import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing'"
+  },
+  {
+    name: "three-mesh-bvh",
+    title: "three-mesh-bvh",
+    version: "0.9.18",
+    description: "Fast raycasting and spatial queries on meshes",
+    license: "MIT",
+    url: "https://esm.sh/three-mesh-bvh@0.9.18?external=three&target=es2022&bundle",
+    importLine: "import { MeshBVH } from 'three-mesh-bvh'"
+  },
+  {
+    name: "simplex-noise",
+    title: "simplex-noise",
+    version: "4.0.3",
+    description: "Simplex noise in 2D, 3D and 4D",
+    license: "MIT",
+    url: "https://esm.sh/simplex-noise@4.0.3?target=es2022",
+    importLine: "import { createNoise2D, createNoise3D } from 'simplex-noise'"
+  }
+];
+async function declarationFor(entry, options = {}) {
+  const graph = await loadLibraryGraph(entry.url, options);
+  return { url: entry.url, sha384: await libraryGraphHash(graph) };
+}
+__name(declarationFor, "declarationFor");
+
+// src/visualizers/libraries/libsFileEdit.ts
+function declValue(decl) {
+  return decl.sha384 === void 0 ? { url: decl.url } : { url: decl.url, sha384: decl.sha384 };
+}
+__name(declValue, "declValue");
+function ws(text, i) {
+  while (i < text.length && /\s/.test(text[i])) i++;
+  return i;
+}
+__name(ws, "ws");
+function skipString(text, i) {
+  i++;
+  while (i < text.length) {
+    if (text[i] === "\\") i += 2;
+    else if (text[i] === '"') return i + 1;
+    else i++;
+  }
+  throw new Error("unterminated string");
+}
+__name(skipString, "skipString");
+function skipValue(text, i) {
+  if (text[i] === '"') return skipString(text, i);
+  if (text[i] === "{" || text[i] === "[") {
+    let depth = 0;
+    while (i < text.length) {
+      const c = text[i];
+      if (c === '"') {
+        i = skipString(text, i);
+        continue;
+      }
+      if (c === "{" || c === "[") depth++;
+      else if (c === "}" || c === "]") {
+        depth--;
+        if (depth === 0) return i + 1;
+      }
+      i++;
+    }
+    throw new Error("unbalanced brackets");
+  }
+  while (i < text.length && !/[\s,}\]]/.test(text[i])) i++;
+  return i;
+}
+__name(skipValue, "skipValue");
+function scanTopLevel(text) {
+  const open = ws(text, 0);
+  if (text[open] !== "{") throw new Error("not an object");
+  const members = [];
+  let i = ws(text, open + 1);
+  while (text[i] !== "}") {
+    const keyStart = i;
+    const keyEnd = skipString(text, i);
+    const key3 = JSON.parse(text.slice(keyStart, keyEnd));
+    i = ws(text, keyEnd);
+    i = ws(text, i + 1);
+    const valueStart = i;
+    const valueEnd = skipValue(text, i);
+    members.push({ keyStart, key: key3, valueStart, valueEnd });
+    i = ws(text, valueEnd);
+    if (text[i] === ",") i = ws(text, i + 1);
+  }
+  return { open, close: i, members };
+}
+__name(scanTopLevel, "scanTopLevel");
+function lineIndent(text, pos) {
+  const lineStart = text.lastIndexOf("\n", pos - 1) + 1;
+  return /^[ \t]*/.exec(text.slice(lineStart))[0];
+}
+__name(lineIndent, "lineIndent");
+function plain(obj) {
+  return `${JSON.stringify(obj, null, 2)}
+`;
+}
+__name(plain, "plain");
+function sameMeaning(text, want) {
+  try {
+    return JSON.stringify(JSON.parse(text)) === JSON.stringify(want);
+  } catch {
+    return false;
+  }
+}
+__name(sameMeaning, "sameMeaning");
+function withLibraryDeclaration(text, name, decl) {
+  const value = declValue(decl);
+  if (text == null || text.trim() === "") return { ok: true, text: plain({ [name]: value }) };
+  let current8;
+  try {
+    current8 = JSON.parse(text);
+  } catch (e) {
+    return { ok: false, message: `${LIBS_FILE} isn't valid JSON (${e instanceof Error ? e.message : String(e)}), so it was left as it is. Fix it, then add the library again.` };
+  }
+  if (!current8 || typeof current8 !== "object" || Array.isArray(current8)) {
+    return { ok: false, message: `${LIBS_FILE} should hold one object, { "<import name>": { "url": "\u2026", "sha384": "\u2026" } }, so it was left as it is.` };
+  }
+  const want = { ...current8, [name]: value };
+  let spliced;
+  try {
+    spliced = splice(text, name, value);
+  } catch {
+    return { ok: true, text: plain(want) };
+  }
+  return { ok: true, text: sameMeaning(spliced, want) ? spliced : plain(want) };
+}
+__name(withLibraryDeclaration, "withLibraryDeclaration");
+function splice(text, name, value) {
+  const top = scanTopLevel(text);
+  const multiline = text.slice(top.open, top.close).includes("\n");
+  const first = top.members[0];
+  const memberIndent = first ? lineIndent(text, first.keyStart) : "  ";
+  const outerIndent = lineIndent(text, top.open);
+  const step = first && memberIndent.startsWith(outerIndent) && memberIndent.length > outerIndent.length ? memberIndent.slice(outerIndent.length) : "  ";
+  const render = /* @__PURE__ */ __name((indent) => {
+    if (!multiline) return `{ ${Object.entries(value).map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(", ")} }`;
+    return JSON.stringify(value, null, step).replace(/\n/g, `
+${indent}`);
+  }, "render");
+  const existing = top.members.filter((m) => m.key === name);
+  if (existing.length > 0) {
+    const m = existing[existing.length - 1];
+    return text.slice(0, m.valueStart) + render(lineIndent(text, m.keyStart)) + text.slice(m.valueEnd);
+  }
+  const entry = `${JSON.stringify(name)}: ${render(memberIndent)}`;
+  if (top.members.length === 0) {
+    const inner = multiline ? `
+${memberIndent}${entry}
+${outerIndent}` : ` ${entry} `;
+    return text.slice(0, top.open + 1) + inner + text.slice(top.close);
+  }
+  const last = top.members[top.members.length - 1];
+  const sep = multiline ? `,
+${memberIndent}` : ", ";
+  return text.slice(0, last.valueEnd) + sep + entry + text.slice(last.valueEnd);
+}
+__name(splice, "splice");
+
 // src/visualizers/demoSignalSource.ts
 var range = /* @__PURE__ */ __name((n, step) => Array.from({ length: n }, (_, i) => i * step), "range");
 var DRUM_DEMO_VOICES = [
@@ -61076,6 +61255,7 @@ exports.IDB_SYNC_TIMEOUT_MS = IDB_SYNC_TIMEOUT_MS;
 exports.INLINE_VIZ_ACTION_SIZE_VAR = INLINE_VIZ_ACTION_SIZE_VAR;
 exports.IR = IR;
 exports.Knob = Knob;
+exports.LIBRARY_CATALOGUE = LIBRARY_CATALOGUE;
 exports.LIBS_FILE = LIBS_FILE;
 exports.LIGHT_THEME_TOKENS = LIGHT_THEME_TOKENS;
 exports.LibraryLoadError = LibraryLoadError;
@@ -61215,6 +61395,7 @@ exports.currentProjectLibrariesText = currentProjectLibrariesText;
 exports.cycleEditorTheme = cycleEditorTheme;
 exports.cycleFingerprints = cycleFingerprints;
 exports.cyclesToPlayThrough = cyclesToPlayThrough;
+exports.declarationFor = declarationFor;
 exports.declaredSettings = declaredSettings;
 exports.deleteAsset = deleteAsset;
 exports.deleteProject = deleteProject;
@@ -61691,6 +61872,7 @@ exports.warmMonaco = warmMonaco;
 exports.warmSamplePeaks = warmSamplePeaks;
 exports.wholeWalkWindow = wholeWalkWindow;
 exports.withAudioFrame = withAudioFrame;
+exports.withLibraryDeclaration = withLibraryDeclaration;
 exports.withSoundRefsLock = withSoundRefsLock;
 exports.withStructBatch = withStructBatch;
 exports.workspaceAudioBus = workspaceAudioBus;
