@@ -38,7 +38,7 @@ const LIB = {
 }
 
 async function graphOf(files: Record<string, string>, entry = `${BASE}index.js`): Promise<LibraryGraph> {
-  return loadLibraryGraph(entry, { fetchText: cdn(files).fetchText, instantiate: instantiateLibraryGraph })
+  return loadLibraryGraph(entry, { fetchText: cdn(files).fetchText })
 }
 
 describe('loadLibraryGraph', () => {

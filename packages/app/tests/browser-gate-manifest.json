@@ -703,6 +703,14 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "library-cache-offline.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project"
+  },
+  "library-cache.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project"
+  },
   "library-remove-sound.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
@@ -1122,6 +1130,10 @@
   "three-libraries.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project (its describes also set browserName to firefox and webkit)"
+  },
+  "three-sketch-teardown.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
   "three-viz.spec.ts": {
     "runs": "measurement",
