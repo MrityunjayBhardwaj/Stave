@@ -26,6 +26,7 @@ import {
 } from '../../visualizers/namedVizRegistry'
 import type { VizPreset } from '../../visualizers/vizPreset'
 import { setVizDescriptorSource } from '../../visualizers/inlineVizWarmup'
+import { currentProjectLibrariesText } from '../../visualizers/libraries/projectLibraries'
 
 /**
  * Compile a preset into a `VizDescriptor` and register it in the
@@ -61,9 +62,12 @@ export function registerPresetAsNamedViz(
     const descriptor = compilePreset(preset)
     // #2560 — what it was built from, so a re-registration of the SAME code
     // (a re-run of the registration sweep) keeps its warm inline renderer.
+    // #2642 — a sketch is also built from the project's stave.libs.json: a
+    // changed file makes a different sketch, so its warm renderer isn't reused.
+    const libs = preset.renderer === 'three' ? currentProjectLibrariesText() : null
     setVizDescriptorSource(
       descriptor,
-      JSON.stringify([preset.renderer, preset.code, preset.filePath ?? null, preset.nativeSize ?? null]),
+      JSON.stringify([preset.renderer, preset.code, preset.filePath ?? null, preset.nativeSize ?? null, libs]),
     )
     registerNamedViz(name, descriptor)
     return true

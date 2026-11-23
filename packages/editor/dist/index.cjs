@@ -57313,8 +57313,9 @@ __name(synthesizeSpectrum, "synthesizeSpectrum");
 function mountVizPreview(container, spec, size, onError) {
   if (!shouldUseWorkerRenderer()) return null;
   const demo = createDrumDemoSignalSource();
+  const libs = spec.renderer === "three" ? spec.libs !== void 0 ? spec.libs : currentProjectLibrariesText() : null;
   const source2 = /* @__PURE__ */ __name(() => {
-    const r = new WorkerVizRenderer(spec.renderer, spec.code, spec.name);
+    const r = new WorkerVizRenderer(spec.renderer, spec.code, spec.name, { libs });
     r.setDemoSource(demo);
     return r;
   }, "source");
@@ -60126,9 +60127,10 @@ var THREE_VIZ = createCompiledVizProvider({
 function registerPresetAsNamedViz(preset, name = preset.name) {
   try {
     const descriptor = compilePreset(preset);
+    const libs = preset.renderer === "three" ? currentProjectLibrariesText() : null;
     setVizDescriptorSource(
       descriptor,
-      JSON.stringify([preset.renderer, preset.code, preset.filePath ?? null, preset.nativeSize ?? null])
+      JSON.stringify([preset.renderer, preset.code, preset.filePath ?? null, preset.nativeSize ?? null, libs])
     );
     registerNamedViz(name, descriptor);
     return true;
