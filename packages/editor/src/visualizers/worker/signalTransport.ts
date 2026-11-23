@@ -26,6 +26,11 @@ interface FrameEnvelope {
   frame: SignalFrame
 }
 
+/** A signal frame's envelope (as opposed to a control message on the same channel). */
+export function isSignalFrameEnvelope(data: unknown): boolean {
+  return isFrameEnvelope(data)
+}
+
 function isFrameEnvelope(data: unknown): data is FrameEnvelope {
   return (
     typeof data === 'object' &&

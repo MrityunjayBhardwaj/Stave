@@ -1595,6 +1595,10 @@ var RawSchedulerShim = _RawSchedulerShim;
 
 // src/visualizers/worker/signalTransport.ts
 var SIGNAL_FRAME_TAG = "__staveSignalFrame";
+function isSignalFrameEnvelope(data) {
+  return isFrameEnvelope(data);
+}
+__name(isSignalFrameEnvelope, "isSignalFrameEnvelope");
 function isFrameEnvelope(data) {
   return typeof data === "object" && data !== null && data[SIGNAL_FRAME_TAG] === true;
 }
@@ -8423,17 +8427,42 @@ function hostVizWorker(scope) {
     } catch {
     }
   }, "releaseGL");
+  let mounting = false;
+  let pending = {};
   scope.addEventListener("message", (ev) => {
     const data = ev.data;
-    if (!isControlMessage(data)) return;
+    if (!isControlMessage(data)) {
+      if (!state && isSignalFrameEnvelope(data)) {
+        try {
+          scope.postMessage({ type: "frameAck" });
+        } catch {
+        }
+      }
+      return;
+    }
     handleControl(data).catch(
       (e) => diag("error", `worker control '${data.type}' failed: ${errMsg(e)}`, errStack(e))
     );
   });
   async function handleControl(msg) {
+    if (mounting && msg.type !== "mount" && msg.type !== "config") {
+      if (msg.type === "pause") pending.paused = true;
+      else if (msg.type === "resume") pending.paused = false;
+      else if (msg.type === "resize") pending.resize = { w: msg.w, h: msg.h, dpr: msg.dpr };
+      else if (msg.type === "options") pending.options = msg.options;
+      else if (msg.type === "destroy") pending.destroy = true;
+      return;
+    }
     switch (msg.type) {
       case "mount":
-        await mount(msg);
+        mounting = true;
+        pending = {};
+        try {
+          await mount(msg);
+        } finally {
+          mounting = false;
+          applyPending();
+        }
         break;
       case "resize":
         resize(msg.w, msg.h, msg.dpr);
@@ -8456,6 +8485,19 @@ function hostVizWorker(scope) {
     }
   }
   __name(handleControl, "handleControl");
+  function applyPending() {
+    const p = pending;
+    pending = {};
+    if (p.destroy) {
+      destroy();
+      return;
+    }
+    if (!state) return;
+    if (p.paused !== void 0) state.paused = p.paused;
+    if (p.resize) resize(p.resize.w, p.resize.h, p.resize.dpr);
+    if (p.options) state.setOptions?.(p.options);
+  }
+  __name(applyPending, "applyPending");
   async function mount(msg) {
     post("alive");
     if (state) destroy();

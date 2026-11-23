@@ -102,7 +102,15 @@ interface Played {
 
 /** Open a shared project holding `sketch` (+ `libsText` as stave.libs.json), play
  *  its pattern, and collect what the sketch logged and the Console's three rows. */
-async function playShared(page: Page, mode: Mode, sketch: string, libsText: string | null, waitMs = 60_000): Promise<Played> {
+/** Where the sketch is drawn: inline under its track, or as the page's backdrop
+ *  (a master line, #2650). */
+type Placement = 'inline' | 'backdrop'
+const SONGS: Record<Placement, string> = {
+  inline: `drums: s("bd*2").viz("probe")\n`,
+  backdrop: `drums: s("bd*2")\nall(x => x.viz("probe"))\n`,
+}
+
+async function playShared(page: Page, mode: Mode, sketch: string, libsText: string | null, waitMs = 60_000, placement: Placement = 'inline'): Promise<Played> {
   page.on('dialog', (d) => d.accept())
   await page.addInitScript((m: Mode) => {
     const w = window as unknown as { __STAVE_E2E__?: boolean; __splats?: unknown[] }
@@ -118,7 +126,7 @@ async function playShared(page: Page, mode: Mode, sketch: string, libsText: stri
   }, mode)
   const files: ProjectFile[] = [
     { id: 'viz', path: 'probe.three', language: 'three', content: sketch },
-    { id: 'song', path: 'song.strudel', language: 'strudel', content: `drums: s("bd*2").viz("probe")\n` },
+    { id: 'song', path: 'song.strudel', language: 'strudel', content: SONGS[placement] },
   ]
   if (libsText !== null) files.push({ id: 'libs', path: 'stave.libs.json', language: 'json', content: libsText })
   await page.goto(`/#share=${shareHash(`libs-${mode}`, files)}`, { waitUntil: 'domcontentloaded' })
@@ -181,6 +189,30 @@ for (const browserName of ['chromium', 'firefox', 'webkit'] as const) {
         expect(dark.splats[0].red).toBe(0)
       }))
     }
+
+    // #2650 — a backdrop gets resume/resize and its first frames while the worker is
+    // still loading the library; frames it never acked stopped main sending more.
+    test('a backdrop that imports a library draws in the worker; an empty one draws none', () => onEngine(async (page, context) => {
+      test.fixme(browserName === 'firefox', "#2646: Spark sometimes stalls in Firefox's sketch worker")
+      await serveLibraries(context)
+      const decl = libs({ '@sparkjsdev/spark': { url: LIB_URL, sha384: SPARK_SHA } })
+      const lit = await playShared(page, 'worker', sparkSketch(3000), decl, 60_000, 'backdrop')
+      console.log(`[#2650] ${browserName} backdrop worker splats=3000 ${JSON.stringify(lit.splats)} rows=${JSON.stringify(lit.rows)}`)
+      expect(lit.rows.filter((r) => r.level === 'error'), 'no error rows').toEqual([])
+      expect(lit.splats, 'the backdrop sketch reported its pixels').toHaveLength(1)
+      expect(lit.splats[0].realm).toBe('worker')
+      expect(lit.splats[0].red, 'the backdrop drew splats').toBeGreaterThan(0)
+    }))
+
+    test('the empty backdrop control draws no red (worker)', () => onEngine(async (page, context) => {
+      test.fixme(browserName === 'firefox', "#2646: Spark sometimes stalls in Firefox's sketch worker")
+      await serveLibraries(context)
+      const decl = libs({ '@sparkjsdev/spark': { url: LIB_URL, sha384: SPARK_SHA } })
+      const dark = await playShared(page, 'worker', sparkSketch(0), decl, 60_000, 'backdrop')
+      console.log(`[#2650] ${browserName} backdrop worker splats=0 ${JSON.stringify(dark.splats)}`)
+      expect(dark.splats).toHaveLength(1)
+      expect(dark.splats[0].red).toBe(0)
+    }))
 
     test('wrong hash: refused, and the message names the library', () => onEngine(async (page, context) => {
       await serveLibraries(context)
