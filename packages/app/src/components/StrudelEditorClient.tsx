@@ -58,6 +58,8 @@ import {
   subscribeToFileList,
   registerRuntimeProvider,
   registerPreviewProvider,
+  setProjectLibrariesSource,
+  LIBS_FILE,
   getRuntimeProviderForLanguage,
   getPreviewProviderForLanguage,
   STRUDEL_RUNTIME,
@@ -340,6 +342,12 @@ function ensureProviders() {
   registerPreviewProvider(P5_VIZ);
   registerPreviewProvider(GLSL_VIZ);
   registerPreviewProvider(THREE_VIZ);
+  // #2639 — a three.js sketch imports the libraries the project declares in its
+  // root `stave.libs.json`; the renderer reads the file's text from here when it
+  // is made (makeThreeRenderer) and carries it to the worker in its mount message.
+  setProjectLibrariesSource(
+    () => listWorkspaceFiles().find((f) => f.path === LIBS_FILE)?.content ?? null,
+  );
 }
 
 // ---------------------------------------------------------------------------

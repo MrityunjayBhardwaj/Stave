@@ -13,6 +13,7 @@ import MonacoEditorRaw, { loader, DiffEditor as DiffEditor$1 } from '@monaco-edi
 import * as Y3 from 'yjs';
 import { createPortal } from 'react-dom';
 import { getAudioContext, superdough, getCachedBuffer, getSampleInfo, getSound, loadBuffer, samples, soundMap } from '@strudel/webaudio';
+import { init, parse as parse$3 } from 'es-module-lexer';
 
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -1447,8 +1448,8 @@ var listeners4 = /* @__PURE__ */ new Set();
 var fixedMarkers = /* @__PURE__ */ new Map();
 var fixedListeners = /* @__PURE__ */ new Set();
 var idSeq = 0;
-function fixedKey(runtime, source) {
-  return `${runtime}:${source ?? "*"}`;
+function fixedKey(runtime, source2) {
+  return `${runtime}:${source2 ?? "*"}`;
 }
 __name(fixedKey, "fixedKey");
 function makeId() {
@@ -1555,8 +1556,8 @@ function getFixedMarkers() {
   return new Map(fixedMarkers);
 }
 __name(getFixedMarkers, "getFixedMarkers");
-function makeFixedKey(runtime, source) {
-  return fixedKey(runtime, source);
+function makeFixedKey(runtime, source2) {
+  return fixedKey(runtime, source2);
 }
 __name(makeFixedKey, "makeFixedKey");
 
@@ -5707,11 +5708,11 @@ var _Writeback = class _Writeback {
    * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
    * the whole gesture).
    */
-  replaceRanges(edits, source) {
-    return this.apply(edits, source);
+  replaceRanges(edits, source2) {
+    return this.apply(edits, source2);
   }
   /** false when there is no document to write to — nothing was applied */
-  apply(edits, source) {
+  apply(edits, source2) {
     const model = this.editor.getModel();
     if (!model) return false;
     const normalized = normalizeEdits(edits);
@@ -5730,7 +5731,7 @@ var _Writeback = class _Writeback {
       };
     });
     if (!this.inGesture) model.pushStackElement();
-    this.writingSource = source;
+    this.writingSource = source2;
     try {
       model.pushEditOperations([], ops, () => null);
     } finally {
@@ -5763,16 +5764,16 @@ var _Writeback = class _Writeback {
 };
 __name(_Writeback, "Writeback");
 var Writeback = _Writeback;
-function commit(writer, edit, source) {
+function commit(writer, edit, source2) {
   const edits = editList(edit);
   if (edits.length === 0) return "nothing-to-write";
-  return writer.replaceRanges(edits, source) ? "written" : "no-document";
+  return writer.replaceRanges(edits, source2) ? "written" : "no-document";
 }
 __name(commit, "commit");
-function commitToEditor(editor, edit, source) {
+function commitToEditor(editor, edit, source2) {
   const writer = createWriter(editor);
   if (!writer) return "no-document";
-  return commit(writer, edit, source);
+  return commit(writer, edit, source2);
 }
 __name(commitToEditor, "commitToEditor");
 function createWriter(editor) {
@@ -5792,7 +5793,7 @@ function isCommitting(writer) {
   return writer?.currentSource != null;
 }
 __name(isCommitting, "isCommitting");
-function commitToFile(fileId, edit, source, expectedDoc) {
+function commitToFile(fileId, edit, source2, expectedDoc) {
   const editor = getEditorForFile(fileId);
   if (!editor) return "no-editor";
   const writer = createWriter(editor);
@@ -5801,7 +5802,7 @@ function commitToFile(fileId, edit, source, expectedDoc) {
   if (edits.length === 0) return "no-edits";
   if (editor.getModel?.()?.getValue?.() !== expectedDoc) return "stale-document";
   try {
-    writer.replaceRanges(edits, source);
+    writer.replaceRanges(edits, source2);
     return "applied";
   } catch {
     return "writeback-threw";
@@ -8450,8 +8451,8 @@ function songEnd(ir, cap = DEFAULT_CAP, signalPeriods) {
   return { ...extent, cycles: arrangedRepeatCycles(ir, extent.cycles, cap, signalPeriods) };
 }
 __name(songEnd, "songEnd");
-function songEndOf(source) {
-  return songEnd(parseStrudel(source));
+function songEndOf(source2) {
+  return songEnd(parseStrudel(source2));
 }
 __name(songEndOf, "songEndOf");
 function songPeriodOf(a) {
@@ -8793,9 +8794,9 @@ function fixedParameters(ir) {
   return out;
 }
 __name(fixedParameters, "fixedParameters");
-function fixedToStepsEdit(f, steps, source) {
+function fixedToStepsEdit(f, steps, source2) {
   if (!Number.isInteger(steps) || steps < 1) return null;
-  const num = numberOf(source.slice(f.argSpan.start, f.argSpan.end));
+  const num = numberOf(source2.slice(f.argSpan.start, f.argSpan.end));
   if (!num || num.text !== f.valueText) return null;
   const q = num.quote || '"';
   return { range: [f.argSpan.start, f.argSpan.end], text: `${q}<${Array(steps).fill(num.text).join(" ")}>${q}` };
@@ -8804,19 +8805,19 @@ __name(fixedToStepsEdit, "fixedToStepsEdit");
 
 // src/codeView/ir/stepCount.ts
 var sameStep = /* @__PURE__ */ __name((a, b) => a.value === b.value && a.weight === b.weight, "sameStep");
-function stepCountEdit(a, n, source) {
+function stepCountEdit(a, n, source2) {
   const steps = a.steps;
   const len = steps.length;
   if (!Number.isInteger(n) || n < 1 || n === len || len === 0) return null;
   for (const step of steps) {
-    const text = source.slice(step.valueSpan.start, step.valueSpan.end);
+    const text = source2.slice(step.valueSpan.start, step.valueSpan.end);
     if (text === "" || Number(text) !== step.value) return null;
   }
   const last = steps[len - 1];
-  const close = source.indexOf(">", last.valueSpan.end);
+  const close = source2.indexOf(">", last.valueSpan.end);
   if (close < 0) return null;
   const texts = steps.map(
-    (step, i) => source.slice(step.valueSpan.start, i + 1 < len ? steps[i + 1].valueSpan.start : close).trimEnd()
+    (step, i) => source2.slice(step.valueSpan.start, i + 1 < len ? steps[i + 1].valueSpan.start : close).trimEnd()
   );
   const next = Array.from({ length: n }, (_, i) => i % len);
   const dropsWritten = n < len && steps.slice(n).some((step, k) => !sameStep(step, steps[(n + k) % n]));
@@ -9875,8 +9876,8 @@ function readSource(chunk, kind) {
   return readChainMethod(chunk, ["sound", "s", "bank"])?.value ?? null;
 }
 __name(readSource, "readSource");
-function soundNames(source) {
-  const arg = readSoundArg(source);
+function soundNames(source2) {
+  const arg = readSoundArg(source2);
   return arg.kind === "one" ? [arg.name] : arg.names;
 }
 __name(soundNames, "soundNames");
@@ -9923,7 +9924,7 @@ function trackIdsByLine(doc) {
 __name(trackIdsByLine, "trackIdsByLine");
 function buildStripModel(chunk, index, displayKey, id, captureId) {
   const kind = stripKind(chunk);
-  const source = readSource(chunk, kind);
+  const source2 = readSource(chunk, kind);
   const identity = trackIdentity(displayKey);
   return {
     id,
@@ -9935,8 +9936,8 @@ function buildStripModel(chunk, index, displayKey, id, captureId) {
     shownName: shownTrackName(identity.name, labelName(chunk.label)),
     headFn: chunk.headFn,
     miniString: chunk.miniString,
-    source,
-    sounds: source === null ? [] : soundNames(source),
+    source: source2,
+    sounds: source2 === null ? [] : soundNames(source2),
     gain: readGainState(chunk),
     pan: readScalar(chunk, "pan"),
     panForeign: isForeign(chunk, "pan"),
@@ -9984,9 +9985,9 @@ function buildStripModels(chunks, doc) {
   return models;
 }
 __name(buildStripModels, "buildStripModels");
-function statementOffsetForSource(doc, source) {
+function statementOffsetForSource(doc, source2) {
   const strip = buildStripModels(detectAllChunks(doc), doc).find(
-    (s) => s.source === source || s.sounds.includes(source)
+    (s) => s.source === source2 || s.sounds.includes(source2)
   );
   return strip ? strip.statementRange[0] : null;
 }
@@ -13809,8 +13810,8 @@ function parseRollLanes(parts, viewScale = UNREFINED) {
     if (documentTotal > MAX_STEPS) {
       return { ok: false, reason: `the stack expands the roll past ${MAX_STEPS} steps` };
     }
-    const shared = documentTotal * viewScale;
-    models = models.map((m) => scaleRoll(m, shared / m.steps));
+    const shared2 = documentTotal * viewScale;
+    models = models.map((m) => scaleRoll(m, shared2 / m.steps));
   }
   const steps = models[0].steps;
   const numeric = models.some((m) => m.numeric);
@@ -13902,13 +13903,13 @@ var whole = /* @__PURE__ */ __name((x) => {
   const r = Math.round(x);
   return Math.abs(x - r) < 1e-9 ? r : null;
 }, "whole");
-function rhythmChart(chords, rhythm, model, parse10, masks = []) {
+function rhythmChart(chords, rhythm, model, parse11, masks = []) {
   if (chords === null || model === null) return NONE;
   if (model.barSteps) return NONE;
   const rhythmBars = model.bars ?? 1;
   const colsPerBar = model.steps / rhythmBars;
   if (!Number.isInteger(colsPerBar) || colsPerBar < 1) return NONE;
-  const chordsRead = parse10(chords);
+  const chordsRead = parse11(chords);
   if (!chordsRead.ok) return NONE;
   const chordBars = chordsRead.model.bars ?? 1;
   const readMasks = masks.filter((m) => m !== null);
@@ -14656,10 +14657,10 @@ function silenceArm(doc, call, i) {
   return [{ range: arm2.patternRange, text: "silence" }];
 }
 __name(silenceArm, "silenceArm");
-function setArmPattern(doc, call, i, source) {
+function setArmPattern(doc, call, i, source2) {
   const arm2 = call.arms[i];
   if (!arm2) return [];
-  const next = source.trim();
+  const next = source2.trim();
   if (next === "") return [];
   if (patternText(doc, call, i).trim() === next) return [];
   return [{ range: arm2.patternRange, text: next }];
@@ -14951,11 +14952,11 @@ function shapeOptions(a) {
   return a.spans.shape === null ? [] : [...shapeAlternatives(a.kind), ...crossClassShapes(a.kind)];
 }
 __name(shapeOptions, "shapeOptions");
-function shapeEdit(a, next, source) {
+function shapeEdit(a, next, source2) {
   const span = a.spans.shape;
   if (span === null) return null;
   if (!shapeOptions(a).some((k) => k === next)) return null;
-  if (source.slice(span.start, span.end) !== a.kind) return null;
+  if (source2.slice(span.start, span.end) !== a.kind) return null;
   return { range: [span.start, span.end], text: next };
 }
 __name(shapeEdit, "shapeEdit");
@@ -15435,11 +15436,11 @@ __name(toggleCell, "toggleCell");
 function placeNote(model, pitch, start, duration, opts = {}) {
   const accept = /* @__PURE__ */ __name((next) => opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next), "accept");
   const at = model.notes.filter((n) => n.start === start);
-  const shared = at.length > 0 && at.every((n) => n.duration === at[0].duration) ? at[0].duration : null;
-  if (shared !== null) {
+  const shared2 = at.length > 0 && at.every((n) => n.duration === at[0].duration) ? at[0].duration : null;
+  if (shared2 !== null) {
     return accept({
       ...model,
-      notes: [...model.notes, { pitch, start, duration: shared }]
+      notes: [...model.notes, { pitch, start, duration: shared2 }]
     });
   }
   const capAt = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
@@ -15829,9 +15830,9 @@ function duplicateBar(mini, bars) {
   if (inner === null && bars !== 1) return { ok: false, reason: CHANGES_PER_CYCLE };
   const entries3 = inner !== null ? splitEntries(inner) : [`[${mini.trim()}]`];
   if (entries3 === null || entries3.length !== bars) return { ok: false, reason: WHICH_BAR };
-  const source = bars % shortestRun(old);
-  const next = `<${entriesOf(mini)} ${entries3[source]}>`;
-  const why = playsAsIntended(old, next, bars + 1, (b) => b < bars ? b : source);
+  const source2 = bars % shortestRun(old);
+  const next = `<${entriesOf(mini)} ${entries3[source2]}>`;
+  const why = playsAsIntended(old, next, bars + 1, (b) => b < bars ? b : source2);
   return why === null ? { ok: true, mini: next } : { ok: false, reason: why };
 }
 __name(duplicateBar, "duplicateBar");
@@ -15846,27 +15847,27 @@ function appendEmptyBars(mini, bars, add) {
 __name(appendEmptyBars, "appendEmptyBars");
 var VELOCITY_STRING = "its velocities are written per column, and the velocity lane can't follow a longer pattern yet";
 var GRID_CANT_SHOW = "the grid couldn't show the longer pattern";
-function lengthenOffers(parse10, mini, bars, gain) {
+function lengthenOffers(parse11, mini, bars, gain) {
   return {
-    duplicate: offered(parse10, mini, () => duplicateBar(mini, bars), bars + 1, gain),
-    append: appendBarsOffer(parse10, mini, bars, 1, gain)
+    duplicate: offered(parse11, mini, () => duplicateBar(mini, bars), bars + 1, gain),
+    append: appendBarsOffer(parse11, mini, bars, 1, gain)
   };
 }
 __name(lengthenOffers, "lengthenOffers");
-function appendBarsOffer(parse10, mini, bars, add, gain) {
-  return offered(parse10, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
+function appendBarsOffer(parse11, mini, bars, add, gain) {
+  return offered(parse11, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
 }
 __name(appendBarsOffer, "appendBarsOffer");
 var NOT_EDITABLE_HERE = "the grid can show this pattern but can't edit it; make it longer in the code";
-function offered(parse10, mini, rewrite, wantBars, gain) {
-  if (!parse10(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
-  return readsBack(parse10, rewrite(), wantBars, gain);
+function offered(parse11, mini, rewrite, wantBars, gain) {
+  if (!parse11(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
+  return readsBack(parse11, rewrite(), wantBars, gain);
 }
 __name(offered, "offered");
-function readsBack(parse10, r, wantBars, gain) {
+function readsBack(parse11, r, wantBars, gain) {
   if (!r.ok) return r;
   if (gain.mini !== null) return { ok: false, reason: VELOCITY_STRING };
-  const read8 = parse10(r.mini, UNREFINED);
+  const read8 = parse11(r.mini, UNREFINED);
   return read8.ok && (read8.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
 }
 __name(readsBack, "readsBack");
@@ -17721,9 +17722,9 @@ function soundWarmJobs(values3, deps) {
 __name(soundWarmJobs, "soundWarmJobs");
 async function runWarmJobs(jobs, capMs) {
   if (jobs.length === 0) return { loaded: 0, pending: 0 };
-  let loaded = 0;
+  let loaded2 = 0;
   const all = Promise.allSettled(jobs.map((j) => j.run().then(() => {
-    loaded++;
+    loaded2++;
   })));
   let timer;
   const cap = new Promise((resolve) => {
@@ -17731,7 +17732,7 @@ async function runWarmJobs(jobs, capMs) {
   });
   await Promise.race([all, cap]);
   clearTimeout(timer);
-  return { loaded, pending: jobs.length - loaded };
+  return { loaded: loaded2, pending: jobs.length - loaded2 };
 }
 __name(runWarmJobs, "runWarmJobs");
 
@@ -20226,8 +20227,8 @@ var _StrudelEngine = class _StrudelEngine {
    * `setcps`/`setcpm` set during that evaluate.
    */
   async renderLoadedReport(duration, sampleRate, signal, onProgress) {
-    const loaded = this.renderableLoad("renderLoadedReport");
-    return this.renderPatternReport(loaded.pattern, duration, sampleRate, signal, onProgress);
+    const loaded2 = this.renderableLoad("renderLoadedReport");
+    return this.renderPatternReport(loaded2.pattern, duration, sampleRate, signal, onProgress);
   }
   /**
    * #1648 — render the LOADED document as one WAV per track, each the full
@@ -20248,9 +20249,9 @@ var _StrudelEngine = class _StrudelEngine {
    * reports seconds rendered across the whole set, out of `duration` × stems.
    */
   async renderLoadedStemsReport(duration, sampleRate, signal, onProgress) {
-    const loaded = this.renderableLoad("renderLoadedStemsReport");
+    const loaded2 = this.renderableLoad("renderLoadedStemsReport");
     const cps = this.getCps() ?? 0.5;
-    const planned = planStems(loaded.pattern, loaded.trackIds, loaded.tagged, Math.ceil(duration * cps));
+    const planned = planStems(loaded2.pattern, loaded2.trackIds, loaded2.tagged, Math.ceil(duration * cps));
     const byId = {};
     for (const p of planned) byId[p.id] = p.pattern;
     const total = duration * planned.length;
@@ -20270,19 +20271,19 @@ var _StrudelEngine = class _StrudelEngine {
     if (!this.audioCtx) {
       throw new Error("StrudelEngine not initialized \u2014 call init() first");
     }
-    const loaded = this.loadedRender;
-    if (!loaded) {
+    const loaded2 = this.loadedRender;
+    if (!loaded2) {
       throw new Error(`${caller}: no document is loaded \u2014 the last evaluate failed or never ran`);
     }
-    if (loaded.transportOffset !== 0 || loaded.loopRange !== null) {
+    if (loaded2.transportOffset !== 0 || loaded2.loopRange !== null) {
       throw new Error(
         `${caller}: the document was evaluated with a seek or a loop armed, so the render would be shifted or looped \u2014 clear both and evaluate again`
       );
     }
-    if (!loaded.pattern) {
+    if (!loaded2.pattern) {
       throw new Error(`${caller}: the loaded document plays nothing`);
     }
-    return loaded;
+    return loaded2;
   }
   /** The render both entry points share: hold the transport, render, report, encode. */
   async renderPatternReport(pattern, duration, sampleRate, signal, onProgress) {
@@ -20988,9 +20989,9 @@ function installP5FesBridgeWith(p5Ctor) {
   ctor._fesLogger = buildLogger();
 }
 __name(installP5FesBridgeWith, "installP5FesBridgeWith");
-function setCurrentP5Source(source, lineOffset = 0) {
-  currentSource = source;
-  currentLineOffset = source == null ? 0 : lineOffset;
+function setCurrentP5Source(source2, lineOffset = 0) {
+  currentSource = source2;
+  currentLineOffset = source2 == null ? 0 : lineOffset;
 }
 __name(setCurrentP5Source, "setCurrentP5Source");
 
@@ -21907,16 +21908,16 @@ var _MainSignalSampler = class _MainSignalSampler {
     const bumps = this.pendingBumps;
     this.pendingBumps = [];
     let held2 = null;
-    let source = -1;
+    let source2 = -1;
     const rawScheduler = { now: now2 };
     if (scheduler && this.wantsRawScheduler) {
       rawScheduler.hi = this.rawWindow.advance(scheduler, now2, (a, b) => queryAt(scheduler, a, b));
       rawScheduler.lo = now2 - RAW_QUERY_BACK;
       held2 = this.rawWindow.held();
-      source = this.rawWindow.heldVersion;
+      source2 = this.rawWindow.heldVersion;
     }
-    if (source !== this.rawSource) {
-      this.rawSource = source;
+    if (source2 !== this.rawSource) {
+      this.rawSource = source2;
       this.rawVersion++;
       this.rawEvents = held2 ? held2.map(summariseRawHap) : [];
     }
@@ -22181,11 +22182,12 @@ __name(kindReadsRawScheduler, "kindReadsRawScheduler");
 var _WorkerVizRenderer = class _WorkerVizRenderer extends VizRendererBase {
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5 / `'glsl'` #281).
    *  @param code raw sketch source. @param name workspace path (error attribution). */
-  constructor(kind, code, name) {
+  constructor(kind, code, name, extras = {}) {
     super();
     this.kind = kind;
     this.code = code;
     this.name = name;
+    this.extras = extras;
     this.worker = null;
     this.writer = null;
     /** When set (viz PREVIEWS, #838), supersedes the live sampler in the pump: the
@@ -22369,7 +22371,9 @@ ${d.stack}` : "");
         // bag straight to the compiler; the worker can only get it by value.
         options: mountOptions,
         // #2560 — a hidden pre-Play warm-up: draw one frame once loaded.
-        ...this.warm ? { warm: true } : {}
+        ...this.warm ? { warm: true } : {},
+        // #2639 — the project's declared libraries, for a three sketch's imports.
+        ...this.extras.libs ? { libs: this.extras.libs } : {}
       };
       this.lastOptionsKey = stableKey(mountOptions);
       worker.postMessage(mountMsg, [offscreen]);
@@ -26836,7 +26840,7 @@ function getP5LineOffset(code) {
   return isFullLifecycleSketch(code) ? FULL_LIFECYCLE_PREFIX_LINES + NEW_FUNCTION_HEADER_LINES : LEGACY_PREFIX_LINES + NEW_FUNCTION_HEADER_LINES;
 }
 __name(getP5LineOffset, "getP5LineOffset");
-function compileP5Code(code, source) {
+function compileP5Code(code, source2) {
   const body = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
   const lineOffset = getP5LineOffset(code);
   let syntaxError = null;
@@ -26860,7 +26864,7 @@ function compileP5Code(code, source) {
         emitLog({
           level: "error",
           runtime: "p5",
-          source,
+          source: source2,
           message: syntaxError.message,
           line: syntaxError.line,
           column: syntaxError.column
@@ -26908,7 +26912,7 @@ function compileP5Code(code, source) {
         emitLog({
           level: "error",
           runtime: "p5",
-          source,
+          source: source2,
           message: parts.message,
           suggestion: parts.suggestion,
           stack: parts.stack,
@@ -26917,7 +26921,7 @@ function compileP5Code(code, source) {
         });
         return;
       }
-      installLifecycle(p, lifecycle, source, lineOffset, staveUniforms);
+      installLifecycle(p, lifecycle, source2, lineOffset, staveUniforms);
     };
   };
 }
@@ -27000,7 +27004,7 @@ function buildLegacyBody(userCode) {
   `;
 }
 __name(buildLegacyBody, "buildLegacyBody");
-function installLifecycle(p, lifecycle, source, lineOffset, staveUniforms) {
+function installLifecycle(p, lifecycle, source2, lineOffset, staveUniforms) {
   const pi = p;
   const reportLifecycleError = /* @__PURE__ */ __name((hook, err) => {
     const error = err instanceof Error ? err : new Error(String(err));
@@ -27010,7 +27014,7 @@ function installLifecycle(p, lifecycle, source, lineOffset, staveUniforms) {
     emitLog({
       level: "error",
       runtime: "p5",
-      source,
+      source: source2,
       message: `${hook}(): ${parts.message}`,
       suggestion: parts.suggestion,
       stack: parts.stack,
@@ -27762,14 +27766,14 @@ function isReportedVizError(e) {
   return REPORTED.has(e);
 }
 __name(isReportedVizError, "isReportedVizError");
-function reportHydraError(e, source) {
+function reportHydraError(e, source2) {
   const parts = formatFriendlyError(e, "hydra", { index: HYDRA_DOCS_INDEX });
   const offset = getHydraLineOffset();
   const located = e instanceof VizSyntaxError ? e : null;
   emitLog({
     level: "error",
     runtime: "hydra",
-    source,
+    source: source2,
     message: parts.message,
     suggestion: parts.suggestion,
     stack: parts.stack,
@@ -27815,10 +27819,10 @@ var _HydraVizRenderer = class _HydraVizRenderer extends VizRendererBase {
   /** @param source the workspace file the sketch came from. When given, the
    *  renderer writes its own errors to the Console against it (#2219): an
    *  inline `.viz()` host's onError only logs to the browser console. */
-  constructor(pattern, source = "") {
+  constructor(pattern, source2 = "") {
     super();
     this.pattern = pattern;
-    this.source = source;
+    this.source = source2;
     this.hydra = null;
     this.canvas = null;
     this.analyser = null;
@@ -35772,6 +35776,8 @@ function toMonacoLanguage(lang) {
       return "javascript";
     case "markdown":
       return "markdown";
+    case "json":
+      return "json";
   }
 }
 __name(toMonacoLanguage, "toMonacoLanguage");
@@ -38157,9 +38163,9 @@ async function deleteProjectMeta(id) {
 }
 __name(deleteProjectMeta, "deleteProjectMeta");
 async function duplicateProject(id) {
-  const source = await getProject(id);
-  if (!source) return void 0;
-  return createProject(`${source.name} (copy)`);
+  const source2 = await getProject(id);
+  if (!source2) return void 0;
+  return createProject(`${source2.name} (copy)`);
 }
 __name(duplicateProject, "duplicateProject");
 var EPHEMERAL_ID_PREFIX = "ephemeral-";
@@ -40201,21 +40207,21 @@ async function startDrumPattern() {
       void ctx.close();
       return;
     }
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
+    const source2 = ctx.createBufferSource();
+    source2.buffer = buffer;
+    source2.loop = true;
     const gain = ctx.createGain();
     gain.gain.value = 0.4;
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
     analyser.smoothingTimeConstant = 0.7;
-    source.connect(gain);
+    source2.connect(gain);
     gain.connect(analyser);
     analyser.connect(ctx.destination);
-    source.start();
+    source2.start();
     const scheduler = new DrumPatternScheduler(ctx);
     const hapStream = new HapStream();
-    state3 = { ctx, source, gain, analyser, scheduler, hapStream };
+    state3 = { ctx, source: source2, gain, analyser, scheduler, hapStream };
     const payload = {
       analyser,
       scheduler,
@@ -40368,21 +40374,21 @@ async function startChordProgression() {
       void ctx.close();
       return;
     }
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
+    const source2 = ctx.createBufferSource();
+    source2.buffer = buffer;
+    source2.loop = true;
     const gain = ctx.createGain();
     gain.gain.value = 0.5;
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
     analyser.smoothingTimeConstant = 0.8;
-    source.connect(gain);
+    source2.connect(gain);
     gain.connect(analyser);
     analyser.connect(ctx.destination);
-    source.start();
+    source2.start();
     const scheduler = new ChordProgressionScheduler(ctx);
     const hapStream = new HapStream();
-    state4 = { ctx, source, gain, analyser, scheduler, hapStream };
+    state4 = { ctx, source: source2, gain, analyser, scheduler, hapStream };
     const payload = {
       analyser,
       scheduler,
@@ -41633,13 +41639,13 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
-function useViewProver(mini, parse10) {
+function useViewProver(mini, parse11) {
   const cacheRef = React48.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React48.useRef(parse10);
-  parseRef.current = parse10;
+  const parseRef = React48.useRef(parse11);
+  parseRef.current = parse11;
   const key3 = mini ?? null;
   return React48.useCallback(
     (scale) => {
@@ -42609,7 +42615,7 @@ function wholeBarStepStarts(r) {
 __name(wholeBarStepStarts, "wholeBarStepStarts");
 function writtenStepStarts(m) {
   const out = /* @__PURE__ */ new Map();
-  const shared = sharedSteps(m);
+  const shared2 = sharedSteps(m);
   const put = /* @__PURE__ */ __name((part, us) => {
     const cols = /* @__PURE__ */ new Set();
     for (const u of us) {
@@ -42622,9 +42628,9 @@ function writtenStepStarts(m) {
     for (const p of m.source.parts) {
       const last = p.regions[p.regions.length - 1];
       const repeats = p.bars === void 0 ? 1 : (m.bars ?? 1) / p.bars;
-      if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== shared) continue;
+      if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== shared2) continue;
       const span = last.to * p.factor;
-      const bar2 = (m.bars ?? 1) > 1 ? shared / (m.bars ?? 1) : null;
+      const bar2 = (m.bars ?? 1) > 1 ? shared2 / (m.bars ?? 1) : null;
       const once = p.regions.flatMap(
         (r) => bar2 !== null && (r.to - r.from) * p.factor === bar2 ? wholeBarStepStarts(r) ?? regionStepStarts(r) : regionStepStarts(r)
       ).map((c) => c * p.factor);
@@ -42636,7 +42642,7 @@ function writtenStepStarts(m) {
     return out;
   }
   const a = m.altSource;
-  if (a && a.perBar * a.bars === shared) {
+  if (a && a.perBar * a.bars === shared2) {
     const us = [];
     for (let b = 0; b < a.bars; b++) for (const r of a.regions) us.push(b * a.perBar + r.from);
     put(0, us);
@@ -42836,13 +42842,13 @@ function setGridMode(mode) {
   listeners20.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
-function usePatternLength(chunk, model, parse10, writeMini) {
+function usePatternLength(chunk, model, parse11, writeMini) {
   const mini = model ? chunk?.miniString ?? null : null;
   const bars = model?.bars ?? 1;
   const gain = chunk ? readChunkGain(chunk) : null;
   const velocity = gain?.mini != null;
-  const parseRef = React48.useRef(parse10);
-  parseRef.current = parse10;
+  const parseRef = React48.useRef(parse11);
+  parseRef.current = parse11;
   const cache3 = React48.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null || gain === null) return null;
@@ -45058,7 +45064,7 @@ __name(startAudition, "startAudition");
 var lastClip = null;
 function startClipPreview(url, gain = AUDITION_ENVELOPE.gain) {
   let stopped = false;
-  let source = null;
+  let source2 = null;
   let finish = /* @__PURE__ */ __name(() => {
   }, "finish");
   const ended = new Promise((resolve) => {
@@ -45068,7 +45074,7 @@ function startClipPreview(url, gain = AUDITION_ENVELOPE.gain) {
     if (stopped) return;
     stopped = true;
     try {
-      source?.stop();
+      source2?.stop();
     } catch {
     }
     finish();
@@ -45091,14 +45097,14 @@ function startClipPreview(url, gain = AUDITION_ENVELOPE.gain) {
         const out = ctx.createGain();
         out.gain.value = gain;
         out.connect(ctx.destination);
-        source = ctx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(out);
-        source.onended = () => {
+        source2 = ctx.createBufferSource();
+        source2.buffer = buffer;
+        source2.connect(out);
+        source2.onended = () => {
           out.disconnect();
           stop();
         };
-        source.start();
+        source2.start();
       },
       () => stop()
     );
@@ -50422,7 +50428,7 @@ function BottomPanel({ hidden = false } = {}) {
 }
 __name(BottomPanel, "BottomPanel");
 var SYMBOL_ROW_KEYS = ["~", "*", '"', "[", "]", "<", ">", "(", ")"];
-var NOT_CODE = /* @__PURE__ */ new Set(["markdown", "plaintext"]);
+var NOT_CODE = /* @__PURE__ */ new Set(["markdown", "plaintext", "json"]);
 var TOUCH3 = 44;
 function codeEditorBeingTyped() {
   const editor = getActiveEditor();
@@ -51340,25 +51346,25 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   );
   const moveTabToNewQuadrant = useCallback(
     (sourceGroupId, tabId, targetGroupId, direction) => {
-      const source = groups.get(sourceGroupId);
-      if (!source) return;
-      const movingTab = source.tabs.find((t) => t.id === tabId);
+      const source2 = groups.get(sourceGroupId);
+      if (!source2) return;
+      const movingTab = source2.tabs.find((t) => t.id === tabId);
       if (!movingTab) return;
       if (!findGroupCoords(layout, targetGroupId)) return;
-      if (sourceGroupId === targetGroupId && source.tabs.length === 1) {
+      if (sourceGroupId === targetGroupId && source2.tabs.length === 1) {
         return;
       }
-      const sourceWillCollapse = source.tabs.length === 1;
+      const sourceWillCollapse = source2.tabs.length === 1;
       const newId2 = generateGroupId();
       setGroups((prev) => {
         const next = new Map(prev);
-        const srcTabs = source.tabs.filter((t) => t.id !== tabId);
-        const srcActive = source.activeTabId === tabId ? srcTabs[0]?.id ?? null : source.activeTabId;
+        const srcTabs = source2.tabs.filter((t) => t.id !== tabId);
+        const srcActive = source2.activeTabId === tabId ? srcTabs[0]?.id ?? null : source2.activeTabId;
         if (srcTabs.length === 0) {
           next.delete(sourceGroupId);
         } else {
           next.set(sourceGroupId, {
-            ...source,
+            ...source2,
             tabs: srcTabs,
             activeTabId: srcActive
           });
@@ -51368,7 +51374,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           tabs: [movingTab],
           activeTabId: movingTab.id
         });
-        transferBackdropWithTab(next, source, movingTab, newId2);
+        transferBackdropWithTab(next, source2, movingTab, newId2);
         return next;
       });
       setLayout((prev) => {
@@ -51381,20 +51387,20 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   );
   const moveTabToNewEdgeGroup = useCallback(
     (sourceGroupId, tabId, position) => {
-      const source = groups.get(sourceGroupId);
-      if (!source) return;
-      const movingTab = source.tabs.find((t) => t.id === tabId);
+      const source2 = groups.get(sourceGroupId);
+      if (!source2) return;
+      const movingTab = source2.tabs.find((t) => t.id === tabId);
       if (!movingTab) return;
       const newId2 = generateGroupId();
       setGroups((prev) => {
         const next = new Map(prev);
-        const srcTabs = source.tabs.filter((t) => t.id !== tabId);
-        const srcActive = source.activeTabId === tabId ? srcTabs[0]?.id ?? null : source.activeTabId;
+        const srcTabs = source2.tabs.filter((t) => t.id !== tabId);
+        const srcActive = source2.activeTabId === tabId ? srcTabs[0]?.id ?? null : source2.activeTabId;
         if (srcTabs.length === 0) {
           next.delete(sourceGroupId);
         } else {
           next.set(sourceGroupId, {
-            ...source,
+            ...source2,
             tabs: srcTabs,
             activeTabId: srcActive
           });
@@ -51404,11 +51410,11 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           tabs: [movingTab],
           activeTabId: movingTab.id
         });
-        transferBackdropWithTab(next, source, movingTab, newId2);
+        transferBackdropWithTab(next, source2, movingTab, newId2);
         return next;
       });
       setLayout((prev) => {
-        const afterRemove = source.tabs.length === 1 ? removeGroup(prev, sourceGroupId) : prev;
+        const afterRemove = source2.tabs.length === 1 ? removeGroup(prev, sourceGroupId) : prev;
         return insertEdgeGroup(afterRemove, position, newId2);
       });
       setActiveGroupId(newId2);
@@ -51702,27 +51708,27 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         }
       }
       setGroups((prev) => {
-        const source = prev.get(sourceGroupId);
+        const source2 = prev.get(sourceGroupId);
         const target = prev.get(targetGroupId);
-        if (!source || !target) return prev;
-        const movingTab = source.tabs.find((t) => t.id === tabId);
+        if (!source2 || !target) return prev;
+        const movingTab = source2.tabs.find((t) => t.id === tabId);
         if (!movingTab) return prev;
         if (sourceGroupId === targetGroupId) {
-          const fromIdx = source.tabs.findIndex((t) => t.id === tabId);
+          const fromIdx = source2.tabs.findIndex((t) => t.id === tabId);
           if (fromIdx === -1) return prev;
           let toIdx = insertionIndex;
           if (toIdx > fromIdx) toIdx -= 1;
           if (toIdx === fromIdx) return prev;
-          const nextTabs = source.tabs.slice();
+          const nextTabs = source2.tabs.slice();
           nextTabs.splice(fromIdx, 1);
           nextTabs.splice(toIdx, 0, movingTab);
           const next2 = new Map(prev);
-          next2.set(targetGroupId, { ...source, tabs: nextTabs });
+          next2.set(targetGroupId, { ...source2, tabs: nextTabs });
           return next2;
         }
-        const sourceTabs = source.tabs.filter((t) => t.id !== tabId);
-        let sourceActive = source.activeTabId;
-        if (source.activeTabId === tabId) {
+        const sourceTabs = source2.tabs.filter((t) => t.id !== tabId);
+        let sourceActive = source2.activeTabId;
+        if (source2.activeTabId === tabId) {
           sourceActive = sourceTabs.length > 0 ? sourceTabs[0].id : null;
         }
         const targetTabs = target.tabs.slice();
@@ -51733,7 +51739,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           next.delete(sourceGroupId);
         } else {
           next.set(sourceGroupId, {
-            ...source,
+            ...source2,
             tabs: sourceTabs,
             activeTabId: sourceActive
           });
@@ -51743,7 +51749,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           tabs: targetTabs,
           activeTabId: tabId
         });
-        transferBackdropWithTab(next, source, movingTab, targetGroupId);
+        transferBackdropWithTab(next, source2, movingTab, targetGroupId);
         return next;
       });
       setActiveGroupId(targetGroupId);
@@ -51781,14 +51787,14 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       if (direction === "center") {
         stopDisplacedBackdrop(sourceGroupId, tabId, targetGroupId);
         setGroups((prev) => {
-          const source = prev.get(sourceGroupId);
+          const source2 = prev.get(sourceGroupId);
           const target = prev.get(targetGroupId);
-          if (!source || !target) return prev;
-          const movingTab = source.tabs.find((t) => t.id === tabId);
+          if (!source2 || !target) return prev;
+          const movingTab = source2.tabs.find((t) => t.id === tabId);
           if (!movingTab) return prev;
-          const sourceTabs = source.tabs.filter((t) => t.id !== tabId);
-          let sourceActive = source.activeTabId;
-          if (source.activeTabId === tabId) {
+          const sourceTabs = source2.tabs.filter((t) => t.id !== tabId);
+          let sourceActive = source2.activeTabId;
+          if (source2.activeTabId === tabId) {
             sourceActive = sourceTabs.length > 0 ? sourceTabs[0].id : null;
           }
           const next = new Map(prev);
@@ -51796,7 +51802,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             next.delete(sourceGroupId);
           } else {
             next.set(sourceGroupId, {
-              ...source,
+              ...source2,
               tabs: sourceTabs,
               activeTabId: sourceActive
             });
@@ -51806,12 +51812,12 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             tabs: [...target.tabs, movingTab],
             activeTabId: tabId
           });
-          transferBackdropWithTab(next, source, movingTab, targetGroupId);
+          transferBackdropWithTab(next, source2, movingTab, targetGroupId);
           return next;
         });
         setLayout((prev) => {
-          const source = groups.get(sourceGroupId);
-          if (!source || source.tabs.length !== 1) return prev;
+          const source2 = groups.get(sourceGroupId);
+          if (!source2 || source2.tabs.length !== 1) return prev;
           return removeGroup(prev, sourceGroupId);
         });
         setActiveGroupId(targetGroupId);
@@ -54950,8 +54956,8 @@ __name(_WorkerBusFeed, "WorkerBusFeed");
 var WorkerBusFeed = _WorkerBusFeed;
 
 // src/visualizers/mountVizRenderer.ts
-function mountVizRenderer(container, source, components, size, onError) {
-  const renderer = typeof source === "function" ? source() : source;
+function mountVizRenderer(container, source2, components, size, onError) {
+  const renderer = typeof source2 === "function" ? source2() : source2;
   const detachLifecycle = attachVizLifecycle(renderer, container, components, size, onError);
   let lastW = size.w;
   let lastH = size.h;
@@ -54975,7 +54981,7 @@ function mountVizRenderer(container, source, components, size, onError) {
 __name(mountVizRenderer, "mountVizRenderer");
 
 // src/visualizers/useVizRenderer.ts
-function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
+function useVizRenderer(containerRef, source2, hapStream, analyser, scheduler) {
   const rendererRef = useRef(null);
   const components = {};
   if (hapStream) {
@@ -54998,7 +55004,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
     };
     const { renderer, disconnect } = mountVizRenderer(
       containerRef.current,
-      source,
+      source2,
       components,
       size,
       console.error
@@ -55009,12 +55015,12 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
       renderer.destroy();
       rendererRef.current = null;
     };
-  }, [source]);
+  }, [source2]);
 }
 __name(useVizRenderer, "useVizRenderer");
-function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
+function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source: source2 }) {
   const containerRef = useRef(null);
-  useVizRenderer(containerRef, source, hapStream, analyser, scheduler);
+  useVizRenderer(containerRef, source2, hapStream, analyser, scheduler);
   return /* @__PURE__ */ jsx(
     "div",
     {
@@ -55496,51 +55502,575 @@ function VizEditor({
 }
 __name(VizEditor, "VizEditor");
 
-// src/visualizers/renderers/threeSketch.ts
-var ADDONS = {
+// src/visualizers/libraries/threeAddons.generated.ts
+var THREE_ADDON_LOADERS = {
+  "animation/AnimationClipCreator.js": /* @__PURE__ */ __name(() => import('three/addons/animation/AnimationClipCreator.js'), "animation/AnimationClipCreator.js"),
+  "animation/CCDIKSolver.js": /* @__PURE__ */ __name(() => import('three/addons/animation/CCDIKSolver.js'), "animation/CCDIKSolver.js"),
+  "capabilities/WebGL.js": /* @__PURE__ */ __name(() => import('three/addons/capabilities/WebGL.js'), "capabilities/WebGL.js"),
+  "capabilities/WebGPU.js": /* @__PURE__ */ __name(() => import('three/addons/capabilities/WebGPU.js'), "capabilities/WebGPU.js"),
+  "controls/ArcballControls.js": /* @__PURE__ */ __name(() => import('three/addons/controls/ArcballControls.js'), "controls/ArcballControls.js"),
+  "controls/DragControls.js": /* @__PURE__ */ __name(() => import('three/addons/controls/DragControls.js'), "controls/DragControls.js"),
+  "controls/FirstPersonControls.js": /* @__PURE__ */ __name(() => import('three/addons/controls/FirstPersonControls.js'), "controls/FirstPersonControls.js"),
+  "controls/FlyControls.js": /* @__PURE__ */ __name(() => import('three/addons/controls/FlyControls.js'), "controls/FlyControls.js"),
+  "controls/MapControls.js": /* @__PURE__ */ __name(() => import('three/addons/controls/MapControls.js'), "controls/MapControls.js"),
+  "controls/OrbitControls.js": /* @__PURE__ */ __name(() => import('three/addons/controls/OrbitControls.js'), "controls/OrbitControls.js"),
+  "controls/PointerLockControls.js": /* @__PURE__ */ __name(() => import('three/addons/controls/PointerLockControls.js'), "controls/PointerLockControls.js"),
+  "controls/TrackballControls.js": /* @__PURE__ */ __name(() => import('three/addons/controls/TrackballControls.js'), "controls/TrackballControls.js"),
+  "controls/TransformControls.js": /* @__PURE__ */ __name(() => import('three/addons/controls/TransformControls.js'), "controls/TransformControls.js"),
+  "csm/CSM.js": /* @__PURE__ */ __name(() => import('three/addons/csm/CSM.js'), "csm/CSM.js"),
+  "csm/CSMFrustum.js": /* @__PURE__ */ __name(() => import('three/addons/csm/CSMFrustum.js'), "csm/CSMFrustum.js"),
+  "csm/CSMHelper.js": /* @__PURE__ */ __name(() => import('three/addons/csm/CSMHelper.js'), "csm/CSMHelper.js"),
+  "csm/CSMShader.js": /* @__PURE__ */ __name(() => import('three/addons/csm/CSMShader.js'), "csm/CSMShader.js"),
+  "csm/CSMShadowNode.js": /* @__PURE__ */ __name(() => import('three/addons/csm/CSMShadowNode.js'), "csm/CSMShadowNode.js"),
+  "curves/CurveExtras.js": /* @__PURE__ */ __name(() => import('three/addons/curves/CurveExtras.js'), "curves/CurveExtras.js"),
+  "curves/NURBSCurve.js": /* @__PURE__ */ __name(() => import('three/addons/curves/NURBSCurve.js'), "curves/NURBSCurve.js"),
+  "curves/NURBSSurface.js": /* @__PURE__ */ __name(() => import('three/addons/curves/NURBSSurface.js'), "curves/NURBSSurface.js"),
+  "curves/NURBSUtils.js": /* @__PURE__ */ __name(() => import('three/addons/curves/NURBSUtils.js'), "curves/NURBSUtils.js"),
+  "curves/NURBSVolume.js": /* @__PURE__ */ __name(() => import('three/addons/curves/NURBSVolume.js'), "curves/NURBSVolume.js"),
+  "effects/AnaglyphEffect.js": /* @__PURE__ */ __name(() => import('three/addons/effects/AnaglyphEffect.js'), "effects/AnaglyphEffect.js"),
+  "effects/AsciiEffect.js": /* @__PURE__ */ __name(() => import('three/addons/effects/AsciiEffect.js'), "effects/AsciiEffect.js"),
+  "effects/OutlineEffect.js": /* @__PURE__ */ __name(() => import('three/addons/effects/OutlineEffect.js'), "effects/OutlineEffect.js"),
+  "effects/ParallaxBarrierEffect.js": /* @__PURE__ */ __name(() => import('three/addons/effects/ParallaxBarrierEffect.js'), "effects/ParallaxBarrierEffect.js"),
+  "effects/StereoEffect.js": /* @__PURE__ */ __name(() => import('three/addons/effects/StereoEffect.js'), "effects/StereoEffect.js"),
+  "environments/ColorEnvironment.js": /* @__PURE__ */ __name(() => import('three/addons/environments/ColorEnvironment.js'), "environments/ColorEnvironment.js"),
+  "environments/DebugEnvironment.js": /* @__PURE__ */ __name(() => import('three/addons/environments/DebugEnvironment.js'), "environments/DebugEnvironment.js"),
   "environments/RoomEnvironment.js": /* @__PURE__ */ __name(() => import('three/addons/environments/RoomEnvironment.js'), "environments/RoomEnvironment.js"),
-  "postprocessing/EffectComposer.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/EffectComposer.js'), "postprocessing/EffectComposer.js"),
-  "postprocessing/RenderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/RenderPass.js'), "postprocessing/RenderPass.js"),
-  "postprocessing/ShaderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/ShaderPass.js'), "postprocessing/ShaderPass.js"),
-  "postprocessing/OutputPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/OutputPass.js'), "postprocessing/OutputPass.js"),
-  "postprocessing/UnrealBloomPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/UnrealBloomPass.js'), "postprocessing/UnrealBloomPass.js"),
-  "postprocessing/BokehPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/BokehPass.js'), "postprocessing/BokehPass.js"),
-  "postprocessing/AfterimagePass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/AfterimagePass.js'), "postprocessing/AfterimagePass.js"),
-  "postprocessing/FilmPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/FilmPass.js'), "postprocessing/FilmPass.js"),
-  "postprocessing/GlitchPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/GlitchPass.js'), "postprocessing/GlitchPass.js"),
-  "postprocessing/SMAAPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/SMAAPass.js'), "postprocessing/SMAAPass.js"),
-  "postprocessing/FXAAPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/FXAAPass.js'), "postprocessing/FXAAPass.js"),
-  "shaders/CopyShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/CopyShader.js'), "shaders/CopyShader.js"),
-  "shaders/FXAAShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/FXAAShader.js'), "shaders/FXAAShader.js"),
-  "shaders/RGBShiftShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/RGBShiftShader.js'), "shaders/RGBShiftShader.js"),
-  "shaders/VignetteShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/VignetteShader.js'), "shaders/VignetteShader.js"),
-  "loaders/GLTFLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/GLTFLoader.js'), "loaders/GLTFLoader.js"),
-  "loaders/RGBELoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/RGBELoader.js'), "loaders/RGBELoader.js"),
-  "loaders/HDRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/HDRLoader.js'), "loaders/HDRLoader.js"),
-  "loaders/EXRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/EXRLoader.js'), "loaders/EXRLoader.js"),
+  "exporters/DRACOExporter.js": /* @__PURE__ */ __name(() => import('three/addons/exporters/DRACOExporter.js'), "exporters/DRACOExporter.js"),
+  "exporters/EXRExporter.js": /* @__PURE__ */ __name(() => import('three/addons/exporters/EXRExporter.js'), "exporters/EXRExporter.js"),
+  "exporters/GLTFExporter.js": /* @__PURE__ */ __name(() => import('three/addons/exporters/GLTFExporter.js'), "exporters/GLTFExporter.js"),
+  "exporters/KTX2Exporter.js": /* @__PURE__ */ __name(() => import('three/addons/exporters/KTX2Exporter.js'), "exporters/KTX2Exporter.js"),
+  "exporters/OBJExporter.js": /* @__PURE__ */ __name(() => import('three/addons/exporters/OBJExporter.js'), "exporters/OBJExporter.js"),
+  "exporters/PLYExporter.js": /* @__PURE__ */ __name(() => import('three/addons/exporters/PLYExporter.js'), "exporters/PLYExporter.js"),
+  "exporters/STLExporter.js": /* @__PURE__ */ __name(() => import('three/addons/exporters/STLExporter.js'), "exporters/STLExporter.js"),
+  "exporters/USDZExporter.js": /* @__PURE__ */ __name(() => import('three/addons/exporters/USDZExporter.js'), "exporters/USDZExporter.js"),
+  "generators/CityGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/CityGenerator.js'), "generators/CityGenerator.js"),
+  "generators/ForestGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/ForestGenerator.js'), "generators/ForestGenerator.js"),
+  "generators/TerrainGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/TerrainGenerator.js'), "generators/TerrainGenerator.js"),
+  "generators/TreeGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/TreeGenerator.js'), "generators/TreeGenerator.js"),
+  "generators/city/BenchGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/city/BenchGenerator.js'), "generators/city/BenchGenerator.js"),
+  "generators/city/CarGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/city/CarGenerator.js'), "generators/city/CarGenerator.js"),
+  "generators/city/CityGeneratorUtils.js": /* @__PURE__ */ __name(() => import('three/addons/generators/city/CityGeneratorUtils.js'), "generators/city/CityGeneratorUtils.js"),
+  "generators/city/HydrantGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/city/HydrantGenerator.js'), "generators/city/HydrantGenerator.js"),
+  "generators/city/InstancedMeshGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/city/InstancedMeshGenerator.js'), "generators/city/InstancedMeshGenerator.js"),
+  "generators/city/PersonGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/city/PersonGenerator.js'), "generators/city/PersonGenerator.js"),
+  "generators/city/SidewalkGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/city/SidewalkGenerator.js'), "generators/city/SidewalkGenerator.js"),
+  "generators/city/SkyscraperGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/city/SkyscraperGenerator.js'), "generators/city/SkyscraperGenerator.js"),
+  "generators/city/StreetTreeGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/city/StreetTreeGenerator.js'), "generators/city/StreetTreeGenerator.js"),
+  "generators/city/StreetlightGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/city/StreetlightGenerator.js'), "generators/city/StreetlightGenerator.js"),
+  "generators/city/TrafficlightGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/city/TrafficlightGenerator.js'), "generators/city/TrafficlightGenerator.js"),
+  "generators/city/TrashcanGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/generators/city/TrashcanGenerator.js'), "generators/city/TrashcanGenerator.js"),
+  "geometries/BoxLineGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/BoxLineGeometry.js'), "geometries/BoxLineGeometry.js"),
+  "geometries/ConvexGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/ConvexGeometry.js'), "geometries/ConvexGeometry.js"),
+  "geometries/DecalGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/DecalGeometry.js'), "geometries/DecalGeometry.js"),
+  "geometries/LoftGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/LoftGeometry.js'), "geometries/LoftGeometry.js"),
+  "geometries/ParametricFunctions.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/ParametricFunctions.js'), "geometries/ParametricFunctions.js"),
+  "geometries/ParametricGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/ParametricGeometry.js'), "geometries/ParametricGeometry.js"),
   "geometries/RoundedBoxGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/RoundedBoxGeometry.js'), "geometries/RoundedBoxGeometry.js"),
-  "utils/BufferGeometryUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/BufferGeometryUtils.js'), "utils/BufferGeometryUtils.js"),
+  "geometries/TeapotGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/TeapotGeometry.js'), "geometries/TeapotGeometry.js"),
+  "geometries/TextGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/geometries/TextGeometry.js'), "geometries/TextGeometry.js"),
+  "gpgpu/BitonicSort.js": /* @__PURE__ */ __name(() => import('three/addons/gpgpu/BitonicSort.js'), "gpgpu/BitonicSort.js"),
+  "gpgpu/CountingSort.js": /* @__PURE__ */ __name(() => import('three/addons/gpgpu/CountingSort.js'), "gpgpu/CountingSort.js"),
+  "helpers/AnimationPathHelper.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/AnimationPathHelper.js'), "helpers/AnimationPathHelper.js"),
+  "helpers/LightProbeGridHelper.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/LightProbeGridHelper.js'), "helpers/LightProbeGridHelper.js"),
+  "helpers/LightProbeGridHelperWebGL.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/LightProbeGridHelperWebGL.js'), "helpers/LightProbeGridHelperWebGL.js"),
+  "helpers/LightProbeHelper.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/LightProbeHelper.js'), "helpers/LightProbeHelper.js"),
+  "helpers/LightProbeHelperGPU.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/LightProbeHelperGPU.js'), "helpers/LightProbeHelperGPU.js"),
+  "helpers/OctreeHelper.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/OctreeHelper.js'), "helpers/OctreeHelper.js"),
+  "helpers/PositionalAudioHelper.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/PositionalAudioHelper.js'), "helpers/PositionalAudioHelper.js"),
+  "helpers/RapierHelper.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/RapierHelper.js'), "helpers/RapierHelper.js"),
+  "helpers/RectAreaLightHelper.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/RectAreaLightHelper.js'), "helpers/RectAreaLightHelper.js"),
+  "helpers/TextureHelper.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/TextureHelper.js'), "helpers/TextureHelper.js"),
+  "helpers/TextureHelperGPU.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/TextureHelperGPU.js'), "helpers/TextureHelperGPU.js"),
+  "helpers/VertexNormalsHelper.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/VertexNormalsHelper.js'), "helpers/VertexNormalsHelper.js"),
+  "helpers/VertexTangentsHelper.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/VertexTangentsHelper.js'), "helpers/VertexTangentsHelper.js"),
+  "helpers/ViewHelper.js": /* @__PURE__ */ __name(() => import('three/addons/helpers/ViewHelper.js'), "helpers/ViewHelper.js"),
+  "inspector/Extension.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/Extension.js'), "inspector/Extension.js"),
+  "inspector/Inspector.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/Inspector.js'), "inspector/Inspector.js"),
+  "inspector/RendererInspector.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/RendererInspector.js'), "inspector/RendererInspector.js"),
+  "inspector/Storage.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/Storage.js'), "inspector/Storage.js"),
+  "inspector/extensions/color-grading/ColorGrading.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/ColorGrading.js'), "inspector/extensions/color-grading/ColorGrading.js"),
+  "inspector/extensions/color-grading/ColorWheel.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/ColorWheel.js'), "inspector/extensions/color-grading/ColorWheel.js"),
+  "inspector/extensions/color-grading/CurveEditor.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/CurveEditor.js'), "inspector/extensions/color-grading/CurveEditor.js"),
+  "inspector/extensions/color-grading/LUT3DStyle.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/LUT3DStyle.js'), "inspector/extensions/color-grading/LUT3DStyle.js"),
+  "inspector/extensions/color-grading/LUTMath.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/LUTMath.js'), "inspector/extensions/color-grading/LUTMath.js"),
+  "inspector/extensions/color-grading/modules/BrightnessModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/BrightnessModule.js'), "inspector/extensions/color-grading/modules/BrightnessModule.js"),
+  "inspector/extensions/color-grading/modules/ColorWheelModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/ColorWheelModule.js'), "inspector/extensions/color-grading/modules/ColorWheelModule.js"),
+  "inspector/extensions/color-grading/modules/ContrastModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/ContrastModule.js'), "inspector/extensions/color-grading/modules/ContrastModule.js"),
+  "inspector/extensions/color-grading/modules/CurvesModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/CurvesModule.js'), "inspector/extensions/color-grading/modules/CurvesModule.js"),
+  "inspector/extensions/color-grading/modules/ExposureHueModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/ExposureHueModule.js'), "inspector/extensions/color-grading/modules/ExposureHueModule.js"),
+  "inspector/extensions/color-grading/modules/ExposureModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/ExposureModule.js'), "inspector/extensions/color-grading/modules/ExposureModule.js"),
+  "inspector/extensions/color-grading/modules/HueModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/HueModule.js'), "inspector/extensions/color-grading/modules/HueModule.js"),
+  "inspector/extensions/color-grading/modules/ImportedCubeModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/ImportedCubeModule.js'), "inspector/extensions/color-grading/modules/ImportedCubeModule.js"),
+  "inspector/extensions/color-grading/modules/Module.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/Module.js'), "inspector/extensions/color-grading/modules/Module.js"),
+  "inspector/extensions/color-grading/modules/OutputModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/OutputModule.js'), "inspector/extensions/color-grading/modules/OutputModule.js"),
+  "inspector/extensions/color-grading/modules/RendererModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/RendererModule.js'), "inspector/extensions/color-grading/modules/RendererModule.js"),
+  "inspector/extensions/color-grading/modules/SatVibranceModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/SatVibranceModule.js'), "inspector/extensions/color-grading/modules/SatVibranceModule.js"),
+  "inspector/extensions/color-grading/modules/SaturationModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/SaturationModule.js'), "inspector/extensions/color-grading/modules/SaturationModule.js"),
+  "inspector/extensions/color-grading/modules/VibranceModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/VibranceModule.js'), "inspector/extensions/color-grading/modules/VibranceModule.js"),
+  "inspector/extensions/color-grading/modules/WhiteBalanceModule.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/color-grading/modules/WhiteBalanceModule.js'), "inspector/extensions/color-grading/modules/WhiteBalanceModule.js"),
+  "inspector/extensions/tsl-graph/TSLGraphEditor.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/tsl-graph/TSLGraphEditor.js'), "inspector/extensions/tsl-graph/TSLGraphEditor.js"),
+  "inspector/extensions/tsl-graph/TSLGraphLoader.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/extensions/tsl-graph/TSLGraphLoader.js'), "inspector/extensions/tsl-graph/TSLGraphLoader.js"),
+  "inspector/tabs/Console.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/tabs/Console.js'), "inspector/tabs/Console.js"),
+  "inspector/tabs/Memory.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/tabs/Memory.js'), "inspector/tabs/Memory.js"),
+  "inspector/tabs/Parameters.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/tabs/Parameters.js'), "inspector/tabs/Parameters.js"),
+  "inspector/tabs/Performance.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/tabs/Performance.js'), "inspector/tabs/Performance.js"),
+  "inspector/tabs/Settings.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/tabs/Settings.js'), "inspector/tabs/Settings.js"),
+  "inspector/tabs/Timeline.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/tabs/Timeline.js'), "inspector/tabs/Timeline.js"),
+  "inspector/tabs/Viewer.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/tabs/Viewer.js'), "inspector/tabs/Viewer.js"),
+  "inspector/ui/Graph.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/ui/Graph.js'), "inspector/ui/Graph.js"),
+  "inspector/ui/Item.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/ui/Item.js'), "inspector/ui/Item.js"),
+  "inspector/ui/List.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/ui/List.js'), "inspector/ui/List.js"),
+  "inspector/ui/Profiler.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/ui/Profiler.js'), "inspector/ui/Profiler.js"),
+  "inspector/ui/Style.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/ui/Style.js'), "inspector/ui/Style.js"),
+  "inspector/ui/Tab.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/ui/Tab.js'), "inspector/ui/Tab.js"),
+  "inspector/ui/Values.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/ui/Values.js'), "inspector/ui/Values.js"),
+  "inspector/ui/utils.js": /* @__PURE__ */ __name(() => import('three/addons/inspector/ui/utils.js'), "inspector/ui/utils.js"),
+  "interaction/InteractionManager.js": /* @__PURE__ */ __name(() => import('three/addons/interaction/InteractionManager.js'), "interaction/InteractionManager.js"),
+  "interactive/HTMLMesh.js": /* @__PURE__ */ __name(() => import('three/addons/interactive/HTMLMesh.js'), "interactive/HTMLMesh.js"),
+  "interactive/InteractiveGroup.js": /* @__PURE__ */ __name(() => import('three/addons/interactive/InteractiveGroup.js'), "interactive/InteractiveGroup.js"),
+  "interactive/SelectionBox.js": /* @__PURE__ */ __name(() => import('three/addons/interactive/SelectionBox.js'), "interactive/SelectionBox.js"),
+  "interactive/SelectionHelper.js": /* @__PURE__ */ __name(() => import('three/addons/interactive/SelectionHelper.js'), "interactive/SelectionHelper.js"),
+  "libs/chevrotain.module.min.js": /* @__PURE__ */ __name(() => import('three/addons/libs/chevrotain.module.min.js'), "libs/chevrotain.module.min.js"),
+  "libs/fflate.module.js": /* @__PURE__ */ __name(() => import('three/addons/libs/fflate.module.js'), "libs/fflate.module.js"),
+  "libs/ktx-parse.module.js": /* @__PURE__ */ __name(() => import('three/addons/libs/ktx-parse.module.js'), "libs/ktx-parse.module.js"),
+  "libs/lil-gui.module.min.js": /* @__PURE__ */ __name(() => import('three/addons/libs/lil-gui.module.min.js'), "libs/lil-gui.module.min.js"),
+  "libs/meshopt_clusterizer.module.js": /* @__PURE__ */ __name(() => import('three/addons/libs/meshopt_clusterizer.module.js'), "libs/meshopt_clusterizer.module.js"),
+  "libs/meshopt_decoder.module.js": /* @__PURE__ */ __name(() => import('three/addons/libs/meshopt_decoder.module.js'), "libs/meshopt_decoder.module.js"),
+  "libs/meshopt_simplifier.module.js": /* @__PURE__ */ __name(() => import('three/addons/libs/meshopt_simplifier.module.js'), "libs/meshopt_simplifier.module.js"),
+  "libs/mikktspace.module.js": /* @__PURE__ */ __name(() => import('three/addons/libs/mikktspace.module.js'), "libs/mikktspace.module.js"),
+  "libs/motion-controllers.module.js": /* @__PURE__ */ __name(() => import('three/addons/libs/motion-controllers.module.js'), "libs/motion-controllers.module.js"),
+  "libs/potpack.module.js": /* @__PURE__ */ __name(() => import('three/addons/libs/potpack.module.js'), "libs/potpack.module.js"),
+  "libs/stats.module.js": /* @__PURE__ */ __name(() => import('three/addons/libs/stats.module.js'), "libs/stats.module.js"),
+  "libs/tween.module.js": /* @__PURE__ */ __name(() => import('three/addons/libs/tween.module.js'), "libs/tween.module.js"),
+  "libs/utif.module.js": /* @__PURE__ */ __name(() => import('three/addons/libs/utif.module.js'), "libs/utif.module.js"),
+  "libs/zstddec.module.js": /* @__PURE__ */ __name(() => import('three/addons/libs/zstddec.module.js'), "libs/zstddec.module.js"),
+  "lighting/ClusteredLighting.js": /* @__PURE__ */ __name(() => import('three/addons/lighting/ClusteredLighting.js'), "lighting/ClusteredLighting.js"),
+  "lighting/DynamicLighting.js": /* @__PURE__ */ __name(() => import('three/addons/lighting/DynamicLighting.js'), "lighting/DynamicLighting.js"),
+  "lighting/LightMapper.js": /* @__PURE__ */ __name(() => import('three/addons/lighting/LightMapper.js'), "lighting/LightMapper.js"),
+  "lighting/LightProbeGrid.js": /* @__PURE__ */ __name(() => import('three/addons/lighting/LightProbeGrid.js'), "lighting/LightProbeGrid.js"),
+  "lighting/LightProbeGridUtils.js": /* @__PURE__ */ __name(() => import('three/addons/lighting/LightProbeGridUtils.js'), "lighting/LightProbeGridUtils.js"),
+  "lighting/LightProbeGridWebGL.js": /* @__PURE__ */ __name(() => import('three/addons/lighting/LightProbeGridWebGL.js'), "lighting/LightProbeGridWebGL.js"),
+  "lighting/vxgi/VXGIConeTracer.js": /* @__PURE__ */ __name(() => import('three/addons/lighting/vxgi/VXGIConeTracer.js'), "lighting/vxgi/VXGIConeTracer.js"),
+  "lighting/vxgi/VXGIIrradiance.js": /* @__PURE__ */ __name(() => import('three/addons/lighting/vxgi/VXGIIrradiance.js'), "lighting/vxgi/VXGIIrradiance.js"),
+  "lighting/vxgi/VXGINode.js": /* @__PURE__ */ __name(() => import('three/addons/lighting/vxgi/VXGINode.js'), "lighting/vxgi/VXGINode.js"),
+  "lighting/vxgi/VXGISceneCollector.js": /* @__PURE__ */ __name(() => import('three/addons/lighting/vxgi/VXGISceneCollector.js'), "lighting/vxgi/VXGISceneCollector.js"),
+  "lighting/vxgi/VXGIVolume.js": /* @__PURE__ */ __name(() => import('three/addons/lighting/vxgi/VXGIVolume.js'), "lighting/vxgi/VXGIVolume.js"),
+  "lights/LightProbeGenerator.js": /* @__PURE__ */ __name(() => import('three/addons/lights/LightProbeGenerator.js'), "lights/LightProbeGenerator.js"),
+  "lights/RectAreaLightTexturesLib.js": /* @__PURE__ */ __name(() => import('three/addons/lights/RectAreaLightTexturesLib.js'), "lights/RectAreaLightTexturesLib.js"),
+  "lights/RectAreaLightUniformsLib.js": /* @__PURE__ */ __name(() => import('three/addons/lights/RectAreaLightUniformsLib.js'), "lights/RectAreaLightUniformsLib.js"),
+  "lights/SunLight.js": /* @__PURE__ */ __name(() => import('three/addons/lights/SunLight.js'), "lights/SunLight.js"),
+  "lights/SunLightNode.js": /* @__PURE__ */ __name(() => import('three/addons/lights/SunLightNode.js'), "lights/SunLightNode.js"),
+  "lights/SunLightShadow.js": /* @__PURE__ */ __name(() => import('three/addons/lights/SunLightShadow.js'), "lights/SunLightShadow.js"),
+  "lights/SunShadowNode.js": /* @__PURE__ */ __name(() => import('three/addons/lights/SunShadowNode.js'), "lights/SunShadowNode.js"),
+  "lines/Line2.js": /* @__PURE__ */ __name(() => import('three/addons/lines/Line2.js'), "lines/Line2.js"),
+  "lines/LineGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/lines/LineGeometry.js'), "lines/LineGeometry.js"),
+  "lines/LineMaterial.js": /* @__PURE__ */ __name(() => import('three/addons/lines/LineMaterial.js'), "lines/LineMaterial.js"),
+  "lines/LineSegments2.js": /* @__PURE__ */ __name(() => import('three/addons/lines/LineSegments2.js'), "lines/LineSegments2.js"),
+  "lines/LineSegmentsGeometry.js": /* @__PURE__ */ __name(() => import('three/addons/lines/LineSegmentsGeometry.js'), "lines/LineSegmentsGeometry.js"),
+  "lines/Wireframe.js": /* @__PURE__ */ __name(() => import('three/addons/lines/Wireframe.js'), "lines/Wireframe.js"),
+  "lines/WireframeGeometry2.js": /* @__PURE__ */ __name(() => import('three/addons/lines/WireframeGeometry2.js'), "lines/WireframeGeometry2.js"),
+  "lines/webgpu/Line2.js": /* @__PURE__ */ __name(() => import('three/addons/lines/webgpu/Line2.js'), "lines/webgpu/Line2.js"),
+  "lines/webgpu/LineSegments2.js": /* @__PURE__ */ __name(() => import('three/addons/lines/webgpu/LineSegments2.js'), "lines/webgpu/LineSegments2.js"),
+  "lines/webgpu/Wireframe.js": /* @__PURE__ */ __name(() => import('three/addons/lines/webgpu/Wireframe.js'), "lines/webgpu/Wireframe.js"),
+  "loaders/3DMLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/3DMLoader.js'), "loaders/3DMLoader.js"),
+  "loaders/3MFLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/3MFLoader.js'), "loaders/3MFLoader.js"),
+  "loaders/AMFLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/AMFLoader.js'), "loaders/AMFLoader.js"),
+  "loaders/BVHLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/BVHLoader.js'), "loaders/BVHLoader.js"),
+  "loaders/ColladaLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/ColladaLoader.js'), "loaders/ColladaLoader.js"),
+  "loaders/DDSLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/DDSLoader.js'), "loaders/DDSLoader.js"),
+  "loaders/DRACOLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/DRACOLoader.js'), "loaders/DRACOLoader.js"),
+  "loaders/EXRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/EXRLoader.js'), "loaders/EXRLoader.js"),
+  "loaders/FBXLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/FBXLoader.js'), "loaders/FBXLoader.js"),
+  "loaders/FontLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/FontLoader.js'), "loaders/FontLoader.js"),
+  "loaders/GCodeLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/GCodeLoader.js'), "loaders/GCodeLoader.js"),
+  "loaders/GLTFGaussianSplatLoaderExtension.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/GLTFGaussianSplatLoaderExtension.js'), "loaders/GLTFGaussianSplatLoaderExtension.js"),
+  "loaders/GLTFLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/GLTFLoader.js'), "loaders/GLTFLoader.js"),
+  "loaders/GaussianSplatPLYLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/GaussianSplatPLYLoader.js'), "loaders/GaussianSplatPLYLoader.js"),
+  "loaders/HDRCubeTextureLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/HDRCubeTextureLoader.js'), "loaders/HDRCubeTextureLoader.js"),
+  "loaders/HDRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/HDRLoader.js'), "loaders/HDRLoader.js"),
+  "loaders/IESLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/IESLoader.js'), "loaders/IESLoader.js"),
+  "loaders/JXLLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/JXLLoader.js'), "loaders/JXLLoader.js"),
+  "loaders/KMZLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/KMZLoader.js'), "loaders/KMZLoader.js"),
+  "loaders/KSPLATLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/KSPLATLoader.js'), "loaders/KSPLATLoader.js"),
+  "loaders/KTX2Loader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/KTX2Loader.js'), "loaders/KTX2Loader.js"),
+  "loaders/KTXLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/KTXLoader.js'), "loaders/KTXLoader.js"),
+  "loaders/LDrawLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/LDrawLoader.js'), "loaders/LDrawLoader.js"),
+  "loaders/LUT3dlLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/LUT3dlLoader.js'), "loaders/LUT3dlLoader.js"),
+  "loaders/LUTCubeLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/LUTCubeLoader.js'), "loaders/LUTCubeLoader.js"),
+  "loaders/LUTImageLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/LUTImageLoader.js'), "loaders/LUTImageLoader.js"),
+  "loaders/LWOLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/LWOLoader.js'), "loaders/LWOLoader.js"),
+  "loaders/MD2Loader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/MD2Loader.js'), "loaders/MD2Loader.js"),
+  "loaders/MDDLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/MDDLoader.js'), "loaders/MDDLoader.js"),
+  "loaders/MTLLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/MTLLoader.js'), "loaders/MTLLoader.js"),
+  "loaders/MaterialXLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/MaterialXLoader.js'), "loaders/MaterialXLoader.js"),
+  "loaders/NRRDLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/NRRDLoader.js'), "loaders/NRRDLoader.js"),
+  "loaders/OBJLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/OBJLoader.js'), "loaders/OBJLoader.js"),
+  "loaders/PCDLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/PCDLoader.js'), "loaders/PCDLoader.js"),
+  "loaders/PDBLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/PDBLoader.js'), "loaders/PDBLoader.js"),
+  "loaders/PLYLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/PLYLoader.js'), "loaders/PLYLoader.js"),
+  "loaders/PVRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/PVRLoader.js'), "loaders/PVRLoader.js"),
+  "loaders/RGBELoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/RGBELoader.js'), "loaders/RGBELoader.js"),
+  "loaders/SPLATLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/SPLATLoader.js'), "loaders/SPLATLoader.js"),
+  "loaders/SPZLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/SPZLoader.js'), "loaders/SPZLoader.js"),
+  "loaders/STLLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/STLLoader.js'), "loaders/STLLoader.js"),
+  "loaders/SVGLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/SVGLoader.js'), "loaders/SVGLoader.js"),
+  "loaders/TDSLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/TDSLoader.js'), "loaders/TDSLoader.js"),
+  "loaders/TGALoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/TGALoader.js'), "loaders/TGALoader.js"),
+  "loaders/TIFFLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/TIFFLoader.js'), "loaders/TIFFLoader.js"),
+  "loaders/USDLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/USDLoader.js'), "loaders/USDLoader.js"),
+  "loaders/USDZLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/USDZLoader.js'), "loaders/USDZLoader.js"),
+  "loaders/UltraHDRLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/UltraHDRLoader.js'), "loaders/UltraHDRLoader.js"),
+  "loaders/VOXLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/VOXLoader.js'), "loaders/VOXLoader.js"),
+  "loaders/VRMLLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/VRMLLoader.js'), "loaders/VRMLLoader.js"),
+  "loaders/VTKLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/VTKLoader.js'), "loaders/VTKLoader.js"),
+  "loaders/XYZLoader.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/XYZLoader.js'), "loaders/XYZLoader.js"),
+  "loaders/collada/ColladaComposer.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/collada/ColladaComposer.js'), "loaders/collada/ColladaComposer.js"),
+  "loaders/collada/ColladaParser.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/collada/ColladaParser.js'), "loaders/collada/ColladaParser.js"),
+  "loaders/lwo/IFFParser.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/lwo/IFFParser.js'), "loaders/lwo/IFFParser.js"),
+  "loaders/lwo/LWO2Parser.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/lwo/LWO2Parser.js'), "loaders/lwo/LWO2Parser.js"),
+  "loaders/lwo/LWO3Parser.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/lwo/LWO3Parser.js'), "loaders/lwo/LWO3Parser.js"),
+  "loaders/materialx/MaterialXArchive.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/materialx/MaterialXArchive.js'), "loaders/materialx/MaterialXArchive.js"),
+  "loaders/materialx/MaterialXDocument.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/materialx/MaterialXDocument.js'), "loaders/materialx/MaterialXDocument.js"),
+  "loaders/materialx/MaterialXHextile.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/materialx/MaterialXHextile.js'), "loaders/materialx/MaterialXHextile.js"),
+  "loaders/materialx/MaterialXInterfaceValidation.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/materialx/MaterialXInterfaceValidation.js'), "loaders/materialx/MaterialXInterfaceValidation.js"),
+  "loaders/materialx/MaterialXLog.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/materialx/MaterialXLog.js'), "loaders/materialx/MaterialXLog.js"),
+  "loaders/materialx/MaterialXNodeDefs.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/materialx/MaterialXNodeDefs.js'), "loaders/materialx/MaterialXNodeDefs.js"),
+  "loaders/materialx/MaterialXNodeInterfaceRegistry.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/materialx/MaterialXNodeInterfaceRegistry.js'), "loaders/materialx/MaterialXNodeInterfaceRegistry.js"),
+  "loaders/materialx/MaterialXNodeLibrary.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/materialx/MaterialXNodeLibrary.js'), "loaders/materialx/MaterialXNodeLibrary.js"),
+  "loaders/materialx/MaterialXSurfaceMappings.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/materialx/MaterialXSurfaceMappings.js'), "loaders/materialx/MaterialXSurfaceMappings.js"),
+  "loaders/materialx/MaterialXUtils.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/materialx/MaterialXUtils.js'), "loaders/materialx/MaterialXUtils.js"),
+  "loaders/materialx/compile/MaterialXCompileRegistry.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/materialx/compile/MaterialXCompileRegistry.js'), "loaders/materialx/compile/MaterialXCompileRegistry.js"),
+  "loaders/materialx/parse/MaterialXParser.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/materialx/parse/MaterialXParser.js'), "loaders/materialx/parse/MaterialXParser.js"),
+  "loaders/usd/USDAParser.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/usd/USDAParser.js'), "loaders/usd/USDAParser.js"),
+  "loaders/usd/USDCParser.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/usd/USDCParser.js'), "loaders/usd/USDCParser.js"),
+  "loaders/usd/USDComposer.js": /* @__PURE__ */ __name(() => import('three/addons/loaders/usd/USDComposer.js'), "loaders/usd/USDComposer.js"),
+  "materials/LDrawConditionalLineMaterial.js": /* @__PURE__ */ __name(() => import('three/addons/materials/LDrawConditionalLineMaterial.js'), "materials/LDrawConditionalLineMaterial.js"),
+  "materials/LDrawConditionalLineNodeMaterial.js": /* @__PURE__ */ __name(() => import('three/addons/materials/LDrawConditionalLineNodeMaterial.js'), "materials/LDrawConditionalLineNodeMaterial.js"),
+  "materials/WoodNodeMaterial.js": /* @__PURE__ */ __name(() => import('three/addons/materials/WoodNodeMaterial.js'), "materials/WoodNodeMaterial.js"),
+  "math/Capsule.js": /* @__PURE__ */ __name(() => import('three/addons/math/Capsule.js'), "math/Capsule.js"),
+  "math/ColorConverter.js": /* @__PURE__ */ __name(() => import('three/addons/math/ColorConverter.js'), "math/ColorConverter.js"),
+  "math/ColorSpaces.js": /* @__PURE__ */ __name(() => import('three/addons/math/ColorSpaces.js'), "math/ColorSpaces.js"),
+  "math/ConvexHull.js": /* @__PURE__ */ __name(() => import('three/addons/math/ConvexHull.js'), "math/ConvexHull.js"),
+  "math/ImprovedNoise.js": /* @__PURE__ */ __name(() => import('three/addons/math/ImprovedNoise.js'), "math/ImprovedNoise.js"),
+  "math/Lut.js": /* @__PURE__ */ __name(() => import('three/addons/math/Lut.js'), "math/Lut.js"),
+  "math/MeshSurfaceSampler.js": /* @__PURE__ */ __name(() => import('three/addons/math/MeshSurfaceSampler.js'), "math/MeshSurfaceSampler.js"),
+  "math/OBB.js": /* @__PURE__ */ __name(() => import('three/addons/math/OBB.js'), "math/OBB.js"),
+  "math/Octree.js": /* @__PURE__ */ __name(() => import('three/addons/math/Octree.js'), "math/Octree.js"),
   "math/SimplexNoise.js": /* @__PURE__ */ __name(() => import('three/addons/math/SimplexNoise.js'), "math/SimplexNoise.js"),
-  "math/ImprovedNoise.js": /* @__PURE__ */ __name(() => import('three/addons/math/ImprovedNoise.js'), "math/ImprovedNoise.js")
+  "misc/ConvexObjectBreaker.js": /* @__PURE__ */ __name(() => import('three/addons/misc/ConvexObjectBreaker.js'), "misc/ConvexObjectBreaker.js"),
+  "misc/GPUComputationRenderer.js": /* @__PURE__ */ __name(() => import('three/addons/misc/GPUComputationRenderer.js'), "misc/GPUComputationRenderer.js"),
+  "misc/Gyroscope.js": /* @__PURE__ */ __name(() => import('three/addons/misc/Gyroscope.js'), "misc/Gyroscope.js"),
+  "misc/MD2Character.js": /* @__PURE__ */ __name(() => import('three/addons/misc/MD2Character.js'), "misc/MD2Character.js"),
+  "misc/MD2CharacterComplex.js": /* @__PURE__ */ __name(() => import('three/addons/misc/MD2CharacterComplex.js'), "misc/MD2CharacterComplex.js"),
+  "misc/MorphAnimMesh.js": /* @__PURE__ */ __name(() => import('three/addons/misc/MorphAnimMesh.js'), "misc/MorphAnimMesh.js"),
+  "misc/MorphBlendMesh.js": /* @__PURE__ */ __name(() => import('three/addons/misc/MorphBlendMesh.js'), "misc/MorphBlendMesh.js"),
+  "misc/ProgressiveLightMap.js": /* @__PURE__ */ __name(() => import('three/addons/misc/ProgressiveLightMap.js'), "misc/ProgressiveLightMap.js"),
+  "misc/ProgressiveLightMapGPU.js": /* @__PURE__ */ __name(() => import('three/addons/misc/ProgressiveLightMapGPU.js'), "misc/ProgressiveLightMapGPU.js"),
+  "misc/RollerCoaster.js": /* @__PURE__ */ __name(() => import('three/addons/misc/RollerCoaster.js'), "misc/RollerCoaster.js"),
+  "misc/Sculptor.js": /* @__PURE__ */ __name(() => import('three/addons/misc/Sculptor.js'), "misc/Sculptor.js"),
+  "misc/SculptorMesh.js": /* @__PURE__ */ __name(() => import('three/addons/misc/SculptorMesh.js'), "misc/SculptorMesh.js"),
+  "misc/SculptorTools.js": /* @__PURE__ */ __name(() => import('three/addons/misc/SculptorTools.js'), "misc/SculptorTools.js"),
+  "misc/SculptorUtils.js": /* @__PURE__ */ __name(() => import('three/addons/misc/SculptorUtils.js'), "misc/SculptorUtils.js"),
+  "misc/TileCreasedNormalsPlugin.js": /* @__PURE__ */ __name(() => import('three/addons/misc/TileCreasedNormalsPlugin.js'), "misc/TileCreasedNormalsPlugin.js"),
+  "misc/TubePainter.js": /* @__PURE__ */ __name(() => import('three/addons/misc/TubePainter.js'), "misc/TubePainter.js"),
+  "misc/Volume.js": /* @__PURE__ */ __name(() => import('three/addons/misc/Volume.js'), "misc/Volume.js"),
+  "misc/VolumeSlice.js": /* @__PURE__ */ __name(() => import('three/addons/misc/VolumeSlice.js'), "misc/VolumeSlice.js"),
+  "modifiers/CurveModifier.js": /* @__PURE__ */ __name(() => import('three/addons/modifiers/CurveModifier.js'), "modifiers/CurveModifier.js"),
+  "modifiers/CurveModifierGPU.js": /* @__PURE__ */ __name(() => import('three/addons/modifiers/CurveModifierGPU.js'), "modifiers/CurveModifierGPU.js"),
+  "modifiers/EdgeSplitModifier.js": /* @__PURE__ */ __name(() => import('three/addons/modifiers/EdgeSplitModifier.js'), "modifiers/EdgeSplitModifier.js"),
+  "modifiers/SimplifyModifier.js": /* @__PURE__ */ __name(() => import('three/addons/modifiers/SimplifyModifier.js'), "modifiers/SimplifyModifier.js"),
+  "modifiers/TessellateModifier.js": /* @__PURE__ */ __name(() => import('three/addons/modifiers/TessellateModifier.js'), "modifiers/TessellateModifier.js"),
+  "objects/GaussianSplat.js": /* @__PURE__ */ __name(() => import('three/addons/objects/GaussianSplat.js'), "objects/GaussianSplat.js"),
+  "objects/GroundedSkybox.js": /* @__PURE__ */ __name(() => import('three/addons/objects/GroundedSkybox.js'), "objects/GroundedSkybox.js"),
+  "objects/Lensflare.js": /* @__PURE__ */ __name(() => import('three/addons/objects/Lensflare.js'), "objects/Lensflare.js"),
+  "objects/LensflareMesh.js": /* @__PURE__ */ __name(() => import('three/addons/objects/LensflareMesh.js'), "objects/LensflareMesh.js"),
+  "objects/MarchingCubes.js": /* @__PURE__ */ __name(() => import('three/addons/objects/MarchingCubes.js'), "objects/MarchingCubes.js"),
+  "objects/Reflector.js": /* @__PURE__ */ __name(() => import('three/addons/objects/Reflector.js'), "objects/Reflector.js"),
+  "objects/ReflectorForSSRPass.js": /* @__PURE__ */ __name(() => import('three/addons/objects/ReflectorForSSRPass.js'), "objects/ReflectorForSSRPass.js"),
+  "objects/Refractor.js": /* @__PURE__ */ __name(() => import('three/addons/objects/Refractor.js'), "objects/Refractor.js"),
+  "objects/ShadowMesh.js": /* @__PURE__ */ __name(() => import('three/addons/objects/ShadowMesh.js'), "objects/ShadowMesh.js"),
+  "objects/Sky.js": /* @__PURE__ */ __name(() => import('three/addons/objects/Sky.js'), "objects/Sky.js"),
+  "objects/SkyMesh.js": /* @__PURE__ */ __name(() => import('three/addons/objects/SkyMesh.js'), "objects/SkyMesh.js"),
+  "objects/Water.js": /* @__PURE__ */ __name(() => import('three/addons/objects/Water.js'), "objects/Water.js"),
+  "objects/Water2.js": /* @__PURE__ */ __name(() => import('three/addons/objects/Water2.js'), "objects/Water2.js"),
+  "objects/Water2Mesh.js": /* @__PURE__ */ __name(() => import('three/addons/objects/Water2Mesh.js'), "objects/Water2Mesh.js"),
+  "objects/WaterMesh.js": /* @__PURE__ */ __name(() => import('three/addons/objects/WaterMesh.js'), "objects/WaterMesh.js"),
+  "offscreen/jank.js": /* @__PURE__ */ __name(() => import('three/addons/offscreen/jank.js'), "offscreen/jank.js"),
+  "offscreen/scene.js": /* @__PURE__ */ __name(() => import('three/addons/offscreen/scene.js'), "offscreen/scene.js"),
+  "physics/AmmoPhysics.js": /* @__PURE__ */ __name(() => import('three/addons/physics/AmmoPhysics.js'), "physics/AmmoPhysics.js"),
+  "physics/JoltPhysics.js": /* @__PURE__ */ __name(() => import('three/addons/physics/JoltPhysics.js'), "physics/JoltPhysics.js"),
+  "physics/RapierPhysics.js": /* @__PURE__ */ __name(() => import('three/addons/physics/RapierPhysics.js'), "physics/RapierPhysics.js"),
+  "pipelines/MeshletDrawingPipeline.js": /* @__PURE__ */ __name(() => import('three/addons/pipelines/MeshletDrawingPipeline.js'), "pipelines/MeshletDrawingPipeline.js"),
+  "pipelines/VisibilityBufferDrawingPipeline.js": /* @__PURE__ */ __name(() => import('three/addons/pipelines/VisibilityBufferDrawingPipeline.js'), "pipelines/VisibilityBufferDrawingPipeline.js"),
+  "postprocessing/AfterimagePass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/AfterimagePass.js'), "postprocessing/AfterimagePass.js"),
+  "postprocessing/BloomPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/BloomPass.js'), "postprocessing/BloomPass.js"),
+  "postprocessing/BokehPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/BokehPass.js'), "postprocessing/BokehPass.js"),
+  "postprocessing/ClearPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/ClearPass.js'), "postprocessing/ClearPass.js"),
+  "postprocessing/CubeTexturePass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/CubeTexturePass.js'), "postprocessing/CubeTexturePass.js"),
+  "postprocessing/DotScreenPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/DotScreenPass.js'), "postprocessing/DotScreenPass.js"),
+  "postprocessing/EffectComposer.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/EffectComposer.js'), "postprocessing/EffectComposer.js"),
+  "postprocessing/FXAAPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/FXAAPass.js'), "postprocessing/FXAAPass.js"),
+  "postprocessing/FilmPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/FilmPass.js'), "postprocessing/FilmPass.js"),
+  "postprocessing/GTAOPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/GTAOPass.js'), "postprocessing/GTAOPass.js"),
+  "postprocessing/GlitchPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/GlitchPass.js'), "postprocessing/GlitchPass.js"),
+  "postprocessing/HalftonePass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/HalftonePass.js'), "postprocessing/HalftonePass.js"),
+  "postprocessing/LUTPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/LUTPass.js'), "postprocessing/LUTPass.js"),
+  "postprocessing/MaskPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/MaskPass.js'), "postprocessing/MaskPass.js"),
+  "postprocessing/OutlinePass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/OutlinePass.js'), "postprocessing/OutlinePass.js"),
+  "postprocessing/OutputPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/OutputPass.js'), "postprocessing/OutputPass.js"),
+  "postprocessing/Pass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/Pass.js'), "postprocessing/Pass.js"),
+  "postprocessing/RenderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/RenderPass.js'), "postprocessing/RenderPass.js"),
+  "postprocessing/RenderPixelatedPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/RenderPixelatedPass.js'), "postprocessing/RenderPixelatedPass.js"),
+  "postprocessing/RenderTransitionPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/RenderTransitionPass.js'), "postprocessing/RenderTransitionPass.js"),
+  "postprocessing/SAOPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/SAOPass.js'), "postprocessing/SAOPass.js"),
+  "postprocessing/SMAAPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/SMAAPass.js'), "postprocessing/SMAAPass.js"),
+  "postprocessing/SSAARenderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/SSAARenderPass.js'), "postprocessing/SSAARenderPass.js"),
+  "postprocessing/SSAOPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/SSAOPass.js'), "postprocessing/SSAOPass.js"),
+  "postprocessing/SSRPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/SSRPass.js'), "postprocessing/SSRPass.js"),
+  "postprocessing/SavePass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/SavePass.js'), "postprocessing/SavePass.js"),
+  "postprocessing/ShaderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/ShaderPass.js'), "postprocessing/ShaderPass.js"),
+  "postprocessing/TAARenderPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/TAARenderPass.js'), "postprocessing/TAARenderPass.js"),
+  "postprocessing/TexturePass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/TexturePass.js'), "postprocessing/TexturePass.js"),
+  "postprocessing/UnrealBloomPass.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/UnrealBloomPass.js'), "postprocessing/UnrealBloomPass.js"),
+  "renderers/CSS2DRenderer.js": /* @__PURE__ */ __name(() => import('three/addons/renderers/CSS2DRenderer.js'), "renderers/CSS2DRenderer.js"),
+  "renderers/CSS3DRenderer.js": /* @__PURE__ */ __name(() => import('three/addons/renderers/CSS3DRenderer.js'), "renderers/CSS3DRenderer.js"),
+  "renderers/Projector.js": /* @__PURE__ */ __name(() => import('three/addons/renderers/Projector.js'), "renderers/Projector.js"),
+  "renderers/SVGRenderer.js": /* @__PURE__ */ __name(() => import('three/addons/renderers/SVGRenderer.js'), "renderers/SVGRenderer.js"),
+  "shaders/ACESFilmicToneMappingShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/ACESFilmicToneMappingShader.js'), "shaders/ACESFilmicToneMappingShader.js"),
+  "shaders/AfterimageShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/AfterimageShader.js'), "shaders/AfterimageShader.js"),
+  "shaders/BasicShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/BasicShader.js'), "shaders/BasicShader.js"),
+  "shaders/BleachBypassShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/BleachBypassShader.js'), "shaders/BleachBypassShader.js"),
+  "shaders/BlendShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/BlendShader.js'), "shaders/BlendShader.js"),
+  "shaders/BokehShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/BokehShader.js'), "shaders/BokehShader.js"),
+  "shaders/BokehShader2.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/BokehShader2.js'), "shaders/BokehShader2.js"),
+  "shaders/BrightnessContrastShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/BrightnessContrastShader.js'), "shaders/BrightnessContrastShader.js"),
+  "shaders/ColorCorrectionShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/ColorCorrectionShader.js'), "shaders/ColorCorrectionShader.js"),
+  "shaders/ColorifyShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/ColorifyShader.js'), "shaders/ColorifyShader.js"),
+  "shaders/ConvolutionShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/ConvolutionShader.js'), "shaders/ConvolutionShader.js"),
+  "shaders/CopyShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/CopyShader.js'), "shaders/CopyShader.js"),
+  "shaders/DOFMipMapShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/DOFMipMapShader.js'), "shaders/DOFMipMapShader.js"),
+  "shaders/DepthLimitedBlurShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/DepthLimitedBlurShader.js'), "shaders/DepthLimitedBlurShader.js"),
+  "shaders/DigitalGlitch.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/DigitalGlitch.js'), "shaders/DigitalGlitch.js"),
+  "shaders/DotScreenShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/DotScreenShader.js'), "shaders/DotScreenShader.js"),
+  "shaders/ExposureShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/ExposureShader.js'), "shaders/ExposureShader.js"),
+  "shaders/FXAAShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/FXAAShader.js'), "shaders/FXAAShader.js"),
+  "shaders/FilmShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/FilmShader.js'), "shaders/FilmShader.js"),
+  "shaders/FocusShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/FocusShader.js'), "shaders/FocusShader.js"),
+  "shaders/FreiChenShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/FreiChenShader.js'), "shaders/FreiChenShader.js"),
+  "shaders/GTAOShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/GTAOShader.js'), "shaders/GTAOShader.js"),
+  "shaders/GammaCorrectionShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/GammaCorrectionShader.js'), "shaders/GammaCorrectionShader.js"),
+  "shaders/HalftoneShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/HalftoneShader.js'), "shaders/HalftoneShader.js"),
+  "shaders/HorizontalBlurShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/HorizontalBlurShader.js'), "shaders/HorizontalBlurShader.js"),
+  "shaders/HorizontalTiltShiftShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/HorizontalTiltShiftShader.js'), "shaders/HorizontalTiltShiftShader.js"),
+  "shaders/HueSaturationShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/HueSaturationShader.js'), "shaders/HueSaturationShader.js"),
+  "shaders/KaleidoShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/KaleidoShader.js'), "shaders/KaleidoShader.js"),
+  "shaders/LuminosityHighPassShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/LuminosityHighPassShader.js'), "shaders/LuminosityHighPassShader.js"),
+  "shaders/LuminosityShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/LuminosityShader.js'), "shaders/LuminosityShader.js"),
+  "shaders/MirrorShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/MirrorShader.js'), "shaders/MirrorShader.js"),
+  "shaders/NormalMapShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/NormalMapShader.js'), "shaders/NormalMapShader.js"),
+  "shaders/OutputShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/OutputShader.js'), "shaders/OutputShader.js"),
+  "shaders/PoissonDenoiseShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/PoissonDenoiseShader.js'), "shaders/PoissonDenoiseShader.js"),
+  "shaders/RGBShiftShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/RGBShiftShader.js'), "shaders/RGBShiftShader.js"),
+  "shaders/SAOShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/SAOShader.js'), "shaders/SAOShader.js"),
+  "shaders/SMAAShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/SMAAShader.js'), "shaders/SMAAShader.js"),
+  "shaders/SSAOShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/SSAOShader.js'), "shaders/SSAOShader.js"),
+  "shaders/SSRShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/SSRShader.js'), "shaders/SSRShader.js"),
+  "shaders/SepiaShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/SepiaShader.js'), "shaders/SepiaShader.js"),
+  "shaders/SobelOperatorShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/SobelOperatorShader.js'), "shaders/SobelOperatorShader.js"),
+  "shaders/SubsurfaceScatteringShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/SubsurfaceScatteringShader.js'), "shaders/SubsurfaceScatteringShader.js"),
+  "shaders/TechnicolorShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/TechnicolorShader.js'), "shaders/TechnicolorShader.js"),
+  "shaders/ToonShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/ToonShader.js'), "shaders/ToonShader.js"),
+  "shaders/TriangleBlurShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/TriangleBlurShader.js'), "shaders/TriangleBlurShader.js"),
+  "shaders/UnpackDepthRGBAShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/UnpackDepthRGBAShader.js'), "shaders/UnpackDepthRGBAShader.js"),
+  "shaders/VelocityShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/VelocityShader.js'), "shaders/VelocityShader.js"),
+  "shaders/VerticalBlurShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/VerticalBlurShader.js'), "shaders/VerticalBlurShader.js"),
+  "shaders/VerticalTiltShiftShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/VerticalTiltShiftShader.js'), "shaders/VerticalTiltShiftShader.js"),
+  "shaders/VignetteShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/VignetteShader.js'), "shaders/VignetteShader.js"),
+  "shaders/VolumeShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/VolumeShader.js'), "shaders/VolumeShader.js"),
+  "shaders/WaterRefractionShader.js": /* @__PURE__ */ __name(() => import('three/addons/shaders/WaterRefractionShader.js'), "shaders/WaterRefractionShader.js"),
+  "textures/FlakesTexture.js": /* @__PURE__ */ __name(() => import('three/addons/textures/FlakesTexture.js'), "textures/FlakesTexture.js"),
+  "transpiler/AST.js": /* @__PURE__ */ __name(() => import('three/addons/transpiler/AST.js'), "transpiler/AST.js"),
+  "transpiler/GLSLDecoder.js": /* @__PURE__ */ __name(() => import('three/addons/transpiler/GLSLDecoder.js'), "transpiler/GLSLDecoder.js"),
+  "transpiler/Linker.js": /* @__PURE__ */ __name(() => import('three/addons/transpiler/Linker.js'), "transpiler/Linker.js"),
+  "transpiler/ShaderToyDecoder.js": /* @__PURE__ */ __name(() => import('three/addons/transpiler/ShaderToyDecoder.js'), "transpiler/ShaderToyDecoder.js"),
+  "transpiler/TSLEncoder.js": /* @__PURE__ */ __name(() => import('three/addons/transpiler/TSLEncoder.js'), "transpiler/TSLEncoder.js"),
+  "transpiler/Transpiler.js": /* @__PURE__ */ __name(() => import('three/addons/transpiler/Transpiler.js'), "transpiler/Transpiler.js"),
+  "transpiler/TranspilerUtils.js": /* @__PURE__ */ __name(() => import('three/addons/transpiler/TranspilerUtils.js'), "transpiler/TranspilerUtils.js"),
+  "transpiler/WGSLEncoder.js": /* @__PURE__ */ __name(() => import('three/addons/transpiler/WGSLEncoder.js'), "transpiler/WGSLEncoder.js"),
+  "tsl/WebGLNodesHandler.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/WebGLNodesHandler.js'), "tsl/WebGLNodesHandler.js"),
+  "tsl/display/AfterImageNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/AfterImageNode.js'), "tsl/display/AfterImageNode.js"),
+  "tsl/display/AnaglyphPassNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/AnaglyphPassNode.js'), "tsl/display/AnaglyphPassNode.js"),
+  "tsl/display/BilateralBlurNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/BilateralBlurNode.js'), "tsl/display/BilateralBlurNode.js"),
+  "tsl/display/BleachBypass.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/BleachBypass.js'), "tsl/display/BleachBypass.js"),
+  "tsl/display/BloomNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/BloomNode.js'), "tsl/display/BloomNode.js"),
+  "tsl/display/CRT.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/CRT.js'), "tsl/display/CRT.js"),
+  "tsl/display/ChromaticAberrationNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/ChromaticAberrationNode.js'), "tsl/display/ChromaticAberrationNode.js"),
+  "tsl/display/DenoiseNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/DenoiseNode.js'), "tsl/display/DenoiseNode.js"),
+  "tsl/display/DepthOfFieldNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/DepthOfFieldNode.js'), "tsl/display/DepthOfFieldNode.js"),
+  "tsl/display/DotScreenNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/DotScreenNode.js'), "tsl/display/DotScreenNode.js"),
+  "tsl/display/FSR1Node.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/FSR1Node.js'), "tsl/display/FSR1Node.js"),
+  "tsl/display/FXAANode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/FXAANode.js'), "tsl/display/FXAANode.js"),
+  "tsl/display/FilmNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/FilmNode.js'), "tsl/display/FilmNode.js"),
+  "tsl/display/GTAONode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/GTAONode.js'), "tsl/display/GTAONode.js"),
+  "tsl/display/GaussianBlurNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/GaussianBlurNode.js'), "tsl/display/GaussianBlurNode.js"),
+  "tsl/display/GodraysNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/GodraysNode.js'), "tsl/display/GodraysNode.js"),
+  "tsl/display/ImportanceSampledEnvironment.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/ImportanceSampledEnvironment.js'), "tsl/display/ImportanceSampledEnvironment.js"),
+  "tsl/display/LensflareNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/LensflareNode.js'), "tsl/display/LensflareNode.js"),
+  "tsl/display/Lut3DNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/Lut3DNode.js'), "tsl/display/Lut3DNode.js"),
+  "tsl/display/MotionBlur.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/MotionBlur.js'), "tsl/display/MotionBlur.js"),
+  "tsl/display/OITPassNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/OITPassNode.js'), "tsl/display/OITPassNode.js"),
+  "tsl/display/OutlineNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/OutlineNode.js'), "tsl/display/OutlineNode.js"),
+  "tsl/display/ParallaxBarrierPassNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/ParallaxBarrierPassNode.js'), "tsl/display/ParallaxBarrierPassNode.js"),
+  "tsl/display/PixelationPassNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/PixelationPassNode.js'), "tsl/display/PixelationPassNode.js"),
+  "tsl/display/RGBShiftNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/RGBShiftNode.js'), "tsl/display/RGBShiftNode.js"),
+  "tsl/display/RecurrentDenoiseNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/RecurrentDenoiseNode.js'), "tsl/display/RecurrentDenoiseNode.js"),
+  "tsl/display/RetroPassNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/RetroPassNode.js'), "tsl/display/RetroPassNode.js"),
+  "tsl/display/SMAANode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/SMAANode.js'), "tsl/display/SMAANode.js"),
+  "tsl/display/SSAAPassNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/SSAAPassNode.js'), "tsl/display/SSAAPassNode.js"),
+  "tsl/display/SSAONode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/SSAONode.js'), "tsl/display/SSAONode.js"),
+  "tsl/display/SSGINode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/SSGINode.js'), "tsl/display/SSGINode.js"),
+  "tsl/display/SSRNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/SSRNode.js'), "tsl/display/SSRNode.js"),
+  "tsl/display/SSSNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/SSSNode.js'), "tsl/display/SSSNode.js"),
+  "tsl/display/Sepia.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/Sepia.js'), "tsl/display/Sepia.js"),
+  "tsl/display/Shape.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/Shape.js'), "tsl/display/Shape.js"),
+  "tsl/display/SharpenNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/SharpenNode.js'), "tsl/display/SharpenNode.js"),
+  "tsl/display/SobelOperatorNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/SobelOperatorNode.js'), "tsl/display/SobelOperatorNode.js"),
+  "tsl/display/StereoCompositePassNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/StereoCompositePassNode.js'), "tsl/display/StereoCompositePassNode.js"),
+  "tsl/display/StereoPassNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/StereoPassNode.js'), "tsl/display/StereoPassNode.js"),
+  "tsl/display/TAAUNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/TAAUNode.js'), "tsl/display/TAAUNode.js"),
+  "tsl/display/TRAANode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/TRAANode.js'), "tsl/display/TRAANode.js"),
+  "tsl/display/TemporalReprojectNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/TemporalReprojectNode.js'), "tsl/display/TemporalReprojectNode.js"),
+  "tsl/display/TransitionNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/TransitionNode.js'), "tsl/display/TransitionNode.js"),
+  "tsl/display/boxBlur.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/boxBlur.js'), "tsl/display/boxBlur.js"),
+  "tsl/display/depthAwareBlend.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/depthAwareBlend.js'), "tsl/display/depthAwareBlend.js"),
+  "tsl/display/depthAwareBlur.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/depthAwareBlur.js'), "tsl/display/depthAwareBlur.js"),
+  "tsl/display/hashBlur.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/hashBlur.js'), "tsl/display/hashBlur.js"),
+  "tsl/display/lensDirt.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/lensDirt.js'), "tsl/display/lensDirt.js"),
+  "tsl/display/radialBlur.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/display/radialBlur.js'), "tsl/display/radialBlur.js"),
+  "tsl/lighting/ClusteredLightsNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/lighting/ClusteredLightsNode.js'), "tsl/lighting/ClusteredLightsNode.js"),
+  "tsl/lighting/DynamicLightsNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/lighting/DynamicLightsNode.js'), "tsl/lighting/DynamicLightsNode.js"),
+  "tsl/lighting/LightProbeGridNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/lighting/LightProbeGridNode.js'), "tsl/lighting/LightProbeGridNode.js"),
+  "tsl/lighting/data/AmbientLightDataNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/lighting/data/AmbientLightDataNode.js'), "tsl/lighting/data/AmbientLightDataNode.js"),
+  "tsl/lighting/data/DirectionalLightDataNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/lighting/data/DirectionalLightDataNode.js'), "tsl/lighting/data/DirectionalLightDataNode.js"),
+  "tsl/lighting/data/HemisphereLightDataNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/lighting/data/HemisphereLightDataNode.js'), "tsl/lighting/data/HemisphereLightDataNode.js"),
+  "tsl/lighting/data/PointLightDataNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/lighting/data/PointLightDataNode.js'), "tsl/lighting/data/PointLightDataNode.js"),
+  "tsl/lighting/data/SpotLightDataNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/lighting/data/SpotLightDataNode.js'), "tsl/lighting/data/SpotLightDataNode.js"),
+  "tsl/math/Bayer.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/math/Bayer.js'), "tsl/math/Bayer.js"),
+  "tsl/math/curlNoise.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/math/curlNoise.js'), "tsl/math/curlNoise.js"),
+  "tsl/math/voronoiNoise.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/math/voronoiNoise.js'), "tsl/math/voronoiNoise.js"),
+  "tsl/shadows/TileShadowNode.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/shadows/TileShadowNode.js'), "tsl/shadows/TileShadowNode.js"),
+  "tsl/shadows/TileShadowNodeHelper.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/shadows/TileShadowNodeHelper.js'), "tsl/shadows/TileShadowNodeHelper.js"),
+  "tsl/utils/GroundedSkybox.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/utils/GroundedSkybox.js'), "tsl/utils/GroundedSkybox.js"),
+  "tsl/utils/RNoise.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/utils/RNoise.js'), "tsl/utils/RNoise.js"),
+  "tsl/utils/Raymarching.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/utils/Raymarching.js'), "tsl/utils/Raymarching.js"),
+  "tsl/utils/SoftParticles.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/utils/SoftParticles.js'), "tsl/utils/SoftParticles.js"),
+  "tsl/utils/SpecularHelpers.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/utils/SpecularHelpers.js'), "tsl/utils/SpecularHelpers.js"),
+  "tsl/utils/TAAUtils.js": /* @__PURE__ */ __name(() => import('three/addons/tsl/utils/TAAUtils.js'), "tsl/utils/TAAUtils.js"),
+  "utils/BufferGeometryUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/BufferGeometryUtils.js'), "utils/BufferGeometryUtils.js"),
+  "utils/CameraUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/CameraUtils.js'), "utils/CameraUtils.js"),
+  "utils/ColorUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/ColorUtils.js'), "utils/ColorUtils.js"),
+  "utils/GaussianSplatUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/GaussianSplatUtils.js'), "utils/GaussianSplatUtils.js"),
+  "utils/GeometryCompressionUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/GeometryCompressionUtils.js'), "utils/GeometryCompressionUtils.js"),
+  "utils/GeometryUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/GeometryUtils.js'), "utils/GeometryUtils.js"),
+  "utils/LDrawUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/LDrawUtils.js'), "utils/LDrawUtils.js"),
+  "utils/MeshletGeometryUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/MeshletGeometryUtils.js'), "utils/MeshletGeometryUtils.js"),
+  "utils/SceneOptimizer.js": /* @__PURE__ */ __name(() => import('three/addons/utils/SceneOptimizer.js'), "utils/SceneOptimizer.js"),
+  "utils/SceneUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/SceneUtils.js'), "utils/SceneUtils.js"),
+  "utils/ShadowMapViewer.js": /* @__PURE__ */ __name(() => import('three/addons/utils/ShadowMapViewer.js'), "utils/ShadowMapViewer.js"),
+  "utils/ShadowMapViewerGPU.js": /* @__PURE__ */ __name(() => import('three/addons/utils/ShadowMapViewerGPU.js'), "utils/ShadowMapViewerGPU.js"),
+  "utils/SkeletonUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/SkeletonUtils.js'), "utils/SkeletonUtils.js"),
+  "utils/SortUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/SortUtils.js'), "utils/SortUtils.js"),
+  "utils/UVsDebug.js": /* @__PURE__ */ __name(() => import('three/addons/utils/UVsDebug.js'), "utils/UVsDebug.js"),
+  "utils/WebGLTextureUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/WebGLTextureUtils.js'), "utils/WebGLTextureUtils.js"),
+  "utils/WebGPUTextureUtils.js": /* @__PURE__ */ __name(() => import('three/addons/utils/WebGPUTextureUtils.js'), "utils/WebGPUTextureUtils.js"),
+  "utils/WorkerPool.js": /* @__PURE__ */ __name(() => import('three/addons/utils/WorkerPool.js'), "utils/WorkerPool.js"),
+  "utils/unwrapUVs.js": /* @__PURE__ */ __name(() => import('three/addons/utils/unwrapUVs.js'), "utils/unwrapUVs.js"),
+  "webxr/ARButton.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/ARButton.js'), "webxr/ARButton.js"),
+  "webxr/OculusHandModel.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/OculusHandModel.js'), "webxr/OculusHandModel.js"),
+  "webxr/OculusHandPointerModel.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/OculusHandPointerModel.js'), "webxr/OculusHandPointerModel.js"),
+  "webxr/Text2D.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/Text2D.js'), "webxr/Text2D.js"),
+  "webxr/VRButton.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/VRButton.js'), "webxr/VRButton.js"),
+  "webxr/WebGLXRFallback.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/WebGLXRFallback.js'), "webxr/WebGLXRFallback.js"),
+  "webxr/XRButton.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/XRButton.js'), "webxr/XRButton.js"),
+  "webxr/XRControllerModelFactory.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/XRControllerModelFactory.js'), "webxr/XRControllerModelFactory.js"),
+  "webxr/XREstimatedLight.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/XREstimatedLight.js'), "webxr/XREstimatedLight.js"),
+  "webxr/XRHandMeshModel.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/XRHandMeshModel.js'), "webxr/XRHandMeshModel.js"),
+  "webxr/XRHandModelFactory.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/XRHandModelFactory.js'), "webxr/XRHandModelFactory.js"),
+  "webxr/XRHandPrimitiveModel.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/XRHandPrimitiveModel.js'), "webxr/XRHandPrimitiveModel.js"),
+  "webxr/XRPlanes.js": /* @__PURE__ */ __name(() => import('three/addons/webxr/XRPlanes.js'), "webxr/XRPlanes.js")
 };
+var THREE_ADDONS_LEFT_OUT = {
+  "Addons.js": "it imports three/addons/loaders/TTFLoader.js, which can't be loaded in Stave",
+  "libs/basis/basis_transcoder.js": "it is a classic script that a loader fetches by URL, not an ES module",
+  "libs/demuxer_mp4.js": "it imports a module from a URL (https://cdn.jsdelivr.net/npm/mp4box@2.3.0/+esm), which can't be bundled with Stave",
+  "libs/draco/draco_decoder.js": "it is a classic script that a loader fetches by URL, not an ES module",
+  "libs/draco/draco_wasm_wrapper.js": "it is a classic script that a loader fetches by URL, not an ES module",
+  "libs/draco/gltf/draco_decoder.js": "it is a classic script that a loader fetches by URL, not an ES module",
+  "libs/draco/gltf/draco_wasm_wrapper.js": "it is a classic script that a loader fetches by URL, not an ES module",
+  "loaders/TTFLoader.js": "it imports a module from a URL (https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/+esm), which can't be bundled with Stave",
+  "offscreen/offscreen.js": "it is a worker's entry script (it sets self.onmessage)"
+};
+var THREE_ADDONS_VERSION = "0.187.0";
+
+// src/visualizers/libraries/hostModules.ts
+var ADDONS = THREE_ADDON_LOADERS;
 var THREE_ADDONS = Object.keys(ADDONS);
 var NEEDS_INPUT = /(^|\/)(OrbitControls|TrackballControls|FlyControls|FirstPersonControls|PointerLockControls|DragControls|TransformControls|MapControls|ArcballControls)\.js$/;
-function resolveSpecifier(spec) {
+var has = /* @__PURE__ */ __name((o, k) => Object.prototype.hasOwnProperty.call(o, k), "has");
+function parseThreeSpecifier(spec) {
   if (spec === "three") return { kind: "three" };
   const m = /^three\/(?:addons|examples\/jsm)\/(.+)$/.exec(spec);
   if (!m) return null;
   const path = m[1].endsWith(".js") ? m[1] : `${m[1]}.js`;
   return { kind: "addon", path };
 }
-__name(resolveSpecifier, "resolveSpecifier");
-function unsupportedImportMessage(spec) {
-  const resolved = resolveSpecifier(spec);
-  if (resolved?.kind === "addon" && NEEDS_INPUT.test(resolved.path)) {
-    return `'${spec}' needs pointer input, which a Stave viz doesn't receive. Move the camera in code instead (for example from \`sig\` or the time).`;
+__name(parseThreeSpecifier, "parseThreeSpecifier");
+var threePromise = null;
+function loadThree() {
+  threePromise ?? (threePromise = import('three'));
+  return threePromise;
+}
+__name(loadThree, "loadThree");
+function hostModuleName(spec) {
+  const r = parseThreeSpecifier(spec);
+  if (!r) return null;
+  if (r.kind === "three") return "three";
+  if (NEEDS_INPUT.test(r.path)) return null;
+  return has(ADDONS, r.path) ? `three/addons/${r.path}` : null;
+}
+__name(hostModuleName, "hostModuleName");
+function loadHostModule(name) {
+  if (name === "three") return loadThree();
+  return ADDONS[name.slice("three/addons/".length)]();
+}
+__name(loadHostModule, "loadHostModule");
+var hostResolver = {
+  name: "host",
+  resolve(spec) {
+    const name = hostModuleName(spec);
+    if (!name) return null;
+    if (name === "three") return { kind: "three" };
+    return { kind: "module", load: /* @__PURE__ */ __name(() => loadHostModule(name), "load") };
   }
-  return `'${spec}' isn't available in Stave. A three.js sketch can import 'three' and these addons: ${THREE_ADDONS.map((p) => `three/addons/${p}`).join(", ")}.`;
+};
+function unsupportedImportMessage(spec) {
+  const parsed = parseThreeSpecifier(spec);
+  if (parsed?.kind === "addon") {
+    if (NEEDS_INPUT.test(parsed.path)) {
+      return `'${spec}' needs pointer input, which a Stave viz doesn't receive. Move the camera in code instead (for example from \`sig\` or the time).`;
+    }
+    if (has(THREE_ADDONS_LEFT_OUT, parsed.path)) return `'${spec}' can't be loaded in Stave: ${THREE_ADDONS_LEFT_OUT[parsed.path]}.`;
+    return `'${spec}' isn't a three.js addon: three.js ${THREE_ADDONS_VERSION} has no file 'three/addons/${parsed.path}'.`;
+  }
+  return `'${spec}' isn't available in Stave. A three.js sketch can import 'three' and any 'three/addons/\u2026' file.`;
 }
 __name(unsupportedImportMessage, "unsupportedImportMessage");
+var HOST_CHAIN = {
+  links: [hostResolver],
+  refusal: unsupportedImportMessage
+};
+
+// src/visualizers/libraries/resolver.ts
 var _ThreeImportError = class _ThreeImportError extends Error {
   constructor(message, line) {
     super(message);
@@ -55550,6 +56080,22 @@ var _ThreeImportError = class _ThreeImportError extends Error {
 };
 __name(_ThreeImportError, "ThreeImportError");
 var ThreeImportError = _ThreeImportError;
+function resolveImport(chain, spec) {
+  for (const link of chain.links) {
+    const r = link.resolve(spec);
+    if (r) return r;
+  }
+  return null;
+}
+__name(resolveImport, "resolveImport");
+function resolveOrRefuse(chain, spec, line) {
+  const r = resolveImport(chain, spec);
+  if (!r) throw new ThreeImportError(chain.refusal(spec), line);
+  return r;
+}
+__name(resolveOrRefuse, "resolveOrRefuse");
+
+// src/visualizers/renderers/threeSketch.ts
 var THREE_LINE_OFFSET = 3;
 var PARAMS = ["__env", "__mod", "__import"];
 function isIdent(s) {
@@ -55614,33 +56160,24 @@ function compileThreeSketch(code) {
     return `const ${b.local} = ${from}${key3};`;
   });
   const head = `with (__env) { return (async () => { 'use strict'; ${decls.join(" ")}`;
-  const source = `${head}
+  const source2 = `${head}
 ${chars.join("")}
 })() }`;
-  return { imports, source, syntaxError: null };
+  return { imports, source: source2, syntaxError: null };
 }
 __name(compileThreeSketch, "compileThreeSketch");
-var threePromise = null;
-function loadThree() {
-  threePromise ?? (threePromise = import('three'));
-  return threePromise;
-}
-__name(loadThree, "loadThree");
-async function loadThreeModules(compiled) {
-  for (const imp of compiled.imports) {
-    const r = resolveSpecifier(imp.spec);
-    if (!r || r.kind === "addon" && !ADDONS[r.path]) {
-      throw new ThreeImportError(unsupportedImportMessage(imp.spec), imp.line);
-    }
-  }
+async function loadThreeModules(compiled, chain = HOST_CHAIN) {
+  const resolved = compiled.imports.map((imp) => resolveOrRefuse(chain, imp.spec, imp.line));
   const THREE = await loadThree();
   const modules = await Promise.all(
-    compiled.imports.map((imp) => {
-      const r = resolveSpecifier(imp.spec);
-      return r.kind === "three" ? null : ADDONS[r.path]();
-    })
+    resolved.map(
+      (r, i) => r.kind === "three" ? null : r.load().catch((e) => {
+        if (e instanceof ThreeImportError && e.line === void 0) throw new ThreeImportError(e.message, compiled.imports[i].line);
+        throw e;
+      })
+    )
   );
-  return { THREE, modules };
+  return { THREE, modules, chain };
 }
 __name(loadThreeModules, "loadThreeModules");
 var INPUT_EVENTS = /* @__PURE__ */ new Set([
@@ -55704,10 +56241,10 @@ function trackLoads(manager) {
   return t;
 }
 __name(trackLoads, "trackLoads");
-function runThreeSketch(compiled, loaded, host2) {
+function runThreeSketch(compiled, loaded2, host2) {
   var _a;
-  const BaseRenderer = loaded.THREE.WebGLRenderer;
-  const loads = trackLoads(loaded.THREE.DefaultLoadingManager);
+  const BaseRenderer = loaded2.THREE.WebGLRenderer;
+  const loads = trackLoads(loaded2.THREE.DefaultLoadingManager);
   let disposed = false;
   let topLevelDone = false;
   let renderedThisFrame = false;
@@ -55776,9 +56313,9 @@ function runThreeSketch(compiled, loaded, host2) {
   };
   __name(_StaveWebGLRenderer, "StaveWebGLRenderer");
   let StaveWebGLRenderer = _StaveWebGLRenderer;
-  let TextureLoader = loaded.THREE.TextureLoader;
-  if (typeof document === "undefined" && loaded.THREE.ImageBitmapLoader) {
-    const { Loader, Texture, ImageBitmapLoader } = loaded.THREE;
+  let TextureLoader = loaded2.THREE.TextureLoader;
+  if (typeof document === "undefined" && loaded2.THREE.ImageBitmapLoader) {
+    const { Loader, Texture, ImageBitmapLoader } = loaded2.THREE;
     TextureLoader = (_a = class extends Loader {
       load(url, onLoad, onProgress, onError) {
         const texture = new Texture();
@@ -55801,8 +56338,8 @@ function runThreeSketch(compiled, loaded, host2) {
       }
     }, __name(_a, "StaveTextureLoader"), _a);
   }
-  const THREE = { ...loaded.THREE, WebGLRenderer: StaveWebGLRenderer, TextureLoader };
-  const modules = loaded.modules.map((m) => m === null ? THREE : m);
+  const THREE = { ...loaded2.THREE, WebGLRenderer: StaveWebGLRenderer, TextureLoader };
+  const modules = loaded2.modules.map((m) => m === null ? THREE : m);
   const requestAnimationFrame2 = /* @__PURE__ */ __name((cb) => {
     const id = ++rafSeq;
     if (!disposed && typeof cb === "function") rafQueue.set(id, cb);
@@ -55914,11 +56451,10 @@ function runThreeSketch(compiled, loaded, host2) {
     addEventListener: addListener,
     removeEventListener: removeListener
   });
+  const chain = loaded2.chain ?? HOST_CHAIN;
   const importDynamic = /* @__PURE__ */ __name(async (spec) => {
-    const r = resolveSpecifier(String(spec));
-    if (r?.kind === "three") return THREE;
-    if (r?.kind === "addon" && ADDONS[r.path]) return ADDONS[r.path]();
-    throw new ThreeImportError(unsupportedImportMessage(String(spec)));
+    const r = resolveOrRefuse(chain, String(spec));
+    return r.kind === "three" ? THREE : r.load();
   }, "importDynamic");
   let done;
   try {
@@ -56047,14 +56583,370 @@ function runThreeSketch(compiled, loaded, host2) {
 }
 __name(runThreeSketch, "runThreeSketch");
 
+// src/visualizers/libraries/declarations.ts
+var LIBS_FILE = "stave.libs.json";
+var SHA384_B64 = /^[A-Za-z0-9+/]{64}$/;
+function isAllowedLibraryUrl(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol === "https:") return true;
+  return u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]");
+}
+__name(isAllowedLibraryUrl, "isAllowedLibraryUrl");
+function parseLibraryDeclarations(text) {
+  if (text == null || text.trim() === "") return { ok: true, libs: {} };
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch (e) {
+    return { ok: false, message: `${LIBS_FILE} isn't valid JSON (${e instanceof Error ? e.message : String(e)}).` };
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, message: `${LIBS_FILE} should be an object: { "<import name>": { "url": "https://\u2026", "sha384": "\u2026" } }.` };
+  }
+  const libs = {};
+  for (const [name, v] of Object.entries(raw)) {
+    if (!v || typeof v !== "object" || Array.isArray(v)) {
+      return { ok: false, message: `${LIBS_FILE}: '${name}' should be { "url": "https://\u2026", "sha384": "\u2026" }.` };
+    }
+    const { url, sha384 } = v;
+    if (typeof url !== "string" || !isAllowedLibraryUrl(url)) {
+      return { ok: false, message: `${LIBS_FILE}: '${name}' needs a "url" that starts with https:// (got ${JSON.stringify(url ?? null)}).` };
+    }
+    if (sha384 !== void 0) {
+      if (typeof sha384 !== "string" || !SHA384_B64.test(sha384)) {
+        const hint = typeof sha384 === "string" && sha384.startsWith("sha384-") ? ' Leave out the "sha384-" prefix.' : "";
+        return { ok: false, message: `${LIBS_FILE}: '${name}' has a "sha384" that isn't a base64 SHA-384 (64 characters).${hint}` };
+      }
+    }
+    libs[name] = sha384 === void 0 ? { url } : { url, sha384 };
+  }
+  return { ok: true, libs };
+}
+__name(parseLibraryDeclarations, "parseLibraryDeclarations");
+var _LibraryLoadError = class _LibraryLoadError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "LibraryLoadError";
+  }
+};
+__name(_LibraryLoadError, "LibraryLoadError");
+var LibraryLoadError = _LibraryLoadError;
+var MAX_GRAPH_MODULES = 256;
+var MAX_GRAPH_CHARS = 64 * 1024 * 1024;
+async function defaultFetchText(url) {
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (e) {
+    throw new LibraryLoadError(`fetching ${url} failed (${e instanceof Error ? e.message : String(e)})`);
+  }
+  if (!res.ok) throw new LibraryLoadError(`fetching ${url} failed (HTTP ${res.status})`);
+  return res.text();
+}
+__name(defaultFetchText, "defaultFetchText");
+async function moduleImports(text) {
+  await init;
+  const [imports] = parse$3(text);
+  const out = [];
+  for (const i of imports) {
+    if (typeof i.specifier !== "string") continue;
+    out.push({ specifier: i.specifier, start: i.start, end: i.end, dynamic: i.type === "dynamic" });
+  }
+  return out;
+}
+__name(moduleImports, "moduleImports");
+function bareImportMessage(fromUrl, specifier) {
+  if (parseThreeSpecifier(specifier)) return `${fromUrl} imports '${specifier}', which Stave doesn't provide: ${unsupportedImportMessage(specifier).replace(/\.$/, "")}`;
+  return `${fromUrl} imports '${specifier}', which is neither a URL nor a module Stave provides ('three' or 'three/addons/\u2026'). Use a build of the library that bundles '${specifier}' or imports it by URL`;
+}
+__name(bareImportMessage, "bareImportMessage");
+var URL_LIKE = /^(?:\.{0,2}\/|[a-zA-Z][a-zA-Z\d+.-]*:)/;
+function classifyImport(specifier, fromUrl) {
+  const host2 = hostModuleName(specifier);
+  if (host2) return { kind: "host", name: host2 };
+  if (URL_LIKE.test(specifier)) return { kind: "url", url: new URL(specifier, fromUrl).href };
+  return { kind: "bare" };
+}
+__name(classifyImport, "classifyImport");
+async function loadLibraryGraph(entryUrl, options = {}) {
+  const fetchText = options.fetchText ?? defaultFetchText;
+  const entry = new URL(entryUrl).href;
+  const modules = {};
+  const pending3 = /* @__PURE__ */ new Map();
+  let chars = 0;
+  const visit = /* @__PURE__ */ __name((url) => {
+    let p = pending3.get(url);
+    if (p) return p;
+    if (pending3.size >= MAX_GRAPH_MODULES) {
+      return Promise.reject(new LibraryLoadError(`it reaches more than ${MAX_GRAPH_MODULES} modules`));
+    }
+    p = (async () => {
+      const text = await fetchText(url);
+      chars += text.length;
+      if (chars > MAX_GRAPH_CHARS) throw new LibraryLoadError(`its files add up to more than ${MAX_GRAPH_CHARS} characters`);
+      modules[url] = text;
+      const next = [];
+      for (const imp of await moduleImports(text)) {
+        const t = classifyImport(imp.specifier, url);
+        if (t.kind === "url") next.push(visit(t.url));
+        else if (t.kind === "bare") throw new LibraryLoadError(bareImportMessage(url, imp.specifier));
+      }
+      await Promise.all(next);
+    })();
+    pending3.set(url, p);
+    return p;
+  }, "visit");
+  await visit(entry);
+  return { entry, modules };
+}
+__name(loadLibraryGraph, "loadLibraryGraph");
+function toBase64(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
+  return btoa(bin);
+}
+__name(toBase64, "toBase64");
+function libraryGraphBytes(graph) {
+  const urls = Object.keys(graph.modules).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  let s = "";
+  for (const url of urls) {
+    const text = graph.modules[url];
+    s += `${url}
+${String(text.length)}
+${text}
+`;
+  }
+  return new TextEncoder().encode(s);
+}
+__name(libraryGraphBytes, "libraryGraphBytes");
+async function libraryGraphHash(graph) {
+  const digest2 = await crypto.subtle.digest("SHA-384", libraryGraphBytes(graph));
+  return toBase64(new Uint8Array(digest2));
+}
+__name(libraryGraphHash, "libraryGraphHash");
+
+// src/visualizers/libraries/hostShims.ts
+var HOST_REGISTRY_KEY = "__staveHostModules";
+function registry3() {
+  const g = globalThis;
+  let r = g[HOST_REGISTRY_KEY];
+  if (!r) {
+    r = /* @__PURE__ */ Object.create(null);
+    Object.defineProperty(globalThis, HOST_REGISTRY_KEY, { value: r, enumerable: false, configurable: false, writable: false });
+  }
+  return r;
+}
+__name(registry3, "registry");
+var blobModuleUrl = /* @__PURE__ */ __name((source2) => URL.createObjectURL(new Blob([source2], { type: "text/javascript" })), "blobModuleUrl");
+var dataModuleUrl = /* @__PURE__ */ __name((source2) => (
+  // `'` too (encodeURIComponent leaves it): the URL may replace a single-quoted specifier.
+  `data:text/javascript;charset=utf-8,${encodeURIComponent(source2).replace(/'/g, "%27")}`
+), "dataModuleUrl");
+function defaultModuleUrlMaker() {
+  return typeof Blob !== "undefined" && typeof URL !== "undefined" && typeof URL.createObjectURL === "function" ? blobModuleUrl : dataModuleUrl;
+}
+__name(defaultModuleUrlMaker, "defaultModuleUrlMaker");
+var IDENT = /^[A-Za-z_$][\w$]*$/;
+function shimSource(key3, ns) {
+  const names = Object.keys(ns);
+  const reads = names.map((n, i) => `const __${i} = m[${JSON.stringify(n)}];`);
+  const specs = names.map((n, i) => `__${i} as ${n === "default" || IDENT.test(n) ? n : JSON.stringify(n)}`);
+  return `const m = globalThis[${JSON.stringify(HOST_REGISTRY_KEY)}][${JSON.stringify(key3)}];
+${reads.join("\n")}
+export { ${specs.join(", ")} };
+`;
+}
+__name(shimSource, "shimSource");
+var shimSets = 0;
+function createHostShims(options = {}) {
+  const load3 = options.load ?? loadHostModule;
+  const makeUrl = options.makeUrl ?? defaultModuleUrlMaker();
+  const prefix = `s${++shimSets}:`;
+  const urls = /* @__PURE__ */ new Map();
+  return {
+    nameFor: hostModuleName,
+    urlFor(spec) {
+      const name = hostModuleName(spec);
+      if (!name) return Promise.resolve(null);
+      let url = urls.get(name);
+      if (!url) {
+        url = load3(name).then((ns) => {
+          const key3 = prefix + name;
+          registry3()[key3] = ns;
+          return makeUrl(shimSource(key3, ns));
+        });
+        urls.set(name, url);
+        url.catch(() => urls.delete(name));
+      }
+      return url;
+    }
+  };
+}
+__name(createHostShims, "createHostShims");
+var shared = null;
+function hostShims() {
+  shared ?? (shared = createHostShims());
+  return shared;
+}
+__name(hostShims, "hostShims");
+
+// src/visualizers/libraries/instantiate.ts
+var defaultRevoke = /* @__PURE__ */ __name((url) => {
+  if (url.startsWith("blob:") && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(url);
+}, "defaultRevoke");
+async function instantiateLibraryGraph(graph, options = {}) {
+  const shims = options.shims ?? hostShims();
+  const makeUrl = options.makeUrl ?? defaultModuleUrlMaker();
+  const made = /* @__PURE__ */ new Map();
+  const visiting = /* @__PURE__ */ new Set();
+  const urls = [];
+  const dynamicTargets = /* @__PURE__ */ new Set();
+  let hostRewrites = 0;
+  const make = /* @__PURE__ */ __name(async (url) => {
+    const done = made.get(url);
+    if (done) return done;
+    if (visiting.has(url)) {
+      throw new LibraryLoadError(`its modules import each other in a cycle (at ${url}), which Stave can't load yet`);
+    }
+    const text = graph.modules[url];
+    if (text === void 0) throw new LibraryLoadError(`${url} is missing from the fetched files`);
+    visiting.add(url);
+    let out = "";
+    let last = 0;
+    for (const imp of await moduleImports(text)) {
+      const t = classifyImport(imp.specifier, url);
+      let to;
+      if (t.kind === "host") {
+        const shim = await shims.urlFor(imp.specifier);
+        if (!shim) throw new LibraryLoadError(`${url} imports '${imp.specifier}', which Stave can't provide`);
+        to = shim;
+        hostRewrites++;
+      } else if (t.kind === "url") {
+        to = await make(t.url);
+        if (imp.dynamic) dynamicTargets.add(to);
+      } else {
+        throw new LibraryLoadError(bareImportMessage(url, imp.specifier));
+      }
+      out += text.slice(last, imp.start) + (imp.dynamic ? JSON.stringify(to) : to);
+      last = imp.end;
+    }
+    out += text.slice(last);
+    visiting.delete(url);
+    const moduleUrl = makeUrl(out);
+    made.set(url, moduleUrl);
+    urls.push(moduleUrl);
+    return moduleUrl;
+  }, "make");
+  const entryUrl = await make(graph.entry);
+  const revoke = options.revokeUrl ?? defaultRevoke;
+  let namespace;
+  try {
+    namespace = await import(
+      /* webpackIgnore: true */
+      /* @vite-ignore */
+      entryUrl
+    );
+  } catch (e) {
+    for (const u of urls) revoke(u);
+    throw e;
+  }
+  const retained = urls.filter((u) => dynamicTargets.has(u));
+  for (const u of urls) if (!dynamicTargets.has(u)) revoke(u);
+  return { namespace, urls, retained, hostRewrites };
+}
+__name(instantiateLibraryGraph, "instantiateLibraryGraph");
+
+// src/visualizers/libraries/declaredLibraries.ts
+var loaded = /* @__PURE__ */ new Map();
+function loadDeclaredLibrary(name, decl, deps = {}) {
+  const key3 = `${decl.url}
+${decl.sha384 ?? ""}`;
+  let p = loaded.get(key3);
+  if (!p) {
+    p = loadOnce(name, decl, deps);
+    loaded.set(key3, p);
+    p.catch(() => loaded.delete(key3));
+  }
+  return p;
+}
+__name(loadDeclaredLibrary, "loadDeclaredLibrary");
+async function loadOnce(name, decl, deps) {
+  const from = `'${name}' (declared in ${LIBS_FILE})`;
+  let graph = decl.sha384 && deps.cache ? await deps.cache.getGraph(decl.sha384).catch(() => null) : null;
+  const fromCache = graph !== null;
+  if (!graph) {
+    try {
+      graph = await loadLibraryGraph(decl.url, { fetchText: deps.fetchText });
+    } catch (e) {
+      throw new ThreeImportError(`${from} couldn't be loaded: ${e instanceof Error ? e.message : String(e)}.`);
+    }
+  }
+  const actual = await libraryGraphHash(graph);
+  if (!decl.sha384) {
+    throw new ThreeImportError(
+      `${from} has no "sha384", so Stave can't check what it loads. What ${decl.url} serves now hashes to "${actual}": add "sha384": "${actual}" to its entry if that is the version you mean.`
+    );
+  }
+  if (actual !== decl.sha384) {
+    throw new ThreeImportError(
+      `${from} was refused: what ${decl.url} serves doesn't match the "sha384" in ${LIBS_FILE} (expected "${decl.sha384}", got "${actual}"). Nothing from it was run. If the library changed on purpose, put the new value in ${LIBS_FILE}.`
+    );
+  }
+  if (!fromCache && deps.cache) await deps.cache.putGraph(actual, graph).catch(() => {
+  });
+  try {
+    return await (deps.instantiate ?? instantiateLibraryGraph)(graph);
+  } catch (e) {
+    throw new ThreeImportError(`${from} couldn't be started: ${e instanceof Error ? e.message : String(e)}.`);
+  }
+}
+__name(loadOnce, "loadOnce");
+function declaredResolver(parsed, deps = {}) {
+  return {
+    name: "declared",
+    resolve(spec) {
+      if (!parsed.ok || !Object.prototype.hasOwnProperty.call(parsed.libs, spec)) return null;
+      const decl = parsed.libs[spec];
+      return { kind: "module", load: /* @__PURE__ */ __name(async () => (await loadDeclaredLibrary(spec, decl, deps)).namespace, "load") };
+    }
+  };
+}
+__name(declaredResolver, "declaredResolver");
+var URL_SPEC = /^[a-zA-Z][a-zA-Z\d+.-]*:/;
+var RELATIVE = /^\.{0,2}\//;
+function refusalMessage(spec, parsed) {
+  if (parseThreeSpecifier(spec) || RELATIVE.test(spec)) return unsupportedImportMessage(spec);
+  if (!parsed.ok) return `'${spec}' can't be looked up: ${parsed.message}`;
+  if (URL_SPEC.test(spec)) {
+    return `'${spec}' can't be imported by URL in a Stave sketch: declare it in ${LIBS_FILE} at the project root, { "<name>": { "url": ${JSON.stringify(spec)}, "sha384": "\u2026" } }, then import '<name>'.`;
+  }
+  return `'${spec}' isn't available in Stave. A three.js sketch can import 'three' and any 'three/addons/\u2026' file. To use a library, declare it in ${LIBS_FILE} at the project root: { ${JSON.stringify(spec)}: { "url": "https://\u2026", "sha384": "\u2026" } }.`;
+}
+__name(refusalMessage, "refusalMessage");
+function sketchImportChain(libsText, deps = {}) {
+  const parsed = parseLibraryDeclarations(libsText);
+  return {
+    links: [hostResolver, declaredResolver(parsed, deps)],
+    refusal: /* @__PURE__ */ __name((spec) => refusalMessage(spec, parsed), "refusal")
+  };
+}
+__name(sketchImportChain, "sketchImportChain");
+
 // src/visualizers/renderers/ThreeVizRenderer.ts
 var threePerfSeq = 0;
 var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
-  /** `code` = the sketch; `name` = its workspace path, for error attribution. */
-  constructor(code, name = "") {
+  /** `code` = the sketch; `name` = its workspace path, for error attribution;
+   *  `libs` = the project's stave.libs.json text (#2639), null when it has none. */
+  constructor(code, name = "", libs = null) {
     super();
     this.code = code;
     this.name = name;
+    this.libs = libs;
     this.canvas = null;
     this.run = null;
     this.rafId = null;
@@ -56123,16 +57015,16 @@ var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
       this.fail(compiled.syntaxError, compiled.syntaxError.line, onError);
       return;
     }
-    let loaded;
+    let loaded2;
     try {
-      loaded = await loadThreeModules(compiled);
+      loaded2 = await loadThreeModules(compiled, sketchImportChain(this.libs));
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       this.fail(err, e instanceof ThreeImportError ? e.line : void 0, onError);
       return;
     }
     if (this.destroyed || !this.canvas) return;
-    this.run = runThreeSketch(compiled, loaded, {
+    this.run = runThreeSketch(compiled, loaded2, {
       canvas: this.canvas,
       size: /* @__PURE__ */ __name(() => this.size, "size"),
       dpr: effectiveDpr,
@@ -56201,19 +57093,35 @@ var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
 __name(_ThreeVizRenderer, "ThreeVizRenderer");
 var ThreeVizRenderer = _ThreeVizRenderer;
 
+// src/visualizers/libraries/projectLibraries.ts
+var source = null;
+function setProjectLibrariesSource(next) {
+  source = next;
+}
+__name(setProjectLibrariesSource, "setProjectLibrariesSource");
+function currentProjectLibrariesText() {
+  try {
+    return source?.() ?? null;
+  } catch {
+    return null;
+  }
+}
+__name(currentProjectLibrariesText, "currentProjectLibrariesText");
+
 // src/visualizers/renderers/makeThreeRenderer.ts
 function makeThreeRenderer(code, name) {
+  const libs = currentProjectLibrariesText();
   return shouldUseWorkerRenderer() ? new FallbackVizRenderer(
-    () => new WorkerVizRenderer("three", code, name),
-    () => new ThreeVizRenderer(code, name)
-  ) : new ThreeVizRenderer(code, name);
+    () => new WorkerVizRenderer("three", code, name, { libs }),
+    () => new ThreeVizRenderer(code, name, libs)
+  ) : new ThreeVizRenderer(code, name, libs);
 }
 __name(makeThreeRenderer, "makeThreeRenderer");
 
 // src/visualizers/vizCompiler.ts
 function compilePreset(preset) {
   const { id, name, renderer, code, requires } = preset;
-  const source = preset.filePath ?? name;
+  const source2 = preset.filePath ?? name;
   if (renderer === "hydra") {
     return {
       id,
@@ -56225,7 +57133,7 @@ function compilePreset(preset) {
       // main-thread fallback) when the flag is on + the browser is capable, else
       // the main-thread HydraVizRenderer. User `.hydra` code is a transferable
       // string, so it can cross to the worker (built-in hydra closures can't yet).
-      factory: /* @__PURE__ */ __name(() => makeHydraRenderer(code, source), "factory")
+      factory: /* @__PURE__ */ __name(() => makeHydraRenderer(code, source2), "factory")
     };
   }
   if (renderer === "glsl") {
@@ -56239,7 +57147,7 @@ function compilePreset(preset) {
       // main-thread fallback) when the flag is on + the browser is capable, else
       // the main-thread GLSLVizRenderer. A `.glsl` sketch is the wrapped fragment
       // source — a plain transferable string, so it crosses to the worker cleanly.
-      factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(code, source), "factory")
+      factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(code, source2), "factory")
     };
   }
   if (renderer === "three") {
@@ -56251,7 +57159,7 @@ function compilePreset(preset) {
       ...preset.nativeSize ? { nativeSize: preset.nativeSize } : {},
       // #2516: a plain three.js sketch, worker-offloaded with a main-thread
       // fallback (makeThreeRenderer), like GLSL.
-      factory: /* @__PURE__ */ __name(() => makeThreeRenderer(code, source), "factory")
+      factory: /* @__PURE__ */ __name(() => makeThreeRenderer(code, source2), "factory")
     };
   }
   if (renderer === "p5") {
@@ -56268,7 +57176,7 @@ function compilePreset(preset) {
       // Monaco squiggle.
       // B-3: `makeP5Renderer` returns a worker-offloaded renderer when the flag
       // is on + the browser is capable, else the main-thread P5VizRenderer.
-      factory: /* @__PURE__ */ __name(() => makeP5Renderer(code, source), "factory")
+      factory: /* @__PURE__ */ __name(() => makeP5Renderer(code, source2), "factory")
     };
   }
   throw new Error(`Unknown renderer: ${renderer}`);
@@ -56379,12 +57287,12 @@ __name(synthesizeSpectrum, "synthesizeSpectrum");
 function mountVizPreview(container, spec, size, onError) {
   if (!shouldUseWorkerRenderer()) return null;
   const demo = createDrumDemoSignalSource();
-  const source = /* @__PURE__ */ __name(() => {
+  const source2 = /* @__PURE__ */ __name(() => {
     const r = new WorkerVizRenderer(spec.renderer, spec.code, spec.name);
     r.setDemoSource(demo);
     return r;
   }, "source");
-  const { renderer, disconnect } = mountVizRenderer(container, source, {}, size, onError);
+  const { renderer, disconnect } = mountVizRenderer(container, source2, {}, size, onError);
   return {
     disconnect: /* @__PURE__ */ __name(() => {
       disconnect();
@@ -58495,10 +59403,10 @@ function VizSettingsPopover(props) {
             children: [
               /* @__PURE__ */ jsx("option", { value: "default", children: "default (follow most recent)" }),
               /* @__PURE__ */ jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
-              patternSources.length > 0 && /* @__PURE__ */ jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxs("option", { value: `file:${source.sourceId}`, children: [
-                source.playing ? "\u25CF " : "\u25CB ",
-                source.label
-              ] }, source.sourceId)) }),
+              patternSources.length > 0 && /* @__PURE__ */ jsx("optgroup", { label: "playing patterns", children: patternSources.map((source2) => /* @__PURE__ */ jsxs("option", { value: `file:${source2.sourceId}`, children: [
+                source2.playing ? "\u25CF " : "\u25CB ",
+                source2.label
+              ] }, source2.sourceId)) }),
               /* @__PURE__ */ jsx("option", { value: "none", children: "none (demo mode)" })
             ]
           }
@@ -59325,11 +60233,11 @@ function subscribeErrorPositions(listener) {
   };
 }
 __name(subscribeErrorPositions, "subscribeErrorPositions");
-function findFileIdForSource(source) {
+function findFileIdForSource(source2) {
   const files = listWorkspaceFiles();
-  const byPath = files.find((f) => f.path === source);
+  const byPath = files.find((f) => f.path === source2);
   if (byPath) return byPath.id;
-  const byId = files.find((f) => f.id === source);
+  const byId = files.find((f) => f.id === source2);
   if (byId) return byId.id;
   return null;
 }
@@ -59761,6 +60669,6 @@ function startPageExtensions() {
 __name(startPageExtensions, "startPageExtensions");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUILTIN_EXTENSIONS, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, E2E_TONE_ID, E2E_TONE_KEY, E2E_TONE_SOUND, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PLAY_VIZ_WAIT_CAP_MS, PatternPanel, PianoRollGrid, PreviewView, RESIDUE, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, THREE_ADDONS, THREE_VIZ, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, activeExtensionManifests, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, compileThreeSketch, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, declaredSettings, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enabledExtensionIds, enterRuntimeView, errorPositionNow, exitRuntimeView, extensionFailure, extensionKeys, extensionKeysInCode, extensionSettingValue, extensionSettings, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasActiveExtensions, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isExtensionEnabled, isExtensionKeyGivenBack, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, isWaitingForVisuals, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, listedExtensions, liveCodingRuntimeRegistry, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onExtensionKeysChange, onExtensionSettingsChange, onExtensionsEnabledChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPageExtensionsChange, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, onWaitingForVisualsChanged, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCodeViz, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retainCodeBackdropOptions, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setExtensionEnabled, setExtensionKeyGivenBack, setExtensionSetting, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startPageExtensions, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare, writtenCps };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUILTIN_EXTENSIONS, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, E2E_TONE_ID, E2E_TONE_KEY, E2E_TONE_SOUND, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIBS_FILE, LIGHT_THEME_TOKENS, LibraryLoadError, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PLAY_VIZ_WAIT_CAP_MS, PatternPanel, PianoRollGrid, PreviewView, RESIDUE, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, THREE_ADDONS, THREE_VIZ, TRACK_PALETTE_32, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, activeExtensionManifests, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chordFromEvent, chordMatches, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, compileThreeSketch, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, currentProjectLibrariesText, cycleEditorTheme, cycleFingerprints, cyclesToPlayThrough, declaredSettings, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enabledExtensionIds, enterRuntimeView, errorPositionNow, exitRuntimeView, extensionFailure, extensionKeys, extensionKeysInCode, extensionSettingValue, extensionSettings, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelState, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCodeBackdropOptions, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVisibleArea, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasActiveExtensions, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, instantiateLibraryGraph, isAllowedLibraryUrl, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isExtensionEnabled, isExtensionKeyGivenBack, isFileModifiedSinceHead, isMacPlatform, isModifierOnlyKey, isP5DirectCanvasEnabled, isPhone, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, isWaitingForVisuals, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, libraryGraphBytes, libraryGraphHash, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, listedExtensions, liveCodingRuntimeRegistry, loadDeclaredLibrary, loadLibraryGraph, loadShellState, locateMiniParseError, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeChord, normalizeEdits, normalizeStrudelHap, normalizeVizName, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onExtensionKeysChange, onExtensionSettingsChange, onExtensionsEnabledChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPageExtensionsChange, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, onWaitingForVisualsChanged, openAudioFrame, otherTrackNames, parseLibraryDeclarations, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, phoneLayout, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, playsBareExpression, positionOfValue, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCodeViz, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, readVizOptionsLiteral, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, resolveVizOptions, restoreFileToCommit, restoreProject, restoreSnapshot, retainCodeBackdropOptions, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setBottomPanelActiveTab, setBottomPanelOpen, setCaptureCapacity, setChildOrder, setCodeBackdropOptions, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setExtensionEnabled, setExtensionKeyGivenBack, setExtensionSetting, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setProjectLibrariesSource, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTakesPhoneAudio, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, showBottomPanelTab, shownTrackName, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, sketchImportChain, snapToStep, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startClipPreview, startHistoryDriver, startPageExtensions, startSampleSound, startVisibleArea, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeErrorPositions, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelState, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe2 as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, tokenForCode, touchProject, trackIdentity, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useBottomPanelState, useGridMode, useKeyboardUp, useNoteColorMode, usePhone, usePhoneLayout, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, valueAtPosition, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare, writtenCps };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

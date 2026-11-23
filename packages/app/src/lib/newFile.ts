@@ -23,6 +23,8 @@ export function extensionToLanguage(ext: string): WorkspaceFile["language"] | nu
     case "shader": return "glsl";
     case "three": return "three";
     case "md": return "markdown";
+    // #2639 — data files, first of all the project's stave.libs.json.
+    case "json": return "json";
     default: return null;
   }
 }

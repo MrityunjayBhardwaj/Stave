@@ -219,6 +219,33 @@ export { compilePreset } from './visualizers/vizCompiler'
 // #2516 — the three.js sketch parser + its bundled addon list (the app checks its
 // starter against them; editor support for `.three` builds on them next).
 export { compileThreeSketch, THREE_ADDONS } from './visualizers/renderers/threeSketch'
+// #2639 — libraries a project declares in stave.libs.json: the host registers where
+// the file's text comes from; the loader, hash and instantiate steps are public so
+// the cache (#2640), gallery (#2642) and registry (#2643) build on the same pieces.
+export {
+  LIBS_FILE,
+  parseLibraryDeclarations,
+  isAllowedLibraryUrl,
+  type LibraryDeclaration,
+  type LibraryDeclarations,
+  type ParsedLibraries,
+} from './visualizers/libraries/declarations'
+export {
+  loadLibraryGraph,
+  libraryGraphHash,
+  libraryGraphBytes,
+  LibraryLoadError,
+  type LibraryGraph,
+  type LoadLibraryGraphOptions,
+} from './visualizers/libraries/graph'
+export { instantiateLibraryGraph, type InstantiatedLibrary, type InstantiateOptions } from './visualizers/libraries/instantiate'
+export {
+  sketchImportChain,
+  loadDeclaredLibrary,
+  type LibraryGraphCache,
+  type DeclaredLibraryDeps,
+} from './visualizers/libraries/declaredLibraries'
+export { setProjectLibrariesSource, currentProjectLibrariesText, type ProjectLibrariesSource } from './visualizers/libraries/projectLibraries'
 export { mountVizRenderer } from './visualizers/mountVizRenderer'
 // #2560 — Play waits (capped) for the pattern's sketches; the transport shows it.
 export {
