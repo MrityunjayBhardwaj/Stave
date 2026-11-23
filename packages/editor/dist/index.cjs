@@ -60127,10 +60127,9 @@ var THREE_VIZ = createCompiledVizProvider({
 function registerPresetAsNamedViz(preset, name = preset.name) {
   try {
     const descriptor = compilePreset(preset);
-    const libs = preset.renderer === "three" ? currentProjectLibrariesText() : null;
     setVizDescriptorSource(
       descriptor,
-      JSON.stringify([preset.renderer, preset.code, preset.filePath ?? null, preset.nativeSize ?? null, libs])
+      JSON.stringify([preset.renderer, preset.code, preset.filePath ?? null, preset.nativeSize ?? null])
     );
     registerNamedViz(name, descriptor);
     return true;
