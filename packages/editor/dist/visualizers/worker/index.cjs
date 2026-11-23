@@ -37,7 +37,7 @@ function collectByTag(root, TAG, out) {
 __name(collectByTag, "collectByTag");
 function makeElement(tag) {
   const children = [];
-  const listeners2 = {};
+  const listeners3 = {};
   const el = {
     tagName: String(tag || "div").toUpperCase(),
     nodeType: 1,
@@ -96,7 +96,7 @@ function makeElement(tag) {
     click() {
     },
     addEventListener(type, fn) {
-      (listeners2[type] || (listeners2[type] = [])).push(fn);
+      (listeners3[type] || (listeners3[type] = [])).push(fn);
     },
     removeEventListener() {
     },
@@ -1215,9 +1215,9 @@ var _SignalBus = class _SignalBus {
   }
   /** Find the first active IREvent (combined feed) whose `s` is in `sounds`. */
   activeEventForSounds(sounds) {
-    const set = new Set(sounds);
+    const set2 = new Set(sounds);
     for (const ev of this.activeEvents) {
-      if (ev.s != null && set.has(ev.s)) return ev;
+      if (ev.s != null && set2.has(ev.s)) return ev;
     }
     return void 0;
   }
@@ -8014,6 +8014,34 @@ function parseLibraryDeclarations(text) {
   return { ok: true, libs };
 }
 __name(parseLibraryDeclarations, "parseLibraryDeclarations");
+
+// src/visualizers/libraries/graphHash.ts
+function toBase64(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
+  return btoa(bin);
+}
+__name(toBase64, "toBase64");
+function libraryGraphBytes(graph) {
+  const urls = Object.keys(graph.modules).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  let s = "";
+  for (const url of urls) {
+    const text = graph.modules[url];
+    s += `${url}
+${String(text.length)}
+${text}
+`;
+  }
+  return new TextEncoder().encode(s);
+}
+__name(libraryGraphBytes, "libraryGraphBytes");
+async function libraryGraphHash(graph) {
+  const digest = await crypto.subtle.digest("SHA-384", libraryGraphBytes(graph));
+  return toBase64(new Uint8Array(digest));
+}
+__name(libraryGraphHash, "libraryGraphHash");
+
+// src/visualizers/libraries/graph.ts
 var _LibraryLoadError = class _LibraryLoadError extends Error {
   constructor(message) {
     super(message);
@@ -8091,30 +8119,6 @@ async function loadLibraryGraph(entryUrl, options = {}) {
   return { entry, modules };
 }
 __name(loadLibraryGraph, "loadLibraryGraph");
-function toBase64(bytes) {
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
-  return btoa(bin);
-}
-__name(toBase64, "toBase64");
-function libraryGraphBytes(graph) {
-  const urls = Object.keys(graph.modules).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
-  let s = "";
-  for (const url of urls) {
-    const text = graph.modules[url];
-    s += `${url}
-${String(text.length)}
-${text}
-`;
-  }
-  return new TextEncoder().encode(s);
-}
-__name(libraryGraphBytes, "libraryGraphBytes");
-async function libraryGraphHash(graph) {
-  const digest = await crypto.subtle.digest("SHA-384", libraryGraphBytes(graph));
-  return toBase64(new Uint8Array(digest));
-}
-__name(libraryGraphHash, "libraryGraphHash");
 
 // src/visualizers/libraries/hostShims.ts
 var HOST_REGISTRY_KEY = "__staveHostModules";
@@ -8322,6 +8326,318 @@ function sketchImportChain(libsText, deps = {}) {
   };
 }
 __name(sketchImportChain, "sketchImportChain");
+
+// src/storageStatus.ts
+var CLEAR = { fullSince: null, documentUnsaved: false };
+var status = CLEAR;
+var listeners2 = /* @__PURE__ */ new Set();
+function set(next) {
+  if (next.fullSince === status.fullSince && next.documentUnsaved === status.documentUnsaved) return;
+  status = next;
+  for (const fn of listeners2) fn();
+}
+__name(set, "set");
+function noteStorageRefused(opts = {}) {
+  set({
+    fullSince: status.fullSince ?? Date.now(),
+    documentUnsaved: status.documentUnsaved || Boolean(opts.document)
+  });
+}
+__name(noteStorageRefused, "noteStorageRefused");
+
+// src/idb.ts
+var IDB_OPEN_TIMEOUT_MS = 8e3;
+var _IdbMissingError = class _IdbMissingError extends Error {
+  constructor(dbName) {
+    super(`idb-missing:${dbName}`);
+    this.dbName = dbName;
+    this.name = "IdbMissingError";
+  }
+};
+__name(_IdbMissingError, "IdbMissingError");
+var IdbMissingError = _IdbMissingError;
+function openIdbWithTimeout(name, version, upgrade, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? IDB_OPEN_TIMEOUT_MS;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let missing = false;
+    const req = indexedDB.open(name, version);
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      req.onsuccess = () => {
+        try {
+          req.result.close();
+        } catch {
+        }
+      };
+      reject(new Error(`idb-open-timeout:${name}`));
+    }, timeoutMs);
+    req.onupgradeneeded = () => {
+      if (opts.mustExist) {
+        missing = true;
+        req.transaction?.abort();
+        return;
+      }
+      upgrade(req.result);
+    };
+    req.onsuccess = () => {
+      if (settled) {
+        try {
+          req.result.close();
+        } catch {
+        }
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(req.result);
+    };
+    req.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (missing) {
+        reject(new IdbMissingError(name));
+        return;
+      }
+      reject(req.error ?? new Error(`idb-open-error:${name}`));
+    };
+    req.onblocked = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error(`idb-open-blocked:${name}`));
+    };
+  });
+}
+__name(openIdbWithTimeout, "openIdbWithTimeout");
+var _StorageFullError = class _StorageFullError extends Error {
+  constructor(cause) {
+    super("storage is full");
+    this.cause = cause;
+    this.name = "StorageFullError";
+  }
+};
+__name(_StorageFullError, "StorageFullError");
+var StorageFullError = _StorageFullError;
+function isQuotaError(err) {
+  return err instanceof StorageFullError || typeof err === "object" && err !== null && err.name === "QuotaExceededError";
+}
+__name(isQuotaError, "isQuotaError");
+function named(err, fallback) {
+  if (err instanceof StorageFullError) return err;
+  if (isQuotaError(err)) {
+    noteStorageRefused();
+    return new StorageFullError(err);
+  }
+  return err ?? new Error(fallback);
+}
+__name(named, "named");
+function transactionDone(tx) {
+  return new Promise((resolve, reject) => {
+    tx.addEventListener("complete", () => resolve());
+    tx.addEventListener("abort", () => reject(named(tx.error, "idb-transaction-aborted")));
+  });
+}
+__name(transactionDone, "transactionDone");
+
+// src/visualizers/libraries/libraryCache.ts
+var LIBRARY_CACHE_DB = "stave-library-cache";
+var LIBRARY_CACHE_MAX_BYTES = 100 * 1024 * 1024;
+var LIBRARY_CACHE_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1e3;
+var LIBRARY_CACHE_OPEN_TIMEOUT_MS = 3e3;
+var GRAPHS = "graphs";
+var META = "meta";
+function isLibraryGraph(value) {
+  if (typeof value !== "object" || value === null) return false;
+  const { entry, modules } = value;
+  if (typeof entry !== "string" || typeof modules !== "object" || modules === null) return false;
+  if (Array.isArray(modules)) return false;
+  const values = Object.values(modules);
+  if (values.length === 0 || !values.every((t) => typeof t === "string")) return false;
+  return Object.prototype.hasOwnProperty.call(modules, entry);
+}
+__name(isLibraryGraph, "isLibraryGraph");
+function chooseEvictions(entries, opts) {
+  const drop = [];
+  let total = 0;
+  const kept = entries.find((e) => e.sha384 === opts.keep);
+  if (kept) total += kept.bytes;
+  const rest = entries.filter((e) => e.sha384 !== opts.keep).sort((a, b) => b.lastUsed - a.lastUsed);
+  for (const e of rest) {
+    if (opts.now - e.lastUsed > opts.maxAgeMs || total + e.bytes > opts.maxBytes) {
+      drop.push(e.sha384);
+      continue;
+    }
+    total += e.bytes;
+  }
+  return drop;
+}
+__name(chooseEvictions, "chooseEvictions");
+function read2(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("library-cache: request failed"));
+  });
+}
+__name(read2, "read");
+function errorText(err) {
+  if (err && typeof err === "object") {
+    const { name, message } = err;
+    return [name, message].filter((x) => typeof x === "string" && x).join(": ") || String(err);
+  }
+  return String(err);
+}
+__name(errorText, "errorText");
+function createLibraryCache(opts = {}) {
+  const dbName = opts.dbName ?? LIBRARY_CACHE_DB;
+  const maxBytes = opts.maxBytes ?? LIBRARY_CACHE_MAX_BYTES;
+  const maxAgeMs = opts.maxAgeMs ?? LIBRARY_CACHE_MAX_AGE_MS;
+  const openTimeoutMs = opts.openTimeoutMs ?? LIBRARY_CACHE_OPEN_TIMEOUT_MS;
+  const now = opts.now ?? (() => Date.now());
+  const warn = opts.warn ?? ((m) => console.warn(m));
+  let dbPromise = null;
+  let saidOff = false;
+  let saidFull = false;
+  const off = /* @__PURE__ */ __name((why) => {
+    if (!saidOff) {
+      saidOff = true;
+      warn(`[stave] Libraries can't be kept on this device (${why}), so each one loads from the network.`);
+    }
+    return null;
+  }, "off");
+  function open() {
+    if (dbPromise) return dbPromise;
+    dbPromise = (async () => {
+      try {
+        if (typeof indexedDB === "undefined") return off("no IndexedDB here");
+        if (typeof crypto === "undefined" || !crypto.subtle) return off("no crypto.subtle here");
+        const db = await openIdbWithTimeout(
+          dbName,
+          1,
+          (d) => {
+            if (!d.objectStoreNames.contains(GRAPHS)) d.createObjectStore(GRAPHS);
+            if (!d.objectStoreNames.contains(META)) d.createObjectStore(META, { keyPath: "sha384" });
+          },
+          { timeoutMs: openTimeoutMs }
+        );
+        db.onversionchange = () => {
+          db.close();
+          dbPromise = null;
+        };
+        return db;
+      } catch (err) {
+        return off(errorText(err));
+      }
+    })();
+    return dbPromise;
+  }
+  __name(open, "open");
+  async function remove(db, keys) {
+    if (keys.length === 0) return;
+    const tx = db.transaction([GRAPHS, META], "readwrite");
+    for (const k of keys) {
+      tx.objectStore(GRAPHS).delete(k);
+      tx.objectStore(META).delete(k);
+    }
+    await transactionDone(tx);
+  }
+  __name(remove, "remove");
+  async function getGraph2(sha384) {
+    const db = await open();
+    if (!db) return null;
+    let value;
+    try {
+      value = await read2(db.transaction(GRAPHS, "readonly").objectStore(GRAPHS).get(sha384));
+    } catch (err) {
+      warn(`[stave] A kept library couldn't be read (${errorText(err)}); loading it from the network.`);
+      await remove(db, [sha384]).catch(() => {
+      });
+      return null;
+    }
+    if (value === void 0) return null;
+    let ok = false;
+    let bytes = 0;
+    try {
+      if (isLibraryGraph(value)) {
+        bytes = libraryGraphBytes(value).byteLength;
+        ok = await libraryGraphHash(value) === sha384;
+      }
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      warn(`[stave] A kept library didn't match its hash ${sha384.slice(0, 12)}\u2026; it was removed and will load from the network.`);
+      await remove(db, [sha384]).catch(() => {
+      });
+      return null;
+    }
+    const graph = value;
+    try {
+      const tx = db.transaction(META, "readwrite");
+      tx.objectStore(META).put({ sha384, bytes, lastUsed: now() });
+      await transactionDone(tx);
+    } catch {
+    }
+    return { entry: graph.entry, modules: graph.modules };
+  }
+  __name(getGraph2, "getGraph");
+  async function putGraph2(sha384, graph) {
+    const db = await open();
+    if (!db) return;
+    try {
+      if (!isLibraryGraph(graph)) throw new Error("not a library graph");
+      const bytes = libraryGraphBytes(graph);
+      const digest = await libraryGraphHash(graph);
+      if (digest !== sha384) {
+        warn(`[stave] A library wasn't kept: its graph hashes to ${digest.slice(0, 12)}\u2026, not ${sha384.slice(0, 12)}\u2026.`);
+        return;
+      }
+      const tx = db.transaction([GRAPHS, META], "readwrite");
+      tx.objectStore(GRAPHS).put({ entry: graph.entry, modules: graph.modules }, sha384);
+      tx.objectStore(META).put({ sha384, bytes: bytes.byteLength, lastUsed: now() });
+      await transactionDone(tx);
+    } catch (err) {
+      if (isQuotaError(err) || saidFull) {
+        if (!saidFull) {
+          saidFull = true;
+          warn("[stave] This device's storage is full, so a library wasn't kept; it will load from the network.");
+        }
+      } else {
+        warn(`[stave] A library wasn't kept (${errorText(err)}).`);
+      }
+      return;
+    }
+    try {
+      const all = await read2(db.transaction(META, "readonly").objectStore(META).getAll());
+      await remove(db, chooseEvictions(all, { maxBytes, maxAgeMs, now: now(), keep: sha384 }));
+    } catch {
+    }
+  }
+  __name(putGraph2, "putGraph");
+  return {
+    getGraph: /* @__PURE__ */ __name((sha384) => getGraph2(sha384).catch((err) => {
+      warn(`[stave] Library cache lookup failed (${errorText(err)}); loading from the network.`);
+      return null;
+    }), "getGraph"),
+    putGraph: /* @__PURE__ */ __name((sha384, graph) => putGraph2(sha384, graph).catch((err) => {
+      warn(`[stave] A library wasn't kept (${errorText(err)}).`);
+    }), "putGraph")
+  };
+}
+__name(createLibraryCache, "createLibraryCache");
+var shared2 = null;
+var instance = /* @__PURE__ */ __name(() => shared2 ?? (shared2 = createLibraryCache()), "instance");
+function getGraph(sha384) {
+  return instance().getGraph(sha384);
+}
+__name(getGraph, "getGraph");
+function putGraph(sha384, graph) {
+  return instance().putGraph(sha384, graph);
+}
+__name(putGraph, "putGraph");
+var sharedLibraryCache = { getGraph, putGraph };
 
 // src/visualizers/worker/workerMessages.ts
 function isControlMessage(data) {
@@ -8819,7 +9135,7 @@ function hostVizWorker(scope) {
   async function mountThree(msg, feed, rawScheduler, containerSizeRef, dpr) {
     const compiled = compileThreeSketch(msg.code);
     if (compiled.syntaxError) throw compiled.syntaxError;
-    const loaded2 = await loadThreeModules(compiled, sketchImportChain(msg.libs));
+    const loaded2 = await loadThreeModules(compiled, sketchImportChain(msg.libs, { cache: sharedLibraryCache }));
     const uniforms = buildStaveUniforms(feed.bus);
     const optionsRef = { current: msg.options ?? {} };
     let currentDpr = dpr;

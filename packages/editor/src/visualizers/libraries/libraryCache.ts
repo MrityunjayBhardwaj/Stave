@@ -13,10 +13,8 @@
  * `{ entry, modules }`: every module's source text keyed by its absolute URL, before
  * any rewriting. The hash covers the modules sorted by URL, each contributing
  * `url + "\n" + String(text.length) + "\n" + text + "\n"`, encoded as UTF-8, SHA-384,
- * base64 with no prefix. The length makes the encoding unambiguous: no choice of
- * texts can make two different graphs produce the same bytes. This is the same
- * function the loader verifies a download with, so a graph that loads from the
- * network and one that loads from here are checked by one rule.
+ * base64 with no prefix (`graphHash.ts`). It is the one function the loader verifies a
+ * download with, so a graph from the network and one from here are checked by one rule.
  *
  * ## Never in the sketch's way
  *
@@ -42,9 +40,9 @@
  */
 
 import { isQuotaError, openIdbWithTimeout, transactionDone } from '../../idb'
+import { libraryGraphBytes, libraryGraphHash, type LibraryGraph } from './graphHash'
 
-/** A library's module graph, unrewritten: source text by absolute URL. */
-export type LibraryGraph = { entry: string; modules: Record<string, string> }
+export type { LibraryGraph } from './graphHash'
 
 export const LIBRARY_CACHE_DB = 'stave-library-cache'
 /** Total size kept, in canonical UTF-8 bytes. See the module note for the number. */
@@ -69,32 +67,6 @@ interface MetaRecord {
 // ---------------------------------------------------------------------------
 // Pure parts
 // ---------------------------------------------------------------------------
-
-/** The bytes a graph's hash is taken over. See the module note. */
-export function canonicalGraphBytes(graph: LibraryGraph): Uint8Array {
-  const urls = Object.keys(graph.modules).sort()
-  let s = ''
-  for (const url of urls) {
-    const text = graph.modules[url]
-    s += url + '\n' + String(text.length) + '\n' + text + '\n'
-  }
-  return new TextEncoder().encode(s)
-}
-
-function toBase64(bytes: Uint8Array): string {
-  let bin = ''
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
-  return btoa(bin)
-}
-
-/** SHA-384 of a graph's canonical bytes, base64, no `sha384-` prefix. */
-export async function libraryGraphHash(graph: LibraryGraph): Promise<string> {
-  return hashBytes(canonicalGraphBytes(graph))
-}
-
-async function hashBytes(bytes: Uint8Array): Promise<string> {
-  return toBase64(new Uint8Array(await crypto.subtle.digest('SHA-384', bytes as BufferSource)))
-}
 
 /** Whether a value read back is shaped like a graph whose entry is one of its modules. */
 export function isLibraryGraph(value: unknown): value is LibraryGraph {
@@ -242,9 +214,8 @@ export function createLibraryCache(opts: LibraryCacheOptions = {}): LibraryCache
     let bytes = 0
     try {
       if (isLibraryGraph(value)) {
-        const canonical = canonicalGraphBytes(value)
-        bytes = canonical.byteLength
-        ok = (await hashBytes(canonical)) === sha384
+        bytes = libraryGraphBytes(value).byteLength
+        ok = (await libraryGraphHash(value)) === sha384
       }
     } catch {
       ok = false
@@ -271,8 +242,8 @@ export function createLibraryCache(opts: LibraryCacheOptions = {}): LibraryCache
     if (!db) return
     try {
       if (!isLibraryGraph(graph)) throw new Error('not a library graph')
-      const bytes = canonicalGraphBytes(graph)
-      const digest = await hashBytes(bytes)
+      const bytes = libraryGraphBytes(graph)
+      const digest = await libraryGraphHash(graph)
       if (digest !== sha384) {
         warn(`[stave] A library wasn't kept: its graph hashes to ${digest.slice(0, 12)}…, not ${sha384.slice(0, 12)}….`)
         return
@@ -330,3 +301,10 @@ export function getGraph(sha384: string): Promise<LibraryGraph | null> {
 export function putGraph(sha384: string, graph: LibraryGraph): Promise<void> {
   return instance().putGraph(sha384, graph)
 }
+
+/**
+ * The cache every sketch load passes to `sketchImportChain` (the main-thread renderer
+ * and the worker host). One per realm: the worker and the page each open the same
+ * database.
+ */
+export const sharedLibraryCache = { getGraph, putGraph }

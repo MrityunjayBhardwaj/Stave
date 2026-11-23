@@ -9,8 +9,8 @@ import ts from 'typescript'
  * the main thread AND in a dedicated module worker (where sketches run).
  *
  * The cache's own source (`packages/editor/src/visualizers/libraries/libraryCache.ts`,
- * plus the `idb.ts` helper it uses) is transpiled here and served on the dev server's
- * origin through `page.route`, so the code under test is the source, not a copy, and
+ * plus `graphHash.ts` and the `idb.ts` helper it uses) is transpiled here and served on the
+ * dev server's origin through `context.route`, so the code under test is the source, not a copy, and
  * nothing in the app has to be wired to reach it. Firefox and WebKit are launched by
  * the spec itself (as `storage-full-firefox.spec.ts` does), and skipped where they
  * aren't installed.
@@ -29,7 +29,7 @@ const TEST_DB = 'stave-library-cache-test'
  * file is transpiled and wrapped in a function that returns its exports; its
  * imports become reads of the files before it.
  */
-const BUNDLE_FILES = ['storageStatus', 'idb', 'visualizers/libraries/libraryCache']
+const BUNDLE_FILES = ['storageStatus', 'idb', 'visualizers/libraries/graphHash', 'visualizers/libraries/libraryCache']
 
 function bundle(): string {
   const parts: string[] = ['const __m = {};']
@@ -60,7 +60,8 @@ function bundle(): string {
  * its own warnings list) so the counts it returns belong to that op alone.
  */
 const HARNESS = `
-const { createLibraryCache, libraryGraphHash } = __m['visualizers/libraries/libraryCache']
+const { createLibraryCache } = __m['visualizers/libraries/libraryCache']
+const { libraryGraphHash } = __m['visualizers/libraries/graphHash']
 const DB = ${JSON.stringify(TEST_DB)}
 
 // Exactly \`chars\` characters over two modules. \`noise\` fills with pseudo-random text

@@ -1,12 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import {
-  canonicalGraphBytes,
-  chooseEvictions,
-  createLibraryCache,
-  isLibraryGraph,
-  libraryGraphHash,
-  type LibraryGraph,
-} from '../libraryCache'
+import { chooseEvictions, createLibraryCache, isLibraryGraph } from '../libraryCache'
+import { libraryGraphBytes as canonicalGraphBytes, libraryGraphHash, type LibraryGraph } from '../graphHash'
 
 /**
  * #2640 — the parts of the library cache that need no IndexedDB. What IndexedDB does

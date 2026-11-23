@@ -3922,32 +3922,32 @@ function readCurves(ir) {
     if (placements.some((p) => p.some((step) => !isSectionWindow(step) && step.shift < 0))) continue;
     const value = param.value;
     if (!value || typeof value !== "object" || typeof value.tag !== "string") continue;
-    const read8 = readChain(value);
-    if (!read8) continue;
-    out.push({ trackId, param, placements, read: read8, polarity: polarityOf(read8.signal.kind) });
+    const read9 = readChain(value);
+    if (!read9) continue;
+    out.push({ trackId, param, placements, read: read9, polarity: polarityOf(read9.signal.kind) });
   }
   return out;
 }
 __name(readCurves, "readCurves");
 function signalAutomations(ir) {
   const out = [];
-  for (const { trackId, param, placements, read: read8, polarity } of readCurves(ir)) {
+  for (const { trackId, param, placements, read: read9, polarity } of readCurves(ir)) {
     if (polarity === "unbounded") continue;
-    const ranged = read8.ranges.length > 0;
-    const { lo, hi, boundsAsWritten } = boundsOf(polarity, read8.ranges);
+    const ranged = read9.ranges.length > 0;
+    const { lo, hi, boundsAsWritten } = boundsOf(polarity, read9.ranges);
     const start = param.loc?.[0]?.start;
     out.push({
       trackId,
       paramKey: param.key,
-      kind: read8.signal.kind,
-      periodCycles: read8.periodCycles,
-      lanePeriodCycles: lanePeriodOf(read8.periodCycles, placements),
+      kind: read9.signal.kind,
+      periodCycles: read9.periodCycles,
+      lanePeriodCycles: lanePeriodOf(read9.periodCycles, placements),
       lo,
       hi,
       ranged,
       boundsAsWritten,
       offset: typeof start === "number" && Number.isFinite(start) ? start : null,
-      spans: read8.spans,
+      spans: read9.spans,
       placements
     });
   }
@@ -3955,7 +3955,7 @@ function signalAutomations(ir) {
 }
 __name(signalAutomations, "signalAutomations");
 function signalWriters(ir) {
-  return readCurves(ir).map(({ trackId, param, read: read8 }) => ({ trackId, paramKey: param.key, kind: read8.signal.kind }));
+  return readCurves(ir).map(({ trackId, param, read: read9 }) => ({ trackId, paramKey: param.key, kind: read9.signal.kind }));
 }
 __name(signalWriters, "signalWriters");
 function signalTimeAt(a, time) {
@@ -11942,9 +11942,9 @@ function elementToSteps(el, allowNumeric) {
   const ops = opts.ops ?? [];
   const reps = opts.reps ?? 1;
   const rawWeight = opts.weight ?? 1;
-  const read8 = readOps(ops);
-  if (!("mult" in read8)) return read8;
-  const { mult, euclid } = read8;
+  const read9 = readOps(ops);
+  if (!("mult" in read9)) return read9;
+  const { mult, euclid } = read9;
   if (reps > 1 && rawWeight !== reps) {
     return { reason: "! combined with * or @ is beyond the editable subset" };
   }
@@ -12359,10 +12359,10 @@ function gridLookOnly(gate, perCycle, perBar2, bars) {
   };
 }
 __name(gridLookOnly, "gridLookOnly");
-function playedBars(pat, read8, key3, cap) {
+function playedBars(pat, read9, key3, cap) {
   const cycles = [];
   for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = read8(pat, c);
+    const cc = read9(pat, c);
     if (!cc.ok) return cc;
     cycles.push(cc.onsets);
   }
@@ -12688,9 +12688,9 @@ function restSpansByColumn(src, perBar2, bars) {
   const claims = Array.from({ length: size }, () => /* @__PURE__ */ new Set());
   const located = /* @__PURE__ */ new Set();
   for (let b = 0; b < bars; b++) {
-    const read8 = readGridOnsets(probePat, b);
-    if (!read8.ok) return null;
-    for (const o of read8.onsets) {
+    const read9 = readGridOnsets(probePat, b);
+    if (!read9.ok) return null;
+    for (const o of read9.onsets) {
       const c = b * perBar2 + Math.round(o.pos * perBar2);
       if (c < 0 || c >= size) continue;
       for (const atom of o.atoms) {
@@ -13054,8 +13054,8 @@ function gridFromStack(parts, viewScale = UNREFINED) {
   };
 }
 __name(gridFromStack, "gridFromStack");
-function gridFromBarStack(parts, viewScale, read8) {
-  const { partCells, partBars, divs, elements, given, wraps } = read8;
+function gridFromBarStack(parts, viewScale, read9) {
+  const { partCells, partBars, divs, elements, given, wraps } = read9;
   const bars = partBars.reduce((l, b) => lcm(l, b), 1);
   if (bars > MAX_PROJECT_BARS) {
     return { ok: false, reason: `the stack does not repeat within ${MAX_PROJECT_BARS} bars` };
@@ -13810,8 +13810,8 @@ function parseRollLanes(parts, viewScale = UNREFINED) {
     if (documentTotal > MAX_STEPS) {
       return { ok: false, reason: `the stack expands the roll past ${MAX_STEPS} steps` };
     }
-    const shared2 = documentTotal * viewScale;
-    models = models.map((m) => scaleRoll(m, shared2 / m.steps));
+    const shared3 = documentTotal * viewScale;
+    models = models.map((m) => scaleRoll(m, shared3 / m.steps));
   }
   const steps = models[0].steps;
   const numeric = models.some((m) => m.numeric);
@@ -15135,8 +15135,8 @@ __name(inlineName, "inlineName");
 function inlineOptions(call) {
   const arg = call.name === "viz" ? call.args[1] : call.args[0];
   if (!arg) return {};
-  const read8 = readVizOptionsLiteral(arg.raw);
-  return read8.kind === "literal" && read8.dynamic.length === 0 ? { ...read8.values } : null;
+  const read9 = readVizOptionsLiteral(arg.raw);
+  return read9.kind === "literal" && read9.dynamic.length === 0 ? { ...read9.values } : null;
 }
 __name(inlineOptions, "inlineOptions");
 function readInlineVizCalls(doc) {
@@ -15436,11 +15436,11 @@ __name(toggleCell, "toggleCell");
 function placeNote(model, pitch, start, duration, opts = {}) {
   const accept = /* @__PURE__ */ __name((next) => opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next), "accept");
   const at = model.notes.filter((n) => n.start === start);
-  const shared2 = at.length > 0 && at.every((n) => n.duration === at[0].duration) ? at[0].duration : null;
-  if (shared2 !== null) {
+  const shared3 = at.length > 0 && at.every((n) => n.duration === at[0].duration) ? at[0].duration : null;
+  if (shared3 !== null) {
     return accept({
       ...model,
-      notes: [...model.notes, { pitch, start, duration: shared2 }]
+      notes: [...model.notes, { pitch, start, duration: shared3 }]
     });
   }
   const capAt = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
@@ -15867,8 +15867,8 @@ __name(offered, "offered");
 function readsBack(parse11, r, wantBars, gain) {
   if (!r.ok) return r;
   if (gain.mini !== null) return { ok: false, reason: VELOCITY_STRING };
-  const read8 = parse11(r.mini, UNREFINED);
-  return read8.ok && (read8.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
+  const read9 = parse11(r.mini, UNREFINED);
+  return read9.ok && (read9.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
 }
 __name(readsBack, "readsBack");
 var PICK_METHODS2 = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
@@ -22045,12 +22045,12 @@ var _FrameSampleCache = class _FrameSampleCache {
    * callers (a shared master, or the same node read under both `'master'` and its
    * track key) get a fresh-buffer slice of the cached bytes — no second FFT.
    */
-  readAnalyser(key3, an, read8) {
+  readAnalyser(key3, an, read9) {
     let raw;
     if (this.analyserReads.has(an)) {
       raw = this.analyserReads.get(an) ?? null;
     } else {
-      raw = read8(an);
+      raw = read9(an);
       this.analyserReads.set(an, raw);
     }
     if (raw === null) return null;
@@ -41260,7 +41260,7 @@ var keyOf = /* @__PURE__ */ __name((at, mini) => `${at}:${mini ?? ""}`, "keyOf")
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const [model, setModel] = React48.useState(null);
-  const [read8, setRead] = React48.useState(null);
+  const [read9, setRead] = React48.useState(null);
   const modelRef = React48.useRef(null);
   React48.useEffect(() => {
     modelRef.current = model;
@@ -41341,7 +41341,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  return { model, read: read8, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit };
+  return { model, read: read9, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit };
 }
 __name(useGridModel, "useGridModel");
 
@@ -42615,7 +42615,7 @@ function wholeBarStepStarts(r) {
 __name(wholeBarStepStarts, "wholeBarStepStarts");
 function writtenStepStarts(m) {
   const out = /* @__PURE__ */ new Map();
-  const shared2 = sharedSteps(m);
+  const shared3 = sharedSteps(m);
   const put = /* @__PURE__ */ __name((part, us) => {
     const cols = /* @__PURE__ */ new Set();
     for (const u of us) {
@@ -42628,9 +42628,9 @@ function writtenStepStarts(m) {
     for (const p of m.source.parts) {
       const last = p.regions[p.regions.length - 1];
       const repeats = p.bars === void 0 ? 1 : (m.bars ?? 1) / p.bars;
-      if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== shared2) continue;
+      if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== shared3) continue;
       const span = last.to * p.factor;
-      const bar2 = (m.bars ?? 1) > 1 ? shared2 / (m.bars ?? 1) : null;
+      const bar2 = (m.bars ?? 1) > 1 ? shared3 / (m.bars ?? 1) : null;
       const once = p.regions.flatMap(
         (r) => bar2 !== null && (r.to - r.from) * p.factor === bar2 ? wholeBarStepStarts(r) ?? regionStepStarts(r) : regionStepStarts(r)
       ).map((c) => c * p.factor);
@@ -42642,7 +42642,7 @@ function writtenStepStarts(m) {
     return out;
   }
   const a = m.altSource;
-  if (a && a.perBar * a.bars === shared2) {
+  if (a && a.perBar * a.bars === shared3) {
     const us = [];
     for (let b = 0; b < a.bars; b++) for (const r of a.regions) us.push(b * a.perBar + r.from);
     put(0, us);
@@ -42709,9 +42709,9 @@ function boxLengths(duration, w) {
   return { longer: (Math.floor(d / w) + 1) * w, shorter: down >= 1 ? down * w : null };
 }
 __name(boxLengths, "boxLengths");
-function linesModel(shown, read8) {
-  if (!read8 || read8.steps !== shown.steps || (read8.bars ?? 1) !== (shown.bars ?? 1)) return shown;
-  return (read8.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read8 : shown;
+function linesModel(shown, read9) {
+  if (!read9 || read9.steps !== shown.steps || (read9.bars ?? 1) !== (shown.bars ?? 1)) return shown;
+  return (read9.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read9 : shown;
 }
 __name(linesModel, "linesModel");
 function drawnBarStarts(m, cols) {
@@ -42896,7 +42896,7 @@ function useRulerPan(scrollRef, enabled) {
   const [inView, setInView] = React48.useState(ALL_IN_VIEW);
   const [viewWidth, setViewWidth] = React48.useState(0);
   const [scroller, setScroller] = React48.useState(null);
-  const read8 = React48.useCallback(() => {
+  const read9 = React48.useCallback(() => {
     const sc = scrollRef.current;
     const next = enabled && sc ? gridInView(sc.scrollLeft, sc.clientWidth, sc.scrollWidth) : ALL_IN_VIEW;
     setInView((prev) => prev.start === next.start && prev.end === next.end && prev.more === next.more ? prev : next);
@@ -42904,20 +42904,20 @@ function useRulerPan(scrollRef, enabled) {
   }, [scrollRef, enabled]);
   React48.useLayoutEffect(() => {
     if (scrollRef.current !== scroller) setScroller(scrollRef.current);
-    read8();
+    read9();
   });
   React48.useEffect(() => {
     if (!enabled || !scroller) return;
-    scroller.addEventListener("scroll", read8, { passive: true });
-    window.addEventListener("resize", read8);
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(read8) : null;
+    scroller.addEventListener("scroll", read9, { passive: true });
+    window.addEventListener("resize", read9);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(read9) : null;
     observer?.observe(scroller);
     return () => {
-      scroller.removeEventListener("scroll", read8);
-      window.removeEventListener("resize", read8);
+      scroller.removeEventListener("scroll", read9);
+      window.removeEventListener("resize", read9);
       observer?.disconnect();
     };
-  }, [enabled, scroller, read8]);
+  }, [enabled, scroller, read9]);
   const onPointerDown = React48.useCallback(
     (e) => {
       const sc = scrollRef.current;
@@ -43245,7 +43245,7 @@ function opensRhythmLine(call) {
 __name(opensRhythmLine, "opensRhythmLine");
 function SequencerGrid({ onResolution, notice = null } = {}) {
   const [viewScale, setViewScale] = React48.useState(UNREFINED);
-  const { chunk, model, read: read8, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
+  const { chunk, model, read: read9, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
     ...stepGridCodec,
     source: "seq",
     eligible: opensStepGrid,
@@ -43276,9 +43276,9 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
   );
   const boxes = React48.useMemo(() => {
     if (!model) return null;
-    const widths = gridMode === "exact" ? ownStepWidths(linesModel(model, read8)) : /* @__PURE__ */ new Map();
+    const widths = gridMode === "exact" ? ownStepWidths(linesModel(model, read9)) : /* @__PURE__ */ new Map();
     return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn));
-  }, [model, read8, gridMode]);
+  }, [model, read9, gridMode]);
   const boxesRef = React48.useRef(boxes);
   boxesRef.current = boxes;
   const boxWidth = /* @__PURE__ */ __name((laneIndex) => boxesRef.current?.[laneIndex]?.[0]?.width ?? 1, "boxWidth");
@@ -43300,9 +43300,9 @@ function SequencerGrid({ onResolution, notice = null } = {}) {
   const stepStarts = React48.useMemo(() => {
     if (!model) return null;
     const out = /* @__PURE__ */ new Map();
-    for (const [part, cols] of writtenStepStarts(linesModel(model, read8))) out.set(part, new Set(cols));
+    for (const [part, cols] of writtenStepStarts(linesModel(model, read9))) out.set(part, new Set(cols));
     return out;
-  }, [model, read8]);
+  }, [model, read9]);
   const stepGroups = React48.useMemo(() => {
     if (!model || !boxes || !coverage) return null;
     return model.lanes.map((lane, li) => {
@@ -44996,13 +44996,13 @@ function createCatalogStore() {
     recompute();
     listeners25.forEach((l) => l());
   }, "notify");
-  const read8 = /* @__PURE__ */ __name(() => cached2, "read");
+  const read9 = /* @__PURE__ */ __name(() => cached2, "read");
   const subscribe11 = /* @__PURE__ */ __name((listener) => {
     listeners25.add(listener);
     return () => listeners25.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React48.useSyncExternalStore(subscribe11, read8, () => null), "useCatalog");
-  return { setAccessor, notify: notify7, read: read8, useCatalog };
+  const useCatalog = /* @__PURE__ */ __name(() => React48.useSyncExternalStore(subscribe11, read9, () => null), "useCatalog");
+  return { setAccessor, notify: notify7, read: read9, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
 var instrumentStore = createCatalogStore();
@@ -45182,7 +45182,7 @@ function PianoRollGrid({
 } = {}) {
   const [viewScale, setViewScale] = React48.useState(UNREFINED);
   const [declinedCell, setDeclinedCell] = React48.useState(null);
-  const { chunk, model, read: read8, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit } = useGridModel({
+  const { chunk, model, read: read9, mutate, settle, writeMini, beginGesture, endGesture, patternKey, applyEdit } = useGridModel({
     ...pianoRollCodec,
     source: "roll",
     eligible: opensPianoRoll,
@@ -45696,7 +45696,7 @@ function PianoRollGrid({
   }
   const tabCell = cursorCell() ?? defaultCell();
   const layout = drawnLayout(model, cols);
-  const { stepStarts, ruler } = rollSteps(linesModel(model, read8), cols);
+  const { stepStarts, ruler } = rollSteps(linesModel(model, read9), cols);
   const barLine = /* @__PURE__ */ __name((c) => layout.barStart(c) ? "-2px 0 0 0 var(--foreground, #e6e6ea)" : c > 0 && stepStarts.has(c) ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0, "barLine");
   const cellBox = /* @__PURE__ */ __name((c) => {
     const w = layout.weight(c);
@@ -56628,6 +56628,34 @@ function parseLibraryDeclarations(text) {
   return { ok: true, libs };
 }
 __name(parseLibraryDeclarations, "parseLibraryDeclarations");
+
+// src/visualizers/libraries/graphHash.ts
+function toBase64(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
+  return btoa(bin);
+}
+__name(toBase64, "toBase64");
+function libraryGraphBytes(graph) {
+  const urls = Object.keys(graph.modules).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  let s = "";
+  for (const url of urls) {
+    const text = graph.modules[url];
+    s += `${url}
+${String(text.length)}
+${text}
+`;
+  }
+  return new TextEncoder().encode(s);
+}
+__name(libraryGraphBytes, "libraryGraphBytes");
+async function libraryGraphHash(graph) {
+  const digest2 = await crypto.subtle.digest("SHA-384", libraryGraphBytes(graph));
+  return toBase64(new Uint8Array(digest2));
+}
+__name(libraryGraphHash, "libraryGraphHash");
+
+// src/visualizers/libraries/graph.ts
 var _LibraryLoadError = class _LibraryLoadError extends Error {
   constructor(message) {
     super(message);
@@ -56705,30 +56733,6 @@ async function loadLibraryGraph(entryUrl, options = {}) {
   return { entry, modules };
 }
 __name(loadLibraryGraph, "loadLibraryGraph");
-function toBase64(bytes) {
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
-  return btoa(bin);
-}
-__name(toBase64, "toBase64");
-function libraryGraphBytes(graph) {
-  const urls = Object.keys(graph.modules).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
-  let s = "";
-  for (const url of urls) {
-    const text = graph.modules[url];
-    s += `${url}
-${String(text.length)}
-${text}
-`;
-  }
-  return new TextEncoder().encode(s);
-}
-__name(libraryGraphBytes, "libraryGraphBytes");
-async function libraryGraphHash(graph) {
-  const digest2 = await crypto.subtle.digest("SHA-384", libraryGraphBytes(graph));
-  return toBase64(new Uint8Array(digest2));
-}
-__name(libraryGraphHash, "libraryGraphHash");
 
 // src/visualizers/libraries/hostShims.ts
 var HOST_REGISTRY_KEY = "__staveHostModules";
@@ -56937,6 +56941,203 @@ function sketchImportChain(libsText, deps = {}) {
 }
 __name(sketchImportChain, "sketchImportChain");
 
+// src/visualizers/libraries/libraryCache.ts
+var LIBRARY_CACHE_DB = "stave-library-cache";
+var LIBRARY_CACHE_MAX_BYTES = 100 * 1024 * 1024;
+var LIBRARY_CACHE_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1e3;
+var LIBRARY_CACHE_OPEN_TIMEOUT_MS = 3e3;
+var GRAPHS = "graphs";
+var META = "meta";
+function isLibraryGraph(value) {
+  if (typeof value !== "object" || value === null) return false;
+  const { entry, modules } = value;
+  if (typeof entry !== "string" || typeof modules !== "object" || modules === null) return false;
+  if (Array.isArray(modules)) return false;
+  const values3 = Object.values(modules);
+  if (values3.length === 0 || !values3.every((t) => typeof t === "string")) return false;
+  return Object.prototype.hasOwnProperty.call(modules, entry);
+}
+__name(isLibraryGraph, "isLibraryGraph");
+function chooseEvictions(entries3, opts) {
+  const drop = [];
+  let total = 0;
+  const kept = entries3.find((e) => e.sha384 === opts.keep);
+  if (kept) total += kept.bytes;
+  const rest = entries3.filter((e) => e.sha384 !== opts.keep).sort((a, b) => b.lastUsed - a.lastUsed);
+  for (const e of rest) {
+    if (opts.now - e.lastUsed > opts.maxAgeMs || total + e.bytes > opts.maxBytes) {
+      drop.push(e.sha384);
+      continue;
+    }
+    total += e.bytes;
+  }
+  return drop;
+}
+__name(chooseEvictions, "chooseEvictions");
+function read8(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("library-cache: request failed"));
+  });
+}
+__name(read8, "read");
+function errorText(err) {
+  if (err && typeof err === "object") {
+    const { name, message } = err;
+    return [name, message].filter((x) => typeof x === "string" && x).join(": ") || String(err);
+  }
+  return String(err);
+}
+__name(errorText, "errorText");
+function createLibraryCache(opts = {}) {
+  const dbName = opts.dbName ?? LIBRARY_CACHE_DB;
+  const maxBytes = opts.maxBytes ?? LIBRARY_CACHE_MAX_BYTES;
+  const maxAgeMs = opts.maxAgeMs ?? LIBRARY_CACHE_MAX_AGE_MS;
+  const openTimeoutMs = opts.openTimeoutMs ?? LIBRARY_CACHE_OPEN_TIMEOUT_MS;
+  const now2 = opts.now ?? (() => Date.now());
+  const warn = opts.warn ?? ((m) => console.warn(m));
+  let dbPromise = null;
+  let saidOff = false;
+  let saidFull = false;
+  const off = /* @__PURE__ */ __name((why) => {
+    if (!saidOff) {
+      saidOff = true;
+      warn(`[stave] Libraries can't be kept on this device (${why}), so each one loads from the network.`);
+    }
+    return null;
+  }, "off");
+  function open() {
+    if (dbPromise) return dbPromise;
+    dbPromise = (async () => {
+      try {
+        if (typeof indexedDB === "undefined") return off("no IndexedDB here");
+        if (typeof crypto === "undefined" || !crypto.subtle) return off("no crypto.subtle here");
+        const db = await openIdbWithTimeout(
+          dbName,
+          1,
+          (d) => {
+            if (!d.objectStoreNames.contains(GRAPHS)) d.createObjectStore(GRAPHS);
+            if (!d.objectStoreNames.contains(META)) d.createObjectStore(META, { keyPath: "sha384" });
+          },
+          { timeoutMs: openTimeoutMs }
+        );
+        db.onversionchange = () => {
+          db.close();
+          dbPromise = null;
+        };
+        return db;
+      } catch (err) {
+        return off(errorText(err));
+      }
+    })();
+    return dbPromise;
+  }
+  __name(open, "open");
+  async function remove(db, keys) {
+    if (keys.length === 0) return;
+    const tx3 = db.transaction([GRAPHS, META], "readwrite");
+    for (const k of keys) {
+      tx3.objectStore(GRAPHS).delete(k);
+      tx3.objectStore(META).delete(k);
+    }
+    await transactionDone(tx3);
+  }
+  __name(remove, "remove");
+  async function getGraph2(sha384) {
+    const db = await open();
+    if (!db) return null;
+    let value;
+    try {
+      value = await read8(db.transaction(GRAPHS, "readonly").objectStore(GRAPHS).get(sha384));
+    } catch (err) {
+      warn(`[stave] A kept library couldn't be read (${errorText(err)}); loading it from the network.`);
+      await remove(db, [sha384]).catch(() => {
+      });
+      return null;
+    }
+    if (value === void 0) return null;
+    let ok = false;
+    let bytes = 0;
+    try {
+      if (isLibraryGraph(value)) {
+        bytes = libraryGraphBytes(value).byteLength;
+        ok = await libraryGraphHash(value) === sha384;
+      }
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      warn(`[stave] A kept library didn't match its hash ${sha384.slice(0, 12)}\u2026; it was removed and will load from the network.`);
+      await remove(db, [sha384]).catch(() => {
+      });
+      return null;
+    }
+    const graph = value;
+    try {
+      const tx3 = db.transaction(META, "readwrite");
+      tx3.objectStore(META).put({ sha384, bytes, lastUsed: now2() });
+      await transactionDone(tx3);
+    } catch {
+    }
+    return { entry: graph.entry, modules: graph.modules };
+  }
+  __name(getGraph2, "getGraph");
+  async function putGraph2(sha384, graph) {
+    const db = await open();
+    if (!db) return;
+    try {
+      if (!isLibraryGraph(graph)) throw new Error("not a library graph");
+      const bytes = libraryGraphBytes(graph);
+      const digest2 = await libraryGraphHash(graph);
+      if (digest2 !== sha384) {
+        warn(`[stave] A library wasn't kept: its graph hashes to ${digest2.slice(0, 12)}\u2026, not ${sha384.slice(0, 12)}\u2026.`);
+        return;
+      }
+      const tx3 = db.transaction([GRAPHS, META], "readwrite");
+      tx3.objectStore(GRAPHS).put({ entry: graph.entry, modules: graph.modules }, sha384);
+      tx3.objectStore(META).put({ sha384, bytes: bytes.byteLength, lastUsed: now2() });
+      await transactionDone(tx3);
+    } catch (err) {
+      if (isQuotaError(err) || saidFull) {
+        if (!saidFull) {
+          saidFull = true;
+          warn("[stave] This device's storage is full, so a library wasn't kept; it will load from the network.");
+        }
+      } else {
+        warn(`[stave] A library wasn't kept (${errorText(err)}).`);
+      }
+      return;
+    }
+    try {
+      const all = await read8(db.transaction(META, "readonly").objectStore(META).getAll());
+      await remove(db, chooseEvictions(all, { maxBytes, maxAgeMs, now: now2(), keep: sha384 }));
+    } catch {
+    }
+  }
+  __name(putGraph2, "putGraph");
+  return {
+    getGraph: /* @__PURE__ */ __name((sha384) => getGraph2(sha384).catch((err) => {
+      warn(`[stave] Library cache lookup failed (${errorText(err)}); loading from the network.`);
+      return null;
+    }), "getGraph"),
+    putGraph: /* @__PURE__ */ __name((sha384, graph) => putGraph2(sha384, graph).catch((err) => {
+      warn(`[stave] A library wasn't kept (${errorText(err)}).`);
+    }), "putGraph")
+  };
+}
+__name(createLibraryCache, "createLibraryCache");
+var shared2 = null;
+var instance = /* @__PURE__ */ __name(() => shared2 ?? (shared2 = createLibraryCache()), "instance");
+function getGraph(sha384) {
+  return instance().getGraph(sha384);
+}
+__name(getGraph, "getGraph");
+function putGraph(sha384, graph) {
+  return instance().putGraph(sha384, graph);
+}
+__name(putGraph, "putGraph");
+var sharedLibraryCache = { getGraph, putGraph };
+
 // src/visualizers/renderers/ThreeVizRenderer.ts
 var threePerfSeq = 0;
 var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
@@ -57017,7 +57218,7 @@ var _ThreeVizRenderer = class _ThreeVizRenderer extends VizRendererBase {
     }
     let loaded2;
     try {
-      loaded2 = await loadThreeModules(compiled, sketchImportChain(this.libs));
+      loaded2 = await loadThreeModules(compiled, sketchImportChain(this.libs, { cache: sharedLibraryCache }));
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       this.fail(err, e instanceof ThreeImportError ? e.line : void 0, onError);
