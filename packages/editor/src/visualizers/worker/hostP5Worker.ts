@@ -41,7 +41,7 @@ import {
 } from './dom-shim'
 import { WorkerBusFeed } from './workerBusFeed'
 import { RawAnalyserShim, RawSchedulerShim } from './rawShims'
-import { createPostMessageReader, type SignalTransportReader } from './signalTransport'
+import { createPostMessageReader, isSignalFrameEnvelope, type SignalTransportReader } from './signalTransport'
 import { MASTER_KEY, type SignalFrame, type AnalyserBytes } from './signalFrame'
 import { buildStaveUniforms } from '../signals/staveUniforms'
 import { buildHydraStaveBag } from '../renderers/hydraStaveBag'
@@ -52,6 +52,7 @@ import { readGLSLEvents, readGLSLTracks } from '../renderers/glslEvents'
 import { GLSLNoteFeed, droppedNotesMessage } from '../renderers/glslNotes'
 import { compileThreeSketch, loadThreeModules, runThreeSketch } from '../renderers/threeSketch'
 import { sketchImportChain } from '../libraries/declaredLibraries'
+import { sharedLibraryCache } from '../libraries/libraryCache'
 import { subscribeLog, type LogEntry } from '../../engine/engineLog'
 import { parseStackLocation } from '../../engine/friendlyErrors'
 import { getVizConfig, updateVizConfig } from '../vizConfig'
@@ -275,20 +276,61 @@ export function hostVizWorker(scope: WorkerScope): void {
     }
   }
 
+  // #2650 — a mount can take seconds (a three.js sketch fetching a library), and
+  // main starts its frame pump and sends pause/resume/resize meanwhile. Until the
+  // mount lands there is no state for them, so they are remembered here and the
+  // latest of each applied when it does.
+  let mounting = false
+  let pending: {
+    paused?: boolean
+    resize?: { w: number; h: number; dpr: number }
+    options?: Record<string, unknown>
+    destroy?: boolean
+  } = {}
+
   scope.addEventListener('message', (ev) => {
     const data = ev.data
     // Signal frames (the `__staveSignalFrame` envelope) carry NO `type` — they're
     // handled by the reader installed in `mount`. Only control messages here.
-    if (!isControlMessage(data)) return
+    if (!isControlMessage(data)) {
+      // #2650 — a frame that arrives before the mount has a reader is acked anyway
+      // (the #261 rule: ack on receipt, not on draw). Unacked, it holds one of
+      // main's MAX_FRAMES_IN_FLIGHT slots for good, and two of them stop main from
+      // ever sending another frame: the sketch mounts and never draws.
+      if (!state && isSignalFrameEnvelope(data)) {
+        try {
+          scope.postMessage({ type: 'frameAck' })
+        } catch {
+          /* ignore late-teardown failures */
+        }
+      }
+      return
+    }
     handleControl(data).catch((e) =>
       diag('error', `worker control '${(data as WorkerControlMessage).type}' failed: ${errMsg(e)}`, errStack(e)),
     )
   })
 
   async function handleControl(msg: WorkerControlMessage): Promise<void> {
+    if (mounting && msg.type !== 'mount' && msg.type !== 'config') {
+      // #2650 — mid-mount: keep the latest of each, applied when the mount lands.
+      if (msg.type === 'pause') pending.paused = true
+      else if (msg.type === 'resume') pending.paused = false
+      else if (msg.type === 'resize') pending.resize = { w: msg.w, h: msg.h, dpr: msg.dpr }
+      else if (msg.type === 'options') pending.options = msg.options
+      else if (msg.type === 'destroy') pending.destroy = true
+      return
+    }
     switch (msg.type) {
       case 'mount':
-        await mount(msg)
+        mounting = true
+        pending = {}
+        try {
+          await mount(msg)
+        } finally {
+          mounting = false
+          applyPending()
+        }
         break
       case 'resize':
         resize(msg.w, msg.h, msg.dpr)
@@ -315,6 +357,20 @@ export function hostVizWorker(scope: WorkerScope): void {
         state?.setOptions?.(msg.options)
         break
     }
+  }
+
+  /** #2650 — apply what arrived while a mount was in progress. */
+  function applyPending(): void {
+    const p = pending
+    pending = {}
+    if (p.destroy) {
+      destroy()
+      return
+    }
+    if (!state) return
+    if (p.paused !== undefined) state.paused = p.paused
+    if (p.resize) resize(p.resize.w, p.resize.h, p.resize.dpr)
+    if (p.options) state.setOptions?.(p.options)
   }
 
   async function mount(msg: MountMessage): Promise<void> {
@@ -804,7 +860,7 @@ export function hostVizWorker(scope: WorkerScope): void {
     // falls back to ThreeVizRenderer, which reports it on its line (GLSL's model).
     const compiled = compileThreeSketch(msg.code)
     if (compiled.syntaxError) throw compiled.syntaxError
-    const loaded = await loadThreeModules(compiled, sketchImportChain(msg.libs))
+    const loaded = await loadThreeModules(compiled, sketchImportChain(msg.libs, { cache: sharedLibraryCache }))
 
     // No onTick: the feed has already ticked the bus this frame (PK22).
     const uniforms = buildStaveUniforms(feed.bus)
@@ -828,6 +884,10 @@ export function hostVizWorker(scope: WorkerScope): void {
       // refreshed from each frame's `rawScheduler` before the draw.
       scheduler: () => rawScheduler,
       createCanvas: () => new OffscreenCanvas(1, 1),
+      // #2641 — this worker runs one sketch at a time, so the workers and blob
+      // URLs its libraries make here are the sketch's and end with it (a pooled
+      // worker outlives the sketch; without this they would pile up in it).
+      ownsRealm: true,
       report: (entry) => {
         if (entry.level === 'error' && !drawn) return
         postVizLog({ ...entry, runtime: 'three' })

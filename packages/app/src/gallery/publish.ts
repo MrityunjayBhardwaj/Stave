@@ -9,6 +9,7 @@
 import { VIZ_LANGUAGES as EDITOR_VIZ_LANGUAGES } from "@stave/editor";
 import { findVizFileByName, type NamedVizFile } from "../visualizers/vizFileLookup";
 import { publishToGallery, galleryEntryLink } from "./client";
+import { withLibrariesFile } from "./libraries";
 import { addLocalShare, recordListChange } from "./localShares";
 import {
   MAX_MANIFEST_BYTES,
@@ -79,6 +80,9 @@ function cutDown(project: GalleryManifest, keep: readonly ManifestFile[]): Galle
  * #2632 — a project is the files ticked in the dialog (`fileIds`), or the whole
  * project when nothing was chosen (null). Either way each file keeps the path it
  * has in the project, and the folder orders are cut down to what is sent.
+ * #2642 — a viz entry or a ticked project whose sketch imports a library also
+ * carries the project's `stave.libs.json`, so the library loads wherever the
+ * entry is opened (libraries.ts).
  */
 export function buildGalleryManifest(
   project: GalleryManifest,
@@ -91,12 +95,13 @@ export function buildGalleryManifest(
     const picked = new Set(fileIds);
     const keep = project.files.filter((f) => picked.has(f.id));
     if (!keep.length) throw new Error("tick at least one file to publish");
-    return keep.length === project.files.length ? project : cutDown(project, keep);
+    const carried = withLibrariesFile(project, keep);
+    return carried.length === project.files.length ? project : cutDown(project, carried);
   }
   const file = project.files.find((f) => f.id === fileId);
   if (!file) throw new Error(`choose the ${kind} file to publish`);
   if (!filesForKind([file], kind).length) throw new Error(`${file.path} isn't a ${kind} file`);
-  return cutDown(project, [file]);
+  return cutDown(project, kind === "viz" ? withLibrariesFile(project, [file]) : [file]);
 }
 
 const VIZ_CALL = /\.viz\(\s*["'`]([^"'`]+)["'`]/g;

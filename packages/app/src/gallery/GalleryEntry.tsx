@@ -34,6 +34,7 @@ import { fetchGalleryFrames, galleryThumbnailUrl } from "./client";
 import { useDisplayMeter } from "../state/displayMeter";
 import { GALLERY_FILTERS, KIND_LABEL, contentsSummary, fileRole, formatGalleryDate, publishedAgo } from "./galleryModel";
 import { shownName } from "./reservedNames";
+import { entryLibraries } from "./libraries";
 import { GalleryCrumbs } from "./GalleryBar";
 import type { DetailState } from "./galleryStore";
 import type { GalleryEntry, GalleryEntryResponse, GalleryKind } from "./types";
@@ -249,6 +250,8 @@ export function EntryPage(props: EntryPageProps) {
   const file = files[idx];
   // #2490 — the file with the entry's other runnable files beside it, from this manifest only
   const toPlay = file ? previewPlayFor(files, file.path) : null;
+  // #2642 — the libraries the entry's sketches load, from its own stave.libs.json
+  const libs = entryLibraries(files);
 
   // A row's play: its file into the one preview, playing; on the file already there, play / stop.
   const playRow = (i: number) => {
@@ -305,6 +308,7 @@ export function EntryPage(props: EntryPageProps) {
               ref={preview}
               path={toPlay.path}
               files={toPlay.files}
+              libs={toPlay.libs}
               fileKey={`${entry.id}/${file.id}`}
               autoStart={autoStart}
               onPlayingChange={setPlaying}
@@ -476,6 +480,26 @@ export function EntryPage(props: EntryPageProps) {
             <dd>{KIND_LABEL[entry.kind] ?? entry.kind}</dd>
             <dt>Contains</dt>
             <dd>{contentsSummary(files, ", ") || "nothing"}</dd>
+            {libs.libraries.length > 0 && (
+              <>
+                <dt>Libraries</dt>
+                <dd>
+                  <ul className="sg-libs" data-gallery-libraries>
+                    {libs.libraries.map((l) => (
+                      <li key={l.name} data-gallery-library={l.name} title={l.url}>
+                        loads <code>{l.name}</code> from <b>{l.host}</b>
+                      </li>
+                    ))}
+                  </ul>
+                </dd>
+              </>
+            )}
+            {libs.problem && (
+              <>
+                <dt>Libraries</dt>
+                <dd data-gallery-libraries-problem>{libs.problem}</dd>
+              </>
+            )}
             {rec?.cover && (
               <>
                 <dt>Cover</dt>
@@ -596,6 +620,10 @@ export const ENTRY_CSS = `
 .sg-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
 .sg-facts dt { color: var(--text-muted, var(--text-chrome)); }
 .sg-facts dd { margin: 0; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.sg-libs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.sg-libs li { overflow-wrap: anywhere; color: var(--text-muted, var(--text-chrome)); }
+.sg-libs code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text-primary); }
+.sg-libs b { font-weight: 600; color: var(--text-primary); }
 .sg-note { display: flex; gap: 10px; padding: 12px; border-radius: 10px; background: var(--bg-hover, rgba(255,255,255,.05)); font-size: 12.5px; color: var(--text-muted, var(--text-chrome)); line-height: 1.45; }
 .sg-note svg { flex: none; margin-top: 1px; }
 .sg-more { display: grid; gap: 10px; }

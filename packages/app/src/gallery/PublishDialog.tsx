@@ -7,6 +7,7 @@ import { showToast } from "../dialogs/host";
 import { collectManifest } from "../shareProject";
 import { gallerySignIn, loadGallerySession, useGallerySession, type GallerySessionState } from "./session";
 import {
+  buildGalleryManifest,
   buildPublishRequest,
   filesForKind,
   kib,
@@ -20,6 +21,7 @@ import { captureCoverThumbnail, captureVisualFrames, type CoverCapture, type Mis
 import type { RecordedFrame } from "./recording";
 import { recordEntry } from "./recordAtPublish";
 import { fileRole } from "./galleryModel";
+import { entryLibraries, librariesFileOf } from "./libraries";
 import { TurnstileWidget, turnstileSiteKey } from "./TurnstileWidget";
 import {
   GALLERY_KINDS,
@@ -229,6 +231,25 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
 
   const choices = useMemo(() => (manifest ? filesForKind(manifest.files, form.kind) : []), [manifest, form.kind]);
 
+  // #2642 — stave.libs.json goes along when a sketch being published imports a
+  // library and the author didn't pick the file: say so, naming what it loads.
+  const libsNote = useMemo(() => {
+    if (!manifest) return null;
+    const libsFile = librariesFileOf(manifest.files);
+    if (!libsFile || (form.kind === "project" && picked.has(libsFile.id))) return null;
+    let sent: GalleryManifest["files"];
+    try {
+      sent = buildGalleryManifest(manifest, form.kind, form.fileId, form.kind === "project" ? [...picked] : null).files;
+    } catch {
+      return null;
+    }
+    if (!sent.some((f) => f.id === libsFile.id)) return null;
+    const names = entryLibraries(sent).libraries.map((l) => l.name);
+    return names.length
+      ? `${libsFile.path} goes with it, so ${names.join(", ")} ${names.length === 1 ? "loads" : "load"} wherever it's opened.`
+      : `${libsFile.path} goes with it: a sketch imports a library it declares.`;
+  }, [manifest, form.kind, form.fileId, picked]);
+
   const setKind = (kind: GalleryKind) => {
     setForm((f) => {
       if (kind === "project") return { ...f, kind, fileId: null };
@@ -418,6 +439,12 @@ export function PublishDialog({ open, project, activeFileId, onClose }: PublishD
                 setErrors([]);
               }}
             />
+          )}
+
+          {libsNote && (
+            <span style={styles.hint} data-testid="gallery-publish-libraries">
+              {libsNote}
+            </span>
           )}
 
           {form.kind === "project" && coverChoices.length > 0 && (

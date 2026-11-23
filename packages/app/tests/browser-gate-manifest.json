@@ -507,6 +507,10 @@
     "runs": "gate",
     "why": "collected by the gate — it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN"
   },
+  "gallery-libraries.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project; there only its share-link round trip runs: the publish test skips itself, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN, and the preview tests skip themselves because next dev can't host the sandboxed frame (run them against next build && next start)"
+  },
   "gallery-moderation.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate — it runs the whole chromium project; it skips itself there, saying why, because the gate's server has no STAVE_AUTH_TEST_LOGIN or STAVE_GALLERY_ADMINS"
@@ -698,6 +702,14 @@
   "left-panel-width.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
+  "library-cache-offline.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project"
+  },
+  "library-cache.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project"
   },
   "library-remove-sound.spec.ts": {
     "runs": "gate",
@@ -1122,6 +1134,10 @@
   "three-library-catalogue.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project (its first describes also set browserName to firefox and webkit)"
+  },
+  "three-sketch-teardown.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
   "three-viz.spec.ts": {
     "runs": "measurement",

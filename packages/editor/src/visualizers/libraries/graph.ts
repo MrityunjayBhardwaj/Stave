@@ -19,12 +19,11 @@
 import { init as lexerReady, parse } from 'es-module-lexer'
 import { hostModuleName, parseThreeSpecifier, unsupportedImportMessage } from './hostModules'
 
-export type LibraryGraph = {
-  /** Absolute URL of the entry module. */
-  entry: string
-  /** Absolute URL → source text, as fetched. */
-  modules: Record<string, string>
-}
+// The graph's shape and its hash live in graphHash.ts, which imports nothing, so the
+// library cache (#2640) can verify a graph without loading the module lexer.
+import type { LibraryGraph } from './graphHash'
+export type { LibraryGraph } from './graphHash'
+export { libraryGraphBytes, libraryGraphHash } from './graphHash'
 
 export interface LoadLibraryGraphOptions {
   /** How a URL becomes text (a test, or a cache, can supply its own). Default: fetch. */
@@ -127,27 +126,4 @@ export async function loadLibraryGraph(entryUrl: string, options: LoadLibraryGra
 
   await visit(entry)
   return { entry, modules }
-}
-
-function toBase64(bytes: Uint8Array): string {
-  let bin = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return btoa(bin)
-}
-
-/** The canonical bytes {@link libraryGraphHash} digests (exported for tests and tools). */
-export function libraryGraphBytes(graph: LibraryGraph): Uint8Array {
-  const urls = Object.keys(graph.modules).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-  let s = ''
-  for (const url of urls) {
-    const text = graph.modules[url]
-    s += `${url}\n${String(text.length)}\n${text}\n`
-  }
-  return new TextEncoder().encode(s)
-}
-
-/** base64 SHA-384 over the whole graph (canonical form in the header). */
-export async function libraryGraphHash(graph: LibraryGraph): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-384', libraryGraphBytes(graph) as BufferSource)
-  return toBase64(new Uint8Array(digest))
 }
