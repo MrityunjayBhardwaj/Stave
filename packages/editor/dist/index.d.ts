@@ -9644,6 +9644,15 @@ declare class VizSyntaxError extends Error {
 }
 
 /**
+ * hostModules — the modules Stave itself provides to a sketch (#2637): three.js
+ * and the addons bundled with it. The first link of the import chain
+ * (resolver.ts).
+ */
+
+/** The addon paths a sketch may import, for messages and tests. */
+declare const THREE_ADDONS: readonly string[];
+
+/**
  * threeSketch — run a plain three.js sketch inside a Stave viz (#2516).
  *
  * A `.three` file is an ordinary three.js script, the kind a tutorial or the
@@ -9676,8 +9685,6 @@ declare class VizSyntaxError extends Error {
  * hands it the canvas and a way to make more.
  */
 
-/** The addon paths a sketch may import, for messages and tests. */
-declare const THREE_ADDONS: readonly string[];
 interface CompiledThreeSketch {
     /** Each module specifier the sketch imports, in order, with its line. */
     readonly imports: readonly {

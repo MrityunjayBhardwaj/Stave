@@ -6882,7 +6882,7 @@ function droppedNotesMessage(dropped, total) {
 }
 __name(droppedNotesMessage, "droppedNotesMessage");
 
-// src/visualizers/renderers/threeSketch.ts
+// src/visualizers/libraries/hostModules.ts
 var ADDONS = {
   "environments/RoomEnvironment.js": /* @__PURE__ */ __name(() => import('three/addons/environments/RoomEnvironment.js'), "environments/RoomEnvironment.js"),
   "postprocessing/EffectComposer.js": /* @__PURE__ */ __name(() => import('three/addons/postprocessing/EffectComposer.js'), "postprocessing/EffectComposer.js"),
@@ -6911,22 +6911,43 @@ var ADDONS = {
 };
 var THREE_ADDONS = Object.keys(ADDONS);
 var NEEDS_INPUT = /(^|\/)(OrbitControls|TrackballControls|FlyControls|FirstPersonControls|PointerLockControls|DragControls|TransformControls|MapControls|ArcballControls)\.js$/;
-function resolveSpecifier(spec) {
+function parseThreeSpecifier(spec) {
   if (spec === "three") return { kind: "three" };
   const m = /^three\/(?:addons|examples\/jsm)\/(.+)$/.exec(spec);
   if (!m) return null;
   const path = m[1].endsWith(".js") ? m[1] : `${m[1]}.js`;
   return { kind: "addon", path };
 }
-__name(resolveSpecifier, "resolveSpecifier");
+__name(parseThreeSpecifier, "parseThreeSpecifier");
+var threePromise = null;
+function loadThree() {
+  threePromise ?? (threePromise = import('three'));
+  return threePromise;
+}
+__name(loadThree, "loadThree");
+var hostResolver = {
+  name: "host",
+  resolve(spec) {
+    const r = parseThreeSpecifier(spec);
+    if (!r) return null;
+    if (r.kind === "three") return { kind: "three" };
+    return Object.prototype.hasOwnProperty.call(ADDONS, r.path) ? { kind: "module", load: ADDONS[r.path] } : null;
+  }
+};
 function unsupportedImportMessage(spec) {
-  const resolved = resolveSpecifier(spec);
-  if (resolved?.kind === "addon" && NEEDS_INPUT.test(resolved.path)) {
+  const parsed = parseThreeSpecifier(spec);
+  if (parsed?.kind === "addon" && NEEDS_INPUT.test(parsed.path)) {
     return `'${spec}' needs pointer input, which a Stave viz doesn't receive. Move the camera in code instead (for example from \`sig\` or the time).`;
   }
   return `'${spec}' isn't available in Stave. A three.js sketch can import 'three' and these addons: ${THREE_ADDONS.map((p) => `three/addons/${p}`).join(", ")}.`;
 }
 __name(unsupportedImportMessage, "unsupportedImportMessage");
+var HOST_CHAIN = {
+  links: [hostResolver],
+  refusal: unsupportedImportMessage
+};
+
+// src/visualizers/libraries/resolver.ts
 var _ThreeImportError = class _ThreeImportError extends Error {
   constructor(message, line) {
     super(message);
@@ -6936,6 +6957,22 @@ var _ThreeImportError = class _ThreeImportError extends Error {
 };
 __name(_ThreeImportError, "ThreeImportError");
 var ThreeImportError = _ThreeImportError;
+function resolveImport(chain, spec) {
+  for (const link of chain.links) {
+    const r = link.resolve(spec);
+    if (r) return r;
+  }
+  return null;
+}
+__name(resolveImport, "resolveImport");
+function resolveOrRefuse(chain, spec, line) {
+  const r = resolveImport(chain, spec);
+  if (!r) throw new ThreeImportError(chain.refusal(spec), line);
+  return r;
+}
+__name(resolveOrRefuse, "resolveOrRefuse");
+
+// src/visualizers/renderers/threeSketch.ts
 var THREE_LINE_OFFSET = 3;
 var PARAMS = ["__env", "__mod", "__import"];
 function isIdent(s) {
@@ -7006,27 +7043,11 @@ ${chars.join("")}
   return { imports, source, syntaxError: null };
 }
 __name(compileThreeSketch, "compileThreeSketch");
-var threePromise = null;
-function loadThree() {
-  threePromise ?? (threePromise = import('three'));
-  return threePromise;
-}
-__name(loadThree, "loadThree");
-async function loadThreeModules(compiled) {
-  for (const imp of compiled.imports) {
-    const r = resolveSpecifier(imp.spec);
-    if (!r || r.kind === "addon" && !ADDONS[r.path]) {
-      throw new ThreeImportError(unsupportedImportMessage(imp.spec), imp.line);
-    }
-  }
+async function loadThreeModules(compiled, chain = HOST_CHAIN) {
+  const resolved = compiled.imports.map((imp) => resolveOrRefuse(chain, imp.spec, imp.line));
   const THREE = await loadThree();
-  const modules = await Promise.all(
-    compiled.imports.map((imp) => {
-      const r = resolveSpecifier(imp.spec);
-      return r.kind === "three" ? null : ADDONS[r.path]();
-    })
-  );
-  return { THREE, modules };
+  const modules = await Promise.all(resolved.map((r) => r.kind === "three" ? null : r.load()));
+  return { THREE, modules, chain };
 }
 __name(loadThreeModules, "loadThreeModules");
 var INPUT_EVENTS = /* @__PURE__ */ new Set([
@@ -7300,11 +7321,10 @@ function runThreeSketch(compiled, loaded, host) {
     addEventListener: addListener,
     removeEventListener: removeListener
   });
+  const chain = loaded.chain ?? HOST_CHAIN;
   const importDynamic = /* @__PURE__ */ __name(async (spec) => {
-    const r = resolveSpecifier(String(spec));
-    if (r?.kind === "three") return THREE;
-    if (r?.kind === "addon" && ADDONS[r.path]) return ADDONS[r.path]();
-    throw new ThreeImportError(unsupportedImportMessage(String(spec)));
+    const r = resolveOrRefuse(chain, String(spec));
+    return r.kind === "three" ? THREE : r.load();
   }, "importDynamic");
   let done;
   try {
