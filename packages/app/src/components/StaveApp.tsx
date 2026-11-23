@@ -173,6 +173,9 @@ import {
 } from "../visualizers/vizFileLookup";
 import { mountVizPreview } from "@stave/editor";
 import { getFile } from "@stave/editor";
+// #2643 — Add Library…: the tested libraries, written into stave.libs.json.
+import { LIBRARY_CATALOGUE, type CatalogueEntry } from "@stave/editor";
+import { addLibraryToProject } from "../lib/addLibrary";
 import { usePhone, isPhone, usePhoneLayout, startVisibleArea } from "@stave/editor";
 import { createSamplesProvider } from "../assetLibrary/samplesProvider";
 import { createVizProvider } from "../assetLibrary/vizProvider";
@@ -358,6 +361,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   // Unified settings window (#739) — one shell, two tabs. `settingsTab`
   // decides which surface opens; both File-menu items reuse it.
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1098,6 +1102,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     // re-emitted into the main engineLog (Console/issues panel).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__staveGetLog = () => getLogHistory();
+    // #2643 — a workspace file's text by path (null = no such file).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveFileText = (path: string): string | null =>
+      listWorkspaceFiles().find((f) => f.path === path)?.content ?? null;
     // #2165 — run a Library sketch on the preview engine and report its error,
     // event count and the sounds it names (library-snippets.spec checks them all).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1947,6 +1955,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       run: () => { setSettingsTab("keys"); setSettingsOpen(true); },
     }));
     unregs.push(registerCommand({
+      id: "stave.libraries.add",
+      title: "Add Library…",
+      category: "Project",
+      description: "Choose a tested library for three.js sketches; it is declared in stave.libs.json.",
+      run: () => setLibraryPickerOpen(true),
+    }));
+    unregs.push(registerCommand({
       id: "stave.quickOpen",
       title: "Quick Open File",
       category: "Go",
@@ -2058,6 +2073,41 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         };
       });
   }, [quickOpenOpen, handleOpenFile]);
+
+  // #2643 — the tested libraries, one row each. Choosing one fetches it, writes its
+  // declaration into stave.libs.json, then shows the line to paste into a sketch.
+  const addLibrary = useCallback(async (entry: CatalogueEntry) => {
+    showToast(`Adding ${entry.title} ${entry.version}…`, "info", 3000);
+    const r = await addLibraryToProject(entry);
+    if (!r.ok) {
+      showToast(r.message, "error", 10000);
+      return;
+    }
+    const copy = await showPrompt({
+      title: `${entry.title} ${entry.version} is in stave.libs.json`,
+      description: `${r.created ? "Created stave.libs.json. " : ""}Paste this line at the top of a .three sketch:`,
+      initialValue: entry.importLine,
+      confirmLabel: "Copy",
+    });
+    if (copy !== null) {
+      try {
+        await navigator.clipboard.writeText(copy);
+        showToast("Copied.", "info", 2000);
+      } catch {
+        showToast("Couldn't copy; select the line and copy it yourself.", "error", 5000);
+      }
+    }
+  }, []);
+  const libraryRows: PaletteRow[] = useMemo(
+    () =>
+      LIBRARY_CATALOGUE.map((entry) => ({
+        id: `library:${entry.name}`,
+        title: `${entry.title} ${entry.version}`,
+        description: `${entry.description} · ${entry.name} · ${entry.license}`,
+        run: () => { void addLibrary(entry); },
+      })),
+    [addLibrary],
+  );
 
   // #347 — backdrop crop/reveal, shared by the menubar bg-popover AND the
   // pattern-bar "set bg" popover (StrudelEditorClient). Both act on the active
@@ -2576,6 +2626,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         placeholder="Search files by name..."
         hideCommands
         extraRows={quickOpenRows}
+      />
+
+      <CommandPalette
+        open={libraryPickerOpen}
+        onClose={() => setLibraryPickerOpen(false)}
+        placeholder="Add a library to this project…"
+        hideCommands
+        extraRows={libraryRows}
       />
 
     </div>
