@@ -118,6 +118,8 @@ vi.mock("@stave/editor", () => {
     resolveDescriptor: (id: string) => (id === "scope" ? { id, factory } : undefined),
     songEndOf: (code: string) => (code.includes("arrange") ? { kind: "arranged", cycles: 32 } : { kind: "loop" }),
     compilePreset: () => ({ factory }),
+    // #2642 — the frame registers the entry's stave.libs.json before it plays
+    setProjectLibrariesSource: () => {},
     // what previewRegistry's name rule reads (no visual files in these entries)
     getPresetIdForFile: () => null,
     isVizLanguage: () => false,
