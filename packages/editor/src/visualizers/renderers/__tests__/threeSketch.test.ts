@@ -415,3 +415,109 @@ describe('runThreeSketch whenLoaded (#2560)', () => {
     expect(await settledWithin(p, 50)).toBe(true)
   })
 })
+
+// #2641 — what a sketch starts that outlives its renderer: workers, blob URLs,
+// intervals. jsdom has no Worker and no blob URLs, so both are fakes that record
+// what was ended.
+describe('runThreeSketch teardown of workers, blob URLs and intervals (#2641)', () => {
+  const G = globalThis as Record<string, any>
+  class FakeWorker {
+    static live = new Set<FakeWorker>()
+    terminated = 0
+    constructor(readonly url: string) {
+      FakeWorker.live.add(this)
+    }
+    terminate() {
+      this.terminated++
+      FakeWorker.live.delete(this)
+    }
+  }
+  const blobs = new Set<string>()
+  let seq = 0
+  // Installed for the whole file run: the realm patch wraps whatever Worker and
+  // createObjectURL exist the first time an `ownsRealm` sketch runs.
+  G.Worker = FakeWorker
+  URL.createObjectURL = ((): string => {
+    const u = `blob:fake/${++seq}`
+    blobs.add(u)
+    return u
+  }) as typeof URL.createObjectURL
+  URL.revokeObjectURL = ((u: string) => {
+    blobs.delete(u)
+  }) as typeof URL.revokeObjectURL
+
+  const SKETCH = `
+    import * as THREE from 'three'
+    __out.a = new Worker(URL.createObjectURL(new Blob(['a'])))
+    __out.b = new self.Worker(window.URL.createObjectURL(new Blob(['b'])))
+    __out.kept = URL.createObjectURL(new Blob(['c']))
+    __out.ticks = 0
+    __out.iv = setInterval(() => __out.ticks++, 5)
+  `
+
+  it('ends the workers, blob URLs and intervals the sketch left running', async () => {
+    FakeWorker.live.clear()
+    blobs.clear()
+    const { run, out } = await start(SKETCH)
+    expect(FakeWorker.live.size).toBe(2)
+    expect(blobs.size).toBe(3)
+    await new Promise((r) => setTimeout(r, 30))
+    expect(out.ticks as number).toBeGreaterThan(0)
+    run.dispose()
+    expect(FakeWorker.live.size, 'no worker outlives the sketch').toBe(0)
+    expect(blobs.size, 'no blob URL outlives the sketch').toBe(0)
+    const ticks = out.ticks as number
+    await new Promise((r) => setTimeout(r, 30))
+    expect(out.ticks, 'the interval stopped').toBe(ticks)
+  })
+
+  it('leaves what the sketch already ended alone, and ends late arrivals on sight', async () => {
+    FakeWorker.live.clear()
+    blobs.clear()
+    const { run, out } = await start(`
+      import * as THREE from 'three'
+      const u = URL.createObjectURL(new Blob(['a']))
+      __out.w = new Worker(u)
+      __out.w.terminate()
+      URL.revokeObjectURL(u)
+      __out.later = async () => {
+        await new Promise((r) => setTimeout(r, 5))
+        __out.late = new Worker('x.js')
+        __out.lateIv = setInterval(() => {}, 5)
+      }
+      __out.done = __out.later()
+    `)
+    run.dispose()
+    expect((out.w as FakeWorker).terminated, 'terminated once, by the sketch').toBe(1)
+    await out.done
+    expect((out.late as FakeWorker).terminated, 'a worker made after stop ends at once').toBe(1)
+    expect(out.lateIv, 'no interval starts after stop').toBe(0)
+    expect(FakeWorker.live.size).toBe(0)
+  })
+
+  it('with ownsRealm, also ends what code it did not compile made through the realm (a library)', async () => {
+    FakeWorker.live.clear()
+    blobs.clear()
+    // `globalThis.Worker` is the realm's own: what a library module reaches.
+    const LIB = `
+      import * as THREE from 'three'
+      __out.lib = new globalThis.Worker(globalThis.URL.createObjectURL(new Blob(['lib'])))
+    `
+    const plain = await start(LIB)
+    plain.run.dispose()
+    expect(FakeWorker.live.size, 'without ownsRealm the realm is not for Stave to clean').toBe(1)
+    FakeWorker.live.clear()
+    blobs.clear()
+
+    const owned = await start(LIB, { ownsRealm: true })
+    expect(FakeWorker.live.size).toBe(1)
+    owned.run.dispose()
+    expect(FakeWorker.live.size, 'the worker of the library ends with the sketch').toBe(0)
+    expect(blobs.size, 'and its blob URL is revoked').toBe(0)
+
+    // After the sketch stops the realm's Worker passes straight through again.
+    const after = new (G.Worker as typeof FakeWorker)('host.js')
+    owned.run.dispose()
+    expect(after.terminated).toBe(0)
+  })
+})

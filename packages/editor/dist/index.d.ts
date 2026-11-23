@@ -9661,6 +9661,7 @@ declare class VizSyntaxError extends Error {
  *   | `innerWidth`, `devicePixelRatio`, resize| the viz's size, firing on panel resize   |
  *   | `requestAnimationFrame`, `setAnimationLoop` | driven by Stave's frame pump          |
  *   | `new THREE.TextureLoader().load(url)`   | an image-bitmap load in a worker         |
+ *   | `new Worker`, `URL.createObjectURL`, `setInterval` | ended when it stops (#2641)   |
  *
  * Prior art, read from source: the three.js editor's player (`editor/js/libs/
  * app.js`) runs scripts through `new Function` and drives the loop from the host;

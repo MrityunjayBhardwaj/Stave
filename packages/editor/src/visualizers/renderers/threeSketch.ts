@@ -16,6 +16,7 @@
  *   | `innerWidth`, `devicePixelRatio`, resize| the viz's size, firing on panel resize   |
  *   | `requestAnimationFrame`, `setAnimationLoop` | driven by Stave's frame pump          |
  *   | `new THREE.TextureLoader().load(url)`   | an image-bitmap load in a worker         |
+ *   | `new Worker`, `URL.createObjectURL`, `setInterval` | ended when it stops (#2641)   |
  *
  * Prior art, read from source: the three.js editor's player (`editor/js/libs/
  * app.js`) runs scripts through `new Function` and drives the loop from the host;
@@ -267,6 +268,12 @@ export interface ThreeSketchHost {
   createCanvas(): HTMLCanvasElement | OffscreenCanvas
   /** A problem in the sketch, located in the user's file when the stack allows. */
   report(entry: { level: 'error' | 'warn'; message: string; line?: number; column?: number; stack?: string }): void
+  /** #2641 — this sketch is the only one running in this JavaScript realm (the
+   *  viz worker hosts one at a time). Then the workers and blob URLs made through
+   *  the realm's own `Worker` and `URL.createObjectURL` while it runs are its too,
+   *  including those of the libraries it imports, and go when it stops. Leave it
+   *  unset on the main thread, where Stave's own code shares the realm. */
+  readonly ownsRealm?: boolean
 }
 
 export interface ThreeSketchRun {
@@ -292,7 +299,8 @@ export interface ThreeSketchRun {
   resize(): void
   /** The live WebGL context of the sketch's first renderer, or null. */
   gl(): WebGLRenderingContext | WebGL2RenderingContext | null
-  /** Stop the loop, dispose every renderer and lose its context. Idempotent. */
+  /** Stop the loop, dispose every renderer and lose its context, and end the
+   *  workers, blob URLs and intervals the sketch left running (#2641). Idempotent. */
   dispose(): void
 }
 
@@ -347,6 +355,152 @@ function trackLoads(manager: any): LoadTracker | null {
   return t
 }
 
+// ── what a sketch starts that outlives its renderer (#2641) ─────────────────────
+
+/** Workers, blob URLs and intervals a sketch started and hasn't ended itself. A
+ *  pooled viz worker and the main thread both outlive one sketch, and a recompile
+ *  is a new sketch, so whatever is left here when it stops would pile up. A
+ *  pending `setTimeout` is not ended: it fires once, so a top level awaiting one
+ *  still finishes, but a stopped sketch can't start another (that ends a
+ *  `setTimeout` chain). */
+interface SketchLedger {
+  readonly workers: Set<Worker>
+  readonly blobs: Set<string>
+  readonly intervals: Set<unknown>
+  closed: boolean
+}
+
+function newLedger(): SketchLedger {
+  return { workers: new Set(), blobs: new Set(), intervals: new Set(), closed: false }
+}
+
+/** End everything still in the ledger. Idempotent; later arrivals are ended on sight. */
+function closeLedger(l: SketchLedger): void {
+  l.closed = true
+  for (const w of l.workers) {
+    try {
+      w.terminate()
+    } catch {
+      /* ignore */
+    }
+  }
+  l.workers.clear()
+  for (const u of l.blobs) {
+    try {
+      URL.revokeObjectURL(u)
+    } catch {
+      /* ignore */
+    }
+  }
+  l.blobs.clear()
+  for (const id of l.intervals) clearInterval(id as any)
+  l.intervals.clear()
+}
+
+/** Which ledger a worker was entered in, so its own `terminate()` takes it out. */
+const workerLedger = new WeakMap<object, SketchLedger>()
+
+function enterWorker(l: SketchLedger, w: Worker): void {
+  if (l.closed) {
+    w.terminate()
+    return
+  }
+  l.workers.add(w)
+  workerLedger.set(w, l)
+}
+
+function enterBlob(l: SketchLedger, url: string): void {
+  if (l.closed) URL.revokeObjectURL(url)
+  else l.blobs.add(url)
+}
+
+/** The ledger of the sketch that owns this realm (`ownsRealm`), if one is running. */
+let realmLedger: SketchLedger | null = null
+let realmPatched = false
+
+/** Once per realm: route the realm's own `Worker` and `URL.createObjectURL` past
+ *  {@link realmLedger}, so code the sketch doesn't compile itself (the libraries
+ *  it imports) is counted too. With no owning sketch they pass straight through. */
+function patchRealm(): void {
+  if (realmPatched) return
+  realmPatched = true
+  const G = globalThis as any
+  const NativeWorker = G.Worker
+  if (typeof NativeWorker === 'function') {
+    G.Worker = class TrackedWorker extends NativeWorker {
+      constructor(...args: unknown[]) {
+        super(...args)
+        if (realmLedger) enterWorker(realmLedger, this as unknown as Worker)
+      }
+      terminate(): void {
+        workerLedger.get(this)?.workers.delete(this as unknown as Worker)
+        super.terminate()
+      }
+    }
+  }
+  const U = G.URL
+  if (U && typeof U.createObjectURL === 'function') {
+    const create = U.createObjectURL
+    const revoke = U.revokeObjectURL
+    U.createObjectURL = function (obj: Blob | MediaSource): string {
+      const url = create.call(U, obj)
+      if (realmLedger) enterBlob(realmLedger, url)
+      return url
+    }
+    U.revokeObjectURL = function (url: string): void {
+      realmLedger?.blobs.delete(url)
+      revoke.call(U, url)
+    }
+  }
+}
+
+/** The `Worker`, `URL`, `setTimeout` and `setInterval` a sketch's own code sees: the real
+ *  ones, with each thing made entered in `l`. */
+function trackedGlobals(l: SketchLedger): Record<string, unknown> {
+  const G = globalThis as any
+  const out: Record<string, unknown> = {}
+  const BaseWorker = G.Worker
+  if (typeof BaseWorker === 'function') {
+    out.Worker = class TrackedWorker extends BaseWorker {
+      constructor(...args: unknown[]) {
+        super(...args)
+        enterWorker(l, this as unknown as Worker)
+      }
+      terminate(): void {
+        l.workers.delete(this as unknown as Worker)
+        super.terminate()
+      }
+    }
+  }
+  const BaseURL = G.URL
+  if (typeof BaseURL === 'function') {
+    out.URL = class TrackedURL extends BaseURL {
+      static createObjectURL(obj: Blob | MediaSource): string {
+        const url = BaseURL.createObjectURL(obj)
+        enterBlob(l, url)
+        return url
+      }
+      static revokeObjectURL(url: string): void {
+        l.blobs.delete(url)
+        BaseURL.revokeObjectURL(url)
+      }
+    }
+  }
+  out.setTimeout = (fn: unknown, ms?: number, ...args: unknown[]): unknown =>
+    l.closed ? 0 : G.setTimeout(fn, ms, ...args)
+  out.setInterval = (fn: unknown, ms?: number, ...args: unknown[]): unknown => {
+    if (l.closed) return 0
+    const id = G.setInterval(fn, ms, ...args)
+    l.intervals.add(id)
+    return id
+  }
+  out.clearInterval = (id: unknown): void => {
+    l.intervals.delete(id)
+    G.clearInterval(id)
+  }
+  return out
+}
+
 /**
  * Start a compiled sketch against `host`. The sketch's top level runs now (it is
  * async, so it may `await` loaders); frames run when the host calls `frame`.
@@ -368,6 +522,13 @@ export function runThreeSketch(
   let rafSeq = 0
   const resizeListeners = new Set<(ev: unknown) => void>()
   const seen = new Set<string>()
+  // #2641 — before the top level runs, so the first worker it starts is counted.
+  const ledger = newLedger()
+  if (host.ownsRealm) {
+    patchRealm()
+    realmLedger = ledger
+  }
+  const tracked = trackedGlobals(ledger)
 
   const reportOnce = (level: 'error' | 'warn', e: unknown, prefix = ''): void => {
     const err = errorOf(e)
@@ -550,6 +711,7 @@ export function runThreeSketch(
     requestAnimationFrame,
     cancelAnimationFrame,
     document: documentShim,
+    ...tracked,
   })
   // `window.x` for anything not mapped reads the real global, bound so natives
   // (fetch, setTimeout) keep their receiver.
@@ -584,6 +746,7 @@ export function runThreeSketch(
     cancelAnimationFrame,
     addEventListener: addListener,
     removeEventListener: removeListener,
+    ...tracked,
   })
 
   const importDynamic = async (spec: string): Promise<unknown> => {
@@ -710,6 +873,9 @@ export function runThreeSketch(
       loops.clear()
       rafQueue.clear()
       resizeListeners.clear()
+      // #2641 — the workers, blob URLs and intervals it left running.
+      closeLedger(ledger)
+      if (realmLedger === ledger) realmLedger = null
       for (const r of renderers) {
         try {
           r.dispose()

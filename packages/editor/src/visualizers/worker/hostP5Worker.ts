@@ -827,6 +827,10 @@ export function hostVizWorker(scope: WorkerScope): void {
       // refreshed from each frame's `rawScheduler` before the draw.
       scheduler: () => rawScheduler,
       createCanvas: () => new OffscreenCanvas(1, 1),
+      // #2641 — this worker runs one sketch at a time, so the workers and blob
+      // URLs its libraries make here are the sketch's and end with it (a pooled
+      // worker outlives the sketch; without this they would pile up in it).
+      ownsRealm: true,
       report: (entry) => {
         if (entry.level === 'error' && !drawn) return
         postVizLog({ ...entry, runtime: 'three' })
