@@ -57644,8 +57644,9 @@ __name(synthesizeSpectrum, "synthesizeSpectrum");
 function mountVizPreview(container, spec, size, onError) {
   if (!shouldUseWorkerRenderer()) return null;
   const demo = createDrumDemoSignalSource();
+  const libs = spec.renderer === "three" ? spec.libs !== void 0 ? spec.libs : currentProjectLibrariesText() : null;
   const source2 = /* @__PURE__ */ __name(() => {
-    const r = new WorkerVizRenderer(spec.renderer, spec.code, spec.name);
+    const r = new WorkerVizRenderer(spec.renderer, spec.code, spec.name, { libs });
     r.setDemoSource(demo);
     return r;
   }, "source");

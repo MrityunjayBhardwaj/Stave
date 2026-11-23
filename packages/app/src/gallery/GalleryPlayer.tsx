@@ -32,6 +32,12 @@
  * falls back to Stave's built-in visuals, and one that resolves nowhere is said
  * so in the frame rather than drawing nothing silently.
  *
+ * #2642 — a sketch that imports a library loads it from the entry's own
+ * `stave.libs.json`, sent beside the files (`libs`), exactly as the studio
+ * loads it from the project's: same fetch, same hash check, here on the main
+ * thread. The frame's opaque origin fetches it with `Origin: null`, which a CDN
+ * that allows any origin (esm.sh does) answers.
+ *
  * #2489 — a pattern that draws none of its own visuals here gets Stave's
  * built-in piano roll as its picture, fed by its own scheduler, with a line
  * under it naming the file and the bar playing (previewRoll.ts says when it
@@ -389,7 +395,7 @@ export function GalleryPlayer() {
   );
 
   const play = useCallback(
-    async (path: string, files: PreviewFile[]) => {
+    async (path: string, files: PreviewFile[], libs?: string) => {
       stopAll();
       const mine = generation.current;
       run.current = { phase: "starting" };
@@ -398,6 +404,10 @@ export function GalleryPlayer() {
       try {
         const editor = await import("@stave/editor");
         if (mine !== generation.current) return;
+        // #2642 — the entry's stave.libs.json (none: no libraries), read by every
+        // three.js renderer made from here on, the pattern's visuals included.
+        const libsText = libs ?? null;
+        editor.setProjectLibrariesSource(() => libsText);
         if (file.kind === "strudel") {
           if (!engineRef.current) {
             const e = new editor.StrudelEngine({ sliderScope: "gallery-preview:" });
@@ -452,7 +462,7 @@ export function GalleryPlayer() {
         stopAll();
         post({ state: "stopped" });
       } else {
-        void play(msg.path, msg.files);
+        void play(msg.path, msg.files, msg.libs);
       }
     };
     window.addEventListener("message", onMessage);

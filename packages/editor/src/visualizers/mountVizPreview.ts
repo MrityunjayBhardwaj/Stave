@@ -27,6 +27,7 @@ import { WorkerVizRenderer } from './renderers/WorkerVizRenderer'
 import { shouldUseWorkerRenderer } from './renderers/makeP5Renderer'
 import { mountVizRenderer } from './mountVizRenderer'
 import { createDrumDemoSignalSource } from './demoSignalSource'
+import { currentProjectLibrariesText } from './libraries/projectLibraries'
 
 /** The renderer kind + raw source a library card knows about its viz. */
 export interface VizPreviewSpec {
@@ -34,6 +35,11 @@ export interface VizPreviewSpec {
   readonly code: string
   /** Display/attribution name (used for worker error messages). */
   readonly name: string
+  /**
+   * #2642 — three only: the `stave.libs.json` text its imports resolve against.
+   * Left out, the current project's (as every other sketch the project draws).
+   */
+  readonly libs?: string | null
 }
 
 /** Mount a muted live preview, or return `null` if the worker path is unavailable
@@ -47,8 +53,10 @@ export function mountVizPreview(
   if (!shouldUseWorkerRenderer()) return null
 
   const demo = createDrumDemoSignalSource()
+  // #2642 — a sketch's libraries, read when the preview is made (as makeThreeRenderer does).
+  const libs = spec.renderer === 'three' ? (spec.libs !== undefined ? spec.libs : currentProjectLibrariesText()) : null
   const source = () => {
-    const r = new WorkerVizRenderer(spec.renderer, spec.code, spec.name)
+    const r = new WorkerVizRenderer(spec.renderer, spec.code, spec.name, { libs })
     r.setDemoSource(demo)
     return r
   }

@@ -53,6 +53,13 @@ export interface GalleryManifest {
   subfolderOrder: Record<string, string[]>;
 }
 
+/**
+ * #2642 — the project file that declares a sketch's libraries (`LIBS_FILE` in
+ * @stave/editor, #2639), spelled here so the server routes and the preview
+ * frame's protocol needn't load the editor package. A test keeps the two equal.
+ */
+export const ENTRY_LIBS_FILE = "stave.libs.json";
+
 export interface PublishRequest {
   title: string;
   kind: GalleryKind;
