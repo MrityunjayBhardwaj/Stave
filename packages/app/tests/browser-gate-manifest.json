@@ -1119,6 +1119,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project (its describes also set browserName to firefox and webkit)"
   },
+  "three-sketch-teardown.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "three-viz.spec.ts": {
     "runs": "measurement",
     "why": "measures real-time rendering \u2014 serialised alone on the GPU (MEASUREMENT_SPECS in playwright.config.ts)"
