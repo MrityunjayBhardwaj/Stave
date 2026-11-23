@@ -9790,6 +9790,29 @@ declare function isAllowedLibraryUrl(url: string): boolean;
 declare function parseLibraryDeclarations(text: string | null | undefined): ParsedLibraries;
 
 /**
+ * graphHash — a library graph's shape and the SHA-384 a `stave.libs.json` entry pins
+ * (#2639, split out for #2640).
+ *
+ * Canonical form: modules sorted by absolute URL, each contributing
+ * `url + "\n" + String(text.length) + "\n" + text + "\n"`, UTF-8 encoded, SHA-384,
+ * base64 with no prefix. It covers every module, not only the entry, so a CDN that
+ * changes a file the entry imports is caught too.
+ *
+ * Imports nothing: the loader (graph.ts) re-exports it, and the library cache uses it
+ * to check what it reads back, in the worker and on the main thread alike.
+ */
+type LibraryGraph = {
+    /** Absolute URL of the entry module. */
+    entry: string;
+    /** Absolute URL → source text, as fetched. */
+    modules: Record<string, string>;
+};
+/** The canonical bytes {@link libraryGraphHash} digests (exported for tests and tools). */
+declare function libraryGraphBytes(graph: LibraryGraph): Uint8Array;
+/** base64 SHA-384 over the whole graph (canonical form in the header). */
+declare function libraryGraphHash(graph: LibraryGraph): Promise<string>;
+
+/**
  * graph — fetch a library's whole ES-module graph, and hash it (#2639).
  *
  * `loadLibraryGraph(entryUrl)` fetches the entry and follows every import:
@@ -9806,12 +9829,7 @@ declare function parseLibraryDeclarations(text: string | null | undefined): Pars
  * each contributing `url + "\n" + String(text.length) + "\n" + text + "\n"`,
  * UTF-8 encoded, SHA-384, base64.
  */
-type LibraryGraph = {
-    /** Absolute URL of the entry module. */
-    entry: string;
-    /** Absolute URL → source text, as fetched. */
-    modules: Record<string, string>;
-};
+
 interface LoadLibraryGraphOptions {
     /** How a URL becomes text (a test, or a cache, can supply its own). Default: fetch. */
     fetchText?: (url: string) => Promise<string>;
@@ -9822,10 +9840,6 @@ declare class LibraryLoadError extends Error {
 }
 /** Fetch `entryUrl` and every module it reaches. See the header for the rules. */
 declare function loadLibraryGraph(entryUrl: string, options?: LoadLibraryGraphOptions): Promise<LibraryGraph>;
-/** The canonical bytes {@link libraryGraphHash} digests (exported for tests and tools). */
-declare function libraryGraphBytes(graph: LibraryGraph): Uint8Array;
-/** base64 SHA-384 over the whole graph (canonical form in the header). */
-declare function libraryGraphHash(graph: LibraryGraph): Promise<string>;
 
 /** Turns module source into a URL `import()` accepts. */
 type ModuleUrlMaker = (source: string) => string;

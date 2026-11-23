@@ -34,6 +34,7 @@ import {
   type ThreeSketchRun,
 } from './threeSketch'
 import { sketchImportChain } from '../libraries/declaredLibraries'
+import { sharedLibraryCache } from '../libraries/libraryCache'
 
 let threePerfSeq = 0
 
@@ -111,7 +112,7 @@ export class ThreeVizRenderer extends VizRendererBase {
     }
     let loaded
     try {
-      loaded = await loadThreeModules(compiled, sketchImportChain(this.libs))
+      loaded = await loadThreeModules(compiled, sketchImportChain(this.libs, { cache: sharedLibraryCache }))
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e))
       this.fail(err, e instanceof ThreeImportError ? e.line : undefined, onError)
