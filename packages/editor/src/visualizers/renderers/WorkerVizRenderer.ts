@@ -206,6 +206,8 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
     private readonly kind: 'p5' | 'hydra' | 'glsl' | 'three',
     private readonly code: string,
     private readonly name: string,
+    /** #2639 — three only: the project's stave.libs.json text, sent with the mount. */
+    private readonly extras: { libs?: string | null } = {},
   ) {
     super()
     this.sampler = new MainSignalSampler(kindReadsRawScheduler(kind))
@@ -384,6 +386,8 @@ export class WorkerVizRenderer extends VizRendererBase implements PumpDriven {
         options: mountOptions,
         // #2560 — a hidden pre-Play warm-up: draw one frame once loaded.
         ...(this.warm ? { warm: true } : {}),
+        // #2639 — the project's declared libraries, for a three sketch's imports.
+        ...(this.extras.libs ? { libs: this.extras.libs } : {}),
       }
       this.lastOptionsKey = stableKey(mountOptions)
       worker.postMessage(mountMsg, [offscreen])

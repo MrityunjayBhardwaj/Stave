@@ -545,6 +545,9 @@ export function toMonacoLanguage(lang: WorkspaceLanguage): string {
       return 'javascript'
     case 'markdown':
       return 'markdown'
+    case 'json':
+      // #2639 — data files such as stave.libs.json: Monaco's own JSON.
+      return 'json'
   }
 }
 

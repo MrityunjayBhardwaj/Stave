@@ -18,12 +18,15 @@ import { ThreeVizRenderer } from './ThreeVizRenderer'
 import { WorkerVizRenderer } from './WorkerVizRenderer'
 import { FallbackVizRenderer } from './FallbackVizRenderer'
 import { shouldUseWorkerRenderer } from './makeP5Renderer'
+import { currentProjectLibrariesText } from '../libraries/projectLibraries'
 
 export function makeThreeRenderer(code: string, name: string): VizRenderer {
+  // #2639 — the project's stave.libs.json, read now and carried by both paths.
+  const libs = currentProjectLibrariesText()
   return shouldUseWorkerRenderer()
     ? new FallbackVizRenderer(
-        () => new WorkerVizRenderer('three', code, name),
-        () => new ThreeVizRenderer(code, name),
+        () => new WorkerVizRenderer('three', code, name, { libs }),
+        () => new ThreeVizRenderer(code, name, libs),
       )
-    : new ThreeVizRenderer(code, name)
+    : new ThreeVizRenderer(code, name, libs)
 }

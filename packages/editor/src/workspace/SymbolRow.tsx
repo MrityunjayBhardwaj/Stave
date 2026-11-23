@@ -31,7 +31,7 @@ import { useKeyboardUp } from './visibleArea'
 export const SYMBOL_ROW_KEYS: readonly string[] = ['~', '*', '"', '[', ']', '<', '>', '(', ')']
 
 /** languages whose files are prose, not code */
-const NOT_CODE: ReadonlySet<string> = new Set(['markdown', 'plaintext'])
+const NOT_CODE: ReadonlySet<string> = new Set(['markdown', 'plaintext', 'json'])
 
 /** the smallest control a finger hits reliably */
 const TOUCH = 44

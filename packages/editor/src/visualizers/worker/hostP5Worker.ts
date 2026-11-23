@@ -51,6 +51,7 @@ import { createGLSLProgram, type GLSLProgram } from '../renderers/glslCore'
 import { readGLSLEvents, readGLSLTracks } from '../renderers/glslEvents'
 import { GLSLNoteFeed, droppedNotesMessage } from '../renderers/glslNotes'
 import { compileThreeSketch, loadThreeModules, runThreeSketch } from '../renderers/threeSketch'
+import { sketchImportChain } from '../libraries/declaredLibraries'
 import { subscribeLog, type LogEntry } from '../../engine/engineLog'
 import { parseStackLocation } from '../../engine/friendlyErrors'
 import { getVizConfig, updateVizConfig } from '../vizConfig'
@@ -803,7 +804,7 @@ export function hostVizWorker(scope: WorkerScope): void {
     // falls back to ThreeVizRenderer, which reports it on its line (GLSL's model).
     const compiled = compileThreeSketch(msg.code)
     if (compiled.syntaxError) throw compiled.syntaxError
-    const loaded = await loadThreeModules(compiled)
+    const loaded = await loadThreeModules(compiled, sketchImportChain(msg.libs))
 
     // No onTick: the feed has already ticked the bus this frame (PK22).
     const uniforms = buildStaveUniforms(feed.bus)

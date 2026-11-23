@@ -10,7 +10,8 @@
  *
  *   | the sketch does                         | Stave makes it                          |
  *   |-----------------------------------------|-----------------------------------------|
- *   | `import … from 'three'` / addons        | the bundled three.js + a fixed addon set |
+ *   | `import … from 'three'` / addons        | the bundled three.js + any of its addons |
+ *   | `import … from '<library>'`             | the project's stave.libs.json (#2639)    |
  *   | `new THREE.WebGLRenderer(…)`            | a renderer on the viz's own canvas       |
  *   | `document.body.appendChild(…)`          | a no-op (the canvas is already placed)   |
  *   | `innerWidth`, `devicePixelRatio`, resize| the viz's size, firing on panel resize   |
@@ -39,7 +40,7 @@ import { parseStackLocation } from '../../engine/friendlyErrors'
 import type { StaveUniforms } from '../p5Compiler'
 import type { IRPattern } from '../../codeView'
 import { HOST_CHAIN, loadThree } from '../libraries/hostModules'
-import { resolveOrRefuse, type ImportChain } from '../libraries/resolver'
+import { resolveOrRefuse, ThreeImportError, type ImportChain } from '../libraries/resolver'
 
 // ── where imports come from: the resolver chain (libraries/resolver.ts) ─────────
 
@@ -172,7 +173,17 @@ export interface ThreeModules {
 export async function loadThreeModules(compiled: CompiledThreeSketch, chain: ImportChain = HOST_CHAIN): Promise<ThreeModules> {
   const resolved = compiled.imports.map((imp) => resolveOrRefuse(chain, imp.spec, imp.line))
   const THREE = await loadThree()
-  const modules = await Promise.all(resolved.map((r) => (r.kind === 'three' ? null : r.load())))
+  const modules = await Promise.all(
+    resolved.map((r, i) =>
+      r.kind === 'three'
+        ? null
+        : r.load().catch((e: unknown) => {
+            // A library that fails to load (#2639) is placed on the line that imports it.
+            if (e instanceof ThreeImportError && e.line === undefined) throw new ThreeImportError(e.message, compiled.imports[i].line)
+            throw e
+          }),
+    ),
+  )
   return { THREE, modules, chain }
 }
 

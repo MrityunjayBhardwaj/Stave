@@ -55,6 +55,8 @@ export type WorkspaceLanguage =
   | 'glsl'
   | 'three'
   | 'markdown'
+  /** #2639 — data files, first of all the project's `stave.libs.json`. */
+  | 'json'
 
 /**
  * A single editable file owned by the workspace. Instances are **immutable

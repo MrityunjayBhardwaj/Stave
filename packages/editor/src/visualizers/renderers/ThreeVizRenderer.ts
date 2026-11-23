@@ -33,6 +33,7 @@ import {
   ThreeImportError,
   type ThreeSketchRun,
 } from './threeSketch'
+import { sketchImportChain } from '../libraries/declaredLibraries'
 
 let threePerfSeq = 0
 
@@ -51,10 +52,12 @@ export class ThreeVizRenderer extends VizRendererBase {
   private hapStream: HapStream | null = null
   private busHapHandler: ((e: HapEvent) => void) | null = null
 
-  /** `code` = the sketch; `name` = its workspace path, for error attribution. */
+  /** `code` = the sketch; `name` = its workspace path, for error attribution;
+   *  `libs` = the project's stave.libs.json text (#2639), null when it has none. */
   constructor(
     private readonly code: string,
     private readonly name = '',
+    private readonly libs: string | null = null,
   ) {
     super()
     // No onTick: the loop below ticks the bus once per frame, as GLSL's does.
@@ -108,7 +111,7 @@ export class ThreeVizRenderer extends VizRendererBase {
     }
     let loaded
     try {
-      loaded = await loadThreeModules(compiled)
+      loaded = await loadThreeModules(compiled, sketchImportChain(this.libs))
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e))
       this.fail(err, e instanceof ThreeImportError ? e.line : undefined, onError)
