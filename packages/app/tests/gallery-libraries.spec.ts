@@ -249,6 +249,7 @@ async function previewSplats(browser: Browser, engine: Engine, count: number, re
   const splats = collectSplats(page)
   const errors: string[] = []
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text().slice(0, 300)))
+  page.on('response', (r) => r.status() >= 400 && errors.push(`${r.status()} ${new URL(r.url()).pathname}`))
   await page.goto(`/#gallery=${id}`, { waitUntil: 'domcontentloaded' })
   await expect(page.locator(`[data-gallery-detail="${id}"]`)).toBeVisible({ timeout: 60_000 })
   await expect(page.locator('[data-gallery-library="@sparkjsdev/spark"]')).toHaveText('loads @sparkjsdev/spark from libs.stave.test')
