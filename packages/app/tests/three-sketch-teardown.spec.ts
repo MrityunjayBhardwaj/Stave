@@ -111,13 +111,16 @@ interface Count {
   cdpWorkers: number | null
 }
 
-/** What is alive now: heard from within the last 700 ms (each speaks every 150). */
+/** What is alive now: heard from within the last 2 s. Each speaks every 150 ms,
+ *  but a busy machine can hold a worker's timers back by most of a second (seen
+ *  in a full gate run); an ended one never speaks again, so the wide window
+ *  only delays the answer. */
 async function count(page: Page): Promise<Count> {
-  await page.waitForTimeout(1200)
+  await page.waitForTimeout(2500)
   const c = await page.evaluate(async () => {
     const s = (window as unknown as { __teardown2641: { workers: Map<string, number>; ticks: Map<string, number>; blobs: Set<string>; runs: Set<string> } }).__teardown2641
     const now = performance.now()
-    const fresh = (m: Map<string, number>) => [...m.values()].filter((t) => now - t < 700).length
+    const fresh = (m: Map<string, number>) => [...m.values()].filter((t) => now - t < 2000).length
     let liveBlobs = 0
     for (const u of s.blobs) {
       try {
