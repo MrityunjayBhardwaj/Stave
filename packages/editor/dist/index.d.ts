@@ -9644,9 +9644,15 @@ declare class VizSyntaxError extends Error {
 }
 
 /**
- * hostModules — the modules Stave itself provides to a sketch (#2637): three.js
- * and the addons bundled with it. The first link of the import chain
- * (resolver.ts).
+ * hostModules — the modules Stave itself provides (#2637, #2638): three.js and
+ * every addon under `three/addons/`, each loaded on first use. The first link
+ * of the import chain (resolver.ts).
+ *
+ * They are always Stave's own copy, never fetched: a sketch and a library that
+ * ask for the same module get the same object (a library reaches them through
+ * the shim modules in hostShims.ts). That matters because a three.js library
+ * registers things on the three it imports; on a second copy it renders
+ * nothing (measured with Spark: `Can not resolve #include <splatDefines>`).
  */
 
 /** The addon paths a sketch may import, for messages and tests. */

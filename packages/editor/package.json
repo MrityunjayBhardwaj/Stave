@@ -50,6 +50,7 @@
     "@tonaljs/chord": "^4.10.2",
     "@types/p5": "1.7.7",
     "acorn": "^8.17.0",
+    "es-module-lexer": "3.0.5",
     "hydra-synth": "^1.4.0",
     "monaco-editor": "^0.50.0",
     "p5": "2.2.3",

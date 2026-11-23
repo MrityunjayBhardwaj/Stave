@@ -189,6 +189,9 @@ importers:
       acorn:
         specifier: ^8.17.0
         version: 8.17.0
+      es-module-lexer:
+        specifier: 3.0.5
+        version: 3.0.5
       hydra-synth:
         specifier: ^1.4.0
         version: 1.4.0(rollup@4.59.1)

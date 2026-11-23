@@ -1,0 +1,129 @@
+#!/usr/bin/env node
+/**
+ * gen-three-addons — write src/visualizers/libraries/threeAddons.generated.ts (#2638).
+ *
+ * Every file under three's `examples/jsm` (what `three/addons/*` points to) gets
+ * a literal `import('three/addons/<path>')`, so the app's bundler gives each
+ * addon a chunk of its own and a sketch loads only the ones it names.
+ *
+ * Why a generated table rather than one template-literal `import(`three/addons/${p}`)`:
+ * measured 2026-11-23, Next 16.4.5 / Turbopack pulls the whole folder in for that
+ * form and panics on TTFLoader.js's `import … from 'https://cdn.jsdelivr.net/…'`
+ * ("the chunking context (unknown) does not support external modules").
+ *
+ * A file is left out only by a rule, never by name, and the reason is kept so a
+ * sketch that names it is told why:
+ *   - it isn't an ES module (a classic script a loader fetches by URL, e.g. Draco's decoder);
+ *   - it imports a module from an http(s) URL, which the bundler can't include;
+ *   - it sets `self.onmessage` at the top level (a worker's entry script: in Stave's
+ *     sketch worker it would take over the worker's own message handler);
+ *   - it imports, directly or through others, a file left out for one of these reasons.
+ *
+ * Run: `node scripts/gen-three-addons.mjs` (from packages/editor). The unit test
+ * `threeAddons.generated.test.ts` re-derives the table and fails when it is stale,
+ * e.g. after a three.js upgrade.
+ */
+import fs from 'node:fs'
+import path from 'node:path'
+import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
+import { init, parse } from 'es-module-lexer'
+
+const here = path.dirname(fileURLToPath(import.meta.url))
+const require = createRequire(path.join(here, '..', 'package.json'))
+
+/** three's examples/jsm folder and version, as the editor package resolves them. */
+export function threeAddonsDir() {
+  // three's exports map doesn't expose package.json: resolve its entry, walk up to the package root.
+  let root = path.dirname(require.resolve('three'))
+  while (!fs.existsSync(path.join(root, 'package.json')) || JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).name !== 'three') {
+    const up = path.dirname(root)
+    if (up === root) throw new Error('three package root not found')
+    root = up
+  }
+  const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version
+  return { dir: path.join(root, 'examples', 'jsm'), version }
+}
+
+function walk(dir, base = '') {
+  const out = []
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const rel = base ? `${base}/${e.name}` : e.name
+    if (e.isDirectory()) out.push(...walk(path.join(dir, e.name), rel))
+    else if (e.name.endsWith('.js')) out.push(rel)
+  }
+  return out.sort()
+}
+
+const WORKER_ENTRY = /^\s*(self|globalThis)\.onmessage\s*=/m
+
+/** `{ addons: string[], excluded: Record<string, string>, version }` for three's folder. */
+export async function deriveThreeAddons() {
+  await init
+  const { dir, version } = threeAddonsDir()
+  const files = walk(dir)
+  const excluded = {}
+  const deps = {}
+  for (const rel of files) {
+    const src = fs.readFileSync(path.join(dir, rel), 'utf8')
+    // es-module-lexer reads the real import statements (a URL in a comment is not one).
+    const [imports, , , hasModuleSyntax] = parse(src)
+    const specs = imports.map((i) => i.specifier).filter((x) => typeof x === 'string')
+    const d = new Set()
+    for (const sp of specs) {
+      if (sp.startsWith('./') || sp.startsWith('../')) d.add(path.posix.normalize(path.posix.join(path.posix.dirname(rel), sp)))
+      const m = /^three\/(?:addons|examples\/jsm)\/(.+)$/.exec(sp)
+      if (m) d.add(m[1].endsWith('.js') ? m[1] : `${m[1]}.js`)
+    }
+    deps[rel] = [...d]
+    const url = specs.find((sp) => /^https?:\/\//.test(sp))
+    if (!hasModuleSyntax) excluded[rel] = 'it is a classic script that a loader fetches by URL, not an ES module'
+    else if (url) excluded[rel] = `it imports a module from a URL (${url}), which can't be bundled with Stave`
+    else if (WORKER_ENTRY.test(src)) excluded[rel] = "it is a worker's entry script (it sets self.onmessage)"
+  }
+  // Anything that reaches a left-out file is left out too, naming the file it reaches.
+  for (let changed = true; changed; ) {
+    changed = false
+    for (const rel of files) {
+      if (excluded[rel]) continue
+      const bad = deps[rel].find((d) => excluded[d])
+      if (bad) {
+        excluded[rel] = `it imports three/addons/${bad}, which can't be loaded in Stave`
+        changed = true
+      }
+    }
+  }
+  return { addons: files.filter((f) => !excluded[f]), excluded, version, examined: files.length }
+}
+
+export function renderGenerated({ addons, excluded, version, examined }) {
+  const q = (s) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
+  return `/* eslint-disable */
+// @ts-nocheck — not every addon ships type declarations; this file is only a table of loaders.
+// GENERATED by packages/editor/scripts/gen-three-addons.mjs from three@${version} — do not edit.
+// ${examined} files under three/examples/jsm: ${addons.length} addons, ${Object.keys(excluded).length} left out (each with its reason).
+
+/** Every addon a sketch or a library may import, keyed by its path under \`three/addons/\`.
+ *  A literal \`import()\` per entry so the bundler gives each addon a chunk of its own. */
+export const THREE_ADDON_LOADERS: Record<string, () => Promise<unknown>> = {
+${addons.map((a) => `  ${q(a)}: () => import(${q(`three/addons/${a}`)}),`).join('\n')}
+}
+
+/** Files under three/addons that can't be loaded in Stave, with why. */
+export const THREE_ADDONS_LEFT_OUT: Record<string, string> = {
+${Object.entries(excluded).sort(([a], [b]) => (a < b ? -1 : 1)).map(([a, why]) => `  ${q(a)}: ${q(why)},`).join('\n')}
+}
+
+/** The three.js version this table was generated from. */
+export const THREE_ADDONS_VERSION = ${q(version)}
+`
+}
+
+export const GENERATED_PATH = path.join(here, '..', 'src', 'visualizers', 'libraries', 'threeAddons.generated.ts')
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  const derived = await deriveThreeAddons()
+  fs.writeFileSync(GENERATED_PATH, renderGenerated(derived))
+  console.log(`three@${derived.version}: examined=${derived.examined} addons=${derived.addons.length} leftOut=${Object.keys(derived.excluded).length}`)
+  for (const [f, why] of Object.entries(derived.excluded)) console.log(`  left out ${f}: ${why}`)
+}
