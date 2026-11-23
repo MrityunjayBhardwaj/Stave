@@ -1,40 +1,25 @@
 /**
- * hostModules — the modules Stave itself provides to a sketch (#2637): three.js
- * and the addons bundled with it. The first link of the import chain
- * (resolver.ts).
+ * hostModules — the modules Stave itself provides (#2637, #2638): three.js and
+ * every addon under `three/addons/`, each loaded on first use. The first link
+ * of the import chain (resolver.ts).
+ *
+ * They are always Stave's own copy, never fetched: a sketch and a library that
+ * ask for the same module get the same object (a library reaches them through
+ * the shim modules in hostShims.ts). That matters because a three.js library
+ * registers things on the three it imports; on a second copy it renders
+ * nothing (measured with Spark: `Can not resolve #include <splatDefines>`).
  */
 
-import type { ImportChain, ImportResolver } from './resolver'
+import type { ImportChain, ImportResolver, ResolvedImport } from './resolver'
+import {
+  THREE_ADDON_LOADERS,
+  THREE_ADDONS_LEFT_OUT,
+  THREE_ADDONS_VERSION,
+} from './threeAddons.generated'
 
-/** Addons a sketch may import, keyed by their path under `three/addons/`. A
- *  literal `import()` per entry so the bundler splits each into its own chunk and
- *  a sketch loads only what it names. */
-const ADDONS: Record<string, () => Promise<unknown>> = {
-  'environments/RoomEnvironment.js': () => import('three/addons/environments/RoomEnvironment.js'),
-  'postprocessing/EffectComposer.js': () => import('three/addons/postprocessing/EffectComposer.js'),
-  'postprocessing/RenderPass.js': () => import('three/addons/postprocessing/RenderPass.js'),
-  'postprocessing/ShaderPass.js': () => import('three/addons/postprocessing/ShaderPass.js'),
-  'postprocessing/OutputPass.js': () => import('three/addons/postprocessing/OutputPass.js'),
-  'postprocessing/UnrealBloomPass.js': () => import('three/addons/postprocessing/UnrealBloomPass.js'),
-  'postprocessing/BokehPass.js': () => import('three/addons/postprocessing/BokehPass.js'),
-  'postprocessing/AfterimagePass.js': () => import('three/addons/postprocessing/AfterimagePass.js'),
-  'postprocessing/FilmPass.js': () => import('three/addons/postprocessing/FilmPass.js'),
-  'postprocessing/GlitchPass.js': () => import('three/addons/postprocessing/GlitchPass.js'),
-  'postprocessing/SMAAPass.js': () => import('three/addons/postprocessing/SMAAPass.js'),
-  'postprocessing/FXAAPass.js': () => import('three/addons/postprocessing/FXAAPass.js'),
-  'shaders/CopyShader.js': () => import('three/addons/shaders/CopyShader.js'),
-  'shaders/FXAAShader.js': () => import('three/addons/shaders/FXAAShader.js'),
-  'shaders/RGBShiftShader.js': () => import('three/addons/shaders/RGBShiftShader.js'),
-  'shaders/VignetteShader.js': () => import('three/addons/shaders/VignetteShader.js'),
-  'loaders/GLTFLoader.js': () => import('three/addons/loaders/GLTFLoader.js'),
-  'loaders/RGBELoader.js': () => import('three/addons/loaders/RGBELoader.js'),
-  'loaders/HDRLoader.js': () => import('three/addons/loaders/HDRLoader.js'),
-  'loaders/EXRLoader.js': () => import('three/addons/loaders/EXRLoader.js'),
-  'geometries/RoundedBoxGeometry.js': () => import('three/addons/geometries/RoundedBoxGeometry.js'),
-  'utils/BufferGeometryUtils.js': () => import('three/addons/utils/BufferGeometryUtils.js'),
-  'math/SimplexNoise.js': () => import('three/addons/math/SimplexNoise.js'),
-  'math/ImprovedNoise.js': () => import('three/addons/math/ImprovedNoise.js'),
-}
+/** Every addon under `three/addons/`, one lazy chunk each (#2638), generated
+ *  from three's own folder by scripts/gen-three-addons.mjs. */
+const ADDONS = THREE_ADDON_LOADERS
 
 /** The addon paths a sketch may import, for messages and tests. */
 export const THREE_ADDONS: readonly string[] = Object.keys(ADDONS)
@@ -42,9 +27,11 @@ export const THREE_ADDONS: readonly string[] = Object.keys(ADDONS)
 /** Addons that exist in three.js but need something a viz doesn't have. */
 const NEEDS_INPUT = /(^|\/)(OrbitControls|TrackballControls|FlyControls|FirstPersonControls|PointerLockControls|DragControls|TransformControls|MapControls|ArcballControls)\.js$/
 
+const has = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k)
+
 /** `'three'`, an addon path (`'three/addons/…'` or the older `'three/examples/jsm/…'`),
  *  or null when the specifier names neither. */
-function parseThreeSpecifier(spec: string): { kind: 'three' } | { kind: 'addon'; path: string } | null {
+export function parseThreeSpecifier(spec: string): { kind: 'three' } | { kind: 'addon'; path: string } | null {
   if (spec === 'three') return { kind: 'three' }
   const m = /^three\/(?:addons|examples\/jsm)\/(.+)$/.exec(spec)
   if (!m) return null
@@ -59,24 +46,45 @@ export function loadThree(): Promise<any> { // eslint-disable-line @typescript-e
   return threePromise
 }
 
-/** The host link: `'three'` and the bundled addons. */
+/** The canonical name of a host module (`'three'` or `'three/addons/<path>.js'`),
+ *  or null when `spec` isn't one Stave provides. The pointer-input controls are
+ *  not provided: a viz receives no input, so they are refused with a reason. */
+export function hostModuleName(spec: string): string | null {
+  const r = parseThreeSpecifier(spec)
+  if (!r) return null
+  if (r.kind === 'three') return 'three'
+  if (NEEDS_INPUT.test(r.path)) return null
+  return has(ADDONS, r.path) ? `three/addons/${r.path}` : null
+}
+
+/** Stave's namespace for a name from {@link hostModuleName}. */
+export function loadHostModule(name: string): Promise<unknown> {
+  if (name === 'three') return loadThree()
+  return ADDONS[name.slice('three/addons/'.length)]()
+}
+
+/** The host link: `'three'` and every addon. */
 export const hostResolver: ImportResolver = {
   name: 'host',
-  resolve(spec) {
-    const r = parseThreeSpecifier(spec)
-    if (!r) return null
-    if (r.kind === 'three') return { kind: 'three' }
-    return Object.prototype.hasOwnProperty.call(ADDONS, r.path) ? { kind: 'module', load: ADDONS[r.path] } : null
+  resolve(spec): ResolvedImport | null {
+    const name = hostModuleName(spec)
+    if (!name) return null
+    if (name === 'three') return { kind: 'three' }
+    return { kind: 'module', load: () => loadHostModule(name) }
   },
 }
 
 /** Why a specifier can't load, in words a sketch author can act on. */
 export function unsupportedImportMessage(spec: string): string {
   const parsed = parseThreeSpecifier(spec)
-  if (parsed?.kind === 'addon' && NEEDS_INPUT.test(parsed.path)) {
-    return `'${spec}' needs pointer input, which a Stave viz doesn't receive. Move the camera in code instead (for example from \`sig\` or the time).`
+  if (parsed?.kind === 'addon') {
+    if (NEEDS_INPUT.test(parsed.path)) {
+      return `'${spec}' needs pointer input, which a Stave viz doesn't receive. Move the camera in code instead (for example from \`sig\` or the time).`
+    }
+    if (has(THREE_ADDONS_LEFT_OUT, parsed.path)) return `'${spec}' can't be loaded in Stave: ${THREE_ADDONS_LEFT_OUT[parsed.path]}.`
+    return `'${spec}' isn't a three.js addon: three.js ${THREE_ADDONS_VERSION} has no file 'three/addons/${parsed.path}'.`
   }
-  return `'${spec}' isn't available in Stave. A three.js sketch can import 'three' and these addons: ${THREE_ADDONS.map((p) => `three/addons/${p}`).join(', ')}.`
+  return `'${spec}' isn't available in Stave. A three.js sketch can import 'three' and any 'three/addons/…' file.`
 }
 
 /** The chain with only Stave's own modules. */
