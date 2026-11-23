@@ -7,6 +7,7 @@ require('@strudel/core/euclid.mjs');
 require('@strudel/core/controls.mjs');
 require('@strudel/mini/mini.mjs');
 require('@tonaljs/chord');
+var esModuleLexer = require('es-module-lexer');
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -1594,6 +1595,10 @@ var RawSchedulerShim = _RawSchedulerShim;
 
 // src/visualizers/worker/signalTransport.ts
 var SIGNAL_FRAME_TAG = "__staveSignalFrame";
+function isSignalFrameEnvelope(data) {
+  return isFrameEnvelope(data);
+}
+__name(isSignalFrameEnvelope, "isSignalFrameEnvelope");
 function isFrameEnvelope(data) {
   return typeof data === "object" && data !== null && data[SIGNAL_FRAME_TAG] === true;
 }
@@ -7550,7 +7555,14 @@ __name(compileThreeSketch, "compileThreeSketch");
 async function loadThreeModules(compiled, chain = HOST_CHAIN) {
   const resolved = compiled.imports.map((imp) => resolveOrRefuse(chain, imp.spec, imp.line));
   const THREE = await loadThree();
-  const modules = await Promise.all(resolved.map((r) => r.kind === "three" ? null : r.load()));
+  const modules = await Promise.all(
+    resolved.map(
+      (r, i) => r.kind === "three" ? null : r.load().catch((e) => {
+        if (e instanceof ThreeImportError && e.line === void 0) throw new ThreeImportError(e.message, compiled.imports[i].line);
+        throw e;
+      })
+    )
+  );
   return { THREE, modules, chain };
 }
 __name(loadThreeModules, "loadThreeModules");
@@ -7615,10 +7627,10 @@ function trackLoads(manager) {
   return t;
 }
 __name(trackLoads, "trackLoads");
-function runThreeSketch(compiled, loaded, host) {
+function runThreeSketch(compiled, loaded2, host) {
   var _a;
-  const BaseRenderer = loaded.THREE.WebGLRenderer;
-  const loads = trackLoads(loaded.THREE.DefaultLoadingManager);
+  const BaseRenderer = loaded2.THREE.WebGLRenderer;
+  const loads = trackLoads(loaded2.THREE.DefaultLoadingManager);
   let disposed = false;
   let topLevelDone = false;
   let renderedThisFrame = false;
@@ -7687,9 +7699,9 @@ function runThreeSketch(compiled, loaded, host) {
   };
   __name(_StaveWebGLRenderer, "StaveWebGLRenderer");
   let StaveWebGLRenderer = _StaveWebGLRenderer;
-  let TextureLoader = loaded.THREE.TextureLoader;
-  if (typeof document === "undefined" && loaded.THREE.ImageBitmapLoader) {
-    const { Loader, Texture, ImageBitmapLoader } = loaded.THREE;
+  let TextureLoader = loaded2.THREE.TextureLoader;
+  if (typeof document === "undefined" && loaded2.THREE.ImageBitmapLoader) {
+    const { Loader, Texture, ImageBitmapLoader } = loaded2.THREE;
     TextureLoader = (_a = class extends Loader {
       load(url, onLoad, onProgress, onError) {
         const texture = new Texture();
@@ -7712,8 +7724,8 @@ function runThreeSketch(compiled, loaded, host) {
       }
     }, __name(_a, "StaveTextureLoader"), _a);
   }
-  const THREE = { ...loaded.THREE, WebGLRenderer: StaveWebGLRenderer, TextureLoader };
-  const modules = loaded.modules.map((m) => m === null ? THREE : m);
+  const THREE = { ...loaded2.THREE, WebGLRenderer: StaveWebGLRenderer, TextureLoader };
+  const modules = loaded2.modules.map((m) => m === null ? THREE : m);
   const requestAnimationFrame = /* @__PURE__ */ __name((cb) => {
     const id = ++rafSeq;
     if (!disposed && typeof cb === "function") rafQueue.set(id, cb);
@@ -7825,7 +7837,7 @@ function runThreeSketch(compiled, loaded, host) {
     addEventListener: addListener,
     removeEventListener: removeListener
   });
-  const chain = loaded.chain ?? HOST_CHAIN;
+  const chain = loaded2.chain ?? HOST_CHAIN;
   const importDynamic = /* @__PURE__ */ __name(async (spec) => {
     const r = resolveOrRefuse(chain, String(spec));
     return r.kind === "three" ? THREE : r.load();
@@ -7957,6 +7969,360 @@ function runThreeSketch(compiled, loaded, host) {
 }
 __name(runThreeSketch, "runThreeSketch");
 
+// src/visualizers/libraries/declarations.ts
+var LIBS_FILE = "stave.libs.json";
+var SHA384_B64 = /^[A-Za-z0-9+/]{64}$/;
+function isAllowedLibraryUrl(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol === "https:") return true;
+  return u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]");
+}
+__name(isAllowedLibraryUrl, "isAllowedLibraryUrl");
+function parseLibraryDeclarations(text) {
+  if (text == null || text.trim() === "") return { ok: true, libs: {} };
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch (e) {
+    return { ok: false, message: `${LIBS_FILE} isn't valid JSON (${e instanceof Error ? e.message : String(e)}).` };
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, message: `${LIBS_FILE} should be an object: { "<import name>": { "url": "https://\u2026", "sha384": "\u2026" } }.` };
+  }
+  const libs = {};
+  for (const [name, v] of Object.entries(raw)) {
+    if (!v || typeof v !== "object" || Array.isArray(v)) {
+      return { ok: false, message: `${LIBS_FILE}: '${name}' should be { "url": "https://\u2026", "sha384": "\u2026" }.` };
+    }
+    const { url, sha384 } = v;
+    if (typeof url !== "string" || !isAllowedLibraryUrl(url)) {
+      return { ok: false, message: `${LIBS_FILE}: '${name}' needs a "url" that starts with https:// (got ${JSON.stringify(url ?? null)}).` };
+    }
+    if (sha384 !== void 0) {
+      if (typeof sha384 !== "string" || !SHA384_B64.test(sha384)) {
+        const hint = typeof sha384 === "string" && sha384.startsWith("sha384-") ? ' Leave out the "sha384-" prefix.' : "";
+        return { ok: false, message: `${LIBS_FILE}: '${name}' has a "sha384" that isn't a base64 SHA-384 (64 characters).${hint}` };
+      }
+    }
+    libs[name] = sha384 === void 0 ? { url } : { url, sha384 };
+  }
+  return { ok: true, libs };
+}
+__name(parseLibraryDeclarations, "parseLibraryDeclarations");
+var _LibraryLoadError = class _LibraryLoadError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "LibraryLoadError";
+  }
+};
+__name(_LibraryLoadError, "LibraryLoadError");
+var LibraryLoadError = _LibraryLoadError;
+var MAX_GRAPH_MODULES = 256;
+var MAX_GRAPH_CHARS = 64 * 1024 * 1024;
+async function defaultFetchText(url) {
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (e) {
+    throw new LibraryLoadError(`fetching ${url} failed (${e instanceof Error ? e.message : String(e)})`);
+  }
+  if (!res.ok) throw new LibraryLoadError(`fetching ${url} failed (HTTP ${res.status})`);
+  return res.text();
+}
+__name(defaultFetchText, "defaultFetchText");
+async function moduleImports(text) {
+  await esModuleLexer.init;
+  const [imports] = esModuleLexer.parse(text);
+  const out = [];
+  for (const i of imports) {
+    if (typeof i.specifier !== "string") continue;
+    out.push({ specifier: i.specifier, start: i.start, end: i.end, dynamic: i.type === "dynamic" });
+  }
+  return out;
+}
+__name(moduleImports, "moduleImports");
+function bareImportMessage(fromUrl, specifier) {
+  if (parseThreeSpecifier(specifier)) return `${fromUrl} imports '${specifier}', which Stave doesn't provide: ${unsupportedImportMessage(specifier).replace(/\.$/, "")}`;
+  return `${fromUrl} imports '${specifier}', which is neither a URL nor a module Stave provides ('three' or 'three/addons/\u2026'). Use a build of the library that bundles '${specifier}' or imports it by URL`;
+}
+__name(bareImportMessage, "bareImportMessage");
+var URL_LIKE = /^(?:\.{0,2}\/|[a-zA-Z][a-zA-Z\d+.-]*:)/;
+function classifyImport(specifier, fromUrl) {
+  const host = hostModuleName(specifier);
+  if (host) return { kind: "host", name: host };
+  if (URL_LIKE.test(specifier)) return { kind: "url", url: new URL(specifier, fromUrl).href };
+  return { kind: "bare" };
+}
+__name(classifyImport, "classifyImport");
+async function loadLibraryGraph(entryUrl, options = {}) {
+  const fetchText = options.fetchText ?? defaultFetchText;
+  const entry = new URL(entryUrl).href;
+  const modules = {};
+  const pending = /* @__PURE__ */ new Map();
+  let chars = 0;
+  const visit = /* @__PURE__ */ __name((url) => {
+    let p = pending.get(url);
+    if (p) return p;
+    if (pending.size >= MAX_GRAPH_MODULES) {
+      return Promise.reject(new LibraryLoadError(`it reaches more than ${MAX_GRAPH_MODULES} modules`));
+    }
+    p = (async () => {
+      const text = await fetchText(url);
+      chars += text.length;
+      if (chars > MAX_GRAPH_CHARS) throw new LibraryLoadError(`its files add up to more than ${MAX_GRAPH_CHARS} characters`);
+      modules[url] = text;
+      const next = [];
+      for (const imp of await moduleImports(text)) {
+        const t = classifyImport(imp.specifier, url);
+        if (t.kind === "url") next.push(visit(t.url));
+        else if (t.kind === "bare") throw new LibraryLoadError(bareImportMessage(url, imp.specifier));
+      }
+      await Promise.all(next);
+    })();
+    pending.set(url, p);
+    return p;
+  }, "visit");
+  await visit(entry);
+  return { entry, modules };
+}
+__name(loadLibraryGraph, "loadLibraryGraph");
+function toBase64(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
+  return btoa(bin);
+}
+__name(toBase64, "toBase64");
+function libraryGraphBytes(graph) {
+  const urls = Object.keys(graph.modules).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  let s = "";
+  for (const url of urls) {
+    const text = graph.modules[url];
+    s += `${url}
+${String(text.length)}
+${text}
+`;
+  }
+  return new TextEncoder().encode(s);
+}
+__name(libraryGraphBytes, "libraryGraphBytes");
+async function libraryGraphHash(graph) {
+  const digest = await crypto.subtle.digest("SHA-384", libraryGraphBytes(graph));
+  return toBase64(new Uint8Array(digest));
+}
+__name(libraryGraphHash, "libraryGraphHash");
+
+// src/visualizers/libraries/hostShims.ts
+var HOST_REGISTRY_KEY = "__staveHostModules";
+function registry() {
+  const g = globalThis;
+  let r = g[HOST_REGISTRY_KEY];
+  if (!r) {
+    r = /* @__PURE__ */ Object.create(null);
+    Object.defineProperty(globalThis, HOST_REGISTRY_KEY, { value: r, enumerable: false, configurable: false, writable: false });
+  }
+  return r;
+}
+__name(registry, "registry");
+var blobModuleUrl = /* @__PURE__ */ __name((source) => URL.createObjectURL(new Blob([source], { type: "text/javascript" })), "blobModuleUrl");
+var dataModuleUrl = /* @__PURE__ */ __name((source) => (
+  // `'` too (encodeURIComponent leaves it): the URL may replace a single-quoted specifier.
+  `data:text/javascript;charset=utf-8,${encodeURIComponent(source).replace(/'/g, "%27")}`
+), "dataModuleUrl");
+function defaultModuleUrlMaker() {
+  return typeof Blob !== "undefined" && typeof URL !== "undefined" && typeof URL.createObjectURL === "function" ? blobModuleUrl : dataModuleUrl;
+}
+__name(defaultModuleUrlMaker, "defaultModuleUrlMaker");
+var IDENT = /^[A-Za-z_$][\w$]*$/;
+function shimSource(key, ns) {
+  const names = Object.keys(ns);
+  const reads = names.map((n, i) => `const __${i} = m[${JSON.stringify(n)}];`);
+  const specs = names.map((n, i) => `__${i} as ${n === "default" || IDENT.test(n) ? n : JSON.stringify(n)}`);
+  return `const m = globalThis[${JSON.stringify(HOST_REGISTRY_KEY)}][${JSON.stringify(key)}];
+${reads.join("\n")}
+export { ${specs.join(", ")} };
+`;
+}
+__name(shimSource, "shimSource");
+var shimSets = 0;
+function createHostShims(options = {}) {
+  const load = options.load ?? loadHostModule;
+  const makeUrl = options.makeUrl ?? defaultModuleUrlMaker();
+  const prefix = `s${++shimSets}:`;
+  const urls = /* @__PURE__ */ new Map();
+  return {
+    nameFor: hostModuleName,
+    urlFor(spec) {
+      const name = hostModuleName(spec);
+      if (!name) return Promise.resolve(null);
+      let url = urls.get(name);
+      if (!url) {
+        url = load(name).then((ns) => {
+          const key = prefix + name;
+          registry()[key] = ns;
+          return makeUrl(shimSource(key, ns));
+        });
+        urls.set(name, url);
+        url.catch(() => urls.delete(name));
+      }
+      return url;
+    }
+  };
+}
+__name(createHostShims, "createHostShims");
+var shared = null;
+function hostShims() {
+  shared ?? (shared = createHostShims());
+  return shared;
+}
+__name(hostShims, "hostShims");
+
+// src/visualizers/libraries/instantiate.ts
+var defaultRevoke = /* @__PURE__ */ __name((url) => {
+  if (url.startsWith("blob:") && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(url);
+}, "defaultRevoke");
+async function instantiateLibraryGraph(graph, options = {}) {
+  const shims = options.shims ?? hostShims();
+  const makeUrl = options.makeUrl ?? defaultModuleUrlMaker();
+  const made = /* @__PURE__ */ new Map();
+  const visiting = /* @__PURE__ */ new Set();
+  const urls = [];
+  const dynamicTargets = /* @__PURE__ */ new Set();
+  let hostRewrites = 0;
+  const make = /* @__PURE__ */ __name(async (url) => {
+    const done = made.get(url);
+    if (done) return done;
+    if (visiting.has(url)) {
+      throw new LibraryLoadError(`its modules import each other in a cycle (at ${url}), which Stave can't load yet`);
+    }
+    const text = graph.modules[url];
+    if (text === void 0) throw new LibraryLoadError(`${url} is missing from the fetched files`);
+    visiting.add(url);
+    let out = "";
+    let last = 0;
+    for (const imp of await moduleImports(text)) {
+      const t = classifyImport(imp.specifier, url);
+      let to;
+      if (t.kind === "host") {
+        const shim = await shims.urlFor(imp.specifier);
+        if (!shim) throw new LibraryLoadError(`${url} imports '${imp.specifier}', which Stave can't provide`);
+        to = shim;
+        hostRewrites++;
+      } else if (t.kind === "url") {
+        to = await make(t.url);
+        if (imp.dynamic) dynamicTargets.add(to);
+      } else {
+        throw new LibraryLoadError(bareImportMessage(url, imp.specifier));
+      }
+      out += text.slice(last, imp.start) + (imp.dynamic ? JSON.stringify(to) : to);
+      last = imp.end;
+    }
+    out += text.slice(last);
+    visiting.delete(url);
+    const moduleUrl = makeUrl(out);
+    made.set(url, moduleUrl);
+    urls.push(moduleUrl);
+    return moduleUrl;
+  }, "make");
+  const entryUrl = await make(graph.entry);
+  const revoke = options.revokeUrl ?? defaultRevoke;
+  let namespace;
+  try {
+    namespace = await import(
+      /* webpackIgnore: true */
+      /* @vite-ignore */
+      entryUrl
+    );
+  } catch (e) {
+    for (const u of urls) revoke(u);
+    throw e;
+  }
+  const retained = urls.filter((u) => dynamicTargets.has(u));
+  for (const u of urls) if (!dynamicTargets.has(u)) revoke(u);
+  return { namespace, urls, retained, hostRewrites };
+}
+__name(instantiateLibraryGraph, "instantiateLibraryGraph");
+
+// src/visualizers/libraries/declaredLibraries.ts
+var loaded = /* @__PURE__ */ new Map();
+function loadDeclaredLibrary(name, decl, deps = {}) {
+  const key = `${decl.url}
+${decl.sha384 ?? ""}`;
+  let p = loaded.get(key);
+  if (!p) {
+    p = loadOnce(name, decl, deps);
+    loaded.set(key, p);
+    p.catch(() => loaded.delete(key));
+  }
+  return p;
+}
+__name(loadDeclaredLibrary, "loadDeclaredLibrary");
+async function loadOnce(name, decl, deps) {
+  const from = `'${name}' (declared in ${LIBS_FILE})`;
+  let graph = decl.sha384 && deps.cache ? await deps.cache.getGraph(decl.sha384).catch(() => null) : null;
+  const fromCache = graph !== null;
+  if (!graph) {
+    try {
+      graph = await loadLibraryGraph(decl.url, { fetchText: deps.fetchText });
+    } catch (e) {
+      throw new ThreeImportError(`${from} couldn't be loaded: ${e instanceof Error ? e.message : String(e)}.`);
+    }
+  }
+  const actual = await libraryGraphHash(graph);
+  if (!decl.sha384) {
+    throw new ThreeImportError(
+      `${from} has no "sha384", so Stave can't check what it loads. What ${decl.url} serves now hashes to "${actual}": add "sha384": "${actual}" to its entry if that is the version you mean.`
+    );
+  }
+  if (actual !== decl.sha384) {
+    throw new ThreeImportError(
+      `${from} was refused: what ${decl.url} serves doesn't match the "sha384" in ${LIBS_FILE} (expected "${decl.sha384}", got "${actual}"). Nothing from it was run. If the library changed on purpose, put the new value in ${LIBS_FILE}.`
+    );
+  }
+  if (!fromCache && deps.cache) await deps.cache.putGraph(actual, graph).catch(() => {
+  });
+  try {
+    return await (deps.instantiate ?? instantiateLibraryGraph)(graph);
+  } catch (e) {
+    throw new ThreeImportError(`${from} couldn't be started: ${e instanceof Error ? e.message : String(e)}.`);
+  }
+}
+__name(loadOnce, "loadOnce");
+function declaredResolver(parsed, deps = {}) {
+  return {
+    name: "declared",
+    resolve(spec) {
+      if (!parsed.ok || !Object.prototype.hasOwnProperty.call(parsed.libs, spec)) return null;
+      const decl = parsed.libs[spec];
+      return { kind: "module", load: /* @__PURE__ */ __name(async () => (await loadDeclaredLibrary(spec, decl, deps)).namespace, "load") };
+    }
+  };
+}
+__name(declaredResolver, "declaredResolver");
+var URL_SPEC = /^[a-zA-Z][a-zA-Z\d+.-]*:/;
+var RELATIVE = /^\.{0,2}\//;
+function refusalMessage(spec, parsed) {
+  if (parseThreeSpecifier(spec) || RELATIVE.test(spec)) return unsupportedImportMessage(spec);
+  if (!parsed.ok) return `'${spec}' can't be looked up: ${parsed.message}`;
+  if (URL_SPEC.test(spec)) {
+    return `'${spec}' can't be imported by URL in a Stave sketch: declare it in ${LIBS_FILE} at the project root, { "<name>": { "url": ${JSON.stringify(spec)}, "sha384": "\u2026" } }, then import '<name>'.`;
+  }
+  return `'${spec}' isn't available in Stave. A three.js sketch can import 'three' and any 'three/addons/\u2026' file. To use a library, declare it in ${LIBS_FILE} at the project root: { ${JSON.stringify(spec)}: { "url": "https://\u2026", "sha384": "\u2026" } }.`;
+}
+__name(refusalMessage, "refusalMessage");
+function sketchImportChain(libsText, deps = {}) {
+  const parsed = parseLibraryDeclarations(libsText);
+  return {
+    links: [hostResolver, declaredResolver(parsed, deps)],
+    refusal: /* @__PURE__ */ __name((spec) => refusalMessage(spec, parsed), "refusal")
+  };
+}
+__name(sketchImportChain, "sketchImportChain");
+
 // src/visualizers/worker/workerMessages.ts
 function isControlMessage(data) {
   return typeof data === "object" && data !== null && typeof data.type === "string";
@@ -8061,17 +8427,42 @@ function hostVizWorker(scope) {
     } catch {
     }
   }, "releaseGL");
+  let mounting = false;
+  let pending = {};
   scope.addEventListener("message", (ev) => {
     const data = ev.data;
-    if (!isControlMessage(data)) return;
+    if (!isControlMessage(data)) {
+      if (!state && isSignalFrameEnvelope(data)) {
+        try {
+          scope.postMessage({ type: "frameAck" });
+        } catch {
+        }
+      }
+      return;
+    }
     handleControl(data).catch(
       (e) => diag("error", `worker control '${data.type}' failed: ${errMsg(e)}`, errStack(e))
     );
   });
   async function handleControl(msg) {
+    if (mounting && msg.type !== "mount" && msg.type !== "config") {
+      if (msg.type === "pause") pending.paused = true;
+      else if (msg.type === "resume") pending.paused = false;
+      else if (msg.type === "resize") pending.resize = { w: msg.w, h: msg.h, dpr: msg.dpr };
+      else if (msg.type === "options") pending.options = msg.options;
+      else if (msg.type === "destroy") pending.destroy = true;
+      return;
+    }
     switch (msg.type) {
       case "mount":
-        await mount(msg);
+        mounting = true;
+        pending = {};
+        try {
+          await mount(msg);
+        } finally {
+          mounting = false;
+          applyPending();
+        }
         break;
       case "resize":
         resize(msg.w, msg.h, msg.dpr);
@@ -8094,6 +8485,19 @@ function hostVizWorker(scope) {
     }
   }
   __name(handleControl, "handleControl");
+  function applyPending() {
+    const p = pending;
+    pending = {};
+    if (p.destroy) {
+      destroy();
+      return;
+    }
+    if (!state) return;
+    if (p.paused !== void 0) state.paused = p.paused;
+    if (p.resize) resize(p.resize.w, p.resize.h, p.resize.dpr);
+    if (p.options) state.setOptions?.(p.options);
+  }
+  __name(applyPending, "applyPending");
   async function mount(msg) {
     post("alive");
     if (state) destroy();
@@ -8415,7 +8819,7 @@ function hostVizWorker(scope) {
   async function mountThree(msg, feed, rawScheduler, containerSizeRef, dpr) {
     const compiled = compileThreeSketch(msg.code);
     if (compiled.syntaxError) throw compiled.syntaxError;
-    const loaded = await loadThreeModules(compiled);
+    const loaded2 = await loadThreeModules(compiled, sketchImportChain(msg.libs));
     const uniforms = buildStaveUniforms(feed.bus);
     const optionsRef = { current: msg.options ?? {} };
     let currentDpr = dpr;
@@ -8423,7 +8827,7 @@ function hostVizWorker(scope) {
     msg.canvas.height = Math.max(1, Math.round(msg.size.h * dpr));
     let drawn = false;
     let disposed = false;
-    const run = runThreeSketch(compiled, loaded, {
+    const run = runThreeSketch(compiled, loaded2, {
       canvas: msg.canvas,
       size: /* @__PURE__ */ __name(() => containerSizeRef.current, "size"),
       dpr: /* @__PURE__ */ __name(() => currentDpr, "dpr"),

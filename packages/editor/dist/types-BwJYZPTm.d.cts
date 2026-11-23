@@ -31,7 +31,7 @@ import * as Monaco from 'monaco-editor';
  * file declares (`WorkspaceLanguage` in `workspace/types.ts`; a test keeps the two equal,
  * because this directory imports nothing from the rest of the editor).
  */
-type ExtensionLanguage = 'strudel' | 'sonicpi' | 'hydra' | 'p5js' | 'glsl' | 'three' | 'markdown';
+type ExtensionLanguage = 'strudel' | 'sonicpi' | 'hydra' | 'p5js' | 'glsl' | 'three' | 'markdown' | 'json';
 /** The Strudel names an extension adds, so Stave can say which extension a project needs. */
 interface StrudelProvides {
     readonly sounds?: readonly string[];

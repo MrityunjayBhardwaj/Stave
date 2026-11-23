@@ -44,7 +44,8 @@ export const blobModuleUrl: ModuleUrlMaker = (source) =>
 
 /** For hosts without blob URLs (Node, jsdom): a `data:` URL carries the source itself. */
 export const dataModuleUrl: ModuleUrlMaker = (source) =>
-  `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}`
+  // `'` too (encodeURIComponent leaves it): the URL may replace a single-quoted specifier.
+  `data:text/javascript;charset=utf-8,${encodeURIComponent(source).replace(/'/g, '%27')}`
 
 export function defaultModuleUrlMaker(): ModuleUrlMaker {
   return typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
