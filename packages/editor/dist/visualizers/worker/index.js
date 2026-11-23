@@ -7625,6 +7625,126 @@ function trackLoads(manager) {
   return t;
 }
 __name(trackLoads, "trackLoads");
+function newLedger() {
+  return { workers: /* @__PURE__ */ new Set(), blobs: /* @__PURE__ */ new Set(), intervals: /* @__PURE__ */ new Set(), closed: false };
+}
+__name(newLedger, "newLedger");
+function closeLedger(l) {
+  l.closed = true;
+  for (const w of l.workers) {
+    try {
+      w.terminate();
+    } catch {
+    }
+  }
+  l.workers.clear();
+  for (const u of l.blobs) {
+    try {
+      URL.revokeObjectURL(u);
+    } catch {
+    }
+  }
+  l.blobs.clear();
+  for (const id of l.intervals) clearInterval(id);
+  l.intervals.clear();
+}
+__name(closeLedger, "closeLedger");
+var workerLedger = /* @__PURE__ */ new WeakMap();
+function enterWorker(l, w) {
+  if (l.closed) {
+    w.terminate();
+    return;
+  }
+  l.workers.add(w);
+  workerLedger.set(w, l);
+}
+__name(enterWorker, "enterWorker");
+function enterBlob(l, url) {
+  if (l.closed) URL.revokeObjectURL(url);
+  else l.blobs.add(url);
+}
+__name(enterBlob, "enterBlob");
+var realmLedger = null;
+var realmPatched = false;
+function patchRealm() {
+  var _a;
+  if (realmPatched) return;
+  realmPatched = true;
+  const G = globalThis;
+  const NativeWorker = G.Worker;
+  if (typeof NativeWorker === "function") {
+    G.Worker = (_a = class extends NativeWorker {
+      constructor(...args) {
+        super(...args);
+        if (realmLedger) enterWorker(realmLedger, this);
+      }
+      terminate() {
+        workerLedger.get(this)?.workers.delete(this);
+        super.terminate();
+      }
+    }, __name(_a, "TrackedWorker"), _a);
+  }
+  const U = G.URL;
+  if (U && typeof U.createObjectURL === "function") {
+    const create = U.createObjectURL;
+    const revoke = U.revokeObjectURL;
+    U.createObjectURL = function(obj) {
+      const url = create.call(U, obj);
+      if (realmLedger) enterBlob(realmLedger, url);
+      return url;
+    };
+    U.revokeObjectURL = function(url) {
+      realmLedger?.blobs.delete(url);
+      revoke.call(U, url);
+    };
+  }
+}
+__name(patchRealm, "patchRealm");
+function trackedGlobals(l) {
+  var _a, _b;
+  const G = globalThis;
+  const out = {};
+  const BaseWorker = G.Worker;
+  if (typeof BaseWorker === "function") {
+    out.Worker = (_a = class extends BaseWorker {
+      constructor(...args) {
+        super(...args);
+        enterWorker(l, this);
+      }
+      terminate() {
+        l.workers.delete(this);
+        super.terminate();
+      }
+    }, __name(_a, "TrackedWorker"), _a);
+  }
+  const BaseURL = G.URL;
+  if (typeof BaseURL === "function") {
+    out.URL = (_b = class extends BaseURL {
+      static createObjectURL(obj) {
+        const url = BaseURL.createObjectURL(obj);
+        enterBlob(l, url);
+        return url;
+      }
+      static revokeObjectURL(url) {
+        l.blobs.delete(url);
+        BaseURL.revokeObjectURL(url);
+      }
+    }, __name(_b, "TrackedURL"), _b);
+  }
+  out.setTimeout = (fn, ms, ...args) => l.closed ? 0 : G.setTimeout(fn, ms, ...args);
+  out.setInterval = (fn, ms, ...args) => {
+    if (l.closed) return 0;
+    const id = G.setInterval(fn, ms, ...args);
+    l.intervals.add(id);
+    return id;
+  };
+  out.clearInterval = (id) => {
+    l.intervals.delete(id);
+    G.clearInterval(id);
+  };
+  return out;
+}
+__name(trackedGlobals, "trackedGlobals");
 function runThreeSketch(compiled, loaded2, host) {
   var _a;
   const BaseRenderer = loaded2.THREE.WebGLRenderer;
@@ -7638,6 +7758,12 @@ function runThreeSketch(compiled, loaded2, host) {
   let rafSeq = 0;
   const resizeListeners = /* @__PURE__ */ new Set();
   const seen = /* @__PURE__ */ new Set();
+  const ledger = newLedger();
+  if (host.ownsRealm) {
+    patchRealm();
+    realmLedger = ledger;
+  }
+  const tracked = trackedGlobals(ledger);
   const reportOnce = /* @__PURE__ */ __name((level, e, prefix = "") => {
     const err = errorOf(e);
     const at = threeUserLine(err);
@@ -7801,7 +7927,8 @@ function runThreeSketch(compiled, loaded2, host) {
     removeEventListener: removeListener,
     requestAnimationFrame,
     cancelAnimationFrame,
-    document: documentShim
+    document: documentShim,
+    ...tracked
   });
   const boundCache = /* @__PURE__ */ new Map();
   const windowShim = new Proxy(own, {
@@ -7833,7 +7960,8 @@ function runThreeSketch(compiled, loaded2, host) {
     requestAnimationFrame,
     cancelAnimationFrame,
     addEventListener: addListener,
-    removeEventListener: removeListener
+    removeEventListener: removeListener,
+    ...tracked
   });
   const chain = loaded2.chain ?? HOST_CHAIN;
   const importDynamic = /* @__PURE__ */ __name(async (spec) => {
@@ -7944,6 +8072,8 @@ function runThreeSketch(compiled, loaded2, host) {
       loops.clear();
       rafQueue.clear();
       resizeListeners.clear();
+      closeLedger(ledger);
+      if (realmLedger === ledger) realmLedger = null;
       for (const r of renderers) {
         try {
           r.dispose();
@@ -9151,6 +9281,10 @@ function hostVizWorker(scope) {
       // refreshed from each frame's `rawScheduler` before the draw.
       scheduler: /* @__PURE__ */ __name(() => rawScheduler, "scheduler"),
       createCanvas: /* @__PURE__ */ __name(() => new OffscreenCanvas(1, 1), "createCanvas"),
+      // #2641 — this worker runs one sketch at a time, so the workers and blob
+      // URLs its libraries make here are the sketch's and end with it (a pooled
+      // worker outlives the sketch; without this they would pile up in it).
+      ownsRealm: true,
       report: /* @__PURE__ */ __name((entry) => {
         if (entry.level === "error" && !drawn) return;
         postVizLog({ ...entry, runtime: "three" });
