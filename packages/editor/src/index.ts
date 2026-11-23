@@ -246,6 +246,9 @@ export {
   type DeclaredLibraryDeps,
 } from './visualizers/libraries/declaredLibraries'
 export { setProjectLibrariesSource, currentProjectLibrariesText, type ProjectLibrariesSource } from './visualizers/libraries/projectLibraries'
+// #2643 — the list of tested libraries, and adding one to stave.libs.json.
+export { LIBRARY_CATALOGUE, declarationFor, type CatalogueEntry } from './visualizers/libraries/catalogue'
+export { withLibraryDeclaration, type LibsFileEdit } from './visualizers/libraries/libsFileEdit'
 export { mountVizRenderer } from './visualizers/mountVizRenderer'
 // #2560 — Play waits (capped) for the pattern's sketches; the transport shows it.
 export {
