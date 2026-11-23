@@ -38,74 +38,13 @@ import { VizSyntaxError } from '../vizSyntaxError'
 import { parseStackLocation } from '../../engine/friendlyErrors'
 import type { StaveUniforms } from '../p5Compiler'
 import type { IRPattern } from '../../codeView'
+import { HOST_CHAIN, loadThree } from '../libraries/hostModules'
+import { resolveOrRefuse, type ImportChain } from '../libraries/resolver'
 
-// ── the bundled modules ──────────────────────────────────────────────────────
+// ── where imports come from: the resolver chain (libraries/resolver.ts) ─────────
 
-/** Addons a sketch may import, keyed by their path under `three/addons/`. A
- *  literal `import()` per entry so the bundler splits each into its own chunk and
- *  a sketch loads only what it names. */
-const ADDONS: Record<string, () => Promise<unknown>> = {
-  'environments/RoomEnvironment.js': () => import('three/addons/environments/RoomEnvironment.js'),
-  'postprocessing/EffectComposer.js': () => import('three/addons/postprocessing/EffectComposer.js'),
-  'postprocessing/RenderPass.js': () => import('three/addons/postprocessing/RenderPass.js'),
-  'postprocessing/ShaderPass.js': () => import('three/addons/postprocessing/ShaderPass.js'),
-  'postprocessing/OutputPass.js': () => import('three/addons/postprocessing/OutputPass.js'),
-  'postprocessing/UnrealBloomPass.js': () => import('three/addons/postprocessing/UnrealBloomPass.js'),
-  'postprocessing/BokehPass.js': () => import('three/addons/postprocessing/BokehPass.js'),
-  'postprocessing/AfterimagePass.js': () => import('three/addons/postprocessing/AfterimagePass.js'),
-  'postprocessing/FilmPass.js': () => import('three/addons/postprocessing/FilmPass.js'),
-  'postprocessing/GlitchPass.js': () => import('three/addons/postprocessing/GlitchPass.js'),
-  'postprocessing/SMAAPass.js': () => import('three/addons/postprocessing/SMAAPass.js'),
-  'postprocessing/FXAAPass.js': () => import('three/addons/postprocessing/FXAAPass.js'),
-  'shaders/CopyShader.js': () => import('three/addons/shaders/CopyShader.js'),
-  'shaders/FXAAShader.js': () => import('three/addons/shaders/FXAAShader.js'),
-  'shaders/RGBShiftShader.js': () => import('three/addons/shaders/RGBShiftShader.js'),
-  'shaders/VignetteShader.js': () => import('three/addons/shaders/VignetteShader.js'),
-  'loaders/GLTFLoader.js': () => import('three/addons/loaders/GLTFLoader.js'),
-  'loaders/RGBELoader.js': () => import('three/addons/loaders/RGBELoader.js'),
-  'loaders/HDRLoader.js': () => import('three/addons/loaders/HDRLoader.js'),
-  'loaders/EXRLoader.js': () => import('three/addons/loaders/EXRLoader.js'),
-  'geometries/RoundedBoxGeometry.js': () => import('three/addons/geometries/RoundedBoxGeometry.js'),
-  'utils/BufferGeometryUtils.js': () => import('three/addons/utils/BufferGeometryUtils.js'),
-  'math/SimplexNoise.js': () => import('three/addons/math/SimplexNoise.js'),
-  'math/ImprovedNoise.js': () => import('three/addons/math/ImprovedNoise.js'),
-}
-
-/** The addon paths a sketch may import, for messages and tests. */
-export const THREE_ADDONS: readonly string[] = Object.keys(ADDONS)
-
-/** Addons that exist in three.js but need something a viz doesn't have. */
-const NEEDS_INPUT = /(^|\/)(OrbitControls|TrackballControls|FlyControls|FirstPersonControls|PointerLockControls|DragControls|TransformControls|MapControls|ArcballControls)\.js$/
-
-/** `'three'`, an addon path (`'three/addons/…'` or the older `'three/examples/jsm/…'`),
- *  or null when the specifier is outside the bundle. */
-function resolveSpecifier(spec: string): { kind: 'three' } | { kind: 'addon'; path: string } | null {
-  if (spec === 'three') return { kind: 'three' }
-  const m = /^three\/(?:addons|examples\/jsm)\/(.+)$/.exec(spec)
-  if (!m) return null
-  const path = m[1].endsWith('.js') ? m[1] : `${m[1]}.js`
-  return { kind: 'addon', path }
-}
-
-/** Why a specifier can't load, in words a sketch author can act on. */
-function unsupportedImportMessage(spec: string): string {
-  const resolved = resolveSpecifier(spec)
-  if (resolved?.kind === 'addon' && NEEDS_INPUT.test(resolved.path)) {
-    return `'${spec}' needs pointer input, which a Stave viz doesn't receive. Move the camera in code instead (for example from \`sig\` or the time).`
-  }
-  return `'${spec}' isn't available in Stave. A three.js sketch can import 'three' and these addons: ${THREE_ADDONS.map((p) => `three/addons/${p}`).join(', ')}.`
-}
-
-/** An import the sketch names that Stave can't provide, with the line it's on. */
-export class ThreeImportError extends Error {
-  constructor(
-    message: string,
-    readonly line?: number,
-  ) {
-    super(message)
-    this.name = 'ThreeImportError'
-  }
-}
+export { THREE_ADDONS } from '../libraries/hostModules'
+export { ThreeImportError } from '../libraries/resolver'
 
 // ── compile: rewrite imports, keep every line where the author wrote it ────────
 
@@ -222,31 +161,19 @@ export interface ThreeModules {
   readonly THREE: any
   /** One entry per `CompiledThreeSketch.imports`; `null` marks `'three'` itself. */
   readonly modules: readonly (unknown | null)[]
+  /** Where the sketch's dynamic `import(x)` resolves (the chain its static imports
+   *  went through). Stave's own modules when absent. */
+  readonly chain?: ImportChain
 }
 
-let threePromise: Promise<any> | null = null
-function loadThree(): Promise<any> {
-  threePromise ??= import('three')
-  return threePromise
-}
-
-/** Load three.js and every addon the sketch imports. An import outside the
- *  bundle rejects with a {@link ThreeImportError} on its line. */
-export async function loadThreeModules(compiled: CompiledThreeSketch): Promise<ThreeModules> {
-  for (const imp of compiled.imports) {
-    const r = resolveSpecifier(imp.spec)
-    if (!r || (r.kind === 'addon' && !ADDONS[r.path])) {
-      throw new ThreeImportError(unsupportedImportMessage(imp.spec), imp.line)
-    }
-  }
+/** Load three.js and every module the sketch imports, each through `chain`
+ *  (Stave's own modules unless told otherwise). An import no link knows rejects
+ *  with a {@link ThreeImportError} on its line, before anything loads. */
+export async function loadThreeModules(compiled: CompiledThreeSketch, chain: ImportChain = HOST_CHAIN): Promise<ThreeModules> {
+  const resolved = compiled.imports.map((imp) => resolveOrRefuse(chain, imp.spec, imp.line))
   const THREE = await loadThree()
-  const modules = await Promise.all(
-    compiled.imports.map((imp) => {
-      const r = resolveSpecifier(imp.spec)!
-      return r.kind === 'three' ? null : ADDONS[(r as { path: string }).path]()
-    }),
-  )
-  return { THREE, modules }
+  const modules = await Promise.all(resolved.map((r) => (r.kind === 'three' ? null : r.load())))
+  return { THREE, modules, chain }
 }
 
 // ── run ────────────────────────────────────────────────────────────────────────
@@ -586,11 +513,10 @@ export function runThreeSketch(
     removeEventListener: removeListener,
   })
 
+  const chain = loaded.chain ?? HOST_CHAIN
   const importDynamic = async (spec: string): Promise<unknown> => {
-    const r = resolveSpecifier(String(spec))
-    if (r?.kind === 'three') return THREE
-    if (r?.kind === 'addon' && ADDONS[r.path]) return ADDONS[r.path]()
-    throw new ThreeImportError(unsupportedImportMessage(String(spec)))
+    const r = resolveOrRefuse(chain, String(spec))
+    return r.kind === 'three' ? THREE : r.load()
   }
 
   // ── the top level ──
