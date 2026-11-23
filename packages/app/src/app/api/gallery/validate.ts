@@ -1,6 +1,7 @@
 import { RECORDING_LIMITS, encodeRecording, readRecording, withoutFrames } from "../../../gallery/recording";
 import { fileRole } from "../../../gallery/galleryModel";
 import {
+  ENTRY_LIBS_FILE,
   GALLERY_ID_PATTERN,
   GALLERY_KINDS,
   MAX_AUTHOR_NAME_CHARS,
@@ -121,7 +122,10 @@ function checkManifest(v: unknown, kind: GalleryKind): Checked<GalleryManifest> 
     }
     files.push({ id: f.id, path: f.path, language: f.language, content: f.content });
   }
-  if ((kind === "music" || kind === "viz") && files.length !== 1) {
+  // #2642 — a viz entry may also carry the project's root stave.libs.json, so a
+  // sketch that imports a library still loads it wherever the entry is opened.
+  const own = kind === "viz" ? files.filter((f) => f.path !== ENTRY_LIBS_FILE) : files;
+  if ((kind === "music" || kind === "viz") && (own.length !== 1 || files.length - own.length > 1)) {
     return bad(`a ${kind} entry carries exactly one file`);
   }
   const fileOrder = stringRecord(v.fileOrder);

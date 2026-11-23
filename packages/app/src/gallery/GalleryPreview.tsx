@@ -83,6 +83,8 @@ export interface GalleryPreviewProps {
   path: string;
   /** #2490 — the entry's files the frame can run, the played one first (`previewPlayFor`). */
   files: PreviewFile[];
+  /** #2642 — the entry's `stave.libs.json` text, when it has one: the frame's sketches load their libraries from it. */
+  libs?: string;
   fileKey: string;
   /** Start playing as soon as this file is shown (a file row's play button chose it). */
   autoStart?: boolean;
@@ -113,14 +115,14 @@ export function StageIdle({ visual }: { visual: boolean }) {
  * row's play button switches the file it holds.
  */
 export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewProps>(function GalleryPreview(
-  { path, files, fileKey, autoStart = false, onPlayingChange, idle },
+  { path, files, libs, fileKey, autoStart = false, onPlayingChange, idle },
   ref,
 ) {
   const kind = files.find((f) => f.path === path)?.kind ?? "strudel";
   // What a play sends, read when it is sent: the list is rebuilt on every render
   // of the entry page, and the frame's listener mustn't restart for that.
-  const toSend = useRef({ path, files });
-  toSend.current = { path, files };
+  const toSend = useRef({ path, files, libs });
+  toSend.current = { path, files, libs };
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Shown | null>(null);
   const say = (text: string) => setStatus({ by: "page", text });
@@ -146,8 +148,8 @@ export const GalleryPreview = forwardRef<GalleryPreviewHandle, GalleryPreviewPro
   const askToPlay = useCallback(() => {
     codeSent.current = true;
     awaitingStart.current = true;
-    const { path: p, files: fs } = toSend.current;
-    send({ play: true, path: p, files: fs });
+    const { path: p, files: fs, libs: l } = toSend.current;
+    send(l === undefined ? { play: true, path: p, files: fs } : { play: true, path: p, files: fs, libs: l });
   }, [send]);
 
   /** Play, once the player has both loaded and said it is listening. */
