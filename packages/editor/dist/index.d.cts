@@ -10019,6 +10019,11 @@ interface VizPreviewSpec {
     readonly code: string;
     /** Display/attribution name (used for worker error messages). */
     readonly name: string;
+    /**
+     * #2642 — three only: the `stave.libs.json` text its imports resolve against.
+     * Left out, the current project's (as every other sketch the project draws).
+     */
+    readonly libs?: string | null;
 }
 /** Mount a muted live preview, or return `null` if the worker path is unavailable
  *  (caller then keeps its static tile). `disconnect()` fully tears down. */

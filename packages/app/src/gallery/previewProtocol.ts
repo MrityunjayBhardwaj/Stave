@@ -27,6 +27,11 @@
  * The old one-file message `{ play, code, kind }` is not that shape, so it is
  * ignored too.
  *
+ * #2642 — `libs`, when present, is the entry's `stave.libs.json` text (a string
+ * of at most MAX_PREVIEW_CODE), so a sketch that imports a library loads it in
+ * the frame the way it does in the studio. It is sent only when the entry holds
+ * that file: `{ play, path, files, libs }`.
+ *
  * Anything else — an extra key, a wrong type, oversized code — is ignored, so
  * the code inside the frame (which can post to its parent too) can't make the
  * gallery do more than show one of those states. Who SENT a message is checked
@@ -34,7 +39,7 @@
  * functions only judge shape.
  */
 
-import { MAX_MANIFEST_BYTES } from "./types";
+import { ENTRY_LIBS_FILE, MAX_MANIFEST_BYTES } from "./types";
 
 /** What the code is: a Strudel pattern (sound) or one of the visual languages. */
 export type PreviewKind = "strudel" | "hydra" | "p5" | "glsl" | "three";
@@ -70,7 +75,8 @@ export interface PreviewFile {
   code: string;
 }
 
-export type ToFrame = { play: true; path: string; files: PreviewFile[] } | { stop: true };
+export type PlayMessage = { play: true; path: string; files: PreviewFile[]; libs?: string };
+export type ToFrame = PlayMessage | { stop: true };
 export type FromFrame = { state: PreviewState; message?: string };
 
 function isPlainObject(x: unknown): x is Record<string, unknown> {
@@ -109,8 +115,10 @@ function readPreviewFile(raw: unknown): PreviewFile | null {
 export function parseToFrame(data: unknown): ToFrame | null {
   if (!isPlainObject(data)) return null;
   if (hasExactly(data, ["stop"]) && data.stop === true) return { stop: true };
-  if (!hasExactly(data, ["play", "path", "files"]) || data.play !== true) return null;
-  const { path, files } = data;
+  const withLibs = hasExactly(data, ["play", "path", "files", "libs"]);
+  if ((!withLibs && !hasExactly(data, ["play", "path", "files"])) || data.play !== true) return null;
+  const { path, files, libs } = data;
+  if (withLibs && (typeof libs !== "string" || libs.length > MAX_PREVIEW_CODE)) return null;
   if (!isPreviewPath(path)) return null;
   if (!Array.isArray(files) || files.length === 0 || files.length > MAX_PREVIEW_FILES) return null;
   const out: PreviewFile[] = [];
@@ -125,7 +133,7 @@ export function parseToFrame(data: unknown): ToFrame | null {
     out.push(f);
   }
   if (!seen.has(path)) return null;
-  return { play: true, path, files: out };
+  return withLibs ? { play: true, path, files: out, libs: libs as string } : { play: true, path, files: out };
 }
 
 /**
@@ -134,11 +142,12 @@ export function parseToFrame(data: unknown): ToFrame | null {
  * many as fit the caps above. Built only from the entry's own manifest (the
  * caller passes it). `null` when the chosen file itself can't go (no preview, a
  * path or size the frame would refuse): the frame would ignore that message.
+ * #2642 — with the entry's root `stave.libs.json` as `libs` when it has one.
  */
 export function previewPlayFor(
   manifestFiles: ReadonlyArray<{ path: string; language?: string; content: string }>,
   path: string,
-): { play: true; path: string; files: PreviewFile[] } | null {
+): PlayMessage | null {
   const asPreview = (f: { path: string; language?: string; content: string }): PreviewFile | null => {
     const kind = previewKindOf(f);
     if (!kind || !isPreviewPath(f.path) || f.content.length > MAX_PREVIEW_CODE) return null;
@@ -159,6 +168,8 @@ export function previewPlayFor(
     total += p.code.length;
     files.push(p);
   }
+  const libsFile = manifestFiles.find((f) => f.path === ENTRY_LIBS_FILE);
+  if (libsFile && libsFile.content.length <= MAX_PREVIEW_CODE) return { play: true, path: first.path, files, libs: libsFile.content };
   return { play: true, path: first.path, files };
 }
 
