@@ -15,6 +15,8 @@ import {
   type ThreeModules,
   type ThreeSketchHost,
 } from '../threeSketch'
+import { HOST_CHAIN } from '../../libraries/hostModules'
+import type { ImportChain } from '../../libraries/resolver'
 
 function fakeThree() {
   const made: FakeRenderer[] = []
@@ -139,6 +141,42 @@ describe('loadThreeModules', () => {
     expect(typeof m.THREE.WebGLRenderer).toBe('function')
     expect(m.modules[0]).toBeNull()
     expect(typeof (m.modules[1] as { RoomEnvironment: unknown }).RoomEnvironment).toBe('function')
+  })
+})
+
+describe('the import chain (#2637)', () => {
+  const extra = { marker: 'extra' }
+  const chain: ImportChain = {
+    links: [
+      ...HOST_CHAIN.links,
+      { name: 'extra', resolve: (s) => (s === 'lil-gui' || s === 'three' ? { kind: 'module', load: async () => extra } : null) },
+    ],
+    refusal: (s) => `no ${s}`,
+  }
+
+  it('asks each link in order: the host answers three, a later link answers what the host does not', async () => {
+    const c = compileThreeSketch("import * as THREE from 'three'\nimport GUI from 'lil-gui'\n")
+    const m = await loadThreeModules(c, chain)
+    expect(m.modules[0]).toBeNull() // three = the host's, not the later link's
+    expect(m.modules[1]).toBe(extra)
+    expect(m.chain).toBe(chain)
+  })
+
+  it("refuses with the chain's own message when no link knows the specifier", async () => {
+    const c = compileThreeSketch("import x from 'nope'\n")
+    const e = await loadThreeModules(c, chain).catch((x) => x)
+    expect(e).toBeInstanceOf(ThreeImportError)
+    expect(e.message).toBe('no nope')
+    expect(e.line).toBe(1)
+  })
+
+  it('routes a dynamic import() through the same chain', async () => {
+    const compiled = compileThreeSketch("globalThis.__out = { gui: await import('lil-gui') }\n")
+    const fake = fakeThree()
+    const h = makeHost()
+    const run = runThreeSketch(compiled, { THREE: fake.THREE, modules: [], chain }, h.host)
+    expect((await run.done).error).toBeNull()
+    expect(((globalThis as Record<string, unknown>).__out as { gui: unknown }).gui).toBe(extra)
   })
 })
 

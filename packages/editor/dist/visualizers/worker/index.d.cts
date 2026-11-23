@@ -67,6 +67,9 @@ interface MountMessage {
     kind: 'p5' | 'hydra' | 'glsl' | 'three';
     /** The sketch source (a transferable string, compiled in-worker — PLAN §7.3). */
     code: string;
+    /** #2639 — three only: the project's `stave.libs.json` text, so the sketch can
+     *  import the libraries it declares (libraries/declaredLibraries.ts). */
+    libs?: string;
     /** Source label for error attribution (the workspace path). */
     name: string;
     /** The presenting surface, transferred via `transferControlToOffscreen`. */

@@ -24,6 +24,7 @@ export const LANGUAGE_NAMES: Record<ExtensionLanguage, string> = {
   glsl: "GLSL",
   three: "three.js",
   markdown: "Markdown",
+  json: "JSON",
 };
 
 /** The panel (and its activity-bar icon) shows only once at least one extension is listed. */
