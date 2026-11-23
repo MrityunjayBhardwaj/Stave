@@ -25,6 +25,8 @@
  * - IndexedDB missing, refused, or slow to open → the cache is off for this page,
  *   said once in the console, and every lookup is a miss.
  * - A write refused for space → said once; the library still loads from the network.
+ *   Writes wait for their transaction through `transactionDone`, like every other
+ *   store, so a refusal for space also reaches the app's storage notice (#1779).
  * - An entry that is unreadable, misshapen or fails its hash → deleted, and a miss.
  *
  * ## What stays, and why
@@ -39,7 +41,7 @@
  * (2,804,136 characters).
  */
 
-import { isQuotaError, openIdbWithTimeout } from '../../idb'
+import { isQuotaError, openIdbWithTimeout, transactionDone } from '../../idb'
 
 /** A library's module graph, unrewritten: source text by absolute URL. */
 export type LibraryGraph = { entry: string; modules: Record<string, string> }
@@ -150,18 +152,6 @@ export interface LibraryCache {
   putGraph(sha384: string, graph: LibraryGraph): Promise<void>
 }
 
-function done(tx: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    tx.addEventListener('complete', () => resolve())
-    tx.addEventListener('abort', () => reject(tx.error ?? new Error('library-cache: transaction aborted')))
-    // A failed request bubbles here before the abort, while `tx.error` is still null
-    // (Firefox refuses a write for space this way), so take the request's own error.
-    tx.addEventListener('error', (e) =>
-      reject((e.target as IDBRequest | null)?.error ?? tx.error ?? new Error('library-cache: transaction failed')),
-    )
-  })
-}
-
 function read<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result)
@@ -233,7 +223,7 @@ export function createLibraryCache(opts: LibraryCacheOptions = {}): LibraryCache
       tx.objectStore(GRAPHS).delete(k)
       tx.objectStore(META).delete(k)
     }
-    await done(tx)
+    await transactionDone(tx)
   }
 
   async function getGraph(sha384: string): Promise<LibraryGraph | null> {
@@ -269,7 +259,7 @@ export function createLibraryCache(opts: LibraryCacheOptions = {}): LibraryCache
     try {
       const tx = db.transaction(META, 'readwrite')
       tx.objectStore(META).put({ sha384, bytes, lastUsed: now() } satisfies MetaRecord)
-      await done(tx)
+      await transactionDone(tx)
     } catch {
       /* a use not recorded only makes this entry look older */
     }
@@ -290,7 +280,7 @@ export function createLibraryCache(opts: LibraryCacheOptions = {}): LibraryCache
       const tx = db.transaction([GRAPHS, META], 'readwrite')
       tx.objectStore(GRAPHS).put({ entry: graph.entry, modules: graph.modules }, sha384)
       tx.objectStore(META).put({ sha384, bytes: bytes.byteLength, lastUsed: now() } satisfies MetaRecord)
-      await done(tx)
+      await transactionDone(tx)
     } catch (err) {
       // Once Firefox has refused a write for space, it refuses later writes on the same
       // database with InvalidStateError instead (measured, Firefox 148). It is still
