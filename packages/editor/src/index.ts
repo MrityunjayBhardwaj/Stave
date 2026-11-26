@@ -1116,3 +1116,8 @@ export { STRUDEL_DOCS_INDEX } from './monaco/strudelDocs'
 
 // #1800 — which code editor ⌘Z means for the focused panel.
 export { CODE_UNDO_ATTR, codeEditorForFocus, codeUndoForFocus } from './workspace/codeUndo'
+
+// #2658 — register a user-supplied .sf2 as a playable `s("sf_<name>")` sound
+// (spike for the custom-soundfont feature; seed of #2659).
+export { registerUserSoundfontFromBytes } from './soundfont/registerUserSoundfont'
+export type { RegisterUserSoundfontResult } from './soundfont/registerUserSoundfont'

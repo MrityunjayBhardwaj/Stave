@@ -147,6 +147,7 @@ import {
 } from "./songTermination";
 import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 import { installBounceProbe } from "../e2e/bounceProbe";
+import { installSoundfontProbe } from "../e2e/soundfontProbe";
 import { installAssetProbe } from "../e2e/assetProbe";
 import { warmWaveforms } from "../audio/waveformWarm";
 // #2304 — gallery code is held until the person presses Play.
@@ -2096,6 +2097,10 @@ export default function StrudelEditorClient({
   // Same dead-code-eliminated gate as the other `__stave*` hooks — both checks
   // live inside installBounceProbe, which returns its own teardown.
   useEffect(() => installBounceProbe(), []);
+
+  // E2E-only handle for the custom-soundfont spike (#2658). Same gate as the
+  // other `__stave*` hooks — attaches only under `__STAVE_E2E__`.
+  useEffect(() => installSoundfontProbe(), []);
 
   // #1502 — a project's own audio is addressable before the user does anything.
   //

@@ -61196,6 +61196,64 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
+// src/soundfont/registerUserSoundfont.ts
+async function registerUserSoundfontFromBytes(name, bytes) {
+  const sf = await import('@strudel/soundfonts');
+  const wa = await import('@strudel/webaudio');
+  const core = await import('@strudel/core');
+  const { loadSoundfont, startPresetNote } = sf;
+  const { registerSound, getAudioContext: getAudioContext4 } = wa;
+  const noteToMidi3 = core.noteToMidi;
+  const key3 = `sf_${name}`;
+  const blobUrl = URL.createObjectURL(
+    new Blob([new Uint8Array(bytes)], { type: "application/octet-stream" })
+  );
+  let font;
+  try {
+    font = await loadSoundfont(blobUrl);
+  } finally {
+    URL.revokeObjectURL(blobUrl);
+  }
+  const presets = font?.presets ?? [];
+  if (!presets.length) {
+    throw new Error(`soundfont "${name}" parsed but exposes no presets`);
+  }
+  registerSound(
+    key3,
+    // Handler shape mirrors the GM soundfont handler: (startTime, value, onended).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (time, value, onended) => {
+      const ctx = getAudioContext4();
+      const raw = value?.note ?? value?.n ?? "c4";
+      const midi = typeof raw === "number" ? raw : noteToMidi3(raw);
+      const preset = presets[0];
+      const stop = startPresetNote(ctx, preset, midi, time);
+      const duration = typeof value?.duration === "number" ? value.duration : 0.5;
+      const end = time + duration;
+      try {
+        stop(end);
+      } catch {
+      }
+      const placeholder = ctx.createGain();
+      placeholder.gain.value = 0;
+      return {
+        node: placeholder,
+        stop: /* @__PURE__ */ __name(() => {
+          try {
+            stop(ctx.currentTime);
+          } catch {
+          }
+          onended();
+        }, "stop"),
+        nodes: {}
+      };
+    },
+    { type: "soundfont", prebake: false }
+  );
+  return { key: key3, presetCount: presets.length };
+}
+__name(registerUserSoundfontFromBytes, "registerUserSoundfontFromBytes");
+
 // src/index.ts
 setKeyEventMatcher((event, key3) => chordMatches(chordFromEvent(event), key3));
 function startPageExtensions() {
@@ -61691,6 +61749,7 @@ exports.registerPresetAsNamedViz = registerPresetAsNamedViz;
 exports.registerPreviewProvider = registerPreviewProvider;
 exports.registerReevalHandler = registerReevalHandler;
 exports.registerRuntimeProvider = registerRuntimeProvider;
+exports.registerUserSoundfontFromBytes = registerUserSoundfontFromBytes;
 exports.releaseAllAssets = releaseAllAssets;
 exports.releaseAsset = releaseAsset;
 exports.removeArm = removeArm;
