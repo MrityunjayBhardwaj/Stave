@@ -145,25 +145,6 @@ interface LaneItem {
     armRange?: readonly [number, number];
 }
 /**
- * An arrangement arm the walk SELECTED at a cycle whose subtree reached no leaf there
- * (#1710) — a `[2, silence]` arm, the kind Add section (#1461) and a gap Delete (#491)
- * write.
- *
- * ⚠ NOT A `LaneItem`, AND KEPT OUT OF `walkLeafItems` ON PURPOSE. That stream is "one item
- * per Play leaf", and `nodeIdentity` indexes it by leaf loc; a rest has no leaf, so folding
- * it in would hand that index an item whose only locs are its wrappers'. It travels on a
- * side channel instead and feeds exactly one thing: the arm-per-cycle map clips are built
- * from. The section is DECLARED in the document, so it is an object on the canvas whether
- * or not it makes a sound.
- */
-interface ArmRest {
-    laneKey: string;
-    /** Song-absolute output cycle, the same frame as `LaneItem.cycle`. */
-    cycle: number;
-    armIndex: number;
-    armRange?: readonly [number, number];
-}
-/**
  * The stretch of song a walk covers (#1209).
  *
  * ── WHY ORIGIN AND SPAN TRAVEL AS ONE VALUE ─────────────────────────────────
@@ -193,7 +174,7 @@ declare function wholeWalkWindow(nCycles: number): WalkWindow;
  * `armByCycle` is sized and indexed against `window`: slot `i` is song cycle
  * `originCycle + i`. An item outside the window is dropped rather than clamped.
  */
-declare function aggregateLaneItems(items: readonly LaneItem[], window: WalkWindow, rests?: readonly ArmRest[]): LaneSkeleton[];
+declare function aggregateLaneItems(items: readonly LaneItem[], window: WalkWindow): LaneSkeleton[];
 /**
  * The source span an arm of a mini-expanded stack occupies (#950, moved here by #1553).
  *

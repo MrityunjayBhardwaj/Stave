@@ -444,30 +444,13 @@ function normalizeWindow(window2) {
   return { origin, span };
 }
 __name(normalizeWindow, "normalizeWindow");
-function aggregateLaneItems(items, window2, rests = []) {
+function aggregateLaneItems(items, window2) {
   const { origin: originCycle, span: nCycles } = normalizeWindow(window2);
   const order = [];
   const byKey = /* @__PURE__ */ new Map();
   const armByCycle = /* @__PURE__ */ new Map();
   const armLabels = /* @__PURE__ */ new Map();
   const armRanges = /* @__PURE__ */ new Map();
-  const markArm = /* @__PURE__ */ __name((laneKey, cycle, armIndex, armRange) => {
-    let byCycle = armByCycle.get(laneKey);
-    if (!byCycle) {
-      byCycle = new Array(nCycles);
-      armByCycle.set(laneKey, byCycle);
-    }
-    const slot = cycle - originCycle;
-    if (slot >= 0 && slot < nCycles) byCycle[slot] = armIndex;
-    if (armRange !== void 0) {
-      let ranges = armRanges.get(laneKey);
-      if (!ranges) {
-        ranges = /* @__PURE__ */ new Map();
-        armRanges.set(laneKey, ranges);
-      }
-      if (!ranges.has(armIndex)) ranges.set(armIndex, armRange);
-    }
-  }, "markArm");
   for (const it of items) {
     let lane = byKey.get(it.laneKey);
     if (!lane) {
@@ -497,23 +480,28 @@ function aggregateLaneItems(items, window2, rests = []) {
     }
     if (lane.leafIndex === void 0 && it.leafIndex !== void 0) lane.leafIndex = it.leafIndex;
     if (typeof it.armIndex === "number") {
-      markArm(it.laneKey, it.cycle, it.armIndex, it.armRange);
+      let byCycle = armByCycle.get(it.laneKey);
+      if (!byCycle) {
+        byCycle = new Array(nCycles);
+        armByCycle.set(it.laneKey, byCycle);
+      }
+      const slot = it.cycle - originCycle;
+      if (slot >= 0 && slot < nCycles) byCycle[slot] = it.armIndex;
       let labels = armLabels.get(it.laneKey);
       if (!labels) {
         labels = /* @__PURE__ */ new Map();
         armLabels.set(it.laneKey, labels);
       }
       if (!labels.has(it.armIndex) && it.labelValue != null) labels.set(it.armIndex, it.labelValue);
+      if (it.armRange !== void 0) {
+        let ranges = armRanges.get(it.laneKey);
+        if (!ranges) {
+          ranges = /* @__PURE__ */ new Map();
+          armRanges.set(it.laneKey, ranges);
+        }
+        if (!ranges.has(it.armIndex)) ranges.set(it.armIndex, it.armRange);
+      }
     }
-  }
-  for (const r of rests) {
-    if (!byKey.has(r.laneKey)) {
-      byKey.set(r.laneKey, { laneKey: r.laneKey });
-      order.push(r.laneKey);
-    }
-    const slot = r.cycle - originCycle;
-    if (armByCycle.get(r.laneKey)?.[slot] !== void 0) continue;
-    markArm(r.laneKey, r.cycle, r.armIndex, r.armRange);
   }
   return order.map((key2) => {
     const lane = byKey.get(key2);
@@ -733,16 +721,7 @@ function walkCycle(ir, ctx) {
         armIndex: inherited ? ctx.armIndex : armIndex,
         armRange: inherited ? ctx.armRange : armLoc ? [armLoc.start, armLoc.end] : void 0
       };
-      const reached = recurse(ir.arms[armIndex].pattern, childCtx);
-      if (reached.length === 0 && ctx.rests && ctx.trackId !== void 0 && childCtx.armIndex !== void 0) {
-        ctx.rests.push({
-          laneKey: ctx.trackId,
-          cycle: ctx.outputCycle,
-          armIndex: childCtx.armIndex,
-          ...childCtx.armRange !== void 0 ? { armRange: childCtx.armRange } : {}
-        });
-      }
-      return withWrapperLoc(reached, ir.loc);
+      return withWrapperLoc(recurse(ir.arms[armIndex].pattern, childCtx), ir.loc);
     }
     case "When": {
       return withWrapperLoc(recurse(ir.body, ctx), ir.loc);
@@ -875,35 +854,21 @@ function walkLeafItems(ir, nCycles) {
 }
 __name(walkLeafItems, "walkLeafItems");
 function walkLeafItemsInWindow(ir, window2) {
-  return walkWindow(ir, window2, void 0);
-}
-__name(walkLeafItemsInWindow, "walkLeafItemsInWindow");
-function walkWindow(ir, window2, rests) {
   const { origin, span } = normalizeWindow(window2);
   const items = [];
   const arms = rootStackArms(ir);
   const armLaneOf = arms ? new Map(arms.map((a) => [a.arm, a.laneId])) : void 0;
   for (let c = origin; c < origin + span; c++) {
     try {
-      items.push(
-        ...walkCycle(ir, {
-          cycle: c,
-          outputCycle: c,
-          params: {},
-          ...armLaneOf ? { armLaneOf } : {},
-          ...rests ? { rests } : {}
-        })
-      );
+      items.push(...walkCycle(ir, { cycle: c, outputCycle: c, params: {}, ...armLaneOf ? { armLaneOf } : {} }));
     } catch {
     }
   }
   return items;
 }
-__name(walkWindow, "walkWindow");
+__name(walkLeafItemsInWindow, "walkLeafItemsInWindow");
 function structuralWalk(ir, window2) {
-  const rests = [];
-  const items = walkWindow(ir, window2, rests);
-  return aggregateLaneItems(items, window2, rests);
+  return aggregateLaneItems(walkLeafItemsInWindow(ir, window2), window2);
 }
 __name(structuralWalk, "structuralWalk");
 

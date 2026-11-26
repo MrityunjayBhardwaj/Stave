@@ -126,38 +126,6 @@ test('a returning section is re-pointed on the clicked arm ALONE (arrange)', asy
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })
 
-test('an EMPTY section is filled by the same gesture — P on the room Add made (#1710)', async ({ page }) => {
-  // #1710. `[2, silence]` is what Add section and a gap Delete write, and it
-  // plays nothing, so it used to have no clip and P had nothing to act on. "Fill
-  // this room" is the natural next move after making the room, so it is the
-  // arm that proves the empty section is a first-class section.
-  const errors: string[] = []
-  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
-  page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
-  })
-
-  await bootShell(page)
-  await typeSongAndEval(page, ['const bass = s("bd")', 'const lead = s("hh")', 'arrange([2, bass], [2, silence], [2, lead])'].join('\n'))
-  // Cycles 2-4 of 6 are the empty section; 0.5 is its middle.
-  const grid = await selectClipAt(page, 0.5)
-  errors.length = 0 // typing noise — the claim is about the gesture
-
-  await grid.press('p')
-  const chooser = page.locator('[data-full-song="section-part"]')
-  await expect(chooser).toBeVisible({ timeout: 5_000 })
-  expect(await chooser.locator('option').allTextContents()).toContain('bass')
-  await chooser.selectOption('bass')
-
-  await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toContain(
-    'arrange([2, bass], [2, bass], [2, lead])',
-  )
-  // eslint-disable-next-line no-console
-  console.log(`[#1710] after filling the empty section: ${(await strudelSource(page)).split('\n').pop()}`)
-
-  expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
-})
-
 test('the same gesture re-points a section of the OTHER spelling, and the object stays put', async ({ page }) => {
   // #1462's rule: a keypress means one thing whichever way the song is written.
   // Here the two spellings write different bytes for the same intent — the arm

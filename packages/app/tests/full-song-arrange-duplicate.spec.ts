@@ -152,63 +152,6 @@ test('⌘-I inserts an EMPTY section, where ⌘-D inserts a copy of one that pla
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })
 
-test('the empty section Add writes is an object — it selects, and ripple delete closes it (#1710)', async ({ page }) => {
-  // #1710. Add section writes `[2, silence]`, which plays nothing — and the
-  // timeline used to learn a section's extent only from the notes it played, so
-  // the one section the user had just made had no clip: a click inside it
-  // selected nothing, and the room could not be closed up from the canvas.
-  //
-  // The arm drives the REAL gestures in order: Add, click INSIDE the new span,
-  // ripple delete. The last read is the whole round trip — the document is
-  // exactly what it was before Add, so the click selected THAT section and no
-  // neighbour (deleting `bd` or `hh` would leave a different string).
-  const errors: string[] = []
-  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
-  page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
-  })
-
-  await bootShell(page)
-  await typeSongAndEval(page, 'arrange([2, s("bd")], [4, s("hh")])')
-  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
-  await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
-  await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
-  await page.waitForTimeout(400)
-  errors.length = 0 // typing noise — the claim is about the gestures
-
-  const grid = page.locator('[data-full-song="grid"]')
-  const selection = page.locator('[data-full-song="clip-selection"]')
-  const clickAt = async (fraction: number): Promise<void> => {
-    const box = await grid.boundingBox()
-    if (!box) throw new Error('no grid box')
-    await page.mouse.click(box.x + box.width * fraction, box.y + 8)
-  }
-
-  await clickAt(0.25)
-  await expect(selection).toBeVisible({ timeout: 5_000 })
-  await grid.press(`${MOD}+i`)
-  await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toBe(
-    'arrange([2, s("bd")], [2, silence], [4, s("hh")])',
-  )
-  await page.waitForTimeout(800) // the re-eval redraws the 8-cycle song
-
-  // Deselect first, so a selection seen below can only have come from THIS click.
-  await page.keyboard.press('Escape')
-  await expect(selection).toBeHidden({ timeout: 5_000 })
-
-  // Cycles 2-4 of 8 are the empty section; 0.375 is its middle.
-  await clickAt(0.375)
-  await expect(selection).toBeVisible({ timeout: 5_000 })
-  await grid.press(`${MOD}+Shift+Delete`)
-  await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toBe(
-    'arrange([2, s("bd")], [4, s("hh")])',
-  )
-  // eslint-disable-next-line no-console
-  console.log(`[#1710] after ripple delete of the empty section: ${await strudelSource(page)}`)
-
-  expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
-})
-
 test('the other spelling inserts the same empty section, in its own vocabulary', async ({ page }) => {
   // #1461 + #1462. A keypress has to mean one thing whichever way the user
   // happened to write their song, so the gesture is only finished when BOTH

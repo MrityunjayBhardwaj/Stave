@@ -92,26 +92,6 @@ export interface LaneItem {
 }
 
 /**
- * An arrangement arm the walk SELECTED at a cycle whose subtree reached no leaf there
- * (#1710) — a `[2, silence]` arm, the kind Add section (#1461) and a gap Delete (#491)
- * write.
- *
- * ⚠ NOT A `LaneItem`, AND KEPT OUT OF `walkLeafItems` ON PURPOSE. That stream is "one item
- * per Play leaf", and `nodeIdentity` indexes it by leaf loc; a rest has no leaf, so folding
- * it in would hand that index an item whose only locs are its wrappers'. It travels on a
- * side channel instead and feeds exactly one thing: the arm-per-cycle map clips are built
- * from. The section is DECLARED in the document, so it is an object on the canvas whether
- * or not it makes a sound.
- */
-export interface ArmRest {
-  laneKey: string
-  /** Song-absolute output cycle, the same frame as `LaneItem.cycle`. */
-  cycle: number
-  armIndex: number
-  armRange?: readonly [number, number]
-}
-
-/**
  * The stretch of song a walk covers (#1209).
  *
  * ── WHY ORIGIN AND SPAN TRAVEL AS ONE VALUE ─────────────────────────────────
@@ -153,37 +133,13 @@ function normalizeWindow(window: WalkWindow): { origin: number; span: number } {
  * `armByCycle` is sized and indexed against `window`: slot `i` is song cycle
  * `originCycle + i`. An item outside the window is dropped rather than clamped.
  */
-export function aggregateLaneItems(
-  items: readonly LaneItem[],
-  window: WalkWindow,
-  rests: readonly ArmRest[] = [],
-): LaneSkeleton[] {
+export function aggregateLaneItems(items: readonly LaneItem[], window: WalkWindow): LaneSkeleton[] {
   const { origin: originCycle, span: nCycles } = normalizeWindow(window)
   const order: string[] = []
   const byKey = new Map<string, LaneSkeleton>()
   const armByCycle = new Map<string, Array<number | undefined>>()
   const armLabels = new Map<string, Map<number, string>>()
   const armRanges = new Map<string, Map<number, readonly [number, number]>>()
-  // One writer for the arm-per-cycle map and the arm's source range, shared by leaves and
-  // silent arms so the two cannot record a section differently.
-  const markArm = (laneKey: string, cycle: number, armIndex: number, armRange?: readonly [number, number]): void => {
-    let byCycle = armByCycle.get(laneKey)
-    if (!byCycle) {
-      byCycle = new Array<number | undefined>(nCycles)
-      armByCycle.set(laneKey, byCycle)
-    }
-    // `cycle` is a song-ABSOLUTE output cycle; the array is window-relative.
-    const slot = cycle - originCycle
-    if (slot >= 0 && slot < nCycles) byCycle[slot] = armIndex
-    if (armRange !== undefined) {
-      let ranges = armRanges.get(laneKey)
-      if (!ranges) {
-        ranges = new Map()
-        armRanges.set(laneKey, ranges)
-      }
-      if (!ranges.has(armIndex)) ranges.set(armIndex, armRange)
-    }
-  }
 
   for (const it of items) {
     let lane = byKey.get(it.laneKey)
@@ -241,32 +197,29 @@ export function aggregateLaneItems(
     if (lane.leafIndex === undefined && it.leafIndex !== undefined) lane.leafIndex = it.leafIndex
     // Arrange clips: per-cycle arm index + per-arm label. Only lanes carrying an armIndex.
     if (typeof it.armIndex === 'number') {
-      markArm(it.laneKey, it.cycle, it.armIndex, it.armRange)
+      let byCycle = armByCycle.get(it.laneKey)
+      if (!byCycle) {
+        byCycle = new Array<number | undefined>(nCycles)
+        armByCycle.set(it.laneKey, byCycle)
+      }
+      // `it.cycle` is a song-ABSOLUTE output cycle; the array is window-relative.
+      const slot = it.cycle - originCycle
+      if (slot >= 0 && slot < nCycles) byCycle[slot] = it.armIndex
       let labels = armLabels.get(it.laneKey)
       if (!labels) {
         labels = new Map()
         armLabels.set(it.laneKey, labels)
       }
       if (!labels.has(it.armIndex) && it.labelValue != null) labels.set(it.armIndex, it.labelValue)
+      if (it.armRange !== undefined) {
+        let ranges = armRanges.get(it.laneKey)
+        if (!ranges) {
+          ranges = new Map()
+          armRanges.set(it.laneKey, ranges)
+        }
+        if (!ranges.has(it.armIndex)) ranges.set(it.armIndex, it.armRange)
+      }
     }
-  }
-
-  // #1710 — silent arms, AFTER every leaf, and only onto slots no leaf claimed, so a rest
-  // never outranks a note: a cycle where some branch of the lane plays keeps the arm that
-  // played. It only fills the hole a declared, soundless section used to leave.
-  //
-  // A lane every cycle of this window rests in (a paged view sitting inside a long silent
-  // section) is created here, AFTER the leaf lanes, so their order is untouched. It carries
-  // no anchors — a rest has no source position of its own — and the consumers only annotate
-  // rows by key, so it names a row the song already has rather than inventing one.
-  for (const r of rests) {
-    if (!byKey.has(r.laneKey)) {
-      byKey.set(r.laneKey, { laneKey: r.laneKey })
-      order.push(r.laneKey)
-    }
-    const slot = r.cycle - originCycle
-    if (armByCycle.get(r.laneKey)?.[slot] !== undefined) continue
-    markArm(r.laneKey, r.cycle, r.armIndex, r.armRange)
   }
 
   return order.map((key) => {
@@ -308,10 +261,6 @@ interface StructCtx {
    *  the arms `rootStackArms` actually named: a stack nested deeper in the
    *  tree is a different object and simply does not match. */
   armLaneOf?: ReadonlyMap<PatternIR, string>
-  /** #1710 — where an `Arrange` records an arm that reached no leaf. One array for the whole
-   *  window, shared by reference through every context copy; absent for callers that only
-   *  want leaves. */
-  rests?: ArmRest[]
   params: Record<string, number | string>
 }
 
@@ -604,23 +553,7 @@ function walkCycle(ir: PatternIR, ctx: StructCtx): LaneItem[] {
             ? ([armLoc.start, armLoc.end] as const)
             : undefined,
       }
-      const reached = recurse(ir.arms[armIndex].pattern, childCtx)
-      // #1710 — a selected arm that reached nothing still OCCUPIES this cycle. Keyed to the
-      // lane the arm's leaves would have joined (the `Play` case's `ctx.trackId`).
-      // `childCtx.armIndex` is the resolved identity, so a silent inner arm of a nested
-      // arrangement marks the OUTER section, as its notes would.
-      //
-      // Only under a TRACK: without one, each arm's lane is named by its own sound (`s`), and
-      // a rest has no sound to name one by — any key chosen here would be a guess.
-      if (reached.length === 0 && ctx.rests && ctx.trackId !== undefined && childCtx.armIndex !== undefined) {
-        ctx.rests.push({
-          laneKey: ctx.trackId,
-          cycle: ctx.outputCycle,
-          armIndex: childCtx.armIndex,
-          ...(childCtx.armRange !== undefined ? { armRange: childCtx.armRange } : {}),
-        })
-      }
-      return withWrapperLoc(reached, ir.loc)
+      return withWrapperLoc(recurse(ir.arms[armIndex].pattern, childCtx), ir.loc)
     }
 
     case 'When': {
@@ -871,12 +804,6 @@ export function walkLeafItems(ir: PatternIR, nCycles: number): LaneItem[] {
  * the same property the banded event accessor buys on the onset side.
  */
 export function walkLeafItemsInWindow(ir: PatternIR, window: WalkWindow): LaneItem[] {
-  return walkWindow(ir, window, undefined)
-}
-
-/** The one traversal behind both entry points; `rests`, when given, collects the silent
- *  arms (#1710) the leaf stream cannot carry. */
-function walkWindow(ir: PatternIR, window: WalkWindow, rests: ArmRest[] | undefined): LaneItem[] {
   const { origin, span } = normalizeWindow(window)
   const items: LaneItem[] = []
   // Computed ONCE for the whole window, not per cycle — it is a property of
@@ -885,15 +812,7 @@ function walkWindow(ir: PatternIR, window: WalkWindow, rests: ArmRest[] | undefi
   const armLaneOf = arms ? new Map(arms.map((a) => [a.arm, a.laneId])) : undefined
   for (let c = origin; c < origin + span; c++) {
     try {
-      items.push(
-        ...walkCycle(ir, {
-          cycle: c,
-          outputCycle: c,
-          params: {},
-          ...(armLaneOf ? { armLaneOf } : {}),
-          ...(rests ? { rests } : {}),
-        }),
-      )
+      items.push(...walkCycle(ir, { cycle: c, outputCycle: c, params: {}, ...(armLaneOf ? { armLaneOf } : {}) }))
     } catch {
       // A whole-cycle failure degrades that cycle only.
     }
@@ -912,7 +831,5 @@ function walkWindow(ir: PatternIR, window: WalkWindow, rests: ArmRest[] | undefi
  * genuinely mean the whole song say so with `wholeWalkWindow`.
  */
 export function structuralWalk(ir: PatternIR, window: WalkWindow): LaneSkeleton[] {
-  const rests: ArmRest[] = []
-  const items = walkWindow(ir, window, rests)
-  return aggregateLaneItems(items, window, rests)
+  return aggregateLaneItems(walkLeafItemsInWindow(ir, window), window)
 }
