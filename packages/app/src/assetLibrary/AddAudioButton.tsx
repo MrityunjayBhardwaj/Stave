@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import { decodeDurationSeconds, importAudioFiles } from "../audio/saveTake";
+import { importSoundfontFiles, isSoundfontFile, summarizeSoundfonts } from "../audio/importSoundfont";
 import { warmWaveforms } from "../audio/waveformWarm";
 import { notifyAssetProvidersChanged } from "./registry";
 import { dragCarriesFiles, summarize } from "./importMessages";
@@ -41,21 +42,42 @@ export function useAudioImport(): AudioImport {
     setBusy(true);
     setMessage(null);
     try {
-      const summary = await importAudioFiles(files, {
-        measureDuration: decodeDurationSeconds,
-      });
-      // The provider reads records live, so the panel only needs telling that
-      // the catalog changed.
-      if (summary.saved.length > 0) notifyAssetProvidersChanged();
-      // Decode what registered, so each new sound can be SEEN on the Song
-      // timeline before anything has played it — the same warm the recorder
-      // does, and skipped for the same reason when a record has no URL.
-      const playable = summary.saved
-        .filter((s) => s.playable)
-        .map((s) => s.record.name);
-      if (playable.length > 0) void warmWaveforms(playable);
-      setMessage(summarize(summary));
-      return summary.saved.length;
+      // Route by file type: a `.sf2` is a soundfont (#2662), everything else goes
+      // down the audio-sample path. One operation, both kinds — the user drops or
+      // picks a file and Stave decides what it is.
+      const sf2s = files.filter(isSoundfontFile);
+      const audioFiles = files.filter((f) => !isSoundfontFile(f));
+
+      // Soundfonts: register (parses + makes `s("sf_<name>")` live this session)
+      // and persist, so #2661 re-registers them on the next boot.
+      const sfSummary = await importSoundfontFiles(sf2s);
+
+      // Audio: the existing sample path.
+      let audioSaved = 0;
+      let audioMessage: string | null = null;
+      if (audioFiles.length > 0) {
+        const summary = await importAudioFiles(audioFiles, {
+          measureDuration: decodeDurationSeconds,
+        });
+        audioSaved = summary.saved.length;
+        // Decode what registered, so each new sound can be SEEN on the Song
+        // timeline before anything has played it — the same warm the recorder
+        // does, and skipped for the same reason when a record has no URL.
+        const playable = summary.saved
+          .filter((s) => s.playable)
+          .map((s) => s.record.name);
+        if (playable.length > 0) void warmWaveforms(playable);
+        audioMessage = summarize(summary);
+      }
+
+      const totalAdded = audioSaved + sfSummary.added.length;
+      // The provider reads live, so the panel only needs telling the catalog
+      // changed — once, whether audio records or soundfont keys were added.
+      if (totalAdded > 0) notifyAssetProvidersChanged();
+
+      const parts = [summarizeSoundfonts(sfSummary), audioMessage].filter(Boolean);
+      setMessage(parts.length ? parts.join(" · ") : "The files could not be added.");
+      return totalAdded;
     } catch {
       setMessage("The files could not be added.");
       return 0;
@@ -135,20 +157,20 @@ export function AddAudioButton({
         style={styles.button}
         onClick={() => inputRef.current?.click()}
         disabled={busy}
-        title="Add audio files"
-        aria-label="Add audio files"
+        title="Upload an audio sample or a soundfont (.sf2)"
+        aria-label="Upload audio or soundfont files"
         data-add-audio
       >
-        + AUDIO
+        ⬆ Upload file
       </button>
       <input
         ref={inputRef}
         type="file"
         // Permissive on purpose: the sampler infers nothing from an extension,
         // so the honest gate is whether the bytes decode, which
-        // `importAudioFile` checks. A hardcoded extension list would refuse
-        // formats that play perfectly well.
-        accept="audio/*"
+        // `importAudioFile` checks. `.sf2` is added explicitly because a
+        // soundfont has no `audio/*` MIME — the import routes it by extension.
+        accept="audio/*,.sf2"
         multiple
         tabIndex={-1}
         style={{ display: "none" }}

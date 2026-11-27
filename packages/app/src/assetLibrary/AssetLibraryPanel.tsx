@@ -261,10 +261,11 @@ export function AssetLibraryPanel({
       {...drop.handlers}
     >
       <div style={styles.header}>
-        <span>LIBRARY</span>
+        <span style={styles.title}>LIBRARY</span>
         <div style={styles.headerActions}>
-          {/* #1504/#1541 — the two ways audio gets in sit with what they
-              produce. Add comes first: it is the one every project can use,
+          {/* #1504/#1541/#2662 — the ways a sound gets in sit with what they
+              produce, on their own row under the title. Upload comes first: it is
+              the one every project can use (audio samples AND .sf2 soundfonts),
               while recording needs a microphone and a permission. */}
           <AddAudioButton busy={audio.busy} onFiles={onFiles} />
           <RecordTakeButton />
@@ -844,14 +845,17 @@ const styles: Record<string, React.CSSProperties> = {
   },
   header: {
     padding: "10px 14px",
-    fontSize: 10,
-    fontWeight: 600,
-    letterSpacing: 0.8,
     color: "var(--text-secondary)",
     borderBottom: "1px solid var(--border-subtle)",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 8,
+  },
+  title: {
+    fontSize: 10,
+    fontWeight: 600,
+    letterSpacing: 0.8,
   },
   headerActions: {
     display: "flex",

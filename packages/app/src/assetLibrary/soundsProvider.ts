@@ -48,10 +48,10 @@ function titleCase(name: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-/** `gm_alto_sax` → `Alto Sax`. */
+/** `gm_alto_sax` → `Alto Sax`; `sf_vintage` (a user upload) → `Vintage`. */
 function soundfontLabel(name: string): string {
   return name
-    .replace(/^gm_/, "")
+    .replace(/^(gm|sf)_/, "")
     .split("_")
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -120,7 +120,12 @@ export function soundMapToAssets(
       type: "sound",
       id: name, // the exact string written into s("…") — stable + unique
       name: label,
-      source: "built-in",
+      // The soundMap says nothing about who made a sound (P1028), so built-in is
+      // the default — EXCEPT a user-uploaded soundfont, whose `sf_` prefix is the
+      // marker `registerUserSoundfont` stamps (built-in GM fonts are `gm_*`). Without
+      // this, an uploaded .sf2 lands under Sounds → Built-in and the user cannot find
+      // the font they just added (the panel navigates to Sounds → User after import).
+      source: name.startsWith("sf_") ? "user" : "built-in",
       group,
       tags,
       preview: () => deps.startPreview(name),
