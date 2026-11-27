@@ -459,7 +459,7 @@ test('#1787 Open Library shows your sounds with their sizes', async ({ page }) =
   await page.locator('[data-asset-library]').waitFor({ timeout: 10_000 })
   const shown = {
     // #2062 — "your sounds" is Sounds → User
-    onYourSounds: await page.locator('[data-filter="asset-source-filter"] [data-chip="user"]').getAttribute('aria-pressed'),
+    onYourSounds: (await page.locator('[data-filter="asset-source-filter"]').inputValue()) === 'user' ? 'true' : 'false',
     size: await page.locator('[data-asset-row^="sound:"] [data-asset-size]').first().innerText({ timeout: 10_000 }),
   }
   expect({ onYourSounds: shown.onYourSounds, sized: /\d(\.\d)? (B|KB|MB)$/.test(shown.size) }).toEqual({

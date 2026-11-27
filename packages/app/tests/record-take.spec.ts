@@ -260,10 +260,8 @@ test('a renamed take answers to its new name after a reload', async ({ page }) =
  */
 async function filterToSamples(page: Page): Promise<void> {
   // #2062 — your audio is listed under Sounds → User (it was a Samples type of its own)
-  const sounds = page.locator('[data-filter="asset-type-filter"] [data-chip="sound"]')
-  if ((await sounds.getAttribute('aria-pressed')) !== 'true') await sounds.click()
-  const user = page.locator('[data-filter="asset-source-filter"] [data-chip="user"]')
-  if ((await user.getAttribute('aria-pressed')) !== 'true') await user.click()
+  await page.locator('[data-filter="asset-type-filter"]').selectOption('sound')
+  await page.locator('[data-filter="asset-source-filter"]').selectOption('user')
 }
 
 test('the take appears in the library as a user sample', async ({ page }) => {

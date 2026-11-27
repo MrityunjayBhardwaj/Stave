@@ -87,10 +87,8 @@ async function blobs(page: Page): Promise<Array<{ hash: string; size: number }>>
 async function row(page: Page, name: string) {
   await openLibrary(page)
   // #2062 — your own audio is under Sounds → User.
-  const sounds = page.locator('[data-filter="asset-type-filter"] [data-chip="sound"]')
-  if ((await sounds.getAttribute('aria-pressed')) !== 'true') await sounds.click()
-  const user = page.locator('[data-filter="asset-source-filter"] [data-chip="user"]')
-  if ((await user.getAttribute('aria-pressed')) !== 'true') await user.click()
+  await page.locator('[data-filter="asset-type-filter"]').selectOption('sound')
+  await page.locator('[data-filter="asset-source-filter"]').selectOption('user')
   await page.locator('[data-asset-search]').fill(name)
   const r = page.locator('[data-asset-row^="sound:"]', { hasText: name }).first()
   await r.waitFor({ timeout: 10_000 })

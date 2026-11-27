@@ -43,7 +43,7 @@ async function soundNames(page: Page): Promise<Set<string>> {
 async function openSnippets(page: Page): Promise<void> {
   await page.locator('[data-activity-bar] button[aria-label="Library"]').click()
   const panel = page.locator('[data-asset-library]')
-  await panel.locator('[data-filter="asset-type-filter"] button[data-chip="snippet"]').click()
+  await panel.locator('[data-filter="asset-type-filter"]').selectOption('snippet')
 }
 
 const rows = (page: Page) => page.locator('[data-asset-library] [data-asset-row^="snippet:"]')
@@ -78,18 +78,18 @@ test('every sketch runs, makes events and names only sounds Stave has', async ({
 test('the Library lists them under Snippets, by level and by topic', async ({ page }) => {
   await openSnippets(page)
   const levels = page.locator('[data-filter="asset-level-filter"]')
-  await expect(levels.locator('button')).toHaveText(['All', 'Beginner', 'Intermediate', 'Advanced'])
-  await levels.locator('button[data-chip="beginner"]').click()
-  // every beginner sketch, and only those (the list is windowed, so count by topic chip)
-  const all = page.locator('[data-filter="asset-category-filter"] button[data-chip="all"]')
+  await expect(levels.locator('option')).toHaveText(['All', 'Beginner', 'Intermediate', 'Advanced'])
+  await levels.selectOption('beginner')
+  // every beginner sketch, and only those (the list is windowed, so count by topic count)
+  const all = page.locator('[data-filter="asset-category-filter"] option[value=""]')
   await expect(all).toContainText(String(LEVEL_COUNTS.beginner))
   // a topic narrows within the level
   const rhythmBeginner = STRUDEL_SNIPPETS.filter((s) => s.level === 'beginner' && s.topic === 'Rhythm').length
-  await page.locator('[data-filter="asset-category-filter"] button[data-chip="Rhythm"]').click()
+  await page.locator('[data-filter="asset-category-filter"]').selectOption('Rhythm')
   await expect(rows(page)).toHaveCount(rhythmBeginner)
   await expect(page.locator('[data-asset-level="snippet:first-beat"]')).toHaveText('Beginner')
-  // the other types carry no level, so they show no level chips
-  await page.locator('[data-filter="asset-type-filter"] button[data-chip="viz"]').click()
+  // the other types carry no level, so they show no level dropdown
+  await page.locator('[data-filter="asset-type-filter"]').selectOption('viz')
   await expect(levels).toHaveCount(0)
 })
 

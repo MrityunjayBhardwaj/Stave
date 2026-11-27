@@ -136,10 +136,10 @@ test.describe('your own audio, brought in through the Library', () => {
   test('your sound is under Sounds → User, chosen by hand (#2062)', async ({ page }) => {
     await boot(page)
     const name = await addAudio(page, 'mine.wav', wav(1.37))
-    // away from what the import chose, then back by the two chips a person would press
-    await page.locator('[data-filter="asset-type-filter"] [data-chip="all"]').click()
-    await page.locator('[data-filter="asset-type-filter"] [data-chip="sound"]').click()
-    await page.locator('[data-filter="asset-source-filter"] [data-chip="user"]').click()
+    // away from what the import chose, then back by the two dropdowns a person would use
+    await page.locator('[data-filter="asset-type-filter"]').selectOption({ value: '' })
+    await page.locator('[data-filter="asset-type-filter"]').selectOption('sound')
+    await page.locator('[data-filter="asset-source-filter"]').selectOption('user')
     await page.locator('[data-asset-search]').fill(name)
     await expect(row(page, name)).toBeVisible({ timeout: 5_000 })
   })
@@ -147,7 +147,7 @@ test.describe('your own audio, brought in through the Library', () => {
   test("your sound is not listed among Stave's own sounds (#2062)", async ({ page }) => {
     await boot(page)
     const name = await addAudio(page, 'notbuiltin.wav', wav(1.37))
-    await page.locator('[data-filter="asset-source-filter"] [data-chip="built-in"]').click()
+    await page.locator('[data-filter="asset-source-filter"]').selectOption('built-in')
     await page.locator('[data-asset-search]').fill(name)
     await page.waitForTimeout(500)
     expect(await page.locator('[data-asset-row]', { hasText: name }).count()).toBe(0)

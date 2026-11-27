@@ -40,7 +40,7 @@ async function openVizLibrary(page: Page): Promise<Locator> {
   await page.locator('[data-activity-bar] button[aria-label="Library"]').click()
   const panel = page.locator('[data-asset-library]')
   await panel.waitFor({ timeout: 10_000 })
-  await panel.locator('[data-filter="asset-type-filter"] button[data-chip="viz"]').click()
+  await panel.locator('[data-filter="asset-type-filter"]').selectOption('viz')
   await page.waitForTimeout(150)
   return panel
 }

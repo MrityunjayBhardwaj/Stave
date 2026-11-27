@@ -40,7 +40,7 @@ async function openLibrary(page: Page) {
 }
 
 async function showVizType(page: Page, panel: ReturnType<Page['locator']>) {
-  await panel.locator('[data-filter="asset-type-filter"] button[data-chip="viz"]').click()
+  await panel.locator('[data-filter="asset-type-filter"]').selectOption('viz')
   await page.waitForTimeout(100)
 }
 
@@ -88,9 +88,9 @@ test.describe('Asset Library — Viz library (#834)', () => {
     await boot(page)
     const panel = await openLibrary(page)
 
-    // Viz is a first-class type — its chip is present without any seeding.
+    // Viz is a first-class type — its option is present without any seeding.
     const typeRow = panel.locator('[data-filter="asset-type-filter"]')
-    await expect(typeRow.locator('button[data-chip="viz"]')).toBeVisible()
+    await expect(typeRow.locator('option[value="viz"]')).toHaveCount(1)
     await showVizType(page, panel)
 
     const prism = panel.locator('[data-asset-row="viz:prism"]')
@@ -216,11 +216,8 @@ test.describe('Asset Library — Viz library (#834)', () => {
     ).toContainText('Prism.glsl')
 
     // The add (which churns the provider list via `notifyAssetProvidersChanged`)
-    // must NOT bounce the Type filter off Viz — the row stays put.
-    await expect(panel.locator('[data-filter="asset-type-filter"] button[data-chip="viz"]')).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
+    // must NOT bounce the Type filter off Viz — the dropdown stays on Viz.
+    await expect(panel.locator('[data-filter="asset-type-filter"]')).toHaveValue('viz')
     await expect(prism).toBeVisible()
   })
 

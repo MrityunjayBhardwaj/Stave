@@ -91,9 +91,9 @@ async function addPackage(page: Page, id: string, name: string): Promise<void> {
   // and race a single click — so re-click until the row appears (a set type
   // filter skips other providers' rows entirely, filter.ts).
   const row = panel.locator(`[data-asset-row="viz:${id}"]`)
-  const vizChip = panel.locator('[data-filter="asset-type-filter"] button[data-chip="viz"]')
+  const vizType = panel.locator('[data-filter="asset-type-filter"]')
   for (let attempt = 0; attempt < 5; attempt++) {
-    await vizChip.click().catch(() => {})
+    await vizType.selectOption('viz').catch(() => {})
     try {
       await row.waitFor({ state: 'visible', timeout: 2000 })
       break

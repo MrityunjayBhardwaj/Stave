@@ -284,27 +284,27 @@ export function AssetLibraryPanel({
           aria-label="Search assets"
         />
         {types.length > 1 && (
-          <ChipRow
-            label="Type"
+          <FilterSelect
+            label="type:"
             active={type}
             values={types}
             render={(t) => TYPE_LABELS[t]}
-            onPick={(t) => setType(t)}
+            onPick={setType}
             dataAttr="asset-type-filter"
           />
         )}
         {levels.length > 0 && (
-          <ChipRow
-            label="Level"
+          <FilterSelect
+            label="level:"
             active={level}
             values={levels}
             render={(l) => LEVEL_LABELS[l]}
-            onPick={(l) => setLevel(l)}
+            onPick={setLevel}
             dataAttr="asset-level-filter"
           />
         )}
         {categories.length > 1 && (
-          <CategoryChips
+          <CategorySelect
             active={category}
             total={total}
             categories={categories}
@@ -312,12 +312,14 @@ export function AssetLibraryPanel({
           />
         )}
         {sources.length > 1 && (
-          <ChipRow
-            label="Source"
+          <FilterSelect
+            label="by:"
             active={source}
             values={sources}
-            render={(s) => SOURCE_LABELS[s]}
-            onPick={(s) => setSource(s)}
+            // "by:" is who made it — a user upload reads "You"; the rest keep
+            // their names (Built-in / Community).
+            render={(s) => (s === "user" ? "You" : SOURCE_LABELS[s])}
+            onPick={setSource}
             dataAttr="asset-source-filter"
           />
         )}
@@ -340,14 +342,24 @@ export function AssetLibraryPanel({
   );
 }
 
-/** A labelled row of mutually-exclusive filter chips ("All" + each value). */
-function ChipRow<T extends string>({
+/**
+ * A labelled dropdown for one mutually-exclusive filter (#2664) — the compact
+ * successor to the chip row. `null` is the empty-value "All" option; picking a
+ * value selects it, picking "All" clears the filter (same model as the chips,
+ * minus the click-the-active-chip-to-clear toggle a dropdown doesn't need).
+ *
+ * The `data-filter` hook lives ON the `<select>` (not a wrapper) so a test drives
+ * it with `selectOption(value)` and reads it with `inputValue()` — the option
+ * `value` is the raw enum/string the chips carried in `data-chip`.
+ */
+function FilterSelect<T extends string>({
   label,
   active,
   values,
   render,
   onPick,
   dataAttr,
+  allLabel = "All",
 }: {
   label: string;
   active: T | null;
@@ -355,37 +367,34 @@ function ChipRow<T extends string>({
   render: (v: T) => string;
   onPick: (v: T | null) => void;
   dataAttr: string;
+  allLabel?: string;
 }) {
   return (
-    <div style={styles.chipRow} data-filter={dataAttr} aria-label={`${label} filter`}>
-      <button
-        style={{ ...styles.chip, ...(active === null ? styles.chipActive : {}) }}
-        onClick={() => onPick(null)}
-        aria-pressed={active === null}
-        data-chip="all"
+    <label style={styles.filter}>
+      <span style={styles.filterLabel}>{label}</span>
+      <select
+        style={styles.select}
+        value={active ?? ""}
+        onChange={(e) => onPick((e.target.value as T) || null)}
+        data-filter={dataAttr}
+        // The colon is punctuation for the eye, not the spoken name ("type:
+        // filter" → "type filter").
+        aria-label={`${label.replace(/:$/, "")} filter`}
       >
-        All
-      </button>
-      {values.map((v) => (
-        <button
-          key={v}
-          style={{ ...styles.chip, ...(active === v ? styles.chipActive : {}) }}
-          onClick={() => onPick(active === v ? null : v)}
-          aria-pressed={active === v}
-          data-chip={v}
-        >
-          {render(v)}
-        </button>
-      ))}
-    </div>
+        <option value="">{allLabel}</option>
+        {values.map((v) => (
+          <option key={v} value={v}>
+            {render(v)}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
-/** Category filter chips with entry counts: `All <total>` + one per category
- *  (`Drums 1357`, `Soundfonts 125`, …). Picking narrows the list to that
- *  category; clicking the active one (or All) clears it. Wraps to fit the
- *  compact sidebar (the shared chipRow style). */
-function CategoryChips({
+/** The category dropdown — a {@link FilterSelect} whose options carry entry
+ *  counts (`Soundfonts 125`), with the running `total` on "All". */
+function CategorySelect({
   active,
   total,
   categories,
@@ -397,27 +406,15 @@ function CategoryChips({
   onPick: (c: string | null) => void;
 }) {
   return (
-    <div style={styles.categoryChipRow} data-filter="asset-category-filter" aria-label="Category filter">
-      <button
-        style={{ ...styles.chip, ...(active === null ? styles.chipActive : {}) }}
-        onClick={() => onPick(null)}
-        aria-pressed={active === null}
-        data-chip="all"
-      >
-        All <span style={styles.chipCount}>{total}</span>
-      </button>
-      {categories.map(({ category, count }) => (
-        <button
-          key={category}
-          style={{ ...styles.chip, ...(active === category ? styles.chipActive : {}) }}
-          onClick={() => onPick(active === category ? null : category)}
-          aria-pressed={active === category}
-          data-chip={category}
-        >
-          {category} <span style={styles.chipCount}>{count}</span>
-        </button>
-      ))}
-    </div>
+    <FilterSelect
+      label="category:"
+      active={active}
+      values={categories.map((c) => c.category)}
+      render={(c) => `${c}  ${categories.find((x) => x.category === c)?.count ?? ""}`}
+      onPick={onPick}
+      dataAttr="asset-category-filter"
+      allLabel={`All  ${total}`}
+    />
   );
 }
 
@@ -881,56 +878,33 @@ const styles: Record<string, React.CSSProperties> = {
     outline: "none",
     fontFamily: "inherit",
   },
-  chipRow: {
+  // One filter per line (#2664): a fixed-width `label:` + a flex-grown dropdown,
+  // so the labels and the dropdowns each line up in their own column.
+  filter: {
     display: "flex",
-    flexWrap: "wrap",
-    gap: 4,
+    alignItems: "center",
+    gap: 8,
   },
-  // Category tags: capped at 2 rows that scroll horizontally (a column-flow
-  // grid — chips fill top-then-bottom per column, the belt overflows sideways).
-  // The scrollbar is hidden via a globals.css `::-webkit-scrollbar` rule on the
-  // `[data-filter="asset-category-filter"]` selector (inline can't do pseudos).
-  categoryChipRow: {
-    display: "grid",
-    gridAutoFlow: "column",
-    gridTemplateRows: "repeat(2, auto)",
-    gridAutoColumns: "max-content",
-    gap: 4,
-    // Separator from the Type filter above — the tag belt is a secondary axis.
-    borderTop: "1px solid var(--border-subtle)",
-    paddingTop: 8,
-    overflowX: "auto",
-    overflowY: "hidden",
-    // Hide the scrollbar cross-browser: `scrollbarWidth` covers Firefox (which
-    // ignores the webkit pseudo); the globals.css `::-webkit-scrollbar` rule
-    // covers Blink/WebKit. The belt still scrolls. (Same dual pattern as
-    // WorkspaceShell's tabbar.)
-    scrollbarWidth: "none",
+  filterLabel: {
+    flexShrink: 0,
+    minWidth: 52,
+    fontSize: 10,
+    fontWeight: 600,
+    letterSpacing: 0.4,
+    color: "var(--text-tertiary)",
   },
-  chip: {
-    padding: "2px 8px",
-    fontSize: 11,
-    whiteSpace: "nowrap",
-    color: "var(--text-secondary)",
-    background: "transparent",
-    // Longhand (not the `border` shorthand) so `chipActive`'s borderColor
-    // override doesn't mix shorthand+longhand on re-render (React warns).
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: "var(--border-subtle)",
-    borderRadius: 10,
-    cursor: "pointer",
-    fontFamily: "inherit",
-    lineHeight: 1.6,
-  },
-  chipActive: {
+  select: {
+    flex: 1,
+    minWidth: 0,
+    padding: "4px 6px",
+    fontSize: 12,
     color: "var(--text-primary)",
-    background: "var(--accent-soft, var(--bg-chrome))",
-    borderColor: "var(--accent-strong)",
-  },
-  chipCount: {
-    opacity: 0.6,
-    fontVariantNumeric: "tabular-nums",
+    background: "var(--bg-input, var(--bg-chrome))",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: 4,
+    outline: "none",
+    fontFamily: "inherit",
+    cursor: "pointer",
   },
   listScroll: {
     flex: 1,

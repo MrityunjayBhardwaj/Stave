@@ -80,7 +80,7 @@ async function previewToSide(page: Page): Promise<void> {
 async function addPrism(page: Page): Promise<void> {
   await page.locator('[data-activity-bar] button[aria-label="Library"]').click()
   const panel = page.locator('[data-asset-library]')
-  await panel.locator('[data-filter="asset-type-filter"] button[data-chip="viz"]').click()
+  await panel.locator('[data-filter="asset-type-filter"]').selectOption('viz')
   const prism = panel.locator('[data-asset-row="viz:prism"]')
   await prism.hover()
   await prism.locator('[data-asset-insert]').click()

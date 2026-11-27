@@ -88,8 +88,8 @@ test('uploading an .sf2 registers it live and lists it under Sounds → User (#2
   await expect(page.locator('[data-add-audio-message]')).toContainText('soundfont', { timeout: 10000 })
 
   // Listed under Sounds → User (not among the built-in GM fonts).
-  await page.locator('[data-filter="asset-type-filter"] [data-chip="sound"]').click()
-  await page.locator('[data-filter="asset-source-filter"] [data-chip="user"]').click()
+  await page.locator('[data-filter="asset-type-filter"]').selectOption('sound')
+  await page.locator('[data-filter="asset-source-filter"]').selectOption('user')
   await page.locator('[data-asset-search]').fill('vintage')
   await expect(
     page.locator('[data-asset-row^="sound:"]', { hasText: 'Vintage' }).first(),

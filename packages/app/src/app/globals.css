@@ -287,13 +287,6 @@ html[data-keyboard] [data-phone-top-bar][data-phone-top-held="sideways"] {
   background-clip: padding-box;
 }
 
-/* Asset Library category-tag belt (#826): 2 rows that scroll horizontally with
-   NO visible scrollbar (inline styles can't target the pseudo-element). The belt
-   still scrolls; only the bar is hidden. */
-[data-filter="asset-category-filter"]::-webkit-scrollbar {
-  display: none;
-}
-
 /* --- Editor hover-doc width cap -------------------------------------------
    Monaco sizes a hover widget to the widest line of its markdown and SCROLLS
    overflow rather than wrapping it, so a long example line (e.g. pickRestart's
