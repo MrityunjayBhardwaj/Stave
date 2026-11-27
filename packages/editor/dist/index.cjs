@@ -61316,6 +61316,86 @@ async function registerUserSoundfont(name, bytes, options = {}) {
 __name(registerUserSoundfont, "registerUserSoundfont");
 var registerUserSoundfontFromBytes = registerUserSoundfont;
 
+// src/soundfont/soundfontStore.ts
+var SOUNDFONT_DB_NAME = "stave-soundfonts";
+var DB_NAME6 = SOUNDFONT_DB_NAME;
+var DB_VERSION5 = 1;
+var STORE_NAME5 = "fonts";
+function openDb6() {
+  return openIdbWithTimeout(DB_NAME6, DB_VERSION5, (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME5)) {
+      db.createObjectStore(STORE_NAME5, { keyPath: "name" });
+    }
+  });
+}
+__name(openDb6, "openDb");
+async function putSoundfont(name, bytes) {
+  const slug = sanitizeSoundfontName(name);
+  if (!slug) {
+    throw new Error(`soundfont name "${name}" has no usable characters (need a-z, 0-9, _ or -)`);
+  }
+  if (!bytes || bytes.length === 0) {
+    throw new Error(`soundfont "${slug}" is empty`);
+  }
+  const copy = new Uint8Array(bytes);
+  const record = {
+    name: slug,
+    bytes: copy.buffer,
+    size: copy.byteLength,
+    storedAt: Date.now()
+  };
+  const db = await openDb6();
+  try {
+    await committed(
+      db.transaction(STORE_NAME5, "readwrite").objectStore(STORE_NAME5).put(record)
+    );
+    const { name: n, size, storedAt } = record;
+    return { name: n, size, storedAt };
+  } finally {
+    db.close();
+  }
+}
+__name(putSoundfont, "putSoundfont");
+async function getSoundfont(name) {
+  const slug = sanitizeSoundfontName(name);
+  if (!slug) return null;
+  const db = await openDb6();
+  try {
+    const row = await requestResult(
+      db.transaction(STORE_NAME5, "readonly").objectStore(STORE_NAME5).get(slug)
+    );
+    return row ? new Uint8Array(row.bytes) : null;
+  } finally {
+    db.close();
+  }
+}
+__name(getSoundfont, "getSoundfont");
+async function deleteSoundfont(name) {
+  const slug = sanitizeSoundfontName(name);
+  if (!slug) return;
+  const db = await openDb6();
+  try {
+    await committed(
+      db.transaction(STORE_NAME5, "readwrite").objectStore(STORE_NAME5).delete(slug)
+    );
+  } finally {
+    db.close();
+  }
+}
+__name(deleteSoundfont, "deleteSoundfont");
+async function listSoundfonts() {
+  const db = await openDb6();
+  try {
+    const rows = await requestResult(
+      db.transaction(STORE_NAME5, "readonly").objectStore(STORE_NAME5).getAll()
+    );
+    return rows.map(({ name, size, storedAt }) => ({ name, size, storedAt })).sort((a, b) => a.storedAt - b.storedAt);
+  } finally {
+    db.close();
+  }
+}
+__name(listSoundfonts, "listSoundfonts");
+
 // src/index.ts
 setKeyEventMatcher((event, key3) => chordMatches(chordFromEvent(event), key3));
 function startPageExtensions() {
@@ -61419,6 +61499,7 @@ exports.SONG_LEVEL_STEM = SONG_LEVEL_STEM;
 exports.SONG_LEVEL_STEM_NAME = SONG_LEVEL_STEM_NAME;
 exports.SONICPI_DOCS_INDEX = SONICPI_DOCS_INDEX;
 exports.SONICPI_RUNTIME = SONICPI_RUNTIME;
+exports.SOUNDFONT_DB_NAME = SOUNDFONT_DB_NAME;
 exports.SOUND_ALIASES = SOUND_ALIASES;
 exports.SPECTRUM_P5_CODE = SPECTRUM_P5_CODE;
 exports.SPIRAL_P5_CODE = SPIRAL_P5_CODE;
@@ -61521,6 +61602,7 @@ exports.declaredSettings = declaredSettings;
 exports.deleteAsset = deleteAsset;
 exports.deleteProject = deleteProject;
 exports.deleteSnapshot = deleteSnapshot;
+exports.deleteSoundfont = deleteSoundfont;
 exports.deleteWorkspaceFile = deleteWorkspaceFile;
 exports.deriveVizQuality = deriveVizQuality;
 exports.describeSkipped = describeSkipped;
@@ -61612,6 +61694,7 @@ exports.getResolvedTheme = getResolvedTheme;
 exports.getRuntimeProviderForExtension = getRuntimeProviderForExtension;
 exports.getRuntimeProviderForLanguage = getRuntimeProviderForLanguage;
 exports.getSignalAliases = getSignalAliases;
+exports.getSoundfont = getSoundfont;
 exports.getStorageStatus = getStorageStatus;
 exports.getStoredSignalAliases = getStoredSignalAliases;
 exports.getSubfolderOrder = getSubfolderOrder;
@@ -61695,6 +61778,7 @@ exports.listNamedVizEntries = listNamedVizEntries;
 exports.listNamedVizNames = listNamedVizNames;
 exports.listProjects = listProjects;
 exports.listSnapshots = listSnapshots;
+exports.listSoundfonts = listSoundfonts;
 exports.listTiers = listTiers;
 exports.listWorkspaceFiles = listWorkspaceFiles;
 exports.listedExtensions = listedExtensions;
@@ -61790,6 +61874,7 @@ exports.pruneZoneOverrides = pruneZoneOverrides;
 exports.publishIRSnapshot = publishIRSnapshot;
 exports.purgeLegacyMasterGain = purgeLegacyMasterGain;
 exports.putAsset = putAsset;
+exports.putSoundfont = putSoundfont;
 exports.rateEditable = rateEditable;
 exports.readCodeViz = readCodeViz;
 exports.readCurrentCycle = readCurrentCycle;

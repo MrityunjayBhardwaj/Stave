@@ -1130,3 +1130,17 @@ export type {
   RegisterUserSoundfontResult,
   RegisterUserSoundfontOptions,
 } from './soundfont/registerUserSoundfont'
+
+// #2660 — persist uploaded .sf2 bytes in an IndexedDB blob store, keyed by name.
+// The single source of truth the engine re-registration (#2661) reads on boot.
+export {
+  SOUNDFONT_DB_NAME,
+  putSoundfont,
+  getSoundfont,
+  deleteSoundfont,
+  listSoundfonts,
+} from './soundfont/soundfontStore'
+export type {
+  StoredSoundfont,
+  StoredSoundfontMeta,
+} from './soundfont/soundfontStore'
