@@ -21,6 +21,10 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 
 // src/engine/vendored/piano.ts
 var piano_exports = {};
@@ -36,6 +40,392 @@ var init_piano = __esm({
         return { ...value, pan: (value.pan || 1) * pan };
       });
     };
+  }
+});
+
+// src/storageStatus.ts
+function set(next) {
+  if (next.fullSince === status.fullSince && next.documentUnsaved === status.documentUnsaved) return;
+  status = next;
+  for (const fn of listeners5) fn();
+}
+function getStorageStatus() {
+  return status;
+}
+function subscribeStorageStatus(fn) {
+  listeners5.add(fn);
+  return () => {
+    listeners5.delete(fn);
+  };
+}
+function noteStorageRefused(opts = {}) {
+  set({
+    fullSince: status.fullSince ?? Date.now(),
+    documentUnsaved: status.documentUnsaved || Boolean(opts.document)
+  });
+}
+function noteDocumentSaved() {
+  set(CLEAR);
+}
+function noteDocumentReplaced() {
+  set({ fullSince: status.fullSince, documentUnsaved: false });
+}
+var CLEAR, status, listeners5;
+var init_storageStatus = __esm({
+  "src/storageStatus.ts"() {
+    CLEAR = { fullSince: null, documentUnsaved: false };
+    status = CLEAR;
+    listeners5 = /* @__PURE__ */ new Set();
+    __name(set, "set");
+    __name(getStorageStatus, "getStorageStatus");
+    __name(subscribeStorageStatus, "subscribeStorageStatus");
+    __name(noteStorageRefused, "noteStorageRefused");
+    __name(noteDocumentSaved, "noteDocumentSaved");
+    __name(noteDocumentReplaced, "noteDocumentReplaced");
+  }
+});
+
+// src/idb.ts
+function openIdbWithTimeout(name, version2, upgrade, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? IDB_OPEN_TIMEOUT_MS;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let missing = false;
+    const req = indexedDB.open(name, version2);
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      req.onsuccess = () => {
+        try {
+          req.result.close();
+        } catch {
+        }
+      };
+      reject(new Error(`idb-open-timeout:${name}`));
+    }, timeoutMs);
+    req.onupgradeneeded = () => {
+      if (opts.mustExist) {
+        missing = true;
+        req.transaction?.abort();
+        return;
+      }
+      upgrade(req.result);
+    };
+    req.onsuccess = () => {
+      if (settled) {
+        try {
+          req.result.close();
+        } catch {
+        }
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(req.result);
+    };
+    req.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (missing) {
+        reject(new IdbMissingError(name));
+        return;
+      }
+      reject(req.error ?? new Error(`idb-open-error:${name}`));
+    };
+    req.onblocked = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error(`idb-open-blocked:${name}`));
+    };
+  });
+}
+function isQuotaError(err) {
+  return err instanceof StorageFullError || typeof err === "object" && err !== null && err.name === "QuotaExceededError";
+}
+function named(err, fallback) {
+  if (err instanceof StorageFullError) return err;
+  if (isQuotaError(err)) {
+    noteStorageRefused();
+    return new StorageFullError(err);
+  }
+  return err ?? new Error(fallback);
+}
+function requestResult(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(named(req.error, "idb-request-error"));
+  });
+}
+function transactionDone(tx3) {
+  return new Promise((resolve, reject) => {
+    tx3.addEventListener("complete", () => resolve());
+    tx3.addEventListener("abort", () => reject(named(tx3.error, "idb-transaction-aborted")));
+  });
+}
+async function committed(req) {
+  const tx3 = req.transaction;
+  if (!tx3) return requestResult(req);
+  const [result] = await Promise.all([requestResult(req), transactionDone(tx3)]);
+  return result;
+}
+var IDB_OPEN_TIMEOUT_MS, _IdbMissingError, IdbMissingError, _StorageFullError, StorageFullError;
+var init_idb = __esm({
+  "src/idb.ts"() {
+    init_storageStatus();
+    IDB_OPEN_TIMEOUT_MS = 8e3;
+    _IdbMissingError = class _IdbMissingError extends Error {
+      constructor(dbName) {
+        super(`idb-missing:${dbName}`);
+        this.dbName = dbName;
+        this.name = "IdbMissingError";
+      }
+    };
+    __name(_IdbMissingError, "IdbMissingError");
+    IdbMissingError = _IdbMissingError;
+    __name(openIdbWithTimeout, "openIdbWithTimeout");
+    _StorageFullError = class _StorageFullError extends Error {
+      constructor(cause) {
+        super("storage is full");
+        this.cause = cause;
+        this.name = "StorageFullError";
+      }
+    };
+    __name(_StorageFullError, "StorageFullError");
+    StorageFullError = _StorageFullError;
+    __name(isQuotaError, "isQuotaError");
+    __name(named, "named");
+    __name(requestResult, "requestResult");
+    __name(transactionDone, "transactionDone");
+    __name(committed, "committed");
+  }
+});
+
+// src/soundfont/registerUserSoundfont.ts
+var registerUserSoundfont_exports = {};
+__export(registerUserSoundfont_exports, {
+  DEFAULT_MAX_SF2_BYTES: () => DEFAULT_MAX_SF2_BYTES,
+  registerUserSoundfont: () => registerUserSoundfont,
+  registerUserSoundfontFromBytes: () => registerUserSoundfontFromBytes,
+  sanitizeSoundfontName: () => sanitizeSoundfontName
+});
+function sanitizeSoundfontName(name) {
+  return String(name ?? "").toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
+}
+async function registerUserSoundfont(name, bytes, options = {}) {
+  const maxBytes = options.maxBytes ?? DEFAULT_MAX_SF2_BYTES;
+  const clean = sanitizeSoundfontName(name);
+  if (!clean) {
+    throw new Error(
+      `soundfont name "${name}" has no usable characters (need a-z, 0-9, _ or -)`
+    );
+  }
+  if (!bytes || bytes.length === 0) {
+    throw new Error(`soundfont "${clean}" is empty`);
+  }
+  if (bytes.length > maxBytes) {
+    const mb = /* @__PURE__ */ __name((n) => (n / (1024 * 1024)).toFixed(1), "mb");
+    throw new Error(
+      `soundfont "${clean}" is ${mb(bytes.length)} MiB, over the ${mb(maxBytes)} MiB limit`
+    );
+  }
+  const sf = await import('@strudel/soundfonts');
+  const wa = await import('@strudel/webaudio');
+  const core = await import('@strudel/core');
+  const { loadSoundfont, startPresetNote } = sf;
+  const { registerSound, getAudioContext: getAudioContext4, onceEnded, releaseAudioNode } = wa;
+  const noteToMidi3 = core.noteToMidi;
+  const freqToMidi = core.freqToMidi;
+  const getSoundIndex = core.getSoundIndex;
+  const key3 = `sf_${clean}`;
+  const blobUrl = URL.createObjectURL(
+    new Blob([new Uint8Array(bytes)], { type: "application/octet-stream" })
+  );
+  let font;
+  try {
+    font = await loadSoundfont(blobUrl);
+  } catch (e) {
+    throw new Error(`soundfont "${clean}" could not be parsed as a .sf2: ${String(e)}`);
+  } finally {
+    URL.revokeObjectURL(blobUrl);
+  }
+  const presets = font?.presets ?? [];
+  if (!presets.length) {
+    throw new Error(`soundfont "${clean}" parsed but exposes no presets`);
+  }
+  registerSound(
+    key3,
+    // Handler shape mirrors the GM soundfont handler: (startTime, value, onended, cps).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (time, value, onended) => {
+      const ctx = getAudioContext4();
+      const rawNote = value?.note ?? "c3";
+      let midi;
+      if (value?.freq != null) midi = freqToMidi(value.freq);
+      else if (typeof rawNote === "number") midi = rawNote;
+      else midi = noteToMidi3(rawNote);
+      const preset = presets[getSoundIndex(value?.n, presets.length)];
+      const captureNode = ctx.createGain();
+      const sources = [];
+      const proxyCtx = new Proxy(ctx, {
+        get(target, prop, receiver) {
+          if (prop === "destination") return captureNode;
+          if (prop === "createBufferSource") {
+            return (...args) => {
+              const src = target.createBufferSource(...args);
+              sources.push(src);
+              return src;
+            };
+          }
+          const v = target[prop];
+          return typeof v === "function" ? v.bind(target) : v;
+        }
+      });
+      const stopPreset = startPresetNote(
+        proxyCtx,
+        preset,
+        midi,
+        time
+      );
+      const duration = typeof value?.duration === "number" ? value.duration : 0.5;
+      try {
+        stopPreset(time + duration);
+      } catch {
+      }
+      let endedCount = 0;
+      const total = sources.length;
+      if (total) {
+        for (const s of sources) {
+          onceEnded(s, () => {
+            try {
+              releaseAudioNode(s);
+            } catch {
+            }
+            if (++endedCount === total) onended();
+          });
+        }
+      } else {
+        onended();
+      }
+      return {
+        node: captureNode,
+        // superdough calls this to force-stop early (polyphony stealing).
+        stop: /* @__PURE__ */ __name((releaseTime) => {
+          try {
+            stopPreset(releaseTime ?? ctx.currentTime);
+          } catch {
+          }
+        }, "stop"),
+        nodes: { source: sources }
+      };
+    },
+    { type: "soundfont", prebake: false }
+  );
+  return { key: key3, presetCount: presets.length, name: clean };
+}
+var DEFAULT_MAX_SF2_BYTES, registerUserSoundfontFromBytes;
+var init_registerUserSoundfont = __esm({
+  "src/soundfont/registerUserSoundfont.ts"() {
+    DEFAULT_MAX_SF2_BYTES = 64 * 1024 * 1024;
+    __name(sanitizeSoundfontName, "sanitizeSoundfontName");
+    __name(registerUserSoundfont, "registerUserSoundfont");
+    registerUserSoundfontFromBytes = registerUserSoundfont;
+  }
+});
+
+// src/soundfont/soundfontStore.ts
+var soundfontStore_exports = {};
+__export(soundfontStore_exports, {
+  SOUNDFONT_DB_NAME: () => SOUNDFONT_DB_NAME,
+  deleteSoundfont: () => deleteSoundfont,
+  getSoundfont: () => getSoundfont,
+  listSoundfonts: () => listSoundfonts,
+  putSoundfont: () => putSoundfont
+});
+function openDb() {
+  return openIdbWithTimeout(DB_NAME, DB_VERSION, (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME)) {
+      db.createObjectStore(STORE_NAME, { keyPath: "name" });
+    }
+  });
+}
+async function putSoundfont(name, bytes) {
+  const slug = sanitizeSoundfontName(name);
+  if (!slug) {
+    throw new Error(`soundfont name "${name}" has no usable characters (need a-z, 0-9, _ or -)`);
+  }
+  if (!bytes || bytes.length === 0) {
+    throw new Error(`soundfont "${slug}" is empty`);
+  }
+  const copy = new Uint8Array(bytes);
+  const record = {
+    name: slug,
+    bytes: copy.buffer,
+    size: copy.byteLength,
+    storedAt: Date.now()
+  };
+  const db = await openDb();
+  try {
+    await committed(
+      db.transaction(STORE_NAME, "readwrite").objectStore(STORE_NAME).put(record)
+    );
+    const { name: n, size, storedAt } = record;
+    return { name: n, size, storedAt };
+  } finally {
+    db.close();
+  }
+}
+async function getSoundfont(name) {
+  const slug = sanitizeSoundfontName(name);
+  if (!slug) return null;
+  const db = await openDb();
+  try {
+    const row = await requestResult(
+      db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).get(slug)
+    );
+    return row ? new Uint8Array(row.bytes) : null;
+  } finally {
+    db.close();
+  }
+}
+async function deleteSoundfont(name) {
+  const slug = sanitizeSoundfontName(name);
+  if (!slug) return;
+  const db = await openDb();
+  try {
+    await committed(
+      db.transaction(STORE_NAME, "readwrite").objectStore(STORE_NAME).delete(slug)
+    );
+  } finally {
+    db.close();
+  }
+}
+async function listSoundfonts() {
+  const db = await openDb();
+  try {
+    const rows = await requestResult(
+      db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll()
+    );
+    return rows.map(({ name, size, storedAt }) => ({ name, size, storedAt })).sort((a, b) => a.storedAt - b.storedAt);
+  } finally {
+    db.close();
+  }
+}
+var SOUNDFONT_DB_NAME, DB_NAME, DB_VERSION, STORE_NAME;
+var init_soundfontStore = __esm({
+  "src/soundfont/soundfontStore.ts"() {
+    init_idb();
+    init_registerUserSoundfont();
+    SOUNDFONT_DB_NAME = "stave-soundfonts";
+    DB_NAME = SOUNDFONT_DB_NAME;
+    DB_VERSION = 1;
+    STORE_NAME = "fonts";
+    __name(openDb, "openDb");
+    __name(putSoundfont, "putSoundfont");
+    __name(getSoundfont, "getSoundfont");
+    __name(deleteSoundfont, "deleteSoundfont");
+    __name(listSoundfonts, "listSoundfonts");
   }
 });
 
@@ -19175,6 +19565,7 @@ var _StrudelEngine = class _StrudelEngine {
     webaudioMod.registerSynthSounds();
     webaudioMod.registerZZFXSounds();
     soundfontsMod.registerSoundfonts();
+    await this.registerUserSoundfonts();
     const bounded = createOptionalStep(initRemaining, openBudget(MANIFEST_BUDGET_MS));
     await bounded(
       "Dirt-Samples",
@@ -19469,6 +19860,43 @@ var _StrudelEngine = class _StrudelEngine {
     this.stopOwningLogs = registerStrudelLogOwner(this, STRUDEL_LOG_EVENT, coreMod.Pattern);
     await Promise.resolve().then(() => (init_piano(), piano_exports));
     this.initialized = true;
+  }
+  /**
+   * #2661 — re-register every persisted user `.sf2` (#2660 store → #2659 handler)
+   * so `s("sf_<name>")` is live from the first Play of a reloaded session, with no
+   * re-upload. Called during init, after `registerSoundfonts()` and before the
+   * `globalThis.soundMap` publish.
+   *
+   * Entirely non-fatal: the store read is bounded (`openIdbWithTimeout`), and both
+   * the whole step and each font are wrapped so a store outage (private mode,
+   * quota) or one unparseable font degrades to "that font is absent" rather than
+   * wedging or failing boot. Fonts register independently — one bad file does not
+   * take the others down.
+   */
+  async registerUserSoundfonts() {
+    try {
+      const { listSoundfonts: listSoundfonts2, getSoundfont: getSoundfont2 } = await Promise.resolve().then(() => (init_soundfontStore(), soundfontStore_exports));
+      const { registerUserSoundfont: registerUserSoundfont2 } = await Promise.resolve().then(() => (init_registerUserSoundfont(), registerUserSoundfont_exports));
+      const metas = await listSoundfonts2();
+      let registered = 0;
+      for (const meta of metas) {
+        try {
+          const bytes = await getSoundfont2(meta.name);
+          if (!bytes) continue;
+          await registerUserSoundfont2(meta.name, bytes);
+          registered++;
+        } catch (e) {
+          console.warn(`[StrudelEngine] user soundfont "${meta.name}" skipped on boot:`, e);
+        }
+      }
+      if (metas.length) {
+        console.log(
+          `[StrudelEngine] re-registered ${registered}/${metas.length} user soundfont(s)`
+        );
+      }
+    } catch (e) {
+      console.warn("[StrudelEngine] user soundfonts unavailable on boot:", e);
+    }
   }
   async evaluate(code) {
     if (!this.initialized) await this.init();
@@ -29760,155 +30188,9 @@ function defineStrudelMonacoTheme(monaco) {
 }
 __name(defineStrudelMonacoTheme, "defineStrudelMonacoTheme");
 
-// src/storageStatus.ts
-var CLEAR = { fullSince: null, documentUnsaved: false };
-var status = CLEAR;
-var listeners5 = /* @__PURE__ */ new Set();
-function set(next) {
-  if (next.fullSince === status.fullSince && next.documentUnsaved === status.documentUnsaved) return;
-  status = next;
-  for (const fn of listeners5) fn();
-}
-__name(set, "set");
-function getStorageStatus() {
-  return status;
-}
-__name(getStorageStatus, "getStorageStatus");
-function subscribeStorageStatus(fn) {
-  listeners5.add(fn);
-  return () => {
-    listeners5.delete(fn);
-  };
-}
-__name(subscribeStorageStatus, "subscribeStorageStatus");
-function noteStorageRefused(opts = {}) {
-  set({
-    fullSince: status.fullSince ?? Date.now(),
-    documentUnsaved: status.documentUnsaved || Boolean(opts.document)
-  });
-}
-__name(noteStorageRefused, "noteStorageRefused");
-function noteDocumentSaved() {
-  set(CLEAR);
-}
-__name(noteDocumentSaved, "noteDocumentSaved");
-function noteDocumentReplaced() {
-  set({ fullSince: status.fullSince, documentUnsaved: false });
-}
-__name(noteDocumentReplaced, "noteDocumentReplaced");
-
-// src/idb.ts
-var IDB_OPEN_TIMEOUT_MS = 8e3;
-var _IdbMissingError = class _IdbMissingError extends Error {
-  constructor(dbName) {
-    super(`idb-missing:${dbName}`);
-    this.dbName = dbName;
-    this.name = "IdbMissingError";
-  }
-};
-__name(_IdbMissingError, "IdbMissingError");
-var IdbMissingError = _IdbMissingError;
-function openIdbWithTimeout(name, version2, upgrade, opts = {}) {
-  const timeoutMs = opts.timeoutMs ?? IDB_OPEN_TIMEOUT_MS;
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let missing = false;
-    const req = indexedDB.open(name, version2);
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      req.onsuccess = () => {
-        try {
-          req.result.close();
-        } catch {
-        }
-      };
-      reject(new Error(`idb-open-timeout:${name}`));
-    }, timeoutMs);
-    req.onupgradeneeded = () => {
-      if (opts.mustExist) {
-        missing = true;
-        req.transaction?.abort();
-        return;
-      }
-      upgrade(req.result);
-    };
-    req.onsuccess = () => {
-      if (settled) {
-        try {
-          req.result.close();
-        } catch {
-        }
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      resolve(req.result);
-    };
-    req.onerror = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (missing) {
-        reject(new IdbMissingError(name));
-        return;
-      }
-      reject(req.error ?? new Error(`idb-open-error:${name}`));
-    };
-    req.onblocked = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(new Error(`idb-open-blocked:${name}`));
-    };
-  });
-}
-__name(openIdbWithTimeout, "openIdbWithTimeout");
-var _StorageFullError = class _StorageFullError extends Error {
-  constructor(cause) {
-    super("storage is full");
-    this.cause = cause;
-    this.name = "StorageFullError";
-  }
-};
-__name(_StorageFullError, "StorageFullError");
-var StorageFullError = _StorageFullError;
-function isQuotaError(err) {
-  return err instanceof StorageFullError || typeof err === "object" && err !== null && err.name === "QuotaExceededError";
-}
-__name(isQuotaError, "isQuotaError");
-function named(err, fallback) {
-  if (err instanceof StorageFullError) return err;
-  if (isQuotaError(err)) {
-    noteStorageRefused();
-    return new StorageFullError(err);
-  }
-  return err ?? new Error(fallback);
-}
-__name(named, "named");
-function requestResult(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(named(req.error, "idb-request-error"));
-  });
-}
-__name(requestResult, "requestResult");
-function transactionDone(tx3) {
-  return new Promise((resolve, reject) => {
-    tx3.addEventListener("complete", () => resolve());
-    tx3.addEventListener("abort", () => reject(named(tx3.error, "idb-transaction-aborted")));
-  });
-}
-__name(transactionDone, "transactionDone");
-async function committed(req) {
-  const tx3 = req.transaction;
-  if (!tx3) return requestResult(req);
-  const [result] = await Promise.all([requestResult(req), transactionDone(tx3)]);
-  return result;
-}
-__name(committed, "committed");
-
 // src/workspace/projectDoc.ts
+init_idb();
+init_storageStatus();
 var activeDoc = null;
 var activeProvider = null;
 var activeProjectId = null;
@@ -36670,19 +36952,20 @@ __name(_BufferedScheduler, "BufferedScheduler");
 var BufferedScheduler = _BufferedScheduler;
 
 // src/visualizers/vizPreset.ts
-var DB_NAME = "stave-viz-presets";
-var DB_VERSION = 1;
-var STORE_NAME = "presets";
-function openDb() {
-  return openIdbWithTimeout(DB_NAME, DB_VERSION, (db) => {
-    if (!db.objectStoreNames.contains(STORE_NAME)) {
-      db.createObjectStore(STORE_NAME, { keyPath: "id" });
+init_idb();
+var DB_NAME2 = "stave-viz-presets";
+var DB_VERSION2 = 1;
+var STORE_NAME2 = "presets";
+function openDb2() {
+  return openIdbWithTimeout(DB_NAME2, DB_VERSION2, (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME2)) {
+      db.createObjectStore(STORE_NAME2, { keyPath: "id" });
     }
   });
 }
-__name(openDb, "openDb");
+__name(openDb2, "openDb");
 function tx(db, mode) {
-  return db.transaction(STORE_NAME, mode).objectStore(STORE_NAME);
+  return db.transaction(STORE_NAME2, mode).objectStore(STORE_NAME2);
 }
 __name(tx, "tx");
 var BUNDLED_PREFIX = "__bundled_";
@@ -36713,19 +36996,19 @@ function generateUniquePresetId(name, renderer, existingIds) {
 __name(generateUniquePresetId, "generateUniquePresetId");
 var VizPresetStore = {
   async getAll() {
-    const db = await openDb();
+    const db = await openDb2();
     return requestResult(tx(db, "readonly").getAll());
   },
   async get(id) {
-    const db = await openDb();
+    const db = await openDb2();
     return requestResult(tx(db, "readonly").get(id));
   },
   async put(preset) {
-    const db = await openDb();
+    const db = await openDb2();
     await committed(tx(db, "readwrite").put(preset));
   },
   async delete(id) {
-    const db = await openDb();
+    const db = await openDb2();
     await committed(tx(db, "readwrite").delete(id));
   }
 };
@@ -38072,31 +38355,35 @@ function applySnapshot(files, fileMeta, order) {
 }
 __name(applySnapshot, "applySnapshot");
 
+// src/workspace/history/historyStore.ts
+init_idb();
+
 // src/workspace/projectRegistry.ts
-var DB_NAME2 = "stave-projects";
-var DB_VERSION2 = 1;
-var STORE_NAME2 = "projects";
-function openDb2() {
-  return openIdbWithTimeout(DB_NAME2, DB_VERSION2, (db) => {
-    if (!db.objectStoreNames.contains(STORE_NAME2)) {
-      db.createObjectStore(STORE_NAME2, { keyPath: "id" });
+init_idb();
+var DB_NAME3 = "stave-projects";
+var DB_VERSION3 = 1;
+var STORE_NAME3 = "projects";
+function openDb3() {
+  return openIdbWithTimeout(DB_NAME3, DB_VERSION3, (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME3)) {
+      db.createObjectStore(STORE_NAME3, { keyPath: "id" });
     }
   });
 }
-__name(openDb2, "openDb");
+__name(openDb3, "openDb");
 function tx2(db, mode) {
-  return db.transaction(STORE_NAME2, mode).objectStore(STORE_NAME2);
+  return db.transaction(STORE_NAME3, mode).objectStore(STORE_NAME3);
 }
 __name(tx2, "tx");
 async function listProjects() {
-  const db = await openDb2();
+  const db = await openDb3();
   const all = await requestResult(tx2(db, "readonly").getAll());
   db.close();
   return all.sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
 }
 __name(listProjects, "listProjects");
 async function getProject(id) {
-  const db = await openDb2();
+  const db = await openDb3();
   const result = await requestResult(tx2(db, "readonly").get(id));
   db.close();
   return result;
@@ -38114,14 +38401,14 @@ async function createProject(name) {
     createdAt: Date.now(),
     lastOpenedAt: Date.now()
   };
-  const db = await openDb2();
+  const db = await openDb3();
   await committed(tx2(db, "readwrite").put(meta));
   db.close();
   return meta;
 }
 __name(createProject, "createProject");
 async function touchProject(id) {
-  const db = await openDb2();
+  const db = await openDb3();
   try {
     const store = tx2(db, "readwrite");
     const existing = await requestResult(store.get(id));
@@ -38136,7 +38423,7 @@ async function touchProject(id) {
 }
 __name(touchProject, "touchProject");
 async function dropLegacyBackgroundCrop(id) {
-  const db = await openDb2();
+  const db = await openDb3();
   const store = tx2(db, "readwrite");
   const existing = await requestResult(store.get(id));
   if (existing && existing.backgroundCrop !== void 0) {
@@ -38147,7 +38434,7 @@ async function dropLegacyBackgroundCrop(id) {
 }
 __name(dropLegacyBackgroundCrop, "dropLegacyBackgroundCrop");
 async function renameProject(id, name) {
-  const db = await openDb2();
+  const db = await openDb3();
   const store = tx2(db, "readwrite");
   const existing = await requestResult(store.get(id));
   if (existing) {
@@ -38157,7 +38444,7 @@ async function renameProject(id, name) {
 }
 __name(renameProject, "renameProject");
 async function deleteProjectMeta(id) {
-  const db = await openDb2();
+  const db = await openDb3();
   await committed(tx2(db, "readwrite").delete(id));
   db.close();
 }
@@ -38174,7 +38461,7 @@ function isEphemeralProjectId(id) {
 }
 __name(isEphemeralProjectId, "isEphemeralProjectId");
 async function pruneEphemeralProjects() {
-  const db = await openDb2();
+  const db = await openDb3();
   try {
     const keys = await requestResult(tx2(db, "readonly").getAllKeys());
     const ephemeral = keys.filter(
@@ -38194,8 +38481,8 @@ async function pruneEphemeralProjects() {
 __name(pruneEphemeralProjects, "pruneEphemeralProjects");
 
 // src/workspace/history/historyStore.ts
-var DB_NAME3 = "stave-snapshots";
-var DB_VERSION3 = 2;
+var DB_NAME4 = "stave-snapshots";
+var DB_VERSION4 = 2;
 var HISTORY_STORE = "history";
 var LEGACY_STORE = "snapshots";
 function upgradeHistoryDb(db) {
@@ -38208,12 +38495,12 @@ function upgradeHistoryDb(db) {
   }
 }
 __name(upgradeHistoryDb, "upgradeHistoryDb");
-function openDb3() {
-  return openIdbWithTimeout(DB_NAME3, DB_VERSION3, (db) => upgradeHistoryDb(db));
+function openDb4() {
+  return openIdbWithTimeout(DB_NAME4, DB_VERSION4, (db) => upgradeHistoryDb(db));
 }
-__name(openDb3, "openDb");
+__name(openDb4, "openDb");
 async function loadHistory(projectId) {
-  const db = await openDb3();
+  const db = await openDb4();
   const row = await requestResult(
     db.transaction(HISTORY_STORE, "readonly").objectStore(HISTORY_STORE).get(projectId)
   );
@@ -38222,7 +38509,7 @@ async function loadHistory(projectId) {
 }
 __name(loadHistory, "loadHistory");
 async function saveHistory(h) {
-  const db = await openDb3();
+  const db = await openDb4();
   await committed(
     db.transaction(HISTORY_STORE, "readwrite").objectStore(HISTORY_STORE).put(h)
   );
@@ -38230,7 +38517,7 @@ async function saveHistory(h) {
 }
 __name(saveHistory, "saveHistory");
 async function deleteProjectHistory(projectId) {
-  const db = await openDb3();
+  const db = await openDb4();
   try {
     const tx3 = db.transaction([HISTORY_STORE, LEGACY_STORE], "readwrite");
     const done = transactionDone(tx3);
@@ -38249,7 +38536,7 @@ async function deleteProjectHistory(projectId) {
 }
 __name(deleteProjectHistory, "deleteProjectHistory");
 async function pruneEphemeralHistory() {
-  const db = await openDb3();
+  const db = await openDb4();
   try {
     const keys = await requestResult(
       db.transaction(HISTORY_STORE, "readonly").objectStore(HISTORY_STORE).getAllKeys()
@@ -38271,6 +38558,7 @@ async function pruneEphemeralHistory() {
 __name(pruneEphemeralHistory, "pruneEphemeralHistory");
 
 // src/workspace/history/historyService.ts
+init_idb();
 var current3 = null;
 var newId = /* @__PURE__ */ __name(() => crypto.randomUUID(), "newId");
 var now = /* @__PURE__ */ __name(() => Date.now(), "now");
@@ -57072,6 +57360,7 @@ function sketchImportChain(libsText, deps = {}) {
 __name(sketchImportChain, "sketchImportChain");
 
 // src/visualizers/libraries/libraryCache.ts
+init_idb();
 var LIBRARY_CACHE_DB = "stave-library-cache";
 var LIBRARY_CACHE_MAX_BYTES = 100 * 1024 * 1024;
 var LIBRARY_CACHE_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1e3;
@@ -57905,6 +58194,9 @@ function usePopoutPreview({
   return { cleanup };
 }
 __name(usePopoutPreview, "usePopoutPreview");
+
+// src/index.ts
+init_storageStatus();
 var MONACO_VS_PATH = "/monaco/vs";
 loader.config({ paths: { vs: MONACO_VS_PATH } });
 var warmed = null;
@@ -57951,13 +58243,16 @@ function purgeLegacyMasterGain(storage4 = safeLocalStorage8()) {
   }
 }
 __name(purgeLegacyMasterGain, "purgeLegacyMasterGain");
-var DB_NAME4 = "stave-snapshots";
-var STORE_NAME3 = "snapshots";
+
+// src/workspace/snapshotStore.ts
+init_idb();
+var DB_NAME5 = "stave-snapshots";
+var STORE_NAME4 = "snapshots";
 var AUTO_SNAPSHOT_PREFIX = "Auto \u2014 ";
-function openDb4() {
-  return openIdbWithTimeout(DB_NAME4, DB_VERSION3, (db) => upgradeHistoryDb(db));
+function openDb5() {
+  return openIdbWithTimeout(DB_NAME5, DB_VERSION4, (db) => upgradeHistoryDb(db));
 }
-__name(openDb4, "openDb");
+__name(openDb5, "openDb");
 var MAX_AUTO_SNAPSHOTS = 10;
 async function saveSnapshot(projectId, label, kind = "manual") {
   const doc = getActiveDoc();
@@ -57970,19 +58265,19 @@ async function saveSnapshot(projectId, label, kind = "manual") {
     kind
   };
   const record = { ...meta, bytes };
-  const db = await openDb4();
+  const db = await openDb5();
   await committed(
-    db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).put(record)
+    db.transaction(STORE_NAME4, "readwrite").objectStore(STORE_NAME4).put(record)
   );
   if (kind === "auto") {
-    const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
+    const index = db.transaction(STORE_NAME4, "readonly").objectStore(STORE_NAME4).index("byProject");
     const all = await requestResult(index.getAll(projectId));
     const autos = all.filter(
       (r) => r.kind === "auto" || r.label.startsWith(AUTO_SNAPSHOT_PREFIX)
     ).sort((a, b) => b.createdAt - a.createdAt);
     const toDelete = autos.slice(MAX_AUTO_SNAPSHOTS);
     if (toDelete.length > 0) {
-      const wstore = db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3);
+      const wstore = db.transaction(STORE_NAME4, "readwrite").objectStore(STORE_NAME4);
       const done = transactionDone(wstore.transaction);
       done.catch(() => {
       });
@@ -57995,33 +58290,33 @@ async function saveSnapshot(projectId, label, kind = "manual") {
 }
 __name(saveSnapshot, "saveSnapshot");
 async function listSnapshots(projectId) {
-  const db = await openDb4();
-  const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
+  const db = await openDb5();
+  const index = db.transaction(STORE_NAME4, "readonly").objectStore(STORE_NAME4).index("byProject");
   const all = await requestResult(index.getAll(projectId));
   db.close();
   return all.map(({ bytes: _bytes, ...meta }) => meta).sort((a, b) => b.createdAt - a.createdAt);
 }
 __name(listSnapshots, "listSnapshots");
 async function deleteSnapshot(id) {
-  const db = await openDb4();
+  const db = await openDb5();
   await committed(
-    db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).delete(id)
+    db.transaction(STORE_NAME4, "readwrite").objectStore(STORE_NAME4).delete(id)
   );
   db.close();
 }
 __name(deleteSnapshot, "deleteSnapshot");
 async function pruneEphemeralSnapshots() {
-  const db = await openDb4();
+  const db = await openDb5();
   try {
     const range2 = IDBKeyRange.bound(
       EPHEMERAL_ID_PREFIX,
       EPHEMERAL_ID_PREFIX + String.fromCharCode(65535)
     );
     const ids = await requestResult(
-      db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject").getAllKeys(range2)
+      db.transaction(STORE_NAME4, "readonly").objectStore(STORE_NAME4).index("byProject").getAllKeys(range2)
     );
     if (ids.length) {
-      const store = db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3);
+      const store = db.transaction(STORE_NAME4, "readwrite").objectStore(STORE_NAME4);
       await Promise.all([
         ...ids.map((id) => requestResult(store.delete(id))),
         transactionDone(store.transaction)
@@ -58033,9 +58328,9 @@ async function pruneEphemeralSnapshots() {
 }
 __name(pruneEphemeralSnapshots, "pruneEphemeralSnapshots");
 async function restoreSnapshot(id) {
-  const db = await openDb4();
+  const db = await openDb5();
   const stored = await requestResult(
-    db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).get(id)
+    db.transaction(STORE_NAME4, "readonly").objectStore(STORE_NAME4).get(id)
   );
   db.close();
   if (!stored) throw new Error(`snapshot ${id} not found`);
@@ -58130,28 +58425,34 @@ function planAssetImport(input, existing, mintId, builtIn = []) {
   };
 }
 __name(planAssetImport, "planAssetImport");
+
+// src/index.ts
+init_idb();
+
+// src/workspace/assetStore.ts
+init_idb();
 var ASSET_DB_NAME = "stave-assets";
-var DB_NAME5 = ASSET_DB_NAME;
-var DB_VERSION4 = 1;
-var STORE_NAME4 = "blobs";
-function openDb5() {
-  return openIdbWithTimeout(DB_NAME5, DB_VERSION4, (db) => {
-    if (!db.objectStoreNames.contains(STORE_NAME4)) {
-      db.createObjectStore(STORE_NAME4, { keyPath: "hash" });
+var DB_NAME6 = ASSET_DB_NAME;
+var DB_VERSION5 = 1;
+var STORE_NAME5 = "blobs";
+function openDb6() {
+  return openIdbWithTimeout(DB_NAME6, DB_VERSION5, (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME5)) {
+      db.createObjectStore(STORE_NAME5, { keyPath: "hash" });
     }
   });
 }
-__name(openDb5, "openDb");
+__name(openDb6, "openDb");
 var sha256Hex = /* @__PURE__ */ __name(async (bytes) => {
   const digest2 = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest2)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }, "sha256Hex");
 async function putAsset(blob, digest2 = sha256Hex) {
   const hash = await digest2(await blob.arrayBuffer());
-  const db = await openDb5();
+  const db = await openDb6();
   try {
     const existing = await requestResult(
-      db.transaction(STORE_NAME4, "readonly").objectStore(STORE_NAME4).count(hash)
+      db.transaction(STORE_NAME5, "readonly").objectStore(STORE_NAME5).count(hash)
     );
     if (existing > 0) return { hash, written: false };
     const record = {
@@ -58162,7 +58463,7 @@ async function putAsset(blob, digest2 = sha256Hex) {
       storedAt: Date.now()
     };
     await committed(
-      db.transaction(STORE_NAME4, "readwrite").objectStore(STORE_NAME4).put(record)
+      db.transaction(STORE_NAME5, "readwrite").objectStore(STORE_NAME5).put(record)
     );
     return { hash, written: true };
   } finally {
@@ -58171,10 +58472,10 @@ async function putAsset(blob, digest2 = sha256Hex) {
 }
 __name(putAsset, "putAsset");
 async function getAsset(hash) {
-  const db = await openDb5();
+  const db = await openDb6();
   try {
     const row = await requestResult(
-      db.transaction(STORE_NAME4, "readonly").objectStore(STORE_NAME4).get(hash)
+      db.transaction(STORE_NAME5, "readonly").objectStore(STORE_NAME5).get(hash)
     );
     return row?.blob ?? null;
   } finally {
@@ -58184,10 +58485,10 @@ async function getAsset(hash) {
 __name(getAsset, "getAsset");
 async function deleteAsset(hash) {
   releaseAsset(hash);
-  const db = await openDb5();
+  const db = await openDb6();
   try {
     await committed(
-      db.transaction(STORE_NAME4, "readwrite").objectStore(STORE_NAME4).delete(hash)
+      db.transaction(STORE_NAME5, "readwrite").objectStore(STORE_NAME5).delete(hash)
     );
   } finally {
     db.close();
@@ -58195,10 +58496,10 @@ async function deleteAsset(hash) {
 }
 __name(deleteAsset, "deleteAsset");
 async function listAssets() {
-  const db = await openDb5();
+  const db = await openDb6();
   try {
     const rows = await requestResult(
-      db.transaction(STORE_NAME4, "readonly").objectStore(STORE_NAME4).getAll()
+      db.transaction(STORE_NAME5, "readonly").objectStore(STORE_NAME5).getAll()
     );
     return rows.map(({ hash, mime, size, storedAt }) => ({ hash, mime, size, storedAt })).sort((a, b) => a.storedAt - b.storedAt);
   } finally {
@@ -58334,6 +58635,9 @@ function renameAssetRecord(id, name) {
   return unique;
 }
 __name(renameAssetRecord, "renameAssetRecord");
+
+// src/workspace/soundCollector.ts
+init_idb();
 var TAB_LOCK = "stave-tab";
 var SOUND_REFS_LOCK = "stave-sound-refs";
 var PROJECT_DB_PREFIX = "stave-";
@@ -61170,207 +61474,9 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-// src/soundfont/registerUserSoundfont.ts
-var DEFAULT_MAX_SF2_BYTES = 64 * 1024 * 1024;
-function sanitizeSoundfontName(name) {
-  return String(name ?? "").toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
-}
-__name(sanitizeSoundfontName, "sanitizeSoundfontName");
-async function registerUserSoundfont(name, bytes, options = {}) {
-  const maxBytes = options.maxBytes ?? DEFAULT_MAX_SF2_BYTES;
-  const clean = sanitizeSoundfontName(name);
-  if (!clean) {
-    throw new Error(
-      `soundfont name "${name}" has no usable characters (need a-z, 0-9, _ or -)`
-    );
-  }
-  if (!bytes || bytes.length === 0) {
-    throw new Error(`soundfont "${clean}" is empty`);
-  }
-  if (bytes.length > maxBytes) {
-    const mb = /* @__PURE__ */ __name((n) => (n / (1024 * 1024)).toFixed(1), "mb");
-    throw new Error(
-      `soundfont "${clean}" is ${mb(bytes.length)} MiB, over the ${mb(maxBytes)} MiB limit`
-    );
-  }
-  const sf = await import('@strudel/soundfonts');
-  const wa = await import('@strudel/webaudio');
-  const core = await import('@strudel/core');
-  const { loadSoundfont, startPresetNote } = sf;
-  const { registerSound, getAudioContext: getAudioContext4, onceEnded, releaseAudioNode } = wa;
-  const noteToMidi3 = core.noteToMidi;
-  const freqToMidi = core.freqToMidi;
-  const getSoundIndex = core.getSoundIndex;
-  const key3 = `sf_${clean}`;
-  const blobUrl = URL.createObjectURL(
-    new Blob([new Uint8Array(bytes)], { type: "application/octet-stream" })
-  );
-  let font;
-  try {
-    font = await loadSoundfont(blobUrl);
-  } catch (e) {
-    throw new Error(`soundfont "${clean}" could not be parsed as a .sf2: ${String(e)}`);
-  } finally {
-    URL.revokeObjectURL(blobUrl);
-  }
-  const presets = font?.presets ?? [];
-  if (!presets.length) {
-    throw new Error(`soundfont "${clean}" parsed but exposes no presets`);
-  }
-  registerSound(
-    key3,
-    // Handler shape mirrors the GM soundfont handler: (startTime, value, onended, cps).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (time, value, onended) => {
-      const ctx = getAudioContext4();
-      const rawNote = value?.note ?? "c3";
-      let midi;
-      if (value?.freq != null) midi = freqToMidi(value.freq);
-      else if (typeof rawNote === "number") midi = rawNote;
-      else midi = noteToMidi3(rawNote);
-      const preset = presets[getSoundIndex(value?.n, presets.length)];
-      const captureNode = ctx.createGain();
-      const sources = [];
-      const proxyCtx = new Proxy(ctx, {
-        get(target, prop, receiver) {
-          if (prop === "destination") return captureNode;
-          if (prop === "createBufferSource") {
-            return (...args) => {
-              const src = target.createBufferSource(...args);
-              sources.push(src);
-              return src;
-            };
-          }
-          const v = target[prop];
-          return typeof v === "function" ? v.bind(target) : v;
-        }
-      });
-      const stopPreset = startPresetNote(
-        proxyCtx,
-        preset,
-        midi,
-        time
-      );
-      const duration = typeof value?.duration === "number" ? value.duration : 0.5;
-      try {
-        stopPreset(time + duration);
-      } catch {
-      }
-      let endedCount = 0;
-      const total = sources.length;
-      if (total) {
-        for (const s of sources) {
-          onceEnded(s, () => {
-            try {
-              releaseAudioNode(s);
-            } catch {
-            }
-            if (++endedCount === total) onended();
-          });
-        }
-      } else {
-        onended();
-      }
-      return {
-        node: captureNode,
-        // superdough calls this to force-stop early (polyphony stealing).
-        stop: /* @__PURE__ */ __name((releaseTime) => {
-          try {
-            stopPreset(releaseTime ?? ctx.currentTime);
-          } catch {
-          }
-        }, "stop"),
-        nodes: { source: sources }
-      };
-    },
-    { type: "soundfont", prebake: false }
-  );
-  return { key: key3, presetCount: presets.length, name: clean };
-}
-__name(registerUserSoundfont, "registerUserSoundfont");
-var registerUserSoundfontFromBytes = registerUserSoundfont;
-
-// src/soundfont/soundfontStore.ts
-var SOUNDFONT_DB_NAME = "stave-soundfonts";
-var DB_NAME6 = SOUNDFONT_DB_NAME;
-var DB_VERSION5 = 1;
-var STORE_NAME5 = "fonts";
-function openDb6() {
-  return openIdbWithTimeout(DB_NAME6, DB_VERSION5, (db) => {
-    if (!db.objectStoreNames.contains(STORE_NAME5)) {
-      db.createObjectStore(STORE_NAME5, { keyPath: "name" });
-    }
-  });
-}
-__name(openDb6, "openDb");
-async function putSoundfont(name, bytes) {
-  const slug = sanitizeSoundfontName(name);
-  if (!slug) {
-    throw new Error(`soundfont name "${name}" has no usable characters (need a-z, 0-9, _ or -)`);
-  }
-  if (!bytes || bytes.length === 0) {
-    throw new Error(`soundfont "${slug}" is empty`);
-  }
-  const copy = new Uint8Array(bytes);
-  const record = {
-    name: slug,
-    bytes: copy.buffer,
-    size: copy.byteLength,
-    storedAt: Date.now()
-  };
-  const db = await openDb6();
-  try {
-    await committed(
-      db.transaction(STORE_NAME5, "readwrite").objectStore(STORE_NAME5).put(record)
-    );
-    const { name: n, size, storedAt } = record;
-    return { name: n, size, storedAt };
-  } finally {
-    db.close();
-  }
-}
-__name(putSoundfont, "putSoundfont");
-async function getSoundfont(name) {
-  const slug = sanitizeSoundfontName(name);
-  if (!slug) return null;
-  const db = await openDb6();
-  try {
-    const row = await requestResult(
-      db.transaction(STORE_NAME5, "readonly").objectStore(STORE_NAME5).get(slug)
-    );
-    return row ? new Uint8Array(row.bytes) : null;
-  } finally {
-    db.close();
-  }
-}
-__name(getSoundfont, "getSoundfont");
-async function deleteSoundfont(name) {
-  const slug = sanitizeSoundfontName(name);
-  if (!slug) return;
-  const db = await openDb6();
-  try {
-    await committed(
-      db.transaction(STORE_NAME5, "readwrite").objectStore(STORE_NAME5).delete(slug)
-    );
-  } finally {
-    db.close();
-  }
-}
-__name(deleteSoundfont, "deleteSoundfont");
-async function listSoundfonts() {
-  const db = await openDb6();
-  try {
-    const rows = await requestResult(
-      db.transaction(STORE_NAME5, "readonly").objectStore(STORE_NAME5).getAll()
-    );
-    return rows.map(({ name, size, storedAt }) => ({ name, size, storedAt })).sort((a, b) => a.storedAt - b.storedAt);
-  } finally {
-    db.close();
-  }
-}
-__name(listSoundfonts, "listSoundfonts");
-
 // src/index.ts
+init_registerUserSoundfont();
+init_soundfontStore();
 setKeyEventMatcher((event, key3) => chordMatches(chordFromEvent(event), key3));
 function startPageExtensions() {
   return pageExtensions().start({

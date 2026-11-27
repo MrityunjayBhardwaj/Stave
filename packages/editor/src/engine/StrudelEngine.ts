@@ -933,6 +933,14 @@ export class StrudelEngine implements LiveCodingEngine {
     // Fonts are lazy-loaded from felixroos.github.io/webaudiofontdata on first use.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(soundfontsMod as any).registerSoundfonts()
+    // #2661: re-register the user's uploaded .sf2 fonts. superdough's registry is
+    // module-scoped and rebuilt on every init, so — exactly like the GM set above —
+    // user fonts must be re-registered each boot or they vanish after the first
+    // reload. Placed HERE: after initAudio (its `dahdsr` param extension is what the
+    // soundfont handler needs) and registerSound, and BEFORE the globalThis.soundMap
+    // publish below, so the picker sees user fonts on the same pass as the built-ins.
+    // Non-fatal: a store/parse failure degrades to "no user fonts", never breaks boot.
+    await this.registerUserSoundfonts()
     // Load Dirt-Samples manifest so bd, hh, sd, cp, rim, cr, rd etc. resolve at runtime.
     // Individual samples are lazy-loaded on first play; only the index JSON is fetched here.
     // Worklet-based effects (crush, coarse, distort, djf, bytebeat) are loaded by initAudio() above.
@@ -1354,6 +1362,46 @@ export class StrudelEngine implements LiveCodingEngine {
     await import('./vendored/piano')
 
     this.initialized = true
+  }
+
+  /**
+   * #2661 — re-register every persisted user `.sf2` (#2660 store → #2659 handler)
+   * so `s("sf_<name>")` is live from the first Play of a reloaded session, with no
+   * re-upload. Called during init, after `registerSoundfonts()` and before the
+   * `globalThis.soundMap` publish.
+   *
+   * Entirely non-fatal: the store read is bounded (`openIdbWithTimeout`), and both
+   * the whole step and each font are wrapped so a store outage (private mode,
+   * quota) or one unparseable font degrades to "that font is absent" rather than
+   * wedging or failing boot. Fonts register independently — one bad file does not
+   * take the others down.
+   */
+  private async registerUserSoundfonts(): Promise<void> {
+    try {
+      const { listSoundfonts, getSoundfont } = await import('../soundfont/soundfontStore')
+      const { registerUserSoundfont } = await import('../soundfont/registerUserSoundfont')
+      const metas = await listSoundfonts()
+      let registered = 0
+      for (const meta of metas) {
+        try {
+          const bytes = await getSoundfont(meta.name)
+          if (!bytes) continue
+          await registerUserSoundfont(meta.name, bytes)
+          registered++
+        } catch (e) {
+          console.warn(`[StrudelEngine] user soundfont "${meta.name}" skipped on boot:`, e)
+        }
+      }
+      if (metas.length) {
+        console.log(
+          `[StrudelEngine] re-registered ${registered}/${metas.length} user soundfont(s)`,
+        )
+      }
+    } catch (e) {
+      // Store unavailable (private mode, blocked, corrupt) — boot continues with
+      // the built-in sounds only.
+      console.warn('[StrudelEngine] user soundfonts unavailable on boot:', e)
+    }
   }
 
   async evaluate(code: string): Promise<{ error?: Error }> {

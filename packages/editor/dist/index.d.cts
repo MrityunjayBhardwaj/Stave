@@ -4887,6 +4887,19 @@ declare class StrudelEngine implements LiveCodingEngine {
      */
     init(): Promise<void>;
     private initInternal;
+    /**
+     * #2661 — re-register every persisted user `.sf2` (#2660 store → #2659 handler)
+     * so `s("sf_<name>")` is live from the first Play of a reloaded session, with no
+     * re-upload. Called during init, after `registerSoundfonts()` and before the
+     * `globalThis.soundMap` publish.
+     *
+     * Entirely non-fatal: the store read is bounded (`openIdbWithTimeout`), and both
+     * the whole step and each font are wrapped so a store outage (private mode,
+     * quota) or one unparseable font degrades to "that font is absent" rather than
+     * wedging or failing boot. Fonts register independently — one bad file does not
+     * take the others down.
+     */
+    private registerUserSoundfonts;
     evaluate(code: string): Promise<{
         error?: Error;
     }>;

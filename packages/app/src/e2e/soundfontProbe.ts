@@ -54,6 +54,21 @@ export interface SoundfontProbe {
   storeList(): Promise<SoundfontStoreMeta[]>
   /** Drop a font from the store by name. */
   storeRemove(name: string): Promise<void>
+
+  /**
+   * #2661 — boot a FRESH engine and let its `init()` re-register fonts from the
+   * store, WITHOUT this probe registering anything itself. Reports whether
+   * `sf_<name>` ended up in the live registry (and the picker-visible global),
+   * its type, and whether it plays — the whole boot-path claim in one call.
+   */
+  bootRegistersFromStore(name: string): Promise<{
+    present: boolean
+    type: string | null
+    inGlobal: boolean
+    played: number
+    skipped: SkippedSounds[]
+    error?: string
+  }>
 }
 
 declare global {
@@ -160,6 +175,42 @@ export function installSoundfontProbe(): () => void {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mod: any = await import('@stave/editor')
       await mod.deleteSoundfont(name)
+    },
+
+    async bootRegistersFromStore(name) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mod: any = await import('@stave/editor')
+        const engine = new mod.StrudelEngine()
+        // init() runs the engine's own registerUserSoundfonts() boot step, which
+        // reads the store — the probe deliberately registers NOTHING itself here.
+        await engine.init()
+
+        // The engine publishes the LIVE superdough soundMap to globalThis during
+        // init (it is the same ref the picker reads), so read it there rather than
+        // importing `@strudel/webaudio`, which is not a resolvable bare specifier
+        // in the app's browser bundle.
+        const key = `sf_${name}`
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const dict: Record<string, any> =
+          (globalThis as unknown as { soundMap?: { get?: () => Record<string, unknown> } })
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .soundMap?.get?.() as any ?? {}
+        const entry = dict[key]
+        const present = Boolean(entry)
+        const inGlobal = present // globalThis.soundMap is exactly what the picker reads
+
+        let played = 0
+        let skipped: SkippedSounds[] = []
+        if (present) {
+          const report = await engine.renderOfflineReport(`note("69").s("${key}")`, 2)
+          played = report.played
+          skipped = report.skipped
+        }
+        return { present, type: entry?.data?.type ?? null, inGlobal, played, skipped }
+      } catch (e) {
+        return { present: false, type: null, inGlobal: false, played: 0, skipped: [], error: String(e) }
+      }
     },
   }
 
