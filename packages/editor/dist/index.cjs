@@ -61282,20 +61282,21 @@ async function registerUserSoundfont(name, bytes, options = {}) {
         stopPreset(time + duration);
       } catch {
       }
-      let ended = false;
-      const finish = /* @__PURE__ */ __name(() => {
-        if (ended) return;
-        ended = true;
+      let endedCount = 0;
+      const total = sources.length;
+      if (total) {
         for (const s of sources) {
-          try {
-            releaseAudioNode(s);
-          } catch {
-          }
+          onceEnded(s, () => {
+            try {
+              releaseAudioNode(s);
+            } catch {
+            }
+            if (++endedCount === total) onended();
+          });
         }
+      } else {
         onended();
-      }, "finish");
-      if (sources.length) onceEnded(sources[sources.length - 1], finish);
-      else finish();
+      }
       return {
         node: captureNode,
         // superdough calls this to force-stop early (polyphony stealing).

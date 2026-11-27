@@ -205,23 +205,28 @@ export async function registerUserSoundfont(
         /* a zone with no loop simply rings for its sample length */
       }
 
-      // Fire superdough's onended once, when the last source actually finishes, so it
-      // can release the chain. Release our own (off-chain) sources then too.
-      let ended = false
-      const finish = () => {
-        if (ended) return
-        ended = true
+      // Release each source WHEN IT ENDS (not when some other zone ends): a preset can
+      // layer zones of different lengths — a one-shot attack over a looped body — and
+      // releasing all of them because the shortest finished would cut the note short.
+      // Fire superdough's onended (which releases the chain) once, after the LAST zone
+      // ends. Every zone is stopped by stopPreset(time + duration), so looped zones
+      // fire 'ended' too.
+      let endedCount = 0
+      const total = sources.length
+      if (total) {
         for (const s of sources) {
-          try {
-            releaseAudioNode(s)
-          } catch {
-            /* already released */
-          }
+          onceEnded(s, () => {
+            try {
+              releaseAudioNode(s)
+            } catch {
+              /* already released */
+            }
+            if (++endedCount === total) onended()
+          })
         }
-        onended()
+      } else {
+        onended() // no active zone for this pitch — nothing sounds; release at once
       }
-      if (sources.length) onceEnded(sources[sources.length - 1], finish)
-      else finish() // no active zone for this pitch — nothing sounds; release at once
 
       return {
         node: captureNode,
