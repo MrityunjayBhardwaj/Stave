@@ -61197,62 +61197,123 @@ function isPersistableTab(t) {
 __name(isPersistableTab, "isPersistableTab");
 
 // src/soundfont/registerUserSoundfont.ts
-async function registerUserSoundfontFromBytes(name, bytes) {
+var DEFAULT_MAX_SF2_BYTES = 64 * 1024 * 1024;
+function sanitizeSoundfontName(name) {
+  return String(name ?? "").toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
+}
+__name(sanitizeSoundfontName, "sanitizeSoundfontName");
+async function registerUserSoundfont(name, bytes, options = {}) {
+  const maxBytes = options.maxBytes ?? DEFAULT_MAX_SF2_BYTES;
+  const clean = sanitizeSoundfontName(name);
+  if (!clean) {
+    throw new Error(
+      `soundfont name "${name}" has no usable characters (need a-z, 0-9, _ or -)`
+    );
+  }
+  if (!bytes || bytes.length === 0) {
+    throw new Error(`soundfont "${clean}" is empty`);
+  }
+  if (bytes.length > maxBytes) {
+    const mb = /* @__PURE__ */ __name((n) => (n / (1024 * 1024)).toFixed(1), "mb");
+    throw new Error(
+      `soundfont "${clean}" is ${mb(bytes.length)} MiB, over the ${mb(maxBytes)} MiB limit`
+    );
+  }
   const sf = await import('@strudel/soundfonts');
   const wa = await import('@strudel/webaudio');
   const core = await import('@strudel/core');
   const { loadSoundfont, startPresetNote } = sf;
-  const { registerSound, getAudioContext: getAudioContext4 } = wa;
+  const { registerSound, getAudioContext: getAudioContext4, onceEnded, releaseAudioNode } = wa;
   const noteToMidi3 = core.noteToMidi;
-  const key3 = `sf_${name}`;
+  const freqToMidi = core.freqToMidi;
+  const getSoundIndex = core.getSoundIndex;
+  const key3 = `sf_${clean}`;
   const blobUrl = URL.createObjectURL(
     new Blob([new Uint8Array(bytes)], { type: "application/octet-stream" })
   );
   let font;
   try {
     font = await loadSoundfont(blobUrl);
+  } catch (e) {
+    throw new Error(`soundfont "${clean}" could not be parsed as a .sf2: ${String(e)}`);
   } finally {
     URL.revokeObjectURL(blobUrl);
   }
   const presets = font?.presets ?? [];
   if (!presets.length) {
-    throw new Error(`soundfont "${name}" parsed but exposes no presets`);
+    throw new Error(`soundfont "${clean}" parsed but exposes no presets`);
   }
   registerSound(
     key3,
-    // Handler shape mirrors the GM soundfont handler: (startTime, value, onended).
+    // Handler shape mirrors the GM soundfont handler: (startTime, value, onended, cps).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (time, value, onended) => {
       const ctx = getAudioContext4();
-      const raw = value?.note ?? value?.n ?? "c4";
-      const midi = typeof raw === "number" ? raw : noteToMidi3(raw);
-      const preset = presets[0];
-      const stop = startPresetNote(ctx, preset, midi, time);
+      const rawNote = value?.note ?? "c3";
+      let midi;
+      if (value?.freq != null) midi = freqToMidi(value.freq);
+      else if (typeof rawNote === "number") midi = rawNote;
+      else midi = noteToMidi3(rawNote);
+      const preset = presets[getSoundIndex(value?.n, presets.length)];
+      const captureNode = ctx.createGain();
+      const sources = [];
+      const proxyCtx = new Proxy(ctx, {
+        get(target, prop, receiver) {
+          if (prop === "destination") return captureNode;
+          if (prop === "createBufferSource") {
+            return (...args) => {
+              const src = target.createBufferSource(...args);
+              sources.push(src);
+              return src;
+            };
+          }
+          const v = target[prop];
+          return typeof v === "function" ? v.bind(target) : v;
+        }
+      });
+      const stopPreset = startPresetNote(
+        proxyCtx,
+        preset,
+        midi,
+        time
+      );
       const duration = typeof value?.duration === "number" ? value.duration : 0.5;
-      const end = time + duration;
       try {
-        stop(end);
+        stopPreset(time + duration);
       } catch {
       }
-      const placeholder = ctx.createGain();
-      placeholder.gain.value = 0;
-      return {
-        node: placeholder,
-        stop: /* @__PURE__ */ __name(() => {
+      let ended = false;
+      const finish = /* @__PURE__ */ __name(() => {
+        if (ended) return;
+        ended = true;
+        for (const s of sources) {
           try {
-            stop(ctx.currentTime);
+            releaseAudioNode(s);
           } catch {
           }
-          onended();
+        }
+        onended();
+      }, "finish");
+      if (sources.length) onceEnded(sources[sources.length - 1], finish);
+      else finish();
+      return {
+        node: captureNode,
+        // superdough calls this to force-stop early (polyphony stealing).
+        stop: /* @__PURE__ */ __name((releaseTime) => {
+          try {
+            stopPreset(releaseTime ?? ctx.currentTime);
+          } catch {
+          }
         }, "stop"),
-        nodes: {}
+        nodes: { source: sources }
       };
     },
     { type: "soundfont", prebake: false }
   );
-  return { key: key3, presetCount: presets.length };
+  return { key: key3, presetCount: presets.length, name: clean };
 }
-__name(registerUserSoundfontFromBytes, "registerUserSoundfontFromBytes");
+__name(registerUserSoundfont, "registerUserSoundfont");
+var registerUserSoundfontFromBytes = registerUserSoundfont;
 
 // src/index.ts
 setKeyEventMatcher((event, key3) => chordMatches(chordFromEvent(event), key3));
@@ -61284,6 +61345,7 @@ exports.BreakpointStore = BreakpointStore;
 exports.BufferedScheduler = BufferedScheduler;
 exports.CODE_UNDO_ATTR = CODE_UNDO_ATTR;
 exports.DARK_THEME_TOKENS = DARK_THEME_TOKENS;
+exports.DEFAULT_MAX_SF2_BYTES = DEFAULT_MAX_SF2_BYTES;
 exports.DEFAULT_VIZ_CONFIG = DEFAULT_VIZ_CONFIG;
 exports.DEFAULT_VIZ_DESCRIPTORS = DEFAULT_VIZ_DESCRIPTORS;
 exports.DEFAULT_VIZ_ENGINE = DEFAULT_VIZ_ENGINE;
@@ -61749,6 +61811,7 @@ exports.registerPresetAsNamedViz = registerPresetAsNamedViz;
 exports.registerPreviewProvider = registerPreviewProvider;
 exports.registerReevalHandler = registerReevalHandler;
 exports.registerRuntimeProvider = registerRuntimeProvider;
+exports.registerUserSoundfont = registerUserSoundfont;
 exports.registerUserSoundfontFromBytes = registerUserSoundfontFromBytes;
 exports.releaseAllAssets = releaseAllAssets;
 exports.releaseAsset = releaseAsset;
@@ -61787,6 +61850,7 @@ exports.runGridGesture = runGridGesture;
 exports.runPasses = runPasses;
 exports.sampleRefOf = sampleRefOf;
 exports.sanitizePresetName = sanitizePresetName;
+exports.sanitizeSoundfontName = sanitizeSoundfontName;
 exports.saveShellState = saveShellState;
 exports.saveSnapshot = saveSnapshot;
 exports.scaleGain = scaleGain;
